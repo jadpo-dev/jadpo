@@ -2,7 +2,7 @@
 title: Policy
 area: 9
 status: decided
-checked-with: jadpo chunk-5.1d (2026-10-16)
+checked-with: this checkout's jadpo on every gate run
 rules:
   - policy.*
   - type.field_update_forbidden
@@ -14,7 +14,8 @@ Who may do what to which records: grants on entities and fields, tenancy,
 actions that need their own permission, the generated permissions report, and
 what a caller sees when policy says no.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. Built in the new compiler in roadmap chunk 4.4: grants compiled into every read and write, membership roles, tenancy, actions listed under `actions:`, the permissions report, and the grants on revoking tokens and keys. Built in chunk 4.4b: a field's own `policy:` and `FieldAccess.server_only`, the proofs that every output and include is readable by everyone who may call it, writes refused for a field the caller may not change, and policy in the graph and manifest. Built in chunk 4.7: references kept inside the tenant, and conditions and orders proved like outputs. Built in chunk 4.8: founding a tenant, moving a record between tenants, listed lines no record lets in, and values followed through functions, the conditions that decide them, the records writes give back and the ids that find records. Built in chunk 5.1d: a value stored only in a field everyone who may read it may read. Built in chunk 6.1a: the system caller `Access.system` lets in, for schedules and subscribers. Built in chunk 6.1b: a subscriber reaching what only `Access.public` grants refused (`policy.system_grant_missing`). Built in chunk 6.2: a schedule reaching it refused the same way, and a schedule's run reaching every tenant. Built in chunk 6.1c: what a subscriber stores from its event, checked against what every `emit` of it put there. Built in chunk 6.4c: a batch's query or actions reaching it refused the same way, and a batch's run limited to the tenant its saved tenant id names. Built in chunk 6.4d: what a batch's run stores, from its items, what it saved and its summary, proved as a call's arguments are, by the tenant it is limited to (area 12, "What a run reaches under policy"). Built in chunk 6.6b: every action background work reaches checked against its own line under `actions:`, a listed action's line deciding its own body's writes wherever it is called from, and what `batches.status` gives held to what decides every batch's failures (area 12, "What a run reaches under policy"). Built in chunk 6.6c: the tenant an event or a batch's run names proved to be one its action reached under its caller's policy (`policy.event_tenant_unproved`; "Background work"). "Status" below lists the rest.
+> Not built yet: `scopes:`, and acceptances for a change that widens
+> access. "Status" below lists each.
 
 **Each entity lists, for each thing you can do to it, who may do it, and the
 compiler applies that list to every read and write.**
@@ -44,7 +45,7 @@ entity Todo {
 | A user field on the record | `owner_id` | the user that field points to |
 | A membership role | `CompanyRole.editor` | a user with that role in the record's company |
 | Everyone | `Access.authenticated`, `Access.public` | anyone signed in; anyone at all |
-| Background work | `Access.system` | schedules and subscribers, limited to the tenant their event came from (added from area 12, 2026-10-13) |
+| Background work | `Access.system` | schedules and subscribers, limited to the tenant their event came from |
 
 ## Grants
 
@@ -197,7 +198,7 @@ runtime's runner makes the system caller, and every request, and every
 call a test makes with a caller or without one, runs as someone else.
 
 The runtime runs three of the application's actions as the system inside
-a request too (Richard, 2026-10-21): the magic-link `send:` action,
+a request too: the magic-link `send:` action,
 delivered as a subscriber of `jadpo.MagicLinkEmail` with its delivery's
 tenant, which is none; a webhook's reply action; and `on_first_sign_in:`'s.
 Each reaches no tenant's records, only those every tenant shares, since
@@ -211,7 +212,7 @@ the event's field of the tenant's `id` type, or what the run saves of it.
 A caller could pass the id of a tenant they don't belong to, so that value
 must come from a record of that tenant the action read or wrote under its
 caller's policy; otherwise it is `policy.event_tenant_unproved` at the
-value (decided 2026-10-19). Reading the tenant first,
+value. Reading the tenant first,
 `attempt Household.get(household_id)`, or naming the tenant of a record
 the action changes, proves it. In full, a value proves its tenant when it
 is:
@@ -239,6 +240,11 @@ event's tenant on, to another `emit` or a batch, reads a record of it
 first, as area 12's "Declaring an event" advises for anything more than
 ids.
 
+What a batch's run stores, from its items, what it saved and its summary,
+is proved as a call's arguments are, by the tenant it is limited to, and
+what `batches.status` gives is held to what decides every batch's failures
+(area 12, "What a run reaches under policy").
+
 ## Tenancy
 
 Most business applications are shared by many customer companies, and the
@@ -263,7 +269,7 @@ A company's first membership founds it: a new membership makes its member
 one of the company's people only while nobody belongs to the company yet.
 Every other membership is created by someone who belongs already, as the
 membership's own `create:` says, so nobody makes themselves a member, or
-an owner, of someone else's company (revised in chunk 4.8).
+an owner, of someone else's company.
 
 ### References stay inside the tenant
 
@@ -272,8 +278,7 @@ record of the same tenant: a chore of Northwind's names one of Northwind's
 projects, never Contoso's. Every create and update that sets such a
 reference checks it in its own statement, with or without policy, and one
 that points into another tenant is refused with 403 `not_permitted`; a
-record that isn't there is still the code's own not-found failure
-(Richard, 2026-10-16; built in chunk 4.7). So whoever may read a chore
+record that isn't there is still the code's own not-found failure. So whoever may read a chore
 holds their role in the project's company too, and a query of chores may
 include each chore's project:
 
@@ -729,7 +734,7 @@ one an entity names with `tenant:`, another tenant on purpose, so it isn't
 checked. A write that moves a record to another tenant, which only an
 action listed under `actions:` may, checks every reference it keeps, and
 that no record of the old tenant refers to it, and needs the caller's own
-membership in the new tenant, as a create there would (chunk 4.8).
+membership in the new tenant, as a create there would.
 
 ## Actions
 
@@ -764,7 +769,7 @@ changes or deletes. On an action that changes none of them, such as a
 report, it lets nobody in: the action is checked as it starts against the
 line's other entries, anyone signed in or a role held across the whole
 application, and with none left it refuses every caller, so its route is
-`policy.effect_ungranted` (chunk 4.8).
+`policy.effect_ungranted`.
 
 ## Field restrictions
 
@@ -801,41 +806,40 @@ entity Project {
   it refers to. A webhook's reply (area 11) goes back to whoever sent the
   webhook, so it is an output to `Access.public`: every field it carries,
   or that decided it, is one anyone at all may read, though its action
-  runs as the system (Richard, 2026-10-21). Since the system finds every
+  runs as the system. Since the system finds every
   record its grants name, a reply that counts or tests for records shows
   whether they are there, so they must be records anyone at all may
   read; and a failure is answered to the sender too, so what decides
   whether the action fails (a condition, a `get` or a change by `id`
   finding nothing, a `conflict:`) and a failure's client fields are held
-  to the same proof (chunk 7.9g).
+  to the same proof.
 - **Conditions and orders.** Which records pass a condition, and the order
   they come in, show the fields they test, so a query, `get`, include or
   write may filter or order on a field only when everyone who may run it
   may read that field; otherwise `policy.output_field_unproved` names the
-  condition or order (Richard, 2026-10-16; built in chunk 4.7). A
+  condition or order. A
   transition's `when:` is a write's condition: refusing a record shows what
   it tests.
 - **Copies.** Passing a value through a variable, another type, a
   function or the record a write stores it in does not escape the field's
-  rules; the compiler tracks where it came from (chunk 4.8 adds functions
-  and writes).
+  rules; the compiler tracks where it came from.
 - **What decides a value.** A value made under an `if`, a `match` or a
   loop, or kept by a filter, shows what they test, so it carries their
   fields' rules too, as does a count of what a filter kept, a failure
   raised on such a condition, and what comes after a `return` or `reject`
-  it may have taken (chunk 4.8).
+  it may have taken.
 - **Finding records.** Which record a `get`, a query or a write finds shows
   the value it found it by, and an include shows the reference it follows,
-  so each is proved like an output (chunk 4.8).
+  so each is proved like an output.
 - **What a write gives back.** The record an update returns is proved
   against its `read:` as well as its fields', since a caller may change a
   record they may not read; what its `set:` gave a field, and a created
-  record's values, are the caller's own (chunk 4.8).
+  record's values, are the caller's own.
 - **What a write stores.** A value stored in a field is read later, from
   any request, by everyone who may read that field, so a create or update
   stores a value in a field only when every one of them may read it,
   proved as an output is; otherwise `policy.output_field_unproved` names
-  the value in the write (Richard, 2026-10-16; built in chunk 5.1d). A
+  the value in the write. A
   copy between fields the same callers read stays allowed: within a
   record, into a record that refers to the one it came from, or into one
   of the same tenant. Who reads a field is known only of the record it is
@@ -846,7 +850,7 @@ entity Project {
   all-or-nothing, so is whatever a `reject` in it tests.
 - **Server only.** `FieldAccess.server_only` lets no request read or write
   the field. A test's or a seed's call without a caller runs without policy,
-  so it may; how schedules and subscribers write one comes with area 12.
+  so it may; area 12 says how schedules and subscribers write one.
 
 A field's `policy:` narrows `create`, `read` and `update`; it is deleted
 with its record. Who may read a value is proved from the grants alone, not
@@ -890,14 +894,15 @@ output gains a field, a route becomes public or an action starts touching
 another entity. Each widening needs an acceptance file in `acceptances/`, the
 form area 7 decided for breaking API changes and database drops.
 
-Who schedules and subscribers act as is area 12's question; whatever is
-decided shows in the permissions report. The compiler's own purge of
+Schedules and subscribers act as the system ("Background work"), and what
+`Access.system` is granted shows in the permissions report. The compiler's own purge of
 soft-deleted records (area 5) is the only operation outside policy.
 
 ## When policy says no
 
 The compiler adds policy to the SQL `WHERE` of every query and write (area
-6), and indexes every field a policy condition filters on.
+6), and indexes every field a policy condition filters on; `jadpo sql`
+shows the policy each statement carries.
 
 | Situation | The client sees |
 |---|---|
@@ -2244,7 +2249,7 @@ check failed: 1 error, 1 file
 ### `policy.system_grant_missing`
 
 A subscriber runs as the system, and the entity it changes grants that
-only to anyone at all (decided 2026-10-19):
+only to anyone at all:
 
 ```jadpo check project=e-system-grant-missing expect=policy.system_grant_missing
 type Note = Text {
@@ -2297,10 +2302,10 @@ check failed: 1 error, 1 file
 
 The magic-link `send:` action, a webhook's reply action and
 `on_first_sign_in:`'s run as the system too, and are checked the same way,
-where each is named (chunk 7.9b). Every action background work reaches
+where each is named. Every action background work reaches
 lets the system in by its own line under `actions:`, wherever it is
 called from, as it does a request, so a line naming only `Access.public`
-is refused however deep (chunk 6.6b):
+is refused however deep:
 
 ```jadpo check project=e-system-grant-missing-line expect=policy.system_grant_missing
 type Note = Text {
@@ -2367,8 +2372,7 @@ An event's subscribers run as the system within the tenant its field of
 the tenant's `id` type names, and a batch's run within the one its saved
 values of that type name (area 12). That id must come from a record of
 the tenant the action read or wrote under its caller's policy, or a caller
-could aim the system at a tenant they don't belong to (decided
-2026-10-19). Here the event names the household the caller passed, not
+could aim the system at a tenant they don't belong to. Here the event names the household the caller passed, not
 the chore's:
 
 ```jadpo check project=e-event-tenant-unproved expect=policy.event_tenant_unproved
@@ -3745,7 +3749,7 @@ action finish_review(note_id: Note.id) fails NoteNotFound -> Note {
 }
 ```
 
-A subscriber's action stores what its event carries, and the event carries what every `emit` of it put there (built in chunk 6.1c). Here one of the two actions that share a note puts its appraisal, which only the reviewer may read, in the event, and the bulletin the subscriber posts is read by anyone signed in:
+A subscriber's action stores what its event carries, and the event carries what every `emit` of it put there. Here one of the two actions that share a note puts its appraisal, which only the reviewer may read, in the event, and the bulletin the subscriber posts is read by anyone signed in:
 
 ```jadpo check project=e-event-stored-unproved expect=policy.output_field_unproved
 type Handle = Text {
@@ -3944,7 +3948,7 @@ subscriber post_circulated {
 A webhook's reply action runs as the system, which finds every record its
 grants name, and its reply goes back to whoever sent the webhook, so a
 reply that counts or tests for records only the system may read shows
-whether they are there, and so does whether it fails (chunk 7.9g). Each
+whether they are there, and so does whether it fails. Each
 is proved as an output to `Access.public`:
 
 ```jadpo check project=e-reply-shows-records file=app.jadpo hidden
@@ -4188,296 +4192,164 @@ The fix takes the caller, `create_note(owner: Principal.user, input: CreateNote)
 
 ### Status
 
-Built in chunk 4.4. `jadpo check` reads each entity's `policy:` (its
-`create`, `read`, `update` and `delete` lists and its `tenant:`), each
-membership entity's `membership:`, and root `policy { }` with `tenant:`
-and `actions:`, and reports every rule under "Errors". Routes are checked
-once they and the policy read cleanly: every create, read, update and
-delete a route reaches needs a grant, an action that reaches no entity
-needs its line under `actions:`, and a route anyone may call reaches only
-what `Access.public` is granted. A field named in policy, a reference a
-role or the tenant applies through, a membership's `scope:` and `member:`,
-and any field marked `immutable: true` keep their values under an ordinary
-update.
+Everything on this page is built except the following, each
+`toolchain.not_built_yet` where it is written:
 
-The plan compiles every grant and the tenancy into each statement's
-`WHERE` (a query, `get`, include, update, delete and transition), and a
-create writes its row only when the new record's grants hold, in the same
-statement; the runtime binds who is calling. A list holds only what the
-caller may see, filtered before paging; a record the caller may not see,
-read or change by `id` reports its code's own not-found failure, which the
-log marks `concealed_by: policy`; a create, a change to a record the action
-loaded, and a call an action's line refuses answer 403 `not_permitted`,
-which OpenAPI lists on every route that runs such an action. Listing a
-user's tokens or a service's keys needs `read` on its record, whether an
-action lists them or a `GET` route runs the listing itself (area 8, chunk
-4.4c), and revoking one or issuing a key `update`. `jadpo check` writes
-the permissions report to `build/report/permissions.md` and `.json`, and
-`jadpo sql` shows the policy each statement carries.
-
-Built in chunk 4.4b: a field's own `policy:` narrows its record's
-`create`, `read` and `update`, or says `FieldAccess.server_only`, and can
-only take away (`policy.field_widens_entity`). Every query's output, and
-every `Output` or failure client field an action builds, is proved readable
-by everyone who could have reached the record it comes from, following the
-value through variables, objects, lists, `match`, the collection operations
-and calls to other actions (`policy.output_field_unproved`); so is the
-parent every include reads, which a caller could otherwise be refused. A
-create whose `create:` names only user fields sets one from the caller
-(`policy.role_field_create_forbidden`). A write compiles each restricted
-field it changes into its statement: a create that sets one, an update's
-`set:`, a patch's field when supplied, and a transition; the whole write is
-refused with 403 `not_permitted`, and a route whose action always changes a
-field nobody may change is `policy.effect_ungranted`. The permissions report
-gives each such field a row, and the graph and manifest hold every grant,
-field restriction, tenancy and listed action, with `grants` and `scopes`
-edges.
-
-Built in chunk 4.7: a reference from one of a tenant's records to another
-points inside the tenant, checked in the statement of every create and
-update that sets it, with or without policy (403 `not_permitted`), so an
-include of a tenant's parent proves from the child's own tenancy; and a
-field a query's, an include's or a `get`'s condition or order tests, or a
-transition's `when:`, is proved readable by everyone who may run it, like
-an output (`policy.output_field_unproved`).
-
-Built in chunk 4.8, from the Phase 4 review: a new membership founds only a
-tenant nobody belongs to yet, so nobody joins someone else's tenant on
-their own say-so, and a listed action moving a record to another tenant
-needs the caller's membership there, both in the write's own statement; a
-transition a field refuses is 403 `not_permitted` before its condition can
-answer with its `conflict:` arm. A listed line naming only user fields and
-roles held in records lets nobody call an action that changes none of
-those records, which is refused as it starts (`policy.effect_ungranted` on
-its route), and a gate or credential statement the plan has no policy for
-refuses rather than runs without it. Values are followed through
-functions as through actions; what an `if`, a `match`, a loop or a
-filter's predicate tests is carried by every value made under it, by a
-count, and by a failure raised on it; a `set:` value stays in the record a
-write gives back, an update's record is proved against its `read:` for
-every record it may be, and ids that find records and includes'
-references are proved like outputs. A membership whose role may be `none`,
-or one read as an include's parent, proves no role; belonging to a
-record's tenant proves a list naming every role held there; a create's
-user field comes from the caller on every path.
-
-Built in chunk 5.1d (Richard, 2026-10-16): a value a write stores is
-proved readable by everyone who may read the field it is stored in, as an
-output is by its caller (`policy.output_field_unproved` at the value): a
-create's and an update's `set:`, a patch's fields and what
-`when_supplied:` sets, a counter's stored fields, and the fields a
-transition sets, with whatever decided the write, any `reject` in the
-action, and the transition's `when:`. A value is followed to the record
-it came from by the grants' shape: the same record, the record a
-reference the write sets points at, or one of the same tenant; a loop's
-item is one record within its turn. A value an action stores from its
-parameters is checked where it is called, through its summary, which
-holds no positions, as 4.11's do.
-
-Built in chunk 6.6c: the tenant an event or a batch's run names proved
-to be one the action reached under its caller's policy
-(`policy.event_tenant_unproved` at the value), as "Background work" sets
-out.
-
-Not yet:
-
-- A restricted field read only in an event isn't an output: an event's
-  subscribers (area 12) are server work, so `emit` stores nothing a caller
-  reads; what a subscriber stores from an event is checked where it
-  stores it (area 12, "Subscribers"). Area 15's log redaction covers what
-  a log holds.
 - `scopes:`, with the tokens issued to other applications (`oauth_token`,
-  `external_token`), after the first build.
+  `external_token`).
 - An acceptance for a change that widens access, and the approval review
   that shows the report's changes (areas 14 and 18).
-- Indexes for policy: every field a condition filters on is a reference
-  (a user field, a role's or the tenant's reference, a membership's scope
-  and member), and each already has its own index (area 5), so policy adds
-  none yet. Keeping a reference inside the tenant finds the record it
-  points at by `id`, its primary key, and a move to another tenant finds
-  the records referring to it by their reference, which has its index, so
-  it needs no index or migration of its own.
 
-### Consistency with the rest of the language
+A restricted field read only in an event isn't an output: an event's
+subscribers (area 12) are server work, so `emit` stores nothing a caller
+reads; what a subscriber stores from an event is checked where it stores
+it (area 12, "Subscribers"). Area 15's log redaction covers what a log
+holds.
 
-- **Fewer concepts.** The decided model removes role enums that store
-  nothing, the `role:` field setting, the "role source", `invoke`,
-  `operations { }` and the `Effect` values. `role` now has one meaning: the
-  membership field that stores it.
-- **Colon rule and enum values.** Every section is `name: { }`, and fixed
-  options are `Type.value`: `OnDelete.cascade`, `FieldAccess.server_only`,
-  `MembershipScope.application`, `Tenancy.shared`.
-- **One setting, two kinds of value.** `scope:` takes a field or
-  `MembershipScope.application`; an entity's `tenant:` takes a field (when it
-  has two references to the tenant) or `Tenancy.shared`. Both read as "where
-  this belongs", so they are kept.
-- **Grant lists mean "any of".** That is why an OAuth scope, which must hold
-  as well as a grant, is not put in the same list (question 6).
-- **Policy repeated in code.** Hand-written owner filters and principal
-  parameters duplicate what policy adds. Area 8 passes `current_principal`
-  to actions as a parameter for the action's own use; policy never needs it.
+Policy adds no index of its own: every field a condition filters on is a
+reference (a user field, a role's or the tenant's reference, a
+membership's scope and member), and each already has its own index (area
+5). Keeping a reference inside the tenant finds the record it points at by
+`id`, its primary key, and a move to another tenant finds the records
+referring to it by their reference, which has its index, so it needs no
+index or migration of its own.
 
-### Carried to later areas
+### Related areas
 
-| Item | Area | Status |
-|---|---|---|
-| Who schedules and subscribers act as, and how policy applies to them | 12 | Depends on area 12 question 8 |
-| How schedules and subscribers write a `FieldAccess.server_only` field, which no request may | 12 | Input to area 12 |
-| Event and subscriber policy (today's candidate `policy { scope: f  Role: [invoke, read] }`, syntax review #52) | 12 | Input to area 12 |
-| What a subscriber stores from an event's payload, checked against what every `emit` of it put there (chunk 5.1d) | 12 | Input to area 12 (chunk 6.1) |
-| Testing policy: calling an action as a given user and expecting `not_found` or `not_permitted` | 13 | Input to area 13 |
-| The permissions report (`build/report/permissions.md` and `.json`) and its place in the approval review | 14 | Carried to area 14 |
-| The protected sign-off that stops an unaccepted release | 14 | Area 14 question 12 |
-| Personal-data marking, erasure, export, retention and log redaction | 15 | Moved to area 15 |
+| Item | Area |
+|---|---|
+| Who schedules and subscribers act as (the system caller), and how policy applies to them | 12 |
+| How schedules and subscribers write a `FieldAccess.server_only` field, which no request may | 12 |
+| What a subscriber stores from an event's payload, checked against what every `emit` of it put there | 12, "Subscribers" |
+| Testing policy: calling an action as a given user and expecting `not_found` or `not_permitted` | 13 |
+| The permissions report (`build/report/permissions.md` and `.json`) and its place in the approval review | 14 |
+| The protected sign-off that stops an unaccepted release | 14 |
+| Personal-data marking, erasure, export, retention and log redaction | 15 |
 
-### Open questions
+### Questions
 
-1. **Which permission model?** Today's model has five concepts (role, role
-   source, grant, field restriction, action grant). *Recommendation:* keep
-   it, tidied; see [the proposals](research/09-policy-proposals.md).
-   *Decided 2026-10-12:* a simpler model (Richard). Grants are keyed by what
-   you do (`create`, `read`, `update`, `delete`); "who" is a user field on the
-   record, a membership role, or `Access.authenticated` / `Access.public`;
-   role enums exist only beside the membership that stores them; a user field
-   named in policy cannot be changed by an ordinary update; field
-   restrictions use the same shape, with `FieldAccess.server_only`; the global
-   view is the generated permissions report; root `policy.jadpo` keeps only
-   tenancy and `actions:`.
-2. **Is policy always on?** Today a project with no policy has none.
-   *Recommendation:* yes. Every reachable create, read, update or delete
-   needs a grant from the first line of code, so an application cannot ship
-   with policy forgotten. Ash refuses by default too; Supabase row-level
-   security only once it is switched on per table, a known source of leaks. *Decided 2026-10-12:* yes, as recommended.
-3. **How is tenancy declared?** *Recommendation:* `tenant: Company` in root
-   `policy.jadpo`. Every entity then needs one reference to the tenant, or
-   names it with `tenant: source_company_id` if it has two, or says
+1. **Which permission model?** Grants are keyed by what you do (`create`,
+   `read`, `update`, `delete`); "who" is a user field on the record, a
+   membership role, or `Access.authenticated` / `Access.public` (and
+   `Access.system` for background work); role enums exist only beside the
+   membership that stores them; a user field named in policy cannot be
+   changed by an ordinary update; field restrictions use the same shape,
+   with `FieldAccess.server_only`; the global view is the generated
+   permissions report; root `policy.jadpo` keeps only tenancy and
+   `actions:`.
+2. **Is policy always on?** Yes. Every reachable create, read, update or
+   delete needs a grant from the first line of code, so an application
+   cannot ship with policy forgotten. Ash refuses by default too; Supabase
+   row-level security only once it is switched on per table, a known
+   source of leaks.
+3. **How is tenancy declared?** `tenant: Company` in root `policy.jadpo`.
+   Every entity then needs one reference to the tenant, or names it with
+   `tenant: source_company_id` if it has two, or says
    `tenant: Tenancy.shared`; every grant applies only inside the caller's
    tenants, `Access.authenticated` included. This is the one setting that
    stops a new entity leaking across customers. Rails' `acts_as_tenant` and
    Supabase policies do the same per model or table, where it can be
-   forgotten. *Decided 2026-10-12:* yes, as recommended.
-4. **Where does permission to call an action live?** Area 3 removed action
-   settings. *Recommendation:* every action takes its permission from the
-   entities it touches; the few that touch none, or need different people,
-   are listed in root `policy.jadpo` under
-   `actions: { domain.action: [...] }`, with the same three kinds of who. One
-   place answers "which actions are exceptions?", and `invoke` and entity
-   `operations { }` go. *Decided 2026-10-12:* yes, as recommended.
+   forgotten.
+4. **Where does permission to call an action live?** Actions have no
+   settings (area 3): every action takes its permission from the entities
+   it touches, and the few that touch none, or need different people, are
+   listed in root `policy.jadpo` under `actions: { domain.action: [...] }`,
+   with the same kinds of who. One place answers "which actions are
+   exceptions?".
 5. **How does a grant choose between two references to a membership's
    scope?** An entity such as a team handover has `from_team_id` and
-   `to_team_id`, both `Team.id`, so `TeamRole.lead` is ambiguous.
-   *Recommendation:* name the field in brackets, `TeamRole.lead(from_team_id)`,
-   read as "lead of the from-team"; only needed when there are two
-   references, and the compiler says so otherwise. It matches how area 3
-   names a variant's data in brackets. The alternatives are a `scope:` member
-   for the whole policy (cannot grant leads of either team) or an `on`
-   keyword like Oso's `"lead" on "from_team"` (a new word for one case). *Decided 2026-10-12:* yes, as recommended.
-6. **How does a grant require an OAuth scope?** Area 8 decided that scopes
-   from any token narrow what policy allows. *Recommendation:* a `scopes:`
-   member in the entity's `policy:`, keyed by the same four names:
+   `to_team_id`, both `Team.id`, so `TeamRole.lead` alone is ambiguous. The
+   grant names the field in brackets, `TeamRole.lead(from_team_id)`, read as
+   "lead of the from-team", as area 3 names a variant's data in brackets;
+   only when there are two references, and the compiler says so otherwise.
+   A `scope:` member for the whole policy couldn't grant leads of either
+   team.
+6. **How does a grant require an OAuth scope?** Scopes from any token
+   narrow what policy allows (area 8). A `scopes:` member in the entity's
+   `policy:`, keyed by the same four names,
    `scopes: { read: OAuthScope.todos_read  update: OAuthScope.todos_write }`,
-   where `OAuthScope` is generated from the scopes declared in
-   `authentication.jadpo`. *Amended 2026-10-18 (lead session, area 19,
-   chunk 5.5r):* `OAuthScope` is now a standard type (RFC 6749's
-   scope-token), so the generated enum narrows it to the application's
-   declared scopes, a closed subset, rather than reusing the name. Not
-   built; it comes with `scopes:`. A caller whose token carries scopes needs both a
-   grant and the scope; signed-in browsers and service keys are unaffected.
-   An effect with no scope listed is refused to scoped tokens, so a new
-   entity is never exposed to other applications by accident; an
-   `external_token` method narrows only if it declares the scopes it reads.
-   It is a separate member because grant lists mean "any of" and a scope
-   must hold as well. GitHub and Google scopes work the same way: the token
-   never exceeds the person. *Decided 2026-10-12:* yes, as recommended.
-7. **Is a policy refusal listed in `fails`?** *Recommendation:* no. Like
-   `unauthenticated`, `not_permitted` from policy is raised by the runtime
-   with a fixed code, and the API description lists the 403 wherever it can
-   happen. A business refusal an action raises itself is still an ordinary
-   `kind: FailureKind.not_permitted` failure. *Decided 2026-10-12:* yes, as recommended.
-8. **Who may issue, list and revoke service keys?** (carried from area 8)
-   *Recommendation:* the `Service` record's own grants: `update` on the
-   service to issue or revoke a key (`Service.issue_key`,
-   `Service.revoke_key`), `read` to list them (`Service.keys`). A service
-   owned through `owner_id` is then managed by its owner, with no new
-   concept. *Decided 2026-10-12:* yes, as recommended.
-9. **Who may call an integration?** (carried from area 11) *Recommendation:*
-   whoever may run the action that calls it; no separate grant, and today's
-   `external_effect` block goes. An action that only calls an integration
-   touches no entity, so it is listed under `actions:` anyway. *Decided 2026-10-12:* yes, as recommended.
+   names them. `OAuthScope` is a standard type (RFC 6749's scope-token), and
+   the enum generated from the scopes declared in `authentication.jadpo`
+   narrows it to the application's own, a closed subset. A caller whose
+   token carries scopes needs both a grant and the scope; signed-in
+   browsers and service keys are unaffected. An effect with no scope listed
+   is refused to scoped tokens, so a new entity is never exposed to other
+   applications by accident; an `external_token` method narrows only if it
+   declares the scopes it reads. It is a separate member because grant
+   lists mean "any of" and a scope must hold as well. GitHub and Google
+   scopes work the same way: the token never exceeds the person. Not built
+   yet.
+7. **Is a policy refusal listed in `fails`?** No. Like `unauthenticated`,
+   `not_permitted` from policy is raised by the runtime with a fixed code,
+   and the API description lists the 403 wherever it can happen. A business
+   refusal an action raises itself is still an ordinary
+   `kind: FailureKind.not_permitted` failure.
+8. **Who may issue, list and revoke service keys?** The `Service` record's
+   own grants: `update` on the service to issue or revoke a key
+   (`Service.issue_key`, `Service.revoke_key`), `read` to list them
+   (`Service.keys`). A service owned through `owner_id` is then managed by
+   its owner, with no new concept.
+9. **Who may call an integration?** Whoever may run the action that calls
+   it; there is no separate grant. An action that only calls an integration
+   touches no entity, so it is listed under `actions:` anyway.
 10. **Is a policy weakening accepted with area 7's shared acceptance
-    form?** *Decided 2026-10-12:* yes, already decided in area 7: one
-    acceptance file per change in `acceptances/`, the same form as breaking
-    API changes, database drops and new domains.
+    form?** Yes: one acceptance file per change in `acceptances/`, the same
+    form as breaking API changes, database drops and new domains.
 11. **Who owns personal-data marking and the classification of internal
-    fields for log redaction?** (carried from areas 4 and 5) *Decided
-    2026-10-12:* area 15, Personal data. Erase maps to the `delete` grant and
-    export to `read`.
+    fields for log redaction?** Area 15, Personal data. Erase maps to the
+    `delete` grant and export to `read`.
 
 ### Decisions
 
-| Topic | Decision | Date |
-|---|---|---|
-| Policy protection | Carried from area 1: through the approval check wherever policy lives, not by file path | 2026-10-12 |
-| Root file | Carried from area 1: `policy.jadpo` holds application-wide policy, such as tenancy; it is an unnamed singleton | 2026-10-12 |
-| Action settings | Carried from area 3: actions have no settings; who may call an action is decided by policy | 2026-10-12 |
-| Colon rule | Carried from area 3: sections are `name: { ... }` (`policy: { }`, `membership: { }`) | 2026-10-12 |
-| Setting options and lists | Carried from area 2: fixed options are enum values written `Type.value`; lists are `[ ]` | 2026-10-12 |
-| Concealment | Carried from area 4: a record hidden by policy reports the same `not_found` failure; the log records the concealment | 2026-10-12 |
-| Caches | Carried from area 5: caches serve display reads only; keys include tenant and policy inputs; reads inside policy never use a cache; erasure wipes cached copies | 2026-10-12 |
-| Placement | Carried from areas 1 and 5: an entity's policy is in its file; actions and queries are in their own folders | 2026-10-12 |
-| Policy in queries | Carried from area 6: policy is compiled into each query's `WHERE`; fields a policy condition filters on get indexes; row-level security later, opt-in | 2026-10-12 |
-| The caller | Carried from area 8: policy gets the caller from the runtime; `current_principal` exists in routes only; principal fields are `id`, `subject`, `strength` | 2026-10-12 |
-| Public routes | Carried from area 8: a route opts out with `authentication: RouteAuthentication.none` | 2026-10-12 |
-| OAuth scopes | Carried from area 8: scopes from any token (`oauth_token`, `external_token`) narrow what policy allows | 2026-10-12 |
-| Policy model | Grants keyed by effect in `policy: { create: read: update: delete: }`; who is a user field on the record, a membership role, or `Access.authenticated` / `Access.public`; role enums only beside the membership that stores them, used elsewhere by full name; a membership role applies through the reference to its scope; user fields named in policy cannot change by ordinary update, transfer is a listed action; field restrictions in the same shape plus `FieldAccess.server_only`; a lifecycle transition is an update except `delete`; generated `build/report/permissions.md` and `.json` matrix shown in the approval review; root `policy.jadpo` keeps tenancy and `actions:` (Richard) | 2026-10-12 |
-| Policy always on | Yes: every reachable create, read, update or delete needs a grant from the first line of code | 2026-10-12 |
-| Tenancy | `tenant: Company` in root `policy.jadpo`; each entity has one reference to the tenant, names it with `tenant: field` if it has two, or says `tenant: Tenancy.shared`; grants apply only inside the caller's tenants | 2026-10-12 |
-| Action permission | From the entities an action touches; exceptions listed under `actions: { domain.action: [...] }` in `policy.jadpo`; `invoke` and `operations { }` go | 2026-10-12 |
-| Two references to a scope | Name the field in brackets, `TeamRole.lead(from_team_id)`, only when two references exist | 2026-10-12 |
-| OAuth scopes in grants | `scopes: { read: OAuthScope.x ... }` in the entity's `policy:`; scoped tokens need the grant and the scope; an effect with no scope is refused to scoped tokens | 2026-10-12 |
-| Refusals in `fails` | Never listed; the runtime raises `not_permitted` and the API description lists the 403 | 2026-10-12 |
-| Service key management | Follows the `Service` record's grants: `update` to issue or revoke, `read` to list | 2026-10-12 |
-| Calling integrations | Whoever may run the action; no separate grant; `external_effect` goes | 2026-10-12 |
-| Accepting policy weakening | Carried from area 7: one acceptance file per weakening in `acceptances/`, the shared form | 2026-10-12 |
-| Personal data and log redaction | Designed in area 15 (Personal data); erase needs `delete`, export needs `read` | 2026-10-12 |
-| Background work | Carried from area 12: schedules and subscribers act as `Access.system`, which an entity grants explicitly; subscribers stay in their event's tenant | 2026-10-13 |
-| Who a grant names (chosen in chunk 4.4) | A field names the caller it points at: a reference to the principal's user entity (or its service entity, which grants that service), or that entity's own `id`, the caller themselves (`read: [id]` on the user entity). A role is `Role.value`, held by a membership whose `role:` field is typed with the enum, or `Role.value(field)` naming the reference it applies through; role enums are imported like any type. Anything else is `policy.binding_invalid` | 2026-10-16 |
-| Memberships (chosen in chunk 4.4) | `membership: { scope: member: role: }`: `scope:` a reference or `MembershipScope.application`, `member:` a reference to the user entity, `role:` a field typed with a plain enum. A role applies to a record through its one reference to the membership's scope, through `id` on the scope entity itself, and everywhere for an application-wide membership; with no reference it is `policy.scope_missing`, with two `policy.scope_ambiguous`. A membership the lifecycle hides grants nothing | 2026-10-16 |
-| Tenancy (chosen in chunk 4.4) | Every entity has one reference to the tenant, names it with `tenant: field`, says `tenant: Tenancy.shared`, or is the tenant itself (through `id`); otherwise `policy.scope_missing` or `policy.scope_ambiguous`. A record belongs to a caller's tenant when the caller holds a current membership, of any role, in a membership entity whose scope is the tenant; `Access.public` on a tenant's records therefore reaches only members. Creating a tenant's own record checks no tenancy, since nobody belongs to it yet, and a new membership in the tenant makes its member one only while nobody belongs to the tenant yet, founding it (revised in chunk 4.8: before, any new membership did, so anyone a membership's `create:` let in could join any tenant, as its owner too). Root `policy.jadpo` imports what it names, like any root file (`use work/entities { Company }`, `use work` for `work.found_company`); a tenant no membership is held in is `policy.role_unbound` | 2026-10-16 |
-| Fields policy fixes (chosen in chunk 4.4) | An ordinary update can't change a field a grant points at the caller through, a reference a role or the tenant applies through, or a membership's `scope:` and `member:`, since each hands the record to someone else (`type.field_update_forbidden`); an action listed under `actions:` may. A field marked `immutable: true` never changes | 2026-10-16 |
-| Checking routes (chosen in chunk 4.4) | Once the routes and the policy read cleanly, each route is checked against what it reaches through every action and query it runs: an effect whose list names nobody but `Access.system`, or an action that reaches no entity and signs no one in or out and isn't listed, is `policy.effect_ungranted`; a route anyone may call reaching what `Access.public` isn't granted, or a tenant's records, is `policy.public_grant_missing`. One problem per route, at the first it reaches | 2026-10-16 |
-| When policy says no (chosen in chunk 4.4) | A list is filtered in its statement, before paging. A `get`, a query for one record, and an update or delete by `id` that policy hides report the code's own not-found failure, and the log says `concealed_by: policy`: a `get` and a query for one record select the grant in their own statement, so a hidden record costs no second one (amended in chunk 4.10), and an update or delete by `id` asks a second statement without policy. A create policy refuses, a change to a record the action loaded, and a call an action's line refuses are 403 `not_permitted`, raised by the runtime and never in `fails`; a required parent an include can't read is `not_permitted` too until chunk 4.4b proves it can't happen. OpenAPI lists the 403 on every route that runs an action that writes or is listed | 2026-10-16 |
-| Listed actions (chosen in chunk 4.4) | An `actions:` line replaces its entities' grants on the creates, updates, deletes and transitions in the action's own body; its reads, and the actions and queries it calls, keep their own entities' grants, with the same caller. `Entity.field` names a field of that entity; a line that depends on no record (anyone signed in, or a role held across the whole application) is also checked as the action starts, wherever it is called from | 2026-10-16 |
-| Tokens and keys (chosen in chunk 4.4) | `sessions.start`, `sessions.end` and `sessions.issue_token` need no grant: who may sign in is the application's own check (area 8), and an action that only signs in or out isn't one that reaches nothing. `sessions.tokens` and `Service.keys` list only holders the caller may `read`; `sessions.revoke_token`, `Service.revoke_key` and `Service.issue_key` need `update` on the holder. A refused list is empty, a refused revoke revokes nothing, and a refused issue is 403 `not_permitted`. A `GET` route that runs `sessions.tokens` or `Service.keys` itself reaches the same `read` (chunk 4.4c, area 8) | 2026-10-16 |
-| Calling as someone in a test (chosen in chunk 4.4, confirmed by Richard 2026-10-16) | A call a test, fixture or seed makes runs as the `Principal.user` or `Principal.service` it passes, so policy applies as to that caller; a call that passes none runs without policy, so an action test proves behaviour and data and a route test, or a call with a caller, proves policy (area 13). Nothing a request runs leaves policy out | 2026-10-16 |
-| A field's own policy (chosen in chunk 4.4b) | `policy: { create: read: update: }` on a field narrows those lists, and an effect it leaves out follows the record's; `delete:` is `policy.effect_unknown`, since a field goes with its record. Its entries resolve like the record's, and each must be one the record's list for that effect lets in: the same entry, any entry under `Access.public`, or a user field or role under `Access.authenticated` (`policy.field_widens_entity`). `FieldAccess.server_only` lets no request read or write the field. A user field or reference a field's grant reaches the caller through joins the fields only a listed action changes | 2026-10-16 |
-| Writes to a restricted field (chosen in chunk 4.4b) | The write's statement holds the field's grants beside the record's, with tenancy once: a create's for each field it sets (none in an optional field is never refused), an update's `set:`, a patch's field when the request supplies it, and a transition's fields. Writing no row asks again under the record's grants: found, the field refused the caller and the whole write is 403 `not_permitted`, by `id` or not. A listed action's line replaces the record's grants but never a field's. A route whose action always sets a field nobody may change (an update's `set:`, or a create of a required field) is `policy.effect_ungranted` | 2026-10-16 |
-| Proving outputs (chosen in chunk 4.4b) | Who may read a value is proved from the grants alone, never the data. A query's records are reached through its entity's `read:`, a child's through its own, and a parent's both along the reference (the user a field points at is the user it includes; a role applies to the scope its reference points at; a membership's member holds a role in its scope, which proves a list naming every role) and through the parent's `read:`; a listed action whose line depends on no record adds that line, and an update's or create's record the field grants of what it sets. A value is proved when every grant of one way the caller came proves the field's `read:`. Every parent an include reads is proved readable, or the query is `policy.output_field_unproved` at the include; an output field the query's type carries, at its result type. In actions, values are followed through variables, objects, lists, `match`, `list.filter` and `.map`, and calls (an action's parameter that reaches an output it builds is checked where it is called); a function's result carries all its arguments. An `Output` built, and a failure's `client:` field, are checked where the value is given | 2026-10-16 |
-| User fields on creates (chosen in chunk 4.4b) | When every entry of an entity's `create:` is a user field, a create in an action that isn't listed under `actions:` sets at least one of them from a `Principal.user` or `Principal.service` the action takes (directly, or through a variable or object); otherwise `policy.role_field_create_forbidden` at the first such field's value. Fixtures, tests and seeds aren't checked: their calls without a caller run without policy | 2026-10-16 |
-| Policy in the graph (chosen in chunk 4.4b) | A `grant` node per list an entity's `policy:` writes (`Project.read`, its effect and who as written) with a `grants` edge to the entity; a `field_restriction` node per field's own policy (`Project.budget`) with a `grants` edge to the field; a `tenancy` node per entity that belongs to the tenant (its tenant and reference) with a `scopes` edge to the entity; an `action_exception` node per line under `actions:` (`work.found_company`) with a `grants` edge to the action. The permissions report's JSON lists each field's own lists under `fields` | 2026-10-16 |
-| The permissions report (chosen in chunk 4.4) | `jadpo check` writes `build/report/permissions.md` and `.json` once policy reads cleanly: a table per entity, `domain.Entity`, with each list as written or "nobody", a line on its tenancy, its membership and the fields only listed actions change, and a table of the actions listed separately; no times or totals, so a change reads as a one-line diff | 2026-10-16 |
-| References stay inside the tenant | A reference from one tenant-owned record to another must point at a record of the same tenant, checked on every create and update that sets it (403 `not_permitted` otherwise), so an include of a tenant-owned parent proves from the child's own tenancy; built in chunk 4.7 (Richard) | 2026-10-16 |
-| Restricted fields in conditions and orders | A query, `get`, include or write may filter or order on a field only when every caller who may run it may read that field; otherwise `policy.output_field_unproved` names the condition or order, since which records pass shows the value; built in chunk 4.7 (Richard) | 2026-10-16 |
-| Keeping references inside the tenant (chosen in chunk 4.7) | The check is a condition in the write's own statement, `NOT EXISTS` a record with that `id` in another tenant, so it costs no round trip, and its unpoliced twin carries it too: what the data is holds for a test's or a seed's call without a caller as well. A record that isn't there passes, so its foreign key still reports the entity's not-found failure; one in another tenant is 403 `not_permitted`, a create's or, for an update, once the record is found under its grants. It covers references between two entities that belong to the tenant, the tenant itself included as one that belongs to itself; a reference to the tenant is the record's tenancy, or beside the one `tenant:` names, another tenant on purpose, and isn't checked. A write that changes a record's tenancy (a listed action) checks every reference it keeps and that no record of the old tenant refers to it. The record it points at is found by its primary key and the records referring to it by their reference's own index, so no index or migration is added. In proofs, a role held through the record's tenancy, in a membership scoped to the tenant, holds through the parent's, and membership of the tenant moves along the reference | 2026-10-16 |
-| Conditions and orders (chosen in chunk 4.7) | Checked like outputs against how a caller reached the records: a query's `where:`, `where_present:` and `order:` (the tie-break the compiler adds isn't written, so isn't checked) through its entity's `read:`, an include's through its own entity's, a `get`'s `id`, and a transition's `when:` through the grants its write checked. A lifecycle's `visible:` isn't one: it decides what exists for every caller alike. One problem per field and section, at the field where the condition or order names it | 2026-10-16 |
-| Nearest and distance orders (chosen in chunk 5.8a) | A `nearest` order (area 21) and a `geo.distance` one (area 20) stand in place of `order:` and are orders all the same: the field each measures is checked like any field an `order:` names, `policy.output_field_unproved` at the field where the order names it, so the order nearest records come in can't show a vector or a place a caller may not read. A `geo.distance` order's field is also tested by the `geo.within` line it needs, so it is reported once for each section, as a field both filtered and ordered on is (Phase 5 review) | 2026-10-19 |
-| Founding a tenant (chosen in chunk 4.8) | "Nobody belongs to it yet" counts every membership held in the tenant, of every membership entity scoped to it, those its lifecycle hides included: a tenant that has had members isn't founded again. The create's own statement checks it (`NOT EXISTS`), so it costs no round trip; the founder's membership is the one being created, which the membership's `scope:` names as the tenancy's reference | 2026-10-16 |
-| Moving a record to another tenant (chosen in chunk 4.8) | A listed action's update that changes a record's tenancy needs the caller's current membership, of any role, in the new tenant, in the same statement, as a create there would; the line's grants are checked on the record as it was. Refused, it is 403 `not_permitted`, as a field the caller may not change is | 2026-10-16 |
-| Listed lines no record lets in (chosen in chunk 4.8) | A user field or a role held in a record, on an `actions:` line, lets someone in only on the creates, updates, deletes and transitions of the action's own body whose records it applies to. On an action whose body writes none of them it lets nobody in: the action is checked as it starts against the line's other entries (anyone signed in, a role held across the whole application), and a line left with nobody, or with only `Access.system`, refuses every caller with 403 `not_permitted`. A route running such an action is `policy.effect_ungranted` | 2026-10-16 |
-| Failing closed (chosen in chunk 4.8) | A gate the plan can't build for a listed line refuses every caller, and a credential statement whose policed twin is missing is a defect when a caller runs it: neither runs without policy | 2026-10-16 |
-| Field-refused transitions (chosen in chunk 4.8) | A transition setting a field the caller may not change is 403 `not_permitted` before its `when:` can answer with its `conflict:` arm: writing no row asks the condition's question with the fields' grants as well as the record's | 2026-10-16 |
-| What decides a value (chosen in chunk 4.8) | Functions are followed as actions are, each with a summary of what its result carries and which parts of which parameters reach what a caller is shown. Whatever an `if`'s or `else if`'s condition, a `match`'s subject, a `for`'s list or a `list.filter` predicate tests is carried by every value made under it (assigned, returned, built, or kept by the filter), by `list.count` alone, and by `list.map`'s result, and, when a `return` or `reject` inside it may have left, by every value made after it; whether a record is there carries nothing. Each field is reported once in an action, at the first value it decides. A `reject` of a failure with no client fields is checked against what decided it is raised. A failure an entity operation or another action raises isn't followed | 2026-10-16 |
-| Finding records (chosen in chunk 4.8) | A `get`'s `id`, each argument a query is run with, and a write's target are checked like an output field, at the value: a record passed whole finds by its `id`. An include's reference is checked like a field the query reads: a parent's on the record that refers to it, a child's on the child | 2026-10-16 |
-| What a write gives back (chosen in chunk 4.8) | An update's record is proved against its entity's `read:` as well as its fields' own, for every record its target may be (a `get`'s, a create's, one passed in or found by `id`); its `id`, and what its `set:` gave each field, are the caller's own, and a stored field an update by `id` reads is the record's. A create's record holds what the caller set and what is new, so only its fields' own `read:` apply. The values a `set:` gives stay in the record given back. The check runs whether or not any field has a policy | 2026-10-16 |
-| Proofs from memberships (chosen in chunk 4.8) | A membership whose `role:` may be `none` holds no role a proof counts on, though it still makes its member one of the tenant's people. A membership read as an include's parent, which its lifecycle may hide, proves no role. A caller who belongs to a record's tenant passes a list naming every role of every membership held in the tenant, through the record's tenancy | 2026-10-16 |
-| Restricted values stored in another record | A create or update may store a value in a field only when every caller who may read that field may read the value, proved as an output is; otherwise `policy.output_field_unproved` names the `set:`, so copies between fields read by the same callers stay allowed; built in chunk 5.1d (Richard) | 2026-10-16 |
-| Storing values (chosen in chunk 5.1d) | Every value a write stores is checked, at the value: a create's and an update's `set:`, each field of a patch's `Input` (at the patch) and what `when_supplied:` sets, which whether the request supplied its field decides, and each field a transition sets (at the write), which what decided that it runs and its `when:` decide. A field's readers are those its record's `read:` and its own `read:` let in, but `Access.system`, which is server work; a field no one else may read, `FieldAccess.server_only` among them, may hold anything. Readers are known only of the record a value is stored in, so the record it came from is reached from there by the grants' shape: the same record (one loaded and changed, one found by the `id` an update by `id` is given, or a stored field a counter reads); the record a reference the write sets points at, by its `id` or the `id` a `get` found it by, or one a `get` found by a reference the stored record holds, which nothing else the action runs, nor any action it calls, may change; a record of the same tenant, when the write sets its tenancy's reference from that record's own; and any other record only as what holds of anyone signed in, or of a role held across the whole application. A `for` loop's item is one record through its turn, and a value carried into another turn, through a variable the loop changes, is any record. A value from a parameter is checked where the action is called, against what is passed, through its summary. One problem per value; a field that only decides is reported once per action. Which record an update changes is checked against its caller (chunk 4.8), not its readers, who see its `id` anyway | 2026-10-16 |
-| What fails decides what is stored (chosen in chunk 5.1d) | An action is all-or-nothing, so whatever a `reject` in its body tests decides every value it stores, before the `reject` or after it; a failure an entity operation or another action raises isn't followed, as for outputs. A `return` or `reject` inside a loop decides every turn after the one it may leave, from the top of the loop's body, for outputs and stores alike | 2026-10-16 |
-| Events and stores (chosen in chunk 5.1d) | `emit` stores nothing a caller reads: an event's subscribers are server work, as `Access.system` reading a field is, so a restricted value may go in an event's payload. What a subscriber stores from a payload is a store like any other, checked when subscribers run (chunk 6.1) against what every `emit` of the event put in it | 2026-10-16 |
-| User fields on creates (chosen in chunk 4.8) | The user field a create sets from the caller is set from the caller on every path: every value it may hold, whatever an `if` or `match` decided, is the caller's `id`; otherwise `policy.role_field_create_forbidden` | 2026-10-16 |
-| Background work and `Access.public` (after chunk 6.1a) | A schedule or subscriber that reaches a statement only `Access.public` grants is a compile error: an entity grants background work explicitly with `Access.system`, so the runtime's leniency ("Background work") is never relied on (Richard, as recommended). Built for subscribers in chunk 6.1b as `policy.system_grant_missing`, at the subscriber: a grant list, a field's own list or the action's line under `actions:` that names `Access.public` and not `Access.system`, reached by its action or any it calls | 2026-10-19 |
-| Batches and `Access.public` (after chunk 6.4) | A batch whose query or actions reach a statement only `Access.public` grants is a compile error, as a schedule's or subscriber's is (Richard, as recommended) | 2026-10-19 |
-| Lines of the actions background work calls (chosen in chunk 6.6b) | Every action a schedule, a subscriber or a batch reaches, itself or through another, is checked against its own line under `actions:`, so a line naming `Access.public` and not `Access.system` is `policy.system_grant_missing` however deep; a listed action's line decides the creates, updates, deletes and transitions of its own body wherever it is called from, as the plan builds them, for a route as for background work (Phase 6 review: before, only the action run was read for its line, and what it called used its entities' grants) | 2026-10-19 |
-| The tenant background work names (Phase 6 review) | The tenant id an event or a batch run names must come from a record of that tenant the action read or wrote under its caller's policy, proved from the provenance 6.1c tracks; otherwise `policy.event_tenant_unproved`, so a caller can't aim system work at a tenant they don't belong to (Richard, as recommended) | 2026-10-19 |
-| Whether a record is there, for a webhook's reply (chunk 7.9g) | A webhook's reply action finds every record its grants name, so what a condition, a loop or a count over records decides shows whether they are there: a reply decided by it, or a failure raised on it, needs records anyone at all may read (`Access.public` in the entity's `read:`), a record the action created being its own. Its failure goes back to whoever sent the webhook as its reply does, so what decides whether it fails (what decided a `reject` or an `attempt`, a `get` or an update or delete by `id` finding nothing, a write's `conflict:` arms) and a failure's client fields are proved as the reply is (`policy.output_field_unproved`). A route's caller still learns nothing from whether a record is there, since it is given only those it may read. A failure's client fields declared in a domain are proved for every caller too: they were looked up by the name the key gives, `support.CallerBlocked`, which the failure table doesn't use, and so never found (decided for Richard, the stricter reading) | 2026-10-21 |
-| The system inside a request, and a webhook's reply (Phase 7 review, chunk 7.9b) | The magic-link `send:` action runs with its delivery's tenant, as a subscriber's does, which for `jadpo.MagicLinkEmail` is none; a webhook's reply action and `on_first_sign_in:`'s run with no tenant, never every tenant; each reaches only records every tenant shares, and what only `Access.public` lets it in to is `policy.system_grant_missing` at where it is named, as for background work. A webhook's reply is an output to `Access.public`: each field it carries, or that decided it, is one anyone at all may read, a record the action created holding what it set (`policy.output_field_unproved`), proved in the checker where routes' outputs are (Richard, 2026-10-21) | 2026-10-21 |
+| Topic | Decision |
+|---|---|
+| Policy protection | Carried from area 1: through the approval check wherever policy lives, not by file path |
+| Root file | Carried from area 1: `policy.jadpo` holds application-wide policy, such as tenancy; it is an unnamed singleton |
+| Action settings | Carried from area 3: actions have no settings; who may call an action is decided by policy |
+| Colon rule | Carried from area 3: sections are `name: { ... }` (`policy: { }`, `membership: { }`) |
+| Setting options and lists | Carried from area 2: fixed options are enum values written `Type.value`; lists are `[ ]` |
+| Concealment | Carried from area 4: a record hidden by policy reports the same `not_found` failure; the log records the concealment |
+| Caches | Carried from area 5: caches serve display reads only; keys include tenant and policy inputs; reads inside policy never use a cache; erasure wipes cached copies |
+| Placement | Carried from areas 1 and 5: an entity's policy is in its file; actions and queries are in their own folders |
+| Policy in queries | Carried from area 6: policy is compiled into each query's `WHERE`; fields a policy condition filters on get indexes; row-level security later, opt-in |
+| The caller | Carried from area 8: policy gets the caller from the runtime; `current_principal` exists in routes only; principal fields are `id`, `subject`, `strength` |
+| Public routes | Carried from area 8: a route opts out with `authentication: RouteAuthentication.none` |
+| OAuth scopes | Carried from area 8: scopes from any token (`oauth_token`, `external_token`) narrow what policy allows |
+| Background work | Carried from area 12: schedules and subscribers act as `Access.system`, which an entity grants explicitly; subscribers stay in their event's tenant |
+| Where a record belongs | `scope:` takes a field or `MembershipScope.application`; an entity's `tenant:` takes a field (when it has two references to the tenant) or `Tenancy.shared`. Both read as "where this belongs", so each setting takes either kind of value |
+| Who a grant names | A field names the caller it points at: a reference to the principal's user entity (or its service entity, which grants that service), or that entity's own `id`, the caller themselves (`read: [id]` on the user entity). A role is `Role.value`, held by a membership whose `role:` field is typed with the enum, or `Role.value(field)` naming the reference it applies through; role enums are imported like any type. Anything else is `policy.binding_invalid` |
+| Memberships | `membership: { scope: member: role: }`: `scope:` a reference or `MembershipScope.application`, `member:` a reference to the user entity, `role:` a field typed with a plain enum. A role applies to a record through its one reference to the membership's scope, through `id` on the scope entity itself, and everywhere for an application-wide membership; with no reference it is `policy.scope_missing`, with two `policy.scope_ambiguous`. A membership the lifecycle hides grants nothing |
+| Tenancy | Every entity has one reference to the tenant, names it with `tenant: field`, says `tenant: Tenancy.shared`, or is the tenant itself (through `id`); otherwise `policy.scope_missing` or `policy.scope_ambiguous`. A record belongs to a caller's tenant when the caller holds a current membership, of any role, in a membership entity whose scope is the tenant; `Access.public` on a tenant's records therefore reaches only members. Creating a tenant's own record checks no tenancy, since nobody belongs to it yet, and a new membership in the tenant makes its member one only while nobody belongs to the tenant yet, founding it, so nobody joins someone else's tenant, as a member or its owner, on their own say-so. Root `policy.jadpo` imports what it names, like any root file (`use work/entities { Company }`, `use work` for `work.found_company`); a tenant no membership is held in is `policy.role_unbound` |
+| Fields policy fixes | An ordinary update can't change a field a grant points at the caller through, a reference a role or the tenant applies through, or a membership's `scope:` and `member:`, since each hands the record to someone else (`type.field_update_forbidden`); an action listed under `actions:` may. A field marked `immutable: true` never changes |
+| Checking routes | Once the routes and the policy read cleanly, each route is checked against what it reaches through every action and query it runs: an effect whose list names nobody but `Access.system`, or an action that reaches no entity and signs no one in or out and isn't listed, is `policy.effect_ungranted`; a route anyone may call reaching what `Access.public` isn't granted, or a tenant's records, is `policy.public_grant_missing`. One problem per route, at the first it reaches |
+| When policy says no | A list is filtered in its statement, before paging. A `get`, a query for one record, and an update or delete by `id` that policy hides report the code's own not-found failure, and the log says `concealed_by: policy`: a `get` and a query for one record select the grant in their own statement, so a hidden record costs no second one, and an update or delete by `id` asks a second statement without policy. A create policy refuses, a change to a record the action loaded, and a call an action's line refuses are 403 `not_permitted`, raised by the runtime and never in `fails`. OpenAPI lists the 403 on every route that runs an action that writes or is listed |
+| Listed actions | An `actions:` line replaces its entities' grants on the creates, updates, deletes and transitions in the action's own body; its reads, and the actions and queries it calls, keep their own entities' grants, with the same caller. `Entity.field` names a field of that entity; a line that depends on no record (anyone signed in, or a role held across the whole application) is also checked as the action starts, wherever it is called from |
+| Tokens and keys | `sessions.start`, `sessions.end` and `sessions.issue_token` need no grant: who may sign in is the application's own check (area 8), and an action that only signs in or out isn't one that reaches nothing. `sessions.tokens` and `Service.keys` list only holders the caller may `read`; `sessions.revoke_token`, `Service.revoke_key` and `Service.issue_key` need `update` on the holder. A refused list is empty, a refused revoke revokes nothing, and a refused issue is 403 `not_permitted`. A `GET` route that runs `sessions.tokens` or `Service.keys` itself reaches the same `read` (area 8) |
+| Calling as someone in a test | A call a test, fixture or seed makes runs as the `Principal.user` or `Principal.service` it passes, so policy applies as to that caller; a call that passes none runs without policy, so an action test proves behaviour and data and a route test, or a call with a caller, proves policy (area 13). Nothing a request runs leaves policy out |
+| A field's own policy | `policy: { create: read: update: }` on a field narrows those lists, and an effect it leaves out follows the record's; `delete:` is `policy.effect_unknown`, since a field goes with its record. Its entries resolve like the record's, and each must be one the record's list for that effect lets in: the same entry, any entry under `Access.public`, or a user field or role under `Access.authenticated` (`policy.field_widens_entity`). `FieldAccess.server_only` lets no request read or write the field. A user field or reference a field's grant reaches the caller through joins the fields only a listed action changes |
+| Writes to a restricted field | The write's statement holds the field's grants beside the record's, with tenancy once: a create's for each field it sets (none in an optional field is never refused), an update's `set:`, a patch's field when the request supplies it, and a transition's fields. Writing no row asks again under the record's grants: found, the field refused the caller and the whole write is 403 `not_permitted`, by `id` or not. A listed action's line replaces the record's grants but never a field's. A route whose action always sets a field nobody may change (an update's `set:`, or a create of a required field) is `policy.effect_ungranted` |
+| Proving outputs | Who may read a value is proved from the grants alone, never the data. A query's records are reached through its entity's `read:`, a child's through its own, and a parent's both along the reference (the user a field points at is the user it includes; a role applies to the scope its reference points at; a membership's member holds a role in its scope, which proves a list naming every role) and through the parent's `read:`; a listed action whose line depends on no record adds that line, and an update's or create's record the field grants of what it sets. A value is proved when every grant of one way the caller came proves the field's `read:`. Every parent an include reads is proved readable, or the query is `policy.output_field_unproved` at the include; an output field the query's type carries, at its result type. In actions, values are followed through variables, objects, lists, `match`, `list.filter` and `.map`, and calls (an action's parameter that reaches an output it builds is checked where it is called); a function's result carries all its arguments. An `Output` built, and a failure's `client:` field, are checked where the value is given |
+| User fields on creates | When every entry of an entity's `create:` is a user field, a create in an action that isn't listed under `actions:` sets at least one of them from a `Principal.user` or `Principal.service` the action takes (directly, or through a variable or object); otherwise `policy.role_field_create_forbidden` at the first such field's value. The field is set from the caller on every path: every value it may hold, whatever an `if` or `match` decided, is the caller's `id`. Fixtures, tests and seeds aren't checked: their calls without a caller run without policy |
+| Policy in the graph | A `grant` node per list an entity's `policy:` writes (`Project.read`, its effect and who as written) with a `grants` edge to the entity; a `field_restriction` node per field's own policy (`Project.budget`) with a `grants` edge to the field; a `tenancy` node per entity that belongs to the tenant (its tenant and reference) with a `scopes` edge to the entity; an `action_exception` node per line under `actions:` (`work.found_company`) with a `grants` edge to the action. The permissions report's JSON lists each field's own lists under `fields` |
+| The permissions report | `jadpo check` writes `build/report/permissions.md` and `.json` once policy reads cleanly: a table per entity, `domain.Entity`, with each list as written or "nobody", a line on its tenancy, its membership and the fields only listed actions change, and a table of the actions listed separately; no times or totals, so a change reads as a one-line diff |
+| Keeping references inside the tenant | The check is a condition in the write's own statement, `NOT EXISTS` a record with that `id` in another tenant, so it costs no round trip, and its unpoliced twin carries it too: what the data is holds for a test's or a seed's call without a caller as well. A record that isn't there passes, so its foreign key still reports the entity's not-found failure; one in another tenant is 403 `not_permitted`, a create's or, for an update, once the record is found under its grants. It covers references between two entities that belong to the tenant, the tenant itself included as one that belongs to itself; a reference to the tenant is the record's tenancy, or beside the one `tenant:` names, another tenant on purpose, and isn't checked. A write that changes a record's tenancy (a listed action) checks every reference it keeps and that no record of the old tenant refers to it. The record it points at is found by its primary key and the records referring to it by their reference's own index, so no index or migration is added. In proofs, a role held through the record's tenancy, in a membership scoped to the tenant, holds through the parent's, and membership of the tenant moves along the reference |
+| Conditions and orders | Checked like outputs against how a caller reached the records: a query's `where:`, `where_present:` and `order:` (the tie-break the compiler adds isn't written, so isn't checked) through its entity's `read:`, an include's through its own entity's, a `get`'s `id`, and a transition's `when:` through the grants its write checked. A lifecycle's `visible:` isn't one: it decides what exists for every caller alike. One problem per field and section, at the field where the condition or order names it |
+| Nearest and distance orders | A `nearest` order (area 21) and a `geo.distance` one (area 20) stand in place of `order:` and are orders all the same: the field each measures is checked like any field an `order:` names, `policy.output_field_unproved` at the field where the order names it, so the order nearest records come in can't show a vector or a place a caller may not read. A `geo.distance` order's field is also tested by the `geo.within` line it needs, so it is reported once for each section, as a field both filtered and ordered on is |
+| Founding a tenant | "Nobody belongs to it yet" counts every membership held in the tenant, of every membership entity scoped to it, those its lifecycle hides included: a tenant that has had members isn't founded again. The create's own statement checks it (`NOT EXISTS`), so it costs no round trip; the founder's membership is the one being created, which the membership's `scope:` names as the tenancy's reference |
+| Moving a record to another tenant | A listed action's update that changes a record's tenancy needs the caller's current membership, of any role, in the new tenant, in the same statement, as a create there would; the line's grants are checked on the record as it was. Refused, it is 403 `not_permitted`, as a field the caller may not change is |
+| Listed lines no record lets in | A user field or a role held in a record, on an `actions:` line, lets someone in only on the creates, updates, deletes and transitions of the action's own body whose records it applies to. On an action whose body writes none of them it lets nobody in: the action is checked as it starts against the line's other entries (anyone signed in, a role held across the whole application), and a line left with nobody, or with only `Access.system`, refuses every caller with 403 `not_permitted`. A route running such an action is `policy.effect_ungranted` |
+| Failing closed | A gate the plan can't build for a listed line refuses every caller, and a credential statement whose policed twin is missing is a defect when a caller runs it: neither runs without policy |
+| Field-refused transitions | A transition setting a field the caller may not change is 403 `not_permitted` before its `when:` can answer with its `conflict:` arm: writing no row asks the condition's question with the fields' grants as well as the record's |
+| What decides a value | Functions are followed as actions are, each with a summary of what its result carries and which parts of which parameters reach what a caller is shown. Whatever an `if`'s or `else if`'s condition, a `match`'s subject, a `for`'s list or a `list.filter` predicate tests is carried by every value made under it (assigned, returned, built, or kept by the filter), by `list.count` alone, and by `list.map`'s result, and, when a `return` or `reject` inside it may have left, by every value made after it; whether a record is there carries nothing. Each field is reported once in an action, at the first value it decides. A `reject` of a failure with no client fields is checked against what decided it is raised. A failure an entity operation or another action raises isn't followed |
+| Finding records | A `get`'s `id`, each argument a query is run with, and a write's target are checked like an output field, at the value: a record passed whole finds by its `id`. An include's reference is checked like a field the query reads: a parent's on the record that refers to it, a child's on the child |
+| What a write gives back | An update's record is proved against its entity's `read:` as well as its fields' own, for every record its target may be (a `get`'s, a create's, one passed in or found by `id`); its `id`, and what its `set:` gave each field, are the caller's own, and a stored field an update by `id` reads is the record's. A create's record holds what the caller set and what is new, so only its fields' own `read:` apply. The values a `set:` gives stay in the record given back. The check runs whether or not any field has a policy |
+| Proofs from memberships | A membership whose `role:` may be `none` holds no role a proof counts on, though it still makes its member one of the tenant's people. A membership read as an include's parent, which its lifecycle may hide, proves no role. A caller who belongs to a record's tenant passes a list naming every role of every membership held in the tenant, through the record's tenancy |
+| Storing values | Every value a write stores is checked, at the value: a create's and an update's `set:`, each field of a patch's `Input` (at the patch) and what `when_supplied:` sets, which whether the request supplied its field decides, and each field a transition sets (at the write), which what decided that it runs and its `when:` decide. A field's readers are those its record's `read:` and its own `read:` let in, but `Access.system`, which is server work; a field no one else may read, `FieldAccess.server_only` among them, may hold anything. Readers are known only of the record a value is stored in, so the record it came from is reached from there by the grants' shape: the same record (one loaded and changed, one found by the `id` an update by `id` is given, or a stored field a counter reads); the record a reference the write sets points at, by its `id` or the `id` a `get` found it by, or one a `get` found by a reference the stored record holds, which nothing else the action runs, nor any action it calls, may change; a record of the same tenant, when the write sets its tenancy's reference from that record's own; and any other record only as what holds of anyone signed in, or of a role held across the whole application. A `for` loop's item is one record through its turn, and a value carried into another turn, through a variable the loop changes, is any record. A value from a parameter is checked where the action is called, against what is passed, through its summary. One problem per value; a field that only decides is reported once per action. Which record an update changes is checked against its caller ("Finding records"), not its readers, who see its `id` anyway |
+| What fails decides what is stored | An action is all-or-nothing, so whatever a `reject` in its body tests decides every value it stores, before the `reject` or after it; a failure an entity operation or another action raises isn't followed, as for outputs. A `return` or `reject` inside a loop decides every turn after the one it may leave, from the top of the loop's body, for outputs and stores alike |
+| Events and stores | `emit` stores nothing a caller reads: an event's subscribers are server work, as `Access.system` reading a field is, so a restricted value may go in an event's payload. What a subscriber stores from a payload is a store like any other, checked where the subscriber stores it, against what every `emit` of the event put in it |
+| Background work and `Access.public` | A schedule or subscriber that reaches a statement only `Access.public` grants is a compile error: an entity grants background work explicitly with `Access.system`, so the runtime's leniency ("Background work") is never relied on. It is `policy.system_grant_missing`, at the schedule or subscriber: a grant list, a field's own list or the action's line under `actions:` that names `Access.public` and not `Access.system`, reached by its action or any it calls |
+| Batches and `Access.public` | A batch whose query or actions reach a statement only `Access.public` grants is a compile error, as a schedule's or subscriber's is |
+| Lines of the actions background work calls | Every action a schedule, a subscriber or a batch reaches, itself or through another, is checked against its own line under `actions:`, so a line naming `Access.public` and not `Access.system` is `policy.system_grant_missing` however deep; a listed action's line decides the creates, updates, deletes and transitions of its own body wherever it is called from, as the plan builds them, for a route as for background work |
+| The tenant background work names | The tenant id an event or a batch run names must come from a record of that tenant the action read or wrote under its caller's policy, proved from where the value came from; otherwise `policy.event_tenant_unproved`, so a caller can't aim system work at a tenant they don't belong to |
+| Whether a record is there, for a webhook's reply | A webhook's reply action finds every record its grants name, so what a condition, a loop or a count over records decides shows whether they are there: a reply decided by it, or a failure raised on it, needs records anyone at all may read (`Access.public` in the entity's `read:`), a record the action created being its own. Its failure goes back to whoever sent the webhook as its reply does, so what decides whether it fails (what decided a `reject` or an `attempt`, a `get` or an update or delete by `id` finding nothing, a write's `conflict:` arms) and a failure's client fields are proved as the reply is (`policy.output_field_unproved`). A route's caller still learns nothing from whether a record is there, since it is given only those it may read. A failure's client fields declared in a domain are proved for every caller too |
+| The system inside a request, and a webhook's reply | The magic-link `send:` action runs with its delivery's tenant, as a subscriber's does, which for `jadpo.MagicLinkEmail` is none; a webhook's reply action and `on_first_sign_in:`'s run with no tenant, never every tenant; each reaches only records every tenant shares, and what only `Access.public` lets it in to is `policy.system_grant_missing` at where it is named, as for background work. A webhook's reply is an output to `Access.public`: each field it carries, or that decided it, is one anyone at all may read, a record the action created holding what it set (`policy.output_field_unproved`), proved in the checker where routes' outputs are |

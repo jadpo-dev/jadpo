@@ -1,10 +1,10 @@
-//! The AI types' baselines (area 19, "The standard types" and "AI: a
-//! future area", chunk 5.5s2): token counts and a call's usage, a message
+//! The AI types' baselines (area 19, "The standard types" and "AI
+//! types"): token counts and a call's usage, a message
 //! in a conversation with a model, and vectors and the embeddings a model
 //! makes. A vector is stored in a pgvector `vector` column
 //! ([`Storage::Vector`], chunk 5.5v1, area 21), and compared as its type's
 //! `distance:` says ([`distance`]). What the page left open is settled in
-//! area 19's "AI: a future area" and area 21's "Storing a vector".
+//! area 19's "AI types" and area 21's "Storing a vector".
 
 use super::across::{Order, StandardRule, in_order};
 use super::{

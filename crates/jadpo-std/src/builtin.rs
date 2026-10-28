@@ -20,16 +20,16 @@ pub enum Builtin {
     IpAddress,
     Instant,
     CalendarDate,
-    /// An `Instant` seen in a `Zone` (area 10, question 5): local time
+    /// An `Instant` seen in a `Zone` (area 10, "`ZonedTime` name"): local time
     /// for showing or reasoning about, never a time of day on its own.
     ZonedTime,
     Duration,
-    /// An amount of money (area 19, "Money and payments", question 16): a
+    /// An amount of money (area 19, "Money and payments"): a
     /// whole number of its currency's minor units (pence, cents) and its
     /// `Currency`, never a decimal of pounds.
     Money,
     /// A physical quantity, `DataSize` or `Bitrate` (area 19, "Physical
-    /// quantities", question 17): an exact number in its kind's SI base
+    /// quantities"): an exact number in its kind's SI base
     /// unit at the kind's scale, its unit chosen only where it is made or
     /// shown.
     Quantity(crate::QuantityKind),

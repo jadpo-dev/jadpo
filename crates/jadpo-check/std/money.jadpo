@@ -1,4 +1,4 @@
-// The `money` namespace (area 19, "Money and payments", question 16).
+// The `money` namespace (area 19, "Money and payments").
 // Each operation is listed, typed, in `jadpo-std`'s operation table, which
 // names the Rust function in `jadpo-value` that runs it; a test holds
 // these stubs to that table.

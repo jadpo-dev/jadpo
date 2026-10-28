@@ -1,4 +1,4 @@
-//! Deployables (area 14, question 14; area 11, question 24; roadmap chunk
+//! Deployables (area 14, "Deployables"; area 11, question 24; roadmap chunk
 //! 8.1o2): `application { deployables: { } }` in `app.jadpo` declares
 //! each program the app is built into, what it serves and runs and what
 //! it is built for:

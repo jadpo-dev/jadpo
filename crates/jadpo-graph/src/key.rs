@@ -7,7 +7,7 @@
 //! A key never holds a position or a file. It holds a domain only for a
 //! function or type declared in one, `type billing.Address`, since a
 //! private function or type is unique only within its domain (area 18,
-//! question 8, amended 2026-10-16); every other name is unique across the
+//! "Stable identity", amended 2026-10-16); every other name is unique across the
 //! project, so the name alone identifies it. The moves the layout rules ask
 //! for keep a key: reordering, moving to the domain's `types/` folder, and
 //! promotion to `shared/`, which writes a registry line mapping the type's

@@ -27,7 +27,7 @@ pub struct RecordPlan {
 }
 
 /// The largest answer a step keeps, in bytes: a larger one is a fault
-/// naming the step (area 12, "Settled for the build").
+/// naming the step (area 12, `step.large_output`).
 pub const MOST_ANSWER_BYTES: usize = 1 << 20;
 
 /// The margin a step in doubt is sent again within, short of its

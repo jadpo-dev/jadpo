@@ -20,7 +20,7 @@ pub enum Spelling {
     /// The codec reads the text as it is: numbers, text, durations, a
     /// declared enum's variant name.
     Plain,
-    /// A standard enum (area 19, question 22), spelt by its data entry's
+    /// A standard enum (area 19, "Closed value sets are enums"), spelt by its data entry's
     /// codes: an IANA zone name (`Europe/London`) for a `Zone` variant
     /// (`europe_london`), a BCP 47 tag for a `Locale`, a media type for a
     /// `FileType`, an ISO 4217 code (`GBP`) for a `Currency`; read
@@ -71,7 +71,7 @@ impl Spelling {
 }
 
 /// What `jadpo test` makes for a secret, which a test run is given at
-/// random and never writes anywhere (area 10, question 11).
+/// random and never writes anywhere (area 10, "Test values for settings").
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum TestSecret {
     /// Hexadecimal digits: at least `min` and at most `max` of them.
@@ -154,7 +154,7 @@ pub fn is_variable_name(name: &str) -> bool {
 }
 
 /// The variable a setting named `field` reads when it gives no
-/// `binding:`: its name in capitals (area 10, question 1).
+/// `binding:`: its name in capitals (area 10, "Environment variable names").
 pub fn derived_variable(field: &str) -> String {
     field.to_ascii_uppercase()
 }

@@ -1,5 +1,4 @@
-//! The `crypto` namespace (area 19, "Hashing and cryptography", question
-//! 9): one construction per job and no algorithm choices, each on
+//! The `crypto` namespace (area 19, "Hashing and cryptography"): one construction per job and no algorithm choices, each on
 //! RustCrypto's or dalek's audited, pure-Rust crates, so every target
 //! gives the same results.
 //!

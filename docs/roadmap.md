@@ -13,7 +13,7 @@ lives in git history.
   twenty-one areas, all decided. Those pages are the specification and their
   examples become the tests.
 - **A new compiler, built around one graph**
-  ([compiler-runtime §1.1–1.2](compiler-runtime.md#11-graph-centred-compiler-decided-2026-10-13)).
+  ([compiler-runtime §1.1–1.2](compiler-runtime.md#11-graph-centred-compiler)).
   The first compiler (v0) was not reworked; it stays in git at the tag
   `archive/compiler-v0`.
 - **Two ways to run the graph:** an interpreter inside `jadpo` for `dev`,
@@ -26,13 +26,6 @@ lives in git history.
 ## How a session works
 
 Saying **"continue the roadmap"** starts this routine; it runs unattended.
-
-Richard, 2026-10-23: Phase 9 dependent chunks may build and run their full
-gate on exact unmerged prerequisite commits, merged into their own chunk
-branch in dependency order. Record those commits and dependent pull requests;
-review and PR merges remain pending. Codex opens pull requests without auto
-merge and never merges them. A prerequisite need not reach `main` before a
-dependent chunk can complete its own build and full gate.
 
 1. Take the first chunk below that is not ticked. Its tag (`opus · high`)
    is the model and effort it needs. Say in one line which chunk is next and
@@ -142,13 +135,13 @@ in git history.
 - [x] **8.2j Six connections an invocation**: §2.6, "Six connections an
   invocation"; area 14, "A Workers deployable"; area 11, Decisions.
 - [x] **8.2k Cloudflare Queues' consumer**: §2.6, "Cloudflare Queues'
-  consumer"; area 11, "Chosen in chunk 7.7c2".
+  consumer"; area 11, "The Cloudflare Queues driver".
 - [x] **8.2l Passkeys on Workers**: §2.6, "The Workers host"; area 8,
   Decisions, "Passkeys on Workers".
 - [x] **8.2m What `jadpo check` and `jadpo build` say for Workers**: area
   14, "A Workers deployable" and Decisions; area 10, "Client addresses".
 - [x] **8.2m2 Rate limits' store on Workers**: area 16, "Rate limits" and
-  "Chosen in chunk 8.2m2"; §2.6, "The Workers host".
+  "Rate limits on Workers"; §2.6, "The Workers host".
 - [ ] **8.2n A real deploy** `opus · high`, after 8.2a to 8.2m2, **needs
   Richard** (his Cloudflare account): a teaching example deployed with
   Hyperdrive's caching off to a real PostgreSQL, the cron and a queue,
@@ -182,9 +175,7 @@ Two independent reviewers, soundness and architecture for the phases
 ahead, read everything Phase 8 built, and chunk 8.3's spike measured it;
 their confirmed findings are the chunks below, taken before 8.2n and
 Phase 9, in this order: 8.4a, 8.4b, 8.4c and 8.4d side by side, then
-8.4e (after 8.4c), 8.4f and 8.4g side by side, then 8.4h. 8.4i and 8.4j beside any of them. The gap to Bun is not accepted: Phase 9 closes
-it (Richard, 2026-10-22). Claude builds these; Codex builds Phase 9
-once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
+8.4e (after 8.4c), 8.4f and 8.4g side by side, then 8.4h. 8.4i and 8.4j beside any of them.
 
 - [x] **8.4a Phase 8 review fixes: compiled parity**: §2.5, "Differential
   test"; area 3, "Recursion"; area 7, "Time limits".
@@ -196,9 +187,8 @@ once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
   Decisions.
 - [x] **8.4d Phase 8 review fixes: addresses and connections**: areas 5,
   10, 11 and 16, Decisions; §2.6.
-- [x] **8.4e Workers speed and memory**: §2.6, "The Workers host"; §2.11,
-  "After chunk 8.4e".
-- [x] **8.4f Before the real deploy**: §2.6, "Before the real deploy";
+- [x] **8.4e Workers speed and memory**: §2.6, "The Workers host"; §2.11.
+- [x] **8.4f Before the real deploy**: §2.6, "Release profile, names and the Wrangler file";
   area 14, Decisions.
 - [x] **8.4g Builds and CI kept quick**: §2.5, "Keeping rustc time down";
   §2.7, "CI"; area 14, Decisions.
@@ -227,20 +217,22 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
 - [x] **9.1d2a Generic runtime contract fixes:** §2.6; areas 5 (Lifecycle), 10 (connection URLs) and 11 (safe key windows and record modes).
 - [x] **9.1d2b Golden todo and all 44 cases**: compiler/runtime §2.11; `examples/golden-todo/README.md`.
 - [x] **9.1d3 Strong TypeScript golden todo**: compiler/runtime §2.7 and §2.11; `examples/golden-todo/typescript/README.md`.
-- [x] **9.1d4 Local application comparison**: compiler/runtime §2.11, "Complete local application comparison"; `tools/bench/README.md`.
+- [x] **9.1d4 Local application comparison**: compiler/runtime §2.11; `tools/bench/README.md`.
 - [ ] **9.1d5 TypeScript on workerd baseline:** `opus · high` after 9.1d4:
   run the strong TypeScript golden todo on workerd (Hono's Workers entry,
   the same local connection stand-in Jadpo's Workers build uses) with all
   44 cases passing, and compare it with Jadpo's Wasm build under the 9.1d4
   method. The headline pairs are native against Bun and Node, and Wasm
   against TypeScript on workerd, led by CPU time per request, cold start and
-  p95 (Richard, 2026-10-24).
+  p95 (Richard, 2026-10-24). Native's CPU time per request against Bun's
+  and Node's is measured too, since native serves on every core and they
+  on one.
 - [x] **9.1b Runtime performance**: compiler/runtime §2.6 and §2.11; `tools/bench/README.md` (9.1b1–9.1b5, including 9.1b1a).
 - [x] **9.1b1 Bounded delivery sweeps and the backlog**: compiler/runtime §2.6, "Bounded delivery sweeps", and §2.11; `tools/bench/README.md`.
-- [x] **9.1b1a Warm delivery comparison**: compiler/runtime §2.11, "Warm durable delivery comparison"; `tools/bench/README.md`.
+- [x] **9.1b1a Warm delivery comparison**: compiler/runtime §2.11; `tools/bench/README.md`.
 - [x] **9.1b2 Fast ticks and hourly housekeeping**: compiler/runtime §2.6, "Fast ticks and hourly housekeeping", and §2.11; `tools/bench/README.md`.
-- [x] **9.1b3 One-statement AI accounting**: compiler/runtime §2.11, "One-statement AI accounting"; area 21, "Chosen in chunk 5.5v5"; `tools/bench/README.md`.
-- [x] **9.1b4 Version checks in writes**: compiler/runtime §2.6, "Snapshots before calls", and §2.11, "Version checks in writes"; area 6, "Outside calls hold no transaction"; `tools/bench/README.md`.
+- [x] **9.1b3 One-statement AI accounting**: compiler/runtime §2.11; area 21, "How budgets are counted"; `tools/bench/README.md`.
+- [x] **9.1b4 Version checks in writes**: compiler/runtime §2.6, "Snapshots before calls", and §2.11; area 6, "Outside calls hold no transaction"; `tools/bench/README.md`.
 - [x] **9.1b5 Breakers in delivery claims**: compiler/runtime §2.6, "Breaker snapshots in delivery claims", and §2.11; `tools/bench/README.md`.
 - [ ] **9.1c Workers benchmark results:** `opus · high` **needs Richard**
   after 9.1b: approve access and deployment before using his account. Run the
@@ -248,10 +240,13 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   TypeScript app and Node; results published with the method. Include the
   10,000-delivery backlog and the runtime improvements' before/after results.
   Real edge measurement is required before Phase 9 finishes.
-- [ ] **9.2 Optimise WebAssembly** `opus · xhigh` after 9.1a, 9.1d and 9.1b, until it matches the Bun app on throughput
-  and p95, or Richard accepts a measured gap. The earlier experiments reached
-  about 79% of Bun's throughput and list what to try next
-  (measured on earlier experiments).
+- [ ] **9.2 Optimise WebAssembly** `opus · xhigh`, only if 9.1d5 shows a
+  gap: until Jadpo's Wasm build matches TypeScript on workerd, and native
+  matches Bun and Node, on CPU time per request, cold start and p95, or
+  Richard accepts a measured gap. Bun is not the Wasm build's comparison
+  (Richard, 2026-10-28). If 9.1d5 shows no gap, this chunk is ticked as
+  not needed and what follows stays as the place to start when one
+  appears.
   From chunk 8.1p: typed values in compiled bodies (a struct or enum per
   type, locals and parameters typed, a `Value` made only at the runtime's
   entry points), if profiling shows a body's own work matters beside the
@@ -273,11 +268,40 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
 - [ ] **9.2c `jadpo build` outside this checkout** `opus · high`: the
   runtime's sources and crates found without the path `jadpo` was
   compiled at or a warm cargo cache, so CI or a released `jadpo` can
-  build a deployable.
+  build a deployable; `jadpo build` fetches its own pinned Rust toolchain
+  into its cache on first use, so nobody installs Rust
+  ([documentation](documentation.md), "Installing"; Richard, 2026-10-28).
 - [ ] **9.3 The differential run's last two checks** `opus · high`
   (after 9.2; low priority, from chunk 8.4h): each path through a body
   numbered and the paths each run took compared, and fuzzed function
   bodies run both ways, as §2.5 once promised.
+
+## Documentation and releases
+
+What the jadpo.dev site, built in its own repository, needs from this one
+([documentation](documentation.md)). Claude builds these beside Phase 9,
+D1 first: the site starts once D1 has merged (Richard, 2026-10-28).
+
+- [ ] **D1 The docs' structure and bundle** `opus · high`: each error's
+  examples in `docs/errors/<rule.id>.md` and the docs check requiring a
+  file per catalogue rule; each area's design notes kept apart from what an
+  app author reads, with a short "what is built" table left on the page;
+  a topic ID declared beside every section; the seven sections over 3,000
+  words split; the bundle and its `index.json` built by the gate and
+  uploaded by CI.
+- [ ] **D2 The primer** `opus · high` after D1: `docs/primer.md`, about
+  3,000 to 5,000 tokens, every example compiled by the gate; `llms.txt`
+  leads with it.
+- [ ] **D3 Releases** `opus · high` after D1: semantic versions from 0.1.0,
+  release-please over the Conventional Commit types, CI failing a
+  language change under a type that says it isn't one, installers (shell,
+  Homebrew, PowerShell, npm) on each Release, the bundle attached; an
+  app's declared version checked (area 14, "Scaffold"). **Needs Richard**
+  before 0.1.0 is published.
+- [ ] **D4 Issues triaged by an agent** `opus · high` after D3: issues
+  and feature requests read, answered and turned into pull requests by an
+  agent that holds no secrets and cannot merge or release, since issue text
+  is anyone's; its pull requests pass the same gate and review.
 
 ## Phase 10 — Golden todo
 
@@ -291,8 +315,9 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   Measures correctness, attempts and tokens to green, where each mistake
   was caught (check, test or escaped), how easily a person reviews the
   diff, and how often a tempting unsafe shortcut gets through. The agent
-  gets the language pages, since no model has seen Jadpo (Richard,
-  2026-10-14). The method is designed at the start of the chunk; its
+  gets the docs as [documentation](documentation.md) delivers them, primer
+  first, since no model has seen Jadpo (Richard, 2026-10-14); the results
+  also say whether task guides are needed beyond the primer. The method is designed at the start of the chunk; its
   results steer the order of the work after the first build.
 
 ## After the first build, in order
@@ -311,7 +336,7 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
    drift from what is built; designed with the design skills first. Area
    19's prose stays as the explanation (Richard, 2026-10-25).
 3. Personal data (area 15), with encrypted fields and keys held as data
-   (area 19, questions 10 and 21) and `crypto.verify_totp`, which waits on
+   (area 19, "Encrypted fields" and "Language gaps this page depends on") and `crypto.verify_totp`, which waits on
    them.
 4. Remaining built-in services (area 16): flags, files, audit, search,
    telemetry thresholds.
@@ -339,8 +364,8 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
    derived by the compiler, client consumption declarations and generated
    TypeScript bindings (a React example first); presentation stays in
    ordinary frontend code.
-11. The public documentation site at jadpo.dev, structured from how
-   developers and agents look things up.
+11. `jadpo docs` or `jadpo mcp` serving the bundle offline
+   ([documentation](documentation.md), "Not decided yet").
 
 ## How we work
 

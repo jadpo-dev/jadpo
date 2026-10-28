@@ -1,4 +1,4 @@
-//! `jadpo fix` (area 14; area 19, question 4; chunk 5.5a2): the findings
+//! `jadpo fix` (area 14; area 19, "A release adding a standard type"; chunk 5.5a2): the findings
 //! a release's new standard type gives, listed with the fixes each takes,
 //! and the swap or the rename the author picks, made through the code the
 //! editor's quick fix runs, as text and `--json`. A fix that would add an

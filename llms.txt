@@ -2,7 +2,7 @@
 
 > An experimental, statically typed programming language for web backends written mainly by LLMs and reviewed by people. The compiler and runtime are written in Rust, with interpreted development and compiled native and WebAssembly deployables.
 
-This is a reading index, not the language specification or a guarantee of automatic retrieval. Follow the linked area pages for rules, current decisions, amendments and implementation status. Decided does not mean built. Earlier alternatives and archived examples remain on some pages for context. Do not infer the language from the README or a small example alone.
+This is a reading index, not the language specification or a guarantee of automatic retrieval. Follow the linked area pages for rules, current decisions, amendments and implementation status. Decided does not mean built. Do not infer the language from the README or a small example alone.
 
 The public project home is https://github.com/richardwillars/jadpo. Links below track main; use a single checkout or replace main with one commit SHA throughout when a consistent snapshot matters. A URL tool may require every relevant link explicitly. GitHub and the assistant's tools determine access; this file changes no crawler permissions.
 
@@ -55,3 +55,4 @@ Start with areas 1–4. For a data-backed authenticated API, add 5–9 and 13. F
 - [Contributor guide](https://raw.githubusercontent.com/richardwillars/jadpo/main/CONTRIBUTING.md): Build prerequisites, verification and contribution workflow.
 - [Repository instructions](https://raw.githubusercontent.com/richardwillars/jadpo/main/AGENTS.md): Working rules for changes to this compiler repository.
 - [Documentation index](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/README.md): Architecture, decisions and design context.
+- [CLI design language](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/cli-design-language.md): How everything `jadpo` prints, and every generated page, looks and behaves.

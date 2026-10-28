@@ -1458,7 +1458,7 @@ pub fn first_several(db: &dyn Db, project: Project) -> Option<Key> {
 
 /// The store the record of action `action` is kept in: the one it
 /// writes, else the one `events: { store: }` names, as its handled record
-/// and its outbox are (area 12, "Outbox placement, settled").
+/// and its outbox are (area 12, "Outbox placement").
 pub fn record_store(db: &dyn Db, project: Project, action: &str) -> Option<String> {
     crate::types::written_stores(db, project)
         .get(action)

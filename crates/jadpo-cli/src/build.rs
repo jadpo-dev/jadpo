@@ -20,7 +20,7 @@
 //!
 //! `jadpo build` builds every deployable, `jadpo build <deployable>` one.
 //! With no `deployables:` declared there is one, `app`, which serves every
-//! API and runs everything, natively (area 14, question 14); a declared
+//! API and runs everything, natively (area 14, "Deployables"); a declared
 //! one serves only its APIs' routes and runs only the background work its
 //! `runs:` names. Each is compiled from only what it reaches (chunk
 //! 8.1o3; `jadpo_plan::Plan::for_deployable`): its callables, routes,

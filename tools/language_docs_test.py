@@ -67,9 +67,7 @@ class Lists(unittest.TestCase):
 
 class Pages(unittest.TestCase):
     def test_every_language_page_renders(self):
-        catalogue = docs.load_catalogue(docs.load_frozen())
-        pages = [docs.Page(p, catalogue, docs.load_frozen())
-                 for p in sorted(docs.DOCS.glob('[0-9][0-9]-*.md'))]
+        pages = [docs.Page(p, {}) for p in sorted(docs.DOCS.glob('[0-9][0-9]-*.md'))]
         self.assertTrue(pages)
         for page in pages:
             page.collect_blocks()

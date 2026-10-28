@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Check and render the language reference in docs/language.
 
-A ```jadpo check block is compiled by the new `jadpo` (docs/compiler-runtime.md
-§2.7) with `jadpo check`, which grows with each roadmap chunk: a block without
+A ```jadpo check block is compiled by `jadpo`, built from this checkout
+(docs/compiler-runtime.md §2.7), with `jadpo check`: a block without
 `expect=` must check cleanly, exit 0 and be canonically formatted (`jadpo fmt
 --check`), and an `expect=rule.id` block must report exactly one diagnostic,
 with that rule, read from `jadpo check --json`, exit 1, be
@@ -21,37 +21,23 @@ and the rerun commands are the same every time. `--export-corpus` writes
 each such project and its `jadpo test --json` document to
 build/spec-corpus/<page>/<project>/ for the differential run.
 
-Every other compiled ```jadpo block shows how the archived v0 compiler treated it.
-The v0 compiler was removed on 2026-10-13 (tag archive/compiler-v0); its
-results are frozen in docs/language/reference/v0-results.json, and a block
-whose source no longer matches its frozen result fails the check. Passing
-projects were also canonically formatted; failing projects reported the rule
-named in `expect=`. `## Errors` sections show the v0 compiler's real output, and
-every v0 catalogue rule an area claims must have an example there. Proposed
-code is written in `fragment` blocks, which are not compiled.
+Every other ```jadpo block is a `fragment`, shown and not compiled: code
+the compiler doesn't check yet. A block that is neither fails the check.
 
   python3 tools/language_docs.py --check     # verify, and render into a scratch folder
   python3 tools/language_docs.py             # verify and write build/language-site
   python3 tools/language_docs.py --bless     # rewrite the output blocks after `check` blocks
   python3 tools/language_docs.py --check --export-corpus  # also write build/spec-corpus/
-  python3 tools/language_docs.py --archived  # list what areas 1-6 still show from the v0 compiler
-  python3 tools/language_docs.py --freeze    # with the v0 compiler built: rewrite the frozen results
 
-Phase 1 is done when areas 1-4's decided examples check (areas 5 and 6 joined them in chunks 3.1 and 3.2) and their errors show
-the new compiler's output (docs/roadmap.md). Those pages own exactly the new
-compiler's rules whose catalogue entry (`jadpo help --json`) names their area,
-and each needs a `check` block failing with it: a frozen v0 result never
-counts. The check also holds that every block still on the frozen v0 result
-says why, inside a `::: today` box or under a note just before it that says it
-is the archived compiler's ("archived compiler", or "Being removed" for v0
-syntax; a note covers the project of the next example in its section and no
-other), and that no `fragment` there checks cleanly, since one that does is a
-decided example the new compiler can check. The other pages still list the
-rules they own in front matter.
+Areas 1-9 own exactly the compiler's rules whose catalogue entry (`jadpo
+help --json`) names their area; the other pages list the rules they own in
+front matter, as globs over the same catalogue. Each owned rule needs a
+`check` block failing with it, and every rule belongs to one page (area 14's
+command errors are shown by the CLI's own tests). On areas 1-9 no `fragment`
+may check cleanly, since one that does is an example the compiler can check.
 """
 
 import argparse
-import hashlib
 import html
 import json
 import os
@@ -67,10 +53,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / 'docs/language'
-COMPILER = ROOT / 'jadpo/target/debug/jadpo'
 JADPO = ROOT / 'target/debug/jadpo'
 OUTPUT_FENCE = '```text output'
-FROZEN = DOCS / 'reference/v0-results.json'
 TEMPLATE = Path(__file__).resolve().parent / 'language_docs_template.html'
 OUT_DEFAULT = ROOT / 'build/language-site'
 CORPUS = ROOT / 'build/spec-corpus'
@@ -79,10 +63,9 @@ TEST_SEED = '1'
 TEST_DECLARATION = re.compile(r'^\s*test\s+"', re.MULTILINE)
 # Optional build/language-site/published.json maps page stems to published URLs for cross-page links.
 FENCE = re.compile(r'^```(\S*)(.*)$')
-# The areas the new compiler builds, whose pages own the new compiler's
-# rules: areas 1-4 from Phase 1, area 5 from chunk 3.1, area 6 from chunk
-# 3.2, areas 7 and 8 from Phase 4, and area 9 from chunk 4.4.
-PHASE_ONE = 9
+# Areas 1 to this one own the compiler's rules by the catalogue's `area`;
+# later pages name theirs in front matter.
+AREA_OWNED = 9
 # `migrate=<purpose>` on a block runs `jadpo migrate new <purpose>` once
 # the project's blocks up to it are written, at a fixed time per step, so
 # migration folders are named the same on every run.
@@ -93,8 +76,6 @@ COMMAND_AREA = 14
 # a project with migrations is checked and formatted, and its `jadpo test`
 # run is reported as skipped.
 SKIP_POSTGRES = os.environ.get('JADPO_SKIP_POSTGRES') == '1'
-# What a note says about a block still on the frozen v0 result.
-ARCHIVED_NOTES = ('archived compiler', 'being removed')
 # Seconds rendering one page may take; each takes well under one.
 RENDER_LIMIT = 10
 
@@ -121,7 +102,7 @@ WORKERS = os.cpu_count() or 4
 
 
 def ensure_jadpo():
-    """The new `jadpo`, built from this checkout: the binary JADPO_BIN names
+    """`jadpo`, built from this checkout: the binary JADPO_BIN names
     (tools/verify.py builds it once), or else one built here. Called before
     any threads run it."""
     global _jadpo_built, JADPO
@@ -136,7 +117,7 @@ def ensure_jadpo():
 
 
 def jadpo(args, cwd=None, env=None):
-    """Runs the new `jadpo`, built from this checkout, in plain mode."""
+    """Runs `jadpo`, built from this checkout, in plain mode."""
     ensure_jadpo()
     extra = env or {}
     env = {k: v for k, v in os.environ.items() if k not in ('FORCE_COLOR', 'CLICOLOR_FORCE', 'COLUMNS')}
@@ -146,34 +127,13 @@ def jadpo(args, cwd=None, env=None):
     return result.returncode, result.stdout + result.stderr
 
 
-def load_new_catalogue():
+def load_catalogue():
+    """The compiler's rules (`jadpo help --json`), by id; each entry's
+    `area` says which page owns it."""
     code, out = jadpo(['help', '--json'])
     if code:
         sys.exit(f'jadpo help --json failed:\n{out}')
     return {rule['id']: rule for rule in json.loads(out)['data']['rules']}
-
-
-def load_frozen():
-    return json.loads(FROZEN.read_text()) if FROZEN.exists() else None
-
-
-def project_digest(blocks):
-    h = hashlib.sha256()
-    for block in blocks:
-        h.update(block['attrs']['file'].encode() + b'\0' + block['source'].encode() + b'\0')
-    return h.hexdigest()
-
-
-def load_catalogue(frozen):
-    if frozen is not None:
-        return frozen['catalogue']
-    with tempfile.TemporaryDirectory() as tmp:
-        (Path(tmp) / 'a.jadpo').write_text('type Count = Int {\n    min: 0\n}\n')
-        code, out = run([str(COMPILER), 'artifacts', tmp])
-        if code:
-            sys.exit(f'could not generate the diagnostic catalogue:\n{out}')
-        data = json.loads((Path(tmp) / 'build/diagnostics/catalogue.json').read_text())
-    return {entry['ruleId']: entry for entry in data['diagnostics']}
 
 
 def parse_front_matter(text):
@@ -200,13 +160,11 @@ def parse_attrs(text):
 
 
 class Page:
-    def __init__(self, path, catalogue, frozen=None, new_catalogue=None):
+    def __init__(self, path, catalogue):
         self.path = path
+        # The compiler's catalogue (`jadpo help --json`), whose `area` field
+        # says which page owns each rule.
         self.catalogue = catalogue
-        # The new compiler's catalogue (`jadpo help --json`), whose `area`
-        # field says which page owns each rule.
-        self.new_catalogue = new_catalogue or {}
-        self.frozen = None if frozen is None else frozen['pages'].get(path.name, {})
         text = path.read_text()
         self.meta, self.body = parse_front_matter(text)
         # File lines before the body, so messages give the file's line numbers.
@@ -223,14 +181,7 @@ class Page:
     def collect_blocks(self):
         lines = self.body.splitlines()
         i, n = 0, 0
-        today, heading = False, 0
         while i < len(lines):
-            if lines[i].strip() == '::: today':
-                today = True
-            elif lines[i].strip() == ':::':
-                today = False
-            elif lines[i].startswith('#'):
-                heading = i
             match = FENCE.match(lines[i])
             if match and match.group(1) == 'jadpo':
                 attrs = parse_attrs(match.group(2))
@@ -240,8 +191,7 @@ class Page:
                 n += 1
                 attrs.setdefault('project', f'example-{n}')
                 attrs.setdefault('file', 'main.jadpo')
-                block = {'line': i, 'end': j, 'attrs': attrs, 'source': '\n'.join(lines[i + 1:j]) + '\n',
-                         'today': today, 'heading': heading}
+                block = {'line': i, 'end': j, 'attrs': attrs, 'source': '\n'.join(lines[i + 1:j]) + '\n'}
                 # An output block may follow, after blank lines.
                 k = j + 1
                 while k < len(lines) and not lines[k].strip():
@@ -256,7 +206,7 @@ class Page:
             i += 1
 
     def check_projects(self, bless):
-        """`check` blocks, compiled by the new jadpo."""
+        """`check` blocks, compiled by `jadpo`."""
         projects = {}
         for block in self.blocks:
             if block['attrs'].get('check'):
@@ -341,7 +291,7 @@ class Page:
             else:
                 # Exactly the expected error, once, and the failing exit
                 # code: an example shows one mistake.
-                # Every finding is an error (area 1, question 11).
+                # Every finding is an error (area 1).
                 exit_code = 1
                 ok = rules == [expected] and code == exit_code
                 if rules != [expected]:
@@ -428,105 +378,39 @@ class Page:
         self.path.write_text(head + '\n'.join(lines) + '\n')
         return len(self.blessings)
 
-    def compile_projects(self):
-        projects = {}
+    def check_marked(self):
+        """Every block is checked or a fragment: nothing else compiles it."""
         for block in self.blocks:
-            if block['attrs'].get('fragment') or block['attrs'].get('check'):
-                continue
-            projects.setdefault(block['attrs']['project'], []).append(block)
-        for name, blocks in projects.items():
-            expected = {b['attrs']['expect'] for b in blocks if 'expect' in b['attrs']} or {'pass'}
-            if len(expected) > 1:
-                self.problems.append(f'{name}: blocks disagree on expect=')
-            expected = expected.pop()
-            digest = project_digest(blocks)
-            if self.frozen is not None:
-                saved = self.frozen.get(name)
-                if saved is None or saved['digest'] != digest:
-                    self.problems.append(f'{name}: changed after the v0 compiler was archived; restore it or mark it fragment')
-                    continue
-                self.results[name] = saved
-                if not saved['ok']:
-                    self.problems.append(f'{name}: the frozen v0 result does not match expect={expected}')
-                continue
-            with tempfile.TemporaryDirectory() as tmp:
-                for block in blocks:
-                    target = Path(tmp) / block['attrs']['file']
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_text(block['source'])
-                code, out = run([str(COMPILER), 'check', tmp])
-                out = out.replace(tmp + '/', '').replace(tmp, '.')
-                rules = re.findall(r'rule: (\S+)', out)
-                formatted = None
-                if code == 0:
-                    fmt_code, _ = run([str(COMPILER), 'fmt', tmp, '--check'])
-                    formatted = fmt_code == 0
-            if expected == 'pass':
-                ok = code == 0 and formatted
-                if code:
-                    self.problems.append(f'{name}: expected to compile but failed with {rules[:3]}')
-                elif not formatted:
-                    self.problems.append(f'{name}: compiles but is not canonically formatted (run jadpo fmt)')
-            else:
-                ok = expected in rules
-                if not ok:
-                    self.problems.append(f'{name}: expected {expected} but got {rules[:3] or "a pass"}')
-            self.results[name] = {'expected': expected, 'ok': ok, 'output': out.strip(), 'rules': rules, 'digest': digest}
+            if not (block['attrs'].get('check') or block['attrs'].get('fragment')):
+                self.problems.append(f'{block["attrs"]["project"]} (line {block["line"] + self.offset + 1}) is '
+                                     'neither `check` nor `fragment`: make it a check block, or a fragment if '
+                                     'the compiler can\'t check it yet')
 
     def claimed_rules(self):
-        """The rules this page owns. Areas 1-4 own exactly the new
+        """The rules this page owns. Areas 1 to AREA_OWNED own exactly the
         compiler's rules whose catalogue entry names their area; the other
-        pages, still on the archived compiler, list theirs in front matter."""
-        if self.phase_one():
-            return sorted(r for r, entry in self.new_catalogue.items() if entry.get('area') == self.area())
+        pages list theirs in front matter."""
+        if self.area_owned():
+            return sorted(r for r, entry in self.catalogue.items() if entry.get('area') == self.area())
         patterns = self.meta.get('rules', [])
         return sorted(r for r in self.catalogue if any(fnmatch(r, p) for p in patterns))
 
     def covered_rules(self):
-        """Rules an example here shows failing as stated; on areas 1-6 only
-        the new compiler's `check` blocks count, never a frozen v0 result."""
-        return {r['expected'] for r in self.results.values()
-                if r['expected'] != 'pass' and r['ok'] and (r.get('check') or not self.phase_one())}
+        """Rules a `check` example here shows failing as stated."""
+        return {r['expected'] for r in self.results.values() if r['expected'] != 'pass' and r['ok']}
 
-    def phase_one(self):
-        return 1 <= self.area() <= PHASE_ONE
+    def area_owned(self):
+        return 1 <= self.area() <= AREA_OWNED
 
     def area(self):
         return int(self.meta.get('area', 0))
 
-    def archived(self):
-        """Blocks still on the frozen v0 result, each with why: `None` when
-        nothing on the page says. A note covers the project of the first
-        example after it, in its section, and no other."""
-        lines = self.body.splitlines()
-        noted = {}
-        for i, line in enumerate(lines):
-            if not (line.startswith('>') and any(word in line.lower() for word in ARCHIVED_NOTES)):
-                continue
-            after = next((b for b in self.blocks if b['line'] > i), None)
-            if after is not None and after['heading'] <= i:
-                noted.setdefault((after['heading'], after['attrs']['project']), line.lstrip('> ').strip())
-        out = []
-        for block in self.blocks:
-            attrs = block['attrs']
-            if attrs.get('check') or attrs.get('fragment'):
-                continue
-            if block['today']:
-                reason = 'today box: the archived compiler\'s syntax'
-            else:
-                reason = noted.get((block['heading'], attrs['project']))
-            out.append((block, reason))
-        return out
-
-    def check_phase_one(self):
-        """Areas 1-4: what is left on the v0 result says why, and no
-        fragment is a program the new compiler checks cleanly."""
-        if not 1 <= self.area() <= PHASE_ONE:
+    def check_fragments(self):
+        """On areas 1 to AREA_OWNED, no fragment is a program the compiler
+        checks cleanly: one that is should be a check block."""
+        if not self.area_owned():
             return
-        for block, reason in self.archived():
-            if reason is None:
-                self.problems.append(f'{block["attrs"]["project"]} (line {block["line"] + self.offset + 1}) is on the '
-                                     'archived compiler\'s result with no note saying why; make it a check block or say why')
+
         def check_fragment(block):
             with tempfile.TemporaryDirectory() as tmp:
                 (Path(tmp) / 'main.jadpo').write_text(block['source'])
@@ -542,9 +426,9 @@ class Page:
 
     def check(self, bless=False):
         self.collect_blocks()
-        self.compile_projects()
+        self.check_marked()
         self.check_projects(bless)
-        self.check_phase_one()
+        self.check_fragments()
         missing = [r for r in self.claimed_rules() if r not in self.covered_rules()]
         for rule in missing:
             self.problems.append(f'no example for {rule}')
@@ -597,18 +481,6 @@ def inline(text):
 
 def slug(text):
     return re.sub(r'[^a-z0-9]+', '-', re.sub(r'<[^>]+>', '', text).lower()).strip('-')
-
-
-def render_diagnostic(output):
-    lines = []
-    for line in html.escape(output).splitlines():
-        line = re.sub(r'^(error):', r'<span class="e">\1:</span>', line)
-        line = re.sub(r'^(\s*)(rule:) (\S+)', r'\1<span class="dim">\2</span> <span class="rule">\3</span>', line)
-        line = re.sub(r'^(\s*)(reason:|next:|help:|note:|behavioral impact:|public contract impact:)',
-                      r'\1<span class="dim">\2</span>', line)
-        line = re.sub(r'^(\s*\|\s*)(\^+)', r'\1<span class="caret">\2</span>', line)
-        lines.append(line)
-    return '\n'.join(lines)
 
 
 # A list item: its indent, its marker, and the text on the line.
@@ -680,27 +552,16 @@ class Renderer:
             return ''
         if attrs.get('fragment'):
             status = '<span class="muted">fragment, not compiled</span>'
-        elif result is not None and result.get('check'):
-            if not result['ok']:
-                status = '<span class="broken">✗ example does not behave as stated</span>'
-            elif result['expected'] == 'pass':
-                status = '<span class="check">✓ checks · formatted</span>'
-            else:
-                status = f'<span class="check">✓ fails with {html.escape(result["expected"])}</span>'
         elif result is None:
             status = ''
         elif not result['ok']:
             status = '<span class="broken">✗ example does not behave as stated</span>'
         elif result['expected'] == 'pass':
-            status = '<span class="check">✓ compiles · formatted</span>'
+            status = '<span class="check">✓ checks · formatted</span>'
         else:
             status = f'<span class="check">✓ fails with {html.escape(result["expected"])}</span>'
-        out = (f'<div class="code"><div class="label"><span>{html.escape(attrs["file"])}</span>{status}</div>'
-               f'<pre><code class="jadpo">{html.escape(block["source"].rstrip())}</code></pre></div>')
-        if result and 'expect' in attrs and result['expected'] != 'pass' and not result.get('check'):
-            out += (f'<div class="diag"><div class="label">jadpo check</div>'
-                    f'<pre>{render_diagnostic(result["output"])}</pre></div>')
-        return out
+        return (f'<div class="code"><div class="label"><span>{html.escape(attrs["file"])}</span>{status}</div>'
+                f'<pre><code class="jadpo">{html.escape(block["source"].rstrip())}</code></pre></div>')
 
     def heading(self, level, text):
         rendered = inline(text)
@@ -799,16 +660,6 @@ class Renderer:
                 trs = ''.join('<tr>' + ''.join(f'<td>{inline(c)}</td>' for c in r) + '</tr>' for r in body)
                 out.append(f'<div class="table-wrap"><table><thead><tr>{cells}</tr></thead><tbody>{trs}</tbody></table></div>')
                 continue
-            if line.strip() == '::: today':
-                flush()
-                out.append('<details class="today"><summary>The archived compiler\'s syntax and behaviour (tag archive/compiler-v0)</summary>')
-                i += 1
-                continue
-            if line.strip() == ':::':
-                flush()
-                out.append('</details>')
-                i += 1
-                continue
             if line.startswith('>'):
                 flush()
                 quote = []
@@ -836,7 +687,7 @@ class Renderer:
         return '\n'.join(out)
 
     def render_decided(self):
-        """Lead with the decisions; collapse today's behaviour and the review notes."""
+        """Lead with the decisions; collapse the rest of the body and the review notes."""
         lines = self.page.body.splitlines()
         heading = lambda i, level: lines[i].startswith('#' * level + ' ')
         review = next(i for i, line in enumerate(lines) if line.strip() == '## Review')
@@ -850,7 +701,7 @@ class Renderer:
         notes = [x for x in sections if x not in decided]
         inline_decisions = not any(t.lower().startswith('decided') for _, _, t in sections)
         if inline_decisions:
-            # Decisions live in the sections they change: keep the body, with today's syntax already collapsed.
+            # Decisions live in the sections they change: keep the body.
             out = [self.render(0, review)]
             self.toc = [(a, t, c) for a, t, c in self.toc]
             for a, b, title in decided:
@@ -874,10 +725,10 @@ class Renderer:
             for level in (3, 4):
                 part = part.replace(f'<h{level} ', f'<h{level - 1} ').replace(f'</h{level}>', f'</h{level - 1}>')
             out.append(part)
-        today = Renderer(self.page)
-        out.append('<details class="collapsed" id="today"><summary>Reference: the full page, with every example and error</summary>'
-                   + today.render(first_h2, review) + '</details>')
-        self.toc.append(('today', 'Full reference (collapsed)', ''))
+        full = Renderer(self.page)
+        out.append('<details class="collapsed" id="reference"><summary>Reference: the full page, with every example and error</summary>'
+                   + full.render(first_h2, review) + '</details>')
+        self.toc.append(('reference', 'Full reference (collapsed)', ''))
         review_notes = Renderer(self.page)
         review_notes.review_mode = True
         body = ''.join(review_notes.render(a, b) for a, b, _ in notes)
@@ -977,7 +828,8 @@ def render_log(pages, published):
         decided = [r for r in table_rows(section(page.body, 'Decisions')) if len(r) > 1 and r[1]]
         questions = question_titles(section(page.body, 'Open questions'))
         open_q = [q for q in questions if not q[2]]
-        carried = table_rows(section(page.body, 'Carried to later areas'))
+        carried_title = 'Carried to later areas' if section(page.body, 'Carried to later areas') else 'Related areas'
+        carried = table_rows(section(page.body, carried_title))
         totals[0] += len(decided)
         totals[1] += len(open_q)
         toc.append((anchor, f'{area:02d} {name}', ''))
@@ -985,14 +837,14 @@ def render_log(pages, published):
         out.append(f'<p class="muted">Status: {html.escape(page.meta.get("status", ""))} · {len(decided)} decided · '
                    f'{len(open_q)} open · <a href="{href}">open the page</a></p>')
         if decided:
-            rows = ''.join(f'<tr><td>{inline(r[0])}</td><td>{inline(r[1])}</td><td>{inline(r[2] if len(r) > 2 else "")}</td></tr>' for r in decided)
-            out.append(f'<h3>Decided</h3><div class="table-wrap"><table><thead><tr><th>Topic</th><th>Decision</th><th>Date</th></tr></thead><tbody>{rows}</tbody></table></div>')
+            rows = ''.join(f'<tr><td>{inline(r[0])}</td><td>{inline(r[1])}</td></tr>' for r in decided)
+            out.append(f'<h3>Decided</h3><div class="table-wrap"><table><thead><tr><th>Topic</th><th>Decision</th></tr></thead><tbody>{rows}</tbody></table></div>')
         if open_q:
             items = ''.join(f'<li><strong>Q{n}</strong> {inline(t)}</li>' for n, t, _ in open_q)
             out.append(f'<h3>Open</h3><ul>{items}</ul>')
         if carried:
             rows = ''.join('<tr>' + ''.join(f'<td>{inline(c)}</td>' for c in r) + '</tr>' for r in carried)
-            out.append(f'<h3>Carried to later areas</h3><div class="table-wrap"><table><thead><tr><th>Item</th><th>Area</th><th>Status</th></tr></thead><tbody>{rows}</tbody></table></div>')
+            out.append(f'<h3>{carried_title}</h3><div class="table-wrap"><table><thead><tr><th>Item</th><th>Area</th><th>Status</th></tr></thead><tbody>{rows}</tbody></table></div>')
     out.insert(2, f'<p><strong>{totals[0]} decided, {totals[1]} open</strong> across {len(pages)} area page(s).</p>')
     return '\n'.join(out), toc
 
@@ -1064,25 +916,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--check', action='store_true', help='verify examples and render the pages without writing them')
     parser.add_argument('--out', default=str(OUT_DEFAULT))
-    parser.add_argument('--freeze', action='store_true', help='compile with the v0 compiler and rewrite the frozen results')
     parser.add_argument('--bless', action='store_true', help='rewrite the output blocks after check blocks')
     parser.add_argument('--export-corpus', action='store_true',
                         help=f'write the projects with tests and their jadpo test --json to {CORPUS.relative_to(ROOT)}')
-    parser.add_argument('--archived', action='store_true',
-                        help='list the blocks areas 1-6 still show from the archived compiler, and why')
     args = parser.parse_args()
-    if args.freeze:
-        if not COMPILER.exists():
-            sys.exit('--freeze needs the v0 compiler: git checkout archive/compiler-v0 and build it')
-        frozen = None
-    else:
-        frozen = load_frozen()
-        if frozen is None and not COMPILER.exists():
-            sys.exit(f'no frozen results at {FROZEN} and no compiler to run')
-    catalogue = load_catalogue(frozen)
-    new_catalogue = load_new_catalogue() if (ROOT / 'Cargo.toml').exists() else {}
-    catalogue = {**catalogue, **new_catalogue}
-    pages = [Page(p, catalogue, frozen, new_catalogue) for p in sorted(DOCS.glob('[0-9][0-9]-*.md'))]
+    catalogue = load_catalogue()
+    pages = [Page(p, catalogue) for p in sorted(DOCS.glob('[0-9][0-9]-*.md'))]
     failed = False
     owners = {}
     for page in pages:
@@ -1099,17 +938,8 @@ def main():
         for problem in page.problems:
             failed = True
             print(f'  FAIL {problem}')
-    if args.archived:
-        print('\nStill on the archived compiler\'s result in areas 1-6:')
-        for page in pages:
-            if not 1 <= page.area() <= PHASE_ONE:
-                continue
-            for block, reason in page.archived():
-                expect = block['attrs'].get('expect', 'pass')
-                print(f'  {page.path.name}:{block["line"] + page.offset + 1}  {block["attrs"]["project"]}  {expect}  '
-                      f'{reason or "NO REASON"}')
     # The homepage example in README.md is compiled like a page's examples.
-    readme = Readme(ROOT / 'README.md', catalogue, frozen, new_catalogue)
+    readme = Readme(ROOT / 'README.md', catalogue)
     readme.check(bless=args.bless)
     if args.bless and readme.bless():
         print('README.md: blessed output block(s)')
@@ -1121,14 +951,14 @@ def main():
         if len(files) > 1:
             failed = True
             print(f'  FAIL {rule} is claimed by {", ".join(files)}')
-    # Every rule the new compiler has belongs to a page. Area 14's are
+    # Every rule the compiler has belongs to a page. Area 14's are
     # errors from running a command, not from checking source, so the CLI's
     # own tests show them (crates/jadpo-cli/tests).
-    for rule, entry in sorted(new_catalogue.items()):
+    for rule, entry in sorted(catalogue.items()):
         if rule not in owners and entry.get('area') != COMMAND_AREA:
             failed = True
             print(f'  FAIL {rule} (area {entry.get("area")}) is claimed by no page')
-    print(f'{len(owners)}/{len(catalogue)} catalogue errors are assigned to an area')
+    print(f'{len(owners)}/{len(catalogue)} of the compiler\'s rules are assigned to an area')
     corpus = [(page, entry) for page in pages + [readme] for entry in page.corpus]
     print(f'{len(corpus)} spec project(s) with tests ran under jadpo test')
     skipped = [f'{page.path.name} {name}' for page in pages + [readme] for name in page.skipped]
@@ -1137,14 +967,6 @@ def main():
               f'(JADPO_SKIP_POSTGRES is set): {", ".join(skipped)}')
     if args.export_corpus:
         export_corpus(corpus)
-    if args.freeze and not failed:
-        FROZEN.parent.mkdir(parents=True, exist_ok=True)
-        FROZEN.write_text(json.dumps({
-            'compiler': 'archive/compiler-v0',
-            'catalogue': catalogue,
-            'pages': {page.path.name: page.results for page in pages},
-        }, indent=1, sort_keys=True) + '\n')
-        print(f'froze {sum(len(p.results) for p in pages)} results to {FROZEN.relative_to(ROOT)}')
     # `--check` renders too, into a scratch folder, so a page the renderer
     # can't finish fails the gate rather than only `language_docs.py`.
     if args.check:

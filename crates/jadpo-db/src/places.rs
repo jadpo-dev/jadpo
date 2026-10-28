@@ -84,8 +84,7 @@ impl PackageHome {
     /// The key the app words its text under in the root translation
     /// files, its record and the translation commands: the folder's name,
     /// `postcodes`, or with the version, `postcodes_v3`, while two
-    /// versions are held side by side (area 11, "Wording two versions of
-    /// a package"; chunk 7.1c3).
+    /// versions are held side by side (area 11, "Two versions side by side, lazy loading and the package cache").
     pub fn wording_key(&self) -> String {
         if self.through == self.code {
             self.name.clone()

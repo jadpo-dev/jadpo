@@ -1,5 +1,5 @@
 //! What an operator sees and does with `jadpo deliveries` (area 12, "What
-//! an operator sees"; area 14, question 13; chunk 6.12): each delivery of
+//! an operator sees"; area 14, "Operator commands"; chunk 6.12): each delivery of
 //! an event to a subscriber, and each schedule's run, as an item with a
 //! state, and the actions that change one, each logged with who did it.
 //!

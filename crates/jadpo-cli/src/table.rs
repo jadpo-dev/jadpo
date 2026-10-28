@@ -195,7 +195,7 @@ pub const SHELLS: &[Value] = &[
     },
 ];
 
-/// What `jadpo migrate` does (area 14, question 4).
+/// What `jadpo migrate` does (area 14, "`migrate` commands").
 pub const MIGRATE_ACTIONS: &[Value] = &[
     Value {
         name: "new",

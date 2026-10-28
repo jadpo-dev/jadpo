@@ -43,7 +43,7 @@ pub enum Fact {
     /// from them; a field's own `read:` still applies.
     Fresh,
     /// The record was read as the parent an include follows a reference
-    /// to, which its lifecycle may hide (area 6, question 10): a
+    /// to, which its lifecycle may hide (area 6, "Hidden parents"): a
     /// membership read this way may not be current, so it proves no role.
     MaybeHidden,
 }

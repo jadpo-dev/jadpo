@@ -570,7 +570,7 @@ impl Body<'_> {
                 let table = jadpo_std::operation(&head, member);
                 let reach = table.map_or(Reach::Unknown, |operation| Reach::Std(operation.op));
                 // `random` reads the generator: an effect, only actions'
-                // (area 19, question 19).
+                // (area 19, "Randomness").
                 if table.is_some_and(|operation| operation.op.reads_generator()) {
                     let span = self.span(call);
                     self.random_read(span, &written);
@@ -640,7 +640,7 @@ impl Body<'_> {
         (Ty::Error, CallKind::Effect(written), Reach::Unknown)
     }
 
-    /// A call through a namespace that moved whole (area 19, question 6):
+    /// A call through a namespace that moved whole (area 19, "One namespace per type"):
     /// `collection.<name>` is reported with an edit to `list.`, `set.` or
     /// `map.`, by what its first value is, and checked as the operation it
     /// moved to where that one is built.
@@ -1684,7 +1684,7 @@ impl Body<'_> {
         );
     }
 
-    /// A count or a position is never negative (area 19, question 7),
+    /// A count or a position is never negative (area 19, "Cutting from either end"),
     /// checked as a divisor's zero is: a literal isn't below `0`, and a
     /// value's type has a `min` of at least `0`. So are `decimal.sqrt`'s
     /// value and `decimal.power`'s exponent (area 19, "Numbers").

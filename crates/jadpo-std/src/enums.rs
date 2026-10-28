@@ -50,8 +50,7 @@ std_enum! {
         HalfUp: "half_up",
         /// Away from zero.
         Up: "up",
-        /// Toward zero: the dropped digits are dropped (area 19, question
-        /// 25).
+        /// Toward zero: the dropped digits are dropped (area 19, "`Rounding.down`").
         Down: "down",
     }
 }
@@ -183,7 +182,7 @@ std_enum! {
 
 std_enum! {
     /// Which instant a local time takes when a zone's clocks change around
-    /// it (area 10, question 7): an `overlap` happens twice, a `gap` never.
+    /// it (area 10, "Time library and formatting"): an `overlap` happens twice, a `gap` never.
     /// Without `dst:`, or with `reject`, such a time is a failure the
     /// caller maps.
     Dst: "Dst" {
@@ -311,7 +310,7 @@ std_enum! {
 }
 
 std_enum! {
-    /// What a deployable is compiled for (area 14, question 14; decision
+    /// What a deployable is compiled for (area 14, "Deployables"; decision
     /// register 2026-10-13): `deployables: { api: { target: Target.wasm } }`.
     DeployTarget: "Target" {
         /// A native process on a server.
@@ -334,7 +333,7 @@ impl DeployTarget {
 
 std_enum! {
     /// The background work a deployable runs besides the routes it serves
-    /// (area 14, question 14): `runs: [Trigger.schedules,
+    /// (area 14, "Deployables"): `runs: [Trigger.schedules,
     /// Trigger.subscribers]`.
     Trigger: "Trigger" {
         /// The schedules, each entity's purge and each poll, on the tick.
@@ -421,8 +420,7 @@ std_enum! {
 }
 
 std_enum! {
-    /// Whether an API's writes need an `Idempotency-Key` (area 7, question
-    /// 17): every route but a `GET` honours one a client sends; an API
+    /// Whether an API's writes need an `Idempotency-Key` (area 7, "Idempotent writes"): every route but a `GET` honours one a client sends; an API
     /// that says `Idempotency.required` refuses a write without one.
     Idempotency: "Idempotency" {
         /// A client may send the key; the default.
@@ -606,8 +604,7 @@ std_enum! {
 }
 
 std_enum! {
-    /// Another code system a closed list is written in (area 19, question
-    /// 22): `text.parse`'s and `text.from`'s `form:`, beside the list's own
+    /// Another code system a closed list is written in (area 19, "Closed value sets are enums"): `text.parse`'s and `text.from`'s `form:`, beside the list's own
     /// code.
     CodeForm: "CodeForm" {
         /// Three letters: ISO 3166-1 alpha-3 for a country (`GBR`), ISO

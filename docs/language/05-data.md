@@ -2,7 +2,7 @@
 title: Data
 area: 5
 status: decided
-checked-with: this checkout's jadpo on every gate run (archived examples: v0 3ce094d0)
+checked-with: this checkout's jadpo on every gate run
 ---
 
 # Data
@@ -11,22 +11,23 @@ How a Jadpo program declares the records it keeps and how their schema
 changes. Reading and writing records is area 6; who may read or change one
 is area 9.
 
-> Decided on 2026-10-12. Built in chunk 3.1: entities, their fields, references, unique rules, indexes and stores, migrations and the test database; lifecycles in chunk 3.4. The examples marked `check` compile with this checkout's `jadpo`. Caches (with the Redis driver) and seeds come later, and their examples are proposals. The reasoning behind the store and cache rules is in [the stores and caching mapping](research/data-stores-and-caching-mapping.md); where it differs, this page wins.
+Caches, entities in Redis and seeds are not built yet, and their examples
+are proposals.
 
 Examples use the golden todo app's `planning` domain, plus a shop where Redis
 is needed.
 
 ## Stores
 
-Stores are connections declared in `app.jadpo` (area 11 merged area 5's
-`stores:` into one `connections:` block). Each store's driver is fixed in
-source, so every environment runs the same engine (D1 is on the roadmap).
+Stores are connections declared in `app.jadpo`, in its `connections:` block
+(area 11). Each store's driver is fixed in source, so every environment
+runs the same engine. A D1 driver is not built yet.
 Every entity lives in exactly one store, `main` unless its file says
 `store: name`; anything never saved is a `type`. An entity in Redis must
 declare its expiry ("Entities in Redis", below). An action writes to at
 most one store; work across stores goes through an event and a subscriber.
 
-**No database unless something needs one** (decided 2026-10-16, Richard).
+**No database unless something needs one.**
 An app that uses no database has none: no URL to configure, no
 migrations, nothing for `jadpo dev` to start. With no database declared,
 `main` on PostgreSQL is implied only once something needs a database. What
@@ -76,14 +77,11 @@ entity Order {
 
 A database connection's address is a setting of the type its driver needs,
 `url: config.database_url` with `database_url: PostgresUrl` in `config.jadpo`
-(area 10, built in chunk 5.1); `jadpo migrate apply` and `status` read it from
-the environment over `.env.local`, or take the database's URL with `--url`.
-The other settings of a connection come with area 11.
+(area 10); `jadpo migrate apply` and `status` read it from the environment
+over `.env.local`, or take the database's URL with `--url`. The other
+settings of a connection are area 11's.
 
 ### PostgreSQL over TLS
-
-> Decided on 2026-10-21 (Richard), as area 16 decides for SMTP. Built in
-> chunk 8.1n.
 
 A database connection always uses TLS, the server's certificate checked
 against Mozilla's root certificates compiled into Jadpo and for the name
@@ -134,8 +132,7 @@ the server, never retried as a database that is down for now. Each
 attempt at a server, from the socket to its being ready, waits at most
 the address's `connect_timeout`, or 10 seconds when it sets none (or 0,
 which libpq reads as forever), then the next host is tried; a deployable
-waiting for its database, or ticking, still stops at SIGTERM (chunk
-8.4d). `jadpo
+waiting for its database, or ticking, still stops at SIGTERM. `jadpo
 migrate`, `jadpo schedules`, `jadpo runs`, `jadpo deliveries` and `jadpo
 ai usage` reach a database as its connection says, with `--url` too.
 
@@ -281,9 +278,6 @@ check failed: 1 error, 2 files
 
 ### PostgreSQL through Hyperdrive
 
-> Chosen in chunk 8.2i (2026-10-21), each reversible; see Decisions,
-> "PostgreSQL through Hyperdrive".
-
 A Worker reaches PostgreSQL through Cloudflare's Hyperdrive, which keeps
 the connections to the database open between requests that a Worker,
 opening its own for each, can't. The connection names its binding through
@@ -314,7 +308,7 @@ with the id of the Hyperdrive configuration it is given in
   a write, and Jadpo's reads are current (area 6), so its configuration
   is created with caching off (`--caching-disabled`). A Worker can't see
   a configuration's caching, so `jadpo build` says so when it writes a
-  binding with no id, and the real deploy (chunk 8.2n) checks it.
+  binding with no id; checking it on a real deploy is not built yet.
 - **No session state.** Hyperdrive pools by transaction, so Jadpo's
   statements are unnamed, each transaction sets its isolation level in
   its own `BEGIN`, and leases are rows, never advisory locks, as on every
@@ -542,8 +536,7 @@ entity Story {
 They cannot mention other records or who is asking: that is policy (area 9),
 which keeps lifecycle conditions simple enough to become database indexes.
 
-Built in chunk 3.4, with these readings of the decisions above (recorded
-below):
+The details:
 
 - **Bare fields.** A lifecycle's conditions name the record's fields bare,
   as written above (`deleted_at`, not `Todo.deleted_at`); a qualified one is
@@ -568,18 +561,18 @@ below):
   record that is there; any other `when:` can, and its callers map that
   refusal in `conflict:` (area 6).
 - **Purge.** `after:` takes a duration written in place (`30d`) or a
-  `Duration` setting (`config.soft_delete_retention`, area 10, chunk 5.1),
+  `Duration` setting (`config.soft_delete_retention`, area 10),
   whose value the app started with. A record is purged once `visible:` doesn't hold and its
   `since:` field is older than the run's time less `after:`; each batch
   deletes at most 500 records, oldest first, in its own transaction.
   References that `cascade` and those `cleared` do what they do for any
   delete; a record a `restricted` reference holds, directly or through
   any chain of cascades (one that comes back to its own entity, a folder
-  inside a folder, followed as deep as the data goes, since chunk 3.10),
+  inside a folder, followed as deep as the data goes),
   stays until nothing holds it, and never stops the rest going.
   Purge is the compiler's own operation, outside every action and policy:
   the runtime's purge entry point runs it, and area 12's built-in hourly
-  purge schedule calls it (chunk 6.2c; area 12, "The purge schedule").
+  purge schedule calls it (area 12, "The purge schedule").
   Each run reports how many records each batch deleted, which the
   schedule logs.
 
@@ -604,28 +597,26 @@ entity Todo {
 }
 ```
 
-Built in chunk 3.1: an index is a list of fields; a `kind:` option is not
-built yet. Since chunk 5.5u4 an entry may be a block of `fields:` and
-`kind:`, and `kind: IndexKind.geographic` makes a GiST index on one
-geometry field ([area 20](20-geospatial.md), "Indexes"); since chunk
-5.5v1c `kind: IndexKind.hnsw`, with `m:` and `ef_construction:` for
-tuning, makes pgvector's HNSW index on one vector field
-([area 21](21-ai.md), "The index"); the other kinds come with their areas. Since chunk 3.2 the queries' indexes are derived: for each
-query, and each list it includes, the fields it always tests with `==` or
-`in`, then its order's fields, unless an index or unique key the table
-already has serves them; a reference's own index goes once a query's index
-starts with its column. Since chunk 3.4 the index a query of an entity with a
-lifecycle needs is partial, holding only the records `visible:` lets queries
-see (`WHERE "deleted_at" IS NULL`), unless `visible:` reads `clock.now`,
-which changes as time passes; a reference's own index then stays, since
-deleting the record it points at still finds hidden records.
-Since chunk 3.10 a text field a query sorts by is indexed in code-point
-order (`"title" COLLATE "C"`), the order a query sorts text in (area 6),
-so the sorted read uses the index; its name ends `_sorted_idx`, apart from
-an index on the same columns that tests them with `==`.
-Since chunk 5.5u5 a geometry field a `geo.` condition tests gets a GiST
-index, and a `Point` field a box filter tests one on the point cast to
-`geometry` ([area 20](20-geospatial.md), "Indexes").
+An index is a list of fields, or a block of `fields:` and `kind:`.
+`kind: IndexKind.geographic` makes a GiST index on one geometry field
+([area 20](20-geospatial.md), "Indexes"), and `kind: IndexKind.hnsw`, with
+`m:` and `ef_construction:` for tuning, makes pgvector's HNSW index on one
+vector field ([area 21](21-ai.md), "The index"); the other kinds are not
+built yet. The queries' indexes are derived: for each query, and each list
+it includes, the fields it always tests with `==` or `in`, then its
+order's fields, unless an index or unique key the table already has serves
+them; a reference's own index goes once a query's index starts with its
+column. The index a query of an entity with a lifecycle needs is partial,
+holding only the records `visible:` lets queries see
+(`WHERE "deleted_at" IS NULL`), unless `visible:` reads `clock.now`, which
+changes as time passes; a reference's own index then stays, since deleting
+the record it points at still finds hidden records. A text field a query
+sorts by is indexed in code-point order (`"title" COLLATE "C"`), the order
+a query sorts text in (area 6), so the sorted read uses the index; its name
+ends `_sorted_idx`, apart from an index on the same columns that tests them
+with `==`. A geometry field a `geo.` condition tests gets a GiST index, and
+a `Point` field a box filter tests one on the point cast to `geometry`
+([area 20](20-geospatial.md), "Indexes").
 
 A derived index records why it exists, the first query alphabetically
 that needs it, but the migration diff compares only what defines it: its
@@ -670,7 +661,7 @@ query category_page(category_id: Category.id, page: PageRequest) -> Page<Product
   change could affect. By default a change to a `Product` clears every cached
   result of every query that reads products: some extra database reads, but
   never a stale list. Clearing only the affected entries (for example the
-  category pages a product moved out of and into) is a later optimisation.
+  category pages a product moved out of and into) is not designed yet.
 - **Only pages read caches.** Reads inside actions, policy checks and
   authentication always read the database, so a decision is never made from
   a stale copy.
@@ -684,8 +675,8 @@ query category_page(category_id: Category.id, page: PageRequest) -> Page<Product
 - **Each entry is stored as one JSON value**, the same JSON the API sends, so
   every Jadpo type maps cleanly: money as `{"amount": 1250, "currency":
   "GBP"}`, large integers as strings, sets as arrays, enums tagged.
-  *Amended 2026-10-17 by area 19 (question 16):* money's one shape is its
-  minor units and its currency's code, here as on the wire.
+  Money's one shape is its minor units and its currency's code, here as on
+  the wire (area 19, "`Money` and the operator table").
 
 A record that lives in Redis rather than being copied there (a cart, a
 sign-up in progress) is an entity in a Redis store instead ("Entities in
@@ -695,8 +686,8 @@ are area 16's ("Caches: drivers and what they hold").
 
 ## Entities in Redis
 
-Decided 2026-10-16 (Richard), answering question 15. An entity may live in
-a Redis store, for data that is short-lived and harmless to lose. It must
+An entity may live in a Redis store, for data that is short-lived and
+harmless to lose (question 15). It must
 expire: `expires_after:` gives how long a record lives, measured from its
 last write, and expired records are hidden from every read and update as
 records `visible:` hides are (area 6).
@@ -750,8 +741,8 @@ on the record's own fields (area 6, "Entities in Redis"), and a
 `lifecycle:`, since expiry takes its place. A record
 is stored as one JSON value, the same JSON the API sends, like a cache
 entry. An `expires_after:` on an entity in a database, or a Redis entity
-without one, is a compile error. These are built with the Redis driver,
-after the first build.
+without one, is a compile error. Not built yet: these come with the Redis
+driver.
 
 ## Storage types
 
@@ -762,7 +753,7 @@ hold too. The database enforces types, required fields, keys and references;
 the application checks each field's own rules. Renaming an enum variant
 changes stored values, so it needs a migration.
 
-Built in chunk 3.10: each migration's snapshot records what every field
+Each migration's snapshot records what every field
 allows beyond its column type, an enum's variants and the field's bounds,
 lengths and patterns, so changing them is drift `jadpo check` reports like
 any other. A change that allows more (a variant added, a longer
@@ -772,8 +763,8 @@ needs a decision: `backfill:` gives the records already stored with a
 value the field no longer allows one it does, and the migration's SQL
 replaces exactly those. A new `pattern:` isn't built yet, since
 PostgreSQL's regular expressions aren't Jadpo's; `jadpo migrate new` says
-so. A snapshot written before chunk 3.10 didn't record these, so the next
-migration records them with nothing to decide.
+so. An older snapshot that doesn't record these has them recorded by the
+next migration, with nothing to decide.
 
 ```jadpo check project=narrowing file=app.jadpo hidden
 application {}
@@ -829,33 +820,29 @@ The migration's SQL is `UPDATE "parcel" SET "size" = 'medium' WHERE
 | `ZonedTime` (area 10) | two columns: `<field>_instant timestamptz(3)` and `<field>_zone text` holding its zone's code |
 | `Enum` with data, `Object`, `List`, `Set`, `Map` | `jsonb` |
 
-> Amended 2026-10-17 by area 19 (question 16, chunk 5.5h): a standard type
-> whose data entry lists named columns is stored in those, as `Money` is,
-> rather than as `jsonb`; the same mechanism takes later compound
-> standard types. A query doesn't compare or order by one yet.
->
-> Amended 2026-10-18 by area 19 (chunk 5.5w, "Every boundary through the
-> contract"): every standard object and choice type is stored in named
-> columns laid out from its parts, `<field>_<part>`, a part that may be
-> `none` a column that may be `NULL` (an amount of money in two, another
-> standard object in its own, a choice's variant's name in `<field>_kind`
-> and then each part its variants hold); a `ZonedTime` in
-> `<field>_instant` and `<field>_zone`; a range in PostgreSQL's range type
-> of its ends, a `LocalTime` in `time` and a `LocalDateTime` in
-> `timestamp` without a zone, each one column named for the field. Every
-> standard enum holds its code (`Europe/London`, `GET`), as `Currency`
-> does. A quantity's column carries a comment naming its kind and SI unit
-> (`Length in metres (m)`), and a rate type's fixed `from:` and `to:` get
-> check constraints, as a `Money` type's `currency:` does. Only the
-> standard collections (`RichText`, `RichTextBlock`, `LocalisedText`)
-> stay structured `jsonb`, holding their contract's JSON, which the route
-> codec writes and reads back (chunk 5.5w2b); a query doesn't compare
-> one yet.
->
-> Amended 2026-10-18 by area 20 (chunk 5.5u4, "Storage"): a geometry
-> (`Point` and the other five, or `Geometry`) is one PostGIS `geography`
-> column, untyped and held to its geometry type and to WGS84 by a check
-> constraint; the first migration with one creates the extension.
+A standard type whose data entry lists named columns is stored in those,
+as `Money` is, rather than as `jsonb` (area 19, "`Money` and the operator table", and "Every
+boundary through the contract"). Every standard object and choice type is
+stored in named columns laid out from its parts, `<field>_<part>`, a part
+that may be `none` a column that may be `NULL` (an amount of money in two,
+another standard object in its own, a choice's variant's name in
+`<field>_kind` and then each part its variants hold); a `ZonedTime` in
+`<field>_instant` and `<field>_zone`; a range in PostgreSQL's range type of
+its ends, a `LocalTime` in `time` and a `LocalDateTime` in `timestamp`
+without a zone, each one column named for the field. Every standard enum
+holds its code (`Europe/London`, `GET`), as `Currency` does. A quantity's
+column carries a comment naming its kind and SI unit
+(`Length in metres (m)`), and a rate type's fixed `from:` and `to:` get
+check constraints, as a `Money` type's `currency:` does. A query doesn't
+compare or order by a standard type stored in named columns yet. Only the
+standard collections (`RichText`, `RichTextBlock`, `LocalisedText`) stay
+structured `jsonb`, holding their contract's JSON, which the route codec
+writes and reads back; a query doesn't compare one yet.
+
+A geometry (`Point` and the other five, or `Geometry`) is one PostGIS
+`geography` column, untyped and held to its geometry type and to WGS84 by a
+check constraint; the first migration with one creates the extension
+(area 20, "Storage").
 
 **A stored value is checked when it is read,** by its field's validator,
 the one a write and a backfill check it by: the field's own rules, then
@@ -885,7 +872,7 @@ places, so ranges, lengths and patterns are the rules such a row breaks.
 No `CHECK` constraint holds them in the database yet. The check runs in
 the runtime's one read path (`jadpo_runtime::stored_value`), which both
 executors call; the plan gives each selected column its field's validator
-(`Select::held`, `Returned::held`). Built in chunk 5.9d.
+(`Select::held`, `Returned::held`).
 
 ### Structured values
 
@@ -897,7 +884,7 @@ codec, the route's, with the plan numbering the field's type in its JSON
 table. A set and a map's keys are written in their canonical order, and a
 variant without data as its name, as on the wire. PostgreSQL keeps
 `jsonb` in its own key order and spacing, so the text isn't byte for byte
-what was written, but it reads back `==`. Built in chunk 5.9b.
+what was written, but it reads back `==`.
 
 ```jadpo check project=structured-fields
 type Tag = Text {
@@ -992,12 +979,11 @@ up `"pickup"`, and its `weights` `{"box": {"value": "0.12", "unit": "kg"},
   the migration that rewrites stored values.
 - **Event payloads go through the same table.** Every event type is
   numbered in the plan's JSON table, by the identity key the outbox's
-  `event` column records (`JsonTable::events`), so the outbox (chunk
-  6.1b) writes and reads a payload through the one codec, with the type's
+  `event` column records (`JsonTable::events`), so the outbox writes and
+  reads a payload through the one codec, with the type's
   rules applied on read (area 12, "A payload is the contract's JSON"). No
   job takes arguments yet (a schedule's `run:` takes none); a batch's saved
-  values are numbered in the same table by their types (area 12, "Chosen
-  in chunk 6.4").
+  values are numbered in the same table by their types (area 12).
 
 **Migrating them.** Each migration's snapshot records what a JSON column's
 type reads (its `allows` holds `json`): the value's shape (a value built
@@ -1117,8 +1103,8 @@ and leaves the rest as they are.
   backfills: an earlier migration's check or rewrite with rows to read
   stops `jadpo migrate apply` (`Checking Parcel.label for <migration>
   needs the build it was written in`).
-- **A snapshot written before chunk 5.9c** recorded nothing of what a
-  JSON column read, so the next migration checks its stored values rather
+- **An older snapshot** that recorded nothing of what a JSON column read
+  has the next migration check its stored values rather
   than recording the type with nothing to do, since nothing shows that
   the values stored then read now; on an empty table the check reads
   nothing.
@@ -1127,9 +1113,6 @@ and leaves the rest as they are.
   line says `Checking Parcel.label in Jadpo  2000 of 5000 rows`; the
   result says `1200 rows checked in 2 batches in Jadpo` or `3 rows
   rewritten in 2 batches in Jadpo`, and `--json` gives each its `work`.
-
-Built in chunk 5.9c, tested against live PostgreSQL
-(`crates/jadpo-cli/tests/json_migrations.rs`).
 
 ## Migrations
 
@@ -1192,9 +1175,9 @@ migration {
 - **Renames keep their data**: the identity registry (area 18) records what
   each renamed thing was born as, and tables and columns keep the names they
   were born with, so renaming a field keeps its column. `jadpo rename`,
-  which writes the registry, comes with area 14's tooling; until then a
-  field renamed by hand reads as one removed and one added, and the removed
-  one's decision says so.
+  which writes the registry, is not built yet (area 14); a field renamed by
+  hand reads as one removed and one added, and the removed one's decision
+  says so.
 - **Decisions only where needed**: a value for existing rows of a required
   field, or retiring a field. Removing a field takes two migrations,
   `FieldChange.retired` (code stops using it, the column stays, now
@@ -1203,10 +1186,9 @@ migration {
   yet). Removing an entity, moving one between stores and changing a
   column's type other than widening it aren't built yet: `jadpo migrate
   new` says so.
-- **Backfills can be worked out** from each row's own fields (Richard,
-  2026-10-15), for a new field that reshapes data the entity already holds.
-  See "Computed backfills" below; built in chunk 5.6b where every
-  operation has a SQL form, and in Jadpo in chunk 5.6b2.
+- **Backfills can be worked out** from each row's own fields, for a new
+  field that reshapes data the entity already holds. See "Computed
+  backfills" below.
 - **Forgetting is caught at once**: `jadpo check` fails while the entities
   and the latest snapshot disagree, naming what changed and the command to
   run, so the editor, the build and CI all stop. Loose files, with no
@@ -1215,19 +1197,20 @@ migration {
   a transaction, one per store, and records each in the store's
   `jadpo_migrations` table; it refuses a database that applied a migration
   the project doesn't have or one that changed since. `jadpo migrate status`
-  lists the migrations and which a database has applied. Until
-  configuration gives each connection its URL (area 10), both take it with
-  `--url`. Since chunk 8.1o a native deployable built by `jadpo build`
-  refuses to start against a database that hasn't applied every migration
+  lists the migrations and which a database has applied. A native
+  deployable built by `jadpo build` refuses to start against a database that hasn't applied every migration
   it was built with, or applied one it doesn't have or that changed
   since, naming the store and the migrations (area 14, "A native
   deployable").
+- **The test database.** `jadpo test` gives each action test its own copy
+  of a template built from the migrations, on the server
+  `JADPO_TEST_DATABASE_URL` names or a disposable one, with copies
+  prepared in the background; `--keep-failed` keeps a failed test's.
 
 ### Computed backfills
 
 A backfill can be an expression over each row's own stored fields, so a
-migration can reshape data rather than only fill it with one value
-(Richard, 2026-10-15):
+migration can reshape data rather than only fill it with one value:
 
 ```jadpo check project=computed-backfill file=app.jadpo hidden
 application {}
@@ -1290,8 +1273,7 @@ migration {
   update's `set:` (area 6). The expression may use the entity's fields as
   they stand before this migration, including one this migration retires,
   constants and pure functions (`priorities` is a library, area 1). A
-  constant is a `constant` declaration (area 3, decided 2026-10-16, built
-  in chunk 5.3e), read through its library (`priorities.default_priority`).
+  constant is a `constant` declaration (area 3), read through its library (`priorities.default_priority`).
 - **What it may not read.** Another entity's field; a field the same
   migration adds, which no stored record has a value for yet; and a
   setting, directly or through a function it calls, a `crypto`
@@ -1451,10 +1433,6 @@ carried on from an earlier run; `--json` gives them as `backfills`, each
 with its `how` (`"in Jadpo"`). `jadpo migrate new` lists "fill existing
 rows in batches in Jadpo" for one worked out in Jadpo.
 
-Built: backfills by `UPDATE` in chunk 5.6b and in Jadpo in chunk 5.6b2,
-tested against live PostgreSQL (`crates/jadpo-cli/tests/backfills.rs`,
-`crates/jadpo-cli/tests/sql_forms.rs`).
-
 A migration's `postgres.sql` holds a section per store, each opened by a
 `-- store: <name>` line, and names every table, column, constraint and index
 as the snapshot does: a table after its entity's born name in
@@ -1474,12 +1452,12 @@ that holds an entity, since any of them can be written:
 
 | Table | Holds | Behaviour |
 |---|---|---|
-| `jadpo_outbox` | Each event an action emitted, with its trace context and how deep in a chain it is | Area 12, built in chunk 6.1b |
-| `jadpo_deliveries` | Each event's delivery to each subscriber: status, attempts, next attempt, last failure, and while a circuit breaker holds it, its connection and time held | Area 12, built in chunks 6.1b and 7.2b |
-| `jadpo_handled_deliveries` | Each delivery a subscriber's action handled, committed with its writes in the store it writes | Area 12, built in chunk 6.1b |
-| `jadpo_idempotency_keys` | Each idempotent request's key, digest and stored response | Area 7, built in chunk 4.2 |
-| `jadpo_operator_actions` | What an operator did to a delivery with `jadpo deliveries`: when, which action, the item and its state then, the operator's name and the database role | Area 12, built in chunk 6.12 |
-| `jadpo_circuit_breakers` | Each connection's circuit breaker over the deliveries beside it: its state, the run of failures, when it opened, its pauses and probe, and when its alert was raised | Area 12, built in chunk 7.2b |
+| `jadpo_outbox` | Each event an action emitted, with its trace context and how deep in a chain it is | Area 12 |
+| `jadpo_deliveries` | Each event's delivery to each subscriber: status, attempts, next attempt, last failure, and while a circuit breaker holds it, its connection and time held | Area 12 |
+| `jadpo_handled_deliveries` | Each delivery a subscriber's action handled, committed with its writes in the store it writes | Area 12 |
+| `jadpo_idempotency_keys` | Each idempotent request's key, digest and stored response | Area 7 |
+| `jadpo_operator_actions` | What an operator did to a delivery with `jadpo deliveries`: when, which action, the item and its state then, the operator's name and the database role | Area 12 |
+| `jadpo_circuit_breakers` | Each connection's circuit breaker over the deliveries beside it: its state, the run of failures, when it opened, its pauses and probe, and when its alert was raised | Area 12 |
 
 A subscriber's record that it handled a delivery goes in the store the
 subscriber writes, committing with its writes, and refers to no table in
@@ -1487,10 +1465,10 @@ another store (area 12, "Delivery: at least once, safe to repeat").
 The record of an action with several changing calls (`jadpo_step_records`:
 each run's key, action, build, step shape, first start, the generation
 of the runner holding it, whether it diverged and when the alert on
-unfinished records was raised for it, chunk 7.5f; and `jadpo_steps`: each
-step's operation, its request's fingerprint, when it was sent and its
-sealed answer; area 12, built in chunk 7.5b) goes in the store such an
-action writes, or `events: { store: }`'s, only where one is kept. Since chunk 9.1d2a a resumable single keyed
+unfinished records was raised for it; and `jadpo_steps`: each step's
+operation, its request's fingerprint, when it was sent and its sealed
+answer; area 12) goes in the store such an action writes, or
+`events: { store: }`'s, only where one is kept. A resumable single keyed
 changing call with an existing record store uses these tables for dispatch
 metadata only, with no request fingerprints or encrypted answers, so the
 provider's safe key window also bounds its retries (area 11, "Keys and
@@ -1498,19 +1476,19 @@ windows").
 
 Browser sessions and API tokens (`jadpo_sessions`: each one's user, the
 verifiers of its token and a browser session's CSRF token, and when it
-started and ends; area 8, built in chunks 4.3 and 4.3b) go only in the
+started and ends; area 8) go only in the
 store the principal's user entity lives in, and service keys
 (`jadpo_service_keys`: each key's service, its verifier, and when it was
-issued and expires; chunk 4.3b) only in the store its service entity lives
+issued and expires) only in the store its service entity lives
 in, since authentication reads a credential with its caller's record in
 one statement. Passkeys (`jadpo_passkeys`: each one's user, its
 credential ID, the user handle its device keeps and the
 `WebAuthnCredential` it is; and `jadpo_passkey_challenges`: each ceremony
 under way, by its challenge's verifier, with what it is bound to and when
-it expires; area 8, chunk 5.5z) and magic links
+it expires; area 8) and magic links
 (`jadpo_sign_in_requests`: one row per address, by its digest, with the
 latest link's and code's verifiers and the counts the limits read; area
-8, chunk 7.3b) go beside the sessions they start.
+8) go beside the sessions they start.
 Schedule state, each schedule's lease included, goes in the store
 `schedules: { store: }` names in `app.jadpo`, or the only store when there
 is one (area 12): `jadpo_schedules` (each schedule's next due time, lease
@@ -1518,39 +1496,34 @@ and last tick) and `jadpo_schedule_runs` (each run and skipped tick),
 created when a schedule is declared, with `jadpo_operator_actions` for
 what operators did to those runs. Other features that only keep state
 name their store the same way (`flags: { store: main }`), and with
-several stores a missing one is a compile error naming the feature. The
-runtime
-state decided on 2026-10-16 (multi-step call records and batch runs beside
-the outbox, OAuth grants, poll state, and webhook and queue
-de-duplication) follows the same rules and is always in a database, never
+several stores a missing one is a compile error naming the feature. Other
+runtime state (multi-step call records and batch runs beside the outbox,
+OAuth grants, poll state, and webhook and queue de-duplication) follows the same rules and is always in a database, never
 a cache (area 16). Every store holding runtime state also keeps `jadpo_housekeeping`, the
-owner, lease and last completed hourly cleanup pass (area 12; chunk
-9.1b2), including a store holding only AI usage. It is generated and
+owner, lease and last completed hourly cleanup pass (area 12), including a store holding only AI usage. It is generated and
 migrated with the other system tables. The manifest
 holds a `system_table` node for each, and `jadpo_migrations`, which
 `jadpo migrate apply` keeps, is the runtime's own and in no snapshot.
 A system table that keeps a value beyond a request, the outbox's payload,
-a passkey's credential and a batch run's saved values and `key:`
-(chunk 6.8), records the encoding it was written in, an
+a passkey's credential and a batch run's saved values and `key:`, records the encoding it was written in, an
 `encoding` `smallint`, so a later release reads it by the form it has
 (area 19, "Changing a standard type's encoding"). The runtime always
 writes one, but the column may be `NULL`, for a row kept before encodings
 were recorded: a migration adds it to a table that may hold rows already,
 with no default, so the same column is the same everywhere. A passkey
-with none is read in the form passkeys were first kept in (chunk 5.5z).
+with none is read in the form passkeys were first kept in.
 A project whose migrations predate the column takes one migration adding
 it when `jadpo check` asks (`migration.out_of_date`).
 
-> Built in chunk 6.8: each system table is defined once, in
-> `jadpo_std::system`, which the checker turns into each store's tables
-> and the runtime's statements are written against; a name no table has
-> is no table, never another. `jadpo_runtime::statements` lists every
-> statement the runtime runs on them, a test fails when one in its source
-> isn't listed, and a live test prepares each on PostgreSQL against the
-> tables a migration makes, so a statement and its table can't drift
-> apart unseen. Statements a plan builds on a system table with an
-> application's own, a session read with its user's record, are the
-> plan's and are tested with it.
+Each system table is defined once, in `jadpo_std::system`, which the
+checker turns into each store's tables and the runtime's statements are
+written against; a name no table has is no table, never another.
+`jadpo_runtime::statements` lists every statement the runtime runs on
+them, a test fails when one in its source isn't listed, and a live test
+prepares each on PostgreSQL against the tables a migration makes, so a
+statement and its table can't drift apart unseen. Statements a plan builds
+on a system table with an application's own, a session read with its
+user's record, are the plan's and are tested with it.
 
 ## Seeds
 
@@ -1599,7 +1572,7 @@ action complete_todo(todo_id: Todo.id) fails TodoNotFound -> Todo {
 ## Errors
 
 Every error this area can produce, with an example that triggers it and the
-new compiler's actual output; the errors of reading and writing records,
+compiler's actual output; the errors of reading and writing records,
 including a write to a field a lifecycle owns, are area 6's. An example's hidden
 files and the migrations its `jadpo migrate new` steps write are in the
 page's source.
@@ -1679,8 +1652,7 @@ check failed: 1 error, 1 file
 
 A structured field is stored as its type's JSON, so everything inside it
 has a stored form: no event, failure, email, message, prompt, `Input` or
-`Output`, and no map keyed by a type with no single text form (chunk
-5.9b).
+`Output`, and no map keyed by a type with no single text form.
 
 ```jadpo check project=e-field-without-json expect=data.field_without_json
 type Tag = Text {
@@ -3019,253 +2991,82 @@ check failed: 1 error, 4 files
 
 ### Status
 
-Built in chunk 3.1 (run, with the examples above and `crates/jadpo-check`,
-`jadpo-graph` and `jadpo-cli`'s tests):
-
-- **Entities** are checked as decided: the `id` (a required `Uuid`), each
-  field's column type, `generated:`, `unique: true`, references with a
-  required `on_delete:`, cycles of required references, compound `unique:`
-  rules, `indexes:`, `store:` against `app.jadpo`'s connections (with `main`
-  on PostgreSQL implied when none is a database), and the names the
-  database keeps. The manifest holds a node for each entity's placement,
-  unique rule, index and reference, with `references` edges between
-  entities, and one for each system table and migration snapshot.
-- **Migrations**: `jadpo migrate new` writes the snapshot, the SQL and the
-  decisions to make, and finishes the migration once they are written;
-  `jadpo check` fails on drift and on a migration still waiting for its
-  decisions; `jadpo migrate apply` and `status` run against the database
-  `--url` names. Adding entities, fields, unique rules, indexes and
-  references, backfilling required fields, retiring removed fields and
-  widening whole-number and decimal columns are migrated.
-- **The test database**: `jadpo test` gives each action test its own copy
-  of a template built from the migrations, on the server
-  `JADPO_TEST_DATABASE_URL` names or a disposable one, with copies
-  prepared in the background; `--keep-failed` keeps a failed test's.
-
-Built in chunk 8.1n: **PostgreSQL over TLS**, as its section under Stores
-says: the SSL request and the host's TLS upgrade in the driver, checked
-against servers on this machine the tests start, one with a certificate
-an authority the test makes signed.
-
-Built in chunk 8.2i: **PostgreSQL through Hyperdrive**, as its section
-under Stores says, proved under workerd's Hyperdrive binding against the
-run's PostgreSQL; a direct connection's TLS through `startTls()` and its
-refused certificate proved under workerd against servers the test starts.
-
-Built in chunk 3.4: **lifecycles**, as the Lifecycle section says. Each
-lifecycle and transition is a node in the manifest (`lifecycle Todo`,
-`transition Todo.delete`, with its `when:`, whether it can refuse a record
-and the fields it sets); `visible:` joins every query, `get`, update,
-delete and transition at one place in the plan; queries' indexes are
-partial; and purge is one statement per batch, run by the runtime's purge
-entry point, tested against live PostgreSQL with cascades, restricted
-references and batches (`crates/jadpo-cli/tests/lifecycle.rs`).
-
-Built in chunk 5.6b: **computed backfills** whose every operation has a
-SQL form, checked as a body of their own and written as batches of one
-`UPDATE` each, then made required; a run stopped between batches leaves
-the column consistent and the next carries on, tested against live
-PostgreSQL (`crates/jadpo-cli/tests/backfills.rs`), with the operators'
-and conditionals' forms tested against the runtime beside the standard
-operations' (`crates/jadpo-cli/tests/sql_forms.rs`). A backfill for a
-field that allows less is refused as not built yet. Built in chunk
-5.6b2: a backfill with an operation that has no SQL form is worked out in
-Jadpo by `jadpo migrate apply`, in the same batches, transactions and
-resume marker, with values identical to the runtime's, tested against
-live PostgreSQL in the same file.
-
-Built in chunk 5.9b: **structured values stored as JSON**, through the
-route codec and read back with their rules ("Structured values"). Built in
-chunk 5.9d: **every stored value is checked on read** by its field's
-validator, in the runtime's one read path.
-
-Built in chunk 5.9c: **structured values stored as JSON are migrated.**
-The snapshot records what each JSON column's type reads; a change that
-only widens it runs nothing, and one that may read less checks every
-stored value in batches and is refused while any doesn't read, or
-rewrites those with a `backfill:`; a required structured field added to a
-table with rows takes a `backfill:`, written through the codec. Tested
-against live PostgreSQL (`crates/jadpo-cli/tests/json_migrations.rs`).
+Built: entities, their fields, references, unique rules, indexes and
+stores; migrations, computed backfills and the test database; PostgreSQL
+over TLS and through Hyperdrive; lifecycles; structured values stored as
+JSON, and their migrations; and the check of every stored value on read.
+The manifest holds a node for each entity's placement, unique rule, index
+and reference, with `references` edges between entities, one for each
+system table and migration snapshot, and one for each lifecycle and
+transition (`lifecycle Todo`, `transition Todo.delete`, with its `when:`,
+whether it can refuse a record and the fields it sets).
 
 Not built yet, and said so where it is used (`toolchain.not_built_yet`):
 
 - Removing an entity, moving one between stores, dropping a retired column
   (it needs acceptances, area 18) and other column type changes, in
-  `jadpo migrate new`.
-- Entities in Redis (`expires_after:`, decided 2026-10-16, question 15),
-  record caches (`caches:`), and indexes with a `kind:` option. A database
-  implied only when something needs one (question 14, revised 2026-10-16)
-  comes with the first feature that can run without one.
-- Seeds and `jadpo seed` are not built. An entity's `policy:` and
-  `membership:` are area 9's, built in chunk 4.4.
-- `jadpo rename`, which writes the identity registry (area 18), comes with
-  area 14's tooling; until then a field renamed by hand reads as one
-  removed and one added.
-- Each connection's URL comes from configuration (area 10); until then
-  `jadpo migrate` takes it with `--url`; the application's refusal to
-  start against a database that doesn't match came with the native
-  deployable (chunk 8.1o).
+  `jadpo migrate new`; a worked-out backfill for a field that allows less.
+- Entities in Redis, record caches (`caches:`), and index kinds other than
+  geographic and HNSW. A database implied only when something needs one
+  (question 14) comes with the first feature that can run without one.
+- Seeds and `jadpo seed`.
+- `jadpo rename`, which writes the identity registry (area 14).
+
+An entity's `policy:` and `membership:` are area 9's.
 
 ### Carried to later areas
 
 | Item | Area | Status |
 |---|---|---|
-| Reading and writing records: `query`, `create`, `update`, `patch`, `delete`, includes by the child's reference (question 6), `transition:` in an update, conflict mapping by unique rule name, mutation ownership (`data.mutation_owner_required`), `freshness`, `consistency` and `guard` (`data.*_freshness*`, `data.consistency_*`, `data.mutation_guard_invalid`, `data.value_receiver_guard_required`, `data.raw_query_outside_named_query`, `data.atomic_domain_mismatch`) | 6 | Input to area 6 |
+| Reading and writing records: `query`, `create`, `update`, `patch`, `delete`, includes by the child's reference (question 6), `transition:` in an update, conflict mapping by unique rule name, and concurrent changes (area 6, "All-or-nothing actions and concurrent changes") | 6 | Input to area 6 |
 | Reading from a cache or projection (question 3) | 6 | Input to area 6 |
-| Whether children are hidden when their parent is soft-deleted; today they stay visible and a required include of a hidden parent reads as missing | 6, 9 | Open |
+| Whether children are hidden when their parent is soft-deleted; they stay visible, and a required include of a hidden parent reads as missing | 6, 9 | Open |
 | Field-level policy in the field's block (`role:`, `immutable:`, `policy: { }`), entity `policy: { }`, `membership`, and purge as a compiler-only authority | 9 | Input to area 9 |
-| Persisting presentation text (`type.presentation_text_persistence`) and `Instant` precision | 10 | Built: milliseconds in chunk 5.2, and an entity field holding `PresentationText` refused in chunk 5.2b |
+| Persisting presentation text (`type.presentation_text_persistence`) and `Instant` precision | 10 | Built: milliseconds, and an entity field holding `PresentationText` refused |
 | Scheduling the purge worker | 12 | Input to area 12 |
 | Test fixtures versus seeds | 13 | Input to area 13 |
 | `migration.*` rules raised only by `jadpo schema` commands (snapshot, diff, decision, plan and SQL errors, registry read and write failures, `migration.identity_registry_missing`, `migration.identity_registry_exists`, `migration.identity_additions_have_removal`, rename errors), `index.accept_*` and `index.recommendation_*` other than the check warning, `cli.schema_*`, and `toolchain.target_store_not_implemented` (raised by `jadpo build`); none can be triggered by `jadpo check` on source | 14 | Input to area 14 |
 | The `jadpo migrate` and rename commands themselves (question 11) | 14 | Input to area 14 |
-| GDPR support as its own review: personal-data marking on fields, erasure across every store and cache, export of everything held about a person, retention, and a build report of where personal data lives (Richard: strong out-of-the-box compliance helps adoption) | 15 | Moved to area 15 |
-
-### Open questions
-
-1. **Is the identity always one generated field called `id`?** *Decided
-   2026-10-12:* yes: `id`, based on `Uuid`, generated as version 7 on create
-   (or the version its named type pins), never supplied by a caller; only
-   seeds and migration backfills may set one. No compound identity: a
-   many-to-many link is its own entity with a compound unique rule. Mapping
-   an existing database with composite keys is out of scope.
-2. **Is every entity stored in the application's database?** *Decided
-   2026-10-12:* every entity lives in exactly one declared store, `main`
-   unless its file says `store: name`; the `persistence` block goes; anything
-   never saved is a `type`; an entity in an engine that can lose data (Redis)
-   must declare an expiry. An action writes to at most one store; work across
-   stores goes through an event and a subscriber.
-3. **Keep `cache` and `projection` before any store can run them?** *Decided
-   2026-10-12:* today's syntax is removed. Caches return with the Redis
-   adapter: record, query result and computed caches beside what they copy,
-   derived keys including tenant and policy inputs, compiler-driven
-   invalidation, a required `keep:` of at most a day. Projections return with
-   the first search, graph or edge engine. Display reads from routes may use
-   caches; reads inside actions, policy and authentication never do. Erasing
-   personal data wipes its cached copies immediately.
-4. **How are compound unique rules written?** *Decided 2026-10-12:* a named
-   list in the entity's `unique: { }` section, `tenant_owner: [tenant,
-   owner_email]`; the name stays because conflict mapping refers to it.
-5. **Is every field typed `X.id` a reference, with `on_delete:` required?**
-   *Decided 2026-10-12:* yes: the compiler creates the foreign key and index,
-   `on_delete:` goes in the field's block with no default, and the `as:` name
-   goes.
-6. **Should a parent declare its children?** *Decided 2026-10-12:* no: a
-   query includes children by naming the child's reference field, and gets a
-   list, or at most one record when that field is unique. Area 6 settles the
-   include syntax.
-7. **Keep the lifecycle general, in the colon form?** *Decided 2026-10-12:*
-   yes: `visible:`, `transitions: { delete: { when: ... set: { } } }` and
-   `purge: { after: ... since: ... }`, with no soft-delete shorthand for now.
-8. **How are structured fields stored, and which column types?** *Decided
-   2026-10-12:* each store uses its engine's native column types (on
-   PostgreSQL `uuid`, `numeric`, `timestamptz`, `jsonb`, integer widths from
-   declared ranges); structured fields are `jsonb`; caches and Redis entities
-   store the same JSON as API responses.
-9. **Who decides indexes?** *Decided 2026-10-12:* the compiler creates every
-   index its named queries need, multi-column ones included, and lists each
-   with the query that needs it. Lookups outside the application use
-   `indexes: { by_tenant_created: [tenant, created_at] }`; special kinds
-   (full-text, JSON, partial, geographic) take a `kind:` option where the
-   store supports it; a partial index for `visible:` is derived. Every index
-   change appears in its migration, and the build includes a schema report.
-   The recommendation warning and the source-editing command go.
-10. **Do entity operations need a `self` receiver?** *Decided 2026-10-12:* no.
-    Parameters are ordinary (`todo: Todo` for a snapshot, `todo_id: Todo.id`
-    for a reference) and written actions are called by name,
-    `complete_todo(todo_id)`. `self: ref`, `self: value`, `Todo.Ref` and
-    `guard:` go.
-11. **How are migrations created and applied?** *Decided 2026-10-12:*
-    `jadpo migrate new <purpose>` writes the next migration, one per store;
-    `jadpo check` fails while source and the latest migration disagree;
-    `jadpo migrate apply` runs pending migrations as a deploy step, each in a
-    transaction, and the application refuses to start against a database
-    that does not match; moving an entity between stores needs explicit
-    acceptance.
-12. **What does removing data need?** *Decided 2026-10-12:* two migrations:
-    `retire` (the code stops using it, the column stays), then `drop` in a
-    later one, shown in the approval review. Removing an entity works the
-    same way.
-13. **What is a seed, and can it run in production?** *Decided 2026-10-12:* a
-    `seed { }` file in `database/seeds/` that creates data by calling the
-    application's own actions; `jadpo seed <name>` refuses a production
-    database. Reference data production needs is a migration backfill.
-14. **Where is the database itself declared?** *Decided 2026-10-12:* in
-    `app.jadpo`, `application { stores: { main: { engine: Engine.postgres url:
-    config.database_url } } }`, with `main` on PostgreSQL implied when nothing
-    is declared; each store's engine is fixed in source, so every environment
-    uses the same engine. D1 is on the roadmap.
-    *Revised 2026-10-16 (Richard):* no database is required unless
-    something uses one; the implied PostgreSQL `main` becomes "only when
-    needed", and where a feature needs a database and none can hold it,
-    `jadpo check` is an error naming the feature (sign-in, events and the
-    outbox, idempotency keys, webhook de-duplication, flags, audit, any
-    database entity).
-15. **How is a Redis entity's expiry written?** (carried from area 6) An
-    entity in Redis must declare an expiry, and area 6 has expired records
-    hidden from queries and updates like `visible:`, but this page gives the
-    `expiry:` setting no syntax. What does it look like, and where does it go?
-    *Decided 2026-10-16 (Richard):* `expires_after: 2h` on the entity,
-    beside `store:`, measured from the record's last write, expired records
-    hidden as area 6 says. A Redis entity supports get, create, update and
-    delete by `id`, lookup by a `unique:` field, listing and counting by
-    equality on one field in `indexes:` (pages in creation order), and
-    concurrent-change checks through a revision; anything else is a compile
-    error naming PostgreSQL.
-16. **A `lifecycle { }` block on an entity written `id: Uuid identity` is
-    silently ignored today** (carried from area 8). Does it need its own fix?
-    *Recommendation:* no; it is moot once the rework lands, because the
-    trailing `identity` form goes.
+| GDPR support as its own review: personal-data marking on fields, erasure across every store and cache, export of everything held about a person, retention, and a build report of where personal data lives, since strong out-of-the-box compliance helps adoption | 15 | Moved to area 15 |
 
 ### Decisions
 
-Decided by Richard on 2026-10-12. Built in chunk 3.1 except where Status says otherwise.
-
-| Topic | Decision | Date |
-|---|---|---|
-| PostgreSQL over TLS | A database connection always uses TLS, checked against Mozilla's root certificates compiled in, except to this machine (a Unix socket, `localhost`, `127.0.0.1`, `::1`); a connection may name a `Certificate` setting holding its server's private authority (Amazon RDS, Cloud SQL); a server elsewhere without TLS is reached only when the connection says so in `app.jadpo`, which the review report lists; `sslmode` in the URL is refused, since the connection decides; as area 16 decides for SMTP (Richard; built in chunk 8.1n: the authority is `authority: config.<name>`, a setting of area 19's `Certificate`, one certificate read from its PEM, trusted alone and used to this machine too but over a Unix socket; the opt-out is `tls: false`, listed in the network report, chosen as the narrowest form, a word written in source and never a setting; a local server is reached without TLS rather than offered it, since a local server's own certificate, Debian's snakeoil among them, would fail the check) | 2026-10-21 |
-| PostgreSQL through Hyperdrive | Chosen in chunk 8.2i, each reversible; no TLS from the Worker to Hyperdrive and TLS to the database left to Hyperdrive accepted by Richard (2026-10-21): on Workers a database connection's address setting's variable names a Hyperdrive binding, so a connection names its binding through `url:` and `app.jadpo` gains nothing (a text binding of that name stays a direct address); the Worker reaches Hyperdrive without TLS, since the binding's address says `sslmode=disable` and its socket offers none (verified in workerd 1.20261007.1; on Cloudflare's network an inference chunk 8.2n checks), and TLS to the database is Hyperdrive's: by default checked against the public authorities, a private `authority:` uploaded to Hyperdrive with `--sslmode verify-full`; the roadmap's TLS through `startTls()` applies to a direct connection only; caching off (`--caching-disabled`) is required and stated, since a Worker can't see it; `jadpo build` writes the binding with the id `JADPO_HYPERDRIVE_<variable>` gives, or without one, which `wrangler deploy` refuses | 2026-10-21 |
-| Layout | Carried from area 1: an entity lives in its own file under its domain's `entities/` folder; `database/` holds `identities.json` (one sorted entry per line), timestamped migration folders and `seeds/` | 2026-10-12 |
-| Keyword | Carried from area 4: a declaration with its own folder keeps its keyword (`entity`); anything in `types/` is a `type` | 2026-10-12 |
-| Field settings | Carried from area 2: a field's settings go in a block after its type, one per line, including entity facts (`unique`, `generated`, the reference); only `Input` has `optional` and `default` | 2026-10-12 |
-| Colon rule | Carried from area 3: entity sections are `name: { ... }` (`lifecycle: { }`, `policy: { }`) | 2026-10-12 |
-| Setting options and lists | Carried from area 2: closed options are lower_snake_case names (`on_delete: restrict`); lists are `[ ]` (Superseded 2026-10-12: options are written `Type.value`; see area 2 question 17.) | 2026-10-12 |
-| UUID versions | Carried from area 2: new identities are version 7; a named type can pin another version | 2026-10-12 |
-| Building types | Carried from area 2: `type X = Output { include: [...] pick: [...] omit: [...] }` read top to bottom; no `include` on an `Input`; generated fields never in an `Input` | 2026-10-13 |
-| Calls and settings | Carried from areas 1 and 3: the dot names the owner (`Todo.get(id)`); actions have no settings and every write checks for concurrent change | 2026-10-12 |
-| Mapping form | Carried from area 4: write conflicts map with `condition: Failure`, a hidden record reports the same `not_found` failure | 2026-10-12 |
-| Identity | One field `id`, `Uuid`, generated as version 7, never supplied by callers; no composite identity: many-to-many links are entities with their own `id` and a compound unique rule | 2026-10-12 |
-| Stores | Every entity lives in one declared store (`main` by default); no `persistence` block; never-saved things are types; Redis entities declare an expiry; an action writes at most one store | 2026-10-12 |
-| Cache outages | Every cache degrades gracefully: an unreachable cache never fails a request; reads fall back to the database after a short timeout; failed clears are retried, bounded by `keep:`; readiness ignores caches (Richard) | 2026-10-12 |
-| Caches | Today's syntax removed; record, query-result and computed caches return with Redis, beside what they copy; derived keys including tenant and policy inputs; compiler-driven invalidation; required `keep:` up to a day; display reads only; erasure wipes cached copies immediately | 2026-10-12 |
-| Compound unique rules | A named list in the entity's `unique: { }` section, `tenant_owner: [tenant, owner_email]`; the name is used by failure mapping | 2026-10-12 |
-| References | Any field typed `X.id` is a reference: the compiler creates the foreign key and index; `on_delete:` is required in the field's block with no default; no `as:` name | 2026-10-12 |
-| Inverses | Parents do not declare children; a query includes children by naming the child's reference field (syntax in area 6) | 2026-10-12 |
-| Lifecycle form | The general lifecycle stays, in the colon form (`visible:`, `transitions:`, `purge: { after: since: }`); no soft-delete shorthand for now | 2026-10-12 |
-| Storage types | Native column types per engine; structured fields as `jsonb`; caches use API JSON | 2026-10-12 |
-| Indexes | Derived from named queries, including multi-column; `indexes: { name: [fields] }` for outside lookups; special kinds via a `kind:` option when the store supports it; indexes shown in migrations and in a generated schema report | 2026-10-12 |
-| Receivers | No `self`; ordinary parameters (`todo: Todo`, `todo_id: Todo.id`) and written actions called by name, such as `complete_todo(todo_id)`; `Todo.Ref` and `guard:` go | 2026-10-12 |
-| Migration workflow | `jadpo migrate new` / `apply`, one migration per store, check fails on drift, app refuses a mismatched database, moving stores needs acceptance | 2026-10-12 |
-| Removing data | Two migrations: retire (code stops using it, column stays), then drop; a drop needs explicit acceptance (the shared mechanism carried to area 7) | 2026-10-12 |
-| Seeds | `database/seeds/` files create data through the application's own actions and refuse to run against production; reference data production needs is a migration backfill | 2026-10-12 |
-| Store declaration | Stores declared in `app.jadpo`; PostgreSQL `main` implied; same engine in every environment; D1 on the roadmap (Revised 2026-10-16: `main` implied only when something needs a database; an error naming the feature where one is needed and none can hold it) | 2026-10-12 |
-| Query placement | Every query lives in its domain's `queries/` folder, one per file, whatever it reads; entity files hold the data definition; generated operations (`Todo.get`, create, update, delete) stay on the entity; a query's cache sits in its file (Richard, after scenarios) | 2026-10-12 |
-| Action placement | Every action lives in its domain's `actions/` folder, one per file; written actions are called by name (`complete_todo(todo_id)`); generated operations stay on the entity (Richard) | 2026-10-12 |
-| Generated fields | `generated: Generated.on_create` (set once when created) or `Generated.on_change` (set when created and on every change) (Richard) | 2026-10-12 |
-| Redis entity expiry syntax | `expires_after:` on the entity, measured from the last write, required on a Redis entity and refused elsewhere; expired records hidden; get, create, update and delete by `id`, lookup by a `unique:` field, listing and counting by equality on one indexed field in creation order, revision checks; anything else a compile error naming PostgreSQL (Richard) | 2026-10-16 |
-| `lifecycle { }` ignored on `id: Uuid identity` | | |
-| Lifecycle conditions | `visible:` and `when:` may use comparisons, `and`, `or`, `none` checks and `clock.now` on the record's own fields; never other records or the caller (Richard) | 2026-10-12 |
-| Cache configuration | Opt-in: `caches: { records: { store: keep: } }` on an entity, `cache: { store: keep: }` on a query; by default a change clears every cached result reading that entity; precise clearing later; entries are one JSON value each (Richard) | 2026-10-12 |
-| Stores for system features | Never assumed (Richard, 2026-10-13): there may be no database or several. A feature that only needs somewhere to keep state names its store explicitly (`flags: { store: main }`, `schedules: { store: main }`, `sessions:`, `privacy:`, access records, the erasure log); a missing one is a compile error naming the feature. Tables that must commit with the action's own writes (event outbox, delivery records, idempotency keys, audit history) go in each store that actions write to, placed by the compiler for correctness; the build report lists where every system table lives | 2026-10-13 |
-| System tables | Tables the runtime needs (schedule state, event outbox, delivery records, idempotency keys, sessions) are generated, prefixed `jadpo_`, and part of the migration snapshots like any entity; drift in them fails `jadpo check` (Richard, from area 12) | 2026-10-13 |
-| Migration snapshots | Each migration folder holds a generated `snapshot.json`, generated SQL and `changes.jadpo` only for decisions; the compiler diffs consecutive snapshots; `jadpo check` fails with the command to run when entities and the latest snapshot disagree (Richard) | 2026-10-12 |
-| Table names | A table is named after its entity's born name in singular snake_case (`Todo` → `todo`, `LoanRecord` → `loan_record`), never pluralised: no English inflection rules to get wrong, and the code and the database use the same word. Built in chunk 3.1 (Richard) | 2026-10-14 |
-| Lifecycle conditions on bare fields | Chosen in chunk 3.4: `visible:` and `when:` name the record's fields bare, as this page writes them; `in` and `not` aren't among the decided operators | 2026-10-15 |
-| What a lifecycle owns | Chosen in chunk 3.4: every field a transition sets or `initial:` gives changes only through transitions; a new record takes its `initial:` value or `none`, and a required field a transition sets needs one; `set:` and `initial:` values are literals, enum values, `none` and `clock.now` | 2026-10-15 |
-| Deleting a record with a lifecycle | Chosen in chunk 3.4: `delete` runs the `delete` transition; with none, code can't delete the record, nor remove one whose delete would cascade to an entity with a lifecycle; only purge removes them | 2026-10-15 |
-| Purge's period and batches | Chosen in chunk 3.4: `after:` takes a duration in place, or a `Duration` setting (chunk 5.1; `jadpo_runtime::purge_after` is given its value); a batch deletes at most 500 hidden records, oldest `since:` first, each batch its own transaction; a record a `restricted` reference holds stays without stopping the rest; the runtime's entry point runs it, area 12's hourly schedule calls it (chunk 6.2) | 2026-10-15 |
-| Partial indexes | Chosen in chunk 3.4: the indexes an entity's queries need hold only the records `visible:` lets through, unless it reads `clock.now`; a reference's own index stays beside a partial one | 2026-10-15 |
-| Computed backfills | `backfill:` may be an expression over each row's own stored fields (`Todo.legacy_flag`), constants and pure functions, including a field this migration retires; filled in batches, one `UPDATE` each where the expression has a SQL form and by `jadpo migrate apply` otherwise, then made required; no freeform SQL (Richard, from an outside review). Built in chunk 5.6b where every operation has a SQL form, and in Jadpo in chunk 5.6b2; batches, locking, the resume marker, failing rows, progress and working one out in Jadpo are under "Computed backfills", and the Phase 5 review's fixes (constructions rounded as the runtime rounds, the digest's types, what it may read, every backfill filled before any column is required, a last step that proves a check before `SET NOT NULL`) are there too | 2026-10-15 |
-| Redis entity updates | Updates by `id` include counters, done as one Redis `increment`; no lifecycles on a Redis entity, expiry taking their place (decided for Richard) | 2026-10-16 |
-| A field's rules on read (after chunk 5.8c) | A stored value is checked against every rule its field's type has when it is read, not only a standard type's rules across its parts: a row written around Jadpo that breaks one is a defect naming the rule and never the value, as 5.8c and 5.9b do; `CHECK` constraints may follow (Richard, as recommended). Built in chunk 5.9d, as "Storage types" says | 2026-10-19 |
-| Connecting, and a statement that may have run (chunk 8.4d) | An attempt at a server waits the address's `connect_timeout`, or 10 seconds when it sets none or 0, stricter than libpq's forever; an autocommitted statement whose connection dropped after any of it was written is `unavailable` to its caller, never sent again by the driver, since the server may have committed it (decided 2026-10-22) | 2026-10-22 |
+| Topic | Decision |
+|---|---|
+| Identity (question 1) | One field, `id`, based on `Uuid`, generated as version 7 on create (or the version its named type pins), never supplied by a caller; only seeds and migration backfills may set one. No compound identity: a many-to-many link is its own entity with a compound unique rule. Mapping an existing database with composite keys is out of scope |
+| Stores (question 2) | Every entity lives in exactly one declared store, `main` unless its file says `store: name`; anything never saved is a `type`; an entity in an engine that can lose data (Redis) declares an expiry. An action writes to at most one store; work across stores goes through an event and a subscriber |
+| Caches (question 3) | Record, query-result and computed caches beside what they copy, with the Redis driver: derived keys including tenant and policy inputs, compiler-driven invalidation, a required `keep:` of at most a day. Projections come with the first search, graph or edge engine. Display reads from routes may use caches; reads inside actions, policy and authentication never do. Erasing personal data wipes its cached copies immediately |
+| Compound unique rules (question 4) | A named list in the entity's `unique: { }` section, `tenant_owner: [tenant, owner_email]`; the name stays because conflict mapping refers to it |
+| References (question 5) | Any field typed `X.id` is a reference: the compiler creates the foreign key and index, and `on_delete:` goes in the field's block with no default |
+| Children (question 6) | A parent does not declare its children: a query includes them by naming the child's reference field, and gets a list, or at most one record when that field is unique (area 6) |
+| Lifecycle form (question 7) | The general lifecycle, in the colon form: `visible:`, `transitions: { delete: { when: ... set: { } } }` and `purge: { after: ... since: ... }`, with no soft-delete shorthand. Its details are under [Lifecycle](#lifecycle) |
+| Storage types (question 8) | Each store uses its engine's native column types (on PostgreSQL `uuid`, `numeric`, `timestamptz`, `jsonb`, integer widths from declared ranges); structured fields are `jsonb`; caches and Redis entities store the same JSON as API responses |
+| Indexes (question 9) | The compiler creates every index its named queries need, multi-column and partial ones included, and lists each with the query that needs it. Lookups from outside the application use `indexes: { by_tenant_created: [tenant, created_at] }`; special kinds take a `kind:` option where the store supports it. Every index change appears in its migration, and the build includes a schema report |
+| Receivers (question 10) | No `self`: parameters are ordinary (`todo: Todo` for a snapshot, `todo_id: Todo.id` for a reference) and written actions are called by name, `complete_todo(todo_id)` |
+| Migration workflow (question 11) | `jadpo migrate new <purpose>` writes the next migration, one section per store; `jadpo check` fails while source and the latest migration disagree; `jadpo migrate apply` runs pending migrations as a deploy step, each in a transaction; the application refuses to start against a database that does not match; moving an entity between stores needs explicit acceptance |
+| Removing data (question 12) | Two migrations: retire (the code stops using it, the column stays), then drop in a later one, which needs explicit acceptance and shows in the approval review (area 18). Removing an entity works the same way |
+| Seeds (question 13) | A `seed { }` file in `database/seeds/` creates data by calling the application's own actions; `jadpo seed <name>` refuses a production database; reference data production needs is a migration backfill |
+| Store declaration (question 14) | Stores are connections declared in `app.jadpo`; each store's driver is fixed in source, so every environment uses the same engine. No database is required unless something uses one: `main` on PostgreSQL is implied only when needed, and where a feature needs a database and none can hold it, `jadpo check` is an error naming the feature (sign-in, events and the outbox, idempotency keys, webhook de-duplication, flags, audit, any database entity) |
+| Redis entities (question 15) | `expires_after:` on the entity, beside `store:`, measured from the record's last write, required on a Redis entity and refused elsewhere; expired records hidden as area 6 says. A Redis entity supports get, create, update and delete by `id` (counters as one Redis `increment`), lookup by a `unique:` field, listing and counting by equality on one field in `indexes:` (pages in creation order), and concurrent-change checks through a revision; no lifecycle, expiry taking its place; anything else is a compile error naming PostgreSQL |
+| PostgreSQL over TLS | A database connection always uses TLS, checked against Mozilla's root certificates compiled in, except to this machine (a Unix socket, `localhost`, `127.0.0.1`, `::1`), as area 16 decides for SMTP. A connection may name a private authority, `authority: config.<name>`, a `Certificate` setting read from one certificate's PEM, trusted alone and used to this machine too but over a Unix socket. A server elsewhere without TLS is reached only with `tls: false`, the narrowest form, a word written in source and never a setting, which the network report lists. `sslmode` in the URL is refused, since the connection decides. A local server is reached without TLS rather than offered it, since a local server's own certificate, Debian's snakeoil among them, would fail the check |
+| PostgreSQL through Hyperdrive | On Workers a database connection's address setting's variable names a Hyperdrive binding, so `app.jadpo` gains nothing (a text binding of that name stays a direct address). The Worker reaches Hyperdrive without TLS, since the binding's address says `sslmode=disable` and its socket offers none; TLS to the database is Hyperdrive's, by default checked against the public authorities, a private `authority:` uploaded to Hyperdrive with `--sslmode verify-full`. TLS through `startTls()` applies to a direct connection only. Caching off (`--caching-disabled`) is required and stated, since a Worker can't see it; `jadpo build` writes the binding with the id `JADPO_HYPERDRIVE_<variable>` gives, or without one, which `wrangler deploy` refuses. Each choice is reversible |
+| Connecting, and a statement that may have run | An attempt at a server waits the address's `connect_timeout`, or 10 seconds when it sets none or 0, stricter than libpq's forever. An autocommitted statement whose connection dropped after any of it was written is `unavailable` to its caller, never sent again by the driver, since the server may have committed it |
+| Layout | From area 1: an entity lives in its own file under its domain's `entities/` folder; `database/` holds the identity registry, timestamped migration folders and `seeds/` |
+| Keyword | From area 4: a declaration with its own folder keeps its keyword (`entity`); anything in `types/` is a `type` |
+| Field settings | From area 2: a field's settings go in a block after its type, one per line, including entity facts (`unique`, `generated`, the reference); only `Input` has `optional` and `default` |
+| Colon rule | From area 3: entity sections are `name: { ... }` (`lifecycle: { }`, `policy: { }`) |
+| Setting options and lists | From area 2: closed options are written `Type.value` (`on_delete: OnDelete.restricted`); lists are `[ ]` |
+| Calls and settings | From areas 1 and 3: the dot names the owner (`Todo.get(id)`); actions have no settings and every write checks for concurrent change |
+| Mapping form | From area 4: write conflicts map with `condition: Failure`, and a hidden record reports the same `not_found` failure |
+| Cache outages | An unreachable cache never fails a request: reads fall back to the database after a short timeout, failed clears are retried, bounded by `keep:`, and readiness ignores caches |
+| Cache configuration | Opt-in: `caches: { records: { store: keep: } }` on an entity, `cache: { store: keep: }` on a query; by default a change clears every cached result reading that entity; entries are one JSON value each |
+| Query and action placement | Every query lives in its domain's `queries/` folder and every action in `actions/`, one per file, whatever it reads; entity files hold the data definition, a query's cache sits in its file, and the generated operations (`Todo.get`, create, update, delete) stay on the entity |
+| Generated fields | `generated: Generated.on_create` (set once when created) or `Generated.on_change` (set when created and on every change) |
+| Lifecycle conditions | `visible:` and `when:` name the record's own fields bare and may use comparisons, `and`, `or`, `none` checks and `clock.now`; never other records or the caller |
+| What a lifecycle owns, deleting and purge | See [Lifecycle](#lifecycle): every field a transition sets or `initial:` gives changes only through transitions; `delete` runs the `delete` transition; purge deletes hidden records in batches of at most 500 |
+| Stores for system features | Never assumed: there may be no database or several. A feature that only needs somewhere to keep state names its store explicitly (`flags: { store: main }`, `schedules: { store: main }`, `sessions:`, `privacy:`, access records, the erasure log); a missing one is a compile error naming the feature. Tables that must commit with the action's own writes (event outbox, delivery records, idempotency keys, audit history) go in each store that actions write to, placed by the compiler for correctness; the build report lists where every system table lives |
+| System tables | Tables the runtime needs are generated, prefixed `jadpo_`, and part of the migration snapshots like any entity; drift in them fails `jadpo check`; see [System tables](#system-tables) |
+| Migration snapshots | Each migration folder holds a generated `snapshot.json`, generated SQL and `changes.jadpo` only for decisions; the compiler diffs consecutive snapshots; `jadpo check` fails with the command to run when entities and the latest snapshot disagree |
+| Table names | A table is named after its entity's born name in singular snake_case (`Todo` is `todo`, `LoanRecord` is `loan_record`), never pluralised: no English inflection rules to get wrong, and the code and the database use the same word |
+| Computed backfills | `backfill:` may be an expression over each row's own stored fields, constants and pure functions, including a field this migration retires; filled in batches, by `UPDATE` where the expression has a SQL form and in Jadpo otherwise, then made required; no freeform SQL. See [Computed backfills](#computed-backfills) |
+| A field's rules on read | A stored value is checked against every rule its field's type has when it is read; a row written around Jadpo that breaks one is a defect naming the rule and never the value; `CHECK` constraints may follow |

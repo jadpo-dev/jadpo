@@ -1,5 +1,5 @@
 //! The standard types' data entries (area 19, "The standard types" and
-//! "Every standard type meets one contract", question 2).
+//! "Every standard type meets one contract").
 //!
 //! Every standard type is a stub declaration in `jadpo-check`'s
 //! `std/standard.jadpo`, for programs to name, plus one entry here, which
@@ -792,7 +792,7 @@ pub struct Format {
 }
 
 /// A named validator: the one check a type's text needs that its rules
-/// can't say (area 19, question 2), one function each.
+/// can't say (area 19, "The contract, generated"), one function each.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Validator {
     Email,
@@ -1038,7 +1038,7 @@ pub enum Storage {
     /// 5.5u4), checked to hold the type's own geometry: one of the six
     /// geometries, or any of them for a `Geometry`.
     Geography,
-    /// A pgvector `vector` column (area 19, "AI: a future area"), which
+    /// A pgvector `vector` column (area 19, "AI types"), which
     /// the AI area builds (roadmap 5.5v): until then a field can't store a
     /// vector or an embedding, `toolchain.not_built_yet` (chunk 5.5s2).
     Vector,
@@ -1114,7 +1114,7 @@ pub struct StandardType {
     /// others.
     pub shape: Option<&'static [FieldMatch]>,
     pub examples: Examples,
-    /// The Jadpo release that added it (area 19, question 4): an
+    /// The Jadpo release that added it (area 19, "A release adding a standard type"): an
     /// application's own declaration of its name then clashes,
     /// `type.standard_clash` says since when, and the release's notes list
     /// it under "Names each release adds".
@@ -1533,8 +1533,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     places::COUNTRY_ENTRY,
     places::COUNTRY_SUBDIVISION_ENTRY,
     geo::CRS_ENTRY,
-    // The active ISO 4217 codes (area 19, "Money and payments", question
-    // 22), written as their codes and shown by CLDR's display names.
+    // The active ISO 4217 codes (area 19, "Money and payments"), written as their codes and shown by CLDR's display names.
     StandardType {
         name: crate::CURRENCY,
         holds: Holds::Enum(crate::CURRENCIES),
@@ -2123,7 +2122,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     ),
     records::MODEL_ID_ENTRY,
     // An amount in a currency's minor units (area 19, "Money and
-    // payments", question 16): its JSON is the amount and the code, as
+    // payments"): its JSON is the amount and the code, as
     // Stripe sends it, and it is stored in two columns, a `bigint` of minor
     // units and the code, also for a type that fixes the currency. Only
     // amounts in one currency are ordered, so its examples are all pounds.
@@ -2721,7 +2720,7 @@ pub const ISO_WEEK_RULES: &[across::StandardRule] = &[across::StandardRule {
     }),
 }];
 
-/// `Month` (area 19, question 22).
+/// `Month` (area 19, "Closed value sets are enums").
 pub const MONTH: &str = "Month";
 
 /// The standard range types besides `Range<T>` (area 19, "Ranges"): each
@@ -2808,7 +2807,7 @@ pub fn standard_type(name: &str) -> Option<&'static StandardType> {
 
 /// Every release that added a standard type, oldest first, each with the
 /// names it added in name order: the release notes' "Names each release
-/// adds" (area 19, question 4).
+/// adds" (area 19, "A release adding a standard type").
 pub fn releases() -> Vec<(&'static str, Vec<&'static str>)> {
     let mut out: Vec<(&'static str, Vec<&'static str>)> = Vec::new();
     for entry in STANDARD_TYPES {

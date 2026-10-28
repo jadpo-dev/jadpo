@@ -1,4 +1,4 @@
-// The `units` namespace (area 19, "Physical quantities", question 17).
+// The `units` namespace (area 19, "Physical quantities").
 // Each operation is listed, typed, in `jadpo-std`'s operation table, which
 // names the Rust function in `jadpo-value` that runs it; a test holds
 // these stubs to that table.

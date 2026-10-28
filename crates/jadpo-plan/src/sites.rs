@@ -62,7 +62,7 @@ pub enum Decoded {
         across: Option<(ValidatorId, bool)>,
     },
     /// A list written where a list or a set goes, or `[]` where a map
-    /// goes, which is an empty map (area 19, question 8).
+    /// goes, which is an empty map (area 19, "Sets and maps").
     List {
         set: bool,
         map: bool,

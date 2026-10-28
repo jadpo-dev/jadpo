@@ -2,7 +2,7 @@
 //! function or type needs a name unique only within its domain, and
 //! everything else stays unique across the project. Each domain's code
 //! reads its own private names; the identity key of a function or type
-//! declared in a domain carries the domain (area 18, question 8).
+//! declared in a domain carries the domain (area 18, "Stable identity").
 
 use crate::support;
 

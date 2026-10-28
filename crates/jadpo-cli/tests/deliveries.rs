@@ -1,5 +1,5 @@
 //! `jadpo deliveries` against live PostgreSQL (area 12, "What an operator
-//! sees"; area 14, question 13; chunk 6.12): the deliveries and schedule
+//! sees"; area 14, "Operator commands"; chunk 6.12): the deliveries and schedule
 //! runs that need an operator are listed, and retried, dismissed,
 //! cancelled and resolved, each only from the state it applies to and
 //! each logged with who did it; a retried delivery gets a fresh budget,

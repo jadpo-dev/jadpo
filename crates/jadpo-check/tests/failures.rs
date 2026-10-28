@@ -234,7 +234,7 @@ fn entity_operations_fail_as_area_6_decides() {
         )),
         ["failure.undeclared_propagation"]
     );
-    // Without one, the compiler provides it (area 6, question 6).
+    // Without one, the compiler provides it (area 6, "Write failures").
     assert_eq!(
         one(
             "entity Note {\n    id: Uuid\n}\n\naction load(note_id: Note.id) -> Note {\n    return attempt Note.get(note_id)\n}\n"

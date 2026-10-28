@@ -1,8 +1,8 @@
-# CLI design language (area 14)
+# CLI design language
 
-How everything `jadpo` prints looks and behaves, designed before it is
-built (area 14, "CLI design language", 2026-10-13). Twelve screens are drawn
-in dark and light terminals in `build/cli-design/index.html` (generated).
+How everything `jadpo` prints looks and behaves. The commands and the
+fields each one prints are in [area 14](language/14-tooling.md); this page
+says how they look. `crates/jadpo-term` builds it.
 
 ## Principles
 
@@ -113,8 +113,7 @@ long one gets a line of its own so it copies whole.
 - **Headline.** Symbol, severity word in its colour and bold, two spaces,
   the subject in bold. The words are a closed set: `error`, `failed`,
   `fault`, `alert`, `decision`, `outcome unknown`. Identifiers belong on
-  the `rule` line. *Amended 2026-10-17 (Richard, area 1, question 11):*
-  `warning` left the set in chunk 5.4b, since every finding is an error;
+  the `rule` line. There is no `warning`: every finding is an error, and
   a declinable error's `next` offers its `decline` line.
 - **Errors.** Area 14's fields in its order: path, code frame,
   `reason`, `next` (`(agent)` muted, `(human)` in decision colour),
@@ -142,7 +141,7 @@ long one gets a line of its own so it copies whole.
   answered the prompt collapses to `✓ question  answer`, so scrollback
   reads as a record. Pickers filter as you type and mark the selection with
   `›` and an accent bold name. Without a terminal the command fails and
-  lists the valid values (decided in area 14).
+  lists the valid values (area 14).
 - **Keys.** One map in every mode: `enter` run, `a` run all, `f` run
   failed, `o` open report, `w` watch, `/` search, `esc` back, `q` quit.
   Every live key is in the key bar, written lower case, bold key then muted
@@ -172,7 +171,7 @@ long one gets a line of its own so it copies whole.
 
 ## Plain and `--json`
 
-- Plain output never waits for a key and uses the decided words (`error:`,
+- Plain output never waits for a key and uses fixed words (`error:`,
   `-->`, `FAIL`) so it can be searched.
 - `--json` writes one JSON document to stdout, newline-terminated, or one
   object per line for streaming commands. No prose, nothing on stderr unless
@@ -192,48 +191,3 @@ long one gets a line of its own so it copies whole.
 - No "please", "successfully", "Oops", exclamation marks or blame.
 - Real plurals ("1 file"), never "file(s)". Units after a space (412 ms),
   24-hour times, ISO dates.
-
-## Critique of the mockups
-
-Impeccable's critique ran as two separate reviews (design and the
-detector). The detector's nine findings were false positives (the drawn
-cursor, ruled tables, `--` in flags). The design review scored 30/40;
-everything it raised was fixed:
-
-- Label columns differed (values at 10 or 12, inline in one screen): now
-  one grid, values at column 12, location at indent 2.
-- Headline words mixed `FAIL`, `outcome_unknown` and plain words: now a
-  closed lower-case set (plain output keeps area 13's `FAIL`).
-- Watch coloured the wrong value red and the same value green in the trace:
-  traces now colour only failures and retries.
-- Lines up to 100 columns: everything fits 80 except whole commands and
-  links, which now sit on their own line.
-- Keys differed between modes (`f` meant "file" and "failed"; `o` was not
-  in the bar): one key map, all keys in the bar, lower case.
-- Three summary formats, none for incidents: one footer template,
-  incidents included; test failures dropped a second next command.
-- Accent also meant "running": its meaning is now "now and next", and the
-  truecolor values moved towards cyan to match ANSI 36.
-- ASCII clashes: decision is `@`, separator `,`; change markers are in the
-  table and never in column 0.
-- Added a piped (plain) screen, so "reads the same without colour" is
-  shown; `JADPO_PLAIN=1` covers screen readers.
-
-## Assumptions in the mockups
-
-- `jadpo incident` keeps a paste's events so later commands can name them
-  by request id; area 17 only shows `--from-event <file>`.
-- `jadpo schedules --env production`: area 14 says "against an
-  environment" but names no flag.
-
-## Sources
-
-- GitHub CLI: [Primer CLI foundations](https://github.com/primer/design/blob/main/content/native/cli/foundations.mdx), [accessible `gh`](https://github.blog/engineering/user-experience/building-a-more-accessible-github-cli/)
-- Vercel CLI: [UX guide](https://github.com/vercel/vercel/blob/main/packages/cli/.agents/skills/cli-ux/references/core.md), [spinner delay](https://github.com/vercel/vercel/blob/main/packages/cli/src/util/output/wait.ts)
-- [Bun test reporters](https://bun.com/docs/test/reporters); [clack symbols](https://github.com/bombshell-dev/clack/blob/main/packages/prompts/src/common.ts); [Astro's Houston](https://astro.build/blog/welcome-world/)
-- [rustc diagnostics](https://rustc-dev-guide.rust-lang.org/diagnostics.html); [cargo progress](https://github.com/rust-lang/cargo/blob/master/src/util/progress.rs); [Elm errors for humans](https://github.com/elm/elm-lang.org/blob/master/pages/news/compiler-errors-for-humans.elm)
-- [Lip Gloss](https://github.com/charmbracelet/lipgloss); [pnpm reporters](https://pnpm.io/cli/install); [Turborepo](https://turborepo.dev/docs/reference/run); [Deno draw thread](https://github.com/denoland/deno/blob/main/cli/util/draw_thread.rs)
-- [clig.dev](https://clig.dev/); [NO_COLOR](https://no-color.org/); [CLICOLOR](https://bixense.com/clicolors/); [`FORCE_COLOR`](https://nodejs.org/api/tty.html); [supports-color](https://github.com/chalk/supports-color); [COLORTERM](https://github.com/termstandard/colors)
-- [Themes and the 16 colours](https://blog.xoria.org/terminal-colors/); [termenv](https://github.com/muesli/termenv); [Windows VT](https://learn.microsoft.com/en-us/windows/console/console-virtual-terminal-sequences); [is-unicode-supported](https://github.com/sindresorhus/is-unicode-supported); [figures](https://github.com/sindresorhus/figures)
-- [UAX #11](https://www.unicode.org/reports/tr11/); [terminal width tests](https://www.jeffquast.com/post/ucs-detect-test-results/); [CLI accessibility study](https://research.google/pubs/accessibility-of-command-line-interfaces/)
-- [cli-spinners](https://github.com/sindresorhus/cli-spinners/blob/main/spinners.json); [indicatif](https://docs.rs/indicatif/latest/indicatif/struct.ProgressDrawTarget.html); [Nielsen response times](https://www.nngroup.com/articles/response-times-3-important-limits/)

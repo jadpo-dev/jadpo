@@ -122,7 +122,7 @@ owner/generated/lifecycle fields   not representable in PatchTodo
 ## Jobs and external effects
 
 The following job wording describes the retained pressure source. The frozen
-[2026-10-02 lifecycle/service successors](../../docs/service-plan.md) require
+2026-10-02 lifecycle/service successors require
 clause-bound generated retention maintenance, a durable UUID per reminder
 schedule, private intent state, revision guards and compiler receipt observation.
 Future generated audit must represent those reviewed successors and distinguish

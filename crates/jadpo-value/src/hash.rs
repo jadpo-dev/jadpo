@@ -1,4 +1,4 @@
-//! Hashing (area 19, "Hashing and cryptography", question 24): a digest
+//! Hashing (area 19, "Hashing and cryptography"): a digest
 //! is `Bytes`, which `encoding` writes as text. SHA-256 is RustCrypto's
 //! `sha2`, pure Rust, so every target gives the same digest.
 

@@ -1,4 +1,4 @@
-//! `Money` and `Currency` (area 19, "Money and payments", question 16):
+//! `Money` and `Currency` (area 19, "Money and payments"):
 //! an amount is a whole number of its currency's minor units, and each
 //! currency's exponent, how many places its major unit has, comes from
 //! ISO 4217. `Currency` is a built-in enum of the active ISO 4217 codes

@@ -1,4 +1,4 @@
-//! A release that adds a standard type (area 19, question 4; chunk
+//! A release that adds a standard type (area 19, "A release adding a standard type"; chunk
 //! 5.5a2): an application's declaration of the name is
 //! `type.standard_clash`, naming the release, and the code `jadpo fix`
 //! and the editor's quick fix share swaps it for the standard type or

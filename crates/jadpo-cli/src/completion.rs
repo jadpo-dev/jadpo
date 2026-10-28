@@ -1,4 +1,4 @@
-//! Tab completion (area 14, question 17). Each shell's script is a thin
+//! Tab completion (area 14, "Completion and prompts"). Each shell's script is a thin
 //! wrapper that asks `jadpo __complete -- <words>` for candidates, one per
 //! line as `value<TAB>description`, so commands, flags and values come from
 //! the command table, and the project's own names can join them later

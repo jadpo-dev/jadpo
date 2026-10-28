@@ -575,7 +575,7 @@ const BODY_TIMEOUT: Duration = Duration::from_secs(30);
 pub const MAX_CONNECTIONS: usize = 1024;
 
 /// A hyper request as the runtime's, its body read whole, or, once it
-/// passes the runtime's limit (area 7, question 5), marked too large and
+/// passes the runtime's limit (area 7, "Deadline and body limit"), marked too large and
 /// never held: the runtime answers it with 413.
 async fn read(request: hyper::Request<Incoming>, peer: Option<SocketAddr>) -> Option<Request> {
     let (parts, mut body) = request.into_parts();

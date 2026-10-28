@@ -1,5 +1,4 @@
-// The `crypto` namespace (area 19, "Hashing and cryptography", question
-// 9): one construction per job and no algorithm choices. A key is an
+// The `crypto` namespace (area 19, "Hashing and cryptography"): one construction per job and no algorithm choices. A key is an
 // opaque setting given as `key: config.<name>` and nowhere else, a place
 // the compiler owns, so code never reads it: an `EncryptionKey` for
 // `encrypt` and `decrypt`, a `SigningKey` for `hmac` and `verify_hmac`,

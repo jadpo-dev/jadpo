@@ -2,17 +2,11 @@
 title: Testing
 area: 13
 status: decided
-checked-with: this checkout's jadpo on every gate run (archived examples: v0 3ce094d0)
+checked-with: this checkout's jadpo on every gate run
 rules:
-  - configuration.fixture_duplicate
-  - configuration.fixture_secret_required
-  - configuration.fixture_secret_unexpected
-  - configuration.fixture_value_invalid
-  - configuration.fixture_value_missing
   - semantic.request_invalid
   - semantic.fake_invalid
   - semantic.request_route_unknown
-  - semantic.test_service_fake_required
   - syntax.assertion_form
   - test.assertion_failed
   - test.fake_exhausted
@@ -20,7 +14,6 @@ rules:
   - test.fault
   - test.subscriber_failed
   - test.unexpected_failure
-  - type.test_call_context
   - type.test_clock_context
 ---
 
@@ -30,7 +23,7 @@ How a Jadpo program is tested: where tests live, the four kinds of test,
 controlling the clock, configuration and fakes in tests, shared test data,
 assertions, the test database, and how tests meet caches and events.
 
-> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 13. The new compiler runs pure and action tests in its interpreter (chunk 2.2) and gives each test its own PostgreSQL database (chunk 3.1); the [status table](#status) says what else is built and when the rest comes.
+> Most of this page is built; the [status table](#status) says what is not.
 
 Examples use the golden todo app's `planning` domain: `User` and `Todo`
 entities, a `create_todo` action, a `TodoNotFound` failure, an
@@ -42,9 +35,9 @@ mocks of your own actions and no in-memory stand-in for the database.
 
 ## Where tests live
 
-Decided in area 1: a test sits beside the file it tests, as
-`<name>.test.jadpo`. A scenario that spans several domains goes in the root
-`tests/` folder. There is no folder per kind of test.
+A test sits beside the file it tests, as `<name>.test.jadpo` (area 1). A
+scenario that spans several domains goes in the root `tests/` folder.
+There is no folder per kind of test.
 
 ```text
 domains/planning/
@@ -57,10 +50,11 @@ tests/         sign_up_to_first_reminder.test.jadpo
 
 A test file holds only `test` declarations. A test beside its subject can
 call anything in its own domain, private or not. A scenario in `tests/` sees
-what another domain would see: public declarations and routes (question 1).
+what another domain would see: public declarations and routes, so unit
+tests stay close to their code and scenarios cannot depend on internals.
 A test file sees everything its subject declares without importing it, and
 brings in anything else it uses on `use` lines, as any file does; a
-scenario imports all it uses (area 1, Imports; built in chunk 3.5).
+scenario imports all it uses (area 1, Imports).
 
 ## Writing a test
 
@@ -117,7 +111,7 @@ test "a todo due yesterday is overdue" {
 
 ## Kinds of test
 
-Decided in area 1: the kind of a test is known from what it calls, and
+The kind of a test is known from what it calls (area 1), and
 `jadpo test --kind route` runs one kind. The report counts each kind
 separately, because each proves something different: an action test does
 not prove that the route decodes input or checks who is signed in.
@@ -129,8 +123,7 @@ not prove that the route decodes input or checks who is signed in.
 | route | a route, through `request` | the whole HTTP boundary: input, sign-in, policy, failures, output |
 | schedule | a schedule, through `.run()` | what one run of the schedule does |
 
-A fifth kind runs beside them without a `test` declaration (area 11,
-chunk 7.2d2): each recording of the app's own integrations,
+A fifth kind runs beside them without a `test` declaration (area 11): each recording of the app's own integrations,
 `shared/providers/<name>/<version>/recordings/<resource>.<operation>.json`,
 is read as its operation's output through the package's decoders, a test
 of kind `recording` named `<resource>.<operation>'s recording decodes`.
@@ -139,21 +132,20 @@ file runs it alone; one that doesn't decode is area 11's
 `test.recording_undecodable` or `test.round_trip_failed`. Each recording
 of a prompt's answer, `prompts/recordings/<prompt>/<name>.json`, is a test
 of the same kind, `<prompt>'s <name> recording decodes`, read through each
-type the prompt is asked for as (area 21, "Recorded answers"; chunk
-5.5v4); one made from an older version of its prompt passes, with an
+type the prompt is asked for as (area 21, "Recorded answers"); one made from an older version of its prompt passes, with an
 alert on the report.
 
 A test that calls actions to set up data and then makes a request is a route
-test. Calling an action is an ordinary call, with no `call` word. Area 1
-named the second kind "integration"; this page calls it "action", because
-`integration` is the keyword for third-party APIs (area 11).
+test. Calling an action is an ordinary call, with no `call` word. The
+second kind is "action", not "integration", because `integration` is the
+keyword for third-party APIs (area 11).
 
 Only actions write records (area 6), so a test changes data through the
 action that does it, which is what an action test proves, and a fixture
 builds the data it starts from. A test may read straight from an entity
 with `get`, as it may call a query, and either makes it an action test
 with its own database; a write straight to an entity is
-`semantic.not_callable` (chunk 3.10):
+`semantic.not_callable`:
 
 ```jadpo check project=e-test-writes file=app.jadpo hidden
 application {}
@@ -199,8 +191,8 @@ error: A test can't call `Shelf.update`
 check failed: 1 error, 4 files
 ```
 
-A route test sends a typed request through the real generated boundary
-(question 5; area 7 settles the request's shape):
+A route test sends a typed request through the real generated boundary,
+without a network (area 7 gives the request's shape):
 
 ```jadpo fragment
 // domains/planning/routes/todos.test.jadpo
@@ -222,7 +214,7 @@ test "a due date in the past is rejected" {
 }
 ```
 
-Built in chunk 4.1, and `as:` in chunks 4.3 and 4.3b: it signs in through the application's real authentication, a browser session, an API token or, for `Principal.service(service)`, a service key, as area 8's end-to-end examples show. The route below lets anyone call it, so this test signs no one in; `add_memo` reaches no entity, so root `policy { }` says who may call it (area 9). The
+`as:` signs in through the application's real authentication, a browser session, an API token or, for `Principal.service(service)`, a service key, as area 8's end-to-end examples show. The route below lets anyone call it, so this test signs no one in; `add_memo` reaches no entity, so root `policy { }` says who may call it (area 9). The
 request names its route by `method:` and its path as `jadpo routes` prints
 it, each placeholder given in `params:` (`path: "/todos/{todo_id}"` with
 `params: { todo_id: todo.id }`), and `input:` is the route's `Input`. It
@@ -231,7 +223,7 @@ gives a `Response`: `status`, the failure's `code` (`none` on success) and
 the route's `output` (`none` unless it succeeded). A route that streams a
 model's answer gives `pieces`, the text of each event in order, in place of
 `output`, and `code` the error event's that ended it (area 7, "Streaming a
-model's answer"; chunk 5.5v6). A defect behind the response ends the test
+model's answer"). A defect behind the response ends the test
 as `test.fault`, with its frames:
 
 ```jadpo check project=route-test
@@ -294,8 +286,7 @@ A route test sends a fresh `Idempotency-Key` with every request but a
 Idempotency.required` (area 7) is tested through its success like any
 other. A request that gives `idempotency_key:` sends that key instead, to
 test what a repeat gets back and what reusing a key for another request is
-refused with (Richard, 2026-10-16; built in chunk 4.7). This API refuses a
-write without a key:
+refused with. This API refuses a write without a key:
 
 ```jadpo check project=route-idempotency file=app.jadpo
 application {
@@ -528,8 +519,7 @@ test "an overdue todo gets one reminder" {
 }
 ```
 
-Built in chunk 6.2c, but for fakes, which come with packages: the run
-calls the schedule's action with nothing, as the system reaching every
+The run calls the schedule's action with nothing, as the system reaching every
 tenant, as the tick does (area 12, "How a schedule runs"), through the
 runtime's action boundary at the test's clock, which stays fixed through
 the run. It gives `Unit` whatever the action returns, since a tick keeps
@@ -594,12 +584,12 @@ check failed: 1 error, 4 files
 ## Test settings
 
 A test's environment is set at the top of its body, before the first
-statement, as `name: value` settings (question 2). There are three, and all
+statement, as `name: value` settings. There are three, and all
 are optional:
 
 - `clock:` the instant the test starts at, written out
   (`"2026-01-15T12:00:00Z"`). Without it, the clock is fixed at
-  2000-01-01T00:00:00Z, never the real time (chosen in chunk 5.2).
+  2000-01-01T00:00:00Z, never the real time.
 - `config:` configuration values that differ from the test values in
   `config.jadpo`.
 - `fakes:` the responses each integration operation gives, in order.
@@ -610,12 +600,14 @@ fixtures, below.
 
 ## Acting as a user
 
-Area 8 proposes that an action receives its caller as a typed parameter, so a
-test passes one in. Tests, fixtures and seeds can make a caller from a user
-with `Principal.user(user)`; application code cannot, because there a caller
-only comes from signing in (question 10). A route test signs in with `as:`,
-which goes through the application's real authentication, so a disabled
-user is refused exactly as in production.
+An action receives its caller as a typed parameter (area 8), so a test
+passes one in. Tests, fixtures and seeds can make a caller from a user
+with `Principal.user(user)`, and a service caller with
+`Principal.service(service)`; application code cannot, because there a
+caller only comes from signing in. A route test signs in with `as:`, which
+goes through the application's real authentication (a service with a key
+from `Service.issue_key`), so a disabled user is refused exactly as in
+production, and the sign-in checks are tested too.
 
 ```jadpo fragment
 test "bob cannot complete alice's todo" {
@@ -631,7 +623,7 @@ the test checks exactly what Bob would see. A call a test, fixture or seed
 makes runs as the caller it passes, as `complete_todo` runs as Bob here; a
 call that passes none, such as one setting up data, runs without policy, so
 it proves behaviour and data, and a route test or a call with a caller
-proves policy (chosen in chunk 4.4, area 9).
+proves policy (area 9).
 
 ## Controlling time
 
@@ -641,7 +633,7 @@ only when the test says so, with `clock.advance(5m)`: the clock belongs to
 advancing changes what the next call sees, not a call already running.
 The clock only moves forward: a negative duration is the fault
 `clock_backward`. `clock.advance` is an error outside a test, in a fixture
-or a seed too (`type.test_clock_context`, chosen in chunk 5.2).
+or a seed too (`type.test_clock_context`).
 
 ```jadpo fragment
 // domains/planning/queries/overdue_todos.test.jadpo
@@ -659,19 +651,19 @@ test "a todo due in an hour becomes overdue" {
 }
 ```
 
-Advancing the clock does not run schedules by itself; a schedule test runs
-one with `.run()` (question 5).
+Advancing the clock does not run schedules by itself, so adding a
+schedule never changes an unrelated test; a schedule test runs one with
+`.run()`.
 
-> Amended 2026-10-17 by area 19 (question 19): the standard library's
-> `random` namespace is fixed in tests as the clock is: seeded per test,
-> so a rerun gives the same tokens, codes and shuffles. Built in chunk
-> 5.5q: the seed comes from the test alone, never the run's order seed,
-> so a test may name the exact code it expects; new identities share it.
+The standard library's `random` namespace (area 19) is fixed in tests as
+the clock is: seeded per test, from the test alone, never the run's order
+seed, so a rerun gives the same tokens, codes and shuffles and a test may
+name the exact code it expects. New identities share the seed.
 
 ## Configuration in tests
 
 Each configuration field can give a `test:` value in `config.jadpo`, used by
-every test (question 3; area 10 settles the configuration syntax). A test
+every test (area 10 gives the configuration syntax). A test
 reads the field's `test:` value, then its `default:`, and never the
 machine's environment, so it gives the same answer everywhere. A test
 changes a field for itself, and the code it calls, with its `config:`
@@ -713,13 +705,14 @@ is a compile error (`configuration.test_value_missing`, area 10), followed
 through the functions, actions and fixtures a test calls, and so is a secret
 in a test's `config:` (`configuration.secret_default`) or a name there that is
 no field (`configuration.field_unknown`). A value in `config:` is checked as a
-`default:` is. Built in chunk 5.1.
+`default:` is.
 
 ## Fakes for integrations
 
-A test never reaches a real provider. Every integration operation the test
-can reach needs a fake, or the test does not compile. A fake lists the
-responses the operation gives, in order: a value of the operation's output
+A test never reaches a real provider. Every provider call a test reaches
+answers through its package's fake: the operation's generated default,
+unless the test's `fakes:` scripts it. A script lists the responses the
+operation gives, in order: a value of the operation's output
 type, or one of the provider conditions the integration maps (area 11), such
 as `rate_limited`. The response still goes through the integration's real
 code: input checks, retries, time limits and failure mapping, so a test
@@ -739,21 +732,21 @@ test "a rate-limited reminder is retried" {
 `Integration.operation.requests` lists what the code sent, as typed values
 with secrets left out. A fake cannot run code of its own, and nothing else in
 the application can be faked. If the code calls an operation more times than
-the fake has responses, or fewer, the test fails and says so (question 7).
+the fake has responses, or fewer, the test fails and says so: a wrong
+count is a mistake in the test or the code, not a provider outcome.
 
-> **Built (chunk 7.2d)** for provider packages' operations, as below and
-> under [Provider calls and capabilities in tests](#provider-calls-and-capabilities-in-tests):
+> **Built** for provider packages' operations, as below and under
+> [Provider calls and capabilities in tests](#provider-calls-and-capabilities-in-tests):
 > every call a test reaches answers through its package's fake, and a
 > test's `fakes:` scripts an operation's answers in order, each a value of
-> its output type, one of its failures by its code, or a condition.
-> `.requests` and the capabilities' fakes are not built yet, but for
-> `email.sent` (built in chunk 7.3c, area 16) and the `ai` capability's: its fake, `fakes: { ai.<prompt>: }`
-> and `ai.<prompt>.requests` are built (chunk 5.5v3; area 21, "Tests"),
-> and `recorded("<name>")`, the fake's embeddings and `fakes: { ai.embed:
-> }` since chunk 5.5v4.
-> The choices are in area 11's "Chosen in chunk 7.2d". Since chunk
-> 7.6 a package's action runs its real code in a test, and `fakes:`
-> scripts the operations it calls, its package's own included.
+> its output type, one of its failures by its code, or a condition. A
+> package's action runs its real code in a test, and `fakes:` scripts the
+> operations it calls, its package's own included. `.requests` and the
+> capabilities' fakes are not built yet, but for `email.sent` (area 16)
+> and the `ai` capability's: its fake, `fakes: { ai.<prompt>: }`,
+> `ai.<prompt>.requests`, `recorded("<name>")`, the fake's embeddings and
+> `fakes: { ai.embed: }` (area 21, "Tests"). The choices are in area 11's
+> decisions.
 
 Here a courier's booking is faked three ways: with a scripted
 `AcmeCouriers.Booking`, with the operation's `slot_taken`, which the
@@ -919,14 +912,12 @@ the field and the rule, so the test scripts that operation instead.
 
 ### Provider calls and capabilities in tests
 
-Decided 2026-10-16 (Richard), with the packages and capabilities decisions
-(areas 11, 12 and 16). Every provider call in a test is faked, as in
+Every provider call in a test is faked (areas 11, 12 and 16), as in
 `jadpo dev`; nothing can be let through to a sandbox from a test.
 
 - **Provider operations** answer with the package fake's valid defaults
-  unless the test scripts them, as question 7 decided (built in chunk
-  7.2d; a fake's `lost` answers as a call that may have acted, its
-  `in_use` as `unavailable`, and since chunk 7.5d each keeps keys as
+  unless the test scripts them (a fake's `lost` answers as a call that
+  may have acted, its `in_use` as `unavailable`, and each keeps keys as
   below):
   `fakes: { stripe.payment_intents.create: [card_declined, ...] }`. A
   scripted answer is the clean output type or one of the operation's
@@ -942,7 +933,7 @@ Decided 2026-10-16 (Richard), with the packages and capabilities decisions
   recorded), on by default, and the test must pass every time; the report
   names the boundary of any run that fails.
 
-  Built in chunk 7.5d. A keyed call's answer is kept under its key: the
+  A keyed call's answer is kept under its key: the
   same key and request get the first answer again without taking a
   scripted one, a different request gets the package's `reused:` answer,
   and a failure is kept as the provider keeps it, unless its kind is
@@ -976,10 +967,9 @@ Decided 2026-10-16 (Richard), with the packages and capabilities decisions
   request or delivery a crash sends again keeps none of the `ai` answers
   the crashed run was given, as a restarted runner keeps none, so a model
   asked before the steps is asked again and a different answer diverges
-  there as it would in production (chunk 7.9a).
-  Live tests in `crates/jadpo-cli/tests/step_crashes.rs`; choices in
-  area 12's decisions table, "Tests, chosen in chunk 7.5d".
-- **One fake per capability**, under design C: `email.sent` lists the mail
+  there as it would in production. The choices are in area 12's
+  decisions.
+- **One fake per capability**: `email.sent` lists the mail
   the code sent (area 16); there is no `sms.sent`, since SMS is a package
   whose calls are faked like any other. A package that fills a capability
   is not faked separately: the capability's fake stands in for every
@@ -1000,14 +990,13 @@ Decided 2026-10-16 (Richard), with the packages and capabilities decisions
   (`unavailable`) or a write (`storage_full`). A real file sits in a
   domain's `fixtures/` folder (`fixtures/files/customers.csv`), and a test
   turns it into a stored `File` with `fixture_file("customers.csv", store:
-  imports)`. Built in chunk 6.4b: one in-memory store, in every `files`
-  connection's place, which the runtime's Rust tests tell to have no room
-  and to read a few bytes at a time; `fixture_file` and telling it to
-  fail from a test come with the fakes (chunk 7.2).
+  imports)`. The in-memory store, in every `files` connection's place, is
+  built; `fixture_file` and telling the store to fail from a test are not
+  built yet.
 - **Batches** (area 12) run to the end within the test, after the action
   that started them commits, like events (not built yet: a test sees a
-  run as it starts; a file's run reads two rows a batch on a test's host,
-  chunk 6.4b). `jadpo test` runs them in batches
+  run as it starts; a file's run reads two rows a batch on a test's
+  host). `jadpo test` runs them in batches
   of two items and simulates a restart between every batch, so every
   import or export test also tests resuming; a test asserts on what the
   app recorded and on the summary `finished:` received, and can read
@@ -1015,11 +1004,13 @@ Decided 2026-10-16 (Richard), with the packages and capabilities decisions
 
 ## Shared test data: fixtures
 
-Decided in area 1: test data used by several test files lives in the
-domain's `fixtures/` folder. A fixture is a test-only action that creates
-data by calling the application's own actions, so validation, lifecycle and
-policy apply exactly as they do for a user, and returns what the tests need
-(question 4). It is called by name like any action. A failure inside a
+Test data used by several test files lives in the domain's `fixtures/`
+folder (area 1). A fixture is a test-only action that creates data by
+calling the application's own actions, so validation, lifecycle and policy
+apply exactly as they do for a user, and returns what the tests need. It
+is called by name like any action. Rows written straight into tables
+(Rails' YAML fixtures, Django's JSON fixtures) would skip validation and
+policy and drift from the code; seeds work the same way (area 5). A failure inside a
 fixture fails the test that called it, so a fixture has no `fails` list.
 
 ```jadpo fragment
@@ -1110,12 +1101,23 @@ test "a plan starts with two open todos" {
 A seed may call fixtures, so demo data and test data share their builders.
 A test never loads a seed: seeds change whenever the demo changes.
 
+### Data builders
+
+Not built yet. The compiler generates a builder for each entity:
+`make.Todo { title: "Buy milk" }` fills every other required field with a
+valid default and goes through the real create operation, so validation
+and policy apply. A builder may set any field that isn't generated,
+including ones ordinary inputs do not accept, so hard-to-reach states are
+easy to build. Fixtures remain for meaningful scenarios, and return a
+named object holding what they made (`setup.alice`, `setup.todos`), so a
+test never has to look its own data up again.
+
 ## Assertions
 
 `assert condition` fails the test when the condition is false. On failure,
 the report shows the file, the line, the source of the condition, and the
-value of each side of a comparison (question 6). To check that a call fails,
-name the failure:
+value of each side of a comparison. To check that a call fails, name the
+failure:
 
 ```jadpo fragment
 test "completing a missing todo fails" {
@@ -1130,13 +1132,22 @@ everywhere else (area 3). A call with `attempt` that fails ends the test
 as failed and names the failure. `assert … fails` checks the call itself:
 a failure that leaves while its arguments are worked out ends the test,
 like any other unhandled failure. A route test checks `response.status`,
-`response.code` and the typed output (area 7). There are no snapshot
-assertions and no mocks of your own code.
+`response.code` and the typed output (area 7). Whole values are compared
+with `==`, records and lists with a field-by-field diff on failure. There
+are no snapshot assertions, because agents update snapshots without
+reading them and a failing test quietly becomes a passing one, and no
+mocks of your own code.
+
+Not built yet: `assert emitted ReminderDue { todo_id: todo.id }` checks an
+event was emitted, beside the fakes' `.requests` for provider calls. A
+test does not assert what a query costs: the compiler reports each
+query's cost in the build report, and a change shows in the approval
+review.
 
 ### What a failed test reports
 
 A failed test gives a person or an agent everything needed to fix it without
-rerunning it (Richard, 2026-10-13), the same standard as application failures
+rerunning it, the same standard as application failures
 (area 4). Shown readably in a terminal and as versioned JSON with
 `--json`:
 
@@ -1184,8 +1195,7 @@ FAIL  a rate-limited reminder is retried
 
 `jadpo test --json` prints one document in the envelope every command
 shares (`schemaVersion` 2, `command`, `ok`, `data`, `diagnostics`), and
-`jadpo help --json` describes every field under `testReport` (built, chunks
-2.2 and 2.8). `data` holds the order `seed`; `root`, the project folder as
+`jadpo help --json` describes every field under `testReport`. `data` holds the order `seed`; `root`, the project folder as
 seen from where the command ran (`"."` from inside it), which every path is
 relative to; the `selection`; the `counts`; and the `tests` in the order
 they ran. A failed test's `failure` has its `code` and `help`, its
@@ -1236,9 +1246,7 @@ line, its `data` with a `watch` object (`event`, `changed`, `reached`,
   test's last result. Type to search files and tests; run a file, a single
   test or everything; rerun failures; open a failure's full report; toggle
   watch mode. It needs a terminal; agents use the flags above and `--json`.
-  Decided, not built: the flag says `toolchain.not_built_yet` until it
-  comes with the rest of area 14's tooling. `--keep-failed` is built with
-  the test database (chunk 3.1).
+  Not built yet: the flag says `toolchain.not_built_yet`.
 - A failed test's rerun command and every path a run prints work from the
   folder the command ran in: run from outside the project, they start with
   the project as it was typed (`examples/07-testing/domains/…`). With
@@ -1251,43 +1259,42 @@ line, its `data` with a `watch` object (`event`, `changed`, `reached`,
 
 ## The test database
 
-Decided in area 5: every environment runs the same engine, PostgreSQL unless
-the application declares otherwise, so tests run on PostgreSQL too. Each test
-gets its own database at the latest migration, empty except for what its
-fixtures create. Nothing about this appears in source; it is the job of
-`jadpo test` (question 8):
+Every environment runs the same engine, PostgreSQL unless the
+application declares otherwise (area 5), so tests run on PostgreSQL too.
+Each test gets its own database at the latest migration, empty except for
+what its fixtures create. Nothing about this appears in source; it is the
+job of `jadpo test`:
 
 - `jadpo test` starts a disposable local PostgreSQL server for the run, or
   uses the one named by `JADPO_TEST_DATABASE_URL` (in CI, for example).
 - It builds one template database from the migrations and copies it for
   each test (`CREATE DATABASE … TEMPLATE`), which takes tens of milliseconds
-  and lets tests run in parallel.
+  and lets tests run in parallel. Copies are prepared in the background
+  while tests run.
 - Each test's actions commit for real, so after-commit work (events) and
-  concurrent-change checks behave as in production. A failed test's database
-  can be kept for inspection with `--keep-failed`.
-
-The options compared (template copies, PGlite, a transaction rolled back per
-test, Testcontainers) are in
-[the testing proposals](research/13-testing-proposals.md).
+  concurrent-change checks behave as in production. Rolling back one
+  transaction per test would be faster but breaks both; PGlite needs no
+  install but runs one connection at a time.
+- `--keep-failed` keeps a failed test's database, named in the report,
+  and its trace, so `jadpo trace` and the developer console can inspect
+  exactly what it did.
 
 ## Caches and events
 
-Area 5 decided that caches are copies used only by display reads from
-routes, and area 1 that events run after the action that emits them commits.
-In a test (question 8 for the database, question 9 for these):
+Caches are copies used only by display reads from routes (area 5), and
+events run after the action that emits them commits (area 1). In a test:
 
 - **Events** are delivered after each step of the test commits and before
   the next statement runs, at the test's clock, until no events are left.
   A test checks their effects, such as a sent reminder in `requests`. A
   subscriber that fails fails the test; retries are area 12.
-  Built in chunk 6.11, as below.
-- **Caches** are on and start empty for each test, in the application's real
-  cache store, so a route test sees the same invalidation as production.
-  Tests cannot read, fill or clear a cache directly. Actions never read
-  caches, so only route tests meet them.
+- **Caches** are on and start empty for each test, in an in-memory cache
+  that behaves like Redis (area 6), so a route test sees the same
+  invalidation as production. Tests cannot read, fill or clear a cache
+  directly. Actions never read caches, so only route tests meet them.
+  Caches are not built yet: they need the Redis driver.
 
-What each step emits is delivered as area 12, question 15 decides
-(chosen in chunk 6.11):
+What each step emits is delivered as area 12 decides:
 
 - A step is a call of an action or fixture, a route test's request, a
   schedule's `.run()` or `clock.advance(...)`. Once it comes back, what
@@ -1310,14 +1317,13 @@ What each step emits is delivered as area 12, question 15 decides
   the subscriber and the attempt. What a route's `settle:` delivers
   while its request waits belongs to the request, and the response says
   how it ended (area 7, "Waiting for follow-on work").
-- A batch run a step starts is left as it was started; batches in tests
-  come with question 18's.
+- A batch run a step starts is left as it was started; running batches
+  to the end in a test is not built yet ("Provider calls and capabilities
+  in tests").
 
-A fake failing a subscriber's call to a provider is retried and given
-up the same way: proved on chunk 7.0c's fakes, with the test's host
-wrapped in one; a test scripts it with `fakes:` once roadmap 7.2
-generates them. A subscriber's own failure worth retrying tests its
-retries already. Here placing an order emits
+A fake failing a subscriber's call to a provider is retried and given up
+the same way, and a test scripts it with `fakes:`. A subscriber's own
+failure worth retrying tests its retries too. Here placing an order emits
 `OrderPlaced`, and `cook_placed` cooks it once a chef is on shift:
 
 ```jadpo check project=events-in-tests file=app.jadpo hidden
@@ -1481,8 +1487,6 @@ clock, and the retry runs once `clock.advance(30s)` reaches it.
 
 ## Errors
 
-> The six `test.*` codes run on the new compiler, with `jadpo test`'s real report, and so do `semantic.fake_invalid` (chunk 7.2d) and `type.test_clock_context` (chunk 5.2). The other `check` errors after them (the old service fakes and configuration fixtures) predate the decisions above and are rewritten when areas 10 and 11 are built (roadmap Phases 5 and 7).
-
 Every error this area can produce, with an example that triggers it:
 first the six codes a failed test gets from `jadpo test`, each with its
 report (run with `--seed 1`), then the `jadpo check` errors.
@@ -1638,9 +1642,8 @@ test failed: 1 failed, 1 pure test
 
 ### `test.subscriber_failed`
 
-A delivery between the test's steps failed for good (chosen in chunk
-6.11), or stopped as `diverged`, its rerun no longer matching the record
-of its steps (chunk 7.5d): here its subscriber's action refuses with a
+A delivery between the test's steps failed for good, or stopped as
+`diverged`, its rerun no longer matching the record of its steps: here its subscriber's action refuses with a
 failure not worth retrying. The report names the event, the subscriber and the attempt,
 then the failure as `test.unexpected_failure` shows one, at the step
 whose events were being delivered:
@@ -1785,7 +1788,7 @@ test failed: 1 failed, 1 action test
 ### `test.fake_exhausted`
 
 A test called a faked provider operation more times than its `fakes:`
-scripts answers (built in chunk 7.2d). The call past the script was
+scripts answers. The call past the script was
 answered with the generated default, so whatever the test did next
 followed from a call it didn't expect; the report names the operation,
 at the line of its first scripted answer:
@@ -1937,7 +1940,7 @@ test failed: 1 failed, 1 action test
 ### `test.fake_unused`
 
 A test that otherwise passed left answers its `fakes:` scripts for an
-operation untaken (built in chunk 7.2d): the code made fewer calls than
+operation untaken: the code made fewer calls than
 the test says.
 
 ```jadpo check project=e-fake-unused file=app.jadpo hidden
@@ -2085,8 +2088,7 @@ test failed: 1 failed, 1 action test
 
 ### `semantic.fake_invalid`
 
-A test's `fakes:` scripts something no provider operation answers (built
-in chunk 7.2d): an operation the app's connections don't have, a name
+A test's `fakes:` scripts something no provider operation answers: an operation the app's connections don't have, a name
 that is none of the operation's failures' codes or a condition, an
 operation scripted twice or with no answers, or a value for one that
 gives nothing. A value of the wrong type is the usual `type.mismatch`.
@@ -2367,262 +2369,6 @@ error: `POST /memos` takes `input:`, a `AddMemo`
 check failed: 1 error, 1 file
 ```
 
-### `semantic.test_service_fake_required`
-
-A test reaches `ReminderMail.send_overdue_reminder` without a fake:
-
-```jadpo project=e-fake-required file=tests/assurance/service-reference-mail-v0.1.json expect=semantic.test_service_fake_required hidden
-{
-  "openapi": "3.1.0",
-  "info": {
-    "title": "Jadpo local reference mail provider",
-    "version": "0.1.0"
-  },
-  "servers": [
-    { "url": "https://mail.example.invalid" }
-  ],
-  "paths": {
-    "/v1/messages": {
-      "post": {
-        "operationId": "send_overdue_reminder",
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": true,
-            "schema": { "type": "string", "format": "uuid" }
-          }
-        ],
-        "security": [ { "providerCredential": [] } ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["idempotency_key", "from", "to", "todo_title", "due_at"],
-                "properties": {
-                  "idempotency_key": { "type": "string", "format": "uuid" },
-                  "from": { "type": "string", "format": "email" },
-                  "to": { "type": "string", "format": "email" },
-                  "todo_title": { "type": "string", "minLength": 1, "maxLength": 200 },
-                  "due_at": { "type": ["string", "null"], "format": "date-time" }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "202": {
-            "description": "Accepted or deduplicated by the same key and payload",
-            "headers": {
-              "Idempotency-Key": {
-                "required": true,
-                "schema": { "type": "string", "format": "uuid" }
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": ["accepted_at"],
-                  "properties": {
-                    "accepted_at": { "type": "string", "format": "date-time" }
-                  }
-                }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/InvalidRecipient" },
-          "401": { "$ref": "#/components/responses/Authentication" },
-          "409": { "$ref": "#/components/responses/IdempotencyConflict" },
-          "429": { "$ref": "#/components/responses/RateLimited" }
-        }
-      }
-    }
-  },
-  "components": {
-    "securitySchemes": {
-      "providerCredential": { "type": "http", "scheme": "bearer" }
-    },
-    "responses": {
-      "InvalidRecipient": {
-        "description": "Recipient rejected before acceptance",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/InvalidRecipient" } } }
-      },
-      "Authentication": {
-        "description": "Credential rejected before acceptance",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Authentication" } } }
-      },
-      "IdempotencyConflict": {
-        "description": "Key reused with a different payload; no new acceptance",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IdempotencyConflict" } } }
-      },
-      "RateLimited": {
-        "description": "Request refused before acceptance",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RateLimited" } } }
-      }
-    },
-    "schemas": {
-      "InvalidRecipient": {
-        "type": "object", "additionalProperties": false, "required": ["code"],
-        "properties": { "code": { "const": "invalid_recipient" } }
-      },
-      "Authentication": {
-        "type": "object", "additionalProperties": false, "required": ["code"],
-        "properties": { "code": { "const": "authentication" } }
-      },
-      "IdempotencyConflict": {
-        "type": "object", "additionalProperties": false, "required": ["code"],
-        "properties": { "code": { "const": "idempotency_conflict" } }
-      },
-      "RateLimited": {
-        "type": "object", "additionalProperties": false, "required": ["code"],
-        "properties": { "code": { "const": "rate_limited" } }
-      }
-    }
-  }
-}
-```
-
-```jadpo project=e-fake-required file=mail.jadpo expect=semantic.test_service_fake_required hidden
-config TestConfiguration {
-    mail_api_key: Text {
-        binding: "MAIL_API_KEY"
-        secret: true
-    }
-}
-
-type ReminderIntentId = Uuid
-type TodoTitle = Text {
-    min_length: 1
-    max_length: 200
-}
-
-value ReminderMessage {
-    idempotency_key: ReminderIntentId
-    from: Email
-    to: Email
-    todo_title: TodoTitle
-    due_at: Instant?
-}
-
-value ReminderReceipt {
-    accepted_at: Instant
-}
-
-failure ReminderRecipientRejected {
-    kind: Rejected
-    code: "recipient_rejected"
-    message: "Recipient rejected."
-}
-
-failure ReminderTemporarilyUnavailable {
-    kind: Unavailable
-    code: "temporarily_unavailable"
-    message: "Temporarily unavailable."
-}
-
-service ReminderMail {
-    import {
-        file: "tests/assurance/service-reference-mail-v0.1.json"
-        version: "0.1.0"
-        sha256: "c6a8b26a4b7ec82414df2e6608cb5eb6ca65f1767f7047bfbfedfc8f9441f83d"
-    }
-    credential {
-        scheme: bearer
-        header: "Authorization"
-        secret: config.mail_api_key
-    }
-    base_url: "https://mail.example.invalid"
-    egress: mail.example.invalid:443
-    proxy: prohibited
-    redirects: prohibited
-    timeout: 5s
-    retry: exponential(max_attempts: 3, max_elapsed: 30s, jitter: full)
-
-    operation send_overdue_reminder
-    POST /v1/messages
-    idempotency_key: ReminderIntentId
-    input ReminderMessage
-    output ReminderReceipt
-    request_key: input.idempotency_key equals header "Idempotency-Key"
-    receipt_key: response header "Idempotency-Key" equals request_key
-    maps provider.invalid_recipient -> ReminderRecipientRejected
-    maps provider.rate_limited -> ReminderTemporarilyUnavailable
-    maps provider.authentication -> fault Misconfigured
-    maps provider.idempotency_conflict -> fault Misconfigured
-    maps transport.pre_dispatch_refusal -> fault Unavailable
-    maps transport.pre_dispatch_timeout -> fault Unavailable
-    maps transport.possible_dispatch_timeout -> fault OutcomeUnknown
-    maps transport.possible_dispatch_loss -> fault OutcomeUnknown
-    maps transport.invalid_acknowledgement -> fault OutcomeUnknown
-    maps transport.unexpected_response -> fault OutcomeUnknown
-}
-
-action deliver(mail: ReminderMessage)
-    fails ReminderRecipientRejected, ReminderTemporarilyUnavailable, Misconfigured, Unavailable, OutcomeUnknown
-    -> ReminderReceipt
-{
-    return attempt ReminderMail.send_overdue_reminder(mail)
-}
-
-entity ServiceFakeIdentity {
-    id: Uuid { generated: identity }
-    label: Text
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    action create_test_message() -> ReminderMessage {
-        var created = attempt create ServiceFakeIdentity {
-            label: ServiceFakeIdentity.label("fixture-only")
-        }
-        return ReminderMessage {
-            idempotency_key: ReminderMessage.idempotency_key(created.id)
-            from: ReminderMessage.from("reminders@example.test")
-            to: ReminderMessage.to("person@example.test")
-            todo_title: ReminderMessage.todo_title("Prepare release")
-            due_at: none
-        }
-    }
-}
-```
-
-```jadpo project=e-fake-required expect=semantic.test_service_fake_required
-test "a reminder is delivered" {
-    var mail = call ServiceFakeIdentity.create_test_message()
-    var receipt = attempt deliver(mail)
-    assert receipt.accepted_at == Instant("2026-01-15T12:00:00Z")
-}
-```
-
-### `type.test_call_context`
-
-Application code uses a call form that belongs to tests:
-
-```jadpo project=e-call-context expect=type.test_call_context
-value ClockReading {
-    value: Instant
-}
-
-action read_clock() -> ClockReading {
-    return ClockReading {
-        value: clock.now
-    }
-}
-
-action misuse_test_boundary() -> ClockReading {
-    return call read_clock()
-}
-```
-
 ### `type.test_clock_context`
 
 Application code cannot move the clock:
@@ -2652,122 +2398,44 @@ check failed: 1 error, 1 file
 
 ### `configuration.field_unknown`
 
-A test's configuration names a field that does not exist:
+A test's `config:` names a setting `config { }` doesn't declare (the rule
+is area 10's):
 
-```jadpo project=e-field-unknown expect=configuration.field_unknown
+```jadpo check project=e-field-unknown expect=configuration.field_unknown
 type Label = Text {
     min_length: 3
 }
 
-config Settings {
+config {
     label: Label {
-        binding: "LABEL"
+        test: "valid"
     }
 }
 
-fixture local {
-    config {
-        label: "valid"
-        lable: "valid"
+function label_in_use() -> Label {
+    return config.label
+}
+
+test "a test's label is its own" {
+    config: {
+        lable: "other"
     }
+    assert label_in_use() == "other"
 }
 ```
 
-### `configuration.fixture_duplicate`
+```text output
+error: `lable` isn't a setting
+ --> main.jadpo:17:9
+   |
+17 |         lable: "other"
+   |         ^^^^^ no such setting
+  reason: `config { }` declares no setting called `lable`, so a test has nothing to change. Did you mean `label`?
+  next: Use `label` instead of `lable` (agent)
+  rule: configuration.field_unknown
+  help: docs/language/10-configuration-and-time.html#configuration-field-unknown
 
-```jadpo project=e-fixture-duplicate expect=configuration.fixture_duplicate
-type Label = Text {
-    min_length: 3
-}
-
-config Settings {
-    label: Label {
-        binding: "LABEL"
-    }
-}
-
-fixture local {
-    config {
-        label: "first"
-        label: "second"
-    }
-}
-```
-
-### `configuration.fixture_secret_required`
-
-```jadpo project=e-fixture-secret-required expect=configuration.fixture_secret_required
-type ApiKey = Text {
-    min_length: 8
-}
-
-config ApplicationConfiguration {
-    api_key: ApiKey {
-        binding: "API_KEY"
-        secret: true
-    }
-}
-
-fixture exposed_secret {
-    config {
-        api_key: "test-only-api-key"
-    }
-}
-```
-
-### `configuration.fixture_secret_unexpected`
-
-```jadpo project=e-fixture-secret-unexpected expect=configuration.fixture_secret_unexpected
-type Label = Text {}
-
-config Settings {
-    label: Label {
-        binding: "LABEL"
-    }
-}
-
-fixture secret_to_public {
-    config {
-        label: secret("fixture-only-value")
-    }
-}
-```
-
-### `configuration.fixture_value_invalid`
-
-```jadpo project=e-fixture-value-invalid expect=configuration.fixture_value_invalid
-type RequestTimeout = Duration {}
-
-config ApplicationConfiguration {
-    request_timeout: RequestTimeout {
-        binding: "REQUEST_TIMEOUT"
-    }
-}
-
-fixture invalid_configuration {
-    config {
-        request_timeout: "eventually"
-    }
-}
-```
-
-### `configuration.fixture_value_missing`
-
-```jadpo project=e-fixture-value-missing expect=configuration.fixture_value_missing
-type Label = Text {
-    min_length: 3
-}
-
-config Settings {
-    label: Label {
-        binding: "LABEL"
-    }
-}
-
-fixture local {
-    config {
-    }
-}
+check failed: 1 error, 1 file
 ```
 
 ### `syntax.assertion_form`
@@ -2806,206 +2474,78 @@ check failed: 1 error, 1 file
 
 ### Status
 
-Each row says what the new compiler does: built (with the chunk, checked
-by `jadpo check` or run by `jadpo test`), or decided and not built yet,
-with when it comes.
-
 | Feature | Status |
 |---|---|
-| Pure and action tests | Work in the new compiler (run, chunk 2.2): `jadpo test` runs `test "…" { }` and `assert` in the interpreter, for tests that call functions and actions. Since chunk 2.10 each test gets its own environment (its seed and clock, and the places its database and fakes will take), tests run on a thread per core, and the results are reported in the order seed's order. Each action or fixture a test calls commits on its own, through the runtime's action boundary; an action it calls joins its transaction. |
-| Kind of test | Works (run, chunk 2.2): the kind comes from what a test calls (an action, query or fixture makes it an action test, a `request` a route test, and since chunk 6.2c a schedule's `.run()` a schedule test), and the footer and `--json` count each kind. |
-| Schedule tests | Work (run, chunk 6.2c): `schedule.run()` in a test runs the schedule once at the test's clock, its action called as the system with no tenant, with its own database like an action test; `--kind schedule` runs only these; anywhere but a test it is `semantic.not_callable`. Fakes for what a run calls come with packages ("Writing a test"). |
-| Route tests | Work (run, chunk 4.1): `request { method: path: params: input: }` sends a request through the runtime's HTTP component and gives a `Response` with `status`, `code` and the route's typed `output`; a route test gets its own database like an action test, and a defect behind a 500 ends it as `test.fault`. `as:` signs in a user through a real browser session or API token (chunks 4.3, 4.3b), and a service through a real service key (chunk 4.3b). Since chunk 4.7 every request but a `GET` sends a fresh `Idempotency-Key`, or the one `idempotency_key:` gives ([Idempotency keys](#idempotency-keys)). Since chunk 4.9 an optional field the `input:` leaves out is left out of the body, so a `patch:` keeps it. Since chunk 5.5v6 a streaming route's `Response` has `pieces` in place of `output`, its events read to the last. |
-| Assertion messages | Work (run, chunk 2.2): a failed `assert` reports its file and line, its source with each part's value hung beneath it, expected and actual, a field-by-field diff for records, lists, sets and maps, a stable code and the rerun command with the order seed (see [Errors](#errors)). The trace, fakes, kept database and clock in the decided report come with their phases and are left out until then. A statement over several lines shows its first line; `--json` has all of it. |
-| Checking a failure | Works (run, chunk 2.2): `assert call(…) fails Failure`; when the call returns or fails differently, the report shows the value, or the other failure with its code, kind, fields and where it was raised. A failure under `attempt` ends the test as `test.unexpected_failure`, and a fault as `test.fault`, each with its `.jadpo` frames. |
-| Events | Work (run, chunk 6.11): what each step emits is delivered once it comes back and before the next statement, at the test's clock, until nothing is due, in an order the run's seed shuffles; a retry waits its full backoff until `clock.advance` reaches it, and a delivery that fails for good ends the test as `test.subscriber_failed` ("Caches and events"), as since chunk 7.5d does one that stops as `diverged`. A fake failing a subscriber's call is retried and given up the same way on 7.0c's fakes; a test writes one with `fakes:` once 7.2 generates them. |
-| Clock | Works (run, chunk 5.2): a test's clock starts at its `clock:`, or at 2000-01-01T00:00:00Z without one, and `clock.advance(...)` moves it on for the calls after it; only a test moves it (`type.test_clock_context`, a fixture and a seed included), and a move backwards is the fault `clock_backward`. |
-| Configuration | Works (check and run, chunk 5.1): `test:` values on fields, defaults, generated secrets and a test's own `config:`; a request sent through a route is not followed for the compile-time check that every setting a test reads has a value, and a read with none then ends the test as a fault naming the setting. |
-| Integration fakes | Work for provider packages (run, chunk 7.2d): every provider call a test reaches answers through its package's fake, with the operation's generated default unless the test's `fakes:` scripts its answers, each checked against the package (`semantic.fake_invalid`); a script the calls run past is `test.fake_exhausted`, one with answers left `test.fake_unused` ("Fakes for integrations"). Since chunk 7.5d package fakes keep keys, and a test that reaches an action with several changing calls runs again with a crash at each step boundary ("Provider calls and capabilities in tests"). `email.sent` built in chunk 7.3c (area 16): every email a test sends is caught, rendered whole, a mail package's included, and read as a `List<SentEmail>`. Not built: `.requests` (built for the `ai` fake, `ai.<prompt>.requests`, chunk 5.5v3), and the capability fakes but `ai`'s (chunk 5.5v3), grants, documents and batches, which come with those features (areas 12 and 16). |
-| Database | Works (run, chunk 3.1): `jadpo test` gives each action test in a project with tables its own copy of a template built from the migrations, on the server `JADPO_TEST_DATABASE_URL` names or a disposable one started from the machine's PostgreSQL tools; copies are prepared in the background, and a test gets its copy the first time it uses a store. `--keep-failed` keeps a failed test's database and names it in the report. Since chunks 3.2 and 3.3 tests read and write records through actions, queries and fixtures; a concurrent change, which needs a second connection, is shown by the runtime's own tests. |
-| Caller | Decided, not built: acting as a user comes with identity (area 8, roadmap 4.3). Until then tests run with no caller. |
-| Placement | Built (chunk 1.3, checked): a test sits in `<name>.test.jadpo` beside its subject, or in root `tests/`; a test elsewhere is `layout.wrong_folder`, which names the `.test.jadpo` file beside it, and a test file with nothing beside it is `layout.test_without_subject`. |
-| Watch mode | Works (run, chunk 2.3): `jadpo test --watch` runs the tests asked for, then on every save the ones that reach what changed, through the graph's digests and `calls` and `uses` edges, on one long-lived database; a save no test reaches says `nothing to rerun`, a broken build shows its errors, and the next good save runs everything changed since the last run, or says `errors fixed` when no test reaches it; a removed file is a change like any other. Run from outside the project, its paths start with the project as typed. It ends when nothing reads its output any more, as when piped into `head`. A save shows its results in about 0.1 s on a 230-file project, and the gate fails above 1.25 s. The keys in the decided screen (`enter`, `a`, `f`) wait for `--interactive`, which says `toolchain.not_built_yet`; ctrl-c quits. |
-| Fixtures | Work (run): a fixture is checked like an action and called by name from tests, fixtures and seeds; an action calling one is `semantic.not_callable`. A `public` fixture is called through its domain from other domains' tests, fixtures and seeds and from root `tests/`; a private one from there is `visibility.private_cross_domain`. Seeds are checked but `jadpo seed` is not built. |
-| Golden application contract | Built (chunk 9.1d2b): the shared black-box harness in `tools/golden-todo/` executes all 44 versioned application cases on generated native code and compiled workerd, with real credential verification, raw invalid inputs, physical SQL observation, persisted-state assertions, controlled clocks and provider faults. These checks supplement authored Jadpo tests; they add no application-facing test controls. Full-gate ownership is native in `compiled`, workerd in `wasm32`, and verifier negative controls in `lint`. Independent whole-first-build review remains outstanding. |
-| `test.no_tests` | Raised by `jadpo test` only (area 14), when the project has no tests or a file, line, name, kind or `--failed` picks none (run, chunk 2.2). |
-
-### Consistency with the rest of the language
-
-- **`fixture` means two things.** Today it is a test environment (clock,
-   configuration, fakes); area 1 decided `fixtures/` holds shared test data.
-   Questions 2 and 4 give the word one meaning: data.
-- **`using` puts a setting in the header** (`test "…" using x {`), where
-   other declarations keep settings in the body (syntax review #71).
-- **Wrappers with no meaning of their own.** `fixed Instant("…")`,
-   `Duration("PT5M")` and `secret("…")` restate what the field's type or
-   declaration already says; area 2's literal typing makes them unnecessary
-   (#72, #73), and durations are `5m` elsewhere (#56, area 10).
-- **`advance clock by` is a sentence**, while time is read with `clock.now`
-   (#75); `clock.advance(5m)` matches.
-- **Fakes use `=>` and `accept`.** Area 2 removed `=>`, and `accept` is a
-   keyword found nowhere else (#76).
-- **`call`** is optional today and adds nothing once the kind of test comes
-   from what it calls (#74).
-- **SQLite in tests** contradicts area 5's one engine everywhere.
-- **Checking a failure** needs a `match` trick, although area 4 made
-   failures part of every signature.
+| Pure and action tests | Built: `jadpo test` runs `test "…" { }` and `assert` in the interpreter, for tests that call functions and actions. Each test gets its own environment (its seed and clock, its database and fakes), tests run on a thread per core, and the results are reported in the order seed's order. Each action or fixture a test calls commits on its own, through the runtime's action boundary; an action it calls joins its transaction. |
+| Kind of test | Built: the kind comes from what a test calls (an action, query or fixture makes it an action test, a `request` a route test, a schedule's `.run()` a schedule test), and the footer and `--json` count each kind. |
+| Schedule tests | Built: `schedule.run()` in a test runs the schedule once at the test's clock, its action called as the system with no tenant, with its own database like an action test; `--kind schedule` runs only these; anywhere but a test it is `semantic.not_callable`. |
+| Route tests | Built: `request { method: path: params: input: }` sends a request through the runtime's HTTP component and gives a `Response` with `status`, `code` and the route's typed `output`; a route test gets its own database like an action test, and a defect behind a 500 ends it as `test.fault`. `as:` signs in a user through a real browser session or API token, and a service through a real service key. Every request but a `GET` sends a fresh `Idempotency-Key`, or the one `idempotency_key:` gives ([Idempotency keys](#idempotency-keys)). An optional field the `input:` leaves out is left out of the body, so a `patch:` keeps it. A streaming route's `Response` has `pieces` in place of `output`, its events read to the last. |
+| Assertion messages | Built: a failed `assert` reports its file and line, its source with each part's value hung beneath it, expected and actual, a field-by-field diff for records, lists, sets and maps, a stable code and the rerun command with the order seed (see [Errors](#errors)). Not built: the trace, fakes, kept database and clock in the report. A statement over several lines shows its first line; `--json` has all of it. |
+| Checking a failure | Built: `assert call(…) fails Failure`; when the call returns or fails differently, the report shows the value, or the other failure with its code, kind, fields and where it was raised. A failure under `attempt` ends the test as `test.unexpected_failure`, and a fault as `test.fault`, each with its `.jadpo` frames. |
+| Events | Built: what each step emits is delivered once it comes back and before the next statement, at the test's clock, until nothing is due, in an order the run's seed shuffles; a retry waits its full backoff until `clock.advance` reaches it, and a delivery that fails for good, or stops as `diverged`, ends the test as `test.subscriber_failed` ("Caches and events"). |
+| Clock | Built: a test's clock starts at its `clock:`, or at 2000-01-01T00:00:00Z without one, and `clock.advance(...)` moves it on for the calls after it; only a test moves it (`type.test_clock_context`, a fixture and a seed included), and a move backwards is the fault `clock_backward`. |
+| Configuration | Built: `test:` values on fields, defaults, generated secrets and a test's own `config:`; a request sent through a route is not followed for the compile-time check that every setting a test reads has a value, and a read with none then ends the test as a fault naming the setting. |
+| Integration fakes | Built for provider packages: every provider call a test reaches answers through its package's fake, with the operation's generated default unless the test's `fakes:` scripts its answers, each checked against the package (`semantic.fake_invalid`); a script the calls run past is `test.fake_exhausted`, one with answers left `test.fake_unused` ("Fakes for integrations"). Package fakes keep keys, and a test that reaches an action with several changing calls runs again with a crash at each step boundary ("Provider calls and capabilities in tests"). `email.sent` (area 16): every email a test sends is caught, rendered whole, a mail package's included, and read as a `List<SentEmail>`. Not built: `.requests` (built for the `ai` fake, `ai.<prompt>.requests`), the capability fakes but `ai`'s, grants, documents, batches and `fixture_file`. |
+| Database | Built: `jadpo test` gives each action test in a project with tables its own copy of a template built from the migrations, on the server `JADPO_TEST_DATABASE_URL` names or a disposable one started from the machine's PostgreSQL tools; copies are prepared in the background, and a test gets its copy the first time it uses a store. `--keep-failed` keeps a failed test's database and names it in the report. Tests read and write records through actions, queries and fixtures; a concurrent change, which needs a second connection, is shown by the runtime's own tests. |
+| Caller | Built: `Principal.user(user)` and `Principal.service(service)` in tests, fixtures and seeds; a call passing a caller runs as that caller, one passing none runs without policy. |
+| Placement | Built: a test sits in `<name>.test.jadpo` beside its subject, or in root `tests/`; a test elsewhere is `layout.wrong_folder`, which names the `.test.jadpo` file beside it, and a test file with nothing beside it is `layout.test_without_subject`. |
+| Watch mode | Built: `jadpo test --watch` runs the tests asked for, then on every save the ones that reach what changed, through the graph's digests and `calls` and `uses` edges, on one long-lived database; a save no test reaches says `nothing to rerun`, a broken build shows its errors, and the next good save runs everything changed since the last run, or says `errors fixed` when no test reaches it; a removed file is a change like any other. Run from outside the project, its paths start with the project as typed. It ends when nothing reads its output any more, as when piped into `head`. A save shows its results in about 0.1 s on a 230-file project, and the gate fails above 1.25 s. The keys in the interactive screen (`enter`, `a`, `f`) wait for `--interactive`, which says `toolchain.not_built_yet`; ctrl-c quits. |
+| Fixtures | Built: a fixture is checked like an action and called by name from tests, fixtures and seeds; an action calling one is `semantic.not_callable`. A `public` fixture is called through its domain from other domains' tests, fixtures and seeds and from root `tests/`; a private one from there is `visibility.private_cross_domain`. Seeds are checked but `jadpo seed` is not built. |
+| Data builders, `assert emitted` | Not built. |
+| Golden application contract | Built: the shared black-box harness in `tools/golden-todo/` executes all 44 versioned application cases on generated native code and compiled workerd, with real credential verification, raw invalid inputs, physical SQL observation, persisted-state assertions, controlled clocks and provider faults. These checks supplement authored Jadpo tests; they add no application-facing test controls. Full-gate ownership is native in `compiled`, workerd in `wasm32`, and verifier negative controls in `lint`. |
+| `test.no_tests` | Raised by `jadpo test` only (area 14), when the project has no tests or a file, line, name, kind or `--failed` picks none. |
 
 ### Carried to later areas
 
-| Item | Area | Status |
-|---|---|---|
-| The `request { }` form in route tests, the `Response` type, its `status`, `code` and typed output | 7 | Input to area 7 |
-| `Principal.user(user)` in tests, fixtures and seeds, and `as:` signing in through the real authentication method (question 10); a service caller in tests | 8 | Built in chunk 4.3 for users and chunk 4.3b for services |
-| Policy tests are ordinary tests: call as another user and `assert … fails` with the failure policy reports | 9 | Built in chunk 4.4: a call passing a caller runs as that caller; one passing none runs without policy |
-| `test:` values on configuration fields, and the `5m` duration literal | 10 | Input to area 10 |
-| Fake responses name the provider conditions in the integration's `failures:` block; checking a fake against the provider's contract or sandbox | 11 | Input to area 11 |
-| `overdue_reminders.run()` in tests, subscriber delivery order, and retries of a failing subscriber in tests | 12 | Input to area 12 |
-| Caches in tests once the Redis adapter exists | 6 | Input to area 6 |
-| `lost` and `in_use` answers and crash points for several changing calls; batches in tests | 12 | Question 18 |
-| One fake per capability; `bot_check_failed`; the placeholder PDF; PostgreSQL search in tests; `fixture_file` | 16 | Question 18 |
-| Declaring OAuth grants in tests | 11 | Question 18 |
-| `jadpo test` itself: starting PostgreSQL, template copies, parallel runs, `--kind`, `--keep-failed`, the report; `test.no_tests`, `test.failed` and `test.runtime_start_failed`, which only `jadpo test` raises | 14 | Input to area 14 |
-| Tests the compiler generates from facts it already owns (bad input, failure envelopes, closed output) | 14 | Input to area 14 |
-| `layout.test_without_subject` and test file contents | 1 | Follows from a decision |
-
-### Open questions
-
-1. **What can a test reach?** *Recommendation:* a test beside its subject
-   can call anything in its own domain, including private actions and
-   queries; a scenario in root `tests/` sees only public declarations and
-   routes, as another domain would. Unit tests stay close to the code they
-   test, and scenarios cannot depend on internals. This is the split Rust
-   makes between unit tests inside a module and integration tests in
-   `tests/`. *Decided 2026-10-13:* yes, as recommended.
-2. **Where does a test's environment go?** Today it is a named fixture
-   attached with `using`. *Recommendation:* settings at the top of the test
-   body (`clock:`, `config:`, `fakes:`), each optional, with a fixed default
-   clock; the word `fixture` moves to shared data (question 4). A reader sees
-   everything that shapes the result in the test, and the clock default is
-   never the real time. *Decided 2026-10-13:* yes, as recommended.
-3. **How do tests get configuration?** Today every fixture lists every field
-   and wraps secrets in `secret("…")`. *Recommendation:* a `test:` value on
-   each field in `config.jadpo`, overridden per test with `config:`; secrets
-   get a generated throwaway value per run and cannot be written in tests.
-   Rails and Phoenix keep a test environment configuration the same way. *Decided 2026-10-13:* settled by area 10 question 11: `test:` values in `config.jadpo`, generated secrets, per-test override.
-4. **What is a fixture?** *Recommendation:* a test-only action in
-   `fixtures/` that creates data by calling the application's own actions
-   and returns what tests need, called by name. Rows written straight into
-   tables (Rails' YAML fixtures, Django's JSON fixtures) skip validation and
-   policy and drift from the code; builders that go through the code
-   (factory_bot, Elixir's ExMachina) are what those communities moved to.
-   It is also how area 5 decided seeds work. *Decided 2026-10-13:* yes, as recommended.
-5. **How do route and schedule tests call their boundary?** *Recommendation:*
-   `request { method: HttpMethod.post path: "/todos" as: alice input: … }` returning a
-   typed `Response`, through the real generated HTTP boundary without a
-   network; and `overdue_reminders.run()`, which runs the schedule once at
-   the test clock. Advancing the clock does not run schedules by itself, so
-   adding a schedule never changes an unrelated test. *Decided 2026-10-13:* settled by areas 7 and 12: `request { }` returning `Response`, and `schedule.run()` under the test clock.
-6. **How are results checked?** *Recommendation:* keep `assert condition`,
-   report the line, the condition and both sides' values on failure (as
-   pytest does), and add `assert call(…) fails FailureName` for expected
-   failures. One assertion word, and failures are checked by name, as area 4
-   lists them. *Decided 2026-10-13:* yes, as recommended.
-7. **How are fakes written, and what if the code calls them a different
-   number of times?** *Recommendation:* a `fakes:` setting mapping
-   `Integration.operation` to a list of responses (output values or provider
-   conditions), `.requests` to check what was sent, and the test fails when
-   the list runs out or has responses left over, naming the operation. A
-   wrong count is a mistake in the test or the code, not a provider outcome;
-   the HTTP mocking library nock checks leftover responses the same way.
-   See [the testing proposals](research/13-testing-proposals.md). *Decided 2026-10-13:* yes, updated for area 11: unscripted provider calls get the package fake's valid defaults; scripted answers via `fakes: { stripe.payment_intents.create: [...] }`; running out or leftovers fail the test.
-8. **How do tests get a fast, isolated PostgreSQL?** *Recommendation:*
-   `jadpo test` starts a disposable PostgreSQL (or uses a given one), builds a
-   template database from the migrations once, and copies it for each test,
-   running tests in parallel; actions commit for real. Rolling back one
-   transaction per test is faster but breaks after-commit events and
-   concurrency checks; PGlite needs no install but runs one connection at a
-   time. Details in [the testing proposals](research/13-testing-proposals.md). *Decided 2026-10-13:* yes, as recommended.
-9. **How do events and caches behave in tests?** *Recommendation:* events
-   are delivered after each step commits, before the next statement, until
-   none are left; caches are on and empty for each test, and tests cannot
-   touch them. Tests then see what production does, deterministically.
-   Django's `captureOnCommitCallbacks(execute=True)` runs after-commit work
-   at the same point. *Decided 2026-10-13:* settled by areas 6 and 12: events delivered after each commit in a seeded shuffled order; an in-memory cache emptied between tests.
-10. **How does a test act as a user?** Area 8 proposes passing the caller to
-    actions as a parameter. *Recommendation:* tests, fixtures and seeds make
-    one with `Principal.user(user)`, which application code cannot do; a
-    route test signs in with `as:`, which runs the application's real
-    authentication. Laravel's `actingAs` sets the user directly and skips the
-    sign-in checks; signing in for real tests them too. *Decided 2026-10-13:* settled by area 8 question 10: `Principal.user(user)` in tests, fixtures and seeds; `as:` in route tests.
-11. **How does a test act as a service?** (carried from area 8) Question 10
-    covers users only. How does a test, fixture or seed make a service
-    caller, and does a route test sign in with a service key? *Decided 2026-10-13:* `Principal.service(service)` in tests, fixtures and seeds; a route test signs in with a key from `Service.issue_key`.
-12. **Can a test assert what a query costs?** (carried from area 6) Area 6
-    bounds how many records and database queries a query may cost. Can a
-    test assert those numbers, and how? *Decided 2026-10-13:* no runtime assertion; the compiler reports each query's cost in the build report and a change shows in the approval review.
-13. **Should the compiler generate data builders?** *Recommendation:* yes.
-    `make.Todo { title: "Buy milk" }` fills every other required field with
-    a valid default and goes through the real create operation, so
-    validation and policy apply (factory_bot's model, generated instead of
-    written). Fixtures remain for meaningful scenarios and return a named
-    object holding what they made (`setup.alice`, `setup.todos`), so a test
-    never has to look its own data up again. *Decided 2026-10-13:* yes, as recommended.
-14. **How does a test check side effects?** *Recommendation:*
-    `assert emitted ReminderDue { todo_id: todo.id }` for events, beside the
-    fakes' `.requests` for provider calls. *Decided 2026-10-13:* yes, as recommended.
-15. **How are whole values compared?** *Recommendation:* `==` on records and
-    lists, with a field-by-field diff on failure; no snapshot assertions,
-    because agents update snapshots without reading them and a failing test
-    quietly becomes a passing one. *Decided 2026-10-13:* yes, as recommended.
-16. **What does a failed test leave behind?** *Recommendation:* with
-    `--keep-failed`, its database (named in the report) and its trace, so
-    `jadpo trace` and `jadpo console` can inspect exactly what it did. *Decided 2026-10-13:* yes, as recommended.
-17. **Is a database copy per test fast enough?** Estimate, not measured: a
-    PostgreSQL template copy likely costs tens to a couple of hundred
-    milliseconds. *Recommendation:* the runner prepares copies in the
-    background while tests run; measure on the golden app before changing
-    the approach. *Decided 2026-10-13:* yes, as recommended.
-18. **How do tests treat provider calls, capabilities and batches?**
-    (from the packages decisions, 2026-10-16) *Decided 2026-10-16
-    (Richard):* every provider call is faked, scripted answers taking the
-    clean type or a provider failure; fakes honour keys and answer `lost`
-    and `in_use`, and multi-step tests rerun with a crash at each step
-    boundary by default; one fake per capability (`email.sent`, no
-    `sms.sent`); documents give a placeholder PDF and readable HTML; bot
-    checks pass unless a test scripts `bot_check_failed`; search is
-    PostgreSQL's; grants are declared with `grants: { <connection>: [<fixtures>] }`; batches run to the end in batches of
-    two with a restart between each.
+| Item | Area |
+|---|---|
+| The `request { }` form in route tests, the `Response` type, its `status`, `code` and typed output | 7 |
+| `Principal.user(user)` in tests, fixtures and seeds, and `as:` signing in through the real authentication method; a service caller in tests | 8 |
+| Policy tests are ordinary tests: call as another user and `assert … fails` with the failure policy reports | 9 |
+| `test:` values on configuration fields, and the `5m` duration literal | 10 |
+| Fake responses name the provider conditions in the integration's `failures:` block; checking a fake against the provider's contract or sandbox | 11 |
+| `overdue_reminders.run()` in tests, subscriber delivery order, and retries of a failing subscriber in tests | 12 |
+| Caches in tests once the Redis adapter exists | 6 |
+| `lost` and `in_use` answers and crash points for several changing calls; batches in tests | 12 |
+| One fake per capability; `bot_check_failed`; the placeholder PDF; PostgreSQL search in tests; `fixture_file` | 16 |
+| Declaring OAuth grants in tests | 11 |
+| `jadpo test` itself: starting PostgreSQL, template copies, parallel runs, `--kind`, `--keep-failed`, the report; `test.no_tests`, `test.failed` and `test.runtime_start_failed`, which only `jadpo test` raises | 14 |
+| Tests the compiler generates from facts it already owns (bad input, failure envelopes, closed output) | 14 |
+| `layout.test_without_subject` and test file contents | 1 |
 
 ### Decisions
 
-| Topic | Decision | Date |
-|---|---|---|
-| Test placement | Carried from area 1: tests beside their subject as `<name>.test.jadpo`; cross-domain scenarios in root `tests/` | 2026-10-12 |
-| Kinds of test | Carried from area 1: pure, integration (action), route and schedule, known from what a test calls; no folder per kind; `jadpo test --kind route` runs one kind | 2026-10-12 |
-| Fixtures folder | Carried from area 1: test data shared by several test files lives in the domain's `fixtures/` | 2026-10-12 |
-| Database engine | Carried from area 5: one engine in every environment, PostgreSQL `main` by default, so tests run on PostgreSQL | 2026-10-12 |
-| Seeds | Carried from area 5: seeds create data through the application's own actions and refuse to run against production | 2026-10-12 |
-| Caches and events | Carried from areas 1 and 5: caches serve display reads only; events run after the emitting action commits | 2026-10-12 |
-| Code in tests | Carried from areas 2 to 4: `var x: T`, literals take the expected type, `if (…)`, one `match` with `->`, failures named in arms, the colon rule | 2026-10-12 |
-| What a test can reach | A test beside its code reaches anything in its domain; a scenario in root `tests/` sees only public declarations and routes | 2026-10-13 |
-| Test environment | Optional `clock:`, `config:`, `fakes:` settings at the top of the test; the clock defaults to a fixed time | 2026-10-13 |
-| Configuration in tests | Area 10: `test:` values, generated secrets, per-test override | 2026-10-13 |
-| Fixtures | Test-only actions in `fixtures/` calling the real actions; return a named object of what they made | 2026-10-13 |
-| Public fixtures | A fixture may be `public`: another domain's tests, fixtures and seeds, and scenarios in root `tests/`, call it through its domain (`planning.alice_with_todos()`); a private fixture stays its own domain's; only tests, fixtures and seeds ever call a fixture. This page wins over area 1, which had made `public` on a fixture an error (Richard) | 2026-10-14 |
-| Route and schedule tests | `request { }` returning `Response`; `schedule.run()` under the test clock | 2026-10-13 |
-| Assertions | `assert condition` with sub-expression values; `assert call(...) fails FailureName` | 2026-10-13 |
-| Fakes | Generated per package with valid defaults; scripted answers; `.requests`; running out or leftovers fail the test | 2026-10-13 |
-| Test database | Disposable PostgreSQL; a template from the migrations copied per test; parallel; real commits | 2026-10-13 |
-| Events and caches in tests | Events delivered after each commit in a seeded shuffled order; in-memory cache emptied per test | 2026-10-13 |
-| Acting as a user | `Principal.user(user)` in tests, fixtures and seeds; `as:` in route tests | 2026-10-13 |
-| Acting as a service | `Principal.service(service)`; route tests sign in with a key from `Service.issue_key` | 2026-10-13 |
-| Query cost assertions | None at runtime; the compiler reports query cost and changes show in review | 2026-10-13 |
-| Test failure output | Every failed test reports the assertion broken into sub-expression values, record diffs, the failure that happened instead, the test's trace in short, fake usage, clock, seed, kept database and the rerun command; readable and `--json`; stable `test.*` codes (Richard) | 2026-10-13 |
-| Running tests | `jadpo test` by file, `file:line`, `--name`, `--kind`, `--failed`; `--watch` reruns affected tests on save; `--interactive` keyboard view to search, navigate and run every test in the app; editor run buttons; no `test.only` (Richard) | 2026-10-13 |
-| Data builders | Generated `make.Entity { ... }` with valid defaults through the real create operation; builders may set any non-generated field, including ones ordinary inputs do not accept, so hard-to-reach states are easy to build; validation still applies | 2026-10-13 |
-| Side-effect assertions | `assert emitted Event { ... }` and fakes' `.requests` | 2026-10-13 |
-| Comparing values | `==` on records and lists with field diffs; no snapshot assertions | 2026-10-13 |
-| What a failed test leaves | `--keep-failed` keeps the database and trace | 2026-10-13 |
-| Speed of database copies | Copies prepared in the background; measured on the golden app before changing approach | 2026-10-13 |
-| Provider calls and capabilities in tests | Every provider call faked; scripted answers in the clean type; fakes honour keys and answer `lost` and `in_use`; crash points at each step boundary of multi-step actions, on by default; one fake per capability (`email.sent`, no `sms.sent`); placeholder PDF with readable HTML; `bot_check_failed` scripted; PostgreSQL search; `grants: { calendar: [alice] }` naming fixtures; file fixtures and failing stores; batches in batches of two with a restart between each (Richard) | 2026-10-16 |
-| Idempotency keys in route tests | A route test sends a fresh `Idempotency-Key` with every request but a `GET`, as a real client would, so a route on an API with `idempotency: Idempotency.required` is tested through its success; a test that writes its own `Idempotency-Key` header sends that one instead, to test repeats and refusals; built in chunk 4.7 (Richard) | 2026-10-16 |
-| Writing a route test's key (chosen in chunk 4.7, confirmed by Richard 2026-10-16) | A test writes the key it sends as `idempotency_key:` in `request { }`, text, as `as:` stands for the credential: the request has no headers of its own, and an `Input`'s `header:` field is the action's, which the runtime's key never reaches. The runtime checks it as it checks a client's. A `GET` reads no key, so a request to one that gives `idempotency_key:` is `semantic.request_invalid`. A fresh key is a new identity from the test's seed, so a run is the same every time; a route whose `Input` itself reads an `Idempotency-Key` header sends that one | 2026-10-16 |
-| An omitted field in a route test (chosen in chunk 4.9) | A route test's `input:` leaves an optional field it doesn't write out of the body it sends, as a client would, so a `patch:` keeps that field rather than clearing it; a field written as `none` is sent as `null`. A request's body goes with `Content-Type: application/json` | 2026-10-16 |
-| The test clock (chosen in chunk 5.2) | A test without `clock:` starts at 2000-01-01T00:00:00Z; `clock:` is an instant written out (`type.setting_value` otherwise). `clock.advance(duration)` moves the clock on for the calls after it, never one already running; it is `type.test_clock_context` anywhere but a test, a fixture and a seed included, and a negative duration is the fault `clock_backward` | 2026-10-16 |
+| Topic | Decision |
+|---|---|
+| Test placement | Carried from area 1: tests beside their subject as `<name>.test.jadpo`; cross-domain scenarios in root `tests/` |
+| Kinds of test | Carried from area 1: pure, action, route and schedule, known from what a test calls; no folder per kind; `jadpo test --kind route` runs one kind |
+| Fixtures folder | Carried from area 1: test data shared by several test files lives in the domain's `fixtures/` |
+| Database engine | Carried from area 5: one engine in every environment, PostgreSQL `main` by default, so tests run on PostgreSQL |
+| Seeds | Carried from area 5: seeds create data through the application's own actions and refuse to run against production |
+| Caches and events | Carried from areas 1 and 5: caches serve display reads only; events run after the emitting action commits |
+| Code in tests | Carried from areas 2 to 4: `var x: T`, literals take the expected type, `if (…)`, one `match` with `->`, failures named in arms, the colon rule |
+| What a test can reach | A test beside its code reaches anything in its domain; a scenario in root `tests/` sees only public declarations and routes |
+| Test environment | Optional `clock:`, `config:`, `fakes:` settings at the top of the test; the clock defaults to a fixed time |
+| Configuration in tests | Area 10: `test:` values, generated secrets, per-test override |
+| Fixtures | Test-only actions in `fixtures/` calling the real actions; return a named object of what they made |
+| Public fixtures | A fixture may be `public`: another domain's tests, fixtures and seeds, and scenarios in root `tests/`, call it through its domain (`planning.alice_with_todos()`); a private fixture stays its own domain's; only tests, fixtures and seeds ever call a fixture. This page wins over area 1 |
+| Route and schedule tests | `request { }` returning `Response`; `schedule.run()` under the test clock |
+| Assertions | `assert condition` with sub-expression values; `assert call(...) fails FailureName` |
+| Fakes | Generated per package with valid defaults; scripted answers; `.requests`; running out or leftovers fail the test |
+| Test database | Disposable PostgreSQL; a template from the migrations copied per test; parallel; real commits |
+| Events and caches in tests | Events delivered after each commit in a seeded shuffled order; in-memory cache emptied per test |
+| Acting as a user | `Principal.user(user)` in tests, fixtures and seeds; `as:` in route tests |
+| Acting as a service | `Principal.service(service)`; route tests sign in with a key from `Service.issue_key` |
+| Query cost assertions | None at runtime; the compiler reports query cost and changes show in review |
+| Test failure output | Every failed test reports the assertion broken into sub-expression values, record diffs, the failure that happened instead, the test's trace in short, fake usage, clock, seed, kept database and the rerun command; readable and `--json`; stable `test.*` codes |
+| Running tests | `jadpo test` by file, `file:line`, `--name`, `--kind`, `--failed`; `--watch` reruns affected tests on save; `--interactive` keyboard view to search, navigate and run every test in the app; editor run buttons; no `test.only` |
+| Data builders | Generated `make.Entity { ... }` with valid defaults through the real create operation; builders may set any non-generated field, including ones ordinary inputs do not accept, so hard-to-reach states are easy to build; validation still applies |
+| Side-effect assertions | `assert emitted Event { ... }` and fakes' `.requests` |
+| Comparing values | `==` on records and lists with field diffs; no snapshot assertions |
+| What a failed test leaves | `--keep-failed` keeps the database and trace |
+| Speed of database copies | Copies prepared in the background; measured on the golden app before changing approach |
+| Provider calls and capabilities in tests | Every provider call faked; scripted answers in the clean type; fakes honour keys and answer `lost` and `in_use`; crash points at each step boundary of multi-step actions, on by default; one fake per capability (`email.sent`, no `sms.sent`); placeholder PDF with readable HTML; `bot_check_failed` scripted; PostgreSQL search; `grants: { calendar: [alice] }` naming fixtures; file fixtures and failing stores; batches in batches of two with a restart between each |
+| Idempotency keys in route tests | A route test sends a fresh `Idempotency-Key` with every request but a `GET`, as a real client would, so a route on an API with `idempotency: Idempotency.required` is tested through its success; a test that gives its own key sends that one instead, to test repeats and refusals |
+| Writing a route test's key | A test writes the key it sends as `idempotency_key:` in `request { }`, text, as `as:` stands for the credential: the request has no headers of its own, and an `Input`'s `header:` field is the action's, which the runtime's key never reaches. The runtime checks it as it checks a client's. A `GET` reads no key, so a request to one that gives `idempotency_key:` is `semantic.request_invalid`. A fresh key is a new identity from the test's seed, so a run is the same every time; a route whose `Input` itself reads an `Idempotency-Key` header sends that one |
+| An omitted field in a route test | A route test's `input:` leaves an optional field it doesn't write out of the body it sends, as a client would, so a `patch:` keeps that field rather than clearing it; a field written as `none` is sent as `null`. A request's body goes with `Content-Type: application/json` |
+| The test clock | A test without `clock:` starts at 2000-01-01T00:00:00Z; `clock:` is an instant written out (`type.setting_value` otherwise). `clock.advance(duration)` moves the clock on for the calls after it, never one already running; it is `type.test_clock_context` anywhere but a test, a fixture and a seed included, and a negative duration is the fault `clock_backward` |

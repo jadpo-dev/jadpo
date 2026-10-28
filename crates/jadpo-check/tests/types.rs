@@ -463,7 +463,7 @@ fn formatting_is_checked_like_any_operation() {
         ),
         ["type.mismatch", "type.argument_count"]
     );
-    // `temporal.format` moved to `text.format` (area 19, question 2).
+    // `temporal.format` moved to `text.format` (area 19, "The contract, generated").
     assert_eq!(
         with_names(
             "type At = Instant {}\n\nfunction f(at: At) -> PresentationText {\n    return temporal.format(at, zone: Zone.utc, locale: Locale.en_gb, format: TimeFormat.date_long)\n}\n"

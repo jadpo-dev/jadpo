@@ -717,7 +717,7 @@ impl Part<'_> {
     }
 
     /// The not-found failure the compiler provides for an entity whose
-    /// project declares none (area 6, question 6): a failure type with
+    /// project declares none (area 6, "Write failures"): a failure type with
     /// kind `not_found` and no fields, placed at the entity.
     fn provided_failure(&mut self, decl: &ast::EntityDecl, entity: &str) {
         let name = format!("{entity}NotFound");

@@ -29,7 +29,7 @@ pub struct Symbol {
     /// For an entity: its lifecycle's transitions (see [`Item::transitions`]).
     pub transitions: Vec<String>,
     /// For the not-found failure the compiler provides for an entity whose
-    /// project declares none (area 6, question 6): that entity. It has no
+    /// project declares none (area 6, "Write failures"): that entity. It has no
     /// declaration of its own: its path is the entity's file and its index
     /// [`Symbol::PROVIDED`], which no declaration has.
     pub provided: Option<String>,
@@ -62,7 +62,7 @@ impl Symbol {
         }
     }
 
-    /// The name its stable identity is made from (area 18, question 8,
+    /// The name its stable identity is made from (area 18, "Stable identity",
     /// amended 2026-10-16): `<domain>.<name>` for a function or type
     /// declared in a domain, public or not, and its name for everything
     /// else.
@@ -343,7 +343,7 @@ pub fn symbols(db: &dyn Db, project: Project) -> Symbols {
     // Every entity's not-found failure, `<Entity>NotFound`, is the one the
     // project declares, or else one the compiler provides with kind
     // `not_found`, public so any domain's callers can name it (area 6,
-    // question 6).
+    // "Write failures").
     let entities: Vec<Symbol> = table
         .declarations
         .values()

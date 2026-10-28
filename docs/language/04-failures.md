@@ -2,7 +2,7 @@
 title: Failures
 area: 4
 status: decided
-checked-with: this checkout's jadpo on every gate run (archived examples: v0 3ce094d0)
+checked-with: this checkout's jadpo on every gate run
 ---
 
 # Failures
@@ -12,9 +12,7 @@ kinds that decide how each one reaches a client, listing, raising, passing on
 and mapping failures, the faults the runtime raises by itself, and what is
 logged.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 4. Built in the new compiler in roadmap chunk 1.6, with constructions' rule arms in chunks 2.5 and 2.6, overflow and the recursion limit in the interpreter (chunk 2.1), and a query's `missing:` in chunk 3.2. Writes' mappings come with chunk 3.3, the client's envelope and OpenAPI with routes (chunk 4.1), and concealment with policy in chunk 4.4.
-
-The rule behind all of it, from the failure model: **application code says
+The rule behind all of it: **application code says
 what failed; the compiler and runtime decide how that fact is shown at each
 boundary.** Code never throws, never picks an HTTP status and never builds an
 error response.
@@ -84,17 +82,16 @@ type QuantityUnavailable = Failure {
   `shared/failures/` once two or more domains raise it (question 15). It is
   marked `public` when another domain handles it.
 
-Decided (question 13): a failure is written like every other type,
-`type TodoNotFound = Failure { ... }`, so code reads the same everywhere.
-`Failure` as a base brings `kind`, `message`, `client` and `internal`, as
+A failure is written like every other type,
+`type TodoNotFound = Failure { ... }`, so code reads the same everywhere
+(question 13). `Failure` as a base brings `kind`, `message`, `client` and `internal`, as
 `Input` brings optional fields.
 
 ## Kinds
 
-Carried from area 2: kinds are lower_snake_case option names (superseded
-2026-10-12: written `FailureKind.not_found`; see area 2 question 17). The
-"raised by" column is decided (question 3): declaring a kind only the
-runtime raises is `failure.kind_runtime_only`.
+A kind is a `FailureKind` option, written `FailureKind.not_found` (area 2,
+question 17). Declaring a kind only the runtime raises is
+`failure.kind_runtime_only` (question 3).
 
 | Kind | HTTP | Meaning | Raised by |
 |---|---:|---|---|
@@ -208,7 +205,7 @@ action rename(todo_id: Todo.id, title: TodoTitle) fails TodoNotFound, TitleBlank
 A missing one is `failure.undeclared_propagation`, one that can never happen
 is `failure.stale_declaration`, and a repeat is
 `failure.duplicate_declaration`. Functions and actions follow the same rule.
-`fails` comes before `->` (decided in area 3), and faults are never listed
+`fails` comes before `->` (area 3), and faults are never listed
 (question 5).
 
 ## Raising a failure: `reject`
@@ -235,8 +232,8 @@ area 10), and nor can the signed-in principal (area 8).
 
 ## Passing a failure on: `attempt`
 
-Decided in area 3: `attempt` starts a statement, only on a call that can
-fail, and passes every failure of that call on to the caller's `fails` list.
+`attempt` starts a statement, only on a call that can fail, and passes
+every failure of that call on to the caller's `fails` list (area 3).
 
 ```jadpo check project=reorder file=app.jadpo hidden
 application {}
@@ -291,7 +288,7 @@ action reorder(order_id: Order.id) fails OrderNotFound, QuantityUnavailable -> R
 }
 ```
 
-Decided in area 2: a runtime construction can fail, and its `attempt` maps
+A runtime construction can fail, and its `attempt` maps
 each rule that can break in a block after the call,
 `attempt Type(value) { max: SomeFailure }`, with `invalid:` covering every
 rule without an arm of its own (area 2, "Construction failures by rule").
@@ -379,10 +376,10 @@ var receipt: Receipt = match payments.charge(order) {
 a write's or an integration call's conditions each need their own arm, and
 `invalid:` in their block is an error (`failure.invalid_outside_construction`).
 
-> Amended 2026-10-17 by area 19 (chunk 5.5g2): a failure mapped from
-> `json.read`'s `mismatch` that declares `problem: DecodeProblem`
-> receives the first problem in that field, so the arm gives every other
-> field and never `problem`; nothing else fills one.
+A failure mapped from `json.read`'s `mismatch` that declares
+`problem: DecodeProblem` receives the first problem in that field, so the
+arm gives every other field and never `problem`; nothing else fills one
+(area 19).
 
 The failure that was mapped is kept as the internal cause of the new one, so
 the log shows both (question 8):
@@ -395,12 +392,12 @@ PaymentDeclined rejected at domains/checkout/actions/pay.jadpo:14
 
 ## Handling a failure in `match`
 
-Decided in area 3: one `match` handles a call's outcome. Every failure the
+One `match` handles a call's outcome (area 3). Every failure the
 call can produce needs an arm, with no `_`; an arm recovers with a value,
 maps with `reject` or passes the failure on with `propagate`. The arms
 handle only the call itself: a failure that leaves while its arguments are
 worked out leaves the callable around the `match`, as it would anywhere
-else (built in chunk 2.7).
+else.
 
 ```jadpo check project=outcome file=lookup.jadpo hidden
 type LookupCode = Text {}
@@ -546,9 +543,7 @@ the client formats them for its own language before filling the
 placeholder. The compiler writes, beside each API's OpenAPI document, one
 file per locale named `<api>.failures.<locale>.json`, mapping each code to
 its wording in the same `{field}` syntax and saying which placeholders need
-formatting and how (date, time or number), for client apps to show
-(revised 2026-10-16, built in chunk 5.4d; `jadpo check` writes the files
-until `jadpo build` exists):
+formatting and how (date, time or number), for client apps to show:
 
 ```text
 // domains/planning/translations/fr_fr.jadpo
@@ -565,7 +560,7 @@ not just different words, map it to the app's own failure at the call with
 ## Errors
 
 Every error this area can produce, with an example that triggers it and the
-new compiler's actual output.
+compiler's actual output.
 
 ### `syntax.fails_after_result`
 
@@ -671,7 +666,10 @@ check failed: 1 error, 1 file
 ### `failure.duplicate_code`
 
 Two failures cannot share a code, whether it is written or comes from the
-name:
+name. Nor can a failure take a code the runtime answers with itself:
+`invalid_input`, `invalid_request`, `route_not_found`, `deadline_exceeded`,
+`transaction_unavailable`, `read_unavailable`, `outcome_unknown` and
+`internal_fault`.
 
 ```jadpo check project=e-duplicate-code expect=failure.duplicate_code
 type CustomerNotFound = Failure {
@@ -1230,45 +1228,13 @@ check failed: 1 error, 1 file
 
 | Feature | Status |
 |---|---|
-| Declaring failures, kinds and codes | Built in chunk 1.6: `type X = Failure { ... }`, the code from the name, `client` and `internal` fields, and the kind, code and field checks in Errors above. |
-| `fails`, `reject` and `attempt` | Built in chunk 1.6: the exact `fails` set, `reject` with every field, and `attempt` passing a failure on. |
-| Handling in `match` | Built in chunk 1.6, with a failure while the arguments are worked out leaving around the `match` since chunk 2.7. |
-| Mapping | A construction's rule arms and `invalid:`, and proof that a construction cannot break, in chunks 2.5 and 2.6; a query's `missing:` and its kind check (`failure.mapping_kind`) in chunk 3.2. Writes' `conflict:` and `empty:` come with chunk 3.3. |
-| Faults from code | Built in the interpreter (chunk 2.1): `Int` and `Decimal` overflow and the recursion limit are faults at their site, and a failure keeps the path it travelled and the failure it was mapped from. |
-| What the client sees | The envelope, the validation details and the OpenAPI responses come with routes (chunk 4.1). |
-| Concealing records | Built in chunk 4.4: a record policy hides reports the code's own not-found failure, and its log says `concealed_by: policy` (area 9). |
+| Declaring failures, kinds and codes | Built, with the checks in Errors above. |
+| `fails`, `reject`, `attempt` and handling in `match` | Built. |
+| Mapping | Built: a construction's rule arms and `invalid:`, proof that a construction cannot break, a query's `missing:` and writes' `conflict:` and `empty:`, each with its kind check. |
+| Faults from code | Built: `Int` and `Decimal` overflow and the recursion limit are faults at their site, and a failure keeps the path it travelled and the failure it was mapped from. |
+| What the client sees | Built: the envelope, the validation details and the OpenAPI responses. |
+| Concealing records | Built: a record policy hides reports the code's own not-found failure, and its log says `concealed_by: policy` (area 9). |
 | Logging | Not built yet. |
-
-### Consistency with the rest of the language
-
-- **Kinds look like types.** `kind: NotFound` is UpperCamelCase like a type
-   name but is an option from a fixed set; area 2 decided `kind: FailureKind.not_found`.
-- **`code` repeats the name** in every failure in the repository
-   (`TodoNotFound`, `"todo_not_found"`), which area 2's "explicit, never
-   redundant" rule removes elsewhere.
-- **`public` means two things.** In a failure it means "sent to the client";
-   on a declaration (`public action reserve_for_cart`) it means "visible to
-   other domains".
-- **Five mapping spellings.** `missing: F`, `conflict Account.handle: F`,
-   `inactive: F` (authentication), `maps provider.x -> F` (services) and
-   `failure F => reject G`; area 2 adds a construction's rule arms.
-- **Faults are listed for integrations only.** A service operation lists
-   `Unavailable`, `OutcomeUnknown` and `Misconfigured` in `fails` and callers
-   match them, while a database fault never appears in any `fails` list.
-   `fault` is a keyword only in `maps ... -> fault X`, and the same names are
-   bare in `fails`.
-- **`optional` in failure context** contradicts area 2, which allows it only
-   on `Input` fields, and grammar §9.
-- **Compiler-owned codes are outside the catalogue.** `invalid_input`,
-   `route_not_found`, `deadline_exceeded`, `transaction_unavailable`,
-   `read_unavailable` and `internal_fault` are emitted by the runtime but are
-   not reserved, so an application failure can reuse them.
-- **The failure model spec is ahead of the compiler.** It promises structured
-   internal events, semantic traces, redaction and a generic message per kind;
-   the archived compiler's generated runtime had none of them.
-- **Area 3's division decision removes one runtime fault.** With the
-   divisor's type excluding zero, the remaining runtime faults from code are
-   overflow and the recursion limit.
 
 ### Carried to later areas
 
@@ -1278,172 +1244,40 @@ check failed: 1 error, 1 file
 | A route's error responses come from what its action can fail with; no route-level status mapping; validation details and envelope in OpenAPI | 7 | Input to area 7 |
 | `precondition_failed` for HTTP preconditions such as `If-Match` | 7 | Input to area 7 |
 | Authentication failures: `unauthenticated`, the `inactive:` mapping, principal values kept out of failure context (`type.auth_*` rules) | 8 | Input to area 8 |
-| Concealment by policy instead of a declared `not_visible` failure (question 10) | 9 | Depends on question 10 |
+| Concealment by policy instead of a declared `not_visible` failure | 9 | Decided (question 10) |
 | Data classification of internal fields for log redaction, beyond hashing text | 9 | Input to area 9 |
-| Server-side translation keyed by failure code, if ever needed | 10 | Decided 2026-10-16: keyed by code in the domain's language files and exported per locale (question 12) |
-| Integration failure mapping as a `failures: { provider.x: F }` block; `maps` and `fault` removed; provider timeouts and `outcome_unknown` | 11 | Input to area 11 |
+| Failure text for people, keyed by failure code | 10 | Decided: keyed by code in the domain's language files and exported per locale (question 12) |
+| Integration failure mapping as a `failures: { provider.x: F }` block; provider timeouts and `outcome_unknown` | 11 | Input to area 11 |
 | Retry, dead-letter and alerting for schedules and subscribers by kind; `outcome_unknown` never retried blindly | 12 | Input to area 12 |
 | Asserting that a call fails with a given failure in tests | 13 | Input to area 13 |
 | Runtime diagnostics `runtime.unhandled_fault`, `runtime.outcome_unknown` and `runtime.startup_failed`, which `jadpo check` cannot trigger | 14 | Input to area 14 |
 | Streaming responses that fail after headers are sent (ROUTE-002) | 7 | Deferred |
 | Whether `event` should also become `type X = Event { ... }`, by the same reasoning as failures | 12 | Raised |
-| A committed record of the public API (routes, fields, failure codes) so breaking changes are caught at review, accepted explicitly: the compiler flags the change and the build passes only once a person records an acceptance. Design one "accept a reviewed change" mechanism shared with database drops (area 5), policy (area 9) and domain changes (area 1) (Richard's idea) | 7 | Raised |
-
-### Open questions
-
-1. **Should the public code come from the failure's name?** *Decided
-   2026-10-12 (Richard):* yes by default: `QuantityUnavailable` has the code
-   `quantity_unavailable`. `code: "..."` overrides it when a different code is
-   needed, such as keeping a published code after a rename. The compiler
-   checks every code is lower_snake_case and unique across all failures (one
-   code, one failure: a client relies on a code always meaning the same
-   status, message and fields). Detecting that a published code changed needs
-   a committed record of the public API, carried to area 7.
-
-2. **Rename the `public` block to `client`?** `public` already means
-   cross-domain visibility. *Decided 2026-10-12:* yes, `client: { }` and
-   `internal: { }`, which say who sees each field.
-3. **Which kinds can an application declare?** Today all 15, and
-   `reject Unavailable` compiles but answers 500. *Decided 2026-10-12:* you may
-   declare `invalid_value`, `not_found`, `not_permitted`, `conflict`,
-   `rejected`, `rate_limited` and `unavailable`; the other eight are raised
-   only by the runtime, and the standard kinds are never failure names in
-   `fails` or `reject`. Keep 422 for both `invalid_value` and `rejected` and
-   400 for unreadable requests, as GitHub's API does; changing it later is a
-   breaking change for every client. This closes FAIL-003.
-   A timeout an application cares about is either a business rule with its
-   own failure (`ReservationExpired` with `kind: FailureKind.conflict`) or a provider
-   problem mapped by the integration to a declared `unavailable` failure; how
-   long to wait is a setting on the integration or route (areas 7 and 11), and
-   the runtime raises the timeout kind itself.
-   For example, an integration with a five-second limit maps its timeout to
-   the application's own failure, which callers handle like any other:
-   `timeout: 5s` and `timed_out: ChargeUnavailable` on the integration
-   (area 11), then `ChargeUnavailable -> ...` in a `match`.
-
-4. **What does a client see when request input breaks a rule?** Today
-   `invalid_input` with no detail, so a form cannot show which field is
-   wrong. *Decided 2026-10-12:* list each problem as `{ field, rule }` under
-   `details`, never the value; Stripe's `param` and RFC 9457's problem
-   details give the same kind of pointer. Area 7 confirms the field path
-   format.
-5. **Are faults ever listed in `fails`?** Integrations list `Unavailable`,
-   `OutcomeUnknown` and `Misconfigured` today, while database faults never
-   appear. *Decided 2026-10-12:* no: `fails` lists domain failures only, faults go
-   straight to the boundary, and code that must react to a provider problem
-   gets a declared failure from the integration's mapping (area 11). One
-   rule, and actions do not grow a list of infrastructure names. This is
-   Rust's split between `Result` and `panic`, and Elixir's "let it crash"
-   for the unexpected.
-6. **Does a construction the declared ranges prove safe still need
-   `attempt`?** *Decided 2026-10-12:* no. Area 3 made `attempt` an error on
-   anything that cannot fail, so the compiler decides from the ranges, and
-   its error says which case applies. `Stock(per_pack * packs)` with both at
-   least 0 and no maximum on `Stock` stays plain; `Quantity(quantity * 2)`
-   with a maximum of 1000 needs `attempt` and an arm for `max`. Changing a range
-   flips call sites, and the compiler reports each one. *Built in chunk 2.6,*
-   with an `if` condition counting as proof (area 2, "Conditions as
-   proof"): every call site that flips is an error where it is written,
-   `failure.attempt_required` or `failure.attempt_infallible`, and when a
-   comparison is what proves it, the error says so and points at it.
-7. **One mapping form everywhere?** Five spellings exist today.
-   *Decided 2026-10-12:* `condition: Failure` inside the operation's block, for
-   data operations, constructions, authentication and integrations, with the
-   kind checked against the condition (the table above). `match` arms stay as
-   area 3 decided. Each area keeps its condition names.
-8. **Is the original failure kept when one is mapped to another?** FAIL-001
-   left cause wrapping open. *Decided 2026-10-12:* yes, always and without
-   syntax: the original failure and its internal fields become the internal
-   cause of the new one, shown in the log and never to the client. Rust's
-   `source()` chain and Java's `cause` do this by convention; here the
-   compiler knows every mapping, so it can always do it.
-9. **How are overflow and the recursion limit reported?** Overflow is silent
-   today and unbounded recursion hangs under Bun. *Decided 2026-10-12:* both are
-   defects: the operation ends with 500 `internal_fault`, its writes roll
-   back, and the log names the cause (`int_overflow`, `recursion_limit`).
-   They are not declarable or catchable, because a caller cannot do anything
-   sensible with "the arithmetic overflowed". Rust panics on overflow in
-   debug builds and Swift always traps; Go and Kotlin wrap silently, which
-   area 2 ruled out.
-10. **How is a record hidden by policy reported?** FAIL-002 wanted a
-    `NotVisible` failure sharing its code with the genuine not-found, which
-    today's duplicate-code check forbids. *Decided 2026-10-12:* policy reports a
-    hidden record with the same `not_found` failure the code already maps, and
-    the log adds that policy concealed it; `not_visible` is never declared and
-    no alias syntax is needed. GitHub answers 404 for private repositories the
-    same way. Area 9 confirms how policy applies it.
-11. **Which internal fields reach the log?** Today none. *Decided 2026-10-12:*
-    identifiers, numbers, enums, booleans and times as values; text-based
-    values (which can hold names or email addresses) as a keyed hash, so equal
-    values still match up across events; secrets cannot be failure fields at
-    all, as today. No new syntax; area 9's data classification can refine it
-    later.
-12. **Who translates failure messages?** FAIL-004. *Decided 2026-10-12:* the
-    client, by `code`. `message` stays fixed English for developers and logs,
-    which keeps it a stable part of the API contract. Server-side translation
-    can be added later in area 10, keyed by the same code, without changing a
-    failure declaration.
-    *Revised 2026-10-16 (Richard, area 10):* the app writes each failure's
-    client text, keyed by its code in its domain's language files like a
-    message, with its client fields as placeholders, and `jadpo build`
-    writes it beside each API's OpenAPI document as
-    `<api>.failures.<locale>.json` for client apps, with dates and numbers
-    sent as values for the client to format. Every failure that can reach
-    a response needs wording in every supported locale. The
-    server's `message` stays fixed English, as decided here. This resolves
-    area 10's amendment that translations serve client failure messages.
-
-13. **Should a failure be a `type`?** Today `failure TodoNotFound { ... }`
-    is its own keyword. *Decided 2026-10-12:* `type TodoNotFound = Failure { ... }`,
-    the same form as every other type, so people and agents write code one
-    way (Richard). It also matches how mainstream languages model errors, as a
-    type built on an error base (`class X extends Error` in TypeScript,
-    `struct X: Error` in Swift). `Failure` as a base brings `kind`, `message`, `client` and
-    `internal`, as `Input` brings optional fields.
-14. **What does a failure without a `client` block show?**
-    *Decided 2026-10-12:* fields exist only inside `client: { }` and
-    `internal: { }`, so a block left out means no fields of that kind and the
-    caller gets only the code, message and request id; nothing reaches the
-    client unless it is listed under `client`.
-
-15. **Where do failures live in the folders: centralised, per domain, or
-    both?** *Decided 2026-10-12 (Richard):* one failure per file, always in
-    the raising domain's own `failures/` folder, or in `shared/failures/`
-    once two or more domains raise it. Failures are numerous, are part of the
-    public contract and are looked for as a group, so they get a folder of
-    their own rather than sitting in `types/`. A failure another domain only
-    handles stays where it is raised and is marked `public`. Generic
-    behaviour comes from `kind`, and the runtime owns the built-in failures.
-    The compiler also generates a catalogue of every failure for
-    documentation and API consumers.
+| A committed record of the public API (routes, fields, failure codes) so breaking changes are caught at review, accepted explicitly: the compiler flags the change and the build passes only once a person records an acceptance. One "accept a reviewed change" mechanism shared with database drops (area 5), policy (area 9) and domain changes (area 1) | 7 | Raised |
 
 ### Decisions
 
-Decided by Richard on 2026-10-12. Checked by the new compiler since 2026-10-13 (roadmap chunk 1.6): declarations, kinds, codes, `fails`, `reject`, `attempt`, construction mappings and outcome `match`. A construction's failures are mapped by rule since chunk 2.5, and an `if` condition counts as proof since chunk 2.6. Data operations' mappings come with area 6, and the client envelope and OpenAPI with area 7. What runs came with the interpreter on 2026-10-14 (chunk 2.1): failures with their fields, where they were raised and the path they travelled, mapped failures keeping their cause, and the `int_overflow` and `recursion_limit` faults with their `.jadpo` frames; the log events come with the runtime's hosts.
-
-| Topic | Decision | Date |
-|---|---|---|
-| Kind names | Carried from area 2 (Richard, 2026-10-12): kinds are lower_snake_case option names, `kind: not_found` (Superseded 2026-10-12: options are written `Type.value`; see area 2 question 17.) | 2026-10-12 |
-| Runtime construction | Carried from area 2: a runtime `Type(value)` check needs `attempt` with a block mapping each rule that can break to an `invalid_value` failure, `invalid:` covering the rest (revised 2026-10-14, built in chunk 2.5); literals are checked while compiling | 2026-10-12 |
-| Failure arms | Carried from area 3: one `match` handles call outcomes; failure arms have no `failure` prefix, every failure has an arm, and an arm recovers, `reject`s or `propagate`s | 2026-10-12 |
-| `attempt` placement | Carried from area 3: only at the start of a statement, and only on a call that can fail | 2026-10-12 |
-| Signature | Carried from area 3: the whole signature on the header line, `fails` before `->` | 2026-10-12 |
-| Colon rule | Carried from area 3: failure members are `name: value`, so context blocks are written `internal: { ... }` | 2026-10-12 |
-| Public code | Defaults to the failure name in lower_snake_case; `code:` overrides it; every code unique and lower_snake_case, one code per failure; detecting a changed published code is carried to area 7 | 2026-10-12 |
-| `client` block | `client: { }` (sent to the caller) and `internal: { }` (never leaves the server) | 2026-10-12 |
-| Declarable kinds | `invalid_value`, `not_found`, `not_permitted`, `conflict`, `rejected`, `rate_limited`, `unavailable`; the other eight are runtime-only; 422 for `invalid_value` and `rejected`, 400 for unreadable requests; time limits are settings on integrations and routes, and a timeout an application cares about is mapped to its own failure | 2026-10-12 |
-| Invalid input detail | Each problem as `{ field, rule }` under `details`, never the value | 2026-10-12 |
-| Faults in `fails` | Never; `fails` lists domain failures; integrations map provider problems to declared failures | 2026-10-12 |
-| Construction proven safe | No `attempt` when declared ranges prove a construction cannot fail; the compiler decides and reports call sites that flip. An `if` condition counts as proof too (area 2, "Construction failures by rule", 2026-10-14); each call site that flips is its own error, naming the comparison that proves it when one does (built in chunk 2.6) | 2026-10-12 |
-| Mapping form | One form everywhere: `condition: Failure` inside the operation's block, kind checked. Constructions join it on 2026-10-14, keyed by rule (area 2, "Construction failures by rule"), built in chunk 2.5; `invalid:` is the catch-all only for a construction's rules, and every other condition has its own arm | 2026-10-12 |
-| Cause on mapping | The original failure is always kept as an internal-only cause | 2026-10-12 |
-| Overflow and recursion limit | Defects: 500 `internal_fault`, writes rolled back, cause named in the log; not declarable or catchable | 2026-10-12 |
-| Concealment | A record hidden by policy reports the same `not_found` failure; the log records the concealment | 2026-10-12 |
-| Internal fields in logs | Identifiers, numbers, enums, booleans and times as values; text as a keyed hash; secrets never | 2026-10-12 |
-| Message translation | The client translates by `code`; `message` stays fixed English (Revised 2026-10-16: see "Client text per locale".) | 2026-10-12 |
-| Client text per locale | Each failure's text for people is keyed by its code in its domain's language files, client fields as placeholders; `jadpo build` writes `<api>.failures.<locale>.json` beside each API's OpenAPI document, code to wording, with which placeholders the client formats and how; every failure that can reach a response is worded in every supported locale; dates and numbers sent as values; wording never on the failure type; `message` stays fixed English (Richard, area 10) | 2026-10-16 |
-| Failure declaration form | `type Name = Failure { ... }`, the same form as every other type (Richard: consistency when writing code) | 2026-10-12 |
-| Failure fields | Fields exist only in `client: { }` and `internal: { }`; without `client` the caller gets only the code, message and request id | 2026-10-12 |
-| Request id | Every error response carries `request_id` (also the `x-request-id` header), and every failure, expected ones included, is logged with it, so a client can quote it and a developer can trace it | 2026-10-12 |
-| Kind is an enum | `kind:` takes a `FailureKind` value written `FailureKind.not_found`, never a string (area 2 setting-options rule, revised 2026-10-12) | 2026-10-12 |
-| Failure placement | One failure per file in the domain's `failures/` folder, or `shared/failures/` once two or more domains raise it; `public` when another domain handles it | 2026-10-12 |
+| Topic | Decision |
+|---|---|
+| Public code (question 1) | Defaults to the failure's name in lower_snake_case: `QuantityUnavailable` is `quantity_unavailable`. `code: "..."` overrides it, such as to keep a published code after a rename. Every code is lower_snake_case and belongs to one failure, because a client relies on a code always meaning the same status, message and fields. Detecting that a published code changed needs a committed record of the public API, carried to area 7. |
+| `client` and `internal` (question 2) | `client: { }` holds the fields sent to the caller and `internal: { }` the fields that never leave the server, so the block names say who sees each field and `public` keeps its one meaning, visible to other domains. |
+| Declarable kinds (question 3) | An application declares `invalid_value`, `not_found`, `not_permitted`, `conflict`, `rejected`, `rate_limited` and `unavailable`; the other eight are raised only by the runtime, and the standard kinds are never failure names in `fails` or `reject`. 422 serves both `invalid_value` and `rejected`, and 400 unreadable requests, as GitHub's API does; changing that would break every client. A timeout an application cares about is either a business rule with its own failure (`ReservationExpired` with `kind: FailureKind.conflict`) or a provider problem the integration maps to a declared `unavailable` failure, such as `timeout: 5s` and `timed_out: ChargeUnavailable` (area 11), handled like any other in a `match`. How long to wait is a setting on the integration or route (areas 7 and 11), and the runtime raises the timeout kind itself. |
+| Invalid input detail (question 4) | Each problem is listed as `{ field, rule }` under `details`, never the value, so a form can show which field is wrong. Area 7 sets the field path format. |
+| Faults in `fails` (question 5) | Never: `fails` lists domain failures only, faults go straight to the boundary, and code that must react to a provider problem gets a declared failure from the integration's mapping (area 11). One rule, and actions do not grow a list of infrastructure names, as Rust splits `Result` from `panic`. |
+| Construction proven safe (question 6) | A construction the declared ranges, or an `if` condition (area 2, "Conditions as proof"), prove cannot break takes no `attempt`; the compiler decides. `Stock(per_pack * packs)` with both at least 0 and no maximum on `Stock` stays plain; `Quantity(quantity * 2)` with a maximum of 1000 needs `attempt` and an arm for `max`. Changing a range flips call sites, and each one is an error where it is written, `failure.attempt_required` or `failure.attempt_infallible`, which names the comparison that proves it when one does. |
+| Mapping form (question 7) | One form everywhere: `condition: Failure` inside the operation's block, for data operations, constructions (keyed by rule), authentication and integrations, with the kind checked against the condition (the table in [Turning one failure into another](#turning-one-failure-into-another)). `invalid:` is the catch-all only for a construction's rules, and every other condition has its own arm. `match` arms are as area 3 sets them, and each area keeps its condition names. |
+| Cause on mapping (question 8) | Always kept, without syntax: the original failure and its internal fields become the internal cause of the new one, shown in the log and never to the client. The compiler knows every mapping, so it always does what Rust's `source()` chain and Java's `cause` do by convention. |
+| Overflow and the recursion limit (question 9) | Defects: the operation ends with 500 `internal_fault`, its writes roll back, and the log names the cause (`int_overflow`, `recursion_limit`). They are not declarable or catchable, because a caller cannot do anything sensible with "the arithmetic overflowed"; Swift traps the same way, and wrapping silently is ruled out (area 2). |
+| Concealment (question 10) | Policy reports a hidden record with the same `not_found` failure the code already maps, and the log records that policy concealed it; `not_visible` is never declared and no alias syntax is needed. GitHub answers 404 for private repositories the same way. Area 9 says how policy applies it. |
+| Internal fields in logs (question 11) | Identifiers, numbers, enums, booleans and times as values; text-based values, which can hold names or email addresses, as a keyed hash, so equal values still match up across events; secrets can never be failure fields. Area 9's data classification can refine it. |
+| Failure text (question 12) | `message` is fixed English for developers and logs, a stable part of the API contract. The text for people is written by the app, keyed by the failure's code in its domain's language files, with its client fields as placeholders, and never on the failure type. The compiler writes it beside each API's OpenAPI document as `<api>.failures.<locale>.json`, code to wording, saying which placeholders the client formats and how; dates and numbers are sent as values for the client to format. Every failure that can reach a response is worded in every supported locale (area 10). |
+| Failure declaration form (question 13) | `type Name = Failure { ... }`, the same form as every other type, so people and agents write code one way. It matches how mainstream languages build errors on an error base (`class X extends Error` in TypeScript, `struct X: Error` in Swift). |
+| Failure fields (question 14) | Fields exist only in `client: { }` and `internal: { }`, so nothing reaches the client unless it is listed under `client`; without `client` the caller gets only the code, message and request id. |
+| Failure placement (question 15) | One failure per file, in the raising domain's own `failures/` folder, or in `shared/failures/` once two or more domains raise it. Failures are numerous, part of the public contract and looked for as a group, so they get a folder of their own rather than sitting in `types/`. A failure another domain only handles stays where it is raised and is marked `public`. Generic behaviour comes from `kind`, the runtime owns the built-in failures, and the compiler generates a catalogue of every failure for documentation and API consumers. |
+| Request id | Every error response carries `request_id` (also the `x-request-id` header), and every failure, expected ones included, is logged with it, so a client can quote it and a developer can trace it. |
+| Kind is an enum | `kind:` takes a `FailureKind` value written `FailureKind.not_found`, never a string (area 2, question 17). |
+| Runtime construction | From area 2: a runtime `Type(value)` check needs `attempt` with a block mapping each rule that can break to an `invalid_value` failure, `invalid:` covering the rest; literals are checked while compiling. |
+| Failure arms | From area 3: one `match` handles call outcomes; failure arms have no `failure` prefix, every failure has an arm, and an arm recovers, `reject`s or `propagate`s. |
+| `attempt` placement | From area 3: only at the start of a statement, and only on a call that can fail. |
+| Signature | From area 3: the whole signature on the header line, `fails` before `->`. |
+| Colon rule | From area 3: failure members are `name: value`, so context blocks are written `internal: { ... }`. |

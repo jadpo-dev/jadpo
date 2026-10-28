@@ -1,4 +1,4 @@
-//! Rate limits counted in memory (area 16, "Rate limits", question 6):
+//! Rate limits counted in memory (area 16, "Rate limits"):
 //! what the native host counts with ([`crate::Host::rate_limit`]), fixed
 //! windows within a fixed allowance of memory, the oldest counters dropped
 //! first. The HTTP component asks the host about every request: 600 a

@@ -1,5 +1,4 @@
-//! The closed lists of places and languages (area 19, "The standard types",
-//! question 22): each a built-in enum whose variants are its authority's
+//! The closed lists of places and languages (area 19, "The standard types"): each a built-in enum whose variants are its authority's
 //! codes in lower case (`Country.gb`, `CountrySubdivision.gb_eng`), a code
 //! that is a reserved word or `all` taking a trailing `_` (`Country.in_`,
 //! `Language.or_`), read ignoring case and written as the code (`GB`).

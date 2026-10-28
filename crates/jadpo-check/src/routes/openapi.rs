@@ -13,11 +13,11 @@
 //! digits of the SHA-256 of the API's record (area 18), so it changes
 //! exactly when the record does and is never stored. Health (`/health/live`, `/health/ready`) is the runtime's own
 //! and in no document. The sign-in methods the API accepts are its
-//! security schemes (area 8; area 7, question 12): a route anyone may call
+//! security schemes (area 8; area 7, "Generated authentication routes in OpenAPI"): a route anyone may call
 //! says `security: []`, and every other answers 401, 403 and 503 for the
 //! ways signing in fails. With a revocation delay and service keys, an API
 //! that accepts them lists the runtime's `POST /auth/exchange`, marked
-//! `x-jadpo-generated` (area 7, question 12), and each API that serves its
+//! `x-jadpo-generated` (area 7, "Generated authentication routes in OpenAPI"), and each API that serves its
 //! document lists `GET <prefix>/openapi.json` the same way
 //! ([`super::served`], chunk 7.2).
 //!
@@ -1483,7 +1483,7 @@ fn operation(
             refs.insert(key.clone());
         }
     }
-    // Every write honours an `Idempotency-Key` (area 7, question 17).
+    // Every write honours an `Idempotency-Key` (area 7, "Idempotent writes").
     let writes = route.method != jadpo_std::HttpMethod::Get;
     if writes {
         let mut parameter = Value::object();

@@ -222,7 +222,7 @@ impl Body<'_> {
     }
 
     /// `locale:` on `list.sort_by` orders text by a locale's rules, so it
-    /// means nothing for a key that isn't text (area 19, question 26).
+    /// means nothing for a key that isn't text (area 19, "Slugs and text order").
     /// Whether that was reported.
     pub(super) fn sort_locale(
         &mut self,

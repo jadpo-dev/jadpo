@@ -1,5 +1,5 @@
-//! Restricted values stored elsewhere (area 9, "Restricted values stored
-//! in another record", roadmap chunk 5.1d): a create or update may store a
+//! Restricted values stored elsewhere (area 9, "Field
+//! restrictions"): a create or update may store a
 //! value in a field only when everyone who may read that field may read
 //! the value, followed as an output's is; otherwise
 //! `policy.output_field_unproved` names the write. A copy between fields

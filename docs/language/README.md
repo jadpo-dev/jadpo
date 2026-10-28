@@ -6,13 +6,10 @@ language. They take precedence over introductions and teaching examples.
 The [project README](../../README.md) explains the purpose, capabilities,
 current maturity and how to build the compiler.
 
-**Decided does not mean implemented.** Read each page's status notes and
-status table, where present, along with the [roadmap](../roadmap.md).
-Pages retain earlier proposals and examples; the current decisions and
-later amendments govern where they differ. A `jadpo check` code block is
-checked with this checkout's compiler; a `fragment` illustrates a rule
-without an executable check. Other examples may still use frozen results
-from the archived compiler, as described below.
+**Decided does not mean implemented.** Each page's status notes and
+status table, with the [roadmap](../roadmap.md), say what is built. A
+` ```jadpo check ` block is checked with this checkout's compiler; a
+`fragment` illustrates a rule the compiler doesn't check yet.
 
 ## Read by task
 
@@ -51,7 +48,7 @@ from the archived compiler, as described below.
 | 14 | [Tooling](14-tooling.md) | CLI commands and their status, formatter, editor support and deployables |
 | 15 | [Personal data](15-personal-data.md) | Marking, export, erasure, retention and privacy reporting; largely planned |
 | 16 | [Built-in services](16-built-in-services.md) | Email, files, rate limits, search, audit and telemetry; status varies |
-| 17 | [Debugging and review](17-debugging-and-review.md) | Source-level evidence, request explanations and behaviour review; planned |
+| 17 | [Debugging and review](17-debugging-and-review.md) | Source-level evidence, request explanations and behaviour review; mostly planned |
 | 18 | [Records and manifest](18-records-and-manifest.md) | Committed contracts, generated manifests and planned approval records |
 | 19 | [Standard library](19-standard-library.md) | Standard vocabulary types and operations, money, units, text and formats |
 | 20 | [Geospatial](20-geospatial.md) | Geometry, geodesic operations, PostGIS and map layers |
@@ -83,39 +80,36 @@ python3 tools/language_docs.py
 ## Writing a page
 
 - Front matter gives `title`, `area`, `status`, `checked-with` (what checks
-  its examples: this checkout's `jadpo` for pages with ` ```jadpo check `
-  blocks, and the commit that produced the frozen results for blocks still
-  on them) and `rules`: the
-  compiler error IDs this area owns (globs allowed). Each rule belongs to one
-  area, and the check fails until every owned rule has an example.
-- A ` ```jadpo check ` block is checked by the new `jadpo`, built from this
-  checkout, with `jadpo check`, which grows with each roadmap chunk: the
-  block must check cleanly and be canonically formatted (`jadpo fmt
-  --check`), or, with `expect=rule.id`, fail with that rule and be followed
-  by a ` ```text output ` block holding the exact plain output (`python3
-  tools/language_docs.py --bless` rewrites it). A project with an
-  `app.jadpo` block is checked as a project, with the layout rules on;
-  without one, its blocks are loose files. Each chunk converts its areas'
-  blocks as it builds them.
-- Every other non-fragment ` ```jadpo ` block is checked against a frozen
-  result in `reference/v0-results.json`, by project name and source, so
-  changing its source fails the check; proposed code belongs in `fragment`
-  blocks, and each chunk replaces these blocks with `check` blocks as it
-  builds its area. Attributes after the language name:
+  its examples: this checkout's `jadpo`) and, for areas 10 to 21, `rules`:
+  the compiler error IDs the area owns, as globs over the compiler's
+  catalogue. Areas 1 to 9 own the rules whose catalogue entry names their
+  area. Each rule belongs to one area, and the check fails until every
+  owned rule has a `check` example failing with it.
+- Every ` ```jadpo ` block is either `check`, compiled by the gate, or
+  `fragment`, shown and not compiled: code the compiler doesn't check yet.
+  A block that is neither fails the check. On areas 1 to 9 a `fragment`
+  that checks cleanly fails too, since it should be a `check` block.
+- A ` ```jadpo check ` block is checked by `jadpo`, built from this
+  checkout, with `jadpo check`: the block must check cleanly and be
+  canonically formatted (`jadpo fmt --check`), or, with `expect=rule.id`,
+  fail with that rule and be followed by a ` ```text output ` block holding
+  the exact plain output (`python3 tools/language_docs.py --bless` rewrites
+  it). A project with an `app.jadpo` block is checked as a project, with
+  the layout rules on; without one, its blocks are loose files. Attributes
+  after the language name:
   - `project=name` groups blocks into one multi-file project;
   - `file=path` sets the file's path inside it (default `main.jadpo`);
   - `expect=rule.id` means the project must fail with that error; otherwise it
     must compile and be canonically formatted;
-  - `hidden` compiles the block without showing it;
-  - `fragment` shows the block without compiling it.
-- Under `## Errors`, each `### \`rule.id\`` heading is followed by its example.
-  A `check` example shows the compiler's real output; an unmarked one keeps
-  its frozen result until its area is built. Each area's errors are designed
-  as the roadmap chunk that builds it.
+  - `hidden` compiles the block without showing it.
+- Under `## Errors`, each `### \`rule.id\`` heading is followed by its
+  `check` example and the compiler's real output.
 - A line starting with `>` renders as a note.
 - Once `status: decided`, a page with `### Decided …` sections under
   `## Review` leads with them and `Decisions`, and collapses the rest of its
   body; every decided page collapses its remaining review notes.
-- `## Review` holds status, consistency notes, open questions (a numbered list
-  of `**Question?** context *Recommendation:* …`) and decisions. Generated
-  public documentation leaves it out.
+- `## Review` holds status, consistency notes, the questions still open (a
+  numbered list of `**Question?** context *Recommendation:* …`) and a
+  Decisions table of topic and decision. A decided question is written as
+  the rule it settled, in its topic section, not left as a question.
+  Generated public documentation leaves `## Review` out.

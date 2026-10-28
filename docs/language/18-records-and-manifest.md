@@ -2,7 +2,7 @@
 title: Records and manifest
 area: 18
 status: decided
-checked-with: jadpo 3ce094d0 (2026-10-12)
+checked-with: this checkout's jadpo on every gate run
 rules:
   - record.*
 ---
@@ -20,7 +20,7 @@ is a view of it. Reviewing a change means comparing two manifests, and
 explaining a production event means rebuilding the manifest of the build
 that raised it.
 
-> Decided on 2026-10-13. The manifest (chunk 1.7), migrations (chunk 3.1) and the record format with `jadpo records` (chunk 7.0) are built; the [status table](#status) says when the rest comes.
+> The manifest, migrations and the record format with `jadpo records` are built; the [status table](#status) says what else is.
 
 | Name | Holds | Where | Committed | Written by | Read by |
 |---|---|---|---|---|---|
@@ -41,21 +41,20 @@ that raised it.
 ## What is committed, and why
 
 Commit a file only if it **cannot be recomputed from today's source**, or
-if it is **a promise whose diff a person must read** (question 1).
+if it is **a promise whose diff a person must read**.
 Migrations, renames and the lock record history that today's source no
 longer holds. The API record is a promise to clients. Acceptances are
 people's decisions. Everything else would go stale, conflict in merges and
 invite hand edits, so it is a build output.
 
-- **Every record but the lock is a `.jadpo_record` file** (decided
-  2026-10-16, Richard), kept next to what it describes: `api/main.jadpo_record`
-  (was `api/main.api`), `database/identities.jadpo_record` (was
-  `identities.json`), each `translations/sources.jadpo_record` (was
-  `sources.json`), each installed package's `surface.jadpo_record` and the
-  root's `ignored_suggestions.jadpo_record`, the suggestions a team keeps
-  quiet (area 14, "Suggestions", chunk 5.5x), and
+- **Every record but the lock is a `.jadpo_record` file**, kept next to
+  what it describes: `api/main.jadpo_record`,
+  `database/identities.jadpo_record`, each
+  `translations/sources.jadpo_record`, each installed package's
+  `surface.jadpo_record` and the root's `ignored_suggestions.jadpo_record`,
+  the suggestions a team keeps quiet (area 14, "Suggestions"), and
   `taught_suggestions.jadpo_record`, the patterns it taught `jadpo
-  suggest` (chunk 5.5y).
+  suggest`.
   Each is in Jadpo's readable format, not JSON, and its first line says what
   generated it and which command updates it, as the API record's does.
 
@@ -73,8 +72,8 @@ record api 1
   up to date, flagging any that is not with its command; this table stays
   the single index of them.
 
-> **Built (chunk 7.0).** Every record but the migrations is written in the
-> [record format](research/jadpo-record-format.md): the header line, then
+> **Built.** Every record but the migrations is written in the
+> [record format](#the-record-format): the header line, then
 > `record <kind> <format>`, then its entries. The API record is
 > `api/<api>.jadpo_record`, a view rebuilt from the routes, with no
 > `version:` line; the OpenAPI document's version is the first 12 hex
@@ -102,8 +101,8 @@ record api 1
 > ```
 >
 > `jadpo records update` brings every record up to date at once, which is
-> also how a project moves `api/<api>.api` and `database/identities.json`
-> to their new names ("Checking a record" below).
+> also how a project moves a record under an older name (`api/<api>.api`,
+> `database/identities.json`) to its name now ("Checking a record" below).
 - Area 1's fixed root gains `api/`, `acceptances/`, `packages/` and
   `jadpo.lock`. `packages/` holds installed packages, committed so that
   every upgrade is an ordinary diff; each is checked against its digest in
@@ -111,14 +110,14 @@ record api 1
   record. The app's own integrations in `shared/providers/` are source,
   written like any code (area 11).
 
-> **Built (chunk 3.1).** Migrations are records: `jadpo migrate new` writes
+> **Built.** Migrations are records: `jadpo migrate new` writes
 > each folder in `database/migrations/` (`snapshot.json`, `postgres.sql`
 > and, for decisions, `changes.jadpo`), and `jadpo check` fails while the
 > entities and the latest snapshot disagree, while the latest migration
 > waits for a decision, and when a record can't be read, naming the
 > command to run. Each folder is a `migration_snapshot` node in the
-> manifest. The identity registry is still read only once `jadpo rename`
-> writes it (area 14), so every born name is the name now.
+> manifest. The identity registry is read once `jadpo rename` writes it
+> (area 14); until then every born name is the name now.
 
 ### Checking a record
 
@@ -127,9 +126,9 @@ and compared byte for byte; a **ledger** (the identity registry, the
 translation sources, the suggestion records, the lock) is a list of
 one-line entries.
 
-- **A hand edit is told by its shape.** Until the base commit's build
-  comes with `jadpo approval`, a view that differs from what its writer
-  gives today is `record.edited` when Jadpo could not have written it (a
+- **A hand edit is told by its shape.** Without the base commit's build,
+  which comes with `jadpo approval` (not built yet), a view that differs
+  from what its writer gives today is `record.edited` when Jadpo could not have written it (a
   comment, a fact outside the kind's closed list, a tab, a trailing space,
   a layout Jadpo doesn't write, a header that isn't the one it writes) and
   `record.out_of_date` otherwise. Both name the same command, which writes
@@ -168,7 +167,7 @@ one-line entries.
 - **One mechanism for every kind.** A kind is a word, a format number, a
   shape (view or ledger), its header's command and its closed lists of
   headings and facts; a view's writer gives entries and the differ
-  compares entries by heading. Event shapes (chunk 6.1b) are a view kind
+  compares entries by heading. Event shapes are a view kind
   beside the API record, package surfaces another, and the lock's writer
   uses the ledger.
 
@@ -189,13 +188,110 @@ What some entries hold:
   live folder, so it is `package AcmePricing.v2 link ../acme-pricing`
   with no version or digest. Versions are `1.4.0` with an optional
   pre-release; a commit is 40 or 64 lower-case hex digits; lines sort by
-  name, then major version as a number. Nothing writes the lock until
-  packages (chunk 7.1).
+  name, then major version as a number.
+
+### The record format
+
+Every record is written in one small line format, an outline of Jadpo's
+own words, so a change touches only the lines of the fact that changed and
+git's hunk header names the entry the change is in.
+
+- **The header.** Line 1 is `// Generated by Jadpo from <what it
+  describes>; update it with <command>, never by hand.`; line 2 is `record
+  <kind> <format>`, the kind one of `api`, `events`, `surface`,
+  `identities`, `translations`, `ignored_suggestions`,
+  `taught_suggestions` and `lock`. Any other `//` line is a hand edit.
+  Nothing anywhere in a record changes on its own: no timestamp, compiler
+  version, count, total, digest of the whole or alignment.
+- **Entries.** A heading starts in column 0, with a word from the kind's
+  closed list (`POST /todos`, `operation bookings.create`); its members
+  follow, indented four spaces, and a member's own fields (an enum
+  variant's) eight. Nothing goes deeper. A member is a description
+  (`/// text`), a field (`name: value`, as in source) or a fact, which
+  starts with a lower-case word from the kind's closed list (`status 201`,
+  `fails todo_not_found`, `file types/booking.jadpo`). A list repeats its
+  word, one item per line; a flag is a fact present or absent (`changes`,
+  `idempotent`, `accepted`), never `changes: true`. A line's kind is known
+  from its first characters, so reading a record needs no Jadpo parser.
+- **Views and ledgers.** A view's entries are outlines. A ledger's entry is
+  its heading alone, one self-contained line, so git's `union` merge can
+  combine two branches' additions; `jadpo check` then catches what that
+  merge gets wrong ("Checking a record", above).
+- **Values are Jadpo**, written as the formatter writes them in source, on
+  one line: names, dotted names, strings, numbers and type expressions
+  (`Text { min_length: 1, max_length: 200 }`). Paths and URLs are never
+  quoted, and a file path is relative to the record's folder. A digest is
+  `sha256:` and 64 lower-case hex digits; a hash is 12, since it is not a
+  security check.
+- **Layout.** UTF-8, LF line endings, a final newline, no trailing spaces,
+  no tabs, one space between tokens and no alignment, so a long new name
+  never re-indents its neighbours. One blank line follows the header and
+  separates entries that have members; one-line entries have none between
+  them. Strings use Jadpo's escapes and only those: `\"`, `\\`, `\n`,
+  `\r`, `\t`. A description is the declaration's first paragraph joined
+  onto one `///` line, so rewrapping the source comment changes nothing.
+  Records are compared with CRLF read as LF.
+- **Order is by identity.** Everything is sorted; only a function's
+  parameters keep their written order. Fields sort by name, since field
+  order is no part of a JSON contract. Repeated facts (`fails`, `host`)
+  sort by value. Where the identity registry has a line for a thing, it
+  sorts by its born name, so a rename changes lines in place instead of
+  moving a block.
+
+| Record | Sections, in order | Within a section |
+|---|---|---|
+| `api` | `api`, routes, named types, failures | Routes by path, then method; types by born name; failures by code |
+| `surface` | `package`, `provider`, `provides`, operations, actions, polls, events, functions, messages, types, failures, recipes | By born name; operations by `resource.operation` |
+| `identities` | One | By born name, then kind |
+| `translations` | One | By locale, then member |
+| `lock` | One | By package name, then major version |
+
+- **Versions.** Each kind has its own format number, from 1. Any change to
+  what a kind holds or how it is laid out raises it, additions included,
+  since a view is compared byte for byte. A view in an older format is out
+  of date, and its command rewrites it. A ledger is read in every format
+  Jadpo has written for it, forever, since it holds history, and is
+  rewritten in the newest. A record in a newer format than this Jadpo
+  writes is `record.format_newer`: Jadpo never guesses.
+
+The identity registry's lines are the kind, the born name, `->` and the
+name now. A field, variant or rule follows what it belongs to, so its line
+gives only its own new name, and renaming `Task` again never touches it:
+
+```text
+entity Todo -> Task
+field Todo.priority -> importance
+```
+
+A translation source's line holds the hash of the default wording it was
+translated from (`from`), the hash of its own wording when that was
+recorded (`wording`) and `accepted` once a person accepted it (area 10).
+Stale and changed are worked out from those, never stored:
+
+```text
+translation de_de.order_shipped from 3f9a1c0e2b7d wording 77b2e1d4c8a9 accepted
+translation fr_fr.order_shipped from 3f9a1c0e2b7d wording a01c9e44f3b8
+```
+
+Not built yet: a record language for editors (a TextMate grammar,
+`source.jadpo-record`, in `editors/vscode`, and `jadpo lsp` serving a
+record's errors, outline, file links and folding), and the lines `jadpo
+new` writes into `.gitattributes`. `linguist-generated=false` keeps every
+record's diff expanded in a pull request, since records are committed so
+that their diff is read; `merge=union` is git's own driver, needing no
+set-up:
+
+```text
+*.jadpo_record                       text eol=lf linguist-generated=false
+jadpo.lock                           text eol=lf linguist-generated=false merge=union
+database/identities.jadpo_record     merge=union
+**/translations/sources.jadpo_record merge=union
+```
 
 ## The manifest
 
-`jadpo check` writes one manifest for the project, `build/manifest.json`
-(question 2). It is the compiler's graph as versioned JSON: every
+`jadpo check` writes one manifest for the project, `build/manifest.json`.
+It is the compiler's graph as versioned JSON: every
 declaration and field with its stable identity, source file and lines,
 content digest, `///` description, calls, reads, writes, events and
 failures. It also holds the routes, schedules, subscribers, connections and
@@ -229,12 +325,11 @@ that path numbers decode against, and each deployable's build id.
   with each other.
 - **A build id is a digest** of everything that decides a deployable's
   behaviour: the source it reaches, the compiler version, the target and
-  the locked packages. The same build id means the same build. Built in
-  chunk 8.1o3 (Decisions, "What a build id digests"): the source is the
-  deployable's program as it is compiled from what it reaches, its Rust
-  and its plan, with its name and its stores' migrations, so a change to
-  what only another deployable reaches, or to a test, leaves its id
-  alone. A project with errors builds nothing, so the manifest gives its
+  the locked packages. The same build id means the same build. The
+  source is the deployable's program as it is compiled from what it
+  reaches, its Rust and its plan, with its name and its stores'
+  migrations, so a change to what only another deployable reaches, or to
+  a test, leaves its id alone (Decisions, "What a build id digests"). A project with errors builds nothing, so the manifest gives its
   deployables no `build`.
 - **Format.** The JSON is canonical: sorted, with relative paths and no
   timestamps. `format` changes only when a field is removed or changes
@@ -244,38 +339,36 @@ that path numbers decode against, and each deployable's build id.
   one node with `jadpo inspect <name> --json` rather than reading the
   file.
 
-> **Built (chunk 1.7).** For a project, `jadpo check` writes
-> `build/manifest.json`, errors or not, at `format` 2 since chunk 5.3d,
-> when the keys of functions and types declared in a domain began to carry
-> the domain (format 1 before): `compiler`, `errors`
-> and `nodes`. A node has `id`, `kind`, `name`, `file`, `lines` and `digest`,
-> and where they apply `domain`, `parent`, `public`, `doc`, a type's `base`,
-> `rules` and `failure`, a field's `type`, a callable's `signature`, an
-> action's or fixture's `isolation` (`read_committed` or `repeatable_read`,
-> area 6, since chunk 3.7), and its edges as sorted lists by kind: `calls`, `uses`, and `raises` for the
-> failures that can leave a callable (the `fails` above). Nodes are built for
-> areas 1 to 4; the build stamp (`source`, `deployables`, build ids)
-> joined in chunk 8.1o2, and routes, schedules, hosts, policy, personal
-> fields and thresholds join as their areas are built. `jadpo help --json` prints the schema with every
-> node and edge kind and whether it is built yet. Since chunk 4.4b policy is
-> in it (area 9): a `grant` node for each list an entity's `policy:`
-> writes, a `field_restriction` for each field's own policy, a `tenancy` for
-> each entity that belongs to the tenant and an `action_exception` for each
-> line under root `policy { actions: }`, with `grants` edges to what each
-> decides and `scopes` edges from each tenancy to its entity. Since chunk
-> 5.5v2 each prompt (area 21) is a `prompt` node, placed at its `.prompt`
-> file, its type as its parent, with its `version`: its name and the first
-> 8 hex characters of a SHA-256 over its two files,
+> **Built.** For a project, `jadpo check` writes `build/manifest.json`,
+> errors or not, at `format` 2: `compiler`, `errors` and `nodes`. A node
+> has `id`, `kind`, `name`, `file`, `lines` and `digest`, and where they
+> apply `domain`, `parent`, `public`, `doc`, a type's `base`, `rules` and
+> `failure`, a field's `type`, a callable's `signature`, an action's or
+> fixture's `isolation` (`read_committed` or `repeatable_read`, area 6),
+> and its edges as sorted lists by kind: `calls`, `uses`, and `raises` for
+> the failures that can leave a callable (the `fails` above). Nodes are
+> built for areas 1 to 4, with the build stamp (`source`, `deployables`,
+> build ids), policy and prompts; routes, schedules, hosts, personal
+> fields and thresholds join as their areas are built. `jadpo help --json`
+> prints the schema with every node and edge kind and whether it is built
+> yet. Policy (area 9) is a `grant` node for each list an entity's
+> `policy:` writes, a `field_restriction` for each field's own policy, a
+> `tenancy` for each entity that belongs to the tenant and an
+> `action_exception` for each line under root `policy { actions: }`, with
+> `grants` edges to what each decides and `scopes` edges from each tenancy
+> to its entity. Each prompt (area 21) is a `prompt` node, placed at its
+> `.prompt` file, its type as its parent, with its `version`: its name and
+> the first 8 hex characters of a SHA-256 over its two files,
 > `answer_question@864ad76b`.
 
 ## Stable identity
 
-A declaration or field is known by **the name it was born with**
-(question 3). The registry holds one line for each thing that has since
-been renamed, mapping its name now to its born name. Only `jadpo rename`
-and the `jadpo domain` commands write it, and, from chunk 5.3d, a
-promotion to `shared/` of a function or type declared in a domain
-(question 8). Children follow their parent:
+A declaration or field is known by **the name it was born with**. The
+registry holds one line for each thing that has since been renamed,
+mapping its name now to its born name, and nothing else: a line for every
+declaration would grow with every new action. Only `jadpo rename` and the
+`jadpo domain` commands write it, and a promotion to `shared/` of a
+function or type declared in a domain. Children follow their parent:
 renaming a domain or an entity is one line.
 
 ```text
@@ -302,52 +395,54 @@ subscriber send_reminder -> notify_owner
   this registry, so a rename reads as "renamed", never as "removed and
   added".
 
-> **Built (chunk 1.7).** A key is the kind and the born name, in the
-> registry's own form: `action complete_todo`, `field Todo.title`,
-> `function rounding.half_even`. It is not qualified by domain, as the
-> manifest example above is: names are unique across the project, and
-> promotion moves a declaration to `shared/` without a registry line, which
-> a domain in the key would turn into a removal and an addition. Question 8
-> asks Richard to confirm it. The registry is read once `jadpo rename`
-> writes it; until then every born name is the name now. A test's key is the
-> file it sits beside and its sentence, `test create_todo "rejects a blank
-> title"`, with no path, so moving its domain keeps it; two tests with one
-> sentence anywhere in the project are `semantic.duplicate_declaration`
-> (decided in the Phase 1 review, built in chunk 1.9).
-
-> **Built (chunk 5.3d).** Question 8's amendment: the key of a function or
-> type declared in a domain, public or not, carries the domain, `type
-> billing.Address`, `function billing.format_address`, and its fields and
-> variants follow it, `field billing.Address.street`. Every other key is
-> the kind and the born name, a library's functions included (`function
-> rounding.half_even`: the library keeps its name in `shared/`). The
-> registry is `database/identities.jadpo_record` (chunk 7.0).
-> `layout.promotion_required`'s edits for a type moving to
-> `shared/types/` add its line, `type billing.Address -> Address`, so
-> `jadpo fmt --layout` writes it and the key stays `type
-> billing.Address`; that is why the registry's header names `jadpo fmt
-> --layout` beside `jadpo rename` and `jadpo domain`. A field's,
-> variant's or rule's line gives only its own new name (`field
+> **Built.** A key is the kind and the born name, in the registry's own
+> form: `action complete_todo`, `field Todo.title`, `function
+> rounding.half_even` (a library keeps its name in `shared/`). Names are
+> unique across the project and across kinds (area 1), so the domain is a
+> field of the node, not part of the key.
+>
+> The exception is a function or type declared in a domain, which needs a
+> name unique only within its domain: its key carries the domain, public
+> or not, `type billing.Address`, `function billing.format_address`, and
+> its fields and variants follow it, `field billing.Address.street`.
+> Adding `public` or a route starting to return the type never changes a
+> key. Promoting one to `shared/` does, so `layout.promotion_required`'s
+> edits for a type moving to `shared/types/` add its registry line,
+> `type billing.Address -> Address`, which `jadpo fmt --layout` writes:
+> the key stays `type billing.Address` and the move reads as a move, not
+> as a removal and an addition. That is why the registry's header names
+> `jadpo fmt --layout` beside `jadpo rename` and `jadpo domain`.
+>
+> A field's, variant's or rule's line gives only its own new name (`field
 > Todo.priority -> importance`), read back through its owner's line;
-> every other line gives the whole name now. The manifest's `format` is
-> 2; manifests are never stored, so nothing reads format 1.
+> every other line gives the whole name now. The registry is
+> `database/identities.jadpo_record`, read once `jadpo rename` writes it;
+> until then every born name is the name now. A test's key is the file it
+> sits beside and its sentence, `test create_todo "rejects a blank
+> title"`, with no path, so moving its domain keeps it; two tests with one
+> sentence anywhere in the project are `semantic.duplicate_declaration`.
+> Changing what a key holds is a new manifest `format`.
 
 ## Comparing two builds
 
-Every review is a diff of two manifests (question 4). The **after** side is
-the working tree. The **before** side is a git ref, by default the commit
-the branch started from (on the default branch, the previous commit). The
-compiler reads that commit from git, builds it with the same compiler, and
-caches its manifest in `build/before/<commit>/`, so this costs one build
-per base commit.
+Every review is a diff of two manifests. The **after** side is the
+working tree. The **before** side is a git ref: by default the
+repository's default branch (`main` or `master`, read from the git
+remote) at its merge base with the current branch, as a pull request's
+diff is, so changes merged into the default branch since do not show as
+reversed (on the default branch, the previous commit);
+`--before <branch or commit>` compares with anything else. The same
+default serves `check`, `jadpo approval` and the review web view. The
+compiler reads that commit from git, builds it with the same compiler,
+and caches its manifest in `build/before/<commit>/`, so this costs one
+build per base commit.
 
 - **`jadpo check`** uses the diff to fail on any change that needs a
-  person and is not accepted (area 14, question 12). CI needs the base
+  person and is not accepted (area 14). CI needs the base
   commit fetched: a full clone, not a depth-1 checkout.
 - **`jadpo approval`** explains the same diff, decisions first (area 17's
-  order), as Markdown and JSON in `build/review/`. `--before <ref>` picks
-  another base. For production, pass the commit that the deployed build's
-  events carry.
+  order), as Markdown and JSON in `build/review/`. For production, pass
+  the commit that the deployed build's events carry.
 - **Records come for free.** The API record's diff, the migrations added,
   the lock changes and the acceptances added are part of the before and
   after trees, so the review lists them without a second mechanism.
@@ -358,7 +453,7 @@ per base commit.
 ## Acceptances
 
 One file per **decision**, listing every change it allows, with the reason
-in `///` (question 5). Each entry is `subject: Kind.change`, with the
+in `///`. Each entry is `subject: Kind.change`, with the
 subject and the change copied from the compiler's message:
 
 ```jadpo fragment
@@ -382,7 +477,7 @@ acceptance {
   writes one.
 - **The gate is the git host.** `acceptances/` and `api/` are owned in
   CODEOWNERS, so the owner's approval of the pull request is what lets a
-  decision in, and the host records who gave it (area 14, question 12).
+  decision in, and the host records who gave it (area 14).
 
 | Needs a person | Kind | Area |
 |---|---|---|
@@ -394,7 +489,7 @@ acceptance {
 | A package's service: a new or changed container image, before it runs | `PackageChange` | 11 |
 | Installing a third party's package from git rather than the registry (an unverified publisher) | `PackageChange` | 11 |
 | A connection that receives personal data but cannot erase it, with the reason the data stays | `ErasureNotPossible` | 11, 15 |
-| A threshold raised or removed | `ThresholdChange` | 16 (proposed) |
+| A threshold raised or removed | `ThresholdChange` | 16 |
 
 Additive changes need no acceptance: a new route, a new optional input
 field, a new output field, tightened policy. The diff still shows them.
@@ -402,7 +497,7 @@ field, a new output field, tightened policy. The diff still shows them.
 ## Package upgrades
 
 An upgrade is a change to `jadpo.lock` and `packages/`, reviewed like any
-other (question 6), its `surface.jadpo_record` diff included. The review
+other, its `surface.jadpo_record` diff included. The review
 compares the provider operations and library declarations the app uses,
 matched by package, resource and operation with the version ignored, so a
 call moved from one version's connection to the next is compared, not
@@ -422,8 +517,7 @@ listed as removed and added.
 
 ## Production builds
 
-A deployable carries a small **build stamp**, not its manifest
-(question 7). The stamp holds the build id, the commit, whether the tree
+A deployable carries a small **build stamp**, not its manifest. The stamp holds the build id, the commit, whether the tree
 was modified, the compiler version, the deployable and the target. Every
 log event carries it. Each fault site carries its `.jadpo` file and line as
 a constant, so events already show `.jadpo` frames (area 17).
@@ -431,6 +525,9 @@ a constant, so events already show `.jadpo` frames (area 17).
 - **The manifest is rebuilt, not shipped.** Builds are deterministic (area
   14), so `jadpo incident` builds the event's commit, checks that the build
   id matches, and caches the result. Nothing is uploaded or archived.
+  `jadpo` fetches and runs the exact compiler version the stamp names (as
+  `rustup` installs a pinned toolchain), so an old build can always be
+  rebuilt.
 - **No endpoint.** The deployed app reveals nothing about its structure.
   This also works for a worker with no HTTP surface.
 - **Native and Wasm alike.** Nothing depends on debug information or
@@ -726,182 +823,79 @@ check failed: 1 error, 1 file
 
 | Feature | Status |
 |---|---|
-| Manifest | Built (chunk 1.7): `jadpo check` writes `build/manifest.json` at `format` 1, with nodes for areas 1 to 4 and their `calls`, `uses` and `raises` edges. Policy's grants, field restrictions, tenancies and listed actions joined in chunk 4.4b, with `grants` and `scopes` edges. The build stamp, schedules, hosts, personal fields and thresholds join as their areas are built. |
-| Views of it | The library and failure catalogues are built (chunk 1.7), and one OpenAPI document per API in `build/openapi/` (chunk 4.1); the other reports and the monitoring rules come with their areas. |
-| Migrations | Built (chunk 3.1): `jadpo migrate new` writes each folder, and `jadpo check` fails while the entities and the latest snapshot disagree. Each folder is a `migration_snapshot` node in the manifest. |
-| Stable identity | Built (chunk 1.7): a key is the kind and the born name, and a test's key is the file it sits beside and its sentence (chunk 1.9). The registry is read once `jadpo rename` writes it (area 14). |
-| API record | Built (chunk 4.1): `jadpo api update` writes the record for each API with routes, and `jadpo check` fails while one disagrees with the routes, naming what changed; it is `api/<api>.jadpo_record` in the record format and the error is `record.out_of_date` (chunk 7.0). Breaking-change classification and acceptances come after the first build. |
-| `.jadpo_record` files | Built (chunk 7.0): every record in the record format (the translation sources first, in chunk 5.4d), the API record as `api/<api>.jadpo_record` without `version:`, the registry as `database/identities.jadpo_record`, the header check, `record.out_of_date`, `record.edited` and `record.format_newer`, `jadpo records` and `jadpo records update`. Telling a careful hand edit of a view from a stale one needs the base build, which comes with `jadpo approval`; the editor grammar and `jadpo lsp` serving records, and `.gitattributes` from `jadpo new`, are not built. |
-| Event records | Built (chunk 6.1c): one view per domain with events, `domains/<domain>/events/events.jadpo_record`, written by `jadpo records update` and checked as the API record is; what area 12's "The event record" records. Acceptances come with the API record's. |
-| Lock and package surfaces | The lock's format is built (chunk 7.0: a ledger read and checked like the others); `jadpo check` holds each installed package to its line and digest (chunk 7.1, area 11's "Chosen in chunk 7.1" gives the digest). Package surfaces are built (chunk 7.1b): `record surface 1`, a view written by `jadpo package check` in a package's own repository and read by `jadpo package show`; installed, a surface is held by its package's digest rather than regenerated, so `jadpo records` doesn't list it, and an own integration's is written to `build/providers/` (area 11, "Chosen in chunk 7.1b"). Chunk 7.1b2 writes the lock: `jadpo package add`, `update`, `remove`, `link` and `unlink`, each line written through the ledger's writer, sorted; a surface is verified at install against its package's code; `git` lines record the repository as written, the tag and the tag's commit, `path` lines a folder relative to the root, and a `link` line replaces the package's line while the replaced one waits in `.jadpo/links` (git-ignored, in the lock's own format) for `unlink`. `jadpo package update` prints this area's review of the surface's changes, each entry marked `used by the app` and `needs a person`; the acceptance it calls for comes with `jadpo approval` (area 11, "Chosen in chunk 7.1b2"). Chunk 7.1c2 locks two versions of one package side by side, each on its own line, and `update` names the version while two are held (area 11, "Chosen in chunk 7.1c2"). |
-| Build stamp | Built (chunk 8.1o) for a native deployable: `jadpo build` writes the build id (`b_` and twelve hex digits of a SHA-256 over the graph's digest, the compiler, the target and `jadpo.lock`), the commit, whether the tree was modified, the compiler, the deployable and the target into the binary as a constant, and every event it logs carries them (area 14, "A native deployable"). Since chunk 8.1o2 `jadpo check` writes the manifest's `source` (`commit`, left out when git doesn't track the project, and `modified`) and `deployables`, each deployable's target and build id, which digests a declared deployable's declaration with the graph's digest, so two deployables of one app never share one (area 14, "Declared deployables"); since chunk 8.1o3 the build id digests the deployable's program as it is compiled from only what it reaches, its Rust and its plan with its name and its stores' migrations, so a change it doesn't reach leaves its id alone, and a project with errors has none. |
-| Approval, acceptances, package upgrade plans, `jadpo incident` | Decided, not built: after the first build (roadmap, areas 17 and 18). |
+| Manifest | Built: `jadpo check` writes `build/manifest.json` at `format` 2, with nodes for areas 1 to 4 and their `calls`, `uses` and `raises` edges, policy's grants, field restrictions, tenancies and listed actions with `grants` and `scopes` edges, prompts, and the build stamp. Schedules, hosts, personal fields and thresholds join as their areas are built. |
+| Views of it | The library and failure catalogues are built, and one OpenAPI document per API in `build/openapi/`; the other reports and the monitoring rules come with their areas. |
+| Migrations | Built: `jadpo migrate new` writes each folder, and `jadpo check` fails while the entities and the latest snapshot disagree. Each folder is a `migration_snapshot` node in the manifest. |
+| Stable identity | Built: a key is the kind and the born name, a function or type declared in a domain carries its domain, and a test's key is the file it sits beside and its sentence. The registry is read once `jadpo rename` writes it (area 14). |
+| API record | Built: `jadpo api update` writes `api/<api>.jadpo_record` for each API with routes, and `jadpo check` fails with `record.out_of_date` while one disagrees with the routes, naming what changed. Breaking-change classification and acceptances are not built yet. |
+| `.jadpo_record` files | Built: every record in the record format, the API record without `version:`, the registry as `database/identities.jadpo_record`, the header check, `record.out_of_date`, `record.edited` and `record.format_newer`, `jadpo records` and `jadpo records update`. Not built: telling a careful hand edit of a view from a stale one, which needs the base build that comes with `jadpo approval`; the editor grammar and `jadpo lsp` serving records; `.gitattributes` from `jadpo new`. |
+| Event records | Built: one view per domain with events, `domains/<domain>/events/events.jadpo_record`, written by `jadpo records update` and checked as the API record is; what area 12's "The event record" records. Acceptances come with the API record's. |
+| Lock and package surfaces | Built. The lock is a ledger read and checked like the others, and `jadpo check` holds each installed package to its line and digest (area 11 gives the digest). `jadpo package add`, `update`, `remove`, `link` and `unlink` write it, each line through the ledger's writer, sorted; `git` lines record the repository as written, the tag and the tag's commit, `path` lines a folder relative to the root, and a `link` line replaces the package's line while the replaced one waits in `.jadpo/links` (git-ignored, in the lock's own format) for `unlink`. Two versions of one package are locked side by side, each on its own line, and `update` names the version while two are held. A package surface is `record surface 1`, a view written by `jadpo package check` in a package's own repository, verified at install against its package's code, and read by `jadpo package show`; installed, a surface is held by its package's digest rather than regenerated, so `jadpo records` doesn't list it, and an own integration's is written to `build/providers/` (area 11). `jadpo package update` prints this area's review of the surface's changes, each entry marked `used by the app` and `needs a person`; the acceptance it calls for comes with `jadpo approval`. |
+| Build stamp | Built for native and Workers deployables: `jadpo build` writes the build id (`b_` and twelve hex digits of a SHA-256 over the deployable's program digest, the compiler, the target and `jadpo.lock`), the commit, whether the tree was modified, the compiler, the deployable and the target into the binary or module as a constant, and every event it logs carries them (area 14, "A native deployable" and "A Workers deployable"). `jadpo check` writes the manifest's `source` (`commit`, left out when git doesn't track the project, and `modified`) and `deployables`, each deployable's target and build id, which digests a declared deployable's declaration too, so two deployables of one app never share one (area 14, "Declared deployables"); a project with errors has none. |
+| Approval, acceptances, package upgrade plans, `jadpo incident` | Not built yet; see [the roadmap](../roadmap.md). |
 
 ### Consistency with the rest of the language
 
-- **Area 1, question 10** (root `api/` and `acceptances/`) is answered by
-  question 1. `jadpo.lock` is already in the root, and `packages/` replaced
-  the root `providers/` on 2026-10-16 (area 11).
-- **Area 5's registry is amended** (question 3). "Gives each table and
-  column a stable identity" becomes born names plus a list of renames,
-  covering code too. Area 1's layout comment on `identities.json` changes
-  with it. Migration snapshots, `migrate new` and drift checks are
-  unchanged.
-- **Area 7 is amended** (question 5). "One per change" becomes one per
-  decision. "The record notes which acceptance allowed each change" and
-  "an acceptance that no record uses is an error" become: an acceptance
-  counts only in the change that adds it, and one that matches nothing
-  there is an error. The API record holds no acceptance names.
-- **Area 9:** "the whole application before and after" is now defined: the
-  before side is the base commit's build (question 4).
-- **Area 11:** a changed host was decided as "appears in the approval
-  report". Here a host or credential-scheme change on a used operation also
-  needs an acceptance (question 6). New connections still only appear.
-- **Area 14:** the `build/` listing changes. `app.meta.json`, `inventory/`,
-  `audit/`, `compatibility/` and `approval/` fold into `manifest.json`,
-  `report/` and `review/`. `jadpo inspect` prints the manifest, or one node.
-  `jadpo acceptance new` is a new command. `check` reads git for its base.
-  The decided "manifest found by the event's build id" is met by rebuilding
-  it (question 7).
-- **Area 16:** the build manifest carries the thresholds, as proposed.
-  Per-request thresholds are compiled into the deployable.
-- **Area 17:** question 2's identity extension is question 3 here, and
-  "`jadpo build` records the commit in `app.meta.json`" becomes the build
-  stamp. Its review report lives in `build/review/`.
+- **Area 5's registry** is born names plus a list of renames, covering code
+  too. Migration snapshots, `migrate new` and drift checks are area 5's.
+- **Area 7's acceptances** are one per decision. An acceptance counts only
+  in the change that adds it, and one that matches nothing there is an
+  error. The API record holds no acceptance names.
+- **Area 9:** "the whole application before and after" is the base
+  commit's build against the working tree.
+- **Area 11:** a changed host appears in the approval report; a host or
+  credential-scheme change on a used operation also needs an acceptance.
+  New connections only appear.
+- **Area 14:** `build/` holds `manifest.json`, `report/` and `review/`.
+  `jadpo inspect` prints the manifest, or one node. `check` reads git for
+  its base. The manifest for an event's build id is found by rebuilding it.
+- **Area 16:** the build manifest carries the thresholds. Per-request
+  thresholds are compiled into the deployable.
+- **Area 17:** the identity registry covers actions, queries and routes;
+  the commit is in the build stamp; the review report lives in
+  `build/review/`.
 - **Compiler design** (`docs/compiler-runtime.md` §1.1 and §9): the
   manifest is the graph's export. Not shipping maps publicly matches §9.
-- **Archived plan:** RM-219 separated a thing's lasting identity from the
-  build it ran in. The build id and born names do that. RM-603's signed
-  approvals stay replaced by the git host's review (area 14).
 
 ### Carried to later areas
 
-| Item | Area | Status |
-|---|---|---|
-| Pending deliveries and schedule state when a subscriber or schedule is removed, not renamed | 12 | Question 3 |
-| Diagnostics for unaccepted changes, unmatched entries, missing reasons and edited acceptances; `jadpo acceptance new`; `inspect <name>`; `check` reading git | 14 | Questions 4 and 5 |
-| The graph's shape: stable identities, per-build sites, the manifest as its export | Compiler design §1.1 | Question 2 |
-| Loosened thresholds listed as `ThresholdChange` | 16 | Question 5 |
-| Build stamp and `.jadpo` site constants in events; `jadpo incident` rebuilds the manifest | 17 | Question 7 |
-
-### Open questions
-
-1. **Which files are records, and is everything else uncommitted?**
-   *Recommendation:* four records: `api/`, `database/` (migrations and the
-   registry), `jadpo.lock` and `acceptances/`. A file is committed only if
-   it cannot be recomputed from today's source or is a promise whose diff
-   must be read. Area 1's root gains `api/` and `acceptances/`. This is the
-   Kotlin, API Extractor and lock-file pattern. *Decided 2026-10-13:* yes, as recommended.
-   *Revised 2026-10-16 (Richard):* the records also include each
-   `translations/sources.jadpo_record` (area 10) and each installed
-   package's `surface.jadpo_record` (area 11); every record but the lock
-   ends in `.jadpo_record`, is readable rather than JSON, starts with the
-   line saying what wrote it, and fails `check` when edited by hand;
-   `jadpo records` lists them. Installed packages are committed in
-   `packages/`.
-2. **What is the manifest?** *Recommendation:* one `build/manifest.json`,
-   the compiler's graph as canonical JSON with a `format` number. Every
-   report, catalogue, OpenAPI document and monitoring rule is a view of
-   it, and `app.meta.json`, `inventory/`, `audit/`, `compatibility/` and
-   `approval/` go. Build ids are digests of what decides behaviour. *Decided 2026-10-13:* yes, as recommended.
-3. **How does identity survive renames, and is there one registry?**
-   *Recommendation:* one registry, `database/identities.json`, for data and
-   code. Each thing is known by its born name, and the registry holds only
-   renames, written by `jadpo rename` and the domain commands. Code is in
-   it because stored deliveries and schedule state name code. This amends
-   area 5's dense registry. A dense registry would add a line for every
-   new action. *Decided 2026-10-13:* yes, as recommended.
-4. **What is the "before" in every comparison?** *Recommendation:* a git
-   ref, by default where the branch started. That commit is built with
-   the same compiler and cached per commit. `check` gates on the diff,
-   `approval` explains it, and production passes the commit its events
-   carry. This is buf's `--against`, applied to the whole application.
-   *Decided 2026-10-13 (Richard):* by default, the current branch against
-   the repository's default branch (`main` or `master`, read from the git
-   remote), measured from where the branch left it (the merge base, as a
-   pull request's diff is), so changes merged into `main` since do not show
-   as reversed; `--before <branch or commit>` compares with anything else.
-   The same default serves `check`, `jadpo approval` and the review web view
-   (area 17, roadmap E06).
-5. **How are acceptances written, matched and used up?** *Recommendation:*
-   one file per decision, listing `subject: Kind.change` entries, with a
-   `///` reason from a person. It counts only in the change that adds it,
-   and is never edited once merged. `jadpo acceptance new <purpose>`
-   drafts it without a reason, and the CODEOWNERS approval is the gate.
-   This amends area 7's "one per change" and its notes in the record. *Decided 2026-10-13:* yes, as recommended.
-6. **Which package changes need a person?** *Recommendation:* a used
-   operation removed, a used field removed or retyped, a new failure on a
-   used operation, or a host or credential scheme changed. Everything else
-   only appears in the review. `provider update` prints that part of the
-   review, which is what the "upgrade plan" idea becomes. *Decided 2026-10-13:* yes, as recommended.
-   *Revised 2026-10-16 (Richard, area 11):* the command is `jadpo package
-   update`, and the review reads the surface diff; a service's new or
-   changed image and a third party's package from git also need a person,
-   and so does a connection that receives personal data but cannot erase
-   it.
-7. **Does a deployable carry its manifest?** *Recommendation:* no, only a
-   build stamp (build id, commit, modified, compiler, deployable, target)
-   on every event, plus `.jadpo` locations at fault sites. `jadpo incident`
-   rebuilds the manifest from the commit and checks the build id. There is
-   no endpoint to secure, it works for workers and Wasm alike, and nothing
-   is archived. Deploy only commits that stay in history. This replaces
-   the starting idea of embedding the manifest and serving it. *Decided 2026-10-13:* yes, with one addition: `jadpo` fetches and runs the exact compiler version named in the stamp (as `rustup` installs a pinned toolchain), so an old build can always be rebuilt.
-
-8. **Is a stable identity qualified by its domain?** Raised while building
-   chunk 1.7: the manifest example writes `planning.complete_todo`, the
-   registry example `entity Task` but `subscriber planning.notify_owner`.
-   *Recommendation:* no, as built: a key is the kind and the born name,
-   `action complete_todo`, and the domain is a field of the node. Names are
-   unique across the project and across kinds (area 1), so the domain adds
-   nothing to a key, and promotion to `shared/` moves a declaration to
-   another owner without a registry line, so a domain in the key would show
-   a routine move as a removal and an addition, losing incidents, coverage
-   and stored deliveries that name it. Changing this later is a new
-   manifest `format`.
-   *Decided 2026-10-13 (Richard):* as recommended; the examples above now
-   use the unqualified form.
-   *Amended 2026-10-16 (Richard, area 1 "Names per domain"):* a private
-   function or type now needs a name unique only within its domain, so the
-   key of a function or type declared in a domain carries the domain:
-   `type billing.Address`, `function billing.format_address`. It does so
-   whether or not the declaration is `public` or named by an API, so adding
-   `public` by hand or a route starting to return the type never changes a
-   key. Promoting one to `shared/` changes its key, and the promotion
-   (`jadpo fmt --layout` or the editor's fix) writes one registry line,
-   `"type Address": "billing.Address"`, so the move reads as a move and not
-   as a removal and an addition. Every other key stays the kind and the
-   born name. Built in chunk 5.3d, which reworked part of chunk 1.7's
-   registry; the manifest is `format` 2.
+| Item | Area |
+|---|---|
+| Pending deliveries and schedule state when a subscriber or schedule is removed, not renamed | 12 |
+| Diagnostics for unaccepted changes, unmatched entries, missing reasons and edited acceptances; `jadpo acceptance new`; `inspect <name>`; `check` reading git | 14 |
+| The graph's shape: stable identities, per-build sites, the manifest as its export | Compiler design §1.1 |
+| Loosened thresholds listed as `ThresholdChange` | 16 |
+| Build stamp and `.jadpo` site constants in events; `jadpo incident` rebuilds the manifest | 17 |
 
 ### Decisions
 
-| Topic | Decision | Date |
-|---|---|---|
-| Compiler data | Carried from area 1: a visible `database/` folder for the identity registry, migrations and seeds | 2026-10-12 |
-| New domains | Carried from area 1: creating or renaming a domain appears in the approval review | 2026-10-12 |
-| Policy protection | Carried from area 1: through the approval check wherever policy lives, not by file path | 2026-10-12 |
-| Stable identity | A key is the kind and the born name (`action complete_todo`), never qualified by domain; the domain is a field of the node, so promotion to `shared/` keeps the key (Amended 2026-10-16: a function or type declared in a domain carries its domain, `type billing.Address`, and promotion to `shared/` writes a registry move line; built in chunk 5.3d, manifest `format` 2) | 2026-10-13 |
-| Migration snapshots | Carried from area 5: each migration folder holds a generated `snapshot.json`, generated SQL and `changes.jadpo` only for decisions; `check` fails when entities and the latest snapshot disagree | 2026-10-12 |
-| Removing data | Carried from area 5: retire, then drop in a later migration; a drop needs explicit acceptance | 2026-10-12 |
-| System tables | Carried from area 5: runtime tables prefixed `jadpo_`, part of the migration snapshots | 2026-10-13 |
-| API record and acceptance | Carried from area 7: a committed record per API compared by `check`; breaking changes need a person-written acceptance; `acceptances/` owned in CODEOWNERS | 2026-10-12 |
-| Permissions report | Carried from area 9: `build/report/permissions.md` and `.json`, shown in the approval review | 2026-10-12 |
-| Package pin | Carried from area 11: registry packages by digest in `jadpo.lock`, local ones committed; never fetched during a build | 2026-10-13 |
-| Hosts | Carried from area 11: outbound access only to declared connections' hosts; a generated network report; changes in the approval report | 2026-10-13 |
-| `check` writes derived files | Carried from area 14: `check` writes `build/` except the runnable app | 2026-10-13 |
-| Renaming | Carried from area 14: `jadpo rename <old> <new>` updates source, callers, file names and the identity registry | 2026-10-13 |
-| Sign-off | Carried from area 14: acceptance files in a host-protected folder; CI's `jadpo check` fails without them | 2026-10-13 |
-| Incident input | Carried from area 14: the build's manifest is found by the event's build id | 2026-10-13 |
-| Records | Four committed records: `api/`, `database/`, `jadpo.lock`, `acceptances/`; area 1's root gains `api/` and `acceptances/` | 2026-10-13 |
-| Manifest | One `build/manifest.json`, the compiler's graph as versioned canonical JSON; every report and generated document is a view of it | 2026-10-13 |
-| Identity | One registry for data and code in `database/identities.json`, holding renames only, written by `jadpo rename` and the domain commands (Revised 2026-10-16: `database/identities.jadpo_record`) | 2026-10-13 |
-| The before side | Current branch against the default branch (`main`/`master` from the remote) at their merge base; `--before <ref>` overrides; one default for `check`, `approval` and the review web view (Richard) | 2026-10-13 |
-| Acceptances | One file per decision listing the changes it covers, with a person's reason; counts only in the change that adds it; `jadpo acceptance new` drafts it; CODEOWNERS approval is the gate | 2026-10-13 |
-| Package changes | A person accepts a used operation removed, a used field removed or retyped, a new failure on a used operation, or a host or credential-scheme change | 2026-10-13 |
-| Production builds | Deployables carry a build stamp, not the manifest; `jadpo incident` rebuilds from the commit with the exact compiler version | 2026-10-13 |
-| What a build id digests | The deployable's program as compiled from what it reaches: the Rust its callables become, as the text of its tokens, its plan's bytes, its name and each store's migrations, with the compiler, the target and `jadpo.lock`; worked out by `jadpo check` without rustc. A change that moves a callable it reaches to other lines changes it, since its frames name them; so does the application's name, its folder's unless `app.jadpo` gives one, which its OpenAPI title holds, so a rebuild that explains an event is made in a folder of the same name. A project with errors builds nothing, and the manifest leaves each deployable's `build` out (chosen in chunk 8.1o3) | 2026-10-21 |
-| Translation sources | Each `translations/` folder has a generated, committed `sources.json`: per locale and message, the hash of the default wording it was translated from, and acceptances; written by `jadpo translations update`, `import` and `accept` (Richard, area 10) (Revised 2026-10-16: `sources.jadpo_record`) | 2026-10-16 |
-| Record files | Every committed record but `jadpo.lock` is a readable `.jadpo_record` beside what it describes (`api/main.jadpo_record`, `database/identities.jadpo_record`, `translations/sources.jadpo_record`, `surface.jadpo_record`), its first line naming what wrote it and the command that updates it; `jadpo check` regenerates it and a hand edit is an error naming that command; `jadpo records` lists them and flags any out of date; acceptances are not records (Richard) | 2026-10-16 |
-| The lock's source | `jadpo.lock` records each installed package's version, digest and source: `registry`, `git` (repository, tag and the tag's commit), `path` or `link`; a link is refused by production builds and CI (Richard, area 11) | 2026-10-16 |
-| New acceptances | A service's new or changed image and a third party's package from git need a `PackageChange` acceptance, and a connection that receives personal data but cannot erase it an `ErasureNotPossible` one (Richard, area 11) | 2026-10-16 |
-| The record format | Generated records are `.jadpo_record` files in an indented outline of Jadpo words: views (the API record, package surfaces) rebuilt and checked byte for byte, ledgers (identities, translation sources, the lock) of one-line entries merged by git's `union`; a header naming the generator and command, then `record <kind> <format>`; the API record has no `version:` counter (the OpenAPI version is a hash of the record) and no file pointers; surfaces keep file pointers and each description's first paragraph; `jadpo.lock` uses the format (Richard; [the design](research/jadpo-record-format.md)); built in chunk 7.0 | 2026-10-16 |
+| Topic | Decision |
+|---|---|
+| Compiler data | Carried from area 1: a visible `database/` folder for the identity registry, migrations and seeds |
+| New domains | Carried from area 1: creating or renaming a domain appears in the approval review |
+| Policy protection | Carried from area 1: through the approval check wherever policy lives, not by file path |
+| Stable identity | A key is the kind and the born name (`action complete_todo`); the domain is a field of the node. A function or type declared in a domain carries its domain (`type billing.Address`), and its promotion to `shared/` writes a registry move line |
+| Migration snapshots | Carried from area 5: each migration folder holds a generated `snapshot.json`, generated SQL and `changes.jadpo` only for decisions; `check` fails when entities and the latest snapshot disagree |
+| Removing data | Carried from area 5: retire, then drop in a later migration; a drop needs explicit acceptance |
+| System tables | Carried from area 5: runtime tables prefixed `jadpo_`, part of the migration snapshots |
+| API record and acceptance | Carried from area 7: a committed record per API compared by `check`; breaking changes need a person-written acceptance; `acceptances/` owned in CODEOWNERS |
+| Permissions report | Carried from area 9: `build/report/permissions.md` and `.json`, shown in the approval review |
+| Package pin | Carried from area 11: registry packages by digest in `jadpo.lock`, local ones committed; never fetched during a build |
+| Hosts | Carried from area 11: outbound access only to declared connections' hosts; a generated network report; changes in the approval report |
+| `check` writes derived files | Carried from area 14: `check` writes `build/` except the runnable app |
+| Renaming | Carried from area 14: `jadpo rename <old> <new>` updates source, callers, file names and the identity registry |
+| Sign-off | Carried from area 14: acceptance files in a host-protected folder; CI's `jadpo check` fails without them |
+| Incident input | Carried from area 14: the build's manifest is found by the event's build id |
+| Committed files | A file is committed only if it cannot be recomputed from today's source or is a promise whose diff must be read: the records, migrations and `acceptances/`; area 1's root gains `api/`, `acceptances/` and `packages/`; installed packages are committed |
+| Manifest | One `build/manifest.json`, the compiler's graph as versioned canonical JSON; every report and generated document is a view of it |
+| Identity | One registry for data and code in `database/identities.jadpo_record`, holding renames only, written by `jadpo rename`, the domain commands and promotion |
+| The before side | Current branch against the default branch (`main`/`master` from the remote) at their merge base; `--before <ref>` overrides; one default for `check`, `approval` and the review web view |
+| Acceptances | One file per decision listing the changes it covers, with a person's reason; counts only in the change that adds it; `jadpo acceptance new` drafts it; CODEOWNERS approval is the gate |
+| Package changes | A person accepts a used operation removed, a used field removed or retyped, a new failure on a used operation, a host or credential-scheme change, a service's new or changed image, or a third party's package from git; `jadpo package update` prints that part of the review |
+| Production builds | Deployables carry a build stamp, not the manifest; `jadpo incident` rebuilds from the commit with the exact compiler version |
+| What a build id digests | The deployable's program as compiled from what it reaches: the Rust its callables become, as the text of its tokens, its plan's bytes, its name and each store's migrations, with the compiler, the target and `jadpo.lock`; worked out by `jadpo check` without rustc. A change that moves a callable it reaches to other lines changes it, since its frames name them; so does the application's name, its folder's unless `app.jadpo` gives one, which its OpenAPI title holds, so a rebuild that explains an event is made in a folder of the same name. A project with errors builds nothing, and the manifest leaves each deployable's `build` out |
+| Translation sources | Each `translations/` folder has a generated, committed `sources.jadpo_record`: per locale and message, the hash of the default wording it was translated from, and acceptances; written by `jadpo translations update`, `import` and `accept` (area 10) |
+| Record files | Every committed record but `jadpo.lock` is a readable `.jadpo_record` beside what it describes (`api/main.jadpo_record`, `database/identities.jadpo_record`, `translations/sources.jadpo_record`, `surface.jadpo_record`), its first line naming what wrote it and the command that updates it; `jadpo check` regenerates it and a hand edit is an error naming that command; `jadpo records` lists them and flags any out of date; acceptances are not records |
+| The lock's source | `jadpo.lock` records each installed package's version, digest and source: `registry`, `git` (repository, tag and the tag's commit), `path` or `link`; a link is refused by production builds and CI (area 11) |
+| New acceptances | A service's new or changed image and a third party's package from git need a `PackageChange` acceptance, and a connection that receives personal data but cannot erase it an `ErasureNotPossible` one (area 11) |
+| The record format | Generated records are `.jadpo_record` files in an indented outline of Jadpo words: views (the API record, package surfaces) rebuilt and checked byte for byte, ledgers (identities, translation sources, the lock) of one-line entries merged by git's `union`; a header naming the generator and command, then `record <kind> <format>`; the API record has no `version:` counter (the OpenAPI version is a hash of the record) and no file pointers; surfaces keep file pointers and each description's first paragraph; `jadpo.lock` uses the format ([The record format](#the-record-format)) |

@@ -1,4 +1,4 @@
-//! Physical quantities (area 19, "Physical quantities", question 17): each
+//! Physical quantities (area 19, "Physical quantities"): each
 //! kind holds an exact number in its SI base unit at a fixed scale, so a
 //! `Length` is a `Length` whatever unit made it, and `1km == 1000metre`.
 //! A unit exists only where a value is made (a suffixed literal,

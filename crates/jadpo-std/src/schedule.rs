@@ -11,7 +11,7 @@ pub struct SchedulesPlan {
     pub schedules: Vec<SchedulePlan>,
     /// The store each schedule's state row, lease and run records are in
     /// (`jadpo_schedules`, `jadpo_schedule_runs`): `schedules: { store: }`,
-    /// or the only database (area 12, "Outbox placement, settled").
+    /// or the only database (area 12, "Outbox placement").
     /// `None` when this deployable executes no schedules.
     pub store: Option<String>,
     /// Every store holding the runtime's own tables (the outbox, delivery

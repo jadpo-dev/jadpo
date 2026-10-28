@@ -563,7 +563,7 @@ impl Body<'_> {
         );
     }
 
-    /// `form:` on `text.parse` and `text.from` (area 19, question 22): a
+    /// `form:` on `text.parse` and `text.from` (area 19, "Closed value sets are enums"): a
     /// `CodeForm` written out, for a closed list with data in that code
     /// system.
     pub(super) fn form_option(

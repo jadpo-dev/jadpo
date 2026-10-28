@@ -1,4 +1,4 @@
-//! `jadpo migrate` (area 5, "Migrations"; area 14, question 4): `new`
+//! `jadpo migrate` (area 5, "Migrations"; area 14, "`migrate` commands"): `new`
 //! compares the entities with the latest migration's snapshot and writes
 //! the next migration's folder (`snapshot.json`, `postgres.sql`, and
 //! `changes.jadpo` when a change needs a decision), or finishes the latest

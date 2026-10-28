@@ -1,5 +1,5 @@
 //! `jadpo deliveries` (area 12, "What an operator sees"; area 14,
-//! question 13; chunk 6.12): the deliveries of events to subscribers, and
+//! "Operator commands"; chunk 6.12): the deliveries of events to subscribers, and
 //! schedules' runs, that need an operator, and what one does to each,
 //! against the databases they are in.
 //!

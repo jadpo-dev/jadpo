@@ -232,8 +232,8 @@ pub struct Wrangler<'a> {
 ///   }`, the period in seconds;
 /// - `queues: { consumers }`, a consumer for each queue on Cloudflare
 ///   Queues and for its dead-letter queue, as
-///   [`jadpo_std::receiving::wrangler_queues`] writes them (chunks 8.2k and
-///   8.4b; area 11, "Chosen in chunk 7.7c2").
+///   [`jadpo_std::receiving::wrangler_queues`] writes them (area 11,
+///   "The Cloudflare Queues driver").
 ///
 /// Each part it has nothing for is left out.
 pub fn wrangler(file: &Wrangler<'_>) -> String {

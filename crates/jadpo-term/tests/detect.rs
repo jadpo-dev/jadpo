@@ -1,5 +1,5 @@
 //! Output-mode, colour, symbol and theme detection, as the CLI design language
-//! decides it (docs/language/research/14-cli-design-language.md, "Output modes").
+//! decides it (docs/cli-design-language.md, "Output modes").
 
 use jadpo_term::{ColorChoice, Depth, Environment, Mode, Stream, Style, Symbols, Theme};
 
