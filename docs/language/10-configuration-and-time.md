@@ -6,6 +6,7 @@ checked-with: this checkout's jadpo on every gate run
 ---
 
 # Configuration and time
+<!-- topic: configuration-and-time -->
 
 How an application declares its settings and secrets, where their values come
 from, and how code reads the current time, works with dates and zones, and
@@ -20,6 +21,7 @@ the whole operation. **Machine values and text for people never mix**: an
 `Instant` is stored and compared; a formatted date is only shown.
 
 ## Settings: `config.jadpo`
+<!-- topic: settings-config-jadpo -->
 
 Every setting the application needs is a field in the one `config { }`
 declaration in the root file `config.jadpo`. A field has a type, and
@@ -351,6 +353,7 @@ settings in the order they are written, which becomes name order.
 the language pages are in name order.
 
 ## Secrets
+<!-- topic: secrets -->
 
 `secret: true` marks a value that must never leave the server. The compiler
 accepts it only at places the compiler itself owns: a connection's `url:`, an
@@ -387,6 +390,7 @@ application can hold it; `jadpo config check`, `jadpo dev` and the start-up
 check say which setting and which variable, never the value.
 
 ## Database and other connection URLs
+<!-- topic: database-and-other-connection-urls -->
 
 Area 5 decided that stores take their address from configuration, and area 11
 put them in one `connections:` block:
@@ -466,6 +470,7 @@ config {
 ```
 
 ## Values on your machine and in production
+<!-- topic: values-on-your-machine-and-in-production -->
 
 Production values come from the platform's environment (or its secret
 manager, which sets the same variables). Locally there is one git-ignored
@@ -516,6 +521,7 @@ Both are tooling (area 14). `config set` needs a terminal and refuses
 `--json`; `config check --json` lists the same settings as data.
 
 ## Signing keys
+<!-- topic: signing-keys -->
 
 A `SigningKey` is a built-in secret type for the key sessions and tokens are
 signed with: at least 32 characters with no spaces. A setting of that type
@@ -530,6 +536,7 @@ and with a revocation delay signs sessions and tokens with it (area 8, "The
 application and revocation").
 
 ## Client addresses
+<!-- topic: client-addresses -->
 
 Rate limits count a request by its address while no one is signed in (areas
 7 and 16), and `jadpo dev`'s request lines and the request timeline (area 17)
@@ -635,6 +642,7 @@ deployable that reads one doesn't start, logging
 (`ClientAddress::read` refuses it for that target).
 
 ## Checking values before the app starts
+<!-- topic: checking-values-before-the-app-starts -->
 
 The generated app reads only the declared variables, checks every value
 against its type, and refuses to start if any is missing or invalid. It never
@@ -667,6 +675,7 @@ not running this version: 1 error, waiting for a save that fixes them
 ```
 
 ## Time types
+<!-- topic: time-types -->
 
 | Type | What it is | Example | On the wire |
 |---|---|---|---|
@@ -734,6 +743,7 @@ test "time literals are checked while compiling and compare as time" {
 ```
 
 ## Durations
+<!-- topic: durations -->
 
 One spelling everywhere in source, `500ms`, `30s`, `5m`, `2h`, `30d`, with
 ISO 8601 (`"PT5M"`) only on the wire.
@@ -773,6 +783,7 @@ log is a setting too: every boundary reads a standard type through its
 contract (area 19, "Every boundary through the contract").
 
 ## The current time: `clock.now`
+<!-- topic: the-current-time-clock-now -->
 
 `clock.now` is the time an operation started. It is fixed for the whole
 operation, nested actions included, so every timestamp one request writes
@@ -808,6 +819,7 @@ a value; the database's own `now()` is never used. Area 19's `random`
 namespace is read only in actions in the same way (`type.random_context`).
 
 ## Arithmetic and comparison
+<!-- topic: arithmetic-and-comparison -->
 
 `Instant + Duration`, `Duration + Instant` and `Instant - Duration` give an
 `Instant` of the instant's own named type, so no rebuild is needed.
@@ -857,6 +869,7 @@ test "instants compare on the timeline" {
 ```
 
 ## Zones and local times
+<!-- topic: zones-and-local-times -->
 
 A zone turns an instant into local time; this is never ambiguous:
 `temporal.in_zone(clock.now, Zone.europe_london)` is a `ZonedTime`.
@@ -1074,6 +1087,7 @@ and every `Zone` variant is in it, which a test holds. A newer release is a
 dependency change of its own.
 
 ## Showing dates and times to people
+<!-- topic: showing-dates-and-times-to-people -->
 
 > Every standard type is formatted for people by one call,
 > `text.format(value, locale:)`: the time types' takes the `zone:` and
@@ -1392,6 +1406,7 @@ compare with `==` and `!=`. On the wire it is a JSON string. Clients that
 format for themselves receive the `Instant`.
 
 ## Locales
+<!-- topic: locales -->
 
 `Locale` is a built-in enum of the standard locales (`Locale.en_gb`,
 `Locale.fr_fr`): every locale Unicode CLDR 48 covers fully, and for each
@@ -1672,6 +1687,7 @@ header and the same `locales { }`:
   (`locale:`) is a different thing and stays.
 
 ## Translations as messages
+<!-- topic: translations-as-messages -->
 
 Text the server writes for people (emails, generated pages, a failure's text
 for client apps) is translated in Jadpo itself. Each message is a type, each
@@ -2032,6 +2048,7 @@ test "a field given without its name is the next field" {
 ```
 
 ## Email subjects
+<!-- topic: email-subjects -->
 
 An `EmailMessage`'s member in its domain's language files is its subject
 line, with the email's fields as placeholders; its body is its `.html` and
@@ -2073,6 +2090,7 @@ translations {
 ```
 
 ## Enums with wording
+<!-- topic: enums-with-wording -->
 
 An enum can be written out once its domain's language files give each of
 its values a wording, checked like a message with one enum field. A value's
@@ -2170,6 +2188,7 @@ test "an enum is worded by its value, with the value's fields" {
 ```
 
 ## Failures for client apps
+<!-- topic: failures-for-client-apps -->
 
 A `Failure`'s text for client apps is keyed by its code (`code:` when
 given) in its domain's
@@ -2499,6 +2518,7 @@ translations {
 ```
 
 ## Packages' text in an app
+<!-- topic: packages-text-in-an-app -->
 
 A package's or Jadpo's message is looked up in the app's root wording for
 that locale, then the owner's own; for an in-progress locale, then the
@@ -2951,6 +2971,7 @@ Two versions of a library package side by side (area 11,
   version is held, so its `wording` row is unchanged.
 
 ## What the compiler checks of translations
+<!-- topic: what-the-compiler-checks-of-translations -->
 
 Each with its own error below:
 
@@ -3090,6 +3111,7 @@ Also checked, each with its own error below:
   stale when that changes (`translation.stale`).
 
 ## Tooling for translations
+<!-- topic: tooling-for-translations -->
 
 Each command takes `--json` wherever it prints (area 14).
 The commands succeed whatever they list: they answer a question, and `jadpo
@@ -3328,6 +3350,7 @@ models translated content as ordinary fields. Library packages'
 translations are under "Jadpo's and packages' text" above.
 
 ## Retention periods
+<!-- topic: retention-periods -->
 
 Retention periods are ordinary settings (`soft_delete_retention: Duration`)
 read by a lifecycle's `purge: { after: config.soft_delete_retention }`
@@ -3338,6 +3361,7 @@ one that is not above zero deletes nothing. How retention fits the wider GDPR su
 erasure, export) is designed in area 15 (Personal data).
 
 ## What is built
+<!-- topic: configuration-and-time-built -->
 
 | Feature | Status |
 |---|---|

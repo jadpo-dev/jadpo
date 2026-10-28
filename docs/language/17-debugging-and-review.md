@@ -7,6 +7,7 @@ rules: []
 ---
 
 # Debugging and review
+<!-- topic: debugging-and-review -->
 
 Jadpo code is written mainly by models and read by people. Two jobs follow
 from that. When something goes wrong, a person or an agent must get from the
@@ -45,6 +46,7 @@ refused, it is because the compiler and the runtime recorded it.
 | Query cost of a change | Queries added or removed per path, in the approval report |
 
 ## Errors point at the `.jadpo` line
+<!-- topic: errors-point-at-the-jadpo-line -->
 
 Every stack, log event and error response that names a place names a
 `.jadpo` file and line, never the generated code. This is always on, not
@@ -73,6 +75,7 @@ WebAssembly hosts differ in how much debug information they keep. Mapping in
 the runtime works the same under any host.
 
 ## Production incidents after the code has changed
+<!-- topic: production-incidents-after-the-code-has-changed -->
 
 A production event names its build and its `.jadpo` frames. `jadpo incident`
 takes that event and answers two things:
@@ -95,6 +98,7 @@ int_overflow in action price_line
 ```
 
 ## Breakpoints and stepping
+<!-- topic: breakpoints-and-stepping -->
 
 Stepping through `.jadpo` code in an editor needs the debugger to map the
 generated Rust or WebAssembly back to `.jadpo` lines, which Rust's and
@@ -105,6 +109,7 @@ the same questions in a form both people and agents can read. Stepping is
 revisited on the Rust and WebAssembly targets.
 
 ## `jadpo why`: why the language decided something
+<!-- topic: jadpo-why-why-the-language-decided-something -->
 
 Much of what surprises people in Jadpo is a decision the language made for
 them: policy hid a record, a lifecycle filtered it, a subscriber did not
@@ -144,6 +149,7 @@ an exported log event, as `jadpo incident` does, and so can only explain what
 the logs recorded.
 
 ## The request timeline in `jadpo dev`
+<!-- topic: the-request-timeline-in-jadpo-dev -->
 
 `jadpo dev` records every request it serves and prints one line for each,
 with its request id. `jadpo trace <request id>` shows the
@@ -187,6 +193,7 @@ POST /todos/0192…/complete   409 todo_mutation_conflict   41 ms   as user 0192
   its own ([area 12's notes](notes/12-jobs-and-events.md)).
 
 ## Watching code run: `jadpo watch`
+<!-- topic: watching-code-run-jadpo-watch -->
 
 An agent can wait for a particular part of the code to run, then see its
 inputs and outputs, without reading whole logs.
@@ -216,6 +223,7 @@ jadpo watch file domains/shipping/actions/book_collection.jadpo
   never shown. Production keeps area 16's spans with no values.
 
 ## Provider calls in development: `jadpo calls`
+<!-- topic: provider-calls-in-development-jadpo-calls -->
 
 In `jadpo dev` every provider operation is
 faked by default, answered from the package's recordings where there are
@@ -306,6 +314,7 @@ next call to stripe.payment_intents.create answers card_declined
 > notes](notes/11-integrations.md) on the development call log.
 
 ## Traces, metrics and logs in development
+<!-- topic: traces-metrics-and-logs-in-development -->
 
 In development the app's telemetry (area 16)
 stays on the machine unless `jadpo dev --export-telemetry` sends it on,
@@ -325,6 +334,7 @@ design skills before they are built, as `jadpo watch`'s and `jadpo
 calls`' are.
 
 ## Capturing a failing request as a test
+<!-- topic: capturing-a-failing-request-as-a-test -->
 
 The quickest reliable fix is: reproduce, then fix. `jadpo test new --from
 <request id>` writes a route test that replays a request recorded by
@@ -364,6 +374,7 @@ test "completing a todo twice answers a conflict" {
   fill in.
 
 ## Running a query or action: `jadpo call`
+<!-- topic: running-a-query-or-action-jadpo-call -->
 
 Rails has `rails console`; Jadpo has a one-shot command instead.
 `jadpo call` runs one query or action against the local database as a
@@ -389,6 +400,7 @@ rolled back
   work on it.
 
 ## The developer console and MCP
+<!-- topic: the-developer-console-and-mcp -->
 
 The same evidence, as a web page and as tools for an agent. Both are
 product work, after the evidence they read exists, and the command line
@@ -421,6 +433,7 @@ monitoring, including any hosted service, is later product work and
 stays with OpenTelemetry tools; the local console comes first.
 
 ## Reviewing a change
+<!-- topic: reviewing-a-change -->
 
 A reviewer should meet a model's change in the order it matters.
 `jadpo approval --before <ref>` writes the report in that
@@ -470,6 +483,7 @@ records no approvals. Acceptances stay files reviewed on the git host
 (area 7).
 
 ## What the graph and production evidence add
+<!-- topic: what-the-graph-and-production-evidence-add -->
 
 Each of these joins the compiler's graph to path IDs (area 16).
 Production data is always an optional input: a
@@ -498,6 +512,7 @@ command works without it.
   `POST /orders`", the hottest path when production counts are given.
 
 ## Everything as JSON
+<!-- topic: everything-as-json -->
 
 Every command on this page takes `--json` (area 14), and each kind of
 evidence has one versioned schema: the fault event, the request timeline,
@@ -519,6 +534,7 @@ standard type loses its currency, unit or precision (area 19, "Every
 boundary through the contract").
 
 ## What is built
+<!-- topic: debugging-and-review-built -->
 
 | Feature | Status |
 |---|---|

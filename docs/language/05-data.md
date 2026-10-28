@@ -6,6 +6,7 @@ checked-with: this checkout's jadpo on every gate run
 ---
 
 # Data
+<!-- topic: data -->
 
 How a Jadpo program declares the records it keeps and how their schema
 changes. Reading and writing records is area 6; who may read or change one
@@ -18,6 +19,7 @@ Examples use the golden todo app's `planning` domain, plus a shop where Redis
 is needed.
 
 ## Stores
+<!-- topic: stores -->
 
 Stores are connections declared in `app.jadpo`, in its `connections:` block
 (area 11). Each store's driver is fixed in source, so every environment
@@ -315,6 +317,7 @@ with the id of the Hyperdrive configuration it is given in
   target.
 
 ## Entities and the `id`
+<!-- topic: entities-and-the-id -->
 
 An entity is a stored record with a lasting identity, in its own file under
 its domain's `entities/` folder. Its identity is one field, `id`, based on
@@ -347,6 +350,7 @@ entity Project {
 ```
 
 ## Fields and their settings
+<!-- topic: fields-and-their-settings -->
 
 A field's settings (`generated:`, `unique:`, `on_delete:`) go in a block
 after its type, one per line. A nullable field is `T?`; only `Input` has
@@ -369,6 +373,7 @@ entity Todo {
 ```
 
 ## Unique rules
+<!-- topic: unique-rules -->
 
 `unique: true` in a field's block makes that field unique. A rule over
 several fields is named in the entity's `unique: { }` section with its fields
@@ -402,6 +407,7 @@ entity Project {
 ```
 
 ## References and `on_delete`
+<!-- topic: references-and-on-delete -->
 
 Any field typed `X.id` is a reference, with a foreign key and index. Its
 block must say what happens when the referenced record is deleted; there is
@@ -435,6 +441,7 @@ entity Todo {
 ```
 
 ## Children
+<!-- topic: children -->
 
 A parent does not declare its children; the relationship is stated once, on
 the child's reference. A query wanting a project's todos names that field and
@@ -450,6 +457,7 @@ include: {
 ```
 
 ## Lifecycle
+<!-- topic: lifecycle -->
 
 A lifecycle describes the stages a record goes through and when it drops
 out of normal view. The common case is soft delete: deleting a todo hides it
@@ -577,6 +585,7 @@ The details:
   schedule logs.
 
 ## Indexes
+<!-- topic: indexes -->
 
 The compiler sees every read, so it creates every index its queries need,
 multi-column and partial (for `visible:`) included; a page of a user's
@@ -628,6 +637,7 @@ its snapshot, with no step for the index. Snapshots keep their format, so
 every existing one reads.
 
 ## Caches
+<!-- topic: caches -->
 
 A cache keeps a copy of data in a Redis store so busy pages read it quickly.
 Nothing is cached unless you add it, on an entity (single records) or on a
@@ -685,6 +695,7 @@ Redis", below). Which services can hold a cache (Redis-compatible ones, or
 are area 16's ("Caches: drivers and what they hold").
 
 ## Entities in Redis
+<!-- topic: entities-in-redis -->
 
 An entity may live in a Redis store, for data that is short-lived and
 harmless to lose (question 15). It must
@@ -745,6 +756,7 @@ without one, is a compile error. Not built yet: these come with the Redis
 driver.
 
 ## Storage types
+<!-- topic: storage-types -->
 
 Each column is the store engine's native type for the field's type; the
 source never names one. Structured fields, recursive ones included, are
@@ -1115,6 +1127,7 @@ and leaves the rest as they are.
   rewritten in 2 batches in Jadpo`, and `--json` gives each its `work`.
 
 ## Migrations
+<!-- topic: migrations -->
 
 Entities describe the schema you want; a migration records each step from
 one version of the database to the next. `jadpo migrate new add_priority`
@@ -1442,6 +1455,7 @@ PostgreSQL's 63 bytes. Each store that holds an entity also gets the
 runtime's system tables, prefixed `jadpo_` (below).
 
 ## System tables
+<!-- topic: system-tables -->
 
 Tables the runtime needs are generated, prefixed `jadpo_`, and part of the
 migration snapshots like any entity, so drift in them fails `jadpo check`
@@ -1526,6 +1540,7 @@ on a system table with an application's own, a session read with its
 user's record, are the plan's and are tested with it.
 
 ## Seeds
+<!-- topic: seeds -->
 
 A seed in `database/seeds/` creates development data by calling the
 application's own actions, so validation, lifecycle and policy apply.
@@ -1545,6 +1560,7 @@ seed {
 Seeds are not built yet.
 
 ## Where things live
+<!-- topic: where-things-live -->
 
 An entity's file holds only its data definition (store, fields, unique
 rules, indexes, lifecycle, policy, record cache) and gets generated
@@ -1570,6 +1586,7 @@ action complete_todo(todo_id: Todo.id) fails TodoNotFound -> Todo {
 ```
 
 ## What is built
+<!-- topic: data-built -->
 
 Each feature not built yet is `toolchain.not_built_yet` where it is used.
 

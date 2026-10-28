@@ -6,6 +6,7 @@ checked-with: this checkout's jadpo on every gate run
 ---
 
 # HTTP
+<!-- topic: http -->
 
 How a Jadpo application answers HTTP requests: route groups, paths, the one
 input a route takes, its output and status, time limits, health endpoints,
@@ -19,6 +20,7 @@ and URL, what comes in, what goes out and what runs. Logic lives in actions
 and queries; statuses come from failure kinds (area 4).
 
 ## Route groups
+<!-- topic: route-groups -->
 
 Every route belongs to a named group in its domain's `routes/` folder, one
 group per file, named after the group (area 1).
@@ -56,6 +58,7 @@ routes Todos {
   keep in step with the action and the URL.
 
 ## Paths and placeholders
+<!-- topic: paths-and-placeholders -->
 
 A placeholder is typed where it appears and reaches the action by its name:
 
@@ -76,6 +79,7 @@ PATCH /{todo_id: Todo.id} {
   `GET /archived` can sit beside `GET /{todo_id: Todo.id}`.
 
 ## One input
+<!-- topic: one-input -->
 
 A route takes at most one `input:`, an `Input` type (area 2). Its source
 follows the method: the query string for `GET` and `DELETE`, the JSON
@@ -119,6 +123,7 @@ GET / {
   the input's rules are checked, so equal text compares equal.
 
 ## Output and status
+<!-- topic: output-and-status -->
 
 `output:` names an `Output` type and must be exactly the action's result,
 so the route shows its contract without opening the action. The success
@@ -174,6 +179,7 @@ written on a route: they come from the kinds of the failures the action can
 produce (area 4).
 
 ## What a route runs
+<!-- topic: what-a-route-runs -->
 
 `run:` calls one named action, passing placeholders, `input` and the caller
 (area 8) as ordinary arguments. A `GET` calls a named query instead, so it
@@ -211,6 +217,7 @@ GET /devices {
 ```
 
 ## Time limits
+<!-- topic: time-limits -->
 
 Every route has a deadline: 10 seconds unless `deadline:` says otherwise,
 and never more than 60, since a hung request holds a database connection.
@@ -240,6 +247,7 @@ POST /import {
 
 
 ## Waiting for follow-on work
+<!-- topic: waiting-for-follow-on-work -->
 
 An action does its own database work and leaves the rest, such as a second
 provider call, to subscribers (area 12). When the client wants the finished
@@ -317,6 +325,7 @@ POST /orders {
   retry gives 202.
 
 ## Streaming a model's answer
+<!-- topic: streaming-a-model-s-answer -->
 
 A route sends a model's answer as it is written, piece by piece, when
 what it runs returns an `AiStream`, the text `ai.stream` asks a model
@@ -627,6 +636,7 @@ test "a refusal before the first piece is the desk's own failure" {
 ```
 
 ## Health
+<!-- topic: health -->
 
 The runtime always serves `GET /health/live` (the process runs) and
 `GET /health/ready` (every store declared in `app.jadpo` answers within two
@@ -636,6 +646,7 @@ each provider-package connection by name, sorted, as `unchecked`, without
 making a provider call, whether stores are ready or unavailable.
 
 ## APIs and versions
+<!-- topic: apis-and-versions -->
 
 Most applications have one API. One with several audiences (public, admin,
 partners, webhooks) declares them in `app.jadpo`, like stores:
@@ -680,6 +691,7 @@ routes AdminOrders {
   left unused.
 
 ## Webhooks
+<!-- topic: webhooks -->
 
 A provider's webhooks are generated from its package, not written (area
 11): a connection with a webhook secret gets
@@ -705,6 +717,7 @@ with an agreement signs in as a `Service` with a service key (area 8) and
 calls an ordinary route.
 
 ## Idempotent writes
+<!-- topic: idempotent-writes -->
 
 Every route but a `GET` honours `Idempotency-Key` (the IETF draft
 Stripe's design became). HTTP calls `PUT` and `DELETE` idempotent, but a
@@ -723,6 +736,7 @@ and OpenAPI lists the header. The details are in the [design notes](notes/07-htt
 "Idempotency keys".
 
 ## How failures reach the client
+<!-- topic: how-failures-reach-the-client -->
 
 One envelope with `code`, `message`, `request_id` and the failure's
 client fields under `details` (area 4); the status comes from the kind;
@@ -790,6 +804,7 @@ and client fields that are dates or numbers stay values on the wire for the
 client to format in its own language.
 
 ## Generated routes
+<!-- topic: generated-routes -->
 
 Some features generate routes: magic-link sign-in and passkeys (area 8), the privacy
 requests (area 15), `POST /auth/exchange` (area 8), `GET /flags` (area 16),
@@ -811,6 +826,7 @@ API record and OpenAPI like any route, marked generated.
 - A generated route's response shape is fixed; only its path changes.
 
 ## Rate-limited requests
+<!-- topic: rate-limited-requests -->
 
 A request over a rate limit (area 16) gets `429` with the usual envelope,
 code `rate_limited`, a `Retry-After` header giving the seconds to wait,
@@ -829,6 +845,7 @@ RateLimit: "default";r=0;t=42
 ```
 
 ## OpenAPI
+<!-- topic: openapi -->
 
 The compiler writes one OpenAPI 3.1 document per API into `build/openapi/`:
 every route with its input, output, success status and reachable failures,
@@ -904,6 +921,7 @@ GET /v1/openapi.json
   document carries it.
 
 ## The public API record
+<!-- topic: the-public-api-record -->
 
 A breaking change is caught at review, not by a client in production, as
 Kotlin's API validator and Microsoft's API Extractor catch one. Each API
@@ -1136,12 +1154,14 @@ changes apart and requiring their acceptance are not built yet (area 18,
 "What is built"); until they are, the record's diff is what a reviewer reads.
 
 ## Write revisions
+<!-- topic: write-revisions -->
 
 Not built yet. Every write returns a `Jadpo-Revision` header, and browsers
 get the same value as a cookie; a client that sends it back skips caches
 (area 6), and one that does not may see a cached copy up to its `keep:`.
 
 ## What is built
+<!-- topic: http-built -->
 
 Each feature not built yet is `toolchain.not_built_yet` where it is written.
 

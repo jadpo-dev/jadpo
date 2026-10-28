@@ -6,6 +6,7 @@ checked-with: this checkout's jadpo on every gate run
 ---
 
 # Tooling
+<!-- topic: tooling -->
 
 The `jadpo` command, the formatter, the language server, how errors are shown,
 the generated `build/` folder, and the tools agents use to look things up
@@ -18,6 +19,7 @@ editor, the agent skill and every generated file come from the same check, so
 they cannot disagree with `jadpo check`.
 
 ## The `jadpo` command
+<!-- topic: the-jadpo-command -->
 
 One command with a short list of subcommands. Every subcommand finds the
 project by walking up from the current folder to `app.jadpo`, so a path is
@@ -42,6 +44,7 @@ and "Completion and prompts").
 | `jadpo dev` | Rebuilds and restarts the app on every change; `--no-run` only rebuilds | Built: runs the app in the interpreter on the native host at `http://localhost:3000` (`--port` to change it), one line per request with its request id; each save that checks cleanly serves the next request, and while a save has errors the last good version keeps serving. The settings `config.jadpo` declares are read from the environment over `.env.local` and checked first: a missing or invalid value stops the app starting and is shown by setting and variable, never by value, and a save of `.env.local` is checked like a save of source, keeping the last good version serving. Each database opens at the address its connection's `url:` setting holds, or the one `--url` names, or else a disposable PostgreSQL for the session (for a store whose address no variable gives), with pending migrations applied as they appear. `--no-run` only checks on every save and writes `build/`; `--json` writes one envelope per line. Each schedule run and skipped tick (a paused schedule's once) has a line, with its trace's id, outcome, what it emitted or its failure and its time, and each alert a line when it starts; the address of each database it started is in `build/dev/stores.json` while it runs, for `jadpo schedules` and `jadpo why`. Ctrl-c or SIGTERM stops it cleanly: the server drains, its background work giving back what it holds, and it exits 0; a second signal ends it at once (area 12, "Running background work"). A save that leaves a file empty that had text is taken as an editor's save in place between its truncate and its write, not yet saved: the reload waits for the file's text, up to 2 seconds, so an empty routes file, which checks cleanly with no routes, never replaces the version serving; a file still empty then reloads as saved ([design notes](notes/14-tooling.md), "Watching saves"; `jadpo test --watch` waits the same way). Every provider call is faked by default, with no credential needed, unless the connection's `development: { sandbox: }` lets it through to the provider's sandbox, never live; `--fake <connection>` and `--sandbox <operation>` change which for one session only, each request's line lists its calls, and each call is logged for `jadpo calls` (area 11, "Provider calls in development"). Each step an action with several changing calls reached is a line under its request's line, and a delivery whose action reached steps gets a line of its own, with `jadpo deliveries show <id>` when it needs an operator (area 12). Not built yet: the services the app's connections declare started with it (area 11) |
 
 ## Commands for looking into and changing code
+<!-- topic: commands-for-looking-into-and-changing-code -->
 
 | Command | Does | Status |
 |---|---|---|
@@ -55,6 +58,7 @@ and "Completion and prompts").
 | `jadpo domain rename/split/merge` | Moves a domain's files and updates every call | Specified in area 1, not built yet |
 
 ## Commands for the database, settings and translations
+<!-- topic: commands-for-the-database-settings-and-translations -->
 
 | Command | Does | Status |
 |---|---|---|
@@ -67,6 +71,7 @@ and "Completion and prompts").
 | `jadpo translations export [<locale>]` / `import <file>` | Exchanges messages, their descriptions and their wording with translation services as XLIFF 2.0 or JSON | Built, each with `--json`: `export` writes `build/translations/<locale>.xlf` (`--format json`, `--out <folder>`) for each translated locale, or the default locale's source file; `import` checks what comes back as `jadpo check` would, writes the language files and the record or nothing, and refuses with the language files' own rules at the unit of the file, `translation.exchange_unit_unknown` or `translation.exchange_file_invalid` (area 10, "Tooling for translations"); library packages' text is exchanged under each package's folder name and written back as the app's, in the root file |
 
 ## Commands for records, findings and review
+<!-- topic: commands-for-records-findings-and-review -->
 
 | Command | Does | Status |
 |---|---|---|
@@ -78,6 +83,7 @@ and "Completion and prompts").
 | `jadpo approval --before <ref>` | Writes the review report of what changed in behaviour, policy and the API | Not built yet: comes with records (area 18); who signs off is under [Review and sign-off](#review-and-sign-off) |
 
 ## Commands for background work
+<!-- topic: commands-for-background-work -->
 
 | Command | Does | Status |
 |---|---|---|
@@ -85,6 +91,7 @@ and "Completion and prompts").
 | `jadpo schedules` | Lists schedules; `run`, `pause`, `resume`, `history` | Built, with `--json`: a table of each schedule's last run and next due time (or `‖ paused`), the alerts that hold and a footer; `history <name>` 20 records a page (`--page`), grouped by day, then the metrics; `pause` and `resume` set the state row; `run` runs it now in this process under its lease (`schedules.lease_held`, `schedules.run_failed`), and does so only against a running `jadpo dev`'s own database, asking a deployment's own tick to run it otherwise and waiting for its record (`schedules.no_tick`; area 12, "Running a schedule by hand"); each entity's built-in purge schedule is listed too, as `Member.purge`, its runs showing the records they purged; the database is `--url`'s, the connection's setting's, or a running `jadpo dev`'s; an unknown name is `cli.schedules_arguments` with the nearest (area 12, "Watching schedules") |
 
 ## Commands for packages
+<!-- topic: commands-for-packages -->
 
 | Command | Does | Status |
 |---|---|---|
@@ -99,6 +106,7 @@ and "Completion and prompts").
 | `jadpo package recipe <package> <recipe> --into <domain>` | Copies a package's recipe into a domain, where it becomes the app's code | Built, with `--json`: every file under the package's `recipes/<recipe>/` copied to the same path under `domains/<domain>/`, all or nothing and never over a file the app has; the screen lists each file written, then `jadpo check` as the hint. `jadpo package check` compiles each recipe in the package's `sample/` app |
 
 ## Commands for services, calls, email and stored data
+<!-- topic: commands-for-services-calls-email-and-stored-data -->
 
 | Command | Does | Status |
 |---|---|---|
@@ -112,6 +120,7 @@ and "Completion and prompts").
 | `jadpo search reindex` | Rebuilds a search index from the database | Specified in area 16, not built yet |
 
 ## Commands for debugging, editors and help
+<!-- topic: commands-for-debugging-editors-and-help -->
 
 | Command | Does | Status |
 |---|---|---|
@@ -122,6 +131,7 @@ and "Completion and prompts").
 | `jadpo completions <shell>` / `jadpo version` | Prints the Tab-completion script for zsh, bash or fish; prints the version | Built |
 
 ## Running tests
+<!-- topic: running-tests-from-the-command-line -->
 
 `jadpo test` owns everything a test run needs, so nothing about it appears in
 source (area 13). It starts a disposable local PostgreSQL, or uses
@@ -138,6 +148,7 @@ field its type does not declare. They run with the others and appear in the
 report under the route they test.
 
 ## Formatting
+<!-- topic: formatting -->
 
 The formatter owns layout, so equivalent code always looks identical and a
 diff only ever shows real changes (area 1). It decides indentation,
@@ -196,6 +207,7 @@ type Count = Int {
 ```
 
 ## Editor support
+<!-- topic: editor-support -->
 
 The language server (`jadpo lsp`) gives any editor the compiler's own view:
 errors while you type, go to definition, find references, hover with types and
@@ -308,6 +320,7 @@ declares after its namespace, with no operation named in the completion
 code.
 
 ## Error messages
+<!-- topic: error-messages -->
 
 Every error has one shape, in the terminal, the editor and JSON: what is
 wrong, where, why, the recommended next step, who decides (`agent` or
@@ -337,6 +350,7 @@ The rules:
   style for its keys.
 
 ## The `build/` folder
+<!-- topic: the-build-folder -->
 
 `build/` holds only generated files. It is never edited, never committed and
 never read as input, and the same source always produces the same bytes.
@@ -376,6 +390,7 @@ because a reviewer reads them together. Each is written as Markdown, which
 an agent can search, with a `.json` twin for tools.
 
 ## Tools for agents
+<!-- topic: tools-for-agents -->
 
 Agents look things up through the compiler rather than browsing folders.
 These come from areas 1, 4 and 5. The library and failure catalogues and
@@ -430,6 +445,7 @@ rounding.half_even   shared/libraries/rounding.jadpo:4
   generated CI is built.
 
 ## Suggestions
+<!-- topic: suggestions -->
 
 `jadpo suggest` says where code could use a standard type or a standard
 operation, and never edits. The edits stay with the agent, and, for type
@@ -443,6 +459,7 @@ every type, field and entity, and every function, action and constant body.
 Tests, fixtures and seeds are left out, since they follow the code they test.
 
 ## Signals
+<!-- topic: signals -->
 
 What it looks for is data on each standard type's contract entry (area 19,
 "Every standard type meets one contract"), never code of its own: a type
@@ -478,6 +495,7 @@ same way, only the smaller is reported. A type with `decline
 type.standard_exists` gives no `shape` finding.
 
 ## Snippets and their canonical form
+<!-- topic: snippets-and-their-canonical-form -->
 
 A finding is about a snippet: the smallest expression or declaration
 member that holds the signal. Each snippet has two forms.
@@ -500,6 +518,7 @@ member that holds the signal. Each snippet has two forms.
   and only lines written the same way in many projects reach HQ's threshold.
 
 ## The report
+<!-- topic: the-report -->
 
 ```text
 $ jadpo suggest
@@ -539,6 +558,7 @@ missing from the next scan, and not ignored meanwhile, becomes an
 `accepted` entry to share. The summary counts them.
 
 ## Ignoring a suggestion
+<!-- topic: ignoring-a-suggestion -->
 
 `jadpo suggest ignore S3 "<why>"` writes the snippet's canonical hash, its
 signal and the reason to `ignored_suggestions.jadpo_record` at the project
@@ -566,6 +586,7 @@ $ jadpo suggest ignore S1 "Basis points, not money"
 ```
 
 ## Teaching a miss
+<!-- topic: teaching-a-miss -->
 
 `jadpo suggest found <file>:<line> <Type or operation> "<why>"`, run
 before the code changes, records something the scan missed: the snippet at
@@ -604,6 +625,7 @@ $ jadpo suggest found domains/shop/actions/pence_of.jadpo:5 Money "Pence held as
 ```
 
 ## What is kept, and where
+<!-- topic: what-is-kept-and-where -->
 
 Every entry to share goes to `.jadpo/suggest_pending` with its kind,
 `found`, `accepted` or `ignored`, so HQ can tell a signal that was right
@@ -627,6 +649,7 @@ are still read, and `jadpo records update` rewrites them.
 | `.jadpo/suggest_signals` | no | A cache of the taught record |
 
 ## Sharing with Jadpo HQ
+<!-- topic: sharing-with-jadpo-hq -->
 
 Sharing is built against a local fake of Jadpo HQ, which speaks the
 protocol below; HQ itself comes later, with the registry. Sharing is how
@@ -838,6 +861,7 @@ proposes a language feature for a person to decide on, and never builds
 one.
 
 ## Review and sign-off
+<!-- topic: review-and-sign-off -->
 
 Some changes need a person's acceptance before they ship: a change that can
 break an API client (area 7), a database drop (area 5), weaker policy
@@ -851,6 +875,7 @@ without them. Jadpo builds no signing or user accounts of its own, since
 review already happens on the git host.
 
 ## Errors only the running app or a build raises
+<!-- topic: errors-only-the-running-app-or-a-build-raises -->
 
 The running app reports three events of its own, never compile errors:
 `runtime.unhandled_fault` (a defect or fault reached the boundary; the client
@@ -863,6 +888,7 @@ a project that passes `check` also builds. Area 8 asks the
 same for a protected route with no authentication set up.
 
 ## A native deployable
+<!-- topic: a-native-deployable -->
 
 How an app with no `deployables:` is built and run; an app that declares
 them is built as [Declared deployables](#declared-deployables) says.
@@ -963,6 +989,7 @@ $ jadpo build
 ```
 
 ## Declared deployables
+<!-- topic: declared-deployables -->
 
 `application { deployables: { } }` in `app.jadpo` names each program the
 app is built into, what it serves, what it runs and what it is built for:
@@ -1106,6 +1133,7 @@ $ jadpo build
 ```
 
 ## A Workers deployable
+<!-- topic: a-workers-deployable -->
 
 - **What `jadpo build` writes.** For a deployable with `target:
   Target.wasm`, its Rust in `build/rust/<deployable>/`: the program's
@@ -1334,6 +1362,7 @@ says so, and an alert says what to do:
 ```
 
 ## Command errors
+<!-- topic: command-errors -->
 
 Every error that only a command raises, so `jadpo check` cannot show it with a
 source example. Some rows belong to commands the decisions below replace
@@ -1528,6 +1557,7 @@ delivery value cannot be authored or exposed). They go with the delivery
 descriptor if area 12's question 2 is accepted.
 
 ## What is built
+<!-- topic: tooling-built -->
 
 Each row says what is built and what is specified but not built yet.
 

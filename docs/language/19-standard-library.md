@@ -6,6 +6,7 @@ checked-with: this checkout's jadpo on every gate run
 ---
 
 # Standard library
+<!-- topic: standard-library -->
 
 The standard library is the set of types and operations every program can
 use without declaring them: `Money`, `list.count(items)`,
@@ -50,6 +51,7 @@ counted per type. One operation, `crypto.verify_totp`, waits on keys held
 as data. The geospatial and AI areas' operations are counted in those areas.
 
 ## Shared vocabulary types
+<!-- topic: shared-vocabulary-types -->
 
 **The standard library defines the types two packages would otherwise
 each invent**. Geospatial libraries disagree on
@@ -85,6 +87,7 @@ a package or a later area.
   the standard types", below), since area 1 has no warnings.
 
 ## The standard types
+<!-- topic: the-standard-types -->
 
 All of them are built (bold). Beside the 247 adopted, each part or kind a standard type names is a standard type too, so it is read, sent and stored by its code: `IdentityDocumentKind`, `InterestRateBasis`, `ContentRatingScheme`, `RichTextBlock`, `RichTextSpan`, `RichTextMark`, `ClothingSizeSystem`, `ShoeSizeSystem`, `RouteOfAdministration` and `ChatRole`. GeoJSON's `Feature` and `FeatureCollection` are [area 20](20-geospatial.md)'s. "(enum)" marks a closed list held as a built-in enum.
 Units fold into their quantity type, roles into the general type,
@@ -155,6 +158,7 @@ rule (`File`, `Page`, `Access`) keep their names.
 | Niche, silly, or a maybe with no published standard | Out: 729 entries, a package's to define |
 
 ## Every standard type meets one contract
+<!-- topic: every-standard-type-meets-one-contract -->
 
 Every standard type has a library, at least a baseline, and the baseline
 is the same for every type, not chosen type by type.
@@ -444,6 +448,7 @@ function winter_sale() -> DateRange {
 ```
 
 ## Every boundary through the contract
+<!-- topic: every-boundary-through-the-contract -->
 
 No standard type loses its currency, unit or precision on the way into
 or out of a program, so every place a value crosses encodes a standard
@@ -661,6 +666,7 @@ doesn't know its field, so the field isn't named there.
   compiles; it isn't `query.optional_value`.
 
 ## Changing a standard type's encoding
+<!-- topic: changing-a-standard-type-s-encoding -->
 
 A Jadpo release changes how a standard type is sent, stored or written as text only
 together with a reader for the old form and a release note. A golden file
@@ -736,6 +742,7 @@ golden files by a test:
 > step.
 
 ## Packages use the standard types
+<!-- topic: packages-use-the-standard-types -->
 
 A type whose shape is a standard type's is the error
 `type.standard_exists`: in a package's public types (`surface.jadpo_record`
@@ -817,6 +824,7 @@ release, as the time-zone database does: fixed reference data is
 declared in the release, as these enums, not by applications.
 
 ## A release that adds a standard type
+<!-- topic: a-release-that-adds-a-standard-type -->
 
 A Jadpo upgrade that adds a
 standard type an application already names for itself never breaks it
@@ -914,6 +922,7 @@ have notes of their own:
 > `jadpo rename` ([the roadmap](../roadmap.md)).
 
 ## What every operation follows
+<!-- topic: what-every-operation-follows -->
 
 These hold for every namespace.
 
@@ -984,6 +993,7 @@ attempt encoding.from_base64(input.attachment) {
 ```
 
 ## Validating in the middle of a program
+<!-- topic: validating-in-the-middle-of-a-program -->
 
 **Construction is the way.** `Type(value)` checks every rule
 on the type and the types it builds on, and an `attempt` maps each rule
@@ -1021,6 +1031,7 @@ fields ("ends after it starts") is a named rule on the object type
 same construction.
 
 ## Operations
+<!-- topic: standard-library-operations -->
 
 Every operation beyond the contract's baseline, with its signature,
 failures and SQL form, one section per namespace or type group. The
@@ -1052,6 +1063,7 @@ type meets one contract", and isn't repeated here.
 | Locale | `locale` | 1 (area 10) |
 
 ## The standard operator table
+<!-- topic: the-standard-operator-table -->
 
 Operators on standard types follow one fixed, documented table, instead of
 a library function per job. It generalises area 10's rule
@@ -1347,6 +1359,7 @@ test "a voucher keeps its discount as it was issued" {
 ```
 
 ## SQL forms
+<!-- topic: sql-forms -->
 
 A **SQL form** is a PostgreSQL 16 expression that gives exactly the result
 the runtime gives, for every argument. It matters in three places. A
@@ -1469,6 +1482,7 @@ form yet.
 In the tables below, `x` is the first argument and `a`, `b` the others.
 
 ## Lists
+<!-- topic: lists -->
 
 Each operation is called as `list.<name>`. `collection` stays a reserved namespace with no operations:
 a call through it is `semantic.standard_operation_moved`, its edit
@@ -1711,6 +1725,7 @@ A count or a position that might be negative is `type.argument_negative`
 `Bool`, is area 3's `type.ordering_operand`.
 
 ## Sets
+<!-- topic: sets -->
 
 Each operation is called as `set.<name>`. All return a new set.
 
@@ -1815,6 +1830,7 @@ written in any order; walking one is the only place its order shows, and
 it is always the canonical one, on every target.
 
 ## Maps
+<!-- topic: maps -->
 
 Each operation is called as `map.<name>`. All return a new map.
 
@@ -1931,6 +1947,7 @@ test "map operations give new maps" {
 read; `map.has` says whether it is there without reading it.
 
 ## Ranges
+<!-- topic: ranges -->
 
 `Range<T>` holds a `start` and an `end` of one ordered type, either of
 which may be `none` for an open end; `DateRange` includes its end date and
@@ -2141,6 +2158,7 @@ test "a range of any ordered type, either end open" {
 ```
 
 ## Numbers
+<!-- topic: numbers -->
 
 `integer` operations take values built on `Int`, and `decimal` operations
 values built on `Decimal`. `/` and `%` are area 3's; these cover
@@ -2471,6 +2489,7 @@ test "each mode rounds the true value" {
 ```
 
 ## Money and payments
+<!-- topic: money-and-payments -->
 
 `Money` and `Currency` are standard types. An amount is held as a whole
 number of the currency's minor units (pence, cents) and its `Currency`,
@@ -2640,6 +2659,7 @@ function sterling(paid: Payment) -> SterlingPayment? {
 ```
 
 ## Exchange rates
+<!-- topic: exchange-rates -->
 
 An `ExchangeRate` is a standard object of `from` and `to`, each a
 `Currency`, `rate`, a `Decimal`, and `at`, the `Instant` it was quoted
@@ -2951,6 +2971,7 @@ check failed: 1 error, 1 file
 ```
 
 ## Money operations
+<!-- topic: money-operations -->
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
@@ -3121,6 +3142,7 @@ test "an order keeps its amounts as they were written" {
 ```
 
 ## Prices, discounts and rates
+<!-- topic: prices-discounts-and-rates -->
 
 The money group's records are built on `Money`, `Percentage` and the
 quantities:
@@ -3388,6 +3410,7 @@ test "a loan keeps its rate over base as it was written" {
 ```
 
 ## Bank accounts
+<!-- topic: bank-accounts -->
 
 A `BankAccount` is a choice of the three ways an account is written down:
 
@@ -3557,6 +3580,7 @@ check failed: 1 error, 1 file
 ```
 
 ## Physical quantities
+<!-- topic: physical-quantities -->
 
 Each quantity type (`Length`, `Mass`, `Temperature` ... and `DataSize`,
 `Bitrate`) holds an exact `Decimal` in its SI base unit at a fixed scale
@@ -3931,6 +3955,7 @@ test "a shelf keeps its length as it was cut" {
 standard operator table".
 
 ## Time and calendar additions
+<!-- topic: time-and-calendar-additions -->
 
 Area 10's 21 `temporal` operations stand, three of them with SQL forms,
 for an aggregate query's time buckets. The time types here add three.
@@ -4145,6 +4170,7 @@ test "a month on from the 31st is the month's last day" {
 ```
 
 ## Recurrences and opening hours
+<!-- topic: recurrences-and-opening-hours -->
 
 **`RecurrenceRule` and `OpeningHours` are held as text:** types built on
 `Text` that the standard library declares (`Holds::Text`), as the payment
@@ -4322,6 +4348,7 @@ test "a night past midnight is open by the clock on the wall" {
 ```
 
 ## Calendar events
+<!-- topic: calendar-events -->
 
 A calendar event is all-day or timed. An all-day event holds its first
 and last days, both included, and no zone: a holiday on 25 December is on
@@ -4797,6 +4824,7 @@ test "an event is kept part by part" {
 ```
 
 ## Text
+<!-- topic: text -->
 
 Each operation is called as `text.<name>`. Text is counted, cut and
 padded in Unicode code points, as `max_length`
@@ -5174,6 +5202,7 @@ check failed: 1 error, 1 file
 ```
 
 ## Text formats
+<!-- topic: text-formats -->
 
 `Html` is always safe: its construction from text keeps only the allowed
 elements and attributes (no scripts, no event handlers, links only to
@@ -5467,6 +5496,7 @@ is sent as JSON's own collection, and a `RichText`, a `RichTextBlock` and
 a `LocalisedText` are each stored as that JSON in one `jsonb` column.
 
 ## Hashing and cryptography
+<!-- topic: hashing-and-cryptography -->
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
@@ -5773,6 +5803,7 @@ check failed: 1 error, 1 file
 > copies of a key when dropped.
 
 ## Signed tokens
+<!-- topic: signed-tokens -->
 
 `crypto.verify_jwt` checks a token as RFC 8725 advises:
 
@@ -6000,6 +6031,7 @@ test "a partner's token signs in only while it holds" {
 > here does with RSA.
 
 ## Secret values
+<!-- topic: secret-values -->
 
 A `Password`, an `ApiKey`, a `BearerToken`, a `TotpSecret`, a `SecretText`,
 a `Jwt` and a `OneTimeCode`, the code a person types, are secret values:
@@ -6235,6 +6267,7 @@ test failed: 1 failed, 1 pure test
 > `FormatKey::Redacted`, `Storage::Never`).
 
 ## Security records
+<!-- topic: security-records -->
 
 `Hash`, `Hmac` and `EncryptedValue` are the bytes `hash.sha256`,
 `crypto.hmac` and `crypto.encrypt` give, as types: each is built on
@@ -6569,6 +6602,7 @@ check failed: 1 error, 1 file
 > feature, so with no `ring`.
 
 ## Randomness
+<!-- topic: randomness -->
 
 `random` is a generated namespace like `clock`: it reads
 the operating system's cryptographic generator in production, is called
@@ -6689,6 +6723,7 @@ test "a prize draw picks different entrants" {
 ```
 
 ## Encodings
+<!-- topic: encodings -->
 
 Each operation is called as `encoding.<name>`.
 
@@ -6855,6 +6890,7 @@ test "hashing and the encodings give what the page says" {
 ```
 
 ## Data formats: JSON, CSV, TSV and JSON Lines
+<!-- topic: data-formats-json-csv-tsv-and-json-lines -->
 
 The four format namespaces, each in one shape: `json` for one document in
 memory and for a large JSON list in a file, and `csv`, `tsv` and
@@ -7297,6 +7333,7 @@ needs them is pointed here. Encodings and gzip are as for `csv`, and a
 JSON Lines file takes no `format:`.
 
 ## `json`
+<!-- topic: json -->
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
@@ -7774,6 +7811,7 @@ on:
 There is no XML format namespace yet.
 
 ## Colour
+<!-- topic: colour -->
 
 `Colour` holds `red`, `green`, `blue` and `alpha`, each 0 to 255, in sRGB,
 and is written as CSS writes a hex colour, `#1e6fd9`, or `#1e6fd980` when
@@ -7953,6 +7991,7 @@ test "lightness, mixes, HSL and OKLCH give sRGB colours" {
 ```
 
 ## Media
+<!-- topic: media -->
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
@@ -8123,6 +8162,7 @@ test "a timecode is shown in SMPTE's notation, a cue as WebVTT writes it" {
 ```
 
 ## Web and software
+<!-- topic: web-and-software -->
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
@@ -8377,6 +8417,7 @@ test "a status's class is a comparison, and a problem is sent as RFC 9457 has it
 ```
 
 ## Software types
+<!-- topic: software-types -->
 
 Each software type follows its standard in the same way: a
 `SemanticVersion` is SemVer 2.0.0's (`1.2.3-alpha.1+build.5`), an object
@@ -8570,6 +8611,7 @@ test "a range takes a pre-release only where it names one" {
 ```
 
 ## Groups with the baseline only
+<!-- topic: groups-with-the-baseline-only -->
 
 These groups have nothing beyond the contract: each type's rules are its
 construction, which the contract's `text.parse` and data entry already
@@ -8715,6 +8757,7 @@ and `NhsNumber`.
   says which.
 
 ## Cards and identity documents
+<!-- topic: cards-and-identity-documents -->
 
 A shop keeps what it may of a customer's card once its payment provider
 has the number, checks a supplier's VAT number by its country's form,
@@ -8921,6 +8964,7 @@ The money group's records are under "Money and payments", and
 `BankAccount` under "Bank accounts".
 
 ## Names, addresses and countries
+<!-- topic: names-addresses-and-countries -->
 
 A shop sends parcels abroad and prints each label for the person who
 packs it, greets its customers by name, and reads the countries a
@@ -9215,6 +9259,7 @@ a nationality `demographic`. The lists of places aren't. **No shapes:**
 types to be distinctive.
 
 ## Phone numbers and postal codes
+<!-- topic: phone-numbers-and-postal-codes -->
 
 A shop takes a customer's phone number and postcode as they type them in
 their own country, and shows the number to its staff as their region
@@ -9349,6 +9394,7 @@ redistribution, while its footer says UN/CEFACT standards are under CC BY
 `type.standard_exists` matches none of the four, each a single value.
 
 ## Commerce, travel and health codes
+<!-- topic: commerce-travel-and-health-codes -->
 
 A till scans a product's barcode, a supplier's order names its delivery
 term in whatever case its system writes, and a dock prints each
@@ -9488,6 +9534,7 @@ CT's, UPS's sample tracking number), and made up to the rules where it
 doesn't; each entry says which.
 
 ## Records and health measures
+<!-- topic: records-and-health-measures -->
 
 A courier labels each parcel with its size and its carrier's tracking
 number, a travel desk reads the flight a booking names, and a library
@@ -9866,6 +9913,7 @@ writes one: asking is `type.temporal_option_unused`, as for a form a
 list hasn't.
 
 ## Logic and bits
+<!-- topic: logic-and-bits -->
 
 `and`, `or` and `not` are the logical operators (area 3), and exclusive or
 on `Bool` is `!=`. Any other gate is a one-line function, so none is
@@ -9883,6 +9931,7 @@ read, and the one scenario with bit-packed data, device payloads, decodes
 them in the provider package that knows the format.
 
 ## Geospatial types
+<!-- topic: geospatial-types -->
 
 [Area 20](20-geospatial.md) specifies geospatial work: the `geo.`
 operations, from the measures and predicates to the constructions
@@ -10008,6 +10057,7 @@ themselves, all in WGS84, with named fields, never a pair:
 Area 20's "What is built" says what of its page is built.
 
 ## AI types
+<!-- topic: ai-types -->
 
 AI models are provider packages (area 11). What makes them first class
 in typed applications is a set of standard pieces Jadpo itself does, as a
@@ -10146,6 +10196,7 @@ test "an embedding has its model's length" {
 ```
 
 ## Scenario applications
+<!-- topic: scenario-applications -->
 
 Nine applications Jadpo is meant for, what each does, and the operations
 that needs. The coverage matrix follows; each gap is fixed on this page or
@@ -10295,6 +10346,7 @@ and AI, areas 20 and 21. Left out with a reason: bits (device packages),
 TOTP (a package), calendar files (a package).
 
 ## Language gaps this page depends on
+<!-- topic: language-gaps-this-page-depends-on -->
 
 Nothing is left out because the language can't do it: each gap is
 either left out by design (with its reason, above and in the next table)
@@ -10343,6 +10395,7 @@ page. Only keys held as data are not built yet
 | Aliases (`size` for `count`) | One obvious name each | The table's name |
 
 ## How the five languages compare
+<!-- topic: how-the-five-languages-compare -->
 
 What TypeScript, Rust, Go, Elixir and Python do for the same jobs, and the
 choice each row led to. Rust's and Go's numbers are for their standard
@@ -10368,6 +10421,7 @@ hashing, negative positions, Rust's and Go's byte lengths, and the aliases
 and second ways every one of them has.
 
 ## What is built
+<!-- topic: standard-library-built -->
 
 | Feature | Status |
 |---|---|

@@ -6,11 +6,13 @@ checked-with: this checkout's jadpo on every gate run
 ---
 
 # Project layout and modules
+<!-- topic: project-layout-and-modules -->
 
 How a Jadpo project is laid out on disk, how one file sees declarations from
 another, and the naming rules every name follows.
 
 ## Project layout
+<!-- topic: project-layout -->
 
 A project is the folder holding `app.jadpo`. The root holds a fixed set of
 files and folders, and all application code lives in business areas
@@ -25,6 +27,7 @@ A single file, or a folder with no `app.jadpo` above it, is checked as loose
 files: one implicit domain with the layout rules off.
 
 ## Source files
+<!-- topic: source-files -->
 
 File order and declaration order never matter: a declaration can refer to
 one defined later or in another file. Names are unique across the whole
@@ -34,6 +37,7 @@ function, type or constant needs a name unique only within its domain (see
 [Files and names](#files-and-names)).
 
 ## Domains instead of modules
+<!-- topic: domains-instead-of-modules -->
 
 There are no modules. A domain owns everything in it and is the visibility
 boundary: a declaration is private to its domain unless marked `public`,
@@ -43,6 +47,7 @@ Each file names where its other names come from on `use` lines. See
 and [Imports](#imports).
 
 ## Naming
+<!-- topic: naming -->
 
 Every name has one spelling, decided by what kind of thing it names.
 
@@ -80,6 +85,7 @@ generated namespaces (`list`, `clock`, `config` ...) name no domain
 or library.
 
 ## Comments
+<!-- topic: comments -->
 
 Line comments start with `//`. They carry no meaning and are kept for tooling.
 `#` and `/* */` comments from other languages are `syntax.comment_style`,
@@ -88,6 +94,7 @@ A `///` comment attaches to the next declaration and documents it: editors,
 generated documentation and the library catalogue show it.
 
 ## Every error has the same shape
+<!-- topic: every-error-has-the-same-shape -->
 
 Each compiler error gives the location, a reason, a suggested next step and who
 should act on it, plus a stable rule ID with a help link. Tools read the same
@@ -96,6 +103,7 @@ every finding is an error, and stops `check` and the build until it is
 answered.
 
 ## Declining a judgement call
+<!-- topic: declining-a-judgement-call -->
 
 Most rules report plain mistakes, which only a fix answers. A few are
 judgement calls, where the code can be right as written: two helpers that
@@ -214,6 +222,7 @@ $ jadpo declines clear --rule library.similar_exists
 ```
 
 ## Decided layout
+<!-- topic: decided-layout -->
 
 **The shape.** Every project has the same shape at every size. The root holds
 a fixed set of files and folders. All application code lives in business
@@ -303,6 +312,7 @@ build/
 ```
 
 ## The root
+<!-- topic: the-root -->
 
 - Only these entries: `app.jadpo`, `config.jadpo`, `authentication.jadpo`,
   `policy.jadpo`, `flags.jadpo`, `jadpo.lock`,
@@ -334,6 +344,7 @@ build/
   these docs) is checked as one implicit domain with the layout rules off.
 
 ## Domains
+<!-- topic: domains -->
 
 - Every project has at least one domain, and all code outside the root files
   lives in one. The folder name is the domain's name; nothing in the code
@@ -373,6 +384,7 @@ build/
 | `fixtures/` | Test data shared by several test files in the domain | |
 
 ## Files and names
+<!-- topic: files-and-names -->
 
 - One primary declaration per file, named after it: `ServiceCredential` lives
   in `service_credential.jadpo`. Route groups and libraries are named
@@ -472,6 +484,7 @@ build/
   beside the file that uses them and must be referenced from it.
 
 ## Sharing and promotion
+<!-- topic: sharing-and-promotion -->
 
 - A type, failure or helper used by one file lives in that file. When a
   second file in the domain uses it, it must move to a file of its own in the
@@ -540,6 +553,7 @@ build/
   their tests.
 
 ## Ownership and calls replace modules
+<!-- topic: ownership-and-calls-replace-modules -->
 
 - A domain owns everything in it and is the visibility boundary.
   Declarations are private to their domain unless marked `public`.
@@ -582,6 +596,7 @@ build/
   from on `use` lines: see [Imports](#imports).
 
 ## Imports
+<!-- topic: imports -->
 
 Imports make the place every name comes from readable from the file
 itself, without searching. Without them, a name read in one file could be
@@ -694,6 +709,7 @@ How the lines are written and checked:
   their names, as the standard library is, and need no import.
 
 ## Database
+<!-- topic: database -->
 
 - `database/identities.jadpo_record` is the registry that gives every table, column
   and index a stable identity, so renaming a field renames its column instead
@@ -717,6 +733,7 @@ How the lines are written and checked:
 - `database/seeds/` holds local demonstration and development data.
 
 ## What it looks like in code
+<!-- topic: what-it-looks-like-in-code -->
 
 Illustrative; the exact syntax of each piece is settled in the area named.
 
@@ -788,6 +805,7 @@ connections: {
 ```
 
 ## Decided in later areas
+<!-- topic: decided-in-later-areas -->
 
 Route group syntax (area 7), the `schedule` keyword (area 12), integrations
 and provider API versions (area 11), translation file format (area 10) and the
@@ -795,6 +813,7 @@ migration workflow (area 5) are settled in their areas; the layout only
 reserves their folders.
 
 ## What is built
+<!-- topic: project-layout-and-modules-built -->
 
 The compiler builds the decided layout, with each rule's real output under
 [Errors](#errors).

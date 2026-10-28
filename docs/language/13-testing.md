@@ -6,6 +6,7 @@ checked-with: this checkout's jadpo on every gate run
 ---
 
 # Testing
+<!-- topic: testing -->
 
 How a Jadpo program is tested: where tests live, the four kinds of test,
 controlling the clock, configuration and fakes in tests, shared test data,
@@ -22,6 +23,7 @@ database; only the outside world and the clock are replaced.** There are no
 mocks of your own actions and no in-memory stand-in for the database.
 
 ## Where tests live
+<!-- topic: where-tests-live -->
 
 A test sits beside the file it tests, as `<name>.test.jadpo` (area 1). A
 scenario that spans several domains goes in the root `tests/` folder.
@@ -45,6 +47,7 @@ brings in anything else it uses on `use` lines, as any file does; a
 scenario imports all it uses (area 1, Imports).
 
 ## Writing a test
+<!-- topic: writing-a-test -->
 
 A test is a sentence and a body. The sentence names it, once in the whole
 project: a second test with the same sentence is
@@ -98,6 +101,7 @@ test "a todo due yesterday is overdue" {
 ```
 
 ## Kinds of test
+<!-- topic: kinds-of-test -->
 
 The kind of a test is known from what it calls (area 1), and
 `jadpo test --kind route` runs one kind. The report counts each kind
@@ -570,6 +574,7 @@ check failed: 1 error, 4 files
 ```
 
 ## Test settings
+<!-- topic: test-settings -->
 
 A test's environment is set at the top of its body, before the first
 statement, as `name: value` settings. There are three, and all
@@ -587,6 +592,7 @@ the result in the test itself. Shared data is not a setting; it comes from
 fixtures, below.
 
 ## Acting as a user
+<!-- topic: acting-as-a-user -->
 
 An action receives its caller as a typed parameter (area 8), so a test
 passes one in. Tests, fixtures and seeds can make a caller from a user
@@ -614,6 +620,7 @@ it proves behaviour and data, and a route test or a call with a caller
 proves policy (area 9).
 
 ## Controlling time
+<!-- topic: controlling-time -->
 
 A test never waits for real time. The clock starts at `clock:` and moves
 only when the test says so, with `clock.advance(5m)`: the clock belongs to
@@ -649,6 +656,7 @@ seed, so a rerun gives the same tokens, codes and shuffles and a test may
 name the exact code it expects. New identities share the seed.
 
 ## Configuration in tests
+<!-- topic: configuration-in-tests -->
 
 Each configuration field can give a `test:` value in `config.jadpo`, used by
 every test (area 10 gives the configuration syntax). A test
@@ -696,6 +704,7 @@ no field (`configuration.field_unknown`). A value in `config:` is checked as a
 `default:` is.
 
 ## Fakes for integrations
+<!-- topic: fakes-for-integrations -->
 
 A test never reaches a real provider. Every provider call a test reaches
 answers through its package's fake: the operation's generated default,
@@ -991,6 +1000,7 @@ Every provider call in a test is faked (areas 11, 12 and 16), as in
   `batches.status`.
 
 ## Shared test data: fixtures
+<!-- topic: shared-test-data-fixtures -->
 
 Test data used by several test files lives in the domain's `fixtures/`
 folder (area 1). A fixture is a test-only action that creates data by
@@ -1101,6 +1111,7 @@ named object holding what they made (`setup.alice`, `setup.todos`), so a
 test never has to look its own data up again.
 
 ## Assertions
+<!-- topic: assertions -->
 
 `assert condition` fails the test when the condition is false. On failure,
 the report shows the file, the line, the source of the condition, and the
@@ -1221,6 +1232,7 @@ line, its `data` with a `watch` object (`event`, `changed`, `reached`,
 `failing`, `files`, `fixed`).
 
 ## Running tests
+<!-- topic: running-tests -->
 
 - `jadpo test` runs everything; `jadpo test <file>` one file;
   `jadpo test <file>:<line>` the test at that line; `--name <text>` tests
@@ -1246,6 +1258,7 @@ line, its `data` with a `watch` object (`event`, `changed`, `reached`,
   focused test is never committed by accident.
 
 ## The test database
+<!-- topic: the-test-database -->
 
 Every environment runs the same engine, PostgreSQL unless the
 application declares otherwise (area 5), so tests run on PostgreSQL too.
@@ -1268,6 +1281,7 @@ job of `jadpo test`:
   exactly what it did.
 
 ## Caches and events
+<!-- topic: caches-and-events -->
 
 Caches are copies used only by display reads from routes (area 5), and
 events run after the action that emits them commits (area 1). In a test:
@@ -1474,6 +1488,7 @@ retrying, so it waits 30 seconds; starting the shift doesn't move the
 clock, and the retry runs once `clock.advance(30s)` reaches it.
 
 ## What is built
+<!-- topic: testing-built -->
 
 | Feature | Status |
 |---|---|

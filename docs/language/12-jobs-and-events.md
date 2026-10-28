@@ -6,6 +6,7 @@ checked-with: this checkout's jadpo on every gate run
 ---
 
 # Jobs and events
+<!-- topic: jobs-and-events -->
 
 Work that does not happen inside a request: schedules that run an action on a
 timer, events an action announces, subscribers that react to them, and what
@@ -30,6 +31,7 @@ produces events for subscribers: webhooks, a package's own events and
 polls, and messages read from a queue ("Events from outside", below).
 
 ## Schedules
+<!-- topic: schedules -->
 
 A schedule runs one action at a fixed interval. It has a name, an `every:`
 and a `run:` that calls an action in the same domain with no arguments
@@ -231,6 +233,7 @@ run records count the records it deleted (`items`): the screens show
 batch deleted. No test runs it (area 13).
 
 ## Batch work keeps its progress
+<!-- topic: batch-work-keeps-its-progress -->
 
 An action is all-or-nothing (area 3). If one action emailed 500 owners and
 failed on the 300th, its database writes would roll back but 299 emails would
@@ -275,6 +278,7 @@ bound (every row of an uploaded file, a large export, every page of a
 provider's list) is a batch.
 
 ## Batches: work over many items
+<!-- topic: batches-work-over-many-items -->
 
 One way reads and writes row data of any
 size, and walks any large set of items: explicit helpers per format and
@@ -496,6 +500,7 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
 ```
 
 ## How a run is kept
+<!-- topic: how-a-run-is-kept -->
 
 - **A batch is a page.** Each transaction is one page of `from:`, at the
   size its query's `page:` reads, so 60 items in pages of 3 commit 20
@@ -655,6 +660,7 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
   no variable.
 
 ## How a file's run is kept
+<!-- topic: how-a-file-s-run-is-kept -->
 
 What a file helper's run (`csv.read`, `tsv.read`, `json_lines.read` and
 `json.read`'s file form) does beyond a query's run, taking the most
@@ -749,6 +755,7 @@ conservative reading of "Batches" above and area 19's "Data formats":
   mark, little- or big-endian, never guessed; anything else isn't text.
 
 ## How an export's run is kept
+<!-- topic: how-an-export-s-run-is-kept -->
 
 What a file helper's write (`csv.write`, `tsv.write`, `json_lines.write`
 and `json.write`'s file form) does beyond a query's run, taking the most
@@ -794,6 +801,7 @@ which says how each row is written:
   does: what committed stands, and the tick carries it on.
 
 ## Batches, tenants and grants
+<!-- topic: batches-tenants-and-grants -->
 
 In an application with a `tenant:`, each page's read, its items and
 `finished:` act as the system limited to the tenant the run's saved values
@@ -951,6 +959,7 @@ check failed: 1 error, 1 file
 ```
 
 ## What a run reaches under policy
+<!-- topic: what-a-run-reaches-under-policy -->
 
 - **What the summary carries.** An `ImportSummary` holds counts and
   problems, never a record's fields. `items` shows nothing of the items
@@ -1328,6 +1337,7 @@ check failed: 1 error, 2 files
 ```
 
 ## Declaring an event
+<!-- topic: declaring-an-event -->
 
 An event records that something happened. It is a type with the `Event` base,
 named in the past tense, one per file in the domain's `events/` folder, and
@@ -1381,6 +1391,7 @@ build ships is read with the new shape. There is no command of its own:
   area 18's acceptances with the API record's.
 
 ## Emitting an event
+<!-- topic: emitting-an-event -->
 
 `emit` is a statement, written like `reject` (question 4).
 
@@ -1427,6 +1438,7 @@ action complete_todo(todo_id: Todo.id) fails TodoNotFound -> Todo {
   subscribers do.
 
 ## Subscribers
+<!-- topic: subscribers -->
 
 A subscriber names one event and the action it runs. Inside `run:`, `event`
 is the delivered event (question 5).
@@ -1477,6 +1489,7 @@ that needs more passes the event's ids and reads the current state, as
 "Declaring an event" advises.
 
 ## Background work and tenants
+<!-- topic: background-work-and-tenants -->
 
 In an application with a `tenant:`, each kind of background work reaches
 one stated set of tenants, and "no tenant" means one thing for each
@@ -1502,6 +1515,7 @@ tenant its action reached under its caller's policy, or it is
 can never aim background work at a tenant they don't belong to.
 
 ## Reacting in another domain
+<!-- topic: reacting-in-another-domain -->
 
 A domain changes another domain in one of two ways (area 1):
 
@@ -1529,6 +1543,7 @@ action send_completion_email(event: TodoCompleted) fails EmailRejected -> Unit {
 ```
 
 ## Long-running coordination
+<!-- topic: long-running-coordination -->
 
 A process that waits for several things over time, such as an order waiting
 for payment and stock, needs no workflow language (area 1). Its
@@ -1562,6 +1577,7 @@ both complete the order, because every write checks for concurrent change
 between steps.
 
 ## Delivery: at least once, safe to repeat
+<!-- topic: delivery-at-least-once-safe-to-repeat -->
 
 - **At least once.** An event committed is delivered to each subscriber at
   least once. A crash can deliver it again.
@@ -1632,6 +1648,7 @@ build no longer has fails as a defect, and an event 16 deep in a chain
 fails with `event_chain_limit`.
 
 ## Several changing calls in one action
+<!-- topic: several-changing-calls-in-one-action -->
 
 Starting a
 subscription at a payment provider takes several calls (create the
@@ -2095,6 +2112,7 @@ test "an approved invoice is paid once" {
 ```
 
 ## Where events travel
+<!-- topic: where-events-travel -->
 
 Events stay inside the Jadpo runtime. They are stored
 in the outbox of the store the action writes, in the same transaction as
@@ -2193,6 +2211,7 @@ stops short.
   rules as any value of the field's type is.
 
 ## Events from outside
+<!-- topic: events-from-outside -->
 
 Besides events the app's actions emit, four
 sources outside the app produce events. Each is written to the app's
@@ -2296,6 +2315,7 @@ application {
   reaches it.
 
 ## Retries and giving up
+<!-- topic: retries-and-giving-up -->
 
 What happens after a run depends on how it ended, using the failure kinds
 from area 4 (question 7):
@@ -2411,6 +2431,7 @@ detail:
   "since": …, "held": …}`, and `jadpo dev` prints it with the schedules'.
 
 ## What an operator sees
+<!-- topic: what-an-operator-sees -->
 
 Every delivery and schedule run has a state:
 
@@ -2654,6 +2675,7 @@ Where it runs depends on the database:
   `runRequested`.
 
 ## Limits and runtime faults
+<!-- topic: limits-and-runtime-faults -->
 
 | Limit | Value | When it is exceeded |
 |---|---|---|
@@ -2667,6 +2689,7 @@ Where it runs depends on the database:
 Numbers are recommendations to confirm with measured runs (question 12).
 
 ## What is built
+<!-- topic: jobs-and-events-built -->
 
 | Feature | Status |
 |---|---|

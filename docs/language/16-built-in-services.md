@@ -6,6 +6,7 @@ checked-with: this checkout's jadpo on every gate run
 ---
 
 # Built-in services
+<!-- topic: built-in-services -->
 
 Which common backend features Jadpo should provide itself, rather than
 leaving each application to install a library or write its own: feature
@@ -38,6 +39,7 @@ than depending on a third-party service (the rule area 8 applied to OAuth).
 | Realtime, admin screens, payments, CMS, analytics, quotas, media transformations | No, or later | The compiler gains little, or the feature is not a backend's | Not built in; media services (Cloudinary, Uploadcare) are ordinary packages |
 
 ## Capabilities on this page
+<!-- topic: capabilities-on-this-page -->
 
 A capability is a job that a connection does for Jadpo, chosen in
 `app.jadpo` (area 11). **A capability exists only for a job Jadpo itself
@@ -68,6 +70,7 @@ development, one fake for tests (area 13) and a conformance suite a filling
 package must pass.
 
 ## Feature flags
+<!-- topic: feature-flags -->
 
 A feature flag lets a team ship code switched off, then turn it on for some
 users, a share of users, or everyone, without a deploy. Every flag is
@@ -170,6 +173,7 @@ data with policy, and a setting that differs per environment is
 configuration (area 10).
 
 ## Rate limits
+<!-- topic: rate-limits -->
 
 A rate limit caps how many requests a caller may make in a period. It is set
 on an API in `app.jadpo` (the default for its routes) or on one route,
@@ -262,6 +266,7 @@ deployable counts in its own memory, which on Workers is the judgement
 call `rate_limits.counted_in_memory`.
 
 ## Caches: drivers and what they hold
+<!-- topic: caches-drivers-and-what-they-hold -->
 
 Area 5 decides what is cached (nothing, unless added) and how copies stay
 current. This section decides which services hold it and what it may
@@ -289,6 +294,7 @@ hold:
   naming the feature.
 
 ## Files
+<!-- topic: files -->
 
 A file is a field of type `File` on an entity. The bytes live in a
 connection that provides the `files` capability (area 11): the built-in S3
@@ -562,6 +568,7 @@ Both are built when an app needs them.
   refused like a wrong type and deleted.
 
 ## Audit trail
+<!-- topic: audit-trail -->
 
 An entity with an `audit:` section keeps a history of every change to it:
 who made it, when, through which action and request, and each changed
@@ -605,6 +612,7 @@ listening the event is never emitted. The database stays the record of
 truth; the event is a copy, carrying the same hashed personal fields.
 
 ## Telemetry
+<!-- topic: telemetry -->
 
 The generated runtime reports what it does as OpenTelemetry traces,
 metrics and logs, the open standard most monitoring tools accept.
@@ -700,6 +708,7 @@ the development call log is: `jadpo traces`, `jadpo metrics` and `jadpo
 logs` (area 17), and later the developer console.
 
 ## Path IDs
+<!-- topic: path-ids -->
 
 Not built yet. Every request records the path it took
 through the application: the route, each action and query, and each branch
@@ -728,6 +737,7 @@ failure, which a stack no longer holds.
 Path IDs need control flow inside each callable in the compiler's graph.
 
 ## Monitoring thresholds
+<!-- topic: monitoring-thresholds -->
 
 Not built yet. Thresholds are declared in the
 application, reviewed with it and versioned with each build, not configured
@@ -773,6 +783,7 @@ overwritten, as with Terraform.
 OpenTelemetry stays the transport; only what is sent changes.
 
 ## Email
+<!-- topic: email -->
 
 > Built: emails, their templates and the shared layout, `email:`,
 > sending after commit through the SMTP driver or a mail package,
@@ -1092,6 +1103,7 @@ test "signing up welcomes the new user, with a link to sign in" {
   for an app that asks.
 
 ## The SMTP driver
+<!-- topic: the-smtp-driver -->
 
 Area 11 leaves the driver's settings to this page. A connection with `driver: Driver.smtp`
 gives `host:`, its server's name, written out or read from a setting
@@ -1156,6 +1168,7 @@ config {
   credential or sender is `misconfigured`.
 
 ## Built-in emails
+<!-- topic: built-in-emails -->
 
 > Built with the features that send them: magic-link sign-in (area 8),
 > its email at all five levels ("Levels 4 and 5 of the magic-link email" below). The privacy emails come
@@ -1445,6 +1458,7 @@ with `for`. The address-check link lasts 15 minutes, as a magic link
 does.
 
 ## Documents
+<!-- topic: documents -->
 
 The `documents` capability renders a typed
 template to HTML or PDF exactly as email renders a message: a
@@ -1498,6 +1512,7 @@ var file: File = attempt invoices.put(pdf, FileType.pdf)
   rendered HTML (area 13).
 
 ## Search
+<!-- topic: search -->
 
 An entity with a `search:` section can be searched by words. The
 compiler generates the index, keeps it in step and
@@ -1568,6 +1583,7 @@ entity Product {
   test.
 
 ## Bot protection
+<!-- topic: bot-protection -->
 
 `bot_check` is a capability with one
 operation, check a token: pass or fail. A package fills it (Cloudflare
@@ -1615,6 +1631,7 @@ POST / {
   naming the setting to add.
 
 ## Outgoing webhooks
+<!-- topic: outgoing-webhooks -->
 
 Not built yet. Outgoing webhooks are built on `publishing` (area 12): an
 app's customers register an address, and chosen public events are
@@ -1628,6 +1645,7 @@ in the app, a package included, can reach an address that is not a
 declared connection.
 
 ## Not built in
+<!-- topic: not-built-in -->
 
 | Feature | Why not, or not yet |
 |---|---|
@@ -1640,6 +1658,7 @@ declared connection.
 | Background job dashboards | Already area 14's operator commands |
 
 ## Rate limits on Workers
+<!-- topic: rate-limits-on-workers -->
 
 The store rate limits are counted in on Workers:
 
@@ -1694,6 +1713,7 @@ The store rate limits are counted in on Workers:
   that a Wrangler file lost its bindings without a line a request.
 
 ## The dev inbox and the health score
+<!-- topic: the-dev-inbox-and-the-health-score -->
 
 - **One catcher, kept on disk.** `jadpo dev` gives the connection
   `email:` names the catching driver a test's host gives it, so each
@@ -1764,6 +1784,7 @@ The store rate limits are counted in on Workers:
   `--json` says whether every record `passed`.
 
 ## SpamAssassin in the health score
+<!-- topic: spamassassin-in-the-health-score -->
 
 - **Run as each mail is caught.** `jadpo dev` hands each mail, as the
   SMTP driver writes it with the `Message-ID:` a submission server adds,
@@ -1792,6 +1813,7 @@ The store rate limits are counted in on Workers:
   clean. Its tests fake its run; nothing is installed for them.
 
 ## Mail packages, partials and `email.sent`
+<!-- topic: mail-packages-partials-and-email-sent -->
 
 - **A partial's locale goes with it.** Every `EmailPartial` has
   `locale:` before its own fields, as every email has `to:` and
@@ -1871,6 +1893,7 @@ The store rate limits are counted in on Workers:
   `https://api.resend.com`.
 
 ## Levels 4 and 5 of the magic-link email
+<!-- topic: levels-4-and-5-of-the-magic-link-email -->
 
 Area 8 has the checks ("The app's own sign-in email and sending").
 
@@ -1898,6 +1921,7 @@ Area 8 has the checks ("The app's own sign-in email and sending").
   17).
 
 ## Jadpo's own magic-link email
+<!-- topic: jadpo-s-own-magic-link-email -->
 
 - **Written by the runtime.** Jadpo's email has no templates: the
   runtime writes its HTML and text from Jadpo's seven messages, each
@@ -1924,6 +1948,7 @@ Area 8 has the checks ("The app's own sign-in email and sending").
   the code, which are made as it is sent (area 8, "What is kept").
 
 ## Email templates and sending
+<!-- topic: email-templates-and-sending -->
 
 - **Rendered when it is sent.** The outbox keeps an email's fields as its
   payload, its type's contract JSON within area 12's 64 KB, and its
@@ -1986,6 +2011,7 @@ Area 8 has the checks ("The app's own sign-in email and sending").
   are, called with its fields by name.
 
 ## The seam every outside call goes through
+<!-- topic: the-seam-every-outside-call-goes-through -->
 
 How "Capabilities on this page", "Sends without an idempotency key" and
 area 6's "Outside calls hold no transaction" are carried out:
@@ -2051,6 +2077,7 @@ area 6's "Outside calls hold no transaction" are carried out:
   tests share one test host, which fakes wrap the same way.
 
 ## Files: `put`, `read` and the disk driver in development
+<!-- topic: files-put-read-and-the-disk-driver-in-development -->
 
 - **What a `File` holds.** The connection its bytes are in, the key the
   runtime made for them, its name (none for one `store.put` made), its
@@ -2096,6 +2123,7 @@ area 6's "Outside calls hold no transaction" are carried out:
   from a test's source, come with area 13's fakes.
 
 ## Files: an export's pieces
+<!-- topic: files-an-export-s-pieces -->
 
 What the file helpers' writes (area 12, "How an export's run is kept";
 area 19, "Data formats") ask of the `files` capability:
@@ -2118,6 +2146,7 @@ area 19, "Data formats") ask of the `files` capability:
   it, a written JSON Lines file's type, after `json`.
 
 ## Reading gzip
+<!-- topic: reading-gzip -->
 
 How a gzip file is read, as "Files" above says:
 
@@ -2150,6 +2179,7 @@ How a gzip file is read, as "Files" above says:
   and ones that aren't.
 
 ## What is built
+<!-- topic: built-in-services-built -->
 
 The errors this page describes are built with the feature they belong to.
 

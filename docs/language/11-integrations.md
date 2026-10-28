@@ -6,6 +6,7 @@ checked-with: this checkout's jadpo on every gate run
 ---
 
 # External services
+<!-- topic: external-services -->
 
 An external service is another company's API (Stripe, a courier, another
 Jadpo app) that an action calls. In Jadpo, each one is described once, as a
@@ -39,6 +40,7 @@ types, failures and pure functions that several apps share.
 | Tests | A generated fake per package; scheduled contract runs against the sandbox |
 
 ## Kinds of package
+<!-- topic: kinds-of-package -->
 
 There are two kinds, in one format:
 
@@ -99,6 +101,7 @@ code, published.
   (entities, actions over its data, routes, policy, emails).
 
 ## The package format
+<!-- topic: the-package-format -->
 
 A package is laid out as `shared/` is, so one set of rules covers the app
 and every package, and the compiler checks a package as it checks
@@ -358,6 +361,7 @@ avatars: {
   something substantial that does not belong in the standard library.
 
 ## Where packages live
+<!-- topic: where-packages-live -->
 
 One rule, by who wrote the code rather than what kind it is: **`packages/`
 holds only what was installed; everything the app's authors wrote lives
@@ -546,6 +550,7 @@ carrying the version, `postcodes_v3: { }`, as its names carry it (area 10,
   lower_snake_case with the version below it (question 16).
 
 ## Where packages come from
+<!-- topic: where-packages-come-from -->
 
 `jadpo package add <name>` follows a fixed order and records which step it
 used (question 13), so an agent never improvises where to look:
@@ -834,6 +839,7 @@ the sandbox for each one (see "Tests and fakes").
 > ```
 
 ## The surface
+<!-- topic: the-surface -->
 
 The compiler works out a package's public surface and writes it to
 `surface.jadpo_record`, beside `package.jadpo`: the package's description,
@@ -950,6 +956,7 @@ the capabilities it provides.
 > work" below.
 
 ## Developing and publishing a package
+<!-- topic: developing-and-publishing-a-package -->
 
 - **A package lives in its own repository.** `jadpo package new <Name>
   --library` or `--provider` writes the package format plus `recipes/`, a
@@ -1095,6 +1102,7 @@ description of every public message.
 > ```
 
 ## Connecting in `app.jadpo`
+<!-- topic: connecting-in-app-jadpo -->
 
 A connection is infrastructure, declared once in `connections:`
 (question 20). Each entry is a built-in driver (`driver: Driver.x`) or a
@@ -1425,6 +1433,7 @@ the disk driver reaches no host and isn't listed. A package Jadpo runs
 service asks for join the report with services, which are not built yet.
 
 ## Calling
+<!-- topic: calling -->
 
 An operation is called through its connection:
 `connection.resource.operation(input)`, and a provider package's public
@@ -1798,6 +1807,7 @@ public type Parcel = Object {
   changes something with no key is `failure.unknown_mapping`.
 
 ## Decoding
+<!-- topic: decoding -->
 
 Two kinds of conversion, split by one test:
 is it needed to make the value mean what the provider's documentation says
@@ -2368,6 +2378,7 @@ the contract writes its type.
   answer decoded whole by an operation's `decode:` is read whole.
 
 ## What package code may do
+<!-- topic: what-package-code-may-do -->
 
 The point of a package is expertise written
 once by someone who knows the API and tested properly, so a provider
@@ -3062,6 +3073,7 @@ listed in the surface. Library packages may ship recipes too.
 > subscribers and recipes in `sample/`".
 
 ## Several changing calls in one action
+<!-- topic: several-changing-provider-calls -->
 
 These rules apply to an app's action and to the package actions it calls, which are one
 sequence.
@@ -3232,6 +3244,7 @@ against the route's `deadline:`, which is how question 8's single call is
 checked too. The choices are in [area 12's notes](notes/12-jobs-and-events.md).
 
 ## Receiving from outside
+<!-- topic: receiving-from-outside -->
 
 ### Webhooks as events
 
@@ -3663,6 +3676,7 @@ agreement is a `Service` with a service key calling an ordinary route
 (area 8).
 
 ## Acting for each user: OAuth grants
+<!-- topic: acting-for-each-user-oauth-grants -->
 
 For apps acting on another service for each user or organisation: a
 user's Google Calendar, an organisation's Xero, a Slack workspace
@@ -3732,6 +3746,7 @@ attempt calendar.events.insert(event, on_behalf_of: booking.organiser_id) {
   installation tokens (a credential scheme in the runtime).
 
 ## Packages from other Jadpo apps
+<!-- topic: packages-from-other-jadpo-apps -->
 
 - **Jadpo's OpenAPI documents carry `x-jadpo` fields** saying what plain
   OpenAPI lacks: `x-jadpo-changes` (the operation changes something),
@@ -3773,6 +3788,7 @@ orders: {
   breaks, before it merges. Not built yet.
 
 ## Capabilities
+<!-- topic: capabilities -->
 
 A **capability** exists only for a job Jadpo performs itself, and covers
 that job whole. Jadpo owns the list, each capability has one API in
@@ -3993,6 +4009,7 @@ different connections, and falling back to a second provider, come later
 and only when an app asks.
 
 ## Provider calls in development
+<!-- topic: provider-calls-in-development -->
 
 - **Every provider operation is faked by default in `jadpo dev`**, answered
   from the package's recordings where they exist (their placeholders filled
@@ -4173,6 +4190,7 @@ application {
 > The choices are in "Fakes and the development call log" below.
 
 ## Compile time
+<!-- topic: compile-time -->
 
 Provider descriptions are large, by the `Content-Length` of the raw
 files:
@@ -4194,6 +4212,7 @@ build. An app using S3 and SES loads one driver connection, one small
 package and a handful of files from it.
 
 ## Tests and fakes
+<!-- topic: tests-and-fakes -->
 
 Every package has a generated fake. In `jadpo test`, an operation answers
 with a valid default built from its output type, and a test scripts a
@@ -4225,6 +4244,7 @@ sandbox, in CI on a schedule. Every written operation that is not
 confirmed must have a case in that run (question 12).
 
 ## What reviewers see
+<!-- topic: what-reviewers-see -->
 
 The approval report (area 17) lists, for each change:
 
@@ -4242,6 +4262,7 @@ The approval report (area 17) lists, for each change:
 - written operations not yet confirmed.
 
 ## Errors still to build
+<!-- topic: errors-still-to-build -->
 
 These mistakes are specified but not reported yet:
 
@@ -4267,6 +4288,7 @@ and several changing calls in the wrong place are area 12's `step.`
 errors and area 3's `effect.call_in_loop`.
 
 ## How the package format is read
+<!-- topic: how-the-package-format-is-read -->
 
 - **A package's name is its folder's.** `packages/acme_couriers/v1/` is
   `AcmeCouriers.v1`: the folder's name in `UpperCamelCase` and its version
@@ -4329,6 +4351,7 @@ errors and area 3's `effect.call_in_loop`.
   folder's place ("How packages are installed and linked").
 
 ## How the surface and the publishing bar work
+<!-- topic: how-the-surface-and-the-publishing-bar-work -->
 
 - **The surface's entries.** In the record format's order: the package;
   for a provider, `provider`; each operation of a `public resource`; each
@@ -4406,6 +4429,7 @@ errors and area 3's `effect.call_in_loop`.
   `toolchain.not_built_yet`.
 
 ## How packages are installed and linked
+<!-- topic: how-packages-are-installed-and-linked -->
 
 - **Where `add` installs from.** A folder holding `package.jadpo` is a
   `path` source, locked relative to the app's root (`../postcodes`);
@@ -4493,6 +4517,7 @@ errors and area 3's `effect.call_in_loop`.
   (`publish.changelog_missing`); an already released one passes.
 
 ## How connections to packages are read
+<!-- topic: how-connections-to-packages-are-read -->
 
 - **Naming the package.** `package:` names a provider package the app
   holds, installed or its own, by its name and version
@@ -4551,6 +4576,7 @@ errors and area 3's `effect.call_in_loop`.
   ("Fakes and the development call log").
 
 ## A package's names, and watching a linked checkout
+<!-- topic: a-package-s-names-and-watching-a-linked-checkout -->
 
 - **Where a package's name must be unique.** In its package only. Two
   declarations of one package can't share a name
@@ -4583,6 +4609,7 @@ errors and area 3's `effect.call_in_loop`.
   the package's path, as the project reads it.
 
 ## Two versions side by side, lazy loading and the package cache
+<!-- topic: two-versions-side-by-side-lazy-loading-and-the-package-cache -->
 
 - **When names carry the version.** Exactly while the project holds two
   versions of one package of the same kind, both installed in
@@ -4647,6 +4674,7 @@ errors and area 3's `effect.call_in_loop`.
   app's, so it never clashes.
 
 ## How the OpenAPI importer reads a document
+<!-- topic: how-the-openapi-importer-reads-a-document -->
 
 The importer, `jadpo package import openapi <file>`:
 
@@ -4728,6 +4756,7 @@ The importer, `jadpo package import openapi <file>`:
   and a provider-wide setting would hide the exceptions.
 
 ## How provider calls are made
+<!-- topic: how-provider-calls-are-made -->
 
 - **An operation's keys.** `method:` and `path:` are required; `input:`
   is one of the package's object types, and without it the call takes
@@ -4825,6 +4854,7 @@ The importer, `jadpo package import openapi <file>`:
   `AcmeCouriers.CreateBooking { ... }`, as its other types are written.
 
 ## Wire encodings, decoders and retries
+<!-- topic: wire-encodings-decoders-and-retries -->
 
 - **The built-in encodings** are ten, by these names: `unix_seconds` and
   `unix_milliseconds` (an `Instant` as a whole number), `iso_8601` (the
@@ -4914,6 +4944,7 @@ The importer, `jadpo package import openapi <file>`:
   gives a field's `wire`.
 
 ## Fakes and the development call log
+<!-- topic: fakes-and-the-development-call-log -->
 
 - **One fake per test, in every provider connection's place.** The test
   host gives a package's fake (`jadpo_runtime::fakes::ProviderFake`) for
@@ -4982,6 +5013,7 @@ The importer, `jadpo package import openapi <file>`:
   `--json` event gives them.
 
 ## Shape and name detection
+<!-- topic: shape-and-name-detection -->
 
 Layers 2, 3 and 6 of "Mapping imported types to standard types", for
 fields; layers 4 and 5 are under "The scoped review and unconfirmed
@@ -5080,6 +5112,7 @@ To check
 out above.)
 
 ## Recordings
+<!-- topic: recordings -->
 
 - **What a recording keeps.** The answer as the provider sent it, only
   along `output_at:`'s path and only the members the operation's output
@@ -5135,6 +5168,7 @@ out above.)
   built yet.
 
 ## The scoped review and unconfirmed operations
+<!-- topic: the-scoped-review-and-unconfirmed-operations -->
 
 Layers 4 and 5 of "Mapping imported types to standard types":
 
@@ -5182,6 +5216,7 @@ Layers 4 and 5 of "Mapping imported types to standard types":
   `--json` gives them as `review` and `again`.
 
 ## How webhooks are received
+<!-- topic: how-webhooks-are-received -->
 
 Webhooks as events; replies, handshakes and the further schemes are
 under "Webhook replies, handshakes and further signature schemes", and
@@ -5263,6 +5298,7 @@ queues under "How queues are received".
   it ("Package subscribers and recipes in `sample/`").
 
 ## The Cloudflare Queues driver
+<!-- topic: the-cloudflare-queues-driver -->
 
 The Cloudflare Queues driver on Workers:
 
@@ -5348,6 +5384,7 @@ connections: {
   through a package over its HTTP pull API instead.
 
 ## How queues are received
+<!-- topic: how-queues-are-received -->
 
 Queues through `receiving`; the Cloudflare Queues driver is under "The
 Cloudflare Queues driver".
@@ -5442,6 +5479,7 @@ Cloudflare Queues driver".
   signature (`crates/jadpo-cli/tests/receiving.rs`).
 
 ## Webhook replies, handshakes and further signature schemes
+<!-- topic: webhook-replies-handshakes-and-further-signature-schemes -->
 
 - **Twilio.** `SignatureScheme.twilio`: `X-Twilio-Signature`, the Base64
   of the HMAC-SHA1 under the auth token (the connection's secret) of the
@@ -5537,6 +5575,7 @@ Cloudflare Queues driver".
   decides it and its client fields (area 9).
 
 ## Package actions and recipes
+<!-- topic: package-actions-and-recipes -->
 
 - **Calling its own API.** In a package's action, `<resource>.<operation>(input)`
   calls one of its package's operations, public or not, by its bare names;
@@ -5602,6 +5641,7 @@ next: jadpo check  shows what to fit to the app
 ```
 
 ## Package subscribers and recipes in `sample/`
+<!-- topic: package-subscribers-and-recipes-in-sample -->
 
 - **What a package's subscriber hears.** A subscriber in a package's
   `subscribers/` listens with `on:` for an event its webhooks bring: one
@@ -5650,6 +5690,7 @@ next: jadpo check  shows what to fit to the app
   has some.
 
 ## How polls and `max_concurrent:` run
+<!-- topic: how-polls-and-max-concurrent-run -->
 
 - **A poll's keys.** Each entry of `polls:` in `provider.jadpo` is a
   block of `call:`, `every:` and `emits:`, each required and nothing
@@ -5741,6 +5782,7 @@ next: jadpo check  shows what to fit to the app
   the provider's entry counts as breaking.
 
 ## Enum values and failures through a package
+<!-- topic: enum-values-and-failures-through-a-package -->
 
 - **One path for every name through a package.** An enum's value is
   written through its package as its type is, `AcmeCouriers.Window.morning`,
@@ -5767,6 +5809,7 @@ next: jadpo check  shows what to fit to the app
   names its failures bare.
 
 ## What is built
+<!-- topic: external-services-built -->
 
 | Feature | Status |
 |---|---|

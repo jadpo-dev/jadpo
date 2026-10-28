@@ -6,6 +6,7 @@ checked-with: this checkout's jadpo on every gate run
 ---
 
 # Failures
+<!-- topic: failures -->
 
 How a Jadpo program says that something went wrong: declaring failures, the
 kinds that decide how each one reaches a client, listing, raising, passing on
@@ -24,6 +25,7 @@ error response.
 | **Defect**: overflow, the recursion limit, a compiler bug | the runtime | no | `internal_fault` | the cause and stack |
 
 ## Declaring a failure
+<!-- topic: declaring-a-failure -->
 
 ```jadpo check project=declaring file=types.jadpo hidden
 type Quantity = Int {
@@ -88,6 +90,7 @@ A failure is written like every other type,
 `Input` brings optional fields.
 
 ## Kinds
+<!-- topic: kinds -->
 
 A kind is a `FailureKind` option, written `FailureKind.not_found` (area 2,
 question 17). Declaring a kind only the runtime raises is
@@ -141,6 +144,7 @@ that cannot be read at all. An application cannot add a kind or choose a
 status; a missing kind is a language change.
 
 ## What the client sees
+<!-- topic: what-the-client-sees -->
 
 Every failure reaches an HTTP client in one envelope. The failure's client
 fields appear under `details`; internal fields, stacks, SQL, provider text and
@@ -184,6 +188,7 @@ broke, never the value (question 4):
 ```
 
 ## Saying what can fail: `fails`
+<!-- topic: saying-what-can-fail-fails -->
 
 ```jadpo fragment
 function check_title(title: TodoTitle) fails TitleBlank -> TodoTitle {
@@ -209,6 +214,7 @@ is `failure.stale_declaration`, and a repeat is
 (question 5).
 
 ## Raising a failure: `reject`
+<!-- topic: raising-a-failure-reject -->
 
 ```jadpo fragment
 action reserve(product: Product, requested: Quantity) fails QuantityUnavailable -> Reservation {
@@ -231,6 +237,7 @@ configuration cannot be put in a failure's fields (`configuration.secret_flow`,
 area 10), and nor can the signed-in principal (area 8).
 
 ## Passing a failure on: `attempt`
+<!-- topic: passing-a-failure-on-attempt -->
 
 `attempt` starts a statement, only on a call that can fail, and passes
 every failure of that call on to the caller's `fails` list (area 3).
@@ -326,6 +333,7 @@ function doubled(packs: Quantity) fails QuantityTooLarge -> Quantity {
 ```
 
 ## Turning one failure into another
+<!-- topic: turning-one-failure-into-another -->
 
 A failure can come from a condition the compiler knows about (a read that
 finds nothing, a unique rule a write breaks, a construction) or from another
@@ -391,6 +399,7 @@ PaymentDeclined rejected at domains/checkout/actions/pay.jadpo:14
 ```
 
 ## Handling a failure in `match`
+<!-- topic: handling-a-failure-in-match -->
 
 One `match` handles a call's outcome (area 3). Every failure the
 call can produce needs an arm, with no `_`; an arm recovers with a value,
@@ -440,6 +449,7 @@ function lookup_or_default(key: LookupCode) fails LookupRejected -> LookupResult
 Its errors (`failure.outcome_*`) are in area 3.
 
 ## Faults
+<!-- topic: faults -->
 
 Faults are raised by the runtime, never declared, listed in `fails`, rejected
 or matched (questions 3 and 5). They go straight to the boundary, which
@@ -486,6 +496,7 @@ construction cannot reach the boundary, because it needs `attempt`.
 ```
 
 ## Concealing records
+<!-- topic: concealing-records -->
 
 When policy hides a record from a caller, saying "forbidden" would reveal that
 it exists. A hidden record fails with the same `not_found` failure the code
@@ -500,6 +511,7 @@ var todo: Todo = attempt Todo.get(todo_id)
 ```
 
 ## Logging
+<!-- topic: logging -->
 
 Every failure and fault writes one structured event. A domain failure's event
 holds its code, kind, where it was raised, the path it travelled and its
@@ -523,6 +535,7 @@ failure.
 ```
 
 ## Messages and languages
+<!-- topic: messages-and-languages -->
 
 A failure's `message` is fixed English for developers and logs. Clients
 show text by `code`, which is stable (question 12):
@@ -558,6 +571,7 @@ not just different words, map it to the app's own failure at the call with
 `attempt` (area 10).
 
 ## What is built
+<!-- topic: failures-built -->
 
 | Feature | Status |
 |---|---|

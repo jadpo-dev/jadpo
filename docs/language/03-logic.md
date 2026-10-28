@@ -6,12 +6,14 @@ checked-with: this checkout's jadpo on every gate run
 ---
 
 # Logic
+<!-- topic: logic -->
 
 How behaviour is written: functions and actions, variables and constants,
 statements, operators, `match`, `attempt`, loops, and what the language says
 about passing functions, recursion and generic code.
 
 ## Functions and actions
+<!-- topic: functions-and-actions -->
 
 There are three kinds of callable. A **function** is pure: it computes a
 result from its arguments and nothing else. An **action** is an application
@@ -106,6 +108,7 @@ var local: ZonedTime = temporal.in_zone(at, zone)                  // the standa
 A library holds only functions and constants (see [Constants](#constants)).
 
 ## Variables
+<!-- topic: variables -->
 
 A variable is immutable by default, `var mut` when it can change
 (question 2), and every variable states its type (area 2).
@@ -125,6 +128,7 @@ total = Stock(total + holdback)
    (question 3), and an unused variable is an error (question 4).
 
 ## Constants
+<!-- topic: constants -->
 
 A `constant` names a fixed value at the top level of a file: the same in
 every deployment, worked out while compiling, and never changed.
@@ -487,6 +491,7 @@ function vat_rate_on(day: VatDate) -> VatRate {
   touches, and against domains owning their code.
 
 ## Statements
+<!-- topic: statements -->
 
 A body is a list of statements, one per line, with no semicolons:
 
@@ -568,6 +573,7 @@ Conditions are always in brackets, and `else if` chains are allowed
 (question 5).
 
 ## Expressions and operators
+<!-- topic: expressions-and-operators -->
 
 | Precedence | Operators | Operands | Result |
 |---|---|---|---|
@@ -615,6 +621,7 @@ var boxes: BoxCount = integer.divide(items, box_size, rounding: Rounding.up)   /
 ```
 
 ## Match
+<!-- topic: match -->
 
 `match` chooses between the cases of a value. It must cover every case, and it
 can be used as a statement or as an expression. Its arms use `->`, the same
@@ -736,6 +743,7 @@ another failure with `reject`, or pass the failure on with `propagate`; every
 failure the call can produce needs an arm (area 4 covers the failure side).
 
 ## Attempt
+<!-- topic: attempt -->
 
 A call that can fail must say so at the call site. `attempt` passes the
 call's failures on to the caller, whose `fails` list must include them;
@@ -755,6 +763,7 @@ rule: each starts a statement or is the result of a `match` arm, never part
 of a value (`failure.reject_placement`, `failure.propagate_placement`).
 
 ## Loops
+<!-- topic: loops -->
 
 `for item in items` iterates a list, and the loop variable takes its type
 from the list (area 2).
@@ -830,6 +839,7 @@ call, one that only reads included, made in a loop's body or by an action
 called there, in an action or a fixture.
 
 ## Passing functions
+<!-- topic: passing-functions -->
 
 Inline functions are allowed only as arguments to standard-library
 operations, such as `list.map` and `list.filter`, using `->` for
@@ -922,6 +932,7 @@ which `type.batch_each_invalid` and `type.batch_capture_not_storable` hold
 it to (area 12, "How a run is kept").
 
 ## Recursion
+<!-- topic: recursion -->
 
 A function may call itself or form a cycle with other functions. Recursive
 types are accepted (`replies: List<Comment>`), and recursion is the only way
@@ -971,6 +982,7 @@ with less than 256 KiB of it left is the `recursion_limit` fault too, so a
 frame larger still stops there rather than writing past the stack's end.
 
 ## Generic code
+<!-- topic: generic-code -->
 
 Only the standard library is generic (`List<T>`, `list.count`). Your own
 callables take named types, and a parameter that accepts several types is an
@@ -1023,6 +1035,7 @@ same reason, an application's types never declare operators, so every
 overload (area 19, "`Money` and the operator table").
 
 ## What is built
+<!-- topic: logic-built -->
 
 | Feature | Status |
 |---|---|

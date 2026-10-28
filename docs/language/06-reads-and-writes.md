@@ -6,6 +6,7 @@ checked-with: this checkout's jadpo on every gate run
 ---
 
 # Reads and writes
+<!-- topic: reads-and-writes -->
 
 How a program reads and changes stored records: named queries, filters,
 order and pages, children and parents, the operations every entity gets,
@@ -19,6 +20,7 @@ The examples follow the golden todo app's `planning` domain: `User`,
 `Project` and `Todo`.
 
 ## Named queries
+<!-- topic: named-queries -->
 
 Every read is a named query, one per file in its domain's `queries/` folder
 (areas 1 and 5). A query is one read: which entity, which
@@ -150,6 +152,7 @@ inside an action reads in the action's transaction; called from a test, it
 runs in a short transaction of its own.
 
 ## Filters
+<!-- topic: filters -->
 
 Each `where:` line is one condition, and a record must meet all of them.
 Fields are named with their entity, `Todo.status`, so `where: Todo.id ==
@@ -462,6 +465,7 @@ PostgreSQL, edge cases among them, and checks each gives the code's answer
 through its index.
 
 ## Order and pages
+<!-- topic: order-and-pages -->
 
 `order:` lists fields, each with `asc` or `desc`. When the order could tie,
 the compiler adds `id` as the last field, so equal values never swap places
@@ -516,6 +520,7 @@ the database's collation; an enum, a `Bool` or a structured field can't be
 sorted by, since the database and Jadpo would disagree on their order.
 
 ## Counts, sums and groups
+<!-- topic: counts-sums-and-groups -->
 
 A query can count and add up the records it finds instead of returning
 them. `aggregate:` names each total the database works out, and `group:`
@@ -838,6 +843,7 @@ with their standard operations' SQL forms, and the rest are PostgreSQL's
 statement, however many records it counts.
 
 ## A query giving a map layer
+<!-- topic: a-query-giving-a-map-layer -->
 
 A query can return its records as a map layer, a
 `FeatureCollection<G, P>` ([area 20](20-geospatial.md), "Interop"), so a
@@ -1154,6 +1160,7 @@ check failed: 1 error, 1 file
 ```
 
 ## Children and parents
+<!-- topic: children-and-parents -->
 
 An `include:` section adds related records to the result, each under a
 field of the result type. Naming one of this entity's own references
@@ -1259,6 +1266,7 @@ included even when its lifecycle hides it, because the reference still
 holds.
 
 ## The operations every entity gets
+<!-- topic: the-operations-every-entity-gets -->
 
 Every entity gets these operations, called through the entity (area 1).
 Only actions in the entity's own domain may call the ones that write; other
@@ -1478,6 +1486,7 @@ since forwarding an optional value such as a page's `next` cursor into an
 optional field is ordinary code.
 
 ## When a write is refused
+<!-- topic: when-a-write-is-refused -->
 
 A write can be refused for two reasons, and a lifecycle transition for a
 third: its `when:` doesn't hold (above). The record is not there: that
@@ -1572,6 +1581,7 @@ the failure ends its caller too, up to a `match` that undoes both or the
 outermost action, which rolls back.
 
 ## All-or-nothing actions and concurrent changes
+<!-- topic: all-or-nothing-actions-and-concurrent-changes -->
 
 Every action is all-or-nothing (area 3): its writes, and those of the public
 actions it calls, commit together or not at all. A write to a record loaded
@@ -1805,6 +1815,7 @@ action recheck_prices(
 ```
 
 ## Counters and other one-step updates
+<!-- topic: counters-and-other-one-step-updates -->
 
 When a new value depends only on the stored one, the database works it out
 in one step and nothing needs checking. On the right of `set:`,
@@ -1883,6 +1894,7 @@ a read a test makes itself, migrations and purge, runs at repeatable
 read.
 
 ## Reading in a loop
+<!-- topic: reading-in-a-loop -->
 
 A query or `Todo.get` inside a `for` loop is a compile error, because it
 would read once per item. Read the whole set with one query using `in`.
@@ -1958,6 +1970,7 @@ query todos_by_ids(todo_ids: List<Todo.id>) -> List<TodoView> {
 ```
 
 ## One store per action
+<!-- topic: one-store-per-action -->
 
 An action writes to at most one store (area 5), counting the public actions
 it calls. It may read other stores, but those reads are outside its
@@ -2042,6 +2055,7 @@ check failed: 1 error, 5 files
 ```
 
 ## Where a read comes from
+<!-- topic: where-a-read-comes-from -->
 
 Reads inside an action, policy and authentication always read the store,
 inside the action's transaction, so they are current. A display read is a
@@ -2066,6 +2080,7 @@ route GET /todos {
 ```
 
 ## Entities in Redis
+<!-- topic: queries-on-entities-in-redis -->
 
 An entity in a Redis store (area 5) is read
 and written through the same queries and operations as any entity, but
@@ -2095,6 +2110,7 @@ set for is allowed:
 Not built yet: there is no Redis driver.
 
 ## Reads across domains
+<!-- topic: reads-across-domains -->
 
 A query reads its own domain's entities only, and includes follow
 references inside the domain. Another domain's data comes from its public
@@ -2106,6 +2122,7 @@ var owners: List<OwnerView> = identity.users_by_ids(owner_ids)
 ```
 
 ## What is built
+<!-- topic: reads-and-writes-built -->
 
 | Feature | Status |
 |---|---|

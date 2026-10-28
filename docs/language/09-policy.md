@@ -6,6 +6,7 @@ checked-with: this checkout's jadpo on every gate run
 ---
 
 # Policy
+<!-- topic: policy -->
 
 Who may do what to which records: grants on entities and fields, tenancy,
 actions that need their own permission, the generated permissions report, and
@@ -45,6 +46,7 @@ entity Todo {
 | Background work | `Access.system` | schedules and subscribers, limited to the tenant their event came from |
 
 ## Grants
+<!-- topic: grants -->
 
 An entity's `policy:` has up to four lists: `create`, `read`, `update` and
 `delete`. Each names who may do that; anyone in the list is enough, and
@@ -65,6 +67,7 @@ Policy is always on (question 2): from the first line of code, every
 reachable create, read, update or delete needs a grant.
 
 ## A user field on the record
+<!-- topic: a-user-field-on-the-record -->
 
 Naming a reference to the user entity, such as `owner_id`, grants the user it
 points to. Creating checks the new record, so `create: [owner_id]` means a
@@ -76,6 +79,7 @@ update, so it needs no `immutable:`. Handing a record to someone else is a
 named action listed in root `policy.jadpo` (see Actions).
 
 ## A membership role
+<!-- topic: a-membership-role -->
 
 A role exists only where it is stored: in a membership entity, whose
 `membership:` section says which record the role is held in (`scope`), who
@@ -147,6 +151,7 @@ entity Project {
   means: `TeamRole.lead(from_team_id)` (question 5).
 
 ## Anyone signed in, or anyone
+<!-- topic: anyone-signed-in-or-anyone -->
 
 `Access.authenticated` is anyone signed in, and `Access.public` is anyone at
 all. A public read also needs a route that says
@@ -166,6 +171,7 @@ entity Article {
 ```
 
 ## Background work
+<!-- topic: background-work -->
 
 Schedules and subscribers act as the system caller (area 12, question 8),
 which gets exactly what `Access.system` grants. The system is nobody
@@ -243,6 +249,7 @@ what `batches.status` gives is held to what decides every batch's failures
 (area 12, "What a run reaches under policy").
 
 ## Tenancy
+<!-- topic: tenancy -->
 
 Most business applications are shared by many customer companies, and the
 worst bug they can have is one company seeing another's data. Root
@@ -734,6 +741,7 @@ that no record of the old tenant refers to it, and needs the caller's own
 membership in the new tenant, as a create there would.
 
 ## Actions
+<!-- topic: actions -->
 
 An action takes its permission from the entities it touches. Root
 `policy.jadpo` lists the few that cannot, under `actions:` (question 4):
@@ -769,6 +777,7 @@ application, and with none left it refuses every caller, so its route is
 `policy.effect_ungranted`.
 
 ## Field restrictions
+<!-- topic: field-restrictions -->
 
 A field follows its entity's grants unless its block narrows them, in the
 same shape. A field can only take away: it cannot grant anyone more than the
@@ -861,6 +870,7 @@ it (area 12, "Subscribers"). Area 15's log redaction covers what a log
 holds.
 
 ## The permissions report
+<!-- topic: the-permissions-report -->
 
 Policy is written beside each entity, so nobody has to keep a central copy.
 `jadpo check` writes the global view, `build/report/permissions.md` with a
@@ -897,6 +907,7 @@ referring to it by their reference, which has its index, so it needs no
 index or migration of its own.
 
 ## Protecting policy
+<!-- topic: protecting-policy -->
 
 Decided in area 1: an agent can edit policy, but the change cannot ship
 without a person's approval, wherever it is written. The compiler compares
@@ -910,6 +921,7 @@ Schedules and subscribers act as the system ("Background work"), and what
 soft-deleted records (area 5) is the only operation outside policy.
 
 ## When policy says no
+<!-- topic: when-policy-says-no -->
 
 The compiler adds policy to the SQL `WHERE` of every query and write (area
 6), and indexes every field a policy condition filters on; `jadpo sql`
@@ -1421,6 +1433,7 @@ test "someone outside a company can't start a project in it" {
 ```
 
 ## Caches and personal data
+<!-- topic: caches-and-personal-data -->
 
 Decided in area 5: a record cache applies policy on every read, a
 query-result cache is keyed by the tenant and every input policy used, and
@@ -1430,6 +1443,7 @@ Area 15 owns personal data. Policy supplies its permissions: erasing a
 person's data needs `delete` on their record and exporting it needs `read`.
 
 ## What is built
+<!-- topic: policy-built -->
 
 Each feature not built yet is `toolchain.not_built_yet` where it is written.
 

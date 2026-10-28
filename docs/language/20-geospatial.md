@@ -7,6 +7,7 @@ rules: []
 ---
 
 # Geospatial
+<!-- topic: geospatial -->
 
 Where things are, and what is near or inside what: a bakery's position,
 the delivery patches it serves, the shops within five kilometres of a
@@ -27,6 +28,7 @@ PostGIS, query conditions and indexes, and the formats other systems use.
 | Interop | GeoJSON `Feature` and `FeatureCollection`; WKT at named edges | Area 19's GeoJSON |
 
 ## What every geospatial operation follows
+<!-- topic: what-every-geospatial-operation-follows -->
 
 - **WGS84, latitude and longitude by name** (area 19, decided). An axis
   order exists only inside `geo.from_geojson`, `geo.from_lng_lat`,
@@ -68,6 +70,7 @@ PostGIS, query conditions and indexes, and the formats other systems use.
   `Shapes` lists the types a parameter takes).
 
 ## Operations
+<!-- topic: geometry-operations -->
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
@@ -255,6 +258,7 @@ test "a round is its legs summed" {
 ```
 
 ## Predicates and shapes
+<!-- topic: predicates-and-shapes -->
 
 The predicates and shapes on the bakery's
 patches, its pins on a map and its shops:
@@ -594,6 +598,7 @@ check failed: 1 error, 1 file
 ```
 
 ## Storage
+<!-- topic: storage -->
 
 A geometry field is one PostgreSQL column, PostGIS's `geography`, which
 holds longitude and latitude on WGS84 and measures in metres, so no
@@ -835,6 +840,7 @@ error: `main` has no `postgis` extension, and its role can't create it
 ```
 
 ## Queries
+<!-- topic: queries -->
 
 Area 6 allows only conditions an index can serve: a field, named first,
 compared with a value. This page adds the `geo.` conditions to that list,
@@ -1159,6 +1165,7 @@ across and onto the antimeridian and round the pole, the recheck asking
 again, ties by `id`, and every case of `tools/geo_cases.py` as a query.
 
 ## Precision and determinism
+<!-- topic: precision-and-determinism -->
 
 | Where | Arithmetic | Same on every target? |
 |---|---|---|
@@ -1299,6 +1306,7 @@ again, ties by `id`, and every case of `tools/geo_cases.py` as a query.
   a thousand bakeries spends some 40 ms sorting them by distance.
 
 ## Interop
+<!-- topic: interop -->
 
 | Format | Decided | Where the axis order lives |
 |---|---|---|
@@ -1702,6 +1710,7 @@ test "a pasted patch is read longitude first" {
   through it or `geo.to_wkt`.
 
 ## Left out, and why
+<!-- topic: geospatial-left-out -->
 
 | Left out | Why | Instead |
 |---|---|---|
@@ -1715,6 +1724,7 @@ test "a pasted patch is read longitude first" {
 | Altitude in any operation | WGS84's operations are on the surface; height above the ellipsoid isn't height above the ground | Kept and stored, never measured |
 
 ## What is built
+<!-- topic: geospatial-built -->
 
 | Feature | Status |
 |---|---|

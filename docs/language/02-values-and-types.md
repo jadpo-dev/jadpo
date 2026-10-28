@@ -6,6 +6,7 @@ checked-with: this checkout's jadpo on every gate run
 ---
 
 # Values and types
+<!-- topic: values-and-types -->
 
 What kinds of value a Jadpo program works with, how you give a value a domain
 meaning, and when one type can stand in for another.
@@ -17,6 +18,7 @@ type by being validated against it, and the compiler never converts between
 types silently.
 
 ## Built-in types
+<!-- topic: built-in-types -->
 
 Jadpo ships its types with the language: nothing is declared to use them, and
 their names can't be reused. There are the six representation types, the
@@ -354,6 +356,7 @@ Literals are `true` and `false`, whole numbers (`25`, `-3`), decimals (`1.25`),
 strings (`"Hello"`, with `\"`, `\\`, `\n`, `\r` and `\t` escapes) and `none`.
 
 ## Named types
+<!-- topic: named-types -->
 
 Most of a program's types are named types: a built-in representation, a name
 that says what the value means, and the rules a valid value must follow.
@@ -428,6 +431,7 @@ the settings later areas add to an entity's or event's fields (`generated`,
 an exact number holds (38) is `type.invalid_literal`.
 
 ## Creating values
+<!-- topic: creating-values -->
 
 Applying a type to a value, `Type(value)`, creates a value of that type by
 checking every rule on it and on the types it builds on. It is validation,
@@ -780,6 +784,7 @@ check failed: 1 error, 1 file
 ```
 
 ## Signatures use named types
+<!-- topic: signatures-use-named-types -->
 
 Functions, actions and queries cannot take or return a built-in representation
 type directly. `Text`, `Int`, `Bool`, `Uuid`, the time types and their nullable
@@ -801,6 +806,7 @@ function edited(before: CustomerNote, after: CustomerNote) -> NoteWasEdited {
 allowed. Inside a body, locals can still hold built-in types.
 
 ## One form for every type
+<!-- topic: one-form-for-every-type -->
 
 Every type is declared the same way, `type Name = Base { ... }` (questions
 10, 18 and 19). The base says what the type is built from, and the block
@@ -884,6 +890,7 @@ type OrderView = Output {  // an object sent back
   `types/` folder holds only `type` declarations.
 
 ## Objects
+<!-- topic: objects -->
 
 An object is a fixed set of named fields. The base after `=` says what the
 object is for:
@@ -1241,6 +1248,7 @@ check failed: 1 error, 1 file
 ```
 
 ## Building a type from other types
+<!-- topic: building-a-type-from-other-types -->
 
 Most object types in a real application are slices of an entity or of another
 object: a create input, a patch input where every field is optional, a public
@@ -1365,6 +1373,7 @@ Rules:
   names.
 
 ## Absent values
+<!-- topic: absent-values -->
 
 There is no `null` or `undefined`. A type followed by `?` may hold `none`, and
 reading it means handling both cases, usually with `match` (area 3). `null`,
@@ -1433,6 +1442,7 @@ A value can widen through `?`: a `Customer.email?` can be used where an
 `Email?` is expected.
 
 ## Enums
+<!-- topic: enums -->
 
 An enum is a closed list of named alternatives. Variants are always written
 with their enum's name.
@@ -1506,6 +1516,7 @@ name, or a name with a block of its fields; one given a label,
 `open: "Open"`, is `type.enum_label`.
 
 ## Collections
+<!-- topic: collections -->
 
 `List<T>`, `Set<T>` and `Map<K, V>` can be used as field types, parameter
 types and boundary types, nested in each other or holding objects.
@@ -1737,6 +1748,7 @@ check failed: 1 error, 1 file
 ```
 
 ## When one type can stand in for another
+<!-- topic: when-one-type-can-stand-in-for-another -->
 
 | You have | Where `Customer.email` is expected | Where `Email` is expected | Where `Text` is expected |
 |---|---|---|---|
@@ -1760,6 +1772,7 @@ variants carry each one, which keeps the choice explicit; your own code has
 no generics or unions (area 3, [Generic code](03-logic.md#generic-code)).
 
 ## Values never change
+<!-- topic: values-never-change -->
 
 Every value is immutable. Passing a value to a function or returning it never
 lets anyone else change it. A local declared with `var mut` can be pointed at a
@@ -1792,6 +1805,7 @@ function restock(product: Product, stock: Stock) -> Product {
 ```
 
 ## What is built
+<!-- topic: values-and-types-built -->
 
 | Feature | Status |
 |---|---|

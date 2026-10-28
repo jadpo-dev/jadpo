@@ -6,6 +6,7 @@ checked-with: this checkout's jadpo on every gate run
 ---
 
 # Identity
+<!-- topic: identity -->
 
 Who is calling: the `application { }` and `principal { }` declarations, the
 ways a caller proves who they are, how code reads the caller, service
@@ -34,6 +35,7 @@ Five rules hold underneath all of it:
 | `current_principal` | routes | The signed-in caller, passed to actions |
 
 ## The principal
+<!-- topic: the-principal -->
 
 The principal is the caller after authentication: either a **user** (a
 person) or a **service** (another system). It is declared once, with no name
@@ -66,6 +68,7 @@ principal {
 - `service:` is optional; most applications only have users (question 3).
 
 ## The application and revocation
+<!-- topic: the-application-and-revocation -->
 
 A signed-in caller can be disabled, or a session revoked, while they still hold
 a valid credential. The application says how long that may take to bite.
@@ -304,6 +307,7 @@ failure partner_not_found
 ```
 
 ## Ways to sign in
+<!-- topic: ways-to-sign-in -->
 
 `authentication.jadpo` lists the methods the application accepts. Each is one
 named block from a fixed list; the method decides where the credential travels
@@ -402,6 +406,7 @@ authentication {
   that path is `route.path_overlap`.
 
 ## Checking the person: `sign_in:`
+<!-- topic: checking-the-person-sign-in -->
 
 > Not built yet: `providers:` is `toolchain.not_built_yet`.
 
@@ -446,6 +451,7 @@ GitHub and Apple, which are not plain OpenID Connect, are the built-in
 `providers: [...]`, as `email:` names its connection.
 
 ## Magic links
+<!-- topic: magic-links -->
 
 A person gives their email address and receives one email holding a link
 and a six-digit code. Either signs them in, once: the link through a page
@@ -754,6 +760,7 @@ output MagicLinkToken
 ```
 
 ## Passkeys
+<!-- topic: passkeys -->
 
 A passkey (WebAuthn, FIDO2) is the third built-in way to check a person,
 beside magic links and providers. The person unlocks a key held on their
@@ -1273,6 +1280,7 @@ check failed: 1 error, 1 file
 ```
 
 ## A person the app has not seen
+<!-- topic: a-person-the-app-has-not-seen -->
 
 `on_first_sign_in:` names an action that decides, for every way in, what a
 first sign-in does: create a user, link an existing one, or refuse. It
@@ -1318,12 +1326,14 @@ action create_member(first: FirstSignIn) fails SignUpClosed -> Member.id {
   already signed in, so every passkey that signs in has its user.
 
 ## Signing in from code the app writes
+<!-- topic: signing-in-from-code-the-app-writes -->
 
 `sessions.start(user_id)` and `sessions.issue_token(user_id)` stay for a
 person the app checks itself, such as one accepting an invitation it sent
 (see "Starting and ending a session").
 
 ## Events
+<!-- topic: events -->
 
 Every sign-in publishes a built-in event, for monitoring and the app's own
 subscribers (area 12):
@@ -1343,6 +1353,7 @@ subscribers (area 12):
 link, a code, a challenge or a passkey's credential ID or key.
 
 ## In development and tests
+<!-- topic: in-development-and-tests -->
 
 In `jadpo dev` the email lands in the local inbox (area 16), and its link
 and code work there: the link opens the frontend's page, and an agent
@@ -1396,6 +1407,7 @@ test "a passkey signs Ada in" {
 ```
 
 ## What the compiler checks of sign-in
+<!-- topic: what-the-compiler-checks-of-sign-in -->
 
 For magic links:
 
@@ -1468,6 +1480,7 @@ For passkeys:
   `semantic.auth_setting_required`.
 
 ## Who is calling: `current_principal`
+<!-- topic: who-is-calling-current-principal -->
 
 A route reads the signed-in caller as `current_principal` and passes it to
 the action it runs, like any other argument. Selecting a variant narrows it:
@@ -1502,6 +1515,7 @@ POST / {
   variant's data.
 
 ## Routes: signed in by default
+<!-- topic: routes-signed-in-by-default -->
 
 Every route requires a signed-in caller. A route says only when that changes:
 
@@ -1550,6 +1564,7 @@ authenticate: the runtime generates them from the provider package, checks
 the signature and publishes each as an event (area 11).
 
 ## Service credentials
+<!-- topic: service-credentials -->
 
 A service (a partner system, a worker) signs in with a key. Each service has
 an owner, a status, and any number of keys that expire, can be revoked one at
@@ -1599,6 +1614,7 @@ application declares only `Service` (question 7).
   that selects `current_principal.service` refuses a user the same way.
 
 ## Starting and ending a session
+<!-- topic: starting-and-ending-a-session -->
 
 An action run by a route starts or ends a session, and the compiler sets and
 clears the cookie and CSRF token (question 9). Passwords are out of scope.
@@ -2704,6 +2720,7 @@ test "a partner's keys are listed to the partner and its owner" {
 ```
 
 ## Acting for a user at another service: OAuth grants
+<!-- topic: acting-for-a-user-at-another-service-oauth-grants -->
 
 > Not built yet. Area 11's "Acting for each user: OAuth grants" holds the
 > connection's side.
@@ -2774,6 +2791,7 @@ calendar: {
   <id>` makes a fake grant, and tests declare grants as fixtures.
 
 ## Failures
+<!-- topic: identity-failures -->
 
 Authentication failures are raised by the runtime, never declared or listed in
 `fails` (area 4). A client sees the usual envelope.
@@ -2808,6 +2826,7 @@ noticed within that delay. The log records the method, the credential's
 record id and the reason, never the credential.
 
 ## What is built
+<!-- topic: identity-built -->
 
 A feature not built yet is `toolchain.not_built_yet` where it is written.
 

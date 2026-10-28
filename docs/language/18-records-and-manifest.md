@@ -6,6 +6,7 @@ checked-with: this checkout's jadpo on every gate run
 ---
 
 # Records and manifest
+<!-- topic: records-and-manifest -->
 
 The compiler produces two kinds of output, and keeping them apart is what
 makes changes reviewable and production traceable. **Records** are promises
@@ -37,6 +38,7 @@ that raised it.
 | Build stamp | Build id, commit, compiler, deployable, target | Inside each deployable; on every log event | No | `jadpo build` | logs, `incident` |
 
 ## What is committed, and why
+<!-- topic: what-is-committed-and-why -->
 
 Commit a file only if it **cannot be recomputed from today's source**, or
 if it is **a promise whose diff a person must read**.
@@ -287,6 +289,7 @@ database/identities.jadpo_record     merge=union
 ```
 
 ## The manifest
+<!-- topic: the-manifest -->
 
 `jadpo check` writes one manifest for the project, `build/manifest.json`.
 It is the compiler's graph as versioned JSON: every
@@ -360,6 +363,7 @@ that path numbers decode against, and each deployable's build id.
 > `answer_question@864ad76b`.
 
 ## Stable identity
+<!-- topic: stable-identity -->
 
 A declaration or field is known by **the name it was born with**. The
 registry holds one line for each thing that has since been renamed,
@@ -422,6 +426,7 @@ subscriber send_reminder -> notify_owner
 > Changing what a key holds is a new manifest `format`.
 
 ## Comparing two builds
+<!-- topic: comparing-two-builds -->
 
 Every review is a diff of two manifests. The **after** side is the
 working tree. The **before** side is a git ref: by default the
@@ -449,6 +454,7 @@ build per base commit.
   the compiler in its own change.
 
 ## Acceptances
+<!-- topic: acceptances -->
 
 One file per **decision**, listing every change it allows, with the reason
 in `///`. Each entry is `subject: Kind.change`, with the
@@ -493,6 +499,7 @@ Additive changes need no acceptance: a new route, a new optional input
 field, a new output field, tightened policy. The diff still shows them.
 
 ## Package upgrades
+<!-- topic: package-upgrades -->
 
 An upgrade is a change to `jadpo.lock` and `packages/`, reviewed like any
 other, its `surface.jadpo_record` diff included. The review
@@ -514,6 +521,7 @@ listed as removed and added.
   11's "upgrade plan" idea is this same output, not a separate format.
 
 ## Production builds
+<!-- topic: production-builds -->
 
 A deployable carries a small **build stamp**, not its manifest. The stamp holds the build id, the commit, whether the tree
 was modified, the compiler version, the deployable and the target. Every
@@ -538,6 +546,7 @@ a constant, so events already show `.jadpo` frames (area 17).
   explained from that exact tree.
 
 ## What an agent runs
+<!-- topic: what-an-agent-runs -->
 
 Every command takes `--json`, and `jadpo help --json` describes them all
 (area 14).
@@ -554,6 +563,7 @@ Every command takes `--json`, and `jadpo help --json` describes them all
 | Explain a production event | `jadpo incident <event>` | `jadpo test new --from-event` |
 
 ## Three journeys
+<!-- topic: three-journeys -->
 
 **An agent removes an API field, and a person accepts it.**
 
@@ -610,6 +620,7 @@ names are still exact, because they are in the event, and the output says
 that the path number cannot be decoded.
 
 ## What is built
+<!-- topic: records-and-manifest-built -->
 
 | Feature | Status |
 |---|---|

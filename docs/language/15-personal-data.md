@@ -7,6 +7,7 @@ rules: []
 ---
 
 # Personal data
+<!-- topic: personal-data -->
 
 How a Jadpo application says which data is about a person, so the compiler
 can export it, erase it, expire it and report where it lives. The aim is
@@ -35,6 +36,7 @@ write down.
 | Report | nothing | Writes `build/report/personal-data.md` |
 
 ## Marking personal fields
+<!-- topic: marking-personal-fields -->
 
 A field that identifies or describes a person says so in its block, with
 one category from a fixed list. The category decides how carefully the
@@ -96,6 +98,7 @@ extra ones CCPA/CPRA lists, government IDs and precise location.
   at, or describes, a person.
 
 ## The person
+<!-- topic: the-person -->
 
 The law calls the person data is about the *data subject*. An entity that
 represents one says `person: true`. Most applications have one, `User`;
@@ -117,6 +120,7 @@ say), and the report shows the whole tree for review. A record that refers
 to two people, such as a message from one user to another, belongs to both.
 
 ## Erasure
+<!-- topic: erasure -->
 
 Erasing a person is a generated operation, `User.erase(user_id)`, called from
 an action you write (for a "delete my account" route, or a support tool).
@@ -271,6 +275,7 @@ This is a declaration on the package, not part of any capability (area
 11), so Stripe and Postmark are erased the same way.
 
 ## Export
+<!-- topic: export -->
 
 `User.export(user_id)` returns everything held about the person: their
 record and every record that belongs to them, as JSON, one list per entity,
@@ -295,6 +300,7 @@ both reach every record that belongs to the person, as purge does, because a
 partial export or erasure is worse than none.
 
 ## Retention
+<!-- topic: retention -->
 
 GDPR's storage limitation means personal data needs an end date. A
 `retention:` block, in the same `after:` and `since:` shape as lifecycle
@@ -325,6 +331,7 @@ entity, or an entity holding marked fields, with no retention and no purge
 is listed in the report as "kept until erased".
 
 ## What the compiler checks
+<!-- topic: what-the-compiler-checks -->
 
 - **Marked fields nothing reads.** A personal field that no query, output or
   action reads is a declinable error (area 1): you are holding data you do
@@ -348,6 +355,7 @@ data, such as a `Consent` entity with the purpose and the time it was given
 and withdrawn.
 
 ## Data requests
+<!-- topic: data-requests -->
 
 `privacy:` in `app.jadpo` switches on generated routes for a person's
 requests to export or erase their data. Jadpo generates endpoints only,
@@ -414,6 +422,7 @@ erasure_confirmed: { } erasure_completed: { } } }`, each entry taking
 `email:` or `send:`, never both; their fields are in area 16.
 
 ## Access records
+<!-- topic: access-records -->
 
 Every export and erasure is recorded: who asked, for which person `id`, and
 when, never the values. So is every read of a sensitive field. These are
@@ -423,6 +432,7 @@ GDPR asks for accountability and security, not a log of every read, and
 that would log almost every request.
 
 ## Where data is stored
+<!-- topic: where-data-is-stored -->
 
 Each store is one database in one place. Data that must stay in the EU lives
 in a deployment whose stores are in the EU; an application serving several
@@ -432,6 +442,7 @@ the report lists each store with the configuration setting that says where
 it is.
 
 ## The personal-data report
+<!-- topic: the-personal-data-report -->
 
 `jadpo check` writes `build/report/personal-data.md` and a `.json` twin
 (area 14's report form). It lists, for each person entity:
@@ -456,6 +467,7 @@ review (area 9), so a pull request that starts sending email addresses to a
 new provider is seen by a person before it ships.
 
 ## Encrypted fields
+<!-- topic: encrypted-fields -->
 
 An entity field may be stored encrypted,
 `notes: ClinicalNote { encrypted: true }` (area 19), sealed with the application's one
@@ -467,6 +479,7 @@ encrypted field, usable only as a `crypto` call's `key:`). Every field sent
 to an AI model is listed in the report above (area 21).
 
 ## What this does not cover
+<!-- topic: what-this-does-not-cover -->
 
 The report says so plainly. Covered by the language: minimisation and
 storage limitation, access, rectification (ordinary updates), erasure,
@@ -480,6 +493,7 @@ marked data a breached store or provider held) and international transfers
 This is not legal advice; a privacy professional reviews the report.
 
 ## What is built
+<!-- topic: personal-data-built -->
 
 | Feature | Status |
 |---|---|
