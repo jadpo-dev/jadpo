@@ -272,11 +272,40 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
 - [ ] **9.2c `jadpo build` outside this checkout** `opus · high`: the
   runtime's sources and crates found without the path `jadpo` was
   compiled at or a warm cargo cache, so CI or a released `jadpo` can
-  build a deployable.
+  build a deployable; `jadpo build` fetches its own pinned Rust toolchain
+  into its cache on first use, so nobody installs Rust
+  ([documentation](documentation.md), "Installing"; Richard, 2026-10-28).
 - [ ] **9.3 The differential run's last two checks** `opus · high`
   (after 9.2; low priority, from chunk 8.4h): each path through a body
   numbered and the paths each run took compared, and fuzzed function
   bodies run both ways, as §2.5 once promised.
+
+## Documentation and releases
+
+What the jadpo.dev site, built in its own repository, needs from this one
+([documentation](documentation.md)). Claude builds these beside Phase 9,
+D1 first: the site starts once D1 has merged (Richard, 2026-10-28).
+
+- [ ] **D1 The docs' structure and bundle** `opus · high`: each error's
+  examples in `docs/errors/<rule.id>.md` and the docs check requiring a
+  file per catalogue rule; each area's design notes kept apart from what an
+  app author reads, with a short "what is built" table left on the page;
+  a topic ID declared beside every section; the seven sections over 3,000
+  words split; the bundle and its `index.json` built by the gate and
+  uploaded by CI.
+- [ ] **D2 The primer** `opus · high` after D1: `docs/primer.md`, about
+  3,000 to 5,000 tokens, every example compiled by the gate; `llms.txt`
+  leads with it.
+- [ ] **D3 Releases** `opus · high` after D1: semantic versions from 0.1.0,
+  release-please over the Conventional Commit types, CI failing a
+  language change under a type that says it isn't one, installers (shell,
+  Homebrew, PowerShell, npm) on each Release, the bundle attached; an
+  app's declared version checked (area 14, "Scaffold"). **Needs Richard**
+  before 0.1.0 is published.
+- [ ] **D4 Issues triaged by an agent** `opus · high` after D3: issues
+  and feature requests read, answered and turned into pull requests by an
+  agent that holds no secrets and cannot merge or release, since issue text
+  is anyone's; its pull requests pass the same gate and review.
 
 ## Phase 10 — Golden todo
 
@@ -290,8 +319,9 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   Measures correctness, attempts and tokens to green, where each mistake
   was caught (check, test or escaped), how easily a person reviews the
   diff, and how often a tempting unsafe shortcut gets through. The agent
-  gets the language pages, since no model has seen Jadpo (Richard,
-  2026-10-14). The method is designed at the start of the chunk; its
+  gets the docs as [documentation](documentation.md) delivers them, primer
+  first, since no model has seen Jadpo (Richard, 2026-10-14); the results
+  also say whether task guides are needed beyond the primer. The method is designed at the start of the chunk; its
   results steer the order of the work after the first build.
 
 ## After the first build, in order
@@ -338,8 +368,8 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
    derived by the compiler, client consumption declarations and generated
    TypeScript bindings (a React example first); presentation stays in
    ordinary frontend code.
-11. The public documentation site at jadpo.dev, structured from how
-   developers and agents look things up.
+11. `jadpo docs` or `jadpo mcp` serving the bundle offline
+   ([documentation](documentation.md), "Not decided yet").
 
 ## How we work
 
