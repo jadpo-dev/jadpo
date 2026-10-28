@@ -2107,14 +2107,13 @@ var owners: List<OwnerView> = identity.users_by_ids(owner_ids)
 
 ## What is built
 
-- **Reading another store** outside an action's transaction is not built
-  yet: it is `toolchain.not_built_yet` ("One store per action").
-- **Caches and entities in Redis** are not built yet: there is no Redis
-  driver ("Where a read comes from", "Entities in Redis").
-- **A rerun's time bound** is not built yet: the runtime counts attempts
-  only ("All-or-nothing actions and concurrent changes").
-- **Money, ranges and fields kept as JSON** aren't compared in a query yet
-  ("Operations in conditions").
+| Feature | Status |
+|---|---|
+| Everything else on this page | Built. |
+| Reading another store outside an action's transaction | Not built yet: it is `toolchain.not_built_yet` ("One store per action"). |
+| Caches and entities in Redis | Not built yet: there is no Redis driver ("Where a read comes from", "Entities in Redis"). |
+| A rerun's time bound | Not built yet: the runtime counts attempts only ("All-or-nothing actions and concurrent changes"). |
+| Comparing money, ranges and fields kept as JSON in a query | Not built yet ("Operations in conditions"). |
 
 ## Errors
 

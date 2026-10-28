@@ -2031,7 +2031,7 @@ test "a field given without its name is the next field" {
 }
 ```
 
-### Email subjects
+## Email subjects
 
 An `EmailMessage`'s member in its domain's language files is its subject
 line, with the email's fields as placeholders; its body is its `.html` and
@@ -2072,7 +2072,7 @@ translations {
 }
 ```
 
-### Enums with wording
+## Enums with wording
 
 An enum can be written out once its domain's language files give each of
 its values a wording, checked like a message with one enum field. A value's
@@ -2169,7 +2169,7 @@ test "an enum is worded by its value, with the value's fields" {
 }
 ```
 
-### Failures for client apps
+## Failures for client apps
 
 A `Failure`'s text for client apps is keyed by its code (`code:` when
 given) in its domain's
@@ -2497,6 +2497,8 @@ translations {
     }
 }
 ```
+
+## Packages' text in an app
 
 A package's or Jadpo's message is looked up in the app's root wording for
 that locale, then the owner's own; for an in-progress locale, then the
@@ -2829,7 +2831,7 @@ error: `postcodes` words package `Postcodes`, which is held in two versions
 check failed: 1 error, 9 files
 ```
 
-#### Packages' text: groups, calls and the surface
+### Packages' text: groups, calls and the surface
 
 - **A package's group is its folder's name.** The root file words
   `packages/postcodes/v2/`'s text under `postcodes: { }`, the name a
@@ -2871,7 +2873,7 @@ check failed: 1 error, 9 files
 - **The commands.** `missing`, `update` and `accept` take a package's
   text in, and so do `export`, `import` and `unused`, below.
 
-#### Packages' text in the exchange
+### Packages' text in the exchange
 
 - **What is exchanged.** What a supported locale must word of a package
   (above) and anything else of it the app words in its root file, each
@@ -2904,7 +2906,7 @@ check failed: 1 error, 9 files
   is not a package's. `--json` gives them as `packageWording`, each with
   a `reason` (`uncalled`, `notInPackage`, `private`, `noPackage`).
 
-#### Two versions of a package
+### Two versions of a package
 
 Two versions of a library package side by side (area 11,
 "Two versions side by side, lazy loading and the package cache"):
@@ -2948,7 +2950,7 @@ Two versions of a library package side by side (area 11,
 - **The publishing bar** checks one package in its own folder, where one
   version is held, so its `wording` row is unchanged.
 
-### What the compiler checks
+## What the compiler checks of translations
 
 Each with its own error below:
 
@@ -3087,7 +3089,7 @@ Also checked, each with its own error below:
   the app's default wording or, when the app gives none, the package's,
   stale when that changes (`translation.stale`).
 
-### Tooling
+## Tooling for translations
 
 Each command takes `--json` wherever it prints (area 14).
 The commands succeed whatever they list: they answer a question, and `jadpo
@@ -3337,32 +3339,17 @@ erasure, export) is designed in area 15 (Personal data).
 
 ## What is built
 
-Built: the time literals and the built-in `Zone`, `Weekday` and `Locale`
-enums, with `clock.now` outside an action reported as
-`type.clock_context`; settings, secrets, signing keys, connection
-addresses, `jadpo config`, the check before the app starts, a test's own
-values, and the trusted proxies a client's address is read through; time:
-`ZonedTime`, durations, arithmetic and comparison, the `temporal` library
-over the IANA database bundled into every target, time values on the
-wire, in OpenAPI and in queries, and a test's `clock:` and
-`clock.advance(...)` (area 13); `TimeFormat`, declared and built in,
-`ComponentStyle` and `PresentationText`, with the checks on formatting;
-locales (`locales { }` with its errors, `locale:` checked against it, a
-`Locale` on the wire or in a setting limited to the supported ones) and
-the text formatting gives, over CLDR data compiled into every target;
-`locale.from_accept_language(header)`; translations as messages
-(`Message` types and the built-in `PluralCount`, each domain's
-`translations { }` language files and their checks, the generated
-`translations.<domain>.<message>` calls, enum wording, email subjects and
-`in_progress:` locales), failures' client text exported per locale, stale
-translations and review, `locale.direction`, the `jadpo translations`
-commands, go to definition and the pseudo-locale; Jadpo's own messages and
-the root file's owner groups; library packages' translations (a package's
-`translations/`, `Postcodes.translations.<message>(...)`, the root file's
-package groups and their record lines, and a package's messages in its
-surface and the publishing bar); and the locale data a deployable
-carries, its supported locales' only, with the text a `Locale` the app
-doesn't support is written in (see Locales).
+| Feature | Status |
+|---|---|
+| Time literals and the built-in `Zone`, `Weekday` and `Locale` enums | Built, with `clock.now` outside an action reported as `type.clock_context`. |
+| Settings | Built: settings, secrets, signing keys, connection addresses, `jadpo config`, the check before the app starts, a test's own values, and the trusted proxies a client's address is read through. |
+| Time | Built: `ZonedTime`, durations, arithmetic and comparison, the `temporal` library over the IANA database bundled into every target, time values on the wire, in OpenAPI and in queries, and a test's `clock:` and `clock.advance(...)` (area 13). |
+| Formatting | Built: `TimeFormat`, declared and built in, `ComponentStyle` and `PresentationText`, with the checks on formatting. |
+| Locales | Built: `locales { }` with its errors, `locale:` checked against it, a `Locale` on the wire or in a setting limited to the supported ones, and the text formatting gives, over CLDR data compiled into every target; `locale.from_accept_language(header)`. |
+| Translations as messages | Built: `Message` types and the built-in `PluralCount`, each domain's `translations { }` language files and their checks, the generated `translations.<domain>.<message>` calls, enum wording, email subjects and `in_progress:` locales; failures' client text exported per locale; stale translations and review; `locale.direction`; the `jadpo translations` commands; go to definition and the pseudo-locale. |
+| Jadpo's own messages | Built, with the root file's owner groups. |
+| Library packages' translations | Built: a package's `translations/`, `Postcodes.translations.<message>(...)`, the root file's package groups and their record lines, and a package's messages in its surface and the publishing bar. |
+| Locale data a deployable carries | Built: its supported locales' only, with the text a `Locale` the app doesn't support is written in (see Locales). |
 
 ## Errors
 

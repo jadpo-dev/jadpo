@@ -12,7 +12,7 @@ actions that need their own permission, the generated permissions report, and
 what a caller sees when policy says no.
 
 > Not built yet: `scopes:`, and acceptances for a change that widens
-> access. "Status" below lists each.
+> access. "What is built" below lists each.
 
 **Each entity lists, for each thing you can do to it, who may do it, and the
 compiler applies that list to every read and write.**
@@ -854,6 +854,12 @@ with its record. Who may read a value is proved from the grants alone, not
 from the data, because two records that each refer to a company may refer
 to different companies: a role held in one says nothing about the other.
 
+A restricted field read only in an event isn't an output: an event's
+subscribers (area 12) are server work, so `emit` stores nothing a caller
+reads; what a subscriber stores from an event is checked where it stores
+it (area 12, "Subscribers"). Area 15's log redaction covers what a log
+holds.
+
 ## The permissions report
 
 Policy is written beside each entity, so nobody has to keep a central copy.
@@ -881,6 +887,14 @@ record". For the `Project` under "Field restrictions":
 
 Changes to this matrix appear in the approval review in plain terms
 ("viewers can now read `budget`").
+
+Policy adds no index of its own: every field a condition filters on is a
+reference (a user field, a role's or the tenant's reference, a
+membership's scope and member), and each already has its own index (area
+5). Keeping a reference inside the tenant finds the record it points at by
+`id`, its primary key, and a move to another tenant finds the records
+referring to it by their reference, which has its index, so it needs no
+index or migration of its own.
 
 ## Protecting policy
 
@@ -1417,27 +1431,13 @@ person's data needs `delete` on their record and exporting it needs `read`.
 
 ## What is built
 
-Everything on this page is built except the following, each
-`toolchain.not_built_yet` where it is written:
+Each feature not built yet is `toolchain.not_built_yet` where it is written.
 
-- `scopes:`, with the tokens issued to other applications (`oauth_token`,
-  `external_token`).
-- An acceptance for a change that widens access, and the approval review
-  that shows the report's changes (areas 14 and 18).
-
-A restricted field read only in an event isn't an output: an event's
-subscribers (area 12) are server work, so `emit` stores nothing a caller
-reads; what a subscriber stores from an event is checked where it stores
-it (area 12, "Subscribers"). Area 15's log redaction covers what a log
-holds.
-
-Policy adds no index of its own: every field a condition filters on is a
-reference (a user field, a role's or the tenant's reference, a
-membership's scope and member), and each already has its own index (area
-5). Keeping a reference inside the tenant finds the record it points at by
-`id`, its primary key, and a move to another tenant finds the records
-referring to it by their reference, which has its index, so it needs no
-index or migration of its own.
+| Feature | Status |
+|---|---|
+| Everything else on this page | Built. |
+| `scopes:`, with the tokens issued to other applications (`oauth_token`, `external_token`) | Not built yet. |
+| An acceptance for a change that widens access, and the approval review that shows the report's changes | Not built yet (areas 14 and 18). |
 
 ## Errors
 

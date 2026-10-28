@@ -302,7 +302,7 @@ tests/            checkout_to_delivery.test.jadpo
 build/
 ```
 
-### The root
+## The root
 
 - Only these entries: `app.jadpo`, `config.jadpo`, `authentication.jadpo`,
   `policy.jadpo`, `flags.jadpo`, `jadpo.lock`,
@@ -333,7 +333,7 @@ build/
 - A single file handed to the compiler on its own (a test case, a snippet in
   these docs) is checked as one implicit domain with the layout rules off.
 
-### Domains
+## Domains
 
 - Every project has at least one domain, and all code outside the root files
   lives in one. The folder name is the domain's name; nothing in the code
@@ -372,7 +372,7 @@ build/
 | `documents/` | Document types and their templates, one document per name (`invoice_document.jadpo`, `invoice_document.html`), rendered to HTML or PDF by the `documents` capability | Area 16. Not built yet: until the `documents` capability is, a file in `documents/` is `layout.unknown_location` |
 | `fixtures/` | Test data shared by several test files in the domain | |
 
-### Files and names
+## Files and names
 
 - One primary declaration per file, named after it: `ServiceCredential` lives
   in `service_credential.jadpo`. Route groups and libraries are named
@@ -471,7 +471,7 @@ build/
 - Non-Jadpo files (provider contracts, email templates, search mappings) sit
   beside the file that uses them and must be referenced from it.
 
-### Sharing and promotion
+## Sharing and promotion
 
 - A type, failure or helper used by one file lives in that file. When a
   second file in the domain uses it, it must move to a file of its own in the
@@ -539,7 +539,7 @@ build/
   `jadpo check` itself reporting which domains a change affects and running
   their tests.
 
-### Ownership and calls replace modules
+## Ownership and calls replace modules
 
 - A domain owns everything in it and is the visibility boundary.
   Declarations are private to their domain unless marked `public`.
@@ -581,7 +581,7 @@ build/
 - There are no `module` headers; each file names where its names come
   from on `use` lines: see [Imports](#imports).
 
-### Imports
+## Imports
 
 Imports make the place every name comes from readable from the file
 itself, without searching. Without them, a name read in one file could be
@@ -693,7 +693,7 @@ How the lines are written and checked:
 - **The generated namespaces** (`clock`, `config`) are called through
   their names, as the standard library is, and need no import.
 
-### Database
+## Database
 
 - `database/identities.jadpo_record` is the registry that gives every table, column
   and index a stable identity, so renaming a field renames its column instead
@@ -716,7 +716,7 @@ How the lines are written and checked:
   compiler keeps a record of the latest migration so history stays linear.
 - `database/seeds/` holds local demonstration and development data.
 
-### What it looks like in code
+## What it looks like in code
 
 Illustrative; the exact syntax of each piece is settled in the area named.
 
@@ -787,7 +787,7 @@ connections: {
 }
 ```
 
-### Decided in later areas
+## Decided in later areas
 
 Route group syntax (area 7), the `schedule` keyword (area 12), integrations
 and provider API versions (area 11), translation file format (area 10) and the
@@ -803,13 +803,13 @@ The compiler builds the decided layout, with each rule's real output under
 |---|---|
 | Root, domains and their folders | Built: a file where the layout has no place for it is `layout.unknown_location`, and a declaration in the wrong folder `layout.wrong_folder`; a folder or file with no `app.jadpo` above it is checked as loose files. |
 | Files and names | Built: one primary declaration per file, named after it; names unique project-wide; the round-trip and folded-collision rules, with the exception for a type folding to its callable's name. |
-| Names per domain | Built: private functions and types unique only within their domain, each domain's code reading its own; their identity keys carrying the domain, with promotion to `shared/` writing a registry line; `semantic.duplicate_declaration` saying copy or clash and listing the names in use with the same words. `jadpo rename` is not built yet (area 14). |
+| Names per domain | Partly built: private functions and types unique only within their domain, each domain's code reading its own; their identity keys carrying the domain, with promotion to `shared/` writing a registry line; `semantic.duplicate_declaration` saying copy or clash and listing the names in use with the same words. `jadpo rename` is not built yet (area 14). |
 | Order independence | Built: declaration and file order never matter. |
 | Domains, `public` and calls | Built: owner-qualified calls and per-declaration `public`, with `visibility.private_cross_domain`, `visibility.public_not_allowed` and `visibility.public_unused`. |
 | Reserved words | Built: a reserved word can't name anything. |
 | Comments | Built: `//` and `///` documentation comments. |
 | Similar helpers | Built: `library.similar_exists`, a declinable error. |
-| Declinable errors | Built: no warning severity; the `decline <rule>: "<reason>"` line with `decline.unused`, `decline.not_declinable` and `decline.no_reason`; `jadpo declines list` and `clear`; the editor's "Decline with a reason" and "Remove decline". `jadpo approval` (area 18) and the date rule for expired flags (area 16) are not built yet. |
+| Declinable errors | Partly built: no warning severity; the `decline <rule>: "<reason>"` line with `decline.unused`, `decline.not_declinable` and `decline.no_reason`; `jadpo declines list` and `clear`; the editor's "Decline with a reason" and "Remove decline". `jadpo approval` (area 18) and the date rule for expired flags (area 16) are not built yet. |
 | Constants | Built: `constant` as a reserved word and a declaration placed and shared as helper functions are, a private one unique within its domain, `constant.similar_exists`, and a top-level `var` pointed at `constant` (area 3). |
 | Imports | Built: `use <folder> { Names }` and `use <domain>`, with `import.missing`, `import.unknown`, `import.unused`, `import.unneeded` and `import.duplicate`; `jadpo fmt` adds, removes and sorts imports, `jadpo fmt --layout` makes promotion moves, and go to definition works from every use of a name, a `use` line's included. |
 | A file holds only what its primary declaration uses | Built: `layout.unused_declaration` for a supporting declaration the primary declaration doesn't use, directly or through one another. |

@@ -1024,8 +1024,9 @@ overload (area 19, "`Money` and the operator table").
 
 ## What is built
 
-Built. Every example and error above is checked against the compiler on
-each gate run, [Constants](#constants) included.
+| Feature | Status |
+|---|---|
+| Everything on this page, [Constants](#constants) included | Built: every example on this page and every error's example is checked against the compiler on each gate run. |
 
 ## Errors
 

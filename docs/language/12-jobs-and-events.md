@@ -495,7 +495,7 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
 }
 ```
 
-### How a run is kept
+## How a run is kept
 
 - **A batch is a page.** Each transaction is one page of `from:`, at the
   size its query's `page:` reads, so 60 items in pages of 3 commit 20
@@ -654,7 +654,7 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
 - **Names.** `batches` is a standard namespace, so, as every one, it names
   no variable.
 
-### How a file's run is kept
+## How a file's run is kept
 
 What a file helper's run (`csv.read`, `tsv.read`, `json_lines.read` and
 `json.read`'s file form) does beyond a query's run, taking the most
@@ -748,7 +748,7 @@ conservative reading of "Batches" above and area 19's "Data formats":
 - **Encodings.** UTF-8, a byte-order mark removed, and UTF-16 with its
   mark, little- or big-endian, never guessed; anything else isn't text.
 
-### How an export's run is kept
+## How an export's run is kept
 
 What a file helper's write (`csv.write`, `tsv.write`, `json_lines.write`
 and `json.write`'s file form) does beyond a query's run, taking the most
@@ -793,7 +793,7 @@ which says how each row is written:
 - **A store with no room** pauses the run, as one that can't be reached
   does: what committed stands, and the tick carries it on.
 
-### Batches, tenants and grants
+## Batches, tenants and grants
 
 In an application with a `tenant:`, each page's read, its items and
 `finished:` act as the system limited to the tenant the run's saved values
@@ -950,7 +950,7 @@ error: `mark_seen` runs as the system, which only `Access.public` lets update `I
 check failed: 1 error, 1 file
 ```
 
-### What a run reaches under policy
+## What a run reaches under policy
 
 - **What the summary carries.** An `ImportSummary` holds counts and
   problems, never a record's fields. `items` shows nothing of the items
@@ -979,7 +979,7 @@ check failed: 1 error, 1 file
   subscriber or a batch reaches is checked against the line under
   `actions:` of every action it reaches, not only the one it runs, and a
   listed action's line decides its own body's writes wherever it is
-  called from (area 9's Decisions, "Lines of the actions background work
+  called from ([area 9's design notes](notes/09-policy.md), "Lines of the actions background work
   calls"). Routes are checked the same way.
 - **What the run's actions show.** Nothing reaches whoever started the
   run: a failure's fields and a record found by a value are shown to
@@ -2170,7 +2170,7 @@ stops short.
   itself, through the loopback binding `ctx.exports` gives its own
   `JadpoHandOn` entrypoint, naming each piece by its record, which the
   fresh invocation reads back and runs in its own `waitUntil`, within
-  what is left of its own 30 seconds, counted from its start (Decisions,
+  what is left of its own 30 seconds, counted from its start ([design notes](notes/12-jobs-and-events.md),
   "Work handed on, on Workers"). A
   hand-on the platform refuses, as past its limit on invocations one
   request chains, leaves the work in the store for the minute's cron. The tick finds what is due at its time, then runs
@@ -2668,15 +2668,13 @@ Numbers are recommendations to confirm with measured runs (question 12).
 
 ## What is built
 
-Everything on this page is built except:
-
-- publishing chosen public events outward;
-- each step's state in `jadpo watch`, and in `jadpo trace` with the
-  request timelines (area 17), and a record's entry in the personal-data
-  report (area 15);
-- sending the metrics and the alerts' log events to a monitoring tool,
-  which waits for telemetry (area 16), and the console's timeline
-  (area 17).
+| Feature | Status |
+|---|---|
+| Everything else on this page | Built. |
+| Publishing chosen public events outward | Not built yet. |
+| Each step's state in `jadpo watch`, and in `jadpo trace` with the request timelines (area 17), and a record's entry in the personal-data report (area 15) | Not built yet. |
+| Sending the metrics and the alerts' log events to a monitoring tool | Not built yet: waits for telemetry (area 16). |
+| The console's timeline | Not built yet (area 17). |
 
 [The roadmap](../roadmap.md) says when.
 

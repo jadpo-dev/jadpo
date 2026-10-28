@@ -3229,7 +3229,7 @@ call (`after_effect`), and the app's call of it is the point. Each
 route's action sums the `timeout:` times the attempts of every outside
 call on its longest way, a provider's operation and an `ai` call alike,
 against the route's `deadline:`, which is how question 8's single call is
-checked too. The choices are in area 12's decisions.
+checked too. The choices are in [area 12's notes](notes/12-jobs-and-events.md).
 
 ## Receiving from outside
 
@@ -3969,7 +3969,7 @@ not run there.
 > routes of the APIs it serves and the background work it runs, through
 > every callable they call. An app that declares no deployables, and a
 > deployable with no `target:`, has no target, so nothing is refused for
-> it (area 14, Decisions). An in-memory cache is checked once caches are
+> it ([area 14's notes](notes/14-tooling.md)). An in-memory cache is checked once caches are
 > built.
 
 ### Choosing a provider when deploying
@@ -5768,26 +5768,29 @@ next: jadpo check  shows what to fit to the app
 
 ## What is built
 
-Built: the package format, names and the lock; the surface, `jadpo
-package show` and `jadpo package check` with the publishing bar;
-installing (`add` from a folder or git, `update`, `remove`, `link` and
-`unlink`); connections to packages and the network report; lazy loading,
-the package cache and two versions side by side; the OpenAPI importer;
-provider calls, decoding, `wire_parts:` and retries; fakes, recordings
-and provider calls faked in development; the scoped review of an
-import's types; the `email` capability with SMTP and Resend; no
-transaction open during a call; package actions, subscribers, recipes and
-polls; several changing calls in one action; webhooks as events, replies,
-handshakes, queues through a package and the Cloudflare Queues driver.
+| Feature | Status |
+|---|---|
+| The package format, names and the lock | Built. |
+| The surface, `jadpo package show` and `jadpo package check` with the publishing bar | Built. |
+| Installing: `add` from a folder or git, `update`, `remove`, `link` and `unlink` | Built. |
+| Connections to packages and the network report | Built. |
+| Lazy loading, the package cache and two versions side by side | Built. |
+| The OpenAPI importer, and the scoped review of an import's types | Built. |
+| Provider calls, decoding, `wire_parts:` and retries | Built. |
+| No transaction open during a call, and several changing calls in one action | Built. |
+| Fakes, recordings and provider calls faked in development | Built. |
+| The `email` capability with SMTP and Resend | Built. |
+| Package actions, subscribers, recipes and polls | Built. |
+| Webhooks as events, replies, handshakes, queues through a package and the Cloudflare Queues driver | Built. |
+| Services (`runs:`) | Not built yet. |
+| OAuth grants | Not built yet. |
+| Publisher trust for third-party git packages | Not built yet. |
+| The hosted registry | Not built yet. |
+| Importers other than OpenAPI | Not built yet. |
+| Choosing a provider when deploying | Not built yet. |
+| Erasure at providers | Not built yet: it comes with personal data (area 15). |
 
-Not built yet: services (`runs:`); OAuth grants; publisher trust for
-third-party git packages; the hosted registry; importers other than
-OpenAPI; choosing a provider when deploying; erasure at providers, which
-comes with personal data (area 15). [The roadmap](../roadmap.md) says
-when.
-
-Each section below settles what the topic sections leave open, taking
-the most conservative reading.
+[The roadmap](../roadmap.md) says when each comes.
 
 ## Errors
 

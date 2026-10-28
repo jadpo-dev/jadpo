@@ -7,6 +7,10 @@ area: 5
 
 Why [Data](../05-data.md) is the way it is: the decisions behind it, how it fits the rest of the language and what it carried to other areas. An app author reads the area page, not this one.
 
+## Status
+
+An entity's `policy:` and `membership:` are area 9's.
+
 ## Carried to later areas
 
 | Item | Area | Status |

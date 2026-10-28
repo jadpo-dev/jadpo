@@ -11,7 +11,7 @@ Which common backend features Jadpo should provide itself, rather than
 leaving each application to install a library or write its own: feature
 flags, rate limits, files, audit trails, tracing, email and search.
 
-> Built: the capability seam, the `files` capability's first part, email (its templates, sending over SMTP or a mail package, the dev inbox and the health score), Jadpo's magic-link email, and rate limits with their store on Workers; [Status](#status) says what is not built yet. Examples apply the decisions from areas 1 to 16.
+> Built: the capability seam, the `files` capability's first part, email (its templates, sending over SMTP or a mail package, the dev inbox and the health score), Jadpo's magic-link email, and rate limits with their store on Workers; [What is built](#what-is-built) says what is not built yet. Examples apply the decisions from areas 1 to 16.
 
 **The test for "native".** A feature is built in only when the compiler
 gains something by knowing about it: a mistake becomes a compile error, a
@@ -1091,7 +1091,7 @@ test "signing up welcomes the new user, with a link to sign in" {
 - Two kinds of mail through two connections (transactional and bulk) wait
   for an app that asks.
 
-### The SMTP driver
+## The SMTP driver
 
 Area 11 leaves the driver's settings to this page. A connection with `driver: Driver.smtp`
 gives `host:`, its server's name, written out or read from a setting
@@ -1155,7 +1155,7 @@ config {
   `recipient_rejected`, the message as `message_rejected`; a refused
   credential or sender is `misconfigured`.
 
-### Built-in emails
+## Built-in emails
 
 > Built with the features that send them: magic-link sign-in (area 8),
 > its email at all five levels ("Levels 4 and 5 of the magic-link email" below). The privacy emails come
@@ -2151,43 +2151,26 @@ How a gzip file is read, as "Files" above says:
 
 ## What is built
 
-Built: email's templates, the shared layout, `email:`, sending after
-commit through the SMTP driver, attachments and parking ("Email templates
-and sending" below); Jadpo's own magic-link email at all five levels,
-worded by Jadpo or reworded by the app, wrapped in the app's layout, the
-app's own email filled with the link and the code, or the app's own
-sending given them ("Jadpo's own magic-link email" and "Levels 4 and 5 of
-the magic-link email" below); a mail package as the connection, partials
-and `email.sent` ("Mail packages, partials and `email.sent`" below); the
-dev inbox, `jadpo email`, the health score, `email.health_problem` and
-`jadpo email check-domain` ("The dev inbox and the health score" below),
-with SpamAssassin's rules in the score ("SpamAssassin in the health
-score" below). The SMTP conversation runs in the driver, over the host's
-transport and its TLS upgrade (docs/compiler-runtime.md §2.6, "TLS
-through the transport"). Default rate limits are built with routes, and
-their store on Workers, Cloudflare's rate-limiting binding ("Rate limits
-on Workers" below). The seam every capability's calls go through is
-built, with a delivery that hands its event to a capability, parked as
-`outcome_unknown` when a send without a key may have acted ("The seam
-every outside call goes through" below). So is the `files` capability's
-first part on that seam: `Driver.disk` connections, `File` fields,
-`store.put`, `store.read` with its whole-read cap and its two errors, the
-disk driver `jadpo dev` keeps files with and the in-memory store a test's
-are in, which the file helpers' reads walk (area 19, "Data formats";
-"Files: `put`, `read` and the disk driver in development" below); the
-pieces the file helpers' writes put, joined into one file or dropped by
-the store ("Files: an export's pieces" below); and a gzip file unpacked
-as the file helpers read it, up to `max_unpacked_size:` ("Reading gzip"
-below).
-
-Not built yet ([the roadmap](../roadmap.md)): flags; the rest of files
-(upload slots, multipart ones included, downloads, deleting and erasing a
-file's bytes, the S3 driver, a deployable's disk driver at its `path:`
-and `free_space_floor:`, checking a stored file against its field's
-`max_size:`, `types:` and `store:` as it is written, and image variants
-and scanning when an app needs them); audit; search; documents; bot
-protection; the `telemetry:` section; path IDs and monitoring thresholds.
 The errors this page describes are built with the feature they belong to.
+
+| Feature | Status |
+|---|---|
+| Email | Built: email's templates, the shared layout, `email:`, sending after commit through the SMTP driver, attachments and parking ("Email templates and sending" below). The SMTP conversation runs in the driver, over the host's transport and its TLS upgrade (docs/compiler-runtime.md §2.6, "TLS through the transport"). |
+| Jadpo's own magic-link email | Built: at all five levels, worded by Jadpo or reworded by the app, wrapped in the app's layout, the app's own email filled with the link and the code, or the app's own sending given them ("Jadpo's own magic-link email" and "Levels 4 and 5 of the magic-link email" below). |
+| Mail packages | Built: a mail package as the connection, partials and `email.sent` ("Mail packages, partials and `email.sent`" below). |
+| The dev inbox and the health score | Built: the dev inbox, `jadpo email`, the health score, `email.health_problem` and `jadpo email check-domain` ("The dev inbox and the health score" below), with SpamAssassin's rules in the score ("SpamAssassin in the health score" below). |
+| Rate limits | Built: default rate limits with routes, and their store on Workers, Cloudflare's rate-limiting binding ("Rate limits on Workers" below). |
+| The capability seam | Built: the seam every capability's calls go through, with a delivery that hands its event to a capability, parked as `outcome_unknown` when a send without a key may have acted ("The seam every outside call goes through" below). |
+| Files | Partly built. Built: the `files` capability's first part on that seam: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk (area 19, "Data formats"; "Files: `put`, `read` and the disk driver in development" below); the pieces the file helpers' writes put, joined into one file or dropped by the store ("Files: an export's pieces" below); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ("Reading gzip" below). Not built yet: upload slots, multipart ones included, downloads, deleting and erasing a file's bytes, the S3 driver, a deployable's disk driver at its `path:` and `free_space_floor:`, checking a stored file against its field's `max_size:`, `types:` and `store:` as it is written, and image variants and scanning when an app needs them. |
+| Flags | Not built yet. |
+| Audit | Not built yet. |
+| Search | Not built yet. |
+| Documents | Not built yet. |
+| Bot protection | Not built yet. |
+| The `telemetry:` section | Not built yet. |
+| Path IDs and monitoring thresholds | Not built yet. |
+
+[The roadmap](../roadmap.md) says when.
 
 ## Errors
 

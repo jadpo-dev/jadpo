@@ -1571,28 +1571,24 @@ action complete_todo(todo_id: Todo.id) fails TodoNotFound -> Todo {
 
 ## What is built
 
-Built: entities, their fields, references, unique rules, indexes and
-stores; migrations, computed backfills and the test database; PostgreSQL
-over TLS and through Hyperdrive; lifecycles; structured values stored as
-JSON, and their migrations; and the check of every stored value on read.
-The manifest holds a node for each entity's placement, unique rule, index
-and reference, with `references` edges between entities, one for each
-system table and migration snapshot, and one for each lifecycle and
-transition (`lifecycle Todo`, `transition Todo.delete`, with its `when:`,
-whether it can refuse a record and the fields it sets).
+Each feature not built yet is `toolchain.not_built_yet` where it is used.
 
-Not built yet, and said so where it is used (`toolchain.not_built_yet`):
-
-- Removing an entity, moving one between stores, dropping a retired column
-  (it needs acceptances, area 18) and other column type changes, in
-  `jadpo migrate new`; a worked-out backfill for a field that allows less.
-- Entities in Redis, record caches (`caches:`), and index kinds other than
-  geographic and HNSW. A database implied only when something needs one
-  (question 14) comes with the first feature that can run without one.
-- Seeds and `jadpo seed`.
-- `jadpo rename`, which writes the identity registry (area 14).
-
-An entity's `policy:` and `membership:` are area 9's.
+| Feature | Status |
+|---|---|
+| Entities, their fields, references, unique rules, indexes and stores | Built. |
+| Migrations, computed backfills and the test database | Built. |
+| PostgreSQL over TLS and through Hyperdrive | Built. |
+| Lifecycles | Built. |
+| Structured values stored as JSON, and their migrations | Built. |
+| The check of every stored value on read | Built. |
+| Manifest nodes | Built: a node for each entity's placement, unique rule, index and reference, with `references` edges between entities, one for each system table and migration snapshot, and one for each lifecycle and transition (`lifecycle Todo`, `transition Todo.delete`, with its `when:`, whether it can refuse a record and the fields it sets). |
+| Other schema changes in `jadpo migrate new` | Not built yet: removing an entity, moving one between stores, dropping a retired column (it needs acceptances, area 18) and other column type changes. |
+| A worked-out backfill for a field that allows less | Not built yet. |
+| Entities in Redis and record caches (`caches:`) | Not built yet. |
+| Index kinds other than geographic and HNSW | Not built yet. |
+| A database implied only when something needs one (question 14) | Not built yet: it comes with the first feature that can run without one. |
+| Seeds and `jadpo seed` | Not built yet. |
+| `jadpo rename` | Not built yet: it writes the identity registry (area 14). |
 
 ## Errors
 

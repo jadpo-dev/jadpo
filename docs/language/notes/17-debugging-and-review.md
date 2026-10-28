@@ -7,6 +7,12 @@ area: 17
 
 Why [Debugging and review](../17-debugging-and-review.md) is the way it is: the decisions behind it, how it fits the rest of the language and what it carried to other areas. An app author reads the area page, not this one.
 
+## Status
+
+Build order: mapped stacks, the timeline and `trace`, `why`, `test new
+--from`, `call`, the review report's order, MCP, the console, then the
+review web view. See [the roadmap](../../roadmap.md).
+
 ## Consistency with the rest of the language
 
 - **Values never, places always.** Stacks, timelines and `why` answers follow

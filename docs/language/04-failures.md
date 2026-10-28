@@ -561,7 +561,7 @@ not just different words, map it to the app's own failure at the call with
 
 | Feature | Status |
 |---|---|
-| Declaring failures, kinds and codes | Built, with the checks in Errors above. |
+| Declaring failures, kinds and codes | Built, with the checks under [Errors](#errors). |
 | `fails`, `reject`, `attempt` and handling in `match` | Built. |
 | Mapping | Built: a construction's rule arms and `invalid:`, proof that a construction cannot break, a query's `missing:` and writes' `conflict:` and `empty:`, each with its kind check. |
 | Faults from code | Built: `Int` and `Decimal` overflow and the recursion limit are faults at their site, and a failure keeps the path it travelled and the failure it was mapped from. |

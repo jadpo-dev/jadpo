@@ -48,3 +48,29 @@ Why [Values and types](../02-values-and-types.md) is the way it is: the decision
 | Lists | Square brackets are the only way to write a list: `pick: [Todo.id, Todo.title]`, `[create, read]`; braces never hold comma lists, apart from a `use` line's names (area 1); signatures keep their commas (parameters, `fails A, B`). |
 | Messages and `PluralCount` | `Message` is a type base for translated messages, its fields the placeholders; `PluralCount` is a built-in whole number that picks a plural form, and `TextDirection` a locale's direction; enums have no display labels, and their wording for people lives in translations (area 10). |
 | Types from the services decisions | `File`, `FileUpload`, `UploadSlot`, `FileContents`, the batch types, `CsvFormat`, `SearchText`, `OAuthGrant`, `AnyObject` and the `Document` base, as [Other built-in types](../02-values-and-types.md#other-built-in-types) lists them (areas 11, 12 and 16). |
+
+## Why so many standard types
+
+- **Whole categories of bug disappear:** unit confusion, floating-point
+  money, mixed currencies, latitude and longitude the wrong way round, and
+  month-end and time-zone arithmetic.
+- **No choosing between competing libraries** for dates, money or addresses:
+  there is one of each.
+- **Packages and apps speak the same types,** so integration code doesn't
+  translate between them. `type.standard_exists` keeps it that way: e-commerce
+  packages share `Money`, `Price`, `UnitPrice`, `TaxRate`, `Discount`, `Sku`,
+  `PostalAddress`, `Email` and `PhoneNumber` instead of each declaring its own.
+- **Validation, storage columns, JSON and API formats come with each type.**
+- **Formatting follows the locale** the same way everywhere.
+- **Agents can't hand-roll a broken `Money`,** and a reviewer who reads
+  `Money` knows exactly what it means.
+- **Hand-rolled versions are found for you.** `jadpo suggest` scans a
+  project for money, durations, units, points and loops written by hand
+  (`price * 100`, `timeout_ms: Int`, `"£" + text.from(pence)`) and names
+  the standard type or operation to use; the agent makes the edit. A miss
+  it should have caught is taught with `jadpo suggest found`, and with
+  your approval `jadpo suggest share` sends what was learned to Jadpo, so
+  the signals improve for everyone ([tooling](../14-tooling.md#suggestions)).
+
+[Area 19](../19-standard-library.md#the-standard-types) has the full list and
+every operation.

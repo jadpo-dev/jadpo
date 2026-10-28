@@ -12,7 +12,7 @@ input a route takes, its output and status, time limits, health endpoints,
 separate APIs and versions, webhooks, how failures reach the client,
 OpenAPI, and how a breaking change to the API is caught.
 
-> Built, but for what the [status](#status) lists as not built yet.
+> Built, but for what [What is built](#what-is-built) lists as not built yet.
 
 The rule behind all of it: **a route is a thin door.** It says which method
 and URL, what comes in, what goes out and what runs. Logic lives in actions
@@ -695,7 +695,7 @@ The route is
 declares, whose record and OpenAPI document list it, or `/webhooks/<connection>`
 outside every declared API; `jadpo routes` shows it as `generated webhook`
 with `signature` for its authentication, and an app route at its path is
-`route.path_overlap` (area 11's decisions). Replies and handshakes are
+`route.path_overlap` ([area 11's notes](notes/11-integrations.md)). Replies and handshakes are
 area 11's ("Webhook replies, handshakes and further signature schemes").
 
 Two senders reach ordinary routes: a system that
@@ -719,7 +719,7 @@ running fails `conflict` (409). Successes and failures the action returns
 are kept; `unavailable` and internal failures are not, so a retry runs
 again. Integration calls in the action send keys derived from it (area
 11). An API can require the key with `idempotency: Idempotency.required`,
-and OpenAPI lists the header. The details are under Decisions,
+and OpenAPI lists the header. The details are in the [design notes](notes/07-http.md),
 "Idempotency keys".
 
 ## How failures reach the client
@@ -1133,7 +1133,7 @@ one file in `acceptances/` per decision, listing the changes it allows,
 counted only in the change that adds it. `acceptances/` and `api/` are owned
 in CODEOWNERS, so the host's review shows who approved it. Telling breaking
 changes apart and requiring their acceptance are not built yet (area 18,
-"Status"); until they are, the record's diff is what a reviewer reads.
+"What is built"); until they are, the record's diff is what a reviewer reads.
 
 ## Write revisions
 
@@ -1143,63 +1143,28 @@ get the same value as a cookie; a client that sends it back skips caches
 
 ## What is built
 
-Built. `jadpo check` checks route groups, their prefixes and APIs (with
-`idempotency:`), methods and typed placeholders, the one input (from the
-query string for `GET` and `DELETE`, the JSON body otherwise, and
-`header:` fields), `output:` and `status:`, `deadline:`'s range and what
-`run:` calls, every route of the project against the others and the health
-paths, and each API's record; it writes one OpenAPI document per API to
-`build/openapi/`. The runtime's HTTP component routes a request, decodes
-and checks its input (each problem as `{ field, rule }`), runs the action
-or query, and answers with the output or the failure envelope, its
-`request_id` and `x-request-id`, with the status the failure's kind sets;
-it answers `HEAD` and `OPTIONS` itself and counts the default rate limits.
-It reads a body only as JSON, refuses a query string or body a route
-doesn't read and a header it can't read, refuses a body over 1 MB, stops a
-route at its deadline without committing, even work that never waits,
-runs an action again on a concurrent change found as it commits, answers
-`/health/live` and `/health/ready`, and keeps each write's
-`Idempotency-Key` with its response. `jadpo dev` serves it and reloads on
-save, `jadpo routes` lists the routes and `jadpo api update` writes the
-records, each `api/<api>.jadpo_record` in the record format with no
-`version:` line; the OpenAPI version is a hash of it. Each API serves its
-own document at `<prefix>/openapi.json` (`serve_openapi: false` turns it
-off), listed in its record, its document and `jadpo routes`, and the
-documents carry the `x-jadpo` fields area 11's importer reads ("OpenAPI").
-OpenAPI derives each route's responses from what it runs and shows
-`ZonedTime`, `Zone` and a mixed enum as they are sent. Natively, a client
-has 10 seconds for its headers and 30 for its body, and the server holds
-at most 1,024 connections and 10 database connections per store per
-worker.
+Each feature not built yet is `toolchain.not_built_yet` where it is written.
 
-Every route needs a signed-in caller unless it says
-`authentication: RouteAuthentication.none`; each API lists the sign-in
-methods it accepts, named in its record; a route passes
-`current_principal` to what it runs; a signed-in caller's requests count
-against its own rate limit, and its idempotency keys are its own; a
-request with a credential on a route anyone may call counts against its
-address before it runs (area 8). Policy decides what each route reaches,
-and OpenAPI lists the 403 `not_permitted` on every route that runs an
-action that writes or is listed under `actions:` (area 9). A `GET` runs
-`sessions.tokens` and `<Service>.keys` itself, and the record and OpenAPI
-describe the `IssuedToken` and `IssuedKey` it sends (area 8).
-
-A route may send a `FeatureCollection<G, P>` bare, its properties held to
-what an `Output` may hold and, where an action returns it, to the fields
-every caller may read (area 9); OpenAPI describes RFC 7946's object and
-the record names it with its type arguments. A `GET` sends one a query
-gives (area 6, "A query giving a map layer"), held to field policy where
-the query is declared. A route waits for the work its action set off with
-`settle:` ("Waiting for follow-on work", and
-`route.settle_invalid`). A route whose action returns an `AiStream` sends
-a model's answer as server-sent events ("Streaming a model's answer", and
-`route.stream_invalid`).
-
-Not built yet: `x-jadpo-events`, which waits for publishing events
-outward (area 12); a route's own `rate_limit:` and the Redis store for
-rate limits (area 16); classifying breaking changes and their acceptances
-(area 18); the `Jadpo-Revision` header, which comes with caches (area 6).
-Each is `toolchain.not_built_yet` where it is written.
+| Feature | Status |
+|---|---|
+| Checking routes | Built: `jadpo check` checks route groups, their prefixes and APIs (with `idempotency:`), methods and typed placeholders, the one input (from the query string for `GET` and `DELETE`, the JSON body otherwise, and `header:` fields), `output:` and `status:`, `deadline:`'s range and what `run:` calls, every route of the project against the others and the health paths, and each API's record. |
+| OpenAPI | Built: `jadpo check` writes one OpenAPI document per API to `build/openapi/`. Each API serves its own document at `<prefix>/openapi.json` (`serve_openapi: false` turns it off), listed in its record, its document and `jadpo routes`, and the documents carry the `x-jadpo` fields area 11's importer reads ("OpenAPI"). OpenAPI derives each route's responses from what it runs and shows `ZonedTime`, `Zone` and a mixed enum as they are sent. |
+| Serving a request | Built: the runtime's HTTP component routes a request, decodes and checks its input (each problem as `{ field, rule }`), runs the action or query, and answers with the output or the failure envelope, its `request_id` and `x-request-id`, with the status the failure's kind sets; it answers `HEAD` and `OPTIONS` itself and counts the default rate limits. It reads a body only as JSON, and refuses a query string or body a route doesn't read, a header it can't read and a body over 1 MB. |
+| Deadlines and concurrent changes | Built: the runtime stops a route at its deadline without committing, even work that never waits, and runs an action again on a concurrent change found as it commits. |
+| Health endpoints | Built: `/health/live` and `/health/ready`. |
+| Idempotent writes | Built: the runtime keeps each write's `Idempotency-Key` with its response. |
+| Commands | Built: `jadpo dev` serves the routes and reloads on save, `jadpo routes` lists them and `jadpo api update` writes the records, each `api/<api>.jadpo_record` in the record format with no `version:` line; the OpenAPI version is a hash of it. |
+| Native connection limits | Built: natively, a client has 10 seconds for its headers and 30 for its body, and the server holds at most 1,024 connections and 10 database connections per store per worker. |
+| Sign-in (area 8) | Built: every route needs a signed-in caller unless it says `authentication: RouteAuthentication.none`; each API lists the sign-in methods it accepts, named in its record; a route passes `current_principal` to what it runs; a signed-in caller's requests count against its own rate limit, and its idempotency keys are its own; a request with a credential on a route anyone may call counts against its address before it runs. |
+| Policy (area 9) | Built: policy decides what each route reaches, and OpenAPI lists the 403 `not_permitted` on every route that runs an action that writes or is listed under `actions:`. |
+| Issued tokens and keys (area 8) | Built: a `GET` runs `sessions.tokens` and `<Service>.keys` itself, and the record and OpenAPI describe the `IssuedToken` and `IssuedKey` it sends. |
+| Map layers | Built: a route may send a `FeatureCollection<G, P>` bare, its properties held to what an `Output` may hold and, where an action returns it, to the fields every caller may read (area 9); OpenAPI describes RFC 7946's object and the record names it with its type arguments. A `GET` sends one a query gives (area 6, "A query giving a map layer"), held to field policy where the query is declared. |
+| `settle:` | Built: a route waits for the work its action set off ("Waiting for follow-on work", and `route.settle_invalid`). |
+| Streaming | Built: a route whose action returns an `AiStream` sends a model's answer as server-sent events ("Streaming a model's answer", and `route.stream_invalid`). |
+| `x-jadpo-events` | Not built yet: it waits for publishing events outward (area 12). |
+| A route's own `rate_limit:` and the Redis store for rate limits | Not built yet (area 16). |
+| Classifying breaking changes and their acceptances | Not built yet (area 18). |
+| The `Jadpo-Revision` header | Not built yet: it comes with caches (area 6). |
 
 ## Errors
 

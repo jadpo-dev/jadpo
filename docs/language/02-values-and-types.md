@@ -327,32 +327,6 @@ test "calendar and clock arithmetic" {
 }
 ```
 
-#### Why so many standard types
-
-- **Whole categories of bug disappear:** unit confusion, floating-point
-  money, mixed currencies, latitude and longitude the wrong way round, and
-  month-end and time-zone arithmetic.
-- **No choosing between competing libraries** for dates, money or addresses:
-  there is one of each.
-- **Packages and apps speak the same types,** so integration code doesn't
-  translate between them. `type.standard_exists` keeps it that way: e-commerce
-  packages share `Money`, `Price`, `UnitPrice`, `TaxRate`, `Discount`, `Sku`,
-  `PostalAddress`, `Email` and `PhoneNumber` instead of each declaring its own.
-- **Validation, storage columns, JSON and API formats come with each type.**
-- **Formatting follows the locale** the same way everywhere.
-- **Agents can't hand-roll a broken `Money`,** and a reviewer who reads
-  `Money` knows exactly what it means.
-- **Hand-rolled versions are found for you.** `jadpo suggest` scans a
-  project for money, durations, units, points and loops written by hand
-  (`price * 100`, `timeout_ms: Int`, `"£" + text.from(pence)`) and names
-  the standard type or operation to use; the agent makes the edit. A miss
-  it should have caught is taught with `jadpo suggest found`, and with
-  your approval `jadpo suggest share` sends what was learned to Jadpo, so
-  the signals improve for everyone ([tooling](14-tooling.md#suggestions)).
-
-[Area 19](19-standard-library.md#the-standard-types) has the full list and
-every operation.
-
 ### Other built-in types
 
 | Kind | Types | Notes |
@@ -1819,14 +1793,12 @@ function restock(product: Product, stock: Stock) -> Product {
 
 ## What is built
 
-Everything on this page is built except a map literal with entries, which
-is not designed yet, and `FileUpload`, `UploadSlot`, `SearchText`, `OAuthGrant`,
-`AnyObject` and the `Document` base, which come with the features that use
-them. Only the runtime builds a `BatchRun`, `BatchProgress`, `RowProblem`,
-`ImportSummary`, `ExportSummary`, `File` or `FileContents`. A program reads
-the batch types' fields, an entity field keeps a `BatchRun` or a `File` as
-its JSON, and a program can't read a `File`'s or a `FileContents`'s parts
-yet.
+| Feature | Status |
+|---|---|
+| Everything else on this page | Built. |
+| A map literal with entries | Not built yet: it is not designed yet. |
+| `FileUpload`, `UploadSlot`, `SearchText`, `OAuthGrant`, `AnyObject` and the `Document` base | Not built yet: each comes with the features that use it. |
+| `BatchRun`, `BatchProgress`, `RowProblem`, `ImportSummary`, `ExportSummary`, `File` and `FileContents` | Partly built: only the runtime builds one. A program reads the batch types' fields, and an entity field keeps a `BatchRun` or a `File` as its JSON; a program can't read a `File`'s or a `FileContents`'s parts yet. |
 
 ## Errors
 

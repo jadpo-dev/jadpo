@@ -18,7 +18,7 @@ is a view of it. Reviewing a change means comparing two manifests, and
 explaining a production event means rebuilding the manifest of the build
 that raised it.
 
-> The manifest, migrations and the record format with `jadpo records` are built; the [status table](#status) says what else is.
+> The manifest, migrations and the record format with `jadpo records` are built; [What is built](#what-is-built) says what else is.
 
 | Name | Holds | Where | Committed | Written by | Read by |
 |---|---|---|---|---|---|
@@ -327,7 +327,7 @@ that path numbers decode against, and each deployable's build id.
   source is the deployable's program as it is compiled from what it
   reaches, its Rust and its plan, with its name and its stores'
   migrations, so a change to what only another deployable reaches, or to
-  a test, leaves its id alone (Decisions, "What a build id digests"). A project with errors builds nothing, so the manifest gives its
+  a test, leaves its id alone ([design notes](notes/18-records-and-manifest.md), "What a build id digests"). A project with errors builds nothing, so the manifest gives its
   deployables no `build`.
 - **Format.** The JSON is canonical: sorted, with relative paths and no
   timestamps. `format` changes only when a field is removed or changes
@@ -614,11 +614,11 @@ that the path number cannot be decoded.
 | Feature | Status |
 |---|---|
 | Manifest | Built: `jadpo check` writes `build/manifest.json` at `format` 2, with nodes for areas 1 to 4 and their `calls`, `uses` and `raises` edges, policy's grants, field restrictions, tenancies and listed actions with `grants` and `scopes` edges, prompts, and the build stamp. Schedules, hosts, personal fields and thresholds join as their areas are built. |
-| Views of it | The library and failure catalogues are built, and one OpenAPI document per API in `build/openapi/`; the other reports and the monitoring rules come with their areas. |
+| Views of it | Partly built: the library and failure catalogues are built, and one OpenAPI document per API in `build/openapi/`; the other reports and the monitoring rules come with their areas. |
 | Migrations | Built: `jadpo migrate new` writes each folder, and `jadpo check` fails while the entities and the latest snapshot disagree. Each folder is a `migration_snapshot` node in the manifest. |
 | Stable identity | Built: a key is the kind and the born name, a function or type declared in a domain carries its domain, and a test's key is the file it sits beside and its sentence. The registry is read once `jadpo rename` writes it (area 14). |
-| API record | Built: `jadpo api update` writes `api/<api>.jadpo_record` for each API with routes, and `jadpo check` fails with `record.out_of_date` while one disagrees with the routes, naming what changed. Breaking-change classification and acceptances are not built yet. |
-| `.jadpo_record` files | Built: every record in the record format, the API record without `version:`, the registry as `database/identities.jadpo_record`, the header check, `record.out_of_date`, `record.edited` and `record.format_newer`, `jadpo records` and `jadpo records update`. Not built: telling a careful hand edit of a view from a stale one, which needs the base build that comes with `jadpo approval`; the editor grammar and `jadpo lsp` serving records; `.gitattributes` from `jadpo new`. |
+| API record | Partly built: `jadpo api update` writes `api/<api>.jadpo_record` for each API with routes, and `jadpo check` fails with `record.out_of_date` while one disagrees with the routes, naming what changed. Not built yet: breaking-change classification and acceptances. |
+| `.jadpo_record` files | Partly built: every record in the record format, the API record without `version:`, the registry as `database/identities.jadpo_record`, the header check, `record.out_of_date`, `record.edited` and `record.format_newer`, `jadpo records` and `jadpo records update`. Not built yet: telling a careful hand edit of a view from a stale one, which needs the base build that comes with `jadpo approval`; the editor grammar and `jadpo lsp` serving records; `.gitattributes` from `jadpo new`. |
 | Event records | Built: one view per domain with events, `domains/<domain>/events/events.jadpo_record`, written by `jadpo records update` and checked as the API record is; what area 12's "The event record" records. Acceptances come with the API record's. |
 | Lock and package surfaces | Built. The lock is a ledger read and checked like the others, and `jadpo check` holds each installed package to its line and digest (area 11 gives the digest). `jadpo package add`, `update`, `remove`, `link` and `unlink` write it, each line through the ledger's writer, sorted; `git` lines record the repository as written, the tag and the tag's commit, `path` lines a folder relative to the root, and a `link` line replaces the package's line while the replaced one waits in `.jadpo/links` (git-ignored, in the lock's own format) for `unlink`. Two versions of one package are locked side by side, each on its own line, and `update` names the version while two are held. A package surface is `record surface 1`, a view written by `jadpo package check` in a package's own repository, verified at install against its package's code, and read by `jadpo package show`; installed, a surface is held by its package's digest rather than regenerated, so `jadpo records` doesn't list it, and an own integration's is written to `build/providers/` (area 11). `jadpo package update` prints this area's review of the surface's changes, each entry marked `used by the app` and `needs a person`; the acceptance it calls for comes with `jadpo approval`. |
 | Build stamp | Built for native and Workers deployables: `jadpo build` writes the build id (`b_` and twelve hex digits of a SHA-256 over the deployable's program digest, the compiler, the target and `jadpo.lock`), the commit, whether the tree was modified, the compiler, the deployable and the target into the binary or module as a constant, and every event it logs carries them (area 14, "A native deployable" and "A Workers deployable"). `jadpo check` writes the manifest's `source` (`commit`, left out when git doesn't track the project, and `modified`) and `deployables`, each deployable's target and build id, which digests a declared deployable's declaration too, so two deployables of one app never share one (area 14, "Declared deployables"); a project with errors has none. |

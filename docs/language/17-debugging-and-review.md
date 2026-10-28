@@ -16,7 +16,7 @@ what it does to the application (who can now do what to which data) before
 reading it line by line. This page covers both: where errors point, how to
 see what a request did and why, and how a change is reviewed.
 
-> Mostly not built yet; the Status section says what is. Commands, `--json` and the build folder are area 14's; logging is area 4's; tracing is area 16's.
+> Mostly not built yet; [What is built](#what-is-built) says what is. Commands, `--json` and the build folder are area 14's; logging is area 4's; tracing is area 16's.
 
 **One rule behind all of it.** The command line, the developer console and
 the agent's MCP server are three views of one set of evidence, produced by
@@ -184,7 +184,7 @@ POST /todos/0192…/complete   409 todo_mutation_conflict   41 ms   as user 0192
   replayed, in doubt (area 12). Until the timelines are built, each step
   a request's action reached is a trace line under its request's line in
   `jadpo dev`, and a delivery whose action reached steps gets a line of
-  its own (area 12's decisions).
+  its own ([area 12's notes](notes/12-jobs-and-events.md)).
 
 ## Watching code run: `jadpo watch`
 
@@ -302,8 +302,8 @@ next call to stripe.payment_intents.create answers card_declined
 > The request id in the list is cut as `jadpo dev`'s request lines cut
 > it, and `--request` takes any start of it. With no calls yet the list
 > says `No calls yet` and points at `jadpo dev`; with filters that match
-> none, `No calls match` and the filters. The choices are in area 11's
-> decisions on the development call log.
+> none, `No calls match` and the filters. The choices are in [area 11's
+> notes](notes/11-integrations.md) on the development call log.
 
 ## Traces, metrics and logs in development
 
@@ -520,13 +520,10 @@ boundary through the contract").
 
 ## What is built
 
-Built: `jadpo calls`, `calls show` and `calls script` (above); each step a
-request's action reached as a trace line in `jadpo dev`; and
-`jadpo why <schedule>`, which answers why a schedule didn't run (area 12,
-"Watching schedules"). The rest is not built yet: mapped `.jadpo` stacks,
-`jadpo incident`, the other forms of `why`, timelines, `test new --from`,
-`call` and the approval report come first, then the developer console,
-MCP and the review web view as product work. Build order: mapped stacks,
-the timeline and `trace`, `why`, `test new --from`, `call`, the review
-report's order, MCP, the console, then the review web view. See [the
-roadmap](../roadmap.md).
+| Feature | Status |
+|---|---|
+| `jadpo calls`, `calls show` and `calls script` | Built. |
+| Each step a request's action reached, as a trace line in `jadpo dev` | Built. |
+| `jadpo why <schedule>` | Built: it answers why a schedule didn't run (area 12, "Watching schedules"). |
+| Mapped `.jadpo` stacks, `jadpo incident`, the other forms of `why`, timelines, `test new --from`, `call` and the approval report | Not built yet: these come first ([the roadmap](../roadmap.md)). |
+| The developer console, MCP and the review web view | Not built yet: they come after those, as product work. |

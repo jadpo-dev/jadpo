@@ -14,7 +14,7 @@ features need. This page collects them, adds what real applications keep
 reaching for, lists the language changes they rely on, and says what is
 left out on purpose and why.
 
-> The "Status" table under "Review" says what is not built yet and what it waits on; the "Decisions" table there records each decision.
+> "What is built", near the end of this page, says what is not built yet and what it waits on; the [design notes](notes/19-standard-library.md) record each decision.
 
 | Namespace | Holds | Operations | Defined in |
 |---|---|---|---|
@@ -84,7 +84,7 @@ a package or a later area.
   declinable error `type.standard_exists`, pointing at it ("Packages use
   the standard types", below), since area 1 has no warnings.
 
-### The standard types
+## The standard types
 
 All of them are built (bold). Beside the 247 adopted, each part or kind a standard type names is a standard type too, so it is read, sent and stored by its code: `IdentityDocumentKind`, `InterestRateBasis`, `ContentRatingScheme`, `RichTextBlock`, `RichTextSpan`, `RichTextMark`, `ClothingSizeSystem`, `ShoeSizeSystem`, `RouteOfAdministration` and `ChatRole`. GeoJSON's `Feature` and `FeatureCollection` are [area 20](20-geospatial.md)'s. "(enum)" marks a closed list held as a built-in enum.
 Units fold into their quantity type, roles into the general type,
@@ -154,7 +154,7 @@ rule (`File`, `Page`, `Access`) keep their names.
 | `HashAlgorithm`, `KeyAlgorithm`; `SessionId`; `AcceptLanguage` | Out: no algorithm choices; the runtime's (area 8); a call, `locale.from_accept_language` |
 | Niche, silly, or a maybe with no published standard | Out: 729 entries, a package's to define |
 
-### Every standard type meets one contract
+## Every standard type meets one contract
 
 Every standard type has a library, at least a baseline, and the baseline
 is the same for every type, not chosen type by type.
@@ -267,7 +267,7 @@ test "standard values are read, written and shown one way" {
 | AI (`Vector`, `Embedding`, `ChatMessage`) | `ai.generate`, `stream`, `embed`, `embed_all`, `distance` | [Area 21](21-ai.md) |
 | People, places, identity numbers, commerce codes, health, travel, other | Baseline only: each identifier's check digit or pattern is its construction | |
 
-#### Rules across a type's parts
+### Rules across a type's parts
 
 A standard object type whose parts constrain each other names each
 constraint as a rule, as an application's object type names its own
@@ -443,7 +443,7 @@ function winter_sale() -> DateRange {
 }
 ```
 
-### Every boundary through the contract
+## Every boundary through the contract
 
 No standard type loses its currency, unit or precision on the way into
 or out of a program, so every place a value crosses encodes a standard
@@ -660,7 +660,7 @@ doesn't know its field, so the field isn't named there.
   literal in a `where:` line, or testing it `in` a list of literals,
   compiles; it isn't `query.optional_value`.
 
-### Changing a standard type's encoding
+## Changing a standard type's encoding
 
 A Jadpo release changes how a standard type is sent, stored or written as text only
 together with a reader for the old form and a release note. A golden file
@@ -735,7 +735,7 @@ golden files by a test:
 > encoding it records. A new type, or a new example, needs only the last
 > step.
 
-### Packages use the standard types
+## Packages use the standard types
 
 A type whose shape is a standard type's is the error
 `type.standard_exists`: in a package's public types (`surface.jadpo_record`
@@ -816,7 +816,7 @@ The `Country`, `Language` and `PhoneNumber` lists ship with each Jadpo
 release, as the time-zone database does: fixed reference data is
 declared in the release, as these enums, not by applications.
 
-### A release that adds a standard type
+## A release that adds a standard type
 
 A Jadpo upgrade that adds a
 standard type an application already names for itself never breaks it
@@ -2639,6 +2639,8 @@ function sterling(paid: Payment) -> SterlingPayment? {
 }
 ```
 
+## Exchange rates
+
 An `ExchangeRate` is a standard object of `from` and `to`, each a
 `Currency`, `rate`, a `Decimal`, and `at`, the `Instant` it was quoted
 at, built with its object literal and read by its fields. One `from` is
@@ -2948,6 +2950,8 @@ error: `currency: Currency.eur` is different from `CakePrice`'s `currency: Curre
 check failed: 1 error, 1 file
 ```
 
+## Money operations
+
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
 | `money.from_minor(amount, currency)` | `Money` of `amount` minor units | | none |
@@ -3116,7 +3120,7 @@ test "an order keeps its amounts as they were written" {
 }
 ```
 
-### Prices, discounts and rates
+## Prices, discounts and rates
 
 The money group's records are built on `Money`, `Percentage` and the
 quantities:
@@ -3383,7 +3387,7 @@ test "a loan keeps its rate over base as it was written" {
 }
 ```
 
-### Bank accounts
+## Bank accounts
 
 A `BankAccount` is a choice of the three ways an account is written down:
 
@@ -4140,6 +4144,8 @@ test "a month on from the 31st is the month's last day" {
 }
 ```
 
+## Recurrences and opening hours
+
 **`RecurrenceRule` and `OpeningHours` are held as text:** types built on
 `Text` that the standard library declares (`Holds::Text`), as the payment
 numbers are. A value is its standard text, its JSON a string, its storage
@@ -4314,6 +4320,8 @@ test "a night past midnight is open by the clock on the wall" {
     assert not is_open(club_hours, "2026-11-01T07:00:00Z")
 }
 ```
+
+## Calendar events
 
 A calendar event is all-day or timed. An all-day event holds its first
 and last days, both included, and no zone: a holiday on 25 December is on
@@ -5764,6 +5772,8 @@ check failed: 1 error, 1 file
 > randomness itself, and the cipher, Argon2 and Ed25519 wipe their own
 > copies of a key when dropped.
 
+## Signed tokens
+
 `crypto.verify_jwt` checks a token as RFC 8725 advises:
 
 - **Three kinds of key, one algorithm each.** A `Jwk`'s `kty` is `OKP`
@@ -5989,7 +5999,7 @@ test "a partner's token signs in only while it holds" {
 > private key through the timing of decryption and signing, which nothing
 > here does with RSA.
 
-### Secret values
+## Secret values
 
 A `Password`, an `ApiKey`, a `BearerToken`, a `TotpSecret`, a `SecretText`,
 a `Jwt` and a `OneTimeCode`, the code a person types, are secret values:
@@ -6224,7 +6234,7 @@ test failed: 1 failed, 1 pure test
 > never write, show or store them (`TextForm::Secret`, `Json::Secret`,
 > `FormatKey::Redacted`, `Storage::Never`).
 
-### Security records
+## Security records
 
 `Hash`, `Hmac` and `EncryptedValue` are the bytes `hash.sha256`,
 `crypto.hmac` and `crypto.encrypt` give, as types: each is built on
@@ -7286,7 +7296,7 @@ A JSON Lines row may hold lists and objects, which is why a CSV row that
 needs them is pointed here. Encodings and gzip are as for `csv`, and a
 JSON Lines file takes no `format:`.
 
-### `json`
+## `json`
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
@@ -8366,6 +8376,8 @@ test "a status's class is a comparison, and a problem is sent as RFC 9457 has it
 }
 ```
 
+## Software types
+
 Each software type follows its standard in the same way: a
 `SemanticVersion` is SemVer 2.0.0's (`1.2.3-alpha.1+build.5`), an object
 of its numbers, pre-release and build metadata, ordered by SemVer's
@@ -8702,6 +8714,8 @@ and `NhsNumber`.
   GLEIF's LEIs), and made up to the rules where it doesn't; each entry
   says which.
 
+## Cards and identity documents
+
 A shop keeps what it may of a customer's card once its payment provider
 has the number, checks a supplier's VAT number by its country's form,
 and records the passport a traveller shows, each number shown masked:
@@ -8905,6 +8919,8 @@ check failed: 1 error, 1 file
 
 The money group's records are under "Money and payments", and
 `BankAccount` under "Bank accounts".
+
+## Names, addresses and countries
 
 A shop sends parcels abroad and prints each label for the person who
 packs it, greets its customers by name, and reads the countries a
@@ -9198,6 +9214,8 @@ a nationality `demographic`. The lists of places aren't. **No shapes:**
 }` and `{ first_name, last_name }` are too common in applications' own
 types to be distinctive.
 
+## Phone numbers and postal codes
+
 A shop takes a customer's phone number and postcode as they type them in
 their own country, and shows the number to its staff as their region
 dials it:
@@ -9329,6 +9347,8 @@ redistribution, while its footer says UN/CEFACT standards are under CC BY
 4.0, and which covers the code list isn't stated (as the
 `datasets/un-locode` package records it). **No shapes:**
 `type.standard_exists` matches none of the four, each a single value.
+
+## Commerce, travel and health codes
 
 A till scans a product's barcode, a supplier's order names its delivery
 term in whatever case its system writes, and a dock prints each
@@ -9466,6 +9486,8 @@ allergy is an application's own field, which it marks.
 (GS1's, the ISBN Users' Manual's, NHTSA's, ISO 6346's, ORCID's, SNOMED
 CT's, UPS's sample tracking number), and made up to the rules where it
 doesn't; each entry says which.
+
+## Records and health measures
 
 A courier labels each parcel with its size and its carrier's tracking
 number, a travel desk reads the flight a booking names, and a library
@@ -9983,7 +10005,7 @@ themselves, all in WGS84, with named fields, never a pair:
   often as where a person is; an application marks a person's position
   with area 15's `location`.
 
-Area 20's "Status" says what of its page is built.
+Area 20's "What is built" says what of its page is built.
 
 ## AI types
 
@@ -10087,7 +10109,7 @@ and the app calls the result. This section is the AI types themselves:
   `type.standard_exists`; a `{ role, content }` or an
   `{ input, output }` is too common to flag.
 
-Area 21's "Status" says what of its page is built.
+Area 21's "What is built" says what of its page is built.
 
 A help article's embedding is three numbers here, where a real model's
 are 1,536 or more; a list of the wrong length is refused by name:
@@ -10347,20 +10369,19 @@ and second ways every one of them has.
 
 ## What is built
 
-Everything on this page is built except:
-
-| Not built yet | Waits on |
+| Feature | Status |
 |---|---|
-| Keys held as data, with encrypted fields: `crypto.verify_totp`, HS256 in `crypto.verify_jwt`, per-device signatures, storing a `TotpSecret` or a `SecretText` | Personal data (area 15), after the first build ([the roadmap](../roadmap.md)) |
-| A `type.standard_exists` or `type.standard_clash` swap of a type already stored or on the wire, and `jadpo rename` | Area 18's records; area 14 |
-| A query comparing or ordering by an amount of money, a one-step update working one out, a backfill of a new required one, and a condition on a JSON-held field | `toolchain.not_built_yet` names each |
-| The UK modulus check in `BankAccount` | Vocalink's permission to ship its tables |
-| Checking `UnLocode`, `IataAirport`, `IcaoAirport`, `IataAirline` and `Icd10Code` against their lists | Licences that allow shipping the lists |
-| Area 9's scopes narrowing `OAuthScope` | Area 9 |
-| Legacy encodings in the file readers | An application that needs one |
-| `jadpo replay`, and a calendar file's writer | Area 17; an application that needs one |
-| What area 15 does with each standard type's personal data category | Area 15 |
-| The rest of geospatial and AI | [Area 20](20-geospatial.md)'s and [area 21](21-ai.md)'s "Status" |
+| Everything on this page not listed below | Built |
+| Keys held as data, with encrypted fields: `crypto.verify_totp`, HS256 in `crypto.verify_jwt`, per-device signatures, storing a `TotpSecret` or a `SecretText` | Not built yet: waits on personal data (area 15), after the first build ([the roadmap](../roadmap.md)) |
+| A `type.standard_exists` or `type.standard_clash` swap of a type already stored or on the wire, and `jadpo rename` | Not built yet: a swap waits on area 18's records, `jadpo rename` on area 14 |
+| A query comparing or ordering by an amount of money, a one-step update working one out, a backfill of a new required one, and a condition on a JSON-held field | Not built yet: `toolchain.not_built_yet` names each |
+| The UK modulus check in `BankAccount` | Not built yet: waits on Vocalink's permission to ship its tables |
+| Checking `UnLocode`, `IataAirport`, `IcaoAirport`, `IataAirline` and `Icd10Code` against their lists | Not built yet: waits on licences that allow shipping the lists |
+| Area 9's scopes narrowing `OAuthScope` | Not built yet: waits on area 9 |
+| Legacy encodings in the file readers | Not built yet: waits on an application that needs one |
+| `jadpo replay`, and a calendar file's writer | Not built yet: `jadpo replay` waits on area 17, a calendar file's writer on an application that needs one |
+| What area 15 does with each standard type's personal data category | Not built yet: waits on area 15 |
+| The rest of geospatial and AI | Partly built: [area 20](20-geospatial.md)'s and [area 21](21-ai.md)'s "What is built" say which parts |
 
 ## Errors
 

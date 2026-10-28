@@ -481,7 +481,7 @@ This is not legal advice; a privacy professional reviews the report.
 
 ## What is built
 
-Nothing on this page is built yet, but for one reading: an entity's and
-an event's `personal: PersonalData.<category>` is read and checked against
-the fourteen categories, for area 21's check of what reaches a model. The
-rest is on [the roadmap](../roadmap.md).
+| Feature | Status |
+|---|---|
+| An entity's and an event's `personal: PersonalData.<category>` | Built: it is read and checked against the fourteen categories, for area 21's check of what reaches a model. |
+| Everything else on this page | Not built yet: it is on [the roadmap](../roadmap.md). |

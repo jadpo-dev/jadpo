@@ -17,7 +17,7 @@ named `latitude` and `longitude`, the five other geometries and
 operations, storage in
 PostGIS, query conditions and indexes, and the formats other systems use.
 
-> Built, all but geometries in Redis, which waits for Redis entities. The "Decisions" table under "Review" records each decision, numbered as the compiler's messages cite them. Facts marked "verified" were checked against PostGIS 3.4.2 on PostgreSQL 16; "estimate" marks a number the build measures.
+> Built, all but geometries in Redis, which waits for Redis entities. The "Decisions" table in the [design notes](notes/20-geospatial.md) records each decision, numbered as the compiler's messages cite them. Facts marked "verified" were checked against PostGIS 3.4.2 on PostgreSQL 16; "estimate" marks a number the build measures.
 
 | Part | What | Builds on |
 |---|---|---|
@@ -253,6 +253,8 @@ test "a round is its legs summed" {
     assert round_length(van_round) == 687793.782534metre
 }
 ```
+
+## Predicates and shapes
 
 The predicates and shapes on the bakery's
 patches, its pins on a map and its shops:
@@ -1714,5 +1716,7 @@ test "a pasted patch is read longitude first" {
 
 ## What is built
 
-Everything on this page is built, but for geometries in Redis, which wait
-for Redis entities (area 5).
+| Feature | Status |
+|---|---|
+| Everything on this page but geometries in Redis | Built. |
+| Geometries in Redis | Not built yet: waits for Redis entities (area 5). |

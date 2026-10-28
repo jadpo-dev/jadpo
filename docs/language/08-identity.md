@@ -13,7 +13,7 @@ credentials, revocation, and the failures authentication produces. Who may do
 what is policy, area 9.
 
 > Not built yet: sign-in providers, acting as an OAuth provider and OAuth
-> grants. "Status" below lists each.
+> grants. "What is built" below lists each.
 
 Five rules hold underneath all of it:
 
@@ -445,7 +445,7 @@ GitHub and Apple, which are not plain OpenID Connect, are the built-in
 `Driver.github` and `Driver.apple`. `sign_in:` names them in
 `providers: [...]`, as `email:` names its connection.
 
-### Magic links
+## Magic links
 
 A person gives their email address and receives one email holding a link
 and a six-digit code. Either signs them in, once: the link through a page
@@ -753,7 +753,7 @@ output MagicLinkToken
     token: ApiToken
 ```
 
-### Passkeys
+## Passkeys
 
 A passkey (WebAuthn, FIDO2) is the third built-in way to check a person,
 beside magic links and providers. The person unlocks a key held on their
@@ -1272,7 +1272,7 @@ error: `passkey:` needs `magic_link:` beside it
 check failed: 1 error, 1 file
 ```
 
-### A person the app has not seen
+## A person the app has not seen
 
 `on_first_sign_in:` names an action that decides, for every way in, what a
 first sign-in does: create a user, link an existing one, or refuse. It
@@ -1317,13 +1317,13 @@ action create_member(first: FirstSignIn) fails SignUpClosed -> Member.id {
 - A passkey never runs it: a passkey is only ever added by a person
   already signed in, so every passkey that signs in has its user.
 
-### Signing in from code the app writes
+## Signing in from code the app writes
 
 `sessions.start(user_id)` and `sessions.issue_token(user_id)` stay for a
 person the app checks itself, such as one accepting an invitation it sent
 (see "Starting and ending a session").
 
-### Events
+## Events
 
 Every sign-in publishes a built-in event, for monitoring and the app's own
 subscribers (area 12):
@@ -1342,7 +1342,7 @@ subscribers (area 12):
 `passkey` when `passkey:` is declared. No event carries an address, a
 link, a code, a challenge or a passkey's credential ID or key.
 
-### In development and tests
+## In development and tests
 
 In `jadpo dev` the email lands in the local inbox (area 16), and its link
 and code work there: the link opens the frontend's page, and an agent
@@ -1395,7 +1395,7 @@ test "a passkey signs Ada in" {
 }
 ```
 
-### What the compiler checks
+## What the compiler checks of sign-in
 
 For magic links:
 
@@ -2809,20 +2809,15 @@ record id and the reason, never the credential.
 
 ## What is built
 
-Everything on this page is built except the following, each
-`toolchain.not_built_yet` where it is written:
+A feature not built yet is `toolchain.not_built_yet` where it is written.
 
-- `sign_in:`'s `providers:` and `oauth_provider:`, and `on_first_sign_in:`
-  for provider and external-token sign-in. An external token's subject
-  that no user has is `sign_in_refused` (403).
-- Scope declarations and policy's scope restrictions. As area 9 specifies,
-  an external method narrows scopes only when it declares the scopes it
-  reads; undeclared provider scope or profile claims never replace
-  application authority.
-- A setting loosened past its limit, until acceptances (area 18).
-- OAuth grants: `OAuthGrant` credentials, the connecting and disconnecting
-  routes and `on_behalf_of:` (area 11). `Driver.oidc` for Google and
-  Microsoft sign-in comes with providers.
+| Feature | Status |
+|---|---|
+| Everything else on this page | Built. |
+| `sign_in:`'s `providers:` and `oauth_provider:`, and `on_first_sign_in:` for provider and external-token sign-in | Not built yet. An external token's subject that no user has is `sign_in_refused` (403). |
+| Scope declarations and policy's scope restrictions | Not built yet. As area 9 specifies, an external method narrows scopes only when it declares the scopes it reads; undeclared provider scope or profile claims never replace application authority. |
+| A setting loosened past its limit | Not built yet: waits on acceptances (area 18). |
+| OAuth grants: `OAuthGrant` credentials, the connecting and disconnecting routes and `on_behalf_of:` (area 11) | Not built yet. `Driver.oidc` for Google and Microsoft sign-in comes with providers. |
 
 ## Errors
 

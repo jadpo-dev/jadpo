@@ -7,6 +7,12 @@ area: 11
 
 Why [External services](../11-integrations.md) is the way it is: the decisions behind it, how it fits the rest of the language and what it carried to other areas. An app author reads the area page, not this one.
 
+## Status
+
+The area page's sections from "How the package format is read" to "Enum
+values and failures through a package" settle what the topic sections
+leave open, taking the most conservative reading.
+
 ## Consistency with the rest of the language
 
 What this area sets in other areas:
