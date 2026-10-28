@@ -5,7 +5,7 @@
   "license": "Apache-2.0",
   "dependencies": {
     "workerd": "1.20261007.1",
-    "wrangler": "4.149.0"
+    "wrangler": "4.155.0"
   },
   "overrides": {
     "workerd": "$workerd"
