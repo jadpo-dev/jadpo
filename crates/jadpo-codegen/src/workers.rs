@@ -36,7 +36,7 @@ use std::path::Path;
 
 /// The compatibility date a Worker runs under: the Workers runtime's
 /// behaviour as of this date, which the Workers host is tested at under
-/// the workerd pinned in `tools/workers/` (1.20261007.1).
+/// the workerd pinned in `tools/workers/` (1.20261023.1).
 pub const COMPATIBILITY_DATE: &str = "2026-10-01";
 
 /// The shim's file: the Wrangler file's main module.

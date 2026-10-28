@@ -57,6 +57,8 @@ lines. Codex never merges these pull requests or enables auto merge.
   [CLI design language](docs/language/research/14-cli-design-language.md) and
   is designed with the design skills in `.agents/skills/` before it is built.
 - Update the roadmap only when a chunk finishes or the order changes.
+- Dependabot's grouped pull requests are merged by Claude when CI passes,
+  without asking Richard (Richard, 2026-10-28).
 - Keep the process lean (Richard, 2026-10-15):
   - Open each chunk's pull request with `gh pr merge --merge --auto`, so it
     merges itself when CI passes.
