@@ -5,7 +5,7 @@ use super::*;
 
 impl Reader<'_> {
     /// `order: [Entity.field asc, ...]`, with `id` added as the tie-break
-    /// when the last field could tie (area 6, question 3).
+    /// when the last field could tie (area 6, "Order and pages").
     pub(super) fn order(
         &mut self,
         path: &str,

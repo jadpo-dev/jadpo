@@ -521,7 +521,7 @@ impl Decls<'_> {
             return;
         }
         // In a package, only its public types: its own shapes are what it
-        // decodes from before a value leaves (area 19, question 1; chunk
+        // decodes from before a value leaves (area 19, "`type.standard_exists`"; chunk
         // 7.1b).
         let in_package = jadpo_db::package_at(self.path).is_some();
         if in_package && decl.visibility().is_none() {
@@ -816,7 +816,7 @@ impl Decls<'_> {
                 );
                 continue;
             }
-            // `Enum.all` lists an enum's variants (area 19, question 22).
+            // `Enum.all` lists an enum's variants (area 19, "Closed value sets are enums").
             if text == "all" {
                 self.out.push(
                     Diagnostic::new(
@@ -2595,7 +2595,7 @@ impl Decls<'_> {
         }
         let lower = name.to_ascii_lowercase();
         // The runtime reads `Idempotency-Key` to answer a retried write
-        // once (area 7, question 17); the action never sees it.
+        // once (area 7, "Idempotent writes"); the action never sees it.
         if lower == "idempotency-key" {
             self.out.push(
                 Diagnostic::new(
@@ -3023,8 +3023,7 @@ pub(crate) fn same_shape(found: &StandardMatch) -> Vec<&'static str> {
     names
 }
 
-/// The standard type whose shape `name`'s fields are (area 19, question
-/// 5): an `Object` whose fields are exactly a shape's, by their common
+/// The standard type whose shape `name`'s fields are (area 19, "Distinctive shapes only"): an `Object` whose fields are exactly a shape's, by their common
 /// names in any order and what each is built on, none of them optional,
 /// though the shape may let it leave out a field it marks optional;
 /// `only` keeps to the standard type of that name.

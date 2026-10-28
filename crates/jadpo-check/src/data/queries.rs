@@ -560,7 +560,7 @@ pub(crate) fn comparable(lookup: &dyn TypeView, a: &Ty, b: &Ty) -> bool {
 
 /// Adds `id` as the last field of an order whose fields could tie: records
 /// equal on every written field never swap places between pages (area 6,
-/// question 3). A unique field last already decides every tie.
+/// "Order and pages"). A unique field last already decides every tie.
 pub fn tie_break(entity: &EntityModel, order: &mut Vec<OrderField>) {
     let Some(last) = order.last() else {
         return;

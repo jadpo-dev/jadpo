@@ -1,4 +1,4 @@
-// The `hash` namespace (area 19, "Hashing and cryptography", question 24):
+// The `hash` namespace (area 19, "Hashing and cryptography"):
 // a digest is `Bytes`, which `encoding` writes as text, as
 // `encoding.to_hex` does for an ETag or a content key. There is no MD5 or
 // SHA-1: both are broken. `T` is a value built on `Bytes`, or a `Text`,

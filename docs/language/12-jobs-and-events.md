@@ -2,7 +2,7 @@
 title: Jobs and events
 area: 12
 status: decided
-checked-with: jadpo 3ce094d0 (2026-10-12)
+checked-with: this checkout's jadpo on every gate run
 rules:
   - event.*
   - receiving.*
@@ -18,10 +18,7 @@ Work that does not happen inside a request: schedules that run an action on a
 timer, events an action announces, subscribers that react to them, and what
 happens when that work fails.
 
-> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in Phase 6, chunks 6.1a to 6.10; what is built and what isn't is under "Review", "Status".
-
-Three things start work, and each one calls an ordinary action (decided in
-area 1):
+Three things start work, and each one calls an ordinary action (area 1):
 
 | Trigger | Starts when | Lives in |
 |---|---|---|
@@ -62,8 +59,7 @@ schedule chore_census {
 - Runs fall on a grid in UTC that starts at the first tick that sees the
   schedule: its first run is due one `every:` later, and each after that
   one `every:` on. The grid is kept in the schedule's state row, so a
-  restart or a deploy neither moves it nor adds a run (decided
-  2026-10-19). A changed `every:` takes effect from the earlier of the
+  restart or a deploy neither moves it nor adds a run. A changed `every:` takes effect from the earlier of the
   kept due time and one new interval after the tick.
 - Only one run of a schedule happens at a time. Ticks missed while the
   application was down, or while a run was still going, become one run,
@@ -76,13 +72,12 @@ schedule chore_census {
   `schedules: { store: }` names (area 5), or the only database when there
   is one; with several and none named, or none at all, each schedule is
   `schedule.store_required`. `schedules:` also holds `trigger:`, what
-  ticks a native deployable ("The tick"; question 16, built in chunk
-  8.2g). The state and run tables are in the migration snapshot only when a schedule
+  ticks a native deployable ("The tick"; question 16). The state and run tables are in the migration snapshot only when a schedule
   is declared or an entity purges.
 - Inside the run, `clock.now` is fixed: every read gives the time the run
   started, the tick's, so the action does not need the time passed in.
 - A failed run is logged and shown to the operator, and retried at its
-  next due time, not at every minute's tick (decided 2026-10-19).
+  next due time, not at every minute's tick.
   Schedules have no retry settings.
 - Entities with `purge:` in their lifecycle (area 5) get a built-in hourly
   purge schedule from the compiler, `Member.purge` for `Member`; nothing is
@@ -117,23 +112,22 @@ worker's thread, at each whole period of UTC, unless `schedules: {
 trigger: ScheduleTrigger.external }` leaves it to another scheduler
 (below); `jadpo dev` ticks on its timer whichever is written, and a
 test's or a tool's host doesn't. On Workers it is the minute's cron
-trigger, which `jadpo build` writes into the Wrangler file (built in
-chunk 8.2f): each run ticks, and while the app receives a queue ticks
+trigger, which `jadpo build` writes into the Wrangler file: each run ticks, and while the app receives a queue ticks
 again at each 10-second mark of its minute, so a queue is read as often
 as natively. There an `every:` under a minute is an error naming the
-schedule, since a minute's cron can't run it (decided 2026-10-19;
-`deployable.target_unsupported`, area 14). Each state row keeps the last
+schedule, since a minute's cron can't run it
+(`deployable.target_unsupported`, area 14). Each state row keeps the last
 tick that reached it.
 
-`trigger:` names what ticks a native deployable (question 16, built in
-chunk 8.2g): `ScheduleTrigger.native`, the server's own timer, unless it
+`trigger:` names what ticks a native deployable (question 16):
+`ScheduleTrigger.native`, the server's own timer, unless it
 is written, or `ScheduleTrigger.external`, another scheduler (a
 Kubernetes CronJob, an ECS scheduled task, a systemd timer) running the
 deployable's `tick` command, `<deployable> tick`, which reads its
 settings and compares its stores' migrations as serving does, runs one
 tick and ends (area 14, "A native deployable"). The server then never
 ticks. There is no HTTP endpoint and no tick secret: a scheduler that can
-only call a URL needs a wrapper of its own (Richard, 2026-10-21). A
+only call a URL needs a wrapper of its own. A
 Worker always ticks on its cron, whichever is written. The scheduler runs
 `tick` as often as the server's timer would tick, which `jadpo build`
 says beside the binary; one running it less often runs schedules and
@@ -173,7 +167,7 @@ Then, each step starting only while the tick's budget lasts, the tick:
 
 Retention cleanup runs after the prompt work (due schedules, delivery sweeps,
 queues, polls, alerts and expired batch leases), at most hourly per store
-once a pass completes (chunk 9.1b2). Each store's `jadpo_housekeeping`
+once a pass completes. Each store's `jadpo_housekeeping`
 lease admits one instance; stores holding only schedule state or AI usage
 are included. Its cleanup holdings come from the whole application schema,
 so a deployable with no schedule or batch runners still cleans their history
@@ -181,7 +175,7 @@ without keeping their executable bodies. A failed, capped or interrupted
 pass stays eligible on the next tick. Completion and release are fenced by the owner's identity; a
 crashed owner's lease expires after the remaining tick budget and the
 usual minute's margin. Every batch checks the budget and shutdown before
-starting. The retention windows and deletion ordering below are unchanged.
+starting.
 
 A handled record goes only once its delivery can no longer repeat, which
 is once the delivery's own record is gone: with its event deleted,
@@ -191,11 +185,10 @@ kept there of its deliveries, so a single-store application never holds
 one past its event. A subscriber that writes another store keeps its
 record there, and the tick deletes it by the delivery's `id` once the
 event's statement has committed; a store it can't reach then keeps those
-records, which only cost space, and never loses one early (decided in
-chunk 6.10).
+records, which only cost space, and never loses one early.
 
-What an operator settled is kept as long as a run record, then goes
-(decided in chunk 6.13). A delivery `dismissed` or `cancelled` never
+What an operator settled is kept as long as a run record, then goes. A
+delivery `dismissed` or `cancelled` never
 runs again, so the tick deletes it 30 days after the last action logged
 on it, with its handled records as above; no other state is deleted
 while its event stays, so a delivery that could still run (`pending`,
@@ -290,7 +283,7 @@ provider's list) is a batch.
 
 ## Batches: work over many items
 
-Decided 2026-10-16 (Richard). One way reads and writes row data of any
+One way reads and writes row data of any
 size, and walks any large set of items: explicit helpers per format and
 direction, all running on one shared machinery, batches. Every helper
 handles small and large inputs alike.
@@ -327,7 +320,7 @@ action export_products(request: ProductExport) -> BatchRun {
 
 | Helper | Reads or writes |
 |---|---|
-| `csv`, `tsv`, `json_lines` and `json` read and write helpers | Files; each operation's signature, result and failures are in [area 19, "Data formats"](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines) (moved 2026-10-17) |
+| `csv`, `tsv`, `json_lines` and `json` read and write helpers | Files; each operation's signature, result and failures are in [area 19, "Data formats"](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines) |
 | `batches.each(from:, each:, finished:, key:)` | No file: a large query, or every page of a provider's list |
 
 - **Reading** takes a stored `File`, the row type (`as:`), `each:` calling
@@ -364,7 +357,7 @@ transaction that commits its writes and the run's position together, so a
 crash or a deploy resumes at the next item and nothing is written twice.
 A file's order is kept, and a run's batches go one after another; separate
 runs proceed side by side. The run's state lives in the store `from:`'s
-query reads (decided 2026-10-19, "How a run is kept"). Each item's
+query reads ("How a run is kept"). Each item's
 action runs inside its batch's transaction, under area 6's rule for a
 handled failure, so an item whose action fails is undone alone and becomes
 a problem while the rest carry on. `batches.each` is also the one way to
@@ -398,13 +391,13 @@ only; a write without `format:` is a compile error. Reading takes UTF-8
 (a byte-order mark removed), UTF-16 with a mark, and legacy encodings the
 format declares, never guessing; writing is UTF-8. gzip is read only with
 `max_unpacked_size:`, and no archives are opened. The format namespaces
-themselves are area 19's ("Data formats", decided 2026-10-17).
+themselves are area 19's ("Data formats").
 
 **No other way.** There is no loop over a file's rows and no parse of a
 whole file into a list. `store.read(file)` returns `FileContents` for
 passing bytes on (area 16), which the helpers do not accept; a provider's
 CSV report is put in a store and read like an upload; `json.read` given
-text (named `json.decode` until area 19, 2026-10-17) is only for single
+text is only for single
 JSON documents in memory. An export walks live data, so a
 record changed during it appears as its page saw it; a `from:` that
 orders by a field that can be updated is a declinable error
@@ -415,25 +408,7 @@ keeps every record in exactly once.
 
 Batches replace chained events for paging: an event per page would stop
 at the 16-deep chain limit ("Limits and runtime faults") after 16 pages.
-This also settles area 11's pagination, where work over many pages ran one
-page per subscriber delivery.
-
-> Built in chunk 6.4: `batches.each` over a named query's pages, with
-> `finished:` and `key:`, `batches.status` and `batches.cancel`, each page
-> one transaction committing its items' writes and the run's position,
-> and a run resumed after a crash or a deploy ("How a run is kept",
-> below). Built in chunk 6.4b, with the `files` capability's first part
-> (area 16): `csv.read`, `tsv.read` and `json_lines.read`, `column:` and
-> a file row's problems by its row and column ("How a file's run is
-> kept", below). Built in chunk 6.4b2: the writers, `csv.write`,
-> `tsv.write`, `json_lines.write` and `json.write`'s file form, with
-> `CsvFormat` and `ExportSummary` ("How an export's run is kept",
-> below). Built in chunk 6.4b3: `json.read`'s file form and gzip read
-> with `max_unpacked_size:` ("How a file's run is kept"), the declinable
-> error for a `from:` ordered by a field that can be updated, and
-> `estimated_total` ("How a run is kept"). Built in chunk 7.4b: an item
-> whose `each:` action makes outside calls a batch of its own, and
-> `finished:` the same ("How a run is kept").
+Work over many pages of a provider's list is a batch too (area 11).
 
 A sweep that marks every item seen, a page at a time, once per sweep,
 keeping how many it went through:
@@ -533,8 +508,7 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
   size its query's `page:` reads, so 60 items in pages of 3 commit 20
   times. A page type allowing more than the 1,000 items of one batch
   ("Limits and runtime faults") isn't split yet; `PageSize` stops at 100.
-- **Where a run is kept.** In the store `from:`'s query reads (decided
-  2026-10-19): one row per run in `jadpo_batch_runs` (which call, the
+- **Where a run is kept.** In the store `from:`'s query reads: one row per run in `jadpo_batch_runs` (which call, the
   shape it was started under, its `key:`, what it saved, the tenant it is
   limited to, how deep in a chain of events it started, the cursor of the
   next page, its counts, its state and its runner's lease), each problem
@@ -554,12 +528,11 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
   whatever else the call was given; a start without one is always a new
   run. In an application with a tenant, `key:` is unique per call, the
   run's tenant and the key, so two tenants' runs with the same key never
-  meet (decided 2026-10-19); the row keeps the tenant (all zeros when it
-  reaches no tenant's records or the application has none). A run kept
-  before the tenant was kept has none, and no later start finds it, since
-  nothing says which tenant its key was given in: a keyed run still going
-  when that migration is deployed may be started again by a retry, rather
-  than one tenant being handed another's run.
+  meet; the row keeps the tenant (all zeros when it
+  reaches no tenant's records or the application has none). A row with
+  no tenant kept is found by no later start, since nothing says which
+  tenant its key was given in: a retry starts a new run rather than one
+  tenant being handed another's.
 - **Saved values.** `each:`'s and `finished:`'s arguments are the item
   (or the summary), a field inside it, or a value that reads nothing of
   it, worked out as the run starts and saved with it; anything that works
@@ -592,7 +565,7 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
   item's: the whole page is undone; one another transaction's change
   undid runs again, up to three times, and otherwise the run waits for
   the tick.
-- **Items that make outside calls** (chosen in chunk 7.4b). When
+- **Items that make outside calls.** When
   `each:`'s action makes outside calls, itself or through an action it
   calls, each item is a batch of its own, as "How a run goes" decides, so
   no call goes out while a transaction is open (area 6). The run's place
@@ -637,7 +610,7 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
   fault. Both find a run by its `id` alone, so they need the
   application's runs in one store: with none, or more than one, they are
   `toolchain.not_built_yet`.
-- **The estimated total** (chosen in chunk 6.4b3). A query's run counts
+- **The estimated total.** A query's run counts
   its query as its first page is read, in that page's transaction, as
   the system limited to the run's tenant: the query's statement with no
   page's limit or cursor, so the count is of what the walk would meet if
@@ -652,7 +625,7 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
   the run without one rather than stopping it, and a query whose records
   Jadpo checks again after its statement (area 20's `geo.` conditions)
   has none.
-- **An order an update can change** (chosen in chunk 6.4b3). A `from:`
+- **An order an update can change.** A `from:`
   whose query orders by a field that can be updated, before any `id`, is
   `type.batch_order_updatable`, reported at the `from:` and declined on
   the action that starts the run. A field can't be updated when it is
@@ -690,9 +663,8 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
 
 ### How a file's run is kept
 
-What a file helper's run (`csv.read`, `tsv.read`, `json_lines.read`,
-and from chunk 6.4b3 `json.read`'s file form) does beyond a query's run,
-chosen in chunk 6.4b and, for JSON and gzip, chunk 6.4b3, each the most
+What a file helper's run (`csv.read`, `tsv.read`, `json_lines.read` and
+`json.read`'s file form) does beyond a query's run, taking the most
 conservative reading of "Batches" above and area 19's "Data formats":
 
 - **Where it is kept.** A file has no query whose store keeps its run,
@@ -707,7 +679,7 @@ conservative reading of "Batches" above and area 19's "Data formats":
   byte, its row and its line, kept with the run. The file is saved with
   the run as its `File`, so a resumed run reads the same one.
 - **Read before the transaction.** No outside call goes out while a
-  transaction is open (area 16, chunk 7.0c), and an item's action runs
+  transaction is open (area 16), and an item's action runs
   inside its batch's, so each batch's rows are read from the store first,
   through the `files` capability, a window of at most a megabyte at a
   time until they are whole, from the position the last batch committed.
@@ -743,7 +715,7 @@ conservative reading of "Batches" above and area 19's "Data formats":
   cut short (below); and a row longer than 16 MB. The run ends `failed`
   with why. A store that can't be reached pauses it, as it does a
   query's.
-- **A JSON file's list** (chunk 6.4b3). `json.read`'s file form reads
+- **A JSON file's list.** `json.read`'s file form reads
   the list `items_at:` names, or the document when it is given none, an
   item a row: its row is its place in the list, from 1, and a problem's
   column the field's path, as JSON Lines' is. The document is walked a
@@ -767,9 +739,9 @@ conservative reading of "Batches" above and area 19's "Data formats":
   after the last item done, with its line and the next item's place.
   `items_at:` is part of the call's shape, so a deploy that changes it
   ends a running run `failed`, as one that changes what it saves does.
-- **gzip** (chunk 6.4b3). A file whose first bytes are gzip's is read
+- **gzip.** A file whose first bytes are gzip's is read
   only when the helper is given `max_unpacked_size:`, and is unpacked as
-  it is read (area 16, "Chosen in chunk 6.4b3"): the run's position, its
+  it is read (area 16): the run's position, its
   rows' lines and its encoding are its unpacked text's. Its text is never
   read past `max_unpacked_size:`: the run stops at the row that would
   reach past it ("its file unpacks to more than 200 MB, its
@@ -786,14 +758,14 @@ conservative reading of "Batches" above and area 19's "Data formats":
 ### How an export's run is kept
 
 What a file helper's write (`csv.write`, `tsv.write`, `json_lines.write`
-and `json.write`'s file form) does beyond a query's run, chosen in chunk
-6.4b2, each the most conservative reading of "Batches" above and area
-19's "Data formats", which says how each row is written:
+and `json.write`'s file form) does beyond a query's run, taking the most
+conservative reading of "Batches" above and area 19's "Data formats",
+which says how each row is written:
 
 - **Where it is kept.** As `batches.each`'s: in the store `from:`'s query
   reads, which `finished:`'s action writes too.
 - **Each page's put after its page commits.** No outside call goes out
-  while a transaction is open (area 16, chunk 7.0c), so a page goes in
+  while a transaction is open (area 16), so a page goes in
   three steps. Its transaction locks the run's row, reads the page after
   the position that committed, as the system, and commits, having
   written nothing. Then, with no transaction open, `each:` works out each
@@ -815,8 +787,8 @@ and `json.write`'s file form) does beyond a query's run, chosen in chunk
   (`type.batch_capture_not_storable` otherwise), beside `name:` and
   `format:`; `finished:`'s captures and `key:` as `batches.each`'s.
 - **Finishing.** Once every page is written, the pieces are joined into
-  the file, with no transaction open (the store's `join`, area 16,
-  "Chosen in chunk 6.4b2"); `finished:` then runs in a transaction of its
+  the file, with no transaction open (the store's `join`, area 16);
+  `finished:` then runs in a transaction of its
   own, given the `ExportSummary`, whose `file` holds the store, the key,
   `name:`, the size and the type. The file's key is made from the run's
   id, so a run that joins again finds it whole.
@@ -840,7 +812,7 @@ a field declared with it, as a reference to the tenant is
 doesn't count. The run reads them from what it saved, so it has the same
 tenant each time it resumes. Values that all name the same tenant
 (`key: household_id` beside an `each:` capturing `household_id`) limit
-the run to it (decided 2026-10-19); a run that saves no such value, one
+the run to it; a run that saves no such value, one
 that is `none`, or values naming different tenants, reaches no tenant's
 records, only those every tenant shares. An application without a
 `tenant:` runs batches reaching every record the system is granted.
@@ -1391,7 +1363,7 @@ public type TodoCompleted = Event {
 ### The event record
 
 An event's shape is recorded, and a change to it shown as a diff, as an
-API's is (decided 2026-10-19). Each domain that declares an event keeps
+API's is. Each domain that declares an event keeps
 one record beside its events, `domains/<domain>/events/events.jadpo_record`,
 a view in the record format (`record events 1`) whose header says it is
 generated from "the events of domain `<domain>`". Every event is
@@ -1515,7 +1487,7 @@ that needs more passes the event's ids and reads the current state, as
 
 In an application with a `tenant:`, each kind of background work reaches
 one stated set of tenants, and "no tenant" means one thing for each
-(Richard, 2026-10-19; area 9, "Background work"):
+(area 9, "Background work"):
 
 | Work | Reaches |
 |---|---|
@@ -1523,13 +1495,13 @@ one stated set of tenants, and "no tenant" means one thing for each
 | A subscriber's delivery | The tenant its event's one field of the tenant's `id` type names (`household_id: Household.id`), so the tenant is written in the event where a reviewer sees it. With no such field, more than one, or `none` in it: no tenant's records, only those every tenant shares |
 | A batch's run | The tenant its saved values of the tenant's `id` type name, values naming the same tenant counting as that one ("Batches, tenants and grants"). With none, `none`, or values naming different tenants: no tenant's records, only those every tenant shares |
 | The magic-link `send:` action | The tenant of its delivery, as a subscriber's: `jadpo.MagicLinkEmail` names none, so no tenant's records, only those every tenant shares (area 8) |
-| A webhook's reply action, and `on_first_sign_in:`'s | No tenant's records, only those every tenant shares: each runs as the system inside a request no tenant's event starts, and "no tenant" is never every tenant for them (area 9; Richard, 2026-10-21) |
+| A webhook's reply action, and `on_first_sign_in:`'s | No tenant's records, only those every tenant shares: each runs as the system inside a request no tenant's event starts, and "no tenant" is never every tenant for them (area 9) |
 
 A schedule names no tenant by design, so it reaches every one; a
 subscriber and a batch name theirs by a value, and a value that names no
 tenant never widens what they reach. The system's runs inside a request
 (the sign-in email's `send:` action, a webhook's reply action and
-`on_first_sign_in:`'s) reach no tenant's records (chunk 7.9b). In an application without a
+`on_first_sign_in:`'s) reach no tenant's records. In an application without a
 `tenant:`, each reaches every record the system is granted. The value
 naming a subscriber's or a batch's tenant must come from a record of that
 tenant its action reached under its caller's policy, or it is
@@ -1538,7 +1510,7 @@ can never aim background work at a tenant they don't belong to.
 
 ## Reacting in another domain
 
-A domain changes another domain in one of two ways (decided in area 1):
+A domain changes another domain in one of two ways (area 1):
 
 | | Public action | Event |
 |---|---|---|
@@ -1566,7 +1538,7 @@ action send_completion_email(event: TodoCompleted) fails EmailRejected -> Unit {
 ## Long-running coordination
 
 A process that waits for several things over time, such as an order waiting
-for payment and stock, needs no workflow language (decided in area 1). Its
+for payment and stock, needs no workflow language (area 1). Its
 progress is an ordinary entity, each subscriber records one step on it, and a
 schedule handles deadlines.
 
@@ -1594,8 +1566,7 @@ The state is in the database, so it survives restarts and deploys, can be
 queried and shown in an admin screen, and two steps arriving together cannot
 both complete the order, because every write checks for concurrent change
 (area 3). Temporal and Inngest offer a different model, code that pauses
-between steps; the [proposals](research/12-jobs-and-events-proposals.md)
-compare them.
+between steps.
 
 ## Delivery: at least once, safe to repeat
 
@@ -1621,10 +1592,9 @@ compare them.
   the only changing call in its action. Once it has gone out it is never
   sent again blindly: a retry the action would otherwise get, and area 6's
   rerun after a concurrent change, stop it as `outcome_unknown` for an
-  operator instead (area 16, "Parked, never sent again blindly"; chunk
-  7.9a). Changing calls that do take keys may be several, in order:
+  operator instead (area 16, "Parked, never sent again blindly"). Changing calls that do take keys may be several, in order:
   each is recorded as it goes, so a rerun replays what already happened
-  instead of sending it again (question 11, revised 2026-10-16). Writes are
+  instead of sending it again (question 11). Writes are
   not limited this way: every write to the action's store, across any
   number of domains, commits together after the last call (area 6).
 - **No order is promised** between events (question 6). A subscriber that
@@ -1640,12 +1610,9 @@ compare them.
   API record (a field removed, renamed or narrowed) needs area 18's
   acceptance; a payload saved before such a change that no longer reads is
   parked with its problem, never dropped, as a message that keeps failing
-  is ("Events from outside"). Decided by the lead session, 2026-10-18,
-  under Richard's instruction of 2026-10-17 that every boundary goes
-  through the contract; built with the outbox (roadmap 6.1). Chunk 5.9b
-  numbered every event type in the plan's JSON table, by its identity
-  key, for the outbox to write and read its payload through (area 5,
-  "Structured values"). A delivery reads the payload by the encoding its
+  is ("Events from outside"). Every event type is numbered in the plan's
+  JSON table by its identity key, for the outbox to write and read its
+  payload through (area 5, "Structured values"). A delivery reads the payload by the encoding its
   outbox row records (area 19, "Changing a standard type's encoding"):
   this release's, or none, a payload kept before encodings were recorded,
   read as encoding 1's. A payload of an encoding this release doesn't
@@ -1673,9 +1640,7 @@ fails with `event_chain_limit`.
 
 ## Several changing calls in one action
 
-Decided 2026-10-16 (Richard), replacing "one changing call per action"
-(question 11), after the [multi-step calls review](research/multi-step-calls-review.md),
-adopted with its ten fixes and its recommended answers. Starting a
+Starting a
 subscription at a payment provider takes several calls (create the
 customer, attach the card, create the subscription); each takes effect at
 the provider, so an action that makes them must never send one twice and
@@ -1739,7 +1704,7 @@ or not any store keeps it. A delivery's attempt counts its steps from 1
 wherever it runs, a route waiting for it (`settle:`) included. A sign-in
 email (area 16, "Built-in emails") is made with a link and a code each
 attempt, so each attempt's calls go under a key of their own and keep no
-record (chunk 7.9a).
+record.
 Hashing fixes a collision that affects single calls too: area 7 scopes a
 client's key to the caller, but a provider such as Stripe scopes keys to
 the account, so two users sending the same key would otherwise be given
@@ -1767,7 +1732,7 @@ resumed action are from when it started, which is also when the provider
 acted. Only code's `clock.now` is fixed: the runtime's own timestamps (an
 event's `emitted_at`, from which `within:` counts, a request's AWS
 signature, the day an `ai` budget counts, a received event's) are the
-host's time (chunk 7.9a). At each step the operation and fingerprint must match the record,
+host's time. At each step the operation and fingerprint must match the record,
 and at the end every recorded step must have been replayed. Any
 difference (a deploy changed the code, a fresh database read changed a
 request, configuration changed) stops the action as `diverged` before
@@ -1781,8 +1746,8 @@ finishes it.
   has no key, when its window would pass, or when the provider replays a
   `5xx` under that key. A step answered with one of its operation's own
   failures whose kind is `unavailable` or `rate_limited` did nothing: it
-  stays in doubt, its failure never kept or replayed (chunk 7.9a).
-- **One runner per record.** A route's key is claimed as today (area 7); a
+  stays in doubt, its failure never kept or replayed.
+- **One runner per record.** A route's key is claimed before its action runs (area 7); a
   delivery's lease carries a generation that every record write checks. A
   provider's "key in use" answer means wait and retry, never a failure.
 - **Ending for good after a step took effect is warned.** After the first
@@ -1791,8 +1756,8 @@ finishes it.
   failure) is a warning unless handled with `match`, naming three fixes:
   check first, before the first step; record what happened and finish in a
   subscriber; or undo as another step. Package surfaces list which failures
-  follow an effect, so the warning reaches through package actions. This
-  answers area 11's question 26 for single calls too.
+  follow an effect, so the warning reaches through package actions. It
+  holds for single calls too (area 11's question 26).
 - **An unfinished record never disappears quietly.** One that ends without
   committing (failed, diverged, parked, or a route whose key lapsed)
   becomes an operator item listing each step and its answer, with retry
@@ -1814,7 +1779,7 @@ stay one per action. A Stripe `500` at a later step is stored under its
 key for a day, so it parks the action for an operator rather than being
 retried.
 
-Built in chunk 7.5, what `jadpo check` keeps: up to 8 changing calls on
+`jadpo check` keeps: up to 8 changing calls on
 one way through an action ([`step.too_many`](#step-too-many)), a changing
 call with no key the only one in its action
 ([`step.unkeyed`](#step-unkeyed)), several only from a subscriber or a
@@ -1827,11 +1792,9 @@ call inside `for` (area 3's
 call* is a provider's operation with `changes: true` or a store's `put`;
 each way through an `if` or a `match` counts on its own, a `return` ends
 its way, and an action called counts the changing calls of the longest
-way through it. The record and replay came with roadmap 7.5b, the
-operator's items with 7.5c, the tests' crash points with 7.5d, and the
-warning with 7.5e.
+way through it.
 
-Built in chunk 7.5e, the warning: after the first changing call on a way
+The warning: after the first changing call on a way
 through an action, each point that can end it for good is
 [`step.late_failure`](#step-late-failure), one finding for the action at
 the first such point with the others beside it, declinable since the
@@ -1843,14 +1806,14 @@ construction's), a `reject` or a `propagate`; a call whose failures a
 meet, a changing call on either counts. A package's action is never told
 itself: its surface lists `after_effect` for each failure that can follow
 its own changing call, and the app's `attempt` of it is the point, even
-as the app's first call. It holds for single calls too, as area 11's
-question 26 asked. The same walk sums how long a route's outside calls
+as the app's first call. It holds for single calls too (area 11's
+question 26). The same walk sums how long a route's outside calls
 can take, area 11's
 [`route.calls_past_deadline`](11-integrations.md#route-calls-past-deadline).
 Choices in the decisions table, "The late-failure warning and the
-deadline sum, chosen in chunk 7.5e".
+deadline sum".
 
-Built in chunk 7.5b, the record: an action whose longest way makes
+The record: an action whose longest way makes
 several changing calls, run by a subscriber's delivery or by a route
 whose API requires `Idempotency-Key` under the key it claimed, keeps its
 steps in `jadpo_step_records` and `jadpo_steps` (area 5, "System
@@ -1874,9 +1837,8 @@ older one; a `put` in such an action keeps its object under a key
 derived from its step; and the record is deleted in the action's commit.
 Answers are sealed with `application { steps: { encryption_key: } }`
 ([`step.encryption_key_required`](#step-encryption-key-required),
-[`step.settings_invalid`](#step-settings-invalid)). Live tests in
-`crates/jadpo-cli/tests/step_records.rs`. Choices in the decisions table,
-"The record, chosen in chunk 7.5b".
+[`step.settings_invalid`](#step-settings-invalid)). Choices in the
+decisions table, "The record".
 
 A bakery pays an approved invoice and keeps a copy of it, two changing
 calls each under its own key, then records the payment, in a subscriber:
@@ -2076,7 +2038,7 @@ action pay_invoice(event: InvoiceApproved) fails SheetNotKept -> Unit {
 }
 ```
 
-Built in chunk 7.5f, development and the metric. In `jadpo dev`, each
+In `jadpo dev`, each
 step a request's action reached is a line of its trace under the
 request's line, in place of its call: its place, its operation, where
 its answer came from and what became of it, `replayed`, `answered`, its
@@ -2090,9 +2052,8 @@ the metric on each store's unfinished records, how many and when the
 oldest started, and raises an alert with no setup once one has been
 unfinished a day (`{"event": "step.alert", "alert": "unfinished_steps",
 ...}`), once until none is, across instances; `jadpo deliveries` shows
-it beside the items, and its `--json` the metric. Live tests in
-`crates/jadpo-cli/tests/step_development.rs`. Choices in the decisions
-table, "Development and the metric, chosen in chunk 7.5f".
+it beside the items, and its `--json` the metric. Choices in the decisions table, "Development
+and the metric".
 
 ```text
 $ jadpo dev
@@ -2108,8 +2069,7 @@ $ jadpo dev
 
 Its test scripts one payment. `jadpo test` runs it again with a crash at
 each boundary of both steps; each time, the step sent again goes under
-its key and is answered with what the fake kept, so one answer is enough
-(chunk 7.5d):
+its key and is answered with what the fake kept, so one answer is enough:
 
 ```jadpo check project=several-steps file=domains/bakery/actions/approve_invoice.jadpo hidden
 use bakery/types { PriceList }
@@ -2143,7 +2103,7 @@ test "an approved invoice is paid once" {
 
 ## Where events travel
 
-Events stay inside the Jadpo runtime (Richard, 2026-10-13). They are stored
+Events stay inside the Jadpo runtime. They are stored
 in the outbox of the store the action writes, in the same transaction as
 the action, and the runtime delivers them: on a long-running server from
 its own workers, on
@@ -2151,7 +2111,7 @@ Cloudflare Workers right after the commit (`waitUntil`) with the
 once-a-minute schedule tick sweeping anything left. One place holds every
 log and trace, a request is never slowed by delivery, and no site needs a
 queue service. A route that wants the finished result instead of `202`
-waits for the work its action set off with `settle:` (area 7, 2026-10-15).
+waits for the work its action set off with `settle:` (area 7).
 
 External queues are never the delivery path. A connection can *publish*
 chosen public events outward, so other systems can react to them: an outbound
@@ -2176,7 +2136,7 @@ stops short.
   to its host, which runs them once the response has been handed back:
   natively a task on the worker thread that answered, with that worker's
   program, so no thread needs a program of its own; on Workers
-  `waitUntil` (since chunk 8.2a). What a host does with a request (answer it,
+  `waitUntil`. What a host does with a request (answer it,
   hand on what it left) and with a tick is one runtime type every host
   wraps, so a native server and `jadpo dev` serve through the same
   handler, `jadpo dev` only listening to print its lines. Each piece
@@ -2189,7 +2149,7 @@ stops short.
   by its host, at most the 15-minute limit of a run: natively and under
   `jadpo dev` that limit; a test's host may give less, and Workers' are
   30 seconds after a response and for work handed on, 15 minutes for the
-  cron (chunk 8.2a). A tenth of it, at most 5 seconds, is kept back for giving claims
+  cron. A tenth of it, at most 5 seconds, is kept back for giving claims
   back: once no more than that is left, the runner takes no more work.
 - **A run's limit within the budget.** A subscriber's or a schedule's
   action runs until the 15-minute limit or what is left of the budget
@@ -2215,11 +2175,10 @@ stops short.
   run nothing leaves it for the tick rather than hand it on for ever.
   Natively that is a task of its own; on Workers a request to the Worker
   itself, through the loopback binding `ctx.exports` gives its own
-  `JadpoHandOn` entrypoint (a service binding naming the Worker until
-  chunk 8.4b), naming each piece by its record, which the fresh
-  invocation reads back and runs in its own `waitUntil`, within what is
-  left of its own 30 seconds, counted from its start (decided 2026-10-21,
-  chunk 8.2h; Decisions, "Work handed on, on Workers"). A
+  `JadpoHandOn` entrypoint, naming each piece by its record, which the
+  fresh invocation reads back and runs in its own `waitUntil`, within
+  what is left of its own 30 seconds, counted from its start (Decisions,
+  "Work handed on, on Workers"). A
   hand-on the platform refuses, as past its limit on invocations one
   request chains, leaves the work in the store for the minute's cron. The tick finds what is due at its time, then runs
   each piece under the host's clock as that piece starts, so work that
@@ -2234,15 +2193,15 @@ stops short.
   when `within:` passes. The server waits at most 10 seconds for this,
   then ends, and `jadpo dev` exits 0; a second signal ends the process at
   once (143 for SIGTERM, 130 for SIGINT). If the signals can't be
-  watched, `jadpo dev` runs as before, a signal ending it at once:
-  `cli.signal_handler_failed`, in area 14's list, stays unbuilt.
+  watched, `jadpo dev` runs without them, a signal ending it at once:
+  `cli.signal_handler_failed`, in area 14's list, is not built yet.
 - A backfill worked out in Jadpo (area 5) runs its rows on the same
   runner, a batch at a time, each value kept and checked by its field's
   rules as any value of the field's type is.
 
 ## Events from outside
 
-Decided 2026-10-16 (Richard). Besides events the app's actions emit, four
+Besides events the app's actions emit, four
 sources outside the app produce events. Each is written to the app's
 outbox and delivered to subscribers like any event, with the same retries.
 
@@ -2254,13 +2213,12 @@ outbox and delivered to subscribers like any event, with the same retries.
   delivery may be out of order, which the app handles by ignoring an event
   older than what it stored (a recipe shows it). A webhook that needs a
   reply runs the connection's named action inside the request instead
-  (area 11; built in chunk 7.7b, the event never kept in the outbox and
-  its reply kept with its id for a repeat).
-  Built in chunk 7.7 (area 11, "Chosen in chunk 7.7"): the event's id
-  recorded in `jadpo_received_events` and its outbox row and deliveries
-  written in one transaction in `events: { store: }` or the only store
-  of records, `within:` counted from arrival, the ids deleted by the tick
-  after 30 days.
+  (area 11): the event is never kept in the outbox, and its reply is kept
+  with its id for a repeat. An event's id is recorded in
+  `jadpo_received_events`, and its outbox row and deliveries written in
+  the same transaction, in `events: { store: }` or the only store of
+  records, `within:` counted from arrival; the tick deletes the ids after
+  30 days (area 11, "How webhooks are received").
 - **A package's own events.** A package's `public` events, its webhooks
   and the enriched events its own subscribers emit
   (`Stripe.SubscriptionRenewed`), are subscribed to with `on:` like the
@@ -2268,11 +2226,11 @@ outbox and delivered to subscribers like any event, with the same retries.
   subscribers, and subscribing to one is a compile error. A package emits
   only about the outside world, never as a side effect of the app calling
   it: the app's action emits its own event there, where a reviewer sees it.
-  Built in chunk 7.6b (area 11, "Chosen in chunk 7.6b"): a package's
-  subscriber hears its webhooks' events once per connection receiving
-  them, its action calling the API through that connection, and what the
-  action emits is kept in the outbox where the webhooks are and delivered
-  to the app's subscribers of its public events.
+  A package's subscriber hears its webhooks' events once per connection
+  receiving them, its action calling the API through that connection, and
+  what the action emits is kept in the outbox where the webhooks are and
+  delivered to the app's subscribers of its public events (area 11,
+  "Package subscribers and recipes in `sample/`").
 - **Polls.** `polls:` in a package's `provider.jadpo` names an operation, a
   default interval and the event emitted when the answer changes, turning
   an API without webhooks into events. The runtime runs a poll only while
@@ -2282,10 +2240,10 @@ outbox and delivered to subscribers like any event, with the same retries.
   Polls are for feeds that do not depend on the app's data (rates, a price
   list); checking each of the app's own records is the app's schedule
   calling the package, which a package can ship as a recipe.
-  Built in chunk 7.6c (area 11, "Chosen in chunk 7.6c"): each poll the
-  app subscribes to, called by the tick through its connection once due,
-  what it last saw kept in `jadpo_polls` beside the outbox, and its event
-  and deliveries kept with the new digest in one transaction.
+  Each poll the app subscribes to is called by the tick through its
+  connection once due, what it last saw kept in `jadpo_polls` beside the
+  outbox, and its event and deliveries kept with the new digest in one
+  transaction (area 11, "How polls and `max_concurrent:` run").
 - **Queues, through `receiving`**, the inbound twin of `publishing`.
 
 ```jadpo fragment
@@ -2321,8 +2279,7 @@ application {
   dropped. A message that keeps failing is left to the queue's own
   dead-letter queue and parked for an operator: on Cloudflare Queues the
   Worker consumes the dead-letter queue and parks each message it hands
-  back as `dead_lettered` (chunk 8.4b; area 11, "Chosen in chunk
-  7.7c2").
+  back as `dead_lettered` (area 11, "The Cloudflare Queues driver").
 - An HTTP API is a package and anything needing its own protocol or a
   platform binding is a built-in driver: Amazon SQS and Google Pub/Sub's
   pull API are packages; SNS and Pub/Sub's push are webhooks through a
@@ -2330,21 +2287,20 @@ application {
   driver on Workers, its consumer generated into the Wrangler
   configuration, and a package (its HTTP pull API) from a native server;
   Kafka is a built-in driver in a later release.
-  Built in chunk 7.7c (area 11, "Chosen in chunk 7.7c"): each message is
-  acknowledged once the transaction keeping its event and its id commits,
-  its subscribers then delivered from the outbox; one that can't be kept
-  is parked whole in `jadpo_parked_messages`, which `jadpo deliveries`
-  lists, retries and dismisses; queues are received on the tick, at least
-  every 10 seconds. The Cloudflare Queues driver is built in chunk 7.7c2
-  (area 11, "Chosen in chunk 7.7c2"), and the Worker's consumer in chunk
-  8.2k (area 14, "A Workers deployable"): a
-  connection with `driver: Driver.cloudflare_queues`, `queue:` and
-  `dead_letter_queue:`, its consumer handed each batch and answering for
-  each message, acknowledged once kept, as a repeat or parked, retried
-  when the store can't take it now. Since chunk 8.4b a message the Worker
-  can't take yet is retried for about 22 hours, its delay doubling up to
-  an hour, so it outlasts a deploy's migration, and the dead-letter
-  queue's consumer parks what reaches it.
+  Each message is acknowledged once the transaction keeping its event and
+  its id commits, its subscribers then delivered from the outbox; one
+  that can't be kept is parked whole in `jadpo_parked_messages`, which
+  `jadpo deliveries` lists, retries and dismisses; queues are received on
+  the tick, at least every 10 seconds (area 11, "How queues are
+  received"). The Cloudflare Queues driver (area 11, "The Cloudflare
+  Queues driver"; area 14, "A Workers deployable") is a connection with
+  `driver: Driver.cloudflare_queues`, `queue:` and `dead_letter_queue:`,
+  its consumer handed each batch and answering for each message,
+  acknowledged once kept, as a repeat or parked, retried when the store
+  can't take it now. A message the Worker can't take yet is retried for
+  about 22 hours, its delay doubling up to an hour, so it outlasts a
+  deploy's migration, and the dead-letter queue's consumer parks what
+  reaches it.
 
 ## Retries and giving up
 
@@ -2364,7 +2320,9 @@ from area 4 (question 7):
   not retry together: each wait is drawn evenly from zero to a ceiling
   that starts at 30 seconds and doubles with each attempt up to 6 hours,
   and is never under a second. A `Retry-After` from a provider is
-  honoured, once provider calls come (Phase 7). By default a subscriber
+  honoured. Built for the call's own retries within an attempt (area
+  11); not built yet for the next attempt, which waits only its backoff.
+  By default a subscriber
   gets 10 attempts within 24 hours, then fails: a delivery past its
   attempts, or whose next attempt would fall after `within:` from when
   the event was emitted, fails.
@@ -2409,8 +2367,8 @@ So the outbox keeps a circuit breaker per connection: after a run of
 `unavailable` failures from one provider, the deliveries that call it are
 held rather than attempted; after a pause one of them, the probe, is
 tried, and its success releases the rest. Held deliveries keep their
-retry budget, are shown in `jadpo deliveries` and are alerted on.
-Chosen in chunk 7.2b, where the pages left it open:
+retry budget, are shown in `jadpo deliveries` and are alerted on. In
+detail:
 
 - **The run.** Five delivery attempts in a row whose call through the
   connection found its provider unavailable open its breaker. An attempt
@@ -2478,20 +2436,20 @@ with its failure code and internal fields (area 4's logging rules), and the
 request that emitted it. A `failed` or `outcome_unknown` item writes a log
 event and counts towards an alert. The screens and commands are area 14's.
 
-**`jadpo deliveries`** (area 14, question 13; chunk 6.12) lists the
+**`jadpo deliveries`** (area 14, "Operator commands") lists the
 items that need an operator, `failed` and `outcome_unknown`, newest
 first, 20 a page, and `--state` those `pending`, `running`, `held`,
 `dismissed` or `cancelled`; a connection whose circuit breaker holds
 deliveries is an alert line on the list and on the held ones, with when
-it became unavailable, how many it holds and when one is tried again
-(chunk 7.2b); an operator acts on one by its id, the last 8 hex digits
+it became unavailable, how many it holds and when one is tried again;
+an operator acts on one by its id, the last 8 hex digits
 of its UUID (random in a version 7 UUID, whose first are its time), or
-more. Chosen in chunk 6.12, where the pages left it open:
+more. In detail:
 
 - **Two more states.** `dismissed` and `cancelled` are a delivery's
   record set aside by an operator; neither runs again. Each is kept 30
   days after the operator's last action on it, and its event with it;
-  then the tick deletes it ("The tick"; chunk 6.13).
+  then the tick deletes it ("The tick").
 - **What each action does to a delivery.** `retry` (from `failed`) makes
   it `pending` and due now with a fresh budget: its attempts counted from
   none, and its `within:` from the retry (the record's `retried_at`), not
@@ -2523,9 +2481,9 @@ more. Chosen in chunk 6.12, where the pages left it open:
   app_owner`). A row is kept 30 days, as a run record is, and then
   until its delivery or run is gone, so an item still on record keeps
   the last thing done to it and a dismissed run stays settled; the tick
-  then deletes it (chunk 6.13). Jadpo has no
+  then deletes it. Jadpo has no
   operator accounts of its own, as it has no reviewer accounts
-  (area 14, question 12): the role is the authenticated identity.
+  (area 14, "Sign-off"): the role is the authenticated identity.
 - **Where.** The commands read every store that holds an entity, where
   deliveries are, and `schedules: { store: }`, each found as `jadpo
   schedules` finds its database: `--url` (with `--store` when there are
@@ -2533,15 +2491,14 @@ more. Chosen in chunk 6.12, where the pages left it open:
   They run none of the app's code, and read none of its settings beyond
   those addresses.
 
-**Unfinished multi-step runs are operator items too** (decided
-2026-10-16). Whenever an action with several changing calls ends without
+**Unfinished multi-step runs are operator items too.** Whenever an action with several changing calls ends without
 committing (failed, diverged, parked, or a route whose key lapsed), the
 operator sees an item listing what took effect at each provider, step by
 step with its answer, and can retry it (with `--not-done`, under a new key
 generation) or abandon it. Nothing about it is quietly dropped; an item is
 kept 30 days, then only its step list.
 
-Built in chunk 7.5c. A delivery that `diverged` is listed by default
+A delivery that `diverged` is listed by default
 beside those that failed or are in doubt, and `--state` takes
 `diverged`, `unfinished` and `abandoned`; a route's record whose client
 didn't retry within a day of its last run is an item of its own,
@@ -2565,8 +2522,7 @@ record's key is answered `500` and nothing is sent. The provider's
 `new_key_on:` answer sends a step again at once, once, under its next key
 generation, which the record keeps first. `jadpo runs unfinished --build
 <build id>` (area 14) lists the records and batch runs a new build
-changes. Live tests in `crates/jadpo-cli/tests/step_operators.rs`.
-Choices in the decisions table, "Operators, chosen in chunk 7.5c".
+changes. Choices in the decisions table, "Operators".
 
 **Batch runs and queue messages** show here as well: each batch run with
 its state, progress against the file's size, problems and an estimated
@@ -2576,8 +2532,7 @@ parked because its type is not listed or because it kept failing.
 ### Watching schedules
 
 Schedules fail quietly in most frameworks: a job that stops running produces
-no error at all. Jadpo records and checks every part of a schedule's life
-(Richard, 2026-10-13):
+no error at all. Jadpo records and checks every part of a schedule's life:
 
 - **Every run is recorded** in a system table (`jadpo_schedule_runs`): due
   time, start, end, outcome (`running`, `succeeded`, `failed`, or
@@ -2633,7 +2588,7 @@ no error at all. Jadpo records and checks every part of a schedule's life
   success's start (kept on the state row as `last_succeeded_at`, so a
   monthly schedule isn't lost with its 30-day records) or else from its
   first due time. Each is a log event (`{"event": "schedule.alert",
-  "alert": …}`, area 14's question 13); sending it on waits for the
+  "alert": …}`, area 14's "Operator commands"); sending it on waits for the
   hosts' log sink and telemetry (area 16).
 - **The tick raises the alerts.** Once a tick's schedules have run, it
   works out the alerts that hold for each schedule, as any reader does,
@@ -2658,7 +2613,7 @@ no error at all. Jadpo records and checks every part of a schedule's life
 `jadpo schedules run <name>` runs a schedule now, paused or not, under
 its lease: refused with `schedules.lease_held`, and nothing done, while a
 run holds it. Its record's reason is `by_hand`, and the grid isn't moved.
-Where it runs depends on the database (Richard, 2026-10-19):
+Where it runs depends on the database:
 
 - **Against `jadpo dev`**, the database a running `jadpo dev` noted for
   that store in `build/dev/stores.json`, it runs the schedule straight
@@ -2707,7 +2662,7 @@ Where it runs depends on the database (Richard, 2026-10-19):
 
 ## Limits and runtime faults
 
-| Limit | Proposed value | When it is exceeded |
+| Limit | Value | When it is exceeded |
 |---|---|---|
 | Events emitted by one action | 1,000, and as many for each item's action of a batch | Defect: the action fails and rolls back |
 | Size of one event | 64 KB | Defect: the action fails and rolls back |
@@ -2718,20 +2673,7 @@ Where it runs depends on the database (Richard, 2026-10-19):
 
 Numbers are recommendations to confirm with measured runs (question 12).
 
-## The delivery descriptor
-
-There is none. An earlier design put a 45-line closed sub-language inside a
-job, `delivery: reminder_v1 { selection: ... hooks: ... service: ... authority: ... completion: ... }`,
-written for exactly one feature: overdue-todo reminders. It restated a query
-(`order_by: Todo.due_at asc, Todo.id asc`, `limit: 500`) and accepted only
-literal values such as `limit: 500` and `"reminder.v1"`. The batch pattern
-above does the same job with an ordinary query, an ordinary action and an
-ordinary subscriber, so the descriptor is deleted, with its 14 syntax rules
-and 6 type rules (question 2).
-
 ## Errors
-
-Built in chunk 6.1b: the errors of events and subscribers. Built in chunk 6.2: the errors of schedules. Built in chunk 7.7c: the errors of queues received.
 
 ### `event.emit_invalid`
 
@@ -3271,7 +3213,7 @@ at the run's call.
 
 The answers of an action with several changing calls are kept, encrypted,
 until it commits, so `app.jadpo` names the `SigningKey` setting they are
-encrypted with (decided 2026-10-20). The error is reported once, at the
+encrypted with. The error is reported once, at the
 first such action:
 
 ```jadpo check project=e-step-encryption-key-required file=app.jadpo hidden
@@ -4399,7 +4341,7 @@ check failed: 1 error, 2 files
 `each:` and `finished:` are one call of an action in the same domain,
 whose arguments are the item, a field inside it, or a value saved with
 the run. (A file helper's write's `each:` is one inline function giving
-the item's row instead, chunk 6.4b2, refused when it is anything else.)
+the item's row instead, refused when it is anything else.)
 One that works something out of the item is refused:
 
 ```jadpo check project=e-batch-each-invalid file=stock.jadpo hidden
@@ -4555,7 +4497,7 @@ Only the runtime builds a batch type, and `batches.status` and
 `batches.cancel` find a run by its `id` alone, so no request carries one:
 an `Input`, read from a body or a query string, and a route's placeholder
 may not hold a `BatchRun`, a `BatchProgress`, a `RowProblem` or an
-`ImportSummary`, however deep (chunk 6.6b). A run comes from
+`ImportSummary`, however deep. A run comes from
 `batches.each`, or from a field the caller may read where the
 application kept it:
 
@@ -4640,8 +4582,8 @@ the one before ended on, so a `from:` whose query orders by a field an
 update can change can miss a record whose field moved behind that place
 mid-run, or meet it twice. An order no update changes keeps every record
 in exactly once: `id`, a field marked `immutable: true`, or a time
-generated as the record is created, then `id` (chunk 6.4b3; "How a run
-is kept"):
+generated as the record is created, then `id` ("How a run is
+kept"):
 
 ```jadpo check project=e-batch-order-updatable file=stock.jadpo hidden
 type ShelfCode = Text {
@@ -4781,12 +4723,12 @@ action sweep_by_stock(page: ItemPage) -> BatchRun {
 ### `type.batch_row_invalid`
 
 A file helper reads each row as the `Input` its `as:` names, and writes
-each as the `Output` its `each:` gives (chunk 6.4b2). A CSV or TSV row
+each as the `Output` its `each:` gives. A CSV or TSV row
 holds one value a cell, so a row type holding a list, a map, an object
 or a standard type with no one text form is refused, pointing at JSON
 Lines, whose rows hold any JSON value; so is a row type that isn't an
 `Input` (or, written, an `Output`), or two fields reading or writing one
-column. From chunk 6.4b3 the same rule refuses `json.read`'s `items_at:`
+column. The same rule refuses `json.read`'s `items_at:`
 when it isn't member names written out between dots (`"data.items"`),
 and a reader's `max_unpacked_size:` when it isn't a size (`200mb`):
 
@@ -4904,402 +4846,181 @@ check failed: 1 error, 9 files
 
 ### Status
 
-Built in Phase 6 (chunks 6.1a to 6.10): the runner and the system caller
-(area 9); `emit`, the outbox, subscribers, delivery after the response,
-handled records, retries, trace context and `events: { store: }`, with the
-errors that name `event.` and `subscriber.`; each domain's event record
-and what a subscriber stores from its event; schedules, their state and
-leases, the native tick and its sweeps, every run and skipped tick
-recorded, with the errors that name `schedule.`; watching schedules,
-`jadpo schedules` with `run` (against `jadpo dev` or a deployment),
-`pause`, `resume` and `history`, `jadpo why <schedule>`, each run and
-alert in `jadpo dev`'s output, the alerts with no setup and the metrics;
-each entity's purge schedule and a test's `schedule.run()`;
-`batches.each`, `batches.status`, `batches.cancel` and `key:`, with
-tenants, grants, what a run stores under policy and no request carrying
-a batch type; background work within its host's budget and a native
-server draining as it stops; records a later release still reads; and
-alerts raised by the tick, once across instances, with `jadpo why`'s
-answer decided by the runtime; and the tick deleting handled records once
-their delivery's record is gone, and area 8's ended sessions, tokens and
-expired keys. Built in chunk 6.4b: the file helpers' reads, `csv.read`,
-`tsv.read` and `json_lines.read`, with `column:`, a file row's problems
-by its row and column, the faults that stop a file's run, and
-`type.batch_row_invalid` ("How a file's run is kept"). Built in chunk
-6.4b2: the writers, `csv.write`, `tsv.write`, `json_lines.write` and
-`json.write`'s file form, with `CsvFormat` and `ExportSummary`, each
-page's rows put once its transaction has closed ("How an export's run is
-kept"). Built in chunk 6.13: the tick deleting what an operator settled,
-and the operator's log, after 30 days. Built in chunk 6.4b3: `json.read`'s
-file form, gzip read with `max_unpacked_size:`, `estimated_total`, and
-`type.batch_order_updatable` for a `from:` ordered by a field that can be
-updated, declinable. Built in chunk 7.2b: the outbox's circuit breaker
-per connection ("When a provider keeps failing"), held deliveries in
-`jadpo deliveries`, and its alert. Built in chunk 7.5: what `jadpo check`
-keeps of several changing calls in one action, with the errors that name
-`step.` ("Several changing calls in one action"). Built in chunk 7.5c:
-unfinished records as operator items, `new_key_on:` and `jadpo runs
-unfinished` ("What an operator sees"). Built in chunk 7.5d: fakes keeping
-keys with `lost` and `in_use`, and `jadpo test`'s crash at each step
-boundary (area 13). Built in chunk 7.5e: the late-failure warning,
-`step.late_failure`, and the sum of a route's outside calls against its
-deadline ("Several changing calls in one action").
-Built in chunk 7.5f: each step's state under its
-request's or delivery's line in `jadpo dev`, and the metric and alert
-on unfinished records ("Several changing calls in one action").
-Built in chunk 7.9a, from the Phase 7 soundness review: a route's action
-that calls out keeping its client's key, a delivery's attempt keying its
-calls the same wherever it runs, a sign-in email keyed per attempt, a
-failure that did nothing left in doubt, the runtime's own timestamps on
-the host's clock, and an unkeyed change never sent again on a rerun
-("Several changing calls in one action"; live tests in
-`crates/jadpo-cli/tests/step_replays.rs`; decisions table, "Keys and
-replays, chosen in chunk 7.9a").
-Built in chunk 8.2h: on Workers, what an invocation's 30 seconds didn't
-reach handed on to a fresh invocation of the Worker, a request to itself
-naming each piece by its record ("Running background work"; decisions
-table, "Work handed on, on Workers"); proved under workerd with a
-subscriber's deliveries and a batch run each longer than one
-invocation's budget (`crates/jadpo-cli/tests/workers/newsroom.rs`).
+Everything on this page is built except:
 
-Not yet:
+- publishing chosen public events outward;
+- each step's state in `jadpo watch`, and in `jadpo trace` with the
+  request timelines (area 17), and a record's entry in the personal-data
+  report (area 15);
+- sending the metrics and the alerts' log events to a monitoring tool,
+  which waits for telemetry (area 16), and the console's timeline
+  (area 17).
 
-- A test's `fakes:` failing a subscriber's provider call: roadmap 7.2,
-  with its generated fakes. Delivering events in tests after each step,
-  in an order the printed seed shuffles, and retrying or giving up a
-  call a fake fails, is built (area 13, "Caches and events"; chunk 6.11).
-- `Retry-After`, polls, `receiving`, publishing outward, webhooks and a
-  package's own events come with Phase 7; their errors are built with
-  them. The warning and the deadline sum come with roadmap 7.5e; each
-  step's state in `jadpo watch` with `jadpo watch`, and in `jadpo trace`
-  with the request timelines (area 17), and the record's entry in the
-  personal-data report with the report (area 15), all after the first
-  build.
-- On Cloudflare Workers, the `trigger:` adapter: roadmap 8.2g. Delivery
-  after commit in `waitUntil` and the budgets are built (chunks 8.2a and
-  8.2d), the cron tick (chunk 8.2f), and work an invocation didn't reach
-  handed on to a fresh invocation of the Worker (chunk 8.2h).
-- Sending the metrics and the alerts' log events to a monitoring tool
-  waits for telemetry (area 16), and the console's timeline for area 17.
+[The roadmap](../roadmap.md) says when.
 
 ### Consistency with the rest of the language
 
-- **Setting in the header.** `job chore_census every 15m {` breaks the
-  colon rule (area 3); the schedule form uses `every: 15m`.
-- **One-value settings.** `concurrency: singleton` and `retry: next_schedule`
-  are required and accept one value each; they become defaults.
-- **The time parameter is ritual.** `run: scan(JobRunAt(clock.now))` passes
-  the time in, although `clock.now` is already fixed for the whole run.
-- **The delivery descriptor restates a query** in a second, closed syntax
-  that mixes literal-only values with compiler words, against "one spelling
-  per concept".
-- **`emit_event(...)`** is a lowercase intrinsic with no owner, beside
-  `reject F { }`, and wraps in `attempt` something that cannot fail, which
-  area 3 makes an error.
-- **`event` as a keyword** contradicts area 4's reasoning for
-  `type X = Failure`; the syntax review had kept it, before area 4 decided.
-- **Event families** (`TodoEvent.completed`) are enums by another name, with
-  per-variant policy that duplicates area 9.
-- **`component`** in the candidate design maps modules to owners; area 1
-  made domains the owners.
-- **The candidate design is very large.** Components, trigger restrictions,
-  producer policy, worker-and-origin authority, transition publication,
-  lanes and enrollment generations; the
-  [proposals](research/12-jobs-and-events-proposals.md) measure it against
-  other frameworks.
+What this area sets in other areas:
 
-### Carried to later areas
-
-| Item | Area | Status |
-|---|---|---|
-| Scheduling the purge worker (from area 5) | 12 | Answered here: a built-in hourly schedule per entity with `purge:` |
-| Retry by kind, dead letters and alerting; `outcome_unknown` never retried blindly (from area 4) | 12 | Answered here: question 7 |
-| `type X = Event { ... }` (from area 4) | 12 | Question 3 |
-| Calling an action per item inside `for`, and the write syntax the examples leave as comments | 6 | Input to area 6 |
-| Who a subscriber acts as; reading event fields under policy | 9 | Depends on question 8 |
-| Fixed `clock.now` per run; calendar schedules with a time zone, if ever added | 10 | Input to area 10 |
-| The delivery key as an integration's idempotency key; one changing call per action; provider timeouts becoming `outcome_unknown` | 11 | Input to area 11 |
-| Running due schedules and delivering pending events in tests | 13 | Input to area 13 |
-| The operator's view and commands: list, retry, dismiss and resolve deliveries; alerts | 14 | Input to area 14 |
-| `toolchain.target_job_not_implemented` and `toolchain.target_durable_workflow_not_implemented`, raised by `jadpo build` | 14 | Input to area 14 |
-| `type.job_delivery_selector_invalid`, `type.job_delivery_service_invalid`, `type.job_delivery_sealed_use`: not reachable by `jadpo check`; removed with the descriptor if question 2 is accepted | 14 | Depends on question 2 |
-| `BatchRun`, `BatchProgress`, `RowProblem`, `ImportSummary`, `ExportSummary` | 2 | Question 19 |
-| The inline `->` form in the batch helpers' `each:` and `finished:`; no outside call inside `for` | 3 | Questions 19 and 20 |
-| Writes after the last call; `clock.now` fixed for a multi-step record's life, on reruns too | 6, 10 | Question 20 |
-| Pagination: work over many pages is `batches.each`, not one page per delivery; key derivation and each package's key block; question 26 answered by the warning; `polls:` | 11 | Questions 19, 20 and 22 |
-| Fakes answering `lost` and `in_use`; crash points at each step; batches in tests | 13 | Questions 19 and 20 |
-| `diverged` and unfinished multi-step runs, batch runs and parked queue messages in `jadpo deliveries`; `jadpo runs unfinished --build <build id>` listing runs a new build changes | 14 | Questions 19 to 21 |
-| Multi-step records and batch runs' captured values in the personal-data report | 15 | Questions 19 and 20 |
-| Each step's state in `jadpo dev`, `jadpo watch` and `jadpo trace` | 17 | Question 20 |
-
-### Open questions
-
-1. **Is a schedule `schedule name { every: 15m  run: action() }`?** The
-   action takes no arguments and reads `clock.now`, fixed for the run;
-   `concurrency` and `retry` become defaults (one run at a time, missed ticks
-   merged, next tick retries); `every:` gains days. *Recommendation:* yes.
-   Runs never overlap: a tick that arrives while a run is going is skipped,
-   not queued, and there is no option to allow overlap (Richard asked,
-   2026-10-13); work too large for one run emits one event per item.
-   Rails' Solid Queue (`schedule: every day at 9am`) and Oban's cron plugin
-   also offer calendar times; add them only when an application needs them. *Decided 2026-10-13:* yes, as recommended.
-2. **Delete the delivery descriptor?** It is 45 lines of closed syntax for
-   one feature, duplicates a query and can never pass checking.
-   *Recommendation:* yes, with its 14 syntax and 6 type rules; the batch
-   pattern does the same with ordinary code. *Decided 2026-10-13:* yes, as recommended.
-3. **Is an event `type TodoCompleted = Event { ... }`, one type per event?**
-   Carried from area 4. *Recommendation:* yes, one per file in `events/`, no
-   families and no per-event policy. It matches failures, and Laravel and
-   Rails also define one class per event or job. See the
-   [proposals](research/12-jobs-and-events-proposals.md). *Decided 2026-10-13:* yes, as recommended.
-4. **Is emitting `emit TodoCompleted { ... }`, a statement with no
-   `attempt`, allowed only in actions and delivered after commit?**
-   *Recommendation:* yes. It mirrors `reject`, and areas 3 and 4 already rule
-   out `attempt` on something that cannot fail. *Decided 2026-10-13:* yes, as recommended.
-5. **Is a subscriber `subscriber name { on: Event  run: action(event) }`,
-   one event each?** *Recommendation:* yes. It has the same shape as routes
-   and schedules; several events in one subscriber would read as "all of
-   them" to some readers and "any of them" to others. *Decided 2026-10-13:* yes, as recommended.
-6. **Is delivery order promised?** ASYNC-001 promised order per key for jobs,
-   which needs per-key queues and lets one stuck item block the rest.
-   *Recommendation:* no order promised. Sidekiq, Laravel and EventBridge
-   promise none either; subscribers read current state, which retries need
-   anyway. This changes ASYNC-001. *Decided 2026-10-13:* yes, as recommended.
-7. **Retries by failure kind, with a default budget?** *Recommendation:* the
-   table above: `unavailable`, `rate_limited` and pre-commit faults retry;
-   other failures and defects fail at once; `outcome_unknown` is parked.
-   Default 10 attempts within 24 hours, changeable per subscriber with
-   `retry: { attempts:  within: }`. Sidekiq defaults to 25 retries over
-   about 20 days and Oban to 20 attempts; a day suits an outage, and a
-   payment webhook can ask for more. *Decided 2026-10-13:* yes, as recommended.
-8. **Who does a subscriber act as?** The candidate design checks both a
-   worker's and the original user's permissions on every delivery.
-   *Recommendation:* the application itself, limited to its own domain; the
-   event carries the user's id when the reaction needs it. Rails, Laravel and
-   Sidekiq jobs have no user either. Area 9 confirms.
-   *Decided 2026-10-13:* replaced. Schedules and subscribers act as
-   `Access.system`, a fourth kind of "who" (area 9) that an entity must grant
-   explicitly (`update: [owner_id, Access.system]`); a subscriber is limited
-   to the tenant its event came from; the permissions report shows what
-   background work can touch.
-9. **Should lifecycle transitions emit events automatically?** The candidate
-   design publishes facts from transitions so no write path can skip them.
-   *Recommendation:* no for now: emit in the action that makes the change,
-   one way to do it. Revisit if reviews find a missed emit. *Decided 2026-10-13:* yes, as recommended.
-10. **Can an event be delivered later (`in 24h`)?** Sidekiq, Laravel and
-    Inngest can delay jobs. *Recommendation:* not now. A schedule querying a
-    due field covers it, rereads current state, and keeps one way to wait. *Decided 2026-10-13:* yes, as recommended.
-11. **May an action call more than one integration operation that changes
-    something?** *Recommendation:* no, a compile error. After a lost reply
-    the runtime must know which single call to ask about; batch work emits one
-    event per item instead. Inngest makes each outside call its own step for
-    the same reason. *Decided 2026-10-13:* yes, as recommended. *Reason
-    corrected 2026-10-15 (Richard):* the runtime stops at the first call
-    whose outcome is unknown, so even several calls would leave only one in
-    doubt. The rule's purpose is that an action repeats as a unit, and that
-    no second call can fail for good after the first took effect (see
-    "Delivery: at least once, safe to repeat").
-    *Revised 2026-10-16 (Richard):* replaced by "Several changing calls in
-    one action" (question 20). Calls without idempotency keys stay one per
-    action; keyed calls may be up to 8 in order, each recorded and replayed
-    on a rerun.
-12. **Are the limits right?** 1,000 events per action, 64 KB per event,
-    chains 16 deep, 15 minutes per run. *Recommendation:* adopt them as
-    defaults and confirm with measured runs, as ASYNC-001 requires. *Decided 2026-10-13:* yes, as recommended.
-    *Revised 2026-10-16 (Richard):* paging no longer chains events, so the
-    16-deep limit stops only loops; batches (question 19) hold up to 1,000
-    items or 4 MiB of file each, and an action makes at most 8 changing
-    calls (question 20), both confirmed by measurement.
-13. **Do large exports need a consistent snapshot read?** (carried from area
-    6) A schedule paging through a query for an export or report sees
-    records change between pages. Should it read one consistent snapshot,
-    and how is that declared? *Decided 2026-10-13:* yes, as recommended.
-    *Revised 2026-10-16 (Richard):* an export is a batch (question 19)
-    walking keyset pages of live data, and `jadpo check` warns when its
-    `from:` orders by a field that can be updated. Built in chunk 6.4b3
-    as a declinable error, `type.batch_order_updatable`, since every
-    finding is an error (area 1, question 11).
-14. **What carries on after a route answers `status: SuccessStatus.accepted`?**
-    (carried from area 7) Area 7 has a route answer 202 and continue the work
-    in the background. Is that always an event and a subscriber, and how
-    does the client learn the outcome? *Decided 2026-10-13:* yes, as recommended.
-15. **How do tests run schedules and subscribers?** (carried from area 13)
-    Area 13 calls `chore_census.run()`, relies on subscriber delivery
-    order and needs retries of a failing subscriber. Does this page define
-    those, and in what order are subscribers delivered in tests?
-    *Decided 2026-10-13:* `schedule.run()` runs a schedule under the test
-    clock; events are delivered after each commit; a fake can fail a
-    subscriber to test retries; delivery order is shuffled with a printed
-    seed, so a test that depends on order fails visibly. Built in chunk
-    6.11 (area 13, "Caches and events"), a fake's failure on 7.0c's
-    fakes; a test scripts one with `fakes:` from roadmap 7.2.
-16. **Where does a schedule's tick come from on each host?** Raised by
-    Richard (2026-10-13) with the move to native Rust and WebAssembly
-    targets. Cloudflare's cron triggers can fire more than once and do not
-    wait for a running invocation; Durable Objects guarantee one alarm at a
-    time but exist only on Cloudflare. *Recommendation:* split the *tick*
-    from the *state*. The state always lives in the application's main
-    store: a generated table holding each schedule's next due time and a
-    lease (`running_until`). On every tick the runtime takes due schedules
-    whose lease is free in one conditional update, runs them, and releases
-    the lease; a tick that finds the lease taken skips, and a crashed run's
-    lease expires after the 15-minute limit. The tick is pluggable,
-    `schedules: { trigger: ScheduleTrigger.native }` (default: an in-process
-    timer) or `ScheduleTrigger.external` (the host calls a generated tick
-    once a minute: a Cloudflare cron trigger, a Kubernetes CronJob, AWS
-    EventBridge Scheduler). One external entry per application, whatever the
-    number of schedules, so `every: 7m` works where cron syntax cannot and
-    Cloudflare's per-account cron limit is never reached. Duplicate ticks
-    are harmless because the lease decides. Durable Objects stay a possible
-    later optimisation, not the design.
-    *Richard (2026-10-13):* design it as adapters, built for many, chosen in
-    configuration. *Decided 2026-10-13 (Richard's requirements):*
-    - a schedule adapter supplies the tick and may supply the lease; the
-      default lease lives in the main database; adapters are many and named
-      in `app.jadpo` (`ScheduleTrigger.native` by default; external ticks
-      such as Cloudflare cron, Kubernetes CronJob or AWS EventBridge; a
-      Durable Objects adapter that also holds the lease later), and an
-      adapter may generate its host's configuration;
-    - declaring a schedule (or an event, which needs the outbox) with no
-      store the chosen adapter can keep state in is a compile error that
-      says which store to add;
-    - the generated system tables (schedule state, the event outbox,
-      delivery records, idempotency keys, sessions) are part of the
-      migration snapshots like any entity, prefixed `jadpo_`, so
-      `jadpo migrate new` creates and changes them and `jadpo check` reports
-      drift in them too.
-
-    *Superseded 2026-10-19* by "Outbox placement, settled" (Decisions):
-    a schedule's lease goes in `schedules: { store: }`, not always the
-    main store, and each store an action writes keeps its own outbox.
-    *Richard (2026-10-21):* `ScheduleTrigger.external` is the native
-    deployable's `tick` command: `<deployable> tick` reads the settings,
-    checks migrations as `serve` does, runs one tick against the
-    schedules' store and exits, so a Kubernetes CronJob, ECS task or
-    systemd timer runs it each minute. No HTTP endpoint and no tick
-    secret; a scheduler that can only call a URL needs its own wrapper.
-    On Workers the cron trigger calls the Worker's scheduled handler.
-    Built in chunk 8.2g ("The tick"; "The `trigger:` adapter" in
-    Decisions).
-17. **Can a request's whole effect be traced through events?** Raised by
-    Richard (2026-10-13). *Recommendation:* yes, always on. An event is
-    stored with the trace context of the action that emitted it (W3C
-    `traceparent`, in the same transaction), and each subscriber run is a
-    child of it, so route → action → events → subscribers → further events
-    → provider calls form one trace. Schedules start a trace per run;
-    provider webhooks start one linked to the provider's event id; calls
-    between Jadpo applications pass the context on. Each event also records
-    what caused it (request id or parent event), which the 16-deep chain
-    limit already needs. `jadpo trace <request id>` and the console (area 17)
-    show the whole tree; area 16's OpenTelemetry export carries it. *Decided 2026-10-13:* yes, as recommended.
-18. **Should deliveries pause when a provider keeps failing?** Jitter stops
-    retries arriving together, but 5,000 deliveries all calling a provider
-    that is down still retry 10 times each. *Recommendation:* a circuit
-    breaker per connection: after a run of `unavailable` failures from one
-    provider, deliveries that call it are held rather than attempted, one
-    probe delivery is tried after a pause, and success releases the rest.
-    Held deliveries do not spend their retry budget. Shown in
-    `jadpo deliveries` and alerted. Resilience4j and Polly offer the same
-    pattern; built in, nobody has to remember it. *Decided 2026-10-13:* yes, as recommended.
-    Built in chunk 7.2b, its thresholds chosen there ("When a provider
-    keeps failing").
-19. **How is work over many items done: a file's rows, a large query,
-    every page of a provider's list?** *Decided 2026-10-16 (Richard):* by
-    batches, the one way, through explicit helpers per format and
-    direction (`csv.read` and `csv.write`, `tsv`, `json_lines`, `json.read`
-    and `json.write`) and `batches.each` for work with no file. Each starts
-    after the calling action commits, returns a run (`batches.status`,
-    `batches.cancel`, `key:` for a repeated start), groups items into
-    batches each committing its writes and position together, keeps file
-    order, and turns bad rows and failed items into problems without
-    values while the rest carry on. Rows read are `Input`s and rows written
-    `Output`s; writing CSV names its reader; encodings are declared, never
-    guessed; gzip only with `max_unpacked_size:`. No loop over a file's
-    rows and no whole-file parse into a list. It replaces chained events
-    for paging and settles area 11's pagination.
-20. **May an action make several changing calls?** *Decided 2026-10-16
-    (Richard):* yes, as "Several changing calls in one action" says, with
-    the review's ten fixes and its answers: a route without a required
-    `Idempotency-Key` starting one is refused, not warned; 8 steps is the
-    limit for now; an unkeyed call is never allowed as a last step;
-    timestamps after a resumed action are from when it started; a diverged
-    action is held, not failed; crash-point test runs are on by default;
-    before a deploy, `jadpo runs unfinished --build <build id>` lists the
-    unfinished runs whose path the new build changes (Jadpo has no deploy
-    command), and a run resumed under a changed build stops as `diverged`;
-    and area 11's question 26 closes with
-    the warning.
-21. **Can the app read a queue directly?** *Decided 2026-10-16 (Richard):*
-    yes, through the `receiving` capability: a queue names its type and id
-    fields and the events it may carry; each message becomes its event,
-    acknowledged after the subscriber's transaction commits, repeats
-    dropped by message id; unlisted types and messages that keep failing
-    are parked for an operator.
-22. **Do packages produce events?** *Decided 2026-10-16 (Richard):* only
-    about the outside world: webhooks, events their own subscribers emit
-    from them, and polls, never as a side effect of the app calling them.
-    Only `public` package events can be subscribed to; a poll runs only
-    while something subscribes, emits only changes, and is for feeds that
-    do not depend on the app's data.
+| Area | Rule |
+|---|---|
+| 2 | `BatchRun`, `BatchProgress`, `RowProblem`, `ImportSummary` and `ExportSummary` are area 2's types |
+| 3 | The batch helpers' `each:` and `finished:` take the inline `->` form; no action makes an outside call inside `for` |
+| 5 | An entity's `purge:` runs as a built-in hourly schedule per entity |
+| 6, 10 | Writes come after the last call; `clock.now` is fixed for a run, and for a multi-step record's life, reruns included |
+| 9 | Schedules, subscribers and batches act as `Access.system`, which an entity grants explicitly, each limited to the tenants "Background work and tenants" says |
+| 11 | The delivery key is an input to each provider call's idempotency key; work over many pages of a provider's list is `batches.each`; area 11's question 26 is answered by the late-failure warning |
+| 13 | Tests run a schedule with `schedule.run()` and deliver events after each commit in a shuffled order; fakes answer `lost` and `in_use`; crash points at each step |
+| 14 | The operator's commands: `jadpo deliveries` (with `diverged` and unfinished multi-step runs, batch runs and parked queue messages), `jadpo schedules`, and `jadpo runs unfinished --build <build id>` |
+| 15 | Multi-step records and batch runs' captured values are in the personal-data report |
+| 17 | Each step's state shows in `jadpo dev`, `jadpo watch` and `jadpo trace` |
 
 ### Decisions
 
-| Topic | Decision | Date |
-|---|---|---|
-| Multi-step calls' encryption key | Recorded answers are encrypted with `application { steps: { encryption_key: config.step_encryption_key } }`, a `SigningKey` setting rotated as grants' `encryption_key:` is; required only when some action makes several changing calls, a compile error naming the first such action otherwise (decided for Richard, following grants) | 2026-10-20 |
-| Keys and replays, chosen in chunk 7.9a | From the Phase 7 soundness review, each the conservative reading. A route's action keeps its client's `Idempotency-Key` in the store it writes, else beside its events, else, when it makes a changing call (a provider's operation with `changes: true`, a store's `put`), in the store `events: { store: }` names, where its record of several steps is kept too, so its steps are resumed under the key and one call's response is kept for a repeat; an action that only reads keeps none, and its OpenAPI says where the key is kept. With no store to keep it, the route's calls' keys are still derived from the client's key in its caller's scope, never the request's id. A delivery's attempt counts its keyed calls from none under its own key and with none of the `ai` answers kept for a rerun, wherever it runs (a route waiting with `settle:`, a test), giving back whoever ran it theirs after. A sign-in email (`MagicLinkEmail`, and the action `send:` names) is keyed per attempt, from fresh randomness, since each attempt makes a link and a code that end the last's: a provider replaying the last attempt's key would leave the person a dead code; its key doesn't survive a retry, so it keeps no record of its steps. A step's own failure whose kind is `unavailable` or `rate_limited` is never kept, and one kept by an earlier runtime never replayed: the step stays in doubt and goes again under its key. Code's `clock.now` is the record's fixed time; an event's `emitted_at`, a delivery's handled record, a request's AWS signature, the day an `ai` budget counts and a received event's stamp are the host's. An unkeyed change that went out (answered, or no answer) stops a rerun after a concurrent change, in the boundary or at a held commit, as `outcome_unknown`, which a route keeps for its key and a delivery parks; areas 6, 12 and 16 say the same. In `jadpo test` how often each scripted operation and prompt was called is judged on the run without a crash only, since a crash sends its step again and the `ai` fake, or a call with no key, answers it afresh; a request a crash sends again forgets the `ai` answers kept for a rerun, as a client's retry reaches a runner that kept none, so a model asked before the steps is asked again there as in production (decided for Richard) | 2026-10-21 |
-| One outside-call path, chosen in chunk 7.9d | From the Phase 7 architecture review, each the conservative reading. Every outside call (a provider's operation, `ai.generate`, `ai.embed`, `ai.stream`, a store's file, an email, a capability's delivery) goes out through one exchange and one retrying send, and where its answer is given back from (the action's record, an `ai` call's earlier run, a replayed run's recording) is decided in one place. `max_concurrent:` caps every call through its connection: a provider operation's, as since chunk 7.6c, and where a package fills `ai`, its `ai.generate`, `ai.embed` and `ai.stream` calls too; the built-in `Driver.openai_compatible` has no cap. A call takes a slot only once it is cleared to go (no transaction open, no recording answering it, a driver found), before its step is written, and gives it back once answered, a stream once its answer starts to come, so a later call of the same action through the connection never waits on a stream the route hasn't sent yet. A delivery whose action calls `ai` through a connection with every slot out waits for one within its budget, as a route's call does, rather than being given back to the outbox: giving back reads the connections the circuit breaker does, a provider's operations'. No wait to send a call again outlasts the invocation's time, a route's remaining deadline or what background work's budget leaves before the time it keeps back: a wait that wouldn't end within it, a `Retry-After` past it included, ends the sending at once and the last answer stands, so a `429` or a provider that couldn't be reached is `unavailable`, and no answer in time `timed_out` where the call maps it, as when `within:` or an `ai` call's `timeout:` ends it. Each send's own timeout isn't shortened: the deadline and the budget stop a call still out, as before. A store's file, an email and a capability's delivery are still sent once, having no `retry:` (the outbox retries a delivery). An embedding given back from the action's record is logged as the step it is, as the other calls are (decided for Richard) | 2026-10-21 |
-| Development and the metric, chosen in chunk 7.5f | Each the conservative reading. Until area 17's request timelines (`jadpo trace`), a request's timeline in `jadpo dev` is its line and the trace lines under it, so each step a request's action reached is a trace line there, in place of the call it made; a delivery, which `jadpo dev` didn't print, gets a line of its own only when its subscriber's action reached steps under a record, since that is when one needs following, with `jadpo deliveries show <id>` under it when the attempt failed, parked or diverged. A step's state is what this run made of it, from the record: `replayed` (answered on an earlier run), `answered`, its failure's code, `in doubt` (sent, no answer kept), `diverged` or `outcome unknown` (in doubt and not to be sent again), with where its answer came from; never its request, answer or key, nor the key's generation. The metric counts the records not abandoned, a run under way included, and gives when the oldest's first run started; the tick carries it for each store that keeps records, until telemetry (area 16) sends it. The alert holds once a record has been unfinished a day from its first run's start, a subscriber's default `within:` and a route's key's lapse, so no retry with the default budget is still to finish it; each such record is marked in `jadpo_step_records.alerted_at`, and the tick raises the alert only when none still unfinished was marked before, so it is raised once until no record is unfinished past a day, by one instance's tick. `jadpo deliveries` shows it in its default list and with `--state diverged` or `unfinished` (decided for Richard) | 2026-10-20 |
-| The late-failure warning and the deadline sum, chosen in chunk 7.5e | Each the conservative reading. A failure ends a run for good unless its kind is `unavailable` or `rate_limited`, the two retried ("Retries and giving up"); one whose kind isn't known counts as ending it. A point after the first changing call is an `attempt` passing a failure on (the failures its arms map to, or else the call's or write's own), `reject` and `propagate`; a failure handled by an outcome `match` isn't one. Where two ways meet, a changing call on either may have been made. One finding for each action, at its first point, the others shown beside it, so one `decline` answers it, as declines answer one finding each. A package's action is never told, since the app decides what can be left behind: its surface lists each failure that can follow its own changing call as `after_effect`, and an app's `attempt` of it is a point even before the app's own first changing call; an app's action called before any is told itself instead. The deadline sum is one analysis over every outside call a route reaches, a provider's operation and an `ai` call alike, so chunk 5.5v6's streaming routes rely on it: a provider call through a connection costs its `timeout:` (10s by default; 3s since 2026-10-20, area 11's "Default timeouts") times its `retry: { attempts: }` (3), a package's action its own calls through the connection the app called it through, and `ai.generate` its `timeout:` times its `attempts:`; the waits between attempts and `within:` aren't counted, and a store's `put` and `read` have no `timeout:` and cost nothing. The ways are summed and the longest compared with the route's `deadline:` (10s by default): more is `route.calls_past_deadline` at the route, a plain mistake, not declinable (area 1, question 11), whatever its API; equal fits. Schedules and subscribers have no deadline to compare (decided for Richard) | 2026-10-20 |
-| Tests, chosen in chunk 7.5d | Each the conservative reading. A package's fake keeps a keyed call's first answer under its key, as its provider does: the same key and request are given it again without taking a scripted answer, and a different request the package's `reused:` answer (with none, a refusal without a code, a fault). A failure is kept as Stripe keeps one, whatever the package's `replays_failures:`, unless its kind is `unavailable` or `rate_limited`, so a step sent again after a crash is answered as it was the first time. `lost` acted: what it did, the generated default, answers the next call under its key. `in_use` is another runner's request under the key, the one that acts, so it keeps nothing and answers as `unavailable`; `unavailable` and `misconfigured` keep nothing either. `jadpo dev`'s fake keeps keys the same way, its last 10,000. Crash points count every step a test's run reaches under a record, a step sent again counted again, across the whole run; only a run that passed is crashed, once for each boundary of each step, each on its own copy of the database with a fresh fake, and the first crash that fails is the one reported, with a `crash` line first. A crash isn't counted as an attempt: the delivery is given back, due at once, and a route's claim is given up and its request sent again under its key. A crashed run whose fake acted more or less often than the run without one is a defect in Jadpo, reported as `test.fault`. A delivery that stops as `diverged` between a test's steps ends the test as `test.subscriber_failed`, since it never finishes; one parked as `outcome_unknown` still doesn't. Each delivery attempt in a test counts its keyed calls from none under the delivery's own key, as a runner's fresh context does, and gives the test's back after. An `ai.generate` call kept as a step (chunk 5.5v3) gets crash points like any other step; the `ai` fake keeps no keys, area 21 asking none of it, so a step sent again after a crash once it was answered takes the prompt's next scripted answer, as a model asked again answers afresh. Crash points have no switch to turn them off (decided for Richard) | 2026-10-20 |
-| Operators, chosen in chunk 7.5c | Each the conservative reading. A route's record becomes an item once a day has passed since its last run took it (area 11's 24 hours), whatever its own `window:`; before that it is its client's to retry, and an operator can only abandon it, since only its client holds the request. "Not done" acts on the record's last step when it has no answer or failed, clearing its answer and moving its key to the next generation, with its window counted from the operator's action; with nothing in doubt it is a plain retry, and on a delivery with no record it is `retry` (failed) or `resolve --not-done` (in doubt). A retry resets the record's generation to none with the delivery's attempts. A delivery with a record is refused `dismiss` and `resolve --done`, pointing at `abandon`; `abandon` on one without is refused. A record whose answers were dropped can't be retried, only abandoned. Answers are dropped 30 days after the record's last run; an abandoned record and its delivery go 30 days after the abandon. A route's client retrying under an abandoned record's key stops as a fault, answered `500`, sending nothing. `new_key_on:` sends again once per call; a second such answer is the operation's failure. `show` never shows a key: the CLI reads no setting it would be derived from. `jadpo runs unfinished` requires `--build`, refuses a build the checkout doesn't make (naming the one it does), lists a record whose build differs and whose action's step shape the build changes or no longer keeps, and a running batch run whose call the build changes or no longer has; it succeeds whatever it lists, as listing commands do (decided for Richard) | 2026-10-20 |
-| The record, chosen in chunk 7.5b | Each the conservative reading, where the pages left it open. A record is kept only where the action's key survives a retry: a subscriber's delivery, and a route whose API requires `Idempotency-Key` under the key it claimed; a test calling the action directly keeps none. It is one row keyed by a digest of the key's scope and the key, with a row per step, in the store the action writes or `events: { store: }`'s. A request's fingerprint is an HMAC-SHA-256 of each top-level field as the provider is sent it, by its name there, under a key derived from the steps key (checked under the current and the previous one), so a low-entropy field can't be guessed from it; an answer is sealed with XChaCha20-Poly1305 under another key derived from it (`crypto.encrypt`'s construction; grants' encryption isn't built yet), bound to the record and the step. The generation every write checks is a delivery's attempt or a route's claim time; a write takes the record over from an equal or older one only. A rerun is checked step by step (its operation and fields) and at the end (every recorded step replayed), before anything more is sent; the record keeps the build it started under (until area 18's build id, a digest of every graph node's key and digest) and a digest of its step shape for roadmap 7.5c's `jadpo runs unfinished`, and a rerun doesn't compare the digest, since steps added after the last recorded one aren't a change. A step answered "did nothing" (`unavailable`, `misconfigured`) stays in doubt, so the window rule still holds it. A `put` keeps its object under a key derived from the record and its step and goes again whatever the window. `diverged` is a runtime fault that holds a delivery in the state `diverged` with the step, its operation and the fields; a route answers it `500` and keeps no response, so a client's retry after a fix finishes it. `new_key_on:` comes with 7.5c's new key generation (decided for Richard) | 2026-10-20 |
-| Triggers | Carried from area 1: routes, schedules (replacing "jobs") and subscribers each call actions; durable workflows are subscribers | 2026-10-12 |
-| Keyword and folders | Carried from area 1: `schedule` in `schedules/`; events in `events/`; subscribers in `subscribers/` | 2026-10-12 |
-| Cross-domain changes | Carried from area 1: public actions inside the caller's transaction, or events for reactions that need not be all-or-nothing | 2026-10-12 |
-| Actions | Carried from area 3: every action is all-or-nothing and has no settings; `attempt` only on calls that can fail | 2026-10-12 |
-| Faults | Carried from area 4: faults are never listed in `fails` or matched; integrations map provider problems to declared failures | 2026-10-12 |
-| Schedule form | `schedule name { every: 15m  run: action() }`; runs never overlap, a busy tick is skipped; the next tick retries (read as the next due time: "Schedule and batch defaults", 2026-10-19); calendar times later | 2026-10-13 |
-| Delivery descriptor | Deleted with its 14 syntax and 6 type rules | 2026-10-13 |
-| Event declaration | `type X = Event { ... }`, one per file in `events/` | 2026-10-13 |
-| Emitting | `emit X { ... }` in actions only, delivered after commit, no `attempt` | 2026-10-13 |
-| Subscriber form | `subscriber name { on: Event  run: action(event) }`, one event each | 2026-10-13 |
-| Ordering | No order promised; reverses ASYNC-001 (2026-10-04) | 2026-10-13 |
-| Retries | By failure kind; default 10 attempts within 24 hours; `retry: { attempts: within: }`; exponential backoff with full jitter; `Retry-After` honoured | 2026-10-13 |
-| Subscriber identity | `Access.system`, granted explicitly by entities; limited to the event's tenant | 2026-10-13 |
-| Automatic events from transitions | No; the action that makes the change emits | 2026-10-13 |
-| Delayed delivery | No; a schedule over a due field instead | 2026-10-13 |
-| One changing integration call per action | Yes, a compile error otherwise (Superseded 2026-10-16: several keyed changing calls are allowed; see "Several changing calls"; unkeyed calls stay one per action) | 2026-10-13 |
-| Why one changing call | Corrected (Richard): every action repeats as a unit, a rerun repeating one keyed call, and no second call can fail for good after the first took effect; not "knowing which call to ask about", since the runtime stops at the first unknown outcome anyway | 2026-10-15 |
-| Limits | 1,000 events per action, 64 KB per event, chains 16 deep, 15 minutes per run, confirmed by measurement | 2026-10-13 |
-| Snapshot reads for exports | None; keyset pages; area 15's export reads in one transaction | 2026-10-13 |
-| Work after an accepted response | An event and subscriber; the client reads a record with a status field | 2026-10-13 |
-| Schedules and subscribers in tests | `schedule.run()`, delivery after commit, fakes fail subscribers, shuffled order with a printed seed | 2026-10-13 |
-| Schedule ticks on every host | Schedule adapters, many and chosen in `app.jadpo`: an adapter supplies the tick and may supply the lease (default: main database, superseded 2026-10-19 by "Outbox placement, settled": `schedules: { store: }`, or the only database); a schedule or event with no store for its state is a compile error; system tables (`jadpo_` prefix) are in migration snapshots (Richard) | 2026-10-13 |
-| Tracing through events | Always on: events carry the emitting action's trace context; subscriber runs continue it; `jadpo trace <request id>` | 2026-10-13 |
-| Schedule monitoring | Every run and tick recorded; `jadpo schedules` (list, run, pause, resume, history); `jadpo why <schedule>`; metrics; alerts with no setup (no success in twice the interval, ticks stopped, near the time limit, three failures, stuck lease); console timeline (Richard) | 2026-10-13 |
-| Circuit breaker | Per connection: after repeated `unavailable` failures, deliveries calling the provider are held, one probe after a pause, success releases the rest; held deliveries keep their retry budget; shown and alerted | 2026-10-13 |
-| Event transport | Internal only: the main store's outbox (each written store's, read as "Outbox placement, settled" says, 2026-10-19) delivered by the runtime (on Workers after commit via `waitUntil`, swept by the minute tick); external queues only receive published copies of chosen public events (Richard) | 2026-10-13 |
-| Outbox placement | No default store: the outbox, delivery records and idempotency keys go in each store an action writes; an action writing no store needs `events: { store: <connection> }`, or it is a compile error (Richard, from the architecture plan) | 2026-10-13 |
-| Batches | The one way to work over many items: `csv.read`/`write`, `tsv`, `json_lines`, `json.read(file, items_at:, as:)`/`write` and `batches.each(from:, each:, finished:, key:)`; inline `->` for `each:` and `finished:`; started after commit, returning a run with `batches.status` and `batches.cancel`; `key:` for repeated starts (unique per call, tenant and key: "A batch's `key:` with tenants", 2026-10-19); batches committing writes and position together; file order kept; problems without values; only storable captures; replaces chained events for paging (Richard) | 2026-10-16 |
-| Rows and formats | Rows read are `Input`s and written `Output`s with `column:` and `wire:`; `CsvFormat.spreadsheet` or `.standard` required on write; UTF-8, UTF-16 with a mark and declared legacy encodings read, UTF-8 written; gzip only with `max_unpacked_size:`; no loop over rows and no whole-file parse (Richard) | 2026-10-16 |
-| Several changing calls | Up to 8 keyed changing calls per action, only from subscribers and routes requiring `Idempotency-Key`; no outside call inside `for` in any action, a loop of calls being `batches.each`; each step recorded before sending (operation, request fingerprint, time) and its answer after, encrypted, a fault over 1 MB (`large_output: true` operations refused); `store.put` a keyed step; reruns replay and check the whole path, stopping as `diverged` for an operator; `clock.now` fixed per record; keys hashed from app, environment, connection, caller scope, action key, step and generation; steps in doubt resent only within the provider's window; one runner per record; the "ends for good after an effect" warning; unfinished records become operator items with retry and abandon, kept 30 days; records deleted in the commit, listed in the personal-data report; `jadpo runs unfinished --build <build id>` lists, before a deploy, unfinished runs whose path the new build changes (Richard, from the multi-step calls review) | 2026-10-16 |
-| Several changing calls, checked (chosen in chunk 7.5) | Each the conservative reading. A changing call is a provider's operation with `changes: true` or a store's `put`; reads are never counted. Each way through an `if` or a `match` counts on its own, a `return`, `reject` or `propagate` ending its way, an action called counting the changing calls of its longest way, and a loop's body once, since a call in it is refused. A changing call with no key may share its action with no other changing call on any way through it, another way included, since a rerun after a fresh read can take another way (`step.unkeyed`). `step.context` is reported where the action is run: a schedule, a route whose API doesn't require `Idempotency-Key`, and a run's `each:` or `finished:`, whose items stay one changing call each; tests and fixtures may call such an action. `large_output: true` is refused on any operation, one that reads included, in an action whose longest way makes several changing calls. The record's store is checked for an action a subscriber, or a route whose API requires the key, runs: the record belongs to the action that is run, and a called action's calls join it. A recorded answer's cap is 1 MB, as "Settled for the build" says; area 11's 256 KB is corrected to it (decided for Richard) | 2026-10-20 |
-| Events from outside | Webhooks, a package's `public` events and polls, and queue messages through `receiving`, each written to the outbox and delivered like the app's own; unlisted queue message types and repeatedly failing messages parked, never dropped (Richard) | 2026-10-16 |
-| Settled for the build | An item of `batches.each` whose action makes outside calls is a batch of its own, keyed from the run and its position; `store.put` a keyed step; a recorded answer over 1 MB is a fault naming the step, and `large_output: true` operations are refused in multi-step actions; the batch types' fields are area 2's (decided for Richard) | 2026-10-16 |
-| Outbox placement, settled (Phase 5 review) | Each store an action writes keeps its outbox and the delivery records beside it, as the earlier "Outbox placement" row says; "Where events travel" and "Event transport" are read that way. A subscriber's handled record goes in the store it writes, with no reference across stores. Schedule leases go in `schedules: { store: }` (area 5), defaulting to the only store when there is one (Richard, as recommended) | 2026-10-19 |
-| Event records (Phase 5 review) | An event's shape is recorded and diffed in the generated record exactly as an API's is (chunk 7.0's format); accepting a breaking change waits for area 18's acceptances together with the API record's (Richard, as recommended) | 2026-10-19 |
-| A schedule and tenants (after chunk 6.1a) | A schedule's run, which no tenant's event starts, reaches every tenant's records, as the system caller does with no tenant; a subscriber stays limited to its event's tenant (Richard, as recommended) | 2026-10-19 |
-| An event's tenant (after chunk 6.1b) | An event belongs to the tenant its one field holding a tenant's id names (e.g. `household_id: Household.id`), so the tenant is written in the event where a reviewer sees it; an event with no such field, or more than one, reaches no tenant's records (Richard, as recommended) | 2026-10-19 |
-| A batch's tenant (after chunk 6.4) | A batch run belongs to the tenant its one saved value holding a tenant's id names, as an event does; none or several reach no tenant's records (Richard, as recommended; several naming the same tenant count as that one: "Schedule and batch defaults") | 2026-10-19 |
-| `jadpo schedules run` (after chunk 6.2b) | Against `jadpo dev` it runs the schedule straight away and shows the outcome; against a deployed application it marks the schedule due, so the application's own server runs it on its next tick under the lease, and the command waits for that run's record and shows it, so a deployment's settings and secrets never leave its servers (Richard, as recommended) | 2026-10-19 |
-| Work handed on, on Workers: the loopback and the budget (chunk 8.4b) | The fresh invocation is reached through the loopback binding `ctx.exports` gives the Worker's own `JadpoHandOn`, not a service binding naming it, since Wrangler keeps a binding's `service` when `wrangler deploy --name` or `--env` deploys the file under another name, which would hand a staging Worker's work to production's; workerd pinned in `tools/workers/` gives `ctx.exports` at the compatibility date without a flag, and chunk 8.2n checks it on the real edge. The fresh invocation's 30 seconds are counted from its start, so starting the isolate and reading the work back are spent from them (decided by the building session, reversible) | 2026-10-22 |
-| Work handed on, on Workers (chosen in chunk 8.2h) | `Host::hand_on` on Workers is a request to the Worker itself, through a service binding (`JADPO_HAND_ON`, which `jadpo build` writes into the Wrangler file of a Worker that runs background work) to a named entrypoint of its own shim (`JadpoHandOn`), never its default export, so nothing from outside reaches it. It is sent JSON naming each piece by its record and store, never an event's value; the fresh invocation reads each delivery back from its record, leaving out one run or given up since, and each batch run from its row, and carries them on in its own `waitUntil` with Workers' 30 seconds, handing on in turn; the invocation that handed it on is kept until that call returns. A hand-on that fails, as past the platform's limit on invocations one request chains, leaves the work in the store for the minute's cron. Rejected: a queue, which needs a queue made in the account and a consumer for every Worker, delays each hand-on by its batching, and would tie background work to chunk 8.2k's consumer; and a request to the Worker's own URL, which would reach its public `fetch` and need a secret to tell itself from a caller. Whether Cloudflare gives each handed-on invocation its own 30 seconds once the one that called it has ended is checked on the real deploy (chunk 8.2n) (decided for Richard, the conservative reading) | 2026-10-21 |
-| An `every:` under a minute on Workers (Phase 6 review) | An error naming the schedule when a Workers deployable reaches it, since a minute's cron can't run it and Jadpo has no warnings (Richard, as recommended) | 2026-10-19 |
-| The tick on Workers (chunk 8.2f) | Chosen in the chunk, each reversible: a Workers deployable reaches a schedule when its `runs:` lists `Trigger.schedules`, and one more often than once a minute is `deployable.target_unsupported` (area 14), at its `every:`, rather than a rule of its own, since it is one more thing a target can't run; the Wrangler file names the cron `* * * * *` for every Workers deployable whose tick has a store to keep or sweep, as every native deployable ticks; each run of the cron ticks once its stores are current (out of date, it logs why as a request does and ticks nothing), then, while the app ticks more often than once a minute (a received queue, every 10 seconds, as natively), again at each such mark of the cron's minute, one tick after the last ends, never two at once, so a Worker holds no more connections than one tick does, and a mark a long tick passed is not made up; the invocation ends with its minute, and each of its ticks has what is left of the cron's 15 minutes | 2026-10-21 |
-| The `trigger:` adapter (chunk 8.2g) | Chosen in the chunk, each reversible, around Richard's decision (question 16): `trigger:` takes `ScheduleTrigger.native`, the default, or `ScheduleTrigger.external`, and changes only a native deployable, a Worker ticking on its cron whichever is written, so an app with a server and a Worker can write either; `<deployable> tick` (and `serve`, the same as no command; anything else ends with code 2, `command_unknown`) doesn't wait for a database it can't reach, ending with code 1 (`store_unreachable`), since the scheduler's next run is the next try and the ticks missed become one run; it logs `runtime.ticked` (each run by its schedule's name, deliveries, what it received and polled, rows deleted, alerts, each store it couldn't work in) and ends with code 1 only when a store couldn't be worked in, a failed run being recorded, alerted and retried at its next due time as a server's is; the first SIGTERM drains it as a server drains its background work; `tick` runs whatever is written, the lease deciding; nothing refuses an `every:` under a minute with `external`, since a scheduler can run `tick` each second: `jadpo build` says how often to run it, and the ticks-stopped alert says when it runs less often | 2026-10-21 |
-| Schedule and batch defaults (Phase 6 review) | What the code does is decided: a schedule's first run is due one `every:` after the first tick that sees it; a failed run is retried at its next due time; schedule state defaults to the only database; batch runs are kept in the store the `from:` query reads; several saved values naming the same tenant count as that tenant; a route whose action starts a batch answers `202` (Richard, as recommended) | 2026-10-19 |
-| A batch's `key:` with tenants (Phase 6 review) | In an application with a tenant, `key:` is unique per call, run tenant and key, so two tenants' runs with the same key never meet (Richard, as recommended) | 2026-10-19 |
-| Queue messages the store refuses (Phase 7 review, chunk 7.9c) | A message whose event the store refuses as a statement, as it would every time it was sent (a value it can't take, such as a text holding `\u0000`, which `jsonb` can't hold), is parked `unreadable` and acknowledged, so the queue doesn't send it again until its retention deletes it. A store that can't be reached, a conflict, a concurrent change or a fault the driver can't classify still leaves it on the queue, to be kept when it is sent again (decided for Richard, the conservative reading) | 2026-10-21 |
-| A delivery's answer closes its breaker (Phase 7 review, chunk 7.9c) | A delivery attempt whose call through a connection its provider answered closes the connection's breaker and releases what it holds, whatever the breaker's state when the delivery was claimed, as "Retries and giving up" says of a delivery already running when the breaker opened. It is one conditional statement after each attempt that called the provider, changing nothing while the breaker is closed with no failures in a run (decided for Richard, as the page reads) | 2026-10-21 |
-| The system's runs inside a request and tenants (Phase 7 review, chunk 7.9b) | "Background work and tenants" gains two rows: the magic-link `send:` action reaches its delivery's tenant, as a subscriber does, which for `jadpo.MagicLinkEmail` is none; a webhook's reply action and `on_first_sign_in:`'s reach no tenant's records, never every tenant's, since only a schedule's "no tenant" is every tenant (Richard, 2026-10-21) | 2026-10-21 |
+Numbered as the questions they settled, which other pages cite.
+
+1. **A schedule is `schedule name { every: 15m  run: action() }`.** The
+   action takes no arguments and reads `clock.now`, fixed for the run. One
+   run happens at a time, missed ticks merge, and the next due time is the
+   retry. Runs never overlap: a tick that arrives while a run is going is
+   skipped, not queued, and there is no option to allow overlap; work too
+   large for one run emits one event per item. Calendar times, as Rails'
+   Solid Queue and Oban's cron plugin offer, are added only when an
+   application needs them.
+2. **There is no delivery descriptor.** Work over a set of items is an
+   ordinary query, action and subscriber ("Batch work keeps its
+   progress"), not a closed syntax that restates a query.
+3. **An event is `type TodoCompleted = Event { ... }`**, one type per file
+   in `events/`, with no families and no per-event policy. It matches
+   failures, and Laravel and Rails define one class per event or job too.
+4. **`emit TodoCompleted { ... }` is a statement** with no `attempt`, only
+   in actions, delivered after commit. It mirrors `reject`, and areas 3
+   and 4 rule out `attempt` on something that can't fail.
+5. **A subscriber is `subscriber name { on: Event  run: action(event) }`**,
+   one event each, the same shape as routes and schedules: several events
+   in one subscriber would read as "all of them" to some readers and "any
+   of them" to others.
+6. **No delivery order is promised.** Order per key needs per-key queues
+   and lets one stuck item block the rest; Sidekiq, Laravel and EventBridge
+   promise none either. Subscribers read current state, which retries need
+   anyway.
+7. **Retries go by failure kind**, as the table under "Retries and giving
+   up" says: by default 10 attempts within 24 hours, changeable per
+   subscriber with `retry: { attempts:  within: }`, with exponential
+   backoff and full jitter. A day suits an outage, and a payment webhook
+   can ask for more (Sidekiq defaults to 25 retries over about 20 days,
+   Oban to 20 attempts).
+8. **Schedules and subscribers act as `Access.system`**, a fourth kind of
+   "who" (area 9) that an entity grants explicitly (`update: [owner_id,
+   Access.system]`), never as the user who caused the event. A subscriber
+   is limited to the tenant its event came from, and the permissions
+   report shows what background work can touch. The event carries the
+   user's id when the reaction needs it.
+9. **Lifecycle transitions don't emit events by themselves**: the action
+   that makes the change emits, one way to do it.
+10. **There is no delayed delivery** (`in 24h`): a schedule querying a due
+    field covers it, rereads current state, and keeps one way to wait.
+11. **An action repeats as a unit.** A changing call that takes no
+    idempotency key is the only changing call in its action; keyed calls
+    may be up to 8 in order, each recorded and replayed on a rerun
+    (question 20). The runtime stops at the first call whose outcome is
+    unknown, so the rule isn't there to know which call to ask about: it
+    is there so that a rerun repeats each call under its key, and no
+    second call fails for good after the first took effect without the
+    warning ("Several changing calls in one action").
+12. **The limits** under "Limits and runtime faults" are defaults, to
+    confirm with measured runs: 1,000 events per action, 64 KB per event,
+    chains 16 deep, which stops only loops since paging uses batches, 15
+    minutes per run, batches of up to 1,000 items or 4 MiB of file, and at
+    most 8 changing calls per action.
+13. **An export reads live data**, a batch walking keyset pages, not one
+    consistent snapshot; a `from:` ordered by a field that can be updated
+    is the declinable error `type.batch_order_updatable`, since every
+    finding is an error (area 1, question 11). Area 15's export of a
+    person's data reads in one transaction.
+14. **Work after a route answers `202`** (`status: SuccessStatus.accepted`)
+    carries on in an event and a subscriber, and the client reads a record
+    with a status field; a route that wants the result waits with
+    `settle:` (area 7).
+15. **Tests run schedules and subscribers** as area 13 says:
+    `schedule.run()` runs a schedule under the test clock; events are
+    delivered after each commit; a fake can fail a subscriber to test
+    retries; delivery order is shuffled with a printed seed, so a test
+    that depends on order fails visibly.
+16. **The tick is split from the state.** Each schedule's next due time and
+    lease are a row in `schedules: { store: }`, or the only database, and a
+    tick takes a due schedule whose lease is free in one conditional
+    update, so a duplicate tick is harmless: Cloudflare's cron triggers can
+    fire more than once and don't wait for a running invocation. What
+    ticks is `trigger:`: `ScheduleTrigger.native`, the server's own timer,
+    by default, or `ScheduleTrigger.external`, the native deployable's
+    `tick` command, which reads the settings, checks migrations as `serve`
+    does, runs one tick and exits, so a Kubernetes CronJob, an ECS task or a
+    systemd timer runs it each minute. There is no HTTP endpoint and no
+    tick secret; a scheduler that can only call a URL needs its own
+    wrapper. On Workers the cron trigger calls the Worker's scheduled
+    handler. One entry ticks every schedule, so `every: 7m` works where
+    cron syntax can't and Cloudflare's per-account cron limit is never
+    reached. A Durable Objects adapter that also holds the lease is a
+    possible later optimisation. A schedule or an event with no store to
+    keep its state in is a compile error saying which store to add, and the
+    system tables (schedule state, the outbox, delivery records, idempotency
+    keys, sessions) are in the migration snapshots like any entity,
+    prefixed `jadpo_`, so `jadpo migrate new` makes and changes them and
+    `jadpo check` reports drift in them.
+17. **Tracing through events is always on.** An event is stored with the
+    W3C `traceparent` of the action that emitted it, in the same
+    transaction, and each subscriber run is a child of it, so route,
+    action, events, subscribers, further events and provider calls form
+    one trace. Schedules start a trace per run; provider webhooks start one
+    linked to the provider's event id; calls between Jadpo applications
+    pass the context on. Each event records what caused it (a request id or
+    a parent event), which the 16-deep chain limit needs. `jadpo trace
+    <request id>` and the console (area 17) show the tree, and area 16's
+    OpenTelemetry export carries it.
+18. **Deliveries pause when a provider keeps failing**, through a circuit
+    breaker per connection ("When a provider keeps failing"), built in so
+    nobody has to remember it, as Resilience4j and Polly offer it.
+19. **Work over many items is a batch**, the one way: explicit helpers per
+    format and direction, and `batches.each` for work with no file
+    ("Batches: work over many items").
+20. **An action may make several changing calls**, as "Several changing
+    calls in one action" says. A route without a required
+    `Idempotency-Key` starting them is refused, not warned; 8 steps is the
+    limit; an unkeyed call is never allowed as a last step; timestamps
+    after a resumed action are from when it started; a diverged action is
+    held, not failed; crash-point test runs are on by default. Jadpo has
+    no deploy command, so before a deploy `jadpo runs unfinished --build
+    <build id>` lists the unfinished runs whose path the new build
+    changes, and a run resumed under a changed build stops as `diverged`.
+21. **The app reads a queue directly** through the `receiving` capability
+    ("Events from outside").
+22. **Packages produce events** only about the outside world: webhooks,
+    events their own subscribers emit from them, and polls ("Events from
+    outside").
+
+Carried from other areas, and the choices the topic sections leave open:
+
+| Topic | Decision |
+|---|---|
+| Triggers | From area 1: routes, schedules and subscribers each call actions; durable workflows are subscribers |
+| Keyword and folders | From area 1: `schedule` in `schedules/`; events in `events/`; subscribers in `subscribers/` |
+| Cross-domain changes | From area 1: public actions inside the caller's transaction, or events for reactions that need not be all-or-nothing |
+| Actions | From area 3: every action is all-or-nothing and has no settings; `attempt` only on calls that can fail |
+| Faults | From area 4: faults are never listed in `fails` or matched; provider problems are mapped to declared failures at the call |
+| Outbox placement | Each store an action writes keeps its outbox, its delivery records and its idempotency keys; an action writing no store needs `events: { store: <connection> }`, or it is a compile error. A subscriber's handled record goes in the store it writes, with no reference across stores. Schedule leases go in `schedules: { store: }` (area 5), the only store when there is one |
+| Schedule and batch defaults | A schedule's first run is due one `every:` after the first tick that sees it; a failed run is retried at its next due time; schedule state defaults to the only database; batch runs are kept in the store the `from:` query reads; several saved values naming the same tenant count as that tenant; a route whose action starts a batch answers `202` |
+| Multi-step calls' encryption key | Recorded answers are encrypted with `application { steps: { encryption_key: config.step_encryption_key } }`, a `SigningKey` setting rotated as grants' `encryption_key:` is; required only when some action makes several changing calls, a compile error naming the first such action otherwise |
+| Several changing calls, checked | A changing call is a provider's operation with `changes: true` or a store's `put`; reads are never counted. Each way through an `if` or a `match` counts on its own, a `return`, `reject` or `propagate` ending its way, an action called counting the changing calls of its longest way, and a loop's body once, since a call in it is refused. A changing call with no key may share its action with no other changing call on any way through it, another way included, since a rerun after a fresh read can take another way (`step.unkeyed`). `step.context` is reported where the action is run: a schedule, a route whose API doesn't require `Idempotency-Key`, and a run's `each:` or `finished:`, whose items stay one changing call each; tests and fixtures may call such an action. `large_output: true` is refused on any operation, one that reads included, in an action whose longest way makes several changing calls. The record's store is checked for an action a subscriber, or a route whose API requires the key, runs: the record belongs to the action that is run, and a called action's calls join it. A recorded answer's cap is 1 MB |
+| The record | A record is kept only where the action's key survives a retry: a subscriber's delivery, and a route whose API requires `Idempotency-Key` under the key it claimed; a test calling the action directly keeps none. It is one row keyed by a digest of the key's scope and the key, with a row per step, in the store the action writes or `events: { store: }`'s. A request's fingerprint is an HMAC-SHA-256 of each top-level field as the provider is sent it, by its name there, under a key derived from the steps key (checked under the current and the previous one), so a low-entropy field can't be guessed from it; an answer is sealed with XChaCha20-Poly1305 under another key derived from it (`crypto.encrypt`'s construction; grants' encryption isn't built yet), bound to the record and the step. The generation every write checks is a delivery's attempt or a route's claim time; a write takes the record over from an equal or older one only. A rerun is checked step by step (its operation and fields) and at the end (every recorded step replayed), before anything more is sent; the record keeps the build it started under (until area 18's build id, a digest of every graph node's key and digest) and a digest of its step shape for `jadpo runs unfinished`, and a rerun doesn't compare the digest, since steps added after the last recorded one aren't a change. A step answered "did nothing" (`unavailable`, `misconfigured`) stays in doubt, so the window rule still holds it. A `put` keeps its object under a key derived from the record and its step and goes again whatever the window. `diverged` is a runtime fault that holds a delivery in the state `diverged` with the step, its operation and the fields; a route answers it `500` and keeps no response, so a client's retry after a fix finishes it. `new_key_on:` sends the step again under the next key generation ("Operators") |
+| Operators | A route's record becomes an item once a day has passed since its last run took it (area 11's 24 hours), whatever its own `window:`; before that it is its client's to retry, and an operator can only abandon it, since only its client holds the request. "Not done" acts on the record's last step when it has no answer or failed, clearing its answer and moving its key to the next generation, with its window counted from the operator's action; with nothing in doubt it is a plain retry, and on a delivery with no record it is `retry` (failed) or `resolve --not-done` (in doubt). A retry resets the record's generation to none with the delivery's attempts. A delivery with a record is refused `dismiss` and `resolve --done`, pointing at `abandon`; `abandon` on one without is refused. A record whose answers were dropped can't be retried, only abandoned. Answers are dropped 30 days after the record's last run; an abandoned record and its delivery go 30 days after the abandon. A route's client retrying under an abandoned record's key stops as a fault, answered `500`, sending nothing. `new_key_on:` sends again once per call; a second such answer is the operation's failure. `show` never shows a key: the CLI reads no setting it would be derived from. `jadpo runs unfinished` requires `--build`, refuses a build the checkout doesn't make (naming the one it does), lists a record whose build differs and whose action's step shape the build changes or no longer keeps, and a running batch run whose call the build changes or no longer has; it succeeds whatever it lists, as listing commands do |
+| Tests | A package's fake keeps a keyed call's first answer under its key, as its provider does: the same key and request are given it again without taking a scripted answer, and a different request the package's `reused:` answer (with none, a refusal without a code, a fault). A failure is kept as Stripe keeps one, whatever the package's `replays_failures:`, unless its kind is `unavailable` or `rate_limited`, so a step sent again after a crash is answered as it was the first time. `lost` acted: what it did, the generated default, answers the next call under its key. `in_use` is another runner's request under the key, the one that acts, so it keeps nothing and answers as `unavailable`; `unavailable` and `misconfigured` keep nothing either. `jadpo dev`'s fake keeps keys the same way, its last 10,000. Crash points count every step a test's run reaches under a record, a step sent again counted again, across the whole run; only a run that passed is crashed, once for each boundary of each step, each on its own copy of the database with a fresh fake, and the first crash that fails is the one reported, with a `crash` line first. A crash isn't counted as an attempt: the delivery is given back, due at once, and a route's claim is given up and its request sent again under its key. A crashed run whose fake acted more or less often than the run without one is a defect in Jadpo, reported as `test.fault`. A delivery that stops as `diverged` between a test's steps ends the test as `test.subscriber_failed`, since it never finishes; one parked as `outcome_unknown` doesn't. Each delivery attempt in a test counts its keyed calls from none under the delivery's own key, as a runner's fresh context does, and gives the test's back after. An `ai.generate` call kept as a step gets crash points like any other step; the `ai` fake keeps no keys, area 21 asking none of it, so a step sent again after a crash once it was answered takes the prompt's next scripted answer, as a model asked again answers afresh. Crash points have no switch to turn them off |
+| The late-failure warning and the deadline sum | A failure ends a run for good unless its kind is `unavailable` or `rate_limited`, the two retried ("Retries and giving up"); one whose kind isn't known counts as ending it. A point after the first changing call is an `attempt` passing a failure on (the failures its arms map to, or else the call's or write's own), `reject` and `propagate`; a failure handled by an outcome `match` isn't one. Where two ways meet, a changing call on either may have been made. One finding for each action, at its first point, the others shown beside it, so one `decline` answers it, as declines answer one finding each. A package's action is never told, since the app decides what can be left behind: its surface lists each failure that can follow its own changing call as `after_effect`, and an app's `attempt` of it is a point even before the app's own first changing call; an app's action called before any is told itself instead. The deadline sum is one analysis over every outside call a route reaches, a provider's operation and an `ai` call alike, so streaming routes rely on it: a provider call through a connection costs its `timeout:` (3s by default, area 11's question 8) times its `retry: { attempts: }` (3), a package's action its own calls through the connection the app called it through, and `ai.generate` its `timeout:` times its `attempts:`; the waits between attempts and `within:` aren't counted, and a store's `put` and `read` have no `timeout:` and cost nothing. The ways are summed and the longest compared with the route's `deadline:` (10s by default): more is `route.calls_past_deadline` at the route, a plain mistake, not declinable (area 1, question 11), whatever its API; equal fits. Schedules and subscribers have no deadline to compare |
+| Development and the metric | Until area 17's request timelines (`jadpo trace`), a request's timeline in `jadpo dev` is its line and the trace lines under it, so each step a request's action reached is a trace line there, in place of the call it made; a delivery, which `jadpo dev` doesn't otherwise print, gets a line of its own only when its subscriber's action reached steps under a record, since that is when one needs following, with `jadpo deliveries show <id>` under it when the attempt failed, parked or diverged. A step's state is what this run made of it, from the record: `replayed` (answered on an earlier run), `answered`, its failure's code, `in doubt` (sent, no answer kept), `diverged` or `outcome unknown` (in doubt and not to be sent again), with where its answer came from; never its request, answer or key, nor the key's generation. The metric counts the records not abandoned, a run under way included, and gives when the oldest's first run started; the tick carries it for each store that keeps records, until telemetry (area 16) sends it. The alert holds once a record has been unfinished a day from its first run's start, a subscriber's default `within:` and a route's key's lapse, so no retry with the default budget is still to finish it; each such record is marked in `jadpo_step_records.alerted_at`, and the tick raises the alert only when none still unfinished was marked before, so it is raised once until no record is unfinished past a day, by one instance's tick. `jadpo deliveries` shows it in its default list and with `--state diverged` or `unfinished` |
+| Keys and replays | A route's action keeps its client's `Idempotency-Key` in the store it writes, else beside its events, else, when it makes a changing call (a provider's operation with `changes: true`, a store's `put`), in the store `events: { store: }` names, where its record of several steps is kept too, so its steps are resumed under the key and one call's response is kept for a repeat; an action that only reads keeps none, and its OpenAPI says where the key is kept. With no store to keep it, the route's calls' keys are still derived from the client's key in its caller's scope, never the request's id. A delivery's attempt counts its keyed calls from none under its own key and with none of the `ai` answers kept for a rerun, wherever it runs (a route waiting with `settle:`, a test), giving back whoever ran it theirs after. A sign-in email (`MagicLinkEmail`, and the action `send:` names) is keyed per attempt, from fresh randomness, since each attempt makes a link and a code that end the last's: a provider replaying the last attempt's key would leave the person a dead code; its key doesn't survive a retry, so it keeps no record of its steps. A step's own failure whose kind is `unavailable` or `rate_limited` is never kept, and one kept by an earlier runtime never replayed: the step stays in doubt and goes again under its key. Code's `clock.now` is the record's fixed time; an event's `emitted_at`, a delivery's handled record, a request's AWS signature, the day an `ai` budget counts and a received event's stamp are the host's. An unkeyed change that went out (answered, or no answer) stops a rerun after a concurrent change, in the boundary or at a held commit, as `outcome_unknown`, which a route keeps for its key and a delivery parks; areas 6, 12 and 16 say the same. In `jadpo test` how often each scripted operation and prompt was called is judged on the run without a crash only, since a crash sends its step again and the `ai` fake, or a call with no key, answers it afresh; a request a crash sends again forgets the `ai` answers kept for a rerun, as a client's retry reaches a runner that kept none, so a model asked before the steps is asked again there as in production |
+| One outside-call path | Every outside call (a provider's operation, `ai.generate`, `ai.embed`, `ai.stream`, a store's file, an email, a capability's delivery) goes out through one exchange and one retrying send, and where its answer is given back from (the action's record, an `ai` call's earlier run, a replayed run's recording) is decided in one place. `max_concurrent:` caps every call through its connection: a provider operation's, and where a package fills `ai`, its `ai.generate`, `ai.embed` and `ai.stream` calls too; the built-in `Driver.openai_compatible` has no cap. A call takes a slot only once it is cleared to go (no transaction open, no recording answering it, a driver found), before its step is written, and gives it back once answered, a stream once its answer starts to come, so a later call of the same action through the connection never waits on a stream the route hasn't sent yet. A delivery whose action calls `ai` through a connection with every slot out waits for one within its budget, as a route's call does, rather than being given back to the outbox: giving back reads the connections the circuit breaker does, a provider's operations'. No wait to send a call again outlasts the invocation's time, a route's remaining deadline or what background work's budget leaves before the time it keeps back: a wait that wouldn't end within it, a `Retry-After` past it included, ends the sending at once and the last answer stands, so a `429` or a provider that couldn't be reached is `unavailable`, and no answer in time `timed_out` where the call maps it, as when `within:` or an `ai` call's `timeout:` ends it. Each send's own timeout isn't shortened: the deadline and the budget stop a call still out. A store's file, an email and a capability's delivery are sent once, having no `retry:` (the outbox retries a delivery). An embedding given back from the action's record is logged as the step it is, as the other calls are |
+| Work handed on, on Workers | `Host::hand_on` on Workers is a request to the Worker itself, through the loopback binding `ctx.exports` gives the Worker's own `JadpoHandOn` entrypoint of its shim, never its default export, so nothing from outside reaches it. It isn't a service binding naming the Worker, since Wrangler keeps a binding's `service` when `wrangler deploy --name` or `--env` deploys the file under another name, which would hand a staging Worker's work to production's; workerd gives `ctx.exports` at the compatibility date without a flag. It is sent JSON naming each piece by its record and store, never an event's value; the fresh invocation reads each delivery back from its record, leaving out one run or given up since, and each batch run from its row, and carries them on in its own `waitUntil`, handing on in turn, within its 30 seconds counted from its start, so starting the isolate and reading the work back are spent from them; the invocation that handed it on is kept until that call returns. A hand-on that fails, as past the platform's limit on invocations one request chains, leaves the work in the store for the minute's cron. It isn't a queue, which needs a queue made in the account and a consumer for every Worker and delays each hand-on by its batching, nor a request to the Worker's own URL, which would reach its public `fetch` and need a secret to tell itself from a caller |
+| The tick on Workers | A Workers deployable reaches a schedule when its `runs:` lists `Trigger.schedules`, and one more often than once a minute is `deployable.target_unsupported` (area 14), at its `every:`, rather than a rule of its own, since it is one more thing a target can't run; the Wrangler file names the cron `* * * * *` for every Workers deployable whose tick has a store to keep or sweep, as every native deployable ticks; each run of the cron ticks once its stores are current (out of date, it logs why as a request does and ticks nothing), then, while the app ticks more often than once a minute (a received queue, every 10 seconds, as natively), again at each such mark of the cron's minute, one tick after the last ends, never two at once, so a Worker holds no more connections than one tick does, and a mark a long tick passed is not made up; the invocation ends with its minute, and each of its ticks has what is left of the cron's 15 minutes |
+| The `trigger:` adapter | `trigger:` (question 16) takes `ScheduleTrigger.native`, the default, or `ScheduleTrigger.external`, and changes only a native deployable, a Worker ticking on its cron whichever is written, so an app with a server and a Worker can write either; `<deployable> tick` (and `serve`, the same as no command; anything else ends with code 2, `command_unknown`) doesn't wait for a database it can't reach, ending with code 1 (`store_unreachable`), since the scheduler's next run is the next try and the ticks missed become one run; it logs `runtime.ticked` (each run by its schedule's name, deliveries, what it received and polled, rows deleted, alerts, each store it couldn't work in) and ends with code 1 only when a store couldn't be worked in, a failed run being recorded, alerted and retried at its next due time as a server's is; the first SIGTERM drains it as a server drains its background work; `tick` runs whatever is written, the lease deciding; nothing refuses an `every:` under a minute with `external`, since a scheduler can run `tick` each second: `jadpo build` says how often to run it, and the ticks-stopped alert says when it runs less often |
+| Queue messages the store refuses | A message whose event the store refuses as a statement, as it would every time it was sent (a value it can't take, such as a text holding `\u0000`, which `jsonb` can't hold), is parked `unreadable` and acknowledged, so the queue doesn't send it again until its retention deletes it. A store that can't be reached, a conflict, a concurrent change or a fault the driver can't classify still leaves it on the queue, to be kept when it is sent again |
+| A delivery's answer closes its breaker | A delivery attempt whose call through a connection its provider answered closes the connection's breaker and releases what it holds, whatever the breaker's state when the delivery was claimed, as "When a provider keeps failing" says of a delivery already running when the breaker opened. It is one conditional statement after each attempt that called the provider, changing nothing while the breaker is closed with no failures in a run |

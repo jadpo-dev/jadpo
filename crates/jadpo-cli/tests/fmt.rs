@@ -432,7 +432,7 @@ fn fmt_layout_moves_a_shared_type_into_a_file_of_its_own() {
 
 /// A type a second domain uses moves to `shared/types/`, and the move
 /// writes the registry line that keeps its key, `type planning.Days`
-/// (area 18, question 8, amended 2026-10-16).
+/// (area 18, "Stable identity", amended 2026-10-16).
 #[test]
 fn fmt_layout_promoting_to_shared_writes_a_registry_line() {
     let root = folder("layout-shared");

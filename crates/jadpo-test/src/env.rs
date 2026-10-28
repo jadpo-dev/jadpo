@@ -40,7 +40,7 @@ impl TestEnv {
     /// the key alone, so every run gives the test the same identities,
     /// tokens, codes and shuffles wherever it falls in the order, as its
     /// clock is fixed (area 13, "Controlling time", amended by area 19,
-    /// question 19); the run's order seed decides only the order. Its
+    /// "Randomness"); the run's order seed decides only the order. Its
     /// clock starts at the fixed default, 2000-01-01T00:00:00Z, which a
     /// test's `clock:` moves. The runtime's [`jadpo_runtime::test_run`]
     /// makes it the same way for the run itself.

@@ -281,7 +281,7 @@ fn conformed(call: &Call) -> Reply {
                 &rule::TOOLCHAIN_NOT_BUILT_YET,
                 format!("`{package}` has fixed hosts, which the suite can't reach yet"),
             )
-            .reason("The suite reaches the provider through its connection's `host:`, and a package with `hosts:` takes none; both first-party packages that fill `ai` take `host:` (area 21, \"Chosen in chunk 5.5v7b\").")
+            .reason("The suite reaches the provider through its connection's `host:`, and a package with `hosts:` takes none; both first-party packages that fill `ai` take `host:` (area 21, \"The conformance suite\").")
             .next("Give the package no `hosts:`, so each connection gives `host:`, or leave it to `jadpo package check` meanwhile")
             .help_at("21-ai.html#chosen-in-chunk-5-5v7b"),
         );

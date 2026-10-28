@@ -5,7 +5,7 @@
 //!
 //! Written for a project only, never for loose files, and also when the
 //! check finds errors, so what an agent looks up is never stale (area 14,
-//! question 3); the manifest's `errors` says the graph may be incomplete.
+//! "`check` writes derived files"); the manifest's `errors` says the graph may be incomplete.
 //! The other views come with their areas: the schema, query and
 //! permissions reports in `build/report/` (5, 6, 9) and the monitoring
 //! rules (16). Since chunk 4.1 each API's OpenAPI document is written to

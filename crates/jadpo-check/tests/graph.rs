@@ -274,7 +274,7 @@ fn moves_within_the_layout_keep_every_key_and_digest() {
     let (graph, _) = build(&together);
     assert_eq!(identities(&start), identities(&graph));
     // A move to shared/ keeps the key through its registry line, which the
-    // promotion writes (area 18, question 8, amended 2026-10-16).
+    // promotion writes (area 18, "Stable identity", amended 2026-10-16).
     let moved = [("type Body", "notes.Body")];
     let (graph, _) = build_with(&shared, &moved);
     assert_eq!(identities(&start), identities(&graph));

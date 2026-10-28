@@ -31,7 +31,7 @@ pub enum Fault {
     TimeRange,
     /// A condition a `temporal` operation fails on, which the call's
     /// `attempt` maps by this key, as a construction's broken rule
-    /// (area 10, question 7).
+    /// (area 10, "Time library and formatting").
     Broke(jadpo_std::RuleKey),
     /// No random bytes to give: a host with no generator and no seed, which
     /// never falls back to a weaker source (area 19, "Randomness").

@@ -1,5 +1,5 @@
 //! What `json.read` and `json.write` add to an ordinary standard-library
-//! call (area 19, "Data formats", question 14): `json.read`'s `as:` is a
+//! call (area 19, "Data formats"): `json.read`'s `as:` is a
 //! type written out, any type an `Input` may hold, and `json.write`'s
 //! value is any value an `Output` may hold, each read and written in the
 //! wire's forms (areas 2, 7 and 10). There is no JSON value of no type.

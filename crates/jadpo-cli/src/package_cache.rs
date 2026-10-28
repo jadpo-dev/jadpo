@@ -7,8 +7,8 @@
 //! when it is set) lists, one per line, the paths inside the package of
 //! the source files this compiler checked with no problem at that digest.
 //! `jadpo check` doesn't check those again, and adds each file it checks
-//! cleanly. A package's code sees only its own names (area 11, "Chosen in
-//! chunk 7.1"), so its check never depends on the app. The compiler is its
+//! cleanly. A package's code sees only its own names (area 11, "How the
+//! package format is read"), so its check never depends on the app. The compiler is its
 //! version and the size and modification time of the running `jadpo`, so
 //! a rebuilt compiler never trusts an older one's check. Only a package
 //! whose files match its digest in `jadpo.lock` is cached; a linked one,

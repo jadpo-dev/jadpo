@@ -7,7 +7,7 @@
 //!
 //! An event is kept in the outbox of the store the action that emits it
 //! writes, in the same transaction as its writes (area 12, "Outbox
-//! placement, settled"); an action that writes no store keeps it in the
+//! placement"); an action that writes no store keeps it in the
 //! store `events: { store: }` names, and with none named it is
 //! `event.store_required`. A subscriber runs as the system (area 9,
 //! `Access.system`), so what it reaches that only `Access.public` grants
@@ -506,8 +506,8 @@ pub fn emitting(db: &dyn Db, project: Project) -> BTreeMap<String, BTreeSet<Key>
 
 /// The store the action called `action` keeps the events it emits in:
 /// the one it writes, itself or through what it calls, or, writing none,
-/// the one `events: { store: }` names (area 12, "Outbox placement,
-/// settled"). `None` when it emits nothing, or has nowhere to keep them,
+/// the one `events: { store: }` names (area 12, "Outbox placement"). `None`
+/// when it emits nothing, or has nowhere to keep them,
 /// which is `event.store_required`.
 ///
 /// A package's action writes no store, and keeps what it emits where its

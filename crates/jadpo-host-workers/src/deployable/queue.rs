@@ -1,4 +1,4 @@
-//! The Worker's `queue` (chunk 8.2k; area 11, "Chosen in chunk 7.7c2";
+//! The Worker's `queue` (area 11, "The Cloudflare Queues driver";
 //! area 14, "A Workers deployable"): the consumer of each queue on
 //! Cloudflare Queues the deployable receives, which Cloudflare hands a
 //! batch of messages at a time.

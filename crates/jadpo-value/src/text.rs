@@ -2,7 +2,7 @@
 //! executors.
 //!
 //! Text is counted, cut and padded in Unicode code points, as `max_length`
-//! counts it (area 2) and PostgreSQL's `char_length` does (question 23),
+//! counts it (area 2) and PostgreSQL's `char_length` does (area 19, "Code points"),
 //! never in graphemes: `keep_first` can split an emoji with a skin tone,
 //! and the text it gives is still valid. White space is Unicode's
 //! `White_Space` property; case mapping, collation, normalisation and the

@@ -1,4 +1,4 @@
-// The `json` namespace in memory (area 19, "Data formats", question 14):
+// The `json` namespace in memory (area 19, "Data formats"):
 // one JSON document read as a type and a value written as one, in the
 // wire's forms (areas 2, 7 and 10), so a document `json.write` gives reads
 // back with `json.read` and a request body reads alike. Each is one

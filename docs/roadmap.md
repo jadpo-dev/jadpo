@@ -13,7 +13,7 @@ lives in git history.
   twenty-one areas, all decided. Those pages are the specification and their
   examples become the tests.
 - **A new compiler, built around one graph**
-  ([compiler-runtime §1.1–1.2](compiler-runtime.md#11-graph-centred-compiler-decided-2026-10-13)).
+  ([compiler-runtime §1.1–1.2](compiler-runtime.md#11-graph-centred-compiler)).
   The first compiler (v0) was not reworked; it stays in git at the tag
   `archive/compiler-v0`.
 - **Two ways to run the graph:** an interpreter inside `jadpo` for `dev`,
@@ -142,13 +142,13 @@ in git history.
 - [x] **8.2j Six connections an invocation**: §2.6, "Six connections an
   invocation"; area 14, "A Workers deployable"; area 11, Decisions.
 - [x] **8.2k Cloudflare Queues' consumer**: §2.6, "Cloudflare Queues'
-  consumer"; area 11, "Chosen in chunk 7.7c2".
+  consumer"; area 11, "The Cloudflare Queues driver".
 - [x] **8.2l Passkeys on Workers**: §2.6, "The Workers host"; area 8,
   Decisions, "Passkeys on Workers".
 - [x] **8.2m What `jadpo check` and `jadpo build` say for Workers**: area
   14, "A Workers deployable" and Decisions; area 10, "Client addresses".
 - [x] **8.2m2 Rate limits' store on Workers**: area 16, "Rate limits" and
-  "Chosen in chunk 8.2m2"; §2.6, "The Workers host".
+  "Rate limits on Workers"; §2.6, "The Workers host".
 - [ ] **8.2n A real deploy** `opus · high`, after 8.2a to 8.2m2, **needs
   Richard** (his Cloudflare account): a teaching example deployed with
   Hyperdrive's caching off to a real PostgreSQL, the cron and a queue,
@@ -196,9 +196,8 @@ once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
   Decisions.
 - [x] **8.4d Phase 8 review fixes: addresses and connections**: areas 5,
   10, 11 and 16, Decisions; §2.6.
-- [x] **8.4e Workers speed and memory**: §2.6, "The Workers host"; §2.11,
-  "After chunk 8.4e".
-- [x] **8.4f Before the real deploy**: §2.6, "Before the real deploy";
+- [x] **8.4e Workers speed and memory**: §2.6, "The Workers host"; §2.11.
+- [x] **8.4f Before the real deploy**: §2.6, "Release profile, names and the Wrangler file";
   area 14, Decisions.
 - [x] **8.4g Builds and CI kept quick**: §2.5, "Keeping rustc time down";
   §2.7, "CI"; area 14, Decisions.
@@ -227,7 +226,7 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
 - [x] **9.1d2a Generic runtime contract fixes:** §2.6; areas 5 (Lifecycle), 10 (connection URLs) and 11 (safe key windows and record modes).
 - [x] **9.1d2b Golden todo and all 44 cases**: compiler/runtime §2.11; `examples/golden-todo/README.md`.
 - [x] **9.1d3 Strong TypeScript golden todo**: compiler/runtime §2.7 and §2.11; `examples/golden-todo/typescript/README.md`.
-- [x] **9.1d4 Local application comparison**: compiler/runtime §2.11, "Complete local application comparison"; `tools/bench/README.md`.
+- [x] **9.1d4 Local application comparison**: compiler/runtime §2.11; `tools/bench/README.md`.
 - [ ] **9.1d5 TypeScript on workerd baseline:** `opus · high` after 9.1d4:
   run the strong TypeScript golden todo on workerd (Hono's Workers entry,
   the same local connection stand-in Jadpo's Workers build uses) with all
@@ -237,10 +236,10 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   p95 (Richard, 2026-10-24).
 - [x] **9.1b Runtime performance**: compiler/runtime §2.6 and §2.11; `tools/bench/README.md` (9.1b1–9.1b5, including 9.1b1a).
 - [x] **9.1b1 Bounded delivery sweeps and the backlog**: compiler/runtime §2.6, "Bounded delivery sweeps", and §2.11; `tools/bench/README.md`.
-- [x] **9.1b1a Warm delivery comparison**: compiler/runtime §2.11, "Warm durable delivery comparison"; `tools/bench/README.md`.
+- [x] **9.1b1a Warm delivery comparison**: compiler/runtime §2.11; `tools/bench/README.md`.
 - [x] **9.1b2 Fast ticks and hourly housekeeping**: compiler/runtime §2.6, "Fast ticks and hourly housekeeping", and §2.11; `tools/bench/README.md`.
-- [x] **9.1b3 One-statement AI accounting**: compiler/runtime §2.11, "One-statement AI accounting"; area 21, "Chosen in chunk 5.5v5"; `tools/bench/README.md`.
-- [x] **9.1b4 Version checks in writes**: compiler/runtime §2.6, "Snapshots before calls", and §2.11, "Version checks in writes"; area 6, "Outside calls hold no transaction"; `tools/bench/README.md`.
+- [x] **9.1b3 One-statement AI accounting**: compiler/runtime §2.11; area 21, "How budgets are counted"; `tools/bench/README.md`.
+- [x] **9.1b4 Version checks in writes**: compiler/runtime §2.6, "Snapshots before calls", and §2.11; area 6, "Outside calls hold no transaction"; `tools/bench/README.md`.
 - [x] **9.1b5 Breakers in delivery claims**: compiler/runtime §2.6, "Breaker snapshots in delivery claims", and §2.11; `tools/bench/README.md`.
 - [ ] **9.1c Workers benchmark results:** `opus · high` **needs Richard**
   after 9.1b: approve access and deployment before using his account. Run the
@@ -311,7 +310,7 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
    drift from what is built; designed with the design skills first. Area
    19's prose stays as the explanation (Richard, 2026-10-25).
 3. Personal data (area 15), with encrypted fields and keys held as data
-   (area 19, questions 10 and 21) and `crypto.verify_totp`, which waits on
+   (area 19, "Encrypted fields" and "Language gaps this page depends on") and `crypto.verify_totp`, which waits on
    them.
 4. Remaining built-in services (area 16): flags, files, audit, search,
    telemetry thresholds.

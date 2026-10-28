@@ -255,7 +255,7 @@ impl Body<'_> {
         }
         if let Some((value, key_span)) = sent_key {
             // A `GET` changes nothing, so the runtime reads no key for it
-            // (area 7, question 17).
+            // (area 7, "Idempotent writes").
             if method == HttpMethod::Get {
                 ok = false;
                 self.infer(&value);

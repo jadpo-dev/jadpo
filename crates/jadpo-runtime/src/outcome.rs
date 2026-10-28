@@ -50,7 +50,7 @@ pub struct Part {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AssertionDetail {
     /// `assert condition` was false; for a comparison, its operator and
-    /// the value of each side (area 13, question 6).
+    /// the value of each side (area 13, "Assertions").
     False {
         comparison: Option<(&'static str, Value, Value)>,
     },

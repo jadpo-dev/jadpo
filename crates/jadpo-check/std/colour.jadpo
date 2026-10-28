@@ -1,4 +1,4 @@
-// The `colour` namespace (area 19, "Colour", question 13). Each operation
+// The `colour` namespace (area 19, "Colour"). Each operation
 // is listed, typed, in `jadpo-std`'s operation table, which names the Rust
 // function in `jadpo-value` that runs it; a test holds these stubs to that
 // table. None fails: each gives an sRGB `Colour`, a percentage or a chroma

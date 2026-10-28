@@ -26,7 +26,7 @@
 //! - A subscriber's action commits a handled record
 //!   (`jadpo_handled_deliveries`, keyed by the delivery's `id`) in the
 //!   store it writes, with its writes, so a repeated delivery finds it and
-//!   does nothing (area 12, "Outbox placement, settled").
+//!   does nothing (area 12, "Outbox placement").
 //! - What deferred work dropped (a crash between commit and delivery, a
 //!   host with nothing to run it on, a worker that died holding a lease)
 //!   stays `pending` or `running` past its time, and [`sweep`] picks it

@@ -2,7 +2,7 @@
 title: Configuration and time
 area: 10
 status: decided
-checked-with: jadpo 3ce094d0 (2026-10-12)
+checked-with: this checkout's jadpo on every gate run
 rules:
   - configuration.binding_empty
   - configuration.binding_invalid
@@ -80,7 +80,7 @@ How an application declares its settings and secrets, where their values come
 from, and how code reads the current time, works with dates and zones, and
 shows times to people in their own language.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 10. The new compiler has built the time literals and the built-in `Zone`, `Weekday` and `Locale` enums (chunk 1.9) and checks where `clock.now` may be read. Chunk 5.1 built settings: `config.jadpo`, secrets, signing keys, the connections' addresses, `jadpo config`, the check before the app starts and a test's own values; chunk 5.1c built the client's address behind trusted proxies (`client_address:`). Chunk 5.2 built time: `ZonedTime`, durations, arithmetic and comparison, the `temporal` library over a bundled time zone database, and a test's clock; chunk 5.2b built the formats and `PresentationText`, and checks `temporal.format` and `format_relative`. The examples marked `check` in those sections and their errors run with this checkout's `jadpo`. Chunk 5.3 built locales (`locales { }`, checked wherever a locale is written) and the text `temporal.format` and `format_relative` give, in each locale's own words, order and digits; chunk 5.3c built choosing a locale from a request, `locale.from_accept_language(header)`. Chunks 5.4c to 5.4f built translations as messages (`Message` types, `translations { }` language files, one typed call per message, the checks between locales, Jadpo's own messages and the exchange with translation services).
+> Code on this page applies the decisions from areas 1 to 10. Built: settings (`config.jadpo`, secrets, signing keys, the connections' addresses, `jadpo config`, the check before the app starts, a test's own values, and the client's address behind trusted proxies); time (the literals, the built-in `Zone`, `Weekday` and `Locale` enums, where `clock.now` may be read, `ZonedTime`, durations, arithmetic and comparison, the `temporal` library over a bundled time zone database, a test's clock, the formats and `PresentationText`, with the checks on `temporal.format` and `format_relative`); locales (`locales { }`, checked wherever a locale is written, the text `temporal.format` and `format_relative` give in each locale's own words, order and digits, and choosing a locale from a request); and translations as messages (`Message` types, `translations { }` language files, one typed call per message, the checks between locales, Jadpo's own messages and the exchange with translation services). The examples marked `check` run with this checkout's `jadpo`.
 
 Two rules run through the page. **Code never reads the environment or the
 system clock directly**: settings arrive as typed `config.<field>` values,
@@ -110,7 +110,7 @@ config {
 
 - The declaration has no name (decided in area 1: unnamed singletons).
 - Each value comes from an environment variable named after the field in
-  capitals: `mail_sender` reads `MAIL_SENDER` (question 1).
+  capitals: `mail_sender` reads `MAIL_SENDER`.
 - A field is required unless it has a `default:`. There are no optional
   settings: give a default instead, or leave the feature's setting required.
 - There is no `env.jadpo` and no second binding file (decided in area 1).
@@ -168,8 +168,8 @@ config {
 
 The cost of deriving it: renaming a field renames the variable, which breaks
 a deployment that still sets the old name. A changed name is therefore shown
-in the approval review like any other contract change (question 1; the review
-comes with area 18).
+in the approval review like any other contract change (the review comes
+with area 18).
 
 ### What a setting can hold
 
@@ -177,12 +177,12 @@ A setting is read from one environment variable, so its type must be decodable
 from one piece of text: text-based types, `Int`, `Decimal`, `Bool`, `Uuid`,
 `Email`, `Url`, `IpAddress`, `Duration`, `Instant` and `CalendarDate`, a named
 type built on one of them, an enum whose variants carry no data, and the
-built-in enums `Zone` and `Locale` (question 2). A `ModelId` is read from its
-text, `openai/gpt-4.1-mini`, since every model `ai:` names is one (area 21;
-chunk 5.5v3), and a `Money` from its canonical text, `"GBP 20.00"`, since
-`ai: { limits: { per_day: { cost: } } }` names one (area 21; chunk 5.5v5). A
+built-in enums `Zone` and `Locale`. A `ModelId` is read from its
+text, `openai/gpt-4.1-mini`, since every model `ai:` names is one (area
+21), and a `Money` from its canonical text, `"GBP 20.00"`, since
+`ai: { limits: { per_day: { cost: } } }` names one (area 21). A
 `Certificate` is read from its PEM, since a database connection's
-`authority:` names one (area 5; chunk 8.1n).
+`authority:` names one (area 5).
 Lists, objects, maps, `T?` and data-carrying enums are rejected
 (`configuration.type_unsupported`): split them into fields.
 
@@ -206,7 +206,7 @@ config {
 `LOG_LEVEL=verbose` and `BUSINESS_ZONE=Europe/London` are valid values: an enum
 is read as the variant's name, a `Zone` as its IANA name and a `Locale` as its
 BCP 47 tag (`en-GB`). A `Duration` is written as it is in source (`30s`, `5m`,
-`2h`, `30d`) or as its ISO 8601 text (`PT5M`, built in chunk 5.5w2), a `Bool`
+`2h`, `30d`) or as its ISO 8601 text (`PT5M`), a `Bool`
 as `true` or `false`, and an `Instant` (ending in `Z`, never with an offset)
 and a `CalendarDate` in ISO 8601. A variable set to nothing counts as not set.
 
@@ -218,18 +218,13 @@ the type and the types it is built on. The same is true of `test:`, the value
 every test reads (below); a field that has none of its own default and is read
 by a test needs one. Neither names a constant (area 3,
 [Constants](03-logic.md#constants)), though it is fixed while compiling: a
-value is a constant or a setting, never both (below; revised 2026-10-16,
-Richard).
+value is a constant or a setting, never both (below).
 
 A secret cannot have either, so a forgotten production secret stops the app
 instead of falling back to a value written in source, and secrets never appear
 in test source.
 
 ### A constant or a setting
-
-> Decided by Richard on 2026-10-16. Constants are built (chunk 5.3e, area
-> 3), and so is the refusal of one as a `default:`; the move below, `jadpo
-> config move`, was built in chunk 5.3f, and its examples are checked.
 
 A value that could differ between deployments is a setting; one that never
 does is a `constant` (area 3). A value is one or the other, never both, so
@@ -406,23 +401,12 @@ Moving a setting back to a constant has no command: it is rare, and
 removing a setting is a change to every deployment's environment, made by
 hand.
 
-Rejected (Richard, 2026-10-16):
-
-- **A constant an environment variable can override** (`setting: true` on
-  the constant). A read of it looks fixed at the call site while its value
-  differs per deployment; agents would add it everywhere "just in case";
-  there is no single list of the variables a deployment must set; and
-  moving the file would rename the variable.
-- **A `config { }` block in each domain.** Settings belong to the
-  deployment, not to the code that reads them, and an operator wants one
-  list.
-- **Settings declared beside their use and gathered by the compiler.** The
-  same missing list, and a setting's name would depend on where its first
-  reader sits.
-- **Values per environment in source** (`production:`, `staging:`). Against
-  this page's rule that values come from the deployment's environment with
-  no layering ([Values on your machine and in
-  production](#values-on-your-machine-and-in-production)).
+There is no constant an environment variable can override, no `config { }`
+block per domain, no settings gathered from beside their use, and no
+values per environment in source (`production:`, `staging:`): each would
+make a value look fixed where it differs per deployment, or lose the one
+list of variables an operator sets ([Values on your machine and in
+production](#values-on-your-machine-and-in-production)).
 
 ### Fields in name order
 
@@ -432,20 +416,10 @@ a setting rarely touch the same lines and merge cleanly. Nothing gives a
 setting's position a meaning: a setting is read, bound and reported by
 name; `jadpo config check` and the check before the app starts list
 settings in the order they are written, which becomes name order.
-`jadpo fmt --check` fails on a `config { }` out of order. Decided by
-Richard on 2026-10-16 and built in chunk 5.3f; the examples on the
-language pages are in name order.
+`jadpo fmt --check` fails on a `config { }` out of order. The examples on
+the language pages are in name order.
 
 ## Secrets
-
-> Amended 2026-10-17 by area 19 (question 9): the `key:` of a `crypto`
-> operation joins the places the compiler owns, written `key:
-> config.<name>` with an `EncryptionKey` (new) or `SigningKey` setting;
-> any other read stays `configuration.secret_flow`. Area 19 also adds a
-> generated `random` namespace, read only in actions as `clock.now` is
-> (question 19). `random` built in chunk 5.5q (`type.random_context`
-> beside `type.clock_context`); the `key:` place built in chunk 5.5q2,
-> with `PrivateKey` as a third key setting, for `crypto.sign`.
 
 `secret: true` marks a value that must never leave the server. The compiler
 accepts it only at places the compiler itself owns: a connection's `url:`, an
@@ -509,26 +483,27 @@ config {
 ```
 
 `Url` accepts only `http://` and `https://`, so it cannot hold a
-`postgres://user:password@host/db` address. The built-in connection types
-(question 3), one per driver, can: `PostgresUrl` (`postgres://` or
+`postgres://user:password@host/db` address. The built-in connection types,
+one per driver, can: `PostgresUrl` (`postgres://` or
 `postgresql://`) and `RedisUrl` (`redis://` or `rediss://`). They are always
 secret, because they normally carry a password, and a connection's `url:` must
 read a setting of the type its `driver:` needs (`configuration.url_type`); an
 address written in source is refused the same way. The runtime opens the
 connection only through that setting.
 
-Since chunk 9.1d2a (Richard, 2026-10-23), connection types check URI
-structure as well as the scheme, using the same pure validator for literals,
-startup and `config check`. Empty targets after user information, malformed
-percent escapes, invalid ports and broken IPv6 brackets are invalid; checking
-never resolves a name or opens a connection. PostgreSQL multi-host URIs,
-encoded credentials, bracketed IPv6 and explicit socket addresses
-(`postgres://%2Ftmp/app`, `postgresql:///app?host=/tmp`) pass the structural
-check. The type also retains its earlier acceptance of `postgres:///app`;
-that alone supplies no socket directory to a host driver and establishes no
-implicit driver default. Driver-specific options and connection availability
-are checked separately by the driver. A Redis address needs a host and, when supplied, a nonnegative numeric database path.
-All invalid declarations are reported together; credentials are never shown.
+Connection types check URI structure as well as the scheme, using the same
+pure validator for literals, startup and `config check`. Empty targets
+after user information, malformed percent escapes, invalid ports and
+broken IPv6 brackets are invalid; checking never resolves a name or opens
+a connection. PostgreSQL multi-host URIs, encoded credentials, bracketed
+IPv6 and explicit socket addresses (`postgres://%2Ftmp/app`,
+`postgresql:///app?host=/tmp`) pass the structural check. The type also
+accepts `postgres:///app`; that alone supplies no socket directory to a
+host driver and establishes no implicit driver default. Driver-specific
+options and connection availability are checked separately by the
+driver. A Redis address needs a host and, when supplied, a nonnegative
+numeric database path. All invalid declarations are reported together;
+credentials are never shown.
 
 A project that declares no database has one called `main` on PostgreSQL, and
 it opens at `config.database_url` when the project declares one (and it is a
@@ -536,7 +511,7 @@ it opens at `config.database_url` when the project declares one (and it is a
 
 A `PostgresUrl` may not set TLS itself (`sslmode` and libpq's other `ssl…`
 settings), since its connection in `app.jadpo` decides (area 5, "PostgreSQL
-over TLS"; chunk 8.1n): such a value is `configuration.value_invalid`,
+over TLS"): such a value is `configuration.value_invalid`,
 saying so. A setting may be a `Certificate` (area 19), read from its PEM:
 what a database connection's `authority:` reads, the authority its
 server's certificate is signed by.
@@ -546,7 +521,7 @@ reads its settings the same way, never a value written in source:
 `credential:` a `secret: true` setting, `environment:` a
 `ProviderEnvironment` setting (the built-in enum `.sandbox` or `.live`,
 choosing between the package's hosts), and `host:`, for a package with no
-fixed hosts, a `Url` setting. Built in chunk 7.1c; a wrong one is area 11's
+fixed hosts, a `Url` setting. A wrong one is area 11's
 `connection.value_invalid`.
 
 ```jadpo fragment
@@ -615,7 +590,7 @@ A `SigningKey` is a built-in secret type for the key sessions and tokens are
 signed with: at least 32 characters with no spaces. A setting of that type
 reads its variable and, when that is set, `NAME_PREVIOUS` as well:
 `session_signing_key` reads `SESSION_SIGNING_KEY` and `SESSION_SIGNING_KEY_PREVIOUS`
-(question 10). New tokens are signed with the current key and both are
+New tokens are signed with the current key and both are
 accepted, so a deployment rotates a key by setting the new one and moving the
 old one to `_PREVIOUS`, then removing it once the longest token lifetime has
 passed. Both are checked when the app starts, and neither is ever printed.
@@ -632,7 +607,7 @@ proxy's, so every client would share one allowance until the real address is
 read from the header the proxy adds; but a header anyone can send lets a
 caller choose its own address. `client_address:` in `app.jadpo` says, once,
 where the real address is and how many proxies of the deployment's own to
-believe (question 12):
+believe:
 
 ```jadpo check project=client-address file=config.jadpo
 use edge/types { ProxyHops }
@@ -710,7 +685,7 @@ How a header is read:
   part of a header is never mixed with it.
 
 The address chosen is the one the default rate limits count (an IPv6
-address by its /64, area 16; chunk 8.4d), `jadpo dev`'s
+address by its /64, area 16), `jadpo dev`'s
 request lines show (after the time, muted, and as `address` with `--json`) and
 the request timeline records. Natively the connection's address comes from the
 host and the rest is the runtime's, so a deployable chooses an address the
@@ -723,8 +698,8 @@ Workers uses without a `client_address:`. An address Cloudflare did not give
 is unknown there, and requests with no known address share one allowance. A
 source other than `cloudflare` is refused when the project is built for
 Workers: `jadpo check` refuses it for each deployable with `target:
-Target.wasm` (`deployable.target_unsupported`, area 14; chunk 8.2m), and
-since chunk 8.2d a Workers deployable that reads one doesn't start, logging
+Target.wasm` (`deployable.target_unsupported`, area 14), and a Workers
+deployable that reads one doesn't start, logging
 `client_address_refused` and answering every request 503
 (`ClientAddress::read` refuses it for that target).
 
@@ -773,7 +748,7 @@ not running this version: 1 error, waiting for a save that fixes them
 
 - Store `Instant`. Use `CalendarDate` only for facts that really are dates.
   There is no time of day on its own and no date-time without a zone
-  among these: `ZonedTime` (renamed from `Time`, question 5) holds an
+  among these: `ZonedTime` holds an
   instant and the zone it is seen in. Area 19's `LocalTime` and
   `LocalDateTime` are for what has no zone, such as a shop's opening
   time, and are never a moment until a zone is chosen.
@@ -784,7 +759,7 @@ not running this version: 1 error, waiting for a save that fixes them
 - Types never convert to each other or to `Text` silently; signatures use
   named types built on them (decided in area 2), such as
   `type DueAt = Instant {}`.
-- Built in chunk 1.9 (decided in the Phase 1 review): an `Instant` literal is
+- An `Instant` literal is
   ISO 8601 with a `Z` or an offset, to the millisecond
   (`"2026-10-25T08:30:00Z"`), a `CalendarDate` literal a real date
   (`"2026-10-25"`), both checked while compiling; a `Duration` is written only
@@ -802,17 +777,17 @@ not running this version: 1 error, waiting for a save that fixes them
   `9999-12-30T22:00:00.999Z`, the last instant whose local date is in year
   9999 in every zone, and a `CalendarDate` the same years; a literal past
   them is refused while compiling, and arithmetic that goes past them is the
-  fault `time_out_of_range` (chosen in chunk 5.2).
+  fault `time_out_of_range`.
 - Two `ZonedTime`s are equal when both their instants and their zones are.
   They have no order of their own, since two in different zones have none;
-  their instants do, through `temporal.instant(...)` (chosen in chunk 5.2).
+  their instants do, through `temporal.instant(...)`.
 - A `ZonedTime` field of an entity is stored in two columns: its instant as
   `timestamptz(3)` and its zone's IANA name as `text`.
 - `clock.now` in a function, a library function or an inline function is
   `type.clock_context`; `clock.advance(...)` outside a test is
   `type.test_clock_context` (area 13); any other member of `clock`,
   `translations`, `sessions` or `oauth` is `toolchain.not_built_yet` until
-  its area is built. `config.<name>` is a setting (chunk 5.1).
+  its area is built. `config.<name>` is a setting.
 
 ```jadpo check project=time-types
 /// When an invoice falls due.
@@ -829,8 +804,8 @@ test "time literals are checked while compiling and compare as time" {
 
 ## Durations
 
-Decided (question 4): one spelling everywhere in source, `500ms`, `30s`,
-`5m`, `2h`, `30d`, with ISO 8601 (`"PT5M"`) only on the wire.
+One spelling everywhere in source, `500ms`, `30s`, `5m`, `2h`, `30d`, with
+ISO 8601 (`"PT5M"`) only on the wire.
 
 ```jadpo check project=durations
 /// How long a request may take.
@@ -860,13 +835,11 @@ On the wire a duration is ISO 8601 in hours, minutes and seconds, as the
 runtime writes it: `"PT5M"`, `"PT1.5S"`, `"PT720H"` for `30d`, `"-PT5M"`
 for a negative one. A request's JSON, query string, path and headers give
 it the same way, with days (`"P1DT2H"`) accepted as 24 hours each; `5m` is
-the source's spelling and is refused there (chosen in chunk 5.2). A setting
-is the exception, read as source writes it, `5m` (chunk 5.1), and also as
-the contract's canonical text, `PT5M`, as `text.parse` reads it, so a
-value copied from a response or a log is a setting too: every boundary
-reads a standard type through its contract (area 19, "Every boundary
-through the contract"; decided by the lead session, 2026-10-18, under
-Richard's instruction of 2026-10-17; built in chunk 5.5w2).
+the source's spelling and is refused there. A setting is the exception,
+read as source writes it, `5m`, and also as the contract's canonical text,
+`PT5M`, as `text.parse` reads it, so a value copied from a response or a
+log is a setting too: every boundary reads a standard type through its
+contract (area 19, "Every boundary through the contract").
 
 ## The current time: `clock.now`
 
@@ -900,13 +873,14 @@ test "an action reads the test's clock" {
 Timeouts are measured on a separate clock that wall-clock changes cannot
 move; code never sees it. Tests fix the clock with `clock:` and move it with
 `clock.advance(...)` (area 13). The generated SQL always passes the time as
-a value; the database's own `now()` is never used.
+a value; the database's own `now()` is never used. Area 19's `random`
+namespace is read only in actions in the same way (`type.random_context`).
 
 ## Arithmetic and comparison
 
 `Instant + Duration`, `Duration + Instant` and `Instant - Duration` give an
-`Instant` of the instant's own named type, so no rebuild is needed
-(question 6). `Instant - Instant` gives the `Duration` between them, which is
+`Instant` of the instant's own named type, so no rebuild is needed.
+`Instant - Instant` gives the `Duration` between them, which is
 negative when the second is later; `Duration ± Duration` gives a
 `Duration`. As with numbers, both sides are the same type after widening, or
 one is a literal, and the result of two of the same is a plain `Duration`.
@@ -916,7 +890,7 @@ with `==` on the timeline, so `12:00Z` equals `13:00+01:00`.
 A `CalendarDate` has no clock time, so a `Duration` doesn't move it; it moves
 by calendar days with `temporal.add_days`. A `ZonedTime` moves on its
 calendar the same way, or through its instant. `*`, `/` and `%` don't take
-time values (chosen in chunk 5.2).
+time values.
 
 ```jadpo check project=arithmetic
 type DueAt = Instant {}
@@ -959,7 +933,7 @@ A zone turns an instant into local time; this is never ambiguous:
 Going the other way, from a date and a clock time to an instant, can be: at
 01:30 on the day clocks go back, London has two 01:30s, and on the day they
 go forward 01:30 does not exist. One option, `dst:`, says which instant to
-take (question 7): `Dst.earlier` or `Dst.later` takes that instant of an
+take: `Dst.earlier` or `Dst.later` takes that instant of an
 overlap, and in a gap moves the clock time back or forward by the gap's
 length; `Dst.compatible` is earlier in an overlap and later in a gap, as
 JavaScript's Temporal does. Left out, or `Dst.reject`, an unclear local time
@@ -1033,7 +1007,7 @@ date by months or years can land on a day the month doesn't have (31
 January plus a month): `invalid_day: InvalidDay.last_valid_day` takes the
 month's last day, and left out, or `InvalidDay.reject`, the call fails with
 `invalid_day:` to map. `dst:` means something only for a `ZonedTime`; on a
-`CalendarDate` it is `type.temporal_option_unused` (chosen in chunk 5.2).
+`CalendarDate` it is `type.temporal_option_unused`.
 
 A query for "deliveries on 25 October in London" uses the day's bounds, from
 its first instant up to the next day's, which are correct whether the day has
@@ -1136,16 +1110,9 @@ test "a London day has 25 hours when the clocks go back" {
 }
 ```
 
-> Amended 2026-10-18 by area 19 (chunk 5.5k4): `resolve` takes a
-> `LocalDateTime`, which has its own clock time, or a date with `at:` a
-> clock time written out or a `LocalTime`, each under the same `dst:`; the
-> choices are in area 19's "Time and calendar additions".
-
-The `temporal` library (question 7, Option B in the
-[time and formatting proposals](research/10-configuration-and-time-proposals.md)),
-always called through its namespace. "A date or local time" is a value built
-on `CalendarDate` or `ZonedTime`, and a result of "its type" keeps the
-argument's named type:
+The `temporal` library is always called through its namespace. "A date or
+local time" is a value built on `CalendarDate` or `ZonedTime`, and a
+result of "its type" keeps the argument's named type:
 
 | Operation | Gives | Fails on, unless an option settles it |
 |---|---|---|
@@ -1166,37 +1133,29 @@ argument's named type:
 
 A day's bounds start at its first instant: midnight, or, in a zone whose
 clocks skip midnight, the first time they show that day. `instant(...)` is
-the one operation the proposal didn't list: a `ZonedTime` has no order of
-its own, and its instant does (chosen in chunk 5.2).
+the operation that orders local times: a `ZonedTime` has no order of
+its own, and its instant does.
 
 Zones come from the IANA time zone database bundled into every build
 (jiff's `jiff-tzdb`, release 2026e), never the platform's own files, so the
 interpreter, a native deployable and WebAssembly on Workers answer alike,
 and every `Zone` variant is in it, which a test holds. A newer release is a
-dependency change of its own (chosen in chunk 5.2).
+dependency change of its own.
 
 ## Showing dates and times to people
 
-> Built in chunk 5.2b: the formats, `PresentationText` and the checks on
-> both calls. Built in chunk 5.3: the text they give, in the words, order,
-> punctuation and digits of each locale, and the locales an application
-> supports.
-
-> Amended 2026-10-17 by area 19 (question 2): every standard type is
-> formatted for people by one call, `text.format(value, locale:)`, so
-> `temporal.format` became the time types' `text.format`, with the same
-> `zone:` and `format:` options and a habit error,
+> Every standard type is formatted for people by one call,
+> `text.format(value, locale:)`: the time types' takes the `zone:` and
+> `format:` options below, and `temporal.format`, a habit, is
 > `semantic.standard_operation_moved`, whose edit writes `text.format`;
-> `temporal.format_relative` stays. Built in chunk 5.5a, and the examples
-> here use `text.format`. Area 19 also adds
-> three `temporal` operations (`occurrences`, `open_at`,
-> `period_between`, chunks 5.5k and 5.5k2) and `{price, number, currency}` to the
-> placeholder styles, built in chunk 5.5h2 ("Messages", below), and
-> `{rate, number, percent}`, built in chunk 5.5j2.
+> `temporal.format_relative` stays. Area 19 adds three `temporal`
+> operations (`occurrences`, `open_at`, `period_between`) and the
+> placeholder styles `{price, number, currency}` and `{rate, number,
+> percent}` ("Messages", below).
 
 Formatting needs three things the server must never guess: the zone, the
-language and the format. Decided (question 7): one call that takes all
-three, with the format either built in or declared once as a named type.
+language and the format. One call takes all three, with the format either
+built in or declared once as a named type.
 The language is one the application supports, declared in `app.jadpo`
 ("Locales", below), so the example is a project:
 
@@ -1303,12 +1262,8 @@ British Summer Time:
 seconds `timeStyle: "long"` has. For a handful of locales (Japanese and
 Korean `time_` formats, the punctuation of a few `date_` formats) the
 pattern is ICU4X's, which is not always the one `Intl.DateTimeFormat`
-writes. Measured against Node 24 (ICU 78, CLDR 48) on all 533 locales, two
-zones and four instants, 87% of 145,000 formatted texts, built-in and
-declared, are identical; by built-in format the same text is 92% for
-`date_long` and 94% for `time_medium`, down to 68% for `date_time_full`,
-the rest differing in punctuation, joining words, number widths or the
-24-hour padding. A zone's name comes from the zone and the instant: "BST"
+writes: the two differ in punctuation, joining words, number widths or
+the 24-hour padding. A zone's name comes from the zone and the instant: "BST"
 or "British Summer Time" in summer, "GMT" or "Greenwich Mean Time" in
 winter, and where CLDR has no name for the locale, its offset ("GMT+1",
 "UTC+1").
@@ -1538,14 +1493,13 @@ and the OpenAPI document lists only the supported tags; a setting typed
 an `Accept-Language` header is a library call that falls back to `default`
 ("Choosing a locale from a request", below).
 
-Decided on 2026-10-16 (Richard) and built in chunk 5.4c, with translations
-as messages: `in_progress:` is the third option, optional and once, a list
-of the supported locales whose translations are not finished yet. A locale
+`in_progress:` is the third option, optional and once, a list of the
+supported locales whose translations are not finished yet. A locale
 listed there but not in `supported:` is `type.locale_in_progress_unsupported`,
 and the default can't be listed (`type.locale_in_progress_default`). Every
 other supported locale must be complete; only one listed here falls back
 where wording is missing, with no diagnostic, because listing it is the
-explicit, declared opt-out (there are no warnings, area 1, question 11); see
+explicit, declared opt-out (there are no warnings, area 1); see
 Translations as messages.
 
 ```jadpo check project=locales-in-progress file=app.jadpo
@@ -1565,12 +1519,12 @@ record before `supported:` changed, or written out anywhere but `locale:`.
 It is written in the supported locale a browser asking for it would get
 ("Choosing a locale from a request", below): a supported locale of its
 language, the one CLDR's likely subtags give for the language first, else
-`default:` (chosen 2026-10-21 in chunk 8.2c). A list `list.sort_by`
+`default:`. A list `list.sort_by`
 orders in such a locale is ordered by that same supported locale's
-alphabet (Richard, 2026-10-22; built in chunk 8.4i), so `jadpo test` and
+alphabet, so `jadpo test` and
 a deployable, which carries only its supported locales' collation, give
 the same order. Sorting by a locale needs `locales { }`, as formatting
-does (`type.temporal_locales_required`; Richard, 2026-10-22), so a
+does (`type.temporal_locales_required`), so a
 deployable never carries collation for a locale the app doesn't support.
 Case mapping is not text for people in a language, and takes any
 `Locale` (area 19, "Text").
@@ -1620,26 +1574,22 @@ test "a locale the application doesn't support is written in one it does" {
 }
 ```
 
-So a deployable carries the locale data of its supported locales only
-(chunk 8.2c): `jadpo build` takes, from the CLDR data compiled into
+So a deployable carries the locale data of its supported locales only:
+`jadpo build` takes, from the CLDR data compiled into
 Jadpo, the entries the supported locales reach as ICU4X looks data up
 (the locale, then each locale its lookups fall back to, down to the root),
 collation among them, and the
 data that is the same in every locale,
 and compiles the deployable with that; `jadpo test` and `jadpo dev` keep
-every locale, and write the same text. A WebAssembly module that runs
-every standard-library operation is 18.5 MB with every locale and 8.5 MB
-with `en_gb` and `fr_fr` (6.1 MB and 2.7 MB with gzip), 0.9 MB of which
-was every locale's collation until chunk 8.4i kept the supported
-locales' only.
+every locale, and write the same text.
 
-Every locale knows its text direction (decided 2026-10-16, built in chunk
-5.4d): `locale.direction(value)` gives a value of the built-in enum
+Every locale knows its text direction: `locale.direction(value)` gives a
+value of the built-in enum
 `TextDirection`, `.left_to_right` or `.right_to_left`, as CLDR's likely
 script for the locale says (`Locale.ar_eg` and `Locale.he_il` read right to
 left, `Locale.en_gb` left to right). Jadpo ships its wording as the HTML
 values, `ltr` and `rtl`, so the email layout's `<html dir="{{
-locale.direction }}">` writes one of them (built in chunk 7.3).
+locale.direction }}">` writes one of them.
 
 ```jadpo check project=locales-direction file=app.jadpo
 application {}
@@ -1658,9 +1608,6 @@ test "a locale knows which way its text runs" {
 ```
 
 ### Choosing a locale from a request
-
-> Built in chunk 5.3c, named by Richard on 2026-10-16. The examples marked
-> `check` run with this checkout's `jadpo`.
 
 `locale.from_accept_language(header)` gives the `Locale` a browser asks for
 in its `Accept-Language` header, out of the locales the application
@@ -1795,22 +1742,6 @@ header and the same `locales { }`:
 
 ## Translations as messages
 
-> Decided on 2026-10-16 (Richard), replacing question 9's JSON files and ICU
-> MessageFormat. Built in chunk 5.4c: messages, the language files, their checks and errors, the typed
-> calls, enum wording, email subjects and `in_progress:` locales. Built in
-> chunk 5.4d: failures' client text and its export, stale translations and
-> review, `TextDirection`, the `jadpo translations` commands that read and
-> record the project's own wording (`missing`, `unused`, `update`,
-> `accept`), go to definition and the pseudo-locale. The examples marked
-> `check` run with this checkout's `jadpo`. Built in chunk 5.4e: Jadpo's own
-> messages and the root file's owner groups, and `jadpo translations
-> builtin`. Built in chunk 5.4f: `jadpo translations export` and `import`,
-> the exchange with translation services. Built in chunk 7.1b3: library
-> packages' translations, called through the package, and the root file's
-> package groups. Built in chunk 7.1b4: packages' text in `jadpo
-> translations export`, `import` and `unused`. Built in chunk 7.3: email
-> templates that read translations, and email subjects required (area 16).
-
 Text the server writes for people (emails, generated pages, a failure's text
 for client apps) is translated in Jadpo itself. Each message is a type, each
 language is a file of wordings, and both live in the domain that uses them.
@@ -1823,8 +1754,7 @@ emails live in `emails/`. A message a second domain uses moves to
 `layout.promotion_required` learns messages: another domain's call of a
 message is `visibility.private_cross_domain` meanwhile). The root
 `translations/` holds only the app's wording for text it did not write:
-Jadpo's own (below, built in chunk 5.4e) and its library packages' (built
-in chunk 7.1b3).
+Jadpo's own (below) and its library packages'.
 A `.json` file there is ignored, like any other file that is not source.
 
 ```text
@@ -1950,7 +1880,7 @@ How a message's type maps to its wording in each language's file:
 | No fields | A plain string |
 | A `Text`, `PresentationText`, `Int` or `Decimal` field, or a named type built on `Text`, `Int` or `Decimal` | A `{field}` placeholder; numbers are written the locale's way |
 | A field built on `Money` | A `{field, number, currency}` placeholder, written as `text.format` shows the amount in the locale (area 19); `{field}` alone is `translation.placeholder_style` |
-| A field built on `Percentage` | A `{field, number, percent}` placeholder, written as `text.format` shows the percentage in the locale (area 19, chunk 5.5j2); `{field}` alone is `translation.placeholder_style` |
+| A field built on `Percentage` | A `{field, number, percent}` placeholder, written as `text.format` shows the percentage in the locale (area 19); `{field}` alone is `translation.placeholder_style` |
 | One enum field | One member per value of the enum; the field is not a placeholder |
 | One `PluralCount` field | One member per plural form the language needs, from Unicode CLDR (English `one` and `other`; Polish `one`, `few`, `many` and `other`); `{count}` is available in each |
 | Any other field type (`Instant`, an object, `T?`) | `translation.field_type`: format it in code and pass the text |
@@ -1964,8 +1894,7 @@ words it as its own `zero` form where CLDR has one.
 Dates and times are formatted in code (`text.format`, area 19) and
 passed in as `PresentationText`. An amount of money is a placeholder of
 its own, through the same formatter as `text.format`, so the translator
-sees a price and each language writes it its own way (area 19, question
-16, built in chunk 5.5h2):
+sees a price and each language writes it its own way (area 19):
 
 ```jadpo check project=translation-money file=app.jadpo hidden
 application {}
@@ -2022,7 +1951,7 @@ test "a price is written each language's way" {
 ```
 
 A percentage is a placeholder of its own in the same way, written
-`{rate, number, percent}` (area 19, built in chunk 5.5j2):
+`{rate, number, percent}` (area 19):
 
 ```jadpo check project=translation-percent file=app.jadpo hidden
 application {}
@@ -2177,8 +2106,8 @@ An `EmailMessage`'s member in its domain's language files is its subject
 line, with the email's fields as placeholders; its body is its `.html` and
 `.txt` templates (area 16). A subject is worded where its emails are
 written, checked when a language file words it, and it is not a call.
-Since chunk 7.3, which sends emails, it is required in every supported
-locale that isn't in progress, as a message's wording is.
+It is required in every supported locale that isn't in progress, as a
+message's wording is.
 
 ```jadpo check project=translation-email file=app.jadpo hidden
 application {}
@@ -2219,7 +2148,7 @@ its values a wording, checked like a message with one enum field. A value's
 own fields are placeholders in that value's wording, both in the enum's
 wording and in a message that has the enum as its field; another value's
 fields are not available. In a template `{{ order.status }}` then
-writes the wording (built in chunk 7.3), and code reads it with
+writes the wording, and code reads it with
 `translations.<domain>.<enum>(value, locale: ...)`. Writing an enum out
 without wording is an error that says to add it, in a template. Area 2's
 "enums have no display labels" stands: the wording lives in translations.
@@ -2481,7 +2410,7 @@ translations {
 }
 ```
 
-`jadpo check` (there is no `jadpo build` yet) writes, beside each API's
+`jadpo check` writes, beside each API's
 OpenAPI document in `build/openapi/`, one file per supported locale named
 `<api>.failures.<locale>.json` (`main.failures.fr_fr.json`), for client apps
 to show. It maps each
@@ -2511,8 +2440,8 @@ holds Jadpo's own failures, below):
 The server's `message` stays fixed English for developers and logs (area 4).
 
 Jadpo's own failures (`invalid_input`, `rate_limited` and the rest) are
-worded with Jadpo's own messages (built in chunk 5.4e, "Jadpo's and
-packages' text" below) and join every API's file: the ones its routes can
+worded with Jadpo's own messages ("Jadpo's and packages' text" below)
+and join every API's file: the ones its routes can
 meet, which are the request failures for any API with routes, and the
 failures of signing in for one with a route that needs a caller. A Jadpo
 failure's text is the app's root wording for the locale, else what Jadpo
@@ -2540,14 +2469,9 @@ translations {
 
 ### Jadpo's and packages' text
 
-> Built in chunk 5.4e: Jadpo's own messages and the root file. Built in
-> chunk 7.1b3: library packages' text, its groups in the root file, its
-> lines in the root record and its place in the publishing bar; the
-> choices are under "Chosen in chunk 7.1b3" below. Built in chunk 7.1b4:
-> its text in `jadpo translations export`, `import` and `unused`, under
-> "Chosen in chunk 7.1b4". Built in chunk 7.1c3: two versions of a
-> package worded side by side (area 11, "Wording two versions of a
-> package", decided 2026-10-20), under "Chosen in chunk 7.1c3".
+> The choices for packages' text are in "Packages' text: groups, calls
+> and the surface", "Packages' text in the exchange" and "Two versions of
+> a package" below (area 11, "Two versions side by side, lazy loading and the package cache").
 
 Text Jadpo writes itself (built-in emails and its failures' wording; it
 generates endpoints only, never pages) is Jadpo's own messages. Jadpo ships
@@ -2574,7 +2498,7 @@ for translators and the wording Jadpo ships. They have no runtime call:
 `translations.jadpo` is not a scope code can call. The wording of
 Jadpo's enums the app has on is in the `TranslationPlan` as
 `jadpo.<key>`, which an email template's `{{ locale.direction }}`
-writes (chunk 7.3).
+writes.
 
 A feature is switched on by what the project has, and a message's name is
 its key in the `jadpo: { }` group (a failure's is its code):
@@ -2587,7 +2511,10 @@ its key in the `jadpo: { }` group (a failure's is its code):
 | Signing services in | an API accepts a service key | `service_disabled` |
 | Browser sessions | an API accepts browser sessions and a route that needs a caller writes | `csrf_rejected` |
 | Locales | the app declares `locales { }` | `text_direction`, the wording of `TextDirection` |
-| Magic links | the app signs people in with magic links (area 8, not built) | the messages in area 16, "Built-in emails" |
+| Magic links | the app signs people in with magic links (area 8) | the messages in area 16, "Built-in emails" |
+| Magic-link routes | the app writes its own magic-link routes (`generate_routes: false`, area 8) | `sign_in_return_invalid` |
+| Passkeys | the app signs users in with passkeys (area 8) | `passkey_challenge_expired`, `passkey_rejected`, `passkey_already_registered`, `passkey_limit_reached`, `passkey_not_found` |
+| External identity tokens | an API accepts external identity tokens (area 8) | `authentication_misconfigured` |
 
 The failures of signing in that only some methods can give
 (`user_disabled`, `service_disabled`, `csrf_rejected`) are on only where an
@@ -2596,13 +2523,12 @@ responses. An API's file for clients carries the Jadpo failures of its own
 features; the application needs the union over its APIs. The wording of an
 idempotency key still running (`conflict`, 409) is the app's: `conflict` is
 a code an app declares too, so Jadpo does not word it. The twelve
-magic-link messages are in the catalogue, but no project has the feature
-on until area 8's `sign_in:` is built, so none is listed, required or
-rewordable; privacy requests' messages (area 15) join the catalogue with
-that feature. `TextDirection`'s wording, `ltr` and `rtl`, is the same HTML
+magic-link messages are on once `magic_link:` is declared (area 16,
+"Built-in emails"); privacy requests' messages (area 15) join the
+catalogue with that feature. `TextDirection`'s wording, `ltr` and `rtl`, is the same HTML
 values in every language, so Jadpo ships it in every locale and no app
 locale has to word it; an email template's `{{ locale.direction }}`
-writes it (chunk 7.3).
+writes it.
 
 A library package carries translations as a domain does: a
 `translations/` folder with its message types, its failures' wording and
@@ -2972,9 +2898,7 @@ error: `postcodes` words package `Postcodes`, which is held in two versions
 check failed: 1 error, 9 files
 ```
 
-#### Chosen in chunk 7.1b3
-
-What the pages leave to the build, each the most conservative reading:
+#### Packages' text: groups, calls and the surface
 
 - **A package's group is its folder's name.** The root file words
   `packages/postcodes/v2/`'s text under `postcodes: { }`, the name a
@@ -3003,7 +2927,7 @@ What the pages leave to the build, each the most conservative reading:
   completeness: each language file words every public message, and an
   enum once any file words it (a `wording` row, shown when the package
   carries translations), and a package with messages and no language file
-  fails it. *Flagged for Richard:* this is stricter than "complete wording
+  fails it. *Open question:* this is stricter than "complete wording
   in its own default locale"; a `locale:` key in `package.jadpo` could
   name the default and let other languages ship part-done, at the cost of
   the index's two keys. Recommendation: keep it strict until a package
@@ -3014,9 +2938,9 @@ What the pages leave to the build, each the most conservative reading:
   locale or message is the next minor version, a message's changed fields
   or a dropped locale are breaking, and changed wording is a patch.
 - **The commands.** `missing`, `update` and `accept` take a package's
-  text in; `export`, `import` and `unused` do from chunk 7.1b4, below.
+  text in, and so do `export`, `import` and `unused`, below.
 
-#### Chosen in chunk 7.1b4
+#### Packages' text in the exchange
 
 - **What is exchanged.** What a supported locale must word of a package
   (above) and anything else of it the app words in its root file, each
@@ -3049,14 +2973,13 @@ What the pages leave to the build, each the most conservative reading:
   is not a package's. `--json` gives them as `packageWording`, each with
   a `reason` (`uncalled`, `notInPackage`, `private`, `noPackage`).
 
-#### Chosen in chunk 7.1c3
+#### Two versions of a package
 
-Two versions of a library package side by side (area 11, Decisions,
-"Wording two versions of a package", Richard 2026-10-20), each the most
-conservative reading:
+Two versions of a library package side by side (area 11,
+"Two versions side by side, lazy loading and the package cache"):
 
 - **The key.** Exactly while names through the package carry the version
-  (area 11, "Chosen in chunk 7.1c2"), the app words each version's text
+  (area 11), the app words each version's text
   under `<folder>_<version>`, `postcodes_v3: { }`, even when only one of
   the two carries translations; otherwise under the folder's name. The
   key is the same everywhere the folder's name was: the root files'
@@ -3080,7 +3003,7 @@ conservative reading:
   removed version's group words nothing (`translation.group_unknown`,
   "which the app doesn't hold"), and is the author's to delete. Neither
   `jadpo package add` nor `remove` rewrites the app's root files, as they
-  don't rewrite its names (chunk 7.1c2), and `jadpo fix` stays the type
+  don't rewrite its names, and `jadpo fix` stays the type
   clashes' (area 14).
 - **The record follows the wording.** A translation with no line under
   its new key takes the line it had under the package's other key in the
@@ -3096,7 +3019,7 @@ conservative reading:
 
 ### What the compiler checks
 
-Built in chunk 5.4c, each with its own error below:
+Each with its own error below:
 
 - **Errors**: a member no message, enum, email or failure declares
   (`translation.member_unknown`, with the nearest name); a member written
@@ -3109,7 +3032,7 @@ Built in chunk 5.4c, each with its own error below:
   (`translation.variant_missing`); a placeholder that is not a field
   (`translation.placeholder_unknown`); an amount of money or a percentage
   written without its style, or a style on another field
-  (`translation.placeholder_style`, chunks 5.5h2 and 5.5j2); a field type a wording cannot hold
+  (`translation.placeholder_style`); a field type a wording cannot hold
   (`translation.field_type`), or more than one enum or `PluralCount` field
   (`translation.too_many_selectors`); a language file that is not named for
   a locale (`translation.file_name_invalid`) or is for one the application
@@ -3125,7 +3048,7 @@ Built in chunk 5.4c, each with its own error below:
   `translation.locales_required`.
 - **A judgement call**: a field no wording in a language uses
   (`translation.field_unused`; one variant leaving a field out is normal).
-  There are no warnings in Jadpo (area 1, question 11), so this is an error
+  There are no warnings in Jadpo (area 1), so this is an error
   a person can answer with `decline translation.field_unused: "<reason>"`
   above the member, which is right for a language that needs no such word.
 - **In progress**: `in_progress:` is the explicit, declared opt-out. A
@@ -3138,8 +3061,6 @@ Built in chunk 5.4c, each with its own error below:
   Quality comes from the review setting below, not from waiting.
   `jadpo translations missing` lists what an in-progress locale falls back
   on.
-
-Built in chunk 5.4d, each with its own error below:
 
 - **Sources**: each `translations/` folder has a generated, committed
   `sources.jadpo_record` (a record in area 18's format, `record
@@ -3205,7 +3126,7 @@ translations {
 }
 ```
 
-Built in chunk 5.4e, each with its own error below:
+Also checked, each with its own error below:
 
 - **Jadpo's messages**: a supported locale that is not in progress, in
   which Jadpo ships no wording and the root file words none of the
@@ -3223,8 +3144,6 @@ Built in chunk 5.4e, each with its own error below:
   (`translation fr_fr.jadpo.invalid_input from ... wording ...`), as a
   package's is `postcodes.<message>`.
 
-Built in chunk 7.1b3, with the errors above:
-
 - **A library package's text**: its own language files checked by
   themselves, as a domain's are; its group in the root file checked
   against its public messages, enums and failures
@@ -3239,7 +3158,7 @@ Built in chunk 7.1b3, with the errors above:
 
 ### Tooling
 
-Built in chunk 5.4d, with `--json` on every command that prints (area 14).
+Each command takes `--json` wherever it prints (area 14).
 The commands succeed whatever they list: they answer a question, and `jadpo
 check` is what fails. `update` and `accept` stop on syntax errors.
 
@@ -3251,8 +3170,7 @@ check` is what fails. `update` and `accept` stop on syntax errors.
   wording, that no code calls; a test does not count as a user. Failures
   and emails are used by being reachable and by the email's own machinery,
   so they are never listed. It also lists the app's wording of library
-  packages' text that shows nothing (chunk 7.1b4, "Jadpo's and packages'
-  text").
+  packages' text that shows nothing ("Jadpo's and packages' text").
 - `jadpo translations update` writes each folder's `sources.jadpo_record`.
   It can't tell a translation was redone, only that it changed: a
   translation with no line, or reworded since its line, is recorded as
@@ -3314,7 +3232,7 @@ test "the pseudo-locale accents and lengthens the default wording" {
 }
 ```
 
-Built in chunk 5.4e, with `--json`: `jadpo translations builtin` lists
+`jadpo translations builtin`, with `--json`, lists
 Jadpo's own messages the app can show, by feature, each with the fields it
 may write, the wording Jadpo ships to translate from, and `needs` and the
 locale for each supported locale whose lack of it fails the check, the
@@ -3344,8 +3262,8 @@ Locales
 next: jadpo check  fails until the application words them
 ```
 
-Built in chunk 5.4f, with `--json`: `jadpo translations export [<locale>]`
-and `jadpo translations import <file>`, which exchange the project's
+`jadpo translations export [<locale>]` and `jadpo translations import
+<file>`, with `--json`, exchange the project's
 messages with translation services (Crowdin, Lokalise or any that reads
 XLIFF or JSON): every message, enum with wording, failure and email
 subject the default locale words, Jadpo's own messages (those that differ
@@ -3361,7 +3279,7 @@ with no translations. A unit is one wording: a plain message, a value of
 the enum that picks a wording, or a plural form of the locale; its id is
 `<domain>.<message>`, with `.<value>` or `.<form>` after it (`shared` for
 `shared/translations/`, `jadpo` for Jadpo's own, a library package's folder
-name for its text, chunk 7.1b4), which XLIFF splits into
+name for its text), which XLIFF splits into
 `<file id>` and `<unit id>`. A domain named `jadpo` would share ids with
 Jadpo's own messages, so export refuses it, and wording every locale
 shares (`TextDirection`'s) is not exchanged. The wording is written as it
@@ -3392,12 +3310,11 @@ without a translation, `translated` with one and `reviewed` when a person
 accepted it. The JSON is `{ "<id>": { "message": ..., "description": ... } }`,
 the shape Chrome extensions use for `messages.json`, which has the one
 place for a description that Crowdin imports as it is ("Chrome JSON":
-message and description fields, verified in its store listing); `message`
+message and description fields); `message`
 is empty until translated. A flat `{ id: text }` object is the shape both
 services take, but it carries no description, which the exchange exists to
-send. *Unverified:* that Lokalise reads XLIFF 2.0 (nor could Crowdin's
-documentation be reached for the version) and that it imports the Chrome
-shape; each format is the other's fallback.
+send. *Unverified:* that Lokalise reads XLIFF 2.0, and that it imports
+the Chrome shape; each format is the other's fallback.
 
 ```text
 <unit id="parcels.one">
@@ -3474,9 +3391,8 @@ carry its source, so its translations are taken as made from today's
 wording.
 
 The app's own data (product names, articles) is not a translation: an app
-models translated content as ordinary fields. Library packages' translations
-are built in chunk 7.1b3 (open item 8 of the
-[packages proposals](research/packages-and-extension-proposals.md)).
+models translated content as ordinary fields. Library packages'
+translations are under "Jadpo's and packages' text" above.
 
 ## Retention periods
 
@@ -3490,7 +3406,7 @@ erasure, export) is designed in area 15 (Personal data).
 
 ## Errors
 
-> The errors below run with this checkout's `jadpo`: the configuration errors (chunk 5.1), `type.clock_context` and the time errors after it (chunk 5.2), the formatting errors (chunk 5.2b) and the locale errors at the end (chunk 5.3).
+> The errors below run with this checkout's `jadpo`.
 
 ### `configuration.binding_empty`
 
@@ -3723,11 +3639,9 @@ check failed: 1 error, 1 file
 ```
 
 Here `largest_page` names nothing. A constant of the setting's type is
-refused the same way (built in chunk 5.3e): a value is a constant or a
-setting, never both ([A constant or a setting](#a-constant-or-a-setting);
-revised 2026-10-16, Richard, reversing the same day's decision that a
-constant counts as a literal here). For a constant, the `next:` offers
-`jadpo config move` (built in chunk 5.3f), which makes the constant this
+refused the same way: a value is a constant or a setting, never both
+([A constant or a setting](#a-constant-or-a-setting)). For a constant,
+the `next:` offers `jadpo config move`, which makes the constant this
 setting: its value becomes the `default:` and every read of it reads
 `config.page_size`:
 
@@ -4480,7 +4394,7 @@ check failed: 1 error, 3 files
 ```
 
 And sorting by a locale's alphabet, since a deployable carries collation
-for the declared locales only (Richard, 2026-10-22):
+for the declared locales only:
 
 ```jadpo check project=e-locales-required-sort file=app.jadpo hidden
 application {}
@@ -4563,7 +4477,7 @@ check failed: 1 error, 1 file
 
 ### `syntax.locales_unknown_option`
 
-There is no `unsupported:` setting any more (see "Locales"). A misspelt
+There is no `unsupported:` setting (see "Locales"). A misspelt
 option (`suported:`) is reported the same way, with the nearest name:
 
 ```jadpo check project=e-locales-unknown expect=syntax.locales_unknown_option
@@ -6188,308 +6102,147 @@ check failed: 1 error, 1 file
 
 ### Status
 
-The new compiler has built the time literals and the built-in `Zone`,
-`Weekday` and `Locale` enums (chunk 1.9), and reports `clock.now` outside an
-action as `type.clock_context`. Settings, secrets, signing keys, connection
-addresses, `jadpo config`, the check before the app starts and a test's own
-values were built in chunk 5.1 (the readings it chose are in the Decisions
-table), and the trusted proxies a client's address is read through in chunk
-5.1c. Chunk 5.2 built time: `ZonedTime` in place of the time of day the
-first build had, durations, arithmetic and comparison, the `temporal`
-library over the IANA database bundled into every target, time values on
-the wire, in OpenAPI and in queries, and a test's `clock:` and
-`clock.advance(...)` (area 13); its readings are in the Decisions table.
-Chunk 5.2b built `TimeFormat`, declared and built in, `ComponentStyle` and
-`PresentationText`, and checks `temporal.format` and `format_relative`; its
-readings are in the Decisions table too. Chunk 5.3 built locales
-(`locales { }` with its errors, `locale:` checked against it, a `Locale` on
-the wire or in a setting limited to the supported ones) and the text
-`temporal.format` and `format_relative` give, over CLDR data compiled into
-every target. Chunk 5.3c built `locale.from_accept_language(header)`,
-which chooses a supported `Locale` from an `Accept-Language` header and falls
-back to `default:`. Chunk 5.4c built translations as messages, as decided
-on 2026-10-16: `Message` types and the built-in `PluralCount`,
-each domain's `translations { }` language files and their checks, the
-generated `translations.<domain>.<message>` calls, enum wording, email
-subjects and `in_progress:` locales (see Translations as messages). Chunk
-5.4d built failures' client text exported per locale, stale translations
-and review, `locale.direction`, the commands `missing`, `unused`, `update`
-and `accept`, go to definition and the pseudo-locale. Chunk 5.4e built
-Jadpo's own messages, the root file's owner groups and `jadpo translations
-builtin`. Chunk 5.4f built `jadpo translations export` and `import`.
-Chunk 7.1b3 built library packages' translations: a package's
+Built: the time literals and the built-in `Zone`, `Weekday` and `Locale`
+enums, with `clock.now` outside an action reported as
+`type.clock_context`; settings, secrets, signing keys, connection
+addresses, `jadpo config`, the check before the app starts, a test's own
+values, and the trusted proxies a client's address is read through; time:
+`ZonedTime`, durations, arithmetic and comparison, the `temporal` library
+over the IANA database bundled into every target, time values on the
+wire, in OpenAPI and in queries, and a test's `clock:` and
+`clock.advance(...)` (area 13); `TimeFormat`, declared and built in,
+`ComponentStyle` and `PresentationText`, with the checks on formatting;
+locales (`locales { }` with its errors, `locale:` checked against it, a
+`Locale` on the wire or in a setting limited to the supported ones) and
+the text formatting gives, over CLDR data compiled into every target;
+`locale.from_accept_language(header)`; translations as messages
+(`Message` types and the built-in `PluralCount`, each domain's
+`translations { }` language files and their checks, the generated
+`translations.<domain>.<message>` calls, enum wording, email subjects and
+`in_progress:` locales), failures' client text exported per locale, stale
+translations and review, `locale.direction`, the `jadpo translations`
+commands, go to definition and the pseudo-locale; Jadpo's own messages and
+the root file's owner groups; library packages' translations (a package's
 `translations/`, `Postcodes.translations.<message>(...)`, the root file's
 package groups and their record lines, and a package's messages in its
-surface and the publishing bar. Chunk 8.2c built the locale data a
-deployable carries, its supported locales' only, and the text a `Locale`
-the app doesn't support is written in (see Locales).
-
-### Consistency with the rest of the language
-
-- **Names that repeat a name.** The config declaration's name and every
-  `binding:` restate a name already present (syntax review #2, #55); area 1
-  dropped singleton names, and area 4 derived failure codes the same way.
-- **Two duration spellings** (`5m` in configuration, `Duration("PT5M")` in
-  code), and each place rejects the other (syntax review #56).
-- **Locales written as text** in their declaration but as `Locale.en_gb` in
-  code (syntax review #57), against area 2's rule that closed options are
-  names. Fixed by question 8: `locales { }` lists `Locale.en_gb`, and a
-  tag in quotes is `type.locale_invalid` with the one-edit fix.
-- **An anonymous object as an argument.** `components: { day: numeric }`
-  breaks area 2's decision that there are no anonymous objects (syntax
-  review #58).
-- **One-value settings.** `profile: FriendlyTimeFormat.conversational` has
-  only one possible value, the kind of ritual line the syntax review removes
-  elsewhere (§4).
-- **`secret` means five things** (syntax review #46): the config flag, an
-  authentication key, an integration credential, a test fixture wrapper and a
-  design-only setting. Keep it for the config flag only (areas 8, 11, 13).
-- **Config fields escape the named-type rule.** `oidc_audience: Text`
-  compiles, although area 2 requires named types in signatures. A setting
-  read into an action is a signature in all but name; recommend the same rule
-  (`type OidcAudience = Text { }`).
-- **Policy options in code are qualified** (`overlap: LocalOverlap.reject`),
-  consistent with area 2's rule that every option is written `Type.value`,
-  in settings and in code (syntax review #59).
+surface and the publishing bar); and the locale data a deployable
+carries, its supported locales' only, with the text a `Locale` the app
+doesn't support is written in (see Locales).
 
 ### Carried to later areas
 
 | Item | Area | Status |
 |---|---|---|
-| Fixture configuration values, the fixture clock and `advance clock by` (syntax review proposes `clock.advance(5m)` and plain fixture values); `configuration.fixture_*` and `type.test_clock_context` (a test's own `config:` is built, chunk 5.1; `configuration.field_unknown` is area 10's now) | 13 | Input to area 13 |
-| `jadpo config set`, `config check`, `dev` restarts, `configuration.value_invalid`, `configuration.value_missing`, `configuration.local_*` and `cli.config_*`, none of which `jadpo check` raises | 14 | Built (chunk 5.1) |
-| The startup report of a deployable (`runtime.startup_failed`), the generated app refusing to start | 14 | Built in chunk 8.1o: a native deployable logs `runtime.startup_failed` naming each setting and its variable, never the value, and ends (area 14, "A native deployable") |
-| Health and readiness, including the generated `health { }` proposal (syntax review #65) and `semantic.service_configuration_missing` | 11 | Input to area 11 |
+| Fixture configuration values, the fixture clock and `clock.advance(5m)`; `type.test_clock_context` (a test's own `config:` is built; `configuration.field_unknown` is area 10's) | 13 | Input to area 13 |
+| `jadpo config set`, `config check`, `dev` restarts, `configuration.value_invalid`, `configuration.value_missing`, `configuration.local_*` and `cli.config_*`, none of which `jadpo check` raises | 14 | Built |
+| The startup report of a deployable (`runtime.startup_failed`), the generated app refusing to start | 14 | Built: a deployable logs `runtime.startup_failed` naming each setting and its variable, never the value, and ends (area 14, "A native deployable") |
+| Health and readiness | 7 | Generated: `/health/live` and `/health/ready` (area 7, "Health") |
 | Integration credentials and authentication signing keys as the only secret sinks; their setting names (`token:`, `signing_key:`) | 8, 11 | Input to areas 8 and 11 |
-| Mail templates using translations and `PresentationText` | 11 | Input to area 11 (Superseded 2026-10-16: templates read `translations.` and are checked strictly; see area 16 question 11.) |
-| A library package's own messages, and whether an app can reword them | 11 | Built in chunk 7.1b3 ("Jadpo's and packages' text") |
-| `config.typo` should report the configuration field | 10 | Fixed (chunk 5.1): `configuration.field_unknown` |
+| Mail templates using translations and `PresentationText` | 16 | Templates read `translations.` and are checked strictly (area 16, "Email") |
+| A library package's own messages, and whether an app can reword them | 11 | Built ("Jadpo's and packages' text") |
+| `config.typo` should report the configuration field | 10 | Built: `configuration.field_unknown` |
 | `jadpo fmt` writes `temporal.format (` with a space | 14 | Bug |
-| Trusted proxies: which proxies a deployment trusts to say a client's address (`X-Forwarded-For`, `Forwarded`, Cloudflare's `CF-Connecting-IP`) | 7, 10, 16 | Built (chunk 5.1c, question 12); a source other than `cloudflare` refused for Workers comes with chunk 8.2m |
+| Trusted proxies: which proxies a deployment trusts to say a client's address (`X-Forwarded-For`, `Forwarded`, Cloudflare's `CF-Connecting-IP`) | 7, 10, 16 | Built ("Client addresses"), with a source other than `cloudflare` refused for Workers |
 | GDPR: retention periods as settings, alongside personal-data marking, erasure and export | 15 | Moved to area 15 |
-
-### Open questions
-
-1. **Should the environment variable name come from the field name?** Every
-   binding in the repository is the field name in capitals. Deriving it
-   removes a line per field; the risk is that renaming a field silently
-   renames the variable. *Recommendation:* derive it (`mail_sender` reads
-   `MAIL_SENDER`), keep `binding:` only to differ, and show a changed variable
-   name in the approval review as a deployment change, through the shared
-   "accept a reviewed change" mechanism carried to area 7. Rails credentials
-   and Spring Boot's relaxed binding derive names the same way. *Decided 2026-10-12:* yes, as recommended.
-2. **Which types can a setting have?** Today text-based, number, boolean,
-   UUID, email, URL, IP, duration, instant and date types. *Recommendation:*
-   add enums, written `Type.value`, and `Zone` and `Locale`, so a log level or
-   business time zone is checked at startup instead of parsed by hand; keep
-   lists and objects out (one variable, one value). *Decided 2026-10-12:* yes, as recommended.
-3. **How is a database address typed?** `Url` cannot hold `postgres://`, so
-   area 5's `url: config.database_url` cannot work. *Recommendation:*
-   built-in `PostgresUrl` and `RedisUrl`, each checking its schemes, always
-   secret, with a store's `url:` required to match its `engine:`; the runtime
-   connects only through it. Also make the startup and `config check`
-   validators the same code, so they cannot disagree again. *Decided 2026-10-12:* yes, as recommended. *Built in chunk 5.1* (the Decisions table says how).
-4. **One duration spelling, and does `d` stay?** *Recommendation:* `500ms`,
-   `30s`, `5m`, `2h` and `30d` everywhere in source, including constraints
-   (`max: 30s`), with ISO 8601 only in JSON. Keep `d` as exactly 24 hours,
-   because retention and token lifetimes are elapsed time and `720h` is
-   unreadable; calendar days stay a date operation. Go has no `d` and
-   Rust's `humantime` has it; no `w`, months or years, which vary. *Decided 2026-10-12:* yes, as recommended. *Built in chunk 5.2.*
-5. **Rename `Time` to `ZonedTime`?** Java, Temporal and Elixir all use "time"
-   for a time of day, so `Time` will be misread by people and agents.
-   *Recommendation:* yes, `ZonedTime` (Temporal says `ZonedDateTime`, jiff
-   `Zoned`), with the wire form unchanged. *Decided 2026-10-12:* yes, as recommended. *Built in chunk 5.2*, replacing the time of day the first build had called `Time`.
-6. **Does adding a duration keep the instant's named type?** Today
-   `due_at - notice` is a plain `Instant` and must be rebuilt.
-   *Recommendation:* yes for `+` and `-` with a `Duration`, the one mixed
-   case area 3's operator rule did not cover; `Instant - Instant` gives
-   `Duration`. *Decided 2026-10-12:* yes, as recommended. *Built in chunk 5.2.*
-7. **Should the time library and formatting be simplified?** About 35
-   functions, six option enums, two daylight-saving options on every call, a
-   two-step format and an anonymous components object.
-   *Recommendation:* Option B in the
-   [time and formatting proposals](research/10-configuration-and-time-proposals.md):
-   `temporal.format(value, zone:, locale:, format:)` with named built-in or
-   declared formats, `format_relative` without a profile, one `dst:` option
-   that defaults to failing, and about 20 functions. *Decided 2026-10-12:* yes, as recommended. *Built in chunks 5.2, 5.2b and 5.3.*
-8. **Locales as names, and drop `unsupported:`?** *Recommendation:* yes,
-   `default: Locale.en_gb` and `supported: [Locale.en_gb, Locale.fr_fr]`, in
-   `app.jadpo`, with `Locale` a built-in enum of the standard locales. An
-   unsupported tag in a request is an ordinary `invalid_value` like any
-   enum; header negotiation is a library call that falls back to `default`. *Decided 2026-10-12:* yes, as recommended. *Built in chunk 5.3*; the library call, which the page left without a name, was named `locale.from_accept_language(header)` on 2026-10-16 and *built in chunk 5.3c*.
-9. **What format does `translations/` use?** *Recommendation:* one JSON file
-   per supported locale with ICU MessageFormat messages (what FormatJS, Java
-   and translation services such as Crowdin and Lokalise use), typed calls
-   generated from the default locale's keys, and missing keys or
-   placeholders in other locales as compile errors. Build it when the first
-   email template needs it (area 11), not before. *Decided 2026-10-12:* yes, as recommended.
-   *Amended 2026-10-13 (Richard):* translations are supported out of the box
-   from the first build, not deferred: mail, the generated privacy pages,
-   client failure messages and any generated page use them. *Built in chunk 5.3b* as JSON files, since replaced.
-   *Revised 2026-10-16 (Richard):* JSON and ICU MessageFormat are dropped,
-   and the default locale's file no longer defines the keys. Each message
-   is a `type X = Message` in its domain's `translations/` folder, its
-   fields the placeholders; each language is an unnamed `translations { }`
-   in a file named after its locale, whose wordings are plain strings with
-   `{field}` placeholders, plural forms from CLDR for a `PluralCount` field and
-   one wording per value for an enum field. JSON has no comments and
-   quotes everything, and the compiler parses only Jadpo (area 11). A
-   failure's client text is keyed by its code in the same files and
-   exported per locale for client apps, which resolves this question's
-   "client failure messages" against area 4 question 12. See
-   [Translations as messages](#translations-as-messages) for the whole design;
-   built in chunk 5.4c, which took 5.3b's JSON files out; failures' client
-   text and the export in chunk 5.4d.
-10. **How are signing keys rotated?** (carried from area 8) Area 8 keeps
-    signing keys, the OIDC issuer and audience in configuration. How does a
-    deployment replace a signing key without signing everyone out?
-    *Decided 2026-10-12:* a built-in `SigningKey` type. `session_signing_key`
-    reads `SESSION_SIGNING_KEY` and an optional `SESSION_SIGNING_KEY_PREVIOUS`;
-    new tokens are signed with the current key and both are accepted. Rotate
-    by setting the new key and moving the old one to `_PREVIOUS`, then remove
-    it once the longest token lifetime has passed. *Built in chunk 5.1* as
-    far as reading and checking the two values, and signing with them in
-    chunk 5.1b (area 8).
-11. **Do configuration fields carry `test:` values?** (carried from area 13)
-    Area 13 has tests take each configuration field's `test:` value, while
-    "Values on your machine and in production" above says tests get their
-    values from fixtures. Which does configuration declare?
-    *Decided 2026-10-12:* a field may carry a `test:` value in `config.jadpo`;
-    secrets need none, because `jadpo test` generates random ones; a single
-    test can override a value. *Built in chunk 5.1.*
-12. **How does a deployment say which proxies to trust for a client's
-    address?** (raised in chunk 5.1; areas 7 and 16 count requests by
-    address, and no page says how the address is read.) Behind a load balancer
-    the connection's address is the proxy's, so every client shares one
-    rate-limit allowance until the real address is read from the forwarding
-    header; reading it from a header anyone can send lets a caller choose
-    its own address. Neither area 7, 10 nor 16 decides it. *Recommendation:*
-    declare it once in `app.jadpo`, beside the connections, as
-    `client_address: { source: ClientAddressSource.forwarded_for hops:
-    config.proxy_hops }`, where `ClientAddressSource` is a closed set of
-    four: `connection` (the default natively: the connection's own address,
-    no header read), `forwarded_for` (`X-Forwarded-For`), `forwarded`
-    (RFC 7239's `Forwarded: for=`) and `cloudflare` (`CF-Connecting-IP`),
-    and `hops` is how many proxies of the deployment's own sit in front of
-    the app, an `Int` setting (a list of addresses cannot be a setting, and a
-    count cannot be spoofed the way an allow-list of ranges can drift). With
-    `hops: N` the client is the N-th address from the right of the header's
-    addresses, all its lines joined in order, since each trusted proxy
-    appends the address it saw on its right and whatever a caller adds sits to
-    the left; fewer than N addresses, or one that is not an address, falls
-    back to the connection's own, never to a guess. On Workers there is no
-    connection address to fall back to, and Cloudflare sets `CF-Connecting-IP`
-    on every request from the edge and overwrites a caller's, so `cloudflare`
-    is the only source accepted there (and its default); `hops` means nothing
-    with it. The address chosen is the one rate limits count, `jadpo dev`'s
-    request lines show and the request timeline records (areas 16 and 17).
-    *Decided 2026-10-16:* yes, as recommended. *Built in chunk 5.1c.*
 
 ### Decisions
 
-| Topic | Decision | Date |
-|---|---|---|
-| Unnamed declarations | Carried from area 1: `config { }` and `locales { }` carry no name | 2026-10-12 |
-| Root files | Carried from area 1: settings live in `config.jadpo`; there is no `env.jadpo`; values come from the platform environment and one `.env.local`, with secrets entered through `jadpo config set` | 2026-10-12 |
-| Translations folder | Carried from area 1: `translations/` is a fixed root folder; its format is decided here (Superseded 2026-10-16: translations live in each domain's `translations/` folder; the root folder holds only the app's wording for Jadpo's own messages.) | 2026-10-12 |
-| Failure messages | Carried from area 4: clients translate by failure `code`; `message` stays fixed English | 2026-10-12 |
-| Store addresses | Carried from area 5: stores are declared in `app.jadpo` and take `url: config.<field>` | 2026-10-12 |
-| Signature types | Carried from area 2: signatures use named types built on `Instant`, `CalendarDate`, `Time` and `Duration`; `Zone`, `Locale` and `Weekday` may be used directly | 2026-10-12 |
-| Option names | Carried from area 2: closed options in settings are lower_snake_case names; in code, enum values are qualified (Superseded 2026-10-12: options are written `Type.value`; see area 2 question 17.) | 2026-10-12 |
-| Environment variable names | Derived from the field name (`mail_sender` reads `MAIL_SENDER`); `binding:` only to differ; a changed name shows in the approval review | 2026-10-12 |
-| Setting types | Adds enums, `Zone` and `Locale`; no lists or objects | 2026-10-12 |
-| Database address type | Built-in `PostgresUrl` and `RedisUrl`, always secret, matching the store's engine; startup and `config check` share one validator | 2026-10-12 |
-| Duration spelling | `500ms`, `30s`, `5m`, `2h`, `30d` everywhere in source, `d` exactly 24 hours; ISO 8601 only in JSON | 2026-10-12 |
-| `Time` name | Renamed `ZonedTime` | 2026-10-12 |
-| Instant arithmetic | Adding or subtracting a `Duration` keeps the named type; `Instant - Instant` gives `Duration` | 2026-10-12 |
-| Time library and formatting | Option B: `temporal.format(value, zone:, locale:, format:)` with named formats, one `dst:` option failing by default, about 20 functions | 2026-10-12 |
-| Locales declaration | `locales: { default: Locale.en_gb supported: [...] }` in `app.jadpo`; `Locale` built in; no `unsupported:` | 2026-10-12 |
-| Locales in progress | `in_progress: [...]` in `locales:` lists supported locales allowed to fall back where wording is missing, and one not in `supported:` is an error; the rest must be complete (Richard). Revised 2026-10-17 for area 1, question 11 (no warnings): listing a locale is the explicit, declared opt-out, so it falls back with no diagnostic and `jadpo translations missing` lists the gaps | 2026-10-16 |
-| Failure export shape | `<api>.failures.<locale>.json` maps each code to `{ "text": ..., "formats": { placeholder: format } }`, the same shape for every code; `formats` lists only placeholders the client formats, as `number`, `decimal`, `date`, `date_time` or `duration`, decided by the field's type (`CalendarDate` date, `Instant` date_time in the reader's zone, `Time` date_time in its own zone, `Duration` duration, `Int` number, `Decimal` decimal); a type the client cannot format is an error (decided for Richard) | 2026-10-16 |
-| Translations format | One JSON file per locale with ICU MessageFormat; typed calls from the default locale's keys; missing keys or placeholders are compile errors; built with the first email template (Superseded 2026-10-13 and 2026-10-16: built from the start; the format is under Translations, above.) | 2026-10-12 |
-| Signing key rotation | Built-in `SigningKey` reading `NAME` and optional `NAME_PREVIOUS`; sign with current, accept both | 2026-10-12 |
-| Test values for settings | `test:` on the field; random secrets generated by `jadpo test`; per-test override | 2026-10-12 |
-| Translations from the start | Built into the first build, used by mail, generated pages and client failure messages (Richard) | 2026-10-13 |
-| Where translations live | In the domain that uses them, `domains/<domain>/translations/`; a message a second domain uses moves to `shared/translations/` under area 1's promotion rule; the root `translations/` holds only the app's wording for Jadpo's own messages (Richard) | 2026-10-16 |
-| Messages | `type X = Message { ... }`, a type base beside `Failure`, `Event` and `EmailMessage`, one per file; fields are placeholders; `///` descriptions are translator context (Richard) | 2026-10-16 |
-| Language files | One unnamed `translations { }` per locale in a file named after it (`de_de.jadpo`); members are message, failure, enum or email names in lower_snake_case; every wording a plain string whose only syntax is `{field}`, a literal brace doubled (`{{`, `}}`); no grouping or nesting beyond variants and plural forms; JSON and ICU MessageFormat dropped (Richard) | 2026-10-16 |
-| Mapping a message to wording | No fields: a string; `Text`, `PresentationText`, `Int`, `Decimal`: placeholders, numbers written the locale's way; one enum field: one wording per value; one `PluralCount` field: one wording per CLDR plural form; any other field type, or more than one enum or `PluralCount` field, an error; a placeholder that is not a field an error; a field no wording uses a warning (Richard). Revised 2026-10-17 for area 1, question 11: a declinable error, `translation.field_unused`. Revised by area 19, question 16 (built in chunk 5.5h2): a field built on `Money` is a placeholder written `{price, number, currency}`, the one style, and `translation.placeholder_style` refuses it written otherwise. Revised by the same question (built in chunk 5.5j2): a field built on `Percentage` is written `{rate, number, percent}`, the second style | 2026-10-16 |
-| Generated calls | `translations.<domain>.<message>(field: value, ..., locale: ...)`, every field by name, returning `PresentationText`; `translations.shared.<message>` for `shared/translations/`; in email templates the email's locale (Richard) | 2026-10-16 |
-| Email subjects | An `EmailMessage`'s member in its domain's language files is its subject line, its fields usable as placeholders; the body is the `.html` and `.txt` templates (Richard) | 2026-10-16 |
-| Enum wording | An enum can be written out once its domain's language files give each value a wording, a value's fields usable as placeholders; area 2's "no display labels" stands (Richard) | 2026-10-16 |
-| Failures' client text | Keyed by the failure's code in its domain's language files, client fields as placeholders; `jadpo build` writes `<api>.failures.<locale>.json` beside each API's OpenAPI document, from code to wording in `{field}` syntax (revised the same day: with each placeholder's formatting); the server's `message` stays English (Richard) | 2026-10-16 |
-| Translation checks | Every supported locale is complete: missing wording for a message, a failure that can reach a response or an enum is an error whose `next:` names the file, member and placeholders; only a locale in `locales: { in_progress: [...] }` falls back, with no diagnostic (revised 2026-10-17 for area 1, question 11), regional sibling first (`fr_ca` to `fr_fr`), then the default; stale translations are an error (chunk 5.4d, as a warning once, revised 2026-10-17), judged by a hash of the default wording in each folder's generated, committed `translations/sources.json`; with `translations: { review: TranslationReview.required }` in `app.jadpo` (default `.none`), new or changed non-default wording is unaccepted, and listed in the approval report, until `jadpo translations accept <locale>` (Richard) | 2026-10-16 |
-| Text direction | `locale.direction` is the built-in enum `TextDirection` (`.left_to_right`, `.right_to_left`), whose shipped wording is `ltr` and `rtl` (Richard) | 2026-10-16 |
-| Jadpo's own text | Jadpo's own messages, with wording shipped in `en_gb` and `en_us` at first and more locales added by releases; another supported locale is an error listing the missing messages until the app words them; only switched-on features' messages count, rewording another is an error, and `jadpo translations builtin` lists only those (Richard) | 2026-10-16 |
-| Text the app did not write | The root `translations/<locale>.jadpo` groups wording by owner, `jadpo: { }` and a package's name, the one grouping allowed, checked against the owner's types; lookup is the app's root wording, then the owner's, then (in progress) the regional sibling, then the default; supported locales must be complete for every package and Jadpo message the app can show (Richard) | 2026-10-16 |
-| Package translations | A library package carries a `translations/` folder like a domain's, called `Postcodes.translations.<message>(...)`; provider packages carry none; changed fields break the app's rewording, changed wording makes it stale; published with complete default-locale wording and `///` on every public message; a different code for a package failure is mapped with `attempt` (Richard) | 2026-10-16 |
-| Failures sent to clients | Wording lives in the language files, never on the failure type (one rule for all text; Jadpo's and packages' failures could not carry it in place); every failure that can reach a response has wording in every supported locale; dates and numbers in client fields are sent as values and formatted by the client, and the per-locale export says which placeholders need formatting and how (Richard) | 2026-10-16 |
-| Translation tooling | `jadpo translations missing` and `unused` with `--json`; `update`, `accept <locale>` and `builtin`; `export` and `import` as XLIFF or JSON; `--json` wherever they print; go to definition from a call to its type and wording; a pseudo-locale for development and tests; the app's own data is not a translation (Richard) | 2026-10-16 |
-| Reading `config { }` (chosen in chunk 5.1) | A setting is `name: Type` with an optional block of `secret:`, `default:`, `binding:` and `test:`, each once and no others (`configuration.duplicate_option`, `configuration.unknown_option`); a line that is not a setting is `configuration.expected_field`, a second `config { }` is `configuration.multiple_declarations`, and a name that is no setting is `configuration.field_unknown` with the nearest name. A variable set to nothing is not set; the process's environment wins over `.env.local` | 2026-10-16 |
-| What a setting can be (chosen in chunk 5.1) | A named or built-in type of one piece of text, a number, `Bool`, `Uuid`, `Duration`, `Instant` or `CalendarDate`, an enum with no data, `Zone` (read as `Europe/London`) or `Locale` (read as `en-GB`). Not `Bytes`, `Time`, a list, object, map or `T?`, or the types the runtime makes (`PageCursor`, `PageSize`, `ApiToken`, `ServiceKey`): `configuration.type_unsupported`. A secret is text, so a test run can make one. A setting may be declared with a built-in type; naming the type code passes it as saves building it | 2026-10-16 |
-| Variables (chosen in chunk 5.1) | A variable is capitals, digits and `_` starting with a capital (`configuration.binding_invalid`, `configuration.binding_empty`); no two settings share one, and a `SigningKey`'s `_PREVIOUS` counts as taken (`configuration.duplicate_binding`) | 2026-10-16 |
-| `default:` and `test:` (chosen in chunk 5.1) | A literal of the setting's type, checked against every rule of the type and its parents (`configuration.default_literal_required`, `configuration.default_type`, `configuration.default_invalid`, the same three for `test:` and a test's `config:`); an enum's variant is written `Type.value`. A secret has neither (`configuration.secret_default`), and `secret:` is `true` or `false` (`configuration.secret_invalid`) | 2026-10-16 |
-| Built-in connection types (chosen in chunk 5.1) | `Url` accepts only `http://` and `https://`. `PostgresUrl` (`postgres://`, `postgresql://`), `RedisUrl` (`redis://`, `rediss://`) and `SigningKey` (at least 32 visible characters) are built in, text underneath, always secret and never stored by an entity | 2026-10-16 |
-| Connection URL structure (chosen in chunk 9.1d2a) | Connection types check URI structure at literals, startup and `config check`, without network I/O; preserve PostgreSQL multi-host, IPv6, encoded credentials and local sockets, reject malformed targets, escapes and ports, and report every invalid declaration without values | 2026-10-23 |
-| A database's authority (chosen in chunk 8.1n) | A setting may be area 19's `Certificate`, read from its PEM, as a database connection's `authority:` needs (area 5, "PostgreSQL over TLS"); a `PostgresUrl` that sets `sslmode` or another `ssl…` setting is invalid | 2026-10-21 |
-| Where a secret may go (chosen in chunk 5.1) | The value of a `url:`, `credential:`, `signing_key:` or `secret:` member of `application { }` or `authentication { }`, and nowhere else: no function, action, query, fixture or test is a place the compiler owns, so any read of a secret there is `configuration.secret_flow`, which needs no tracking through variables and calls, and covers comparing | 2026-10-16 |
-| Connection addresses (chosen in chunk 5.1) | A connection's `url: config.<name>` reads a setting of the type its driver needs (`configuration.url_type`); an address written in source is refused the same way. A project with no database declared opens `main` at `config.database_url` when it declares one (of the right type) | 2026-10-16 |
-| Values in tests (chosen in chunk 5.1) | A test reads each setting's `test:` value, then its default; a secret is a fresh random hexadecimal value for each run (a `PostgresUrl` or `RedisUrl` an address at `127.0.0.1:1`); the environment is never read. A test's `config:` changes non-secret settings for that test and the code it calls; a secret there is `configuration.secret_default`. A setting a test reaches through calls with none of the three is `configuration.test_value_missing` (a request through a route is not followed; the run's fault names it) | 2026-10-16 |
-| Starting (chosen in chunk 5.1) | `jadpo_runtime::config::load` checks every setting against its type with a host's variables (`Host::variable`: the process natively, bindings on Workers) and gives each problem as the setting, its variable and the rule it breaks, never the value; the same function is behind `jadpo config check` and the interpreter, so they cannot disagree | 2026-10-16 |
-| `jadpo config` (chosen in chunk 5.1) | `check` lists each setting as `set`, `default`, `missing` or `invalid` with its variable, shows each problem as `configuration.value_missing` or `configuration.value_invalid`, exits 1 on any and supports `--json`. `set <field>` needs a terminal and refuses `--json`, hides what is typed for a secret and shows it otherwise, checks the value before writing, and writes `.env.local` only as an ordinary file, through a private temporary file, if unchanged since read, and adds it to `.gitignore` | 2026-10-16 |
-| `jadpo dev` and `jadpo migrate` (chosen in chunk 5.1) | `dev` checks the environment over `.env.local` as the app starts, watches `.env.local` with the source, and keeps the last good version serving through an invalid change; a connection whose address no variable gives gets a database on a disposable PostgreSQL (`--url` still names the database directly). `migrate apply` and `status` use a connection's setting when `--url` is not given | 2026-10-16 |
-| Retention period (chosen in chunk 5.1) | `purge: { after: config.x }` takes a `Duration` setting that is not secret (`data.lifecycle_purge_after` otherwise); the period is the value the app started with, given to a run (`jadpo_runtime::purge_after`), and a period not above zero deletes nothing | 2026-10-16 |
-| Not built here (chosen in chunk 5.1) | A browser session's `origin:` and `signing_key:` reading settings, with signed sessions and tokens, are chunk 5.1b (built there, area 8). Which proxies a deployment trusts for a client's address is chunk 5.1c's, below | 2026-10-16 |
-| Trusted proxies | `client_address: { source: ClientAddressSource.x hops: <Int> }` once in `app.jadpo`; sources `connection` (the native default), `forwarded_for`, `forwarded` and `cloudflare`; the client is the `hops`-th address from the right, falling back to the connection's address when the header is short or invalid; on Workers only `cloudflare` (`CF-Connecting-IP`), its default (question 12, Richard) | 2026-10-16 |
-| Trusted proxies (chosen in chunk 5.1c) | `hops:` is required with `forwarded_for` and `forwarded` and refused with `connection` and `cloudflare` (`configuration.client_address_hops_unused`); written out it is a whole number from 1, and read from a setting that setting is an `Int` (or a type built on it) declaring `min:` of at least 1, so a count below 1 never starts (`configuration.client_address_hops_invalid`). A second `client_address:` is `configuration.client_address_duplicate`, a `client_address:` that is not a block of `source:` and `hops:` is `configuration.client_address_invalid`, and a `source:` that is no `ClientAddressSource` is `configuration.client_address_source_unknown` | 2026-10-16 |
-| Reading the address (chosen in chunk 5.1c) | Every line of the header joined in order, split at commas; `Forwarded` by elements, each giving the entry of its `for`; an empty entry, a name, `unknown`, an obfuscated identifier or a zone takes its place in the count but is no address; a `Forwarded` that does not parse, or a `CF-Connecting-IP` that is not exactly one address, falls back whole. Addresses are accepted with a port or in brackets and kept in one spelling (IPv6 lower case and shortened, an IPv4-mapped address as IPv4), the connection's too. With no `client_address:` the address is the connection's natively and `CF-Connecting-IP` on Workers, where any other source is refused and an address Cloudflare did not give is unknown | 2026-10-16 |
-| Where the address is chosen (chosen in chunk 5.1c) | In the runtime, as plan data (`ClientAddressPlan` in the route table) read with the settings the app started with: `serve_request` counts a request by the address `ClientAddress` chooses from its headers and the connection address the host gives, and carries it on the response, so `jadpo dev` shows it after the time on each request line and as `address` with `--json`. The native host only supplies the connection's address | 2026-10-16 |
-| `ZonedTime` (chosen in chunk 5.2) | Replaces the time of day the first build called `Time`: an instant and the `Zone` it is seen in, with no literal, sent as `{ "instant": ..., "zone": "Europe/London" }`. Two are equal when both parts are; they have no order of their own, their instants do (`temporal.instant(...)`). An entity's `ZonedTime` field is stored in two columns, its instant as `timestamptz(3)` and its zone as `text`; it is not a setting. The only clock time is `resolve`'s `at:`, written out | 2026-10-16 |
-| Time range (chosen in chunk 5.2) | An `Instant` holds 0000-01-01T00:00:00Z to 9999-12-30T22:00:00.999Z, the last whose local date is in year 9999 in every zone, and a `CalendarDate` 0000-01-01 to 9999-12-31; a literal past them is refused while compiling, and arithmetic past them is the fault `time_out_of_range` | 2026-10-16 |
-| Time arithmetic (chosen in chunk 5.2) | `Instant ± Duration` and `Duration + Instant` keep the instant's named type; `Instant - Instant` of the same type after widening gives a plain `Duration`, negative when the second is later; `Duration ± Duration` of the same type, or with a literal, gives a plain `Duration`. A `CalendarDate` or `ZonedTime` takes no `Duration`, and `*`, `/` and `%` take no time value (`type.arithmetic_operand`, naming `temporal.add_days`) | 2026-10-16 |
-| Time on the wire (chosen in chunk 5.2) | A `Duration` is written ISO 8601 in hours, minutes and seconds (`PT720H` for `30d`, `-PT5M`), and read the same way in JSON, query strings, paths and headers, days counting 24 hours; `5m` is source's spelling and refused there, but a setting keeps it. A `Zone` is sent as its IANA name and a `Locale` as its BCP 47 tag, as a setting reads them, and OpenAPI lists them so; a `ZonedTime` is an object of a `date-time` `instant` and a `zone`, both required | 2026-10-16 |
-| Unclear local times (chosen in chunk 5.2) | `dst:` and `invalid_day:` each settle a condition a call fails on, which its `attempt` maps by the option's name (`dst:`, `invalid_day:`) as a construction's broken rule is mapped: an `invalid_value` failure, `invalid:` for the rest, `failure.rule_unmapped` and `failure.rule_cannot_break` as for rules. Only a value written out other than `reject` settles one; a value passed in might be `reject`. `Dst` keeps Temporal's meanings (earlier or later of an overlap; in a gap, the clock moved back or forward by its length; `compatible` earlier in an overlap and later in a gap); `InvalidDay` is `reject` or `last_valid_day`. `dst:` on a `CalendarDate` is `type.temporal_option_unused` | 2026-10-16 |
-| `at:` (chosen in chunk 5.2) | A clock time written out, `HH:MM`, `HH:MM:SS` or `HH:MM:SS.mmm`, each field two digits; anything else, a value passed in included, is `type.temporal_clock_invalid`, since no type holds a time of day | 2026-10-16 |
-| The `temporal` library (chosen in chunk 5.2) | Option B's operations, nineteen built: `in_zone`, `resolve`, `between`, `add_days`, `add_months` and `add_years` (twelve months a year) on a date or a local time, keeping its named type; `day_bounds`, `week_bounds` (from `starts_on:`), `month_bounds` and `year_bounds` giving an `InstantRange` whose `start` is the period's first instant (midnight, or the first time a zone's clocks show when they skip it) and whose `end` is the next period's, not included; `year`, `month`, `day` and `weekday` of a date or a local time's date; `date`, `hour`, `minute`, `zone` and `instant` of a local time, `instant` added because a `ZonedTime` has no order of its own. A query compares a field with an `InstantRange` parameter's `start` and `end` | 2026-10-16 |
-| Time zone data (chosen in chunk 5.2) | The `temporal` operations run in `jadpo-value` on jiff 0.2.38 with its bundled database (`jiff-tzdb`, IANA 2026e, about 200 KB): pure Rust, built for wasm32, with Temporal's handling of gaps and overlaps, and nothing read from the platform's zone files or clock, so the interpreter, native deployables and Workers answer alike. Every `Zone` variant is in it, which a test holds; a newer release is a change of its own | 2026-10-16 |
-| Not built here (chosen in chunk 5.2) | The formats (`TimeFormat`, `ComponentStyle`, the built-in formats), `PresentationText` and its errors, and `temporal.format` and `format_relative` checked are chunk 5.2b; the text they give, in each locale, is chunk 5.3 | 2026-10-16 |
-| Formats (chosen in chunk 5.2b) | `TimeFormat` is a base, as `Object` is: `type Name = TimeFormat { part: ComponentStyle.style ... }` declares a format, and `TimeFormat.` names the twelve built-in ones (`date_`, `time_`, `date_time_` with `full`, `long`, `medium`, `short`). The parts are `weekday` (`long`, `short`, `narrow`), `day`, `year`, `hour`, `minute` and `second` (`numeric`, `two_digit`), `month` (all five) and `zone_name` (`long`, `short`), as `Intl.DateTimeFormat` takes them; the locale orders them. At least one part (`type.temporal_format_components_empty`), each once (`type.temporal_format_component_duplicate`), in a style it takes (`type.temporal_format_component_invalid`); any other name is `type.unknown_setting`. A format holds no value: `format:` names one written out, and a format as a field's, parameter's or variable's type, as a value or passed in is `type.temporal_format_invalid`. The operation is given it as text, `day:numeric month:short year:numeric` or `date_long` (`jadpo_std::TimeFormatSpec`), as `at:` gives its clock time | 2026-10-16 |
-| What formatting takes (chosen in chunk 5.2b) | `format` shows an `Instant`, a `CalendarDate` or a `ZonedTime`, and `format_relative` an `Instant` or a `ZonedTime` against `now:`, an `Instant`. `zone:` is given exactly for an `Instant` (`type.temporal_zone_required`), and with a date or a local time is `type.temporal_option_unused`. A date takes only a date format: a `time_` or `date_time_` one, or a part `hour`, `minute`, `second` or `zone_name`, is `type.temporal_format_requires_time`, which names that now rather than an instant without a zone. `locale:` was any `Locale` until chunk 5.3, which checks it against the supported ones. `type.temporal_format_choice` is gone: `format:` replaced `style:` and `components:` (Option B) | 2026-10-16 |
-| `PresentationText` (chosen in chunk 5.2b) | A built-in type that is its own representation, so no constructor turns it into `Text` or back, and nothing orders it, adds to it or reads a time from it; `==` and `!=` compare it. A signature may use it directly, as `Email`, and text in quotes may stand for one, which is how a test compares formatted text. An `Output` holds it, sent as a JSON string, and a request may send one as text. An entity field holding it, directly or through a named type, a collection, an object's field or a variant's data, is `type.presentation_text_persistence`; a setting of it is `configuration.type_unsupported` | 2026-10-16 |
-| Not built here (chosen in chunk 5.2b) | The text: a call to `temporal.format` or `format_relative` that checked was `toolchain.not_built_yet`, naming chunk 5.3. Chunk 5.3 built it (below) and removed the refusal | 2026-10-16 |
-| `locales { }` (chosen in chunk 5.3) | An unnamed singleton declaration in `app.jadpo` (as area 1 reserves the word), not a member of `application { }`: the page's `locales: { ... }` was written with a colon and is amended to `locales { default: Locale.en_gb supported: [Locale.en_gb, ...] }`, each once and no others, entries written `Locale.<tag>` (`type.locale_invalid` for text, a non-list, a variant `Locale` has not; the fix for `"fr-FR"` is one edit), none twice (`type.locale_duplicate`), the default among them (`type.locale_default_unsupported`). A missing option is `syntax.locales_default_required` or `syntax.locales_supported_required`, a given-twice option `syntax.locales_duplicate_option`, any other name `syntax.locales_unknown_option` (`unsupported:` among them: there is no such setting), a second `locales { }` `semantic.multiple_locale_declarations`. `syntax.locales_unsupported_required` and `syntax.locales_unsupported_invalid` are gone with `unsupported:` | 2026-10-16 |
-| What a locale is checked against (chosen in chunk 5.3) | A project formats text for people only with `locales { }` declared (`type.temporal_locales_required`, at the call); files handed to the compiler on their own have no application to declare them, so the rule does not apply. A `Locale.x` written as `locale:`, or as the `default:` or `test:` of a `Locale` setting, that is not supported is `type.locale_unsupported`. A `Locale` passed in is read through the wire or a setting, which accept only the supported tags (`invalid_value`, rule `variant`; OpenAPI lists only those); with no `locales { }` every `Locale` is accepted as before. A problem in the declaration is reported once, and the call is not also reported | 2026-10-16 |
-| Locale data (chosen in chunk 5.3) | ICU4X 2.3 with Unicode CLDR 48 compiled into the binary (`icu_datetime`, `icu_calendar`, `icu_time`, `icu_locale` 2.3 and `icu_experimental` 0.6 for the relative-time words, pinned exactly; pure Rust, builds for wasm32): the interpreter, native deployables and Workers write the same text. A WebAssembly module that formats is about 3.5 MB larger than one that does not (3.9 MB against 0.35 MB; 1.2 MB against 0.1 MB compressed with gzip, 0.8 MB with Brotli), because the data holds every locale `Locale` lists. The next lever, if a deployable needs it, is data exported for the supported locales only | 2026-10-16 |
-| Locale data a deployable carries (chosen in chunk 8.2c) | `jadpo build` bakes again, from the ICU4X data compiled into Jadpo, each marker's entries for the locales a supported locale's lookups walk through (its fallback for that marker, down to `und`; only `und` with no `locales { }`), every locale's collation (`list.sort_by` took any `Locale`, area 19; until chunk 8.4i, which kept the supported locales', and chunk 8.4j, which made sorting by a locale need `locales { }`), and every marker with one entry, into a folder of the build cache named by the data's digest (chunk 8.4g; docs/compiler-runtime.md §2.5), which its build compiles through ICU4X's `ICU4X_DATA_DIR`; `jadpo test` and `jadpo dev` keep every locale. A `Locale` the app doesn't support reaching `text.format`, `temporal.format_relative` or a message at run time is written in the supported locale `locale.from_accept_language` would give its tag, else `default:`, on every target, so both write the same text. Measured on `jadpo-value`'s `formats` example for wasm32 in release, which links every operation: 18,486,066 bytes with every locale, 8,276,025 with the root only, 8,415,647 with `en_gb`, 8,486,985 with `en_gb` and `fr_fr` (gzip 6,131,551, 2,650,565, 2,693,731 and 2,718,160); keeping every locale's collation costs 889,760 of them | 2026-10-21 |
-| Sorting in a locale the app doesn't support | `list.sort_by` given a `Locale` the app doesn't support order by the supported locale `locale.from_accept_language` would give its tag, else `default:`, as formatting does since chunk 8.2c, so a deployable carries collation for its supported locales only (about 0.9 MB of 8.2c's wasm module; example 23 on Workers declaring `en_gb`, release, gzip -9: 13,614,174 bytes before, 12,727,979 after, 4,154,206 and 3,842,244 gzipped); built in chunk 8.4i | Richard, 2026-10-22 |
-| Sorting with no `locales { }` | `list.sort_by` with `locale:` in a project that declares no `locales { }` is `type.temporal_locales_required`, as formatting is, at the call (not when `locale:` is already `type.temporal_option_unused` for a key that isn't text), so `jadpo build` keeps collation for the declared locales only; files handed to the compiler on their own have no application to declare them, and sort by the `Locale` they are given. Replaces chunk 8.4i's choice that an app with no `locales { }` sorts by any `Locale` and keeps every locale's collation. Only `sort_by` takes `locale:`; `min_by` and `max_by` order by code point. A one-action Workers project declaring no locales (release, gzip -9) went from 13,017,859 bytes to 12,111,677 (3,959,704 to 3,647,526 gzipped). Built in chunk 8.4j | Richard, 2026-10-22 |
-| Writing a time (chosen in chunk 5.3) | Always the Gregorian calendar (as `Intl.DateTimeFormat` with `calendar: "gregory"`), the locale's own digits, CLDR's narrow no-break space written as a plain space. A built-in format is the locale's pattern at CLDR's four lengths (`date_full` with the weekday), so `date_time_long` is "27 September 2026 at 14:30:05 BST" in `en_gb`, with seconds as `timeStyle: "long"` has. A declared format takes the locale's pattern for its parts (a month as a name from the long or medium date pattern, a number from the short one; a date and a time joined as the locale joins them for that month) and sets each part's width: `numeric` leaves a number as the locale writes it, `two_digit` makes it at least two. Parts with no pattern together are written one after another with a space, and `zone_name` alone is the name alone | 2026-10-16 |
-| `format_relative` (chosen in chunk 5.3) | Against `now:`, in the zone the value is seen in: under a minute either way "just now" (English; the locale's "now" elsewhere); under an hour whole minutes, a past value rounded down and a future one up; the same local date "Today at" and the short time; the date before or after "Yesterday at" or "Tomorrow at"; two to six days away the weekday and the short time; anything else the long date. The words are the locale's, the first letter a capital; a locale with no word for yesterday or tomorrow shows the long date | 2026-10-16 |
-| Not built here (chosen in chunk 5.3) | Translations (`translations/`, ICU MessageFormat, typed calls, their errors) and choosing a locale from an `Accept-Language` header, which the page called a library call without naming it, were chunks 5.3b and 5.3c; both are built now | 2026-10-16 |
-| Translations as JSON (chosen in chunk 5.3b, superseded) | `translations/<tag>.json`, ICU MessageFormat, one call per key (`translations.<key>(...)`), decided and built on 2026-10-16 and replaced the same week by translations as messages; chunk 5.4c took out the files, the call, MessageFormat and the errors `translation.file_invalid`, `key_duplicate`, `key_extra`, `key_invalid`, `key_missing`, `key_unknown`, `message_invalid`, `other_missing`, `placeholder_mismatch` and `placeholder_type` | 2026-10-17 |
-| Chosen in 5.4c: no warnings | The design said "warning" for a field no wording uses, for wording missing from an in-progress locale and for a stale translation. Area 1, question 11 (decided 2026-10-17) has no warning severity, so: `in_progress:` is the declared opt-out and its gaps fall back with no diagnostic; a field no wording uses is the declinable `translation.field_unused`; a stale translation is an error in 5.4d | 2026-10-17 |
-| Chosen in 5.4c: the default is never in progress | It is where every in-progress locale falls back last: listing it is `type.locale_in_progress_default`; a listed locale `supported:` lacks is `type.locale_in_progress_unsupported`; the list is a list of `Locale.x`, each once (`type.locale_invalid`, `type.locale_duplicate`) | 2026-10-17 |
-| Chosen in 5.4c: what a file words | The messages, the emails and the enums of the folder's own scope, a domain's or `shared/`'s; an enum is worded in the scope that declares it. Members are the type's name in lower_snake_case (`translation.member_unknown`, `translation.member_duplicate`); a member is a string, or a block of strings for the values of an enum or the plural forms (`translation.wording_shape`); the language file's name is a `Locale` variant (`translation.file_name_invalid`) the application supports (`translation.locale_unsupported`) | 2026-10-17 |
-| Chosen in 5.4c: when wording is required | Every message in every supported locale not in progress (`translation.file_missing` for a locale with no language file in the folder, `translation.wording_missing` for a member the file lacks, `translation.variant_missing` for a value or plural form); an enum as soon as any language file words it; an email subject never yet (7.3). Translations without `locales { }` are `translation.locales_required` | 2026-10-17 |
-| Chosen in 5.4c: wordings | A string whose only syntax is `{field}` and doubled braces; anything else, including ICU syntax, is `translation.wording_invalid` at the character; a field that is not one the message has (or the enum that picks the wording) is `translation.placeholder_unknown`; an enum value's own fields are placeholders in that value's wording; a field of a type a wording can't hold, a nullable field included, is `translation.field_type`, and two choosing fields `translation.too_many_selectors` | 2026-10-17 |
-| Chosen in 5.4c: plural forms | One member per CLDR cardinal category the locale has and no other (`translation.variant_unknown`, `translation.variant_missing`); `jadpo-std` holds the table, tested against ICU4X's data; the form is chosen by the locale the wording came from, and `{count}` is written the locale's way | 2026-10-17 |
-| Chosen in 5.4c: calls | `translations.<domain>.<message>(field: value, ..., locale: ...)`, fields by name or in order, `locale:` named; an enum is `translations.<domain>.<enum>(value, locale: ...)`; an email subject is not called; `translations.shared` for `shared/translations/`; a call naming no message is `translation.message_unknown` with the nearest name, one naming another domain's private message `visibility.private_cross_domain` (moving it to `shared/translations/` is by hand until `layout.promotion_required` covers messages) | 2026-10-17 |
-| Chosen in 5.4c: running | The wording is read into `jadpo_std::translation::Template`, carried as `TranslationPlan` entries (parameters, and the wording of each locale that has it complete), and written by `jadpo_value::present::translate`, which walks an in-progress locale's fallback chain (itself, its regional siblings with the CLDR-likely one first, the default) and writes the sentence in the language it found; each message and enum is a `translation_key` graph node digested with its wording in every language file, so a save of a language file reruns the tests that reach it without checking a call again | 2026-10-17 |
-| Chosen in 5.4d: the record | `translations/sources.jadpo_record`, `record translations 1`, one line for each locale and member: `translation de_de.parcels from <12 hex> wording <12 hex> [accepted]`, BLAKE3 over the member's text in name order; a translation with no line is not stale; `update` records a translation that is new or reworded and leaves one whose wording is as it was stale; `accept <locale>` records, then accepts what is not stale; a record that doesn't read is `translation.sources_invalid` (7.0 adds the generic checks) | 2026-10-17 |
-| Chosen in 5.4d: review | `translations: { review: TranslationReview.required }` in `application { }` (`translation.option_unknown`, `translation.review_invalid`); unaccepted wording is listed by `jadpo translations missing`, not an error | 2026-10-17 |
-| Chosen in 5.4d: failures | The member is the failure's code; required only for a failure some route's `fails` lists, in every supported locale not in progress; client fields of text, `Uuid`, `Email`, `Url` or `IpAddress` are written as they are, numbers, dates, times and durations are formatted by the client (`number`, `decimal`, `date`, `date_time`, `duration`), anything else is `translation.field_type`; `jadpo check` writes `build/openapi/<api>.failures.<locale>.json` with the locale spelled as its variant, keys sorted, and no file for an API with nothing worded | 2026-10-17 |
-| Chosen in 5.4d: text direction | `locale.direction(value)`, an operation of the `locale` namespace giving a `TextDirection`; the template variable comes with 7.3 | 2026-10-17 |
-| Chosen in 5.4d: the pseudo-locale | `Locale.en_xa`, listed in `supported:` like any locale, no language file, never asked for wording; writes the default locale's wording with its letters accented, about two fifths longer and in brackets; values written into it are not accented; failures' client text is exported in it too | 2026-10-17 |
-| Chosen in 5.4d: the commands | `jadpo translations missing [locale]`, `unused`, `update` and `accept <locale>`, each with `--json`; `missing` groups by language file and succeeds whatever it lists; go to definition lands on the message's type and each language file's member | 2026-10-17 |
-| Chosen in 5.4e: Jadpo's text | Jadpo's messages are a catalogue in `jadpo-std` gated by feature; the root file's `jadpo: { }` is checked against it; a supported locale Jadpo does not ship is one `translation.jadpo_missing` per locale; `translation.feature_off` and `translation.group_unknown`; the root folder's `sources.jadpo_record` names members `jadpo.<message>`; Jadpo's failures join every API's export; `TextDirection`'s wording ships in every locale; `jadpo translations builtin`; `export` and `import` move to 5.4f | 2026-10-17 |
-| Chosen in 5.4f: the exchange | `export` writes XLIFF 2.0 (or Chrome-style JSON) for each translated locale to `build/translations/`, one unit for each plain wording, enum value or plural form, with its description; `import` reads XLIFF 2.x or JSON, checks the result as `jadpo check` does and refuses it whole with those rules, or writes the language files and a record line for each changed translation; a translation of superseded source is written and stale; `translation.exchange_file_invalid` and `translation.exchange_unit_unknown` | 2026-10-17 |
-| Name of the locale call (Richard, 2026-10-16) | `locale.from_accept_language(header)`, giving a `Locale`, in a new `locale` standard-library namespace beside `temporal`. `header` is `Text?`, so a header read with `header: "Accept-Language"` and `optional: true` passes straight in; the call never fails and picks only from `locales { supported: }`, falling back to `default:`. It is a pure function of the header and the application's locales, so the interpreter and every compiled target agree | 2026-10-16 |
-| Matching an `Accept-Language` header (chosen in chunk 5.3c) | RFC 9110: split at commas, a weight `;q=` of 0 to 1 with up to three decimals, a weight of 0 excluded, `*` ignored, an entry that does not parse skipped (a range is read in any case, `_` as `-`). Tags are taken by descending weight then header order, and the first that matches wins: an exact supported locale, else a supported locale of the same language, the one CLDR likely subtags give for the language (`ICU4X` `LocaleExpander`, extended data) before any other, else the first listed in `supported:`. Only the language is compared when no supported locale has the exact tag, never the script (`zh-TW` with no supported `zh_tw` is answered by whichever supported `zh` locale the rule picks) | 2026-10-16 |
-| What the call is checked against (chosen in chunk 5.3c) | A standard-library call: `header` is a `Text?` parameter the call must pass (the operation table marks it `nullable`, not `optional`), taking a `Text`, a type built on `Text`, `none`, or any of those that may be `none`. With no `locales { }` in a project it is `type.temporal_locales_required` with its reason worded for this call (files on their own have none to require). In a query it is `query.value_unsupported`, as every call is | 2026-10-16 |
-| `locale` is a reserved namespace (chosen in chunk 5.3c) | A standard-library namespace cannot name a parameter, variable, declaration, domain or library (`semantic.standard_namespace_reserved`, area 1), so no parameter or variable is called `locale` any more. This page's examples, and the compiler's tests, call theirs `reader_locale`. A field (`input.locale`) or a named argument (`locale:`) is not a variable and keeps the name | 2026-10-16 |
-| Where the choice runs (chosen in chunk 5.3c) | `jadpo_value::locale::from_accept_language(header, &LocalePlan)`, given the plan's locales by `jadpo_value::run` (a fourth parameter, the application's `Option<&LocalePlan>`, which `jadpo-plan` builds from `locales { }` and the interpreter passes), over `icu_locale`'s likely subtags, so the code generator will call the same function | 2026-10-16 |
-| Constants as defaults (Richard) | A `constant` (area 3) counts as a literal for a setting's `default:`, so code and a setting can share one value; `configuration.default_literal_required` still refuses anything computed. Rule of thumb: if a deployment could ever need a different value it is a setting, otherwise a constant. (Revised 2026-10-16 (Richard): a constant does not count as a literal for `default:` or `test:`, which stay literals as chosen in chunk 5.1, `configuration.default_literal_required` unchanged; the rule of thumb stands. See the next row.) | 2026-10-16 |
-| A constant or a setting (Richard) | A value is a constant (fixed, read `security.max_login_attempts`) or a setting (per deployment, read `config.max_login_attempts`), never both: one source, one way to read it. If a constant could seed a setting, code reading the constant would silently ignore the environment variable (the `DEFAULT_PORT` bug of TypeScript and pydantic code); `default:` on the field already names the default. Tiers: `constant` (fixed in code), `config` (per deployment), `flags { }` (area 16, changes at runtime). Decided; constants built in chunk 5.3e, with a constant refused as `default:` | 2026-10-16 |
-| Making a constant a setting (Richard) | `jadpo config move <constant>`, and the editor's "Make this a setting" running the same code, adds a `config` field of the constant's name and type with its value as `default:` and its `///` description, deletes the constant and rewrites every read to `config.<name>`, so a reviewer sees each place that can now differ per deployment. Offered, never required, so not part of `jadpo fmt --layout`. Refuses, editing nothing, a type a setting can't hold, a name a setting already has, and a constant read in a query, an update by `id`, a backfill or another constant. No command moves a setting back. Rejected: a constant an environment variable can override (`setting: true`: hides per-deployment behaviour at the call site, agents add it everywhere, no single list of variables, moving a file renames its variable); a `config { }` per domain; settings declared beside their use and gathered by the compiler; values per environment in source (`production:`, `staging:`), against no layering. Built in chunk 5.3f | 2026-10-16 |
-| Fields in name order (Richard) | `jadpo fmt` sorts `config { }` fields by name, comments moving with each, so parallel workspaces adding settings rarely touch the same lines; nothing gives a field's position meaning (settings are read, bound and reported by name). `jadpo fmt --check` fails on one out of order. The page examples are sorted already. Built in chunk 5.3f | 2026-10-16 |
-| An IPv6 client's count (chunk 8.4d) | The address chosen is shown whole, and the default rate limits count an IPv6 one by its /64 (area 16, "Rate limits") (decided 2026-10-22) | 2026-10-22 |
+| Topic | Decision |
+|---|---|
+| Unnamed declarations | Carried from area 1: `config { }` and `locales { }` carry no name |
+| Root files | Carried from area 1: settings live in `config.jadpo`; there is no `env.jadpo`; values come from the platform environment and one `.env.local`, with secrets entered through `jadpo config set` |
+| Translations folder | Carried from area 1: `translations/` is a fixed root folder, holding only the app's wording for text it did not write; each domain's own translations live in its `translations/` folder |
+| Failure messages | Carried from area 4: clients translate by failure `code`; `message` stays fixed English |
+| Store addresses | Carried from area 5: stores are declared in `app.jadpo` and take `url: config.<field>` |
+| Signature types | Carried from area 2: signatures use named types built on `Instant`, `CalendarDate`, `ZonedTime` and `Duration`; `Zone`, `Locale` and `Weekday` may be used directly |
+| Option names | Carried from area 2: closed options are written `Type.value`, in settings and in code |
+| Environment variable names | Derived from the field name (`mail_sender` reads `MAIL_SENDER`); `binding:` only to differ; a changed name shows in the approval review as a deployment change |
+| Setting types | Text-based, number, boolean, UUID, email, URL, IP, duration, instant and date types, enums written `Type.value`, `Zone` and `Locale`, so a log level or business time zone is checked at startup; no lists or objects (one variable, one value) |
+| Database address type | Built-in `PostgresUrl` and `RedisUrl`, always secret, matching the connection's driver; the runtime connects only through it; startup and `config check` share one validator |
+| Duration spelling | `500ms`, `30s`, `5m`, `2h`, `30d` everywhere in source, constraints included; `d` exactly 24 hours, since retention and token lifetimes are elapsed time and `720h` is unreadable; no `w`, months or years, which vary; calendar days are a date operation; ISO 8601 only in JSON |
+| `ZonedTime` name | `ZonedTime`, not `Time`, which Java, Temporal and Elixir use for a time of day; the wire form is an instant and a zone |
+| Instant arithmetic | Adding or subtracting a `Duration` keeps the named type; `Instant - Instant` gives `Duration` |
+| Time library and formatting | One formatting call taking the zone, the locale and a named built-in or declared format (`text.format`, area 19), `format_relative` without a profile, one `dst:` option failing by default, about 20 operations |
+| Locales declaration | `locales { default: Locale.en_gb supported: [...] }` in `app.jadpo`; `Locale` built in; no `unsupported:`; an unsupported tag in a request is an ordinary `invalid_value`; choosing from a header is a library call falling back to `default:` |
+| Locales in progress | `in_progress: [...]` in `locales { }` lists supported locales allowed to fall back where wording is missing, and one not in `supported:` is an error; the rest must be complete. Listing a locale is the explicit, declared opt-out, so it falls back with no diagnostic and `jadpo translations missing` lists the gaps |
+| Failure export shape | `<api>.failures.<locale>.json` maps each code to `{ "text": ..., "formats": { placeholder: format } }`, the same shape for every code; `formats` lists only placeholders the client formats, as `number`, `decimal`, `date`, `date_time` or `duration`, decided by the field's type (`CalendarDate` date, `Instant` date_time in the reader's zone, `ZonedTime` date_time in its own zone, `Duration` duration, `Int` number, `Decimal` decimal); a type the client cannot format is an error |
+| Signing key rotation | Built-in `SigningKey` reading `NAME` and optional `NAME_PREVIOUS`; sign with current, accept both; rotate by moving the old key to `_PREVIOUS` and removing it once the longest token lifetime has passed |
+| Test values for settings | `test:` on the field; random secrets generated by `jadpo test`; per-test override |
+| Translations everywhere | Mail, generated pages and client failure messages are translated through Jadpo's messages |
+| Where translations live | In the domain that uses them, `domains/<domain>/translations/`; a message a second domain uses moves to `shared/translations/` under area 1's promotion rule; the root `translations/` holds only the app's wording for Jadpo's own and its library packages' text |
+| Messages | `type X = Message { ... }`, a type base beside `Failure`, `Event` and `EmailMessage`, one per file; fields are placeholders; `///` descriptions are translator context |
+| Language files | One unnamed `translations { }` per locale in a file named after it (`de_de.jadpo`); members are message, failure, enum or email names in lower_snake_case; every wording a plain string whose only syntax is `{field}`, a literal brace doubled (`{{`, `}}`); no grouping or nesting beyond variants and plural forms; no JSON or ICU MessageFormat, since JSON has no comments and quotes everything, and the compiler parses only Jadpo |
+| Mapping a message to wording | No fields: a string; `Text`, `PresentationText`, `Int`, `Decimal`: placeholders, numbers written the locale's way; one enum field: one wording per value; one `PluralCount` field: one wording per CLDR plural form; any other field type, or more than one enum or `PluralCount` field, an error; a placeholder that is not a field an error; a field no wording uses the declinable `translation.field_unused`. A field built on `Money` is written `{price, number, currency}` and one built on `Percentage` `{rate, number, percent}`, `translation.placeholder_style` refusing either written otherwise (area 19) |
+| Generated calls | `translations.<domain>.<message>(field: value, ..., locale: ...)`, every field by name, returning `PresentationText`; `translations.shared.<message>` for `shared/translations/`; in email templates the email's locale |
+| Email subjects | An `EmailMessage`'s member in its domain's language files is its subject line, its fields usable as placeholders; the body is the `.html` and `.txt` templates |
+| Enum wording | An enum can be written out once its domain's language files give each value a wording, a value's fields usable as placeholders; area 2's "no display labels" stands |
+| Failures' client text | Keyed by the failure's code in its domain's language files, client fields as placeholders; `<api>.failures.<locale>.json` beside each API's OpenAPI document, from code to wording in `{field}` syntax with each placeholder's formatting; the server's `message` stays English |
+| Translation checks | Every supported locale is complete: missing wording for a message, a failure that can reach a response or an enum is an error whose `next:` names the file, member and placeholders; only a locale in `locales { in_progress: [...] }` falls back, with no diagnostic, regional sibling first (`fr_ca` to `fr_fr`), then the default; stale translations are an error, judged by a hash of the default wording in each folder's generated, committed `translations/sources.jadpo_record`; with `translations: { review: TranslationReview.required }` in `app.jadpo` (default `.none`), new or changed non-default wording is unaccepted, and listed in the approval report, until `jadpo translations accept <locale>` |
+| Text direction | `locale.direction` is the built-in enum `TextDirection` (`.left_to_right`, `.right_to_left`), whose shipped wording is `ltr` and `rtl` |
+| Jadpo's own text | Jadpo's own messages, with wording shipped in `en_gb` and `en_us` at first and more locales added by releases; another supported locale is an error listing the missing messages until the app words them; only switched-on features' messages count, rewording another is an error, and `jadpo translations builtin` lists only those |
+| Text the app did not write | The root `translations/<locale>.jadpo` groups wording by owner, `jadpo: { }` and a package's name, the one grouping allowed, checked against the owner's types; lookup is the app's root wording, then the owner's, then (in progress) the regional sibling, then the default; supported locales must be complete for every package and Jadpo message the app can show |
+| Package translations | A library package carries a `translations/` folder like a domain's, called `Postcodes.translations.<message>(...)`; provider packages carry none; changed fields break the app's rewording, changed wording makes it stale; published with complete default-locale wording and `///` on every public message; a different code for a package failure is mapped with `attempt` |
+| Failures sent to clients | Wording lives in the language files, never on the failure type (one rule for all text; Jadpo's and packages' failures could not carry it in place); every failure that can reach a response has wording in every supported locale; dates and numbers in client fields are sent as values and formatted by the client, and the per-locale export says which placeholders need formatting and how |
+| Translation tooling | `jadpo translations missing` and `unused` with `--json`; `update`, `accept <locale>` and `builtin`; `export` and `import` as XLIFF or JSON; `--json` wherever they print; go to definition from a call to its type and wording; a pseudo-locale for development and tests; the app's own data is not a translation |
+| Reading `config { }` | A setting is `name: Type` with an optional block of `secret:`, `default:`, `binding:` and `test:`, each once and no others (`configuration.duplicate_option`, `configuration.unknown_option`); a line that is not a setting is `configuration.expected_field`, a second `config { }` is `configuration.multiple_declarations`, and a name that is no setting is `configuration.field_unknown` with the nearest name. A variable set to nothing is not set; the process's environment wins over `.env.local` |
+| What a setting can be | A named or built-in type of one piece of text, a number, `Bool`, `Uuid`, `Duration`, `Instant` or `CalendarDate`, an enum with no data, `Zone` (read as `Europe/London`) or `Locale` (read as `en-GB`). Not `Bytes`, `ZonedTime`, a list, object, map or `T?`, or the types the runtime makes (`PageCursor`, `PageSize`, `ApiToken`, `ServiceKey`): `configuration.type_unsupported`. A secret is text, so a test run can make one. A setting may be declared with a built-in type; naming the type code passes it as saves building it |
+| Variables | A variable is capitals, digits and `_` starting with a capital (`configuration.binding_invalid`, `configuration.binding_empty`); no two settings share one, and a `SigningKey`'s `_PREVIOUS` counts as taken (`configuration.duplicate_binding`) |
+| `default:` and `test:` | A literal of the setting's type, checked against every rule of the type and its parents (`configuration.default_literal_required`, `configuration.default_type`, `configuration.default_invalid`, the same three for `test:` and a test's `config:`); an enum's variant is written `Type.value`; a constant is not a literal here. A secret has neither (`configuration.secret_default`), and `secret:` is `true` or `false` (`configuration.secret_invalid`) |
+| Built-in connection types | `Url` accepts only `http://` and `https://`. `PostgresUrl` (`postgres://`, `postgresql://`), `RedisUrl` (`redis://`, `rediss://`) and `SigningKey` (at least 32 visible characters) are built in, text underneath, always secret and never stored by an entity |
+| Connection URL structure | Connection types check URI structure at literals, startup and `config check`, without network I/O; preserve PostgreSQL multi-host, IPv6, encoded credentials and local sockets, reject malformed targets, escapes and ports, and report every invalid declaration without values |
+| A database's authority | A setting may be area 19's `Certificate`, read from its PEM, as a database connection's `authority:` needs (area 5, "PostgreSQL over TLS"); a `PostgresUrl` that sets `sslmode` or another `ssl…` setting is invalid |
+| Where a secret may go | The value of a `url:`, `credential:`, `signing_key:` or `secret:` member of `application { }` or `authentication { }`, and a `crypto` call's `key:` (area 19), and nowhere else: no function, action, query, fixture or test is a place the compiler owns, so any read of a secret there is `configuration.secret_flow`, which needs no tracking through variables and calls, and covers comparing |
+| Connection addresses | A connection's `url: config.<name>` reads a setting of the type its driver needs (`configuration.url_type`); an address written in source is refused the same way. A project with no database declared opens `main` at `config.database_url` when it declares one (of the right type) |
+| Values in tests | A test reads each setting's `test:` value, then its default; a secret is a fresh random hexadecimal value for each run (a `PostgresUrl` or `RedisUrl` an address at `127.0.0.1:1`); the environment is never read. A test's `config:` changes non-secret settings for that test and the code it calls; a secret there is `configuration.secret_default`. A setting a test reaches through calls with none of the three is `configuration.test_value_missing` (a request through a route is not followed; the run's fault names it) |
+| Starting | `jadpo_runtime::config::load` checks every setting against its type with a host's variables (`Host::variable`: the process natively, bindings on Workers) and gives each problem as the setting, its variable and the rule it breaks, never the value; the same function is behind `jadpo config check` and the interpreter, so they cannot disagree |
+| `jadpo config` | `check` lists each setting as `set`, `default`, `missing` or `invalid` with its variable, shows each problem as `configuration.value_missing` or `configuration.value_invalid`, exits 1 on any and supports `--json`. `set <field>` needs a terminal and refuses `--json`, hides what is typed for a secret and shows it otherwise, checks the value before writing, and writes `.env.local` only as an ordinary file, through a private temporary file, if unchanged since read, and adds it to `.gitignore` |
+| `jadpo dev` and `jadpo migrate` | `dev` checks the environment over `.env.local` as the app starts, watches `.env.local` with the source, and keeps the last good version serving through an invalid change; a connection whose address no variable gives gets a database on a disposable PostgreSQL (`--url` still names the database directly). `migrate apply` and `status` use a connection's setting when `--url` is not given |
+| Retention period | `purge: { after: config.x }` takes a `Duration` setting that is not secret (`data.lifecycle_purge_after` otherwise); the period is the value the app started with, given to a run (`jadpo_runtime::purge_after`), and a period not above zero deletes nothing |
+| Trusted proxies | `client_address: { source: ClientAddressSource.x hops: <Int> }` once in `app.jadpo`; sources `connection` (the native default), `forwarded_for`, `forwarded` and `cloudflare`; the client is the `hops`-th address from the right, falling back to the connection's address when the header is short or invalid; on Workers only `cloudflare` (`CF-Connecting-IP`), its default; `hops` is a count rather than a list of trusted ranges, so it cannot drift when a provider's addresses change |
+| `hops:` and the errors of `client_address:` | `hops:` is required with `forwarded_for` and `forwarded` and refused with `connection` and `cloudflare` (`configuration.client_address_hops_unused`); written out it is a whole number from 1, and read from a setting that setting is an `Int` (or a type built on it) declaring `min:` of at least 1, so a count below 1 never starts (`configuration.client_address_hops_invalid`). A second `client_address:` is `configuration.client_address_duplicate`, a `client_address:` that is not a block of `source:` and `hops:` is `configuration.client_address_invalid`, and a `source:` that is no `ClientAddressSource` is `configuration.client_address_source_unknown` |
+| Reading the address | Every line of the header joined in order, split at commas; `Forwarded` by elements, each giving the entry of its `for`; an empty entry, a name, `unknown`, an obfuscated identifier or a zone takes its place in the count but is no address; a `Forwarded` that does not parse, or a `CF-Connecting-IP` that is not exactly one address, falls back whole. Addresses are accepted with a port or in brackets and kept in one spelling (IPv6 lower case and shortened, an IPv4-mapped address as IPv4), the connection's too. With no `client_address:` the address is the connection's natively and `CF-Connecting-IP` on Workers, where any other source is refused and an address Cloudflare did not give is unknown |
+| Where the address is chosen | In the runtime, as plan data (`ClientAddressPlan` in the route table) read with the settings the app started with: `serve_request` counts a request by the address `ClientAddress` chooses from its headers and the connection address the host gives, and carries it on the response, so `jadpo dev` shows it after the time on each request line and as `address` with `--json`. The native host only supplies the connection's address |
+| An IPv6 client's count | The address chosen is shown whole, and the default rate limits count an IPv6 one by its /64 (area 16, "Rate limits") |
+| `ZonedTime` | An instant and the `Zone` it is seen in, with no literal, sent as `{ "instant": ..., "zone": "Europe/London" }`. Two are equal when both parts are; they have no order of their own, their instants do (`temporal.instant(...)`). An entity's `ZonedTime` field is stored in two columns, its instant as `timestamptz(3)` and its zone as `text`; it is not a setting. A clock time with no zone is area 19's `LocalTime` |
+| Time range | An `Instant` holds 0000-01-01T00:00:00Z to 9999-12-30T22:00:00.999Z, the last whose local date is in year 9999 in every zone, and a `CalendarDate` 0000-01-01 to 9999-12-31; a literal past them is refused while compiling, and arithmetic past them is the fault `time_out_of_range` |
+| Time arithmetic | `Instant ± Duration` and `Duration + Instant` keep the instant's named type; `Instant - Instant` of the same type after widening gives a plain `Duration`, negative when the second is later; `Duration ± Duration` of the same type, or with a literal, gives a plain `Duration`. A `CalendarDate` or `ZonedTime` takes no `Duration`, and `*`, `/` and `%` take no time value (`type.arithmetic_operand`, naming `temporal.add_days`) |
+| Time on the wire | A `Duration` is written ISO 8601 in hours, minutes and seconds (`PT720H` for `30d`, `-PT5M`), and read the same way in JSON, query strings, paths and headers, days counting 24 hours; `5m` is source's spelling and refused there, but a setting reads it as well as `PT5M`. A `Zone` is sent as its IANA name and a `Locale` as its BCP 47 tag, as a setting reads them, and OpenAPI lists them so; a `ZonedTime` is an object of a `date-time` `instant` and a `zone`, both required |
+| Unclear local times | `dst:` and `invalid_day:` each settle a condition a call fails on, which its `attempt` maps by the option's name (`dst:`, `invalid_day:`) as a construction's broken rule is mapped: an `invalid_value` failure, `invalid:` for the rest, `failure.rule_unmapped` and `failure.rule_cannot_break` as for rules. Only a value written out other than `reject` settles one; a value passed in might be `reject`. `Dst` keeps Temporal's meanings (earlier or later of an overlap; in a gap, the clock moved back or forward by its length; `compatible` earlier in an overlap and later in a gap); `InvalidDay` is `reject` or `last_valid_day`. `dst:` on a `CalendarDate` is `type.temporal_option_unused` |
+| `at:` | A clock time written out, `HH:MM`, `HH:MM:SS` or `HH:MM:SS.mmm`, each field two digits, or a `LocalTime` (area 19); anything else is `type.temporal_clock_invalid` |
+| The `temporal` library | `in_zone`, `resolve`, `between`, `add_days`, `add_months` and `add_years` (twelve months a year) on a date or a local time, keeping its named type; `day_bounds`, `week_bounds` (from `starts_on:`), `month_bounds` and `year_bounds` giving an `InstantRange` whose `start` is the period's first instant (midnight, or the first time a zone's clocks show when they skip it) and whose `end` is the next period's, not included; `year`, `month`, `day` and `weekday` of a date or a local time's date; `date`, `hour`, `minute`, `zone` and `instant` of a local time, `instant` because a `ZonedTime` has no order of its own. A query compares a field with an `InstantRange` parameter's `start` and `end` |
+| Time zone data | The `temporal` operations run in `jadpo-value` on jiff 0.2.38 with its bundled database (`jiff-tzdb`, IANA 2026e, about 200 KB): pure Rust, built for wasm32, with Temporal's handling of gaps and overlaps, and nothing read from the platform's zone files or clock, so the interpreter, native deployables and Workers answer alike. Every `Zone` variant is in it, which a test holds; a newer release is a change of its own |
+| Formats | `TimeFormat` is a base, as `Object` is: `type Name = TimeFormat { part: ComponentStyle.style ... }` declares a format, and `TimeFormat.` names the twelve built-in ones (`date_`, `time_`, `date_time_` with `full`, `long`, `medium`, `short`). The parts are `weekday` (`long`, `short`, `narrow`), `day`, `year`, `hour`, `minute` and `second` (`numeric`, `two_digit`), `month` (all five) and `zone_name` (`long`, `short`), as `Intl.DateTimeFormat` takes them; the locale orders them. At least one part (`type.temporal_format_components_empty`), each once (`type.temporal_format_component_duplicate`), in a style it takes (`type.temporal_format_component_invalid`); any other name is `type.unknown_setting`. A format holds no value: `format:` names one written out, and a format as a field's, parameter's or variable's type, as a value or passed in is `type.temporal_format_invalid`. The operation is given it as text, `day:numeric month:short year:numeric` or `date_long` (`jadpo_std::TimeFormatSpec`), as `at:` gives its clock time |
+| What formatting takes | Formatting shows an `Instant`, a `CalendarDate` or a `ZonedTime`, and `format_relative` an `Instant` or a `ZonedTime` against `now:`, an `Instant`. `zone:` is given exactly for an `Instant` (`type.temporal_zone_required`), and with a date or a local time is `type.temporal_option_unused`. A date takes only a date format: a `time_` or `date_time_` one, or a part `hour`, `minute`, `second` or `zone_name`, is `type.temporal_format_requires_time`. `locale:` is checked against the supported locales |
+| `PresentationText` | A built-in type that is its own representation, so no constructor turns it into `Text` or back, and nothing orders it, adds to it or reads a time from it; `==` and `!=` compare it. A signature may use it directly, as `Email`, and text in quotes may stand for one, which is how a test compares formatted text. An `Output` holds it, sent as a JSON string, and a request may send one as text. An entity field holding it, directly or through a named type, a collection, an object's field or a variant's data, is `type.presentation_text_persistence`; a setting of it is `configuration.type_unsupported` |
+| `locales { }` | An unnamed singleton declaration in `app.jadpo` (as area 1 reserves the word), not a member of `application { }`: `locales { default: Locale.en_gb supported: [Locale.en_gb, ...] }`, each once and no others, entries written `Locale.<tag>` (`type.locale_invalid` for text, a non-list, a variant `Locale` has not; the fix for `"fr-FR"` is one edit), none twice (`type.locale_duplicate`), the default among them (`type.locale_default_unsupported`). A missing option is `syntax.locales_default_required` or `syntax.locales_supported_required`, a given-twice option `syntax.locales_duplicate_option`, any other name `syntax.locales_unknown_option` (`unsupported:` among them: there is no such setting), a second `locales { }` `semantic.multiple_locale_declarations` |
+| What a locale is checked against | A project formats text for people only with `locales { }` declared (`type.temporal_locales_required`, at the call); files handed to the compiler on their own have no application to declare them, so the rule does not apply. A `Locale.x` written as `locale:`, or as the `default:` or `test:` of a `Locale` setting, that is not supported is `type.locale_unsupported`. A `Locale` passed in is read through the wire or a setting, which accept only the supported tags (`invalid_value`, rule `variant`; OpenAPI lists only those); with no `locales { }` every `Locale` is accepted. A problem in the declaration is reported once, and the call is not also reported |
+| Locale data | ICU4X 2.3 with Unicode CLDR 48 compiled into the binary (`icu_datetime`, `icu_calendar`, `icu_time`, `icu_locale` 2.3 and `icu_experimental` 0.6 for the relative-time words, pinned exactly; pure Rust, builds for wasm32): the interpreter, native deployables and Workers write the same text |
+| Locale data a deployable carries | `jadpo build` bakes again, from the ICU4X data compiled into Jadpo, each marker's entries for the locales a supported locale's lookups walk through (its fallback for that marker, down to `und`; only `und` with no `locales { }`), the supported locales' collation, and every marker with one entry, into a folder of the build cache named by the data's digest (docs/compiler-runtime.md §2.5), which its build compiles through ICU4X's `ICU4X_DATA_DIR`; `jadpo test` and `jadpo dev` keep every locale. A `Locale` the app doesn't support reaching `text.format`, `temporal.format_relative` or a message at run time is written in the supported locale `locale.from_accept_language` would give its tag, else `default:`, on every target, so both write the same text |
+| Sorting in a locale the app doesn't support | `list.sort_by` given a `Locale` the app doesn't support orders by the supported locale `locale.from_accept_language` would give its tag, else `default:`, as formatting does, so a deployable carries collation for its supported locales only |
+| Sorting with no `locales { }` | `list.sort_by` with `locale:` in a project that declares no `locales { }` is `type.temporal_locales_required`, as formatting is, at the call (not when `locale:` is already `type.temporal_option_unused` for a key that isn't text), so `jadpo build` keeps collation for the declared locales only; files handed to the compiler on their own have no application to declare them, and sort by the `Locale` they are given. Only `sort_by` takes `locale:`; `min_by` and `max_by` order by code point |
+| Writing a time | Always the Gregorian calendar (as `Intl.DateTimeFormat` with `calendar: "gregory"`), the locale's own digits, CLDR's narrow no-break space written as a plain space. A built-in format is the locale's pattern at CLDR's four lengths (`date_full` with the weekday), so `date_time_long` is "27 September 2026 at 14:30:05 BST" in `en_gb`, with seconds as `timeStyle: "long"` has. A declared format takes the locale's pattern for its parts (a month as a name from the long or medium date pattern, a number from the short one; a date and a time joined as the locale joins them for that month) and sets each part's width: `numeric` leaves a number as the locale writes it, `two_digit` makes it at least two. Parts with no pattern together are written one after another with a space, and `zone_name` alone is the name alone |
+| `format_relative` | Against `now:`, in the zone the value is seen in: under a minute either way "just now" (English; the locale's "now" elsewhere); under an hour whole minutes, a past value rounded down and a future one up; the same local date "Today at" and the short time; the date before or after "Yesterday at" or "Tomorrow at"; two to six days away the weekday and the short time; anything else the long date. The words are the locale's, the first letter a capital; a locale with no word for yesterday or tomorrow shows the long date |
+| No warnings | Jadpo has no warning severity (area 1), so `in_progress:` is the declared opt-out and its gaps fall back with no diagnostic; a field no wording uses is the declinable `translation.field_unused`; a stale translation is an error |
+| The default is never in progress | It is where every in-progress locale falls back last: listing it is `type.locale_in_progress_default`; a listed locale `supported:` lacks is `type.locale_in_progress_unsupported`; the list is a list of `Locale.x`, each once (`type.locale_invalid`, `type.locale_duplicate`) |
+| What a file words | The messages, the emails and the enums of the folder's own scope, a domain's or `shared/`'s; an enum is worded in the scope that declares it. Members are the type's name in lower_snake_case (`translation.member_unknown`, `translation.member_duplicate`); a member is a string, or a block of strings for the values of an enum or the plural forms (`translation.wording_shape`); the language file's name is a `Locale` variant (`translation.file_name_invalid`) the application supports (`translation.locale_unsupported`) |
+| When wording is required | Every message in every supported locale not in progress (`translation.file_missing` for a locale with no language file in the folder, `translation.wording_missing` for a member the file lacks, `translation.variant_missing` for a value or plural form); an enum as soon as any language file words it; an email subject in every supported locale not in progress. Translations without `locales { }` are `translation.locales_required` |
+| Wordings | A string whose only syntax is `{field}` and doubled braces; anything else, including ICU syntax, is `translation.wording_invalid` at the character; a field that is not one the message has (or the enum that picks the wording) is `translation.placeholder_unknown`; an enum value's own fields are placeholders in that value's wording; a field of a type a wording can't hold, a nullable field included, is `translation.field_type`, and two choosing fields `translation.too_many_selectors` |
+| Plural forms | One member per CLDR cardinal category the locale has and no other (`translation.variant_unknown`, `translation.variant_missing`); `jadpo-std` holds the table, tested against ICU4X's data; the form is chosen by the locale the wording came from, and `{count}` is written the locale's way |
+| Calls | `translations.<domain>.<message>(field: value, ..., locale: ...)`, fields by name or in order, `locale:` named; an enum is `translations.<domain>.<enum>(value, locale: ...)`; an email subject is not called; `translations.shared` for `shared/translations/`; a call naming no message is `translation.message_unknown` with the nearest name, one naming another domain's private message `visibility.private_cross_domain` (moving it to `shared/translations/` is by hand until `layout.promotion_required` covers messages) |
+| Running translations | The wording is read into `jadpo_std::translation::Template`, carried as `TranslationPlan` entries (parameters, and the wording of each locale that has it complete), and written by `jadpo_value::present::translate`, which walks an in-progress locale's fallback chain (itself, its regional siblings with the CLDR-likely one first, the default) and writes the sentence in the language it found; each message and enum is a `translation_key` graph node digested with its wording in every language file, so a save of a language file reruns the tests that reach it without checking a call again |
+| The translations record | `translations/sources.jadpo_record`, `record translations 1`, one line for each locale and member: `translation de_de.parcels from <12 hex> wording <12 hex> [accepted]`, BLAKE3 over the member's text in name order; a translation with no line is not stale; `update` records a translation that is new or reworded and leaves one whose wording is as it was stale; `accept <locale>` records, then accepts what is not stale; a record that doesn't read is `translation.sources_invalid`, and area 18's checks of every record apply |
+| Translation review | `translations: { review: TranslationReview.required }` in `application { }` (`translation.option_unknown`, `translation.review_invalid`); unaccepted wording is listed by `jadpo translations missing`, not an error |
+| Failures' wording | The member is the failure's code; required only for a failure some route's `fails` lists, in every supported locale not in progress; client fields of text, `Uuid`, `Email`, `Url` or `IpAddress` are written as they are, numbers, dates, times and durations are formatted by the client (`number`, `decimal`, `date`, `date_time`, `duration`), anything else is `translation.field_type`; `jadpo check` writes `build/openapi/<api>.failures.<locale>.json` with the locale spelled as its variant, keys sorted, and no file for an API with nothing worded |
+| `locale.direction` | An operation of the `locale` namespace giving a `TextDirection`; an email template writes it as `{{ locale.direction }}` |
+| The pseudo-locale | `Locale.en_xa`, listed in `supported:` like any locale, no language file, never asked for wording; writes the default locale's wording with its letters accented, about two fifths longer and in brackets; values written into it are not accented; failures' client text is exported in it too |
+| The translations commands | `jadpo translations missing [locale]`, `unused`, `update` and `accept <locale>`, each with `--json`; `missing` groups by language file and succeeds whatever it lists; go to definition lands on the message's type and each language file's member |
+| Jadpo's text | Jadpo's messages are a catalogue in `jadpo-std` gated by feature; the root file's `jadpo: { }` is checked against it; a supported locale Jadpo does not ship is one `translation.jadpo_missing` per locale; `translation.feature_off` and `translation.group_unknown`; the root folder's `sources.jadpo_record` names members `jadpo.<message>`; Jadpo's failures join every API's export; `TextDirection`'s wording ships in every locale; `jadpo translations builtin` |
+| The exchange | `export` writes XLIFF 2.0 (or Chrome-style JSON) for each translated locale to `build/translations/`, one unit for each plain wording, enum value or plural form, with its description; `import` reads XLIFF 2.x or JSON, checks the result as `jadpo check` does and refuses it whole with those rules, or writes the language files and a record line for each changed translation; a translation of superseded source is written and stale; `translation.exchange_file_invalid` and `translation.exchange_unit_unknown` |
+| Name of the locale call | `locale.from_accept_language(header)`, giving a `Locale`, in a `locale` standard-library namespace beside `temporal`. `header` is `Text?`, so a header read with `header: "Accept-Language"` and `optional: true` passes straight in; the call never fails and picks only from `locales { supported: }`, falling back to `default:`. It is a pure function of the header and the application's locales, so the interpreter and every compiled target agree |
+| Matching an `Accept-Language` header | RFC 9110: split at commas, a weight `;q=` of 0 to 1 with up to three decimals, a weight of 0 excluded, `*` ignored, an entry that does not parse skipped (a range is read in any case, `_` as `-`). Tags are taken by descending weight then header order, and the first that matches wins: an exact supported locale, else a supported locale of the same language, the one CLDR likely subtags give for the language (`ICU4X` `LocaleExpander`, extended data) before any other, else the first listed in `supported:`. Only the language is compared when no supported locale has the exact tag, never the script (`zh-TW` with no supported `zh_tw` is answered by whichever supported `zh` locale the rule picks) |
+| What the call is checked against | A standard-library call: `header` is a `Text?` parameter the call must pass (the operation table marks it `nullable`, not `optional`), taking a `Text`, a type built on `Text`, `none`, or any of those that may be `none`. With no `locales { }` in a project it is `type.temporal_locales_required` with its reason worded for this call (files on their own have none to require). In a query it is `query.value_unsupported`, as every call is |
+| `locale` is a reserved namespace | A standard-library namespace cannot name a parameter, variable, declaration, domain or library (`semantic.standard_namespace_reserved`, area 1), so no parameter or variable is called `locale`. This page's examples, and the compiler's tests, call theirs `reader_locale`. A field (`input.locale`) or a named argument (`locale:`) is not a variable and keeps the name |
+| Where the choice runs | `jadpo_value::locale::from_accept_language(header, &LocalePlan)`, given the plan's locales by `jadpo_value::run` (a fourth parameter, the application's `Option<&LocalePlan>`, which `jadpo-plan` builds from `locales { }` and the interpreter passes), over `icu_locale`'s likely subtags, so the code generator will call the same function |
+| A constant or a setting | A value is a constant (fixed, read `security.max_login_attempts`) or a setting (per deployment, read `config.max_login_attempts`), never both: one source, one way to read it. If a constant could seed a setting, code reading the constant would silently ignore the environment variable (the `DEFAULT_PORT` bug of TypeScript and pydantic code); `default:` on the field already names the default, so a constant is not a literal for `default:` or `test:`. Rule of thumb: if a deployment could ever need a different value it is a setting, otherwise a constant. Tiers: `constant` (fixed in code), `config` (per deployment), `flags { }` (area 16, changes at runtime) |
+| Making a constant a setting | `jadpo config move <constant>`, and the editor's "Make this a setting" running the same code, adds a `config` field of the constant's name and type with its value as `default:` and its `///` description, deletes the constant and rewrites every read to `config.<name>`, so a reviewer sees each place that can now differ per deployment. Offered, never required, so not part of `jadpo fmt --layout`. Refuses, editing nothing, a type a setting can't hold, a name a setting already has, and a constant read in a query, an update by `id`, a backfill or another constant. No command moves a setting back. No constant an environment variable can override (it would hide per-deployment behaviour at the call site, agents would add it everywhere, there would be no single list of variables, and moving a file would rename its variable); no `config { }` per domain; no settings declared beside their use and gathered by the compiler; no values per environment in source (`production:`, `staging:`), since values aren't layered |
+| Fields in name order | `jadpo fmt` sorts `config { }` fields by name, comments moving with each, so parallel workspaces adding settings rarely touch the same lines; nothing gives a field's position meaning (settings are read, bound and reported by name). `jadpo fmt --check` fails on one out of order. The page examples are sorted already |

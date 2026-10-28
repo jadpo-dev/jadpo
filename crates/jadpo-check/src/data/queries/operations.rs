@@ -539,7 +539,7 @@ impl Reader<'_> {
                     format!("`{written}`'s `{}` is never negative", param.name),
                 )
                 .at(span, "below `0`")
-                .reason(format!("`{shown_value}` is below `0`, and a count or a position never is, as in code (area 19, question 7)."))
+                .reason(format!("`{shown_value}` is below `0`, and a count or a position never is, as in code (area 19, \"Cutting from either end\")."))
                 .next("Pass a number of at least `0`"),
             );
             return None;

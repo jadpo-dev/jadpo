@@ -6,7 +6,7 @@
 //! the order they come in, show the fields they test too, so every field a
 //! `where:`, `where_present:` or `order:` names, the query's own or an
 //! include's, is one every caller who reaches those records may read
-//! (area 9, "Restricted fields in conditions and orders").
+//! (area 9, "Field restrictions").
 //!
 //! A query's records are the ones its entity's `read:` lets the caller see,
 //! a child's those its own entity's `read:` lets in, and a parent's those

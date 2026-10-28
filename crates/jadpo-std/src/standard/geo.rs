@@ -1,12 +1,12 @@
-//! The geospatial types (area 19, "The standard types" and "Geospatial: a
-//! future area", chunk 5.5s): positions on Earth in WGS84 with `latitude`
+//! The geospatial types (area 19, "The standard types" and "Geospatial
+//! types"): positions on Earth in WGS84 with `latitude`
 //! and `longitude` by name, never a pair; the geometries made of them, sent
 //! as GeoJSON (RFC 7946), whose `[longitude, latitude]` order exists only
 //! inside `jadpo-value`'s `geo` module; and the cells, tiles and projected
 //! coordinates applications pass between them. A geometry is stored in a
 //! PostGIS `geography` column ([`Storage::Geography`], area 20, chunk
 //! 5.5u4); a `BoundingBox` and a `Circle` in named columns. What the page
-//! left open is settled in area 19's "Geospatial: a future area".
+//! left open is settled in area 19's "Geospatial types".
 
 use super::across::{Check, Order, Parts, StandardRule, Verdict, in_order};
 use super::{

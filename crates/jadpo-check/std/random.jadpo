@@ -1,4 +1,4 @@
-// The `random` namespace (area 19, "Randomness", question 19). Every other
+// The `random` namespace (area 19, "Randomness"). Every other
 // operation is pure; these read the generator: the operating system's
 // cryptographic generator in production, and in a test one seeded by the
 // test, so a rerun gives the same values, as the test clock is fixed. They

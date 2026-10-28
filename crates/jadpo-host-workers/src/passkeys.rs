@@ -33,7 +33,7 @@
 //!   (packed with `x5c`, TPM, Android key, Apple, FIDO U2F) is refused
 //!   rather than checked against its chain: nothing here reads X.509
 //!   chains, and browsers send `none` when none is asked for (area 8,
-//!   "Passkeys on Workers' attestation", chosen in chunk 8.2l).
+//!   "Passkey attestation on Workers").
 //!
 //! A ceremony's state is JSON the runtime keeps server-side and gives back
 //! once: the challenge and, registering, the passkeys not to make again.

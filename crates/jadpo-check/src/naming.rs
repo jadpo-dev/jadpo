@@ -207,8 +207,8 @@ impl Here<'_> {
     /// Whether two declarations' names have to differ: both in one
     /// package, or, outside packages, one of them unique across the
     /// project or both private to one domain. A package's names are its
-    /// own (area 11, "Chosen in chunk 7.1d"): never the app's or another
-    /// package's.
+    /// own (area 11, "A package's names, and watching a linked
+    /// checkout"): never the app's or another package's.
     fn clash(&self, a: &Symbol, b: &Symbol) -> bool {
         match (a.ownership.package(), b.ownership.package()) {
             // One package is one folder: two versions side by side are
@@ -518,7 +518,7 @@ pub fn name_case(name: &str, fixed: &str, word: &str, form: &str, span: Span) ->
     .edit(span, fixed)
 }
 
-/// `type.standard_clash` (area 19, question 4): a declaration named like a
+/// `type.standard_clash` (area 19, "A release adding a standard type"): a declaration named like a
 /// standard type, which a release added after the application named its
 /// own. The swap is a type's only, since only a type can be replaced by
 /// the standard one; `jadpo fix` and the editor make either fix.

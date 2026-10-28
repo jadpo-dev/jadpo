@@ -536,7 +536,7 @@ pub trait Host {
     /// workers ([`crate::RateLimits`]; chunk 8.1l); on Workers the deployable counts in a Redis
     /// connection or Cloudflare's rate-limiting binding, and in the
     /// isolate's memory only while that can't be reached (area 16,
-    /// question 6). A host that counts nothing, as a test's, lets every
+    /// "Rate limits"). A host that counts nothing, as a test's, lets every
     /// request through.
     fn rate_limit<'a>(
         &'a self,

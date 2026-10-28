@@ -1,6 +1,6 @@
 //! Package surfaces and the publishing bar (area 11, "The surface" and
 //! "Developing and publishing a package"; area 18's `surface` record;
-//! area 19, question 1; chunk 7.1b): each package's public surface written
+//! area 19, "`type.standard_exists`"; chunk 7.1b): each package's public surface written
 //! as `surface.jadpo_record`, its entries pointing at their files, a
 //! package's public types held to the standard types, every public
 //! declaration's description, and the version a surface's changes allow.

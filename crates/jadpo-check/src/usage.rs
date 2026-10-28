@@ -818,7 +818,7 @@ fn promoted(
         return problem;
     }
     // A type's key carries its domain until it moves to `shared/`: the
-    // move writes the registry line that keeps it (area 18, question 8).
+    // move writes the registry line that keeps it (area 18, "Stable identity").
     if let (Move::Shared, ItemKind::Type(_), Some(domain)) = (
         &to,
         &item.kind,

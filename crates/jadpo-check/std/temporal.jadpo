@@ -1,4 +1,4 @@
-// The `temporal` namespace (area 10, "Zones and local times", question 7).
+// The `temporal` namespace (area 10, "Zones and local times").
 // Each operation is listed in `jadpo-std`'s operation table with the Rust
 // function in `jadpo-value` that runs it, over the IANA time zone
 // database bundled into every target.
@@ -21,7 +21,7 @@
 // `value` is an `Instant`, since a local time carries its own. The text is
 // written in `locale`, which an application that declares the locales it
 // supports (`locales { }` in `app.jadpo`) accepts only from them. The time
-// types are formatted with `text.format` (area 19, question 2), which
+// types are formatted with `text.format` (area 19, "The contract, generated"), which
 // `temporal.format` became.
 
 public library temporal {

@@ -61,7 +61,7 @@ fn digest(text: &str) -> u64 {
 /// The seed of the test with key `key`: from the key alone, so every run
 /// gives the test the same identities, tokens, codes and shuffles wherever
 /// it falls in the order (area 13, "Controlling time", amended by area 19,
-/// question 19).
+/// "Randomness").
 pub fn seed(key: &str) -> u64 {
     splitmix(digest(key))
 }

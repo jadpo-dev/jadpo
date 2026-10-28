@@ -2,7 +2,7 @@
 title: Personal data
 area: 15
 status: decided
-checked-with: jadpo 3ce094d0 (2026-10-12)
+checked-with: this checkout's jadpo on every gate run
 rules: []
 ---
 
@@ -12,7 +12,7 @@ How a Jadpo application says which data is about a person, so the compiler
 can export it, erase it, expire it and report where it lives. The aim is
 that GDPR, UK GDPR and CCPA/CPRA requests work out of the box.
 
-> Decided on 2026-10-13. Nothing on this page is built yet; it comes after the first build (roadmap). Examples apply the decisions from areas 1 to 15. The legal research and the options considered are in [the proposals](research/15-personal-data-proposals.md).
+> Not built yet, except the reading of `personal:` that area 21 uses; see [the roadmap](../roadmap.md).
 
 **What the law asks of an application.** Keep only the personal data you
 need, for as long as you need it (GDPR Article 5). Give a person a copy of
@@ -37,9 +37,12 @@ write down.
 ## Marking personal fields
 
 A field that identifies or describes a person says so in its block, with
-one category from a fixed list (question 1). The category decides how
-carefully the compiler treats the value; the list follows GDPR's special
-categories and the common groups used by privacy tools such as Fides.
+one category from a fixed list. The category decides how carefully the
+compiler treats the value; the list follows GDPR's special categories and
+the common groups used by privacy tools such as Fides. A bare
+`personal: true` cannot tell health data from an email address, and there
+are no custom categories, so reports stay comparable and the
+sensitive-data rules exact.
 
 ```jadpo fragment
 // domains/accounts/entities/user.jadpo
@@ -77,17 +80,16 @@ entity User {
 extra ones CCPA/CPRA lists, government IDs and precise location.
 
 - **Logs.** A marked field is written to logs as a keyed hash whatever its
-  type, so a marked `date_of_birth: CalendarDate` is hashed too (question
-  10). This refines area 4, which logs dates and numbers as values. The
+  type, so a marked `date_of_birth: CalendarDate` is hashed too, and so is
+  a marked field in failure context. This refines area 4, which logs dates
+  and numbers as values: the marking is the classification. The
   hash covers the UTF-8 bytes of the value's canonical text (`text.from`,
   `2026-10-25` for a date, `GBP 10.50` for an amount), or of its contract
   JSON as `json.write` writes it for a type with no single text form (a
   `PostalAddress`), so one value hashes the same in every log and on both
-  executors (decided by the lead session, 2026-10-18, under Richard's
-  instruction of 2026-10-17 that every boundary goes through area 19's
-  contract).
+  executors, as every boundary goes through area 19's contract.
 - **Sensitive fields** are never put in a cache, and every read of one is
-  recorded (question 9).
+  recorded.
 - **Records a person owns** need no marking on every field. A todo's title is
   the user's data because the todo belongs to them (next section), so it is
   exported and erased with them. Marking is for the fields whose value points
@@ -96,8 +98,9 @@ extra ones CCPA/CPRA lists, government IDs and precise location.
 ## The person
 
 The law calls the person data is about the *data subject*. An entity that
-represents one says `person: true` (question 2). Most applications have one,
-`User`; a clinic might also have `Patient`, a shop a guest `Customer`.
+represents one says `person: true`. Most applications have one, `User`;
+several are allowed, so a clinic might also have `Patient`, a shop a guest
+`Customer`.
 
 ```jadpo fragment
 entity User {
@@ -109,15 +112,16 @@ entity User {
 A record **belongs to** a person when it refers to them, directly or through
 a chain of references: a todo through `owner_id`, a todo's attachment through
 the todo. The compiler follows every reference, so nothing has to be listed
-twice, and the report shows the whole tree for review. A record that refers
+twice (tagging each owning reference would repeat what references already
+say), and the report shows the whole tree for review. A record that refers
 to two people, such as a message from one user to another, belongs to both.
 
 ## Erasure
 
 Erasing a person is a generated operation, `User.erase(user_id)`, called from
 an action you write (for a "delete my account" route, or a support tool).
-It removes the person's record and decides what happens to every record that
-belongs to them (question 3):
+It erases the person's record and decides what happens to every record that
+belongs to them:
 
 | `erase:` on a reference to a person | What happens to the record | Needs |
 |---|---|---|
@@ -129,7 +133,8 @@ Most references need nothing written: `OnDelete.cascade` means
 `Erasure.deleted` and `OnDelete.cleared` means `Erasure.anonymised`. A
 reference that is `OnDelete.restricted` must say `erase:`, because "a user
 with todos cannot be deleted" is the right rule for a mistaken click but the
-wrong one for a legal request.
+wrong one for a legal request. Most apps write one or two `erase:` lines,
+and the compiler refuses an erasure it cannot complete.
 
 ```jadpo fragment
 // domains/planning/entities/todo.jadpo
@@ -171,6 +176,17 @@ entity Invoice {
 }
 ```
 
+**The person's own record** is erased field by field, because it cannot
+always go: an insurer must keep policy records for at least five years.
+Where nothing must be kept, the record is deleted. Otherwise a field
+marked `erase: Erasure.retained` (with the entity's `retention:`) stays and
+every other marked field is cleared; the person can no longer sign in,
+receives nothing, and is excluded from every query except those that serve
+the retained purpose. When the retention ends the purge schedule deletes
+the rest. A kept record of another entity keeps its own copy of the
+details it needs, as the invoice does, never a stub of the person, and
+must have its own retention.
+
 What erasure reaches:
 
 - **Every store and cache.** The main store's records go in one
@@ -183,25 +199,30 @@ What erasure reaches:
   log (the person's `id` and the time, nothing else), and restoring a backup
   replays the log before the application starts. Backups themselves expire
   on the hosting platform's schedule, which the report states. This is what
-  the UK regulator (ICO) calls putting data "beyond use" (question 5).
+  the UK regulator (ICO) calls putting data "beyond use". There are no
+  per-person encryption keys: deleting a person's key ("crypto-shredding")
+  breaks unique lookups, indexes and search on encrypted fields, and no
+  regulator has said key deletion counts as erasure.
 - **Logs** are not rewritten either. They hold identifiers and hashes, never
   marked values, and expire on their own retention.
 - **Other companies.** Data already sent to a provider (an email provider,
   a payment provider) is outside the database. Providers that can erase
   are asked to, as "Erasure at providers" says; the report lists every
-  connection that receives a marked field and whether its copy is erased
-  (question 12).
+  connection that receives a marked field and whether its copy is erased.
+- **Files** (area 16) attached to erased records are deleted with them.
 - **OAuth grants** a person or record owns (area 11) are deleted with it,
   and revoked at the provider where the package declares how.
 - **Legal holds** are application data: an action that checks a hold flag
-  and refuses with its own failure before calling `User.erase` (question 6).
-  The same goes for restricting use while a complaint is open (Article 18).
+  and refuses with its own failure before calling `User.erase`. The same
+  goes for restricting use while a complaint is open (Article 18). Both are
+  rare in the apps Jadpo targets, and a built-in one would also have to
+  pause purge and retention.
 
 ### Erasure at providers
 
-Decided 2026-10-16 (Richard), revising question 15. A provider package
-declares how its provider erases a person, in its `provider.jadpo`; the
-app's connection names the field holding that person's key there.
+A provider package declares how its provider erases a person, in its
+`provider.jadpo`; the app's connection names the field holding that
+person's key there. Erasure emits a `PersonErased` event.
 
 ```jadpo fragment
 // packages/stripe/v2024_06_20/provider.jadpo
@@ -247,14 +268,13 @@ stripe: {
   (a CRM it calls through its own integration).
 
 This is a declaration on the package, not part of any capability (area
-11, design C), so Stripe and Postmark are erased the same way. Built with
-data requests, after the first build.
+11), so Stripe and Postmark are erased the same way.
 
 ## Export
 
 `User.export(user_id)` returns everything held about the person: their
 record and every record that belongs to them, as JSON, one list per entity,
-with the same field names as the API (question 7). That covers both the
+with the same field names as the API. That covers both the
 right of access and the right to take your data elsewhere ("portability",
 Article 20). Credentials, such as token hashes, are left out. The export
 also says how long each kind of data is kept and which companies receive it,
@@ -278,7 +298,7 @@ partial export or erasure is worse than none.
 
 GDPR's storage limitation means personal data needs an end date. A
 `retention:` block, in the same `after:` and `since:` shape as lifecycle
-purge, gives one (question 8):
+purge, gives one:
 
 - **On a field**, the value is cleared when the time is up; the field must be
   nullable. Good for an IP address kept for 30 days for fraud checks.
@@ -307,34 +327,109 @@ is listed in the report as "kept until erased".
 ## What the compiler checks
 
 - **Marked fields nothing reads.** A personal field that no query, output or
-  action reads is a warning: you are holding data you do not use (data
-  minimisation, Article 5). *Amended 2026-10-17 (Richard, area 1, question 11):* a declinable error,
-  since a field kept for a legal reason may be read only by export.
+  action reads is a declinable error (area 1): you are holding data you do
+  not use (data minimisation, Article 5). It is declinable because a field
+  kept for a legal reason may be read only by export.
 - **Erasure is complete.** Every reference into a person's tree has an
   erasure outcome; `Erasure.anonymised` and `Erasure.retained` have the
   nullable fields and retention they need.
+- **No personal data erasure cannot reach.** A marked field on an entity
+  that is not a person and does not belong to one through references is a
+  compile error ("erasure cannot find this: reference the person, or mark
+  the entity `person: true`"). With the completeness check above, every
+  stored copy of personal data is reachable.
 - **Sensitive fields stay out of caches**: a cache on an entity that holds
   one leaves those fields out.
 
-There is no `purpose:` setting and no consent model (question 11). Purposes
-and lawful bases belong in the privacy notice, which the team writes from the
-report; consent is ordinary application data, such as a `Consent` entity with
-the purpose and the time it was given and withdrawn.
+There is no `purpose:` setting and no consent model, because the compiler
+can check neither. Purposes and lawful bases belong in the privacy notice,
+which the team writes from the report; consent is ordinary application
+data, such as a `Consent` entity with the purpose and the time it was given
+and withdrawn.
+
+## Data requests
+
+`privacy:` in `app.jadpo` switches on generated routes for a person's
+requests to export or erase their data. Jadpo generates endpoints only,
+never pages: the app's frontend builds the page, and a recipe can show one.
+
+- **Self-service by email.** `privacy: { self_service: {} }` turns it on.
+  `POST /privacy/requests` (`address`) answers `202` for every address, so
+  it never reveals who has an account, and sends the address-check email.
+  Its single-use link opens the frontend path
+  `self_service: { link: "/privacy/confirm" }` at the browser origin with a
+  token; the frontend posts `POST /privacy/requests/confirm` (`token`,
+  `kind`: `export` or `erasure`) to create the request. The erasure
+  confirmation's cancel link opens
+  `self_service: { cancel_link: "/privacy/cancel" }`, which posts
+  `POST /privacy/requests/cancel` (`token`). Loading a frontend page
+  consumes nothing, so mail scanners confirm and cancel nothing.
+- **Signed in.** `POST /privacy/export` and `POST /privacy/erasure` need a
+  recent sign-in (`RouteAuthentication.fresh`) and act only on the
+  caller's own record: there is no person id to pass. Export answers `202`
+  and delivers a download link when it is ready.
+- **Staff.** Requests received by email or phone are created through
+  generated actions, granted in `policy.jadpo`
+  (`privacy.create_request: [StaffRole.support]`), after staff verify the
+  person. Each records who created it and how identity was checked, and
+  the export still goes to the person's own email, never to the staff
+  member. A schedule or subscriber never makes a request; only retention
+  purges erase on a schedule.
+- **Export** is delivered as a single-use download link that expires after
+  7 days, never as an attachment; the file is encrypted at rest, deleted on
+  expiry, and every download is in the access records. Where the files
+  are kept is set in `privacy: { exports: { store: keep: } }`.
+- **Erasure** waits out a cooling-off period the app sets (default 14
+  days), with a cancel link in the confirmation email. The completion
+  email says what was kept and why, since the person must be told: an
+  entity marked `Erasure.retained` needs a wording in its domain's language
+  files, which the email lists.
+- **Deadlines.** Every request is a record with its one-month legal
+  deadline; `jadpo privacy requests` and the console list them, and one
+  nearing its deadline raises an alert.
+- **Events** at every step: `PrivacyRequestReceived`, `PrivacyExportReady`
+  (with the download link), `PrivacyErasureScheduled`,
+  `PrivacyErasureCompleted`, `PrivacyRequestOverdue`. The built-in emails
+  are subscribers to these; an app can add its own (Slack, a CRM) or
+  replace the emails. With no mail connection, the compiler requires a
+  subscriber that delivers `PrivacyExportReady`.
+- **Protection:** rate limits on the routes (area 16), links single-use and
+  short-lived, every step in the access records.
+
+These routes take `path:` and `routes: false` like every generated route
+(area 7), over generated `privacy.request`, `privacy.confirm` and
+`privacy.cancel` operations that keep every protection.
+
+The privacy emails (the address check, export ready, erasure confirmed,
+erasure completed) are built-in emails and change at area 16's five
+levels ("Built-in emails"): Jadpo's own email, its words in the root
+`translations/` under `jadpo: { }` (area 10), the app's shared layout, the
+app's own `EmailMessage` (`email:`), or the app's own sending (`send:`).
+They go through the app's one `email:` connection in `application { }`,
+and need `application { display_name: }`. Each has a built-in type and a
+request type for `send:`: `PrivacyAddressCheckEmail`, `PrivacyExportEmail`,
+`PrivacyErasureConfirmedEmail` and `PrivacyErasureCompletedEmail`, set in
+`privacy: { emails: { address_check: { } export_ready: { }
+erasure_confirmed: { } erasure_completed: { } } }`, each entry taking
+`email:` or `send:`, never both; their fields are in area 16.
 
 ## Access records
 
 Every export and erasure is recorded: who asked, for which person `id`, and
-when, never the values. So is every read of a sensitive field (question 9). These are log events with a long retention, so an organisation can show a
-regulator what it did. Reads of ordinary personal data are not recorded one by
-one; that would log almost every request.
+when, never the values. So is every read of a sensitive field. These are
+log events with a long retention, so an organisation can show a regulator
+what it did. Reads of ordinary personal data are not recorded one by one;
+GDPR asks for accountability and security, not a log of every read, and
+that would log almost every request.
 
 ## Where data is stored
 
 Each store is one database in one place. Data that must stay in the EU lives
 in a deployment whose stores are in the EU; an application serving several
-regions runs one deployment per region (decided in area 5's research, P6).
-There is no region setting in source (question 12); the report lists each
-store with the configuration setting that says where it is.
+regions runs one deployment per region (area 5). There is no region setting
+in source, since one the compiler cannot verify would give false comfort;
+the report lists each store with the configuration setting that says where
+it is.
 
 ## The personal-data report
 
@@ -360,16 +455,29 @@ the organisation's details. Changes to the report appear in the approval
 review (area 9), so a pull request that starts sending email addresses to a
 new provider is seen by a person before it ships.
 
-> Amended 2026-10-17 by area 19 (questions 10, 20 and 21): an entity field
-> may be stored encrypted, `notes: ClinicalNote { encrypted: true }`,
-> sealed with the application's one `field_encryption_key:`, decrypted on
-> load, and kept out of unique rules, indexes, filters, ordering, search
-> and logs. Per-person keys stay out (question 5). Its full design is this
-> area's, built with personal data after the first build, together with
-> keys held as data (a key per device or person in an encrypted field,
-> usable only as a `crypto` call's `key:`). Every field sent to an AI
-> model is listed in the report above (the AI area, planned in chunk
-> 5.5v).
+## Encrypted fields
+
+An entity field may be stored encrypted,
+`notes: ClinicalNote { encrypted: true }` (area 19), sealed with the application's one
+`field_encryption_key:`, decrypted on load, and kept out of unique rules,
+indexes, filters, ordering, search and logs. There are no per-person keys
+(see Erasure). The full design is this area's, built with personal data,
+together with keys held as data (a key per device or person in an
+encrypted field, usable only as a `crypto` call's `key:`). Every field sent
+to an AI model is listed in the report above (area 21).
+
+## What this does not cover
+
+The report says so plainly. Covered by the language: minimisation and
+storage limitation, access, rectification (ordinary updates), erasure,
+portability, privacy by design, records of processing (most of Article
+30), security of processing. Supported but the application's choice:
+restriction and objection, consent. Not code at all: lawful basis, privacy
+notice, DPIAs, processor contracts, the DPO. Still to add: breach
+notification (from the report and access records, list the people whose
+marked data a breached store or provider held) and international transfers
+(provider packages declare where data is processed, shown in the report).
+This is not legal advice; a privacy professional reviews the report.
 
 ## Review
 
@@ -377,19 +485,14 @@ new provider is seen by a person before it ships.
 
 Nothing on this page is built yet, but for one reading: an entity's and
 an event's `personal: PersonalData.<category>` is read and checked against
-the fourteen categories, for area 21's check of what reaches a model
-(chunk 5.5v5b). The rest is first on the roadmap's list of work after the
-first build.
+the fourteen categories, for area 21's check of what reaches a model. The
+rest is on [the roadmap](../roadmap.md).
 
 ### Consistency with the rest of the language
 
-- **Area 4's log rule.** Area 4 logs dates, numbers and enums as values and
-  hashes only text. A marked `date_of_birth` or `health_status` enum would be
-  logged in the clear; question 10 proposes hashing every marked field, which
-  area 4 left open ("area 9's data classification can refine it later").
 - **Hard delete.** Area 5 says code cannot hard-delete a record with a
   lifecycle. Erasure does, as purge does; both are the compiler's own
-  operations, which area 9 already exempts from policy.
+  operations, which area 9 exempts from policy.
 - **Two shapes for an end date.** `retention:` reuses purge's `after:` and
   `since:` but applies to visible records too. Purge stays the form for
   soft-deleted records.
@@ -404,234 +507,42 @@ first build.
 
 ### Carried to later areas
 
-| Item | Area | Status |
-|---|---|---|
-| Hash every marked field in logs, whatever its type | 4 | Question 10 |
-| Erasure and retention as compiler operations alongside purge; `retention:` beside `purge:` | 5 | Questions 3 and 8 |
-| Exports large enough to need paging or a snapshot read | 6, 12 | Question 7 |
-| Erase maps to the delete grant and export to read; personal-data report changes in the approval review; answers area 9 question 11 | 9 | Questions 7 and 12 |
-| Retention periods as settings | 10 | Question 8 |
-| Integrations that receive marked fields; asking a provider to delete | 11 | Question 12 |
-| Erasure of other stores by a generated subscriber; retention in the purge schedule; marked fields in event payloads | 12 | Questions 3 and 8 |
-| Generated tests: after `erase`, `export` returns nothing and no cache holds the person | 13 | Input to area 13 |
-| The report's file and form; the `Expected {expected}` bug in parse errors | 14 | Question 12; Status |
-
-### Open questions
-
-1. **Is a personal field marked `personal: PersonalData.category`, from a
-   fixed list?** A bare `personal: true` cannot tell health data from an
-   email address, and the law treats them differently. *Recommendation:* yes,
-   one category per field from the fourteen above, no custom categories.
-   Fides lets teams extend its taxonomy; a fixed list keeps reports
-   comparable and the sensitive-data rules exact. *Decided 2026-10-13:* yes, as recommended.
-2. **Is the person declared `person: true` on the entity, with ownership
-   found by following references?** *Recommendation:* yes, several person
-   entities allowed. The alternative, tagging each owning reference, repeats
-   what references already say; Fides and Transcend both walk relationships
-   from an identity in the same way. *Decided 2026-10-13:* yes, as recommended.
-3. **Does erasure follow `on_delete:`, with `erase:` required only on
-   restricted references?** *Recommendation:* yes, with three outcomes,
-   `Erasure.deleted`, `Erasure.anonymised` and `Erasure.retained`.
-   Inferring from `on_delete:` means most apps write one or two `erase:`
-   lines, and the compiler refuses an erasure it cannot complete. *Decided 2026-10-13:* yes, as recommended.
-4. **When a record is kept, does it keep its own copy of the details it
-   needs, rather than a stub of the person?** *Recommendation:* yes: the
-   person's record is always deleted, and kept records (`Erasure.retained`)
-   must have their own retention. A half-erased user record breaks unique
-   fields and required types; invoices copy billing details anyway.
-   *Revised 2026-10-13 after Richard's Waggel case* (insurance records kept
-   at least five years): the person's own record cannot always go. Revised
-   recommendation: erasure works field by field on the person too. A field
-   marked `erase: Erasure.retained` (with the entity's `retention:`) stays;
-   every other marked field is cleared; the person can no longer sign in,
-   receives nothing, and is excluded from every query except those that
-   serve the retained purpose; when retention ends the purge schedule deletes
-   the rest automatically. Where nothing must be kept, the record is deleted
-   as before. *Decided 2026-10-13:* the revised recommendation.
-5. **Are backups handled by an erasure log replayed after restore, not by
-   per-person encryption keys?** *Recommendation:* yes. Deleting a person's
-   key ("crypto-shredding") reaches backups but breaks unique lookups,
-   indexes and search on encrypted fields and needs key management; the ICO
-   accepts backups being put beyond use and expiring, and no regulator has
-   said key deletion counts as erasure. django-gdpr-assist replays erasures
-   after a restore the same way. Revisit for sensitive fields if a real app
-   needs it. See the
-   [proposals](research/15-personal-data-proposals.md). *Decided 2026-10-13:* yes, as recommended.
-6. **Are legal holds and restriction (Article 18) left to the
-   application?** *Recommendation:* yes: a hold is a field and a failure the
-   erase action checks. Both are rare in the apps Jadpo targets; a built-in
-   one would also have to pause purge and retention. *Decided 2026-10-13:* yes, as recommended.
-7. **Is export generated JSON of every record that belongs to the person,
-   gated by read access to the person's record?** *Recommendation:* yes,
-   with credentials left out. One generated operation covers access and
-   portability; Rails and Django leave this to hand-written serialisers,
-   which miss new tables. *Decided 2026-10-13:* yes, as recommended.
-8. **Is retention a `retention: { after: since: }` block on a field (clears
-   it) or an entity (deletes it)?** *Recommendation:* yes, periods from
-   `config`, applied by the purge schedule. Field retention covers IP
-   addresses and logs of activity; entity retention covers invoices and
-   inactive accounts. *Decided 2026-10-13:* yes, as recommended.
-9. **Which access is recorded?** *Recommendation:* every export and
-   erasure, and every read of a sensitive field, with no values; not
-   ordinary reads. GDPR asks for accountability and security, not a log of
-   every read; health apps are the case that needs read records. *Decided 2026-10-13:* yes, as recommended.
-10. **Are marked fields always hashed in logs and failure context?**
-    *Recommendation:* yes, whatever the type. This refines area 4's rule and
-    answers area 9's question 11: the marking is the classification. *Decided 2026-10-13:* yes, as recommended.
-11. **Should the language model purpose and consent?** *Recommendation:*
-    no. Neither can be checked by the compiler; purposes go in the privacy
-    notice built from the report, and consent is application data. Fides and
-    OneTrust sell consent as a separate product for the same reason. *Decided 2026-10-13:* yes, as recommended.
-12. **Is the report a build file that lists stores, integrations and
-    retention, with no region setting in source?** *Recommendation:* yes:
-    `build/report/personal-data.md` and `.json`, shown in the approval review
-    when it changes. Residency stays a deployment per region; a region
-    setting the compiler cannot verify would give false comfort. *Decided 2026-10-13:* yes, as recommended.
-13. **Are there generated routes for data requests?** Raised by Richard
-    (2026-10-13). *Recommendation:* yes, switched on with
-    `privacy: { routes: true }` in `app.jadpo`. `POST /privacy/export`
-    (signed in, recent sign-in required, `RouteAuthentication.fresh`)
-    answers 202 and delivers a download link when the export is ready;
-    `POST /privacy/erasure` (same checks) records an erasure request and
-    carries it out after a cooling-off period the app sets (default 14
-    days, cancellable by the person). Requests received another way (email,
-    support) are created by staff through generated actions after they
-    verify the person. Every request is a record with its one-month legal
-    deadline; `jadpo privacy requests` and the console list them, and one
-    nearing its deadline raises an alert.
-    *Revised 2026-10-13 after Richard asked for it to work with no frontend
-    built:* `privacy: { self_service: { email: <connection> } }` in
-    `app.jadpo` switches on the whole flow.
-    - **Out of the box:** a small generated privacy page at `/privacy`
-      (accessible, translated, branded from configuration, designed with the
-      design skills before it is built). A person enters their email; the
-      reply is always "if an account exists, we have emailed you", so it
-      never reveals who has an account. A single-use link proves they control
-      the address; they choose export or erasure and confirm.
-    - **Export** is delivered by email as a single-use download link that
-      expires after 7 days, never as an attachment; the file is encrypted at
-      rest, deleted on expiry, and every download is in the access records.
-    - **Erasure** waits out the cooling-off period, with a cancel link in the
-      confirmation email; the completion email says what was kept and why
-      (the law allows keeping records such as insurance policies, and the
-      person must be told).
-    - **Events** at every step: `PrivacyRequestReceived`,
-      `PrivacyExportReady` (with the download link), `PrivacyErasureScheduled`,
-      `PrivacyErasureCompleted`, `PrivacyRequestOverdue`. The built-in emails
-      are subscribers to these; an app can add its own (Slack, a CRM) or
-      replace the emails. With no mail connection, the compiler requires a
-      subscriber that delivers `PrivacyExportReady`.
-    - **Who may ask, three ways:** the person themselves, through the page
-      (email verified) or the API (`POST /privacy/export` and
-      `/privacy/erasure`, signed in recently, acting only on their own
-      record: there is no person id to pass); staff, through generated actions
-      for requests received by email or phone, granted in `policy.jadpo`
-      (`privacy.create_request: [StaffRole.support]`), recording who created
-      it and how identity was checked, with the export still going to the
-      person's own email, never to the staff member; and never a schedule or
-      subscriber, except retention purges.
-    - **Protection:** rate limits on the page and API (area 16), links
-      single-use and short-lived, every step in the access records. *Decided 2026-10-13:* the revised recommendation.
-    *Revised 2026-10-16 (Richard, built-in emails):* the privacy emails (the
-    address check, export ready, erasure scheduled, erasure completed) are
-    built-in emails and change in area 16's five levels ("Built-in emails"):
-    Jadpo's own email, its words in the root `translations/` under
-    `jadpo: { }` (area 10), the app's shared layout, the app's own
-    `EmailMessage` (`email:`), or the app's own sending (`send:`). They go
-    through the app's one `email:` connection in `application { }`, so
-    `self_service: { email: <connection> }` becomes `self_service: {}`.
-    Each has a built-in type and a request type for `send:`:
-    `PrivacyAddressCheckEmail`, `PrivacyExportEmail`,
-    `PrivacyErasureConfirmedEmail` and `PrivacyErasureCompletedEmail`, set
-    in `privacy: { emails: { address_check: { } export_ready: { }
-    erasure_confirmed: { } erasure_completed: { } } }`, each entry taking
-    `email:` or `send:`, never both; their fields are in area 16. An entity
-    marked `Erasure.retained` needs a wording in its domain's language
-    files, which the completion email lists as what was kept. The privacy
-    emails need `application { display_name: }` (area 16).
-    *Revised 2026-10-16 (Richard, no pages):* Jadpo generates endpoints
-    only, never pages, so the generated `/privacy` page is replaced by
-    endpoints the app's frontend calls; the frontend builds the page, and a
-    recipe can show one. `POST /privacy/requests` (`address`) answers `202`
-    for every address and sends the address-check email, whose link opens
-    the frontend path `self_service: { link: "/privacy/confirm" }` at the
-    browser origin with a token; the frontend posts
-    `POST /privacy/requests/confirm` (`token`, `kind`: `export` or
-    `erasure`) to create the request, and the erasure confirmation's cancel
-    link opens `self_service: { cancel_link: "/privacy/cancel" }`, which
-    posts `POST /privacy/requests/cancel` (`token`). Loading a frontend page
-    consumes nothing, so mail scanners cancel and confirm nothing. These
-    routes take `path:` and `routes: false` like every generated route
-    (area 7), over generated `privacy.request`, `privacy.confirm` and
-    `privacy.cancel` operations that keep every protection; the signed-in
-    `POST /privacy/export` and `/privacy/erasure` stay as they are.
-14. **How is personal data that erasure cannot reach prevented?** Raised by
-    Richard (2026-10-13): no siloed data left behind. *Recommendation:* a
-    compile error for any marked personal field on an entity that is not a
-    person and does not belong to one through references ("erasure cannot
-    find this: reference the person, or mark the entity `person: true`").
-    With area 15's completeness check (every reference into a person's
-    records has an erasure outcome), every stored copy of personal data is
-    reachable. Files (area 16) attached to erased records are deleted with
-    them; caches are wiped (area 5); logs only hold hashes (area 4); backups
-    replay the erasure log (question 5). *Decided 2026-10-13:* yes, as recommended.
-15. **How are copies held by providers erased?** *Recommendation:* erasure
-    emits a `PersonErased` event; a provider package can declare its
-    deletion operation (Stripe's customer delete, an email provider's
-    contact delete), and the compiler requires a subscriber for every
-    connection that receives marked fields, or an accepted reason it is not
-    needed (area 18). The personal-data report lists each provider and
-    whether its copy is erased automatically. *Decided 2026-10-13:* yes, as recommended.
-    *Revised 2026-10-16 (Richard):* the package declares its erasure
-    operation (`erasure: { call: by: }` in `provider.jadpo`) and the
-    connection names the app's field holding the key (`erasure: { key: }`);
-    Jadpo copies each key into the erasure event, erases the person in one
-    transaction, then a generated subscriber calls each provider after
-    commit, retried until it confirms. The completion email goes only when
-    every provider has confirmed; a delivery that gives up is parked and
-    shown. A copied key that is personal data stays only in the outbox
-    until delivered, listed in the report. A connection that receives
-    personal data but cannot erase it is an error unless an acceptance
-    states why. Erasing a person or record also deletes and revokes its
-    OAuth grants.
-16. **What does this not cover?** *Recommendation:* say so plainly in the
-    report. Covered by the language: minimisation and storage limitation,
-    access, rectification (ordinary updates), erasure, portability,
-    privacy by design, records of processing (most of Article 30), security
-    of processing. Supported but the application's choice: restriction and
-    objection, consent. Not code at all: lawful basis, privacy notice,
-    DPIAs, processor contracts, the DPO. Added support worth building:
-    breach notification (from the report and access records, list the
-    people whose marked data a breached store or provider held) and
-    international transfers (provider packages declare where data is
-    processed, shown in the report). Not legal advice; a privacy
-    professional reviews the report. *Decided 2026-10-13:* yes, as recommended.
+| Item | Area |
+|---|---|
+| Hash every marked field in logs, whatever its type | 4 |
+| Erasure and retention as compiler operations alongside purge; `retention:` beside `purge:` | 5 |
+| Exports large enough to need paging or a snapshot read | 6, 12 |
+| Erase maps to the delete grant and export to read; personal-data report changes in the approval review | 9 |
+| Retention periods as settings | 10 |
+| Integrations that receive marked fields; asking a provider to delete | 11 |
+| Erasure of other stores by a generated subscriber; retention in the purge schedule; marked fields in event payloads | 12 |
+| Generated tests: after `erase`, `export` returns nothing and no cache holds the person | 13 |
+| The report's file and form | 14 |
 
 ### Decisions
 
-| Topic | Decision | Date |
-|---|---|---|
-| Setting options | Carried from area 2: options are enum values written `Type.value`, values rather than verbs | 2026-10-12 |
-| References | Carried from area 5: every field typed `X.id` is a reference with a required `on_delete:` | 2026-10-12 |
-| Lifecycle | Carried from area 5: `purge: { after: since: }` deletes hidden records; code cannot hard-delete a record with a lifecycle | 2026-10-12 |
-| Caches | Carried from area 5: caches are opt-in copies for display reads; erasing personal data wipes cached copies immediately | 2026-10-12 |
-| Logs | Carried from area 4: identifiers, numbers, enums, booleans and times as values; text as a keyed hash; secrets never | 2026-10-12 |
-| Stores | Carried from area 5: an action writes at most one store; stores declared in `app.jadpo` | 2026-10-12 |
-| Marking | `personal: PersonalData.category` from a fixed list of 14, eight sensitive | 2026-10-13 |
-| The person | `person: true` on the entity; ownership found by following references; several person entities allowed | 2026-10-13 |
-| Erasure outcomes | Generated `Person.erase(id)`; outcomes follow `on_delete:`; `erase: Erasure.deleted/.anonymised/.retained` required on restricted references | 2026-10-13 |
-| Kept records | Field-by-field erasure on the person too: retained fields stay until retention ends, the rest is cleared, the person cannot sign in; purge deletes the rest automatically | 2026-10-13 |
-| Backups | An erasure log replayed after restore; no per-person keys for now | 2026-10-13 |
-| Legal holds | Left to the application | 2026-10-13 |
-| Export | Generated `Person.export(id)` as JSON of everything belonging to the person, credentials left out | 2026-10-13 |
-| Retention | `retention: { after: since: }` on a field (clears) or entity (deletes); periods from config; applied by the purge schedule | 2026-10-13 |
-| Access records | Every export, erasure and read of a sensitive field recorded without values | 2026-10-13 |
-| Logs of marked fields | Every marked field hashed in logs, whatever its type (amends area 4) | 2026-10-13 |
-| Purpose and consent | Not in the language | 2026-10-13 |
-| Report and residency | `build/report/personal-data.md` and `.json`, shown in review when it changes; residency by deployment per region | 2026-10-13 |
-| Data request routes | (Revised 2026-10-16: endpoints only, no `/privacy` page: `POST /privacy/requests`, `/confirm` and `/cancel`, the emails linking to the frontend's `link:` and `cancel_link:` paths. The emails are area 16's built-in emails, sent through the app's one `email:` connection; `self_service: {}`, and `emails: { address_check: export_ready: erasure_confirmed: erasure_completed: }` each taking `email:` or `send:`.) `privacy: { self_service: { email: } exports: { store: keep: } }`: a generated `/privacy` page with email verification, export by expiring link, erasure after a cooling-off period, events at every step, API routes for the person only, staff actions granted in policy | 2026-10-13 |
-| Unreachable personal data | A marked field that belongs to no person is a compile error; every reference into a person's records has an erasure outcome | 2026-10-13 |
-| Provider copies | Erasure emits `PersonErased`; every connection receiving marked fields needs a deleting subscriber or an accepted reason (Revised 2026-10-16: the package's `erasure:` and the connection's key; see below) | 2026-10-13 |
-| Erasure at providers | The package's `erasure: { call: by: }`, the connection's `erasure: { key: }`; the app erased first in one transaction, then each provider by a generated subscriber after commit, retried until confirmed; the completion email only when all confirm; parked deliveries shown; personal keys only in the outbox until delivered; a connection that cannot erase needs an acceptance stating why; OAuth grants deleted and revoked (Richard) | 2026-10-16 |
-| Report additions | Erasure per connection, keys waiting in the outbox, multi-step step records and OAuth grants listed in the personal-data report (Richard, areas 11 and 12) | 2026-10-16 |
-| Coverage and gaps | The report states what the language covers, what is the app's choice and what is not code; breach-notification and transfer support to add | 2026-10-13 |
+| Topic | Decision |
+|---|---|
+| Setting options | Carried from area 2: options are enum values written `Type.value`, values rather than verbs |
+| References | Carried from area 5: every field typed `X.id` is a reference with a required `on_delete:` |
+| Lifecycle | Carried from area 5: `purge: { after: since: }` deletes hidden records; code cannot hard-delete a record with a lifecycle |
+| Caches | Carried from area 5: caches are opt-in copies for display reads; erasing personal data wipes cached copies immediately |
+| Logs | Carried from area 4: identifiers, numbers, enums, booleans and times as values; text as a keyed hash; secrets never |
+| Stores | Carried from area 5: an action writes at most one store; stores declared in `app.jadpo` |
+| Marking | `personal: PersonalData.category` from a fixed list of 14, eight sensitive |
+| The person | `person: true` on the entity; ownership found by following references; several person entities allowed |
+| Erasure outcomes | Generated `Person.erase(id)`; outcomes follow `on_delete:`; `erase: Erasure.deleted/.anonymised/.retained` required on restricted references |
+| Kept records | Field-by-field erasure on the person too: retained fields stay until retention ends, the rest is cleared, the person cannot sign in; purge deletes the rest automatically |
+| Backups | An erasure log replayed after restore; no per-person keys |
+| Legal holds | Left to the application |
+| Export | Generated `Person.export(id)` as JSON of everything belonging to the person, credentials left out |
+| Retention | `retention: { after: since: }` on a field (clears) or entity (deletes); periods from config; applied by the purge schedule |
+| Access records | Every export, erasure and read of a sensitive field recorded without values |
+| Logs of marked fields | Every marked field hashed in logs, whatever its type (amends area 4) |
+| Purpose and consent | Not in the language |
+| Report and residency | `build/report/personal-data.md` and `.json`, shown in review when it changes; residency by deployment per region |
+| Data requests | Endpoints only, no pages: `POST /privacy/requests`, `/confirm` and `/cancel` for self-service, the emails linking to the frontend's `link:` and `cancel_link:` paths; signed-in `POST /privacy/export` and `/privacy/erasure` for the person only; staff actions granted in policy; export by expiring link, erasure after a cooling-off period, events at every step; the emails are area 16's built-in emails, each taking `email:` or `send:` |
+| Unreachable personal data | A marked field that belongs to no person is a compile error; every reference into a person's records has an erasure outcome |
+| Erasure at providers | The package's `erasure: { call: by: }`, the connection's `erasure: { key: }`; the app erased first in one transaction, then each provider by a generated subscriber after commit, retried until confirmed; the completion email only when all confirm; parked deliveries shown; personal keys only in the outbox until delivered; a connection that cannot erase needs an acceptance stating why; OAuth grants deleted and revoked |
+| Report additions | Erasure per connection, keys waiting in the outbox, multi-step step records and OAuth grants listed in the personal-data report |
+| Coverage and gaps | The report states what the language covers, what is the app's choice and what is not code; breach-notification and transfer support to add |

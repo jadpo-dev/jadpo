@@ -148,7 +148,7 @@ pub fn run(
         (Op::DecimalRound, [Value::Decimal(d), Value::Int(scale), rounding]) => {
             decimal::round(*d, *scale, rounding_of(rounding)?).map(Value::Decimal)
         }
-        // The maths on `Decimal` (area 19, question 18).
+        // The maths on `Decimal` (area 19, "Maths on `Decimal`").
         (Op::DecimalSqrt, [value, Value::Int(scale), rounding]) => {
             decimal::sqrt(decimal_of(value)?, *scale, rounding_of(rounding)?).map(Value::Decimal)
         }
@@ -441,7 +441,7 @@ pub fn run(
             | Op::EncodingFromUtf8,
             _,
         ) => Err(Fault::Shape),
-        // SHA-256 of bytes, or of text's UTF-8 (area 19, question 24).
+        // SHA-256 of bytes, or of text's UTF-8 (area 19, "A digest is `Bytes`").
         // The geospatial measures (area 20, "Operations").
         (Op::GeoDistance, [from, to]) => geo::distance(from, to),
         (Op::GeoBearing, [from, to]) => geo::bearing(from, to),
@@ -492,7 +492,7 @@ pub fn run(
         (Op::JsonRead | Op::JsonWrite, _) => Err(Fault::Shape),
         // `random` reads the generator, so the runtime's entry point for
         // effects runs it through [`random::run`] with the invocation's
-        // source of random bytes (area 19, question 19).
+        // source of random bytes (area 19, "Randomness").
         (
             Op::RandomCode
             | Op::RandomInteger

@@ -1734,7 +1734,7 @@ impl Body<'_> {
             return Ty::Error;
         }
         // A list in its order, a set in the canonical order (area 2, "Set
-        // order"; area 19, question 8).
+        // order"; area 19, "Sets and maps").
         if !self.table.is_nullable(&items)
             && let Ty::List(item) | Ty::Set(item) = self.table.structure(&items)
         {

@@ -1,6 +1,5 @@
 //! The SQL each query and `get` runs on PostgreSQL (area 6;
-//! docs/compiler-runtime.md §2.1: "SQL per engine with policy compiled
-//! in"), as [`jadpo_std::read`] plans both executors run.
+//! docs/compiler-runtime.md §2.1, `jadpo-plan`), as [`jadpo_std::read`] plans both executors run.
 //!
 //! - A query is one `SELECT` of only the columns its result needs, plus its
 //!   order's columns when it pages and the keys its includes match;
@@ -749,7 +748,7 @@ impl Planner<'_> {
     /// lifecycle's `visible:` (area 5), so a hidden record is in no query,
     /// `get`, update or delete, and policy grants with chunk 4.4. A parent
     /// a record refers to is read even when its lifecycle hides it, since
-    /// the reference still holds (area 6, question 10).
+    /// the reference still holds (area 6, "Children and parents").
     pub(crate) fn access(
         &self,
         bind: &mut dyn Bind,

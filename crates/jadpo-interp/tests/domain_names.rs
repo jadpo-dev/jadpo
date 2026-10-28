@@ -1,6 +1,6 @@
 //! Area 1, "Files and names" (chunk 5.3d): two domains each with a private
 //! type and helper of one name run their own, since each key carries its
-//! domain (area 18, question 8).
+//! domain (area 18, "Stable identity").
 
 use jadpo_db::{Database, File, Layout, Project};
 use jadpo_interp::Program;

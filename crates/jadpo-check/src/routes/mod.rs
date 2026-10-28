@@ -164,8 +164,8 @@ pub struct Run {
     /// generated query.
     pub name: String,
     pub args: Vec<Arg>,
-    /// For a generated query (area 8, "Listing tokens and keys from a
-    /// `GET`"): `sessions.tokens` or the service entity's `keys`, which
+    /// For a generated query (area 8, "Listing from a `GET` route"):
+    /// `sessions.tokens` or the service entity's `keys`, which
     /// no declaration holds.
     pub generated: Option<jadpo_std::http::SessionOp>,
 }
@@ -728,7 +728,7 @@ pub fn table_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
 }
 
 /// Routes that need a signed-in caller when nothing signs anyone in (area
-/// 8; area 14, question 11: `jadpo check` reports what couldn't run),
+/// 8; area 14, "Build-only errors in `check`": `jadpo check` reports what couldn't run),
 /// reported once, at the first in file order.
 #[salsa::tracked(returns(ref))]
 pub fn signin_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
@@ -2220,8 +2220,8 @@ impl Reader<'_> {
     }
 
     /// `sessions.tokens(...)` or the service entity's `keys(...)`: the
-    /// generated queries a `GET` runs (area 8, "Listing tokens and keys
-    /// from a `GET`"), and the generated writes beside them, which a
+    /// generated queries a `GET` runs (area 8, "Listing from a `GET` route"),
+    /// and the generated writes beside them, which a
     /// route can't run.
     fn generated(&self, call: &ast::CallExpr) -> Option<SessionOp> {
         let callee = call.expr()?;

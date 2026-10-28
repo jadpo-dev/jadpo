@@ -769,7 +769,7 @@ impl Body<'_> {
         if needs.min_length.is_some() || needs.max_length.is_some() || needs.dimensions.is_some() {
             let counted = self.counted(value, actual);
             // A text operation's result is never longer than the text it
-            // cuts (`at_most_length_of`, area 19, question 29).
+            // cuts (`at_most_length_of`, area 19, "`at_most_length_of`").
             let high = has.max_length.or_else(|| self.length_bound(value));
             let low = has.min_length;
             let at_least_length = |n: u64, low: Option<u64>, counted: Option<&Counted>| {

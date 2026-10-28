@@ -6,12 +6,12 @@
 //! way.
 //!
 //! A schedule runs as the system with no tenant (area 9, `Access.system`;
-//! area 12, "A schedule and tenants"), so what its action reaches that
+//! area 12, "Background work and tenants"), so what its action reaches that
 //! only `Access.public` grants is `policy.system_grant_missing`, as for a
 //! subscriber (decided 2026-10-19). Its state and lease go in the store
 //! `schedules: { store: }` names, or the only database when there is one;
 //! with several and none named, each schedule is
-//! `schedule.store_required` (area 12, "Outbox placement, settled").
+//! `schedule.store_required` (area 12, "Outbox placement").
 
 use std::collections::BTreeMap;
 use std::sync::Arc;

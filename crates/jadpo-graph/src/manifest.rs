@@ -19,7 +19,7 @@ use crate::{Detail, EdgeKind, Graph, Key, Kind, Node, NodeId, Rules, rule_pairs}
 
 /// The manifest's format number: 2 since chunk 5.3d, when the key of a
 /// function or type declared in a domain began to carry the domain, `type
-/// billing.Address` (area 18, question 8). Manifests are never stored, so
+/// billing.Address` (area 18, "Stable identity"). Manifests are never stored, so
 /// nothing reads an older one.
 pub const FORMAT: i64 = 2;
 

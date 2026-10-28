@@ -16,7 +16,7 @@ different types.
 3. **Field types.** `CakeLine.each` is a type of its own. Same file; [area 2, Field types](../../docs/language/02-values-and-types.md#field-types).
 4. **Enums and tagged unions.** Plain variants, variants with fields (built like objects in its tests), and reading them with `match`. See `actions/choose_handover.jadpo` and [area 2, Enums](../../docs/language/02-values-and-types.md#enums).
 5. **Values never change.** Rebuilding an object, a field used as a constructor to give a computed price the field's type, an absent field read with `match`, and `==` comparing contents. See `actions/reprice_line.jadpo` and [area 2, Values never change](../../docs/language/02-values-and-types.md#values-never-change).
-6. **Types built from other types.** `include`, `pick`, `omit`, a written field replacing a copied one, and `optional: all`. See `actions/summarise_line.jadpo`, then `actions/show_on_menu.jadpo` and `actions/change_line.jadpo`, and [area 2, Decided: building a type from other types](../../docs/language/02-values-and-types.md#decided-building-a-type-from-other-types).
+6. **Types built from other types.** `include`, `pick`, `omit`, a written field replacing a copied one, and `optional: all`. See `actions/summarise_line.jadpo`, then `actions/show_on_menu.jadpo` and `actions/change_line.jadpo`, and [area 2, Building a type from other types](../../docs/language/02-values-and-types.md#building-a-type-from-other-types).
 
 The types in `domains/sales/types/` (`cake_name.jadpo`, `cake_count.jadpo` and `sterling.jadpo`) are short and used by several files; read them as the actions mention them. Each action's tests sit beside it, in `<file>.test.jadpo`.
 

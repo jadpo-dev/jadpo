@@ -1,5 +1,5 @@
 //! "Swap for the standard ..." (area 14, "Editor support"; area 19,
-//! question 4; chunk 5.5a2): the quick fix on `type.standard_clash` and
+//! "A release adding a standard type"; chunk 5.5a2): the quick fix on `type.standard_clash` and
 //! `type.standard_exists`, which runs the code `jadpo fix <name> swap`
 //! runs (`jadpo_check::fixes`) and is unavailable, with the errors it
 //! would add, where the command stops.

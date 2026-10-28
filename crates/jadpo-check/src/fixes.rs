@@ -1,4 +1,4 @@
-//! Fixing a finding the standard types raise (area 19, question 4; area
+//! Fixing a finding the standard types raise (area 19, "A release adding a standard type"; area
 //! 14's `jadpo fix`; chunk 5.5a2): `jadpo fix` and the editor's quick fix
 //! both run this code, so they fix the same way and refuse the same
 //! things.

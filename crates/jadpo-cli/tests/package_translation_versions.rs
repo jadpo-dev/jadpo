@@ -1,5 +1,5 @@
 //! Two versions of a library package with translations, from the command
-//! line (area 11, "Wording two versions of a package"; chunk 7.1c3): the
+//! line (area 11, "Two versions side by side, lazy loading and the package cache"): the
 //! app words each under `<folder>_<version>`, its tests read each
 //! version's wording, and `jadpo translations missing`, `export`, `import`,
 //! `unused` and `update` name each version's text by that key. When a

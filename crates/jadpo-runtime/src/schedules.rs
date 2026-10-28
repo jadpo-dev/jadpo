@@ -21,7 +21,7 @@
 //!   or paused, is skipped, not queued: recorded with its reason, its due
 //!   time moved on.
 //! - **A run** is its action, called with nothing, as the system with no
-//!   tenant (area 9; area 12, "A schedule and tenants"), in a context of
+//!   tenant (area 9; area 12, "Background work and tenants"), in a context of
 //!   its own whose `clock.now` is the tick's time throughout, in a new
 //!   trace, run within the tick's budget as the runner runs any action
 //!   ([`runner::within_budget`]): stopped at the 15-minute limit, or

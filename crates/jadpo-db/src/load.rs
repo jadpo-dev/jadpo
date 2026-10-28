@@ -319,8 +319,8 @@ pub fn show_in_checkouts(
 /// Every file a watcher of `root` watches, as the project names it, with
 /// where it is on disk, in path order: the files [`load`] reads, so a
 /// linked package's are its checkout's, at the package's folder, and the
-/// folder's own installed copy isn't watched (area 11, "Chosen in chunk
-/// 7.1d").
+/// folder's own installed copy isn't watched (area 11, "A package's names,
+/// and watching a linked checkout").
 pub fn watched_files(root: &Path, project: bool) -> Vec<(String, PathBuf)> {
     let mut found: Vec<(String, PathBuf)> = files_under(root, project)
         .into_iter()

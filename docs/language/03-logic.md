@@ -2,7 +2,7 @@
 title: Logic
 area: 3
 status: decided
-checked-with: this checkout's jadpo on every gate run (archived examples: v0 3ce094d0)
+checked-with: this checkout's jadpo on every gate run
 ---
 
 # Logic
@@ -10,8 +10,6 @@ checked-with: this checkout's jadpo on every gate run (archived examples: v0 3ce
 How behaviour is written: functions and actions, variables and constants,
 statements, operators, `match`, `attempt`, loops, and what the language says
 about passing functions, recursion and generic code.
-
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 3. Built in the new compiler in roadmap chunk 1.5, with the failure side of `attempt` and `match` in chunk 1.6, the runtime recursion limit in chunk 2.1 and `type.not_a_value` in chunk 5.2c.
 
 ## Functions and actions
 
@@ -70,9 +68,9 @@ Parameters are positional and every one has a type; the result type follows
 (`temporal.resolve(date: d, zone: z, ...)`); your own callables are called
 positionally. Parameters have no defaults.
 
-Decided (question 15): the whole signature is on the header line and an
-action has no settings, because the safe choice is the default: every action
-is all-or-nothing, writes check for concurrent change, and reads are current.
+The whole signature is on the header line and an action has no settings
+(question 15), because the safe choice is the default: every action is
+all-or-nothing, writes check for concurrent change, and reads are current.
 Who may call it is policy (area 9).
 
 ```jadpo fragment
@@ -87,7 +85,7 @@ When a header is too long the formatter puts one parameter per line and keeps
 
 ### Calling
 
-Decided in area 1: the dot names the owner of what you call. Your own
+The dot names the owner of what you call (area 1). Your own
 domain's actions and queries, and a helper function used only in its own
 file, are called bare. A helper shared by several files lives in a `library`
 and is called through it like the standard library, and another domain's
@@ -105,12 +103,12 @@ var todo: Todo = attempt Todo.get(todo_id)                         // an entity
 var local: ZonedTime = temporal.in_zone(at, zone)                  // the standard library
 ```
 
-A library holds only functions and constants (see [Constants](#constants);
-constants decided 2026-10-16, built in chunk 5.3e).
+A library holds only functions and constants (see [Constants](#constants)).
 
 ## Variables
 
-> Decided: `var` stays, immutable by default, with `var mut` when it can change (question 2), and every variable states its type (area 2).
+A variable is immutable by default, `var mut` when it can change
+(question 2), and every variable states its type (area 2).
 
 ```jadpo fragment
 var needed: Stock = stock_needed(per_pack, packs)
@@ -124,11 +122,9 @@ total = Stock(total + holdback)
    declarations cannot (area 2: values never change).
 - A variable is visible from its declaration to the end of its block.
 - A name already in scope, including a parameter, cannot be declared again
-   (decided, question 3), and an unused variable is an error (question 4).
+   (question 3), and an unused variable is an error (question 4).
 
 ## Constants
-
-> Decided by Richard on 2026-10-16 and built in chunk 5.3e. Making a constant a setting, `jadpo config move`, was built in chunk 5.3f.
 
 A `constant` names a fixed value at the top level of a file: the same in
 every deployment, worked out while compiling, and never changed.
@@ -349,7 +345,7 @@ call its functions. A library used by a second domain moves to
 `shared/libraries/`, or stays and becomes `public` when it depends on its
 domain's types, as for functions. A private constant needs a name unique
 only within its domain, as private functions and types do (area 1, "Files
-and names", chunk 5.3d), and its identity key carries its domain,
+and names"), and its identity key carries its domain,
 `constant billing.free_delivery_from` (area 18).
 
 ### Where a constant can be read
@@ -362,10 +358,10 @@ also what "constants" already means in the places that allow them:
 - **An update by `id`** may use parameters, constants, `clock.now` and the
   stored fields (area 6).
 - **A computed backfill** may use the row's stored fields, constants and
-  pure functions (area 5; backfills come with chunk 5.6b).
+  pure functions (area 5).
 
 A setting's `default:` and `test:` take a literal but never a constant
-(revised 2026-10-16, Richard; see [A constant or a setting](#a-constant-or-a-setting)).
+(see [A constant or a setting](#a-constant-or-a-setting)).
 
 ### Two constants holding one value
 
@@ -376,8 +372,7 @@ modelled on
 [`library.similar_exists`](01-project-layout-and-modules.md#library-similar-exists),
 naming the other constant and its file so the agent reads that one and
 removes its own. The first in file and source order is the one named; the
-others are reported. It is declinable (area 1, decided 2026-10-17, built in
-chunk 5.4b): a VAT rate and a fee can share a value by coincidence, so a
+others are reported. It is declinable (area 1): a VAT rate and a fee can share a value by coincidence, so a
 `decline constant.similar_exists: "<why>"` line above the constant
 answers it instead. The library catalogue
 (area 14) lists constants with their type, value, `///` description and
@@ -394,7 +389,7 @@ A value is one or the other, never both, so it has one source and one way
 to read it: a constant is fixed and read as `security.max_login_attempts`,
 a setting is chosen per deployment and read as `config.max_login_attempts`.
 A setting's `default:` therefore never names a constant (area 10,
-`configuration.default_literal_required`; revised 2026-10-16, Richard). If
+`configuration.default_literal_required`). If
 a constant could seed a setting, code reading the constant directly would
 quietly ignore the environment: with `security.standard_attempts` (5) as
 `max_login_attempts`'s default, someone sets `MAX_LOGIN_ATTEMPTS=10`, and
@@ -415,9 +410,8 @@ constant's value, deletes the constant, and rewrites every read
 reviewer sees each place whose behaviour can now differ per deployment. It
 refuses, editing nothing, a constant whose type a setting can't hold, one
 whose name a setting already has, and one read where a setting can't be (a
-query, an update by `id`, a backfill or another constant's value). Decided
-2026-10-16 (Richard) and built in chunk 5.3f; the details are in
-area 10, [A constant or a setting](10-configuration-and-time.md#a-constant-or-a-setting).
+query, an update by `id`, a backfill or another constant's value). The
+details are in area 10, [A constant or a setting](10-configuration-and-time.md#a-constant-or-a-setting).
 
 ### Values that change on a known date
 
@@ -504,11 +498,11 @@ A body is a list of statements, one per line, with no semicolons:
 | Rejection | `reject Failure { ... }` (area 4) |
 | Condition | `if (condition) { } else if (condition) { } else { }` |
 | Match | `match value { ... }` |
-| Loop | `for item in items { }` (decided in area 2) |
+| Loop | `for item in items { }` (area 2) |
 | Test only | `assert`, `advance clock by` (area 13) |
 
-There is no `throw`. Decided (question 4): three more statements may stand
-alone, so a result nobody needs never has to be bound to a name:
+There is no `throw`. Three more statements may stand alone (question 4), so
+a result nobody needs never has to be bound to a name:
 
 ```jadpo check project=archive file=todos.jadpo hidden
 type TodoStatus = Enum {
@@ -570,7 +564,8 @@ action check_due(due_at: DueAt, latest_due_at: DueAt) fails DueDateInPast, DueDa
 
 The condition must be a `Bool` (or a type built on `Bool`), and there is no
 truthiness. `if` is a statement; a choice between two values is a `match`.
-Decided (question 5): conditions are always in brackets, and `else if` chains are allowed.
+Conditions are always in brackets, and `else if` chains are allowed
+(question 5).
 
 ## Expressions and operators
 
@@ -587,8 +582,8 @@ Decided (question 5): conditions are always in brackets, and `else if` chains ar
 In `+`, `-` and `/` a literal takes the other side's type exactly as it does
 in `==`, so `price + 3` with a `Decimal` price is an error as `price == 3`
 is (write `3.00`), and `+` joins two `Text` values only when they are the
-same named type after widening, or one is a literal, as `==` compares them
-(chunk 1.9, reading the table above conservatively). `*` and `%` still mix.
+same named type after widening, or one is a literal, as `==` compares
+them. `*` and `%` still mix.
 
 Operators work on the representation, so their result is a plain `Int`,
 `Decimal`, `Text` or `Bool`, and turning it back into a named type is a
@@ -597,21 +592,19 @@ answer is known. `a < b < c` is an error, because `a < b` is a `Bool`.
 Logical operators are words; `!`, `&&` and `||` are not Jadpo, and each is
 one error whose edit writes the word (`syntax.logical_operator`). Nor are
 `===` and `!==`: `==` and `!=` already compare values of one type, so each
-is one error whose edit writes `==` or `!=` (`syntax.equality_operator`,
-chunk 3.5), as are SQL's `<>`, `=` and `IS NULL` (chunk 3.8, [Habits from
-other languages](#habits-from-other-languages)).
+is one error whose edit writes `==` or `!=` (`syntax.equality_operator`),
+as are SQL's `<>`, `=` and `IS NULL` ([Habits from other
+languages](#habits-from-other-languages)).
 
-> Amended 2026-10-17 by area 19 (question 16): operators on standard
-> types follow area 19's standard operator table (`price * 20%`,
-> `distance / 2h`), and anything not in it, or in the table above, is a
-> compile error naming the two types. `20%` is a `Percentage` literal;
-> remainder keeps `%` written with spaces, as the formatter writes every
-> binary operator, and `20%3` is an error naming both readings.
-> `Rounding` gains `down`, toward zero (question 25). Built in chunks 5.5d,
-> 5.5h, 5.5j and 5.5j2, which built the `%` literal and
-> `syntax.percent_ambiguous`.
+Operators on standard types follow area 19's standard operator table
+(`price * 20%`, `distance / 2h`), and anything not in it, or in the table
+above, is a compile error naming the two types (area 19, "`Money` and the operator table").
+`20%` is a `Percentage` literal; remainder keeps `%` written with spaces,
+as the formatter writes every binary operator, and `20%3` is
+`syntax.percent_ambiguous`, naming both readings. `Rounding` has `down`,
+toward zero (area 19, "`Rounding.down`").
 
-Questions 6 and 7 decided operator typing and division:
+Operator typing and division (questions 6 and 7):
 
 ```jadpo fragment
 var wrong: Stock = Stock(per_pack + packs)       // error: adds a Quantity to Stock
@@ -623,10 +616,9 @@ var boxes: BoxCount = integer.divide(items, box_size, rounding: Rounding.up)   /
 
 ## Match
 
-> Decided in area 2 and carried here: match arms use `->`, the same arrow as result types; `=>` is removed.
-
 `match` chooses between the cases of a value. It must cover every case, and it
-can be used as a statement or as an expression.
+can be used as a statement or as an expression. Its arms use `->`, the same
+arrow as result types (area 2).
 
 ```jadpo check project=matching file=shapes.jadpo hidden
 type ReceiptId = Uuid {}
@@ -756,17 +748,16 @@ attempt Todo.get(todo_id)                             // on its own (question 4)
 var total: Stock = Stock(attempt stock_of(a) + attempt stock_of(b))   // rejected: inside an expression
 ```
 
-Decided (question 11): `attempt` only starts a statement, so every point
-where a callable can stop early is at the start of a line, and `attempt` on
-a call that cannot fail is an error. `reject` and `propagate` follow the same
+`attempt` only starts a statement (question 11), so every point where a
+callable can stop early is at the start of a line, and `attempt` on a call
+that cannot fail is an error. `reject` and `propagate` follow the same
 rule: each starts a statement or is the result of a `match` arm, never part
-of a value (`failure.reject_placement`, `failure.propagate_placement`; chunk
-1.9).
+of a value (`failure.reject_placement`, `failure.propagate_placement`).
 
 ## Loops
 
-Decided in area 2: `for item in items` iterates a list, and the loop variable
-takes its type from the list.
+`for item in items` iterates a list, and the loop variable takes its type
+from the list (area 2).
 
 ```jadpo check project=order-total file=lines.jadpo hidden
 type Stock = Int {
@@ -788,14 +779,12 @@ function stock_total(lines: List<OrderLine>) -> Stock {
 }
 ```
 
-Decided (question 12): `for` over a list is the only loop: no `while`,
-`break` or `continue`, with `return` allowed inside the body.
-
-> Amended 2026-10-17 by area 19 (question 8), built in chunk 5.5c: `for`
-> also walks a set, in area 2's canonical order, the same on every
-> target, and a map through its keys, `for loaf in map.keys(stock)`. A map
-> itself is not walked, since its keys and values would need a pair; the
-> error's edit writes `map.keys`:
+`for` is the only loop (question 12): no `while`, `break` or `continue`,
+with `return` allowed inside the body. It also walks a set, in area 2's
+canonical order, the same on every target, and a map through its keys,
+`for loaf in map.keys(stock)` (area 19, "Sets and maps"). A map itself is not
+walked, since its keys and values would need a pair; the error's edit
+writes `map.keys`:
 
 ```jadpo check project=e-loop-over-map expect=type.mismatch
 type Loaf = Text {
@@ -829,24 +818,22 @@ error: `Map<Loaf, Stock>` can't be looped over
 check failed: 1 error, 1 file
 ```
 
-**No outside calls inside `for`** (decided 2026-10-16, Richard, from area
-12's multi-step calls). A provider operation, a package action, a file
+**No outside calls inside `for`** (area 12's multi-step calls). A provider operation, a package action, a file
 store's `put` or `read`, or a `documents` render inside a loop's body is a
 compile error, in any action, as a query inside one already is (area 6).
 A loop of calls is `batches.each` (area 12), the one way; a provider that
 takes a list is called once with the list. Keeping calls out of
 loops means the steps of an action that makes several changing calls lie
-along a path whose length the compiler knows. Built in chunk 7.5 as
+along a path whose length the compiler knows. The error is
 [`effect.call_in_loop`](#effect-call-in-loop), at the call: any outside
 call, one that only reads included, made in a loop's body or by an action
 called there, in an action or a fixture.
 
 ## Passing functions
 
-Area 2 decided on `list.map` and `list.filter`, which need a
-function as an argument. Decided (question 13): inline functions are allowed only as
-arguments to standard-library collection operations, using `->` for
-"produces":
+Inline functions are allowed only as arguments to standard-library
+operations, such as `list.map` and `list.filter`, using `->` for
+"produces" (question 13):
 
 ```jadpo fragment
 var open: List<Todo> = list.filter(todos, todo -> todo.status == TodoStatus.open)
@@ -858,22 +845,18 @@ list, may read the variables around it (safe because values never change),
 and cannot call actions or use `attempt`. Functions are not values: they
 cannot be stored in variables or passed to your own callables.
 
-> Amended 2026-10-17 by area 19 (questions 6, 8 and 21): the collection
-> operations are `list.`, `set.` and `map.`, and more of them take an
-> inline function (`any`, `all`, `find`, `min_by`, `max_by`, `sort_by`,
-> `group_by`; built in chunk 5.5b). For standard operations only, an inline function may take
-> two parameters, `(key, value) -> ...` (`list.zip_with`, `map.filter`,
-> `map.map_values`), widening question 13; built in chunk 5.5c2. Question
-> 6's "text order belongs in a standard function" is `list.sort_by` with a
-> text key.
-
-> Built in chunk 5.5c2: the parameters are written in parentheses,
-> separated by commas, and each takes the type of the value the operation
-> gives it in that place, `list.zip_with` an item from each list and
-> `map.filter` and `map.map_values` an entry's key and its value. An
-> inline function with a different number of parameters than its operation
-> gives is `type.inline_function_parameters`, and one with two anywhere
-> else is `type.inline_function_placement`, as for one:
+The collection operations are `list.`, `set.` and `map.`, and those that
+take an inline function include `any`, `all`, `find`, `min_by`, `max_by`,
+`sort_by` and `group_by` (area 19, "One namespace per type", "Sets and maps" and "Language gaps this page depends on"). Text is put in
+order with `list.sort_by` and a text key. For standard operations only, an
+inline function may take two parameters, `(key, value) -> ...`
+(`list.zip_with`, `map.filter`, `map.map_values`). The parameters are
+written in parentheses, separated by commas, and each takes the type of the
+value the operation gives it in that place, `list.zip_with` an item from
+each list and `map.filter` and `map.map_values` an entry's key and its
+value. An inline function with a different number of parameters than its
+operation gives is `type.inline_function_parameters`, and one with two
+anywhere else is `type.inline_function_placement`, as for one:
 
 ```jadpo check project=inline-two-parameters
 type Loaf = Text {
@@ -900,7 +883,7 @@ function sold(morning: List<Stock>, evening: List<Stock>) -> List<Sold> {
 
 No declaration's name is a value. A type, enum, failure, entity,
 function, action, query, library or route group, or a standard namespace such
-as `collection`, written where a value is read is `type.not_a_value`: in a
+as `list`, written where a value is read is `type.not_a_value`: in a
 variable's value, an argument, a returned value, a field or list item, an
 operand, a condition, a `match` subject, a `set:`, a route's `run:`, a query's
 condition, an input's `default:` or a test's expectation. A value is built
@@ -909,8 +892,7 @@ is read from a variable, a setting (`config.page_size`) or the clock
 (`clock.now`), or is called (`helper(...)`); the error's `next:` gives the one
 that fits the name.
 
-**The batch helpers take the same form** (decided 2026-10-16, Richard,
-area 12): `each:` and `finished:` of `csv.read`, `csv.write`, `tsv`,
+**The batch helpers take the same form** (area 12): `each:` and `finished:` of `csv.read`, `csv.write`, `tsv`,
 `json_lines`, `json.read`, `json.write` and `batches.each` are inline
 functions written with `->`. They differ from the collection operations in
 two ways, because they run later, in the background, after the calling
@@ -934,11 +916,10 @@ csv.read(
   storable values may be captured (those an entity field could hold).
   Capturing anything else is a compile error naming the value.
 
-> Built in chunk 6.4 for `batches.each` (area 12, "How a run is kept"):
-> an inline function is a named argument's value too, and the body's
-> arguments are the item, a field inside it, or a captured value, which
-> `type.batch_each_invalid` and `type.batch_capture_not_storable` hold
-> it to.
+For `batches.each` an inline function is a named argument's value too, and
+the body's arguments are the item, a field inside it, or a captured value,
+which `type.batch_each_invalid` and `type.batch_capture_not_storable` hold
+it to (area 12, "How a run is kept").
 
 ## Recursion
 
@@ -971,29 +952,23 @@ function reply_count(comment: Comment) -> ReplyTotal {
 }
 ```
 
-Decided (question 14): recursion is allowed in functions only, with a runtime
-depth limit that ends in a defined fault.
-
-> Decided 2026-10-22 in chunk 8.4a and accepted by Richard the same
-> day, for every executor and target: a
-> thousand frames, the test's or the route's action's own among them,
-> and four hundred inline functions running at once, one inside
-> another's body through the functions it calls. Past either, the call
-> or the operation that would go deeper is the `recursion_limit` fault
-> at its site, in `jadpo test` and `jadpo dev` as in a deployable, never
-> a crash. Compiled code runs an inline function inside its operation,
-> several of the runtime's frames deep, and on Workers those take V8's
-> own stack, about a megabyte that nothing in the module can grow:
-> measured under workerd, a recursion through one inline function a level
-> ran out of it after about 650 levels, where a plain one held 6,800. So
-> `reply_count` above walks a thread a thousand replies deep, and the
-> same walk written as `list.map(comment.replies, reply -> ...)` four
-> hundred. A native deployable's threads have the stack `jadpo test`'s
-> have, 64 MiB, and a Workers module is linked with 8 MiB of its own,
-> which a thousand frames of a large function fit; in a module, a
-> callable entered with less than 256 KiB of it left is the
-> `recursion_limit` fault too, so a frame larger still stops there
-> rather than writing past the stack's end.
+Recursion is allowed in functions only, with a runtime depth limit that
+ends in a defined fault (question 14). The limit is the same for every
+executor and target: a thousand frames, the test's or the route's action's
+own among them, and four hundred inline functions running at once, one
+inside another's body through the functions it calls. Past either, the
+call or the operation that would go deeper is the `recursion_limit` fault
+at its site, in `jadpo test` and `jadpo dev` as in a deployable, never a
+crash. Inline functions have the lower limit because compiled code runs
+one inside its operation, several of the runtime's frames deep, and on
+Workers those take V8's own stack, about a megabyte that nothing in the
+module can grow. So `reply_count` above walks a thread a thousand replies
+deep, and the same walk written as `list.map(comment.replies, reply -> ...)`
+four hundred. A native deployable's threads have the stack `jadpo test`'s
+have, 64 MiB, and a Workers module is linked with 8 MiB of its own, which a
+thousand frames of a large function fit; in a module, a callable entered
+with less than 256 KiB of it left is the `recursion_limit` fault too, so a
+frame larger still stops there rather than writing past the stack's end.
 
 ## Generic code
 
@@ -1042,16 +1017,15 @@ function party_label(party: PartyId) -> PartyTitle {
 ```
 
 `function first<T>(items: List<T>) -> T` and `Customer.id | Supplier.id` are
-not Jadpo: question 16 decided against generics and unions in your own code.
-
-> Amended 2026-10-17 by area 19 (question 16): for the same reason, an
-> application's types never declare operators, so every `a + b` is a row
-> of the operator tables a reviewer can look up, and never an overload.
+not Jadpo: your own code has no generics or unions (question 16). For the
+same reason, an application's types never declare operators, so every
+`a + b` is a row of the operator tables a reviewer can look up, and never an
+overload (area 19, "`Money` and the operator table").
 
 ## Errors
 
 Every error this area can produce, with an example that triggers it and the
-new compiler's actual output.
+compiler's actual output.
 
 ### `constant.value_not_fixed`
 
@@ -3022,9 +2996,9 @@ check failed: 1 error, 1 file
 
 ### `toolchain.not_built_yet`
 
-The language declares operations that later chunks build, such as the
-generated `oauth.approve` (area 8). Until a chunk builds one, calling it is
-an error rather than a program that can't run:
+The language declares some operations that aren't built yet, such as the
+generated `oauth.approve` (area 8). Calling one is an error rather than a
+program that can't run:
 
 ```jadpo check project=e-not-built-yet expect=toolchain.not_built_yet
 type ConsentId = Uuid {}
@@ -3819,39 +3793,8 @@ check failed: 1 error, 1 file
 
 ### Status
 
-The new compiler builds this area: roadmap chunk 1.5, with the failure side
-of `attempt` and `match` in chunk 1.6, the runtime recursion limit in
-chunk 2.1 and no outside calls inside `for` in chunk 7.5. Every example and error above is checked against it on each gate
-run, [Constants](#constants) included (chunk 5.3e).
-
-### Consistency with the rest of the language
-
-- **Two arrows.** `->` for results, `=>` for arms; decided in area 2 to use
-   `->` for both.
-- **Two `match` constructs.** A value match is a statement with block arms;
-   an outcome match is an expression with single-expression arms and a
-   `failure` prefix. Neither works in the other's position.
-- **Payload patterns break the list decision.** `PaymentOutcome.paid { receipt_id, paid_at }`
-   is a comma list in braces, which area 2's list decision rules out.
-- **`var` means "immutable".** In JavaScript, C#, Kotlin and Go `var` is the
-   mutable form; `var mut` already mirrors Rust's `let mut`.
-- **Units are checked by comparison but not by addition.** `Stock + Quantity`
-   compiles and `Stock == Quantity` does not, although area 2's rule is that
-   named types never mix silently.
-- **Division contradicts area 2.** Area 2 decided `Decimal` is exact with a
-   scale and that division names a rounding mode; the archived compiler's `/` was
-   JavaScript division producing a float.
-- **Area 2's examples omit `attempt`.** `Stock(per_pack * packs)` is a runtime
-   construction, which area 2 question 1 made fallible; whether the compiler
-   may skip `attempt` when the declared ranges prove it safe is carried to
-   area 4.
-- **Parentheses are a workaround, not a style.** Parentheses are limited to calls, constructors and grouping; conditions need them only
-   because of the parsing bug.
-- **The grammar and the compiler disagree on recursion.** Grammar §16 and
-   RM-216 list recursion as unsupported; the compiler accepts it.
-- **`reject` is a statement and also an arm.** In an outcome arm it stands
-   where an expression would; the proposed `match` keeps this, alongside
-   `propagate`, as the two non-value arm forms.
+Built. Every example and error above is checked against the compiler on
+each gate run, [Constants](#constants) included.
 
 ### Carried to later areas
 
@@ -3861,172 +3804,34 @@ run, [Constants](#constants) included (chunk 5.3e).
 | `fails` sets, `reject`, `propagate` and failure arms' mapping rules; how overflow, division by zero and recursion depth faults are reported | 4 | Input to area 4 |
 | Calling actions or queries inside a `for` loop (one query per item, transaction scope) | 6 | Input to area 6 |
 | Callable settings (`consistency:`, `freshness:`, `guard:`) become defaults; reading a cache or projection is declared on the cache | 6 | Follows from a decision |
-| Recursive types (`replies: List<Comment>`) are accepted and were not discussed in area 2; storing them | 5 | Input to area 5 |
+| Recursive types (`replies: List<Comment>`) are accepted; storing them | 5 | Input to area 5 |
 | `assert` and `advance clock by` | 13 | Input to area 13 |
 | Sections gain a colon under the colon rule (`policy: { }`, `persistence: { }`, `lifecycle: { }`); `set: { }` and `initial: { }` already follow it | 5, 6, 9 | Follows from a decision |
-| Route sections follow the colon rule; the syntax review separately proposes removing `path: { }`, `headers: { }` and inline `action: { }` | 7 | Input to area 7 |
-| Entities: `identity: id` and one-value `persistence { store: primary role: authority }` become defaults, leaving `entity Customer { id: Uuid }` (syntax review) | 5 | Proposed |
-
-### Open questions
-
-1. **Which arrow do match arms use?** *Decided 2026-10-12 (Richard, carried from area 2):* `->`, the same arrow as result types; `=>` is removed and the formatter rewrites it.
-2. **Rename `var` to `let`?** *Decided 2026-10-12 (Richard):* no. Keep `var`
-   ("variable"), immutable by default, and `var mut` when it can change. Every
-   keyword choice carries baggage from another language (`let` is mutable in
-   JavaScript), and `var` plus an explicit `mut` reads clearly on its own.
-
-3. **May a local reuse a name already in scope?** Today a local can shadow a
-   parameter or an outer local, and two parameters may share a name.
-   *Decided 2026-10-12:* no: a name in scope cannot be declared again, including
-   parameters, extending area 1's rule that locals cannot reuse domain and
-   library names. Rust encourages shadowing; Go and Kotlin warn about it; for
-   a reviewer reading a diff, one name meaning one value is worth more.
-4. **Which statements may stand alone?** *Decided 2026-10-12:* an unused
-   variable is a compile error, so a value nobody needs is never bound to a
-   name. Three forms may stand alone instead: a call whose result is `Unit`;
-   `attempt call(...)` with any result, meaning "this must succeed"; and a
-   bare `return` in a `Unit` callable. A pure call whose value is thrown away
-   is also an error, because it cannot do anything.
-
-5. **How are conditions written?** *Decided 2026-10-12 (Richard):* always in
-   brackets, `if (total > limit) { ... }`, with `else if` chains. The brackets
-   end the condition before the block, which also removes today's parsing bug
-   where `b {` is read as the start of an object. `if` stays a statement;
-   choosing a value is a `match`.
-
-6. **Which operand types do operators accept?** Today arithmetic mixes any
-   named types while comparison does not, and text is ordered by JavaScript
-   string comparison. *Decided 2026-10-12:* `+`, `-` and every comparison need
-   both sides to be the same named type after widening (or one a literal);
-   `*` and `%` may mix types, since multiplying a price by a quantity is
-   meaningful and adding them is not. Ordering applies to numbers and time
-   values only; text order depends on locale and belongs in a standard
-   function. This is F#'s units-of-measure idea with the types Jadpo already
-   has.
-7. **How does division work?** *Decided 2026-10-12:* `/` divides two values
-   of the same named type, like `+` and `-`. `Int` division drops the
-   remainder (`10 / 3` is `3`), as in Rust, Go, Java and C#; `Decimal`
-   division is exact and is rounded half to even when the result is stored in
-   a type with a fixed `scale`. Dividing values of different types, or
-   choosing another rounding, uses `decimal.divide(total, people,
-   rounding: Rounding.half_up)` or `integer.divide(...)`. Division by zero is ruled out
-   by the compiler, not left to the author: the divisor's type must exclude
-   zero (`type People = Int { min: 1 }`), a literal divisor must not be `0`,
-   and a computed divisor is constructed into such a type first, which is the
-   one place the zero case has to be handled. `%` stays `Int`-only.
-
-8. **One `match` for values and outcomes?** *Decided 2026-10-12:* yes: the
-   subject's type decides which patterns apply, every `match` works as a
-   statement or an expression, an arm is an expression, `reject`, `propagate`
-   or a block, and failure arms drop the `failure` prefix because failure
-   names are already unique types. `attempt` remains the short form for
-   passing every failure on.
-9. **How is a variant's data read in a `match` arm?** A variant can carry
-   data (`paid` carries `receipt_id` and `paid_at`); a `match` arm has to
-   open it. Today the arm lists field names in braces,
-   `PaymentOutcome.paid { receipt_id, paid_at }`, a comma list in braces that
-   area 2's list decision rules out, repeated in every arm.
-   *Recommendation:* the arm names the variant's data in brackets, the same
-   shape as `some(subtitle)` and `success(value)`:
-   `PaymentOutcome.paid(payment) -> payment.receipt_id`, where `payment` is a
-   name you choose and holds that variant's fields. One rule for every kind of
-   match: brackets after a case name the data it carries. The alternative is
-   narrowing, as in TypeScript and Kotlin: no name at all, and inside the
-   `paid` arm `outcome.receipt_id` simply works.
-   *Decided 2026-10-12:* the arm names the data in brackets.
-
-10. **May `_` cover the rest of an enum?** Today it may, so adding a variant
-    silently falls into an existing arm. *Decided 2026-10-12:* no: on enums,
-    `Bool` and nullable values every case is listed; `_` is only for text and
-    numbers. Adding a variant then fails to compile at every `match` that
-    must consider it, which is the review prompt a new state needs. Rust and
-    Kotlin allow the wildcard; Elixir's convention favours listing cases.
-11. **Where may `attempt` appear?** Today anywhere in an expression, and
-    silently on calls that cannot fail. *Decided 2026-10-12:* only at the start of
-    a statement (`var`, assignment, `return` or on its own) and only on a call
-    that can fail. Every early exit is then visible at the start of a line,
-    which Rust's `?` (allowed anywhere) does not give, without Go's
-    `if err != nil` repetition.
-12. **Which loops?** Area 2 decided `for item in items`. *Decided 2026-10-12:*
-    `for` over a `List` only, with `return` allowed inside; no `while`,
-    `break` or `continue`. Every loop then ends after its list, which keeps
-    request deadlines predictable, and searching or stopping early is
-    `list.filter` or a `return`. Go manages with one loop form; Elixir
-    with none.
-    *Revised 2026-10-16 (Richard, area 12):* no outside call (a provider
-    operation, a package action, a file store's `put` or `read`, a
-    `documents` render) inside a `for` body, in any action; a loop of calls
-    is `batches.each`, the one way.
-13. **How are functions passed to `list.map` and `list.filter`?**
-    *Decided 2026-10-12:* inline functions only as arguments to standard-library
-    collection operations, written `todo -> todo.title`: one expression, pure,
-    parameter type taken from the list. No function types in your own
-    signatures and no functions stored in variables. Capturing surrounding
-    variables is safe because values never change. Elixir writes the same
-    shape (`fn todo -> todo.title end`); TypeScript's general closures are
-    more than application code needs.
-    *Revised 2026-10-16 (Richard, area 12):* the same inline form is also
-    the `each:` and `finished:` of the batch helpers, where with no
-    destination its body is one call to an action in the same domain, and
-    what it captures is saved with the run, so only storable values may be
-    captured.
-14. **Is recursion allowed?** It is accepted today with no limit, and
-    recursive types such as comment threads need it. *Decided 2026-10-12:* allow
-    it in functions only; an action or query in a call cycle is an error,
-    because repeating effects has no data reason and an unbounded one never
-    finishes. Add a runtime depth limit that ends in a defined fault instead
-    of a crash, and correct grammar §16.
-15. **Where do a callable's settings go?** *Decided 2026-10-12:* nowhere: the
-    safe choice is the default, so an action is only its signature and its
-    logic. Every action is all-or-nothing (long-running work became
-    subscribers in area 1); a write to a loaded entity always checks it was not
-    changed in the meantime; every read is current unless it reads a cache or
-    projection, declared where that cache is (area 6). Who may call an action
-    is decided in area 9. The cases this does not fit have better answers
-    already: a large batch that should keep partial progress is a schedule or
-    subscriber handling one item per action (resumable as well); a call to an
-    external provider comes before any write in the action and carries an
-    idempotency key, so a retry repeats it harmlessly (amended 2026-10-12 by
-    area 11 question 7); a counter or "last seen" field that must not conflict is updated by
-    the database in one step (`count + 1`) rather than read and rewritten
-    (area 6). Illustrative shapes, decided in their own areas:
-    `subscriber import_row { on: RowReceived  run: import_product(event) }`;
-    `emit OrderPlaced { order_id: order.id }` in the action, with a subscriber calling
-    the provider; `set: { view_count: Post.view_count + 1 }`.
-16. **Should your own functions be generic, or accept unions?** Area 2 left
-    this open. *Decided 2026-10-12:* neither. The standard library stays generic;
-    a parameter that accepts several types is an enum whose variants carry
-    them, which keeps every value's type named and keeps identifiers apart.
-    No user generics also means no type-parameter errors for agents to fight.
-    Go managed without them for twelve years; revisit only if the order and
-    payment application shows repeated helpers that differ by type alone.
+| Route sections follow the colon rule | 7 | Input to area 7 |
+| Entities: `identity: id` and one-value `persistence { store: primary role: authority }` become defaults, leaving `entity Customer { id: Uuid }` | 5 | Proposed |
 
 ### Decisions
 
-Decided by Richard on 2026-10-12. Built in the new compiler on 2026-10-13 (roadmap chunk 1.5, with the failure side of `attempt` and `match` in chunk 1.6); the runtime recursion limit came with the interpreter on 2026-10-14 (chunk 2.1): a call past 1,000 frames is the `recursion_limit` fault at its site.
-
-| Topic | Decision | Date |
-|---|---|---|
-| Match arm arrow | Carried from area 2 (Richard, 2026-10-12): `->` for match arms and result types; `=>` removed | 2026-10-12 |
-| `var` or `let` | Keep `var`, immutable by default; `var mut` when it can change (Richard) | 2026-10-12 |
-| Shadowing | A name in scope cannot be declared again, parameters included | 2026-10-12 |
-| Standalone statements | Unused variables are compile errors; a `Unit` call, `attempt call(...)` and a bare `return` may stand alone; a discarded pure call is an error | 2026-10-12 |
-| Conditions | Always in brackets, `if (condition) { }`, with `else if`; `if` is a statement (Richard) | 2026-10-12 |
-| Operator operand types | `+`, `-` and comparisons need the same named type (or a literal); `*` and `%` may mix; ordering only on numbers and time values | 2026-10-12 |
-| Division | `/` on the same named type; `Int` drops the remainder; `Decimal` exact, rounded half to even into a fixed scale; `decimal.divide`/`integer.divide` for mixed types or other rounding; the divisor's type must exclude zero, checked by the compiler | 2026-10-12 |
-| One `match` | One `match` for values and call outcomes; failure arms have no `failure` prefix | 2026-10-12 |
-| Payload binding | A `match` arm names a variant's data in brackets, `PaymentOutcome.paid(payment) -> payment.receipt_id`, like `some(x)` and `success(value)` | 2026-10-12 |
-| Wildcard on closed types | No `_` on enums, `Bool` or nullable values; every case listed | 2026-10-12 |
-| `attempt` placement | Only at the start of a statement, and only on a call that can fail | 2026-10-12 |
-| Loops | `for` over a `List` only, `return` allowed inside; no `while`, `break` or `continue` | 2026-10-12 |
-| Passing functions | Inline `x -> expression` only as an argument to standard-library collection operations; no function types in your own signatures or variables | 2026-10-12 |
-| Recursion | Functions only, with a runtime depth limit that ends in a defined fault; actions and queries in a call cycle are errors | 2026-10-12 |
-| Recursion limits (chosen in chunk 8.4a, accepted by Richard) | 1,000 frames and 400 inline functions running at once, past either the `recursion_limit` fault at the call or operation, the same in every executor and on every target; a native deployable's threads have 64 MiB of stack and a Workers module 8 MiB of its own, a callable entered with less than 256 KiB of that left faulting too; V8's own stack on Workers, about 1 MB and fixed, is why inline functions are counted (measured under workerd) | Richard, 2026-10-22 |
-| Callable settings | None: every action is all-or-nothing, writes always check for concurrent change, reads are current unless they read a declared cache; policy is area 9 | 2026-10-12 |
-| Generics and unions | None for your own code; a parameter accepting several types takes an `Enum` whose variants carry them | 2026-10-12 |
-| Colon rule (language-wide) | Every member inside braces is `name: value`, and a value is one thing or a `{ ... }` block (`paid: { ... }`, `persistence: { ... }`); a variant with no data is just its name; a field's own settings still follow its type (`name: ProductName { optional: true }`); top-level declarations, statements and `match` arms are not members; route entries inside a `routes` group, keyed by method and path, are the one exception (area 7) (Richard; Terraform's block-versus-attribute split is a known source of confusion) | 2026-10-12 |
-| Constants | `constant name: Type = value`, only at the top of a file or in a library (in a body it is always `var`); a named type, as in signatures; a value worked out while compiling from literals, enum values, other constants, constructions and operators, never a call, `config` or `clock`, checked against the type's rules; no mutable form; unused is an error; placed and shared as helper functions are, read as `pricing.vat_rate` from a library, a private one unique within its domain; what "constants" means in queries, updates by `id` and backfills (setting defaults dropped: revised 2026-10-16 (Richard), a `default:` never names a constant); two of one type with one value warn `constant.similar_exists` (a declinable error since 2026-10-17, area 1's question 11); `config` when a deployment could ever need another value, otherwise a constant; dated values are a dated list constant behind a library function. Rejected: a top-level `var`, functions with no arguments, values attached to their type, a root `constants { }` block (Richard). Built in chunk 5.3e | 2026-10-16 |
-| A constant or a setting | A value is a constant (fixed, read `security.max_login_attempts`) or a setting (per deployment, read `config.max_login_attempts`), never both, so it has one source and one way to read it; a setting's `default:` is a literal and never a constant, so code reading the constant can't silently ignore the environment variable (the `DEFAULT_PORT` bug). `jadpo config move <constant>` and the editor's "Make this a setting" turn one into a setting, rewriting every read; the tiers are `constant`, `config`, `flags { }` (area 16). Details and the rejected alternatives in area 10. Decided; the refusal of a constant as `default:` built in chunk 5.3e, the move in chunk 5.3f (Richard) | 2026-10-16 |
-| Outside calls in loops | None inside `for`, in any action: a loop of calls is `batches.each`, the one way (Richard, area 12) | 2026-10-16 |
-| Outside calls in loops, checked (chosen in chunk 7.5) | `effect.call_in_loop` at the call, not declinable: any outside call (a provider's operation, a store's `put` or `read`), one that only reads included, made in a `for` body directly or by an action or fixture called there, in actions and fixtures; tests and functions make none (decided for Richard, the conservative reading) | 2026-10-20 |
-| Inline functions in batch helpers | `each:` and `finished:` of the batch helpers take `x -> ...`; with no destination the body is one call to an action in the same domain; captured values are saved with the run and must be storable (Richard, area 12) | 2026-10-16 |
+| Topic | Decision |
+|---|---|
+| Match arm arrow (question 1) | `->` for match arms, the same arrow as result types; the formatter rewrites `=>` (area 2) |
+| `var` or `let` (question 2) | `var` ("variable"), immutable by default, and `var mut` when it can change. Every keyword carries baggage from another language (`let` is mutable in JavaScript), and `var` with an explicit `mut` reads clearly on its own |
+| Shadowing (question 3) | A name in scope cannot be declared again, parameters included, extending area 1's rule that locals cannot reuse domain and library names; for a reviewer reading a diff, one name meaning one value is worth more than Rust's shadowing |
+| Standalone statements (question 4) | An unused variable is an error, so a value nobody needs is never bound to a name. Three forms stand alone instead: a call whose result is `Unit`; `attempt call(...)` with any result, meaning "this must succeed"; and a bare `return` in a `Unit` callable. A pure call whose value is thrown away is an error, because it cannot do anything |
+| Conditions (question 5) | Always in brackets, `if (total > limit) { ... }`, with `else if` chains; the brackets end the condition before the block. `if` is a statement; choosing a value is a `match` |
+| Operator operand types (question 6) | `+`, `-` and every comparison need both sides to be the same named type after widening (or one a literal); `*` and `%` may mix types, since multiplying a price by a quantity is meaningful and adding them is not, as with F#'s units of measure. Ordering applies to numbers and time values only; text order depends on locale and is `list.sort_by` with a text key |
+| Division (question 7) | `/` divides two values of the same named type, like `+` and `-`. `Int` division drops the remainder (`10 / 3` is `3`), as in Rust, Go, Java and C#; `Decimal` division is exact, rounded half to even when the result is stored in a type with a fixed `scale`. Dividing values of different types, or another rounding, is `decimal.divide(total, people, rounding: Rounding.half_up)` or `integer.divide(...)`. Division by zero is ruled out by the compiler: the divisor's type must exclude zero (`type People = Int { min: 1 }`), a literal divisor must not be `0`, and a computed divisor is constructed into such a type first, the one place the zero case is handled. `%` is `Int`-only |
+| One `match` (question 8) | One `match` for values and call outcomes: the subject's type decides which patterns apply, every `match` works as a statement or an expression, an arm is an expression, `reject`, `propagate` or a block, and failure arms have no `failure` prefix because failure names are already unique types. `attempt` is the short form for passing every failure on |
+| Payload binding (question 9) | A `match` arm names a variant's data in brackets, `PaymentOutcome.paid(payment) -> payment.receipt_id`, the same shape as `some(subtitle)` and `success(value)`: brackets after a case name the data it carries |
+| Wildcard on closed types (question 10) | No `_` on enums, `Bool` or nullable values; every case is listed, and `_` is only for text and numbers. Adding a variant then fails to compile at every `match` that must consider it, which is the review prompt a new state needs |
+| `attempt` placement (question 11) | Only at the start of a statement (`var`, assignment, `return` or on its own), and only on a call that can fail. Every early exit is then visible at the start of a line, which Rust's `?` does not give, without Go's `if err != nil` repetition |
+| Loops (question 12) | `for` over a list or a set (a map through `map.keys`) is the only loop, with `return` allowed inside; no `while`, `break` or `continue`. Every loop ends after its collection, which keeps request deadlines predictable, and searching or stopping early is `list.filter` or a `return`. No outside call (a provider operation, a package action, a file store's `put` or `read`, a `documents` render) inside a `for` body, in any action; a loop of calls is `batches.each`, the one way (area 12) |
+| Passing functions (question 13) | Inline functions only as arguments to standard-library operations, written `todo -> todo.title`: one expression, pure, its parameter's type taken from the operation. No function types in your own signatures and no functions stored in variables; capturing surrounding variables is safe because values never change. The same form is the `each:` and `finished:` of the batch helpers, where with no destination its body is one call to an action in the same domain, and what it captures is saved with the run, so must be storable (area 12) |
+| Recursion (question 14) | Functions only; an action or query in a call cycle is an error, because repeating effects has no data reason and an unbounded one never finishes. A runtime depth limit ends in a defined fault instead of a crash |
+| Recursion limits | 1,000 frames and 400 inline functions running at once, past either the `recursion_limit` fault at the call or operation, the same in every executor and on every target; see [Recursion](#recursion) |
+| Callable settings (question 15) | None: the safe choice is the default, so an action is only its signature and its logic. Every action is all-or-nothing; a write to a loaded entity always checks it was not changed in the meantime; every read is current unless it reads a cache or projection, declared where that cache is (area 6). Who may call an action is policy (area 9). The cases this does not fit have better answers: a large batch that should keep partial progress is a schedule or subscriber handling one item per action; a call to an external provider comes before any write in the action and carries an idempotency key, so a retry repeats it harmlessly (area 11, question 7); a counter that must not conflict is updated by the database in one step, `set: { view_count: Post.view_count + 1 }` (area 6) |
+| Generics and unions (question 16) | None in your own code; the standard library stays generic, and a parameter that accepts several types is an enum whose variants carry them, which keeps every value's type named and identifiers apart, with no type-parameter errors for agents to fight. Revisit only if the order and payment application shows repeated helpers that differ by type alone |
+| Colon rule (language-wide) | Every member inside braces is `name: value`, and a value is one thing or a `{ ... }` block (`paid: { ... }`, `persistence: { ... }`); a variant with no data is just its name; a field's own settings still follow its type (`name: ProductName { optional: true }`); top-level declarations, statements and `match` arms are not members; route entries inside a `routes` group, keyed by method and path, are the one exception (area 7). Terraform's block-versus-attribute split is a known source of confusion |
+| Constants | `constant name: Type = value`, at the top of a file or in a library; see [Constants](#constants). Not a top-level `var`, functions with no arguments, values attached to their type or a root `constants { }` block ([Rejected](#rejected)) |
+| A constant or a setting | A value is a constant or a setting, never both, so it has one source and one way to read it; a setting's `default:` is a literal and never a constant. See [A constant or a setting](#a-constant-or-a-setting) and area 10 |
+| Outside calls in loops, checked | `effect.call_in_loop` at the call, not declinable: any outside call (a provider's operation, a store's `put` or `read`), one that only reads included, made in a `for` body directly or by an action or fixture called there, in actions and fixtures; tests and functions make none |

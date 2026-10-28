@@ -605,7 +605,7 @@ fn a_type_built_on_text_or_a_number_is_a_placeholder() {
 }
 
 /// A message with an amount of money, worded in both languages (area 19,
-/// question 16, chunk 5.5h2), and an action calling it.
+/// "`Money` and the operator table", chunk 5.5h2), and an action calling it.
 fn priced(en_wording: &str, fr_wording: &str, call_with: &str) -> Vec<String> {
     let price =
         "/// A price for people.\ntype CakePrice = Money {\n    currency: Currency.gbp\n}\n";
@@ -688,7 +688,7 @@ fn an_amount_of_money_is_written_with_its_style() {
 }
 
 /// A message with a percentage, worded in both languages (area 19,
-/// question 16, chunk 5.5j2).
+/// "`Money` and the operator table", chunk 5.5j2).
 fn discounted(en_wording: &str, fr_wording: &str) -> Vec<String> {
     let rate = "/// A discount off a basket.\ntype DiscountRate = Percentage {}\n";
     let message = "use shipping/types { DiscountRate, ParcelCount }\n\n/// The discount on a basket, on the checkout page.\ntype BasketDiscount = Message {\n    off: DiscountRate\n    boxes: ParcelCount\n}\n";
