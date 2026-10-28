@@ -1085,7 +1085,7 @@ test "signing up welcomes the new user, with a link to sign in" {
   link shorteners, an all-capitals subject, a missing unsubscribe header on
   bulk mail, more than 102 KB (Gmail clips it). `jadpo check` reports
   templates that would fail as
-  [`email.health_problem`](#email-health-problem), a declinable error
+  [`email.health_problem`](../errors/email.health_problem.md), a declinable error
   (area 1). When SpamAssassin is installed its open rules
   are added. `jadpo email check-domain` compares the sending domain's SPF,
   DKIM and DMARC records with what the mail connection needs. What it does

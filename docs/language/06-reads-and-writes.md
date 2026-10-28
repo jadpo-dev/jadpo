@@ -41,7 +41,7 @@ reads only the fields that type needs. It names no rule across its fields
 (area 2), proved by the declared ranges or not, and neither does whatever
 else stands for its records: a `Nearest<T>`'s item, a map layer's
 properties, an aggregate's rows or the records an include brings
-([`query.result_rule`](#query-result-rule)). A rule is checked whenever a
+([`query.result_rule`](../errors/query.result_rule.md)). A rule is checked whenever a
 value is made, and a broken one is a failure an `attempt` maps; a read has
 no `attempt` around it and the database can't check the rule as it reads,
 so a stored record that broke it could only be a defect. A type with the
@@ -1716,7 +1716,7 @@ read before the first call, record what happened and finish in a
 subscriber, or undo as another step (area 12).
 
 A write placed before a later outside call is
-[`data.write_before_call`](#data-write-before-call), reported at the write
+[`data.write_before_call`](../errors/data.write_before_call.md), reported at the write
 and naming the last call it comes before, so checked code never reaches the
 runtime's `call_in_transaction`, which stays as the guard. Each part of the
 rule takes the most conservative reading:

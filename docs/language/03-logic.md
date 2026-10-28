@@ -159,7 +159,7 @@ function batch_for(needed: Stock) -> Stock {
   `syntax.expected_declaration`, whose `next:` says to write `constant`
   (area 1). `const` at the top of a file is `syntax.variable_keyword`,
   whose edit writes `constant`; in a body it stays
-  [`syntax.variable_keyword`](#syntax-variable-keyword), whose edit writes
+  [`syntax.variable_keyword`](../errors/syntax.variable_keyword.md), whose edit writes
   `var`.
 - **A named type.** A constant's type follows the rule signatures follow
   (area 2, "Signatures use named types"): `constant limit: Int = 5` is
@@ -171,13 +171,13 @@ function batch_for(needed: Stock) -> Stock {
   and the operators of [Expressions and operators](#expressions-and-operators)
   on them. No call of any kind (functions, library functions, the standard
   library), no `config`, no `clock`, and no constant that depends on
-  itself ([`constant.value_not_fixed`](#constant-value-not-fixed),
-  [`constant.cycle`](#constant-cycle)). Arithmetic gives the
+  itself ([`constant.value_not_fixed`](../errors/constant.value_not_fixed.md),
+  [`constant.cycle`](../errors/constant.cycle.md)). Arithmetic gives the
   representation, as it does in a body, so `Stock(bulk_from * 2)`
   constructs it back.
 - **Checked while compiling.** The value is checked against every rule of
   its type and the types it is built on, as a literal is
-  ([`type.invalid_literal`](02-values-and-types.md#type-invalid-literal),
+  ([`type.invalid_literal`](../errors/type.invalid_literal.md),
   naming the value worked out), so a construction in a constant never
   needs `attempt`. The executors run the constant's typed body, which
   can't fail, where it is read (docs/compiler-runtime.md §2.5).
@@ -371,9 +371,9 @@ A setting's `default:` and `test:` take a literal but never a constant
 
 Agents working in parallel tend to invent the same constant twice, each
 writing its own `vat_rate`. Two constants of the same type holding the same
-value are an error, [`constant.similar_exists`](#constant-similar-exists),
+value are an error, [`constant.similar_exists`](../errors/constant.similar_exists.md),
 modelled on
-[`library.similar_exists`](01-project-layout-and-modules.md#library-similar-exists),
+[`library.similar_exists`](../errors/library.similar_exists.md),
 naming the other constant and its file so the agent reads that one and
 removes its own. The first in file and source order is the one named; the
 others are reported. It is declinable (area 1): a VAT rate and a fee can share a value by coincidence, so a
@@ -834,7 +834,7 @@ A loop of calls is `batches.each` (area 12), the one way; a provider that
 takes a list is called once with the list. Keeping calls out of
 loops means the steps of an action that makes several changing calls lie
 along a path whose length the compiler knows. The error is
-[`effect.call_in_loop`](#effect-call-in-loop), at the call: any outside
+[`effect.call_in_loop`](../errors/effect.call_in_loop.md), at the call: any outside
 call, one that only reads included, made in a loop's body or by an action
 called there, in an action or a fixture.
 

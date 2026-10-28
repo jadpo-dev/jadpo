@@ -1285,7 +1285,7 @@ $ jadpo build
   Each tick is logged as `runtime.ticked`, as a native server logs its
   own, with each store it couldn't work in.
   An `every:` under a minute is refused for a Worker that runs the
-  schedules ([`deployable.target_unsupported`](#deployable-target-unsupported)).
+  schedules ([`deployable.target_unsupported`](../errors/deployable.target_unsupported.md)).
 - **A queue.** Each batch Cloudflare Queues hands the Worker's `queue`
   starts the isolate as a request does and, once its databases are
   current, is kept through the runtime's consumer: each message kept once

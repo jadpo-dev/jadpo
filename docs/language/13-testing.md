@@ -944,7 +944,7 @@ Every provider call in a test is faked (areas 11, 12 and 16), as in
   record (the crash not counted as an attempt), and a route's request is
   sent again under its key. A delivery that stops as `diverged` between a
   test's steps ends the test as
-  [`test.subscriber_failed`](#test-subscriber-failed), and a crash's
+  [`test.subscriber_failed`](../errors/test.subscriber_failed.md), and a crash's
   failure begins with a `crash` line, also in `--json`:
 
   ```text
@@ -1315,7 +1315,7 @@ What each step emits is delivered as area 12 decides:
   it.
 - A delivery that fails for good, with a failure not worth retrying, on
   its last attempt, or with a fault, ends the test there as
-  [`test.subscriber_failed`](#test-subscriber-failed), naming the event,
+  [`test.subscriber_failed`](../errors/test.subscriber_failed.md), naming the event,
   the subscriber and the attempt. What a route's `settle:` delivers
   while its request waits belongs to the request, and the response says
   how it ended (area 7, "Waiting for follow-on work").

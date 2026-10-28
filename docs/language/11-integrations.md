@@ -3218,9 +3218,9 @@ the action's event, not as an unkeyed last step.
 `jadpo check` keeps these rules with the errors under area 12's "Errors"
 (`step.context`, `step.large_output`, `step.store_required`,
 `step.too_many`, `step.unkeyed`,
-[`step.late_failure`](12-jobs-and-events.md#step-late-failure)), area
+[`step.late_failure`](../errors/step.late_failure.md)), area
 3's `effect.call_in_loop` and
-[`route.calls_past_deadline`](#route-calls-past-deadline) below, and
+[`route.calls_past_deadline`](../errors/route.calls_past_deadline.md) below, and
 reads an operation's `large_output:`. A provider's `idempotency:`
 `window:`, `replays_failures:` and `new_key_on:` are read into the plan,
 an operation's `changes:` marks a step, and the provider call records,

@@ -153,18 +153,18 @@ The declinable rules:
 
 | Rule | Area | Reports |
 |---|---|---|
-| [`library.similar_exists`](#library-similar-exists) | 1 | A library function already does the same |
-| [`constant.similar_exists`](03-logic.md#constant-similar-exists) | 3 | Another constant of the same type holds the same value |
+| [`library.similar_exists`](../errors/library.similar_exists.md) | 1 | A library function already does the same |
+| [`constant.similar_exists`](../errors/constant.similar_exists.md) | 3 | Another constant of the same type holds the same value |
 | `translation.field_unused` | 10 | No wording in a language uses one of a message's fields |
 | `package.standard_candidate` | 11 | A provider field looks like a standard type the package doesn't use |
-| [`type.batch_order_updatable`](12-jobs-and-events.md#type-batch-order-updatable) | 12 | A batch walks a query ordered by a field an update can change |
-| [`step.late_failure`](12-jobs-and-events.md#step-late-failure) | 12 | An action can fail for good after a changing call took effect |
+| [`type.batch_order_updatable`](../errors/type.batch_order_updatable.md) | 12 | A batch walks a query ordered by a field an update can change |
+| [`step.late_failure`](../errors/step.late_failure.md) | 12 | An action can fail for good after a changing call took effect |
 | `email.field_unused` | 16 | An email's field is written by no template and no subject |
 | `email.health_problem` | 16 | An email's template fails a check of the mail health score |
 | `rate_limits.counted_in_memory` | 16 | A deployable built for Workers would count its rate limits in each instance's memory |
 | `type.standard_exists` | 19 | A type has a standard type's shape under another name |
 | `type.variant_retired` | 19 | Code writes a retired code |
-| [`query.nearest_exact`](21-ai.md#query-nearest-exact) | 21 | Nearest-neighbour order on a vector too long for an index reads every record |
+| [`query.nearest_exact`](../errors/query.nearest_exact.md) | 21 | Nearest-neighbour order on a vector too long for an index reads every record |
 
 Each can be right as written: two helpers can differ on purpose, two
 constants can share a value by coincidence (a VAT rate and a fee), a shape
@@ -172,11 +172,11 @@ can match a standard type by chance, and code that reads old records names
 a withdrawn code on purpose. Plain mistakes are never declinable, including
 area 11's integration retries that outlast a route's deadline, which can't
 work as written. Naming any other rule, or one Jadpo doesn't have, is
-[`decline.not_declinable`](#decline-not-declinable), which names the
+[`decline.not_declinable`](../errors/decline.not_declinable.md), which names the
 nearest declinable rule.
 
 A decline whose rule no longer fires there is
-[`decline.unused`](#decline-unused), so declines don't outlive their
+[`decline.unused`](../errors/decline.unused.md), so declines don't outlive their
 reason. It is judged only once every other finding is answered (no
 syntax errors, and every other error is itself declinable or about a
 decline), since another error can stop a rule from firing. A second

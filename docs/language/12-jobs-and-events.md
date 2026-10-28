@@ -398,7 +398,7 @@ text is only for single
 JSON documents in memory. An export walks live data, so a
 record changed during it appears as its page saw it; a `from:` that
 orders by a field that can be updated is a declinable error
-([`type.batch_order_updatable`](#type-batch-order-updatable), area 1's
+([`type.batch_order_updatable`](../errors/type.batch_order_updatable.md), area 1's
 "Declining a judgement call"; Jadpo has no warnings), since ordering by
 a field no update changes (`id`, or a creation time with `id`) is what
 keeps every record in exactly once.
@@ -1790,15 +1790,15 @@ key for a day, so it parks the action for an operator rather than being
 retried.
 
 `jadpo check` keeps: up to 8 changing calls on
-one way through an action ([`step.too_many`](#step-too-many)), a changing
+one way through an action ([`step.too_many`](../errors/step.too_many.md)), a changing
 call with no key the only one in its action
-([`step.unkeyed`](#step-unkeyed)), several only from a subscriber or a
+([`step.unkeyed`](../errors/step.unkeyed.md)), several only from a subscriber or a
 route whose API requires `Idempotency-Key`
-([`step.context`](#step-context)), no `large_output: true` operation
-among them ([`step.large_output`](#step-large-output)), a store for their
-record ([`step.store_required`](#step-store-required)), and no outside
+([`step.context`](../errors/step.context.md)), no `large_output: true` operation
+among them ([`step.large_output`](../errors/step.large_output.md)), a store for their
+record ([`step.store_required`](../errors/step.store_required.md)), and no outside
 call inside `for` (area 3's
-[`effect.call_in_loop`](03-logic.md#effect-call-in-loop)). A *changing
+[`effect.call_in_loop`](../errors/effect.call_in_loop.md)). A *changing
 call* is a provider's operation with `changes: true` or a store's `put`;
 each way through an `if` or a `match` counts on its own, a `return` ends
 its way, and an action called counts the changing calls of the longest
@@ -1806,7 +1806,7 @@ way through it.
 
 The warning: after the first changing call on a way
 through an action, each point that can end it for good is
-[`step.late_failure`](#step-late-failure), one finding for the action at
+[`step.late_failure`](../errors/step.late_failure.md), one finding for the action at
 the first such point with the others beside it, declinable since the
 condition may be unable to change. A point is an `attempt` whose call or
 write passes on a failure that isn't `unavailable` or `rate_limited` (an
@@ -1819,7 +1819,7 @@ its own changing call, and the app's `attempt` of it is the point, even
 as the app's first call. It holds for single calls too (area 11's
 question 26). The same walk sums how long a route's outside calls
 can take, area 11's
-[`route.calls_past_deadline`](11-integrations.md#route-calls-past-deadline).
+[`route.calls_past_deadline`](../errors/route.calls_past_deadline.md).
 Choices in the decisions table, "The late-failure warning and the
 deadline sum".
 
@@ -1846,8 +1846,8 @@ delivery's later attempt, a route's later claim) takes no write from an
 older one; a `put` in such an action keeps its object under a key
 derived from its step; and the record is deleted in the action's commit.
 Answers are sealed with `application { steps: { encryption_key: } }`
-([`step.encryption_key_required`](#step-encryption-key-required),
-[`step.settings_invalid`](#step-settings-invalid)). Choices in the
+([`step.encryption_key_required`](../errors/step.encryption_key_required.md),
+[`step.settings_invalid`](../errors/step.settings_invalid.md)). Choices in the
 decisions table, "The record".
 
 A bakery pays an approved invoice and keeps a copy of it, two changing
