@@ -53,7 +53,7 @@ error: `ForgetMemos.tags` can't come in a query string
   reason: A `DELETE` route reads its input from the query string, which holds scalars, enums and lists of them (`?status=open&status=done`); nested objects and maps need a body.
   next: Give `tags` a scalar type, or take this input on a `POST` (agent)
   rule: route.query_field_unsupported
-  help: docs/language/07-http.html#route-query-field-unsupported
+  help: docs/errors/route.query_field_unsupported.md
 
 check failed: 1 error, 1 file
 ```

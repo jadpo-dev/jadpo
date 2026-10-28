@@ -39,7 +39,7 @@ error: `manual_pages * 2` is worked out, and a query computes nothing
   reason: A query's values are its parameters and their fields, literals, constants, enum values, lists of those and `clock.now`; anything worked out from them is computed before the call.
   next: Work the value out in the action, and pass it as a parameter (agent)
   rule: query.value_unsupported
-  help: docs/language/06-reads-and-writes.html#query-value-unsupported
+  help: docs/errors/query.value_unsupported.md
 
 check failed: 1 error, 1 file
 ```

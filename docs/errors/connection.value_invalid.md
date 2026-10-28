@@ -67,7 +67,7 @@ error: `couriers`'s credential must be a secret setting
   reason: A credential is read from the deployment's environment and never seen by code, so it is a `secret: true` setting, `config.<name>` (area 10, "Secrets").
   next: Add `secret: true` to `couriers_api_key` in `config.jadpo` (agent)
   rule: connection.value_invalid
-  help: docs/language/11-integrations.html#connection-value-invalid
+  help: docs/errors/connection.value_invalid.md
 
 check failed: 1 error, 6 files
 ```
@@ -204,7 +204,7 @@ error: `couriers`'s `sandbox:` lists `bookings.creat`, which `AcmeCouriers.v1` d
   reason: `sandbox:` lets the package's public operations and resources through to its sandbox in `jadpo dev`; `AcmeCouriers.v1` has `bookings.create` and `bookings`.
   next: Use `bookings.create` instead of `bookings.creat` (agent)
   rule: connection.value_invalid
-  help: docs/language/11-integrations.html#connection-value-invalid
+  help: docs/errors/connection.value_invalid.md
 
 check failed: 1 error, 12 files
 ```

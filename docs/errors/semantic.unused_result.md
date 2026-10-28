@@ -23,7 +23,7 @@ error: This `Note` is thrown away
   reason: `tidy` only computes its result, so calling it without using the result does nothing.
   next: Use the value, or remove it (agent)
   rule: semantic.unused_result
-  help: docs/language/03-logic.html#semantic-unused-result
+  help: docs/errors/semantic.unused_result.md
 
 check failed: 1 error, 1 file
 ```

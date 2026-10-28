@@ -22,7 +22,7 @@ error: `result` has no value
   reason: A variable is given its value on the line that declares it: `var name: Type = value`.
   next: Write `result`'s value after `=` (agent)
   rule: syntax.expected_expression
-  help: docs/language/03-logic.html#syntax-expected-expression
+  help: docs/errors/syntax.expected_expression.md
 
 check failed: 1 error, 1 file
 ```

@@ -15,7 +15,7 @@ error: `\q` isn't an escape Jadpo knows
   reason: Inside a string, `\` starts one of `\"`, `\\`, `\n`, `\r` or `\t`.
   next: Write `\\q` for a backslash followed by `q` (agent)
   rule: syntax.invalid_escape
-  help: docs/language/01-project-layout-and-modules.html#syntax-invalid-escape
+  help: docs/errors/syntax.invalid_escape.md
 
 check failed: 1 error, 1 file
 ```

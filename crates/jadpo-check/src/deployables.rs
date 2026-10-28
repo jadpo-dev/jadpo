@@ -1269,7 +1269,7 @@ pub struct PerInstance {
 /// Each connection with a `max_concurrent:` cap that a deployable built
 /// for Workers reaches, with the cap and that deployable: on Workers it
 /// counts per instance, since Workers runs as many as traffic needs
-/// (Richard, 2026-10-21; area 11, "Decisions").
+/// (Richard, 2026-10-21; area 11's notes, "Decisions").
 pub fn per_instance(db: &dyn Db, project: Project) -> Vec<PerInstance> {
     let deployables = deployables(db, project);
     let workers =

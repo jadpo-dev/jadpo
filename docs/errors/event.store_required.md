@@ -27,7 +27,7 @@ error: `glance` emits `NoteSeen` but writes no store to keep it in
   reason: An event is kept in the outbox of the store its action writes, in the same transaction, until its subscribers have it; `glance` writes no store, itself or through what it calls, and `app.jadpo` names none with `events: { store: }`.
   next: Add `events: { store: main }` to `application { }` in `app.jadpo` (human)
   rule: event.store_required
-  help: docs/language/12-jobs-and-events.html#event-store-required
+  help: docs/errors/event.store_required.md
 
 check failed: 1 error, 1 file
 ```

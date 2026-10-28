@@ -36,7 +36,7 @@ error: This decline gives no reason
   reason: A decline is reviewed like the code it sits on: its reason says why the finding is right to leave, so a reviewer can agree or not.
   next: Write why in the quotes: `decline library.similar_exists: "<why>"` (agent)
   rule: decline.no_reason
-  help: docs/language/01-project-layout-and-modules.html#decline-no-reason
+  help: docs/errors/decline.no_reason.md
 
 check failed: 1 error, 1 file
 ```

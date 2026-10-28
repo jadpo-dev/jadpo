@@ -17,7 +17,7 @@ error: `Locale.en_gb` is listed twice
   reason: A locale is listed or it is not; listing it twice says nothing more.
   next: Remove the second `Locale.en_gb` (agent)
   rule: type.locale_duplicate
-  help: docs/language/10-configuration-and-time.html#type-locale-duplicate
+  help: docs/errors/type.locale_duplicate.md
 
 check failed: 1 error, 1 file
 ```

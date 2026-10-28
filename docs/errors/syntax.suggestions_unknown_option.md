@@ -17,7 +17,7 @@ error: `suggestions` has no option `shared:`
   reason: `suggestions` takes `project_token:` and `share:`. Did you mean `share`?
   next: Use `share:` instead of `shared:` (agent)
   rule: syntax.suggestions_unknown_option
-  help: docs/language/14-tooling.html#syntax-suggestions-unknown-option
+  help: docs/errors/syntax.suggestions_unknown_option.md
 
 check failed: 1 error, 1 file
 ```

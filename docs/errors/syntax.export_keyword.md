@@ -21,7 +21,7 @@ error: Jadpo has no `export`
   reason: `export` makes a name visible to other files in JavaScript and TypeScript, and `pub` outside its module in Rust; every Jadpo declaration is visible across its domain, and `public` opens it to other domains.
   next: Remove `export` (agent)
   rule: syntax.export_keyword
-  help: docs/language/01-project-layout-and-modules.html#syntax-export-keyword
+  help: docs/errors/syntax.export_keyword.md
 
 check failed: 1 error, 1 file
 ```

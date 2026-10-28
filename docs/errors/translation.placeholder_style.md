@@ -49,7 +49,7 @@ error: `{total}` is an amount of money, written `{total, number, currency}`
   reason: `OrderTotal.total` is money, and a wording writes an amount of money with its style, `{total, number, currency}`, so the translator sees it is one; it is shown as `text.format` shows it in the reader's locale, with its symbol and the currency's places.
   next: Write `{total, number, currency}` (agent)
   rule: translation.placeholder_style
-  help: docs/language/10-configuration-and-time.html#translation-placeholder-style
+  help: docs/errors/translation.placeholder_style.md
 
 check failed: 1 error, 5 files
 ```

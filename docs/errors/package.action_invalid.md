@@ -91,7 +91,7 @@ error: `start_subscription` calls the package's action `open_customer`
   reason: A package's action calls only its own API: its operations, in any order, and its pure functions. The steps it makes are one way through it, which a retry replays in order.
   next: Make `open_customer`'s calls here, or move what both share to a function (agent)
   rule: package.action_invalid
-  help: docs/language/11-integrations.html#package-action-invalid
+  help: docs/errors/package.action_invalid.md
 
 check failed: 1 error, 8 files
 ```

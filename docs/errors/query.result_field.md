@@ -33,7 +33,7 @@ error: `BookCard.author` isn't a field of `Book`, or an include
   reason: A query fills its result's fields from `Book`'s fields of the same name (`id`, `title`, `subtitle` and `available`) and from its includes; nothing gives `author`.
   next: Remove `author` from `BookCard`, or include records under it (agent)
   rule: query.result_field
-  help: docs/language/06-reads-and-writes.html#query-result-field
+  help: docs/errors/query.result_field.md
 
 check failed: 1 error, 1 file
 ```

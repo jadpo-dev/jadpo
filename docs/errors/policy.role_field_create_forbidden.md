@@ -61,7 +61,7 @@ error: `create_note` sets `Note.owner_id` from the request, not the caller
   reason: `Note`'s `create:` names only `owner_id`, so a `Note` is only ever created by the caller it points at. Set from the request, the create would be refused for every value but the caller's own, so it is set from the caller: the `id` of a `Principal.user` the action takes.
   next: Take the caller as a parameter typed `Principal.user`, and set `owner_id` to its `id` (agent)
   rule: policy.role_field_create_forbidden
-  help: docs/language/09-policy.html#policy-role-field-create-forbidden
+  help: docs/errors/policy.role_field_create_forbidden.md
 
 check failed: 1 error, 1 file
 ```

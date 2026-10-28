@@ -30,7 +30,7 @@ error: `name` is given twice
   reason: Each field of `Product` is given once, so there is never a question of which value counts.
   next: Remove one `name` (agent)
   rule: type.duplicate_field
-  help: docs/language/02-values-and-types.html#type-duplicate-field
+  help: docs/errors/type.duplicate_field.md
 
 check failed: 1 error, 1 file
 ```

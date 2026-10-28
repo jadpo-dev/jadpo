@@ -90,7 +90,7 @@ pub(crate) fn reported(
         &[]
     };
     // Each cap on calls a deployable built for Workers counts per instance
-    // (area 11, "Decisions", 2026-10-21; chunk 8.1o2).
+    // (area 11's notes, "Decisions", 2026-10-21; chunk 8.1o2).
     let per_instance = if layout == Layout::Project && diagnostics.is_empty() {
         jadpo_check::deployables::per_instance(db, loaded.project)
     } else {

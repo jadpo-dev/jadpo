@@ -93,7 +93,7 @@ error: `api/main.jadpo_record` was edited by hand: a comment isn't part of a rec
   reason: Jadpo writes this record with `jadpo api update`, and a record is never edited by hand, so its diff always means what the source or a command changed.
   next: Run `jadpo api update`, which writes it again (agent)
   rule: record.edited
-  help: docs/language/18-records-and-manifest.html#record-edited
+  help: docs/errors/record.edited.md
 
 check failed: 1 error, 6 files
 ```

@@ -32,7 +32,7 @@ error: `Todo`'s lifecycle purges records but hides none
   reason: Purge permanently deletes records once they have been hidden for a while, so the lifecycle must say which records are hidden, with `visible:`.
   next: Add `visible: <condition>` to the lifecycle (agent)
   rule: data.lifecycle_purge_visible
-  help: docs/language/05-data.html#data-lifecycle-purge-visible
+  help: docs/errors/data.lifecycle_purge_visible.md
 
 check failed: 1 error, 1 file
 ```

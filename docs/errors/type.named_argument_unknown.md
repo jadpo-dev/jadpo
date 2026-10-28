@@ -19,7 +19,7 @@ error: `list.count` has no argument `itmes`
   reason: Its one argument is `items`.
   next: Use `items:` instead of `itmes:` (agent)
   rule: type.named_argument_unknown
-  help: docs/language/03-logic.html#type-named-argument-unknown
+  help: docs/errors/type.named_argument_unknown.md
 
 check failed: 1 error, 1 file
 ```

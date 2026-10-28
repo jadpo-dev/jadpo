@@ -37,7 +37,7 @@ error: `Item.update` takes no `missing:`
   reason: A record that isn't there reports `ItemNotFound` itself; `missing:` maps a query's "nothing matched".
   next: Remove `missing: ...` (agent)
   rule: data.write_section_unexpected
-  help: docs/language/06-reads-and-writes.html#data-write-section-unexpected
+  help: docs/errors/data.write_section_unexpected.md
 
 check failed: 1 error, 1 file
 ```

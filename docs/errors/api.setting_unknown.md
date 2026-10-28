@@ -20,7 +20,7 @@ error: `version` isn't an API setting
   reason: An API in `apis:` holds its `prefix:`, `idempotency:`, `authentication:` and `serve_openapi:`, and later its `rate_limit:`.
   next: Remove `version` (agent)
   rule: api.setting_unknown
-  help: docs/language/07-http.html#api-setting-unknown
+  help: docs/errors/api.setting_unknown.md
 
 check failed: 1 error, 1 file
 ```

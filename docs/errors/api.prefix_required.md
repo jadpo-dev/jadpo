@@ -22,7 +22,7 @@ error: API `admin` has no prefix
   reason: Every declared API says the path its routes start with, so a URL says which API it belongs to: `main: { prefix: /v1 }`.
   next: Add `prefix: /admin` to `admin` (agent)
   rule: api.prefix_required
-  help: docs/language/07-http.html#api-prefix-required
+  help: docs/errors/api.prefix_required.md
 
 check failed: 1 error, 1 file
 ```

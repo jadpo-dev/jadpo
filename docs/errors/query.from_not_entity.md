@@ -28,7 +28,7 @@ error: `from:` names `Title`, which isn't an entity
   reason: `Title` is a type; a query reads stored records, so `from:` names an entity declared in the domain's `entities/` folder.
   next: Name the entity the query reads (agent)
   rule: query.from_not_entity
-  help: docs/language/06-reads-and-writes.html#query-from-not-entity
+  help: docs/errors/query.from_not_entity.md
 
 check failed: 1 error, 1 file
 ```

@@ -31,7 +31,7 @@ error: `title` isn't a time
   reason: `since:` names the `Instant` field purge counts from: a record goes once it has been hidden for `after:` since that time.
   next: Name an `Instant` field of the record (agent)
   rule: data.lifecycle_purge_since
-  help: docs/language/05-data.html#data-lifecycle-purge-since
+  help: docs/errors/data.lifecycle_purge_since.md
 
 check failed: 1 error, 1 file
 ```

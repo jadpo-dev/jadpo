@@ -19,7 +19,7 @@ error: This parameter uses `Text` directly
   reason: Functions, actions and queries take and return named types, so each value says what it means and carries its rules; `Text` says neither.
   next: Declare a named type built on `Text` and use it here (agent)
   rule: type.primitive_signature
-  help: docs/language/02-values-and-types.html#type-primitive-signature
+  help: docs/errors/type.primitive_signature.md
 
 check failed: 1 error, 1 file
 ```

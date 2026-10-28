@@ -32,7 +32,7 @@ error: `limit:` is given twice
   reason: A query has one `limit:`; only `where:` and `where_present:` lines stack, each one more condition.
   next: Remove one `limit:` (agent)
   rule: query.repeated_section
-  help: docs/language/06-reads-and-writes.html#query-repeated-section
+  help: docs/errors/query.repeated_section.md
 
 check failed: 1 error, 1 file
 ```

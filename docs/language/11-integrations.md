@@ -1401,7 +1401,7 @@ error: Connection `billing` is named like domain `billing`
   reason: Connections share one namespace with domains and libraries, so `billing.<name>` means one thing; it is already the domain `billing`.
   next: Rename the connection, such as `billing_api`, and the calls through it (agent)
   rule: semantic.duplicate_declaration
-  help: docs/language/01-project-layout-and-modules.html#semantic-duplicate-declaration
+  help: docs/errors/semantic.duplicate_declaration.md
 
 check failed: 1 error, 4 files
 ```

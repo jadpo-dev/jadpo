@@ -46,7 +46,7 @@ error: `on: Reminder` isn't an event
   reason: A subscriber listens for one event, a type with the `Event` base that an action emits.
   next: Name an event, declared as `type <Name> = Event { ... }` in a domain's `events/` folder (agent)
   rule: subscriber.event_invalid
-  help: docs/language/12-jobs-and-events.html#subscriber-event-invalid
+  help: docs/errors/subscriber.event_invalid.md
 
 check failed: 1 error, 1 file
 ```

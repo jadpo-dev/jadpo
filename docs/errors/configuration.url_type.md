@@ -26,7 +26,7 @@ error: `main`'s address must be a `PostgresUrl` setting
   reason: A connection opened with `driver: Driver.postgres` takes an address of its own type, which checks the scheme and is always secret; `config.cache_url` is `RedisUrl`.
   next: Declare `<name>: PostgresUrl` in `config.jadpo`, and write `url: config.<name>` (agent)
   rule: configuration.url_type
-  help: docs/language/10-configuration-and-time.html#configuration-url-type
+  help: docs/errors/configuration.url_type.md
 
 check failed: 1 error, 2 files
 ```

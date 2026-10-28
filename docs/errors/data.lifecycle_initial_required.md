@@ -36,7 +36,7 @@ error: `Order.stage` has no starting value
   reason: Only the lifecycle's transitions change `stage`, so a create can't give it; a required field gets its first value from `initial:`, and an optional one starts as `none`.
   next: Add `stage: <value>` to the lifecycle's `initial:` (agent)
   rule: data.lifecycle_initial_required
-  help: docs/language/05-data.html#data-lifecycle-initial-required
+  help: docs/errors/data.lifecycle_initial_required.md
 
 check failed: 1 error, 1 file
 ```

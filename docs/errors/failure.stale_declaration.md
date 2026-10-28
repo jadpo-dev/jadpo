@@ -21,7 +21,7 @@ error: `Refused` can never leave `complete`
   reason: Nothing in `complete` rejects `Refused` or passes it on from a call, and `fails` lists exactly the failures that can leave, so callers aren't made to handle one that never happens.
   next: Remove `Refused` from `fails` (agent)
   rule: failure.stale_declaration
-  help: docs/language/04-failures.html#failure-stale-declaration
+  help: docs/errors/failure.stale_declaration.md
 
 check failed: 1 error, 1 file
 ```

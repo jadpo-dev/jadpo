@@ -37,7 +37,7 @@ error: `label` is never `none`, so `some(...)` can't match it
   reason: `some(name)` and `none` match a nullable value, written `T?`; `label` is a `Label`.
   next: Use `label` directly: it always has a value (agent)
   rule: type.match_some_non_optional
-  help: docs/language/03-logic.html#type-match-some-non-optional
+  help: docs/errors/type.match_some_non_optional.md
 
 check failed: 1 error, 2 files
 ```

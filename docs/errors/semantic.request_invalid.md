@@ -58,7 +58,7 @@ error: `POST /memos` takes `input:`, a `AddMemo`
   reason: A request gives the route's method, its path as `jadpo routes` prints it, each placeholder in `params:` and, when the route takes one, its `input:`; a request but a `GET` may give the `Idempotency-Key` it sends in `idempotency_key:`.
   next: Give the request what its route takes (agent)
   rule: semantic.request_invalid
-  help: docs/language/13-testing.html#semantic-request-invalid
+  help: docs/errors/semantic.request_invalid.md
 
 check failed: 1 error, 1 file
 ```

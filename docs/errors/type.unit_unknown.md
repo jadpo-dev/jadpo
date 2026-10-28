@@ -24,7 +24,7 @@ error: `2mw` has no unit `mw`: did you mean `2mW` (milliwatts) or `2MW` (megawat
   reason: Units are written as SI writes them, and case matters: `mW` is milliwatts and `MW` is megawatts.
   next: Write `2mW` (milliwatts) or `2MW` (megawatts), whichever is meant (agent)
   rule: type.unit_unknown
-  help: docs/language/19-standard-library.html#type-unit-unknown
+  help: docs/errors/type.unit_unknown.md
 
 check failed: 1 error, 1 file
 ```

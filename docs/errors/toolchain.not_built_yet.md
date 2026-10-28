@@ -21,7 +21,7 @@ error: `oauth.approve` isn't built yet
   reason: The language declares `oauth.approve`, but this compiler has nothing to run it with yet, so a program that calls it couldn't run.
   next: Do without `oauth.approve` for now (agent)
   rule: toolchain.not_built_yet
-  help: docs/language/03-logic.html#toolchain-not-built-yet
+  help: docs/errors/toolchain.not_built_yet.md
 
 check failed: 1 error, 1 file
 ```

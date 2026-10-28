@@ -21,7 +21,7 @@ error: `archive` isn't a database `Note` can live in
   reason: `app.jadpo` declares no connection called `archive`; an entity's `store:` names a connection with `driver: Driver.postgres`, or `main` when `app.jadpo` declares no database.
   next: Name a database connection, or declare one in `app.jadpo` (agent)
   rule: data.store_unknown
-  help: docs/language/05-data.html#data-store-unknown
+  help: docs/errors/data.store_unknown.md
 
 check failed: 1 error, 2 files
 ```

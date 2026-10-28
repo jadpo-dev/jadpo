@@ -30,7 +30,7 @@ error: `Member.suspended` isn't a condition `active:` can use
   reason: `active:` is a condition on `Member`'s own fields, such as `Member.<field> == <value>`; a field alone says nothing to compare it with.
   next: Compare a field of `Member` with a value (agent)
   rule: type.principal_active_invalid
-  help: docs/language/08-identity.html#type-principal-active-invalid
+  help: docs/errors/type.principal_active_invalid.md
 
 check failed: 1 error, 1 file
 ```

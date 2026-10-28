@@ -38,7 +38,7 @@ error: `shelf` reads `Book`, an entity of domain `catalogue`
   reason: A query reads its own domain's entities only; another domain's data comes from that domain's public queries, so `catalogue` decides what it shares.
   next: Call a public query of `catalogue`, or move `shelf` into `catalogue` (human)
   rule: query.other_domain
-  help: docs/language/06-reads-and-writes.html#query-other-domain
+  help: docs/errors/query.other_domain.md
 
 check failed: 1 error, 4 files
 ```

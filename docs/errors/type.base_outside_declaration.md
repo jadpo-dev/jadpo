@@ -17,7 +17,7 @@ error: `Object` is used as a type
   reason: `Object` is written only after `=` in a `type` declaration; every shape has a name, so a field or signature names that type.
   next: Declare `type Name = Object { ... }` and use its name here (agent)
   rule: type.base_outside_declaration
-  help: docs/language/02-values-and-types.html#type-base-outside-declaration
+  help: docs/errors/type.base_outside_declaration.md
 
 check failed: 1 error, 1 file
 ```

@@ -19,7 +19,7 @@ error: `temporal` is a standard-library namespace
   reason: Standard-library namespaces can't name a declaration, domain, library or variable, so `temporal.` always means the standard library.
   next: Choose another name than `temporal` (agent)
   rule: semantic.standard_namespace_reserved
-  help: docs/language/01-project-layout-and-modules.html#semantic-standard-namespace-reserved
+  help: docs/errors/semantic.standard_namespace_reserved.md
 
 check failed: 1 error, 1 file
 ```

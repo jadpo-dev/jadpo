@@ -21,7 +21,7 @@ error: Jadpo has no `;`
   reason: `;` ends a statement in JavaScript, Rust, Go, Java, C#, Kotlin, Swift and SQL; a Jadpo statement or member ends at the end of its line.
   next: Remove `;` (agent)
   rule: syntax.semicolon
-  help: docs/language/03-logic.html#syntax-semicolon
+  help: docs/errors/syntax.semicolon.md
 
 check failed: 1 error, 1 file
 ```

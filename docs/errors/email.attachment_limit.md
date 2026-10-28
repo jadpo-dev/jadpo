@@ -141,7 +141,7 @@ error: `InvoiceEmail`'s attachments may be 12 MB, over the 10 MB `postbox` accep
   reason: An email's `File` fields are sent as attachments, each at most its `max_size:`, and `postbox`'s package accepts 10 MB of them in all, so an email at its largest would be refused.
   next: Lower the `max_size:` of `InvoiceEmail`'s `File` fields to 10 MB in all, or send the biggest files as links (agent)
   rule: email.attachment_limit
-  help: docs/language/16-built-in-services.html#email-attachment-limit
+  help: docs/errors/email.attachment_limit.md
 
 check failed: 1 error, 10 files
 ```

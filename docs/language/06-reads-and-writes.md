@@ -1103,7 +1103,7 @@ error: `BakeryPin.bakery_id` isn't a field of `Bakery`
   reason: A map layer fills its features' properties from `Bakery`'s fields of the same name (`id`, `name` and `spot`); nothing gives `bakery_id`.
   next: Remove `bakery_id` from `BakeryPin`, or name it after a field of `Bakery` (agent)
   rule: query.result_field
-  help: docs/language/06-reads-and-writes.html#query-result-field
+  help: docs/errors/query.result_field.md
 
 check failed: 1 error, 1 file
 ```
@@ -1154,7 +1154,7 @@ error: `bakery_map` sends `Bakery.owner_phone`, which not every caller may read
   reason: Anyone `Bakery`'s `read:` lets in may call `bakery_map`, anyone at all among them, and no client may read it, as it is `FieldAccess.server_only` `owner_phone`. An output has one shape for everyone, so a field some callers may not read can't be in it.
   next: Leave `owner_phone` out of `BakeryPin`, the features' properties (agent)
   rule: policy.output_field_unproved
-  help: docs/language/09-policy.html#policy-output-field-unproved
+  help: docs/errors/policy.output_field_unproved.md
 
 check failed: 1 error, 1 file
 ```

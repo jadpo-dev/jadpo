@@ -19,7 +19,7 @@ error: `Quantity(...)` takes one value, not 2
   reason: Constructing a `Quantity` checks one value against its rules.
   next: Pass one value to `Quantity(...)` (agent)
   rule: type.constructor_argument_count
-  help: docs/language/02-values-and-types.html#type-constructor-argument-count
+  help: docs/errors/type.constructor_argument_count.md
 
 check failed: 1 error, 1 file
 ```

@@ -57,7 +57,7 @@ error: `sheets.put` is called once for every item of the loop
   reason: An action's outside calls lie along a way through it whose length is known before it runs, so a retry can replay them in order; a loop makes one for each item. A provider that takes a list is called once with the list.
   next: Make the calls one item at a time with `batches.each` (agent)
   rule: effect.call_in_loop
-  help: docs/language/03-logic.html#effect-call-in-loop
+  help: docs/errors/effect.call_in_loop.md
 
 check failed: 1 error, 4 files
 ```

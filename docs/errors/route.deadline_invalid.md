@@ -44,7 +44,7 @@ error: `90s` can't be a route's deadline
   reason: A route's deadline is a duration above zero and at most 60 seconds; longer work answers `SuccessStatus.accepted` and carries on in a subscriber.
   next: Write a duration such as `30s`, or leave `deadline:` out for the 10-second default (agent)
   rule: route.deadline_invalid
-  help: docs/language/07-http.html#route-deadline-invalid
+  help: docs/errors/route.deadline_invalid.md
 
 check failed: 1 error, 1 file
 ```

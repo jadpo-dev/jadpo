@@ -28,7 +28,7 @@ error: `Book.title` says no direction
   reason: Each field of `order:` says which way it sorts: `asc` from the smallest, `desc` from the largest.
   next: Write `Book.title asc` or `Book.title desc` (agent)
   rule: query.order_direction
-  help: docs/language/06-reads-and-writes.html#query-order-direction
+  help: docs/errors/query.order_direction.md
 
 check failed: 1 error, 1 file
 ```

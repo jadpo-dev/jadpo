@@ -46,7 +46,7 @@ error: `run:` is given twice
   reason: A route has one `run:`, so there is never a question of which counts.
   next: Remove one `run:` (agent)
   rule: route.item_duplicate
-  help: docs/language/07-http.html#route-item-duplicate
+  help: docs/errors/route.item_duplicate.md
 
 check failed: 1 error, 1 file
 ```

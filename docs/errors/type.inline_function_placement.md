@@ -25,7 +25,7 @@ error: An inline function is only an argument to a collection operation
   reason: Functions aren't values: `item -> expression` is written only as an argument to a standard-library collection operation, such as `list.map` or `list.filter`.
   next: Write the expression on its own, or pass it to a collection operation (agent)
   rule: type.inline_function_placement
-  help: docs/language/03-logic.html#type-inline-function-placement
+  help: docs/errors/type.inline_function_placement.md
 
 check failed: 1 error, 1 file
 ```
@@ -59,7 +59,7 @@ error: An inline function is only an argument to a collection operation
   reason: Functions aren't values: `(key, value) -> expression` is written only as an argument to a standard operation that gives its function two values, `list.zip_with`, `map.filter` or `map.map_values`.
   next: Write the expression on its own, or pass it to a collection operation (agent)
   rule: type.inline_function_placement
-  help: docs/language/03-logic.html#type-inline-function-placement
+  help: docs/errors/type.inline_function_placement.md
 
 check failed: 1 error, 1 file
 ```

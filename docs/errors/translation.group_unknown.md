@@ -31,7 +31,7 @@ error: `jadp` isn't a group Jadpo reads
   reason: The root file words the text the application did not write, grouped by whose it is: `jadpo` for Jadpo's own messages, or the folder name of a library package the application uses for that package's. Did you mean `jadpo`?
   next: Rename the group to `jadpo` (agent)
   rule: translation.group_unknown
-  help: docs/language/10-configuration-and-time.html#translation-group-unknown
+  help: docs/errors/translation.group_unknown.md
 
 check failed: 1 error, 2 files
 ```

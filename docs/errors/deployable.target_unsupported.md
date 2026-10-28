@@ -180,7 +180,7 @@ error: `edge` can't use `sheets` on Workers, which has no disk
   reason: `sheets` keeps files on the server's own disk (`Driver.disk`), and a Worker has none; `edge` uses it through `keep_prices`.
   next: Keep `sheets`'s files through a package over S3's API, such as Cloudflare R2, or use them from a `Target.native` deployable (agent)
   rule: deployable.target_unsupported
-  help: docs/language/14-tooling.html#deployable-target-unsupported
+  help: docs/errors/deployable.target_unsupported.md
 
 check failed: 1 error, 8 files
 ```
@@ -241,7 +241,7 @@ error: `edge` can't run `oven_check` every 30 seconds on Workers, whose cron run
   reason: A Worker ticks when Cloudflare's cron trigger runs it, once a minute at most, so a schedule due every 30 seconds would run late; `edge` runs `oven_check` because its `runs:` lists `Trigger.schedules`.
   next: Give `oven_check` `every: 1m` or longer, or run `Trigger.schedules` in a `Target.native` deployable (agent)
   rule: deployable.target_unsupported
-  help: docs/language/14-tooling.html#deployable-target-unsupported
+  help: docs/errors/deployable.target_unsupported.md
 
 check failed: 1 error, 3 files
 ```
@@ -284,7 +284,7 @@ error: `edge` can't read the client's address from `X-Forwarded-For` on Workers
   reason: Cloudflare writes the client's address in `CF-Connecting-IP` on every request, overwriting a caller's, and a Worker has no connection address of its own, so `cloudflare` is the only source a Worker reads; `edge` would refuse to start.
   next: Use `ClientAddressSource.cloudflare` without `hops:`, or build `edge` with `Target.native` (agent)
   rule: deployable.target_unsupported
-  help: docs/language/14-tooling.html#deployable-target-unsupported
+  help: docs/errors/deployable.target_unsupported.md
 
 check failed: 1 error, 1 file
 ```

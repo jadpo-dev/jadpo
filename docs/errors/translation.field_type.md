@@ -27,7 +27,7 @@ error: `LeftAt.when` is typed `Instant`, which a wording can't write
   reason: A message's fields are the placeholders of its wording, and a placeholder is text (`Text`, `PresentationText`), a number (`Int`, `Decimal`), an amount of money (`Money`, written `{field, number, currency}`), a percentage (`Percentage`, written `{field, number, percent}`) or a plural count (`PluralCount`), or a type built on one of them; one `enum` field picks which wording is written. Dates and times are formatted in code, with `text.format`, and passed in as `PresentationText`.
   next: Make `when` a `PresentationText` and format the value where the message is called (agent)
   rule: translation.field_type
-  help: docs/language/10-configuration-and-time.html#translation-field-type
+  help: docs/errors/translation.field_type.md
 
 check failed: 1 error, 2 files
 ```
@@ -74,7 +74,7 @@ error: `ParcelHeld.reason` is typed `HoldReason`, which a client can't write int
   reason: A failure's `client:` fields are the placeholders of its wording, and the client app fills each one: text as it is, and a number, a date, a time or a duration formatted for its own language. A choice, an object, a list or an optional value has no such format.
   next: Make `reason` text, or send the text in a `PresentationText` field (agent)
   rule: translation.field_type
-  help: docs/language/10-configuration-and-time.html#translation-field-type
+  help: docs/errors/translation.field_type.md
 
 check failed: 1 error, 4 files
 ```

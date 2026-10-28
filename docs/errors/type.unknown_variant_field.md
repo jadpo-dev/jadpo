@@ -28,7 +28,7 @@ error: `PaymentOutcome.declined` has no field `note`
   reason: `PaymentOutcome.declined`'s fields are `reason`.
   next: Remove `note`, or declare it on `PaymentOutcome.declined` (agent)
   rule: type.unknown_variant_field
-  help: docs/language/02-values-and-types.html#type-unknown-variant-field
+  help: docs/errors/type.unknown_variant_field.md
 
 check failed: 1 error, 1 file
 ```

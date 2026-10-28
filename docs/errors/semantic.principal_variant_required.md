@@ -13,7 +13,7 @@ error: The principal declares no kind of caller
   reason: A principal says which entity a signed-in caller is: `user:` for a person, `service:` for another system, or both.
   next: Add `user: { subject: <Entity>.<field> }` (agent)
   rule: semantic.principal_variant_required
-  help: docs/language/08-identity.html#semantic-principal-variant-required
+  help: docs/errors/semantic.principal_variant_required.md
 
 check failed: 1 error, 1 file
 ```

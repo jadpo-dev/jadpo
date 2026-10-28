@@ -21,7 +21,7 @@ error: `add` takes its arguments in order, without names
   reason: Named arguments exist only for standard-library operations; your own callables are called positionally, in the order of their parameters.
   next: Remove the argument names (agent)
   rule: type.named_argument_unsupported
-  help: docs/language/03-logic.html#type-named-argument-unsupported
+  help: docs/errors/type.named_argument_unsupported.md
 
 check failed: 1 error, 1 file
 ```

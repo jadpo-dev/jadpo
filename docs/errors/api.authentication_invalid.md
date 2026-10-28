@@ -23,7 +23,7 @@ error: API `main` accepts `browser_session`, which isn't declared
   reason: An API accepts only the ways to sign in the application declares; `authentication.jadpo` declares no way to sign in yet.
   next: List the methods the API accepts, each one `authentication.jadpo` declares (agent)
   rule: api.authentication_invalid
-  help: docs/language/07-http.html#api-authentication-invalid
+  help: docs/errors/api.authentication_invalid.md
 
 check failed: 1 error, 1 file
 ```

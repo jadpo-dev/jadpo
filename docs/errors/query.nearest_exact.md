@@ -35,7 +35,7 @@ error: `Paper.abstract_meaning` is too long to index, so `nearest` reads every `
   reason: pgvector's HNSW index takes a vector of up to 4,000 dimensions, at half precision, and `PaperMeaning` has 5,000; with no index, each call measures the distance to every `Paper` whose `abstract_meaning` is set and sorts them all, which slows as the table grows.
   next: Give `PaperMeaning` at most 4,000 `dimensions:`, asking the model for fewer with `embedding_dimensions:`, or write `decline query.nearest_exact: "<why>"` above it if this is deliberate (agent)
   rule: query.nearest_exact
-  help: docs/language/21-ai.html#query-nearest-exact
+  help: docs/errors/query.nearest_exact.md
 
 check failed: 1 error, 1 file
 ```

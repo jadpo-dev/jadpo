@@ -43,7 +43,7 @@ error: `CREATE` isn't a method a route is written with
   reason: Routes are written with `GET`, `POST`, `PUT`, `PATCH` or `DELETE`.
   next: Use `POST` instead of `CREATE` (agent)
   rule: syntax.expected_http_method
-  help: docs/language/07-http.html#syntax-expected-http-method
+  help: docs/errors/syntax.expected_http_method.md
 
 check failed: 1 error, 1 file
 ```

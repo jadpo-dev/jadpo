@@ -34,7 +34,7 @@ error: `admin` isn't a kind of caller
   reason: A principal declares `user:`, a person, and `service:`, another system; a role or a tenant is a field of the user's entity, which policy reads (area 9).
   next: Remove `admin` (agent)
   rule: semantic.principal_variant_unknown
-  help: docs/language/08-identity.html#semantic-principal-variant-unknown
+  help: docs/errors/semantic.principal_variant_unknown.md
 
 check failed: 1 error, 1 file
 ```

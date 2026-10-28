@@ -77,7 +77,7 @@ error: Includes nest at most two levels
   reason: Each include is one more database query, and a query's includes nest up to two levels so its cost stays easy to see; a deeper shape is a second query called from the action.
   next: Read the deeper records with a query of their own (human)
   rule: query.include_depth
-  help: docs/language/06-reads-and-writes.html#query-include-depth
+  help: docs/errors/query.include_depth.md
 
 check failed: 1 error, 1 file
 ```

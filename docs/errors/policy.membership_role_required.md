@@ -45,7 +45,7 @@ error: `StaffMembership`'s membership has no `role:`
   reason: A membership says where a role is held (`scope:`), who holds it (`member:`) and which field holds it (`role:`); `role:` is which field holds the role, a field typed with the role's enum.
   next: Add `role:` to the membership (agent)
   rule: policy.membership_role_required
-  help: docs/language/09-policy.html#policy-membership-role-required
+  help: docs/errors/policy.membership_role_required.md
 
 check failed: 1 error, 1 file
 ```

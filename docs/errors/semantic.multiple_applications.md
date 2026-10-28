@@ -19,7 +19,7 @@ error: `application { }` is declared twice
   reason: A project is one application, declared once in `app.jadpo`; its settings all go in that one block.
   next: Move what this `application` holds into the first, and remove it (agent)
   rule: semantic.multiple_applications
-  help: docs/language/08-identity.html#semantic-multiple-applications
+  help: docs/errors/semantic.multiple_applications.md
 
 check failed: 1 error, 1 file
 ```

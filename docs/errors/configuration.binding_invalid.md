@@ -17,7 +17,7 @@ error: `MAIL-SENDER` can't be a variable name
   reason: A variable name is capital letters, digits and `_`, starting with a capital letter, so every platform accepts it.
   next: Use `MAIL_SENDER` (agent)
   rule: configuration.binding_invalid
-  help: docs/language/10-configuration-and-time.html#configuration-binding-invalid
+  help: docs/errors/configuration.binding_invalid.md
 
 check failed: 1 error, 1 file
 ```

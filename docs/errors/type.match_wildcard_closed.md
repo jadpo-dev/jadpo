@@ -39,7 +39,7 @@ error: `_` can't stand for the rest of a `DeliveryState`
   reason: On enums, `Bool` and nullable values every case is listed, so a case added later is caught at every `match` that has to consider it.
   next: Replace `_` with arms for `DeliveryState.sent` and `DeliveryState.failed` (agent)
   rule: type.match_wildcard_closed
-  help: docs/language/03-logic.html#type-match-wildcard-closed
+  help: docs/errors/type.match_wildcard_closed.md
 
 check failed: 1 error, 2 files
 ```

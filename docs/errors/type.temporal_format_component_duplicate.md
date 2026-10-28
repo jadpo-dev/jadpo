@@ -19,7 +19,7 @@ error: `day` is given twice
   reason: A format shows each part once, in one style, so there is never a question of which `day` counts.
   next: Remove one `day` (agent)
   rule: type.temporal_format_component_duplicate
-  help: docs/language/10-configuration-and-time.html#type-temporal-format-component-duplicate
+  help: docs/errors/type.temporal_format_component_duplicate.md
 
 check failed: 1 error, 1 file
 ```

@@ -23,7 +23,7 @@ error: `max_length: 150` loosens `ProductName`'s `max_length: 120`
   reason: A refinement only adds to the rules of the type it builds on, and every rule along the way still holds, so a value still needs `max_length: 120` and this one would never apply.
   next: Make `max_length` at most 120, or remove it (agent)
   rule: type.constraint_loosened
-  help: docs/language/02-values-and-types.html#type-constraint-loosened
+  help: docs/errors/type.constraint_loosened.md
 
 check failed: 1 error, 1 file
 ```

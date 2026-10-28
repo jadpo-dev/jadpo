@@ -39,7 +39,7 @@ error: `{nom}` isn't a field of `OrderShipped`
   reason: `OrderShipped` has no field `nom` a wording can write; this wording may write `{name}`.
   next: Remove `{nom}`, or add the field to `OrderShipped` (agent)
   rule: translation.placeholder_unknown
-  help: docs/language/10-configuration-and-time.html#translation-placeholder-unknown
+  help: docs/errors/translation.placeholder_unknown.md
 
 check failed: 1 error, 4 files
 ```

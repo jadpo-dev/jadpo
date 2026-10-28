@@ -23,7 +23,7 @@ error: `Trigger.jobs` isn't background work a deployable runs
   reason: `runs:` lists `Trigger.schedules`, the schedules, purges and polls, and `Trigger.subscribers`, the deliveries of events and emails.
   next: Use `Trigger.schedules` or `Trigger.subscribers` (agent)
   rule: deployable.trigger_unknown
-  help: docs/language/14-tooling.html#deployable-trigger-unknown
+  help: docs/errors/deployable.trigger_unknown.md
 
 check failed: 1 error, 1 file
 ```

@@ -33,7 +33,7 @@ error: `Counter.update` by `id` sets a value from `counter`, a variable
   reason: An update by `id` is worked out by the database in one step, so its values use only the action's parameters, constants, `clock.now` and `Counter`'s stored fields; a value read earlier could have changed by the time it writes.
   next: Load the record and update it, `Counter.update(counter) { set: { ... } }`, or pass the value in as a parameter (agent)
   rule: data.update_by_id_value
-  help: docs/language/06-reads-and-writes.html#data-update-by-id-value
+  help: docs/errors/data.update_by_id_value.md
 
 check failed: 1 error, 1 file
 ```

@@ -24,7 +24,7 @@ error: `Item.update` doesn't say what it changes
   reason: An update gives the fields it changes in `set:`, or the request's changes with `patch:`.
   next: Add `set: { ... }` with the fields it changes (agent)
   rule: data.write_section_required
-  help: docs/language/06-reads-and-writes.html#data-write-section-required
+  help: docs/errors/data.write_section_required.md
 
 check failed: 1 error, 1 file
 ```

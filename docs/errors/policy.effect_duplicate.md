@@ -44,7 +44,7 @@ error: `read:` is given twice
   reason: `Note`'s policy gives each list once, so "who may read?" is always one line.
   next: Merge the two `read:` lists into one (agent)
   rule: policy.effect_duplicate
-  help: docs/language/09-policy.html#policy-effect-duplicate
+  help: docs/errors/policy.effect_duplicate.md
 
 check failed: 1 error, 1 file
 ```

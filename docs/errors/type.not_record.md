@@ -19,7 +19,7 @@ error: `ProductName` isn't built with `{ ... }`
   reason: Braces build objects and variants with fields; `ProductName`, built on `Text`, takes one value in brackets.
   next: Write `ProductName(...)` with one value (agent)
   rule: type.not_record
-  help: docs/language/02-values-and-types.html#type-not-record
+  help: docs/errors/type.not_record.md
 
 check failed: 1 error, 1 file
 ```

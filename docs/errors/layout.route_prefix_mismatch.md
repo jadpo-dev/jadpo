@@ -19,7 +19,7 @@ error: Prefix `/tasks` doesn't match `todos.jadpo`
   reason: A route group's file is named after its prefix's fixed segments joined with `_`, so a URL leads to one file: `/tasks` lives in `tasks.jadpo`.
   next: Change the prefix to match `todos.jadpo`, or rename the file `tasks.jadpo` and the group `Tasks` (agent)
   rule: layout.route_prefix_mismatch
-  help: docs/language/01-project-layout-and-modules.html#layout-route-prefix-mismatch
+  help: docs/errors/layout.route_prefix_mismatch.md
 
 check failed: 1 error, 2 files
 ```

@@ -87,7 +87,7 @@ error: `ai.generate` asks a model, and the application names none
   reason: Every `ai` call goes through the connection `application { ai: { connection: } }` names, asking a model `models:` lists, each a `ModelId` setting, so changing a model or a provider changes `app.jadpo` and nothing else.
   next: Add `ai: { connection: <name>  models: { default: config.<name> } }` to `application { }` in `app.jadpo`, naming a connection with `driver: Driver.openai_compatible` (agent)
   rule: ai.connection_required
-  help: docs/language/21-ai.html#ai-connection-required
+  help: docs/errors/ai.connection_required.md
 
 check failed: 1 error, 6 files
 ```

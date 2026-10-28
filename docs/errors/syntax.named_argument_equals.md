@@ -26,7 +26,7 @@ error: Jadpo names an argument with `:`, not `=`
   reason: `name = value` names an argument in Python, Kotlin and C#; Jadpo writes `name: value`.
   next: Use `:` instead of `=` (agent)
   rule: syntax.named_argument_equals
-  help: docs/language/03-logic.html#syntax-named-argument-equals
+  help: docs/errors/syntax.named_argument_equals.md
 
 check failed: 1 error, 1 file
 ```

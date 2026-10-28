@@ -29,7 +29,7 @@ error: `Quantity(...)` has no `maximum:` condition to map
   reason: A construction's arms are the rules of its type and the types it builds on; `Quantity(...)`'s are `min` and `max`, and `invalid:` covers any without an arm of its own.
   next: Remove `maximum: ...`, or map one of `min` and `max` instead (agent)
   rule: failure.unknown_mapping
-  help: docs/language/04-failures.html#failure-unknown-mapping
+  help: docs/errors/failure.unknown_mapping.md
 
 check failed: 1 error, 1 file
 ```

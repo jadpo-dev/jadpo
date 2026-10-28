@@ -28,7 +28,7 @@ error: `books_titled` returns `List<Book>` but has no `limit:`
   reason: Every list is bounded: `limit:` is a number, or a value whose type has a `max:`.
   next: Add `limit: <number>`, or return `Page<T>` to read it a page at a time (agent)
   rule: query.section_required
-  help: docs/language/06-reads-and-writes.html#query-section-required
+  help: docs/errors/query.section_required.md
 
 check failed: 1 error, 1 file
 ```

@@ -134,7 +134,7 @@ error: `pay.bank_statements.export` gives a large answer, and `pay_supplier` mak
   reason: In an action with several changing calls, each answer is kept, up to 1 MB, for a retry to replay, and its package marks this operation's answer as large.
   next: Move `pay.bank_statements.export` to an action of its own, run by a subscriber of an event `pay_supplier` emits (agent)
   rule: step.large_output
-  help: docs/language/12-jobs-and-events.html#step-large-output
+  help: docs/errors/step.large_output.md
 
 check failed: 1 error, 10 files
 ```

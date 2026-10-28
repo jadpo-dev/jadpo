@@ -19,7 +19,7 @@ error: `ProductName` has no fields
   reason: `name` is a `ProductName`, built on `Text`; only objects, inputs, outputs, events, failures and entities have fields.
   next: Use `name` itself (agent)
   rule: type.field_on_non_record
-  help: docs/language/02-values-and-types.html#type-field-on-non-record
+  help: docs/errors/type.field_on_non_record.md
 
 check failed: 1 error, 1 file
 ```

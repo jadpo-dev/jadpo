@@ -41,7 +41,7 @@ error: `Postcodes` is held in one version, so its names don't carry it
   reason: A name carries its package's version only while two versions sit side by side, to say which one it means; with one version of `Postcodes` held, `Postcodes.UkPostcode` is the one way to write it.
   next: Write `Postcodes.UkPostcode` (agent)
   rule: package.version_unneeded
-  help: docs/language/11-integrations.html#package-version-unneeded
+  help: docs/errors/package.version_unneeded.md
 
 check failed: 1 error, 4 files
 ```

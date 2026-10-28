@@ -17,7 +17,7 @@ error: `text.format` needs the zone to show `OrderedAt` in
   reason: An `Instant` is one moment for everyone, and its date and clock time depend on where it is read; the server never guesses a zone, so `zone:` says which.
   next: Add `zone: ...` with the reader's zone, such as `zone: Zone.europe_london` (agent)
   rule: type.temporal_zone_required
-  help: docs/language/10-configuration-and-time.html#type-temporal-zone-required
+  help: docs/errors/type.temporal_zone_required.md
 
 check failed: 1 error, 1 file
 ```

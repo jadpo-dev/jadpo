@@ -44,7 +44,7 @@ error: `success` isn't something a route holds
   reason: `success:` is now `status:`, which takes a `SuccessStatus`. A route holds `authentication`, `rate_limit`, `input`, `output`, `status`, `deadline`, `run` and `settle`.
   next: Use `status` instead of `success` (agent)
   rule: route.item_unknown
-  help: docs/language/07-http.html#route-item-unknown
+  help: docs/errors/route.item_unknown.md
 
 check failed: 1 error, 1 file
 ```

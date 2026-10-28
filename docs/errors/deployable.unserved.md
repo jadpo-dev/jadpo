@@ -122,7 +122,7 @@ error: No deployable serves the API `backstage`
   reason: Once `deployables:` is declared, an API's routes are served only by a deployable whose `serves:` names it, and `backstage` has 1 route.
   next: Add `backstage` to a deployable's `serves:` (agent)
   rule: deployable.unserved
-  help: docs/language/14-tooling.html#deployable-unserved
+  help: docs/errors/deployable.unserved.md
 
 check failed: 1 error, 7 files
 ```

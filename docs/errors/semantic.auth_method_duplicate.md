@@ -39,7 +39,7 @@ error: `browser_session:` is declared twice
   reason: Each way to sign in is one block, written once, so its settings are in one place.
   next: Move the settings into the first `browser_session:`, and remove this one (agent)
   rule: semantic.auth_method_duplicate
-  help: docs/language/08-identity.html#semantic-auth-method-duplicate
+  help: docs/errors/semantic.auth_method_duplicate.md
 
 check failed: 1 error, 1 file
 ```

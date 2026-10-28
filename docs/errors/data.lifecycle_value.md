@@ -30,7 +30,7 @@ error: `edited_at` is another field of the record
   reason: A transition sets each field to a fixed value (a literal, an enum value, `none` or `clock.now`), the same every time it runs; copying one field into another isn't one.
   next: Use a literal, an enum value, `none` or `clock.now` (agent)
   rule: data.lifecycle_value
-  help: docs/language/05-data.html#data-lifecycle-value
+  help: docs/errors/data.lifecycle_value.md
 
 check failed: 1 error, 1 file
 ```

@@ -23,7 +23,7 @@ error: Jadpo creates a value without `new`
   reason: `new` creates an object in JavaScript, TypeScript, Java and C#; Jadpo creates a value with `Type(value)`, or an object with `Type { field: value }`.
   next: Remove `new` (agent)
   rule: syntax.new_keyword
-  help: docs/language/02-values-and-types.html#syntax-new-keyword
+  help: docs/errors/syntax.new_keyword.md
 
 check failed: 1 error, 1 file
 ```

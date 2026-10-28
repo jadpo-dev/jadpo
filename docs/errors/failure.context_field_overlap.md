@@ -27,7 +27,7 @@ error: `reference` is in both `client` and `internal`
   reason: `client` fields are sent to the caller and `internal` fields never leave the server, so a field is one or the other.
   next: Keep `reference` in one of the two blocks (agent)
   rule: failure.context_field_overlap
-  help: docs/language/04-failures.html#failure-context-field-overlap
+  help: docs/errors/failure.context_field_overlap.md
 
 check failed: 1 error, 1 file
 ```

@@ -49,7 +49,7 @@ error: `memo_id` can't be typed `MemoId?`
   reason: A placeholder's type is a named scalar or an `X.id`: a placeholder is always there, so it is never optional.
   next: Type it with a named type built on a scalar, or an `X.id` (agent)
   rule: route.placeholder_type
-  help: docs/language/07-http.html#route-placeholder-type
+  help: docs/errors/route.placeholder_type.md
 
 check failed: 1 error, 1 file
 ```
@@ -101,7 +101,7 @@ error: `Note` has no field `ident`
   reason: A field type is written `Type.field`, naming a field the type declares.
   next: Name a field of `Note` (agent)
   rule: type.unknown_field
-  help: docs/language/02-values-and-types.html#type-unknown-field
+  help: docs/errors/type.unknown_field.md
 
 check failed: 1 error, 1 file
 ```

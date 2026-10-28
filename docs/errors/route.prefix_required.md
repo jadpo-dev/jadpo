@@ -41,7 +41,7 @@ error: `Memos` has no prefix
   reason: Every route in a group follows the group's prefix, and the prefix's fixed segments give the file its name, so a URL from a log leads to one file.
   next: Add `prefix: /<path>` as the group's first line (agent)
   rule: route.prefix_required
-  help: docs/language/07-http.html#route-prefix-required
+  help: docs/errors/route.prefix_required.md
 
 check failed: 1 error, 1 file
 ```

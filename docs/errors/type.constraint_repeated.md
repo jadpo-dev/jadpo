@@ -18,7 +18,7 @@ error: `max_length` is given twice
   reason: Each setting is given once, so there is never a question of which one counts.
   next: Remove one `max_length` (agent)
   rule: type.constraint_repeated
-  help: docs/language/02-values-and-types.html#type-constraint-repeated
+  help: docs/errors/type.constraint_repeated.md
 
 check failed: 1 error, 1 file
 ```

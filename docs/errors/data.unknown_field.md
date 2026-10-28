@@ -20,7 +20,7 @@ error: `Project` has no field `owner_id`
   reason: The unique rule `name_per_owner` names fields of `Project`, its own.
   next: Remove `owner_id` (agent)
   rule: data.unknown_field
-  help: docs/language/05-data.html#data-unknown-field
+  help: docs/errors/data.unknown_field.md
 
 check failed: 1 error, 1 file
 ```

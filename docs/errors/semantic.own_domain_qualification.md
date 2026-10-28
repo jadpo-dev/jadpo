@@ -26,7 +26,7 @@ error: `snooze_todo` is in this file's own domain
   reason: The dot names who owns what you call, and `snooze_todo` belongs to `planning` itself, so code there calls it by its bare name.
   next: Call `snooze_todo(...)` without `planning.` (agent)
   rule: semantic.own_domain_qualification
-  help: docs/language/01-project-layout-and-modules.html#semantic-own-domain-qualification
+  help: docs/errors/semantic.own_domain_qualification.md
 
 check failed: 1 error, 3 files
 ```

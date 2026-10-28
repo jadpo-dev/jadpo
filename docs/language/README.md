@@ -68,23 +68,42 @@ structured diagnostics and tests to check the result.
 
 ## Maintaining the specification
 
-`tools/language_docs.py` checks these pages and renders them into
-`build/language-site/`. The rendered decision log collects the decisions
-from every area.
+`tools/language_docs.py` checks these pages, their design notes in
+[`notes/`](notes/) and the error pages in [`docs/errors/`](../errors/),
+renders them into `build/language-site/`, and builds the docs bundle
+([documentation](../documentation.md), "The bundle"). The rendered decision
+log collects the decisions from every area's notes.
 
 ```sh
 python3 tools/language_docs.py --check
 python3 tools/language_docs.py
+python3 tools/language_docs.py --bundle build/docs-bundle
 ```
 
 ## Writing a page
 
-- Front matter gives `title`, `area`, `status`, `checked-with` (what checks
-  its examples: this checkout's `jadpo`) and, for areas 10 to 21, `rules`:
-  the compiler error IDs the area owns, as globs over the compiler's
-  catalogue. Areas 1 to 9 own the rules whose catalogue entry names their
-  area. Each rule belongs to one area, and the check fails until every
-  owned rule has a `check` example failing with it.
+- Front matter gives `title`, `area`, `status` and `checked-with` (what
+  checks its examples: this checkout's `jadpo`).
+- An area page holds what an app author reads. Each `#` and `##` heading
+  but `## Errors` is a topic, with its ID on the next line (`<!-- topic:
+  <id> -->`, [documentation](../documentation.md), "Topic IDs"); a topic
+  stays under 3,000 words. Near its end, `## What is built` is a short
+  table of each feature and its status.
+- The page's design notes, `notes/NN-<page>.md`, hold why: the Decisions
+  table of topic and decision, how the area fits the rest of the language,
+  what it carried to other areas and the questions still open (a numbered
+  list of `**Question?** context *Recommendation:* …`). A decided question
+  is written as the rule it settled, in its topic on the area page, and as
+  a row of Decisions. A rule an author needs is on the area page, never only
+  in the notes. `area N, "X"` cites a heading of area N's page or notes, or
+  a row of its Decisions.
+- Every rule in the compiler's catalogue (`jadpo help --json`) has a page,
+  `docs/errors/<rule.id>.md`, headed `` # `rule.id` ``, with its `check`
+  example and the compiler's real output; the area whose catalogue entry
+  names it lists it, linked, under `## Errors`. The check fails on a rule
+  with no page, a page for no rule, and a rule with no `check` example
+  failing with it, but for one only a command raises (area 14), whose page
+  says `No example yet.` until it has one.
 - Every ` ```jadpo ` block is either `check`, compiled by the gate, or
   `fragment`, shown and not compiled: code the compiler doesn't check yet.
   A block that is neither fails the check. On areas 1 to 9 a `fragment`
@@ -102,14 +121,8 @@ python3 tools/language_docs.py
   - `expect=rule.id` means the project must fail with that error; otherwise it
     must compile and be canonically formatted;
   - `hidden` compiles the block without showing it.
-- Under `## Errors`, each `### \`rule.id\`` heading is followed by its
-  `check` example and the compiler's real output.
 - A line starting with `>` renders as a note.
-- Once `status: decided`, a page with `### Decided …` sections under
-  `## Review` leads with them and `Decisions`, and collapses the rest of its
-  body; every decided page collapses its remaining review notes.
-- `## Review` holds status, consistency notes, the questions still open (a
-  numbered list of `**Question?** context *Recommendation:* …`) and a
-  Decisions table of topic and decision. A decided question is written as
-  the rule it settled, in its topic section, not left as a question.
-  Generated public documentation leaves `## Review` out.
+- The rendered site shows each page's design notes collapsed under it; the
+  bundle leaves them out.
+- Every relative link resolves, to a file and to a heading GitHub gives
+  that anchor.

@@ -20,7 +20,7 @@ error: `hop` isn't an option of `client_address:`
   reason: `client_address:` takes `source:` and `hops:`, and nothing else; which proxies to trust is a count and not a list. Did you mean `hops`?
   next: Use `hops` instead of `hop` (agent)
   rule: configuration.client_address_invalid
-  help: docs/language/10-configuration-and-time.html#configuration-client-address-invalid
+  help: docs/errors/configuration.client_address_invalid.md
 
 check failed: 1 error, 1 file
 ```

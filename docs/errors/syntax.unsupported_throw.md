@@ -24,7 +24,7 @@ error: Jadpo writes `reject`, not `throw`
   reason: `throw` raises an error in JavaScript, Java, C#, Kotlin and Swift, and `raise` in Python and Ruby; a Jadpo callable raises one of its declared failures with `reject`, and lists it in `fails`.
   next: Use `reject` instead of `throw` (agent)
   rule: syntax.unsupported_throw
-  help: docs/language/03-logic.html#syntax-unsupported-throw
+  help: docs/errors/syntax.unsupported_throw.md
 
 check failed: 1 error, 1 file
 ```

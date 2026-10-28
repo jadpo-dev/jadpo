@@ -24,7 +24,7 @@ error: `layout.unused_declaration` can't be declined
   reason: Only judgement calls can be declined: `constant.similar_exists`, `email.field_unused`, `email.health_problem`, `library.similar_exists`, `package.standard_candidate`, `query.nearest_exact`, `rate_limits.counted_in_memory`, `step.late_failure`, `translation.field_unused`, `type.batch_order_updatable`, `type.standard_exists` and `type.variant_retired`. `layout.unused_declaration` reports a mistake, which only a fix answers.
   next: Remove the `decline` line, and fix what `layout.unused_declaration` reports if it fires (agent)
   rule: decline.not_declinable
-  help: docs/language/01-project-layout-and-modules.html#decline-not-declinable
+  help: docs/errors/decline.not_declinable.md
 
 check failed: 1 error, 1 file
 ```

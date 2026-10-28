@@ -40,7 +40,7 @@ error: A similar library function exists: `rounding.capped`
   reason: `cap_total` takes the same parameters, gives the same result and has the same body as `rounding.capped` in `main.jadpo`, apart from the names of its variables.
   next: Call `rounding.capped` instead, and remove `cap_total`, or write `decline library.similar_exists: "<why>"` above it if this is deliberate (agent)
   rule: library.similar_exists
-  help: docs/language/01-project-layout-and-modules.html#library-similar-exists
+  help: docs/errors/library.similar_exists.md
 
 check failed: 1 error, 1 file
 ```

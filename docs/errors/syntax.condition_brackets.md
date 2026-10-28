@@ -24,7 +24,7 @@ error: This condition needs brackets
   reason: Conditions are always in brackets, `if (total > limit) {`, so the block can't be mistaken for part of the condition.
   next: Write `if (count > 10) {` (agent)
   rule: syntax.condition_brackets
-  help: docs/language/03-logic.html#syntax-condition-brackets
+  help: docs/errors/syntax.condition_brackets.md
 
 check failed: 1 error, 1 file
 ```

@@ -15,7 +15,7 @@ error: `$` isn't part of Jadpo
   reason: Jadpo source is names, literals, brackets and operators such as `+` and `==`; this character has no meaning.
   next: Remove `$` (agent)
   rule: syntax.unexpected_character
-  help: docs/language/01-project-layout-and-modules.html#syntax-unexpected-character
+  help: docs/errors/syntax.unexpected_character.md
 
 check failed: 1 error, 1 file
 ```

@@ -23,7 +23,7 @@ error: `price` needs a type
   reason: Every variable states its type, so a reader sees it where the value is introduced.
   next: Write `var price: ItemPrice = 0.00` (agent)
   rule: syntax.variable_type_required
-  help: docs/language/02-values-and-types.html#syntax-variable-type-required
+  help: docs/errors/syntax.variable_type_required.md
 
 check failed: 1 error, 1 file
 ```

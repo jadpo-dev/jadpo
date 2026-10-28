@@ -37,7 +37,7 @@ error: `check_note(...)` isn't a construction, so `invalid:` covers nothing
   reason: `check_note(...)` fails with the failures its `fails` list names; `invalid:` is the catch-all only for the rules a construction's value can break, never for another call's failures.
   next: Remove `invalid: ...`; `attempt` passes `check_note(...)`'s failures on, and `match` turns one into another (agent)
   rule: failure.invalid_outside_construction
-  help: docs/language/04-failures.html#failure-invalid-outside-construction
+  help: docs/errors/failure.invalid_outside_construction.md
 
 check failed: 1 error, 1 file
 ```

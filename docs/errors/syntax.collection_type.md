@@ -21,7 +21,7 @@ error: Jadpo writes `List<Tag>`, not `Tag[]`
   reason: `T[]` is a list type in TypeScript, Java and C#, `[]T` in Go, and `list[T]` in Python; Jadpo writes a collection's types in angle brackets, as in `List<T>`, `Set<T>` and `Map<K, V>`.
   next: Write `List<Tag>` (agent)
   rule: syntax.collection_type
-  help: docs/language/02-values-and-types.html#syntax-collection-type
+  help: docs/errors/syntax.collection_type.md
 
 check failed: 1 error, 1 file
 ```

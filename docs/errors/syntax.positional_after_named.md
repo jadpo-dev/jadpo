@@ -24,7 +24,7 @@ error: A positional argument follows a named one
   reason: Once an argument is named, every argument after it is named too.
   next: Name this argument, or move it before `date:` (agent)
   rule: syntax.positional_after_named
-  help: docs/language/03-logic.html#syntax-positional-after-named
+  help: docs/errors/syntax.positional_after_named.md
 
 check failed: 1 error, 1 file
 ```

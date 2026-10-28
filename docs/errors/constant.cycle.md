@@ -18,7 +18,7 @@ error: `large_batch` depends on itself
   reason: A constant's value is worked out from the constants it reads, and `large_batch` reads `small_batch`, which reads `large_batch`, so it has no value.
   next: Write `large_batch`'s value without reading a constant that reads it (agent)
   rule: constant.cycle
-  help: docs/language/03-logic.html#constant-cycle
+  help: docs/errors/constant.cycle.md
 
 check failed: 1 error, 1 file
 ```

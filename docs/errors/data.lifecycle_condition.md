@@ -23,7 +23,7 @@ error: `current_user.id` isn't something a lifecycle condition can compare with
   reason: A lifecycle condition compares the record's own fields with fixed values: a literal, an enum value or `clock.now`. It never mentions other records or who is asking, which is policy (area 9), so it can join every statement's `WHERE` and an index.
   next: Compare with a literal, an enum value or `clock.now` (agent)
   rule: data.lifecycle_condition
-  help: docs/language/05-data.html#data-lifecycle-condition
+  help: docs/errors/data.lifecycle_condition.md
 
 check failed: 1 error, 1 file
 ```

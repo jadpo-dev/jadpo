@@ -45,7 +45,7 @@ error: `Note` declares `policy:` twice
   reason: An entity's grants are one list per effect in one `policy:`, so "who can delete this?" is always one line.
   next: Move what the second `policy:` holds into the first, and remove it (agent)
   rule: policy.declaration_duplicate
-  help: docs/language/09-policy.html#policy-declaration-duplicate
+  help: docs/errors/policy.declaration_duplicate.md
 
 check failed: 1 error, 1 file
 ```

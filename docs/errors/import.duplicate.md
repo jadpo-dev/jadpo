@@ -37,7 +37,7 @@ error: `shared/types` has two `use` lines
   reason: Each folder has one `use` line, listing every name the file takes from it; `use shared/types` is written twice.
   next: Move its names onto the first `shared/types` line (agent)
   rule: import.duplicate
-  help: docs/language/01-project-layout-and-modules.html#import-duplicate
+  help: docs/errors/import.duplicate.md
 
 check failed: 1 error, 4 files
 ```

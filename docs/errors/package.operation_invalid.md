@@ -67,7 +67,7 @@ error: `parcels.get`'s path names `{parcelId}`, which its input doesn't give
   reason: A placeholder in `path:` is filled from the input's field of that spelling on the wire, and its input, `AcmeCouriers.ParcelLookup`, has no field sent as `parcelId`.
   next: Add a field `parcelId` to the input, or give the field the provider's spelling with `wire_name: "parcelId"` (agent)
   rule: package.operation_invalid
-  help: docs/language/11-integrations.html#package-operation-invalid
+  help: docs/errors/package.operation_invalid.md
 
 check failed: 1 error, 6 files
 ```

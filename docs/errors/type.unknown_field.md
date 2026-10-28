@@ -26,7 +26,7 @@ error: `Product` has no field `title`
   reason: `Product`'s fields are `name`.
   next: Remove `title`, or declare it on `Product` (agent)
   rule: type.unknown_field
-  help: docs/language/02-values-and-types.html#type-unknown-field
+  help: docs/errors/type.unknown_field.md
 
 check failed: 1 error, 1 file
 ```

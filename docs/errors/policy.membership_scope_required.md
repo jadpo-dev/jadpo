@@ -47,7 +47,7 @@ error: `StaffMembership`'s membership has no `scope:`
   reason: A membership says where a role is held (`scope:`), who holds it (`member:`) and which field holds it (`role:`); `scope:` is what the role is held in: a field typed `<Entity>.id`, or `MembershipScope.application` for a role held across the whole application.
   next: Add `scope:` to the membership (agent)
   rule: policy.membership_scope_required
-  help: docs/language/09-policy.html#policy-membership-scope-required
+  help: docs/errors/policy.membership_scope_required.md
 
 check failed: 1 error, 1 file
 ```

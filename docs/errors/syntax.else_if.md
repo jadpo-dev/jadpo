@@ -28,7 +28,7 @@ error: Jadpo writes `else if`, not `elif`
   reason: `elif` continues an `if` in Python, `elsif` in Ruby and `elseif` in PHP and Lua; Jadpo writes `else if`.
   next: Use `else if` instead of `elif` (agent)
   rule: syntax.else_if
-  help: docs/language/03-logic.html#syntax-else-if
+  help: docs/errors/syntax.else_if.md
 
 check failed: 1 error, 1 file
 ```

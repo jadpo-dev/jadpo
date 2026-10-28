@@ -21,7 +21,7 @@ error: `choose` takes 2 values, not 1
   reason: `choose(first: Name, second: Name)` has 2 parameters; each is given, in order, and none has a default.
   next: Pass `second` as well (agent)
   rule: type.argument_count
-  help: docs/language/03-logic.html#type-argument-count
+  help: docs/errors/type.argument_count.md
 
 check failed: 1 error, 1 file
 ```

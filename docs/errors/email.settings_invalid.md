@@ -22,7 +22,7 @@ error: `connection: main` sends no email
   reason: `email: { connection: }` names a connection that provides `email`: one with `driver: Driver.smtp`, or to a mail package that maps `send` in its `provides/email.jadpo`; `main` is a connection that sends no email, and `app.jadpo` declares none with `driver: Driver.smtp`.
   next: Declare a connection with `driver: Driver.smtp` in `connections:`, and name it here (agent)
   rule: email.settings_invalid
-  help: docs/language/16-built-in-services.html#email-settings-invalid
+  help: docs/errors/email.settings_invalid.md
 
 check failed: 1 error, 1 file
 ```

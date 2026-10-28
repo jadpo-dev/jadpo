@@ -35,7 +35,7 @@ error: `filter.title` may be absent, so this `where:` line can't always be met
   reason: A `where:` line applies to every call; a condition that should apply only when its value is there, as a request's optional filter, is written with `where_present:`.
   next: Write `where_present:` for this condition (agent)
   rule: query.optional_value
-  help: docs/language/06-reads-and-writes.html#query-optional-value
+  help: docs/errors/query.optional_value.md
 
 check failed: 1 error, 1 file
 ```

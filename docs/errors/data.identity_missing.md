@@ -15,7 +15,7 @@ error: `Note` has no `id` field
   reason: Every entity's identity is one field, `id`, based on `Uuid`: generated when a record is created and never supplied by callers, so other code can refer to it as `Entity.id`.
   next: Add `id: Uuid` as the entity's first field (agent)
   rule: data.identity_missing
-  help: docs/language/05-data.html#data-identity-missing
+  help: docs/errors/data.identity_missing.md
 
 check failed: 1 error, 1 file
 ```

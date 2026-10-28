@@ -40,7 +40,7 @@ error: `Customer.update` can't break `Customer.email`, so it takes no arm
   reason: `Customer.update` sets none of the fields `Customer.email` covers, so it can't break it.
   next: Remove `Customer.email: ...` (agent)
   rule: data.conflict_cannot_break
-  help: docs/language/06-reads-and-writes.html#data-conflict-cannot-break
+  help: docs/errors/data.conflict_cannot_break.md
 
 check failed: 1 error, 1 file
 ```

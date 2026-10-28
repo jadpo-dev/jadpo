@@ -32,7 +32,7 @@ error: `Whoami.caller` holds a caller
   reason: A caller value is who signed in, as the runtime holds it, and is never sent to a client; an output sends the fields a client needs.
   next: Type `caller` with the entity's id, such as `User.id`, or send the fields a client needs (agent)
   rule: type.auth_principal_output
-  help: docs/language/08-identity.html#type-auth-principal-output
+  help: docs/errors/type.auth_principal_output.md
 
 check failed: 1 error, 1 file
 ```

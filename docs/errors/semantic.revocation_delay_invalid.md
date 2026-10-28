@@ -15,7 +15,7 @@ error: `0m` can't be a revocation delay
   reason: `revocation_delay:` is how long a disabled caller or a revoked session may keep working, a duration above zero such as `5m`; leaving it out checks the caller's record on every request.
   next: Write a duration such as `5m`, or leave `revocation_delay:` out (agent)
   rule: semantic.revocation_delay_invalid
-  help: docs/language/08-identity.html#semantic-revocation-delay-invalid
+  help: docs/errors/semantic.revocation_delay_invalid.md
 
 check failed: 1 error, 1 file
 ```

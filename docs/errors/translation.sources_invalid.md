@@ -46,7 +46,7 @@ error: `domains/greeting/translations/sources.jadpo_record` can't be read: this 
   reason: This file records which wording each translation was made from and who accepted it. Jadpo writes it, and a stale or unaccepted translation is judged from it, so a file it can't read hides both.
   next: Run `jadpo translations update`, which writes it again (agent)
   rule: translation.sources_invalid
-  help: docs/language/10-configuration-and-time.html#translation-sources-invalid
+  help: docs/errors/translation.sources_invalid.md
 
 check failed: 1 error, 4 files
 ```

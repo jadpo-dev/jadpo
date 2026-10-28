@@ -22,7 +22,7 @@ error: `kiosk` serves nothing and runs nothing
   reason: A deployable serves APIs, `serves: [main]`, runs background work, `runs: [Trigger.schedules]`, or both; one that does neither would only answer its health checks.
   next: Give `kiosk` `serves:` or `runs:`, or remove it (agent)
   rule: deployable.empty
-  help: docs/language/14-tooling.html#deployable-empty
+  help: docs/errors/deployable.empty.md
 
 check failed: 1 error, 1 file
 ```

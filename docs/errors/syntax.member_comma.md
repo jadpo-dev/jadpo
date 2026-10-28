@@ -22,7 +22,7 @@ error: Jadpo has no `,` between members
   reason: Commas separate fields in JavaScript, TypeScript, Rust, Go, Swift and JSON; each Jadpo member is on its own line, and the formatter puts it there.
   next: Remove `,` (agent)
   rule: syntax.member_comma
-  help: docs/language/03-logic.html#syntax-member-comma
+  help: docs/errors/syntax.member_comma.md
 
 check failed: 1 error, 1 file
 ```

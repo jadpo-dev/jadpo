@@ -21,7 +21,7 @@ error: Jadpo writes `function`, not `fn`
   reason: `fn` declares a function in Rust; Jadpo starts one with `function`, or `action` when it reads or writes stored data.
   next: Use `function` instead of `fn` (agent)
   rule: syntax.function_keyword
-  help: docs/language/03-logic.html#syntax-function-keyword
+  help: docs/errors/syntax.function_keyword.md
 
 check failed: 1 error, 1 file
 ```

@@ -24,7 +24,7 @@ error: `DueWeights` holds a map keyed by `DueAt`
   reason: `DueWeights` crosses a boundary as JSON, where a map is an object and its keys are text; `DueAt` is built on `Instant`.
   next: Key the map by a type built on `Text` or `Uuid`, or send a list of objects instead (agent)
   rule: type.map_key_boundary
-  help: docs/language/02-values-and-types.html#type-map-key-boundary
+  help: docs/errors/type.map_key_boundary.md
 
 check failed: 1 error, 1 file
 ```

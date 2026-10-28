@@ -46,7 +46,7 @@ error: `hello` in `de_de` was translated from `en_gb` wording that has since cha
   reason: `jadpo translations update` recorded the `en_gb` wording this message's translation was made from, and the `en_gb` wording has changed since, so the translation may no longer say the same thing.
   next: Reword `hello` in `domains/greeting/translations/de_de.jadpo` to match the new `en_gb` wording, then run `jadpo translations update` (agent)
   rule: translation.stale
-  help: docs/language/10-configuration-and-time.html#translation-stale
+  help: docs/errors/translation.stale.md
 
 check failed: 1 error, 4 files
 ```

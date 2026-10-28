@@ -319,7 +319,7 @@ fn a_long_else_if_chain_checks_and_formats() {
 
 /// A deployable built for Workers that reaches a connection with
 /// `max_concurrent:` passes, and the check says the cap counts per
-/// instance there (area 11, Decisions, 2026-10-21; chunk 8.1o2).
+/// instance there (area 11's notes, Decisions, 2026-10-21; chunk 8.1o2).
 #[test]
 fn a_cap_on_calls_from_workers_is_said_to_count_per_instance() {
     let root = folder("per-instance");

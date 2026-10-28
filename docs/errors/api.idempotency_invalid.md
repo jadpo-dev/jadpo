@@ -22,7 +22,7 @@ error: `true` isn't an `Idempotency`
   reason: `idempotency:` takes `Idempotency.required`, so a write without an `Idempotency-Key` header is refused, or `Idempotency.optional`, the default, where a client may send one.
   next: Write `Idempotency.required`, or leave `idempotency:` out (agent)
   rule: api.idempotency_invalid
-  help: docs/language/07-http.html#api-idempotency-invalid
+  help: docs/errors/api.idempotency_invalid.md
 
 check failed: 1 error, 1 file
 ```

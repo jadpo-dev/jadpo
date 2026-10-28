@@ -29,7 +29,7 @@ error: `titles` reads `Book` records but returns `List<Title>`
   reason: A query's result is `Book` or an object type its fields fill (`type BookView = Output { pick: [...] }`), as `T` for exactly one record, `T?` for at most one, `List<T>` or `Page<T>`, or a map layer, `FeatureCollection<G, P>`.
   next: Return `Book`, or an `Output` type that picks the fields you need (agent)
   rule: query.result_type
-  help: docs/language/06-reads-and-writes.html#query-result-type
+  help: docs/errors/query.result_type.md
 
 check failed: 1 error, 1 file
 ```

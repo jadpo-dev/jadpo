@@ -20,7 +20,7 @@ error: `TicketStatus` has no variant `opne`
   reason: `TicketStatus`'s variants are `open` and `closed`. Did you mean `open`?
   next: Use `TicketStatus.open` (agent)
   rule: type.unknown_enum_variant
-  help: docs/language/02-values-and-types.html#type-unknown-enum-variant
+  help: docs/errors/type.unknown_enum_variant.md
 
 check failed: 1 error, 1 file
 ```

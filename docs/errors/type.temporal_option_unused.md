@@ -17,7 +17,7 @@ error: `dst:` means nothing for a `ShopDay`
   reason: `dst:` chooses an instant when a local time falls in a daylight-saving gap or overlap; `temporal.add_days` on a `ShopDay` moves a date, which has no clock time, so no such time arises.
   next: Remove `dst: ...` (agent)
   rule: type.temporal_option_unused
-  help: docs/language/10-configuration-and-time.html#type-temporal-option-unused
+  help: docs/errors/type.temporal_option_unused.md
 
 check failed: 1 error, 1 file
 ```

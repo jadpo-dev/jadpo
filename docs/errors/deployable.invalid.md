@@ -24,7 +24,7 @@ error: `kiosk`'s `serves:` isn't a list
   reason: `serves:` is a list, `serves: [<api>]`.
   next: Write `serves: [<api>]` (agent)
   rule: deployable.invalid
-  help: docs/language/14-tooling.html#deployable-invalid
+  help: docs/errors/deployable.invalid.md
 
 check failed: 1 error, 1 file
 ```

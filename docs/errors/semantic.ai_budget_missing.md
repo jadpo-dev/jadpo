@@ -43,7 +43,7 @@ error: `ai:` sets no daily limit
   reason: Nothing an application asks a model is unlimited: `per_day: { tokens: }` caps the day's tokens, so a loop, or a prompt an injection makes run on, can't spend without end.
   next: Add `limits: { per_day: { tokens: 2000000 } }` to `ai:` (agent)
   rule: semantic.ai_budget_missing
-  help: docs/language/21-ai.html#semantic-ai-budget-missing
+  help: docs/errors/semantic.ai_budget_missing.md
 
 check failed: 1 error, 2 files
 ```

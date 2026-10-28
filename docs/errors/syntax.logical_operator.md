@@ -23,7 +23,7 @@ error: Jadpo writes `and`, not `&&`
   reason: `&&`, `||` and `!` are the logical operators of JavaScript, Rust, Go, Java, C#, Kotlin and Swift; Jadpo writes them as words: `and`, `or` and `not`.
   next: Use `and` instead of `&&` (agent)
   rule: syntax.logical_operator
-  help: docs/language/03-logic.html#syntax-logical-operator
+  help: docs/errors/syntax.logical_operator.md
 
 check failed: 1 error, 1 file
 ```

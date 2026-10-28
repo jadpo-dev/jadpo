@@ -20,7 +20,7 @@ error: The index `by_due_at` lists `due_at` twice
   reason: Each field counts once in an index.
   next: Remove the second `due_at` (agent)
   rule: data.repeated_field
-  help: docs/language/05-data.html#data-repeated-field
+  help: docs/errors/data.repeated_field.md
 
 check failed: 1 error, 1 file
 ```

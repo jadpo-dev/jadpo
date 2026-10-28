@@ -46,7 +46,7 @@ error: A route passes its placeholders and input, not a value built in the route
   reason: A route is a thin door: what it runs gets the route's placeholders, its `input` and their fields as written, and works out anything else itself.
   next: Pass a placeholder, `input` or a field of them, and move the rest into what the route runs (agent)
   rule: route.argument_invalid
-  help: docs/language/07-http.html#route-argument-invalid
+  help: docs/errors/route.argument_invalid.md
 
 check failed: 1 error, 1 file
 ```

@@ -42,7 +42,7 @@ error: `_` can't stand for a call's failures
   reason: Every failure a call can give has an arm of its own, so a failure added to the call later is caught at every `match` that has to consider it.
   next: Replace `_` with arms for `LookupMissing` and `LookupRefused` (agent)
   rule: failure.outcome_wildcard
-  help: docs/language/03-logic.html#failure-outcome-wildcard
+  help: docs/errors/failure.outcome_wildcard.md
 
 check failed: 1 error, 2 files
 ```

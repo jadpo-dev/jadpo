@@ -34,7 +34,7 @@ error: `Bakery.delivery_area` isn't a `Point`, so it can't be each feature's geo
   reason: `FeatureCollection<Point, BakeryPin>`'s features each hold a `Point`, and a stored value goes into the layer as it is, so `geometry:` names a field of that type.
   next: Use `Bakery.spot` (agent)
   rule: query.geometry_field
-  help: docs/language/06-reads-and-writes.html#query-geometry-field
+  help: docs/errors/query.geometry_field.md
 
 check failed: 1 error, 1 file
 ```

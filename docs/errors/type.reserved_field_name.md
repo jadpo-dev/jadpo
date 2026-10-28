@@ -17,7 +17,7 @@ error: `optional` can't be a field's name
   reason: `include`, `pick`, `omit` and `optional` are lines that build a type's fields, so no field may take their names.
   next: Rename the field (agent)
   rule: type.reserved_field_name
-  help: docs/language/02-values-and-types.html#type-reserved-field-name
+  help: docs/errors/type.reserved_field_name.md
 
 check failed: 1 error, 1 file
 ```

@@ -46,7 +46,7 @@ error: `order_cancelled` words nothing
   reason: A member of `translations { }` words one message, enum or email of this folder's scope, by its name in lower_snake_case, or a failure by its code. `order_cancelled` is none of them; the scope has `order_shipped`.
   next: Remove `order_cancelled` from `domains/shipping/translations/fr_fr.jadpo`, or declare the message it words beside the language files (agent)
   rule: translation.member_unknown
-  help: docs/language/10-configuration-and-time.html#translation-member-unknown
+  help: docs/errors/translation.member_unknown.md
 
 check failed: 1 error, 4 files
 ```

@@ -42,7 +42,7 @@ error: This `match` doesn't handle `lookup(...)` succeeding
   reason: A `match` on a call's outcome handles its value too, in a `success(name)` arm, as well as each failure.
   next: Add `success(value) -> ...` as the first arm (agent)
   rule: failure.outcome_success_missing
-  help: docs/language/03-logic.html#failure-outcome-success-missing
+  help: docs/errors/failure.outcome_success_missing.md
 
 check failed: 1 error, 2 files
 ```

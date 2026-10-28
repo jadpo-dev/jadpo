@@ -33,7 +33,7 @@ error: `Locale.fr_fr` is supported but has no language file for `order_shipped`
   reason: Every supported locale has a language file for each folder that has messages, so a call with `locale: Locale.fr_fr` has wording to show. A locale that isn't finished yet is listed in `in_progress:`, and falls back to the default until it is.
   next: Add `domains/shipping/translations/fr_fr.jadpo` with a `translations { }` that words `order_shipped` (agent)
   rule: translation.file_missing
-  help: docs/language/10-configuration-and-time.html#translation-file-missing
+  help: docs/errors/translation.file_missing.md
 
 check failed: 1 error, 3 files
 ```

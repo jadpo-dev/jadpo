@@ -38,7 +38,7 @@ error: `temporal.year` groups by a date, and `Loan.lent_at` is `Instant`
   reason: A time bucket is worked out by the database, which gives exactly what code gives only for a date: an instant has a day only in a zone, and PostgreSQL's time zone database can differ from the one built into Jadpo.
   next: Keep the day as a `CalendarDate` field, and group by a time bucket of it (agent)
   rule: query.group_key
-  help: docs/language/06-reads-and-writes.html#query-group-key
+  help: docs/errors/query.group_key.md
 
 check failed: 1 error, 1 file
 ```

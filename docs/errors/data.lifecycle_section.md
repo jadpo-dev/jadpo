@@ -23,7 +23,7 @@ error: `hidden` isn't part of a lifecycle
   reason: A lifecycle holds `visible:`, `initial:`, `transitions:` and `purge:`.
   next: Remove `hidden` from the lifecycle (agent)
   rule: data.lifecycle_section
-  help: docs/language/05-data.html#data-lifecycle-section
+  help: docs/errors/data.lifecycle_section.md
 
 check failed: 1 error, 1 file
 ```

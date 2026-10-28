@@ -16,7 +16,7 @@ error: `day` isn't shown `long`
   reason: A format's `day` is shown `ComponentStyle.numeric` or `ComponentStyle.two_digit`; the locale decides the rest, such as the order and the punctuation.
   next: Write `day: ComponentStyle.numeric` (agent)
   rule: type.temporal_format_component_invalid
-  help: docs/language/10-configuration-and-time.html#type-temporal-format-component-invalid
+  help: docs/errors/type.temporal_format_component_invalid.md
 
 check failed: 1 error, 1 file
 ```

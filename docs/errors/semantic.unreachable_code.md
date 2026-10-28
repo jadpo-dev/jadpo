@@ -26,7 +26,7 @@ error: This code never runs
   reason: The statement before it ends in `return` or `reject` on every path, so nothing after it in this block can run.
   next: Remove it, or move it before the statement that leaves (agent)
   rule: semantic.unreachable_code
-  help: docs/language/03-logic.html#semantic-unreachable-code
+  help: docs/errors/semantic.unreachable_code.md
 
 check failed: 1 error, 1 file
 ```

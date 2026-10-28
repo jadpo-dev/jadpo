@@ -34,7 +34,7 @@ error: `Parcel.shipments` can't be stored as JSON
   reason: A structured field is stored whole as `jsonb` holding its type's JSON, made of values built on the built-in and standard types, enums, and objects made of them, in lists, sets and maps; `Parcel.shipments` holds `ParcelSent`, an event, which is emitted, not written.
   next: Store what `Parcel.shipments` needs in an `Object` of the application's, or in fields of its own (agent)
   rule: data.field_without_json
-  help: docs/language/05-data.html#data-field-without-json
+  help: docs/errors/data.field_without_json.md
 
 check failed: 1 error, 1 file
 ```

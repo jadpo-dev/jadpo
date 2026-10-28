@@ -17,7 +17,7 @@ error: `browser_session:` signs in users, but no `user:` is declared
   reason: A browser session signs in a user, looked up through the principal's `user:` in `app.jadpo`, which names the entity and the unique field that identify one.
   next: Declare `principal { user: { subject: <Entity>.<field> } }` in `app.jadpo` (agent)
   rule: semantic.auth_principal_required
-  help: docs/language/08-identity.html#semantic-auth-principal-required
+  help: docs/errors/semantic.auth_principal_required.md
 
 check failed: 1 error, 1 file
 ```

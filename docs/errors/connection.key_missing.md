@@ -64,7 +64,7 @@ error: `couriers` doesn't give `domains:`
   reason: A connection lists the domains whose actions may call it, so a new caller is a one-line change a reviewer sees; other domains go through those domains' public actions.
   next: Add `domains: [<domain>]`, listing the domains that call `couriers` (agent)
   rule: connection.key_missing
-  help: docs/language/11-integrations.html#connection-key-missing
+  help: docs/errors/connection.key_missing.md
 
 check failed: 1 error, 6 files
 ```

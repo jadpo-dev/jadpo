@@ -15,7 +15,7 @@ error: `OrderId` needs a block
   reason: Every type is written `type Name = Base { ... }`. Without a block it reads like an alias, and Jadpo has no aliases: every type is a new type.
   next: Add `{}` after `Uuid` (agent)
   rule: syntax.type_block_required
-  help: docs/language/02-values-and-types.html#syntax-type-block-required
+  help: docs/errors/syntax.type_block_required.md
 
 check failed: 1 error, 1 file
 ```

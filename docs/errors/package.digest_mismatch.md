@@ -28,7 +28,7 @@ error: Package `Postcodes.v2` differs from what was installed
   reason: An installed package is read-only: `jadpo.lock` locks it with digest `sha256:0000000000000000000000000000000000000000000000000000000000000000`, and its files now give `sha256:fc196456d53ad674b39fbab39eca4883d512f52feb90d687d22c2eeb2c9721e7`, so a file in `packages/postcodes/v2/` was changed, added or removed since it was installed.
   next: Restore `packages/postcodes/v2/` from version control, or install the package again with `jadpo package add`; change the app's own code instead (human)
   rule: package.digest_mismatch
-  help: docs/language/11-integrations.html#package-digest-mismatch
+  help: docs/errors/package.digest_mismatch.md
 
 check failed: 1 error, 2 files
 ```

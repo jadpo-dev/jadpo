@@ -142,7 +142,7 @@ error: `Patient.notes` reaches a model, and `ai:` doesn't allow `health` data
   reason: `SummariseNotes`'s `{notes}` is built from `Patient.notes`, marked `personal: PersonalData.health`, a sensitive category. Each personal-data category sent to a model is listed in `ai: { personal_data: { allowed: } }`, so what the provider is given is decided in `app.jadpo`, where a reviewer sees it.
   next: List `PersonalData.health` in `ai: { personal_data: { allowed: } }`, or leave `Patient.notes` out of `SummariseNotes`'s `{notes}` (human)
   rule: semantic.ai_personal_data_not_allowed
-  help: docs/language/21-ai.html#semantic-ai-personal-data-not-allowed
+  help: docs/errors/semantic.ai_personal_data_not_allowed.md
 
 check failed: 1 error, 8 files
 ```

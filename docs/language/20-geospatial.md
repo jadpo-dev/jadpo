@@ -592,7 +592,7 @@ error: This `Polygon` breaks its rule `rings_valid`
   reason: A `Polygon`'s rings are closed with four points or more, never cross or meet themselves or each other, keep each hole inside the outer ring, and have every edge shorter than half the globe, so the polygon is the smaller side its outer ring bounds (area 20, "Polygons are valid when built"). A literal is checked while compiling.
   next: Close each ring and move its points so no edge meets another, with each hole inside the outer ring (agent)
   rule: type.invalid_literal
-  help: docs/language/02-values-and-types.html#type-invalid-literal
+  help: docs/errors/type.invalid_literal.md
 
 check failed: 1 error, 1 file
 ```

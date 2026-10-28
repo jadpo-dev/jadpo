@@ -23,7 +23,7 @@ error: This function can end without returning a `Size`
   reason: Every path through a function with a result ends in `return` or `reject`; at least one path here reaches the end of the body.
   next: Return a `Size` at the end, or on every branch that reaches it (agent)
   rule: semantic.missing_return
-  help: docs/language/03-logic.html#semantic-missing-return
+  help: docs/errors/semantic.missing_return.md
 
 check failed: 1 error, 1 file
 ```

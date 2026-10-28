@@ -21,7 +21,7 @@ error: Package `Postcodes.v2` isn't in `jadpo.lock`
   reason: `packages/` holds only installed packages, each with its line in `jadpo.lock`: its version, digest and source. A package with no line was copied in rather than installed, so nothing says where it came from.
   next: Install it with `jadpo package add`, or, if it is the app's own code, move it to `shared/providers/postcodes/v2/` (human)
   rule: package.not_locked
-  help: docs/language/11-integrations.html#package-not-locked
+  help: docs/errors/package.not_locked.md
 
 check failed: 1 error, 2 files
 ```

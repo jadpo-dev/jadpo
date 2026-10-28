@@ -23,7 +23,7 @@ error: `Target.workers` isn't a target
   reason: A deployable is built for `Target.native`, a server, or `Target.wasm`, WebAssembly on Cloudflare Workers. Did you mean `Target.wasm`?
   next: Use `Target.wasm` instead (agent)
   rule: deployable.target_unknown
-  help: docs/language/14-tooling.html#deployable-target-unknown
+  help: docs/errors/deployable.target_unknown.md
 
 check failed: 1 error, 1 file
 ```

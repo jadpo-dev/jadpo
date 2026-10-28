@@ -26,7 +26,7 @@ error: `temporal.format` is now `text.format`
   reason: The standard library has one name for each operation; `temporal.format` moved to `text.format`, which takes the same values.
   next: Write `text.format` (agent)
   rule: semantic.standard_operation_moved
-  help: docs/language/19-standard-library.html#semantic-standard-operation-moved
+  help: docs/errors/semantic.standard_operation_moved.md
 
 check failed: 1 error, 1 file
 ```
@@ -59,7 +59,7 @@ error: `collection.count` is now `list.count`
   reason: The standard library has one namespace for each type an operation works on, so `collection.` became `list.`, `set.` and `map.`; `bakings` is a list.
   next: Write `list.count` (agent)
   rule: semantic.standard_operation_moved
-  help: docs/language/19-standard-library.html#semantic-standard-operation-moved
+  help: docs/errors/semantic.standard_operation_moved.md
 
 check failed: 1 error, 1 file
 ```

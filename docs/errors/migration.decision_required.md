@@ -43,7 +43,7 @@ error: Migration `20261020T1401_add_stars` needs a decision about `Note.stars`
   reason: `Note.stars` is required, and the `Note` records already stored have no value for it.
   next: Set `backfill:` for `Note.stars`, such as `backfill: 1`, then run `jadpo migrate new` to finish the migration (human)
   rule: migration.decision_required
-  help: docs/language/05-data.html#migration-decision-required
+  help: docs/errors/migration.decision_required.md
 
 check failed: 1 error, 4 files
 ```

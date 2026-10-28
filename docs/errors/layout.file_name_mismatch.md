@@ -23,7 +23,7 @@ error: `DueDate` is in `due.jadpo`
   reason: A file is named after the declaration it holds, so a search for a name finds its file.
   next: Rename `due.jadpo` to `due_date.jadpo` (agent)
   rule: layout.file_name_mismatch
-  help: docs/language/01-project-layout-and-modules.html#layout-file-name-mismatch
+  help: docs/errors/layout.file_name_mismatch.md
 
 check failed: 1 error, 3 files
 ```

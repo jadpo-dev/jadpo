@@ -39,7 +39,7 @@ error: `charge` is public, but `Amount` isn't
   reason: Whoever uses a public action has to build or handle what its signature names, so everything it names is public too; `Amount` is a type in `domains/billing/types/amount.jadpo` that only domain `billing` sees.
   next: Mark `Amount` `public`, or keep it out of `charge`'s signature (agent)
   rule: visibility.public_reaches_private
-  help: docs/language/01-project-layout-and-modules.html#visibility-public-reaches-private
+  help: docs/errors/visibility.public_reaches_private.md
 
 check failed: 1 error, 4 files
 ```

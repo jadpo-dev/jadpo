@@ -23,7 +23,7 @@ error: `mian` isn't one of the app's APIs
   reason: `serves:` names APIs the app has: `main`. Did you mean `main`?
   next: Use `main` instead of `mian` (agent)
   rule: deployable.api_unknown
-  help: docs/language/14-tooling.html#deployable-api-unknown
+  help: docs/errors/deployable.api_unknown.md
 
 check failed: 1 error, 1 file
 ```

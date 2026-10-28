@@ -32,7 +32,7 @@ error: `Note.create` sets `written_at`, which the store generates
   reason: `Note.written_at` is generated from the operation's clock; code never assigns it.
   next: Remove `written_at` from `set:` (agent)
   rule: data.set_generated_field
-  help: docs/language/06-reads-and-writes.html#data-set-generated-field
+  help: docs/errors/data.set_generated_field.md
 
 check failed: 1 error, 1 file
 ```

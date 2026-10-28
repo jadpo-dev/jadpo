@@ -32,7 +32,7 @@ error: `count` has no maximum, so the limit has no bound
   reason: Every list is bounded: `limit:` is a number, or a value whose type has a `max:`, such as the built-in `PageSize` (1 to 100).
   next: Type the value as `PageSize`, or as an `Int` type of your own with a `max:` (agent)
   rule: query.limit_unbounded
-  help: docs/language/06-reads-and-writes.html#query-limit-unbounded
+  help: docs/errors/query.limit_unbounded.md
 
 check failed: 1 error, 1 file
 ```

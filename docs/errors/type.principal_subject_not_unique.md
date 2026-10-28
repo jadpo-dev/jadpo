@@ -26,7 +26,7 @@ error: `Member.handle` doesn't identify one user
   reason: A caller is looked up by its subject, so the subject names exactly one record: `Member.handle` isn't `unique: true`.
   next: Make `handle` a required field with `unique: true`, or name one that is (agent)
   rule: type.principal_subject_not_unique
-  help: docs/language/08-identity.html#type-principal-subject-not-unique
+  help: docs/errors/type.principal_subject_not_unique.md
 
 check failed: 1 error, 1 file
 ```

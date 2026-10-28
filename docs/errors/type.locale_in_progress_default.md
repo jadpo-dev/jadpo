@@ -23,7 +23,7 @@ error: The default `Locale.en_gb` can't be in progress
   reason: An in-progress locale falls back to the default where wording is missing, so the default is worded in full, and the last place a missing wording can come from.
   next: Remove `Locale.en_gb` from `in_progress:`, or choose another default (agent)
   rule: type.locale_in_progress_default
-  help: docs/language/10-configuration-and-time.html#type-locale-in-progress-default
+  help: docs/errors/type.locale_in_progress_default.md
 
 check failed: 1 error, 1 file
 ```

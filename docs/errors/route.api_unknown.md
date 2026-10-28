@@ -45,7 +45,7 @@ error: `Memos` belongs to API `admin`, which isn't declared
   reason: With no `apis:` in `app.jadpo` there is one API, `main`, at `/`.
   next: Declare `admin` under `apis:` in `app.jadpo` (agent)
   rule: route.api_unknown
-  help: docs/language/07-http.html#route-api-unknown
+  help: docs/errors/route.api_unknown.md
 
 check failed: 1 error, 1 file
 ```

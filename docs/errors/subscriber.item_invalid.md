@@ -47,7 +47,7 @@ error: `timeout` isn't something a subscriber holds
   reason: A subscriber names the event it listens for with `on:` and the action it runs with `run:`, and may change how it is retried with `retry: { attempts: within: }`; nothing else.
   next: Write `on: <Event>` and `run: <action>(event)`, once each (agent)
   rule: subscriber.item_invalid
-  help: docs/language/12-jobs-and-events.html#subscriber-item-invalid
+  help: docs/errors/subscriber.item_invalid.md
 
 check failed: 1 error, 1 file
 ```

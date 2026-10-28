@@ -42,7 +42,7 @@ error: `POST /memos` has no `output:`
   reason: A route shows its contract without opening what it runs: `output:` names what it sends, exactly what `add_memo` returns (`MemoView`).
   next: Add `output: MemoView` (agent)
   rule: route.output_required
-  help: docs/language/07-http.html#route-output-required
+  help: docs/errors/route.output_required.md
 
 check failed: 1 error, 1 file
 ```
@@ -82,7 +82,7 @@ error: `POST /memos/checks` has no `output:`
   reason: A route shows its contract without opening what it runs: `check_memo` returns `Unit`, so the route sends nothing, which `status: SuccessStatus.no_content` says, answering 204 with no body.
   next: Add `status: SuccessStatus.no_content` (agent)
   rule: route.output_required
-  help: docs/language/07-http.html#route-output-required
+  help: docs/errors/route.output_required.md
 
 check failed: 1 error, 1 file
 ```

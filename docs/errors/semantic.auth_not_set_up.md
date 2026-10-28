@@ -37,7 +37,7 @@ error: `POST /memos` needs a signed-in caller, but nothing signs anyone in
   reason: Every route needs a signed-in caller unless it says `authentication: RouteAuthentication.none`, and `authentication.jadpo` declares no way to sign in that is built, so no request could reach this route.
   next: Declare how callers sign in, `authentication { browser_session: { cookie: "<name>" } }`, or let anyone call the route with `authentication: RouteAuthentication.none` (human)
   rule: semantic.auth_not_set_up
-  help: docs/language/08-identity.html#semantic-auth-not-set-up
+  help: docs/errors/semantic.auth_not_set_up.md
 
 check failed: 1 error, 1 file
 ```

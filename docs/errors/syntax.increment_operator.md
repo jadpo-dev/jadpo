@@ -23,7 +23,7 @@ error: Jadpo writes `next = next + 1`, not `next++`
   reason: `++`, `--`, `+=`, `-=` and `*=` change a variable in place in JavaScript, Java, C#, Go, Kotlin, Swift and Python; Jadpo assigns a `var mut` with `=`, and a named type converts the result back with its constructor, as in `count = Count(count + 1)`.
   next: Write `next = next + 1` (agent)
   rule: syntax.increment_operator
-  help: docs/language/03-logic.html#syntax-increment-operator
+  help: docs/errors/syntax.increment_operator.md
 
 check failed: 1 error, 1 file
 ```

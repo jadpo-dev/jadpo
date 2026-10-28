@@ -64,7 +64,7 @@ error: `WelcomeEmail` is emitted, but nothing sends email
   reason: An email is sent once the action that emits it commits, through the connection `application { email: }` names, from the address its `from:` gives; `app.jadpo` names none.
   next: Declare a connection with `driver: Driver.smtp` in `connections:`, and add `email: { connection: <its name>  from: config.mail_sender }` to `application { }` in `app.jadpo` (agent)
   rule: email.connection_required
-  help: docs/language/16-built-in-services.html#email-connection-required
+  help: docs/errors/email.connection_required.md
 
 check failed: 1 error, 5 files
 ```

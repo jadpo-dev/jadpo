@@ -34,7 +34,7 @@ error: `Quantity(...)` can't break `min`, so it takes no arm
   reason: The declared ranges prove the value always follows `min: 1`, so this arm could never run.
   next: Remove `min: ...` (agent)
   rule: failure.rule_cannot_break
-  help: docs/language/04-failures.html#failure-rule-cannot-break
+  help: docs/errors/failure.rule_cannot_break.md
 
 check failed: 1 error, 1 file
 ```

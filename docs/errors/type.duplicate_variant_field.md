@@ -30,7 +30,7 @@ error: `reason` is given twice
   reason: Each field of `PaymentOutcome.declined` is given once, so there is never a question of which value counts.
   next: Remove one `reason` (agent)
   rule: type.duplicate_variant_field
-  help: docs/language/02-values-and-types.html#type-duplicate-variant-field
+  help: docs/errors/type.duplicate_variant_field.md
 
 check failed: 1 error, 1 file
 ```

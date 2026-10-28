@@ -25,7 +25,7 @@ error: `AnswerQuestion.order_reference` is written nowhere in `answer_question.p
   reason: Each field of a prompt is a placeholder its text writes, so a model is sent only what a reviewer reads in `answer_question.prompt`.
   next: Write `{order_reference}` in `answer_question.prompt`, or remove the field (agent)
   rule: prompt.placeholder_unused
-  help: docs/language/21-ai.html#prompt-placeholder-unused
+  help: docs/errors/prompt.placeholder_unused.md
 
 check failed: 1 error, 2 files
 ```

@@ -32,7 +32,7 @@ error: `ActAs.caller` holds a caller
   reason: A caller comes only from signing in, never from what a request sends, so a route takes it as `current_principal` and passes it on.
   next: Remove `caller`, and pass `current_principal` to what the route runs (agent)
   rule: type.auth_principal_input
-  help: docs/language/08-identity.html#type-auth-principal-input
+  help: docs/errors/type.auth_principal_input.md
 
 check failed: 1 error, 1 file
 ```

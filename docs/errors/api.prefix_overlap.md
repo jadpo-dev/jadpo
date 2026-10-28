@@ -24,7 +24,7 @@ error: APIs `main` and `partners` share the prefix `/v1`
   reason: Each API's routes start with its own prefix, so a URL says which API, OpenAPI document and record it belongs to.
   next: Give `partners` a prefix of its own (agent)
   rule: api.prefix_overlap
-  help: docs/language/07-http.html#api-prefix-overlap
+  help: docs/errors/api.prefix_overlap.md
 
 check failed: 1 error, 1 file
 ```

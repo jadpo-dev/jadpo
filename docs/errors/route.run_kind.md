@@ -43,7 +43,7 @@ error: `GET /memos` runs action `add_memo`
   reason: A `GET` is safe to repeat and never writes, so it runs a named query; every other method runs an action.
   next: Run a query here, or answer `/memos` with another method (agent)
   rule: route.run_kind
-  help: docs/language/07-http.html#route-run-kind
+  help: docs/errors/route.run_kind.md
 
 check failed: 1 error, 1 file
 ```

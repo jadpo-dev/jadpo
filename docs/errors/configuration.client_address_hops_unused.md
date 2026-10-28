@@ -20,7 +20,7 @@ error: `hops:` means nothing with `cloudflare`
   reason: Cloudflare sets `CF-Connecting-IP` on every request from its edge and overwrites a caller's, so there is no list to count from the right.
   next: Remove `hops:` (agent)
   rule: configuration.client_address_hops_unused
-  help: docs/language/10-configuration-and-time.html#configuration-client-address-hops-unused
+  help: docs/errors/configuration.client_address_hops_unused.md
 
 check failed: 1 error, 1 file
 ```

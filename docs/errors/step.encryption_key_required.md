@@ -100,7 +100,7 @@ error: `file_prices` makes 2 changing calls, but `app.jadpo` names no key to enc
   reason: Each answer of an action with several changing calls is kept, encrypted, until the action commits, so a retry can replay it; `application { steps: { encryption_key: } }` names the `SigningKey` setting it is encrypted with, and `file_prices` is the first action that needs it.
   next: Add `steps: { encryption_key: config.step_encryption_key }` to `application { }` in `app.jadpo`, and declare `step_encryption_key: SigningKey` in `config.jadpo` (human)
   rule: step.encryption_key_required
-  help: docs/language/12-jobs-and-events.html#step-encryption-key-required
+  help: docs/errors/step.encryption_key_required.md
 
 check failed: 1 error, 7 files
 ```

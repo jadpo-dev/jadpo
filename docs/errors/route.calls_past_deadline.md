@@ -185,7 +185,7 @@ error: `POST /parcels/status` runs `parcel_status`, whose outside calls can take
   reason: Each outside call can wait its `timeout:` on each of its attempts, and a route's deadline covers every call on the longest way through `parcel_status`, those of the actions it calls included; at the deadline the route stops, so a call still waiting, or still to be tried again, never finishes.
   next: Give the route `deadline: 15s`, lower the `timeout:` or the attempts of the calls (a connection's `timeout:` and `retry: { attempts: }`, an `ai` call's `timeout:` and `attempts:`), or answer `202` and make the calls in a subscriber (agent)
   rule: route.calls_past_deadline
-  help: docs/language/11-integrations.html#route-calls-past-deadline
+  help: docs/errors/route.calls_past_deadline.md
 
 check failed: 1 error, 13 files
 ```

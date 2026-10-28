@@ -50,7 +50,7 @@ error: `parcels` has no wording in `domains/shipping/translations/fr_fr.jadpo`
   reason: A message is worded in every supported locale that isn't in progress, so a call with `locale: Locale.fr_fr` has words to show.
   next: Add `parcels`, with a wording for each plural form (`one`, `many` and `other`) to `domains/shipping/translations/fr_fr.jadpo`, which may write `{count}` (agent)
   rule: translation.wording_missing
-  help: docs/language/10-configuration-and-time.html#translation-wording-missing
+  help: docs/errors/translation.wording_missing.md
 
 check failed: 1 error, 5 files
 ```
@@ -195,7 +195,7 @@ error: `slot_taken` has no wording in `domains/booking/translations/fr_fr.jadpo`
   reason: A failure a route can answer with is worded in every supported locale that isn't in progress, so a client app showing `Locale.fr_fr` has text for its code.
   next: Add `slot_taken: "..."` to `domains/booking/translations/fr_fr.jadpo` (agent)
   rule: translation.wording_missing
-  help: docs/language/10-configuration-and-time.html#translation-wording-missing
+  help: docs/errors/translation.wording_missing.md
 
 check failed: 1 error, 11 files
 ```

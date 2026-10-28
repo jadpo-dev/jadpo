@@ -66,7 +66,7 @@ error: `Memos`'s prefix doesn't start with API `main`'s
   reason: A group's prefix starts with its API's (`/v1` for `main`), so each API's routes, OpenAPI document and record stay its own.
   next: Start the prefix with `/v1`, or name the group's API with `api:` (agent)
   rule: route.prefix_api
-  help: docs/language/07-http.html#route-prefix-api
+  help: docs/errors/route.prefix_api.md
 
 check failed: 1 error, 5 files
 ```

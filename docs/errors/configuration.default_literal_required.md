@@ -17,7 +17,7 @@ error: `default:` on `page_size` isn't a literal
   reason: A `default:` is a literal of the setting's type, checked while compiling (`default: 25`, `default: 5s`); it can't be computed, because nothing runs before the application starts.
   next: Write a literal value after `default:`, or remove it (agent)
   rule: configuration.default_literal_required
-  help: docs/language/10-configuration-and-time.html#configuration-default-literal-required
+  help: docs/errors/configuration.default_literal_required.md
 
 check failed: 1 error, 1 file
 ```
@@ -56,7 +56,7 @@ error: `default:` on `page_size` isn't a literal
   reason: A `default:` is a literal of the setting's type, checked while compiling (`default: 25`, `default: 5s`); it can't be computed, because nothing runs before the application starts.
   next: Run `jadpo config move largest_page`, which makes the constant this setting, or write a literal value after `default:` (agent)
   rule: configuration.default_literal_required
-  help: docs/language/10-configuration-and-time.html#configuration-default-literal-required
+  help: docs/errors/configuration.default_literal_required.md
 
 check failed: 1 error, 1 file
 ```

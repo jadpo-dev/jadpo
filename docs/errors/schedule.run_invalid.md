@@ -23,7 +23,7 @@ error: A schedule passes nothing to `remind`
   reason: `run:` calls one action of the schedule's own domain with no arguments; the action reads `clock.now`, fixed for the run, and queries for anything else, so all the logic lives in the action.
   next: Write `run: remind()`, and let `remind` read `clock.now` and its queries for what it needs (agent)
   rule: schedule.run_invalid
-  help: docs/language/12-jobs-and-events.html#schedule-run-invalid
+  help: docs/errors/schedule.run_invalid.md
 
 check failed: 1 error, 1 file
 ```

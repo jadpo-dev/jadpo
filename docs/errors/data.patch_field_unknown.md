@@ -35,7 +35,7 @@ error: `ItemChanges` has `title`, which `Item` doesn't
   reason: A patch sets each field its input supplies on the field of `Item` with the same name, so every field of `ItemChanges` is one of `Item`'s.
   next: Remove `title` from `ItemChanges` (agent)
   rule: data.patch_field_unknown
-  help: docs/language/06-reads-and-writes.html#data-patch-field-unknown
+  help: docs/errors/data.patch_field_unknown.md
 
 check failed: 1 error, 1 file
 ```

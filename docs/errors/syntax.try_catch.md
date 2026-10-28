@@ -33,7 +33,7 @@ error: Jadpo writes `attempt`, not `try`
   reason: `try` marks a call that can fail in Swift; Jadpo writes `attempt`, which passes the call's failures on to the caller.
   next: Use `attempt` instead of `try` (agent)
   rule: syntax.try_catch
-  help: docs/language/03-logic.html#syntax-try-catch
+  help: docs/errors/syntax.try_catch.md
 
 check failed: 1 error, 1 file
 ```

@@ -27,7 +27,7 @@ error: `Note` names no store, and there is no `main`
   reason: An entity lives in `main` unless its file says `store: <connection>`, and `app.jadpo` declares no database called `main`; its databases are `archive`.
   next: Add `store: archive` to `Note` (human)
   rule: data.store_required
-  help: docs/language/05-data.html#data-store-required
+  help: docs/errors/data.store_required.md
 
 check failed: 1 error, 2 files
 ```

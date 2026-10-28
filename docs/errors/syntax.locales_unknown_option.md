@@ -20,7 +20,7 @@ error: `unsupported` isn't an option of `locales`
   reason: There is no `unsupported:` setting. A request field typed `Locale` is decoded like any enum, so a tag the application doesn't support is an `invalid_value` failure, and choosing a language from an `Accept-Language` header falls back to `default:`.
   next: Remove `unsupported:` (agent)
   rule: syntax.locales_unknown_option
-  help: docs/language/10-configuration-and-time.html#syntax-locales-unknown-option
+  help: docs/errors/syntax.locales_unknown_option.md
 
 check failed: 1 error, 1 file
 ```

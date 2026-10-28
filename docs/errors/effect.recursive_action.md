@@ -25,7 +25,7 @@ error: Action `pong` is in a call cycle: `ping` → `pong` → `ping`
   reason: Only functions may call themselves; an action in a call cycle repeats its effects with no data reason, and an unbounded one never finishes.
   next: Move the repeated logic into a function, or loop over a list with `for` (human)
   rule: effect.recursive_action
-  help: docs/language/03-logic.html#effect-recursive-action
+  help: docs/errors/effect.recursive_action.md
 
 check failed: 1 error, 1 file
 ```

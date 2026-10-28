@@ -86,7 +86,7 @@ error: `share_prices` makes 9 changing calls in a row, more than 8
   reason: Each changing call is a step its action records before sending and replays on a retry, and an action makes at most 8 on any one way through it, counting those of the actions it calls.
   next: Finish part of the work in a subscriber of an event `share_prices` emits (agent)
   rule: step.too_many
-  help: docs/language/12-jobs-and-events.html#step-too-many
+  help: docs/errors/step.too_many.md
 
 check failed: 1 error, 5 files
 ```

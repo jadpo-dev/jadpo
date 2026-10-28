@@ -39,7 +39,7 @@ error: No wording of `order_shipped` writes `{name}`
   reason: `OrderShipped` has a field `name`, and a call gives it a value, but this language never writes it. That is right for a language that needs no such word, and it is also what a forgotten placeholder looks like.
   next: Write `{name}` in a wording of `order_shipped`, or remove the field, or write `decline translation.field_unused: "<why>"` above it if this is deliberate (agent)
   rule: translation.field_unused
-  help: docs/language/10-configuration-and-time.html#translation-field-unused
+  help: docs/errors/translation.field_unused.md
 
 check failed: 1 error, 4 files
 ```

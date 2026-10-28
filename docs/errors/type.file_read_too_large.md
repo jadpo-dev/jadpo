@@ -50,7 +50,7 @@ error: `sheets.read` can't read `PriceSheet.sheet` whole
   reason: `sheets.read` reads a whole file into memory, for passing its bytes on, so it reads at most 10 MB; `PriceSheet.sheet` holds up to 50 MB. A file's rows, of any size, are read a batch at a time by the format helpers (`csv.read`, `tsv.read`, `json_lines.read`).
   next: Read `PriceSheet.sheet`'s rows with a format helper, such as `csv.read`, or keep its `max_size:` at 10 MB or less if `sheets.read` is what it needs (agent)
   rule: type.file_read_too_large
-  help: docs/language/16-built-in-services.html#type-file-read-too-large
+  help: docs/errors/type.file_read_too_large.md
 
 check failed: 1 error, 3 files
 ```

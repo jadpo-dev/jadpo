@@ -71,7 +71,7 @@ error: `batches.each`'s `each:` isn't one call of an action
   reason: An argument reading `item` is `item` itself or a field inside it, which the run reads from each item; one that reads nothing of it is worked out now and saved with the run. Work the rest out in the action it calls.
   next: Write `each: item -> <action>(...)`, calling an action in this domain (agent)
   rule: type.batch_each_invalid
-  help: docs/language/12-jobs-and-events.html#type-batch-each-invalid
+  help: docs/errors/type.batch_each_invalid.md
 
 check failed: 1 error, 2 files
 ```

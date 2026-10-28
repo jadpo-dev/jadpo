@@ -20,7 +20,7 @@ error: The unique rule `only_handle` has one field
   reason: The `unique:` section holds rules over several fields; a single field is made unique in its own block, `handle: ... { unique: true }`.
   next: Move it to `handle`'s block as `unique: true` (agent)
   rule: data.unique_single_field
-  help: docs/language/05-data.html#data-unique-single-field
+  help: docs/errors/data.unique_single_field.md
 
 check failed: 1 error, 1 file
 ```

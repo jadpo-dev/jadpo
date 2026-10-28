@@ -40,7 +40,7 @@ error: This arm never runs
   reason: `_` matches every value the arms above it don't, so no arm after it runs.
   next: Move this arm above `_` (agent)
   rule: type.match_unreachable_pattern
-  help: docs/language/03-logic.html#type-match-unreachable-pattern
+  help: docs/errors/type.match_unreachable_pattern.md
 
 check failed: 1 error, 2 files
 ```

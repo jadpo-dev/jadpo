@@ -64,7 +64,7 @@ error: `Authorization` belongs to authentication
   reason: Credentials (`Authorization`, cookies) and Jadpo's own `X-Jadpo-` headers are read by authentication (area 8), so a route never sees them as input.
   next: Remove the field, and take the caller as the route's `current_principal` (agent)
   rule: route.header_credential
-  help: docs/language/07-http.html#route-header-credential
+  help: docs/errors/route.header_credential.md
 
 check failed: 1 error, 1 file
 ```

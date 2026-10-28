@@ -48,7 +48,7 @@ error: `lookup(...)` can't fail with `LookupTimedOut`
   reason: `lookup(...)` fails with `LookupMissing` and `LookupRefused`, so an arm for anything else never runs.
   next: Remove this arm (agent)
   rule: failure.outcome_unknown_arm
-  help: docs/language/03-logic.html#failure-outcome-unknown-arm
+  help: docs/errors/failure.outcome_unknown_arm.md
 
 check failed: 1 error, 2 files
 ```

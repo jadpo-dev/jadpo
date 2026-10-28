@@ -46,7 +46,7 @@ error: The success arm is written twice
   reason: A call succeeds one way, so one `success(...)` arm takes its value; this one would never run.
   next: Remove this arm, or merge its body into the first (agent)
   rule: failure.outcome_success_duplicate
-  help: docs/language/03-logic.html#failure-outcome-success-duplicate
+  help: docs/errors/failure.outcome_success_duplicate.md
 
 check failed: 1 error, 2 files
 ```

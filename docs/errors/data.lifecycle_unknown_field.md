@@ -22,7 +22,7 @@ error: `Todo` has no field `deletd_at`
   reason: A lifecycle names the fields of the record it is written in, and `Todo`'s fields are `id` and `deleted_at`. Did you mean `deleted_at`?
   next: Use `deleted_at` instead of `deletd_at` (agent)
   rule: data.lifecycle_unknown_field
-  help: docs/language/05-data.html#data-lifecycle-unknown-field
+  help: docs/errors/data.lifecycle_unknown_field.md
 
 check failed: 1 error, 1 file
 ```

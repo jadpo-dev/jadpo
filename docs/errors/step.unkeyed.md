@@ -133,7 +133,7 @@ error: `pay.receipts.send` takes no idempotency key, but `pay_supplier` makes an
   reason: A changing call with no key may act twice if it is sent again, and once its answer is lost only an operator can say whether it went through, so it stays the only changing call in its action.
   next: Move `pay.receipts.send` to a subscriber of an event `pay_supplier` emits (agent)
   rule: step.unkeyed
-  help: docs/language/12-jobs-and-events.html#step-unkeyed
+  help: docs/errors/step.unkeyed.md
 
 check failed: 1 error, 10 files
 ```

@@ -46,7 +46,7 @@ error: `LookupMissing` is handled twice
   reason: Each failure has one arm; the first takes every `LookupMissing`, so this one never runs.
   next: Remove this arm, or merge its body into the first (agent)
   rule: failure.outcome_duplicate_arm
-  help: docs/language/03-logic.html#failure-outcome-duplicate-arm
+  help: docs/errors/failure.outcome_duplicate_arm.md
 
 check failed: 1 error, 2 files
 ```

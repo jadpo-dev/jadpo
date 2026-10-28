@@ -56,7 +56,7 @@ error: `AcmeCouriers.tidying` isn't public
   reason: A package offers only what it marks `public`; `tidying` is a library in `shared/providers/acme_couriers/v1/libraries/tidying.jadpo` that only the package's own code uses, and may change in any version.
   next: Use what `AcmeCouriers` marks `public` instead (agent)
   rule: package.not_public
-  help: docs/language/11-integrations.html#package-not-public
+  help: docs/errors/package.not_public.md
 
 check failed: 1 error, 6 files
 ```

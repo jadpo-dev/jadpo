@@ -22,7 +22,7 @@ error: `Refused` is listed twice after `fails`
   reason: `fails` lists each failure that can leave once.
   next: Remove the second `Refused` (agent)
   rule: failure.duplicate_declaration
-  help: docs/language/04-failures.html#failure-duplicate-declaration
+  help: docs/errors/failure.duplicate_declaration.md
 
 check failed: 1 error, 1 file
 ```

@@ -43,7 +43,7 @@ error: The success arm has no failure to pass on
   reason: `propagate` passes a failure arm's failure on to the caller; the success arm has a value, which it gives, or a failure it `reject`s.
   next: Give the success value, or `reject` a failure (agent)
   rule: failure.outcome_success_value_required
-  help: docs/language/03-logic.html#failure-outcome-success-value-required
+  help: docs/errors/failure.outcome_success_value_required.md
 
 check failed: 1 error, 2 files
 ```

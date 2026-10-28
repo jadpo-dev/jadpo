@@ -19,7 +19,7 @@ error: `default:` is given twice
   reason: `locales` says each of `default:` and `supported:` once.
   next: Keep one `default:` and remove the other (agent)
   rule: syntax.locales_duplicate_option
-  help: docs/language/10-configuration-and-time.html#syntax-locales-duplicate-option
+  help: docs/errors/syntax.locales_duplicate_option.md
 
 check failed: 1 error, 1 file
 ```

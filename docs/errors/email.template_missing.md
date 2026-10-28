@@ -50,7 +50,7 @@ error: `WelcomeEmail` has no template
   reason: An email's words live beside its type: `welcome_email.html`, its HTML, and `welcome_email.txt`, its plain text, each reading its fields inside `{{ }}`. It needs at least one.
   next: Create `domains/accounts/emails/welcome_email.html` and `domains/accounts/emails/welcome_email.txt` beside `welcome_email.jadpo` (agent)
   rule: email.template_missing
-  help: docs/language/16-built-in-services.html#email-template-missing
+  help: docs/errors/email.template_missing.md
 
 check failed: 1 error, 3 files
 ```

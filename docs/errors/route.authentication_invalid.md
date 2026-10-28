@@ -39,7 +39,7 @@ error: `none` isn't a `RouteAuthentication`
   reason: Every route needs a signed-in caller unless it says otherwise: `RouteAuthentication.none` lets anyone call it, and `RouteAuthentication.fresh` checks the caller's record on this request. One opens the route and the other keeps it protected, so neither is guessed.
   next: Write `RouteAuthentication.fresh` to keep the route signed in, `RouteAuthentication.none` to let anyone call it, or remove `authentication:` (human)
   rule: route.authentication_invalid
-  help: docs/language/07-http.html#route-authentication-invalid
+  help: docs/errors/route.authentication_invalid.md
 
 check failed: 1 error, 1 file
 ```

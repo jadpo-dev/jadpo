@@ -21,7 +21,7 @@ error: `"postgres://localhost:5432/todo"` isn't a valid `PrimaryDatabase`
   reason: The value isn't an `http://` or `https://` URL with a host, such as `https://example.com`; a default is checked while compiling, with the rules of the setting's type.
   next: Write a valid `PrimaryDatabase` value (agent)
   rule: configuration.default_invalid
-  help: docs/language/10-configuration-and-time.html#configuration-default-invalid
+  help: docs/errors/configuration.default_invalid.md
 
 check failed: 1 error, 1 file
 ```

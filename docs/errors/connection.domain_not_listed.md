@@ -98,7 +98,7 @@ error: `support` calls `couriers`, whose `domains:` doesn't list it
   reason: A connection lists the domains whose actions may call it, so a new caller is a one-line change a reviewer sees; `couriers` lists `shipping`, and other domains go through their public actions.
   next: Add `support` to `couriers`'s `domains:` in `app.jadpo`, or call one of `shipping`'s public actions instead (human)
   rule: connection.domain_not_listed
-  help: docs/language/11-integrations.html#connection-domain-not-listed
+  help: docs/errors/connection.domain_not_listed.md
 
 check failed: 1 error, 9 files
 ```

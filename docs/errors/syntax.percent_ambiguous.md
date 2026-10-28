@@ -23,7 +23,7 @@ error: `20%3` could be `20% 3` or `20 % 3`
   reason: A number touching `%` is a percentage, `20%`, and the remainder is written with spaces, `20 % 3`, as the formatter writes every binary operator; with `3` touching the `%` too, either could be meant.
   next: Write `20 % 3` for the remainder, or put the percentage `20%` apart from what follows it (agent)
   rule: syntax.percent_ambiguous
-  help: docs/language/19-standard-library.html#syntax-percent-ambiguous
+  help: docs/errors/syntax.percent_ambiguous.md
 
 check failed: 1 error, 1 file
 ```
@@ -52,7 +52,7 @@ error: `CakePrice` and a percentage can't be added: it could mean two things
   reason: `price + 20%` could mean the amount raised by 20% of itself, or 20% of some other amount; the standard operator table refuses it rather than guess. A percentage scales money by `*`.
   next: Write `price * 120%`, or `price + price * 20%`, whichever is meant (agent)
   rule: type.arithmetic_operand
-  help: docs/language/03-logic.html#type-arithmetic-operand
+  help: docs/errors/type.arithmetic_operand.md
 
 check failed: 1 error, 1 file
 ```

@@ -21,7 +21,7 @@ error: `plain(...)` can't fail, so it takes no `attempt`
   reason: `plain(...)` lists no failures after `fails`, so it always gives its result; `attempt` marks only calls that can fail.
   next: Remove `attempt` (agent)
   rule: failure.attempt_infallible
-  help: docs/language/03-logic.html#failure-attempt-infallible
+  help: docs/errors/failure.attempt_infallible.md
 
 check failed: 1 error, 1 file
 ```

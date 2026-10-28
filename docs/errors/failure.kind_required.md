@@ -15,7 +15,7 @@ error: `Missing` has no `kind`
   reason: A failure's kind decides how it reaches a client, its HTTP status included, and how background work treats it, so every failure names one.
   next: Add `kind:` with the `FailureKind` that fits, such as `kind: FailureKind.not_found` (agent)
   rule: failure.kind_required
-  help: docs/language/04-failures.html#failure-kind-required
+  help: docs/errors/failure.kind_required.md
 
 check failed: 1 error, 1 file
 ```

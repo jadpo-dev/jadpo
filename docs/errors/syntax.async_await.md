@@ -25,7 +25,7 @@ error: Jadpo has no `await`
   reason: `async` and `await` mark code that waits for a result in JavaScript, TypeScript, Python, Rust, C# and Swift; a Jadpo call always gives its result when it returns, so there is nothing to mark.
   next: Remove `await` (agent)
   rule: syntax.async_await
-  help: docs/language/03-logic.html#syntax-async-await
+  help: docs/errors/syntax.async_await.md
 
 check failed: 1 error, 1 file
 ```

@@ -21,7 +21,7 @@ error: `every: 250ms` can't be how often a schedule runs
   reason: `every:` is a whole number of seconds, minutes, hours or days above zero (`30s`, `15m`, `1h`, `1d`), counted in UTC from when the application starts.
   next: Write a duration such as `every: 15m` (agent)
   rule: schedule.every_invalid
-  help: docs/language/12-jobs-and-events.html#schedule-every-invalid
+  help: docs/errors/schedule.every_invalid.md
 
 check failed: 1 error, 1 file
 ```

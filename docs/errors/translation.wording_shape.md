@@ -48,7 +48,7 @@ error: `parcels` is a string, but needs one wording for each value or plural for
   reason: How a message is worded follows its type: no choice, a plain string; one enum field, a wording for each value of the enum; one `PluralCount` field, a wording for each plural form of the language.
   next: Write `parcels` as a block with a wording for each plural form: `one`, `many` and `other` (agent)
   rule: translation.wording_shape
-  help: docs/language/10-configuration-and-time.html#translation-wording-shape
+  help: docs/errors/translation.wording_shape.md
 
 check failed: 1 error, 4 files
 ```

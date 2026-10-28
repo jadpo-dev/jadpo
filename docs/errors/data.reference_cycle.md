@@ -29,7 +29,7 @@ error: Required references form a cycle through `Member`
   reason: `Member.team_id` and `Team.lead_id` are both required, so no record could be created first: each needs one that already exists.
   next: Make one of these references optional (`X.id?`) (human)
   rule: data.reference_cycle
-  help: docs/language/05-data.html#data-reference-cycle
+  help: docs/errors/data.reference_cycle.md
 
 check failed: 1 error, 1 file
 ```

@@ -28,7 +28,7 @@ error: `PartnerProfile.partner_key` holds an `ApiKey`
   reason: An `ApiKey` is a secret value: it is never sent, logged, stored or shown. A response is written out, logged by proxies and kept by browsers, and a client never needs a secret back.
   next: Remove `partner_key`, and send what the client needs instead, such as whether one is set (agent)
   rule: type.secret_exposed
-  help: docs/language/19-standard-library.html#type-secret-exposed
+  help: docs/errors/type.secret_exposed.md
 
 check failed: 1 error, 1 file
 ```

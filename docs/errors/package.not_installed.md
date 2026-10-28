@@ -19,7 +19,7 @@ error: `jadpo.lock` names `Postcodes.v2`, which isn't installed
   reason: Each line of the lock is a package in `packages/`; `Postcodes.v2` has none at `packages/postcodes/v2/`, so the lock and the folder disagree, as removing the folder by hand leaves them.
   next: Restore `packages/postcodes/v2/` from version control, or remove the package with `jadpo package remove` (human)
   rule: package.not_installed
-  help: docs/language/11-integrations.html#package-not-installed
+  help: docs/errors/package.not_installed.md
 
 check failed: 1 error, 1 file
 ```

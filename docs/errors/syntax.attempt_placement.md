@@ -33,7 +33,7 @@ error: `attempt` can only start a statement
   reason: Every place a callable can stop early is at the start of a line: a `var`, an assignment, a `return`, or a statement of its own.
   next: Move the call into its own `var` statement with `attempt`, then use the variable (agent)
   rule: syntax.attempt_placement
-  help: docs/language/03-logic.html#syntax-attempt-placement
+  help: docs/errors/syntax.attempt_placement.md
 
 check failed: 1 error, 1 file
 ```

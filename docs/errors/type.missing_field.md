@@ -19,7 +19,7 @@ error: `Receipt` is missing `email`
   reason: Every field of `Receipt` is given when a value is built; a field that may be absent is declared `T?` and given as `none`.
   next: Add `email: ...` to the block (agent)
   rule: type.missing_field
-  help: docs/language/02-values-and-types.html#type-missing-field
+  help: docs/errors/type.missing_field.md
 
 check failed: 1 error, 1 file
 ```

@@ -47,7 +47,7 @@ error: `tidy_up` has no database named to keep its state in
   reason: Each schedule keeps its next due time and the lease that lets one instance run it at a time in a database; this application has `archive` and `main`, and `app.jadpo` names none with `schedules: { store: }`.
   next: Add `schedules: { store: archive }` to `application { }` in `app.jadpo` (human)
   rule: schedule.store_required
-  help: docs/language/12-jobs-and-events.html#schedule-store-required
+  help: docs/errors/schedule.store_required.md
 
 check failed: 1 error, 4 files
 ```
@@ -113,7 +113,7 @@ error: `Todo`'s purge has no database named to keep its state in
   reason: Purge runs as a built-in schedule every hour, and each schedule keeps its next due time and the lease that lets one instance run it at a time in a database; this application has `archive` and `main`, and `app.jadpo` names none with `schedules: { store: }`.
   next: Add `schedules: { store: main }` to `application { }` in `app.jadpo` (human)
   rule: schedule.store_required
-  help: docs/language/12-jobs-and-events.html#schedule-store-required
+  help: docs/errors/schedule.store_required.md
 
 check failed: 1 error, 3 files
 ```

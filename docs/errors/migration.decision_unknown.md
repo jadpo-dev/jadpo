@@ -44,7 +44,7 @@ error: Nothing about `Note.body` needs a decision
   reason: A migration's `changes.jadpo` holds only the decisions its own changes need, and nothing `20261020T1401_add_stars` changes about `Note.body` does: a decision is a value for existing rows of a required field or for rows a field no longer allows, or retiring a field that is gone.
   next: Remove `Note.body` (agent)
   rule: migration.decision_unknown
-  help: docs/language/05-data.html#migration-decision-unknown
+  help: docs/errors/migration.decision_unknown.md
 
 check failed: 1 error, 4 files
 ```

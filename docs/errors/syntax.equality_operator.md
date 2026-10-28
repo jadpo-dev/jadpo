@@ -21,7 +21,7 @@ error: Jadpo compares with `==`, not `===`
   reason: `===` and `!==` compare without converting types in JavaScript and TypeScript; Jadpo's `==` and `!=` never convert between types, so there is no stricter form to ask for.
   next: Use `==` instead of `===` (agent)
   rule: syntax.equality_operator
-  help: docs/language/03-logic.html#syntax-equality-operator
+  help: docs/errors/syntax.equality_operator.md
 
 check failed: 1 error, 1 file
 ```

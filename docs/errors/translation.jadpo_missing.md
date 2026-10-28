@@ -104,7 +104,7 @@ error: `Locale.fr_fr` is supported but Jadpo's own messages aren't worded in it
   reason: Jadpo ships its own wording in `en_gb` and `en_us` and no other locale, so users and client apps working in `Locale.fr_fr` would be shown English. An application words the messages of the features it has on itself, in the `jadpo: { }` group of the root `translations/fr_fr.jadpo`. Still to word: `invalid_request`, `invalid_input`, `route_not_found`, `method_not_allowed`, `request_too_large`, `idempotency_key_reused`, `rate_limited`, `unavailable`, `internal_fault` and `deadline_exceeded`.
   next: Run `jadpo translations builtin` to list them with their fields, then word each under `jadpo: { }` in `translations/fr_fr.jadpo` (agent)
   rule: translation.jadpo_missing
-  help: docs/language/10-configuration-and-time.html#translation-jadpo-missing
+  help: docs/errors/translation.jadpo_missing.md
 
 check failed: 1 error, 7 files
 ```

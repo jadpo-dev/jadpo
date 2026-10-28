@@ -21,7 +21,7 @@ error: `fixed` can't be changed
   reason: `var` names a value that never changes; only a `var mut` can be pointed at a new value.
   next: Declare it `var mut fixed` (agent)
   rule: type.assign_immutable
-  help: docs/language/03-logic.html#type-assign-immutable
+  help: docs/errors/type.assign_immutable.md
 
 check failed: 1 error, 1 file
 ```

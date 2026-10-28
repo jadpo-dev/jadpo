@@ -25,7 +25,7 @@ error: Jadpo writes `assert same(2) == 2`, not `assert_eq!(same(2), 2)`
   reason: `assert_eq!` checks a test's values in Rust, `assertEquals` in JUnit, `assertEqual` in Python's unittest, `expect(…).toBe(…)` in Jest and `assert.equal` in Node; a Jadpo test checks with `assert condition`.
   next: Write `assert same(2) == 2` (agent)
   rule: syntax.assertion_form
-  help: docs/language/13-testing.html#syntax-assertion-form
+  help: docs/errors/syntax.assertion_form.md
 
 check failed: 1 error, 1 file
 ```

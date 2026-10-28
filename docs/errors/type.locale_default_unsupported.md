@@ -18,7 +18,7 @@ error: The default `Locale.fr_fr` isn't a supported locale
   reason: The default is what a request with no usable `Accept-Language` is given, and formatting and translations accept only the supported locales, so the default has to be one.
   next: Add `Locale.fr_fr` to `supported:`, or choose a default that is listed (agent)
   rule: type.locale_default_unsupported
-  help: docs/language/10-configuration-and-time.html#type-locale-default-unsupported
+  help: docs/errors/type.locale_default_unsupported.md
 
 check failed: 1 error, 1 file
 ```

@@ -26,7 +26,7 @@ error: `patch:` takes an `Input`, and this is `Item`
   reason: A patch changes only the fields a request supplied, so it takes an `Input` whose fields are optional and named after `Item`'s: one left out keeps its value, and one sent as `none` is cleared.
   next: Pass an `Input` such as `type PatchItem = Input { pick: [...]  optional: all }` (agent)
   rule: data.patch_not_input
-  help: docs/language/06-reads-and-writes.html#data-patch-not-input
+  help: docs/errors/data.patch_not_input.md
 
 check failed: 1 error, 1 file
 ```

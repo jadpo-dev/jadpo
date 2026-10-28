@@ -24,7 +24,7 @@ error: `Placed` is a type, not a value
   reason: A type says what a value looks like and holds none itself; a value is built with the type's name and every field in a block.
   next: Build a value with `Placed { ... }`, giving each field (agent)
   rule: type.not_a_value
-  help: docs/language/03-logic.html#type-not-a-value
+  help: docs/errors/type.not_a_value.md
 
 check failed: 1 error, 1 file
 ```

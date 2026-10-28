@@ -39,7 +39,7 @@ error: `count_todos` is `public`, but nothing outside `planning` uses it
   reason: `public` offers a declaration to other domains, and no other domain's code or tests, no root `tests/` scenario and no public declaration they use names `count_todos`; `planning`'s own tests don't count.
   next: Remove `public` (agent)
   rule: visibility.public_unused
-  help: docs/language/01-project-layout-and-modules.html#visibility-public-unused
+  help: docs/errors/visibility.public_unused.md
 
 check failed: 1 error, 4 files
 ```

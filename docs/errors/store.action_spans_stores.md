@@ -60,7 +60,7 @@ error: `checkout` writes two stores
   reason: An action's writes, and those of the actions it calls, commit as one, in one store's transaction; `checkout` writes `Order` (store `main`), and here it calls `clear_cart`, which writes `Cart` (store `carts`).
   next: Write `Cart` in a subscriber to an event `checkout` emits, or keep `Cart` in store `main` (human)
   rule: store.action_spans_stores
-  help: docs/language/06-reads-and-writes.html#store-action-spans-stores
+  help: docs/errors/store.action_spans_stores.md
 
 check failed: 1 error, 5 files
 ```

@@ -64,7 +64,7 @@ error: `Ledger` has no reference to `Company`
   reason: `CompanyRole` is held in a `Company` (`CompanyMembership`'s `scope:`), and a role applies to a record through the record's reference to its scope, so `Ledger` needs a field typed `Company.id`.
   next: Add a reference to `Company` to `Ledger`, or name someone else (agent)
   rule: policy.scope_missing
-  help: docs/language/09-policy.html#policy-scope-missing
+  help: docs/errors/policy.scope_missing.md
 
 check failed: 1 error, 1 file
 ```

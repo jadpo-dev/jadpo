@@ -15,7 +15,7 @@ error: `admin_emails` can't be a `List<Email>`
   reason: A setting is read from one environment variable, so its type must be decodable from one piece of text: text-based types, `Int`, `Decimal`, `Bool`, `Uuid`, `Email`, `Url`, `IpAddress`, `Duration`, `Instant`, `CalendarDate`, `ModelId`, `Money`, `Certificate` and enums. A list is one value in many variables or one variable holding a format; split it into settings.
   next: Split `admin_emails` into settings of those types (agent)
   rule: configuration.type_unsupported
-  help: docs/language/10-configuration-and-time.html#configuration-type-unsupported
+  help: docs/errors/configuration.type_unsupported.md
 
 check failed: 1 error, 1 file
 ```

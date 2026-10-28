@@ -32,7 +32,7 @@ error: `profile.display_name` might not fit `Badge.name`
   reason: An object literal never fails, so each field gets a value already known to fit; neither the declared ranges nor a condition before it prove this one follows `max_length: 12`, which `Badge.name` adds.
   next: Build it first on its own line, `var name: Badge.name = attempt Badge.name(profile.display_name) { max_length: SomeFailure }`, then write `name: name` in the object (agent)
   rule: type.field_unproved
-  help: docs/language/02-values-and-types.html#type-field-unproved
+  help: docs/errors/type.field_unproved.md
 
 check failed: 1 error, 1 file
 ```

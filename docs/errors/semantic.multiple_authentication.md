@@ -38,7 +38,7 @@ error: `authentication { }` is declared twice
   reason: The ways a caller signs in are listed once, in `authentication.jadpo`, so one place says how anyone gets in.
   next: Move what this `authentication` holds into the first, and remove it (agent)
   rule: semantic.multiple_authentication
-  help: docs/language/08-identity.html#semantic-multiple-authentication
+  help: docs/errors/semantic.multiple_authentication.md
 
 check failed: 1 error, 1 file
 ```

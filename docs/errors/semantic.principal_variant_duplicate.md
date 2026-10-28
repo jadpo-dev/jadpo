@@ -33,7 +33,7 @@ error: `user:` is declared twice
   reason: A principal says once which entity a user is, so a caller is looked up one way.
   next: Remove one `user:` (agent)
   rule: semantic.principal_variant_duplicate
-  help: docs/language/08-identity.html#semantic-principal-variant-duplicate
+  help: docs/errors/semantic.principal_variant_duplicate.md
 
 check failed: 1 error, 1 file
 ```

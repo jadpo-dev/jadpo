@@ -55,7 +55,7 @@ error: `{{ joined_at }}` can't be written out
   reason: A template writes out text (`Text`, `PresentationText`, or a type built on one), a number (`Int` or `Decimal`), or an enum whose values have wording, and `Html` as it is; `joined_at` is `Instant`.
   next: Format it with `text.format(...)` (area 19), which writes it in the email's locale (agent)
   rule: email.template_value_invalid
-  help: docs/language/16-built-in-services.html#email-template-value-invalid
+  help: docs/errors/email.template_value_invalid.md
 
 check failed: 1 error, 3 files
 ```

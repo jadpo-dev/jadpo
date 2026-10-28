@@ -81,7 +81,7 @@ error: `keep_price_sheet` can fail for good at `reject ShopClosed`, after `sheet
   reason: Once a changing call has taken effect, a failure that ends `keep_price_sheet` for good rolls back its writes but not what `sheets.put` did, and a retry fails the same way; a failure of kind `unavailable` or `rate_limited` is retried instead, and one handled with `match` doesn't end it.
   next: Check the condition before `sheets.put`, record what happened and finish in a subscriber of an event `keep_price_sheet` emits, or undo `sheets.put` as another step in a `match` arm, or write `decline step.late_failure: "<why>"` above it if this is deliberate (agent)
   rule: step.late_failure
-  help: docs/language/12-jobs-and-events.html#step-late-failure
+  help: docs/errors/step.late_failure.md
 
 check failed: 1 error, 6 files
 ```

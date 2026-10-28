@@ -2644,7 +2644,7 @@ error: `Locale.fr_fr` is supported but package `Postcodes` has no wording in it 
   reason: Package `Postcodes` ships no `Locale.fr_fr` wording of `postcode_hint`, and the application supports `Locale.fr_fr`, so the application words it in its root file, under the package's folder name. A locale that isn't finished yet is listed in `in_progress:`, and falls back to the default until it is.
   next: Add `translations/fr_fr.jadpo` wording `postcode_hint` under `postcodes: { }` (agent)
   rule: translation.file_missing
-  help: docs/language/10-configuration-and-time.html#translation-file-missing
+  help: docs/errors/translation.file_missing.md
 
 check failed: 1 error, 4 files
 ```
@@ -2846,7 +2846,7 @@ error: `postcodes` words package `Postcodes`, which is held in two versions
   reason: While two versions of a package are held side by side, the application words each under its folder name and version, as its names carry the version: `postcodes_v2: { }` for `Postcodes.v2` and `postcodes_v3: { }` for `Postcodes.v3`. This group was written while one version was held, so it words the earlier one unless it says otherwise.
   next: Rename the group to `postcodes_v2`, or to the other version's key if it words that one (agent)
   rule: translation.group_unknown
-  help: docs/language/10-configuration-and-time.html#translation-group-unknown
+  help: docs/errors/translation.group_unknown.md
 
 check failed: 1 error, 9 files
 ```

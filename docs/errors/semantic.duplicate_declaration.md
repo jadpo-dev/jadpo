@@ -23,7 +23,7 @@ error: `Count` is declared twice
   in use:
     Count  a.jadpo
   rule: semantic.duplicate_declaration
-  help: docs/language/01-project-layout-and-modules.html#semantic-duplicate-declaration
+  help: docs/errors/semantic.duplicate_declaration.md
 
 check failed: 1 error, 2 files
 ```
@@ -89,7 +89,7 @@ error: `Address` is declared twice in `billing`
     Address          domains/shipping/actions/ship_parcel.jadpo
     ShippingAddress  domains/shipping/actions/print_label.jadpo
   rule: semantic.duplicate_declaration
-  help: docs/language/01-project-layout-and-modules.html#semantic-duplicate-declaration
+  help: docs/errors/semantic.duplicate_declaration.md
 
 check failed: 1 error, 5 files
 ```

@@ -17,7 +17,7 @@ error: Jadpo writes `Text`, not `string`
   reason: `string` is text in TypeScript, C# and Go; Jadpo calls it `Text`.
   next: Use `Text` instead of `string` (agent)
   rule: type.foreign_type
-  help: docs/language/02-values-and-types.html#type-foreign-type
+  help: docs/errors/type.foreign_type.md
 
 check failed: 1 error, 1 file
 ```

@@ -194,7 +194,7 @@ error: A duration and a quantity can't be added: a `Duration` and a `Length` are
   reason: `+` works within one kind of quantity, in any of its units; a `Duration` and a `Length` are different kinds, so the sum means nothing.
   next: Use values of one kind, or a product or quotient the table defines (agent)
   rule: type.arithmetic_operand
-  help: docs/language/03-logic.html#type-arithmetic-operand
+  help: docs/errors/type.arithmetic_operand.md
 
 check failed: 1 error, 1 file
 ```
@@ -257,7 +257,7 @@ error: `CakePrice` and a percentage can't be added: it could mean two things
   reason: `price + 20%` could mean the amount raised by 20% of itself, or 20% of some other amount; the standard operator table refuses it rather than guess. A percentage scales money by `*`.
   next: Write `price * 120%`, or `price + price * 20%`, whichever is meant (agent)
   rule: type.arithmetic_operand
-  help: docs/language/03-logic.html#type-arithmetic-operand
+  help: docs/errors/type.arithmetic_operand.md
 
 check failed: 1 error, 1 file
 ```
@@ -288,7 +288,7 @@ error: `CakePrice` and `EuroPrice` can't be added: they're in different currenci
   reason: `CakePrice` is in GBP and `EuroPrice` in EUR, as their types or the calls that made them fix; amounts are added only in one currency.
   next: Use two amounts in the same currency (agent)
   rule: type.arithmetic_operand
-  help: docs/language/03-logic.html#type-arithmetic-operand
+  help: docs/errors/type.arithmetic_operand.md
 
 check failed: 1 error, 1 file
 ```
@@ -734,7 +734,7 @@ error: `CakeCount(...)` can't fail, so it takes no `attempt`
   reason: The declared ranges and the condition `count * 2 > 12` prove `CakeCount(...)` always follows its type's rules, so building it never fails; `attempt` marks only what can.
   next: Remove `attempt` (agent)
   rule: failure.attempt_infallible
-  help: docs/language/03-logic.html#failure-attempt-infallible
+  help: docs/errors/failure.attempt_infallible.md
 
 check failed: 1 error, 1 file
 ```
@@ -778,7 +778,7 @@ error: `CakeCount(...)` can't break `max`, so it takes no arm
   reason: The declared ranges and the condition `n > 12` prove the value always follows `max: 12`, so this arm could never run.
   next: Remove `max: ...` (agent)
   rule: failure.rule_cannot_break
-  help: docs/language/04-failures.html#failure-rule-cannot-break
+  help: docs/errors/failure.rule_cannot_break.md
 
 check failed: 1 error, 1 file
 ```
@@ -1242,7 +1242,7 @@ error: `Booking { ... }` can't fail, so it takes no `attempt`
   reason: The declared ranges and the condition `ends <= starts` prove `Booking { ... }` always follows its type's rules, so building it never fails; `attempt` marks only what can.
   next: Remove `attempt` (agent)
   rule: failure.attempt_infallible
-  help: docs/language/03-logic.html#failure-attempt-infallible
+  help: docs/errors/failure.attempt_infallible.md
 
 check failed: 1 error, 1 file
 ```
@@ -1705,7 +1705,7 @@ error: `Guests` can't be built from `List<RawName>`
   reason: `Guests` is a list of `GuestName`, and this is a list of `RawName`. Building a `Guests` checks only the list's own rules; it never converts the items.
   next: Build each item as a `GuestName` where it is made, so the list is a `List<GuestName>` (agent)
   rule: type.constructor_input
-  help: docs/language/02-values-and-types.html#type-constructor-input
+  help: docs/errors/type.constructor_input.md
 
 check failed: 1 error, 1 file
 ```
@@ -1742,7 +1742,7 @@ error: `Guests` can't be built from `Set<GuestName>`
   reason: `Guests` is a list of `GuestName`, and this is a set. A set has no order a list could keep, so a list is built only from a list.
   next: Keep the items in a `List<GuestName>` where they are collected (agent)
   rule: type.constructor_input
-  help: docs/language/02-values-and-types.html#type-constructor-input
+  help: docs/errors/type.constructor_input.md
 
 check failed: 1 error, 1 file
 ```

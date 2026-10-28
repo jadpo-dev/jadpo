@@ -94,7 +94,7 @@ error: `file_prices` makes 2 changing calls but writes no store to keep their re
   reason: Each changing call is recorded before it goes out, beside the outbox of the store its action writes, so a retry can replay it; `file_prices` writes no store, itself or through what it calls, and `app.jadpo` names none with `events: { store: }`.
   next: Add `events: { store: main }` to `application { }` in `app.jadpo` (human)
   rule: step.store_required
-  help: docs/language/12-jobs-and-events.html#step-store-required
+  help: docs/errors/step.store_required.md
 
 check failed: 1 error, 7 files
 ```

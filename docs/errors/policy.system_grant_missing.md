@@ -47,7 +47,7 @@ error: `send_due` runs as the system, which only `Access.public` lets update `Re
   reason: A subscriber runs as the system, which an entity grants background work by naming `Access.system`; `Reminder`'s `update:` names `Access.public` and not `Access.system`, and anyone at all is never how background work is let in.
   next: Add `Access.system` to `Reminder`'s `update:`, or reach `Reminder` from a route instead (human)
   rule: policy.system_grant_missing
-  help: docs/language/09-policy.html#policy-system-grant-missing
+  help: docs/errors/policy.system_grant_missing.md
 
 check failed: 1 error, 1 file
 ```
@@ -113,7 +113,7 @@ error: `send_due` runs as the system, which only `Access.public` lets call `mark
   reason: A subscriber runs as the system, which an entity grants background work by naming `Access.system`; `mark_sent`'s line under `actions:` names `Access.public` and not `Access.system`, and anyone at all is never how background work is let in.
   next: Add `Access.system` to `mark_sent`'s line under `actions:` (human)
   rule: policy.system_grant_missing
-  help: docs/language/09-policy.html#policy-system-grant-missing
+  help: docs/errors/policy.system_grant_missing.md
 
 check failed: 1 error, 1 file
 ```

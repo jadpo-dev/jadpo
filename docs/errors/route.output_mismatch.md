@@ -47,7 +47,7 @@ error: `POST /memos` sends `MemoSummary`, but `add_memo` returns `MemoView`
   reason: A route's `output:` is exactly what it runs returns, so the route shows its contract and never sends a field its type doesn't declare.
   next: Write `output: MemoView` (agent)
   rule: route.output_mismatch
-  help: docs/language/07-http.html#route-output-mismatch
+  help: docs/errors/route.output_mismatch.md
 
 check failed: 1 error, 1 file
 ```

@@ -25,7 +25,7 @@ error: No membership holds a `NoteRole`
   reason: A role exists only where it is stored: in a membership entity whose `membership:` names a field typed `NoteRole` as its `role:`. Declaring the enum alone gives the role to nobody.
   next: Add a membership entity holding `NoteRole`, or name someone else in the grant (agent)
   rule: policy.role_unbound
-  help: docs/language/09-policy.html#policy-role-unbound
+  help: docs/errors/policy.role_unbound.md
 
 check failed: 1 error, 1 file
 ```

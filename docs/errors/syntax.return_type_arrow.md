@@ -21,7 +21,7 @@ error: Jadpo writes the result type after `->`, not `:`
   reason: `: Type` after the parameters is the result type in TypeScript and Kotlin; Jadpo writes `-> Type`, as in `function total(order: Order) -> Amount {`.
   next: Use `->` instead of `:` (agent)
   rule: syntax.return_type_arrow
-  help: docs/language/03-logic.html#syntax-return-type-arrow
+  help: docs/errors/syntax.return_type_arrow.md
 
 check failed: 1 error, 1 file
 ```

@@ -41,7 +41,7 @@ error: `Book.get` reads once for every item of the loop
   reason: A read inside a loop makes one database query per item. Read the whole set with one query, testing the field with `in` a list of the values, before the loop.
   next: Read the records with one query using `in` before the loop (agent)
   rule: data.read_in_loop
-  help: docs/language/06-reads-and-writes.html#data-read-in-loop
+  help: docs/errors/data.read_in_loop.md
 
 check failed: 1 error, 1 file
 ```

@@ -17,7 +17,7 @@ error: `nmae` isn't defined in this scope
   reason: Jadpo could not find this name. Did you mean `name`?
   next: Use `name` instead of `nmae` (agent)
   rule: type.unknown_value
-  help: docs/language/03-logic.html#type-unknown-value
+  help: docs/errors/type.unknown_value.md
 
 check failed: 1 error, 1 file
 ```

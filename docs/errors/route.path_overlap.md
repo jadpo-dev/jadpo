@@ -59,7 +59,7 @@ error: `POST /memos/{shelf_id}` could answer the same requests as `POST /memos/{
   reason: A request such as `/memos/…` matches both `POST /memos/{memo_id}` and `POST /memos/{shelf_id}`: where two paths differ, one must have fixed text where the other has a placeholder, since a fixed segment beats a placeholder.
   next: Give one of the paths fixed text where the other has a placeholder (agent)
   rule: route.path_overlap
-  help: docs/language/07-http.html#route-path-overlap
+  help: docs/errors/route.path_overlap.md
 
 check failed: 1 error, 1 file
 ```

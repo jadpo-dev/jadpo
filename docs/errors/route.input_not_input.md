@@ -43,7 +43,7 @@ error: `MemoView` isn't an `Input`
   reason: A route accepts only an `Input` type (area 2): the only objects that may leave fields out or fill them by default, and the ones a request's fields are checked against.
   next: Declare `type <Name> = Input { ... }` and take it here (agent)
   rule: route.input_not_input
-  help: docs/language/07-http.html#route-input-not-input
+  help: docs/errors/route.input_not_input.md
 
 check failed: 1 error, 1 file
 ```

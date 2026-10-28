@@ -17,7 +17,7 @@ error: `binding:` names no variable
   reason: `binding:` names the environment variable a setting is read from; an empty name reads nothing.
   next: Name the variable, or leave `binding:` out to read the setting's name in capitals (agent)
   rule: configuration.binding_empty
-  help: docs/language/10-configuration-and-time.html#configuration-binding-empty
+  help: docs/errors/configuration.binding_empty.md
 
 check failed: 1 error, 1 file
 ```

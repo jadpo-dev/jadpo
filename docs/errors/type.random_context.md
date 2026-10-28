@@ -23,7 +23,7 @@ error: A function can't call `random.code`
   reason: A function is pure: it gives the same result for the same arguments, so a random value it needs arrives as a parameter; only actions read the generator, which a test seeds so that it repeats.
   next: Pass the value in as a parameter, made in the action that calls this (agent)
   rule: type.random_context
-  help: docs/language/19-standard-library.html#type-random-context
+  help: docs/errors/type.random_context.md
 
 check failed: 1 error, 1 file
 ```

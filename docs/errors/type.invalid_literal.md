@@ -22,7 +22,7 @@ error: `0` isn't a valid `Quantity`
   reason: `Quantity` declares `min: 1`, and the value is below 1. A literal is checked against every rule while compiling.
   next: Use a value that `Quantity` allows (agent)
   rule: type.invalid_literal
-  help: docs/language/02-values-and-types.html#type-invalid-literal
+  help: docs/errors/type.invalid_literal.md
 
 check failed: 1 error, 1 file
 ```

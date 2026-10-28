@@ -29,7 +29,7 @@ error: `lookup` is given twice
   reason: Each field of `Missing` is given once, so the log and the client never have to guess which value counts.
   next: Remove one `lookup` (agent)
   rule: failure.duplicate_context_field
-  help: docs/language/04-failures.html#failure-duplicate-context-field
+  help: docs/errors/failure.duplicate_context_field.md
 
 check failed: 1 error, 1 file
 ```

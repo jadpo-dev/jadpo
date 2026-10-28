@@ -22,7 +22,7 @@ error: `in_zone` is a standard-library operation
   reason: The standard library is always called through its namespace, so the dot says who owns the operation.
   next: Call `temporal.in_zone(...)` (agent)
   rule: semantic.standard_operation_qualification
-  help: docs/language/01-project-layout-and-modules.html#semantic-standard-operation-qualification
+  help: docs/errors/semantic.standard_operation_qualification.md
 
 check failed: 1 error, 1 file
 ```

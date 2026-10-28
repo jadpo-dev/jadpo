@@ -27,7 +27,7 @@ error: `propagate` has no failure to pass on here
   reason: `propagate` is an arm of a `match` on a call that can fail: it passes the failure that arm names on to the caller's `fails` list.
   next: Give a value, `return` or `reject` a failure here instead (agent)
   rule: failure.propagate_placement
-  help: docs/language/03-logic.html#failure-propagate-placement
+  help: docs/errors/failure.propagate_placement.md
 
 check failed: 1 error, 1 file
 ```

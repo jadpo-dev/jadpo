@@ -29,7 +29,7 @@ error: `sum` adds up money in one currency, and `Loan.fine`'s type doesn't fix o
   reason: Amounts in two currencies don't add up (`currency_mismatch`), and a sum of no records needs a currency for its zero, so the field's type fixes its currency: `Fine` doesn't.
   next: Give `Fine` a `currency:` (agent)
   rule: query.aggregate_field
-  help: docs/language/06-reads-and-writes.html#query-aggregate-field
+  help: docs/errors/query.aggregate_field.md
 
 check failed: 1 error, 1 file
 ```

@@ -23,7 +23,7 @@ error: `g` is a function, not a type
   reason: Here Jadpo expects a type, such as `Count` or `List<Count>`.
   next: Name a type here (agent)
   rule: semantic.wrong_name_kind
-  help: docs/language/01-project-layout-and-modules.html#semantic-wrong-name-kind
+  help: docs/errors/semantic.wrong_name_kind.md
 
 check failed: 1 error, 1 file
 ```

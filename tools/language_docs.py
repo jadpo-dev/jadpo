@@ -91,8 +91,8 @@ TEST_SEED = '1'
 TEST_DECLARATION = re.compile(r'^\s*test\s+"', re.MULTILINE)
 # Optional build/language-site/published.json maps page stems to published URLs for cross-page links.
 FENCE = re.compile(r'^```(\S*)(.*)$')
-# Areas 1 to this one own the compiler's rules by the catalogue's `area`;
-# later pages name theirs in front matter.
+# On areas 1 to this one, and their notes and error pages, no fragment may
+# check cleanly.
 AREA_OWNED = 9
 # `migrate=<purpose>` on a block runs `jadpo migrate new <purpose>` once
 # the project's blocks up to it are written, at a fixed time per step, so
@@ -539,6 +539,11 @@ class ErrorPage(Page):
 
     def check(self, bless=False):
         super().check(bless)
+        self.check_rule()
+
+    def check_rule(self):
+        """The page names a rule of the catalogue, is headed by it, and
+        shows it failing, but for a rule only a command raises."""
         entry = self.catalogue.get(self.rule)
         if entry is None:
             self.problems.append(f'{self.rule} is not a rule in the compiler\'s catalogue (jadpo help --json)')

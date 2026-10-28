@@ -18,7 +18,7 @@ error: `max_length: 3` is below `min_length: 10`
   reason: No value could follow both rules, so the type could never be built.
   next: Correct `min_length` or `max_length` (agent)
   rule: type.constraint_contradiction
-  help: docs/language/02-values-and-types.html#type-constraint-contradiction
+  help: docs/errors/type.constraint_contradiction.md
 
 check failed: 1 error, 1 file
 ```

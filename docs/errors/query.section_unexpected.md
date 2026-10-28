@@ -28,7 +28,7 @@ error: A query returning `Book?` takes no `order:`
   reason: `Book?` is at most one record, found by a unique field, so there is nothing to order or limit.
   next: Remove `order:` (agent)
   rule: query.section_unexpected
-  help: docs/language/06-reads-and-writes.html#query-section-unexpected
+  help: docs/errors/query.section_unexpected.md
 
 check failed: 1 error, 1 file
 ```

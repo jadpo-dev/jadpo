@@ -31,7 +31,7 @@ error: `Quantity(...)` can break `min`, and nothing maps it
   reason: The value is only known when the program runs, and neither the declared ranges nor a condition before it prove it follows `min: 1`; it needs an arm naming the `invalid_value` failure the caller gets, or `invalid:` covers every rule without its own.
   next: Add `min: SomeFailure` to the block, naming an `invalid_value` failure, or `invalid: SomeFailure` to cover every rule without an arm (agent)
   rule: failure.rule_unmapped
-  help: docs/language/04-failures.html#failure-rule-unmapped
+  help: docs/errors/failure.rule_unmapped.md
 
 check failed: 1 error, 1 file
 ```

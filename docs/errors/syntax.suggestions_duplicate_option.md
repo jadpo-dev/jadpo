@@ -20,7 +20,7 @@ error: `share:` is given twice
   reason: `suggestions` says each of `project_token:` and `share:` once.
   next: Keep one `share:` and remove the other (agent)
   rule: syntax.suggestions_duplicate_option
-  help: docs/language/14-tooling.html#syntax-suggestions-duplicate-option
+  help: docs/errors/syntax.suggestions_duplicate_option.md
 
 check failed: 1 error, 1 file
 ```

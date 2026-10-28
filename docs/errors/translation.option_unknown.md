@@ -19,7 +19,7 @@ error: `reviews` isn't an option of `translations`
   reason: `translations:` in `application` takes `review:` and nothing else. Did you mean `review`?
   next: Use `review` instead of `reviews` (agent)
   rule: translation.option_unknown
-  help: docs/language/10-configuration-and-time.html#translation-option-unknown
+  help: docs/errors/translation.option_unknown.md
 
 check failed: 1 error, 1 file
 ```

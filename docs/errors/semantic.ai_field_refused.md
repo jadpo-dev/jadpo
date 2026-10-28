@@ -138,7 +138,7 @@ error: `Patient.patient_nhs_number` reaches a model, and is `to_models: false`
   reason: `to_models: false` keeps a field out of every prompt and every text sent for an embedding, whatever `ai: { personal_data: { allowed: } }` lists; `CheckReferral`'s `{number}` is built from `Patient.patient_nhs_number`.
   next: Leave `Patient.patient_nhs_number` out of `CheckReferral`'s `{number}` (agent)
   rule: semantic.ai_field_refused
-  help: docs/language/21-ai.html#semantic-ai-field-refused
+  help: docs/errors/semantic.ai_field_refused.md
 
 check failed: 1 error, 8 files
 ```

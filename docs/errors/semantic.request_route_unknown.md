@@ -61,7 +61,7 @@ error: No route answers `POST /memo`
   reason: A request names a route by its method and its path as `jadpo routes` prints it, placeholders by name; the `POST` routes are `/memos`.
   next: Write the path of the route this test exercises, as `jadpo routes` lists it (agent)
   rule: semantic.request_route_unknown
-  help: docs/language/13-testing.html#semantic-request-route-unknown
+  help: docs/errors/semantic.request_route_unknown.md
 
 check failed: 1 error, 1 file
 ```

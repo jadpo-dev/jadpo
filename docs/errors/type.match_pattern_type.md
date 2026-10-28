@@ -39,7 +39,7 @@ error: A `Bool` can't match a `DeliveryState`
   reason: A `DeliveryState` is matched by its variants, such as `DeliveryState.pending`.
   next: Write a pattern for a `DeliveryState` (agent)
   rule: type.match_pattern_type
-  help: docs/language/03-logic.html#type-match-pattern-type
+  help: docs/errors/type.match_pattern_type.md
 
 check failed: 1 error, 2 files
 ```

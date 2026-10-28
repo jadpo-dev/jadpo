@@ -31,7 +31,7 @@ error: `avg` isn't an aggregate
   reason: An aggregate is `count()`, `sum(F)`, `min(F)`, `max(F)` or `average(F, scale:, rounding:)`, each `F` a field of `Book`. Did you mean `average`?
   next: Use `average` (agent)
   rule: query.aggregate_unknown
-  help: docs/language/06-reads-and-writes.html#query-aggregate-unknown
+  help: docs/errors/query.aggregate_unknown.md
 
 check failed: 1 error, 1 file
 ```

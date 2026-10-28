@@ -31,7 +31,7 @@ error: Shared code uses `OrderTotal` from domain `ordering`
   reason: `shared/` holds code every domain may use, so it can't depend on any one domain; `OrderTotal` is a type in `domains/ordering/types/order_total.jadpo`.
   next: Move the shared declaration into `ordering`, or stop it depending on `OrderTotal` (human)
   rule: layout.call_direction
-  help: docs/language/01-project-layout-and-modules.html#layout-call-direction
+  help: docs/errors/layout.call_direction.md
 
 check failed: 1 error, 4 files
 ```

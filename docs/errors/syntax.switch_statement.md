@@ -29,7 +29,7 @@ error: Jadpo writes `match`, not `switch`
   reason: `switch` chooses between cases in JavaScript, Java, C#, Go and Swift, and `when` in Kotlin; Jadpo's `match` does, with one arm per line, `pattern -> result`, covering every case.
   next: Use `match` instead of `switch` (agent)
   rule: syntax.switch_statement
-  help: docs/language/03-logic.html#syntax-switch-statement
+  help: docs/errors/syntax.switch_statement.md
 
 check failed: 1 error, 1 file
 ```

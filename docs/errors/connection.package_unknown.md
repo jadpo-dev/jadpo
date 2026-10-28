@@ -65,7 +65,7 @@ error: `couriers` connects to `AcmeCouriers.v2`, which the app doesn't hold
   reason: A connection's `package:` names a provider package by its name and version, installed in `packages/` or the app's own in `shared/providers/`; the app holds `AcmeCouriers.v1`.
   next: Write `package: AcmeCouriers.v1` (agent)
   rule: connection.package_unknown
-  help: docs/language/11-integrations.html#connection-package-unknown
+  help: docs/errors/connection.package_unknown.md
 
 check failed: 1 error, 6 files
 ```

@@ -19,7 +19,7 @@ error: `"9:30"` isn't a clock time
   reason: `temporal.resolve`'s `at:` is a clock time written `HH:MM`, or `HH:MM:SS` with seconds, each part two digits, from `00:00` to `23:59`.
   next: Write the time with two-digit hours and minutes, such as `"09:30"` (agent)
   rule: type.temporal_clock_invalid
-  help: docs/language/10-configuration-and-time.html#type-temporal-clock-invalid
+  help: docs/errors/type.temporal_clock_invalid.md
 
 check failed: 1 error, 1 file
 ```

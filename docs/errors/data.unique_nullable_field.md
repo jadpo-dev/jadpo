@@ -21,7 +21,7 @@ error: `Account.handle` can be `none`
   reason: The fields of a unique rule over several fields must be required, so every engine agrees on what a duplicate is.
   next: Make `handle` required, or leave it out of `tenant_handle` (agent)
   rule: data.unique_nullable_field
-  help: docs/language/05-data.html#data-unique-nullable-field
+  help: docs/errors/data.unique_nullable_field.md
 
 check failed: 1 error, 1 file
 ```

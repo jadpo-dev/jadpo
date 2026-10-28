@@ -134,7 +134,7 @@ error: `Broken` can't have the kind `internal_fault`
   reason: The runtime raises `internal_fault` itself; an application declares `invalid_value`, `not_found`, `not_permitted`, `conflict`, `rejected`, `rate_limited` and `unavailable`, so a client's status always means the same thing.
   next: Use the kind an application declares that fits this outcome (agent)
   rule: failure.kind_runtime_only
-  help: docs/language/04-failures.html#failure-kind-runtime-only
+  help: docs/errors/failure.kind_runtime_only.md
 
 check failed: 1 error, 1 file
 ```

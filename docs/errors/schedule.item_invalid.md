@@ -22,7 +22,7 @@ error: `retry` isn't something a schedule holds
   reason: A schedule says how often it runs with `every:` and the action it runs with `run:`; nothing else, since one run at a time, merged missed ticks and the next tick as the retry are how every schedule runs.
   next: Write `every: <duration>` and `run: <action>()`, once each (agent)
   rule: schedule.item_invalid
-  help: docs/language/12-jobs-and-events.html#schedule-item-invalid
+  help: docs/errors/schedule.item_invalid.md
 
 check failed: 1 error, 1 file
 ```

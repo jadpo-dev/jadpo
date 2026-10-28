@@ -19,7 +19,7 @@ error: `DueWindow` isn't used
   reason: A shared type exists to be used by several files; one that nothing uses is dead code. Tests don't count as users.
   next: Remove `DueWindow` (agent)
   rule: layout.unused_declaration
-  help: docs/language/01-project-layout-and-modules.html#layout-unused-declaration
+  help: docs/errors/layout.unused_declaration.md
 
 check failed: 1 error, 2 files
 ```
@@ -65,7 +65,7 @@ error: `top_shelf` isn't used by `set_oven`
   reason: Everything in a file besides the declaration it is named after is there for that declaration, used by it directly or through one another; anything else is dead code. Tests don't count as users.
   next: Remove `top_shelf` (agent)
   rule: layout.unused_declaration
-  help: docs/language/01-project-layout-and-modules.html#layout-unused-declaration
+  help: docs/errors/layout.unused_declaration.md
 
 check failed: 1 error, 3 files
 ```

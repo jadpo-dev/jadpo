@@ -27,7 +27,7 @@ error: `max:` needs an `invalid_value` failure, and `QuantityRefused` is `reject
   reason: Each mapping's condition fixes the kind of failure it becomes: a value that breaks a type's rules is `invalid_value`, so the client gets the status that means.
   next: Name an `invalid_value` failure here, or make `QuantityRefused`'s kind `FailureKind.invalid_value` (agent)
   rule: failure.mapping_kind
-  help: docs/language/04-failures.html#failure-mapping-kind
+  help: docs/errors/failure.mapping_kind.md
 
 check failed: 1 error, 1 file
 ```

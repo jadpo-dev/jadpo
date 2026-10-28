@@ -58,7 +58,7 @@ error: A route anyone may call passes `current_principal`
   reason: `authentication: RouteAuthentication.none` reads no credential, so the route has no caller to pass on, and nothing it runs may use one.
   next: Remove `authentication: RouteAuthentication.none` so callers sign in, or stop passing `current_principal` (human)
   rule: type.auth_public_principal
-  help: docs/language/08-identity.html#type-auth-public-principal
+  help: docs/errors/type.auth_public_principal.md
 
 check failed: 1 error, 1 file
 ```

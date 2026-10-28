@@ -47,7 +47,7 @@ error: `few` isn't a plural form of `Locale.en_gb`
   reason: `Locale.en_gb` has no use for the plural form `few`: CLDR gives it `one` and `other`, so those are the forms a wording is written for.
   next: Remove `few` from `parcels`, or move its wording into one of the forms the language uses (agent)
   rule: translation.variant_unknown
-  help: docs/language/10-configuration-and-time.html#translation-variant-unknown
+  help: docs/errors/translation.variant_unknown.md
 
 check failed: 1 error, 4 files
 ```

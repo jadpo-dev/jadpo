@@ -29,7 +29,7 @@ error: `Book.title > title` isn't a condition a query can use
   reason: `>` orders numbers, times, dates, durations and quantities, as it does in a body, and `Book.title` is `Title`.
   next: Compare `Book.title` with `==`, `!=` or `in` (agent)
   rule: query.condition_unsupported
-  help: docs/language/06-reads-and-writes.html#query-condition-unsupported
+  help: docs/errors/query.condition_unsupported.md
 
 check failed: 1 error, 1 file
 ```
@@ -65,7 +65,7 @@ error: `text.lower(Book.title) == title` isn't a condition a query can use
   reason: `text.lower` has no SQL form, an expression PostgreSQL works out exactly as the code does (area 19, "SQL forms"), so the database can't decide this condition.
   next: Compare `Book.title` itself, or keep what the condition needs in a field of its own (agent)
   rule: query.condition_unsupported
-  help: docs/language/06-reads-and-writes.html#query-condition-unsupported
+  help: docs/errors/query.condition_unsupported.md
 
 check failed: 1 error, 1 file
 ```

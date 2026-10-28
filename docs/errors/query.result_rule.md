@@ -32,7 +32,7 @@ error: `thick_books` returns `ThickBook`, whose rule `thick` no read can check
   reason: A rule across an object's fields is checked whenever a value is made, and a value that breaks it is a failure an `attempt` maps; a query makes `ThickBook` from stored records with no `attempt` around it, so its result type has no rules across its fields.
   next: Return a type without rules, and build `ThickBook` from it with `attempt` where its rules are checked (agent)
   rule: query.result_rule
-  help: docs/language/06-reads-and-writes.html#query-result-rule
+  help: docs/errors/query.result_rule.md
 
 check failed: 1 error, 1 file
 ```

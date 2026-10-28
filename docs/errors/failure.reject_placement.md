@@ -25,7 +25,7 @@ error: `reject` can only start a statement
   reason: Every place a callable can stop early is at the start of a line: `reject` is a statement of its own, or the result of a `match` arm, never part of a value.
   next: Move `reject` to a line of its own, under an `if` or as a `match` arm (agent)
   rule: failure.reject_placement
-  help: docs/language/03-logic.html#failure-reject-placement
+  help: docs/errors/failure.reject_placement.md
 
 check failed: 1 error, 1 file
 ```

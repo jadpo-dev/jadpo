@@ -31,7 +31,7 @@ error: `Stock` isn't in `shared/failures`
   reason: A `use` line brings in names from the folder it names; `Stock` is a type in `shared/types/stock.jadpo`, so it comes in from `shared/types`.
   next: Import `Stock` from `shared/types` (agent)
   rule: import.unknown
-  help: docs/language/01-project-layout-and-modules.html#import-unknown
+  help: docs/errors/import.unknown.md
 
 check failed: 1 error, 3 files
 ```
