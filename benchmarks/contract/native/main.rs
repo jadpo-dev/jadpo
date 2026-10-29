@@ -1,5 +1,7 @@
-//! Test-only controller around generated native code. Requests use the
-//! production HTTP runtime and codecs. Controls never become app routes.
+//! Test-only controller around the golden todo, run by generated native
+//! code or, with `GOLDEN_EXECUTOR=interpreted`, by the interpreter over
+//! the same project's plan. Requests use the production HTTP runtime and
+//! codecs either way. Controls never become app routes.
 use jadpo_host_native::{NativeHost, Postgres, Runtime};
 use jadpo_runtime::{
     Database, Executor, Host, Isolation, LocalFuture, Outbound, Row, SqlValue, StoreError,
@@ -295,18 +297,50 @@ fn uuid(bytes: &[u8; 16]) -> String {
     )
 }
 fn main() {
-    let runtime = Runtime::new().expect("native runtime");
-    let program = golden::program().expect("compiled plan");
     let variables: BTreeMap<String, String> = std::env::vars().collect();
-    let values = jadpo_runtime::config::load(
-        &program.runtime().config,
-        program.plan().json.codecs.validators,
-        &variables,
-        jadpo_runtime::config::Mode::Environment,
-        &|bytes| NativeHost::new().random(bytes),
-    )
-    .expect("fixture configuration");
-    let program = program.with_config(&values);
+    let random = |bytes: &mut [u8]| NativeHost::new().random(bytes);
+    let mode = jadpo_runtime::config::Mode::Environment;
+    if variables.get("GOLDEN_EXECUTOR").map(String::as_str) == Some("interpreted") {
+        let project = variables.get("GOLDEN_PROJECT").expect("GOLDEN_PROJECT");
+        let loaded = jadpo_db::load(std::path::Path::new(project));
+        let prepared = jadpo_interp::Prepared::load(&loaded.db, loaded.project)
+            .expect("application checks");
+        // Settings are read as a deployable reads them, before anything
+        // is served: every problem logged, then a nonzero exit.
+        let values = match prepared.config(&variables, mode, &random) {
+            Ok(values) => values,
+            Err(problems) => {
+                let problems: Vec<Value> = problems
+                    .iter()
+                    .map(jadpo_runtime::deployable::setting_problem)
+                    .collect();
+                println!(
+                    "{}",
+                    json!({"event": "runtime.startup_failed", "problems": problems})
+                );
+                std::process::exit(1);
+            }
+        };
+        serve(
+            jadpo_interp::Program::new(prepared).with_config(&values),
+            &variables,
+        );
+    } else {
+        let program = golden::program().expect("compiled plan");
+        let values = jadpo_runtime::config::load(
+            &program.runtime().config,
+            program.plan().json.codecs.validators,
+            &variables,
+            mode,
+            &random,
+        )
+        .expect("fixture configuration");
+        serve(program.with_config(&values), &variables);
+    }
+}
+
+fn serve<P: Executor>(program: P, variables: &BTreeMap<String, String>) {
+    let runtime = Runtime::new().expect("native runtime");
     let url = variables.get("DATABASE_URL").expect("DATABASE_URL");
     let observed = Rc::new(Observed::default());
     let state = Rc::new(ProviderState::default());
@@ -316,7 +350,7 @@ fn main() {
     });
     let supplies = jadpo_host_native::supplies().with_fetch(mail);
     let drivers = jadpo_host_native::Drivers::build(
-        &program.runtime().connections,
+        program.plan().connections,
         &program.started().expect("started"),
         &supplies,
     );
@@ -377,7 +411,7 @@ fn main() {
                 }
                 "sweep"=>{let outcomes=jadpo_runtime::runner::sweep(&program,&host,"main",host.now.get()).await.expect("sweep");json!({"outcomes":outcomes.iter().map(|o|format!("{o:?}")).collect::<Vec<_>>()})}
                 "schedule"=>{
-                    let schedule=program.runtime().schedules.schedules.iter().find(|s|Some(s.name.as_str())==command["name"].as_str()).expect("schedule");
+                    let schedule=program.plan().schedules.expect("schedules").schedules.iter().find(|s|Some(s.name.as_str())==command["name"].as_str()).expect("schedule");
                     let callable=match schedule.run {jadpo_std::schedule::ScheduleRun::Action(n)=>n,_=>panic!("generated purge uses purge op")};
                     let mut ctx=jadpo_runtime::Ctx::of(&program,&host,jadpo_runtime::Env{seed:None,clock:jadpo_runtime::Clock::fixed(host.now.get())});
                     let outcome=jadpo_runtime::runner::as_system(&program,&mut ctx,jadpo_runtime::runner::Job{callable,args:vec![],system:jadpo_runtime::System::default()}).await;

@@ -96,7 +96,9 @@ python3 benchmarks/harness/todo.py --skip-build --routes read,large
 ```
 
 Before any timing it runs all 44 `todo-v0.2` cases on each target from
-this checkout and its compiler: 220 passing obligations. A missing,
+this checkout and its compiler: 220 passing obligations on the five
+timed targets, and the 44 interpreted, which a complete Jadpo contract
+also needs but which isn't timed. A missing,
 duplicated, unsupported, failed, sliced or preview case can't authorise a
 run. The conformance adapters' clocks, providers, SQL observation, debug
 binaries and JSONL controller are never timed. `--skip-build` refuses

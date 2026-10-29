@@ -4688,22 +4688,29 @@ it), may use them.
 | Tests | `jadpo test` over the spec corpus; a watch-mode latency test with a ceiling of the 1-second target plus a CI allowance; the teaching examples checked, formatted and tested, and the coverage test; every proved construction in the corpus checked again as it runs |
 | Live PostgreSQL (`--profile quick` skips it, and starts no server) | The driver, the test database and `jadpo migrate apply` and `status`; queries, writes, conflicts, counters, lifecycles and transitions through `jadpo test`; a concurrent change forced from a second connection; purge through its entry point. A golden SQL file per query and write shape (`crates/jadpo-plan/tests/sql/`) holds the statements for review |
 | Compiled | The differential run, the `compiled` group; the Workers host's probe under workerd, in the `wasm32` group; a teaching example built for Workers by `jadpo build` and served by workerd against the run's PostgreSQL over `connect()`, in the `wasm32` group |
-| Golden todo | Every golden contract case on native (`compiled`) and compiled workerd (`wasm32`), plus verifier negative controls (`lint`); the strong TypeScript implementation's static and integration checks and its shared contract on Node, Bun and workerd in `tests` |
+| Golden todo | Every golden contract case interpreted and on native (`compiled`) and on compiled workerd (`wasm32`), plus verifier negative controls (`lint`); the strong TypeScript implementation's static and integration checks and its shared contract on Node, Bun and workerd in `tests` |
 
 **The golden todo's contract.** `benchmarks/contract/run.py` runs the 44
-cases of `benchmarks/golden-todo/acceptance-v0.2.json` on generated native
-code and on generated Wasm under workerd, built by this checkout's own
-compiler and runtime, against the gate's shared PostgreSQL server. Its
+cases of `benchmarks/golden-todo/acceptance-v0.2.json` interpreted, on
+generated native code and on generated Wasm under workerd, built by this
+checkout's own compiler and runtime, against the gate's shared PostgreSQL
+server. The interpreted and native targets share one controller binary:
+with `GOLDEN_EXECUTOR=interpreted` it loads the project and runs the
+interpreter's program instead of the generated one, through the same
+runtime, host and requests, and reads its settings as a deployable does,
+refusing to start on a missing or invalid one (`jadpo dev`'s stand-ins
+for unset provider settings, area 11, are a development convenience and
+not what CONFIG-001 asks of a start). Its
 private host controls supply clocks, provisioned signed credentials, SQL
 fixtures and deterministic provider responses; raw malformed inputs still
 cross the production request decoder. `record::Recorded` observes
 physical SQL calls, transaction starts reported separately, and the
 harness classifies each statement once as principal authority,
 credential authority, business, runtime or transaction. A missing target,
-control or failed case fails visibly; completion needs all 44 on both
+control or failed case fails visibly; completion needs all 44 on all three
 targets, no case filter and fresh source-stamped builds, and a preview
-against another checkout never counts. Native runs in the `compiled`
-group and workerd in `wasm32`, sharing compiled-test caches under
+against another checkout never counts. Interpreted and native run in one
+step of the `compiled` group and workerd in `wasm32`, sharing compiled-test caches under
 `target/jadpo-compiled/golden-todo`. The fixture that intercepts public
 hosts is not evidence about production DNS or TLS filtering.
 
@@ -4890,9 +4897,11 @@ release-please's and dist's workflows make releases
   manifest and `.sha256`) and a stand-in crates.io (a sparse registry of
   the lock's crates from the gate's cargo cache, put in crates.io's place
   by a `.cargo/config.toml` above the projects), both on the loopback
-  address: a native deployable fetches the host's toolchain and the
-  crates, names no path of the checkout and runs; a Workers deployable
-  then fetches wasm32's library alone and writes its module, shim and
+  address, each project a copy of the golden todo: built natively as it
+  is written, it fetches the host's toolchain and the crates, names no
+  path of the checkout and runs; built for Workers, with the rate-limit
+  store and deployable area 16's "Rate limits on Workers" gives a Worker,
+  it fetches wasm32's library alone and writes its module, shim and
   Wrangler file; a second build fetches nothing and says nothing of
   fetching. jadpo-cli's own tests check the carried crates are the
   layers' and nothing else, an archive or manifest whose digest is wrong
