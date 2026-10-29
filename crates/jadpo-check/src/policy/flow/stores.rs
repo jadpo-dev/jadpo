@@ -560,7 +560,7 @@ impl Walk<'_> {
         callee: Option<&str>,
     ) {
         // What reaches a model: the field keeps the marks of what it
-        // stores, whoever reads it (Richard, 2026-10-21).
+        // stores, whoever reads it.
         if self.personal {
             self.stored_params(dest, field, prov);
             let span = match at {

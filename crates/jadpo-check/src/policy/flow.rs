@@ -1404,8 +1404,7 @@ impl Walk<'_> {
     /// makes: everything the list holds, for what a caller is shown and a
     /// write stores. What reaches a model is only what decided which
     /// items the list has, a filter's predicate among them, since a loop
-    /// over records would otherwise send each one's every field (Richard,
-    /// 2026-10-21): a `for`'s list, and `list.map`'s and `list.count`'s.
+    /// over records would otherwise send each one's every field: a `for`'s list, and `list.map`'s and `list.count`'s.
     fn iterated(&self, prov: &Prov) -> Vec<Src> {
         if !self.personal {
             return decide(prov);
@@ -2858,7 +2857,7 @@ impl Walk<'_> {
     }
 
     /// The reply a webhook's reply action returns from `value` (area 11,
-    /// "Webhooks that need a reply"; Richard, 2026-10-21): it goes back to
+    /// "Webhooks that need a reply"): it goes back to
     /// whoever sent the webhook, so it is an output to `Access.public`, and
     /// every field it carries, or that decided it, is one anyone at all may
     /// read. A record the action created holds what it set, or is new.

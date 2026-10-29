@@ -367,8 +367,7 @@ fn a_certificate_mozillas_roots_dont_vouch_for_is_refused_natively() {
 
 /// A server on this machine is spoken to without `STARTTLS`, as a
 /// database on it is, even when it offers it: a stock Postfix offers it
-/// with a self-signed certificate no check would pass (Richard,
-/// 2026-10-22).
+/// with a self-signed certificate no check would pass.
 #[test]
 fn a_server_on_this_machine_is_sent_to_without_starttls_though_it_offers_it() {
     let authority = Authority::signing("localhost");

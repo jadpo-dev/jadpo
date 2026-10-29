@@ -681,7 +681,7 @@ fn the_schema_is_the_types_own_with_its_descriptions() {
 
 /// A route reaching `ai.generate` leaves room for it: the call's
 /// `timeout:` times its `attempts:` (25s and 2 by default, which a route
-/// gives `deadline:` room for, Richard 2026-10-20), summed with
+/// gives `deadline:` room for), summed with
 /// the route's other outside calls, fits within the route's deadline
 /// (area 21, "Operations"; area 11's `route.calls_past_deadline`, chunk
 /// 7.5e).
