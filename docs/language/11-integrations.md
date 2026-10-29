@@ -4872,8 +4872,10 @@ errors and area 3's `effect.call_in_loop`.
   setting, for the domains whose entities they store; the disk driver
   reaches no host and isn't listed. The JSON gives each host's
   `connection`, `address`, `setting` or `service`, `when`, `for` and
-  `domains`. The manifest's hosts, and the approval report's changes to
-  them, are not built yet (area 18).
+  `domains`. The manifest has a `host` node for each row, under its
+  connection, and the graph's diff says which changes to them need a
+  person (area 18, "Package upgrades"); the approval report that shows
+  them is not built yet (area 18).
 - **How the seam finds a connection's driver.** The capability seam
   asks the host for `capability(connection)`; a host gives a driver only
   for a connection whose declared driver it carries. Natively and in
