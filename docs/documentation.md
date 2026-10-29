@@ -2,12 +2,10 @@
 
 How Jadpo's documentation is written, built and delivered, to people and to
 coding agents. The site at jadpo.dev is built in its own repository from
-what this one publishes; this page is the contract between the two.
-
-Decided. The structure, the bundle, the [primer](primer.md) and the
-release machinery are built; releases are switched off until the steps
-under [Versions and releases](#versions-and-releases) are done. The site
-is not built yet, and the [roadmap](roadmap.md) says when it comes.
+the docs bundle this one publishes; this page is the contract between the
+two. How the pages themselves are written is the
+[writing guide](writing.md). Releases are switched off until the steps
+under [Versions and releases](#versions-and-releases) are done.
 
 ## Who reads it
 
@@ -15,8 +13,11 @@ is not built yet, and the [roadmap](roadmap.md) says when it comes.
   then the few sections a task needs, then an error's page when the
   compiler reports one. No model has seen Jadpo, so the docs are their
   only source.
-- **People writing Jadpo apps.** The same content as pages, navigated by
-  task.
+- **People new to Jadpo.** They start on the [Learn path](learn/README.md),
+  which builds one app a page at a time in the order its ideas depend on
+  each other, never on the area pages.
+- **People writing Jadpo apps.** The same content as pages: the Learn
+  path, then the reference by topic.
 - **People and agents changing the language.** The area pages in full,
   with their design notes.
 
@@ -38,7 +39,9 @@ area page lists it under `## Errors`.
 
 | Content | Source |
 |---|---|
-| Primer: layout, syntax essentials, the constructs nearly every app uses, what is built, where to look next; about 3,000 to 5,000 tokens | `docs/primer.md` |
+| Primer: layout, syntax essentials, the constructs nearly every app uses, a project to run, where to look next; about 3,000 to 5,000 tokens | `docs/primer.md` |
+| The Learn path: its outline, then one page per step of one app | `docs/learn/README.md`, `docs/learn/NN-*.md` |
+| How user pages are written | `docs/writing.md` |
 | The language, by topic | the area pages, `docs/language/NN-*.md` |
 | One page per compiler error | `docs/errors/<rule.id>.md` (examples), with the rule's summary from the compiler's catalogue (`jadpo help --json`) |
 | Why the language is the way it is | each area's design notes, `docs/language/notes/NN-*.md`, kept apart from what an app author reads |
@@ -54,7 +57,9 @@ unique across the docs, independent of the area that holds it
 next to its heading, never changes, and is never reused. Moving a section to
 another area, or regrouping the areas, changes no ID and breaks no link.
 Error pages use the rule ID itself (`data.migration_missing`), commands
-`jadpo-<command>` (`jadpo-check`) and the primer `primer`.
+`jadpo-<command>` (`jadpo-check`) and the primer `primer`. A Learn page
+is one topic: its ID stands on the line after its `#` heading
+(`learn-first-route`), and the outline's is `learn`.
 
 The declaration is an HTML comment on the line after the heading, which
 GitHub doesn't show and which leaves the heading's own anchor alone:
@@ -80,30 +85,40 @@ pages.
 bundle/
   index.json                   one entry per page
   primer.md
+  learn/<id>.md                the Learn path: the outline, then each page
   topics/<id>.md               one per topic ID
   errors/<rule.id>.md          one per catalogue rule, example or not
   commands/jadpo-<command>.md  generated from jadpo help --json
 ```
 
 `index.json` is `{ "version": "<jadpo's version>", "pages": [...] }`, in
-the order above, topics in the areas' order. Each entry has `id`, `kind`
-(`primer`, `topic`, `error`, `command`), `title`, a one-line `summary` (a
-topic's first sentence, a rule's catalogue summary, a command's own),
-`tokens` (an estimate: a quarter of the page's characters), `hash`
-(`sha256:` and the hex digest of the page's markdown), the `area` it comes
-from (`null` for the primer, 14 for a command), and the IDs it `links` to.
-A page's path follows from its kind and ID.
+the order above: the primer, the Learn path in reading order, topics in
+the areas' order, errors, commands. Each entry has `id`, `kind`
+(`primer`, `learn`, `topic`, `error`, `command`), `title`, a one-line
+`summary` (a page's first sentence, a rule's catalogue summary, a
+command's own), `tokens` (an estimate: a quarter of the page's
+characters), `hash` (`sha256:` and the hex digest of the page's
+markdown), the `area` it comes from (`null` for the primer and the Learn
+path, 14 for a command), and the IDs it `links` to. A page's path follows
+from its kind and ID. `learn` pages are the user layer, and `topic`
+pages the reference; each area's "What is built" topic is titled
+`What is built: <area>`.
 
 Pages are plain markdown. A topic's heading is its page's `#`, its hidden
 blocks (`hidden`, the support code its examples compile with) are left
-out, and its relative links are by ID (`passkeys.md`,
+out, a Learn page's front matter too, and its relative links are by ID (`passkeys.md`,
 `../errors/failure.kind_required.md`), keeping an anchor within the page;
 a link to anything else, design notes included, names the file on GitHub's
 `main`. An error page leads with its rule's summary, area and who usually
 decides the next step; a command's page is its usage, arguments, flags,
 examples and errors. The primer is `docs/primer.md` with its hidden blocks
 left out; the docs check compiles its every example, refuses a `fragment`
-in it and keeps it to 3,000 to 5,000 tokens, its words times 1.3.
+in it and keeps it to 3,000 to 5,000 tokens, its words times 1.3. A
+Learn page shows only the files it adds or changes; the docs check
+compiles and tests its project as the pages before it built it, less
+what its front matter `removes:`, making the migrations and the API
+record as the reader's commands do. The primer and the Learn path also
+keep the [writing guide](writing.md)'s mechanical rules.
 
 `python3 tools/docs/language_docs.py --bundle <dir>` builds it; the gate builds
 it into `build/docs-bundle/`, and on `main` CI keeps that folder as the
@@ -116,6 +131,7 @@ Release.
 |---|---|
 | `/llms.txt` | A short index: what Jadpo is, the primer's URL, how to find a page by ID or by rule, the version |
 | `/docs/primer`, `/docs/primer.md` | The primer, as HTML and as markdown |
+| `/learn`, `/learn/<id>`, `.md` | The Learn path: the outline, then each page, with previous and next in the index's order |
 | `/docs/<id>`, `/docs/<id>.md` | A topic |
 | `/docs/errors/<rule.id>`, `.md` | An error's page; reached from a compiler error, not listed in navigation |
 | `/docs/index.json` | The bundle's index |
@@ -123,10 +139,11 @@ Release.
 | `/…` without `/v/` | The latest release; short cache, `ETag` from the page's hash |
 
 The markdown copy is the bundle's file served as `text/markdown`. There is
-no single file of all the docs: no agent can use a million tokens. People
-navigate by task (build an API, store data, sign people in, call another
-service, run background work, test, deploy), built over topic IDs; the area
-order stays the source's.
+no single file of all the docs: no agent can use a million tokens. A
+newcomer is sent to the Learn path first; the area pages are the
+reference, in the areas' order. Task guides will come from the bundle
+too, as a page kind of their own ([roadmap](roadmap.md), D11); until
+then the site keeps its own task list.
 
 ## How an agent uses it
 
@@ -142,9 +159,9 @@ order stays the source's.
 5. It reads the version its app declares, under `/v/<version>/`, and skips
    pages whose hash it already has.
 
-Until the site is live, `llms.txt` in this repository links the raw files on
-GitHub; some agents cannot fetch from GitHub, which is why the site and
-`jadpo docs` exist.
+`llms.txt` in this repository links the raw files on GitHub, for an agent
+working from a checkout; some agents cannot fetch from GitHub, which is
+why the site serves the bundle.
 
 ## Versions and releases
 
@@ -215,6 +232,4 @@ gh attestation verify jadpo-cli-aarch64-apple-darwin.tar.xz --repo richardwillar
 - How `jadpo` serves the bundle itself: `jadpo docs <id>` and
   `jadpo docs search`, the `jadpo mcp` tools, or both. Either serves the
   bundle above, so the site doesn't wait on it.
-- Task guides beyond the primer, after the roadmap's measurement of how
-  easily agents write Jadpo shows whether they are needed.
-- Hosting, which the site's own repository chooses.
+
