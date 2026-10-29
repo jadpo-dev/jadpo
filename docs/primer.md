@@ -504,14 +504,17 @@ failure tool_not_found
 
 ## Signing in and permissions
 
-`app.jadpo` holds the `application` and the `principal`: who a signed-in
-caller can be. A user is found by a unique field of an entity.
-`authentication.jadpo` lists the ways to sign in.
+`app.jadpo` holds the `application`, whose `jadpo:` is the earliest Jadpo
+version the app needs, and the `principal`: who a signed-in caller can be.
+A user is found by a unique field of an entity. `authentication.jadpo`
+lists the ways to sign in.
 
 ```jadpo check project=tool-share file=app.jadpo
 use lending/entities { Member }
 
-application {}
+application {
+    jadpo: "0.1"
+}
 
 principal {
     user: {
