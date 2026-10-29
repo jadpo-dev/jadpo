@@ -30,15 +30,8 @@ hyper-util = { workspace = true, features = ["tokio"] }
 http-body-util.workspace = true
 # The operating system's cryptographic generator (area 19, "Randomness").
 getrandom.workspace = true
-# The passkey ceremonies (area 8, chunk 5.5z), behind the runtime's
-# `Passkeys` capability.
-webauthn-rs.workspace = true
-webauthn-rs-core.workspace = true
-serde_cbor_2.workspace = true
+# A deployable's log lines (`deployable`).
 serde_json.workspace = true
-# A software authenticator's ES256 keys and signatures for tests
-# (`test-authenticator`): the OpenSSL `webauthn-rs` already links.
-openssl.workspace = true
 # TLS for every connection the host makes (chunk 8.1b): a driver's
 # stream upgraded (`Transport::upgrade`), and HTTPS for provider calls.
 rustls.workspace = true
@@ -57,7 +50,6 @@ rcgen.workspace = true
 # section (chunk 8.1e), for `jadpo test` and `jadpo dev`: a deployable is
 # built without it.
 testing = ["jadpo-runtime/testing"]
-test-authenticator = []
 # A test's server on this machine standing in for AWS's SNS host
 # (`fetch::Outward::reaching`, chunk 7.7b): never built outside a test.
 test-outbound = []

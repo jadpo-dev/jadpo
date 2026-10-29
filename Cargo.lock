@@ -1832,15 +1832,11 @@ dependencies = [
  "jadpo-runtime",
  "jadpo-std",
  "jadpo-value",
- "openssl",
  "rcgen",
  "rustls",
- "serde_cbor_2",
  "serde_json",
  "tokio",
  "tokio-rustls",
- "webauthn-rs",
- "webauthn-rs-core",
  "webpki-roots",
 ]
 
@@ -1849,16 +1845,12 @@ name = "jadpo-host-workers"
 version = "0.1.0"
 dependencies = [
  "jadpo-drivers",
- "jadpo-host-native",
  "jadpo-runtime",
  "jadpo-std",
  "jadpo-value",
  "js-sys",
- "openssl",
  "rcgen",
  "rustls",
- "serde",
- "serde_cbor_2",
  "serde_json",
  "tokio",
  "wasm-bindgen",
@@ -1919,8 +1911,14 @@ dependencies = [
  "jadpo-std",
  "jadpo-value",
  "miniz_oxide",
+ "openssl",
+ "p256",
+ "serde",
+ "serde_cbor_2",
  "serde_json",
  "stats_alloc",
+ "webauthn-rs",
+ "webauthn-rs-core",
 ]
 
 [[package]]

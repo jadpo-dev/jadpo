@@ -72,7 +72,6 @@ mod fetch;
 mod hyperdrive;
 mod js;
 pub mod opening;
-mod passkeys;
 mod ratelimit;
 mod streamed;
 #[cfg(feature = "testing")]
@@ -90,6 +89,7 @@ use jadpo_runtime::capability::Capability;
 use jadpo_runtime::deployable::Log;
 use jadpo_runtime::http::address::Target;
 use jadpo_runtime::slots::Slots;
+use jadpo_runtime::webauthn::WebAuthn;
 use jadpo_runtime::{Allowed, Database, Host, LocalFuture, Outbound, Passkeys, RateLimits};
 use jadpo_std::http::{RateLimit, RateLimitStore};
 use js_sys::{Reflect, Uint8Array};
@@ -98,7 +98,6 @@ use wasm_bindgen::{JsCast, JsValue};
 pub use fetch::{WorkersFetch, WorkersOutbound};
 pub use js::ExecutionContext;
 pub use opening::Opening;
-pub use passkeys::WorkersPasskeys;
 pub use ratelimit::LIMIT_TIMEOUT_MS;
 pub use transport::{Tasks, WorkersStream, WorkersTransport};
 /// The release of wasm-bindgen this crate binds with, for the handlers a
@@ -390,8 +389,9 @@ pub fn web_crypto_random(bytes: &mut [u8]) -> bool {
     })
 }
 
-/// The passkey ceremonies, their challenges from Web Crypto.
-static PASSKEYS: WorkersPasskeys = WorkersPasskeys::new(web_crypto_random);
+/// The passkey ceremonies, the runtime's own as on every host (area 8,
+/// "Passkeys"), their challenges from Web Crypto.
+static PASSKEYS: WebAuthn = WebAuthn::new(web_crypto_random);
 
 thread_local! {
     /// The monotonic clock's last reading, which it never goes back past.
@@ -510,8 +510,8 @@ impl Host for WorkersHost {
         web_crypto_random(bytes)
     }
 
-    /// The ceremonies in pure Rust ([`WorkersPasskeys`]): `webauthn-rs`'s
-    /// checks, on jadpo-value's ES256 and RS256.
+    /// The runtime's ceremonies ([`WebAuthn`]), their challenges from Web
+    /// Crypto.
     fn passkeys(&self) -> Option<&dyn Passkeys> {
         Some(&PASSKEYS)
     }

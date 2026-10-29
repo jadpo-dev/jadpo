@@ -6386,13 +6386,14 @@ lengths, `15–64`.
 transports, whether it may be and is backed up, the name the person gave
 it, and when it was made and last used; never a biometric. Its parts are
 shaped to `webauthn-rs`'s stored `Passkey`, a `Credential` (its
-`CredentialV5`), so the passkey host builds one from the other part by
-part (`jadpo-host-native`'s `passkeys`):
+`CredentialV5`), the reference the runtime's passkey ceremonies are held
+to, so its tests build one from the other part by part (`jadpo-runtime`'s
+`tests/webauthn_reference.rs`):
 
 | Part | `webauthn-rs` | What it holds |
 |---|---|---|
 | `credential_id` | `cred_id` | 1 to 1,023 bytes (WebAuthn Level 3) |
-| `public_key` | `cred`, a `COSEKey` | The COSE_Key (RFC 9052 §7) in CBOR, 1 to 2,048 bytes: loaded with `webauthn-rs`'s own `COSEKey::try_from` of the CBOR, and written from a `COSEKey` as its labels (`1` the key type, `3` the algorithm, `-1` the curve or RSA's `n`, `-2` `x` or RSA's `e`, `-3` `y`) |
+| `public_key` | `cred`, a `COSEKey` | The COSE_Key (RFC 9052 §7) in CBOR, 1 to 2,048 bytes, written as its labels (`1` the key type, `3` the algorithm, `-1` the curve or RSA's `n`, `-2` `x` or RSA's `e`, `-3` `y`), which `webauthn-rs`'s own `COSEKey::try_from` reads back |
 | `sign_count` | `counter` | 0 to 4,294,967,295, a `u32` |
 | `transports` | `transports` | `usb`, `nfc`, `ble`, `internal`, `hybrid`; an empty list is `None`; `smart-card` and `webauthn-rs`'s own `test` aren't kept |
 | `backup_eligible` | `backup_eligible` | Whether it may be backed up or synced |
@@ -6401,7 +6402,7 @@ part (`jadpo-host-native`'s `passkeys`):
 | `registered_at`, `last_used_at` | none | When it was registered, and last used (`none` until then) |
 
 What `webauthn-rs` keeps besides is the same for every passkey Jadpo
-registers, so it isn't held and the host fills it as it loads one:
+registers, so it isn't held and the reference fills it as it loads one:
 `user_verified` true and `registration_policy` `required`, since a passkey
 is always verified; `extensions` `RegisteredExtensions::none()`; and,
 since attestation is never requested, `attestation`

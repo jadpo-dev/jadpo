@@ -373,6 +373,65 @@ fn no_runtime_crate_turns_on_testing() {
     assert!(problems.is_empty(), "{problems:?}");
 }
 
+/// No native deployable links OpenSSL (area 8, "Passkeys"; docs/compiler-runtime.md
+/// §2.6): what `jadpo build` writes for the native host depends on
+/// jadpo-host-native and the program's runtime crates with their default
+/// features, and nothing they reach, to run or to build, is OpenSSL, its
+/// bindings or a crate built on them. `webauthn-rs`, which verifies with
+/// OpenSSL, is only the passkey tests' reference, a dev-dependency.
+#[test]
+fn no_native_deployable_links_openssl() {
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../Cargo.toml");
+    // The packages a native deployable's manifest names (jadpo-codegen's
+    // `deployable`): the host, and the program's three.
+    let output = Command::new(env!("CARGO"))
+        .args([
+            "tree",
+            "--locked",
+            "--offline",
+            "--manifest-path",
+            root,
+            "-p",
+            "jadpo-host-native",
+            "-p",
+            "jadpo-runtime",
+            "-p",
+            "jadpo-std",
+            "-p",
+            "jadpo-value",
+            "--edges",
+            "normal,build",
+            "--prefix",
+            "none",
+            "--format",
+            "{p}",
+        ])
+        .output()
+        .expect("cargo tree runs");
+    let tree = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let reached: BTreeSet<&str> = tree
+        .lines()
+        .filter_map(|line| line.split_whitespace().next())
+        .collect();
+    // The tree is a deployable's: its TLS and its passkey checks are there.
+    for present in ["rustls", "p256", "serde_cbor_2"] {
+        assert!(reached.contains(present), "{present} isn't reached: {tree}");
+    }
+    let openssl: Vec<&&str> = reached
+        .iter()
+        .filter(|name| name.starts_with("openssl") || name.starts_with("webauthn"))
+        .collect();
+    assert!(
+        openssl.is_empty(),
+        "a native deployable reaches {openssl:?}"
+    );
+}
+
 /// Why the crate at `dir` doesn't have its integration tests as one binary
 /// (docs/compiler-runtime.md §2.7): its `tests/*.rs` files are modules of
 /// `tests/main.rs`, and cargo, told not to find tests itself, builds that
