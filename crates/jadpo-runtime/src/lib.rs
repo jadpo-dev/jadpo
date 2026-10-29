@@ -124,6 +124,7 @@ pub mod operators;
 pub mod outbox;
 mod outcome;
 mod outside;
+pub mod paths;
 mod places;
 mod plan;
 mod policy;

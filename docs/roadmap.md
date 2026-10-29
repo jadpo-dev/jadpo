@@ -261,10 +261,7 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   "Passkeys" and "Route tests on workerd"; area 8, Decisions, "One passkey
   implementation" and "Passkey attestation".
 - [x] **9.2c `jadpo build` outside this checkout**: area 14, "A native deployable", and its design notes, "Building outside this checkout"; compiler/runtime §2.8, "What a released `jadpo` builds with".
-- [ ] **9.3 The differential run's last two checks** `opus · high`
-  (after 9.2; low priority, from chunk 8.4h): each path through a body
-  numbered and the paths each run took compared, and fuzzed function
-  bodies run both ways, as §2.5 once promised.
+- [x] **9.3 The differential run's last two checks**: compiler/runtime §2.3, "Path numbers"; §2.5, "Differential test" ("Paths" and "Fuzzed bodies"); §2.7, "The differential run".
 
 ## Documentation and releases
 
