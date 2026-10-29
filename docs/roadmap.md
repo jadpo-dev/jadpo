@@ -311,14 +311,32 @@ compiled.
 - [x] **10.3e Loading a project from files in memory**: compiler/runtime §2.2, "Loading".
 - [x] **10.3f Where a connection's credential comes from**: compiler/runtime §2.6, "Where a connection's credential comes from"; [area 11](language/11-integrations.md), "How provider calls are made".
 - [x] **10.3g The graph's nodes for areas 8, 10, 11 and 12**: compiler/runtime §2.3, "Outside, access and services" and "Diff"; area 18, "The manifest" and "What is built".
-- [ ] **10.3h The runtime's own SQL beyond PostgreSQL** `opus · high`,
-  **needs a maintainer** for D1's transaction model first: about 145 runtime
-  statements rely on `RETURNING`, `ON CONFLICT`, `::uuid`, `unnest` and
-  `xmin`, `SystemColumn.sql_type` is PostgreSQL type text, and
-  `Transaction` is interactive, which D1's batches may not offer. Done when
-  area 5 records how an action runs on D1 (row versions, transactions),
-  and system columns are typed as `jadpo_std::SqlType`, so later system
-  tables add no PostgreSQL text.
+- [x] **10.3h The runtime's own SQL beyond PostgreSQL**: area 5, "Actions on D1" and "System tables".
+
+## Security audit
+
+Before 0.1.0 is published (D3).
+
+- [ ] **S1 A full security audit** `opus · xhigh`, after the Phase 10
+  review's chunks: a threat model first (who attacks a Jadpo app, a
+  developer's machine, CI and a release, and what each can reach), then
+  every surface checked against it. Covered: what the compiler promises
+  (policy, field restrictions, tenancy, identity and sessions, passkeys,
+  magic links, external tokens, webhooks' signatures, rate limits, the
+  outbound guard against SSRF, secrets and settings, crypto, migrations
+  that move data between readers); the runtime's request edge (HTTP
+  parsing, headers, sizes, time limits); generated code native and on
+  Workers (the Workers host, Wrangler file, bindings); supply chain
+  (`cargo audit` and `cargo deny` in the gate, npm, pinned toolchains and
+  the toolchain `jadpo build` fetches, GitHub Actions' permissions and
+  pinning, release artefacts' checksums and provenance); the docs bundle
+  and the extension; and D4's issue triage, whose input is anyone's.
+  Uses the Cloudflare plugin's Workers guidance for the Workers host and a
+  general audit checklist (finecomb or Claude Code's `/security-review`).
+  Done when each finding has a failing test or a reproduction, the
+  confirmed ones are fixed with tests or added here as chunks, `cargo
+  audit` and `cargo deny` run in the gate, and `SECURITY.md` says how to
+  report a vulnerability.
 
 ## Security audit
 
