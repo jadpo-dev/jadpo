@@ -152,7 +152,7 @@ Rust 1.88 or later).
 | `jadpo-fmt` | Formatter | |
 | `jadpo-sql` | Every PostgreSQL text the compiler writes: conditions and their one lowering (an exact SQL form, or an index search the runtime rechecks), statements, aggregates, identity lookups and table definitions, rendered from what the graph, the checker and the plan decide | |
 | `jadpo-graph` | Node and edge model, identity keys, canonical JSON, diff; the physical schema, its snapshots and migration diffs | |
-| `jadpo-db` | Incremental database: source inputs, project layout, the lock and the identity registry; the only compiler crate that does I/O (the before side from git comes later) | |
+| `jadpo-db` | Incremental database: source inputs, project layout, the lock and the identity registry; the only compiler crate that does I/O, reading a project's files from disk for rules that read none (§2.2, "Loading") | |
 | `jadpo-check` | Resolution, types, failures, effects, policy, data and layout rules, as queries that build the graph | |
 | `jadpo-plan` | What both executors need besides control flow: numbered callables and their frame tables, type and failure plans, constants, each read and write site's statements with policy compiled in (written by `jadpo-sql`), codecs per type, and the route, settings, JSON, translation and prompt tables; schedule and subscriber tables come with area 12 | |
 | `jadpo-interp` | The interpreter | |
@@ -277,6 +277,26 @@ native test checks. Compiler crates do no I/O below `jadpo-db`, which keeps
 a browser playground possible.
 
 ### 2.2 Source to graph
+
+**Loading.** A project is loaded in two steps. `jadpo_db::read` finds it
+on disk (up to `app.jadpo`, or loose files) and reads every file it could
+hold into a `FileSet`: each path, relative to the root with `/`, with its
+text or why it couldn't be read, a folder that couldn't be listed as its
+path and a trailing `/`, and each checkout `jadpo.lock` links a package to
+under the checkout's path as the lock writes it (`../acme-pricing/...`).
+`jadpo_db::assemble` then makes the set a project by every rule, reading
+nothing: a set with `app.jadpo` at its root is a project, otherwise loose
+files; which paths a project holds (`role`: nothing hidden, nothing in a
+root `build/`, outside a project's code folders and records only source,
+and loose files a prompt's text beside its type); which of those are
+source, records or other files; which installed package resources wait
+until the app calls into them; the identity registry's lines; and which
+package folders a link replaces with its checkout's files (a link whose
+checkout has no index in the set is unreadable). `load_files` loads a set read from
+anywhere, so a base commit read from git loads by the same rules as the
+working tree; a test holds every example to the same graph and problems
+either way. The watcher's `Loaded::refresh` reads one path from disk and
+applies the same `role`.
 
 **Lexer and parser.** Hand-written. The lexer has modes for route paths
 (`GET /todos/{todo_id}`), durations (`15m`) and template text (`{{ }}`).
@@ -650,8 +670,9 @@ schema in `jadpo help --json`.
 kind classify its change into the decided kinds (`ApiChange`, `DataChange`,
 `PolicyChange`, `DomainChange`, `PackageChange`, `ThresholdChange`), other
 behaviour, and newly reachable nodes. The before side is read from the
-base commit through `git cat-file --batch` into an in-memory file set,
-checked by the same compiler and cached in `build/before/<commit>/`.
+base commit through `git cat-file --batch` into an in-memory file set
+(`jadpo_db::FileSet`, loaded by `load_files`, §2.2, "Loading"), checked
+by the same compiler and cached in `build/before/<commit>/`.
 
 **Packages.** A package's index is always parsed, a resource file only when
 the app calls into it. A checked package subgraph is cached on disk by
