@@ -5,7 +5,9 @@ and its pure functions, never another action, so what it does is one way
 through it that a retry replays in order. It never emits when it is
 `public`, since a package emits only about the outside world, and it
 never shares a name with one of its resources, which share its
-connection's namespace:
+connection's namespace. A package's code also reads none of the app's
+settings (`config.<name>`, keys included) and calls none of its sign-in
+operations (`sessions.*`, `magic_links.*`), which are the app's own:
 
 ```jadpo check project=p76-calls file=app.jadpo hidden
 application {}

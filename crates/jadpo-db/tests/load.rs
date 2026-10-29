@@ -365,3 +365,61 @@ fn a_set_without_app_jadpo_is_loose_files() {
     assert!(loaded.project.other_files(db).is_empty());
     assert!(loaded.project.records(db).is_empty());
 }
+
+/// A link to a file outside the project isn't read, so a package or an
+/// example can't make a check print, or a build carry, a file from
+/// elsewhere on the machine; a link to a file inside it is read as the
+/// file (security audit S1).
+#[cfg(unix)]
+#[test]
+fn a_link_out_of_the_project_is_not_read() {
+    let dir = folder("links");
+    let root = dir.join("shop");
+    write(&root, "app.jadpo", "application {}\n");
+    write(
+        &dir,
+        "outside/credentials",
+        "aws_secret_access_key = canary\n",
+    );
+    write(
+        &root,
+        "shared/types/count.jadpo",
+        "public type Count = Int {}\n",
+    );
+    let types = root.join("shared/types");
+    std::os::unix::fs::symlink(dir.join("outside/credentials"), types.join("secret.jadpo"))
+        .expect("a link out");
+    std::os::unix::fs::symlink(types.join("count.jadpo"), types.join("again.jadpo"))
+        .expect("a link in");
+    let loaded = load(&root);
+    let unreadable: Vec<(&str, &str)> = loaded
+        .unreadable
+        .iter()
+        .map(|file| (file.path.as_str(), file.error.as_str()))
+        .collect();
+    assert_eq!(
+        unreadable,
+        [(
+            "shared/types/secret.jadpo",
+            "it links to a file outside the project, which Jadpo doesn't read"
+        )]
+    );
+    let texts: Vec<String> = loaded
+        .project
+        .files(&loaded.db)
+        .iter()
+        .map(|file| file.text(&loaded.db).to_string())
+        .collect();
+    assert!(
+        texts.iter().all(|text| !text.contains("canary")),
+        "{texts:?}"
+    );
+    assert!(
+        loaded
+            .project
+            .files(&loaded.db)
+            .iter()
+            .any(|file| file.path(&loaded.db) == "shared/types/again.jadpo"),
+        "a link inside the project is read"
+    );
+}

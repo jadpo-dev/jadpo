@@ -100,7 +100,7 @@ html5ever = { version = "=0.40.1", default-features = false }
 # CommonMark for `markup.to_html` (area 19, "Text formats"; jadpo-value
 # only): pulldown-cmark, MIT, pure Rust and built for wasm32, with only its
 # HTML writer; what it writes is then made safe by the sanitiser above.
-pulldown-cmark = { version = "=0.13.4", default-features = false, features = ["html"] }
+pulldown-cmark = { version = "=0.13.5", default-features = false, features = ["html"] }
 # Time zones for `temporal` (area 10; jadpo-value only): pure Rust, builds
 # for wasm32, the IANA database bundled into the binary (jiff-tzdb, 2026e,
 # about 200 KB) rather than read from the platform, and Temporal's rules

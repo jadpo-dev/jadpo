@@ -35,11 +35,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # It runs the extension's own npm scripts, so it holds a read-only token;
+  # `attach` alone writes to the release.
   package:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
-      contents: write
+      contents: read
     outputs:
       version: ${{ steps.version.outputs.version }}
       file: ${{ steps.version.outputs.file }}
@@ -49,7 +51,7 @@ jobs:
     env:
       TAG: ${{ inputs.tag }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.tag || github.sha }}
           persist-credentials: false
@@ -79,21 +81,36 @@ jobs:
       # language server's own tests run in validation.yml.
       - run: npm test
       - run: npx vsce package --skip-license --out "${{ steps.version.outputs.file }}"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: vscode-extension
           path: editors/vscode/${{ steps.version.outputs.file }}
           if-no-files-found: error
+
+  # The packaged file attached to the release: nothing is checked out or
+  # run here but `gh`.
+  attach:
+    needs: package
+    if: inputs.tag
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.tag }}
+      FILE: ${{ needs.package.outputs.file }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: vscode-extension
       - name: Attach it to the release
-        if: inputs.tag
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$TAG" "${{ steps.version.outputs.file }}" --clobber --repo "$GITHUB_REPOSITORY"
+        run: gh release upload "$TAG" "$FILE" --clobber --repo "$GITHUB_REPOSITORY"
 
   # dist's Release workflow for the tag, which release-please.yml started
   # just before this one, has to finish and publish the Release first.
   released:
-    needs: package
+    needs: [package, attach]
     if: inputs.tag && vars.JADPO_VSCODE_PUBLISH == 'on'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
@@ -128,7 +145,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: vscode-extension
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -144,7 +161,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: vscode-extension
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0

@@ -912,12 +912,14 @@ async fn run_route(
     // Who is calling, before the input is read or anything runs (area 8).
     let mut reissued = None;
     let mut exchanged = None;
+    let mut browser = false;
     let caller = if route.authentication.needs_caller() {
         let checked = identity::authenticate(app, ctx, request, route);
         match race(checked, &mut deadline).await {
             First::Left(Ok(admitted)) => {
                 reissued = admitted.reissued;
                 exchanged = admitted.exchanged;
+                browser = admitted.browser;
                 Some(admitted.caller)
             }
             First::Left(Err(refused)) => {
@@ -970,7 +972,7 @@ async fn run_route(
                 request,
                 request_id,
                 *step,
-                caller.as_ref(),
+                caller.as_ref().map(|caller| (caller, browser)),
             );
             match race(answered, &mut deadline).await {
                 First::Left(response) => response,

@@ -154,11 +154,13 @@ POSTGRES = [
      [('jadpo-cli', 'standard_storage'), ('jadpo-cli', 'sql_literals'),
       ('jadpo-cli', 'json_columns')], []),
     # Passkeys registered and signed in with through the generated routes,
-    # and each refusal (area 8, chunk 5.5z); magic links asked for,
-    # confirmed and limited (chunk 7.3b); configuration through the
-    # commands, a database opened from a setting among them (area 10).
+    # and each refusal (area 8, chunk 5.5z), an API token's among them;
+    # magic links asked for, confirmed and limited (chunk 7.3b);
+    # configuration through the commands, a database opened from a
+    # setting among them (area 10).
     ('live PostgreSQL: passkeys, magic links and configuration',
-     [('jadpo-cli', 'passkeys'), ('jadpo-cli', 'magic_links'), ('jadpo-cli', 'config')], []),
+     [('jadpo-cli', 'passkeys'), ('jadpo-cli', 'passkey_tokens'), ('jadpo-cli', 'magic_links'),
+      ('jadpo-cli', 'config')], []),
     # Queries, `get` and `create` run through `jadpo test`, and
     # aggregate queries against what code works out (area 6).
     ('live PostgreSQL: queries', [('jadpo-cli', 'queries'), ('jadpo-cli', 'aggregates')], []),
@@ -387,6 +389,15 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
     ]
     checks += [
         Step('rust formatting', 'lint', ['cargo', 'fmt', '--all', '--check']),
+        # The dependencies (docs/security.md, "Supply chain"): no crate with
+        # a RustSec advisory or yanked (.cargo/audit.toml lists what is
+        # ignored, and why), and deny.toml's licences, sources and bans.
+        # Both read the advisory database from GitHub. The versions, which
+        # validation.yml's lint job installs too:
+        # `cargo install --locked cargo-audit@0.22.2 cargo-deny@0.20.2`.
+        Step('dependency advisories (cargo audit)', 'lint', ['cargo', 'audit', '--deny', 'warnings']),
+        Step('dependency licences, sources and bans (cargo deny)', 'lint',
+             ['cargo', 'deny', '--locked', 'check', '--hide-inclusion-graph']),
         Step('clippy', 'lint',
              ['cargo', 'clippy', '--locked', '--workspace', '--all-targets', '--', '-D', 'warnings'],
              lane='cargo'),

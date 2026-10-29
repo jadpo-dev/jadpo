@@ -736,8 +736,11 @@ A reference to the tenant itself is the record's tenancy, or, beside the
 one an entity names with `tenant:`, another tenant on purpose, so it isn't
 checked. A write that moves a record to another tenant, which only an
 action listed under `actions:` may, checks every reference it keeps, and
-that no record of the old tenant refers to it, and needs the caller's own
-membership in the new tenant, as a create there would.
+that no record of the old tenant refers to it, and needs in the new
+tenant what a create of the record as moved would: the entity's own
+`create:` and the caller's own membership there. A membership moved in
+from another company holds no role its mover couldn't give there, so a
+viewer can't move in an owner's membership they hold elsewhere.
 
 ### A unique rule holds within its tenant
 

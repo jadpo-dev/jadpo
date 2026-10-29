@@ -1351,6 +1351,17 @@ fn request(
             PathPart::Fixed(text) => url.push_str(text),
             PathPart::Field(name) => match members.remove(name) {
                 Some(value) => match plain(&value, &numbers, name) {
+                    // A dot segment, or none at all, would leave the
+                    // placeholder's segment: every URL parser on the way
+                    // resolves `/accounts/../statement` to `/statement`,
+                    // another operation, sent with the connection's
+                    // credential (area 11, "How the input is sent").
+                    Some(text) if matches!(text.as_str(), "" | "." | "..") => {
+                        return Err(Unready::Fault(FaultKind::Provider(format!(
+                            "`{}`'s placeholder `{{{name}}}` given a value that would leave its path segment (empty, `.` or `..`), so nothing was sent",
+                            op.name
+                        ))));
+                    }
                     Some(text) => url.push_str(&jadpo_value::encoding::to_url_component(&text)),
                     None => {
                         return Err(Unready::Fault(FaultKind::Defect(format!(

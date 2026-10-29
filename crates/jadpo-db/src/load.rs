@@ -129,7 +129,7 @@ pub fn read(target: &Path) -> (PathBuf, FileSet) {
                 let at = root.join(&checkout);
                 for file in package_files(&at) {
                     let shown = format!("{checkout}/{}", display(&at, &file));
-                    files.insert(shown, read_file(&file));
+                    files.insert(shown, read_file(&file, &at));
                 }
             }
             root
@@ -150,13 +150,27 @@ pub fn read(target: &Path) -> (PathBuf, FileSet) {
 /// Adds each of `paths` to `files`, by its path relative to `root`.
 fn read_all(files: &mut FileSet, root: &Path, paths: Vec<PathBuf>) {
     for path in paths {
-        files.insert(display(root, &path), read_file(&path));
+        files.insert(display(root, &path), read_file(&path, root));
     }
 }
 
 /// A file's text, or why it couldn't be read. A pipe or a device would
-/// block or never end, so only a regular file is read.
-fn read_file(path: &Path) -> Result<String, String> {
+/// block or never end, so only a regular file is read; and a link only to
+/// a file inside `within`, the folder being read, so a link a package or
+/// an example holds can't make a check read a file from elsewhere on the
+/// machine into its output or a build (security audit S1).
+fn read_file(path: &Path, within: &Path) -> Result<String, String> {
+    if std::fs::symlink_metadata(path).is_ok_and(|meta| meta.file_type().is_symlink()) {
+        let inside = match (std::fs::canonicalize(path), std::fs::canonicalize(within)) {
+            (Ok(target), Ok(within)) => target.starts_with(within),
+            _ => false,
+        };
+        if !inside {
+            return Err(
+                "it links to a file outside the project, which Jadpo doesn't read".to_string(),
+            );
+        }
+    }
     if !std::fs::metadata(path).is_ok_and(|meta| meta.is_file()) {
         return Err("it isn't a regular file".to_string());
     }
@@ -444,6 +458,20 @@ impl Loaded {
         self.root.join(path)
     }
 
+    /// The folder `path` is read from: its linked package's checkout, or
+    /// the root.
+    fn within(&self, path: &str) -> PathBuf {
+        for (folder, checkout) in &self.links {
+            if path
+                .strip_prefix(folder.as_str())
+                .is_some_and(|rest| rest.starts_with('/'))
+            {
+                return self.root.join(checkout);
+            }
+        }
+        self.root.clone()
+    }
+
     /// Reads the lock's links again, after a change to it: a package
     /// linked, unlinked or linked elsewhere has every file of its folder
     /// read again from where it now lives.
@@ -548,7 +576,7 @@ impl Loaded {
             Role::Other => full.is_file().then(|| Ok(String::new())),
             Role::Source | Role::Record => match std::fs::metadata(&full) {
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-                _ => match read_file(&full) {
+                _ => match read_file(&full, &self.within(path)) {
                     Err(_) if !full.exists() => None,
                     read => Some(read),
                 },

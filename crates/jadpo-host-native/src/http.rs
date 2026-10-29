@@ -9,6 +9,7 @@
 //! once whichever workers it reaches. hyper reads and writes HTTP/1.1; the
 //! runtime's HTTP component (`jadpo_runtime::http`) answers each request.
 //! A client has 10 seconds to send a request's headers and 30 its body,
+//! a write to it may wait at most 30 seconds for it to read ([`Stalled`]),
 //! and the server holds at most [`MAX_CONNECTIONS`] connections open. The
 //! work a response leaves for after it is sent
 //! ([`Handler::take_deferred`]) runs as tasks of their own on the worker's
@@ -505,7 +506,7 @@ async fn connection(
         .keep_alive(true)
         .timer(TokioTimer::new())
         .header_read_timeout(HEADER_TIMEOUT)
-        .serve_connection(TokioIo::new(stream), service);
+        .serve_connection(TokioIo::new(Stalled::new(stream)), service);
     let mut serving = std::pin::pin!(serving);
     if unless(serving.as_mut(), stopping).await.is_some() {
         return;
@@ -573,6 +574,110 @@ const BODY_TIMEOUT: Duration = Duration::from_secs(30);
 /// The most connections the server holds open at once, across its
 /// workers; one past it is closed as it is accepted.
 pub const MAX_CONNECTIONS: usize = 1024;
+
+/// How long a write may wait for the client to read before the connection
+/// is given up (security audit S1): without it, a client that sends
+/// requests and never reads the answers would keep its connection, and
+/// its place under [`MAX_CONNECTIONS`], for as long as it liked. A client
+/// that reads, however slowly, and a stream with nothing new to send, are
+/// never cut off by it.
+pub const WRITE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// A connection's stream whose writes fail once one has waited
+/// [`WRITE_TIMEOUT`] for the client to read, which ends the connection.
+struct Stalled {
+    stream: tokio::net::TcpStream,
+    /// Since when a write has waited, while one does.
+    waiting: Option<std::pin::Pin<Box<tokio::time::Sleep>>>,
+}
+
+impl Stalled {
+    fn new(stream: tokio::net::TcpStream) -> Stalled {
+        Stalled {
+            stream,
+            waiting: None,
+        }
+    }
+
+    /// `written` as it came, or, while it waits, an error once it has
+    /// waited too long.
+    fn timed<T>(
+        &mut self,
+        context: &mut std::task::Context<'_>,
+        written: std::task::Poll<io::Result<T>>,
+    ) -> std::task::Poll<io::Result<T>> {
+        use std::future::Future;
+        use std::task::Poll;
+        match written {
+            Poll::Ready(done) => {
+                self.waiting = None;
+                Poll::Ready(done)
+            }
+            Poll::Pending => {
+                let waiting = self
+                    .waiting
+                    .get_or_insert_with(|| Box::pin(tokio::time::sleep(WRITE_TIMEOUT)));
+                match waiting.as_mut().poll(context) {
+                    Poll::Ready(()) => Poll::Ready(Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "the client read nothing for the write timeout",
+                    ))),
+                    Poll::Pending => Poll::Pending,
+                }
+            }
+        }
+    }
+}
+
+impl tokio::io::AsyncRead for Stalled {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        context: &mut std::task::Context<'_>,
+        buffer: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<io::Result<()>> {
+        std::pin::Pin::new(&mut self.stream).poll_read(context, buffer)
+    }
+}
+
+impl tokio::io::AsyncWrite for Stalled {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        context: &mut std::task::Context<'_>,
+        bytes: &[u8],
+    ) -> std::task::Poll<io::Result<usize>> {
+        let written = std::pin::Pin::new(&mut self.stream).poll_write(context, bytes);
+        self.timed(context, written)
+    }
+
+    fn poll_write_vectored(
+        mut self: std::pin::Pin<&mut Self>,
+        context: &mut std::task::Context<'_>,
+        buffers: &[io::IoSlice<'_>],
+    ) -> std::task::Poll<io::Result<usize>> {
+        let written = std::pin::Pin::new(&mut self.stream).poll_write_vectored(context, buffers);
+        self.timed(context, written)
+    }
+
+    fn is_write_vectored(&self) -> bool {
+        self.stream.is_write_vectored()
+    }
+
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        context: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<io::Result<()>> {
+        let flushed = std::pin::Pin::new(&mut self.stream).poll_flush(context);
+        self.timed(context, flushed)
+    }
+
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        context: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<io::Result<()>> {
+        let shut = std::pin::Pin::new(&mut self.stream).poll_shutdown(context);
+        self.timed(context, shut)
+    }
+}
 
 /// A hyper request as the runtime's, its body read whole, or, once it
 /// passes the runtime's limit (area 7, "Deadline and body limit"), marked too large and

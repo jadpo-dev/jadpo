@@ -1,0 +1,10 @@
+# What `cargo audit` ignores (the gate runs it with `--deny warnings`;
+# docs/security.md, "Supply chain"). deny.toml ignores the same advisory,
+# with the same reason.
+
+[advisories]
+# rsa's Marvin attack (RUSTSEC-2023-0071) recovers a private key from the
+# timing of operations with it. Jadpo only verifies RSA signatures with
+# public keys (jadpo-value: external JWTs, passkeys, certificates) and
+# holds no RSA private key; no fixed release exists.
+ignore = ["RUSTSEC-2023-0071"]

@@ -505,6 +505,27 @@ impl Body<'_> {
         );
     }
 
+    /// A package's code calling one of the app's sign-in operations
+    /// (`sessions.end()`, `magic_links.request(...)`): refused, since a
+    /// package acts on its own API, never on who is signed in.
+    pub(super) fn package_signs_in(&mut self, span: Span, written: &str) {
+        let caller = match &self.action {
+            Some(action) => format!("`{action}`"),
+            None => "A package's code".to_string(),
+        };
+        self.out.push(
+            Diagnostic::new(
+                &rule::PACKAGE_ACTION_INVALID,
+                format!("{caller} calls the app's sign-in operation `{written}`"),
+            )
+            .at(span, "the app's sign-in")
+            .reason("A package acts on its own API, never on the app: it can't start, end or revoke anyone's session, token or sign-in link. Only the app's own actions do, where a reviewer sees them.")
+            .next(format!(
+                "Call `{written}` in the app's action that calls the package"
+            )),
+        );
+    }
+
     /// Whether this action may call through `connection`: it is in a
     /// domain the connection lists, and the package driver sends what the
     /// package needs.

@@ -1044,7 +1044,8 @@ pub fn is_key_argument(expr: &ast::FieldExpr) -> bool {
 }
 
 /// The problems of the `config.<name>` reads in one file: a name that is
-/// no setting, and a secret read anywhere but a place the compiler owns.
+/// no setting, a secret read anywhere but a place the compiler owns, and
+/// any setting read in a package's code.
 #[salsa::tracked(returns(ref))]
 pub fn use_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     let Some(source) = tree::source(db, file) else {
@@ -1060,8 +1061,23 @@ pub fn use_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic
                 .cloned(),
         );
     }
+    // A package's code reads none of the app's settings, its keys
+    // included: what it needs reaches it through its connection's
+    // `credential:`, which the runtime sends (area 11, "What package code
+    // may do"). Its tests run in the app, so read the app's as the app's
+    // own tests do.
+    let package = match &jadpo_db::location(db, project, file).ownership {
+        jadpo_db::Ownership::Package(home) if !path.ends_with(".test.jadpo") => {
+            Some(home.versioned())
+        }
+        _ => None,
+    };
     for (name, field) in reads_in(&source) {
         let span = node_span(path, field.syntax());
+        if let Some(package) = &package {
+            out.push(package_setting(&name, package, span));
+            continue;
+        }
         let fact = setting_fact(db, project, Name::new(db, name.clone()));
         let Some(fact) = fact else {
             out.push(unknown_setting(db, project, &name, span));
@@ -1106,6 +1122,19 @@ fn unknown_setting(db: &dyn Db, project: Project, name: &str, span: Span) -> Dia
 /// A secret read where the compiler doesn't own the place; `key` is the
 /// key type a setting holds whose one place is a `crypto` call's `key:`
 /// (an `EncryptionKey` or a `PrivateKey`).
+/// `config.<name>` read in the code of `package`.
+fn package_setting(name: &str, package: &str, span: Span) -> Diagnostic {
+    Diagnostic::new(
+        &rule::PACKAGE_ACTION_INVALID,
+        format!("`{package}` reads the app's setting `config.{name}`"),
+    )
+    .at(span, "the app's setting")
+    .reason("A package acts on its own API, never on the app: its code reads none of the app's settings, its keys included, so it can't send them anywhere or sign with them. What a provider needs reaches it through the connection's `credential:`, which the runtime sends.")
+    .next(format!(
+        "Take what `config.{name}` gives as the action's input from the app's own action, or name it in the connection's `credential:`"
+    ))
+}
+
 fn secret_flow(name: &str, field: &ast::FieldExpr, span: Span, key: Option<Prim>) -> Diagnostic {
     if let Some(key) = key {
         return Diagnostic::new(

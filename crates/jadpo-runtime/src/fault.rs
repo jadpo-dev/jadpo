@@ -36,7 +36,9 @@ pub enum FaultKind {
     /// A provider's answer the call can't read (area 11, "Decoding";
     /// chunk 7.2c): one that doesn't decode as its operation's output,
     /// named by the operation, the field and the rule, never the value, or
-    /// a refusal with a code the operation doesn't declare.
+    /// a refusal with a code the operation doesn't declare; or a call
+    /// refused before it is sent, because a path placeholder's value
+    /// would leave its segment (area 11, "How the input is sent").
     Provider(String),
     /// An outside call, named (`mail.send`), made while the action's
     /// transaction was open, which the runtime refuses before it goes out

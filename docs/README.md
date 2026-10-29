@@ -13,6 +13,7 @@ by LLMs and reviewed by people. Start with the [project introduction](../README.
 | [Compiler and runtime architecture](compiler-runtime.md) | The graph-centred build approach (§1) and the architecture |
 | [Documentation](documentation.md) | How the docs are built and delivered to people and agents; the contract with the jadpo.dev site |
 | [CLI design language](cli-design-language.md) | How every CLI screen and generated page looks |
+| [Security](security.md) | Who attacks a Jadpo app, a developer's machine, CI and a release, what each can reach, and what stops them; [SECURITY.md](../SECURITY.md) says how to report a vulnerability |
 | [Vision](vision.md) | Why Jadpo exists and who it is for |
 
 Checks run with `python3 tools/verify.py`.
