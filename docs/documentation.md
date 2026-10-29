@@ -154,7 +154,7 @@ GitHub; some agents cannot fetch from GitHub, which is why the site and
 - Each pull request's Conventional Commit type sets the change: `fix` a
   patch, `feat` a minor, `feat!` a breaking change. Claude chooses it and
   writes it as the pull request's title. A pull request merges with
-  squash (Richard, 2026-10-29): one commit on `main`, its message the
+  squash: one commit on `main`, its message the
   title, which is what release-please reads. CI
   (`tools/commit_type.py`, in `.github/workflows/commit-type.yml`) fails a
   title that isn't a Conventional Commit and a language change under a title other than `feat` or `feat!`: a spec

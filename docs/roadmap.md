@@ -389,7 +389,7 @@ D1 first: the site starts once D1 has merged.
 
 - Branch from `main` for each chunk; commit and push often; squash-merge through a
   pull request, its title the Conventional Commit for the whole change
-  (Richard, 2026-10-29). Never put a worktree under `/private/tmp`.
+ . Never put a worktree under `/private/tmp`.
 - `tools/verify.py` output and the tests are the evidence. No evidence
   packets, per-step reviews, timing logs or plan documents.
 - One independent review per phase, not per chunk, by two reviewers:
