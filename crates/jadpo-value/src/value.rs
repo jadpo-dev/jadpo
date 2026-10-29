@@ -391,6 +391,9 @@ pub enum Value {
     /// `BearerToken`, a `TotpSecret`, a `SecretText` or a `Jwt`, written
     /// out only redacted and compared in constant time.
     Secret(crate::secret::Secret),
+    /// A key, given only as a `crypto` call's `key:` (area 19, chunk
+    /// 10.3d): opaque, written out only as `<key>`.
+    Key(crate::crypto::Key),
 }
 
 impl PartialEq for Value {
@@ -419,6 +422,7 @@ impl PartialEq for Value {
             (Value::Record(a), Value::Record(b)) => a == b,
             (Value::Variant(a), Value::Variant(b)) => a == b,
             (Value::Secret(a), Value::Secret(b)) => a == b,
+            (Value::Key(a), Value::Key(b)) => a.order(b).is_eq(),
             // A secret value against text written in source, in constant
             // time, wherever the two meet: at the top, and inside a list, a
             // set, a map, an object or an enum's data (chunk 5.8a).
@@ -587,7 +591,12 @@ impl Value {
             // A geometry, as PostGIS's `geography` holds it (area 20,
             // chunk 5.5u4); no other object or choice.
             Value::Record(_) | Value::Variant(_) => Stored::Shape(crate::geo::shape(self)?),
-            Value::Unit | Value::Zoned(_) | Value::Money(_) | Value::Map(_) | Value::Secret(_) => {
+            Value::Unit
+            | Value::Zoned(_)
+            | Value::Money(_)
+            | Value::Map(_)
+            | Value::Secret(_)
+            | Value::Key(_) => {
                 return None;
             }
         })
@@ -634,6 +643,7 @@ impl Value {
             Value::Record(record) => return format!("a `{}`", record.ty),
             Value::Variant(variant) => return format!("a `{}`", variant.ty),
             Value::Secret(_) => "a secret value",
+            Value::Key(_) => "a key",
         };
         kind.to_string()
     }
@@ -712,6 +722,8 @@ impl fmt::Display for Value {
             }
             // Redacted: `<redacted Password>` (chunk 5.5r2).
             Value::Secret(secret) => write!(f, "{secret}"),
+            // Never the key, nor where it comes from (chunk 10.3d).
+            Value::Key(_) => f.write_str("<key>"),
         }
     }
 }

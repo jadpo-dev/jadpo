@@ -36,8 +36,7 @@
 //! (`jadpo_runtime::deployable`, chunk 8.4c).
 //!
 //! Its one argument is a command: none, or `serve`, serves as above; `tick`
-//! runs one tick and ends ([`tick`]; area 12, question 16, Richard,
-//! 2026-10-21; chunk 8.2g), what another scheduler runs each minute when
+//! runs one tick and ends ([`tick`]; area 12, question 16; chunk 8.2g), what another scheduler runs each minute when
 //! `schedules: { trigger: ScheduleTrigger.external }` says the server's
 //! own timer never ticks. Anything else is `runtime.startup_failed`,
 //! ending with code 2.
@@ -222,8 +221,7 @@ fn watched() -> Result<Arc<AtomicBool>, Vec<Value>> {
     })
 }
 
-/// One tick, `<deployable> tick` (area 12, question 16: Richard,
-/// 2026-10-21; chunk 8.2g): the settings read and each store compared with
+/// One tick, `<deployable> tick` (area 12, question 16; chunk 8.2g): the settings read and each store compared with
 /// the build's migrations as serving does, except that a database that
 /// can't be reached isn't waited for, since the scheduler's next run is
 /// the next try and the ticks missed meanwhile become one run; then the

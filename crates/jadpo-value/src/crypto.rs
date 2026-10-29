@@ -9,9 +9,11 @@
 //! | `hmac`, `verify_hmac` | HMAC-SHA-256 (RFC 2104, RFC 4231), checked in constant time |
 //! | `sign`, `verify_signature` | Ed25519 (RFC 8032), verified strictly |
 //!
-//! A key is never a [`Value`]: the runtime gives each operation the
-//! [`KeyRing`] its `key: config.<name>` names, which nothing can read,
-//! print or compare. A nonce and a salt are the invocation's random bytes
+//! A key reaches an operation as a [`Key`], an opaque value either
+//! executor passes for a call's `key:` (chunk 10.3d): a key setting's, by
+//! the setting's number, or a key held as data. The runtime turns it into
+//! the [`KeyRing`] the operation runs with, which nothing can read, print
+//! or compare. A nonce and a salt are the invocation's random bytes
 //! (a [`Source`]): the host's generator in a deployable, a test's seed in
 //! a test, so a rerun repeats. A salt is recorded and replayed as
 //! `random`'s bytes are; a nonce is secret randomness, never kept on a
@@ -135,6 +137,46 @@ impl KeyRing {
     /// The current key as the 32 bytes encryption and signing take.
     fn current_32(&self) -> Result<&[u8; KEY_SIZE], Fault> {
         self.current.as_slice().try_into().map_err(|_| Fault::Shape)
+    }
+}
+
+/// A key as a value (chunk 10.3d): what either executor gives a `crypto`
+/// call's `key:`, and the only value that stands for a key. Where it comes
+/// from is the plan's decision, made once for the call's site: a key
+/// setting's key, by the setting's number, which the runtime finds among
+/// the keys the program started with; or a key held as data, read from a
+/// field (keys in encrypted fields, area 19's "Language gaps", aren't
+/// built yet), with no previous key. It has no text, no JSON form and no
+/// storage, and prints as `<key>`.
+#[derive(Clone, Debug)]
+pub enum Key {
+    /// Key setting number `at`'s key, as the program started with it.
+    Setting(u32),
+    /// A key held as data: its ring, which nothing reads.
+    Held(std::rc::Rc<KeyRing>),
+}
+
+impl Key {
+    /// A key held as data, its bytes the key, with no previous one.
+    pub fn held(bytes: &[u8]) -> Key {
+        Key::Held(std::rc::Rc::new(KeyRing {
+            current: bytes.to_vec(),
+            previous: None,
+        }))
+    }
+
+    /// The canonical order between keys, which code never compares (the
+    /// checker refuses it) but a value's order is total: a setting's by
+    /// its number, before a held key, and held keys in constant time.
+    pub(crate) fn order(&self, other: &Key) -> std::cmp::Ordering {
+        match (self, other) {
+            (Key::Setting(a), Key::Setting(b)) => a.cmp(b),
+            (Key::Setting(_), Key::Held(_)) => std::cmp::Ordering::Less,
+            (Key::Held(_), Key::Setting(_)) => std::cmp::Ordering::Greater,
+            (Key::Held(a), Key::Held(b)) => {
+                crate::secret::constant_time_cmp(&a.current, &b.current)
+            }
+        }
     }
 }
 
@@ -470,7 +512,7 @@ pub fn is_crypto(op: Op) -> bool {
 
 /// Runs `crypto` operation `op` on `values`, its arguments in its
 /// parameters' order, with `keys` the ring its `key:` names (the value in
-/// that place is only the executor's handle, never the key), `source` the
+/// that place, a [`Key`], is read only by the runtime), `source` the
 /// invocation's random bytes and `now` its clock, an instant's
 /// milliseconds, which `verify_jwt` checks a token's times against.
 pub fn run(
