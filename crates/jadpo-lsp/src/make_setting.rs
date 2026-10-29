@@ -28,8 +28,9 @@ pub const TITLE: &str = "Make this a setting";
 impl Server {
     /// The code actions for `params`' range: "Make this a setting" on a
     /// constant at its start, unavailable with the reason it is refused;
-    /// then the swap for a standard type's finding (`crate::fixes`) and the
-    /// decline quick fixes (`crate::declines`).
+    /// then the swap for a standard type's finding (`crate::fixes`), the
+    /// decline quick fixes (`crate::declines`) and each error's own edit
+    /// (`crate::quick_fixes`).
     pub(crate) fn code_actions(&mut self, params: &CodeActionParams) -> Option<CodeActionResponse> {
         let uri = params.text_document.uri.clone();
         let (path, offset) = self.place(&uri, params.range.start)?;
@@ -53,6 +54,11 @@ impl Server {
                 .into_iter()
                 .map(CodeActionOrCommand::CodeAction),
         );
+        out.extend(
+            self.fix_actions(&uri, &path, offset, end)
+                .into_iter()
+                .map(CodeActionOrCommand::CodeAction),
+        );
         (!out.is_empty()).then_some(out)
     }
 
@@ -66,12 +72,27 @@ impl Server {
         let Some((path, offset)) = place else {
             return action;
         };
-        if action
+        let kind = action
             .data
             .as_ref()
             .and_then(|data| data["action"].as_str())
-            == Some(crate::fixes::DATA)
-        {
+            .map(str::to_string);
+        if kind.as_deref() == Some(crate::quick_fixes::DATA) {
+            let rule = action
+                .data
+                .as_ref()
+                .and_then(|data| data["rule"].as_str())
+                .unwrap_or_default()
+                .to_string();
+            return match self.resolve_fix(&path, offset, &rule) {
+                Some(resolved) => CodeAction {
+                    data: action.data,
+                    ..resolved
+                },
+                None => action,
+            };
+        }
+        if kind.as_deref() == Some(crate::fixes::DATA) {
             return match self.swap(&path, offset, true) {
                 Some(resolved) => CodeAction {
                     data: action.data,

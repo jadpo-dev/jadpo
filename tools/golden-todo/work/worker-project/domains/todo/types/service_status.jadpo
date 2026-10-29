@@ -1,0 +1,4 @@
+type ServiceStatus = Enum {
+    active
+    disabled
+}

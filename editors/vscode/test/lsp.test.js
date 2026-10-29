@@ -1,6 +1,7 @@
 // Drives the real `jadpo lsp` through the protocol library the extension's
 // language client is built on, so the handshake, diagnostics, hover, go to
-// definition and completion are proven to reach a standard client. The
+// definition, references, completion, formatting and quick fixes are
+// proven to reach a standard client. The
 // server's own behaviour is tested in crates/jadpo-cli/tests/lsp.rs and
 // crates/jadpo-lsp/tests; this only proves the wire. It runs against the
 // binary in JADPO_BIN, or target/debug/jadpo of this checkout (cargo build
@@ -23,7 +24,7 @@ const FILES = {
   "domains/notes/actions/save_note.jadpo":
     "use notes/types { Body }\n\n/// Saves a note.\naction save_note(body: Body) -> Body {\n    return body\n}\n",
   "domains/notes/actions/broken.jadpo":
-    "use notes/types { Body }\n\naction broken(body: Body) -> Body {\n    return kepe(body)\n}\n",
+    "use notes/types { Body }\n\naction broken(body: Body) -> Body {\n    return bdy\n}\n",
 };
 
 test("jadpo lsp answers a standard client", { skip: !fs.existsSync(binary) && `no ${binary}` }, async () => {
@@ -61,6 +62,8 @@ test("jadpo lsp answers a standard client", { skip: !fs.existsSync(binary) && `n
     });
     assert.strictEqual(init.capabilities.hoverProvider, true);
     assert.strictEqual(init.capabilities.definitionProvider, true);
+    assert.strictEqual(init.capabilities.referencesProvider, true);
+    assert.strictEqual(init.capabilities.documentFormattingProvider, true);
     for (const trigger of [".", ":", "2"]) {
       assert.ok(init.capabilities.completionProvider.triggerCharacters.includes(trigger), trigger);
     }
@@ -68,7 +71,7 @@ test("jadpo lsp answers a standard client", { skip: !fs.existsSync(binary) && `n
 
     const problems = await published(uri("domains/notes/actions/broken.jadpo"));
     assert.strictEqual(problems.length, 1);
-    assert.strictEqual(problems[0].code, "semantic.unknown_callee");
+    assert.strictEqual(problems[0].code, "type.unknown_value");
 
     const save = { uri: uri("domains/notes/actions/save_note.jadpo") };
     const hover = await connection.sendRequest("textDocument/hover", {
@@ -82,6 +85,37 @@ test("jadpo lsp answers a standard client", { skip: !fs.existsSync(binary) && `n
       position: { line: 3, character: 25 },
     });
     assert.strictEqual(definition.uri, uri("domains/notes/types/body.jadpo"));
+
+    const references = await connection.sendRequest("textDocument/references", {
+      textDocument: save,
+      position: { line: 3, character: 25 },
+      context: { includeDeclaration: true },
+    });
+    assert.deepStrictEqual(
+      references.map((r) => r.uri).sort(),
+      [
+        uri("domains/notes/actions/broken.jadpo"),
+        uri("domains/notes/actions/broken.jadpo"),
+        uri("domains/notes/actions/broken.jadpo"),
+        uri("domains/notes/actions/save_note.jadpo"),
+        uri("domains/notes/actions/save_note.jadpo"),
+        uri("domains/notes/actions/save_note.jadpo"),
+        uri("domains/notes/types/body.jadpo"),
+      ],
+    );
+
+    const formatting = await connection.sendRequest("textDocument/formatting", {
+      textDocument: save,
+      options: { tabSize: 4, insertSpaces: true },
+    });
+    assert.deepStrictEqual(formatting, []);
+
+    const fixes = await connection.sendRequest("textDocument/codeAction", {
+      textDocument: { uri: uri("domains/notes/actions/broken.jadpo") },
+      range: { start: { line: 3, character: 12 }, end: { line: 3, character: 12 } },
+      context: { diagnostics: problems },
+    });
+    assert.ok(fixes.some((action) => action.kind === "quickfix" && action.edit), JSON.stringify(fixes));
 
     const completion = await connection.sendRequest("textDocument/completion", {
       textDocument: save,

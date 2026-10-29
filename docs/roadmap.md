@@ -287,11 +287,8 @@ D1 first: the site starts once D1 has merged.
   bundle, how Docker fits in.
 - [x] **D7 One place for the golden todo and the benchmarks**: [benchmarks](../benchmarks/README.md);
   `tools/` holds the gate and its `docs/`, `checks/`, `references/` and `fixtures/`.
-- [ ] **D8 The VS Code extension, finished and published** `opus · high`:
-  the editor features area 14 lists as missing built; a README for someone
-  installing it; a release workflow publishing to the VS Code Marketplace and
-  Open VSX on each release, switched off until a maintainer adds the
-  publisher and tokens.
+- [ ] **D8 The VS Code extension, finished and published**: area 14, "Editor support" and "What is built"; `editors/vscode/README.md`; `.github/workflows/vscode-extension.yml`.
+  Waits: the editor's rename, which comes with `jadpo rename` and the identity registry (after the first build, items 6 and 7).
 
 ## Phase 10 — Golden todo
 

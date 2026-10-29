@@ -923,16 +923,7 @@ pub(crate) fn restore_texts(loaded: &mut Loaded, before: &BTreeMap<String, Optio
 /// declarations in definition-before-use order in a project; `None` when it
 /// can't be.
 pub(crate) fn canonical(path: &str, text: &str, project: bool) -> Option<String> {
-    let primary = project
-        .then(|| {
-            let parse = jadpo_syntax::parse_file(text);
-            let source = ast::SourceFile::cast(parse.syntax())?;
-            let items = jadpo_db::items_of(&source);
-            let location = jadpo_db::locate(path, jadpo_db::Layout::Project);
-            jadpo_db::primary(&location, &items).map(|item| item.name.clone())
-        })
-        .flatten();
-    jadpo_fmt::format_file_in_order(text, primary.as_deref()).ok()
+    crate::formatting::layout(path, text, project).ok()
 }
 
 /// The field the move adds, each line after `indent`.
