@@ -67,6 +67,33 @@ fn text(text: &str) -> Literal {
     Literal::string(text)
 }
 
+/// What taking `edge` adds to its region's path number, kept only in a
+/// test's build, where a run's paths are recorded (chunk 9.3).
+fn took(edge: Option<jadpo_graph::paths::Edge>) -> TokenStream {
+    match edge {
+        Some(jadpo_graph::paths::Edge { region, increment }) => {
+            let (region, increment) = (number(region), Literal::u64_unsuffixed(increment));
+            quote!(#[cfg(feature = "testing")] cx.branch(#region, #increment);)
+        }
+        None => TokenStream::new(),
+    }
+}
+
+/// The start and end of a turn of region `region`, kept only in a test's
+/// build (chunk 9.3); nothing for a body that opens none.
+fn turns(region: Option<u32>) -> (TokenStream, TokenStream) {
+    match region {
+        Some(region) => {
+            let region = number(region);
+            (
+                quote!(#[cfg(feature = "testing")] cx.turn(#region);),
+                quote!(#[cfg(feature = "testing")] cx.turned(#region);),
+            )
+        }
+        None => (TokenStream::new(), TokenStream::new()),
+    }
+}
+
 /// One body's compiler.
 pub(crate) struct Emitter<'a> {
     pub plan: &'a Plan,
@@ -324,7 +351,20 @@ impl Emitter<'_> {
         }
     }
 
+    /// Statement `id`, then, when its region's way is cut after it, the
+    /// way so far ended as a segment of its own (chunk 9.3).
     fn stmt(&mut self, id: SiteId) -> TokenStream {
+        let code = self.stmt_only(id);
+        match self.callable.paths.cut(id) {
+            Some(region) => {
+                let (region, at) = (number(region), number(id.0));
+                quote!(#code #[cfg(feature = "testing")] cx.cut(#region, #at);)
+            }
+            None => code,
+        }
+    }
+
+    fn stmt_only(&mut self, id: SiteId) -> TokenStream {
         let Some(Node::Stmt(stmt)) = self.body().sites.get(id.0 as usize).map(|site| &site.node)
         else {
             let defect = self.defect("an expression where a statement belongs", id);
@@ -350,6 +390,14 @@ impl Emitter<'_> {
                     Some(value) => self.expr(value),
                     None => quote!(Value::Unit),
                 };
+                // What leaving through it adds to each region around it.
+                let left: Vec<TokenStream> = self
+                    .callable
+                    .paths
+                    .returning(id)
+                    .iter()
+                    .map(|edge| took(Some(*edge)))
+                    .collect();
                 // Inside a block that catches stops, or an inline
                 // function's closure, the value leaves as a stop, so what
                 // it passes through ends as it would (an assertion's
@@ -358,10 +406,17 @@ impl Emitter<'_> {
                     let stop = self.fail(quote!(Stop::Returned(value)));
                     quote!({
                         let value = #value;
+                        #(#left)*
                         #stop;
                     })
-                } else {
+                } else if left.is_empty() {
                     quote!(return Ok(#value);)
+                } else {
+                    quote!({
+                        let value = #value;
+                        #(#left)*
+                        return Ok(value);
+                    })
                 }
             }
             Stmt::If {
@@ -420,6 +475,7 @@ impl Emitter<'_> {
             }
         };
         let paced = self.paced();
+        let (turn, turned) = turns(self.callable.paths.turn(id));
         let body = self.block(body);
         quote!({
             let list = #list;
@@ -427,7 +483,9 @@ impl Emitter<'_> {
             for item in items.iter() {
                 #paced
                 #set
+                #turn
                 #body
+                #turned
             }
         })
     }
@@ -460,6 +518,7 @@ impl Emitter<'_> {
             return quote!({ #block });
         };
         let condition = self.needed(arm.condition, at);
+        let took = took(self.callable.paths.branch(arm.branch));
         let then = self.block(&arm.then);
         let rest = self.if_from(rest, otherwise, at);
         let at = number(at.0);
@@ -467,6 +526,7 @@ impl Emitter<'_> {
         quote!({
             let condition = #condition;
             if #holds {
+                #took
                 #then
             } else #rest
         })
@@ -789,12 +849,14 @@ impl Emitter<'_> {
             let stops = op == BinaryOp::Or;
             let first = self.tri(quote!(rt::truth(cx, &left, Truth::Logic, #at)));
             let second = self.tri(quote!(rt::truth(cx, &right, Truth::Logic, #at)));
+            let took = took(self.callable.paths.right(id));
             return quote!({
                 let left = #left;
                 let first = #first;
                 if first == #stops {
                     Value::Bool(first)
                 } else {
+                    #took
                     let right = #right;
                     Value::Bool(#second)
                 }
@@ -1525,8 +1587,9 @@ impl Emitter<'_> {
         let success = match arms.iter().find(|arm| arm.pattern == Pattern::Success) {
             Some(arm) => {
                 let bound = bind(arm.binding, quote!(value));
+                let took = took(self.callable.paths.branch(arm.branch));
                 let body = self.arm(arm);
-                quote!(Ok(value) => { #bound #body })
+                quote!(Ok(value) => { #bound #took #body })
             }
             None => {
                 let defect = self.defect("an outcome `match` without `success`", id);
@@ -1541,6 +1604,7 @@ impl Emitter<'_> {
             let key = text(key.as_str());
             let handled = format_ident!("h{}_{}", id.0, index);
             let bound = bind(arm.binding, quote!(#handled.record()));
+            let took = took(self.callable.paths.branch(arm.branch));
             self.handling.push(handled.clone());
             let body = self.arm(arm);
             self.handling.pop();
@@ -1548,6 +1612,7 @@ impl Emitter<'_> {
                 Err(Stop::Failed(failure)) if failure.key == #key => {
                     let #handled: jadpo_runtime::Failure = *failure;
                     #bound
+                    #took
                     #body
                 }
             });
@@ -1606,8 +1671,9 @@ impl Emitter<'_> {
                 }
             };
             let bound = bind(arm.binding, quote!(subject.clone()));
+            let took = took(self.callable.paths.branch(arm.branch));
             let body = self.arm(arm);
-            built.push((test, quote!({ #bound #body })));
+            built.push((test, quote!({ #bound #took #body })));
         }
         for (test, body) in built.into_iter().rev() {
             chain = quote!(if #test #body else #chain);
@@ -2013,9 +2079,15 @@ impl Emitter<'_> {
             let place = number(u32::try_from(place).unwrap_or(u32::MAX));
             quote!(if let Some(value) = given.get(#place) { #local = value.clone(); })
         });
+        // Each run a turn of its region (chunk 9.3); one a stop cuts short
+        // is closed later.
+        let (turn, turned) = turns(self.callable.paths.turn(body));
         quote!(|cx: &mut Ctx<'_>, given: &[Value]| -> Ran {
             #(#set)*
-            Ok(#value)
+            #turn
+            let value = #value;
+            #turned
+            Ok(value)
         })
     }
 

@@ -198,7 +198,8 @@ enum Task<'p> {
         local: Option<LocalId>,
         at: SiteId,
     },
-    Return,
+    /// `return` at its site: the value on top leaves the callable.
+    Return(SiteId),
     Discard,
     /// `emit`: the event on the stack goes in the action's outbox (area
     /// 12, chunk 6.1b).
@@ -240,6 +241,14 @@ enum Task<'p> {
         body: &'p [SiteId],
         items: Rc<[Value]>,
         index: usize,
+        at: SiteId,
+        /// The region each turn runs, when its path is kept (chunk 9.3).
+        turn: Option<u32>,
+    },
+    /// After statement `at`, its region's way so far ends as a segment of
+    /// its own (`jadpo_graph::paths::Paths::cuts`).
+    Cut {
+        region: u32,
         at: SiteId,
     },
     Field(SiteId),
@@ -816,6 +825,31 @@ impl<'p> Machine<'p> {
             .map(|activation| activation.callable)
     }
 
+    /// The running callable's path numbering.
+    fn paths(&self) -> Option<&'p jadpo_graph::paths::Paths> {
+        self.callable().map(|callable| &callable.paths)
+    }
+
+    /// Branch `branch` taken: what it adds to its region's path, when the
+    /// path is kept (chunk 9.3).
+    fn took(&self, ctx: &mut Ctx<'_>, branch: jadpo_graph::body::BranchId) {
+        if ctx.tracks_paths()
+            && let Some(edge) = self.paths().and_then(|paths| paths.branch(branch))
+        {
+            ctx.branch(edge.region, edge.increment);
+        }
+    }
+
+    /// The `return` at `at` leaves: what it adds to each region around it.
+    fn returning(&self, ctx: &mut Ctx<'_>, at: SiteId) {
+        if !ctx.tracks_paths() {
+            return;
+        }
+        for edge in self.paths().map_or(&[][..], |paths| paths.returning(at)) {
+            ctx.branch(edge.region, edge.increment);
+        }
+    }
+
     fn site(&self, id: SiteId) -> Option<&'p Site> {
         self.callable()?.body.sites.get(id.0 as usize)
     }
@@ -985,7 +1019,15 @@ impl<'p> Machine<'p> {
                     self.tasks.push(Task::Stmt(stmt));
                 }
             }
-            Task::Stmt(id) => return self.stmt(ctx, id),
+            Task::Stmt(id) => {
+                if ctx.tracks_paths()
+                    && let Some(region) = self.paths().and_then(|paths| paths.cut(id))
+                {
+                    self.tasks.push(Task::Cut { region, at: id });
+                }
+                return self.stmt(ctx, id);
+            }
+            Task::Cut { region, at } => ctx.cut(region, at.0),
             Task::Expr(id) => return self.expr(ctx, id),
             Task::Defect(what, at) => return Err(self.defect(ctx, what, at)),
             Task::Remember(id) => {
@@ -997,7 +1039,10 @@ impl<'p> Machine<'p> {
                 let value = self.pop();
                 self.set(ctx, local, value, at)?;
             }
-            Task::Return => return Err(Stop::Return(self.pop())),
+            Task::Return(at) => {
+                self.returning(ctx, at);
+                return Err(Stop::Return(self.pop()));
+            }
             Task::Discard => {
                 self.pop();
             }
@@ -1039,6 +1084,7 @@ impl<'p> Machine<'p> {
             } => match self.pop() {
                 Value::Bool(true) => {
                     if let Some(arm) = arms.get(index) {
+                        self.took(ctx, arm.branch);
                         self.tasks.push(Task::Block {
                             block: &arm.then,
                             next: 0,
@@ -1057,6 +1103,10 @@ impl<'p> Machine<'p> {
                     items,
                     index: 0,
                     at,
+                    turn: ctx
+                        .tracks_paths()
+                        .then(|| self.paths().and_then(|paths| paths.turn(at)))
+                        .flatten(),
                 }),
                 _ => {
                     return Err(self.defect(
@@ -1072,15 +1122,24 @@ impl<'p> Machine<'p> {
                 items,
                 index,
                 at,
+                turn,
             } => {
+                // The turn before this one ran to its end.
+                if let (Some(region), true) = (turn, index > 0) {
+                    ctx.turned(region);
+                }
                 if let Some(value) = items.get(index) {
                     self.set(ctx, item, value.clone(), at)?;
+                    if let Some(region) = turn {
+                        ctx.turn(region);
+                    }
                     self.tasks.push(Task::ForNext {
                         item,
                         body,
                         items,
                         index: index + 1,
                         at,
+                        turn,
                     });
                     self.tasks.push(Task::Block {
                         block: body,
@@ -1143,6 +1202,11 @@ impl<'p> Machine<'p> {
                 match self.pop() {
                     Value::Bool(b) if b == stop_at => self.values.push(Value::Bool(b)),
                     Value::Bool(_) => {
+                        if ctx.tracks_paths()
+                            && let Some(edge) = self.paths().and_then(|paths| paths.right(at))
+                        {
+                            ctx.branch(edge.region, edge.increment);
+                        }
                         self.tasks.push(Task::LogicRhs(at));
                         self.tasks.push(Task::Expr(rhs));
                     }
@@ -1403,6 +1467,7 @@ impl<'p> Machine<'p> {
                         if let Some(binding) = arm.binding {
                             self.set(ctx, Some(binding), value.clone(), at)?;
                         }
+                        self.took(ctx, arm.branch);
                         self.arm(arm);
                         return Ok(Flow::Next);
                     }
@@ -1748,10 +1813,13 @@ impl<'p> Machine<'p> {
             }
             Stmt::Return { value } => match value {
                 Some(value) => {
-                    self.tasks.push(Task::Return);
+                    self.tasks.push(Task::Return(id));
                     self.tasks.push(Task::Expr(*value));
                 }
-                None => return Err(Stop::Return(Value::Unit)),
+                None => {
+                    self.returning(ctx, id);
+                    return Err(Stop::Return(Value::Unit));
+                }
             },
             Stmt::If {
                 arms, otherwise, ..
@@ -2523,6 +2591,7 @@ impl<'p> Machine<'p> {
                     if let Some(binding) = arm.binding {
                         self.set(ctx, Some(binding), value, at)?;
                     }
+                    self.took(ctx, arm.branch);
                     self.arm(arm);
                     Ok(Flow::Next)
                 }
@@ -2539,6 +2608,7 @@ impl<'p> Machine<'p> {
                         activation.handling.push(*failure);
                     }
                     self.tasks.push(Task::PopHandling);
+                    self.took(ctx, arm.branch);
                     self.arm(arm);
                     Ok(Flow::Next)
                 }
@@ -2707,8 +2777,22 @@ impl<'p> Machine<'p> {
                     *slot = value.clone();
                 }
             }
+            // Each run is a turn of its region, when its path is kept
+            // (chunk 9.3); one a stop cuts short is closed later.
+            let turn = ctx
+                .tracks_paths()
+                .then(|| self.paths().and_then(|paths| paths.turn(body)))
+                .flatten();
+            if let Some(region) = turn {
+                ctx.turn(region);
+            }
             match self.nested(ctx, body) {
-                Ok(value) => Some(value),
+                Ok(value) => {
+                    if let Some(region) = turn {
+                        ctx.turned(region);
+                    }
+                    Some(value)
+                }
                 Err(stop) => {
                     stopped = Some(stop);
                     None

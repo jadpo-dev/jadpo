@@ -18,8 +18,10 @@ status table, with the [roadmap](../roadmap.md), say what is built. A
 - **Build a data-backed HTTP API:** add areas 5–9 and 13; the
   [cake shop](../../examples/11-cake-shop/README.md) and
   [recipe book](../../examples/12-recipe-book/README.md) put these together.
-- **Add providers or background work:** read 10–12, 13 and the relevant
-  parts of 16; see the [delivery desk](../../examples/26-delivery-desk/README.md).
+- **Add providers or background work:** start with
+  [how packages, connections, capabilities and services fit together](11-integrations.md#how-packages-connections-capabilities-and-services-fit-together)
+  (where Docker comes in, and what is built), then read 10–12, 13 and the
+  relevant parts of 16; see the [delivery desk](../../examples/26-delivery-desk/README.md).
 - **Use AI or vector search:** read 21, plus the data, policy, integration
   and testing rules it links; see [lost property](../../examples/28-lost-property/README.md).
 - **Review the design:** read [why Jadpo exists](../vision.md), then 9 and

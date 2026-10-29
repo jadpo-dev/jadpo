@@ -727,6 +727,11 @@ Read only what a task needs.
   `python3 tools/docs/language_docs.py --bundle <dir>` builds it, and
   [documentation](documentation.md) describes it. `llms.txt` at the
   repository's root links the primer and the area pages.
+- **Outside services.** Packages, providers, connections, drivers,
+  capabilities, built-in services and services Jadpo runs (the only part
+  that uses Docker or Podman, and not built yet) are explained together,
+  with where each runs, in
+  [`how-integrations-fit-together`](language/11-integrations.md#how-packages-connections-capabilities-and-services-fit-together).
 - **Errors.** Each rule has a page named after its ID, such as
   [`failure.kind_required`](errors/failure.kind_required.md). A
   diagnostic's `help:` line names it.
