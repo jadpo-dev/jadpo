@@ -10,5 +10,5 @@ install-path = "CARGO_HOME"
 install-updater = false
 create-release = false
 dispatch-releases = true
-pr-run-mode = "upload"
+pr-run-mode = "plan"
 publish-jobs = []
