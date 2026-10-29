@@ -170,7 +170,15 @@ def build():
     return stamp
 
 
+def database_name(target):
+    """A target's own database; PostgreSQL names take no hyphen unquoted."""
+    return target.replace('-', '_')
+
+
 class Database(spike.Postgres):
+    def url(self, database):
+        return super().url(database_name(database))
+
     def sql(self, database, statement):
         # Bulk seeds exceed command-line limits; SQL is data on psql's stdin.
         checked([spike.tool('psql'), '-q', '-v', 'ON_ERROR_STOP=1', '-d', self.url(database)],
@@ -181,7 +189,7 @@ class Database(spike.Postgres):
                         '-c', statement], capture_output=True, text=True).stdout.strip()
 
     def prepare(self, database):
-        self.sql('postgres', f'CREATE DATABASE {database}')
+        self.sql('postgres', f'CREATE DATABASE {database_name(database)}')
         if database in ('native', 'workers'):
             checked([str(spike.JADPO), 'migrate', 'apply', '--url', self.url(database)],
                     cwd=WORK / 'native', stdout=subprocess.DEVNULL)
@@ -282,7 +290,7 @@ def typescript_workerd_config(folder, port, database_host, database, environment
     folder.mkdir(parents=True)
     shutil.copy(WORK / 'ts-workerd/worker.js', folder / 'worker.js')
     bindings = ['(name = "DATABASE_URL", hyperdrive = (designator = "hyperdrive", '
-                f'database = "{database}", user = "jadpo", password = "", scheme = "postgresql"))']
+                f'database = "{database_name(database)}", user = "jadpo", password = "", scheme = "postgresql"))']
     bindings += [f'(name = {json.dumps(key)}, text = {json.dumps(value)})'
                  for key, value in environment.items() if key != 'DATABASE_URL']
     date = json.loads('\n'.join(line for line in (TS / 'wrangler.jsonc').read_text().splitlines()
@@ -346,7 +354,7 @@ class Server(spike.Server):
         """The stand-in for Hyperdrive both Workers use, capped at 10 connections."""
         pool_port = spike.free_port()
         pool = subprocess.Popen([str(spike.POOL), '--listen', f'127.0.0.1:{pool_port}',
-                '--server', f'127.0.0.1:{pg.port}', '--user', 'jadpo', '--database', self.target, '--size', '10'],
+                '--server', f'127.0.0.1:{pg.port}', '--user', 'jadpo', '--database', database_name(self.target), '--size', '10'],
                 stdout=self.log, stderr=self.log, stdin=subprocess.DEVNULL)
         self.helpers.append(pool)
         spike.wait_for_port(pool_port)
