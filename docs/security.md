@@ -33,6 +33,39 @@ no HTTP route to start background work.
 | Whoever serves the Rust toolchain `jadpo build` fetches | Answer its downloads | The channel manifest's SHA-256 pinned in the release, each archive checked against the manifest before it is unpacked, nothing unpacked outside its folder (compiler/runtime §2.8, "What a released `jadpo` builds with") |
 | A workspace's own editor settings | Name the binary the VS Code extension runs | The extension is off in an untrusted workspace (`untrustedWorkspaces: false`) |
 
+## Fuzzing
+
+What anyone can send reaches three surfaces, each a coverage-guided fuzz
+target in `fuzz/` ([cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz)
+over libFuzzer, a crate outside the workspace with its own lock), whose
+properties are in `fuzz/src/`:
+
+| Target | What it is given | What it holds |
+|---|---|---|
+| `parse` | Any text, as a file, a snippet and a template | The parser's guarantees (compiler/runtime §2.2): no panic, no lost text, one error a line with its edits inside the text, clean edits converging; what parses cleanly formats without `format.unsafe` |
+| `check` | A loose file, or a project's files each headed `//// <path>` | Loaded by the loader's rules, checked, and planned for the interpreter when it checks: no panic |
+| `request` | An application byte, then a request as text: `METHOD TARGET`, header lines, a blank line, the body | Only what hyper could hand over, made as the native host makes it, answered by a teaching example with routes or webhooks served by the interpreter, then read by the input reader of the route its path finds: no panic |
+
+The seeds are the teaching examples, the golden todo, the parser's broken
+files, the error pages' `jadpo` blocks, and a request for each route of
+each served example, its placeholders and input made from their types.
+With no sanitizer (the code forbids `unsafe`), cargo-fuzz runs on the
+pinned stable toolchain:
+
+```sh
+cargo install cargo-fuzz --version 0.13.2 --locked
+cargo fuzz build -s none
+fuzz/target/<host triple>/release/seeds
+cargo fuzz run -s none request fuzz/corpus/request -- -max_total_time=600 -timeout=30
+```
+
+A crash's input is written under `fuzz/artifacts/<target>/`, and
+`cargo fuzz run -s none <target> <file>` runs it again. Each one found is
+fixed with a regression test in the crate it was in. CI's `Fuzz` workflow
+runs each target for five minutes every night on `main`, and on a pull
+request that changes `fuzz/`; a crash, timeout or out-of-memory fails it
+and keeps the input.
+
 ## Supply chain
 
 - Rust dependencies are pinned in `Cargo.lock` and come only from
