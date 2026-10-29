@@ -12,6 +12,7 @@
 //! - [`json`] writes canonical JSON; [`manifest`] is the graph in it;
 //!   [`catalogue`] renders the views `check` writes; [`diff`] compares two
 //!   graphs.
+//! - [`paths`] numbers each way through a typed body.
 
 pub mod body;
 pub mod catalogue;
@@ -23,6 +24,7 @@ mod kind;
 pub mod manifest;
 pub mod migration;
 mod node;
+pub mod paths;
 pub mod schema;
 pub mod stored_json;
 mod types;

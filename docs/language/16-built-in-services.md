@@ -706,7 +706,10 @@ logs` (area 17), and later the developer console.
 ## Path IDs
 <!-- topic: path-ids -->
 
-Not built yet. Every request records the path it took
+Not built yet for requests: each body's ways are numbered as this section
+says (docs/compiler-runtime.md §2.3, "Path numbers"), and the differential
+run compares the paths each test's bodies took (§2.5), but no request
+carries a `path` or a `path_key`. Every request records the path it took
 through the application: the route, each action and query, and each branch
 taken inside them. The compiler knows every possible path, so a path can be
 named by a number rather than described:

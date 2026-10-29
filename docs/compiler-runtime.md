@@ -520,10 +520,10 @@ provides (package to capability), reaches (deployable to node) and covers
 expressions, each with a site number and source range. Effects are their
 own expression kinds (store read, store write, emit, integration call,
 clock, new identity, flag read), which replay, `why` and coverage need.
-Queries are declarative nodes, not bodies. A control-flow graph derived
-per callable gives Ball–Larus path numbers, branch coverage and exact
-review paths, with loop back edges cut as area 16 decides. Executors walk
-the structured body; reports read the control-flow graph.
+Queries are declarative nodes, not bodies. Executors walk the structured
+body, and each way through it is numbered from the same structure
+("Path numbers" below); branch coverage and review paths are not built
+yet.
 
 Typed bodies (`jadpo_graph::body`) cover functions, actions,
 fixtures, library functions, tests and seeds: one salsa query per callable
@@ -556,8 +556,33 @@ a frame, a failure or a fault (calls, constructions that can fail,
 an `if` chain (each condition's block, and the `else` or the way past it,
 written or not) and each arm of a `match`. Both are keyed
 `<kind> <callable>.<number>` under their callable and numbered per build,
-so a diff leaves them to the callable's own change (area 18). The
-control-flow graph and path numbers are not built yet.
+so a diff leaves them to the callable's own change (area 18).
+
+**Path numbers.** `jadpo_graph::paths::number` numbers each way through
+a typed body, Ball–Larus style, when the plan is made
+(`CallablePlan::paths`), so an executor adds a known increment as it
+takes a branch and a run ends with its way's number. A body is cut into
+regions: the body itself, region 0, and the body of each `for` and each
+inline function, keyed by its site plus one (the `for` statement's, the
+inline function's body's), numbered per turn, so a loop counts which ways
+its turns took rather than one number per count of turns (area 16, "Path
+IDs"); within its region a `for` or an inline function is one step. The
+ways are numbered from the last statement back: at each choice the first
+way adds nothing and each later way adds how many ways run through those
+before it (`Edge`). The choices are an `if` chain's conditions (the
+`else`, or the way past the chain, adding nothing), a `match`'s arms, an
+`and` or `or` whose right side holds a choice of its own (`Paths::rights`,
+worked out or not), and, for each region a `return` leaves, the way out
+through the `for` or inline function it sits in (`Paths::returns`). A run
+a failure, a fault or an assertion cuts short keeps the sum so far, which
+names the way it went up to its stop, every way to that site having its
+own sum. A region with more ways than a `u64` holds is cut after a
+statement (`Paths::cuts`): its way so far ends there as a segment, and
+the rest is numbered from 0 again; a region that can't be numbered even
+so, one statement holding that many ways, has no increments. A region
+with one way and no cut opens no turns (`Paths::turns`). Proved by
+`crates/jadpo-check/tests/paths.rs`, which walks every choice of a body
+and finds each way's number its own, from 0 to how many there are.
 
 The data nodes (area 5): an entity carries its
 store and table; under it sit a `store_placement` node, a `unique_rule`
@@ -822,7 +847,8 @@ one per-invocation context in `jadpo-runtime`:
 | `emit(event)` | Outbox row in the action's transaction |
 | `call(operation, input)` | Integration call with idempotency key, retries and failure mapping |
 | `now`, `new_id`, `flag`, `config` | Effects with one source each, recorded for replay |
-| `enter(callable, site)`, `leave`, `branch(increment)` | Frames and path numbers |
+| `enter(callable, site)`, `leave` | Frames, and each body's region of its path |
+| `branch(region, increment)`, `turn(region)`, `turned(region)`, `cut(region, site)` | Path numbers, kept for a test's record (§2.3, "Path numbers") |
 | `fail(failure)`, `fault(kind, site)` | Failures and defects with their `.jadpo` place |
 | `assertion_begin`, `record(site, value)`, `assertion_end` | A failed `assert`'s parts, recorded the same way by either executor |
 | `effects::run(ctx, effects, effect, values)` | `clock.now`, `random`, `crypto` with its key, `json.read` and `json.write` with the plan's codec, and `emit` |
@@ -1648,10 +1674,10 @@ runs one
 [language test project](https://raw.githubusercontent.com/gleam-lang/gleam/main/test/language/Makefile)
 on every target. Per test it compares outcome, failure code and internal
 fields, assertion values, the effect sequence (SQL and row counts, events,
-provider calls) and the final database diff; any difference fails the
-gate and prints both sides. The record holds no path numbers, and no
-random well-typed bodies are compared as Cranelift compares its own
-against its interpreter; neither is on the roadmap.
+provider calls), the paths each body took and the final database diff;
+any difference fails the gate and prints both sides. Fuzzed function
+bodies are compared too, as Cranelift compares its own generated
+functions against its interpreter (below, "Fuzzed bodies").
 
 The record each run is compared by is
 `jadpo_runtime::record::Record`, written by the runtime whichever
@@ -1672,7 +1698,55 @@ table but the migrations' and extensions', in name order, rows in text
 order, times in UTC, a `bytea` by its length), each identity written
 `id#1`, `id#2`… in the order it first appears.
 `jadpo_test::differential` compares two runs test by test and names the
-first line that differs, with the line before it and both sides. Only the
+first line that differs, with the line before it and both sides, and,
+when that line isn't a path's, the first path line that differs too.
+
+*Paths.* A test's run keeps the paths its bodies took
+(`Ctx::track_paths`, which `test_run::once` turns on with the record):
+each executor calls `Ctx::branch` with a branch's region and increment as
+it takes it (an `if` arm's block, a `match` arm, an `and`'s right side
+worked out, a `return` leaving the regions around it), `Ctx::turn` and
+`Ctx::turned` around each turn of a region that opens them, and
+`Ctx::cut` after a statement a region is cut at, every number from the
+plan's numbering; compiled code holds them as literals in its `testing`
+build only, so a deployable makes none of those calls. `Ctx::enter` opens
+the body's region 0 and `Ctx::leave` closes every region its frame has
+open, so a run a stop cuts short is counted with the number it reached; a
+turn a stop cuts short is closed when its frame next adds to a region
+around it, or as the frame is left, which doesn't change what is
+counted, so the executors count alike whichever stops catch where
+(`jadpo_runtime::paths`). After the outcome, the record keeps a line per
+body region and segment (`record::paths`), with each path number taken
+and how many times: `path main.jadpo:4  function graded body | 1×1`, a
+loop's or inline function's turns as `… turn` from its line, a segment
+begun after a cut `… after line 40`. *Why* counted rather than a line
+per call: a loop calling a function, or a recursion a thousand frames
+deep, stays a few lines, and when a cut-short turn is closed doesn't
+change the count. Only the test's own context keeps
+them: work the runtime runs in a context of its own, a delivery between
+steps or a batch run, keeps none, on either executor. Proved by
+`crates/jadpo-test/tests/records.rs`, a branch taken another way with the
+same outcome named by its body and path, and by the differential run,
+which compares every corpus project's paths and a project of each kind of
+choice, a body cut into segments among them.
+
+*Fuzzed bodies.* `jadpo_test::fuzz` generates well-typed function bodies
+from the language's own constructs, from a seed: named numbers, booleans,
+text, an enum and lists of numbers; `var`, `var mut` and assignment, `if`
+chains, `for`, `match` on values and on a call's outcome, an early
+`return`, `reject`, `attempt` and `propagate`; the operators, among them
+those that overflow (a divisor is a literal that isn't zero, since a
+divisor's type excludes zero, `type.divisor_zero`); inline functions given
+to `list.map`, `list.filter`, `list.any` and `list.all`; and calls to the
+bodies made before, some of which fail. Each body is called by two tests
+with generated inputs, each comparing its value with one it is unlikely
+to be, so a failed assertion's report keeps the value. A project holds 40
+bodies; a run of more makes several, the `n`th from the seed plus `n`.
+The differential run compares them by the same records as the corpus
+(§2.7). The generator keeps the language's rules (every value of a
+declared type, every variable read, nothing after a `return`), and
+`crates/jadpo-test/tests/fuzz.rs` checks what twenty seeds make, more
+with a longer run, without a diagnostic. Only the
 test's seed and clock decide a record, so the corpus run twice gives the
 same records (`crates/jadpo-test/tests/records.rs`); the test
 authenticator's passkeys are drawn from its device number for it
@@ -4781,7 +4855,12 @@ modules of one crate, one rustc invocation in the dev profile, every
 test run interpreted and compiled with the same records, every route's
 typed entry reading a seeded set of requests and writing a set of values
 as the codec walk does (§2.5's "A typed per-route entry"),
-and its counts shown under the step. It builds the compiler a second time, into the
+the paths each test's bodies took compared with the rest of its record,
+and 40 fuzzed function bodies from seed 1 compared the same way (§2.5,
+"Differential test"), and its counts shown under the step. A longer
+fuzzed run is `python3 tools/verify.py --group compiled --fuzz <bodies>
+--fuzz-seed <seed>` (`JADPO_FUZZ_BODIES` and `JADPO_FUZZ_SEED`), which
+names the seed and the body of any difference it finds. It builds the compiler a second time, into the
 harness's own target folder, so CI runs it as a job of its own,
 `compiled`, rather than inside `tests`, where it would share a four-core
 runner with every other step; its budget is its job's timeout. The

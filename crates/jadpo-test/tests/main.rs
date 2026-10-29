@@ -12,6 +12,7 @@ mod syntax_examples;
 #[allow(dead_code)]
 mod authority;
 
+mod fuzz;
 mod postgres;
 mod postgres_tls;
 mod records;
