@@ -7,7 +7,7 @@ and process rules in [AGENTS.md](../AGENTS.md), not here. A finished chunk
 becomes one ticked line naming where its work is written; its full text
 lives in git history.
 
-## The direction (decided 2026-10-13)
+## The direction
 
 - **The language is specified** in [docs/language](language/README.md):
   twenty-one areas, all decided. Those pages are the specification and their
@@ -25,15 +25,18 @@ lives in git history.
 
 ## How a session works
 
-Saying **"continue the roadmap"** starts this routine; it runs unattended.
+Saying **"continue the roadmap"** starts this routine; it runs unattended
+and ends with one report of what was merged and anything that needs a
+maintainer.
 
 1. Take the first chunk below that is not ticked. Its tag (`opus · high`)
    is the model and effort it needs. Say in one line which chunk is next and
    its tag, then carry on without waiting. The building is done by a
    subagent started with exactly that model and effort, so the tag applies
-   whatever the session itself runs on; the session plans, reviews the
-   result, runs the gate and merges. Chunks marked **needs
-   Richard** stop for him at the point named; every other chunk runs
+   whatever the session itself runs on (setting the subagent's model and
+   effort from the tag is authorised); the session plans, reviews the
+   result, runs the gate and merges. Chunks marked **needs a
+   maintainer** stop for one at the point named; every other chunk runs
    unattended.
 2. Plan it in the session, not in a document: read its area pages, list the
    examples and errors it must make pass, and write those as failing tests
@@ -44,7 +47,7 @@ Saying **"continue the roadmap"** starts this routine; it runs unattended.
    and leaves the full run to CI.
    Every chunk keeps the examples in `examples/` passing; each phase ends
    with an examples chunk that brings them up to date with everything the
-   phase built (Richard, 2026-10-15).
+   phase built.
 4. Open a pull request from a branch named `chunk-<number>`, merge it when CI
    passes, and tick it here in the same pull request. A ticked chunk is
    one line naming the sections where what it built is written
@@ -52,18 +55,18 @@ Saying **"continue the roadmap"** starts this routine; it runs unattended.
    hold every fact, decision and measurement worth keeping); the full text
    of a finished chunk lives in git history.
    If the chunk needs a language decision that is not on the pages, stop and
-   ask Richard with a recommendation; never special-case the compiler for an
+   ask a maintainer with a recommendation; never special-case the compiler for an
    example.
 5. Then take the next chunk the same way. Stop at the end of a phase, at a
-   **needs Richard** point, when a language question needs him, or when the
-   session's context is getting long; the next session picks up from the
+   **needs a maintainer** point, when a language question needs one, or when
+   the session's context is getting long; the next session picks up from the
    roadmap. Before starting a chunk, check that no other session is on it:
    skip it if an open pull request or a branch named `chunk-<number>` pushed
    in the last three hours exists.
 
 A chunk is sized for one session. If one turns out larger, split it here
 before starting the second half. Tags: `opus` or `sonnet`; effort `high`
-or `xhigh`, never lower (Richard, 2026-10-13); the hardest chunks (graph,
+or `xhigh`, never lower; the hardest chunks (graph,
 interpreter, concurrency, policy, compiled targets, WebAssembly
 optimisation) are `xhigh`.
 
@@ -144,7 +147,7 @@ a finished chunk is in git history.
 - [x] **8.2m2 Rate limits' store on Workers**: area 16, "Rate limits" and
   "Rate limits on Workers"; §2.6, "The Workers host".
 - [ ] **8.2n A real deploy** `opus · high`, after 8.2a to 8.2m2, **needs
-  Richard** (his Cloudflare account): a teaching example deployed with
+  a maintainer** (the maintainer's Cloudflare account): a teaching example deployed with
   Hyperdrive's caching off to a real PostgreSQL, the cron and a queue,
   its Wrangler file accepted by `wrangler deploy`; its cold start against
   the one-second limit, its module against the plan's size limit, and
@@ -202,7 +205,7 @@ Phase 9, in this order: 8.4a, 8.4b, 8.4c and 8.4d side by side, then
 
 ## Phase 9 — Performance
 
-Richard, 2026-10-13: developers won't touch this if it's slower.
+Developers won't touch Jadpo if it's slower.
 
 - [ ] **9.1 Benchmarks:** `opus · high` the golden todo plus focused workloads (reads,
   writes, signed-in lists, large rows, cold start) on native, Wasm under
@@ -225,7 +228,7 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   44 cases passing, and compare it with Jadpo's Wasm build under the 9.1d4
   method. The headline pairs are native against Bun and Node, and Wasm
   against TypeScript on workerd, led by CPU time per request, cold start and
-  p95 (Richard, 2026-10-24). Native's CPU time per request against Bun's
+  p95. Native's CPU time per request against Bun's
   and Node's is measured too, since native serves on every core and they
   on one.
 - [x] **9.1b Runtime performance**: compiler/runtime §2.6 and §2.11; `tools/bench/README.md` (9.1b1–9.1b5, including 9.1b1a).
@@ -235,8 +238,8 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
 - [x] **9.1b3 One-statement AI accounting**: compiler/runtime §2.11; area 21, "How budgets are counted"; `tools/bench/README.md`.
 - [x] **9.1b4 Version checks in writes**: compiler/runtime §2.6, "Snapshots before calls", and §2.11; area 6, "Outside calls hold no transaction"; `tools/bench/README.md`.
 - [x] **9.1b5 Breakers in delivery claims**: compiler/runtime §2.6, "Breaker snapshots in delivery claims", and §2.11; `tools/bench/README.md`.
-- [ ] **9.1c Workers benchmark results:** `opus · high` **needs Richard**
-  after 9.1b: approve access and deployment before using his account. Run the
+- [ ] **9.1c Workers benchmark results:** `opus · high` **needs a maintainer**
+  after 9.1b: approve access and deployment before using the Cloudflare account. Run the
   golden todo plus focused workloads on Workers against the equivalent Bun and
   TypeScript app and Node; results published with the method. Include the
   10,000-delivery backlog and the runtime improvements' before/after results.
@@ -244,8 +247,7 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
 - [ ] **9.2 Optimise WebAssembly** `opus · xhigh`, only if 9.1d5 shows a
   gap: until Jadpo's Wasm build matches TypeScript on workerd, and native
   matches Bun and Node, on CPU time per request, cold start and p95, or
-  Richard accepts a measured gap. Bun is not the Wasm build's comparison
-  (Richard, 2026-10-28). If 9.1d5 shows no gap, this chunk is ticked as
+  a maintainer accepts a measured gap. Bun is not the Wasm build's comparison. If 9.1d5 shows no gap, this chunk is ticked as
   not needed and what follows stays as the place to start when one
   appears.
   From chunk 8.1p: typed values in compiled bodies (a struct or enum per
@@ -275,7 +277,7 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
 
 What the jadpo.dev site, built in its own repository, needs from this one
 ([documentation](documentation.md)). Claude builds these beside Phase 9,
-D1 first: the site starts once D1 has merged (Richard, 2026-10-28).
+D1 first: the site starts once D1 has merged.
 
 - [x] **D1 The docs' structure and bundle**: [documentation](documentation.md),
   "Where the content lives", "Topic IDs" and "The bundle"; each area's
@@ -285,16 +287,37 @@ D1 first: the site starts once D1 has merged (Richard, 2026-10-28).
   release-please over the Conventional Commit types, CI failing a
   language change under a type that says it isn't one, installers (shell,
   Homebrew, PowerShell, npm) on each Release, the bundle attached; an
-  app's declared version checked (area 14, "Scaffold"). **Needs Richard**
+  app's declared version checked (area 14, "Scaffold"). **Needs a maintainer**
   before 0.1.0 is published.
   Built, switched off: release-please, the commit-type check, dist's
   installers and the bundle on each Release, and `application { jadpo: }`
   ([documentation](documentation.md), "Versions and releases"); waits for
-  Richard's token, tap, npm account and his look at 0.1.0.
+  a maintainer's token, tap, npm account and look at 0.1.0.
 - [ ] **D4 Issues triaged by an agent** `opus · high` after D3: issues
   and feature requests read, answered and turned into pull requests by an
   agent that holds no secrets and cannot merge or release, since issue text
   is anyone's; its pull requests pass the same gate and review.
+- [x] **D5 No personal attributions**: [AGENTS.md](../AGENTS.md) (rules for
+  every contributor) and this page, "How a session works".
+- [ ] **D6 Packages, services and integrations explained** `opus · high`:
+  one concept page (topic IDs, in the bundle) saying what a package, a
+  provider, a connection, a capability, a built-in service and a service run
+  by Jadpo (`runs:`, Docker or Podman behind `jadpo services`) each are,
+  where each runs (in-process, a local container, a remote provider), how
+  they relate, and what is built; areas 10, 11, 16 and the primer link to it
+  instead of re-explaining. Tested by asking a fresh agent, given only the
+  bundle, how Docker fits in.
+- [ ] **D7 One place for the golden todo and the benchmarks** `opus · high`:
+  the golden todo (Jadpo app, TypeScript twin, contract cases, adversarial
+  changes) and the benchmark harnesses move to a top-level `benchmarks/`;
+  `tools/` keeps the gate and docs tooling grouped by purpose, with fixtures
+  (PostgreSQL, workerd) in one folder; `examples/` holds only the numbered
+  teaching projects; every gate step, CI job and doc path follows.
+- [ ] **D8 The VS Code extension, finished and published** `opus · high`:
+  the editor features area 14 lists as missing built; a README for someone
+  installing it; a release workflow publishing to the VS Code Marketplace and
+  Open VSX on each release, switched off until a maintainer adds the
+  publisher and tokens.
 
 ## Phase 10 — Golden todo
 
@@ -309,7 +332,7 @@ D1 first: the site starts once D1 has merged (Richard, 2026-10-28).
   was caught (check, test or escaped), how easily a person reviews the
   diff, and how often a tempting unsafe shortcut gets through. The agent
   gets the docs as [documentation](documentation.md) delivers them, primer
-  first, since no model has seen Jadpo (Richard, 2026-10-14); the results
+  first, since no model has seen Jadpo; the results
   also say whether task guides are needed beyond the primer. The method is designed at the start of the chunk; its
   results steer the order of the work after the first build.
 
@@ -321,13 +344,13 @@ D1 first: the site starts once D1 has merged (Richard, 2026-10-28).
    naming the standard type (`Mass`, `Length`, `Money`, `Percentage`),
    reusing `jadpo suggest`'s name signal data; and the gate runs
    `jadpo suggest` over every teaching example, which must come back clean
-   or ignore each finding with a reason (Richard, 2026-10-25).
+   or ignore each finding with a reason.
 2. The standard type reference, generated: `tools/language_docs.py`
    renders one entry per standard type (what it is, how to make one, its
    fields, operations, text, JSON and storage forms, an example) from the
    compiler's own contract data on every docs build, so the list can't
    drift from what is built; designed with the design skills first. Area
-   19's prose stays as the explanation (Richard, 2026-10-25).
+   19's prose stays as the explanation.
 3. Personal data (area 15), with encrypted fields and keys held as data
    (area 19, "Encrypted fields" and "Language gaps this page depends on") and `crypto.verify_totp`, which waits on
    them.

@@ -209,7 +209,7 @@ fn a_marked_field_is_followed_through_the_body() {
         ),
         [NOTES_UNLISTED]
     );
-    // What decided a value is sent with it (Richard, 2026-10-21).
+    // What decided a value is sent with it.
     assert_eq!(
         check(
             "    var mut said: ClinicalNote = ClinicalNote(\"short\")\n    if (text.length(patient.notes) > 100) {\n        said = ClinicalNote(\"long\")\n    }\n",
@@ -521,7 +521,7 @@ fn diagnosed(before: &str, notes: &str, after: &str) -> Vec<String> {
 
 const DIAGNOSIS_UNLISTED: &str = "domains/clinic/actions/summarise.jadpo semantic.ai_personal_data_not_allowed: `Patient.diagnosis` reaches a model, and `ai:` doesn't allow `health` data";
 
-/// What a condition decides is sent with it (Richard, 2026-10-21): a
+/// What a condition decides is sent with it: a
 /// `match` on a marked field sends what it holds, and so does a filter
 /// testing one, an `if`, and what follows a `return` it may have taken.
 #[test]
@@ -611,7 +611,7 @@ fn what_a_loop_goes_through_stays_unsent() {
 const PATIENT_ACTION_PATH: &str = "domains/clinic/actions/note_remark.jadpo";
 
 /// A write storing a marked field's value in a field without its marks
-/// is refused (Richard, 2026-10-21): what reads the field later, a prompt
+/// is refused: what reads the field later, a prompt
 /// among them, would send it unchecked.
 #[test]
 fn a_write_storing_marked_content_without_its_marks_fails() {

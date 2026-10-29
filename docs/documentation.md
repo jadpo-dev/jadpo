@@ -166,7 +166,7 @@ GitHub; some agents cannot fetch from GitHub, which is why the site and
   `.github/workflows/release-please.yml`) keeps a release pull request with
   the next version and its notes; merging it tags `vX.Y.Z` and makes a
   draft GitHub Release holding the notes. Claude merges it, except 0.1.0,
-  which Richard sees first. Release notes live on the Release, not in a
+  which a maintainer checks first. Release notes live on the Release, not in a
   changelog file.
 - The release then gets the docs bundle as `docs-bundle.tar.gz`, and
   dist's workflow (`.github/workflows/release.yml`) builds the installers,
@@ -175,7 +175,7 @@ GitHub; some agents cannot fetch from GitHub, which is why the site and
 - An app declares the version it needs in `app.jadpo`, as
   `application { jadpo: "0.1" }`, and the compiler refuses an app needing a
   newer one (area 1, "The root").
-- Switched off until Richard sets them up: release-please runs only when
+- Switched off until a maintainer sets them up: release-please runs only when
   the repository variable `JADPO_RELEASES` is `on`, with a
   `RELEASE_PLEASE_TOKEN` secret, so its pull requests run CI; the
   Homebrew formula and the npm package are built and attached to each

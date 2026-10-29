@@ -1392,7 +1392,7 @@ mod tests {
 
     #[test]
     fn sorting_in_a_locale_the_application_doesnt_support_uses_one_it_does() {
-        // Area 10, "Locales" (Richard, 2026-10-22; chunk 8.4i): the order
+        // Area 10, "Locales" (chunk 8.4i): the order
         // is the supported locale a header asking for it would get, else
         // `default:`, so a deployable carrying the supported locales'
         // collation only sorts as `jadpo test` does.

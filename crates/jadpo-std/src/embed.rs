@@ -6,7 +6,7 @@
 
 /// What `timeout:` is when an `ai.embed` call leaves it out, in
 /// milliseconds: 5 seconds, so a route embedding a query fits its
-/// 10-second default deadline (Richard, 2026-10-20).
+/// 10-second default deadline.
 pub const DEFAULT_TIMEOUT_MS: u64 = 5_000;
 
 /// The model an embedding call asks when it names none: `embedding`.

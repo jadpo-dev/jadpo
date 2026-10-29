@@ -24,7 +24,7 @@
 //! as later chunks build what it names.
 //!
 //! The examples are brought up to date once per phase, by an examples chunk
-//! at its end (Richard, 2026-10-15), so a built feature no example uses yet
+//! at its end, so a built feature no example uses yet
 //! is only noted (`note:` lines, which the gate shows) unless
 //! `JADPO_REQUIRE_EXAMPLES=1` is set (`tools/verify.py --require-examples`),
 //! which fails on it. The other problems below fail either way: they are

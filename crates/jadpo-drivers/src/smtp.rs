@@ -441,7 +441,7 @@ async fn conversation(
         .await?;
     // A server on this machine is spoken to as it is, as PostgreSQL's is:
     // a stock Postfix offers `STARTTLS` with a self-signed certificate,
-    // which no check would pass (Richard, 2026-10-22).
+    // which no check would pass.
     if !secure && !server.is_local() {
         let offers_tls = ehlo
             .lines

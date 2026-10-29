@@ -121,5 +121,5 @@ During development, the compiler and runtime source may be supplied explicitly
 from a verified prerequisite checkout. Such a preview is identified by path
 and revision and does not establish this branch’s full gate. The final gate
 runs against this worktree’s compiler/runtime and exact incorporated prerequisite
-histories. Richard authorized stacked builds before prerequisite PR review
-and merge on 2026-10-23; that authorization does not establish independent review.
+histories. Stacked builds before prerequisite PR review and merge were
+authorized on 2026-10-23; that authorization does not establish independent review.
