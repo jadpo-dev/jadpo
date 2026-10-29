@@ -1,15 +1,17 @@
-//! Finding and reading a project: the only I/O in the compiler crates.
+//! Finding and reading a project on disk: the only I/O in the compiler
+//! crates. What the files make a project is decided in [`crate::files`],
+//! which reads none.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use salsa::{Durability, Setter};
 
-use crate::places::{Ownership, locate};
-use crate::{
-    Database, File, IDENTITIES, LEGACY_IDENTITIES, Layout, Project, Record, is_record,
-    parse_identities, parse_legacy_identities,
+use crate::files::{
+    FileSet, Role, assemble, identities, link_lines, links_in, missing_checkout, role,
 };
+use crate::places::{Ownership, locate};
+use crate::{Database, File, IDENTITIES, LEGACY_IDENTITIES, Layout, Project, Record};
 
 /// The file that marks a project's root (area 14).
 pub const PROJECT_FILE: &str = "app.jadpo";
@@ -97,6 +99,16 @@ pub fn load_whole(target: &Path) -> Loaded {
 /// Reads `target` into `db`; `lazily`, an installed package's resources
 /// wait until the app calls into them ([`crate::lazy`]).
 fn read_into(target: &Path, db: Database, lazily: bool) -> Loaded {
+    let (root, files) = read(target);
+    load_files_into(root, &files, db, lazily)
+}
+
+/// Reads what `target` names from disk, as [`load`] finds it: the folder
+/// its paths are relative to, and its files. Inside a project that is
+/// every file under the root a project can hold, and every file of each
+/// checkout `jadpo.lock` links a package to, under the checkout's path as
+/// the lock writes it; otherwise the file, or the files under the folder.
+pub fn read(target: &Path) -> (PathBuf, FileSet) {
     let folder = if target.is_dir() {
         target.to_path_buf()
     } else {
@@ -104,185 +116,103 @@ fn read_into(target: &Path, db: Database, lazily: bool) -> Loaded {
             .parent()
             .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
     };
-    let mut unreadable = Vec::new();
-    let mut links = Vec::new();
-    let (root, layout, sources) = match find_root(&folder) {
+    let mut files = FileSet::default();
+    let root = match find_root(&folder) {
         Some(root) => {
-            let mut sources = shown(&root, walk(&root, true, &mut unreadable));
-            links = linked(&root, &mut sources, &mut unreadable);
-            (root, Layout::Project, sources)
-        }
-        None if target.is_dir() => {
-            let sources = shown(&folder, walk(&folder, false, &mut unreadable));
-            (folder.clone(), Layout::Loose, sources)
-        }
-        None => {
-            let sources = shown(&folder, vec![target.to_path_buf()]);
-            (folder, Layout::Loose, sources)
-        }
-    };
-    let mut files = Vec::new();
-    let mut lazy = Vec::new();
-    let mut other_files = Vec::new();
-    let mut records = Vec::new();
-    for (path, shown) in sources {
-        // Loose files keep a prompt's text beside its type (area 21).
-        let loose_prompt = layout == Layout::Loose && shown.ends_with(crate::PROMPT_EXTENSION);
-        if (layout == Layout::Project && is_record(&shown)) || loose_prompt {
-            records.push(read_record_at(&path, &shown));
-            continue;
-        }
-        if !shown.ends_with(".jadpo") {
-            other_files.push(shown);
-            continue;
-        }
-        // A pipe or a device named `.jadpo` would block or never end.
-        if !std::fs::metadata(&path).is_ok_and(|meta| meta.is_file()) {
-            unreadable.push(Unreadable {
-                path: shown,
-                error: "it isn't a regular file".to_string(),
-            });
-            continue;
-        }
-        match std::fs::read_to_string(&path) {
-            Ok(text) => {
-                let durability = durability(&shown, layout);
-                let waits = lazily && layout == Layout::Project && crate::lazy::is_lazy(&shown);
-                let file = File::builder(shown, text)
-                    .path_durability(durability)
-                    .text_durability(durability)
-                    .new(&db);
-                if waits {
-                    lazy.push(file);
-                } else {
-                    files.push(file);
+            let found = walk(&root, Layout::Project, &mut files);
+            read_all(&mut files, &root, found);
+            let lock = match files.files.get(crate::LOCK) {
+                Some(Ok(text)) => text.clone(),
+                _ => String::new(),
+            };
+            for (_, checkout) in links_in(&lock) {
+                let at = root.join(&checkout);
+                for file in package_files(&at) {
+                    let shown = format!("{checkout}/{}", display(&at, &file));
+                    files.insert(shown, read_file(&file));
                 }
             }
-            Err(error) => unreadable.push(Unreadable {
-                path: shown,
-                error: error.to_string(),
-            }),
+            root
         }
-    }
-    // The identity registry (area 18): its lines are an input of their own,
-    // and its text a record, for the edits that add a line to it.
-    let identities = match identities(&records) {
-        Ok(lines) => lines,
-        Err((path, error)) => {
-            unreadable.push(Unreadable { path, error });
-            BTreeMap::new()
+        None if target.is_dir() => {
+            let found = walk(&folder, Layout::Loose, &mut files);
+            read_all(&mut files, &folder, found);
+            folder
+        }
+        None => {
+            read_all(&mut files, &folder, vec![target.to_path_buf()]);
+            folder
         }
     };
+    (root, files)
+}
+
+/// Adds each of `paths` to `files`, by its path relative to `root`.
+fn read_all(files: &mut FileSet, root: &Path, paths: Vec<PathBuf>) {
+    for path in paths {
+        files.insert(display(root, &path), read_file(&path));
+    }
+}
+
+/// A file's text, or why it couldn't be read. A pipe or a device would
+/// block or never end, so only a regular file is read.
+fn read_file(path: &Path) -> Result<String, String> {
+    if !std::fs::metadata(path).is_ok_and(|meta| meta.is_file()) {
+        return Err("it isn't a regular file".to_string());
+    }
+    std::fs::read_to_string(path).map_err(|error| error.to_string())
+}
+
+/// Loads a set of files read from anywhere, a git commit as well as the
+/// disk, by the same rules [`load`] uses ([`assemble`]). `root` is the
+/// folder its paths are relative to; it names the application, and is
+/// where [`Loaded::refresh`] and [`Loaded::reload`] read again.
+pub fn load_files(root: PathBuf, files: &FileSet) -> Loaded {
+    load_files_into(root, files, Database::default(), true)
+}
+
+fn load_files_into(root: PathBuf, files: &FileSet, db: Database, lazily: bool) -> Loaded {
+    let assembled = assemble(files, lazily);
+    let layout = assembled.layout;
+    let input = |(path, text): (String, String)| {
+        let durability = durability(&path, layout);
+        File::builder(path, text)
+            .path_durability(durability)
+            .text_durability(durability)
+            .new(&db)
+    };
+    let sources: Vec<File> = assembled.sources.into_iter().map(input).collect();
+    let lazy: Vec<File> = assembled.lazy.into_iter().map(input).collect();
     let name = root
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let project = Project::builder(files, other_files, layout, identities, records)
-        .name(name)
-        .lazy(lazy)
-        .new(&db);
+    let project = Project::builder(
+        sources,
+        assembled.other_files,
+        layout,
+        assembled.identities,
+        assembled.records,
+    )
+    .name(name)
+    .lazy(lazy)
+    .new(&db);
     let mut loaded = Loaded {
         db,
         project,
         root,
-        unreadable,
-        links,
+        unreadable: assembled.unreadable,
+        links: assembled.links,
     };
     loaded.settle();
     loaded
-}
-
-/// Each path with how the project names it, relative to `root`.
-fn shown(root: &Path, paths: Vec<PathBuf>) -> Vec<(PathBuf, String)> {
-    paths
-        .into_iter()
-        .map(|path| {
-            let shown = display(root, &path);
-            (path, shown)
-        })
-        .collect()
-}
-
-/// Reads each package `jadpo.lock` links to from its live checkout
-/// instead of its folder in `packages/` (area 11, "Developing and
-/// publishing a package"), which stays as installed for `jadpo package
-/// unlink`: the checkout's files take the folder's paths, so the package
-/// is checked and run as the installed one would be. A checkout that isn't
-/// there can't be read. Returns each link's folder and checkout.
-fn linked(
-    root: &Path,
-    sources: &mut Vec<(PathBuf, String)>,
-    unreadable: &mut Vec<Unreadable>,
-) -> Vec<(String, String)> {
-    let mut links = Vec::new();
-    for line in link_lines(root) {
-        let crate::Source::Link { path } = &line.source else {
-            continue;
-        };
-        let folder = line.folder();
-        let prefix = format!("{folder}/");
-        sources.retain(|(_, shown)| !shown.starts_with(&prefix));
-        let checkout = root.join(path);
-        if let Some(missing) = missing_checkout(root, &line) {
-            unreadable.push(missing);
-            links.push((folder, path.clone()));
-            continue;
-        }
-        for file in package_files(&checkout) {
-            let relative = display(&checkout, &file);
-            sources.push((file, format!("{prefix}{relative}")));
-        }
-        links.push((folder, path.clone()));
-    }
-    sources.sort_by(|a, b| a.1.cmp(&b.1));
-    links
-}
-
-/// The lines of `root`'s `jadpo.lock` that link a package to a live
-/// checkout. A lock that can't be read is the records' to report.
-fn link_lines(root: &Path) -> Vec<crate::Locked> {
-    let Ok(text) = std::fs::read_to_string(root.join(crate::LOCK)) else {
-        return Vec::new();
-    };
-    let Ok(lines) = crate::parse_lock(&text) else {
-        return Vec::new();
-    };
-    lines
-        .into_iter()
-        .filter(|line| matches!(line.source, crate::Source::Link { .. }))
-        .collect()
-}
-
-/// Why the checkout `line` links to can't be read: it holds no index.
-fn missing_checkout(root: &Path, line: &crate::Locked) -> Option<Unreadable> {
-    let crate::Source::Link { path } = &line.source else {
-        return None;
-    };
-    if root.join(path).join(crate::PACKAGE_INDEX).is_file() {
-        return None;
-    }
-    Some(Unreadable {
-        path: format!("{path}/"),
-        error: format!(
-            "`{}` links `{}` to it, and it holds no `{}`",
-            crate::LOCK,
-            line.package,
-            crate::PACKAGE_INDEX
-        ),
-    })
 }
 
 /// Each package `root`'s `jadpo.lock` links to a live checkout: its folder
 /// in the project, `packages/acme_pricing/v2`, and the checkout as the
 /// lock writes it, `../acme-pricing`.
 pub fn links(root: &Path) -> Vec<(String, String)> {
-    link_lines(root)
-        .iter()
-        .filter_map(|line| match &line.source {
-            crate::Source::Link { path } => Some((line.folder(), path.clone())),
-            _ => None,
-        })
-        .collect()
+    links_in(&std::fs::read_to_string(root.join(crate::LOCK)).unwrap_or_default())
 }
 
 /// Shows a linked package's problems and sources in its checkout: each
@@ -338,7 +268,7 @@ pub fn watched_files(root: &Path, project: bool) -> Vec<(String, PathBuf)> {
         let checkout = root.join(path);
         for file in package_files(&checkout) {
             let shown = format!("{prefix}{}", display(&checkout, &file));
-            if tracked(&shown, true) {
+            if role(&shown, Layout::Project).is_some() {
                 found.push((shown, file));
             }
         }
@@ -377,43 +307,6 @@ pub fn package_files(folder: &Path) -> Vec<PathBuf> {
     }
     found.sort_by_key(|path| display(folder, path));
     found
-}
-
-/// The identity registry's lines, from its record when the project has
-/// one, else from `database/identities.json`, where it was before chunk
-/// 7.0, until `jadpo records update` rewrites it; or the file that can't
-/// be read and why.
-fn identities(records: &[Record]) -> Result<BTreeMap<String, String>, (String, String)> {
-    let find = |path: &str| records.iter().find(|record| record.path == path);
-    if let Some(record) = find(IDENTITIES) {
-        // A registry that can't be read is `record.edited` or
-        // `record.format_newer`, reported with every record's; until it is
-        // put right every born name is the name now.
-        return Ok(record
-            .text
-            .as_ref()
-            .ok()
-            .and_then(|text| parse_identities(text).ok())
-            .unwrap_or_default());
-    }
-    let Some(record) = find(LEGACY_IDENTITIES) else {
-        return Ok(BTreeMap::new());
-    };
-    let failed = |error: String| (LEGACY_IDENTITIES.to_string(), error);
-    let text = record
-        .text
-        .as_ref()
-        .map_err(|error| failed(error.clone()))?;
-    parse_legacy_identities(text)
-        .map_err(|error| failed(format!("it isn't a JSON object of names: {error}")))
-}
-
-/// The record the project names `path`, read from `file`.
-fn read_record_at(file: &Path, path: &str) -> Record {
-    Record {
-        path: path.to_string(),
-        text: std::fs::read_to_string(file).map_err(|error| error.to_string()),
-    }
 }
 
 /// How rarely a file changes (docs/compiler-runtime.md §2.4): domain files
@@ -472,7 +365,7 @@ impl Loaded {
     }
 
     fn write_text(&mut self, path: &str, text: String) {
-        if !is_source(path) {
+        if role(path, self.project.layout(&self.db)) != Some(Role::Source) {
             return;
         }
         let waiting = self
@@ -555,7 +448,7 @@ impl Loaded {
     /// linked, unlinked or linked elsewhere has every file of its folder
     /// read again from where it now lives.
     fn relink(&mut self) {
-        let now = links(&self.root);
+        let now = links_in(&self.lock());
         if now == self.links {
             return;
         }
@@ -603,11 +496,13 @@ impl Loaded {
             .collect();
         self.unreadable.retain(|file| !gone.contains(&file.path));
         self.links = now;
-        for line in link_lines(&self.root) {
-            if changed.contains(&line.folder())
-                && let Some(missing) = missing_checkout(&self.root, &line)
-            {
-                self.unreadable.push(missing);
+        for line in link_lines(&self.lock()) {
+            let crate::Source::Link { path } = &line.source else {
+                continue;
+            };
+            let index = self.root.join(path).join(crate::PACKAGE_INDEX);
+            if changed.contains(&line.folder()) && !index.is_file() {
+                self.unreadable.push(missing_checkout(&line, path));
             }
         }
         for folder in &changed {
@@ -625,7 +520,18 @@ impl Loaded {
     /// Whether the project holds `path`, project-relative: a source file,
     /// or in a project another file beside the code (a template).
     pub fn tracks(&self, path: &str) -> bool {
-        tracked(path, self.project.layout(&self.db) == Layout::Project)
+        role(path, self.project.layout(&self.db)).is_some()
+    }
+
+    /// The text of the project's `jadpo.lock`, empty when it has none or
+    /// it can't be read.
+    fn lock(&self) -> String {
+        self.project
+            .records(&self.db)
+            .iter()
+            .find(|record| record.path == crate::LOCK)
+            .and_then(|record| record.text.clone().ok())
+            .unwrap_or_default()
     }
 
     /// Brings `path` up to date with the disk after a change there, as a
@@ -633,75 +539,85 @@ impl Loaded {
     /// file's presence. A source file that exists but can't be read joins
     /// [`Loaded::unreadable`] until it can; one that is gone leaves.
     pub fn refresh(&mut self, path: &str) {
-        if !self.tracks(path) {
+        let Some(role) = role(path, self.project.layout(&self.db)) else {
             return;
-        }
-        self.unreadable.retain(|file| file.path != path);
-        let full = self.on_disk(path);
-        if self.project.layout(&self.db) == Layout::Project && is_record(path) {
-            let mut records = self.project.records(&self.db).clone();
-            records.retain(|record| record.path != path);
-            if full.is_file() {
-                records.push(read_record_at(&full, path));
-                records.sort_by(|a, b| a.path.cmp(&b.path));
-            }
-            if path == IDENTITIES || path == LEGACY_IDENTITIES {
-                self.unreadable
-                    .retain(|file| file.path != IDENTITIES && file.path != LEGACY_IDENTITIES);
-                match identities(&records) {
-                    Ok(lines) => {
-                        if &lines != self.project.identities(&self.db) {
-                            self.project.set_identities(&mut self.db).to(lines);
-                        }
-                    }
-                    Err((path, error)) => self.unreadable.push(Unreadable { path, error }),
-                }
-            }
-            if &records != self.project.records(&self.db) {
-                self.project.set_records(&mut self.db).to(records);
-            }
-            if path == crate::LOCK {
-                self.relink();
-            }
-            return;
-        }
-        if !is_source(path) {
-            let mut others = self.project.other_files(&self.db).clone();
-            let present = full.is_file();
-            let known = others.iter().any(|other| other == path);
-            if present != known {
-                if present {
-                    others.push(path.to_string());
-                    others.sort();
-                } else {
-                    others.retain(|other| other != path);
-                }
-                self.project.set_other_files(&mut self.db).to(others);
-            }
-            return;
-        }
-        let read = if full.exists() && !std::fs::metadata(&full).is_ok_and(|meta| meta.is_file()) {
-            Err("it isn't a regular file".to_string())
-        } else {
-            std::fs::read_to_string(&full).map_err(|error| {
-                if error.kind() == std::io::ErrorKind::NotFound {
-                    String::new()
-                } else {
-                    error.to_string()
-                }
-            })
         };
-        match read {
-            Ok(text) => self.set_text(path, text),
-            Err(error) if error.is_empty() => self.remove(path),
-            Err(error) => {
-                self.remove(path);
-                self.unreadable.push(Unreadable {
-                    path: path.to_string(),
-                    error,
-                });
-                self.unreadable.sort_by(|a, b| a.path.cmp(&b.path));
+        let full = self.on_disk(path);
+        let now = match role {
+            // Another file is held by its presence alone.
+            Role::Other => full.is_file().then(|| Ok(String::new())),
+            Role::Source | Role::Record => match std::fs::metadata(&full) {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+                _ => match read_file(&full) {
+                    Err(_) if !full.exists() => None,
+                    read => Some(read),
+                },
+            },
+        };
+        self.apply(path, role, now);
+        if path == crate::LOCK {
+            self.relink();
+        }
+    }
+
+    /// Sets what the project holds at `path` to `now`, its text, or why it
+    /// can't be read, or `None` when it is gone, by `path`'s `role`.
+    fn apply(&mut self, path: &str, role: Role, now: Option<Result<String, String>>) {
+        self.unreadable.retain(|file| file.path != path);
+        match role {
+            Role::Record => {
+                let mut records = self.project.records(&self.db).clone();
+                records.retain(|record| record.path != path);
+                if let Some(text) = now {
+                    records.push(Record {
+                        path: path.to_string(),
+                        text,
+                    });
+                    records.sort_by(|a, b| a.path.cmp(&b.path));
+                }
+                if path == IDENTITIES || path == LEGACY_IDENTITIES {
+                    self.unreadable
+                        .retain(|file| file.path != IDENTITIES && file.path != LEGACY_IDENTITIES);
+                    match identities(&records) {
+                        Ok(lines) => {
+                            if &lines != self.project.identities(&self.db) {
+                                self.project.set_identities(&mut self.db).to(lines);
+                            }
+                        }
+                        Err((path, error)) => self.unreadable.push(Unreadable { path, error }),
+                    }
+                    self.unreadable.sort_by(|a, b| a.path.cmp(&b.path));
+                }
+                if &records != self.project.records(&self.db) {
+                    self.project.set_records(&mut self.db).to(records);
+                }
             }
+            Role::Other => {
+                let mut others = self.project.other_files(&self.db).clone();
+                let present = now.is_some();
+                let known = others.iter().any(|other| other == path);
+                if present != known {
+                    if present {
+                        others.push(path.to_string());
+                        others.sort();
+                    } else {
+                        others.retain(|other| other != path);
+                    }
+                    self.project.set_other_files(&mut self.db).to(others);
+                }
+            }
+            Role::Source => match now {
+                Some(Ok(text)) => self.set_text(path, text),
+                None => self.remove(path),
+                Some(Err(error)) => {
+                    self.remove(path);
+                    self.unreadable.push(Unreadable {
+                        path: path.to_string(),
+                        error,
+                    });
+                    self.unreadable.sort_by(|a, b| a.path.cmp(&b.path));
+                }
+            },
         }
     }
 }
@@ -710,29 +626,15 @@ impl Loaded {
 /// `folder` with `/`, in path order: what [`load`] reads and a watcher
 /// watches. Folders that can't be listed are left out.
 pub fn files_under(folder: &Path, project: bool) -> Vec<String> {
-    walk(folder, project, &mut Vec::new())
+    let layout = if project {
+        Layout::Project
+    } else {
+        Layout::Loose
+    };
+    walk(folder, layout, &mut FileSet::default())
         .iter()
         .map(|path| display(folder, path))
         .collect()
-}
-
-/// Whether a project-relative path is one a project holds: a source file,
-/// or in a project a file in a code folder.
-fn tracked(path: &str, project: bool) -> bool {
-    if is_source(path) {
-        return true;
-    }
-    project
-        && !path.split('/').any(|part| part.starts_with('.'))
-        && (path.starts_with("domains/") || path.starts_with("shared/") || is_record(path))
-}
-
-/// Whether a project-relative path is a source file the project holds.
-fn is_source(path: &str) -> bool {
-    path.ends_with(".jadpo")
-        && !path.starts_with("build/")
-        && !path.split('/').any(|part| part.starts_with('.'))
-        && !crate::is_package_data(path)
 }
 
 /// A path as the reader sees it: relative to the root, with `/`.
@@ -745,53 +647,34 @@ fn display(root: &Path, file: &Path) -> String {
         .join("/")
 }
 
-/// Every file under `folder` in path order, leaving out hidden entries and
-/// the generated `build/`. Outside `.jadpo` files, only a project's code
-/// folders are listed, where templates and other assets sit beside code.
-fn walk(folder: &Path, project: bool, unreadable: &mut Vec<Unreadable>) -> Vec<PathBuf> {
+/// Every file under `folder` a project of `layout` holds ([`role`]), in
+/// path order. A folder that can't be listed is added to `files` as its
+/// path with a trailing `/` and the error: it may hold source, and checking
+/// without it would pass a project with code missing.
+fn walk(folder: &Path, layout: Layout, files: &mut FileSet) -> Vec<PathBuf> {
     let mut found = Vec::new();
     let mut pending = vec![folder.to_path_buf()];
     while let Some(dir) = pending.pop() {
         let entries = match std::fs::read_dir(&dir) {
             Ok(entries) => entries,
-            // A folder that can't be listed may hold source: checking
-            // without it would pass a project with code missing.
             Err(error) => {
-                let shown = display(folder, &dir);
-                unreadable.push(Unreadable {
-                    path: if shown.is_empty() {
-                        ".".into()
-                    } else {
-                        format!("{shown}/")
-                    },
-                    error: error.to_string(),
-                });
+                files.insert(
+                    format!("{}/", display(folder, &dir)),
+                    Err(error.to_string()),
+                );
                 continue;
             }
         };
         for entry in entries.filter_map(Result::ok) {
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if name.starts_with('.') {
-                continue;
-            }
             let path = entry.path();
+            let shown = display(folder, &path);
             match entry.file_type() {
                 Ok(kind) if kind.is_dir() => {
-                    if !(dir == folder && name == "build") {
+                    if role(&format!("{shown}/x.jadpo"), layout).is_some() {
                         pending.push(path);
                     }
                 }
-                Ok(_) if name.ends_with(".jadpo") => found.push(path),
-                Ok(_) if project => {
-                    let shown = display(folder, &path);
-                    if shown.starts_with("domains/")
-                        || shown.starts_with("shared/")
-                        || is_record(&shown)
-                    {
-                        found.push(path);
-                    }
-                }
+                Ok(_) if role(&shown, layout).is_some() => found.push(path),
                 _ => {}
             }
         }

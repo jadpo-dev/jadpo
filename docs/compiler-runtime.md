@@ -152,7 +152,7 @@ Rust 1.88 or later).
 | `jadpo-fmt` | Formatter | |
 | `jadpo-sql` | Every PostgreSQL text the compiler writes: conditions and their one lowering (an exact SQL form, or an index search the runtime rechecks), statements, aggregates, identity lookups and table definitions, rendered from what the graph, the checker and the plan decide | |
 | `jadpo-graph` | Node and edge model, identity keys, canonical JSON, diff; the physical schema, its snapshots and migration diffs | |
-| `jadpo-db` | Incremental database: source inputs, project layout, the lock and the identity registry; the only compiler crate that does I/O (the before side from git comes later) | |
+| `jadpo-db` | Incremental database: source inputs, project layout, the lock and the identity registry; the only compiler crate that does I/O, reading a project's files from disk for rules that read none (§2.2, "Loading") | |
 | `jadpo-check` | Resolution, types, failures, effects, policy, data and layout rules, as queries that build the graph | |
 | `jadpo-plan` | What both executors need besides control flow: numbered callables and their frame tables, type and failure plans, constants, each read and write site's statements with policy compiled in (written by `jadpo-sql`), codecs per type, and the route, settings, JSON, translation and prompt tables; schedule and subscriber tables come with area 12 | |
 | `jadpo-interp` | The interpreter | |
@@ -277,6 +277,26 @@ native test checks. Compiler crates do no I/O below `jadpo-db`, which keeps
 a browser playground possible.
 
 ### 2.2 Source to graph
+
+**Loading.** A project is loaded in two steps. `jadpo_db::read` finds it
+on disk (up to `app.jadpo`, or loose files) and reads every file it could
+hold into a `FileSet`: each path, relative to the root with `/`, with its
+text or why it couldn't be read, a folder that couldn't be listed as its
+path and a trailing `/`, and each checkout `jadpo.lock` links a package to
+under the checkout's path as the lock writes it (`../acme-pricing/...`).
+`jadpo_db::assemble` then makes the set a project by every rule, reading
+nothing: a set with `app.jadpo` at its root is a project, otherwise loose
+files; which paths a project holds (`role`: nothing hidden, nothing in a
+root `build/`, outside a project's code folders and records only source,
+and loose files a prompt's text beside its type); which of those are
+source, records or other files; which installed package resources wait
+until the app calls into them; the identity registry's lines; and which
+package folders a link replaces with its checkout's files (a link whose
+checkout has no index in the set is unreadable). `load_files` loads a set read from
+anywhere, so a base commit read from git loads by the same rules as the
+working tree; a test holds every example to the same graph and problems
+either way. The watcher's `Loaded::refresh` reads one path from disk and
+applies the same `role`.
 
 **Lexer and parser.** Hand-written. The lexer has modes for route paths
 (`GET /todos/{todo_id}`), durations (`15m`) and template text (`{{ }}`).
@@ -702,11 +722,12 @@ changed, `.credential_changed` for a connection's credential scheme, and
 `.principal_changed`, `.sign_in_method_added` and `.sign_in_added`. A new
 connection and its hosts need no one (area 18, "Package upgrades"). Every
 git package needs a person, since telling the app's own company's
-repository from a third party's needs a setting the pages don't decide
-(decided in chunk 10.3g, the conservative reading of area 11's "Publisher
-trust"). The before side is read from the
-base commit through `git cat-file --batch` into an in-memory file set,
-checked by the same compiler and cached in `build/before/<commit>/`.
+repository from a third party's needs a setting the pages don't decide;
+this is the conservative reading of area 11's "Publisher trust". The
+before side is read from the base commit through `git cat-file --batch`
+into an in-memory file set (`jadpo_db::FileSet`, loaded by `load_files`,
+§2.2, "Loading"), checked by the same compiler and cached in
+`build/before/<commit>/`.
 
 **Packages.** A package's index is always parsed, a resource file only when
 the app calls into it. A checked package subgraph is cached on disk by
@@ -919,13 +940,34 @@ none of it. The effect is named, never told by its source text:
 for the standard operations `effects::is_effect` names, which
 `jadpo_value::run` refuses: `random`'s, from the invocation's random
 bytes, kept on a recording's tape; `crypto`'s but `read_certificate`,
-given the key ring its `key:` names (`effects::Keys`, read from the
-settings), its random bytes (secret for an encryption's nonce) and, for
-`verify_jwt`, its clock; and `json.read`, `json.write` and `verify_jwt`'s
+given the key ring its `key:` stands for, its random bytes (secret for
+an encryption's nonce) and, for `verify_jwt`, its clock; and `json.read`, `json.write` and `verify_jwt`'s
 `as:` claims, through the codec the plan numbers for their site (`json`);
 and `Effect::Emit { event }`, whose payload is written as its type's
 contract JSON and kept, with its subscribers, in the running action's
-outbox. What they need of the program comes as `Effects` (the plan's JSON
+outbox.
+
+**A key as a value.** A `crypto` call's key reaches the runtime as one
+opaque value, `Value::Key(jadpo_value::crypto::Key)`, the only value
+that stands for a key; no number or text does. Where it comes from the
+plan decides once, on the `key:` argument's site
+(`Decoded::Key(Option<KeySource>)`): `KeySource::Setting(n)` for `key:
+config.<name>`, which each executor passes as `Key::Setting(n)` without
+reading the setting, and `KeySource::Field { name }` for a field whose
+type is a key type, which each executor reads as it reads any field,
+the field holding a `Key::Held`. `None` (anything else, which the
+checker refuses as `type.mismatch`) is a defect at the call.
+`effects::crypto` builds the operation's key ring from either: a
+setting's from the keys the program started with (`effects::Keys`, read
+from the settings, with its `_PREVIOUS`), a held key's from its own
+bytes, with no previous key, since a key held as data rotates by being
+replaced; any other value in the key's place is a defect. A key prints
+as `<key>`, has no storage or JSON form, and orders after every other
+kind (a setting's by number, then held keys in constant time), so the
+canonical order stays total although code never compares one. Nothing
+yet makes a held key: keys in encrypted fields come with personal data
+(the roadmap's "After the first build", item 3), which decrypts a
+field of a key type into one on load. What they need of the program comes as `Effects` (the plan's JSON
 table with the program's validators and shapes, the events' numbers and
 subscribers, and the settings), which the interpreter builds from its plan
 and compiled code holds as statics, and the keys as the program

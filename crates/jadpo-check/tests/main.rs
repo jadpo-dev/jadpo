@@ -54,6 +54,7 @@ mod graph_nodes;
 mod habits;
 mod identity;
 mod imports;
+mod in_memory;
 mod incremental;
 mod isolation;
 mod jadpo_version;
