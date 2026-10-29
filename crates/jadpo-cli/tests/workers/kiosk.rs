@@ -12,7 +12,7 @@
 //! database needs, the runtime's HTTP component, and none of the testing
 //! machinery.
 //!
-//! workerd, Cloudflare's own Workers runtime, pinned in `tools/workers/`,
+//! workerd, Cloudflare's own Workers runtime, pinned in `tools/fixtures/workers/`,
 //! then runs the files as the Wrangler file describes them, against a
 //! PostgreSQL database on this machine reached through workerd's
 //! Hyperdrive binding, which hands `connect()` to the database's server.

@@ -212,30 +212,22 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   through 9.1a, 9.1d, 9.1b and 9.1c, in that order; the split changes sizing,
   not acceptance (2026-10-22). This is an umbrella: sessions take the first
   unticked concrete subchunk below; tick 9.1 only once all four are complete.
-- [x] **9.1a Instrumentation and focused scaffold**: `tools/bench/README.md`; compiler/runtime §2.11.
-- [x] **9.1d Golden todo and local comparison**: compiler/runtime §2.6, §2.7 and §2.11; `tools/bench/README.md`.
+- [x] **9.1a Instrumentation and focused scaffold**: `benchmarks/README.md`; compiler/runtime §2.11.
+- [x] **9.1d Golden todo and local comparison**: compiler/runtime §2.6, §2.7 and §2.11; `benchmarks/README.md`.
 - [x] **9.1d1 Provisioned external JWT subjects**: compiler/runtime §2.6; area 8, "Ways to sign in" and implementation status.
-- [x] **9.1d2 Golden todo and executable contract**: compiler/runtime §2.6 and §2.11; `examples/golden-todo/README.md`.
+- [x] **9.1d2 Golden todo and executable contract**: compiler/runtime §2.6 and §2.11; `benchmarks/golden-todo/README.md`.
 - [x] **9.1d2a Generic runtime contract fixes:** §2.6; areas 5 (Lifecycle), 10 (connection URLs) and 11 (safe key windows and record modes).
-- [x] **9.1d2b Golden todo and all 44 cases**: compiler/runtime §2.11; `examples/golden-todo/README.md`.
-- [x] **9.1d3 Strong TypeScript golden todo**: compiler/runtime §2.7 and §2.11; `examples/golden-todo/typescript/README.md`.
-- [x] **9.1d4 Local application comparison**: compiler/runtime §2.11; `tools/bench/README.md`.
-- [ ] **9.1d5 TypeScript on workerd baseline:** `opus · high` after 9.1d4:
-  run the strong TypeScript golden todo on workerd (Hono's Workers entry,
-  the same local connection stand-in Jadpo's Workers build uses) with all
-  44 cases passing, and compare it with Jadpo's Wasm build under the 9.1d4
-  method. The headline pairs are native against Bun and Node, and Wasm
-  against TypeScript on workerd, led by CPU time per request, cold start and
-  p95 (Richard, 2026-10-24). Native's CPU time per request against Bun's
-  and Node's is measured too, since native serves on every core and they
-  on one.
-- [x] **9.1b Runtime performance**: compiler/runtime §2.6 and §2.11; `tools/bench/README.md` (9.1b1–9.1b5, including 9.1b1a).
-- [x] **9.1b1 Bounded delivery sweeps and the backlog**: compiler/runtime §2.6, "Bounded delivery sweeps", and §2.11; `tools/bench/README.md`.
-- [x] **9.1b1a Warm delivery comparison**: compiler/runtime §2.11; `tools/bench/README.md`.
-- [x] **9.1b2 Fast ticks and hourly housekeeping**: compiler/runtime §2.6, "Fast ticks and hourly housekeeping", and §2.11; `tools/bench/README.md`.
-- [x] **9.1b3 One-statement AI accounting**: compiler/runtime §2.11; area 21, "How budgets are counted"; `tools/bench/README.md`.
-- [x] **9.1b4 Version checks in writes**: compiler/runtime §2.6, "Snapshots before calls", and §2.11; area 6, "Outside calls hold no transaction"; `tools/bench/README.md`.
-- [x] **9.1b5 Breakers in delivery claims**: compiler/runtime §2.6, "Breaker snapshots in delivery claims", and §2.11; `tools/bench/README.md`.
+- [x] **9.1d2b Golden todo and all 44 cases**: compiler/runtime §2.11; `benchmarks/golden-todo/README.md`.
+- [x] **9.1d3 Strong TypeScript golden todo**: compiler/runtime §2.7 and §2.11; `benchmarks/golden-todo/typescript/README.md`.
+- [x] **9.1d4 Local application comparison**: compiler/runtime §2.11; `benchmarks/README.md`.
+- [x] **9.1d5 TypeScript on workerd baseline**: compiler/runtime §2.11; `benchmarks/README.md`; `benchmarks/golden-todo/typescript/README.md`.
+- [x] **9.1b Runtime performance**: compiler/runtime §2.6 and §2.11; `benchmarks/README.md` (9.1b1–9.1b5, including 9.1b1a).
+- [x] **9.1b1 Bounded delivery sweeps and the backlog**: compiler/runtime §2.6, "Bounded delivery sweeps", and §2.11; `benchmarks/README.md`.
+- [x] **9.1b1a Warm delivery comparison**: compiler/runtime §2.11; `benchmarks/README.md`.
+- [x] **9.1b2 Fast ticks and hourly housekeeping**: compiler/runtime §2.6, "Fast ticks and hourly housekeeping", and §2.11; `benchmarks/README.md`.
+- [x] **9.1b3 One-statement AI accounting**: compiler/runtime §2.11; area 21, "How budgets are counted"; `benchmarks/README.md`.
+- [x] **9.1b4 Version checks in writes**: compiler/runtime §2.6, "Snapshots before calls", and §2.11; area 6, "Outside calls hold no transaction"; `benchmarks/README.md`.
+- [x] **9.1b5 Breakers in delivery claims**: compiler/runtime §2.6, "Breaker snapshots in delivery claims", and §2.11; `benchmarks/README.md`.
 - [ ] **9.1c Workers benchmark results:** `opus · high` **needs Richard**
   after 9.1b: approve access and deployment before using his account. Run the
   golden todo plus focused workloads on Workers against the equivalent Bun and
@@ -248,7 +240,9 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   Richard accepts a measured gap. Bun is not the Wasm build's comparison
   (Richard, 2026-10-28). If 9.1d5 shows no gap, this chunk is ticked as
   not needed and what follows stays as the place to start when one
-  appears.
+  appears. 9.1d5's gap (§2.11): the Wasm build's cold start, 69.8 ms
+  against TypeScript on workerd's 65.2 ms; its CPU a request and p95, and
+  native's against Bun and Node, are ahead in every cell.
   From chunk 8.1p: typed values in compiled bodies (a struct or enum per
   type, locals and parameters typed, a `Value` made only at the runtime's
   entry points), if profiling shows a body's own work matters beside the
@@ -296,6 +290,8 @@ D1 first: the site starts once D1 has merged (Richard, 2026-10-28).
   and feature requests read, answered and turned into pull requests by an
   agent that holds no secrets and cannot merge or release, since issue text
   is anyone's; its pull requests pass the same gate and review.
+- [x] **D7 One place for the golden todo and the benchmarks**: [benchmarks](../benchmarks/README.md);
+  `tools/` holds the gate and its `docs/`, `checks/`, `references/` and `fixtures/`.
 - [ ] **D8 The VS Code extension, finished and published**: area 14, "Editor support" and "What is built"; `editors/vscode/README.md`; `.github/workflows/vscode-extension.yml`.
   Waits: the editor's rename, which comes with `jadpo rename` and the identity registry (after the first build, items 6 and 7).
 
@@ -325,7 +321,7 @@ D1 first: the site starts once D1 has merged (Richard, 2026-10-28).
    reusing `jadpo suggest`'s name signal data; and the gate runs
    `jadpo suggest` over every teaching example, which must come back clean
    or ignore each finding with a reason (Richard, 2026-10-25).
-2. The standard type reference, generated: `tools/language_docs.py`
+2. The standard type reference, generated: `tools/docs/language_docs.py`
    renders one entry per standard type (what it is, how to make one, its
    fields, operations, text, JSON and storage forms, an example) from the
    compiler's own contract data on every docs build, so the list can't

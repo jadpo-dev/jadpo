@@ -1,0 +1,21 @@
+use todo/entities { User, UserNotFound }
+use todo/types { UserStatus }
+use todo/queries { current_reminder }
+use todo/events { ReminderPrepared, ReminderQueued }
+
+action prepare_reminder(event: ReminderQueued) fails UserNotFound -> Unit {
+    match current_reminder(event.todo_id, event.revision) {
+        none -> {}
+        some(item) -> {
+            var owner: User = attempt User.get(item.owner_id)
+            if (owner.status == UserStatus.active) {
+                emit ReminderPrepared {
+                    todo_id: item.id
+                    revision: item.reminder_revision
+                    recipient: owner.email
+                    title: item.title
+                }
+            }
+        }
+    }
+}

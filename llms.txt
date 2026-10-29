@@ -56,4 +56,5 @@ Each area page holds what an app author reads; its design notes, the reasons and
 - [Contributor guide](https://raw.githubusercontent.com/richardwillars/jadpo/main/CONTRIBUTING.md): Build prerequisites, verification and contribution workflow.
 - [Repository instructions](https://raw.githubusercontent.com/richardwillars/jadpo/main/AGENTS.md): Working rules for changes to this compiler repository.
 - [Documentation index](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/README.md): Architecture, decisions and design context.
+- [Benchmarks](https://raw.githubusercontent.com/richardwillars/jadpo/main/benchmarks/README.md): The golden todo, its TypeScript twin and contract cases, and the harnesses that measure Jadpo against TypeScript.
 - [CLI design language](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/cli-design-language.md): How everything `jadpo` prints, and every generated page, looks and behaves.

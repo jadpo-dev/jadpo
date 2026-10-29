@@ -120,9 +120,9 @@ README saying what it teaches, how to run it and what to try next.
     personal data sent to it, a stream sent to a route, the fake every
     test answers through, and recorded answers.
 
-`golden-todo/` holds the actual application, authored tests and versioned
-44-case contract used by the shared native/workerd runner. It is an
-application conformance fixture rather than a numbered teaching example.
+The golden todo, the application the contract run and the benchmarks
+use, is not a teaching example: it is in
+[benchmarks/golden-todo/](../benchmarks/golden-todo/README.md).
 
 ## How the comments work
 

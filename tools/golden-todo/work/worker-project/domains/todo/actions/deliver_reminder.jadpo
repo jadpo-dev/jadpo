@@ -1,0 +1,34 @@
+use app { reminder_mail }
+use todo/entities { Todo, User, UserNotFound }
+use todo/types { UserStatus }
+use todo/queries { current_reminder }
+use todo/events { ReminderPrepared }
+use shared/providers/reminder_mail
+
+/// Provider acceptance is the receipt; queued time is never called sent.
+action deliver_reminder(event: ReminderPrepared) fails UserNotFound -> Todo? {
+    match current_reminder(event.todo_id, event.revision) {
+        none -> {
+            return none
+        }
+        some(item) -> {
+            var owner: User = attempt User.get(item.owner_id)
+            if (owner.status != UserStatus.active) {
+                return none
+            }
+            var receipt: ReminderMail.Receipt = reminder_mail.messages.send(
+                ReminderMail.SendReminder {
+                    to: event.recipient
+                    title: ReminderMail.ReminderTitle(event.title)
+                    todo_id: item.id
+                    revision: item.reminder_revision
+                }
+            )
+            return Todo.update(item) {
+                set: {
+                    reminder_sent_at: receipt.accepted_at
+                }
+            }
+        }
+    }
+}

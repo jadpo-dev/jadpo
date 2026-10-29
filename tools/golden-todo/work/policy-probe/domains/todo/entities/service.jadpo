@@ -1,0 +1,16 @@
+use todo/entities { User }
+use todo/types { ServiceStatus }
+
+entity Service {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.restricted
+    }
+    name: Text {
+        unique: true
+    }
+    status: ServiceStatus
+    policy: {
+        read: [owner_id]
+    }
+}

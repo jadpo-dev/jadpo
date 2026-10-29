@@ -1,0 +1,11 @@
+{
+  // The Workers deployment of the same application (src/worker.ts). The
+  // Hyperdrive id and the rate of the cron trigger are deployment settings.
+  "name": "golden-todo-typescript",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "hyperdrive": [
+    { "binding": "DATABASE_URL", "id": "00000000000000000000000000000000" }
+  ],
+  "triggers": { "crons": ["* * * * *"] }
+}

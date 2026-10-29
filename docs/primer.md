@@ -724,7 +724,7 @@ Read only what a task needs.
   and `index.json`, one entry per page with its `id`, `kind`, `title`, a
   one-line `summary` and its `tokens`. Read `index.json`, pick pages by
   title and summary, and fetch only those. In a checkout,
-  `python3 tools/language_docs.py --bundle <dir>` builds it, and
+  `python3 tools/docs/language_docs.py --bundle <dir>` builds it, and
   [documentation](documentation.md) describes it. `llms.txt` at the
   repository's root links the primer and the area pages.
 - **Errors.** Each rule has a page named after its ID, such as

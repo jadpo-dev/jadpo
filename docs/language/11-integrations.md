@@ -5376,7 +5376,7 @@ connections: {
   (`jadpo_std::receiving::wrangler_queues`, as JSON). The setting names
   are Wrangler's own: `jadpo build` writes them into the
   Wrangler file, and Wrangler's `deploy --dry-run`, pinned in
-  `tools/workers/`, accepts it without a warning.
+  `tools/fixtures/workers/`, accepts it without a warning.
 - **Natively.** A server off Workers can't receive the binding: it reads
   no message from the queue, only the parked ones an operator retried.
   A native deployable that runs `Trigger.subscribers`, where the app's

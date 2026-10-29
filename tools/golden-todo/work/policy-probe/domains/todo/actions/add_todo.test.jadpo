@@ -1,0 +1,28 @@
+use todo/entities { User }
+use todo/types { CreateTodo, TodoView }
+use todo/failures { DueDateInPast }
+use todo/fixtures { alice }
+
+test "CREATE-003 rejects a past due date without storing a todo" {
+    clock: "2026-01-15T12:00:00Z"
+    var owner: User = alice()
+    assert add_todo(
+        CreateTodo {
+            title: "Late"
+            due_at: "2026-01-15T11:59:59Z"
+        },
+        Principal.user(owner)
+    ) fails DueDateInPast
+}
+
+test "CREATE-004 omitted due date stays none" {
+    clock: "2026-01-15T12:00:00Z"
+    var owner: User = alice()
+    var item: TodoView = attempt add_todo(
+        CreateTodo {
+            title: "No deadline"
+        },
+        Principal.user(owner)
+    )
+    assert item.due_at == none
+}

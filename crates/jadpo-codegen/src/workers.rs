@@ -29,14 +29,14 @@
 //!   a fresh invocation through the loopback `ctx.exports` gives its
 //!   `JadpoHandOn` (chunk 8.4b), which follows whatever name `wrangler
 //!   deploy --name` or `--env` gives it. Wrangler's own `deploy
-//!   --dry-run`, pinned in `tools/workers/`, accepts the file without a
+//!   --dry-run`, pinned in `tools/fixtures/workers/`, accepts the file without a
 //!   warning.
 
 use std::path::Path;
 
 /// The compatibility date a Worker runs under: the Workers runtime's
 /// behaviour as of this date, which the Workers host is tested at under
-/// the workerd pinned in `tools/workers/` (1.20261023.1).
+/// the workerd pinned in `tools/fixtures/workers/` (1.20261023.1).
 pub const COMPATIBILITY_DATE: &str = "2026-10-01";
 
 /// The shim's file: the Wrangler file's main module.

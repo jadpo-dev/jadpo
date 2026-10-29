@@ -1,0 +1,1 @@
+ALTER TABLE "todo" ALTER COLUMN "reminder_revision" SET DATA TYPE bigint;

@@ -1,6 +1,6 @@
 //! workerd, Cloudflare's own Workers runtime, for the tests that run a
 //! Worker (docs/compiler-runtime.md §2.6, "The Workers host"; chunks 8.2a
-//! and 8.2e): the release pinned in `tools/workers/package-lock.json`,
+//! and 8.2e): the release pinned in `tools/fixtures/workers/package-lock.json`,
 //! installed there by `npm ci --ignore-scripts` (the platform's package
 //! carries the binary), never globally, and found by every test that needs
 //! it through [`workerd`]. The Workers host's own tests include this file
@@ -9,7 +9,7 @@
 //! Tests in several processes and threads ask at once (the gate runs the
 //! `compiled` and `wasm32` groups side by side), and `npm ci` empties
 //! `node_modules` before it fills it, so the check and the install are
-//! made under one lock across processes, `tools/workers/.install.lock`:
+//! made under one lock across processes, `tools/fixtures/workers/.install.lock`:
 //! the first to find the pinned release missing installs it, and every
 //! other waits and then finds it. An install that leaves no binary is
 //! tried again, since npm skips a platform package it couldn't fetch, an
@@ -18,7 +18,7 @@
 //! Wrangler is pinned beside it (chunk 8.2k), installed by the same `npm
 //! ci`, so a test checks a Wrangler file `jadpo build` writes with
 //! Wrangler's own `deploy --dry-run` ([`wrangler`]), kept off the network
-//! by `tools/workers/offline.mjs`.
+//! by `tools/fixtures/workers/offline.mjs`.
 
 use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
@@ -27,13 +27,13 @@ use std::process::Command;
 /// How many times `npm ci` is run before the install is given up.
 const ATTEMPTS: usize = 3;
 
-/// `tools/workers/`, from the crate this file is compiled into.
+/// `tools/fixtures/workers/`, from the crate this file is compiled into.
 fn tools() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/workers")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/fixtures/workers")
 }
 
 /// workerd's binary: the one `JADPO_WORKERD` names, else the pinned
-/// release in `tools/workers/`, installed there first when it isn't, by
+/// release in `tools/fixtures/workers/`, installed there first when it isn't, by
 /// one process at a time.
 pub fn workerd() -> Result<PathBuf, String> {
     if let Ok(path) = std::env::var("JADPO_WORKERD") {
@@ -43,7 +43,7 @@ pub fn workerd() -> Result<PathBuf, String> {
 }
 
 /// The pinned workerd's binary, with Wrangler beside it, installed into
-/// `tools/workers/` first when either isn't, by one process at a time.
+/// `tools/fixtures/workers/` first when either isn't, by one process at a time.
 fn install() -> Result<PathBuf, String> {
     let tools = tools();
     let wrangler = pinned(&tools, "wrangler")?;
@@ -53,10 +53,13 @@ fn install() -> Result<PathBuf, String> {
         .write(true)
         .truncate(false)
         .open(tools.join(".install.lock"))
-        .map_err(|error| format!("tools/workers/.install.lock can't be opened: {error}"))?;
+        .map_err(|error| {
+            format!("tools/fixtures/workers/.install.lock can't be opened: {error}")
+        })?;
     // Held until this returns: released when `lock` is dropped.
-    lock.lock()
-        .map_err(|error| format!("tools/workers/.install.lock can't be locked: {error}"))?;
+    lock.lock().map_err(|error| {
+        format!("tools/fixtures/workers/.install.lock can't be locked: {error}")
+    })?;
     if let Some(found) = installed(&tools, &pinned, &wrangler) {
         return Ok(found);
     }
@@ -68,7 +71,7 @@ fn install() -> Result<PathBuf, String> {
             .output()
             .map_err(|error| {
                 format!(
-                    "npm didn't run: workerd is installed with Node's npm into tools/workers/: {error}"
+                    "npm didn't run: workerd is installed with Node's npm into tools/fixtures/workers/: {error}"
                 )
             })?;
         if let Some(found) = installed(&tools, &pinned, &wrangler) {
@@ -82,14 +85,14 @@ fn install() -> Result<PathBuf, String> {
         );
     }
     Err(format!(
-        "`npm ci` in tools/workers/ gave no workerd {pinned} for this platform in {ATTEMPTS} tries; the last ended {said}"
+        "`npm ci` in tools/fixtures/workers/ gave no workerd {pinned} for this platform in {ATTEMPTS} tries; the last ended {said}"
     ))
 }
 
 /// Wrangler's command line, `node_modules/wrangler/bin/wrangler.js` in
-/// `tools/workers/`, at the release `tools/workers/package.json` pins,
+/// `tools/fixtures/workers/`, at the release `tools/fixtures/workers/package.json` pins,
 /// installed with workerd when it isn't yet; and the module that keeps it
-/// off the network, `tools/workers/offline.mjs`, for Node's `--import`.
+/// off the network, `tools/fixtures/workers/offline.mjs`, for Node's `--import`.
 // The Workers host's tests, which include this file by its path, check no
 // Wrangler file.
 #[allow(dead_code)]
@@ -102,18 +105,18 @@ pub fn wrangler() -> Result<(PathBuf, PathBuf), String> {
     ))
 }
 
-/// The release of `package` `tools/workers/package.json` pins.
+/// The release of `package` `tools/fixtures/workers/package.json` pins.
 fn pinned(tools: &Path, package: &str) -> Result<String, String> {
     let manifest = fs::read_to_string(tools.join("package.json"))
-        .map_err(|error| format!("tools/workers/package.json can't be read: {error}"))?;
+        .map_err(|error| format!("tools/fixtures/workers/package.json can't be read: {error}"))?;
     let manifest: serde_json::Value = serde_json::from_str(&manifest)
-        .map_err(|error| format!("tools/workers/package.json isn't JSON: {error}"))?;
+        .map_err(|error| format!("tools/fixtures/workers/package.json isn't JSON: {error}"))?;
     manifest
         .get("dependencies")
         .and_then(|dependencies| dependencies.get(package))
         .and_then(serde_json::Value::as_str)
         .map(str::to_string)
-        .ok_or_else(|| format!("tools/workers/package.json names no {package} release"))
+        .ok_or_else(|| format!("tools/fixtures/workers/package.json names no {package} release"))
 }
 
 /// The version of the package installed in `folder`, from its

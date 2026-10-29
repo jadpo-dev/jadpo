@@ -229,7 +229,7 @@ language](../cli-design-language.md)). "Jadpo: Open Generated File" lists
 the readable files `jadpo check` wrote in `build/` (not `build/rust/` or
 `build/target/`), grouped by folder, opens the one chosen, and runs
 `jadpo check` again from its refresh button. The highlighting grammar is
-written by hand and `tools/editor_grammar.py`, part of `tools/verify.py`,
+written by hand and `tools/checks/editor_grammar.py`, part of `tools/verify.py`,
 fails when it leaves out or adds a word the lexer reserves. Install,
 settings and commands are in `editors/vscode/README.md`. Each release
 packages the extension at the release's version and publishes it to the
@@ -1222,7 +1222,7 @@ $ jadpo build
   takes letters, digits and dashes, at most 63 of them with the
   deployable's kept whole (`23-repair-cafe-kiosk`); `main`, the
   shim; `compatibility_date`, the date the Workers host is tested at under
-  the workerd pinned in `tools/workers/` (2026-10-01); `no_bundle` and
+  the workerd pinned in `tools/fixtures/workers/` (2026-10-01); `no_bundle` and
   `find_additional_modules`, with a rule for each kind of file (`.mjs` and
   `.js` as ES modules, `.wasm` as compiled WebAssembly, the latter with
   `fallthrough: false`, since Wrangler warns of a rule that hides its own
@@ -1256,7 +1256,7 @@ $ jadpo build
   and its `dead_letter_queue`; and that dead-letter queue is
   a consumer too, `max_retries` 100 and none of its own, whose messages
   the Worker parks for an operator (area 11). Wrangler's own `deploy
-  --dry-run`, pinned in `tools/workers/`, accepts the file with no
+  --dry-run`, pinned in `tools/fixtures/workers/`, accepts the file with no
   account and no warning, run in the tests with every network
   connection refused.
 - **The build stamp.** Its target is `wasm`; the module holds the stamp as

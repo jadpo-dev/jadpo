@@ -1,0 +1,7 @@
+/// Values consumed by the provider's fixed reminder template.
+public type SendReminder = Object {
+    to: Email
+    title: ReminderTitle
+    todo_id: Uuid
+    revision: Int
+}

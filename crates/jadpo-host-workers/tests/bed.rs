@@ -2,7 +2,7 @@
 //! runtime, on this machine (docs/compiler-runtime.md §2.6, "The Workers
 //! host"; chunk 8.2a): the probe Worker (examples/probe.rs) built for
 //! wasm32 and bound by wasm-bindgen's library at the lock's release, run by
-//! the workerd pinned in tools/workers/ (installed there by `npm ci` the
+//! the workerd pinned in tools/fixtures/workers/ (installed there by `npm ci` the
 //! first time a bed starts, never globally), beside the servers it
 //! reaches: an echo over TCP, the same behind TLS signed by an authority
 //! workerd is told to trust, and again by one it isn't, HTTP over plain
@@ -86,7 +86,8 @@ impl Bed {
         std::fs::write(dir.join("worker.mjs"), SHIM).expect("the shim");
         std::fs::write(dir.join("authority.pem"), &trusted.root_pem).expect("the authority");
         std::fs::copy(
-            root.join("tools/workers").join("ratelimit-binding.mjs"),
+            root.join("tools/fixtures/workers")
+                .join("ratelimit-binding.mjs"),
             dir.join("ratelimit-binding.mjs"),
         )
         .expect("the stand-in rate-limiting binding");
@@ -159,7 +160,7 @@ impl Bed {
 /// machine through a network that trusts the test's authority, given two
 /// text bindings, a Hyperdrive binding whose service is the echo on
 /// `echo`, as a database's would be its server, and three stand-ins for
-/// Cloudflare's rate-limiting binding (tools/workers/ratelimit-binding.mjs):
+/// Cloudflare's rate-limiting binding (tools/fixtures/workers/ratelimit-binding.mjs):
 /// one allowing a request a minute, one that throws, and one that never
 /// answers (chunk 8.4b).
 fn config(port: u16, https: u16, echo: u16) -> String {
@@ -279,7 +280,7 @@ fn probe(root: &Path) -> PathBuf {
 #[path = "../../jadpo-test/src/workerd_install.rs"]
 mod workerd_install;
 
-/// workerd: `JADPO_WORKERD`, else the one pinned in tools/workers/,
+/// workerd: `JADPO_WORKERD`, else the one pinned in tools/fixtures/workers/,
 /// installed there by `npm ci` when it isn't yet, one process at a time.
 fn workerd() -> PathBuf {
     workerd_install::workerd().unwrap_or_else(|why| panic!("{why}"))

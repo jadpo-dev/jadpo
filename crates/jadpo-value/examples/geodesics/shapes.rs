@@ -1,5 +1,5 @@
 //! Area 20's predicates and shapes (chunk 5.5u3) against PostGIS's answers,
-//! `shapes.tsv` beside this file, which tools/geo_cases.py writes from a
+//! `shapes.tsv` beside this file, which tools/references/geo_cases.py writes from a
 //! PostGIS server and says how: `geo.intersects`, `contains` (with a
 //! `BoundingBox` and a `Circle`), `within` (with `distance:`), `centroid`
 //! and `bounding_box`, each called through `jadpo_value::run` as both
@@ -9,7 +9,7 @@
 //! digest of every answer, to the same digits.
 //!
 //! A yes or no must be PostGIS's, or the page's where the file says the two
-//! part (tools/geo_cases.py lists them and why). A centroid must be within 10⁻⁹ of a
+//! part (tools/references/geo_cases.py lists them and why). A centroid must be within 10⁻⁹ of a
 //! degree of `ST_Centroid(x, false)`'s, measured as the angle between the
 //! two, so a pole's longitude doesn't count; a box's sides within 10⁻⁶ of
 //! a degree of the box round PostGIS's points every 100 m along the shape.
