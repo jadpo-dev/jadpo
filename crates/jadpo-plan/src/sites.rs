@@ -99,6 +99,11 @@ pub enum Decoded {
     /// `config.<name>`: the number of the setting in the plan's settings;
     /// `None` when it has none, which the checker rules out.
     Config(Option<u32>),
+    /// A `crypto` call's `key:` (area 19, chunk 10.3d): where the key
+    /// comes from, decided here once so neither executor tells it by the
+    /// site's node; `None` for anything but a key setting or a field that
+    /// holds a key, which the checker rules out.
+    Key(Option<KeySource>),
     /// `*` or `/` of an amount of money by a number: how the result is
     /// rounded to a whole minor unit, the amount's type's `rounding:`
     /// (area 19).
@@ -135,6 +140,21 @@ pub enum Decoded {
     /// Something a later area builds, as written up to its arguments or
     /// block: `query open_todos`, `Todo.update`.
     Written(String),
+}
+
+/// Where a `crypto` call's key comes from (area 19, chunk 10.3d). Either
+/// way the executor passes one opaque key value, which the runtime turns
+/// into the key ring the operation runs with.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum KeySource {
+    /// `key: config.<name>`: the key setting's key, by the setting's
+    /// number, as the program started with it.
+    Setting(u32),
+    /// `key: device.signing_key`: the key the field `name` of the value
+    /// the site's receiver works out to holds, read as any field is. Only
+    /// an encrypted field will hold one, and those aren't built yet (the
+    /// roadmap's "After the first build", item 3).
+    Field { name: String },
 }
 
 /// A `batches.each` call as its site decodes it, before the plan numbers
@@ -725,14 +745,38 @@ impl Decoder<'_> {
 
     /// Every site of `body` (in the file whose text is `text`), decoded.
     pub fn body(&mut self, body: &Body, text: &str) -> Vec<SitePlan> {
+        let keys = key_sites(body);
         body.sites
             .iter()
             .enumerate()
             .map(|(index, site)| SitePlan {
                 anchor: anchor(self.types, body, site, text),
-                decoded: self.site(body, index as u32, site, text),
+                decoded: if keys.contains(&(index as u32)) {
+                    Decoded::Key(self.key(site))
+                } else {
+                    self.site(body, index as u32, site, text)
+                },
             })
             .collect()
+    }
+
+    /// Where the key a `crypto` call's `key:` is given comes from: a key
+    /// setting, or a field whose type is a key type.
+    fn key(&self, site: &Site) -> Option<KeySource> {
+        match &site.node {
+            Node::Expr(Expr::Config { field }) => (self.setting)(field).map(KeySource::Setting),
+            Node::Expr(Expr::Field { field, .. })
+                if self
+                    .types
+                    .chain(&site.ty)
+                    .is_some_and(|(builtin, _)| builtin.is_key()) =>
+            {
+                Some(KeySource::Field {
+                    name: self.types.field_name(field).to_string(),
+                })
+            }
+            _ => None,
+        }
     }
 
     fn site(&mut self, body: &Body, index: u32, site: &Site, text: &str) -> Decoded {
@@ -1078,6 +1122,34 @@ impl Decoder<'_> {
             _ => Decoded::Nothing,
         }
     }
+}
+
+/// The sites of `body` given as a standard operation's key, its
+/// parameter of a key type (area 19): each `crypto` call's `key:`.
+fn key_sites(body: &Body) -> Vec<u32> {
+    body.sites
+        .iter()
+        .filter_map(|site| match &site.node {
+            Node::Expr(Expr::Call {
+                callee: Callee::Std(op),
+                args,
+                ..
+            }) => Some(
+                op.operation()
+                    .params
+                    .iter()
+                    .zip(args)
+                    .filter_map(|(param, arg)| match param.kind {
+                        jadpo_std::Kind::Builtin(builtin) if builtin.is_key() => {
+                            arg.map(|arg| arg.0)
+                        }
+                        _ => None,
+                    }),
+            ),
+            _ => None,
+        })
+        .flatten()
+        .collect()
 }
 
 /// What a site is written as, up to its arguments or its block: what a

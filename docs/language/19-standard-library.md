@@ -5545,9 +5545,11 @@ a `LocalisedText` are each stored as that JSON in one `jsonb` column.
   (`json.write` and `json.read`) and no storage, the secret rule winning
   over the contract's "never". Code never makes one: building a key type
   from a value is `type.constructor_input`. Each executor gives the
-  operation the key its setting holds, by the setting's number, never a
-  value code could hold (the interpreter's `Program` key rings and
-  `jadpo_runtime::config::key_ring`; a ring prints as `KeyRing { .. }`).
+  operation one opaque key value, from the source the plan decides for
+  the call (the setting now, an encrypted field once keys held as data
+  arrive), which prints as `<key>`; only the runtime turns it into the
+  key it holds ([compiler-runtime §2.5](../compiler-runtime.md#25-executors),
+  "A key as a value").
 - **The sealed format,** version 1: a version byte, an algorithm byte (1,
   XChaCha20-Poly1305), the key's identity (4 bytes), the 24-byte random
   nonce, the ciphertext and its 16-byte tag. The associated data is the

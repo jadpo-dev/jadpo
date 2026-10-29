@@ -197,6 +197,7 @@ const EFFECTS_ONLY: &[(&str, &str)] = &[
     ("is_crypto", "tells `crypto` apart"),
     ("reads_clock", "gives `verify_jwt` the clock"),
     ("KeyRing", "holds the key a `crypto` call's `key:` names"),
+    ("Key::Held", "opens a key held as data"),
     (
         "verify_jwt_as",
         "reads a token's claims with the plan's codec",
