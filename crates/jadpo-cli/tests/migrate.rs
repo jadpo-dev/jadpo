@@ -641,3 +641,116 @@ fn a_query_that_sorts_first_changes_no_index() {
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
 }
+
+/// A tenant's company and a project of it, which `shared` says every
+/// company shares.
+fn tenant_project(shared: bool) -> String {
+    let tenant = if shared {
+        "\n        tenant: Tenancy.shared"
+    } else {
+        ""
+    };
+    format!(
+        r#"use planning/entities {{ Company }}
+
+entity Project {{
+    id: Uuid
+    company_id: Company.id {{
+        on_delete: OnDelete.cascade
+    }}
+    name: Text {{
+        unique: true
+    }}
+
+    policy: {{
+        read: [Access.authenticated]{tenant}
+    }}
+}}
+"#
+    )
+}
+
+/// A unique rule on a tenant's records holds within its tenant (area 9,
+/// "A unique rule holds within its tenant"): a key that didn't hold the
+/// tenancy is dropped and made again with its column, which needs no
+/// decision, since a key with more columns refuses nothing the old one
+/// allowed.
+#[test]
+fn a_unique_key_moved_within_the_tenant_is_made_again_without_a_decision() {
+    let root = folder("tenant-key");
+    write(
+        &root,
+        "app.jadpo",
+        "use planning/entities { Person }\n\napplication {}\n\nprincipal {\n    user: {\n        subject: Person.handle\n    }\n}\n",
+    );
+    write(
+        &root,
+        "authentication.jadpo",
+        "authentication {\n    api_token: {}\n}\n",
+    );
+    write(
+        &root,
+        "policy.jadpo",
+        "use planning/entities { Company }\n\npolicy {\n    tenant: Company\n}\n",
+    );
+    write(
+        &root,
+        "domains/planning/entities/person.jadpo",
+        "entity Person {\n    id: Uuid\n    handle: Text {\n        unique: true\n    }\n\n    policy: {\n        read: [id]\n        tenant: Tenancy.shared\n    }\n}\n",
+    );
+    write(
+        &root,
+        "domains/planning/types/role.jadpo",
+        "type Role = Enum {\n    owner\n}\n",
+    );
+    write(
+        &root,
+        "domains/planning/entities/company.jadpo",
+        "use planning/types { Role }\n\nentity Company {\n    id: Uuid\n\n    policy: {\n        read: [Role.owner]\n    }\n}\n",
+    );
+    write(
+        &root,
+        "domains/planning/entities/membership.jadpo",
+        "use planning/entities { Company, Person }\nuse planning/types { Role }\n\nentity Membership {\n    id: Uuid\n    company_id: Company.id {\n        on_delete: OnDelete.cascade\n    }\n    person_id: Person.id {\n        on_delete: OnDelete.cascade\n    }\n    role: Role\n\n    membership: {\n        scope: company_id\n        member: person_id\n        role: role\n    }\n\n    policy: {\n        read: [person_id]\n    }\n}\n",
+    );
+    const PROJECT: &str = "domains/planning/entities/project.jadpo";
+    write(&root, PROJECT, &tenant_project(true));
+    let first = jadpo(&root, &["migrate", "new", "initial"]);
+    assert_eq!(first.code, 0, "{}{}", first.stdout, first.stderr);
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}", checked.stdout);
+    // The projects now belong to their company.
+    write(&root, PROJECT, &tenant_project(false));
+    let before = jadpo(&root, &["check"]);
+    assert!(
+        before.stdout.contains("rule: migration.out_of_date"),
+        "{}",
+        before.stdout
+    );
+    let moved = jadpo(&root, &["migrate", "new", "names_within_company"]);
+    assert_eq!(moved.code, 0, "{}{}", moved.stdout, moved.stderr);
+    assert!(
+        moved
+            .stdout
+            .contains("+ unique  (name, company_id)  for Project.name"),
+        "{}",
+        moved.stdout
+    );
+    let latest = migrations(&root).pop().expect("a migration");
+    assert!(
+        !root
+            .join(format!("database/migrations/{latest}/changes.jadpo"))
+            .exists(),
+        "no decision to make"
+    );
+    let sql = fs::read_to_string(root.join(format!("database/migrations/{latest}/postgres.sql")))
+        .expect("sql");
+    assert!(
+        sql.contains(
+            "ALTER TABLE \"project\" DROP CONSTRAINT \"project_name_key\";\nALTER TABLE \"project\" ADD CONSTRAINT \"project_name_key\" UNIQUE (\"name\", \"company_id\");"
+        ),
+        "{sql}"
+    );
+    let after = jadpo(&root, &["check"]);
+    assert_eq!(after.code, 0, "{}", after.stdout);
+}

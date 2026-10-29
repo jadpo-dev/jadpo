@@ -56,7 +56,8 @@ principal {
 }
 ```
 
-- `subject:` names a unique field of a stored entity. Authentication looks
+- `subject:` names a unique field of a stored entity, one every tenant
+  shares when the application has a tenant (area 9). Authentication looks
   the caller up by it on every check that needs current data.
 - `active:` is a condition on that entity, naming its fields as a query
   does. A caller whose record is not active is refused (see Failures

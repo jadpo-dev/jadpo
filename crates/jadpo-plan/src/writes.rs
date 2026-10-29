@@ -21,7 +21,7 @@
 use std::collections::HashMap;
 
 use jadpo_check::data::{DataModel, EntityModel, foreign_key, unique_constraint};
-use jadpo_graph::body::{BinaryOp, Body, Callee, Expr, Node, SiteId, UnaryOp};
+use jadpo_graph::body::{BinaryOp, Body, Callee, Expr, LocalKind, Node, SiteId, Stmt, UnaryOp};
 use jadpo_graph::schema::object_name;
 use jadpo_graph::{Key, Kind, TypeRef};
 use jadpo_std::read::MissingValue;
@@ -210,19 +210,18 @@ impl Planner<'_> {
                 }
                 // The new record's grants hold of its values, in the
                 // same statement (area 9).
-                let condition =
-                    self.policy(&mut writing, entity_model, Effect::Create, &Row::New(&new))?;
+                let founds = self.founds(body, entity_model, set);
+                let row = Row::New {
+                    values: &new,
+                    founds,
+                };
+                let condition = self.policy(&mut writing, entity_model, Effect::Create, &row)?;
                 // A field whose own `policy:` narrows who may set it, set
                 // by the request: setting nothing is never refused.
                 let mut narrowed = Vec::new();
                 for (name, _) in &given {
-                    let Some(who) = self.field_policy(
-                        &mut writing,
-                        entity_model,
-                        name,
-                        Effect::Create,
-                        &Row::New(&new),
-                    )?
+                    let Some(who) =
+                        self.field_policy(&mut writing, entity_model, name, Effect::Create, &row)?
                     else {
                         continue;
                     };
@@ -831,6 +830,70 @@ impl Planner<'_> {
 
     /// The constraint the database knows a rule by: a unique field's or a
     /// named unique rule's key, or a reference's foreign key.
+    /// Whether a create of `entity` setting `set` founds a tenant (area 9,
+    /// "Tenancy"): it is a membership scoped to the tenant, in the action
+    /// that created the tenant's record, whose scope it sets from that
+    /// record's `id`. A `var` holding the create, or the create itself,
+    /// names the record; it runs before the membership's create whenever
+    /// that does, since the variable is in scope there.
+    fn founds(&self, body: &Body, entity: &EntityModel, set: &[(Key, SiteId)]) -> bool {
+        let Some(scope) = self
+            .access
+            .membership(&entity.name)
+            .and_then(|held| held.scope.as_deref())
+        else {
+            return false;
+        };
+        let Some(tenancy) = self
+            .access
+            .entity(&entity.name)
+            .and_then(|policy| policy.tenancy.as_ref())
+            .filter(|tenancy| tenancy.via == scope)
+        else {
+            return false;
+        };
+        let Some((_, value)) = set
+            .iter()
+            .find(|(key, _)| self.types.field_name(key) == scope)
+        else {
+            return false;
+        };
+        let Node::Expr(Expr::Field { receiver, field }) = &body.site(*value).node else {
+            return false;
+        };
+        if self.types.field_name(field) != "id" {
+            return false;
+        }
+        let mut record = *receiver;
+        if let Node::Expr(Expr::Local(local)) = &body.site(record).node {
+            if body.local(*local).kind != LocalKind::Var {
+                return false;
+            }
+            let declared = body.sites.iter().find_map(|site| match &site.node {
+                Node::Stmt(Stmt::Var {
+                    local: Some(at),
+                    value: Some(value),
+                }) if at == local => Some(*value),
+                _ => None,
+            });
+            let Some(declared) = declared else {
+                return false;
+            };
+            record = declared;
+        }
+        if let Node::Expr(Expr::Attempt {
+            inner: Some(inner), ..
+        }) = &body.site(record).node
+        {
+            record = *inner;
+        }
+        matches!(
+            &body.site(record).node,
+            Node::Expr(Expr::Write { entity, op: WriteOp::Create, .. })
+                if self.types.name(entity) == tenancy.entity
+        )
+    }
+
     fn constraint(&self, rule: &Key) -> Option<String> {
         let name = self.types.name(rule).to_string();
         let (holder, part) = name.split_once('.')?;

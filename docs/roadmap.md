@@ -304,25 +304,8 @@ What the first build's independent review found that this phase didn't
 fix, in order. Each chunk keeps every test passing interpreted and
 compiled.
 
-- [ ] **10.3a A unique rule within a tenant** `opus · high`, **needs a
-  maintainer** for the language decision first: a `unique:` rule on a
-  tenant-scoped entity is checked across every tenant, so a `conflict:`
-  tells one tenant what another stores (area 9, "Tenancy"). Recommendation:
-  such a rule holds within its tenant, the compiler adding the tenancy
-  reference to the key, as a reference already stays inside its tenant;
-  an entity shared by every tenant keeps one key. Done when area 9 says
-  so with a `check` block, the migration's key holds the tenancy column,
-  and two tenants storing the same value both succeed while a second in
-  one tenant is that tenant's conflict.
-- [ ] **10.3b Founding only a new tenant** `opus · high`, **needs a maintainer**
-  for the language decision first: once a tenant's last membership is
-  deleted outright, anyone signed in can "found" it again and read what
-  it holds, since founding checks only that no membership row exists
-  (area 9, "Tenancy": "only while nobody belongs to the company yet").
-  Recommendation: a membership founds its tenant only in the action that
-  creates the tenant record. Done when area 9 says so, and a stranger
-  seating themselves in a tenant whose members have all left gets 403
-  while founding a new company still seats its founder.
+- [x] **10.3a A unique rule within a tenant**: [area 9](language/09-policy.md), "A unique rule holds within its tenant".
+- [x] **10.3b Founding only a new tenant**: [area 9](language/09-policy.md), "Founding a tenant".
 - [ ] **10.3c One record of what each invocation did** `opus · high`,
   before item 4: observation comes through three narrow channels
   (`serve::Observer`'s answered and ticked, dev's `Host::call_log`,

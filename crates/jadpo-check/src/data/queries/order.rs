@@ -143,7 +143,7 @@ impl Reader<'_> {
                 .next("Write `order: [<Entity>.<field> asc]`"),
             );
         }
-        tie_break(entity, &mut out);
+        tie_break(&self.entities, entity, &mut out);
         out
     }
 

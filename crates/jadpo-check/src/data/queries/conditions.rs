@@ -631,18 +631,28 @@ impl Reader<'_> {
             // A line was wrong, and has been reported.
             return;
         }
+        // On a tenant's records each key holds the tenancy reference too
+        // (area 9, "A unique rule holds within its tenant").
+        let tested = |field: &str| pinned.contains(field);
         let unique = pinned.contains("id")
-            || entity
-                .fields
-                .iter()
-                .any(|f| f.unique && pinned.contains(f.name.as_str()))
-            || entity
-                .unique
-                .iter()
-                .any(|rule| rule.fields.iter().all(|f| pinned.contains(f.as_str())));
+            || entity.fields.iter().any(|f| {
+                f.unique
+                    && self
+                        .entities
+                        .key_decides(entity, &[f.name.as_str()], &tested)
+            })
+            || entity.unique.iter().any(|rule| {
+                let fields: Vec<&str> = rule.fields.iter().map(String::as_str).collect();
+                self.entities.key_decides(entity, &fields, &tested)
+            });
         if unique {
             return;
         }
+        let within = self.entities.unique_within(&entity.name);
+        let with_tenancy = |keys: String, fields: &[String]| match &within {
+            Some(via) if !fields.contains(via) => format!("{keys} with `{}.{via}`", entity.name),
+            _ => keys,
+        };
         let at = sections
             .filters
             .first()
@@ -654,13 +664,18 @@ impl Reader<'_> {
                 .fields
                 .iter()
                 .filter(|f| f.unique && f.name != "id")
-                .map(|f| format!("`{}.{}`", entity.name, f.name)),
+                .map(|f| {
+                    with_tenancy(
+                        format!("`{}.{}`", entity.name, f.name),
+                        std::slice::from_ref(&f.name),
+                    )
+                }),
         );
         keys.extend(
             entity
                 .unique
                 .iter()
-                .map(|rule| format!("`{}`'s fields", rule.name)),
+                .map(|rule| with_tenancy(format!("`{}`'s fields", rule.name), &rule.fields)),
         );
         self.out.push(
             Diagnostic::new(

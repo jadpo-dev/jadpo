@@ -1473,6 +1473,36 @@ pub fn policy_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> O
         }
         (None, None) => {}
     }
+    // A caller is found by their subject across the whole application, and
+    // a tenant's unique rules hold within each tenant (area 9).
+    if let Some(tenancy) = policy.tenancy.as_ref().filter(|t| t.via != "id") {
+        let identity = crate::identity::identity(db, project);
+        for variant in identity.variants.iter().filter(|v| v.entity == entity.name) {
+            if variant.subject == tenancy.via {
+                continue;
+            }
+            problems.push(
+                Diagnostic::new(
+                    &rule::TYPE_PRINCIPAL_SUBJECT_NOT_UNIQUE,
+                    format!(
+                        "`{}.{}` doesn't identify one {}",
+                        entity.name,
+                        variant.subject,
+                        variant.kind.name()
+                    ),
+                )
+                .at(lookup_name_span(&path, &decl), "belongs to a tenant")
+                .reason(format!(
+                    "A caller is looked up by its subject, so the subject names exactly one record: `{}` belongs to the tenant, so its unique rules hold within each `{}`, and `{}.{}` is unique only there.",
+                    entity.name, tenancy.entity, entity.name, variant.subject
+                ))
+                .next(format!(
+                    "Add `tenant: Tenancy.shared` to `{}`'s `policy:`",
+                    entity.name
+                )),
+            );
+        }
+    }
     // Each field's own `policy:` (area 9, "Field restrictions").
     for (field, member) in field_policies(&decl, entity) {
         places.push((format!("field {field}"), node_span(&path, member.syntax())));
@@ -1966,6 +1996,20 @@ pub fn entity_policy<'db>(
     policy_read(db, project, name)
         .as_ref()
         .map(|read| Arc::clone(&read.model))
+}
+
+/// The tenancy reference the unique rules of the entity called `name`
+/// hold within (area 9, "A unique rule holds within its tenant"): the
+/// compiler adds it to each rule's key. `None` for an entity every tenant
+/// shares, for the tenant itself and when there is no tenant, whose rules
+/// each keep one key.
+pub fn unique_within(db: &dyn Db, project: Project, name: &str) -> Option<String> {
+    entity_policy(db, project, Name::new(db, name.to_string()))
+        .as_ref()?
+        .tenancy
+        .as_ref()
+        .filter(|tenancy| tenancy.via != "id")
+        .map(|tenancy| tenancy.via.clone())
 }
 
 /// Root `policy { }`, resolved, without positions.

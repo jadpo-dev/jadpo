@@ -505,8 +505,10 @@ impl Body<'_> {
                 return;
             }
             // Nothing after a unique field that never changes moves a
-            // record.
-            if field.name == "id" || field.unique {
+            // record, unless its key holds the tenancy too (area 9).
+            if field.name == "id"
+                || crate::data::Entities::new(self.db, self.project).unique_alone(&entity, field)
+            {
                 return;
             }
         }
