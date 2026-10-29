@@ -27,6 +27,7 @@ import functools
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -269,6 +270,13 @@ WORKERD = ('the Workers host under workerd', [('jadpo-host-workers', 'workerd'),
 # `wasm32` group, in cargo's lane beside the step above, since both install
 # workerd into tools/workers/ the first time; it prints the module's size.
 WORKERS_DEPLOYABLE = ('a Workers deployable built and served by workerd', [('jadpo-cli', 'workers')])
+# A released `jadpo` builds outside this checkout (chunk 9.2c): the built
+# binary copied out and run with no Rust on PATH and an empty home and
+# cache, fetching its pinned toolchain and its crates from stand-ins on the
+# loopback address (crates/jadpo-cli/tests/support/rust_dist.rs), then
+# building a native and a Workers deployable, the runtime compiled from
+# nothing. The `compiled` group, beside its other steps; it takes minutes.
+RELEASED = ('a released jadpo builds outside this checkout', [('jadpo-cli', 'released')])
 WORKERS_SHOWN = ('skipped:', 'measured:')
 
 
@@ -422,6 +430,7 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
         name, tests, args = COMPILED
         checks.append(Step(name, 'compiled', tests=modules(tests), args=[*args, '--show-output'],
                            show=COMPILED_SHOWN, postgres=True, env=dict(TEST_RELEASE_PROFILE)))
+        checks.append(Step(RELEASED[0], 'compiled', tests=modules(RELEASED[1])))
         checks.append(Step('golden todo: all 44 native cases', 'compiled',
                            [python, 'tools/golden-todo/run.py', '--targets', 'native'], jadpo=True, postgres=True, lane='cargo',
                            env=dict(TEST_RELEASE_PROFILE), show=True))
@@ -487,7 +496,7 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
     if require_examples:
         coverage.env['JADPO_REQUIRE_EXAMPLES'] = '1'
     # Test files another step runs are left out of `compiler tests`.
-    owned = {test for _, tests in [*own_steps, WORKERD, WORKERS_DEPLOYABLE] for test in modules(tests)}
+    owned = {test for _, tests in [*own_steps, WORKERD, WORKERS_DEPLOYABLE, RELEASED] for test in modules(tests)}
     if full:
         owned |= {test for _, tests, _ in [*postgres, COMPILED] for test in modules(tests)}
     for step in checks:
@@ -794,6 +803,13 @@ def main() -> int:
         help='fail on a built feature no teaching example uses, as the phase\'s examples chunk does '
              '(default: note it)')
     args = parser.parse_args()
+    # `jadpo build` compiles with the cargo `CARGO` names, as cargo sets it
+    # for what it runs, and otherwise fetches the toolchain it pins (chunk
+    # 9.2c). The gate runs its test binaries and tools itself, so it names
+    # the cargo on its PATH, which rust-toolchain.toml pins.
+    found = shutil.which('cargo')
+    if found and not os.environ.get('CARGO'):
+        os.environ['CARGO'] = found
     problems = self_test()
     if problems:
         print('FAILED the gate\'s own check:\n' + indent('\n'.join(problems)))

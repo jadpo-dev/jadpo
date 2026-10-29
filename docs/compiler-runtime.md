@@ -1025,11 +1025,12 @@ only rustc catches.
 **Keeping rustc time down.** The runtime crates are compiled once per
 Jadpo version, target and locale set and cached, so a build compiles
 only the thin application crate. `jadpo build` compiles every project's deployables into
-cargo targets shared by them all, in `jadpo/builds/<version>-<runtime>/`
+cargo targets shared by them all, in `jadpo/builds/<version>-<copy>/`
 of the user's cache folder (`$XDG_CACHE_HOME`, else `~/.cache`, where
 the package cache is; the project's `build/rust/cache/` with neither),
-`<runtime>` a digest of the runtime source's folder, so two copies of
-Jadpo of one version never share one. Its `locales/<digest>/` holds the
+`<copy>` a digest of where the running `jadpo` is, so two copies of
+Jadpo of one version never share one, and one copy keeps its target
+however often it is rebuilt. Its `locales/<digest>/` holds the
 CLDR data a locale set carries, named by a digest of the exported
 files, written under another name and renamed into place, so no build
 reads it half written and identical sets share it. Each build verifies the
@@ -3110,7 +3111,8 @@ pins. Its `main` is one call, `jadpo_host_native::deployable::run`,
 given the program, the build stamp and each store's migrations (their
 names and digests) as constants. `jadpo_codegen::deployable::build` adds
 the two packages to the lock (`cargo update --workspace`) and builds in
-release, `--locked` and offline, with `--remap-path-prefix` for the
+release, `--locked` and offline (the crates fetched first when the
+cargo cache lacks them; §2.8, "What a released `jadpo` builds with"), with `--remap-path-prefix` for the
 workspace, the runtime crates and cargo's home, and `SOURCE_DATE_EPOCH`
 fixed; the binary is copied to `build/target/<deployable>/` beside the
 APIs' documents and failure files. The runtime's half is
@@ -4843,6 +4845,55 @@ release-please's and dist's workflows make releases
   binaryen and esbuild, unpinned, as it builds. No `wasm-opt` pass runs.
   Bit-identical binaries are a goal, not checked yet, and not a
   dependency of incidents.
+- **What a released `jadpo` builds with** (area 14, "A native
+  deployable", and its design notes, "Building outside this checkout"). Nothing
+  is read from where `jadpo` was compiled. jadpo-cli's build script packs
+  the shared and runtime layers' crates (each `Cargo.toml`, without the
+  sections only its own tests read, and its `src/`), with a workspace
+  manifest of their own, into the binary, deflated and named by its
+  digest; `runtime_source::written` writes them into
+  `jadpo/runtime/<version>-<copy>/` of the cache, leaving a file whose
+  bytes are unchanged alone, so cargo's fingerprints keep, and the lock
+  and toolchain file are constants. Unless `CARGO` names a cargo (cargo
+  sets it for what it runs, and `tools/verify.py` sets it to the one on
+  its `PATH`, which `rust-toolchain.toml` pins, for the test binaries and
+  tools it runs), the cargo is `toolchain::ensure`'s: `rustc`, `cargo` and the host's `rust-std`, and
+  wasm32's once a Worker is built, each fetched once into
+  `jadpo/toolchains/<version>-<host>/` from
+  `dist/channel-rust-<version>.toml`'s `.tar.gz` (Rust's own dist server,
+  or `JADPO_RUST_DIST_SERVER`'s). The manifest's SHA-256 is pinned for
+  the default server (`toolchain::MANIFEST_SHA256`, held by a test to the
+  release `rust-toolchain.toml` names) and read from the `.sha256` beside
+  it on another; each archive is hashed as it downloads and checked
+  against the manifest before it is unpacked, through the runtime's gzip
+  reader, each component's files placed as rustup places them, none
+  outside the folder; `.jadpo/<package>-<target>` marks a component
+  unpacked whole, and the folder's lock is held throughout. cargo runs
+  with `RUSTC`, `PATH` and `CARGO_HOME` (the environment's, else
+  `jadpo/cargo/`) pointing there, and the toolchain's `lib/` on the
+  library path (`DYLD_FALLBACK_LIBRARY_PATH` on macOS, `LD_LIBRARY_PATH`
+  elsewhere), as rustup sets it, since the `rust-lld` that links a
+  Worker finds LLVM's library only through it. `deployable::build` tries `cargo update
+  --workspace` and `cargo fetch --locked` for the host's target (and
+  wasm32's) offline first, and only when either fails runs it online,
+  announcing `Fetching the runtime's crates` and counting what cargo
+  downloads, each crate checked against the lock's checksum; the build
+  itself stays offline. Proved (`crates/jadpo-cli/tests/released.rs`, a
+  step of the gate's `compiled` group): the built `jadpo` copied out of
+  the checkout and run with no Rust on `PATH`, no `CARGO` or
+  `CARGO_HOME` and an empty home and cache, against a stand-in dist
+  server (the gate's own pinned toolchain packed as a release, with its
+  manifest and `.sha256`) and a stand-in crates.io (a sparse registry of
+  the lock's crates from the gate's cargo cache, put in crates.io's place
+  by a `.cargo/config.toml` above the projects), both on the loopback
+  address: a native deployable fetches the host's toolchain and the
+  crates, names no path of the checkout and runs; a Workers deployable
+  then fetches wasm32's library alone and writes its module, shim and
+  Wrangler file; a second build fetches nothing and says nothing of
+  fetching. jadpo-cli's own tests check the carried crates are the
+  layers' and nothing else, an archive or manifest whose digest is wrong
+  is refused with nothing installed, and a name leaving the folder or an
+  archive cut short is refused.
 - **The stamp** (build id, commit, modified flag, compiler version,
   deployable, target) is a constant in the binary and on every log event
   (§2.6, "A native deployable").

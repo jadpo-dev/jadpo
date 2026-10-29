@@ -78,28 +78,31 @@ pub fn build(call: &Call) -> Reply {
     let lock = std::fs::read(root.join(jadpo_db::LOCK)).unwrap_or_default();
     let source = stamp::commit(&root);
     let stores = stamp::stores(db, project);
-    let sources = runtime_sources();
-    let (toolchain, runtime_lock) = match (
-        std::fs::read_to_string(sources.join("../rust-toolchain.toml")),
-        std::fs::read(sources.join("../Cargo.lock")),
-    ) {
-        (Ok(toolchain), Ok(lock)) => (toolchain, lock),
-        _ => {
-            return Reply::failed(failed(
-                "This Jadpo can't find its runtime's source".to_string(),
-                format!(
-                    "A deployable is compiled against the source of the runtime this Jadpo was built from, with its lock and toolchain, which should be in `{}`.",
-                    sources.display()
-                ),
+    // The runtime's source and the toolchain come with this Jadpo or into
+    // its cache, never from where it was compiled (chunk 9.2c).
+    let cache = cache(call, &root);
+    let sources = match crate::runtime_source::written(&cache) {
+        Ok(sources) => sources,
+        Err(error) => {
+            return Reply::failed(write_failed(
+                &cache.join("runtime").display().to_string(),
+                &error,
             ));
         }
+    };
+    let wasm = chosen
+        .iter()
+        .any(|deployable| deployable.builds_for() == DeployTarget::Wasm);
+    let toolchain = match toolchain(call, &cache, wasm) {
+        Ok(toolchain) => toolchain,
+        Err(problem) => return Reply::failed(*problem),
     };
     // Every deployable's workspace is under one folder, each compiled into
     // a target shared with every project this Jadpo builds for its host
     // and locale set (docs/compiler-runtime.md §2.5, "Keeping rustc time
     // down"), so the runtime crates compile once for them all.
     let rust = root.join("build/rust");
-    let builds = builds(call, &root, &sources);
+    let builds = cache.join("builds").join(crate::runtime_source::copy_key());
     let cldr = match carried_locales(db, project, &builds) {
         Ok(cldr) => cldr,
         Err(problem) => return Reply::failed(*problem),
@@ -122,17 +125,8 @@ pub fn build(call: &Call) -> Reply {
         (builds.clone(), "/jadpo/builds".to_string()),
         (sources.clone(), "/jadpo/runtime".to_string()),
     ];
-    if let Some(home) = call
-        .environment
-        .var("CARGO_HOME")
-        .map(PathBuf::from)
-        .or_else(|| {
-            call.environment
-                .var("HOME")
-                .map(|home| Path::new(&home).join(".cargo"))
-        })
-    {
-        remap.push((home, "/cargo".to_string()));
+    if let Some(home) = &toolchain.home {
+        remap.push((home.clone(), "/cargo".to_string()));
     }
     let runtime = sources.display().to_string();
     // The variables the deployables' settings read, each once, in the
@@ -142,6 +136,7 @@ pub fn build(call: &Call) -> Reply {
     // instances (area 11's notes, "Decisions", 2026-10-21).
     let caps = jadpo_check::deployables::per_instance(db, project);
     let mut built = Vec::new();
+    let mut crates = 0;
     for deployable in chosen {
         let name = deployable.name.as_str();
         say(&format!("Writing `{name}`"));
@@ -183,8 +178,8 @@ pub fn build(call: &Call) -> Reply {
                 },
                 stores: &stores,
                 runtime: &runtime,
-                toolchain: &toolchain,
-                lock: &runtime_lock,
+                toolchain: crate::runtime_source::TOOLCHAIN,
+                lock: crate::runtime_source::LOCK,
             },
         ) {
             Ok(workspace) => workspace,
@@ -213,9 +208,15 @@ pub fn build(call: &Call) -> Reply {
             remap: &remap,
             epoch,
             cldr: &cldr.folder,
+            cargo: &toolchain.cargo,
+            machine: crate::toolchain::HOST,
+            fetching: &|| crate::run::announce("Fetching the runtime's crates"),
         });
         let compiled = match compiled {
-            Ok(binary) => binary,
+            Ok(compiled) => {
+                crates += compiled.crates;
+                compiled.path
+            }
             Err(error) => {
                 return Reply::failed(failed(
                     format!("`{name}` didn't compile"),
@@ -355,26 +356,164 @@ pub fn build(call: &Call) -> Reply {
         modified: source.modified,
         settings,
         migrations: !stores.is_empty(),
+        rust: toolchain.fetched,
+        crates,
         seconds: elapsed.as_secs_f64(),
     })
 }
 
-/// The folder this Jadpo keeps every project's deployable builds in
-/// (docs/compiler-runtime.md §2.5, "Keeping rustc time down"):
-/// `jadpo/builds/<version>-<runtime>/` in the user's cache folder, as the
-/// package cache is (`$XDG_CACHE_HOME`, else `~/.cache`), `<runtime>` a
-/// digest of the folder of the runtime's source, so two copies of Jadpo
-/// of one version never share a target; with neither variable, the
-/// project's own `build/rust/cache/`.
-fn builds(call: &Call, root: &Path, sources: &Path) -> PathBuf {
-    let Some(cache) = crate::package_cache::home(&call.environment) else {
-        return root.join("build/rust/cache");
+/// Jadpo's cache folder: `jadpo/` in the user's cache folder, as the
+/// package cache's (`$XDG_CACHE_HOME`, else `~/.cache`), absolute; with
+/// neither variable, the project's own `build/rust/cache/`.
+fn cache(call: &Call, root: &Path) -> PathBuf {
+    match crate::package_cache::home(&call.environment) {
+        Some(home) => std::path::absolute(&home).unwrap_or(home).join("jadpo"),
+        None => root.join("build/rust/cache"),
+    }
+}
+
+/// The cargo a build runs, the cargo cache it keeps crates in when it
+/// says which, and what was fetched for it.
+struct Toolchain {
+    cargo: jadpo_codegen::cargo::Cargo,
+    home: Option<PathBuf>,
+    fetched: Option<crate::toolchain::Fetched>,
+}
+
+/// The cargo `jadpo build` runs (chunk 9.2c): the one running this
+/// process's build when there is one (`CARGO`, as this repository's tests
+/// run Jadpo, with the toolchain its `rust-toolchain.toml` pins), else
+/// the pinned toolchain in `cache`, fetched for this host and, when
+/// `wasm`, for wasm32 the first time it is needed. Its crates go in
+/// `CARGO_HOME` when that is set, else in the cache's `cargo/`.
+fn toolchain(call: &Call, cache: &Path, wasm: bool) -> Result<Toolchain, Box<Diagnostic>> {
+    if std::env::var_os("CARGO").is_some() {
+        return Ok(Toolchain {
+            cargo: jadpo_codegen::cargo::Cargo::running(),
+            home: call
+                .environment
+                .var("CARGO_HOME")
+                .map(PathBuf::from)
+                .or_else(|| {
+                    call.environment
+                        .var("HOME")
+                        .map(|home| Path::new(&home).join(".cargo"))
+                }),
+            fetched: None,
+        });
+    }
+    let server = call
+        .environment
+        .var(crate::toolchain::SERVER_VARIABLE)
+        .filter(|server| !server.trim().is_empty())
+        .unwrap_or(crate::toolchain::DEFAULT_SERVER)
+        .trim()
+        .to_string();
+    let installed = crate::toolchain::ensure(cache, wasm, &server, &Said).map_err(|reason| {
+        Box::new(
+            Diagnostic::new(
+                &rule::TOOLCHAIN_FETCH_FAILED,
+                format!(
+                    "Rust {} couldn't be fetched",
+                    crate::toolchain::version()
+                ),
+            )
+            .reason(format!(
+                "`jadpo build` compiles with the Rust toolchain this Jadpo is pinned to, fetched once from `{server}` into `{}`: {reason}",
+                cache.join("toolchains").display()
+            ))
+            .next_for(
+                format!(
+                    "Run `jadpo build` again once `{server}` can be reached, or name a mirror of it in `{}`",
+                    crate::toolchain::SERVER_VARIABLE
+                ),
+                Decider::Human,
+            ),
+        )
+    })?;
+    let home = call
+        .environment
+        .var("CARGO_HOME")
+        .filter(|home| !home.is_empty())
+        .map_or_else(|| cache.join("cargo"), PathBuf::from);
+    let bin = installed.bin();
+    let mut path = std::ffi::OsString::from(bin.as_os_str());
+    if let Some(inherited) = std::env::var_os("PATH") {
+        path.push(if cfg!(windows) { ";" } else { ":" });
+        path.push(inherited);
+    }
+    // The toolchain's own libraries, as rustup gives them: `rust-lld`,
+    // which links a Worker, finds LLVM's library only through them.
+    let (variable, fallback) = if cfg!(target_os = "macos") {
+        ("DYLD_FALLBACK_LIBRARY_PATH", "/usr/local/lib:/usr/lib")
+    } else {
+        ("LD_LIBRARY_PATH", "")
     };
-    let cache = std::path::absolute(&cache).unwrap_or(cache);
-    cache.join("jadpo").join("builds").join(format!(
-        "{VERSION}-{}",
-        digest([sources.as_os_str().as_encoded_bytes()], 12)
-    ))
+    let mut libraries = installed.folder.join("lib").into_os_string();
+    match std::env::var_os(variable).filter(|inherited| !inherited.is_empty()) {
+        Some(inherited) => {
+            libraries.push(":");
+            libraries.push(inherited);
+        }
+        None if !fallback.is_empty() => {
+            libraries.push(":");
+            libraries.push(fallback);
+        }
+        None => {}
+    }
+    let env = vec![
+        ("CARGO_HOME".into(), home.clone().into_os_string()),
+        ("RUSTC".into(), bin.join("rustc").into_os_string()),
+        ("PATH".into(), path),
+        (variable.into(), libraries),
+    ];
+    Ok(Toolchain {
+        cargo: jadpo_codegen::cargo::Cargo {
+            program: bin.join("cargo"),
+            env,
+        },
+        home: Some(home),
+        fetched: installed.fetched,
+    })
+}
+
+/// How a toolchain's fetch is reported: its start announced, and each
+/// archive's bytes on the live line with a bar.
+struct Said;
+
+impl crate::toolchain::Report for Said {
+    fn fetching(&self, words: &str) {
+        crate::run::announce(words);
+    }
+
+    fn progress(&self, words: &str, done: u64, total: Option<u64>) {
+        match total {
+            Some(total) => {
+                crate::run::say(&format!("{words}  {}", of(done, total)));
+                crate::run::progress(Some((done, total)));
+            }
+            None => {
+                crate::run::say(words);
+                crate::run::progress(None);
+            }
+        }
+    }
+}
+
+/// `21.4 of 84.0 MB`: so far, of the total, in the total's unit.
+fn of(done: u64, total: u64) -> String {
+    let total_text = size(total as usize);
+    let unit = total_text
+        .rsplit(' ')
+        .next()
+        .unwrap_or_default()
+        .to_string();
+    let so_far = match unit.as_str() {
+        "MB" => format!("{:.1}", done as f64 / 1_000_000.0),
+        "KB" => format!("{}", (done + 500) / 1_000),
+        _ => done.to_string(),
+    };
+    format!("{so_far} of {total_text}")
 }
 
 /// The first `length` hex digits of the SHA-256 of `parts`, each
@@ -664,6 +803,9 @@ struct Built {
     /// Whether it keeps migrations, which a database must have applied
     /// before it starts.
     migrations: bool,
+    /// The toolchain fetched for it, and how many crates.
+    rust: Option<crate::toolchain::Fetched>,
+    crates: usize,
     seconds: f64,
 }
 
@@ -683,6 +825,9 @@ fn shown(built: Built) -> Reply {
     )];
     if !built.settings.is_empty() {
         shared.push(("settings".to_string(), built.settings.join(", ")));
+    }
+    if let Some(fetched) = fetched(&built) {
+        shared.push(("fetched".to_string(), fetched));
     }
     let one = built.binaries.len() == 1;
     for binary in &built.binaries {
@@ -893,8 +1038,47 @@ fn shown(built: Built) -> Reply {
             "settings",
             Json::array(built.settings.iter().map(String::as_str)),
         ),
+        (
+            "fetched",
+            Json::object([
+                (
+                    "rust",
+                    built.rust.as_ref().map_or(Json::Null, |rust| {
+                        Json::object([
+                            ("version", rust.version.as_str().into()),
+                            (
+                                "targets",
+                                Json::array(rust.targets.iter().map(String::as_str)),
+                            ),
+                            (
+                                "bytes",
+                                i64::try_from(rust.bytes).unwrap_or(i64::MAX).into(),
+                            ),
+                        ])
+                    }),
+                ),
+                ("crates", built.crates.into()),
+            ]),
+        ),
     ]);
     Reply::screen(screen, data)
+}
+
+/// What a build fetched first, for its `fetched` line: `Rust 1.99.0 (147
+/// MB) and 380 crates`, either alone, or nothing.
+fn fetched(built: &Built) -> Option<String> {
+    let rust = built
+        .rust
+        .as_ref()
+        .map(|rust| format!("Rust {} ({})", rust.version, size(rust.bytes as usize)));
+    let crates = (built.crates > 0).then(|| match built.crates {
+        1 => "1 crate".to_string(),
+        count => format!("{count} crates"),
+    });
+    match (rust, crates) {
+        (Some(rust), Some(crates)) => Some(format!("{rust} and {crates}")),
+        (one, other) => one.or(other),
+    }
 }
 
 /// `kiosk`, `kiosk and office`, `kiosk, office and edge`: one fact,
@@ -942,13 +1126,6 @@ fn size(bytes: usize) -> String {
 /// around it (RFC 1952).
 fn gzipped(data: &[u8]) -> usize {
     miniz_oxide::deflate::compress_to_vec(data, 6).len() + 18
-}
-
-/// The folder holding the runtime crates this Jadpo was built from.
-fn runtime_sources() -> PathBuf {
-    let cli = Path::new(env!("CARGO_MANIFEST_DIR"));
-    cli.parent()
-        .map_or_else(|| cli.to_path_buf(), Path::to_path_buf)
 }
 
 /// When the commit at `root` was made, in seconds since 1970.
@@ -1239,6 +1416,8 @@ mod tests {
                 modified: false,
                 settings: Vec::new(),
                 migrations: false,
+                rust: None,
+                crates: 0,
                 seconds: 1.0,
             });
             let Reply::Done {
@@ -1279,6 +1458,79 @@ mod tests {
     }
 
     #[test]
+    fn a_build_that_fetched_says_what_came_and_one_that_didnt_says_nothing() {
+        let built = |rust: Option<crate::toolchain::Fetched>, crates: usize| Built {
+            binaries: vec![Binary {
+                name: "app".into(),
+                declared: false,
+                target: "native",
+                artifact: Artifact::Native {
+                    binary: "build/target/app/app".into(),
+                    tick: None,
+                },
+                openapi: Vec::new(),
+                build: "b_e20fc10f5474".into(),
+                serves: Vec::new(),
+                runs: Vec::new(),
+                per_instance: Vec::new(),
+            }],
+            commit: None,
+            modified: false,
+            settings: Vec::new(),
+            migrations: false,
+            rust,
+            crates,
+            seconds: 90.0,
+        };
+        let shown_as = |built: Built| {
+            let Reply::Done {
+                text: crate::run::Text::Screen(screen),
+                data,
+            } = shown(built)
+            else {
+                panic!("a screen");
+            };
+            (
+                screen.render(&jadpo_term::Style::new(jadpo_term::Mode::Rich)),
+                data.to_line(),
+            )
+        };
+        let rust = crate::toolchain::Fetched {
+            version: "1.99.0".into(),
+            targets: vec!["aarch64-apple-darwin".into()],
+            bytes: 146_900_000,
+        };
+        let (screen, data) = shown_as(built(Some(rust.clone()), 292));
+        assert!(
+            screen.contains("  fetched   Rust 1.99.0 (146.9 MB) and 292 crates\n"),
+            "{screen}"
+        );
+        assert!(
+            data.contains(r#""fetched":{"rust":{"version":"1.99.0","targets":["aarch64-apple-darwin"],"bytes":146900000},"crates":292}"#),
+            "{data}"
+        );
+        let (screen, _) = shown_as(built(None, 1));
+        assert!(screen.contains("  fetched   1 crate\n"), "{screen}");
+        let (screen, _) = shown_as(built(Some(rust), 0));
+        assert!(
+            screen.contains("  fetched   Rust 1.99.0 (146.9 MB)\n"),
+            "{screen}"
+        );
+        let (screen, data) = shown_as(built(None, 0));
+        assert!(!screen.contains("fetched"), "{screen}");
+        assert!(
+            data.contains(r#""fetched":{"rust":null,"crates":0}"#),
+            "{data}"
+        );
+    }
+
+    #[test]
+    fn an_amount_so_far_is_given_in_the_totals_unit() {
+        assert_eq!(of(21_400_000, 84_000_000), "21.4 of 84.0 MB");
+        assert_eq!(of(3_000, 412_000), "3 of 412 KB");
+    }
+
+    #[test]
     fn a_deployable_another_scheduler_ticks_says_how_often_to_run_its_tick() {
         assert_eq!(how_often(60_000), "each minute");
         assert_eq!(how_often(10_000), "every 10 s");
@@ -1303,6 +1555,8 @@ mod tests {
             modified: false,
             settings: vec!["DATABASE_URL".into()],
             migrations: true,
+            rust: None,
+            crates: 0,
             seconds: 20.0,
         };
         let Reply::Done {
