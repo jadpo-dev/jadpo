@@ -982,7 +982,7 @@ test "two companies may each have a project called Launch, but not two in one" {
         }
     }
     assert first.status == 201
-    var theirs: Response = request {
+    var second: Response = request {
         method: HttpMethod.post
         path: "/projects"
         as: Principal.user(bob)
@@ -991,8 +991,8 @@ test "two companies may each have a project called Launch, but not two in one" {
             name: "Launch"
         }
     }
-    assert theirs.status == 201
-    var again: Response = request {
+    assert second.status == 201
+    var refused: Response = request {
         method: HttpMethod.post
         path: "/projects"
         as: Principal.user(ann)
@@ -1001,8 +1001,8 @@ test "two companies may each have a project called Launch, but not two in one" {
             name: "Launch"
         }
     }
-    assert again.status == 409
-    assert again.code == "project_name_taken"
+    assert refused.status == 409
+    assert refused.code == "project_name_taken"
 }
 ```
 
