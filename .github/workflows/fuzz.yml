@@ -1,0 +1,62 @@
+name: Fuzz
+
+# Each coverage-guided fuzz target (docs/security.md, "Fuzzing") for five
+# minutes, every night on main and on a pull request that changes the
+# fuzz crate. A crash, a panic, a timeout or running out of memory fails
+# the run, and the input that did it is kept as the run's artifact.
+on:
+  schedule:
+    - cron: '23 3 * * *'
+  pull_request:
+    paths:
+      - 'fuzz/**'
+      - '.github/workflows/fuzz.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The toolchain rust-toolchain.toml pins: with no sanitizer,
+      # cargo-fuzz needs no nightly.
+      - name: Install the pinned Rust toolchain
+        run: |
+          channel="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
+          rustup toolchain install "$channel" --profile minimal
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: fuzz -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-on-failure: true
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --version 0.13.2 --locked
+      - name: Build the targets
+        run: cargo fuzz build -s none
+      - name: Write the seed corpora
+        run: |
+          host="$(rustc -vV | sed -n 's/^host: //p')"
+          "fuzz/target/$host/release/seeds"
+      - name: Fuzz each target for five minutes
+        run: |
+          for target in parse check request; do
+            cargo fuzz run -s none "$target" "fuzz/corpus/$target" -- \
+              -max_total_time=300 -timeout=30 -rss_limit_mb=4096 -print_final_stats=1
+          done
+      - name: Keep what crashed
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-artifacts
+          path: fuzz/artifacts/
+          if-no-files-found: ignore

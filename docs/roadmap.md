@@ -319,6 +319,7 @@ Before 0.1.0 is published (D3).
 
 - [x] **S1 A full security audit**: the threat model in [security](security.md), each confirmed finding fixed with its test on its area page, `cargo audit` and `cargo deny` in the gate, and [SECURITY.md](../SECURITY.md); release provenance in S2.
 - [x] **S2 Release provenance**: [security](security.md), "CI and releases"; [documentation](documentation.md), "Installing"; `.github/install-dist.sh`.
+- [x] **S3 Coverage-guided fuzzing**: [security](security.md), "Fuzzing"; `fuzz/`; `.github/workflows/fuzz.yml`.
 - [x] **S4 Code scanning and Scorecard**: [security](security.md), "CI and releases"; `.github/workflows/codeql.yml`, `.github/workflows/scorecard.yml`.
 
 ## After the first build, in order

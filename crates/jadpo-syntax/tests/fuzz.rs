@@ -168,6 +168,11 @@ fn hostile_input_is_survived() {
     // comment, so the edit keeps them apart.
     inputs.push("routes Outlets {\n    prefix: /#outlets\n}\n".to_string());
     inputs.push("function f(a: Count) -> Count {\n    return a /# half\n}\n".to_string());
+    // A member's value read as a key, `ޡttps:`, after a character the
+    // lexer doesn't know, written in two bytes: the message naming the key
+    // is cut from the text at a character's boundary (found by the
+    // coverage-guided fuzzer).
+    inputs.push("x {\n    a: \u{7a1}ttps://e\n}\n".to_string());
     for input in inputs {
         check(&input);
     }

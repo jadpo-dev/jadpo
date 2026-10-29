@@ -38,6 +38,10 @@ Each crate's integration tests are one binary whose modules are the files
 in its `tests/` folder; run one file with
 `cargo test -p jadpo-cli --test integration queries::`.
 
+The coverage-guided fuzz targets for the parser, the checker and the
+request edge are outside the gate; how to run them is in
+[security](docs/security.md), "Fuzzing".
+
 A built feature no teaching example uses yet is only noted: the examples
 are brought up to date once per phase, by the examples chunk at its end,
 which runs `python3 tools/verify.py --require-examples` to make it fail.

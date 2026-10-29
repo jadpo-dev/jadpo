@@ -1,0 +1,68 @@
+# Coverage-guided fuzz targets (docs/security.md, "Fuzzing"), run with
+# cargo-fuzz. A workspace of its own, so the gate's build never compiles
+# libFuzzer, and its lock is kept beside it.
+[package]
+name = "jadpo-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+members = ["."]
+
+[dependencies]
+libfuzzer-sys = "=0.4.13"
+http = "=1.5.0"
+serde_json = "1"
+jadpo-syntax = { path = "../crates/jadpo-syntax" }
+jadpo-fmt = { path = "../crates/jadpo-fmt" }
+jadpo-db = { path = "../crates/jadpo-db" }
+jadpo-check = { path = "../crates/jadpo-check" }
+jadpo-graph = { path = "../crates/jadpo-graph" }
+jadpo-interp = { path = "../crates/jadpo-interp" }
+jadpo-runtime = { path = "../crates/jadpo-runtime" }
+jadpo-std = { path = "../crates/jadpo-std" }
+
+# Source text: the parser's guarantees and the formatter's.
+[[bin]]
+name = "parse"
+path = "fuzz_targets/parse.rs"
+test = false
+doc = false
+bench = false
+
+# A project, loaded and checked as `jadpo check` does, and planned when it
+# checks.
+[[bin]]
+name = "check"
+path = "fuzz_targets/check.rs"
+test = false
+doc = false
+bench = false
+
+# A request, as the native host hands it over, to teaching examples served
+# by the interpreter.
+[[bin]]
+name = "request"
+path = "fuzz_targets/request.rs"
+test = false
+doc = false
+bench = false
+
+# Writes each target's seed corpus from the teaching examples and the
+# parser's broken files; not a fuzz target.
+[[bin]]
+name = "seeds"
+path = "src/bin/seeds.rs"
+test = false
+doc = false
+bench = false
+
+# Panics abort, so libFuzzer reports each one; overflow and debug
+# assertions stay on, as cargo-fuzz sets them.
+[profile.release]
+debug = "line-tables-only"

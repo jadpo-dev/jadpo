@@ -1599,11 +1599,14 @@ fn member_value(p: &mut Parser<'_>, context: Members) {
 
 /// The key text of the member being parsed, for messages.
 fn member_key_before_colon(p: &Parser<'_>) -> String {
-    let end = p.prev_end() as usize;
-    let text = &p.text()[..end.saturating_sub(1)];
+    let text = &p.text()[..p.prev_end() as usize];
+    let text = text.strip_suffix(':').unwrap_or(text);
+    // The key starts after the last character that can't be in one, which
+    // may be more than a byte long.
     let start = text
-        .rfind(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '.'))
-        .map_or(0, |i| i + 1);
+        .char_indices()
+        .rfind(|&(_, c)| !(c.is_ascii_alphanumeric() || c == '_' || c == '.'))
+        .map_or(0, |(i, c)| i + c.len_utf8());
     text[start..].to_string()
 }
 
