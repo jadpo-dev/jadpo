@@ -8,6 +8,8 @@
 //! Each table is a constant, and [`ALL`] lists them: a name no table has
 //! is no table ([`by_name`]), never another one.
 
+use crate::SqlType;
+
 /// A system table: its columns in order, its primary key, and its unique
 /// rules, foreign keys and indexes, each named from its table and columns
 /// as an entity's are.
@@ -22,11 +24,13 @@ pub struct SystemTable {
     pub indexes: &'static [SystemIndex],
 }
 
-/// A column: its name, its PostgreSQL type and whether it may be `NULL`.
+/// A column: its name, its type and whether it may be `NULL`. The type is
+/// a store's own, never an engine's text: PostgreSQL's column is
+/// [`SqlType::postgres_column`], so a table added here adds no SQL.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SystemColumn {
     pub name: &'static str,
-    pub sql_type: &'static str,
+    pub sql_type: SqlType,
     pub nullable: bool,
 }
 
@@ -66,7 +70,7 @@ impl SystemTable {
     }
 }
 
-const fn column(name: &'static str, sql_type: &'static str, nullable: bool) -> SystemColumn {
+const fn column(name: &'static str, sql_type: SqlType, nullable: bool) -> SystemColumn {
     SystemColumn {
         name,
         sql_type,
@@ -79,24 +83,24 @@ const fn column(name: &'static str, sql_type: &'static str, nullable: bool) -> S
 pub const OUTBOX: SystemTable = SystemTable {
     table: "jadpo_outbox",
     columns: &[
-        column("id", "uuid", false),
+        column("id", SqlType::Uuid, false),
         // The event type's identity key, which survives a rename.
-        column("event", "text", false),
-        column("payload", "jsonb", false),
-        column("emitted_at", "timestamptz(3)", false),
+        column("event", SqlType::Text, false),
+        column("payload", SqlType::Json, false),
+        column("emitted_at", SqlType::Timestamp, false),
         // W3C trace context of the action that emitted it.
-        column("traceparent", "text", true),
+        column("traceparent", SqlType::Text, true),
         // The encoding its payload was written in (area 19, "Changing a
         // standard type's encoding"; chunk 5.9), which a delivery reads
         // it by (chunk 6.8). The runtime always writes it; a migration
         // adds it to a table that may hold rows already, so it may be
         // `NULL`, a payload written before, read as encoding 1.
-        column("encoding", "smallint", true),
+        column("encoding", SqlType::Int2, true),
         // How many events led to it from the request that set the chain
         // off, which stops a loop at 16 (area 12, "Limits"; chunk 6.1b).
         // Added to a table that may hold rows, so it may be `NULL`, read
         // as 0.
-        column("depth", "integer", true),
+        column("depth", SqlType::Int4, true),
     ],
     primary_key: &["id"],
     unique: &[],
@@ -112,28 +116,28 @@ pub const OUTBOX: SystemTable = SystemTable {
 pub const DELIVERIES: SystemTable = SystemTable {
     table: "jadpo_deliveries",
     columns: &[
-        column("id", "uuid", false),
-        column("outbox_id", "uuid", false),
-        column("subscriber", "text", false),
-        column("status", "text", false),
-        column("attempts", "integer", false),
-        column("next_attempt_at", "timestamptz(3)", true),
-        column("last_failure", "jsonb", true),
+        column("id", SqlType::Uuid, false),
+        column("outbox_id", SqlType::Uuid, false),
+        column("subscriber", SqlType::Text, false),
+        column("status", SqlType::Text, false),
+        column("attempts", SqlType::Int4, false),
+        column("next_attempt_at", SqlType::Timestamp, true),
+        column("last_failure", SqlType::Json, true),
         // `NULL` until it is first tried (chunk 6.1b).
-        column("last_tried_at", "timestamptz(3)", true),
+        column("last_tried_at", SqlType::Timestamp, true),
         // When an operator last retried it, or resolved it as not done
         // (`jadpo deliveries`; chunk 6.12): its `within:` counts from
         // then rather than from its event. `NULL` for one never retried.
-        column("retried_at", "timestamptz(3)", true),
+        column("retried_at", SqlType::Timestamp, true),
         // While it is `held` by its connection's circuit breaker (area
         // 12, question 18; chunk 7.2b): the connection, and since when.
         // `NULL` otherwise.
-        column("held_for", "text", true),
-        column("held_since", "timestamptz(3)", true),
+        column("held_for", SqlType::Text, true),
+        column("held_since", SqlType::Timestamp, true),
         // How long it has been held before, in milliseconds, which its
         // `within:` doesn't count: held deliveries keep their budget.
         // `NULL` for one never held.
-        column("held_ms", "bigint", true),
+        column("held_ms", SqlType::Int8, true),
     ],
     primary_key: &["id"],
     unique: &[SystemUnique {
@@ -162,15 +166,15 @@ pub const DELIVERIES: SystemTable = SystemTable {
 pub const CIRCUIT_BREAKERS: SystemTable = SystemTable {
     table: "jadpo_circuit_breakers",
     columns: &[
-        column("connection", "text", false),
-        column("state", "text", false),
-        column("failures", "integer", false),
-        column("opened_at", "timestamptz(3)", true),
-        column("pauses", "integer", false),
-        column("probe_at", "timestamptz(3)", true),
-        column("probe_id", "uuid", true),
-        column("probe_until", "timestamptz(3)", true),
-        column("alerted_at", "timestamptz(3)", true),
+        column("connection", SqlType::Text, false),
+        column("state", SqlType::Text, false),
+        column("failures", SqlType::Int4, false),
+        column("opened_at", SqlType::Timestamp, true),
+        column("pauses", SqlType::Int4, false),
+        column("probe_at", SqlType::Timestamp, true),
+        column("probe_id", SqlType::Uuid, true),
+        column("probe_until", SqlType::Timestamp, true),
+        column("alerted_at", SqlType::Timestamp, true),
     ],
     primary_key: &["connection"],
     unique: &[],
@@ -186,8 +190,8 @@ pub const CIRCUIT_BREAKERS: SystemTable = SystemTable {
 pub const HANDLED_DELIVERIES: SystemTable = SystemTable {
     table: "jadpo_handled_deliveries",
     columns: &[
-        column("id", "uuid", false),
-        column("handled_at", "timestamptz(3)", false),
+        column("id", SqlType::Uuid, false),
+        column("handled_at", SqlType::Timestamp, false),
     ],
     primary_key: &["id"],
     unique: &[],
@@ -206,10 +210,10 @@ pub const HANDLED_DELIVERIES: SystemTable = SystemTable {
 pub const RECEIVED_EVENTS: SystemTable = SystemTable {
     table: "jadpo_received_events",
     columns: &[
-        column("source", "text", false),
-        column("event_id", "text", false),
-        column("received_at", "timestamptz(3)", false),
-        column("reply", "text", true),
+        column("source", SqlType::Text, false),
+        column("event_id", SqlType::Text, false),
+        column("received_at", SqlType::Timestamp, false),
+        column("reply", SqlType::Text, true),
     ],
     primary_key: &["source", "event_id"],
     unique: &[],
@@ -229,17 +233,17 @@ pub const RECEIVED_EVENTS: SystemTable = SystemTable {
 pub const PARKED_MESSAGES: SystemTable = SystemTable {
     table: "jadpo_parked_messages",
     columns: &[
-        column("id", "uuid", false),
-        column("queue", "text", false),
-        column("digest", "text", false),
-        column("body", "text", false),
-        column("status", "text", false),
-        column("reason", "text", false),
-        column("event", "text", true),
-        column("message_id", "text", true),
-        column("problems", "jsonb", true),
-        column("parked_at", "timestamptz(3)", false),
-        column("retried_at", "timestamptz(3)", true),
+        column("id", SqlType::Uuid, false),
+        column("queue", SqlType::Text, false),
+        column("digest", SqlType::Text, false),
+        column("body", SqlType::Text, false),
+        column("status", SqlType::Text, false),
+        column("reason", SqlType::Text, false),
+        column("event", SqlType::Text, true),
+        column("message_id", SqlType::Text, true),
+        column("problems", SqlType::Json, true),
+        column("parked_at", SqlType::Timestamp, false),
+        column("retried_at", SqlType::Timestamp, true),
     ],
     primary_key: &["id"],
     unique: &[SystemUnique {
@@ -261,15 +265,15 @@ pub const PARKED_MESSAGES: SystemTable = SystemTable {
 pub const POLLS: SystemTable = SystemTable {
     table: "jadpo_polls",
     columns: &[
-        column("poll", "text", false),
-        column("next_at", "timestamptz(3)", false),
-        column("digest", "text", true),
-        column("last_change", "timestamptz(3)", true),
+        column("poll", SqlType::Text, false),
+        column("next_at", SqlType::Timestamp, false),
+        column("digest", SqlType::Text, true),
+        column("last_change", SqlType::Timestamp, true),
         // The interval it was last claimed under, so only one claimed
         // under another counts as shortened (chunk 7.9c). Added to a
         // table that may hold rows, so it may be `NULL`: a row claimed
         // before.
-        column("every_ms", "bigint", true),
+        column("every_ms", SqlType::Int8, true),
     ],
     primary_key: &["poll"],
     unique: &[],
@@ -281,13 +285,13 @@ pub const POLLS: SystemTable = SystemTable {
 pub const IDEMPOTENCY_KEYS: SystemTable = SystemTable {
     table: "jadpo_idempotency_keys",
     columns: &[
-        column("scope", "text", false),
-        column("key", "text", false),
-        column("request_digest", "text", false),
-        column("status", "smallint", true),
-        column("response", "jsonb", true),
-        column("stored_at", "timestamptz(3)", false),
-        column("kept_until", "timestamptz(3)", false),
+        column("scope", SqlType::Text, false),
+        column("key", SqlType::Text, false),
+        column("request_digest", SqlType::Text, false),
+        column("status", SqlType::Int2, true),
+        column("response", SqlType::Json, true),
+        column("stored_at", SqlType::Timestamp, false),
+        column("kept_until", SqlType::Timestamp, false),
     ],
     primary_key: &["scope", "key"],
     unique: &[],
@@ -307,22 +311,22 @@ pub const IDEMPOTENCY_KEYS: SystemTable = SystemTable {
 pub const SCHEDULES: SystemTable = SystemTable {
     table: "jadpo_schedules",
     columns: &[
-        column("schedule", "text", false),
-        column("every_ms", "bigint", false),
-        column("next_run_at", "timestamptz(3)", false),
-        column("paused", "boolean", false),
-        column("lease_until", "timestamptz(3)", true),
-        column("run_id", "uuid", true),
-        column("last_tick_at", "timestamptz(3)", true),
-        column("last_succeeded_at", "timestamptz(3)", true),
+        column("schedule", SqlType::Text, false),
+        column("every_ms", SqlType::Int8, false),
+        column("next_run_at", SqlType::Timestamp, false),
+        column("paused", SqlType::Bool, false),
+        column("lease_until", SqlType::Timestamp, true),
+        column("run_id", SqlType::Uuid, true),
+        column("last_tick_at", SqlType::Timestamp, true),
+        column("last_succeeded_at", SqlType::Timestamp, true),
         // The run an operator asked for with `jadpo schedules run`
         // against a deployment (chunk 6.2d): the id its record will have,
         // until the application's own tick takes it.
-        column("run_requested", "uuid", true),
+        column("run_requested", SqlType::Uuid, true),
         // The alerts a tick raised that still hold, each with when it was
         // raised (chunk 6.9), so of several instances' ticks one raises
         // each.
-        column("alerts", "jsonb", true),
+        column("alerts", SqlType::Json, true),
     ],
     primary_key: &["schedule"],
     unique: &[],
@@ -338,19 +342,19 @@ pub const SCHEDULES: SystemTable = SystemTable {
 pub const SCHEDULE_RUNS: SystemTable = SystemTable {
     table: "jadpo_schedule_runs",
     columns: &[
-        column("id", "uuid", false),
-        column("schedule", "text", false),
-        column("due_slot", "timestamptz(3)", false),
-        column("started_at", "timestamptz(3)", false),
-        column("ended_at", "timestamptz(3)", true),
-        column("outcome", "text", false),
-        column("reason", "text", true),
-        column("failure", "jsonb", true),
-        column("events", "integer", true),
-        column("traceparent", "text", true),
+        column("id", SqlType::Uuid, false),
+        column("schedule", SqlType::Text, false),
+        column("due_slot", SqlType::Timestamp, false),
+        column("started_at", SqlType::Timestamp, false),
+        column("ended_at", SqlType::Timestamp, true),
+        column("outcome", SqlType::Text, false),
+        column("reason", SqlType::Text, true),
+        column("failure", SqlType::Json, true),
+        column("events", SqlType::Int4, true),
+        column("traceparent", SqlType::Text, true),
         // The items a run processed, for a run that counts them: the
         // records a purge deleted (area 5; chunk 6.2c).
-        column("items", "integer", true),
+        column("items", SqlType::Int4, true),
     ],
     primary_key: &["id"],
     unique: &[],
@@ -373,12 +377,12 @@ pub const SCHEDULE_RUNS: SystemTable = SystemTable {
 pub const SESSIONS: SystemTable = SystemTable {
     table: "jadpo_sessions",
     columns: &[
-        column("id", "uuid", false),
-        column("principal_id", "uuid", false),
-        column("verifier", "text", false),
-        column("csrf_verifier", "text", true),
-        column("started_at", "timestamptz(3)", false),
-        column("ends_at", "timestamptz(3)", false),
+        column("id", SqlType::Uuid, false),
+        column("principal_id", SqlType::Uuid, false),
+        column("verifier", SqlType::Text, false),
+        column("csrf_verifier", SqlType::Text, true),
+        column("started_at", SqlType::Timestamp, false),
+        column("ends_at", SqlType::Timestamp, false),
     ],
     primary_key: &["id"],
     unique: &[SystemUnique {
@@ -403,11 +407,11 @@ pub const SESSIONS: SystemTable = SystemTable {
 pub const SERVICE_KEYS: SystemTable = SystemTable {
     table: "jadpo_service_keys",
     columns: &[
-        column("id", "uuid", false),
-        column("principal_id", "uuid", false),
-        column("verifier", "text", false),
-        column("started_at", "timestamptz(3)", false),
-        column("ends_at", "timestamptz(3)", false),
+        column("id", SqlType::Uuid, false),
+        column("principal_id", SqlType::Uuid, false),
+        column("verifier", SqlType::Text, false),
+        column("started_at", SqlType::Timestamp, false),
+        column("ends_at", SqlType::Timestamp, false),
     ],
     primary_key: &["id"],
     unique: &[SystemUnique {
@@ -427,15 +431,15 @@ pub const SERVICE_KEYS: SystemTable = SystemTable {
 pub const PASSKEYS: SystemTable = SystemTable {
     table: "jadpo_passkeys",
     columns: &[
-        column("id", "uuid", false),
-        column("principal_id", "uuid", false),
-        column("credential_id", "bytea", false),
-        column("user_handle", "bytea", false),
-        column("credential", "jsonb", false),
-        column("registered_at", "timestamptz(3)", false),
+        column("id", SqlType::Uuid, false),
+        column("principal_id", SqlType::Uuid, false),
+        column("credential_id", SqlType::Bytes, false),
+        column("user_handle", SqlType::Bytes, false),
+        column("credential", SqlType::Json, false),
+        column("registered_at", SqlType::Timestamp, false),
         // The encoding `credential` was written in (chunk 5.9); `NULL`
         // for a passkey kept before encodings were recorded.
-        column("encoding", "smallint", true),
+        column("encoding", SqlType::Int2, true),
     ],
     primary_key: &["id"],
     unique: &[SystemUnique {
@@ -455,14 +459,14 @@ pub const PASSKEYS: SystemTable = SystemTable {
 pub const PASSKEY_CHALLENGES: SystemTable = SystemTable {
     table: "jadpo_passkey_challenges",
     columns: &[
-        column("id", "uuid", false),
-        column("challenge", "text", false),
-        column("purpose", "text", false),
-        column("binding", "text", false),
-        column("principal_id", "uuid", true),
-        column("user_handle", "bytea", true),
-        column("state", "text", false),
-        column("expires_at", "timestamptz(3)", false),
+        column("id", SqlType::Uuid, false),
+        column("challenge", SqlType::Text, false),
+        column("purpose", SqlType::Text, false),
+        column("binding", SqlType::Text, false),
+        column("principal_id", SqlType::Uuid, true),
+        column("user_handle", SqlType::Bytes, true),
+        column("state", SqlType::Text, false),
+        column("expires_at", SqlType::Timestamp, false),
     ],
     primary_key: &["id"],
     unique: &[
@@ -492,31 +496,31 @@ pub const PASSKEY_CHALLENGES: SystemTable = SystemTable {
 pub const SIGN_IN_REQUESTS: SystemTable = SystemTable {
     table: "jadpo_sign_in_requests",
     columns: &[
-        column("id", "uuid", false),
+        column("id", SqlType::Uuid, false),
         // The address's digest in lower case, so the limits count every
         // way of writing it as one; and as it was written, which the
         // address a code is confirmed with must match.
-        column("address", "text", false),
-        column("exact", "text", true),
+        column("address", SqlType::Text, false),
+        column("exact", SqlType::Text, true),
         // The latest request, which its email's delivery names; `NULL`
         // once its link or code is used.
-        column("request", "uuid", true),
-        column("token", "text", true),
-        column("code", "text", true),
-        column("sealed", "bytea", true),
-        column("return_to", "text", true),
-        column("binding", "text", true),
-        column("wrong_codes", "integer", false),
-        column("requested_at", "timestamptz(3)", true),
-        column("expires_at", "timestamptz(3)", true),
+        column("request", SqlType::Uuid, true),
+        column("token", SqlType::Text, true),
+        column("code", SqlType::Text, true),
+        column("sealed", SqlType::Bytes, true),
+        column("return_to", SqlType::Text, true),
+        column("binding", SqlType::Text, true),
+        column("wrong_codes", SqlType::Int4, false),
+        column("requested_at", SqlType::Timestamp, true),
+        column("expires_at", SqlType::Timestamp, true),
         // The hour the sends are counted in, and how many.
-        column("sends_since", "timestamptz(3)", true),
-        column("sends", "integer", false),
+        column("sends_since", SqlType::Timestamp, true),
+        column("sends", SqlType::Int4, false),
         // The UTC day the wrong codes are counted in, and how many.
-        column("failed_since", "timestamptz(3)", true),
-        column("failed", "integer", false),
+        column("failed_since", SqlType::Timestamp, true),
+        column("failed", SqlType::Int4, false),
         // When nothing in the row counts any more.
-        column("kept_until", "timestamptz(3)", false),
+        column("kept_until", SqlType::Timestamp, false),
     ],
     primary_key: &["id"],
     unique: &[
@@ -548,39 +552,39 @@ pub const SIGN_IN_REQUESTS: SystemTable = SystemTable {
 pub const BATCH_RUNS: SystemTable = SystemTable {
     table: "jadpo_batch_runs",
     columns: &[
-        column("id", "uuid", false),
-        column("batch", "text", false),
-        column("shape", "text", false),
-        column("key", "text", true),
-        column("captured", "jsonb", false),
-        column("state", "text", false),
-        column("position", "text", true),
-        column("read_all", "boolean", false),
-        column("items_done", "bigint", false),
-        column("problems", "bigint", false),
-        column("failure", "text", true),
-        column("lease_until", "timestamptz(3)", true),
-        column("started_at", "timestamptz(3)", false),
-        column("stepped_at", "timestamptz(3)", false),
-        column("finished_at", "timestamptz(3)", true),
+        column("id", SqlType::Uuid, false),
+        column("batch", SqlType::Text, false),
+        column("shape", SqlType::Text, false),
+        column("key", SqlType::Text, true),
+        column("captured", SqlType::Json, false),
+        column("state", SqlType::Text, false),
+        column("position", SqlType::Text, true),
+        column("read_all", SqlType::Bool, false),
+        column("items_done", SqlType::Int8, false),
+        column("problems", SqlType::Int8, false),
+        column("failure", SqlType::Text, true),
+        column("lease_until", SqlType::Timestamp, true),
+        column("started_at", SqlType::Timestamp, false),
+        column("stepped_at", SqlType::Timestamp, false),
+        column("finished_at", SqlType::Timestamp, true),
         // How deep in a chain of events the action that started it was,
         // which its items run at (chunk 6.6a); `NULL` in a run kept
         // before, which counts from the start.
-        column("depth", "integer", true),
+        column("depth", SqlType::Int4, true),
         // The tenant the run is limited to, all zeros for none, which its
         // `key:` is unique within (chunk 6.6c); `NULL` in a run kept
         // before, which no later start finds.
-        column("tenant", "uuid", true),
+        column("tenant", SqlType::Uuid, true),
         // The encoding its saved values and its `key:` were written in
         // (area 19, "Changing a standard type's encoding"; chunk 6.8);
         // `NULL` in a run kept before, whose values are encoding 1's.
-        column("encoding", "smallint", true),
+        column("encoding", SqlType::Int2, true),
         // How many items the run is expected to hold, which
         // `batches.status` gives (chunk 6.4b3): its query's count, taken
         // as its first page is read, or worked out from its file's size
         // and how far into it the run is; `NULL` until then, and in a run
         // kept before.
-        column("estimated_total", "bigint", true),
+        column("estimated_total", SqlType::Int8, true),
     ],
     primary_key: &["id"],
     unique: &[SystemUnique {
@@ -599,10 +603,10 @@ pub const BATCH_RUNS: SystemTable = SystemTable {
 pub const BATCH_PROBLEMS: SystemTable = SystemTable {
     table: "jadpo_batch_problems",
     columns: &[
-        column("run_id", "uuid", false),
-        column("row", "bigint", false),
-        column("column", "text", false),
-        column("rule", "text", false),
+        column("run_id", SqlType::Uuid, false),
+        column("row", SqlType::Int8, false),
+        column("column", SqlType::Text, false),
+        column("rule", SqlType::Text, false),
     ],
     primary_key: &["run_id", "row"],
     unique: &[],
@@ -619,8 +623,8 @@ pub const BATCH_PROBLEMS: SystemTable = SystemTable {
 pub const BATCH_CANCELS: SystemTable = SystemTable {
     table: "jadpo_batch_cancels",
     columns: &[
-        column("run_id", "uuid", false),
-        column("requested_at", "timestamptz(3)", false),
+        column("run_id", SqlType::Uuid, false),
+        column("requested_at", SqlType::Timestamp, false),
     ],
     primary_key: &["run_id"],
     unique: &[],
@@ -640,19 +644,19 @@ pub const BATCH_CANCELS: SystemTable = SystemTable {
 pub const OPERATOR_ACTIONS: SystemTable = SystemTable {
     table: "jadpo_operator_actions",
     columns: &[
-        column("id", "uuid", false),
-        column("acted_at", "timestamptz(3)", false),
-        column("action", "text", false),
+        column("id", SqlType::Uuid, false),
+        column("acted_at", SqlType::Timestamp, false),
+        column("action", SqlType::Text, false),
         // `delivery` or `schedule_run`.
-        column("kind", "text", false),
-        column("item", "uuid", false),
+        column("kind", SqlType::Text, false),
+        column("item", SqlType::Uuid, false),
         // The subscriber's or the schedule's identity key, and a
         // delivery's event type's.
-        column("target", "text", false),
-        column("event", "text", true),
-        column("was", "text", false),
-        column("operator", "text", false),
-        column("role", "text", false),
+        column("target", SqlType::Text, false),
+        column("event", SqlType::Text, true),
+        column("was", SqlType::Text, false),
+        column("operator", SqlType::Text, false),
+        column("role", SqlType::Text, false),
     ],
     primary_key: &["id"],
     unique: &[],
@@ -671,30 +675,30 @@ pub const OPERATOR_ACTIONS: SystemTable = SystemTable {
 pub const STEP_RECORDS: SystemTable = SystemTable {
     table: "jadpo_step_records",
     columns: &[
-        column("id", "uuid", false),
+        column("id", SqlType::Uuid, false),
         // Whose key it is (`delivery`, a route's caller's scope) and the
         // action's key (a delivery's id, a client's `Idempotency-Key`).
-        column("scope", "text", false),
-        column("key", "text", false),
+        column("scope", SqlType::Text, false),
+        column("key", SqlType::Text, false),
         // The identity key of the action that is run.
-        column("action", "text", false),
+        column("action", SqlType::Text, false),
         // The build it started under, and a digest of its action's step
         // shape (area 11, "Deploys").
-        column("build", "text", false),
-        column("shape", "text", false),
+        column("build", SqlType::Text, false),
+        column("shape", SqlType::Text, false),
         // When its first run started: `clock.now` for every rerun.
-        column("started_at", "timestamptz(3)", false),
+        column("started_at", SqlType::Timestamp, false),
         // The generation of the runner that holds it, which every write
         // checks: a delivery's attempt, a route's claim.
-        column("generation", "bigint", false),
+        column("generation", SqlType::Int8, false),
         // `running`, or `diverged` with what differed (`problem`: the
         // step, its operation and the fields, never a value).
-        column("state", "text", false),
-        column("problem", "jsonb", true),
-        column("taken_at", "timestamptz(3)", false),
+        column("state", SqlType::Text, false),
+        column("problem", SqlType::Json, true),
+        column("taken_at", SqlType::Timestamp, false),
         // When a tick raised the alert on unfinished records for it, once
         // it had been unfinished a day (chunk 7.5f).
-        column("alerted_at", "timestamptz(3)", true),
+        column("alerted_at", SqlType::Timestamp, true),
     ],
     primary_key: &["id"],
     unique: &[SystemUnique {
@@ -712,19 +716,19 @@ pub const STEP_RECORDS: SystemTable = SystemTable {
 pub const STEPS: SystemTable = SystemTable {
     table: "jadpo_steps",
     columns: &[
-        column("record_id", "uuid", false),
-        column("position", "integer", false),
+        column("record_id", SqlType::Uuid, false),
+        column("position", SqlType::Int4, false),
         // `pay.payments.create`, `sheets.put`.
-        column("operation", "text", false),
-        column("fingerprint", "jsonb", false),
+        column("operation", SqlType::Text, false),
+        column("fingerprint", SqlType::Json, false),
         // How many times its key was replaced (a provider's
         // `new_key_on:`).
-        column("key_generation", "integer", false),
-        column("dispatched_at", "timestamptz(3)", false),
+        column("key_generation", SqlType::Int4, false),
+        column("dispatched_at", SqlType::Timestamp, false),
         // `answered` or `failed` once answered; `NULL` while in doubt.
-        column("outcome", "text", true),
-        column("answer", "bytea", true),
-        column("answered_at", "timestamptz(3)", true),
+        column("outcome", SqlType::Text, true),
+        column("answer", SqlType::Bytes, true),
+        column("answered_at", SqlType::Timestamp, true),
     ],
     primary_key: &["record_id", "position"],
     unique: &[],
@@ -748,20 +752,20 @@ pub const STEPS: SystemTable = SystemTable {
 pub const AI_USAGE: SystemTable = SystemTable {
     table: "jadpo_ai_usage",
     columns: &[
-        column("day", "date", false),
-        column("scope", "text", false),
-        column("key", "text", false),
-        column("calls", "integer", false),
-        column("input_tokens", "bigint", false),
-        column("output_tokens", "bigint", false),
-        column("cached_tokens", "bigint", false),
-        column("reserved_tokens", "bigint", false),
+        column("day", SqlType::Date, false),
+        column("scope", SqlType::Text, false),
+        column("key", SqlType::Text, false),
+        column("calls", SqlType::Int4, false),
+        column("input_tokens", SqlType::Int8, false),
+        column("output_tokens", SqlType::Int8, false),
+        column("cached_tokens", SqlType::Int8, false),
+        column("reserved_tokens", SqlType::Int8, false),
         // The estimated cost in millionths of `currency`'s major unit:
         // `NULL` currency while no call has had a price.
-        column("cost_micros", "bigint", false),
-        column("reserved_micros", "bigint", false),
-        column("currency", "text", true),
-        column("touched_at", "timestamptz(3)", false),
+        column("cost_micros", SqlType::Int8, false),
+        column("reserved_micros", SqlType::Int8, false),
+        column("currency", SqlType::Text, true),
+        column("touched_at", SqlType::Timestamp, false),
     ],
     primary_key: &["day", "scope", "key"],
     unique: &[],
@@ -774,10 +778,10 @@ pub const AI_USAGE: SystemTable = SystemTable {
 pub const HOUSEKEEPING: SystemTable = SystemTable {
     table: "jadpo_housekeeping",
     columns: &[
-        column("slot", "integer", false),
-        column("lease_id", "uuid", true),
-        column("lease_until", "timestamptz(3)", true),
-        column("last_cleaned_at", "timestamptz(3)", true),
+        column("slot", SqlType::Int4, false),
+        column("lease_id", SqlType::Uuid, true),
+        column("lease_until", SqlType::Timestamp, true),
+        column("last_cleaned_at", SqlType::Timestamp, true),
     ],
     primary_key: &["slot"],
     unique: &[],
@@ -887,6 +891,36 @@ mod tests {
             .chain(&STEP_TABLES);
         for table in grouped {
             assert!(ALL.contains(table), "{}", table.table);
+        }
+    }
+
+    #[test]
+    fn every_column_is_a_plain_type_its_postgresql_column_reads_back_as() {
+        for table in ALL {
+            for column in table.columns {
+                let ty = column.sql_type;
+                let text = ty.postgres_column();
+                assert_eq!(
+                    crate::SqlType::of_column(&text),
+                    Some(ty),
+                    "{}.{}",
+                    table.table,
+                    column.name
+                );
+                assert!(
+                    !matches!(
+                        ty,
+                        crate::SqlType::Array(_)
+                            | crate::SqlType::Range(_)
+                            | crate::SqlType::Vector
+                            | crate::SqlType::Geography
+                            | crate::SqlType::Float8
+                    ),
+                    "{}.{}",
+                    table.table,
+                    column.name
+                );
+            }
         }
     }
 }

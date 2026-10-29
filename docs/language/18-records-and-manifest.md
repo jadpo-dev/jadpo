@@ -358,7 +358,8 @@ that path numbers decode against, and each deployable's build id.
 > their areas are built. `jadpo help --json`
 > prints the schema with every node and edge kind and whether it is built
 > yet. Policy (area 9) is a `grant` node for each list an entity's
-> `policy:` writes, a `field_restriction` for each field's own policy, a
+> `policy:` writes, a `field_restriction` for each field's own policy (`serverOnly`, or `who`:
+> each effect's list), a
 > `tenancy` for each entity that belongs to the tenant and an
 > `action_exception` for each line under root `policy { actions: }`, with
 > `grants` edges to what each decides and `scopes` edges from each tenancy
