@@ -2,13 +2,16 @@
 //! source files and layout as salsa inputs, and the queries every check
 //! builds on.
 //!
-//! [`load`] finds a project by walking up to `app.jadpo` and reads its files;
-//! this crate is the only compiler crate that does I/O. [`parse`] gives a
+//! [`load`] finds a project by walking up to `app.jadpo` and reads its files
+//! ([`read`]), the only I/O in the compiler crates; [`assemble`] makes a
+//! set of files a project by every layout rule without reading anything,
+//! so [`load_files`] loads one read from a git commit the same way. [`parse`] gives a
 //! file's lossless tree, [`item_tree`] its declarations and signatures
 //! without bodies, and [`symbols`] the project-wide name table built from
 //! the item trees alone, so editing a body never invalidates another file's
 //! resolution.
 
+mod files;
 mod identities;
 mod items;
 pub mod lazy;
@@ -19,14 +22,15 @@ pub mod record;
 mod table;
 mod texts;
 
+pub use files::{Assembled, FileSet, Role, assemble, layout_of, links_in, role};
 pub use identities::{
     IDENTITIES, LEGACY_IDENTITIES, parse_identities, parse_legacy_identities, write_identities,
 };
 pub use items::{Base, Item, ItemKind, ItemTree, Param, Signature, item_tree};
 pub use items::{items_of, primary};
 pub use load::{
-    Loaded, PROJECT_FILE, Unreadable, files_under, find_root, links, load, load_into, load_whole,
-    package_files, show_in_checkouts, shown_root, watched_files,
+    Loaded, PROJECT_FILE, Unreadable, files_under, find_root, links, load, load_files, load_into,
+    load_whole, package_files, read, show_in_checkouts, shown_root, watched_files,
 };
 pub use lock::{LOCK, Locked, Source, package_digest, package_folder, parse_lock, write_lock};
 pub use places::{

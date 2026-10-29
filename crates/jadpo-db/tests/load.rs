@@ -4,7 +4,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use jadpo_db::{Layout, item_tree, load, symbols};
+use jadpo_db::{FileSet, Layout, item_tree, load, load_files, symbols};
 
 fn folder(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("load-{name}"));
@@ -159,4 +159,209 @@ fn a_loaded_project_takes_edits_in_place_and_keeps_path_order() {
         ["app.jadpo", "domains/planning/types/count.jadpo"]
     );
     assert!(symbols(&loaded.db, loaded.project).get("Fee").is_none());
+}
+
+/// What a load puts in the database, and beside it, for comparing two.
+fn contents(loaded: &jadpo_db::Loaded) -> String {
+    let db = &loaded.db;
+    let project = loaded.project;
+    let texts = |files: &[jadpo_db::File]| -> Vec<(String, String)> {
+        files
+            .iter()
+            .map(|file| (file.path(db).clone(), file.text(db).clone()))
+            .collect()
+    };
+    format!(
+        "{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}",
+        project.layout(db),
+        project.name(db),
+        texts(project.files(db)),
+        texts(project.lazy(db)),
+        project.other_files(db),
+        project.records(db),
+        project.identities(db),
+        loaded.unreadable,
+        loaded.links,
+    )
+}
+
+/// A project with every kind of file the rules sort: source, records, a
+/// template, an asset, the identity registry under its old name, an
+/// installed package with a resource the app doesn't call yet, and a
+/// package linked to a checkout beside the project.
+const PROJECT: &[(&str, &str)] = &[
+    ("app.jadpo", "application {}\n"),
+    (
+        "domains/planning/types/count.jadpo",
+        "type Total = Int {}\n",
+    ),
+    ("domains/planning/emails/welcome.html", "<p>Hello</p>\n"),
+    ("domains/planning/images/logo.svg", "<svg/>\n"),
+    ("database/identities.json", "{\"type Total\": \"Count\"}\n"),
+    (
+        "packages/postcodes/v1/package.jadpo",
+        "package Postcodes {}\n",
+    ),
+    ("packages/postcodes/v1/README.md", "# Postcodes\n"),
+    (
+        "packages/postcodes/v1/resources/lookup.jadpo",
+        "resource lookup {}\n",
+    ),
+    (
+        "packages/couriers/v2/package.jadpo",
+        "package Couriers {}\n",
+    ),
+    ("packages/couriers/v2/old.jadpo", "type Old = Int {}\n"),
+];
+
+const CHECKOUT: &[(&str, &str)] = &[
+    ("package.jadpo", "package Couriers {}\n"),
+    ("new.jadpo", "type New = Int {}\n"),
+    ("notes.md", "Working copy\n"),
+];
+
+fn lock(checkout: &str) -> String {
+    jadpo_db::write_lock(&[jadpo_db::Locked {
+        package: "Couriers.v2".to_string(),
+        source: jadpo_db::Source::Link {
+            path: checkout.to_string(),
+        },
+    }])
+}
+
+#[test]
+fn a_project_loads_from_files_in_memory_as_from_disk() {
+    let dir = folder("memory");
+    let root = dir.join("shop");
+    for (path, text) in PROJECT {
+        write(&root, path, text);
+    }
+    write(&root, "jadpo.lock", &lock("../couriers-dev"));
+    for (path, text) in CHECKOUT {
+        write(&dir, &format!("couriers-dev/{path}"), text);
+    }
+    let from_disk = load(&root);
+
+    let mut files = FileSet::of(PROJECT.iter().copied());
+    files.insert("jadpo.lock", Ok(lock("../couriers-dev")));
+    for (path, text) in CHECKOUT {
+        files.insert(format!("../couriers-dev/{path}"), Ok(text.to_string()));
+    }
+    let in_memory = load_files(root.clone(), &files);
+    assert_eq!(contents(&in_memory), contents(&from_disk));
+
+    // The rules sorted them: the linked checkout's files are read in the
+    // package's folder, the installed copy's own left out, the resource
+    // waits, and the registry's line is read.
+    let db = &in_memory.db;
+    let paths: Vec<&String> = in_memory
+        .project
+        .files(db)
+        .iter()
+        .map(|file| file.path(db))
+        .collect();
+    assert_eq!(
+        paths,
+        [
+            "app.jadpo",
+            "domains/planning/types/count.jadpo",
+            "packages/couriers/v2/new.jadpo",
+            "packages/couriers/v2/package.jadpo",
+            "packages/postcodes/v1/package.jadpo",
+        ]
+    );
+    assert_eq!(in_memory.project.lazy(db).len(), 1);
+    assert_eq!(
+        in_memory.project.other_files(db),
+        &["domains/planning/images/logo.svg"]
+    );
+    assert_eq!(
+        in_memory.project.identities(db).get("type Total"),
+        Some(&"Count".to_string())
+    );
+    assert_eq!(
+        in_memory.links,
+        [(
+            "packages/couriers/v2".to_string(),
+            "../couriers-dev".to_string()
+        )]
+    );
+}
+
+#[test]
+fn files_a_project_does_not_hold_are_left_out_of_a_set() {
+    let mut files = FileSet::of(PROJECT.iter().copied());
+    let plain = load_files(PathBuf::from("shop"), &files);
+    for (path, text) in [
+        ("README.md", "# Shop\n"),
+        (".editor/scratch.jadpo", "type Scratch = Int {}\n"),
+        ("domains/planning/.hidden.jadpo", "type Hidden = Int {}\n"),
+        ("build/stale.jadpo", "type Stale = Int {}\n"),
+        ("../elsewhere.jadpo", "type Elsewhere = Int {}\n"),
+        ("/absolute.jadpo", "type Absolute = Int {}\n"),
+    ] {
+        files.insert(path, Ok(text.to_string()));
+    }
+    files.insert("build/", Err("permission denied".to_string()));
+    assert_eq!(
+        contents(&load_files(PathBuf::from("shop"), &files)),
+        contents(&plain)
+    );
+}
+
+#[test]
+fn what_a_set_could_not_read_is_unreadable_as_on_disk() {
+    let mut files = FileSet::of([("app.jadpo", "application {}\n")]);
+    files.insert(
+        "domains/planning/types/count.jadpo",
+        Err("permission denied".to_string()),
+    );
+    files.insert("domains/billing/", Err("permission denied".to_string()));
+    files.insert(
+        "database/migrations/0001/snapshot.json",
+        Err("permission denied".to_string()),
+    );
+    // A link to a checkout the set doesn't hold can't be read.
+    files.insert("jadpo.lock", Ok(lock("../couriers-dev")));
+    let loaded = load_files(PathBuf::from("shop"), &files);
+    let unreadable: Vec<&str> = loaded
+        .unreadable
+        .iter()
+        .map(|file| file.path.as_str())
+        .collect();
+    assert_eq!(
+        unreadable,
+        [
+            "../couriers-dev/",
+            "domains/billing/",
+            "domains/planning/types/count.jadpo"
+        ]
+    );
+    // A record keeps why it couldn't be read, for the records' checks.
+    let records = loaded.project.records(&loaded.db);
+    assert!(records.iter().any(
+        |record| record.path == "database/migrations/0001/snapshot.json" && record.text.is_err()
+    ));
+}
+
+#[test]
+fn a_set_without_app_jadpo_is_loose_files() {
+    let files = FileSet::of([
+        ("a.jadpo", "type A = Int {}\n"),
+        ("nested/b.jadpo", "type B = Int {}\n"),
+        ("nested/notes.md", "notes\n"),
+        ("domains/x/emails/welcome.html", "<p/>\n"),
+    ]);
+    let loaded = load_files(PathBuf::from("loose"), &files);
+    let db = &loaded.db;
+    assert_eq!(loaded.project.layout(db), Layout::Loose);
+    let paths: Vec<&String> = loaded
+        .project
+        .files(db)
+        .iter()
+        .map(|file| file.path(db))
+        .collect();
+    assert_eq!(paths, ["a.jadpo", "nested/b.jadpo"]);
+    assert!(loaded.project.other_files(db).is_empty());
+    assert!(loaded.project.records(db).is_empty());
 }
