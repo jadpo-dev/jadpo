@@ -3741,7 +3741,7 @@ than acknowledging it as a handler that ends well does.
 `jadpo build` adds `queues: { consumers: [ ] }` to the Wrangler file from
 the deployable's plan (one part of `workers::wrangler`, through `jadpo_std::receiving::wrangler_queues`), which keeps the queues only
 where subscribers run. The file is checked against Wrangler itself:
-Wrangler 4.149.0 is pinned in `tools/workers/` beside workerd, whose
+Wrangler 4.155.0 is pinned in `tools/workers/` beside workerd, whose
 release it is held to by an npm override, and installed with it by the
 shared installer (`jadpo_test::workerd_install::wrangler`), about 70 MB
 more in `tools/workers/`; the test runs
@@ -4433,7 +4433,7 @@ own Workers runtime (`crates/jadpo-host-workers/tests/workerd.rs`): a probe Work
 library (`wasm-bindgen-cli-support` at the lock's release, so nothing is
 downloaded and no command-line tool has to match the crate), with a module
 of Jadpo's own that instantiates it once per isolate, and run by workerd
-1.20261007.1, pinned in `tools/workers/package-lock.json` and installed
+1.20261023.1, pinned in `tools/workers/package-lock.json` and installed
 there by `npm ci --ignore-scripts` the first time a test needs it (never
 globally; `JADPO_WORKERD` names another), against servers the test starts
 on this machine: an echo over TCP, the same behind TLS signed by an

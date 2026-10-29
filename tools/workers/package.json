@@ -4,8 +4,8 @@
   "description": "workerd, Cloudflare's own Workers runtime, pinned for the Workers host's tests (docs/compiler-runtime.md §2.6, \"The Workers host\"), and Wrangler, whose `deploy --dry-run` checks the Wrangler file `jadpo build` writes (chunk 8.2k). Installed here by `npm ci --ignore-scripts`, never globally.",
   "license": "Apache-2.0",
   "dependencies": {
-    "workerd": "1.20261007.1",
-    "wrangler": "4.149.0"
+    "workerd": "1.20261023.1",
+    "wrangler": "4.155.0"
   },
   "overrides": {
     "workerd": "$workerd"
