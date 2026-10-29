@@ -1,0 +1,1037 @@
+{
+  "contractVersion": "todo-v0.2",
+  "status": "implementation-successor-unfrozen",
+  "clock": "2026-01-15T12:00:00Z",
+  "rules": {
+    "httpFailureEnvelope": {
+      "outerRequired": [
+        "error"
+      ],
+      "outerAdditionalProperties": false,
+      "errorRequired": [
+        "code",
+        "message",
+        "request_id"
+      ],
+      "errorOptional": [
+        "details"
+      ],
+      "errorAdditionalProperties": false,
+      "requestIdHeader": "x-request-id"
+    },
+    "databaseQueryBudget": {
+      "userWithTodos": 2,
+      "listTodos": 1,
+      "meaning": "Business SQL statements only. Physical principal authority, credential authority, runtime bookkeeping and transaction commands are recorded separately; no statement may be hidden or counted in two categories."
+    },
+    "authenticationQueryAccounting": {
+      "principalAuthorityQueries": "Physical database queries resolving or checking current user/service authority; a combined credential/principal query counts once here.",
+      "credentialAuthorityQueries": "Additional physical credential/session validation queries, excluding queries already counted as principal authority.",
+      "businessQueries": "Application reads and writes are recorded separately from authentication authority queries.",
+      "freshRouteBudget": "Exactly one principal-authority query. Record credential queries separately; no total authentication-query budget is asserted.",
+      "ownerDecision": "2026-09-30: one principal lookup; count credential checks separately"
+    },
+    "packageAutoInstall": false,
+    "generatedTargets": [
+      "native",
+      "workerd"
+    ],
+    "runtimeOwnedProbes": {
+      "live": "/health/live",
+      "ready": "/health/ready",
+      "applicationApi": false
+    }
+  },
+  "cases": [
+    {
+      "id": "AUTH-001",
+      "kind": "http",
+      "title": "protected route rejects missing credentials",
+      "request": {
+        "method": "GET",
+        "path": "/todos"
+      },
+      "expect": {
+        "status": 401,
+        "code": "authentication_required",
+        "databaseQueries": 0
+      }
+    },
+    {
+      "id": "AUTH-002",
+      "kind": "http",
+      "title": "browser session resolves the provider-independent user principal",
+      "fixture": [
+        "active alice",
+        "valid alice session"
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/todos",
+        "auth": "alice-session"
+      },
+      "expect": {
+        "status": 200,
+        "principalKind": "user",
+        "principalUser": "alice",
+        "providerFieldsInOutput": false
+      }
+    },
+    {
+      "id": "AUTH-003",
+      "kind": "http",
+      "title": "JWT API bearer resolves the same user principal variant",
+      "fixture": [
+        "active alice",
+        "valid allowlisted alice JWT bearer"
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/todos",
+        "auth": "alice-jwt"
+      },
+      "expect": {
+        "status": 200,
+        "principalKind": "user",
+        "principalUser": "alice",
+        "providerFieldsInOutput": false
+      }
+    },
+    {
+      "id": "AUTH-004",
+      "kind": "http",
+      "title": "conflicting strategies do not merge identity or privileges",
+      "fixture": [
+        "valid alice session",
+        "valid bob JWT bearer"
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/todos",
+        "auth": [
+          "alice-session",
+          "bob-jwt"
+        ]
+      },
+      "expect": {
+        "status": 401,
+        "code": "ambiguous_credentials",
+        "databaseQueries": 0
+      }
+    },
+    {
+      "id": "AUTH-005",
+      "kind": "http",
+      "title": "multiple presented credentials reject before validation even when one is invalid",
+      "fixture": [
+        "valid alice session",
+        "invalid JWT bearer"
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/todos",
+        "auth": [
+          "alice-session",
+          "invalid-jwt"
+        ]
+      },
+      "expect": {
+        "status": 401,
+        "code": "ambiguous_credentials",
+        "databaseQueries": 0
+      }
+    },
+    {
+      "id": "AUTH-006",
+      "kind": "http",
+      "title": "fresh authority rejects a disabled user with an unexpired signed session",
+      "fixture": [
+        "alice active when signed session was issued",
+        "alice disabled after issuance; session remains otherwise valid",
+        "valid browser origin and session-bound CSRF proof"
+      ],
+      "request": {
+        "method": "DELETE",
+        "path": "/users/alice",
+        "auth": "alice-session"
+      },
+      "expect": {
+        "status": 403,
+        "code": "user_disabled",
+        "writes": 0
+      },
+      "timeline": {
+        "issuedAt": "2026-01-15T11:59:00Z",
+        "disabledAt": "2026-01-15T11:59:30Z",
+        "requestAt": "2026-01-15T12:00:00Z",
+        "credentialExpiresAt": "2026-01-15T12:04:00Z"
+      }
+    },
+    {
+      "id": "AUTH-007",
+      "kind": "http",
+      "title": "provisioning-only user email stays out of self-service output",
+      "fixture": [
+        "active alice with database email alice@example.test",
+        "valid alice JWT subject with email claim attacker@example.test"
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/users/alice/todos",
+        "auth": "alice-jwt"
+      },
+      "expect": {
+        "status": 200,
+        "privateFieldsAbsent": [
+          "email"
+        ],
+        "providerEmailUsed": false
+      }
+    },
+    {
+      "id": "AUTH-008",
+      "kind": "http",
+      "title": "short-lived signed API bearer resolves identity without authority or cache access",
+      "fixture": [
+        "active alice",
+        "valid unexpired signed alice bearer with lifetime at most five minutes",
+        "cache unavailable"
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/todos",
+        "auth": "alice-bounded-bearer"
+      },
+      "expect": {
+        "status": 200,
+        "principalKind": "user",
+        "principalUser": "alice",
+        "principalAuthorityQueries": 0,
+        "credentialAuthorityQueries": 0
+      }
+    },
+    {
+      "id": "AUTH-009",
+      "kind": "http",
+      "title": "service API key resolves a distinct service principal",
+      "fixture": [
+        "active reporting service",
+        "current reporting service key"
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/auth/exchange",
+        "auth": "reporting-service-key"
+      },
+      "expect": {
+        "status": 200,
+        "principalKind": "service",
+        "principalService": "reporting",
+        "secretInOutput": false
+      }
+    },
+    {
+      "id": "AUTH-010",
+      "kind": "http",
+      "title": "fresh-authority route checks a bounded principal",
+      "fixture": [
+        "active alice",
+        "valid bounded alice bearer"
+      ],
+      "request": {
+        "method": "DELETE",
+        "path": "/users/alice",
+        "auth": "alice-bounded-bearer"
+      },
+      "expect": {
+        "status": 204,
+        "principalAuthorityQueries": 1,
+        "credentialAuthorityQueriesRecorded": true
+      }
+    },
+    {
+      "id": "AUTH-011",
+      "kind": "http",
+      "title": "disabled service cannot exchange a still-valid key",
+      "fixture": [
+        "disabled reporting service",
+        "cryptographically valid reporting service key"
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/auth/exchange",
+        "auth": "reporting-service-key"
+      },
+      "expect": {
+        "status": 403,
+        "code": "service_disabled"
+      }
+    },
+    {
+      "id": "AUTH-012",
+      "kind": "http",
+      "title": "public liveness skips ambient invalid credentials",
+      "request": {
+        "method": "GET",
+        "path": "/health/live",
+        "auth": "invalid-bearer"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "status": "live"
+        },
+        "authenticationAttempts": 0,
+        "databaseQueries": 0
+      }
+    },
+    {
+      "id": "PUBLIC-001",
+      "kind": "http",
+      "title": "runtime liveness is public and application routes remain authenticated",
+      "request": {
+        "method": "GET",
+        "path": "/health/live"
+      },
+      "expect": {
+        "status": 200,
+        "body": {
+          "status": "live"
+        },
+        "databaseQueries": 0
+      }
+    },
+    {
+      "id": "CREATE-001",
+      "kind": "http",
+      "title": "owner creates a todo and owner is server assigned",
+      "fixture": [
+        "active alice"
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/todos",
+        "auth": "alice-session",
+        "json": {
+          "title": "File accounts",
+          "due_at": "2026-01-20T09:00:00Z"
+        }
+      },
+      "expect": {
+        "status": 201,
+        "storedOwner": "alice",
+        "outputSchema": "TodoView"
+      }
+    },
+    {
+      "id": "CREATE-002",
+      "kind": "http",
+      "title": "client cannot inject ownership or generated fields",
+      "fixture": [
+        "active alice",
+        "active bob"
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/todos",
+        "auth": "alice-session",
+        "json": {
+          "title": "Injected",
+          "due_at": null,
+          "owner_id": "bob",
+          "deleted_at": null
+        }
+      },
+      "expect": {
+        "status": 422,
+        "code": "invalid_input",
+        "writes": 0
+      }
+    },
+    {
+      "id": "CREATE-003",
+      "kind": "http",
+      "title": "past due dates are rejected against the injected clock",
+      "fixture": [
+        "active alice"
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/todos",
+        "auth": "alice-session",
+        "json": {
+          "title": "Late",
+          "due_at": "2026-01-15T11:59:59Z"
+        }
+      },
+      "expect": {
+        "status": 422,
+        "code": "due_date_in_past",
+        "writes": 0
+      }
+    },
+    {
+      "id": "CREATE-004",
+      "kind": "http",
+      "title": "due date may be omitted and is stored as none",
+      "fixture": [
+        "active alice"
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/todos",
+        "auth": "alice-session",
+        "json": {
+          "title": "No deadline"
+        }
+      },
+      "expect": {
+        "status": 201,
+        "storedDueAt": null,
+        "outputDueAt": null
+      }
+    },
+    {
+      "id": "READ-001",
+      "kind": "http",
+      "title": "owner can read an active todo",
+      "fixture": [
+        "active alice",
+        "alice active todo t1"
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/todos/t1",
+        "auth": "alice-session"
+      },
+      "expect": {
+        "status": 200,
+        "outputSchema": "TodoView",
+        "privateFieldsAbsent": [
+          "owner_id",
+          "deleted_at",
+          "reminder_sent_at"
+        ]
+      }
+    },
+    {
+      "id": "READ-002",
+      "kind": "http",
+      "title": "non-owner and nonexistent todo share the concealed response",
+      "fixture": [
+        "active alice",
+        "active bob",
+        "bob active todo t2"
+      ],
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/todos/t2",
+          "auth": "alice-session"
+        },
+        {
+          "method": "GET",
+          "path": "/todos/00000000-0000-4000-8000-000000000099",
+          "auth": "alice-session"
+        }
+      ],
+      "expect": {
+        "sameStatus": 404,
+        "sameCode": "todo_not_found",
+        "samePublicShape": true
+      }
+    },
+    {
+      "id": "READ-003",
+      "kind": "http",
+      "title": "malformed identifier is rejected before database access",
+      "request": {
+        "method": "GET",
+        "path": "/todos/not-a-uuid",
+        "auth": "alice-session"
+      },
+      "expect": {
+        "status": 422,
+        "code": "invalid_input",
+        "databaseQueries": 0
+      }
+    },
+    {
+      "id": "LIST-001",
+      "kind": "http",
+      "title": "list is owner scoped, excludes soft-deleted rows, and is stable",
+      "fixture": [
+        "alice todos with equal created_at",
+        "bob active todo",
+        "alice deleted todo"
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/todos?page_size=2",
+        "auth": "alice-session"
+      },
+      "expect": {
+        "status": 200,
+        "onlyOwner": "alice",
+        "deletedAbsent": true,
+        "order": [
+          "created_at desc",
+          "id desc"
+        ],
+        "databaseQueriesAtMost": 1,
+        "nextCursorPresent": true
+      }
+    },
+    {
+      "id": "LIST-002",
+      "kind": "http",
+      "title": "cursor continuation has no duplicates or gaps",
+      "fixture": [
+        "five alice todos with deterministic ids and timestamps"
+      ],
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/todos?page_size=2",
+          "auth": "alice-session"
+        },
+        {
+          "method": "GET",
+          "path": "/todos?page_size=2&after={first.next}",
+          "auth": "alice-session"
+        },
+        {
+          "method": "GET",
+          "path": "/todos?page_size=2&after={second.next}",
+          "auth": "alice-session"
+        }
+      ],
+      "expect": {
+        "status": 200,
+        "uniqueItemCount": 5,
+        "stableAcrossRepeat": true
+      }
+    },
+    {
+      "id": "LIST-003",
+      "kind": "http",
+      "title": "status and due-before filters compose with owner scope",
+      "fixture": [
+        "alice and bob todos spanning status and due date"
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/todos?status=open&due_before=2026-02-01T00:00:00Z",
+        "auth": "alice-session"
+      },
+      "expect": {
+        "status": 200,
+        "onlyOwner": "alice",
+        "onlyTodoStatus": "open",
+        "allDueBefore": "2026-02-01T00:00:00Z",
+        "undatedAbsent": true
+      }
+    },
+    {
+      "id": "LIST-004",
+      "kind": "http",
+      "title": "page-size bound is validated before database access",
+      "request": {
+        "method": "GET",
+        "path": "/todos?page_size=101",
+        "auth": "alice-session"
+      },
+      "expect": {
+        "status": 422,
+        "code": "invalid_input",
+        "databaseQueries": 0
+      }
+    },
+    {
+      "id": "REL-001",
+      "kind": "http",
+      "title": "user with zero, one, or many todos uses one bounded child query",
+      "fixtureVariants": [
+        "alice zero todos",
+        "alice one todo",
+        "alice 100 todos"
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/users/alice/todos",
+        "auth": "alice-session"
+      },
+      "expect": {
+        "status": 200,
+        "outputSchema": "UserWithTodos",
+        "databaseQueriesAtMost": 2,
+        "childLimit": 100,
+        "childOrder": [
+          "created_at asc",
+          "id asc"
+        ],
+        "crossParentMixing": false,
+        "privateFieldsAbsent": [
+          "email"
+        ]
+      }
+    },
+    {
+      "id": "REL-002",
+      "kind": "persistence",
+      "title": "todo owner must refer to an existing user",
+      "operation": {
+        "createTodoWithOwner": "missing-user"
+      },
+      "expect": {
+        "accepted": false,
+        "normalisedFailure": "relationship_conflict",
+        "rawDatabaseDetailsPublic": false
+      }
+    },
+    {
+      "id": "REL-003",
+      "kind": "policy",
+      "title": "todo ownership cannot be reassigned through create, patch, or ordinary mutation",
+      "fixture": [
+        "alice active todo t1",
+        "active bob"
+      ],
+      "operation": {
+        "attemptOwnerChange": {
+          "todo": "t1",
+          "from": "alice",
+          "to": "bob"
+        }
+      },
+      "expect": {
+        "releaseEquivalentSuccess": false,
+        "disposition": "requires_human_decision",
+        "policyRule": "Todo.fields.owner_id"
+      }
+    },
+    {
+      "id": "REL-004",
+      "kind": "persistence",
+      "title": "hard deleting a user with retained todos is restricted",
+      "fixture": [
+        "disabled alice",
+        "alice retained todo t1"
+      ],
+      "operation": {
+        "hardDeleteUser": "alice"
+      },
+      "expect": {
+        "accepted": false,
+        "normalisedFailure": "relationship_conflict",
+        "todoRowExists": true,
+        "rawDatabaseDetailsPublic": false
+      }
+    },
+    {
+      "id": "PATCH-001",
+      "kind": "http",
+      "title": "omitted due date is unchanged",
+      "fixture": [
+        "alice todo t1 due 2026-02-01"
+      ],
+      "request": {
+        "method": "PATCH",
+        "path": "/todos/t1",
+        "auth": "alice-session",
+        "json": {
+          "title": "Changed"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "storedDueAt": "2026-02-01T00:00:00Z",
+        "storedTitle": "Changed"
+      }
+    },
+    {
+      "id": "PATCH-002",
+      "kind": "http",
+      "title": "explicit none clears due date",
+      "fixture": [
+        "alice todo t1 due 2026-02-01"
+      ],
+      "request": {
+        "method": "PATCH",
+        "path": "/todos/t1",
+        "auth": "alice-session",
+        "json": {
+          "due_at": null
+        }
+      },
+      "expect": {
+        "status": 200,
+        "storedDueAt": null
+      }
+    },
+    {
+      "id": "PATCH-003",
+      "kind": "http",
+      "title": "empty patch is a successful no-op",
+      "fixture": [
+        "alice active todo t1"
+      ],
+      "request": {
+        "method": "PATCH",
+        "path": "/todos/t1",
+        "auth": "alice-session",
+        "json": {}
+      },
+      "expect": {
+        "status": 200,
+        "rowUnchanged": true,
+        "generatedTimestampsUnchanged": true,
+        "reminderRevisionUnchanged": true
+      }
+    },
+    {
+      "id": "PATCH-004",
+      "kind": "http",
+      "title": "non-owner cannot patch by identifier",
+      "fixture": [
+        "alice active",
+        "bob active todo t2"
+      ],
+      "request": {
+        "method": "PATCH",
+        "path": "/todos/t2",
+        "auth": "alice-session",
+        "json": {
+          "title": "Stolen"
+        }
+      },
+      "expect": {
+        "status": 404,
+        "code": "todo_not_found",
+        "writes": 0
+      }
+    },
+    {
+      "id": "PATCH-005",
+      "kind": "http",
+      "title": "changing a due date clears prior reminder delivery state",
+      "fixture": [
+        "alice todo t1 due in future with reminder_sent_at set"
+      ],
+      "request": {
+        "method": "PATCH",
+        "path": "/todos/t1",
+        "auth": "alice-session",
+        "json": {
+          "due_at": "2026-02-15T09:00:00Z"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "storedDueAt": "2026-02-15T09:00:00Z",
+        "storedReminderSentAt": null,
+        "reminderRevisionIncrement": 1
+      }
+    },
+    {
+      "id": "DELETE-001",
+      "kind": "http",
+      "title": "delete is soft and immediately hides the todo",
+      "fixture": [
+        "alice active todo t1"
+      ],
+      "request": {
+        "method": "DELETE",
+        "path": "/todos/t1",
+        "auth": "alice-session"
+      },
+      "expect": {
+        "status": 204,
+        "rowExists": true,
+        "deletedAt": "2026-01-15T12:00:00Z",
+        "subsequentGetStatus": 404
+      }
+    },
+    {
+      "id": "DELETE-002",
+      "kind": "http",
+      "title": "repeated delete does not disclose prior existence",
+      "fixture": [
+        "alice deleted todo t1"
+      ],
+      "request": {
+        "method": "DELETE",
+        "path": "/todos/t1",
+        "auth": "alice-session"
+      },
+      "expect": {
+        "status": 404,
+        "code": "todo_not_found",
+        "writes": 0
+      }
+    },
+    {
+      "id": "USER-001",
+      "kind": "http",
+      "title": "user disablement retains todos and enforces fresh, refresh and bounded-expiry rejection",
+      "fixture": [
+        "active alice",
+        "alice active todo t1",
+        "signed alice session issued while active; session record remains otherwise valid",
+        "valid browser origin and session-bound CSRF proof"
+      ],
+      "request": {
+        "method": "DELETE",
+        "path": "/users/alice",
+        "auth": "alice-session"
+      },
+      "expect": {
+        "status": 204,
+        "userStatus": "disabled",
+        "todoRowExists": true
+      },
+      "timeline": {
+        "issuedAt": "2026-01-15T11:59:00Z",
+        "disabledAt": "2026-01-15T12:00:00Z",
+        "maximumRevocationDelaySeconds": 300,
+        "signedPartExpiresAt": "2026-01-15T12:04:00Z",
+        "durableSessionExpiresAt": "2026-02-14T11:59:00Z"
+      },
+      "followUps": [
+        {
+          "at": "2026-01-15T12:00:01Z",
+          "request": {
+            "method": "DELETE",
+            "path": "/users/alice",
+            "auth": "alice-session"
+          },
+          "expect": {
+            "status": 403,
+            "code": "user_disabled",
+            "writes": 0
+          }
+        },
+        {
+          "at": "2026-01-15T12:00:02Z",
+          "operation": "compiler-owned authentication refresh",
+          "auth": "alice-session",
+          "expect": {
+            "failure": "UserDisabled",
+            "code": "user_disabled",
+            "credentialsIssued": 0
+          }
+        },
+        {
+          "at": "2026-01-15T12:04:00Z",
+          "request": {
+            "method": "GET",
+            "path": "/todos",
+            "auth": "alice-session"
+          },
+          "expect": {
+            "status": 403,
+            "code": "user_disabled",
+            "writes": 0,
+            "credentialsIssued": 0
+          }
+        },
+        {
+          "at": "2026-02-14T11:59:00Z",
+          "request": {
+            "method": "GET",
+            "path": "/todos",
+            "auth": "alice-session"
+          },
+          "expect": {
+            "status": 401,
+            "code": "invalid_credentials",
+            "writes": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "JOB-001",
+      "kind": "job",
+      "title": "reminder job sends one idempotent message for an eligible todo",
+      "fixture": [
+        "active alice",
+        "open alice todo due before the injected clock",
+        "no prior reminder"
+      ],
+      "run": {
+        "job": "overdue_reminders",
+        "at": "2026-01-15T12:00:00Z"
+      },
+      "expect": {
+        "mailCalls": 1,
+        "recipient": "alice.email",
+        "idempotencyKey": "runtime-derived stable delivery/step key for this reminder revision",
+        "reminderSentAtPresent": true,
+        "receipt": "provider acknowledgement with accepted_at",
+        "reminderSentAtEqualsProviderAcceptedAt": true,
+        "queuedIsSent": false
+      }
+    },
+    {
+      "id": "JOB-002",
+      "kind": "job",
+      "title": "reminder replay does not duplicate a successful message",
+      "fixture": [
+        "JOB-001 completed"
+      ],
+      "run": {
+        "job": "overdue_reminders",
+        "at": "2026-01-15T12:01:00Z"
+      },
+      "expect": {
+        "additionalMailCalls": 0
+      },
+      "variants": [
+        "repeated schedule after successful receipt",
+        "lost acknowledgement and safe keyed replay",
+        "concurrent schedule claims",
+        "edit during queue snapshot",
+        "due-date A to B to A",
+        "stale queued revision",
+        "stale prepared revision",
+        "title/email edit after preparation with lost acknowledgement",
+        "edit while provider call is in flight",
+        "provider unavailable before send",
+        "unknown outcome after key window"
+      ]
+    },
+    {
+      "id": "JOB-003",
+      "kind": "job",
+      "title": "completed, deleted, undated, reminded, and disabled-owner todos are skipped",
+      "fixture": [
+        "one todo in each excluded state",
+        "owner disabled after preparation but before send"
+      ],
+      "run": {
+        "job": "overdue_reminders",
+        "at": "2026-01-15T12:00:00Z"
+      },
+      "expect": {
+        "mailCalls": 0
+      }
+    },
+    {
+      "id": "JOB-004",
+      "kind": "job",
+      "title": "purge only hard deletes rows beyond retention",
+      "fixture": [
+        "todo deleted 29 days ago",
+        "todo deleted 31 days ago",
+        "active todo"
+      ],
+      "run": {
+        "job": "Todo.purge",
+        "at": "2026-01-15T12:00:00Z"
+      },
+      "expect": {
+        "hardDeletedCount": 1,
+        "retainedCount": 2,
+        "batchLimit": 500,
+        "maximumBatchesPerRun": 20,
+        "repeatSafe": true
+      },
+      "variants": [
+        "retention boundary",
+        "more than one batch",
+        "more than one run"
+      ]
+    },
+    {
+      "id": "CONFIG-001",
+      "kind": "preflight",
+      "title": "missing required secret prevents readiness without disclosure",
+      "environment": {
+        "MAIL_API_KEY": "<missing>"
+      },
+      "expect": {
+        "native": {
+          "exitNonZero": true,
+          "listenerStarted": false,
+          "diagnosticCode": "setting_missing"
+        },
+        "workerd": {
+          "status": 503,
+          "code": "unavailable",
+          "applicationHandlerRan": false,
+          "startupProblem": "setting_missing"
+        },
+        "secretValueDisclosed": false
+      }
+    },
+    {
+      "id": "CONFIG-002",
+      "kind": "preflight",
+      "title": "malformed issuer and database URL are reported by declaration",
+      "environment": {
+        "OIDC_ISSUER": "not a url",
+        "DATABASE_URL": "postgres://user:password@"
+      },
+      "expect": {
+        "native": {
+          "exitNonZero": true,
+          "listenerStarted": false
+        },
+        "workerd": {
+          "status": 503,
+          "code": "unavailable",
+          "applicationHandlerRan": false
+        },
+        "diagnosticDeclarations": [
+          "config.oidc_issuer",
+          "config.database_url"
+        ],
+        "credentialTextDisclosed": false
+      }
+    },
+    {
+      "id": "CONFIG-003",
+      "kind": "runtime",
+      "title": "dependency outage fails readiness but not liveness",
+      "fixture": [
+        "application started",
+        "database becomes unavailable"
+      ],
+      "expect": {
+        "readyStatus": 503,
+        "readyPlane": "deployment",
+        "readyOnApplicationRouter": false,
+        "liveStatus": 200,
+        "restartRequested": false,
+        "integrations": {
+          "reminder_mail": "unchecked"
+        }
+      }
+    },
+    {
+      "id": "BOUNDARY-001",
+      "kind": "http",
+      "title": "database and service faults use a generic safe envelope",
+      "fixtureVariants": [
+        "database unavailable",
+        "mail provider authentication failure"
+      ],
+      "requestOrRun": [
+        "GET /todos",
+        "overdue_reminders"
+      ],
+      "expect": {
+        "rawSqlPublic": false,
+        "providerBodyPublic": false,
+        "stackPublic": false,
+        "requestIdPresent": true
+      }
+    }
+  ],
+  "supersedes": {
+    "contract": "todo-v0.1",
+    "path": "acceptance.json",
+    "sha256": "3bed090059de86e35d72fb7a61b0fab365990d909e118b4f5f39b7b10ba56608"
+  }
+}

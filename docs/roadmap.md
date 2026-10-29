@@ -292,6 +292,8 @@ D1 first: the site starts once D1 has merged (Richard, 2026-10-28).
   is anyone's; its pull requests pass the same gate and review.
 - [x] **D7 One place for the golden todo and the benchmarks**: [benchmarks](../benchmarks/README.md);
   `tools/` holds the gate and its `docs/`, `checks/`, `references/` and `fixtures/`.
+- [ ] **D8 The VS Code extension, finished and published**: area 14, "Editor support" and "What is built"; `editors/vscode/README.md`; `.github/workflows/vscode-extension.yml`.
+  Waits: the editor's rename, which comes with `jadpo rename` and the identity registry (after the first build, items 6 and 7).
 
 ## Phase 10 — Golden todo
 

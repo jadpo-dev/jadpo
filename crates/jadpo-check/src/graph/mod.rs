@@ -17,7 +17,7 @@ mod similar;
 pub(crate) mod text;
 
 pub(crate) use lookup::callable_at;
-pub use lookup::{Found, lookup};
+pub use lookup::{Found, Reference, lookup, references};
 pub use part::{FilePart, file_part};
 pub use similar::{FunctionShape, function_shapes, similar_problems};
 pub use text::LineIndex;

@@ -5,6 +5,12 @@
 mod completion;
 mod declines;
 mod fixes;
+mod formatting;
 mod incremental;
 mod make_setting;
+mod query_sql;
+mod quick_fixes;
+mod references;
+mod route_hover;
+mod support;
 mod translations;

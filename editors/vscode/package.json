@@ -1,7 +1,7 @@
 {
   "name": "jadpo",
   "displayName": "Jadpo",
-  "description": "Jadpo language support: highlighting, and the compiler's own errors, hover, completion and go to definition through jadpo lsp.",
+  "description": "Jadpo language support: the compiler's own errors, hover, completion, go to definition, references, formatting and quick fixes through jadpo lsp, and highlighting.",
   "version": "0.1.0",
   "publisher": "jadpo",
   "license": "Apache-2.0",
@@ -16,7 +16,9 @@
     "node": ">=22"
   },
   "categories": [
-    "Programming Languages"
+    "Programming Languages",
+    "Formatters",
+    "Linters"
   ],
   "activationEvents": [],
   "main": "./extension.js",
@@ -47,12 +49,24 @@
     ],
     "commands": [
       {
+        "command": "jadpo.openGeneratedFile",
+        "title": "Open Generated File",
+        "category": "Jadpo"
+      },
+      {
         "command": "jadpo.restartServer",
-        "title": "Jadpo: Restart Language Server"
+        "title": "Restart Language Server",
+        "category": "Jadpo"
       },
       {
         "command": "jadpo.showServerLog",
-        "title": "Jadpo: Show Language Server Log"
+        "title": "Show Language Server Log",
+        "category": "Jadpo"
+      },
+      {
+        "command": "jadpo.openServerSetting",
+        "title": "Open the jadpo.server.path Setting",
+        "category": "Jadpo"
       }
     ],
     "configuration": {
@@ -75,6 +89,19 @@
           "description": "Logs the messages between the editor and the language server to the Jadpo output channel."
         }
       }
+    },
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "jadpo.openServerSetting",
+          "when": "false"
+        }
+      ]
+    },
+    "configurationDefaults": {
+      "[jadpo]": {
+        "editor.formatOnSave": true
+      }
     }
   },
   "dependencies": {
@@ -87,5 +114,13 @@
   },
   "overrides": {
     "@azure/msal-node": "7.1.2"
+  },
+  "keywords": [
+    "jadpo",
+    "language server"
+  ],
+  "homepage": "https://github.com/richardwillars/jadpo/tree/main/editors/vscode",
+  "bugs": {
+    "url": "https://github.com/richardwillars/jadpo/issues"
   }
 }

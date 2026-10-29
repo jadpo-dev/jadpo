@@ -1,91 +1,129 @@
 # Jadpo for VS Code
 
-Highlighting for `.jadpo` files, and the compiler's own view of your project
-through `jadpo lsp`: the errors `jadpo check` gives while you type, hover,
-completion and go to definition. The extension has no parser of its own; everything but the
-colours comes from the language server (area 14, "Editor support").
+Jadpo language support. The extension starts `jadpo lsp`, the language
+server built into the `jadpo` command, so what VS Code shows about your code
+is the compiler's own view: the errors `jadpo check` gives, while you type.
+The extension has no parser of its own. It adds the colours, and the
+language server does everything else.
 
-## What works
+## What it does
 
-- **Errors** as you type, in the shape `jadpo check` prints them, on the
-  files you have open and on the rest of the project.
-- **Hover** over a name: its declaration written as Jadpo, its `///`
-  description, the failures a function, action or query can produce, and what
-  calls or uses it.
-- **Completion** as you type a word, a `.`, a `:` or a digit: names in
-  scope (with the `use` line a name needs), a value's fields, a namespace's
-  operations with their signatures, failures and descriptions, an enum's
-  variants (a `Locale`'s with its name, "British English"), the units after
-  a number for the type it goes into (`2` then `m` where a `Duration` goes),
-  a call's named arguments, type names, the rules after `decline`,
-  settings after `config.`, messages after `translations.<domain>.`, and
-  keywords. A call with required arguments goes in with a placeholder for
-  each. What fits the type the place needs comes first.
-- **Go to definition** on a name.
-- **Make this a setting** (a refactoring) on a constant's declaration or any
-  read of it: the move `jadpo config move` makes, into `config.jadpo`, with
-  every read rewritten; where the move is refused, the action says why.
-- **Highlighting**: keywords, declarations, types, strings with escapes,
-  numbers and quantities (`15m`), `//` and `///` comments, operators, route
-  paths with their `{placeholders}`, and `use` lines.
-- Comment toggling, bracket matching, auto-closing brackets and quotes, and
-  indentation.
+- **Errors as you type**, in the same shape `jadpo check` prints them: what
+  is wrong, why, and the next step. You see them for the files you have
+  open and for the rest of the project.
+- **Quick fixes.** When an error's next step is an obvious repair, a quick
+  fix makes it: a misspelt name (`Use keep instead of kepe`), a missing or
+  wrong `use` line, or moving a type to a file of its own once a second
+  file uses it (the move `jadpo fmt --layout` makes, imports included).
+  There are three more:
+  - **Decline with a reason** writes the `decline` line a judgement-call
+    error asks for, and **Remove decline** removes one.
+  - **Swap for the standard type** swaps your type for the standard type
+    it copies.
+  - **Make this a setting** moves a constant into `config.jadpo`.
+- **Format on save**: the layout `jadpo fmt` writes, imports fixed and
+  declarations in order. Formatting is on for `.jadpo` files by default
+  (`editor.formatOnSave` under `[jadpo]`).
+- **Hover** over a name to see its declaration written as Jadpo and its
+  `///` description, along with:
+  - the failures it can produce, and what calls or uses it;
+  - for a query, the SQL it sends, as `jadpo sql` shows it.
+- **Go to definition**, from every use of a name and from a `use` line.
+  From a `translations.` call it goes to the message and to its wording in
+  each language file.
+- **Find references**: every place a name is used, read from the
+  compiler's own resolution. A private name of the same spelling in
+  another domain is never counted.
+- **Completion** as you type a word, a `.`, a `:` or a digit:
+  - names in scope, with the `use` line a name needs;
+  - a value's fields, and a namespace's operations with their signatures;
+  - an enum's variants, and the units that fit after a number (`2` then
+    `m` where a `Duration` goes);
+  - named arguments, type names, the rules after `decline`, and settings
+    and messages.
 
-## What doesn't yet
+  A call goes in with a placeholder for each required argument.
+- **Open Generated File**: a list of the files `jadpo check` writes in
+  `build/`. These are the manifest, the library and failure catalogues, the
+  reports and OpenAPI. The refresh button runs `jadpo check` again.
+- **Highlighting** of keywords, declarations, types, strings, numbers and
+  quantities (`15m`), comments, operators, route paths and `use` lines. It
+  also gives you comment toggling, bracket matching and indentation.
 
-Find references, rename, formatting, most quick fixes, hover on a
-query's SQL, and a command to open generated files. The server doesn't offer
-them yet, and the extension shows only what the server offers.
-Email templates (not `.jadpo` files) aren't highlighted. `use` lines are
-highlighted before the compiler reads them (they arrive with imports).
+## Install Jadpo first
 
-## Install
+The extension needs the `jadpo` command. Each [release](https://github.com/richardwillars/jadpo/releases)
+comes with installers:
 
-You need a `jadpo` binary. From a checkout of this repository:
+- **macOS and Linux**:
 
-    cargo build --release -p jadpo-cli     # target/release/jadpo
+      curl --proto '=https' --tlsv1.2 -LsSf https://github.com/richardwillars/jadpo/releases/latest/download/jadpo-cli-installer.sh | sh
 
-Then either:
+- **Windows**, in PowerShell:
 
-**Run from source** (to try it or change it): open `editors/vscode` in VS Code
-and press F5. A second window opens with the extension loaded; open a Jadpo
-project in it.
+      powershell -ExecutionPolicy Bypass -c "irm https://github.com/richardwillars/jadpo/releases/latest/download/jadpo-cli-installer.ps1 | iex"
 
-**Install a package**:
+- **npm**: `npm install -g jadpo`.
+- **Homebrew**: each release comes with a formula, `jadpo.rb`.
 
-    cd editors/vscode
-    npm install
-    npm run package            # writes jadpo-0.1.0.vsix (not committed)
+The shell and PowerShell installers put `jadpo` in Cargo's folder,
+`~/.cargo/bin` (on Windows, `%USERPROFILE%\.cargo\bin`), and add it to your
+`PATH`. If VS Code was open while you installed, restart it so that it sees
+the new `PATH`. Then open the folder that holds your project's `app.jadpo`.
 
-then in VS Code run "Extensions: Install from VSIX..." and pick the file, or
-`code --install-extension jadpo-0.1.0.vsix`. It needs Node 22 or later and VS
-Code 1.91 or later.
+## How it finds `jadpo`
+
+By default it runs the `jadpo` it finds on your `PATH`. To use another one,
+set `jadpo.server.path` to its path.
+
+The status bar shows which `jadpo` is running whenever a `.jadpo` file is
+open: `jadpo 0.1.0`, with the binary's path when you point at it. Click it
+to restart the language server.
+
+If no binary is found, the item reads `jadpo not found`, and a message says
+where it looked and opens the setting. If the binary is found but doesn't
+start, it reads `jadpo lsp didn't start`, and the log has the reason.
+
+The language server reads the project from the first folder open in the
+window. It finds the project by walking up to `app.jadpo`, as every `jadpo`
+command does.
 
 ## Settings
 
 | Setting | Default | |
 |---|---|---|
-| `jadpo.server.path` | `jadpo` | The binary that runs `jadpo lsp`. A bare name is looked up on `PATH`. To use the build in a checkout, set it to `${workspaceFolder}/target/release/jadpo` (or `target/debug/jadpo`); `${workspaceFolder}` is the first folder open, and a leading `~` is your home folder. Changing it restarts the server. |
-| `jadpo.trace.server` | `off` | `messages` or `verbose` logs the protocol traffic to the Jadpo output channel. |
+| `jadpo.server.path` | `jadpo` | The binary that runs `jadpo lsp`. A bare name is looked up on `PATH`; a path is used as it is. `${workspaceFolder}` is the first folder open, and a leading `~` is your home folder. Changing it restarts the server. |
+| `jadpo.trace.server` | `off` | `messages` or `verbose` logs the messages between VS Code and the server in the Jadpo log. |
 
-If the binary isn't found, a message says where it looked and offers to open
-the setting; the log is in **Output > Jadpo** (command "Jadpo: Show Language
-Server Log"). "Jadpo: Restart Language Server" restarts it, for example after
-rebuilding `jadpo`.
+## Commands
 
-The server reads the project from the first folder open in the window and
-finds it by walking up to `app.jadpo`, so open the project's folder.
+| Command | Does |
+|---|---|
+| Jadpo: Open Generated File | Lists the files `jadpo check` wrote in `build/` and opens the one you choose. The refresh button runs `jadpo check` again. With nothing generated yet, it offers to run it. |
+| Jadpo: Restart Language Server | Stops and starts `jadpo lsp`, for example after you install a new `jadpo`. |
+| Jadpo: Show Language Server Log | Opens **Output > Jadpo**, which has what the server and `jadpo check` printed. |
 
-## Checks
+## Not here yet
 
-    npm test                              # in editors/vscode
-    python3 tools/checks/editor_grammar.py --check   # from the repository root
+- **Rename** isn't here yet. It will come with `jadpo rename`, which keeps
+  a renamed entity field's stored data.
+- **Email templates** aren't highlighted.
 
-`npm test` checks how the binary is found, and, when `target/debug/jadpo`
-exists (or `JADPO_BIN` names a binary), starts the real `jadpo lsp` through
-the protocol library the client is built on and checks the handshake, an
-error, hover and go to definition. The server's behaviour is tested in
-`crates/jadpo-cli/tests/lsp.rs`.
+## Developing the extension
+
+From a checkout of the Jadpo repository:
+
+1. Run `cargo build -p jadpo-cli`.
+2. Open `editors/vscode` in VS Code and press F5. A second window runs
+   the extension.
+3. In that window, open a Jadpo project, and set `jadpo.server.path` to
+   the full path of the checkout's `target/debug/jadpo`.
+
+To run the tests, run `npm ci && npm test` in `editors/vscode`. The tests
+start that binary through the protocol library the client uses. The
+language server's own tests are in `crates/jadpo-lsp/tests`.
+
+To make a package, run `npm run package`, which writes `jadpo-<version>.vsix`.
 
 `tools/checks/editor_grammar.py` is part of `python3 tools/verify.py` and needs no
 Node. The highlighting grammar (`syntaxes/jadpo.tmLanguage.json`) is written

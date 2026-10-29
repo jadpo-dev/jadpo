@@ -1883,6 +1883,7 @@ dependencies = [
  "jadpo-db",
  "jadpo-diag",
  "jadpo-graph",
+ "jadpo-plan",
  "jadpo-std",
  "jadpo-value",
  "lsp-server",

@@ -1,0 +1,4 @@
+type SubjectTaken = Failure {
+    kind: FailureKind.conflict
+    message: "This authentication subject is already provisioned."
+}

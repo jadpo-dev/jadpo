@@ -28,6 +28,7 @@ pub mod emails;
 pub mod events;
 mod failures;
 pub mod fixes;
+pub mod formatting;
 pub mod graph;
 pub mod identity;
 pub mod imports;
