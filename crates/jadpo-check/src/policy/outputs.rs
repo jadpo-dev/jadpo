@@ -62,9 +62,6 @@ pub fn query_policy_problems(db: &dyn Db, project: Project, file: File) -> Vec<D
 fn visible_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     let path = file.path(db);
     let mut out = Vec::new();
-    let Some(source) = tree::source(db, file) else {
-        return out;
-    };
     let prover = Prover::new(db, project);
     for item in &item_tree(db, file).items {
         if item.kind != ItemKind::Entity {
@@ -90,6 +87,11 @@ fn visible_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic
             .into_iter()
             .find(|field| !prover.field_proved(entity, field, &reached))
         else {
+            continue;
+        };
+        // The syntax is read only for a problem, so an edit elsewhere in
+        // the file doesn't run this again.
+        let Some(source) = tree::source(db, file) else {
             continue;
         };
         let at = match tree::decl_at(&source, item.index) {
