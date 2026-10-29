@@ -344,8 +344,42 @@ impl ProviderPlan {
     }
 }
 
+/// A connection's credential (area 11, `credential:`): how its package
+/// sends it and where the connection's calls get it (chunk 10.3f).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CredentialPlan {
+    pub scheme: CredentialScheme,
+    pub source: CredentialSource,
+}
+
+/// Where a connection's credential comes from (chunk 10.3f). A call's
+/// asynchronous caller resolves it before the request is made, and it
+/// decides what the provider rejecting it means. A grant owned by one of
+/// the app's records (area 11, "Acting for each user: OAuth grants") will
+/// be another source, read from its owner's store and renewed there.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum CredentialSource {
+    /// One for the whole connection, `credential: config.<name>`: the
+    /// `secret: true` setting numbered `secret`, held from start-up, and
+    /// for [`CredentialScheme::AwsSigV4`] the access key id the setting
+    /// numbered `key_id` holds (`credential: { key_id: secret: }`).
+    Setting { secret: u32, key_id: Option<u32> },
+}
+
+impl CredentialSource {
+    /// The settings it is read from, by number: its secret's, then its
+    /// key id's.
+    pub fn settings(&self) -> Vec<u32> {
+        match self {
+            CredentialSource::Setting { secret, key_id } => {
+                std::iter::once(*secret).chain(*key_id).collect()
+            }
+        }
+    }
+}
+
 /// How a credential is sent (area 11, `credential:`): the scheme the
-/// package names, with the secret setting the connection reads it from.
+/// package names.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CredentialScheme {
     /// `Authorization: Bearer <secret>`.
@@ -354,9 +388,9 @@ pub enum CredentialScheme {
     /// `user:password`, as RFC 7617 joins them.
     Basic,
     /// AWS Signature Version 4 (chunk 7.7c): each request signed with the
-    /// secret access key, which is the connection's secret setting, under
-    /// the access key id the setting numbered here holds.
-    AwsSigV4 { key_id: u32 },
+    /// secret access key under the access key id, both from the
+    /// credential's source.
+    AwsSigV4,
     /// The secret alone, in the header the connection's
     /// [`ConnectionPlan::credential_header`] names (chunk 5.5v7), as
     /// Anthropic's `x-api-key`.
@@ -431,9 +465,8 @@ pub struct ConnectionPlan {
     /// The package's name and version, `AcmeCouriers.v1`.
     pub package: String,
     pub address: Address,
-    /// The scheme its credential is sent with, and the secret setting it
-    /// is read from.
-    pub credential: Option<(CredentialScheme, u32)>,
+    /// How its credential is sent and where it comes from.
+    pub credential: Option<CredentialPlan>,
     /// The header [`CredentialScheme::Header`] sends the credential in.
     pub credential_header: Option<String>,
     /// The fixed headers every request carries, each its name and value

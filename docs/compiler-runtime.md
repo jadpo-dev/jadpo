@@ -640,6 +640,49 @@ graph gives a query a `reads` edge to its entity, an `includes` edge to
 each entity it includes and a `raises` edge to its `missing:` failure; a
 body calling `Entity.get` gets a `reads` edge too.
 
+**Outside, access and services** (areas 8, 10, 11 and 12). A package's
+declarations are its files' parts: a `package` node for its index, keyed
+by the name its declarations are written through (`package SwiftCouriers`,
+`package Postcodes.v2` while two versions are held), with its version
+folder, whether it is a library or provider and whether it is installed;
+a `resource` and an `operation` for each of a provider's resources and
+operations (`operation SwiftCouriers.pickups.create`, under its resource,
+with its method, path, input and output, `raises` edges to its failures);
+and a `capability_mapping` for each `provide <capability>`, which its
+package `provides` and which `calls` each operation a `call:` in it names.
+A body's call through a connection `calls` the operation and `uses` the
+connection, as a package's own action calls its own operations; a body
+`uses` each setting it reads and `emits` each event type it emits. A
+schedule `runs` its action and a subscriber `runs` its action and
+`subscribes` to its event, each with its every or retry, and a package's
+own subscriber is keyed with its package's name as its model is; an
+entity's built-in purge schedule is placed at its `purge:` and `writes`
+the entity. What a declaration existing once holds is three queries of
+its own (`graph::areas`): `outside_nodes`, a `connection` for each entry of
+`connections:` and the implied `main` while something is stored there
+(what its driver serves, its package, domains and credential scheme, and
+`uses` edges to its package and the settings it reads), a `host` for each
+row of the network report (one list, `connections::hosts`, so the report
+and the graph never disagree), keyed by its connection and, where a
+setting chooses one, the environment (`host couriers.live`), so a changed
+address reads as a change, not a new host, and a `lock_entry` for each line
+of `jadpo.lock` under its package; `access_nodes`, a `principal` for each
+kind of caller (using its entity and subject field), an
+`authentication_method` for each sign-in method (using the settings it
+reads), a `sign_in_provider` for each way `sign_in:` checks a person that
+is built (`magic_link`, `passkey`), and a `generated_route` for each route
+the runtime answers itself, keyed by its method and path and placed under
+what generates it, from the one list the API record also reads
+(`routes::generated`), each connection's webhook whether or not the app
+declares the `webhooks` API, and health beside any API; and
+`service_nodes`, a `config_field` for each setting, the `locale_set
+application`, and, beside any API, `rate_limit address` and `rate_limit
+caller`, using the connection they are counted in. `cache` and
+`oauth_scope` stay reserved: nothing the language builds declares one yet
+(`caches:` comes with Redis entities, area 5; scope declarations with OAuth
+grants and tokens for other applications, areas 8 and 11), and they are
+built with those (decided in chunk 10.3g).
+
 Each site says whether it can pause (§2.5): an effect (a
 store read or write, `emit`, an integration call, `clock.now`, a new
 identity) or a call to an action, query or fixture, which the runtime
@@ -669,10 +712,22 @@ schema in `jadpo help --json`.
 **Diff.** One operation: match nodes by key, compare digests, then let each
 kind classify its change into the decided kinds (`ApiChange`, `DataChange`,
 `PolicyChange`, `DomainChange`, `PackageChange`, `ThresholdChange`), other
-behaviour, and newly reachable nodes. The before side is read from the
-base commit through `git cat-file --batch` into an in-memory file set
-(`jadpo_db::FileSet`, loaded by `load_files`, §2.2, "Loading"), checked
-by the same compiler and cached in `build/before/<commit>/`.
+behaviour, and newly reachable nodes. Built so far: `DomainChange.created`
+and `.renamed`; `PackageChange.operation_removed`, `.operation_changed`
+and `.failure_added` for an operation something other than a test calls,
+`.host_changed` for a host's address changed or one added to a connection
+the app already had, `.service_image` for a service's image new or
+changed, `.credential_changed` for a connection's credential scheme, and
+`.git_source` for a package locked from git; `PolicyChange.principal_added`,
+`.principal_changed`, `.sign_in_method_added` and `.sign_in_added`. A new
+connection and its hosts need no one (area 18, "Package upgrades"). Every
+git package needs a person, since telling the app's own company's
+repository from a third party's needs a setting the pages don't decide;
+this is the conservative reading of area 11's "Publisher trust". The
+before side is read from the base commit through `git cat-file --batch`
+into an in-memory file set (`jadpo_db::FileSet`, loaded by `load_files`,
+§2.2, "Loading"), checked by the same compiler and cached in
+`build/before/<commit>/`.
 
 **Packages.** A package's index is always parsed, a resource file only when
 the app calls into it. A checked package subgraph is cached on disk by
@@ -4180,7 +4235,7 @@ writes, for a query's, a file's and an export's run alike.
 provider operation's call is `Callee::Provider` (its connection and
 `resource.operation`), which the interpreter runs through
 `jadpo_runtime::provider::call` with the plan's `ProviderPlan`
-(`jadpo_std::provider`: each connection's address, credential setting,
+(`jadpo_std::provider`: each connection's address, credential,
 timeout, `idempotency:` and `error_code:`, and each public operation's
 method, path, input and output numbered in the JSON table, `output_at:`,
 `failed_when:`, `Repeat` and failures), the credentials the program
@@ -4205,6 +4260,34 @@ at the call's `attempt` (`RuleArm::named`, `Task::RaiseMapped`) or ends
 in `FaultKind::Provider`. Natively the host's `Fetch` is
 `jadpo_host_native::fetch::NativeFetch`: HTTPS through rustls, or plain HTTP to this machine, over a connection kept for
 its host ("A pooled HTTP client" below).
+
+**Where a connection's credential comes from** (area 11, `credential:`
+and "Acting for each user: OAuth grants"). A connection's credential in
+the plan is a `CredentialPlan`: the scheme its package sends it with
+(`CredentialScheme`: bearer, basic, a named header, AWS Signature
+Version 4) and its source (`CredentialSource`). The one source built is
+`Setting { secret, key_id }`, one credential for the whole connection:
+the secret setting's number, and an AWS key's id beside it, so the
+scheme says only how a credential is sent and the source every setting
+it is read from (`CredentialSource::settings`, which a driver's
+settings, `jadpo dev`'s stand-ins and the conformance suite's `--live`
+read). The values are read at start-up into `provider::Credentials`, by
+connection. A call's asynchronous caller resolves the credential before
+its request is made (`provider::credential`, a `provider::Credential`
+whose `Debug` never shows its secret): `provider::call` for every
+operation, the runtime's own calls included, and `ai`, `stream` and
+`embed` through a package once per call, before any attempt
+(`provider::credential_of`). A source holding nothing is
+`misconfigured`, logged as refused and sent to nobody; the request only
+sends what it is given as its scheme says. The source also decides what
+a provider rejecting it means: the request's `Reading::rejected`, which
+`provider::classify` reads for a `401` and a `403` alike, is
+`Rejected::Misconfigured` for a setting's credential and for a call that
+sends none, since the connection's configuration is what is wrong. A
+grant owned by one of the app's records is another source when it is
+built, resolved in the same caller from its owner's store and renewed
+there, with its own meaning for a rejection (`grant_revoked`); nothing
+of it is built yet.
 
 **A pooled HTTP client.** Natively
 every request that leaves the process, a provider's call

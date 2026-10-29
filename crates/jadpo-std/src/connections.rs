@@ -185,17 +185,11 @@ impl ConnectionDriver {
                     Address::Setting(at) => Some(at),
                     Address::Unknown => None,
                 };
-                let credential = plan.credential.map(|(_, at)| at);
-                let key_id = match plan.credential {
-                    Some((crate::provider::CredentialScheme::AwsSigV4 { key_id }, _)) => {
-                        Some(key_id)
-                    }
-                    _ => None,
-                };
-                [address, credential, key_id]
-                    .into_iter()
-                    .flatten()
-                    .collect()
+                let credential = plan
+                    .credential
+                    .map(|credential| credential.source.settings())
+                    .unwrap_or_default();
+                address.into_iter().chain(credential).collect()
             }
         }
     }
@@ -342,6 +336,30 @@ mod tests {
         );
         assert_eq!(mail.targets, EVERY_TARGET);
         assert_eq!(mail.driver.settings(), [2, 3, 4]);
+    }
+
+    /// A package connection is built from its address's setting and its
+    /// credential's source: its secret, and an AWS key's id beside it
+    /// (chunk 10.3f).
+    #[test]
+    fn a_package_connection_reads_its_credentials_source() {
+        use crate::provider::{CredentialPlan, CredentialScheme, CredentialSource};
+        let with = |scheme, key_id| {
+            let ConnectionDriver::Package(mut plan) = package(Address::Setting(0)) else {
+                unreachable!("a package connection");
+            };
+            plan.credential = Some(CredentialPlan {
+                scheme,
+                source: CredentialSource::Setting { secret: 2, key_id },
+            });
+            ConnectionDriver::Package(plan)
+        };
+        assert_eq!(with(CredentialScheme::Bearer, None).settings(), [0, 2]);
+        assert_eq!(
+            with(CredentialScheme::AwsSigV4, Some(5)).settings(),
+            [0, 2, 5]
+        );
+        assert_eq!(package(Address::Setting(0)).settings(), [0]);
     }
 
     #[test]
