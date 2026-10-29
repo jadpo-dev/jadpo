@@ -459,7 +459,10 @@ pub fn system_table(system: &jadpo_std::system::SystemTable) -> Table {
         .enumerate()
         .map(|(position, c)| {
             let position = u32::try_from(position).unwrap_or(u32::MAX);
-            (c.name.to_string(), column(position, c.sql_type, c.nullable))
+            (
+                c.name.to_string(),
+                column(position, &c.sql_type.postgres_column(), c.nullable),
+            )
         })
         .collect();
     let unique = system

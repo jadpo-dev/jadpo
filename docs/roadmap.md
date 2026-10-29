@@ -347,14 +347,7 @@ compiled.
   Done when each is a `Built` node with its edges (`calls` from a
   callable to the operation it calls), the graph's diff classifies their
   changes, and items 3 and 4 add their own kinds as `Built`.
-- [ ] **10.3h The runtime's own SQL beyond PostgreSQL** `opus · high`,
-  **needs a maintainer** for D1's transaction model first: about 145 runtime
-  statements rely on `RETURNING`, `ON CONFLICT`, `::uuid`, `unnest` and
-  `xmin`, `SystemColumn.sql_type` is PostgreSQL type text, and
-  `Transaction` is interactive, which D1's batches may not offer. Done when
-  area 5 records how an action runs on D1 (row versions, transactions),
-  and system columns are typed as `jadpo_std::SqlType`, so later system
-  tables add no PostgreSQL text.
+- [x] **10.3h The runtime's own SQL beyond PostgreSQL**: area 5, "Actions on D1" and "System tables".
 
 ## After the first build, in order
 

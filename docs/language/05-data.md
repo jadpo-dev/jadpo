@@ -23,7 +23,8 @@ is needed.
 
 Stores are connections declared in `app.jadpo`, in its `connections:` block
 (area 11). Each store's driver is fixed in source, so every environment
-runs the same engine. A D1 driver is not built yet.
+runs the same engine. A D1 driver is not built yet; how an action runs on
+D1 is decided ("Actions on D1", below).
 Every entity lives in exactly one store, `main` unless its file says
 `store: name`; anything never saved is a `type`. An entity in Redis must
 declare its expiry ("Entities in Redis", below). An action writes to at
@@ -315,6 +316,47 @@ with the id of the Hyperdrive configuration it is given in
   statements are unnamed, each transaction sets its isolation level in
   its own `BEGIN`, and leases are rows, never advisory locks, as on every
   target.
+
+### Actions on D1
+
+D1 is not built yet; this is the rule its driver is built to. D1 has no
+interactive transaction: it refuses `BEGIN TRANSACTION`, and the one way
+to commit several statements together is a batch, which runs them in
+order as one SQL transaction and rolls the whole batch back when any of
+them fails. So an action on D1 runs its reads first and then sends all
+its writes at once:
+
+- **Reads first.** The action's reads run before any of its writes, each
+  a statement of its own, and every record it loads is read with its row
+  version. They go to the primary database, as D1's do outside its
+  Sessions API, which an action doesn't use, so they are current (area
+  6).
+- **Writes as one batch.** Its writes, those of the public actions it
+  calls and its outbox and delivery records go out together as one
+  batch, so they commit together or not at all (area 3).
+- **Each write checked against the version it read.** SQLite has no
+  `xmin`, so each entity's table on D1 keeps a row version of its own
+  in an explicit column, which every write to the row changes. An update,
+  delete or transition compares the version the action read, as
+  PostgreSQL's writes compare `xmin` (area 6, "Outside calls hold no
+  transaction"). A statement in a batch that changes no row is not a
+  failure, so the driver makes a version that doesn't match fail the
+  batch, which rolls back whole.
+- **A conflict reruns the action.** A version that doesn't match is a
+  concurrent change like any other: the whole action runs again, with
+  fresh reads, within the same budget of three attempts, and its keyed
+  calls repeat under their keys (area 6, "All-or-nothing actions and
+  concurrent changes").
+- **What can't be written that way is refused.** For a D1 store only,
+  `jadpo check` refuses an action whose writes can't all wait for the
+  end: a write whose input depends on an earlier write in the same
+  action, a read after a write, or a write refusal the action catches
+  and carries on from, since a batch can only roll back whole. The same
+  action on PostgreSQL is accepted.
+
+A batch counts as one query against D1's limit per invocation, but each
+statement in it keeps D1's own limits: 100 bound parameters and 100 KB
+of SQL, and the whole batch 30 seconds.
 
 ## Entities and the `id`
 <!-- topic: entities-and-the-id -->
@@ -1532,6 +1574,11 @@ it when `jadpo check` asks (`migration.out_of_date`).
 Each system table is defined once, in `jadpo_std::system`, which the
 checker turns into each store's tables and the runtime's statements are
 written against; a name no table has is no table, never another.
+A system table's columns are typed by the store's own types
+(`jadpo_std::SqlType`), never an engine's text: a column's PostgreSQL type
+is the one that type is kept in (`SqlType::postgres_column`), so a table
+added there adds no PostgreSQL, and another engine's driver gives each
+type its own column.
 `jadpo_runtime::statements` lists every statement the runtime runs on
 them, a test fails when one in its source isn't listed, and a live test
 prepares each on PostgreSQL against the tables a migration makes, so a
@@ -1595,6 +1642,7 @@ Each feature not built yet is `toolchain.not_built_yet` where it is used.
 | Entities, their fields, references, unique rules, indexes and stores | Built. |
 | Migrations, computed backfills and the test database | Built. |
 | PostgreSQL over TLS and through Hyperdrive | Built. |
+| D1, and actions on it as reads first and one checked batch of writes | Not built yet. |
 | Lifecycles | Built. |
 | Structured values stored as JSON, and their migrations | Built. |
 | The check of every stored value on read | Built. |
