@@ -333,17 +333,7 @@ compiled.
   creates the tenant record. Done when area 9 says so, and a stranger
   seating themselves in a tenant whose members have all left gets 403
   while founding a new company still seats its founder.
-- [ ] **10.3c One record of what each invocation did** `opus · high`,
-  before item 4: observation comes through three narrow channels
-  (`serve::Observer`'s answered and ticked, dev's `Host::call_log`,
-  testing's `Ctx::steps_reached`), none of which sees queries, writes or
-  action steps, so timelines, spans, `watch` and access records would each
-  add a `Ctx` field of their own. Done when `Ctx` keeps one list of spans
-  per invocation (kind, callable and site, start and end on
-  `monotonic_ms`, rows, outcome), appended in `store::store`, the action
-  boundary and `effects::call`, and handed to `Observer::answered` through
-  `Answered`; and a route test gives the same spans interpreted, native
-  and on workerd.
+- [x] **10.3c One record of what each invocation did**: [compiler/runtime](compiler-runtime.md) §2.6, "What an invocation did".
 - [ ] **10.3d A key as a value** `opus · high`, before item 3: a `crypto`
   operation's key reaches the runtime only as its setting's number, each
   executor refusing any other key itself (`jadpo-interp`'s `machine.rs`,

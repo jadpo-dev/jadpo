@@ -81,6 +81,8 @@ pub async fn files(
     at: u32,
 ) -> Called {
     use crate::files::{self, Done};
+    // The call's span names the site it is at (chunk 10.3c).
+    ctx.at(at);
     let done = match (op, args) {
         (FilesOp::Put, [bytes, file_type]) => files::put(ctx, connection, bytes, file_type).await,
         (FilesOp::Read, [file]) => files::read_whole(ctx, file).await,
@@ -114,6 +116,8 @@ pub async fn provider(
     at: u32,
 ) -> Called {
     use crate::provider::{self, Done};
+    // The call's span names the site it is at (chunk 10.3c).
+    ctx.at(at);
     let calling = provider::Calling {
         plan,
         site: provider::Site {
@@ -207,6 +211,8 @@ pub async fn ai(
     at: u32,
 ) -> Called {
     use crate::ai::{Calling, Done};
+    // The call's span names the site it is at (chunk 10.3c).
+    ctx.at(at);
     let done = match asked {
         Asked::Generate(Some(site)) => {
             crate::ai::generate(ctx, Calling { plan, site }, given).await

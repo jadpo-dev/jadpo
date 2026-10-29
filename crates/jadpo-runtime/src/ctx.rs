@@ -274,6 +274,9 @@ pub struct Ctx<'p> {
     /// The paths its bodies took, while a test's record keeps them
     /// ([`Ctx::track_paths`]; chunk 9.3).
     paths: Option<Box<crate::paths::PathLog>>,
+    /// What it did: a span for each action, read, write and outside call,
+    /// in the order each started (chunk 10.3c).
+    spans: crate::spans::Spans,
 }
 
 /// What a provider call's idempotency key is derived from besides the
@@ -346,6 +349,7 @@ impl<'p> Ctx<'p> {
             streams: Vec::new(),
             ai_spent: (0, 0),
             paths: None,
+            spans: crate::spans::Spans::default(),
         }
     }
 
@@ -599,6 +603,66 @@ impl<'p> Ctx<'p> {
     /// for `jadpo calls`.
     pub fn take_calls(&mut self) -> Vec<crate::capability::Logged> {
         self.capabilities.take_calls()
+    }
+
+    // --- spans ------------------------------------------------------------
+
+    /// Starts a span of `kind` at `frame`, now on the host's monotonic
+    /// clock (chunk 10.3c).
+    pub(crate) fn span_begin(
+        &mut self,
+        kind: crate::spans::Kind,
+        frame: Option<Frame>,
+    ) -> crate::spans::Begun {
+        let now = self.host().monotonic_ms();
+        self.spans.begin(kind, frame, now)
+    }
+
+    /// Ends the span `begun` started, now, as `ended`, having given or
+    /// written `rows` records.
+    pub(crate) fn span_end(
+        &mut self,
+        begun: crate::spans::Begun,
+        rows: Option<u64>,
+        ended: crate::spans::Ended,
+    ) {
+        let now = self.host().monotonic_ms();
+        self.spans.end(begun, now, rows, ended);
+    }
+
+    /// Where the operation at `site` of the frame on top is, for its span:
+    /// `None` at no site of its own ([`Frame::ENTRY`]), as a route's query
+    /// the runtime reads on the route's behalf.
+    pub(crate) fn span_frame(&self, site: u32) -> Option<Frame> {
+        if site == Frame::ENTRY {
+            return None;
+        }
+        self.frames.last().map(|top| Frame {
+            callable: top.callable,
+            site,
+        })
+    }
+
+    /// Where the frame on top is, for the span of an outside call it
+    /// makes, its site set where the call is ([`Ctx::at`]): `None` at no
+    /// site, as a call the runtime makes on its own behalf.
+    pub(crate) fn span_frame_here(&self) -> Option<Frame> {
+        self.frames
+            .last()
+            .copied()
+            .filter(|top| top.site != Frame::ENTRY)
+    }
+
+    /// What it has done so far, a span for each action, read, write and
+    /// outside call in the order each started (chunk 10.3c).
+    pub fn spans(&self) -> &crate::spans::Spans {
+        &self.spans
+    }
+
+    /// What it has done so far, leaving it none: what a request's
+    /// response carries to its host's observer.
+    pub fn take_spans(&mut self) -> crate::spans::Spans {
+        std::mem::take(&mut self.spans)
     }
 
     /// Keeps the steps a record's run reached as it closes (chunk 7.5f).
