@@ -3,7 +3,8 @@ import hashlib
 import datetime as dt
 from pathlib import Path
 
-TARGETS = ('native', 'workers', 'bun', 'node')
+# Jadpo native and its Wasm build on workerd; TypeScript on Bun, Node and workerd.
+TARGETS = ('native', 'workers', 'bun', 'node', 'ts-workerd')
 
 
 def validate_conformance(reports, case_ids):
@@ -12,7 +13,7 @@ def validate_conformance(reports, case_ids):
     if (len(case_ids) != 44 or len(observed) != len(expected)
             or set(observed) != expected
             or any(row.get('status') != 'passed' for row in reports)):
-        raise ValueError('All 44 current-source contract cases must pass on all four targets')
+        raise ValueError('All 44 current-source contract cases must pass on all five targets')
 
 
 def validate_build(stamp, inputs):

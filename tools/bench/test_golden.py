@@ -11,11 +11,13 @@ from golden import load_output
 
 
 class GoldenControls(unittest.TestCase):
-    def test_all_four_targets_need_every_case_from_this_source(self):
+    def test_all_five_targets_need_every_case_from_this_source(self):
         ids = {f'CASE-{i:03}' for i in range(44)}
         reports = [{'target': target, 'id': case, 'status': 'passed'}
-                   for target in ('native', 'workers', 'bun', 'node') for case in ids]
+                   for target in ('native', 'workers', 'bun', 'node', 'ts-workerd') for case in ids]
         validate_conformance(reports, ids)
+        with self.assertRaises(ValueError):
+            validate_conformance([row for row in reports if row['target'] != 'ts-workerd'], ids)
         for corrupt in (reports[:-1], reports + [reports[0]],
                         [{**row, 'status': 'unsupported'} if i == 0 else row
                          for i, row in enumerate(reports)],

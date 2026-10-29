@@ -223,6 +223,52 @@ export const httpsTransport: Transport = async (input, scope) => {
     outgoing.end(input.body);
   });
 };
+// Workers have no DNS or socket pinning; Cloudflare's fetch is the only
+// egress. The same public-HTTPS and no-redirect rules apply, bounded by the
+// same deadline and response size.
+export const fetchTransport: Transport = async (input, scope) => {
+  const url = publicHttps(input.url);
+  scope.check();
+  const timeout = AbortSignal.timeout(Math.min(10000, scope.remaining()));
+  let response: Response;
+  try {
+    // eslint-disable-next-line no-restricted-syntax -- this is the guarded boundary.
+    response = await fetch(url, {
+      method: input.method,
+      headers: input.headers,
+      redirect: "manual",
+      signal: AbortSignal.any([scope.signal, timeout]),
+      ...(input.body === undefined ? {} : { body: input.body }),
+    });
+  } catch {
+    throw new AppError("unavailable");
+  }
+  const reader = response.body?.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  try {
+    while (reader) {
+      const part = await reader.read();
+      if (part.done) break;
+      bytes += part.value.length;
+      if (bytes > (input.maxResponseBytes ?? 524288)) {
+        await reader.cancel();
+        throw new ResponseTooLarge();
+      }
+      chunks.push(part.value);
+    }
+  } catch (error) {
+    throw error instanceof ResponseTooLarge
+      ? error
+      : new AppError("unavailable");
+  }
+  const retry = response.headers.get("retry-after");
+  return {
+    status: response.status,
+    headers: retry === null ? {} : { "retry-after": retry },
+    body: new TextDecoder().decode(Buffer.concat(chunks)),
+  };
+};
 export class Egress {
   readonly transport: Transport;
   constructor(transport: Transport = httpsTransport) {
