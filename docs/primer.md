@@ -712,7 +712,7 @@ Read only what a task needs.
   [`the-operations-every-entity-gets`](language/06-reads-and-writes.md#the-operations-every-entity-gets),
   [`grants`](language/09-policy.md#grants),
   [`magic-links`](language/08-identity.md#magic-links),
-  [`settings-config-jadpo`](language/10-configuration-and-time.md#settings-config-jadpo),
+  [`settings-config-jadpo`](language/10-configuration-and-time.md#settings-configjadpo),
   [`migrations`](language/05-data.md#migrations) and
   [`kinds-of-test`](language/13-testing.md#kinds-of-test). The IDs never
   change.
