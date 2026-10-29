@@ -337,6 +337,31 @@ compiled.
   and system columns are typed as `jadpo_std::SqlType`, so later system
   tables add no PostgreSQL text.
 
+## Security audit
+
+Before 0.1.0 is published (D3).
+
+- [ ] **S1 A full security audit** `opus · xhigh`, after the Phase 10
+  review's chunks: a threat model first (who attacks a Jadpo app, a
+  developer's machine, CI and a release, and what each can reach), then
+  every surface checked against it. Covered: what the compiler promises
+  (policy, field restrictions, tenancy, identity and sessions, passkeys,
+  magic links, external tokens, webhooks' signatures, rate limits, the
+  outbound guard against SSRF, secrets and settings, crypto, migrations
+  that move data between readers); the runtime's request edge (HTTP
+  parsing, headers, sizes, time limits); generated code native and on
+  Workers (the Workers host, Wrangler file, bindings); supply chain
+  (`cargo audit` and `cargo deny` in the gate, npm, pinned toolchains and
+  the toolchain `jadpo build` fetches, GitHub Actions' permissions and
+  pinning, release artefacts' checksums and provenance); the docs bundle
+  and the extension; and D4's issue triage, whose input is anyone's.
+  Uses the Cloudflare plugin's Workers guidance for the Workers host and a
+  general audit checklist (finecomb or Claude Code's `/security-review`).
+  Done when each finding has a failing test or a reproduction, the
+  confirmed ones are fixed with tests or added here as chunks, `cargo
+  audit` and `cargo deny` run in the gate, and `SECURITY.md` says how to
+  report a vulnerability.
+
 ## After the first build, in order
 
 1. Units and money in plain numbers: a named type built on `Int` or
