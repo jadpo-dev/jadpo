@@ -1719,7 +1719,10 @@ counted, so the executors count alike whichever stops catch where
 body region and segment (`record::paths`), with each path number taken
 and how many times: `path main.jadpo:4  function graded body | 1×1`, a
 loop's or inline function's turns as `… turn` from its line, a segment
-begun after a cut `… after line 40`. Only the test's own context keeps
+begun after a cut `… after line 40`. *Why* counted rather than a line
+per call: a loop calling a function, or a recursion a thousand frames
+deep, stays a few lines, and when a cut-short turn is closed doesn't
+change the count. Only the test's own context keeps
 them: work the runtime runs in a context of its own, a delivery between
 steps or a batch run, keeps none, on either executor. Proved by
 `crates/jadpo-test/tests/records.rs`, a branch taken another way with the
