@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
+import http.client
 import importlib.util
 import json
 import os
@@ -16,6 +18,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
 from urllib.parse import quote, urlencode
 
 from support import dependency_lock
@@ -23,6 +26,8 @@ from support import dependency_lock
 HERE = Path(__file__).resolve().parent
 PROJECT = HERE.parent
 ROOT = PROJECT.parents[2]
+WORKERS = ROOT / 'tools/workers'
+RUNTIMES = ('node', 'bun', 'workerd')
 # Diagnostic inventory only. Executable expectations always come from contract.py;
 # absent/broken shared input must still show every obligation as failed.
 CASE_IDS = (
@@ -60,6 +65,62 @@ def port():
     with socket.socket() as listener:
         listener.bind(('127.0.0.1', 0))
         return listener.getsockname()[1]
+
+
+def shared_postgres_module():
+    specification = importlib.util.spec_from_file_location('golden_postgres', ROOT / 'tools/golden-todo/postgres.py')
+    module = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(module)
+    return module
+
+
+def workerd_tools():
+    """The workerd and Wrangler tools/workers/package.json pins, installed there
+    under the lock the Jadpo Workers tests take (crates/jadpo-test/src/workerd_install.rs)."""
+    def pinned(name):
+        return json.loads((WORKERS / 'package.json').read_text())['dependencies'][name]
+
+    def version(folder):
+        try:
+            return json.loads((folder / 'package.json').read_text()).get('version')
+        except (OSError, ValueError):
+            return None
+
+    def installed():
+        if version(WORKERS / 'node_modules/wrangler') != pinned('wrangler'):
+            return None
+        for package in sorted((WORKERS / 'node_modules/@cloudflare').glob('workerd-*')):
+            binary = package / 'bin/workerd'
+            if version(package) == pinned('workerd') and binary.is_file():
+                return binary
+        return None
+
+    with (WORKERS / '.install.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        binary = installed()
+        if binary is None:
+            run(['npm', 'ci', '--ignore-scripts', '--no-audit', '--no-fund'], cwd=WORKERS)
+            binary = installed()
+        if binary is None:
+            raise RuntimeError('npm ci gave no pinned workerd for this platform')
+    return binary
+
+
+def bundle(out, entry=None):
+    """The Worker as `wrangler deploy` uploads it (wrangler.jsonc, its defaults:
+    esbuild, no minification), kept off the network by tools/workers/offline.mjs."""
+    workerd_tools()
+    command = [tool('node'), '--import', str(WORKERS / 'offline.mjs'),
+               str(WORKERS / 'node_modules/wrangler/bin/wrangler.js'), 'deploy',
+               *([entry] if entry else []), '--dry-run', '--outdir', str(out)]
+    try:
+        run(command, cwd=PROJECT, env={**os.environ, 'WRANGLER_SEND_METRICS': 'false', 'CI': '1'})
+    finally:
+        shutil.rmtree(PROJECT / '.wrangler', ignore_errors=True)
+    modules = sorted(out.glob('*.js'))
+    if len(modules) != 1:
+        raise RuntimeError('wrangler wrote no single Worker module')
+    return modules[0]
 
 
 class DatabaseHost:
@@ -118,10 +179,7 @@ class Postgres(DatabaseHost):
 class SharedPostgres(DatabaseHost):
     """Own random databases on the gate's server; never stop the shared server."""
     def __init__(self, url):
-        specification = importlib.util.spec_from_file_location('golden_postgres', ROOT / 'tools/golden-todo/postgres.py')
-        normalizer = importlib.util.module_from_spec(specification)
-        specification.loader.exec_module(normalizer)
-        self.normalize = normalizer.postgres_uri
+        self.normalize = shared_postgres_module().postgres_uri
         self.base = self.normalize(url)
         self.owned = []
 
@@ -139,8 +197,8 @@ class SharedPostgres(DatabaseHost):
 
 
 class Controller:
-    def __init__(self, runtime, environment, directory):
-        self.log = (directory / f'controller-{runtime}.log').open('w+')
+    def __init__(self, runtime, environment, directory, name=None):
+        self.log = (directory / f'controller-{name or runtime}.log').open('w+')
         try:
             self.process = subprocess.Popen([tool(runtime), str(HERE / 'controller.ts')], cwd=PROJECT,
                                             env=environment, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -174,6 +232,181 @@ class Controller:
         self.log.close()
 
 
+WORKERD_SETTINGS = ('SESSION_SIGNING_KEY', 'BROWSER_ORIGIN', 'OIDC_ISSUER', 'OIDC_AUDIENCE', 'MAIL_API_KEY')
+
+
+class WorkerdController:
+    """The contract on workerd. Application commands run in the fixture Worker
+    (adapter/workerd-controller.ts), which drives src/worker.ts's entry with its
+    per-request Store over a Hyperdrive binding straight to PostgreSQL; SQL
+    fixtures, signing and the static probes come from a Node controller on the
+    same database. Preflight serves the production bundle itself."""
+    HELPER = {'sql', 'digest', 'sign', 'open', 'policy_probe', 'api_record'}
+
+    def __init__(self, environment, directory):
+        self.environment = environment
+        self.directory = directory
+        self.executable = workerd_tools()
+        self.production = bundle(directory / 'workerd-production')
+        self.contract = bundle(directory / 'workerd-contract', 'adapter/workerd-controller.ts')
+        self.process = self.log = None
+        self.helper = Controller('node', environment, directory, 'workerd-helper')
+        try:
+            self.port = self.start(self.contract, 'contract')
+        except BaseException:
+            self.stop()
+            raise
+
+    def configuration(self, module, name, changes):
+        folder = self.directory / ('workerd-' + name + '-config')
+        folder.mkdir(exist_ok=True)
+        shutil.copy(module, folder / 'worker.js')
+        settings = dict(self.environment)
+        for key, value in changes.items():
+            if value is None:
+                settings.pop(key, None)
+            else:
+                settings[key] = value
+        parameters = shared_postgres_module().connection_parameters(self.environment['DATABASE_URL'])
+        host = parameters.get('hostaddr') or parameters.get('host') or '127.0.0.1'
+        number = parameters.get('port') or '5432'
+        if host.startswith('/'):
+            address = 'unix:' + str(Path(host) / ('.s.PGSQL.' + number))
+        else:
+            address = ('[' + host + ']' if ':' in host else host) + ':' + number
+        bindings = []
+        if 'DATABASE_URL' not in changes:
+            bindings.append('(name = "DATABASE_URL", hyperdrive = (designator = "hyperdrive", '
+                            f'database = {json.dumps(parameters["dbname"])}, user = {json.dumps(parameters.get("user", "golden"))}, '
+                            f'password = {json.dumps(parameters.get("password", ""))}, scheme = "postgresql"))')
+        elif changes['DATABASE_URL'] is not None:
+            bindings.append(f'(name = "DATABASE_URL", text = {json.dumps(changes["DATABASE_URL"])})')
+        for key in WORKERD_SETTINGS:
+            if key in settings:
+                bindings.append(f'(name = {json.dumps(key)}, text = {json.dumps(settings[key])})')
+        listen = port()
+        date = json.loads(re.sub(r'^\s*//.*$', '', (PROJECT / 'wrangler.jsonc').read_text(), flags=re.M))['compatibility_date']
+        (folder / 'config.capnp').write_text(f'''using Workerd = import "/workerd/workerd.capnp";
+const config :Workerd.Config = (
+  services = [(name = "app", worker = .app), (name = "hyperdrive", external = (address = {json.dumps(address)}, tcp = ()))],
+  sockets = [(name = "http", address = "127.0.0.1:{listen}", service = "app",
+    http = (injectRequestHeaders = [(name = "CF-Connecting-IP", value = "127.0.0.1")]))],
+);
+const app :Workerd.Worker = (
+  modules = [(name = "worker.js", esModule = embed "worker.js")],
+  compatibilityDate = {json.dumps(date)},
+  bindings = [{", ".join(bindings)}],
+);
+''')
+        return folder, listen
+
+    def start(self, module, name, changes=None):
+        folder, listen = self.configuration(module, name, changes or {})
+        self.log = (folder / 'workerd.log').open('w+')
+        self.process = subprocess.Popen([str(self.executable), 'serve', 'config.capnp'], cwd=folder,
+                                        stdin=subprocess.DEVNULL, stdout=self.log, stderr=self.log)
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            if self.process.poll() is not None:
+                self.log.seek(0)
+                raise RuntimeError('workerd startup failed: ' + self.log.read()[-6000:])
+            try:
+                socket.create_connection(('127.0.0.1', listen), .1).close()
+                return listen
+            except OSError:
+                time.sleep(.03)
+        raise RuntimeError('workerd listener did not start')
+
+    def close_process(self):
+        if self.process:
+            self.process.terminate()
+            try:
+                self.process.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait()
+            self.process = None
+        if self.log:
+            self.log.close()
+            self.log = None
+
+    def exchange(self, command):
+        connection = http.client.HTTPConnection('127.0.0.1', self.port, timeout=90)
+        try:
+            connection.request('POST', '/control', json.dumps(command), {'content-type': 'application/json'})
+            response = connection.getresponse()
+            body = response.read()
+        finally:
+            connection.close()
+        if response.status != 200:
+            raise RuntimeError('workerd controller failed: ' + body.decode(errors='replace')[-2000:])
+        answer = json.loads(body)
+        if 'error' in answer:
+            raise RuntimeError(answer['error'])
+        return answer
+
+    def call(self, command):
+        op = command['op']
+        if op in self.HELPER:
+            return self.helper.call(command)
+        if op == 'preflight':
+            return {'result': self.preflight(command['environment']), 'statements': []}
+        if op == 'clock':
+            self.helper.call(command)
+        if op == 'outage':
+            if 'database' in command:
+                self.helper.call({'op': 'outage', 'database': command['database']})
+            command = {'op': 'outage', **({'issuer': command['issuer']} if 'issuer' in command else {})}
+        return self.exchange(command)
+
+    def probe(self, changes):
+        self.port = self.start(self.production, 'production', changes)
+        try:
+            connection = http.client.HTTPConnection('127.0.0.1', self.port, timeout=15)
+            try:
+                connection.request('GET', '/health/live')
+                response = connection.getresponse()
+                body = response.read().decode()
+                headers = list(response.getheaders())
+            finally:
+                connection.close()
+            time.sleep(.1)
+            self.log.flush()
+            self.log.seek(0)
+            return response.status, body, headers, self.log.read()
+        finally:
+            self.close_process()
+
+    def preflight(self, changes):
+        self.close_process()
+        try:
+            status, body, _, _ = self.probe({})
+            if status != 200 or json.loads(body) != {'status': 'live'}:
+                raise AssertionError('positive production Worker startup control failed')
+            status, body, headers, output = self.probe(changes)
+            events = []
+            for line in output.splitlines():
+                try:
+                    events.append(json.loads(line))
+                except ValueError:
+                    pass
+            problems = [problem for event in events if isinstance(event, dict) for problem in event.get('problems', [])]
+            private = [value for name, value in self.environment.items() if name in ('SESSION_SIGNING_KEY', 'MAIL_API_KEY')]
+            private += [value for name, value in changes.items() if value and name in ('DATABASE_URL', 'MAIL_API_KEY')]
+            safe = all(value not in body + output for value in private) and 'password@' not in body + output
+            return {'refused': status == 503, 'handlerRan': False, 'status': status, 'body': json.loads(body),
+                    'headers': headers, 'declarations': [problem.get('variable') for problem in problems],
+                    'diagnosticCodes': [problem.get('problem') for problem in problems], 'safe': safe}
+        finally:
+            self.port = self.start(self.contract, 'contract')
+
+    def stop(self):
+        try:
+            self.close_process()
+        finally:
+            self.helper.stop()
+
+
 def git_state(path):
     return {'revision': run(['git', 'rev-parse', 'HEAD'], cwd=path, capture_output=True, text=True).stdout.strip(),
             'dirty': bool(run(['git', 'status', '--porcelain'], cwd=path, capture_output=True, text=True).stdout)}
@@ -182,7 +415,7 @@ def git_state(path):
 def inputs(source):
     digest = hashlib.sha256()
     files = [path for path in PROJECT.rglob('*') if path.is_file()
-             and not {'node_modules', 'build', '__pycache__'}.intersection(path.relative_to(PROJECT).parts)]
+             and not {'node_modules', 'build', '__pycache__', '.wrangler'}.intersection(path.relative_to(PROJECT).parts)]
     files += [source / 'tools/golden-todo/contract.py',
               source / 'tools/golden-todo/test_contract.py',
               source / 'examples/golden-todo/acceptance-v0.2.json',
@@ -196,22 +429,23 @@ def inputs(source):
 
 def runtime_version(name):
     try:
-        return run([tool(name), '--version'], capture_output=True, text=True).stdout.strip()
-    except (RuntimeError, subprocess.SubprocessError):
+        executable = workerd_tools() if name == 'workerd' else tool(name)
+        return run([str(executable), '--version'], capture_output=True, text=True).stdout.strip()
+    except (RuntimeError, OSError, subprocess.SubprocessError):
         return 'unavailable'
 
 
 def read_runtimes(value):
     runtimes = value.split(',')
-    if not all(runtimes) or len(runtimes) != len(set(runtimes)) or set(runtimes) - {'node', 'bun'}:
-        raise ValueError('runtimes must be nonempty, unique and selected from node,bun')
+    if not all(runtimes) or len(runtimes) != len(set(runtimes)) or set(runtimes) - set(RUNTIMES):
+        raise ValueError('runtimes must be nonempty, unique and selected from ' + ','.join(RUNTIMES))
     return runtimes
 
 
 def complete_contract(source, runtimes, selected, reports):
-    expected = {(runtime, identifier) for runtime in ['node', 'bun'] for identifier in CASE_IDS}
+    expected = {(runtime, identifier) for runtime in RUNTIMES for identifier in CASE_IDS}
     actual = {(report['runtime'], report['id']) for report in reports}
-    return (source.resolve() == ROOT and set(runtimes) == {'node', 'bun'}
+    return (source.resolve() == ROOT and set(runtimes) == set(RUNTIMES)
             and set(selected) == set(CASE_IDS) and len(reports) == len(expected) and actual == expected
             and all(report['status'] == 'passed' for report in reports))
 
@@ -279,14 +513,16 @@ def verify_contract(source, runtimes, selected=None, unit=False):
                 reports.extend({'runtime': runtime, 'id': identifier, 'status': 'failed',
                                 'message': runtime + ' executable unavailable'} for identifier in selected)
                 continue
-            if unit:
+            if unit and runtime != 'workerd':
                 name = 'golden_host_' + runtime + '_' + tag
                 server.prepare(name)
                 run([tool(runtime), str(HERE / 'host-negatives.ts')], cwd=PROJECT,
                     env={**env, 'DATABASE_URL': server.url(name)})
             name = 'golden_' + runtime + '_' + tag
             server.prepare(name)
-            controller = Controller(runtime, {**env, 'DATABASE_URL': server.url(name)}, directory)
+            database = {**env, 'DATABASE_URL': server.url(name)}
+            controller = (WorkerdController(database, directory) if runtime == 'workerd'
+                          else Controller(runtime, database, directory))
             for identifier in selected:
                 try:
                     harness = module.Contract(controller)
@@ -327,7 +563,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--contract-source', type=Path, default=ROOT,
                         help='explicit other checkout is a preview; default is this checkout')
-    parser.add_argument('--runtimes', default='node,bun')
+    parser.add_argument('--runtimes', default=','.join(RUNTIMES))
     parser.add_argument('--case', action='append', default=[])
     parser.add_argument('--unit', action='store_true')
     args = parser.parse_args()

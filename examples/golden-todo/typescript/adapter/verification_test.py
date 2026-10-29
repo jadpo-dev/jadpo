@@ -30,18 +30,43 @@ class ContractReporting(unittest.TestCase):
         self.assertEqual({item['id'] for item in result['cases']}, set(harness.CASE_IDS))
 
     def test_preview_filtered_or_missing_runtime_cannot_claim_complete(self):
+        runtimes = ['node', 'bun', 'workerd']
         reports = [{'runtime': runtime, 'id': identifier, 'status': 'passed'}
-                   for runtime in ['node', 'bun'] for identifier in harness.CASE_IDS]
-        self.assertTrue(harness.complete_contract(ROOT, ['node', 'bun'], list(harness.CASE_IDS), reports))
-        self.assertFalse(harness.complete_contract(ROOT.parent, ['node', 'bun'], list(harness.CASE_IDS), reports))
+                   for runtime in runtimes for identifier in harness.CASE_IDS]
+        self.assertTrue(harness.complete_contract(ROOT, runtimes, list(harness.CASE_IDS), reports))
+        self.assertFalse(harness.complete_contract(ROOT.parent, runtimes, list(harness.CASE_IDS), reports))
         self.assertFalse(harness.complete_contract(ROOT, ['node'], list(harness.CASE_IDS), reports))
-        self.assertFalse(harness.complete_contract(ROOT, ['node', 'bun'], ['AUTH-001'], reports))
-        self.assertFalse(harness.complete_contract(ROOT, ['node', 'bun'], list(harness.CASE_IDS), reports[:-1]))
+        self.assertFalse(harness.complete_contract(ROOT, runtimes, ['AUTH-001'], reports))
+        self.assertFalse(harness.complete_contract(ROOT, runtimes, list(harness.CASE_IDS), reports[:-1]))
+        # Node and Bun alone no longer make the contract complete: workerd runs it too.
+        node_bun = [report for report in reports if report['runtime'] != 'workerd']
+        self.assertFalse(harness.complete_contract(ROOT, ['node', 'bun'], list(harness.CASE_IDS), node_bun))
+        self.assertEqual(list(harness.RUNTIMES), runtimes)
 
     def test_runtime_selection_rejects_empty_duplicate_and_unknown(self):
-        for value in ['', 'node,node', 'node,', 'deno']:
+        self.assertEqual(harness.read_runtimes('workerd'), ['workerd'])
+        for value in ['', 'node,node', 'node,', 'deno', 'workers']:
             with self.assertRaises(ValueError):
                 harness.read_runtimes(value)
+
+
+class WorkerdRouting(unittest.TestCase):
+    def test_application_commands_reach_the_worker_and_fixtures_the_node_helper(self):
+        sent = {'helper': [], 'worker': []}
+        controller = harness.WorkerdController.__new__(harness.WorkerdController)
+        controller.helper = type('Helper', (), {'call': lambda _, command: sent['helper'].append(command) or {}})()
+        controller.exchange = lambda command: sent['worker'].append(command) or {}
+        controller.preflight = lambda changes: {'changes': changes}
+        for command in [{'op': 'sql', 'sql': 'SELECT 1'}, {'op': 'sign', 'payload': '{}'}, {'op': 'policy_probe'},
+                        {'op': 'request', 'method': 'GET', 'path': '/todos'}, {'op': 'tick'}, {'op': 'jwt', 'subject': 'alice'},
+                        {'op': 'clock', 'at': 1}, {'op': 'outage', 'database': True, 'issuer': False}]:
+            controller.call(command)
+        self.assertEqual([command['op'] for command in sent['helper']], ['sql', 'sign', 'policy_probe', 'clock', 'outage'])
+        self.assertEqual(sent['helper'][-1], {'op': 'outage', 'database': True})
+        self.assertEqual([command['op'] for command in sent['worker']], ['request', 'tick', 'jwt', 'clock', 'outage'])
+        self.assertEqual(sent['worker'][-1], {'op': 'outage', 'issuer': False})
+        self.assertEqual(controller.call({'op': 'preflight', 'environment': {'MAIL_API_KEY': None}})['result'],
+                         {'changes': {'MAIL_API_KEY': None}})
 
 
 class Dependencies(unittest.TestCase):

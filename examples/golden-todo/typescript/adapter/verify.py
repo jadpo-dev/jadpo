@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Private gate entry: locked install, static checks and real Node/Bun conformance."""
+"""Private gate entry: locked install, static checks and real Node/Bun/workerd conformance."""
 from __future__ import annotations
 
 import argparse
@@ -37,7 +37,7 @@ def main():
     source = args.contract_source.resolve()
     with dependency_lock(PROJECT):
         try:
-            # Missing own prerequisites are a red result with all 88 obligations,
+            # Missing own prerequisites are a red result with all 132 obligations,
             # before installation or any database/provider work.
             harness.load_registry(source)
             check_versions()
@@ -45,9 +45,9 @@ def main():
             run([sys.executable, str(PROJECT / 'adapter/verification_test.py')], cwd=PROJECT)
             for name in ['check', 'lint', 'format:check']:
                 run(['npm', 'run', name], cwd=PROJECT)
-            result = harness.verify_contract(source, ['node', 'bun'], unit=True)
+            result = harness.verify_contract(source, list(harness.RUNTIMES), unit=True)
         except Exception as error:
-            result = harness.unavailable_report(source, ['node', 'bun'], harness.CASE_IDS, str(error))
+            result = harness.unavailable_report(source, list(harness.RUNTIMES), harness.CASE_IDS, str(error))
     print(json.dumps(result, indent=2))
     return bool(result['counts']['failed'])
 

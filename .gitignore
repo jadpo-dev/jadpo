@@ -1,6 +1,6 @@
 build/
 /target/
-/.wrangler/
+.wrangler/
 
 # Local tooling, caches and credentials.
 .DS_Store

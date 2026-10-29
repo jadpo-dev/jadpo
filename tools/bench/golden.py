@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compare the complete golden application through its production HTTP bindings.
 
-All 44 cases on all four targets precede timing. Build freshness is mandatory.
+All 44 cases on all five targets precede timing. Build freshness is mandatory.
 Local PostgreSQL, controlled one-hop proxy, external scheduling; no live provider.
 """
 from __future__ import annotations
@@ -91,7 +91,8 @@ def conformance():
         raise ValueError('TypeScript contract is incomplete or uses a preview source')
     reports = [{**row, 'target': 'workers' if row['target'] == 'workerd' else row['target']}
                for row in jadpo['cases']]
-    reports += [{**row, 'target': row['runtime']} for row in baseline['cases']]
+    reports += [{**row, 'target': 'ts-workerd' if row['runtime'] == 'workerd' else row['runtime']}
+                for row in baseline['cases']]
     validate_conformance(reports, contract_ids())
     return reports
 
@@ -109,6 +110,20 @@ def application_for(target):
     return application
 
 
+def typescript_worker():
+    """The TypeScript Worker as `wrangler deploy` uploads it, kept off the network."""
+    out = WORK / 'ts-workerd'
+    shutil.rmtree(out, ignore_errors=True)
+    tools = ROOT / 'tools/workers'
+    try:
+        checked([spike.tool('node'), '--import', str(tools / 'offline.mjs'), str(tools / 'node_modules/wrangler/bin/wrangler.js'),
+                 'deploy', '--dry-run', '--outdir', str(out)], cwd=TS,
+                env={**os.environ, 'WRANGLER_SEND_METRICS': 'false', 'CI': '1'}, stdout=subprocess.DEVNULL)
+    finally:
+        shutil.rmtree(TS / '.wrangler', ignore_errors=True)
+    return out / 'worker.js'
+
+
 def build():
     before = fingerprint()
     environment = {**os.environ, 'CARGO_INCREMENTAL': '0', 'CARGO_PROFILE_DEV_DEBUG': '0'}
@@ -118,6 +133,7 @@ def build():
     checked(['npm', 'run', 'build'], cwd=TS)
     spike.workerd()
     cases = conformance()
+    typescript_worker()
     for target in ('native', 'workers'):
         directory = WORK / target
         if directory.exists():
@@ -138,6 +154,7 @@ def build():
              *sorted((WORK / 'workers/build/target/kiosk').glob('*.mjs')),
              WORK / 'workers/build/target/kiosk/wrangler.json',
              *sorted((TS / 'build/src').rglob('*.js')),
+             WORK / 'ts-workerd/worker.js',
              ROOT / 'target/jadpo-compiled/golden-todo/native/debug/golden-native-contract',
              spike.JADPO]
     if not any(path.suffix == '.wasm' for path in paths):
@@ -146,13 +163,22 @@ def build():
              'build_environment': {name: value for name, value in environment.items()
                  if name.startswith('CARGO_PROFILE_') or name in ('CARGO_INCREMENTAL', 'CARGO_BUILD_JOBS', 'RUSTFLAGS', 'RUSTUP_TOOLCHAIN')},
              'profiles': {'compiler': 'dev; not measured', 'native': 'jadpo build release',
-                          'workers': 'jadpo build release; no wasm-opt', 'load': 'release'},
+                          'workers': 'jadpo build release; no wasm-opt', 'load': 'release',
+                          'ts-workerd': 'wrangler deploy --dry-run bundle; its defaults, no minification'},
              'conformance': cases}
     STAMP.write_text(json.dumps(stamp, indent=2) + '\n')
     return stamp
 
 
+def database_name(target):
+    """A target's own database; PostgreSQL names take no hyphen unquoted."""
+    return target.replace('-', '_')
+
+
 class Database(spike.Postgres):
+    def url(self, database):
+        return super().url(database_name(database))
+
     def sql(self, database, statement):
         # Bulk seeds exceed command-line limits; SQL is data on psql's stdin.
         checked([spike.tool('psql'), '-q', '-v', 'ON_ERROR_STOP=1', '-d', self.url(database)],
@@ -163,7 +189,7 @@ class Database(spike.Postgres):
                         '-c', statement], capture_output=True, text=True).stdout.strip()
 
     def prepare(self, database):
-        self.sql('postgres', f'CREATE DATABASE {database}')
+        self.sql('postgres', f'CREATE DATABASE {database_name(database)}')
         if database in ('native', 'workers'):
             checked([str(spike.JADPO), 'migrate', 'apply', '--url', self.url(database)],
                     cwd=WORK / 'native', stdout=subprocess.DEVNULL)
@@ -257,6 +283,37 @@ def seed(pg, target, owners):
     pg.sql(target, 'ANALYZE todo; ANALYZE "user"; ANALYZE jadpo_sessions')
 
 
+def typescript_workerd_config(folder, port, database_host, database, environment):
+    """The TypeScript Worker as Jadpo's is served: one isolate, its Hyperdrive
+    binding on the stand-in pool and CF-Connecting-IP set by the socket."""
+    shutil.rmtree(folder, ignore_errors=True)
+    folder.mkdir(parents=True)
+    shutil.copy(WORK / 'ts-workerd/worker.js', folder / 'worker.js')
+    bindings = ['(name = "DATABASE_URL", hyperdrive = (designator = "hyperdrive", '
+                f'database = "{database_name(database)}", user = "jadpo", password = "", scheme = "postgresql"))']
+    bindings += [f'(name = {json.dumps(key)}, text = {json.dumps(value)})'
+                 for key, value in environment.items() if key != 'DATABASE_URL']
+    date = json.loads('\n'.join(line for line in (TS / 'wrangler.jsonc').read_text().splitlines()
+                                 if not line.strip().startswith('//')))['compatibility_date']
+    (folder / 'config.capnp').write_text(f'''using Workerd = import "/workerd/workerd.capnp";
+
+const config :Workerd.Config = (
+  services = [
+    (name = "app", worker = .app),
+    (name = "hyperdrive", external = (address = "{database_host}", tcp = ())),
+  ],
+  sockets = [(name = "http", address = "127.0.0.1:{port}", http = {spike.LOOPBACK_WORKER_HTTP}, service = "app")],
+);
+
+const app :Workerd.Worker = (
+  modules = [(name = "worker.js", esModule = embed "worker.js")],
+  compatibilityDate = "{date}",
+  bindings = [{", ".join(bindings)}],
+);
+''')
+    return folder
+
+
 class Server(spike.Server):
     def __init__(self, target, pg, environment):
         self.target, self.port = target, spike.free_port()
@@ -270,13 +327,13 @@ class Server(spike.Server):
             elif target in ('bun', 'node'):
                 command = [spike.tool(target), str(HERE / 'golden_host.mjs')]
                 cwd = TS
+            elif target == 'ts-workerd':
+                pool_port = self.pool(pg)
+                cwd = typescript_workerd_config(WORK / 'ts-workerd-run', self.port, f'127.0.0.1:{pool_port}',
+                                                target, environment)
+                command = [str(spike.workerd()), 'serve', 'config.capnp']
             else:
-                pool_port = spike.free_port()
-                pool = subprocess.Popen([str(spike.POOL), '--listen', f'127.0.0.1:{pool_port}',
-                        '--server', f'127.0.0.1:{pg.port}', '--user', 'jadpo', '--database', target, '--size', '10'],
-                        stdout=self.log, stderr=self.log, stdin=subprocess.DEVNULL)
-                self.helpers.append(pool)
-                spike.wait_for_port(pool_port)
+                pool_port = self.pool(pg)
                 self.memory_port = spike.free_port()
                 spike.EXTRA_BINDINGS = [f'(name = {json.dumps(key)}, text = {json.dumps(value)})'
                                         for key, value in environment.items() if key != 'DATABASE_URL']
@@ -292,6 +349,16 @@ class Server(spike.Server):
         except BaseException:
             self.stop()
             raise
+
+    def pool(self, pg):
+        """The stand-in for Hyperdrive both Workers use, capped at 10 connections."""
+        pool_port = spike.free_port()
+        pool = subprocess.Popen([str(spike.POOL), '--listen', f'127.0.0.1:{pool_port}',
+                '--server', f'127.0.0.1:{pg.port}', '--user', 'jadpo', '--database', database_name(self.target), '--size', '10'],
+                stdout=self.log, stderr=self.log, stdin=subprocess.DEVNULL)
+        self.helpers.append(pool)
+        spike.wait_for_port(pool_port)
+        return pool_port
 
     def stop(self):
         if hasattr(self, 'process'):
@@ -451,6 +518,8 @@ def measure(server, pg, owners, cases, route, connections, warmup, duration, row
                    load_cpu_cores=row['load_cpu_s']/row['load_wall_s'], persisted_delta=len(after)-len(before),
                    complete_write_receipts_verified=len(receipts),
                    helper_cpu_ms_per_request=(helper_after-helper_before)*1000/row['requests'])
+        # A Worker's stand-in pool does what Hyperdrive would; it counts with the server.
+        row['server_and_helper_cpu_ms_per_request'] = row['cpu_ms_per_request'] + row['helper_cpu_ms_per_request']
         validate_measurement(row)
         row.pop('created_rows')
         row['verified'] = True
@@ -482,11 +551,15 @@ def metadata(stamp):
             'business_index_sql': INDEX_SQL, 'business_index_sha256': hashlib.sha256(INDEX_SQL.encode()).hexdigest(),
             'database': {'synchronous_commit': 'off', 'max_connections': 400, 'shared_buffers': '256MB'},
             'transport': {'native_typescript': 'loopback one trusted proxy; forwarded_for hops 1; TS checks actual loopback peer',
-                          'workers': 'Cloudflare source; loopback workerd socket overwrites CF-Connecting-IP with 127.0.0.1'},
+                          'workers': 'Cloudflare source; loopback workerd socket overwrites CF-Connecting-IP with 127.0.0.1',
+                          'ts-workerd': 'Hono Workers entry; peer is CF-Connecting-IP, which the socket overwrites with 127.0.0.1'},
             'scheduling': 'external on all targets; no jobs inside request timings',
             'pools': {'native': '10 open/8 idle per driver per server worker thread',
                       'workers': 'one isolate; local transaction pool cap 10',
-                      'typescript': '5 general plus 5 exclusive transaction clients'},
+                      'typescript': '5 general plus 5 exclusive transaction clients',
+                      'ts-workerd': 'one isolate; a Store per request (2 general, 2 transaction clients, unprepared, no type fetch) over the same local transaction pool cap 10'},
+            'rate_limits': {'workers': 'Cloudflare rate-limiting binding stand-in (tools/workers/ratelimit-binding.mjs)',
+                            'typescript': 'in-process limiter; per isolate on workerd'},
             'auth': {'lifetime_seconds': 240, 'caller_limit': '600/min', 'address_limit': '120/min',
                      'address_pool': 16384, 'authority_reads_in_timed_path': 0}}
 
@@ -502,14 +575,15 @@ def summarize(rows):
                 summary.append({'target': target, 'route': route, 'connections': connections,
                     'rounds': len(group), **{field: {'median': statistics.median(row[field] for row in group),
                     'min': min(row[field] for row in group), 'max': max(row[field] for row in group)}
-                    for field in ('rps', 'p95_us', 'cpu_ms_per_request', 'sampled_peak_rss_mb')}})
+                    for field in ('rps', 'p95_us', 'cpu_ms_per_request', 'server_and_helper_cpu_ms_per_request',
+                                  'sampled_peak_rss_mb')}})
     return summary
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--skip-build', action='store_true')
-    parser.add_argument('--prepare-only', action='store_true', help='build and run all 176 contract checks without timing')
+    parser.add_argument('--prepare-only', action='store_true', help='build and run all 220 contract checks without timing')
     parser.add_argument('--rounds', type=int, default=3)
     parser.add_argument('--connections', default='1,16,64')
     parser.add_argument('--duration', type=float, default=10)
@@ -542,7 +616,7 @@ def main():
     validate_build(stamp, fingerprint())
     validate_conformance(stamp['conformance'], contract_ids())
     if args.prepare_only:
-        print('passed: golden todo · 176/176 contract cases · production artifacts ready')
+        print('passed: golden todo · 220/220 contract cases · production artifacts ready')
         return
     result = {'schemaVersion': 1, 'method': metadata(stamp), 'conformance': stamp['conformance'],
               'options': {**vars(args), 'output': str(args.output)}, 'starts': [], 'rows': [], 'ok': False}

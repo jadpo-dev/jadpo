@@ -14,6 +14,7 @@ export type Database = Pick<
 const scopes = new AsyncLocalStorage<RequestScope>();
 function cancellable<T extends postgres.Sql | postgres.TransactionSql>(
   client: T,
+  prepare: boolean,
 ): T {
   return new Proxy(client, {
     get(target, property, receiver) {
@@ -23,11 +24,12 @@ function cancellable<T extends postgres.Sql | postgres.TransactionSql>(
         const scope = scopes.getStore();
         scope?.check();
         // Drizzle calls unsafe() without options, which postgres-js leaves
-        // unprepared. Prepare so repeated statements skip parsing, as a strong
-        // baseline should.
+        // unprepared. Prepare so repeated statements skip parsing on a
+        // long-lived connection, as a strong baseline should; a connection
+        // that lasts one request (Workers) gains nothing from it.
         const [text, parameters, options] = args;
         const query = target.unsafe(text, parameters, {
-          prepare: true,
+          prepare,
           ...options,
         });
         if (scope) {
@@ -63,42 +65,48 @@ function postgresConnection(url: string) {
   return { url, options };
 }
 
+// A long-lived process keeps pools open across requests. A Worker's
+// connections can't outlive the request that opened them, so its Store lasts
+// one request: small pools, no prepared statements and no type lookup, as
+// Cloudflare's Hyperdrive guidance for postgres-js has it.
+export type StoreOptions = Readonly<{
+  connections?: number;
+  transactionClients?: number;
+  prepare?: boolean;
+  fetchTypes?: boolean;
+}>;
 export class Store {
   readonly client: postgres.Sql;
   readonly db: PostgresJsDatabase<typeof schema>;
   readonly transactions: TransactionPool;
+  readonly prepare: boolean;
   constructor(
     url: string,
     observe?: (query: string, parameters: readonly unknown[]) => void,
+    options: StoreOptions = {},
   ) {
     const connection = postgresConnection(url);
-    this.client = postgres(connection.url, {
+    this.prepare = options.prepare ?? true;
+    const settings = {
       ...connection.options,
-      max: 5,
       connect_timeout: 2,
       idle_timeout: 20,
+      fetch_types: options.fetchTypes ?? true,
       onnotice: () => {},
       debug: observe
-        ? (_connection, query, parameters) => {
+        ? (_connection: number, query: string, parameters: unknown[]) => {
             observe(query, parameters);
           }
         : false,
+    } as const;
+    this.client = postgres(connection.url, {
+      ...settings,
+      max: options.connections ?? 5,
     });
-    this.db = drizzle(cancellable(this.client), { schema });
+    this.db = drizzle(cancellable(this.client, this.prepare), { schema });
     this.transactions = new TransactionPool(
-      Array.from({ length: 5 }, () =>
-        postgres(connection.url, {
-          ...connection.options,
-          max: 1,
-          connect_timeout: 2,
-          idle_timeout: 20,
-          onnotice: () => {},
-          debug: observe
-            ? (_connection, query, parameters) => {
-                observe(query, parameters);
-              }
-            : false,
-        }),
+      Array.from({ length: options.transactionClients ?? 5 }, () =>
+        postgres(connection.url, { ...settings, max: 1 }),
       ),
     );
   }
@@ -122,7 +130,7 @@ export class Store {
           const client = release.client;
           let begun = false;
           try {
-            const scoped = cancellable(client);
+            const scoped = cancellable(client, this.prepare);
             await scoped.unsafe("BEGIN ISOLATION LEVEL SERIALIZABLE");
             begun = true;
             const db = drizzle(scoped, { schema });

@@ -4687,7 +4687,7 @@ it), may use them.
 | Tests | `jadpo test` over the spec corpus; a watch-mode latency test with a ceiling of the 1-second target plus a CI allowance; the teaching examples checked, formatted and tested, and the coverage test; every proved construction in the corpus checked again as it runs |
 | Live PostgreSQL (`--profile quick` skips it, and starts no server) | The driver, the test database and `jadpo migrate apply` and `status`; queries, writes, conflicts, counters, lifecycles and transitions through `jadpo test`; a concurrent change forced from a second connection; purge through its entry point. A golden SQL file per query and write shape (`crates/jadpo-plan/tests/sql/`) holds the statements for review |
 | Compiled | The differential run, the `compiled` group; the Workers host's probe under workerd, in the `wasm32` group; a teaching example built for Workers by `jadpo build` and served by workerd against the run's PostgreSQL over `connect()`, in the `wasm32` group |
-| Golden todo | Every golden contract case on native (`compiled`) and compiled workerd (`wasm32`), plus verifier negative controls (`lint`); the strong TypeScript implementation's Node/Bun static, integration and shared-contract pipeline in `tests` |
+| Golden todo | Every golden contract case on native (`compiled`) and compiled workerd (`wasm32`), plus verifier negative controls (`lint`); the strong TypeScript implementation's static and integration checks and its shared contract on Node, Bun and workerd in `tests` |
 
 **The golden todo's contract.** `tools/golden-todo/run.py` runs the 44
 cases of `examples/golden-todo/acceptance-v0.2.json` on generated native
@@ -4936,9 +4936,9 @@ medians of three rounds, all on one Apple M1 Pro shared with PostgreSQL
 
 | Comparison | Workload | Result | Where |
 |---|---|---|---|
-| Native against Bun and Node | Golden todo read / write / signed 50-row list, 64 connections (`golden.py`) | Native 24,396 / 18,435 / 10,930 req/s; best TypeScript 4,357 (Bun) / 2,312 (Node) / 459 (Bun) | Local |
-| Wasm on workerd against Bun | The same, 16 connections | workerd 1,540 / 1,495 / 923 req/s, p95 15.4 / 15.4 / 25.1 ms; Bun 4,815 / 2,078 / 466 req/s, p95 5.2 / 12.2 / 42.1 ms | Local workerd |
-| Cold start | Spawn to first valid readiness answer | Native 22 ms, workerd 71 ms, Bun 114 ms, Node 464 ms | Local |
+| Native against Bun and Node | Golden todo read / write / signed 50-row list, 64 connections, 2,048 owners (`golden.py`) | CPU a request: native 0.11 / 0.12 / 0.35 ms, Bun 0.19 / 0.47 / 1.06, Node 0.20 / 0.39 / 2.18; p95: native 4.5 / 6.4 / 11.3 ms, Bun 13.2 / 26.5 / 65.1, Node 14.1 / 24.4 / 97.4; native 34,141 / 25,295 / 13,656 req/s, Bun 5,751 / 2,756 / 1,063, Node 5,606 / 3,051 / 707 | Local |
+| Wasm on workerd against TypeScript on workerd | The same, 16 connections, both through the stand-in pool | CPU a request, pool included: Jadpo 0.65 / 0.71 / 1.11 ms, TypeScript 1.25 / 1.80 / 2.69; p95: Jadpo 9.4 / 10.3 / 15.8 ms, TypeScript 27.1 / 32.9 / 42.4; Jadpo 1,981 / 1,725 / 1,294 req/s, TypeScript 949 / 683 / 444 | Local workerd |
+| Cold start | Spawn to first valid readiness answer | Native 21 ms, Bun 109 ms, Node 419 ms; Jadpo on workerd 70 ms, TypeScript on workerd 65 ms | Local |
 | Wasm on workerd against Bun, background | 10,000 durable deliveries in 100 ticks, four lanes, warm services (`deliveries.py --mode warm`) | workerd 2,239 deliveries/s, tick p95 55 ms; Bun 4,017/s, 29 ms | Local workerd |
 | Wasm on workerd against Bun, connected subscriber | 10,000 deliveries, each one HTTP call (`connected_deliveries.py`) | workerd 1,435 deliveries/s, 63% of Bun's | Local workerd |
 | Idle tick | Completed-hour tick, empty store (`idle_ticks.py`) | 5 runtime statements; workerd p95 2.9 ms | Local workerd |
@@ -4950,7 +4950,9 @@ with a stand-in pooler, not Cloudflare's edge; native serves on a worker
 thread per core while workerd, Bun and Node serve on one, so CPU a
 request matters as well as throughput; the load is closed loop, so these
 are not open-loop latency targets or production capacity; the host was
-not isolated. Wasm on workerd is still behind Bun on most of these
-workloads, and closing that gap is open work on [the
+not isolated. Native is ahead of Bun and Node on CPU a request, p95 and
+cold start in every golden cell, and Jadpo's Wasm build ahead of
+TypeScript on workerd on CPU a request and p95 in every cell; its cold
+start is 4.6 ms behind, and closing that is open work on [the
 roadmap](roadmap.md). Reproduce a row with its harness's commands in
 `tools/bench/README.md`, from a clean checkout with nothing else building.

@@ -60,19 +60,22 @@ stays in `tools/bench/work/`, `tools/bench/load/target/`,
 ## Golden application comparison
 
 `golden.py` times the complete `examples/golden-todo` application against
-its strong TypeScript counterpart on native, workerd, Bun and Node.
+its strong TypeScript counterpart: Jadpo native and its Wasm build on
+workerd (`workers`), TypeScript on Bun, Node and workerd (`ts-workerd`).
+The headline pairs are native against Bun and Node, and `workers` against
+`ts-workerd`.
 
 ```sh
 # Preparation can compile and run correctness while the machine is busy.
 python3 tools/bench/golden.py --prepare-only
 python3 tools/bench/todo.py --prepare-only
 # Run only with no compiler or other benchmark running.
-python3 tools/bench/golden.py --skip-build
+python3 tools/bench/golden.py --skip-build --principals 2048
 python3 tools/bench/todo.py --skip-build --routes read,large
 ```
 
 Before any timing it runs all 44 `todo-v0.2` cases on each target from
-this checkout and its compiler: 176 passing obligations. A missing,
+this checkout and its compiler: 220 passing obligations. A missing,
 duplicated, unsupported, failed, sliced or preview case can't authorise a
 run. The conformance adapters' clocks, providers, SQL observation, debug
 binaries and JSONL controller are never timed. `--skip-build` refuses
@@ -86,7 +89,8 @@ missing build identities and changed sources, compiler or artifacts.
 | cold start | `GET /health/ready` | Spawn through the first valid database-backed readiness answer |
 
 Every cell starts its server afresh and resets the database outside
-timing. Owners (`--principals`, 256 by default) each have a separately
+timing. Owners (`--principals`, 256 by default; native's reads now pass
+600 a minute per owner at 256, so the comparison runs 2,048) each have a separately
 signed durable session, 50 visible and one hidden todo; a foreign owner
 has the same. Each credential stays attached to its read path, expected
 response and write owner. Every owner's response and the missing,
@@ -108,15 +112,26 @@ trusts one strict IPv4 `X-Forwarded-For` only from a loopback peer;
 together with a bounded 16,384-address pool this keeps the address limit
 real. workerd uses `ClientAddressSource.cloudflare`; its incoming socket
 overwrites any caller-supplied `CF-Connecting-IP` with the real peer, as
-an echo control proves.
+an echo control proves. The TypeScript Worker takes that header as its
+peer too. Only unauthenticated requests meet the address limit, so the
+timed routes are held by the caller limit on every target. Jadpo's Worker
+counts limits in the stand-in rate-limiting binding; TypeScript keeps its
+own in-process limiter, one per isolate.
 
 Native and Wasm are ordinary release deployables from `jadpo build`;
 workerd runs the generated shim and handler unchanged, with an extra
 isolated entrypoint that reads the module's linear memory. Bun uses
 `Bun.serve` and Node Hono's Node adapter, both binding the same emitted
 TypeScript application; the transport host imports no controller, SQL
-recorder or test hook. No reminder is seeded and scheduling is external,
-so the timings exclude background work.
+recorder or test hook. `ts-workerd` is the same application behind its
+Workers entry (`src/worker.ts`), bundled by the pinned Wrangler's `deploy
+--dry-run` with its defaults (esbuild, no minification), and served by the
+same workerd in one isolate. A Worker can't reuse a connection another
+request opened, so it opens a Store per request over its Hyperdrive
+binding: up to two general and two transaction connections, unprepared
+statements and no type lookup, as Cloudflare's Hyperdrive guidance for
+postgres-js has it. No reminder is seeded and scheduling is external, so
+the timings exclude background work.
 
 Each app applies its own migrations; a benchmark-only fixture then gives
 every `todo` table Jadpo's four business indexes (created/id,
@@ -124,15 +139,17 @@ owner/created/id and status/created/id partial on visible rows, plus
 owner), keeping constraint indexes, and its DDL and digest are in the
 results. That controls index work; it is not Drizzle's natural schema.
 Pools are left as built: native 10 open and 8 idle per worker driver;
-TypeScript five general connections and five transaction clients; workerd
-one isolate through a stand-in transaction pool capped at 10, recorded
-separately.
+TypeScript five general connections and five transaction clients; both
+Workers one isolate through the same stand-in transaction pool
+(`load/src/bin/pool.rs`) capped at 10, its CPU recorded separately and
+counted with the server's in CPU a request.
 
 Defaults: three rounds in rotating target order, 1/16/64 connections, two
 seconds of warmup and ten measured per cell, 30-second request and
 10-second connect deadlines. CPU comes from cumulative process counters at
 the warmup boundary and after drain; RSS is sampled every 250 ms. Cold
-start includes first readiness body validation. Results hold every cell,
+start includes first readiness body validation; for both Workers it runs
+from workerd's spawn, with the pool already listening. Results hold every cell,
 p50/p90/p95/p99/max, drain, statuses, server and helper CPU, peak RSS,
 Wasm heap, load-generator CPU and threads, versions, hashes,
 configuration and conformance identities. Every invocation writes a new
@@ -348,7 +365,7 @@ python3 tools/bench/version_writes.py runtime --label <fresh-label> --calls 500
 python3 tools/bench/version_writes.py patch --label <fresh-label> --warmup 2 --duration 5
 ```
 
-`build` first runs the golden contract on all four targets; npm installs
+`build` first runs the golden contract on all five targets; npm installs
 disable lifecycle scripts. Two workloads:
 
 - **Runtime fixture.** A release executable runs the shipping project's
