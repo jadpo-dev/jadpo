@@ -8,6 +8,7 @@ import json
 import re
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -115,7 +116,9 @@ class Isolation(unittest.TestCase):
         app = HERE / 'agents'
         (app / 'AGENTS.md').write_text('x')
         try:
-            command = harness.agent_command('claude', harness.PINNED, 'do it', app, HERE)
+            # CI has no `claude`; the command's shape doesn't depend on where it is.
+            with mock.patch.object(harness, 'tool', lambda name: name):
+                command = harness.agent_command('claude', harness.PINNED, 'do it', app, HERE)
         finally:
             (app / 'AGENTS.md').unlink()
         text = ' '.join(command)
