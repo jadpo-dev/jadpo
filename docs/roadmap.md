@@ -285,9 +285,7 @@ D1 first: the site starts once D1 has merged (Richard, 2026-10-28).
 - [x] **D1 The docs' structure and bundle**: [documentation](documentation.md),
   "Where the content lives", "Topic IDs" and "The bundle"; each area's
   "What is built" and Errors; `docs/errors/`; `docs/language/notes/`.
-- [ ] **D2 The primer** `opus · high` after D1: `docs/primer.md`, about
-  3,000 to 5,000 tokens, every example compiled by the gate; `llms.txt`
-  leads with it.
+- [x] **D2 The primer**: [primer](primer.md), and [documentation](documentation.md), "The bundle".
 - [ ] **D3 Releases** `opus · high` after D1: semantic versions from 0.1.0,
   release-please over the Conventional Commit types, CI failing a
   language change under a type that says it isn't one, installers (shell,
