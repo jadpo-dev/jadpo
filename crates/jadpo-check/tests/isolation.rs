@@ -257,16 +257,18 @@ fn the_graph_and_the_manifest_carry_each_actions_and_fixtures_level() {
 
 // --- the teaching examples ---------------------------------------------------
 
-/// Every action and fixture in each example that keeps records, with its
-/// level and why it loads a record when it does.
+/// Every action and fixture in each example that keeps records, and in the
+/// golden todo (benchmarks/golden-todo/), with its level and why it loads a
+/// record when it does.
 fn examples() -> String {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
-    let mut projects: Vec<_> = std::fs::read_dir(&root)
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut projects: Vec<_> = std::fs::read_dir(root.join("examples"))
         .expect("examples/")
         .filter_map(|entry| entry.ok().map(|entry| entry.path()))
         .filter(|path| path.join("app.jadpo").is_file())
         .collect();
     projects.sort();
+    projects.push(root.join("benchmarks/golden-todo"));
     let mut out = String::new();
     for dir in projects {
         let loaded = jadpo_db::load(&dir);
