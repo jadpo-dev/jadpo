@@ -17,8 +17,8 @@
 //!   finds with the full set, and writes the same text; and the root's,
 //!   with none declared. Collation is kept the same way, since
 //!   `list.sort_by` in a locale the app doesn't support orders by one it
-//!   does (chunk 8.4i), and sorting by a locale at all needs `locales { }`
-//!  . Case mapping takes any `Locale` (area 19,
+//!   does (chunk 8.4i), and sorting by a locale at all needs `locales { }`.
+//!   Case mapping takes any `Locale` (area 19,
 //!   "Text"), and its data is one table;
 //! - every marker with one entry for all locales in full (Unicode's
 //!   properties, normalisation, likely subtags, the fallback's parents).
