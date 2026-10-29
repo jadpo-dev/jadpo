@@ -6,7 +6,9 @@ name: Release Please
 # release (release-please-config.json). Merging that pull request makes a
 # draft GitHub Release tagged vX.Y.Z, with the notes; this workflow then
 # attaches the docs bundle and starts release.yml, dist's, which builds the
-# installers for the tag, attaches them and publishes the release.
+# installers for the tag, attaches them and publishes the release, and
+# vscode-extension.yml, which packages the VS Code extension at the same
+# version and publishes it once the release is out.
 #
 # Switched off until the repository variable JADPO_RELEASES is `on`, which
 # needs the RELEASE_PLEASE_TOKEN secret first: a pull request opened with
@@ -86,3 +88,17 @@ jobs:
     steps:
       - name: Build the installers for the tag
         run: gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG" -f tag="$TAG"
+
+  # The VS Code extension at the release's version, started as dist's is.
+  extension:
+    needs: [release-please, installers]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    env:
+      TAG: ${{ needs.release-please.outputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Package and publish the extension for the tag
+        run: gh workflow run vscode-extension.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG" -f tag="$TAG"

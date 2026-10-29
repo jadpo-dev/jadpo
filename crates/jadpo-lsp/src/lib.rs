@@ -15,9 +15,13 @@
 //! `type.standard_clash` and `type.standard_exists` runs the code `jadpo
 //! fix` runs (chunk 5.5a2). Completion (chunk 5.5a3) offers what
 //! `jadpo_check::completion` reads from the same tables and the checked
-//! body at the cursor. References, rename, formatting and other quick fixes
-//! come later (area 14), and checking runs between messages rather than in
-//! the background with salsa's cancellation.
+//! body at the cursor. Find references resolves every candidate name as go
+//! to definition does (`jadpo_check::graph::references`); formatting is
+//! `jadpo fmt`'s (`jadpo_check::formatting`); every error whose next step
+//! carries edits is a quick fix, promotion made as `jadpo fmt --layout`
+//! makes it; and a query's hover shows the SQL `jadpo sql` prints. Rename
+//! waits for `jadpo rename` (area 14), and checking runs between messages
+//! rather than in the background with salsa's cancellation.
 
 mod completion;
 mod convert;
@@ -25,7 +29,9 @@ mod declines;
 mod fixes;
 mod hover;
 mod make_setting;
+mod quick_fixes;
 mod server;
+mod sql;
 
 use std::path::Path;
 

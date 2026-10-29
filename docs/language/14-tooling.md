@@ -126,7 +126,7 @@ and "Completion and prompts").
 |---|---|---|
 | `jadpo trace <id>` / `jadpo why <name>` / `jadpo call` / `jadpo console` | Debugging (area 17) | Proposed in area 17; `jadpo why <schedule>` built, with `--json`: why a schedule didn't run, or how its last run went, ending with its `.jadpo` place (area 12, "Watching schedules"); another name is `cli.why_arguments` |
 | `jadpo incident [file \| -]` | Explains a runtime event: from a file, from standard input (`pbpaste \| jadpo incident -`, or a log stream piped in), or, with no argument in a terminal, from text pasted at a prompt; it finds the Jadpo events inside surrounding log text and groups them by request | Not built yet: comes with debugging (area 17) |
-| `jadpo lsp` | Runs the language server for editors | Built: diagnostics, hover, go to definition from every use of a name and from a `use` line, and completion; the VS Code extension in `editors/vscode` starts it |
+| `jadpo lsp` | Runs the language server for editors | Built: diagnostics, hover (a query's SQL and a route's full path too), go to definition from every use of a name and from a `use` line, find references, completion, formatting, and quick fixes from each error's edit, promotion among them; the VS Code extension in `editors/vscode` starts it. Rename waits for `jadpo rename` |
 | `jadpo help [command]` | Help for one command; `--help` works everywhere | Built: `jadpo help [command]`, `--help` with examples on every command, and `jadpo help --json` with the rule catalogue and the schemas of the manifest and of `jadpo test --json` |
 | `jadpo completions <shell>` / `jadpo version` | Prints the Tab-completion script for zsh, bash or fish; prints the version | Built |
 
@@ -216,27 +216,52 @@ Code extension in `editors/vscode` adds highlighting and starts the server. It
 contains no parser of its own, and a command to open any generated file comes
 with the generated files.
 
-The extension starts `jadpo lsp` for `.jadpo` files, so the errors, hover
-and go to definition work in VS Code, and highlights keywords,
-declarations, types, strings, numbers and quantities, comments, operators,
-route paths and `use` lines. The `jadpo.server.path` setting names the
-binary (`jadpo` on `PATH` by default, or
-`${workspaceFolder}/target/release/jadpo` for a checkout's own build), and
-a missing binary says so. The highlighting grammar is written by hand and
-`tools/editor_grammar.py`, part of `tools/verify.py`, fails when it leaves
-out or adds a word the lexer reserves. Install and settings are in
-`editors/vscode/README.md`.
+The extension starts `jadpo lsp` for `.jadpo` files, so everything the
+server gives works in VS Code, formats `.jadpo` files on save by default,
+and highlights keywords, declarations, types, strings, numbers and
+quantities, comments, operators, route paths and `use` lines. The
+`jadpo.server.path` setting names the binary (`jadpo` on `PATH` by
+default, as the installers leave it). A language status item names the
+`jadpo` running and its version, and says when none is found or it didn't
+start, with the one step to take; a notification says so too, once, and
+nothing is shown when all is well (the [CLI design
+language](../cli-design-language.md)). "Jadpo: Open Generated File" lists
+the readable files `jadpo check` wrote in `build/` (not `build/rust/` or
+`build/target/`), grouped by folder, opens the one chosen, and runs
+`jadpo check` again from its refresh button. The highlighting grammar is
+written by hand and `tools/editor_grammar.py`, part of `tools/verify.py`,
+fails when it leaves out or adds a word the lexer reserves. Install,
+settings and commands are in `editors/vscode/README.md`. Each release
+packages the extension at the release's version and publishes it to the
+VS Code Marketplace and Open VSX once the release's installers are out
+(`.github/workflows/vscode-extension.yml`), switched off until the
+repository variable `JADPO_VSCODE_PUBLISH` is `on`.
 
 `jadpo lsp` gives the errors `jadpo check` gives while you type, from one
 database kept for the server's life, so an edit rechecks only what it
 changes; hover with a declaration written as Jadpo, its `///` description,
 the failures a callable can produce, a failure's code, kind and status,
-and who calls or uses it; and go to definition from every use of a name,
-in a body, a signature or a `use` line (area 1, Imports).
+who calls or uses it, and a route's full method and path from its method
+(area 7); go to definition from every use of a name, in a body, a
+signature or a `use` line (area 1, Imports); and find references, every
+name in the project the checker resolves to the same declaration, or to
+the same parameter or variable in its body, so a private name of the same
+spelling in another domain is never counted.
 
-Not built yet: promotion as a quick fix, and rename, which goes through
-the same code as `jadpo rename`, so an entity field renamed in the editor
-keeps its stored data.
+Formatting is `jadpo fmt`'s, through the same code (`jadpo_check::formatting`),
+on the text the editor holds: imports fixed when every file parses, then
+the layout, as one edit of the whole document, and none for a file that
+doesn't parse. Every error whose next step carries edits is a quick fix
+named by that step, without the command line's "or run ..." alternative,
+making the edits `jadpo check --json` gives an agent. Promotion is one of
+them, made as `jadpo fmt --layout` makes it: the move, every file's
+imports fixed, and each file the move touched laid out if it was. An
+editor that resolves code actions gets a quick fix's edit only once it is
+chosen.
+
+Not built yet: rename, which goes through the same code as `jadpo rename`,
+so an entity field renamed in the editor keeps its stored data; it waits
+for that command and the identity registry it writes (area 5, area 18).
 
 Go to definition from a `translations.<domain>.<message>(...)` call goes
 to its message type and to its wording in each language file (area 10).
@@ -262,9 +287,12 @@ swap` and is unavailable, with the error it would add, where the command
 stops. The rename needs a name, so it stays the command's until the
 editor's rename comes with `jadpo rename` (area 19).
 
-Not built yet: hovering over a query shows its generated SQL, the same as
-`jadpo sql` (area 6). The SQL is never written into the source as a
-comment, which would go stale, add noise to diffs and invite edits.
+Hovering over a query, where it is declared or called, shows its
+generated SQL, the statements `jadpo sql` prints from the same plan, one
+block for the query and one for each include, once the project has no
+errors, as `jadpo sql` waits for (area 6). The SQL is never written into
+the source as a comment, which would go stale, add noise to diffs and
+invite edits.
 
 ### Completion
 
@@ -1595,7 +1623,8 @@ Each row says what is built and what is specified but not built yet.
 | Error messages | Built: one error per mistake in area 14's field order, `impact` only when it says something, edits on the next step where one exists, and help links to the language pages. |
 | JSON output | Built: every command takes `--json` and prints one envelope (`schemaVersion` 2) with project-relative paths and `data.root`, line and column beside byte offsets, and camelCase keys; `jadpo test --json` is described in area 13 and under `testReport` in `jadpo help --json`. |
 | `build/` | Built: `jadpo check` writes `build/manifest.json` and the catalogues in `build/catalogue/`; `jadpo test` keeps its last run in `build/test/`. |
-| Language server | Built: diagnostics, hover, go to definition, from a `use` line too, and completion. |
+| Language server | Built: diagnostics; hover, with a query's SQL and a route's full path; go to definition, from a `use` line too; find references; completion; formatting as `jadpo fmt`; quick fixes from each error's edit, promotion among them; and the code actions of areas 1, 10 and 19. Not built yet: rename, which waits for `jadpo rename`. |
+| VS Code extension | Built: starts `jadpo lsp`, formats on save, highlights, a status item naming the `jadpo` running, "Open Generated File", and packaging and publishing on each release, switched off until the Marketplace and Open VSX are set up. |
 | Agent tools | Partly built: the catalogues and the similar-helper check, a declinable error, are built; `migrate` is built; `impact`, `domain`, `rename` and `seed` are not built yet. |
 | Suggestions | Built: `jadpo suggest` with its six signal kinds and taught signals, the catalogue, accepted findings, `ignore`, `found`, `share`, `suggestions { }` and the committed taught record, `share` against a fake of Jadpo HQ (HQ itself comes later). |
 | Build-only errors | Built: `jadpo build` for the one deployable an app that declares none has and for declared deployables, with their `toolchain.target_*` errors. |

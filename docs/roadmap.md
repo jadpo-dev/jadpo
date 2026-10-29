@@ -296,6 +296,8 @@ D1 first: the site starts once D1 has merged (Richard, 2026-10-28).
   and feature requests read, answered and turned into pull requests by an
   agent that holds no secrets and cannot merge or release, since issue text
   is anyone's; its pull requests pass the same gate and review.
+- [ ] **D8 The VS Code extension, finished and published**: area 14, "Editor support" and "What is built"; `editors/vscode/README.md`; `.github/workflows/vscode-extension.yml`.
+  Waits: the editor's rename, which comes with `jadpo rename` and the identity registry (after the first build, items 6 and 7).
 
 ## Phase 10 — Golden todo
 
