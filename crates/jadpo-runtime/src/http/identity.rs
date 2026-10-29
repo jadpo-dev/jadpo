@@ -196,6 +196,10 @@ fn cookie_values<'r>(request: &'r Request, name: &str) -> Vec<&'r str> {
 /// signing in reissued its signed part.
 pub(crate) struct Admitted {
     pub caller: Caller,
+    /// Whether it came with the browser session's cookie, which adding
+    /// and managing passkeys need (area 8, "Passkeys"): an API token is
+    /// kept as a session's row too, so `caller.session` doesn't tell.
+    pub browser: bool,
     pub reissued: Option<Reissued>,
     /// On `POST /auth/exchange`, the token the key is traded for and when
     /// it expires.
@@ -206,6 +210,7 @@ impl Admitted {
     fn new(caller: Caller) -> Admitted {
         Admitted {
             caller,
+            browser: false,
             reissued: None,
             exchanged: None,
         }
@@ -520,7 +525,10 @@ async fn user_credential(
             &claims.subject,
             claims.row,
         )?;
-        return Ok(Admitted::new(caller));
+        return Ok(Admitted {
+            browser: cookie,
+            ..Admitted::new(caller)
+        });
     }
     let row = look_up(ctx, user, &kept).await?;
     // An API token has no CSRF token, and never comes as the cookie; a
@@ -557,7 +565,10 @@ async fn user_credential(
         subject,
         Some(*session),
     )?;
-    let mut admitted = Admitted::new(caller);
+    let mut admitted = Admitted {
+        browser: cookie,
+        ..Admitted::new(caller)
+    };
     // A part still good needs no renewing on a `fresh` route.
     if claims.is_none()
         && let (Some((delay, key)), SqlValue::Uuid(principal)) = (signing.key(method), id)

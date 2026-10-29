@@ -508,15 +508,15 @@ impl Planner<'_> {
                     }
                 }
                 // A record moved to another tenant (only a listed action
-                // may) needs the caller's membership there, as a create
-                // there would (area 9, "Tenancy").
+                // may) needs what a create of it there would (area 9,
+                // "Moving a record to another tenant").
                 if *op == WriteOp::Update
                     && let Some(tenancy) = self
                         .access
                         .entity(&entity_model.name)
                         .and_then(|policy| policy.tenancy.as_ref())
-                    && let Some((_, to)) = changed.iter().rev().find(|(n, _)| *n == tenancy.via)
-                    && let Some(member) = self.moved_to(&mut writing, entity_model, to)?
+                    && changed.iter().any(|(n, _)| *n == tenancy.via)
+                    && let Some(member) = self.moved_to(&mut writing, entity_model, &changed)?
                 {
                     narrowed.push(member);
                 }

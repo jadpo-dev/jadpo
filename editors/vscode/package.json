@@ -26,6 +26,13 @@
     "package": "vsce package --skip-license",
     "test": "node --test test/*.test.js"
   },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Jadpo runs the `jadpo` binary `jadpo.server.path` names, which a workspace's own settings may set, so it waits until the workspace is trusted."
+    },
+    "virtualWorkspaces": false
+  },
   "contributes": {
     "languages": [
       {

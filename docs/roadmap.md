@@ -337,6 +337,17 @@ Before 0.1.0 is published (D3).
   confirmed ones are fixed with tests or added here as chunks, `cargo
   audit` and `cargo deny` run in the gate, and `SECURITY.md` says how to
   report a vulnerability.
+  Built: the threat model in [security](security.md), every confirmed finding but S2's fixed with its test (area 8, "Passkeys"; area 9, "References stay inside the tenant"; area 11, "How the input is sent" and "No setting and no sign-in"; compiler/runtime §2.2, "Loading", and §2.6's native write timeout), `cargo audit` and `cargo deny` in the gate, and [SECURITY.md](../SECURITY.md); remains: S2.
+- [ ] **S2 Release provenance** `opus · high`, low severity, before 0.1.0
+  is published (D3): `release.yml` installs dist with `curl … | sh` from
+  its GitHub release, checked against nothing; a release's archives have
+  dist's SHA-256 beside them but no provenance; and the extension's
+  packaging runs its dependencies' install scripts (`@vscode/vsce-sign`'s).
+  Done when dist's installer is checked against a pinned SHA-256 (or dist
+  is built from crates.io with `--locked`), every archive and the `.vsix`
+  carry a GitHub artifact attestation (dist's `github-attestations`) that
+  `gh attestation verify` accepts on a dry-run release, and the
+  extension's `npm ci` runs with `--ignore-scripts`.
 
 ## After the first build, in order
 

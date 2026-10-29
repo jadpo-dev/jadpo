@@ -17,7 +17,9 @@ pinned toolchain from `rust-toolchain.toml`. To build `jadpo`:
 cargo build --release -p jadpo-cli
 ```
 
-The gate needs Python 3 and Rust, and PostgreSQL's tools (`initdb`,
+The gate needs Python 3 and Rust, `cargo-audit` and `cargo-deny` for its
+dependency checks (`cargo install --locked cargo-audit@0.22.2
+cargo-deny@0.20.2`), and PostgreSQL's tools (`initdb`,
 `pg_ctl`) for its live database tests: it starts one disposable server for
 the run, or uses the one `JADPO_TEST_DATABASE_URL` names. It builds once,
 runs its steps concurrently and prints `ok` or `FAILED` for each;

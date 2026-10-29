@@ -5081,7 +5081,9 @@ The importer, `jadpo package import openapi <file>`:
   `package.operation_invalid`.
 - **How the input is sent.** Written as the package's JSON, its members
   by their spellings on the wire; each placeholder in `path:` takes the
-  member of its spelling, as text, escaped; the rest is a `GET`'s or
+  member of its spelling, as text, escaped, as one segment (a value that
+  would leave it, empty, `.` or `..`, is a fault, and nothing is sent);
+  the rest is a `GET`'s or
   `DELETE`'s query (a list as the key repeated, `none` left out, an
   object as its JSON) and every other method's JSON body.
 - **Who calls.** Only an action, of a domain the connection's `domains:`
@@ -5902,6 +5904,14 @@ Cloudflare Queues driver".
   package action call its operations and its pure functions, and keeping
   it to one body keeps each way through it one sequence of steps. This
   can be loosened later without breaking a package.
+- **No setting and no sign-in.** A `config.<name>` read anywhere in a
+  package's code but its tests, a key given to a `crypto` call's `key:`
+  included, is `package.action_invalid`: a package reads none of the
+  app's settings, so it can neither send one to its API nor sign or
+  decrypt with the app's keys; what its provider needs reaches it
+  through the connection's `credential:`. So is a call of `sessions.*`,
+  `magic_links.*` or `test_passkeys.*` in a package's code: who is
+  signed in is the app's own.
 - **The app's call.** `connection.<action>(...)` calls a `public` action
   of the connection's package, from an action of a domain its
   `domains:` lists (`connection.domain_not_listed` otherwise), with the

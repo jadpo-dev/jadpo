@@ -49,8 +49,8 @@ use jadpo_value::Value;
 use jadpo_value::encoding::from_base64;
 
 use super::identity::{
-    AUTHENTICATION_MISCONFIGURED, AUTHENTICATION_UNAVAILABLE, CSRF_REJECTED, START, USER_DISABLED,
-    set_cookies,
+    AUTHENTICATION_MISCONFIGURED, AUTHENTICATION_UNAVAILABLE, CSRF_REJECTED, NOT_PERMITTED, START,
+    USER_DISABLED, set_cookies,
 };
 use super::sign_in_events::{self, SignInEvent};
 use super::{App, Problem, Request, Response, invalid_input, runtime_failure};
@@ -132,7 +132,7 @@ pub(crate) async fn answer(
     request: &Request,
     request_id: &str,
     step: PasskeyStep,
-    caller: Option<&Caller>,
+    caller: Option<(&Caller, bool)>,
 ) -> Response {
     let mut response = match run(app, executor, ctx, request, request_id, step, caller).await {
         Ok(response) => response,
@@ -151,7 +151,7 @@ async fn run(
     request: &Request,
     request_id: &str,
     step: PasskeyStep,
-    caller: Option<&Caller>,
+    caller: Option<(&Caller, bool)>,
 ) -> Result<Response, Stop> {
     let started = ctx.started();
     let (Some(plan), Some(origin)) = (app.table.identity.as_ref(), started.auth().origin()) else {
@@ -680,7 +680,7 @@ impl Site<'_> {
         &self,
         ctx: &mut Ctx<'_>,
         request: &Request,
-        caller: Option<&Caller>,
+        caller: Option<(&Caller, bool)>,
     ) -> Result<Response, Stop> {
         self.no_body(request)?;
         let (user, session, subject) = self.holder(caller)?;
@@ -724,7 +724,7 @@ impl Site<'_> {
         &self,
         ctx: &mut Ctx<'_>,
         request: &Request,
-        caller: Option<&Caller>,
+        caller: Option<(&Caller, bool)>,
     ) -> Result<Response, Stop> {
         let body = self.body(request, &["name", "credential"])?;
         let (user, session, _) = self.holder(caller)?;
@@ -813,7 +813,7 @@ impl Site<'_> {
         &self,
         ctx: &mut Ctx<'_>,
         request: &Request,
-        caller: Option<&Caller>,
+        caller: Option<(&Caller, bool)>,
     ) -> Result<Response, Stop> {
         self.no_body(request)?;
         let (user, _, _) = self.holder(caller)?;
@@ -830,7 +830,7 @@ impl Site<'_> {
         &self,
         ctx: &mut Ctx<'_>,
         request: &Request,
-        caller: Option<&Caller>,
+        caller: Option<(&Caller, bool)>,
     ) -> Result<Response, Stop> {
         let id = self.passkey_id(request)?;
         let body = self.body(request, &["name"])?;
@@ -866,7 +866,7 @@ impl Site<'_> {
         &self,
         ctx: &mut Ctx<'_>,
         request: &Request,
-        caller: Option<&Caller>,
+        caller: Option<(&Caller, bool)>,
     ) -> Result<Response, Stop> {
         let id = self.passkey_id(request)?;
         self.no_body(request)?;
@@ -908,11 +908,17 @@ impl Site<'_> {
     }
 
     /// The signed-in person: their `id`, the session they came with, if
-    /// any, and what their device lists the passkey under.
-    fn holder(&self, caller: Option<&Caller>) -> Result<Holder, Stop> {
-        let Some(caller) = caller else {
+    /// any, and what their device lists the passkey under. Adding and
+    /// managing passkeys need them signed in with a browser session
+    /// (area 8, "Passkeys"), never an API token, which would otherwise
+    /// give its holder a sign-in that outlives the token.
+    fn holder(&self, caller: Option<(&Caller, bool)>) -> Result<Holder, Stop> {
+        let Some((caller, browser)) = caller else {
             return Err(self.fail(AUTHENTICATION_MISCONFIGURED));
         };
+        if !browser {
+            return Err(self.fail(NOT_PERMITTED));
+        }
         let jadpo_value::Value::Record(record) = &caller.value else {
             return Err(self.fail(AUTHENTICATION_MISCONFIGURED));
         };

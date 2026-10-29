@@ -460,6 +460,18 @@ impl Body<'_> {
             return (Ty::Error, CallKind::Effect(written), Reach::Unknown);
         };
         if names.namespace(&head) == Some(Namespace::Generated) {
+            // A package's code acts on its own API, never on who is signed
+            // in to the app (area 11, "What package code may do").
+            if let Ownership::Package(_) = self.ownership
+                && (head == "sessions"
+                    || head == jadpo_std::http::MAGIC_LINKS
+                    || head == jadpo_std::http::TEST_PASSKEYS)
+            {
+                let span = self.span(callee);
+                self.package_signs_in(span, &written);
+                self.args_only(call);
+                return (Ty::Error, CallKind::Effect(written), Reach::Unknown);
+            }
             if head == "sessions"
                 && let Some(op) = jadpo_std::http::SessionOp::from_name(member)
             {

@@ -333,14 +333,20 @@ impl Planner<'_> {
     }
 
     /// The condition a write moving a record of `entity` to another tenant
-    /// adds (area 9, "Tenancy"): the caller holds a current membership in
-    /// the tenant `to` (SQL), its new tenancy, as a create there would.
-    /// `None` for an entity that belongs to no tenant, or is the tenant.
+    /// adds (area 9, "Moving a record to another tenant"): in its new
+    /// tenant, the caller passes the entity's own `create:` over the
+    /// record as moved, as a create there would, and belongs to it; the
+    /// listed line's grants are checked on the record as it was.
+    /// `changed` gives each field the write sets, as SQL; the rest keep
+    /// their columns. So nobody moves a membership of their own into a
+    /// tenant to hold its role there, or a record into a tenant where
+    /// they couldn't create it. `None` for an entity that belongs to no
+    /// tenant, or is the tenant.
     pub(crate) fn moved_to(
         &self,
         bind: &mut dyn CallerBind,
         entity: &EntityModel,
-        to: &str,
+        changed: &[(String, String)],
     ) -> Option<Option<String>> {
         let moves = self
             .access
@@ -350,19 +356,27 @@ impl Planner<'_> {
         if !moves {
             return Some(None);
         }
-        let mut tenants: Vec<Who> = Vec::new();
-        for (i, name) in self.access.root.tenant_memberships.iter().enumerate() {
-            let held = self.access.membership(name)?;
-            let alias = format!("jadpo_n{i}");
-            tenants.push(Who::Member(self.held(
-                bind,
-                held,
-                &alias,
-                Some(to.to_string()),
-                None,
-            )?));
-        }
-        Some(Some(any_of(&tenants)))
+        let values: Vec<(String, String)> = entity
+            .fields
+            .iter()
+            .map(|at| {
+                let value = match changed.iter().rev().find(|(name, _)| *name == at.name) {
+                    Some((_, value)) => value.clone(),
+                    None => qualified(&entity.table, &at.born),
+                };
+                (at.name.clone(), value)
+            })
+            .collect();
+        let grants = self
+            .access
+            .entity(&entity.name)
+            .map(|policy| policy.grants(Effect::Create).to_vec())
+            .unwrap_or_default();
+        let row = Row::New {
+            values: &values,
+            founds: false,
+        };
+        Some(Some(self.granted(bind, entity, &grants, &row)?))
     }
 
     /// What keeps the references a write sets inside the tenant (area 9,

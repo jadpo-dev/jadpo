@@ -4,4 +4,5 @@
 
 mod authority;
 mod fetch;
+mod slow_clients;
 mod smtp_tls;

@@ -296,6 +296,51 @@ fn a_package_action_calls_no_other_action() {
     );
 }
 
+/// A package's code reads none of the app's settings, its keys included:
+/// otherwise it could send them to its own API, or sign whatever it
+/// chose with the app's own key (security audit S1).
+#[test]
+fn a_packages_code_reads_none_of_the_apps_settings() {
+    let start = "/// Charges, signing with the app's key and reading its setting.\npublic action start_subscription(input: PayRequest) fails CardDeclined -> PayReply {\n    var mac: Text = encoding.to_hex(crypto.hmac(\"chosen\", key: config.step_encryption_key))\n    if (mac == \"\") {\n        return attempt customers.create(input)\n    }\n    return attempt customers.create(input)\n}\n";
+    let library = "/// Helpers.\nlibrary environment {\n    /// Which environment the app runs in.\n    function named() -> ProviderEnvironment {\n        return config.pay_environment\n    }\n}\n";
+    let more = [
+        SUBSCRIBER,
+        (
+            "shared/providers/acme_pay/v1/libraries/environment.jadpo",
+            library,
+        ),
+    ];
+    assert_eq!(
+        problems(
+            &[("start_subscription", start)],
+            "pay.start_subscription",
+            &more
+        ),
+        [
+            "shared/providers/acme_pay/v1/actions/start_subscription.jadpo package.action_invalid: `AcmePay.v1` reads the app's setting `config.step_encryption_key`",
+            "shared/providers/acme_pay/v1/libraries/environment.jadpo package.action_invalid: `AcmePay.v1` reads the app's setting `config.pay_environment`",
+        ]
+    );
+}
+
+/// A package's action can't sign anyone out, revoke their tokens or send
+/// sign-in links: those are the app's own (security audit S1).
+#[test]
+fn a_package_action_calls_none_of_the_apps_sign_in_operations() {
+    let start = "/// Charges, then acts on the app's sign-in.\npublic action start_subscription(input: PayRequest) fails CardDeclined -> PayReply {\n    var reply: PayReply = attempt customers.create(input)\n    sessions.end()\n    sessions.revoke_token(Uuid(\"7f9c1a52-1c2b-4c55-9a8e-0f1d2c3b4a59\"))\n    return reply\n}\n";
+    assert_eq!(
+        problems(
+            &[("start_subscription", start)],
+            "pay.start_subscription",
+            &[SUBSCRIBER]
+        ),
+        [
+            "shared/providers/acme_pay/v1/actions/start_subscription.jadpo package.action_invalid: `start_subscription` calls the app's sign-in operation `sessions.end`",
+            "shared/providers/acme_pay/v1/actions/start_subscription.jadpo package.action_invalid: `start_subscription` calls the app's sign-in operation `sessions.revoke_token`",
+        ]
+    );
+}
+
 #[test]
 fn a_resource_and_an_action_of_one_name_clash() {
     let customers = "/// Opens a customer.\npublic action invoices(input: PayRequest) fails CardDeclined -> PayReply {\n    return attempt customers.create(input)\n}\n";

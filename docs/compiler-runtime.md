@@ -284,6 +284,10 @@ hold into a `FileSet`: each path, relative to the root with `/`, with its
 text or why it couldn't be read, a folder that couldn't be listed as its
 path and a trailing `/`, and each checkout `jadpo.lock` links a package to
 under the checkout's path as the lock writes it (`../acme-pricing/...`).
+Only regular files are read, and a link only to a file inside the folder
+being read: one to a file elsewhere on the machine is unreadable ("it
+links to a file outside the project"), so a package or an example can't
+make a check print, or a build carry, someone's other files.
 `jadpo_db::assemble` then makes the set a project by every rule, reading
 nothing: a set with `app.jadpo` at its root is a project, otherwise loose
 files; which paths a project holds (`role`: nothing hidden, nothing in a
@@ -2656,8 +2660,11 @@ doesn't read as `unknown_field`, and reads a body only with a JSON
 when it writes one, so a route test's body is the one a client sends. A
 page's bad cursor answers `invalid_input` naming its field
 (`http::cursor_field`). Natively, hyper has tokio's timer and a 10-second
-header timeout, a body has 30 seconds, the listener holds at most 1,024
-connections (`http::MAX_CONNECTIONS`), and each worker's `Postgres` opens
+header timeout, a body has 30 seconds, a write waits at most 30 seconds
+for the client to read (`http::WRITE_TIMEOUT`, so a client that never
+reads its answers doesn't keep its connection), the listener holds at
+most 1,024 connections (`http::MAX_CONNECTIONS`), and each worker's
+`Postgres` opens
 at most 10 connections (`MAX_OPEN`), a transaction past that waiting for
 one to go idle or close. `jadpo-check` derives each route's OpenAPI
 responses from what it runs (`openapi::facts`: policy reach through calls,

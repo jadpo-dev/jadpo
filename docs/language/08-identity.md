@@ -828,8 +828,10 @@ authentication {
 
 **The routes.** The compiler generates seven routes under `path:`. Signing
 in is open to anyone; adding and managing passkeys need the person signed
-in with a browser session, and every write needs the session's CSRF token
-and an `Origin` naming the app's site, as any cookie write does:
+in with a browser session (any other credential, an API token among them,
+is 403 `not_permitted`, since a passkey it added would outlive it), and
+every write needs the session's CSRF token and an `Origin` naming the
+app's site, as any cookie write does:
 
 ```text
 POST   /auth/passkey/sign-in/options     options for signing in
