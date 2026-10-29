@@ -1088,6 +1088,10 @@ rules! {
         "Project could not be found";
     TOOLCHAIN_SOURCE_READ_FAILED: "toolchain.source_read_failed", area 14, Error, Human,
         "Jadpo source file could not be read";
+    TOOLCHAIN_VERSION_INVALID: "toolchain.version_invalid", area 1, Error, Agent,
+        "Application's `jadpo:` is not a major and minor version as text";
+    TOOLCHAIN_VERSION_NEWER: "toolchain.version_newer", area 1, Error, Human,
+        "Project needs a newer Jadpo";
     TRANSLATION_EXCHANGE_FILE_INVALID: "translation.exchange_file_invalid", area 14, Error, Human,
         "Translation exchange file can't be read or written";
     TRANSLATION_EXCHANGE_UNIT_UNKNOWN: "translation.exchange_unit_unknown", area 14, Error, Agent,

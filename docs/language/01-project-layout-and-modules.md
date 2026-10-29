@@ -329,7 +329,14 @@ build/
   `domains/` and `shared/`, whatever kind it is, so the app's own
   integrations are in `shared/providers/` (area 11). A package
   is laid out as `shared/` is, under the same rules.
-- `app.jadpo` also records the project's Jadpo language version.
+- `app.jadpo` also records the earliest Jadpo version the project needs,
+  as `jadpo: "0.1"` in `application { }`: its major and minor numbers as
+  text, as a package's index gives its own (area 11), since a release that
+  only fixes something never changes what a project can use. A Jadpo older
+  than that refuses the project with `toolchain.version_newer` alone,
+  rather than misread what a later version added; anything but a major and
+  minor number is `toolchain.version_invalid`. Left out, nothing is
+  checked; `jadpo new` writes it (area 14, "Scaffold").
 - The root `translations/` holds only the app's wording for text it did
   not write, one `<locale>.jadpo` file each, grouped by owner (`jadpo: { }`
   for Jadpo's own, a library package's name for its); an application's
@@ -834,6 +841,7 @@ The compiler builds the decided layout, with each rule's real output under
 | A file holds only what its primary declaration uses | Built: `layout.unused_declaration` for a supporting declaration the primary declaration doesn't use, directly or through one another. |
 | Definition before use | Built: `jadpo fmt` writes each file's declarations before the first one that uses them, and `jadpo fmt --check` fails on a file out of that order. |
 | Referenced assets | Not built yet: `layout.asset_unreferenced` waits for the reference forms of areas 11 and 16. |
+| Jadpo version | Built: `application { jadpo: "0.1" }`, with `toolchain.version_newer` refusing a project that needs a newer Jadpo and `toolchain.version_invalid`. |
 | Packages | Built: the root `packages/` and `jadpo.lock`, `shared/providers/`, packages checked as `shared/` is, `use packages/<name>`, and the reachable-from-public rule (`visibility.public_reaches_private`) in domains and packages; area 11 records the choices. |
 
 ## Errors
@@ -845,6 +853,8 @@ layout examples are small projects. `layout.asset_unreferenced` is not
 built yet: it waits for the reference forms of areas 11 and 16.
 
 - [`toolchain.empty_project`](../errors/toolchain.empty_project.md)
+- [`toolchain.version_newer`](../errors/toolchain.version_newer.md)
+- [`toolchain.version_invalid`](../errors/toolchain.version_invalid.md)
 - [`semantic.duplicate_declaration`](../errors/semantic.duplicate_declaration.md)
 - [`semantic.name_case`](../errors/semantic.name_case.md)
 - [`naming.round_trip`](../errors/naming.round_trip.md)

@@ -1565,7 +1565,7 @@ Each row says what is built and what is specified but not built yet.
 |---|---|
 | Command help | Built: every command has `--help` with examples, `jadpo help [command]` explains one, and `jadpo help --json` describes them all. |
 | Project path | Built: every command finds the project by walking up to `app.jadpo`, so a path is optional; run from outside the project, printed paths start with the project as typed. |
-| Scaffold | Not built yet: `jadpo new` is `cli.unknown_command`. |
+| Scaffold | Not built yet: `jadpo new` is `cli.unknown_command`. The version an app declares is checked: `application { jadpo: "0.1" }`, with `toolchain.version_newer` and `toolchain.version_invalid` (area 1, "The root"). |
 | Formatter | Built: one member per line, one blank line between declarations, and `fmt --check` counts the files it read; it keeps `use` lines at the top, sorted, fixes imports inside a project, `--layout` makes promotion moves, and it writes each file's declarations before their use, the primary declaration last. |
 | Error messages | Built: one error per mistake in area 14's field order, `impact` only when it says something, edits on the next step where one exists, and help links to the language pages. |
 | JSON output | Built: every command takes `--json` and prints one envelope (`schemaVersion` 2) with project-relative paths and `data.root`, line and column beside byte offsets, and camelCase keys; `jadpo test --json` is described in area 13 and under `testReport` in `jadpo help --json`. |

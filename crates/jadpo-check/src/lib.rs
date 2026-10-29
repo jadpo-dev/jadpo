@@ -31,6 +31,7 @@ pub mod fixes;
 pub mod graph;
 pub mod identity;
 pub mod imports;
+pub mod jadpo_version;
 mod layout;
 pub mod locales;
 pub mod lookups;
@@ -100,8 +101,22 @@ pub fn standard_stubs() -> std::collections::BTreeMap<String, StandardStub> {
 /// every one is a habit from another language that parsed as its Jadpo
 /// form (`Parse::checkable`): then the rest of the project is checked too,
 /// and no other problem is reported on a line with a syntax error. A
-/// finding a `decline` line answers is left out ([`declines`]).
+/// finding a `decline` line answers is left out ([`declines`]). A project
+/// whose `application { jadpo: }` needs a newer Jadpo gets that error alone
+/// ([`jadpo_version`]).
 pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
+    // A project needing a newer Jadpo is refused with that alone: what a
+    // later version added would only read as mistakes here.
+    let version = jadpo_version::version_problems(db, project);
+    if version.iter().any(jadpo_version::refuses) {
+        let mut out: Vec<Diagnostic> = version
+            .iter()
+            .filter(|d| jadpo_version::refuses(d))
+            .cloned()
+            .collect();
+        sort(&mut out);
+        return out;
+    }
     let files = project.files(db);
     let syntax: Vec<Diagnostic> = files
         .iter()
@@ -233,6 +248,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             );
         }
         out.extend(config::config_problems(db, project).iter().cloned());
+        out.extend(version.iter().cloned());
         out.extend(config::connection_problems(db, project).iter().cloned());
         out.extend(config::test_value_problems(db, project).iter().cloned());
         out.extend(identity::identity_problems(db, project).iter().cloned());
