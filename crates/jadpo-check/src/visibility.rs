@@ -1,4 +1,4 @@
-//! Area 1, "Unused `public`" (Richard, 2026-10-14): `public` offers a
+//! Area 1, "Unused `public`": `public` offers a
 //! domain's declaration to the rest of the project, so on a declaration
 //! nothing outside its domain uses it is `visibility.public_unused`, with
 //! an edit that removes it.

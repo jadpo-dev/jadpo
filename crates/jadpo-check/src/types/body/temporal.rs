@@ -129,7 +129,7 @@ impl Body<'_> {
 
     /// `list.sort_by` with `locale:` orders by a supported locale's
     /// alphabet, and a deployable carries only the declared locales'
-    /// collation (area 10, "Locales"; Richard, 2026-10-22), so the
+    /// collation (area 10, "Locales"), so the
     /// application declares them.
     pub(super) fn locales_for_sorting(&mut self, call: &ast::CallExpr, written: &str) {
         if !crate::locales::locales(self.db, self.project).declared {

@@ -1,5 +1,0 @@
-use todo/entities { Todo, TodoNotFound, User }
-action reassign_todo(todo_id: Todo.id, new_owner: User.id) fails TodoNotFound -> Todo {
-    var item: Todo = attempt Todo.get(todo_id)
-    return Todo.update(item) { set: { owner_id: new_owner } }
-}

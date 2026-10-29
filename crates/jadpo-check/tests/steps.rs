@@ -1065,7 +1065,7 @@ fn past_deadline(files: &[(String, String)]) -> Vec<jadpo_diag::Diagnostic> {
 }
 
 /// Each outside call can wait its `timeout:` on each of its attempts (3s
-/// and 3 by default, Richard 2026-10-20), and a route's deadline covers
+/// and 3 by default), and a route's deadline covers
 /// every call on the longest way through its action.
 #[test]
 fn a_routes_calls_are_summed_against_its_deadline() {
