@@ -7,8 +7,8 @@ build/
 __pycache__/
 *.py[cod]
 node_modules/
-# The lock the tests that install workerd into tools/workers/ take.
-tools/workers/.install.lock
+# The lock the tests that install workerd into tools/fixtures/workers/ take.
+tools/fixtures/workers/.install.lock
 .env
 .env.*
 !.env.example
@@ -18,9 +18,9 @@ tools/workers/.install.lock
 # The extension is packaged on demand (editors/vscode/README.md).
 *.vsix
 
-# The performance spike's builds, database and results (tools/bench/README.md).
-tools/bench/work/
-tools/bench/load/target/
+# The performance spike's builds, database and results (benchmarks/README.md).
+benchmarks/harness/work/
+benchmarks/load/target/
 
 # Golden contract adapter builds and local fixtures.
-tools/golden-todo/work/
+benchmarks/contract/work/

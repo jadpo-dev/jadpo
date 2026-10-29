@@ -225,7 +225,7 @@ fn sites_are_decoded_with_anchors_and_slots() {
 #[test]
 fn a_connected_delivery_keeps_the_provider_and_receipt_write_plans() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tools/bench/fixtures/connected-deliveries");
+        .join("../../benchmarks/fixtures/connected-deliveries");
     let loaded = jadpo_db::load(&root);
     for contested in [false, true] {
         let db = Database::default();

@@ -26,7 +26,7 @@ compiled native and WebAssembly deployables.
 Each optimisation's pull request description carries its results: what
 changed and why, reference and candidate revisions, before/after with run
 variation, CPU and other trade-offs, and adverse results. The repository
-keeps only the method in `tools/bench/README.md`, at most one short summary
+keeps only the method in `benchmarks/README.md`, at most one short summary
 table in `docs/compiler-runtime.md`, and the regression tests and benchmark
 controls that protect the gain; no raw paths, digests, per-round tables or
 logs of failed experiments. Never silently restore an older implementation

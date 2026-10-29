@@ -4,7 +4,7 @@
 version: 2
 updates:
   - package-ecosystem: npm
-    directory: /examples/golden-todo/typescript
+    directory: /benchmarks/golden-todo/typescript
     schedule:
       interval: monthly
     commit-message:
@@ -17,7 +17,7 @@ updates:
         applies-to: security-updates
         patterns: ["*"]
   - package-ecosystem: npm
-    directory: /tools/bench/typescript
+    directory: /benchmarks/typescript
     schedule:
       interval: monthly
     commit-message:
@@ -30,7 +30,7 @@ updates:
         applies-to: security-updates
         patterns: ["*"]
   - package-ecosystem: bun
-    directory: /tools/bench/bun
+    directory: /benchmarks/bun
     schedule:
       interval: monthly
     commit-message:
@@ -43,7 +43,7 @@ updates:
         applies-to: security-updates
         patterns: ["*"]
   - package-ecosystem: npm
-    directory: /tools/workers
+    directory: /tools/fixtures/workers
     schedule:
       interval: monthly
     commit-message:

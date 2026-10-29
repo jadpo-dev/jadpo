@@ -1678,7 +1678,7 @@ The store rate limits are counted in on Workers:
   each into the Wrangler file as `ratelimits: [{ name, namespace_id,
   simple: { limit, period } }]`. Adding a limit can renumber the ones
   after it, which costs at most a window's counts, harmless to lose.
-- **Windows.** 10 and 60 seconds. The workerd pinned in `tools/workers/`
+- **Windows.** 10 and 60 seconds. The workerd pinned in `tools/fixtures/workers/`
   has no binding of its own and its types give only `limit({ key })` and
   `success`, so the windows and the Wrangler entries are not yet checked
   against the real edge ([the roadmap](../roadmap.md)). Every limit

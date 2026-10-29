@@ -9,7 +9,7 @@
 //!
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools, which must have PostGIS (CI's
-//! image does, `tools/postgres/Dockerfile`; so does Postgres.app);
+//! image does, `tools/fixtures/postgres/Dockerfile`; so does Postgres.app);
 //! `JADPO_SKIP_POSTGRES=1` skips the live part.
 
 use std::fs;

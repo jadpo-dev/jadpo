@@ -16,7 +16,7 @@
 //!
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools, which must have pgvector (CI's
-//! image does, `tools/postgres/Dockerfile`); `JADPO_SKIP_POSTGRES=1` skips
+//! image does, `tools/fixtures/postgres/Dockerfile`); `JADPO_SKIP_POSTGRES=1` skips
 //! the live part. A nearest query needs pgvector 0.8.0: on a machine whose
 //! server has an older one (Postgres.app ships 0.7.0) its live test is
 //! skipped, saying so, except under CI, where it fails.

@@ -138,7 +138,6 @@ fn root() -> PathBuf {
 }
 
 /// Each example project: a folder under `examples/` holding `app.jadpo`.
-/// `golden-todo/` holds only the golden app's contract and notes.
 fn projects() -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = std::fs::read_dir(root().join("examples"))
         .expect("examples/ exists")

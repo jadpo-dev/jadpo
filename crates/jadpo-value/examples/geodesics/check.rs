@@ -1,6 +1,6 @@
 //! Area 20's geodesic measures (chunk 5.5u2) against a sample of
 //! GeographicLib's published test set, `reference.tsv` beside this file,
-//! which tools/geodtest_sample.py writes from `GeodTest-short.dat` and
+//! which tools/references/geodtest_sample.py writes from `GeodTest-short.dat` and
 //! says how. Shared by this example, which the gate runs under
 //! WebAssembly, and the native test (crates/jadpo-runtime/tests/geo.rs),
 //! so both targets are held to the same answers, each call made through

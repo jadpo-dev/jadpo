@@ -676,7 +676,7 @@ fn exchange(address: &str, method: &str, path: &str, body: &str) -> (u16, String
 
 /// What a symbol naming `names`, a path in a crate, holds, legacy and v0
 /// mangling alike: each name its length, then its text (as
-/// `tools/deployable.py` reads them).
+/// `tools/checks/deployable.py` reads them).
 fn path(names: &[&str]) -> Vec<u8> {
     names
         .iter()

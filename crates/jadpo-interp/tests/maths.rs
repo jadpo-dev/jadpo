@@ -14,7 +14,7 @@ const SOURCE: &str = "type Answer = Decimal {\n    scale: 18\n}\n\ntype Change =
 
 #[test]
 fn each_operation_gives_its_correctly_rounded_digits() {
-    // References: tools/decimal_maths_reference.py's values (Python's
+    // References: tools/references/decimal_maths_reference.py's values (Python's
     // `decimal` module at 250 digits), as reference.tsv lists them.
     let program = main(SOURCE).with_proof_checks();
     // Equal by value: `Answer` keeps 18 places, the runtime's test the

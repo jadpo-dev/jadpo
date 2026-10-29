@@ -41,7 +41,7 @@ models, git and reviewers work in text.
 How it is built, so it stays honest:
 
 1. Feature by feature from the area specifications; each area's examples
-   and errors (`tools/language_docs.py`) are its feature tests. The golden
+   and errors (`tools/docs/language_docs.py`) are its feature tests. The golden
    todo is the final integration check, not the target being steered
    towards.
 2. A verifier check fails when compiler source contains identifiers from
@@ -272,7 +272,7 @@ compile but are never called, and runs under workerd in the gate's
 `wasm32` group (§2.6, "The Workers host").
 `rust-toolchain.toml` pins the target with the toolchain. The maths on `Decimal` runs there too, not only builds:
 the gate builds `jadpo-value`'s `decimal_maths` example for wasm32 and runs
-it under Node (`tools/run_wasm.mjs`), holding it to the reference values the
+it under Node (`tools/checks/run_wasm.mjs`), holding it to the reference values the
 native test checks. Compiler crates do no I/O below `jadpo-db`, which keeps
 a browser playground possible.
 
@@ -1785,7 +1785,7 @@ No deployable links OpenSSL: it stays only in `jadpo`'s own client for
 HQ and in the passkey tests, beside `webauthn-rs`, their reference
 ("Passkeys", below). `crate_graph.rs` holds a native deployable's crates
 to it through `cargo tree` (normal and build edges, default features),
-and `tools/deployable.py` reads a deployable's symbols for OpenSSL's and
+and `tools/checks/deployable.py` reads a deployable's symbols for OpenSSL's and
 `webauthn-rs`'s. Its cryptography is `ring`, built with only
 a C compiler; aws-lc-rs would add the post-quantum key exchange for a
 far larger C build, and is one provider value away. Servers are checked
@@ -2693,7 +2693,7 @@ Real PostgreSQL regressions rendezvous four subscriber bodies, enforce 100
 selected deliveries including sequential descendants, race duplicate sweeps,
 and advance shutdown/monotonic expiry after four claims, proving settlement
 without assuming a fast machine. The focused 10,000-delivery method and
-comparator boundaries are in `tools/bench/README.md`.
+comparator boundaries are in `benchmarks/README.md`.
 
 **Fast ticks and hourly housekeeping.** Prompt work stays on
 ordinary ticks: due schedules, delivery sweeps and breaker alerts, queue
@@ -3031,7 +3031,7 @@ The gate builds the native host's deployable example
 (`crates/jadpo-host-native/examples/deployable.rs`: a plan read from its
 bytes, its drivers built by the factory, served through `Serving` on
 `NativeHost`) on its own, so without the feature, and reads its symbols
-for any of the above (`tools/deployable.py`); its wasm32 build of the
+for any of the above (`tools/checks/deployable.py`); its wasm32 build of the
 runtime crates is without it too. The binary `jadpo build` writes is
 read the same way, in the live test that runs it. What the feature buys
 is that a deployable reaches no fake, crash point or test section at
@@ -3417,7 +3417,7 @@ with a shim of its own, its outbound network `local` alone. Every test
 that runs a Worker finds workerd through one installer,
 `jadpo_test::workerd_install` (the Workers host's tests include it by
 its path): the pinned release, installed by `npm ci` under a lock across
-processes (`tools/workers/.install.lock`) only when it isn't there, and
+processes (`tools/fixtures/workers/.install.lock`) only when it isn't there, and
 tried again when npm leaves no binary, as it does without a word when it
 couldn't fetch the platform's package, an optional dependency. Each request
 is one run of one test, `Asked` posted as JSON: the program, the test's
@@ -3774,13 +3774,13 @@ than acknowledging it as a handler that ends well does.
 `jadpo build` adds `queues: { consumers: [ ] }` to the Wrangler file from
 the deployable's plan (one part of `workers::wrangler`, through `jadpo_std::receiving::wrangler_queues`), which keeps the queues only
 where subscribers run. The file is checked against Wrangler itself:
-Wrangler 4.155.0 is pinned in `tools/workers/` beside workerd, whose
+Wrangler 4.155.0 is pinned in `tools/fixtures/workers/` beside workerd, whose
 release it is held to by an npm override, and installed with it by the
 shared installer (`jadpo_test::workerd_install::wrangler`), about 70 MB
-more in `tools/workers/`; the test runs
+more in `tools/fixtures/workers/`; the test runs
 its `deploy --dry-run` with no account, its banner's update check,
 telemetry and error reports off, a home of its own, and
-`tools/workers/offline.mjs` preloaded through `--import`, which refuses
+`tools/fixtures/workers/offline.mjs` preloaded through `--import`, which refuses
 and reports every DNS lookup and outbound connection, so a run that
 reached for the network fails (Wrangler's update check reaches npm's
 registry when it warns of an unexpected field). Wrangler validates a
@@ -4453,7 +4453,7 @@ own Workers runtime (`crates/jadpo-host-workers/tests/workerd.rs`): a probe Work
 library (`wasm-bindgen-cli-support` at the lock's release, so nothing is
 downloaded and no command-line tool has to match the crate), with a module
 of Jadpo's own that instantiates it once per isolate, and run by workerd
-1.20261023.1, pinned in `tools/workers/package-lock.json` and installed
+1.20261023.1, pinned in `tools/fixtures/workers/package-lock.json` and installed
 there by `npm ci --ignore-scripts` the first time a test needs it (never
 globally; `JADPO_WORKERD` names another), against servers the test starts
 on this machine: an echo over TCP, the same behind TLS signed by an
@@ -4540,12 +4540,13 @@ one that shows a failure also runs the plain command for its output
 block; `language_docs.py --export-corpus` writes each project and its
 `test.json`, and `build/` is not committed.
 
-**Teaching examples** (decision "Examples teach every feature"). Each project in `examples/` (a folder holding `app.jadpo`;
-`golden-todo/` includes its application and authored tests) is copied to a temporary
-folder by `tools/examples.py`, which fails unless `jadpo check --json`
+**Teaching examples** (decision "Examples teach every feature"). Each project in `examples/` (a folder holding `app.jadpo`),
+and the golden todo (`benchmarks/golden-todo/`), is copied to a temporary
+folder by `tools/docs/examples.py`, which fails unless `jadpo check --json`
 reports no diagnostics at all, `jadpo fmt --check` passes, and `jadpo test
 --json --seed 1` runs at least one test with every test passing; each
-project also needs its own `README.md` and a line in `examples/README.md`.
+project also needs its own `README.md`, and each teaching example a line in
+`examples/README.md`.
 `--export-corpus` writes each project and its `test.json` to
 `build/spec-corpus/examples/<project>/`, beside the pages' projects, and
 the determinism test and format idempotence cover the examples too. The
@@ -4632,7 +4633,7 @@ the full profile, the language pages and the teaching examples. So no test
 binary and no `jadpo test` call starts a server of its own, and the live
 steps run at once rather than taking turns. When `JADPO_TEST_DATABASE_URL`
 is already set (CI) that server is used instead. Under `--profile quick`
-nothing starts PostgreSQL: the pages and `tools/examples.py` get
+nothing starts PostgreSQL: the pages and `tools/docs/examples.py` get
 `JADPO_SKIP_POSTGRES=1`, check and format a project with migrations as
 usual, and print `skipped: jadpo test for …` instead of running its
 tests, which the gate shows under the step.
@@ -4660,15 +4661,15 @@ subject, 1 s against answers held 1.5 s.
 **Teaching examples and pages with migrations.** A teaching example
 commits its migrations like any project. A language page's `check`
 project can carry `migrate=<purpose>` on a block: once the blocks up to it
-are written, `tools/language_docs.py` runs `jadpo migrate new <purpose>`
+are written, `tools/docs/language_docs.py` runs `jadpo migrate new <purpose>`
 with `SOURCE_DATE_EPOCH` fixed per step (the reproducible-builds variable,
 which `jadpo migrate new` names folders by), so a page shows projects with
 migrations without holding their generated files.
 
-**Example-name ban.** `tools/example_names.py` extracts every declared name
+**Example-name ban.** `tools/checks/example_names.py` extracts every declared name
 from the language pages' code blocks and from `examples/` each time it
 runs, minus the committed allowlist of generic words
-(`tools/example-identifiers-allowed.txt`: `id`, `status`); the extracted
+(`tools/checks/example-identifiers-allowed.txt`: `id`, `status`); the extracted
 lists are never committed, and `--list` prints them. The gate
 fails if a banned name appears in any case style as an identifier or string
 in `crates/*/src/`. An example entity whose name is an allowed word (`Order`,
@@ -4676,7 +4677,7 @@ in `crates/*/src/`. An example entity whose name is an allowed word (`Order`,
 as a name in a string literal without spaces (`"Order"`), the sign of
 special-casing, while the word stays usable in identifiers and prose.
 That holds for every example type, not only entities, except the few the language itself also names
-(`tools/example-type-names-allowed.txt`), and the standard library's Jadpo
+(`tools/checks/example-type-names-allowed.txt`), and the standard library's Jadpo
 stubs and names list are scanned too. Tests, including inline
 `#[cfg(test)] mod` blocks (the attribute itself, not a comment mentioning
 it), may use them.
@@ -4689,8 +4690,8 @@ it), may use them.
 | Compiled | The differential run, the `compiled` group; the Workers host's probe under workerd, in the `wasm32` group; a teaching example built for Workers by `jadpo build` and served by workerd against the run's PostgreSQL over `connect()`, in the `wasm32` group |
 | Golden todo | Every golden contract case on native (`compiled`) and compiled workerd (`wasm32`), plus verifier negative controls (`lint`); the strong TypeScript implementation's static and integration checks and its shared contract on Node, Bun and workerd in `tests` |
 
-**The golden todo's contract.** `tools/golden-todo/run.py` runs the 44
-cases of `examples/golden-todo/acceptance-v0.2.json` on generated native
+**The golden todo's contract.** `benchmarks/contract/run.py` runs the 44
+cases of `benchmarks/golden-todo/acceptance-v0.2.json` on generated native
 code and on generated Wasm under workerd, built by this checkout's own
 compiler and runtime, against the gate's shared PostgreSQL server. Its
 private host controls supply clocks, provisioned signed credentials, SQL
@@ -4707,7 +4708,7 @@ group and workerd in `wasm32`, sharing compiled-test caches under
 hosts is not evidence about production DNS or TLS filtering.
 
 **Strong TypeScript golden verification.** The full profile's
-`tests` group runs `examples/golden-todo/typescript/adapter/verify.py` once.
+`tests` group runs `benchmarks/golden-todo/typescript/adapter/verify.py` once.
 It holds an OS file lock across `npm ci --ignore-scripts --no-audit --no-fund`,
 type-aware lint, typecheck, formatting, verifier controls, Vitest and the shared
 contract. The lock covers execution as well as installation, since a second
@@ -4804,9 +4805,9 @@ steps running at once on one PostgreSQL container named by
 `JADPO_TEST_DATABASE_URL`), `compiled` (the differential run above) and
 `wasm32` (the runtime crates for wasm32, their checks under Node, the
 Workers host, a Workers deployable and the route tests under workerd,
-which its tests install into `tools/workers/` with `npm ci` the runner's
+which its tests install into `tools/fixtures/workers/` with `npm ci` the runner's
 Node provides); `docs`, `tests`, `compiled` and `wasm32` each build and
-start their own container from `tools/postgres/Dockerfile`, PostgreSQL 16
+start their own container from `tools/fixtures/postgres/Dockerfile`, PostgreSQL 16
 with pgvector and PostGIS at pinned versions (area 21,
 "Without pgvector"), while the toolchain installs. A local run's
 disposable server comes from the machine's own PostgreSQL tools, which
@@ -4928,7 +4929,7 @@ release-please's and dist's workflows make releases
 ### 2.11 Performance
 
 How each comparison is run, what it measures and how it is kept fair are
-in [tools/bench/README.md](../tools/bench/README.md); timed runs are not
+in [benchmarks/README.md](../benchmarks/README.md); timed runs are not
 in the gate. Each optimisation's pull request carries its full results,
 run variation and adverse cells. The latest result for each comparison,
 medians of three rounds, all on one Apple M1 Pro shared with PostgreSQL
@@ -4955,4 +4956,4 @@ cold start in every golden cell, and Jadpo's Wasm build ahead of
 TypeScript on workerd on CPU a request and p95 in every cell; its cold
 start is 4.6 ms behind, and closing that is open work on [the
 roadmap](roadmap.md). Reproduce a row with its harness's commands in
-`tools/bench/README.md`, from a clean checkout with nothing else building.
+`benchmarks/README.md`, from a clean checkout with nothing else building.

@@ -12,7 +12,7 @@
 //! A server too old for one test (Postgres.app's pgvector 0.7.0, say) is
 //! [`skip_for_version`]: said and skipped on a developer's machine, even in
 //! the full profile, and a failure under CI, whose image has every version
-//! the tests need (tools/postgres/Dockerfile).
+//! the tests need (tools/fixtures/postgres/Dockerfile).
 
 use std::fmt::Display;
 
@@ -71,7 +71,7 @@ pub fn skip_for_version(reason: impl Display) {
     assert!(
         !ci(),
         "skipped under CI, whose PostgreSQL has every version the tests need \
-         (tools/postgres/Dockerfile): {reason}"
+         (tools/fixtures/postgres/Dockerfile): {reason}"
     );
     println!("skipped: {reason}");
 }

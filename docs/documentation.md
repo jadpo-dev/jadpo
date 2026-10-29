@@ -66,7 +66,7 @@ GitHub doesn't show and which leaves the heading's own anchor alone:
 
 Each `#` and `##` heading of an area page is a topic, but `## Errors`,
 which only lists the area's error pages; a topic runs to the next. The
-docs check (`tools/language_docs.py`) fails on a topic with no ID, an ID
+docs check (`tools/docs/language_docs.py`) fails on a topic with no ID, an ID
 that isn't kebab case or is used twice, an ID line anywhere else, and a
 topic over 3,000 words as the bundle gives it, which is split.
 
@@ -105,7 +105,7 @@ examples and errors. The primer is `docs/primer.md` with its hidden blocks
 left out; the docs check compiles its every example, refuses a `fragment`
 in it and keeps it to 3,000 to 5,000 tokens, its words times 1.3.
 
-`python3 tools/language_docs.py --bundle <dir>` builds it; the gate builds
+`python3 tools/docs/language_docs.py --bundle <dir>` builds it; the gate builds
 it into `build/docs-bundle/`, and on `main` CI keeps that folder as the
 `docs-bundle` artifact. A release attaches the bundle to its GitHub
 Release.
@@ -156,7 +156,7 @@ GitHub; some agents cannot fetch from GitHub, which is why the site and
   writes it as the pull request's title. A pull request merges with
   squash (Richard, 2026-10-29): one commit on `main`, its message the
   title, which is what release-please reads. CI
-  (`tools/commit_type.py`, in `.github/workflows/commit-type.yml`) fails a
+  (`tools/checks/commit_type.py`, in `.github/workflows/commit-type.yml`) fails a
   title that isn't a Conventional Commit and a language change under a title other than `feat` or `feat!`: a spec
   example giving a different result for the same source (its `expect=` or
   its output block, on any page under `docs/` or in `README.md`), or a
