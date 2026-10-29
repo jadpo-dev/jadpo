@@ -294,6 +294,9 @@ D1 first: the site starts once D1 has merged.
   first, since no model has seen Jadpo; the results
   also say whether task guides are needed beyond the primer. The method is designed at the start of the chunk; its
   results steer the order of the work after the first build.
+  Built: the method, 18 changes and the harness, in [agent-changes](../benchmarks/agent-changes/README.md); the
+  measured runs (108 sessions at `claude-opus-5-5`, about $200 estimated before any was measured, $648 at most by the
+  $6 cap a run) wait for a maintainer's approval and a signed-in `claude`.
 
 ## Phase 10 review
 

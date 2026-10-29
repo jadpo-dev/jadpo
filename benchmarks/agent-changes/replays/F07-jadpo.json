@@ -1,0 +1,19 @@
+{
+ "say": "Titles now allow 500 characters. (A first attempt: it misses the event records, the migration and the reminder title, which jadpo check names.)",
+ "steps": [
+  {
+   "bash": "jadpo check"
+  },
+  {
+   "edit": "domains/todo/types/todo_title.jadpo",
+   "old": "max_length: 200",
+   "new": "max_length: 500"
+  },
+  {
+   "bash": "jadpo check"
+  },
+  {
+   "bash": "jadpo test"
+  }
+ ]
+}
