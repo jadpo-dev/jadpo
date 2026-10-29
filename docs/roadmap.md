@@ -287,6 +287,7 @@ D1 first: the site starts once D1 has merged (Richard, 2026-10-28).
   and feature requests read, answered and turned into pull requests by an
   agent that holds no secrets and cannot merge or release, since issue text
   is anyone's; its pull requests pass the same gate and review.
+- [x] **D6 Packages, services and integrations explained**: [area 11](language/11-integrations.md), "How packages, connections, capabilities and services fit together".
 - [x] **D7 One place for the golden todo and the benchmarks**: [benchmarks](../benchmarks/README.md);
   `tools/` holds the gate and its `docs/`, `checks/`, `references/` and `fixtures/`.
 - [ ] **D8 The VS Code extension, finished and published**: area 14, "Editor support" and "What is built"; `editors/vscode/README.md`; `.github/workflows/vscode-extension.yml`.

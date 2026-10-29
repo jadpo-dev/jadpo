@@ -10,7 +10,11 @@ checked-with: this checkout's jadpo on every gate run
 
 Which common backend features Jadpo should provide itself, rather than
 leaving each application to install a library or write its own: feature
-flags, rate limits, files, audit trails, tracing, email and search.
+flags, rate limits, files, audit trails, tracing, email and search. A
+built-in service is a feature of Jadpo's runtime, inside the app's
+process, never a container; how built-in services relate to packages,
+connections, capabilities and the services Jadpo runs in containers is
+[How packages, connections, capabilities and services fit together](11-integrations.md#how-packages-connections-capabilities-and-services-fit-together).
 
 > Built: the capability seam, the `files` capability's first part, email (its templates, sending over SMTP or a mail package, the dev inbox and the health score), Jadpo's magic-link email, and rate limits with their store on Workers; [What is built](#what-is-built) says what is not built yet. Examples apply the decisions from areas 1 to 16.
 
@@ -41,13 +45,8 @@ than depending on a third-party service (the rule area 8 applied to OAuth).
 ## Capabilities on this page
 <!-- topic: capabilities-on-this-page -->
 
-A capability is a job that a connection does for Jadpo, chosen in
-`app.jadpo` (area 11). **A capability exists only for a job Jadpo itself
-performs, and covers that job whole**, so every connection that fills one
-does all of it and there are no optional parts.
-Everything else a provider offers is the package's own operations and
-events, called from the domains its connection lists, as payments are.
-Packages fill capabilities and never invent them.
+What a capability is, and how a connection fills one, is area 11's
+"Capabilities". The whole job of each that this page's services use:
 
 | Capability | The whole job | Filled by |
 |---|---|---|
@@ -60,12 +59,9 @@ Packages fill capabilities and never invent them.
 | `publishing` | Deliver chosen events outward, and outgoing webhooks | Drivers and packages (area 12) |
 | `receiving` | Fetch messages from a queue, the inbound twin of `publishing` | Packages; a built-in driver for Cloudflare Queues on Workers (area 12) |
 
-The database, cache and schedules are capabilities with built-in drivers
-only (areas 5 and 12). `sms` is not a capability, since nothing in the
-language sends SMS: Twilio is a package, its text still typed against
-translations, and `sms` returns only if a built-in feature (SMS sign-in
-codes) needs it. Telemetry is not a connection but its own `telemetry:`
-section ("Telemetry", below). Each capability has a local driver for
+The database, cache, schedules and `ai`, and what is not a capability
+(SMS, event delivery, telemetry, which has its own `telemetry:` section
+below), are in area 11's list. Each capability has a local driver for
 development, one fake for tests (area 13) and a conformance suite a filling
 package must pass.
 
