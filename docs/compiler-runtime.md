@@ -1051,7 +1051,10 @@ everything above them for, so two sets in one target would undo each
 other's build, as two profiles would. A workspace's own paths reach
 rustc relative to it, and the cache, the runtime's source and cargo's
 home are remapped alike for every project, so the shared units are the
-same for each and a binary holds no machine's path. A build holds the
+same for each and the checkout's path never reaches a binary. A
+native binary still holds some machine paths that the remapping doesn't
+reach (cargo's registry, the cache's target folder, the toolchain's
+libraries); removing them is not built yet. A build holds the
 target's lock (`jadpo-build.lock`) from `cargo update` until it has
 copied what it built into its workspace: cargo's own lock keeps two
 builds from writing at once, not a second from replacing the first's
