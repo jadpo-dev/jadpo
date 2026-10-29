@@ -1,0 +1,13 @@
+use todo/entities { Todo }
+use todo/types { ListTodos, TodoView }
+
+query todos_page(input: ListTodos) -> Page<TodoView> {
+    from: Todo
+    where_present: Todo.status == input.status
+    where_present: Todo.due_at < input.due_before
+    order: [Todo.created_at desc, Todo.id desc]
+    page: {
+        size: input.page_size
+        after: input.after
+    }
+}

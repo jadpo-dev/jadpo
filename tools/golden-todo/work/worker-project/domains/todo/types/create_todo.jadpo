@@ -1,0 +1,8 @@
+use todo/types { TodoTitle }
+
+type CreateTodo = Input {
+    title: TodoTitle
+    due_at: Instant? {
+        default: none
+    }
+}

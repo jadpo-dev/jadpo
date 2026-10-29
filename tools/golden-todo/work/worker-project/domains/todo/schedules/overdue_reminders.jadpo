@@ -1,0 +1,6 @@
+use todo/actions { queue_reminders }
+
+schedule overdue_reminders {
+    every: 1m
+    run: queue_reminders()
+}

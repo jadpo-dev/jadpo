@@ -1,0 +1,22 @@
+config {
+    browser_origin: Url {
+        test: "https://item.example.test"
+    }
+    database_url: PostgresUrl
+    mail_api_key: Text {
+        secret: true
+    }
+    mail_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
+    oidc_audience: Text {
+        test: "golden-todo"
+    }
+    oidc_issuer: Url {
+        test: "https://identity.example/tenant/"
+    }
+    session_signing_key: SigningKey
+    soft_delete_retention: Duration {
+        default: 30d
+    }
+}

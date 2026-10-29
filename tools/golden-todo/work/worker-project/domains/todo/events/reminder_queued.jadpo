@@ -1,0 +1,6 @@
+use todo/entities { Todo }
+
+type ReminderQueued = Event {
+    todo_id: Todo.id
+    revision: Todo.reminder_revision
+}

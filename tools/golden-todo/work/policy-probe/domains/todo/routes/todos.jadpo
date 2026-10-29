@@ -1,0 +1,32 @@
+use todo/entities { Todo }
+use todo/types { CreateTodo, ListTodos, PatchTodo, TodoView }
+use todo/actions { add_todo, delete_todo, edit_todo }
+use todo/queries { todo_by_id, todos_page }
+
+routes Todos {
+    prefix: /todos
+    POST / {
+        input: CreateTodo
+        output: TodoView
+        status: SuccessStatus.created
+        run: add_todo(input, current_principal.user)
+    }
+    GET / {
+        input: ListTodos
+        output: Page<TodoView>
+        run: todos_page(input)
+    }
+    GET /{todo_id: Todo.id} {
+        output: TodoView
+        run: todo_by_id(todo_id)
+    }
+    PATCH /{todo_id: Todo.id} {
+        input: PatchTodo
+        output: TodoView
+        run: edit_todo(todo_id, input)
+    }
+    DELETE /{todo_id: Todo.id} {
+        status: SuccessStatus.no_content
+        run: delete_todo(todo_id)
+    }
+}

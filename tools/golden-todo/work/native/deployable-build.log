@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 2,
+  "command": "build",
+  "ok": true,
+  "data": {
+    "deployables": [
+      {
+        "deployable": "app",
+        "target": "native",
+        "binary": "build/target/app/app",
+        "tick": {
+          "command": "build/target/app/app tick",
+          "every_ms": 60000
+        },
+        "wrangler": null,
+        "module": null,
+        "hyperdrive": null,
+        "openapi": [
+          "build/target/app/openapi/main.json"
+        ],
+        "build": "b_d49845e58b2e",
+        "serves": [
+          "main"
+        ],
+        "runs": [
+          "schedules",
+          "subscribers"
+        ],
+        "per_instance": []
+      }
+    ],
+    "commit": "66f98d1768bf5896e7d7cfb7d55bccdae1c7deb6",
+    "modified": false,
+    "compiler": "0.1.0",
+    "settings": [
+      "BROWSER_ORIGIN",
+      "DATABASE_URL",
+      "MAIL_API_KEY",
+      "MAIL_ENVIRONMENT",
+      "OIDC_AUDIENCE",
+      "OIDC_ISSUER",
+      "SESSION_SIGNING_KEY",
+      "SOFT_DELETE_RETENTION"
+    ],
+    "fetched": {
+      "rust": null,
+      "crates": 0
+    }
+  },
+  "diagnostics": []
+}
