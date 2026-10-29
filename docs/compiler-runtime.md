@@ -4146,7 +4146,7 @@ writes, for a query's, a file's and an export's run alike.
 provider operation's call is `Callee::Provider` (its connection and
 `resource.operation`), which the interpreter runs through
 `jadpo_runtime::provider::call` with the plan's `ProviderPlan`
-(`jadpo_std::provider`: each connection's address, credential setting,
+(`jadpo_std::provider`: each connection's address, credential,
 timeout, `idempotency:` and `error_code:`, and each public operation's
 method, path, input and output numbered in the JSON table, `output_at:`,
 `failed_when:`, `Repeat` and failures), the credentials the program
@@ -4171,6 +4171,34 @@ at the call's `attempt` (`RuleArm::named`, `Task::RaiseMapped`) or ends
 in `FaultKind::Provider`. Natively the host's `Fetch` is
 `jadpo_host_native::fetch::NativeFetch`: HTTPS through rustls, or plain HTTP to this machine, over a connection kept for
 its host ("A pooled HTTP client" below).
+
+**Where a connection's credential comes from** (area 11, `credential:`
+and "Acting for each user: OAuth grants"). A connection's credential in
+the plan is a `CredentialPlan`: the scheme its package sends it with
+(`CredentialScheme`: bearer, basic, a named header, AWS Signature
+Version 4) and its source (`CredentialSource`). The one source built is
+`Setting { secret, key_id }`, one credential for the whole connection:
+the secret setting's number, and an AWS key's id beside it, so the
+scheme says only how a credential is sent and the source every setting
+it is read from (`CredentialSource::settings`, which a driver's
+settings, `jadpo dev`'s stand-ins and the conformance suite's `--live`
+read). The values are read at start-up into `provider::Credentials`, by
+connection. A call's asynchronous caller resolves the credential before
+its request is made (`provider::credential`, a `provider::Credential`
+whose `Debug` never shows its secret): `provider::call` for every
+operation, the runtime's own calls included, and `ai`, `stream` and
+`embed` through a package once per call, before any attempt
+(`provider::credential_of`). A source holding nothing is
+`misconfigured`, logged as refused and sent to nobody; the request only
+sends what it is given as its scheme says. The source also decides what
+a provider rejecting it means: the request's `Reading::rejected`, which
+`provider::classify` reads for a `401` and a `403` alike, is
+`Rejected::Misconfigured` for a setting's credential and for a call that
+sends none, since the connection's configuration is what is wrong. A
+grant owned by one of the app's records is another source when it is
+built, resolved in the same caller from its owner's store and renewed
+there, with its own meaning for a rejection (`grant_revoked`); nothing
+of it is built yet.
 
 **A pooled HTTP client.** Natively
 every request that leaves the process, a provider's call

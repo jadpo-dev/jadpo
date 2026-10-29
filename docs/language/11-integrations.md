@@ -5135,8 +5135,9 @@ The importer, `jadpo package import openapi <file>`:
   client on the worker's thread with its connections kept per host,
   rustls checking the certificate and the host against Mozilla's roots
   for HTTPS. It classifies what came back: a `2xx` as sent, unless
-  `failed_when:` marks it, then the code at `error_code:`; a redirect,
-  `401` or `403` `misconfigured`; `408`, `429` or the package's `in_use:`
+  `failed_when:` marks it, then the code at `error_code:`; a redirect
+  `misconfigured`, and a `401` or `403` as the credential's source says:
+  `misconfigured` for a setting's, the connection's for every call; `408`, `429` or the package's `in_use:`
   code `unavailable`; any other `4xx` the code at `error_code:`, a fault
   when there is none; a `5xx`, no answer in time, a connection broken
   once the request had left, or an answer over 10 MB as an answer that
