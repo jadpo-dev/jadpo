@@ -317,37 +317,8 @@ compiled.
 
 Before 0.1.0 is published (D3).
 
-- [ ] **S1 A full security audit** `opus · xhigh`, after the Phase 10
-  review's chunks: a threat model first (who attacks a Jadpo app, a
-  developer's machine, CI and a release, and what each can reach), then
-  every surface checked against it. Covered: what the compiler promises
-  (policy, field restrictions, tenancy, identity and sessions, passkeys,
-  magic links, external tokens, webhooks' signatures, rate limits, the
-  outbound guard against SSRF, secrets and settings, crypto, migrations
-  that move data between readers); the runtime's request edge (HTTP
-  parsing, headers, sizes, time limits); generated code native and on
-  Workers (the Workers host, Wrangler file, bindings); supply chain
-  (`cargo audit` and `cargo deny` in the gate, npm, pinned toolchains and
-  the toolchain `jadpo build` fetches, GitHub Actions' permissions and
-  pinning, release artefacts' checksums and provenance); the docs bundle
-  and the extension; and D4's issue triage, whose input is anyone's.
-  Uses the Cloudflare plugin's Workers guidance for the Workers host and a
-  general audit checklist (finecomb or Claude Code's `/security-review`).
-  Done when each finding has a failing test or a reproduction, the
-  confirmed ones are fixed with tests or added here as chunks, `cargo
-  audit` and `cargo deny` run in the gate, and `SECURITY.md` says how to
-  report a vulnerability.
-  Built: the threat model in [security](security.md), every confirmed finding but S2's fixed with its test (area 8, "Passkeys"; area 9, "References stay inside the tenant"; area 11, "How the input is sent" and "No setting and no sign-in"; compiler/runtime §2.2, "Loading", and §2.6's native write timeout), `cargo audit` and `cargo deny` in the gate, and [SECURITY.md](../SECURITY.md); remains: S2.
-- [ ] **S2 Release provenance** `opus · high`, low severity, before 0.1.0
-  is published (D3): `release.yml` installs dist with `curl … | sh` from
-  its GitHub release, checked against nothing; a release's archives have
-  dist's SHA-256 beside them but no provenance; and the extension's
-  packaging runs its dependencies' install scripts (`@vscode/vsce-sign`'s).
-  Done when dist's installer is checked against a pinned SHA-256 (or dist
-  is built from crates.io with `--locked`), every archive and the `.vsix`
-  carry a GitHub artifact attestation (dist's `github-attestations`) that
-  `gh attestation verify` accepts on a dry-run release, and the
-  extension's `npm ci` runs with `--ignore-scripts`.
+- [x] **S1 A full security audit**: the threat model in [security](security.md), each confirmed finding fixed with its test on its area page, `cargo audit` and `cargo deny` in the gate, and [SECURITY.md](../SECURITY.md); release provenance in S2.
+- [x] **S2 Release provenance**: [security](security.md), "CI and releases"; [documentation](documentation.md), "Installing"; `.github/install-dist.sh`.
 
 ## After the first build, in order
 
