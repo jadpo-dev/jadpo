@@ -68,6 +68,14 @@ no HTTP route to start background work.
   checks (documentation, "Installing"): dist's two build jobs attest what
   they build, and the extension's `attach` job the `.vsix` before
   attaching it. Only those jobs may mint an OIDC token.
+- CodeQL scans the Rust, JavaScript and TypeScript, Python and workflow code
+  on each pull request to `main`, each push to `main` and weekly
+  (`codeql.yml`, no build). The OpenSSF Scorecard runs on each push to
+  `main`, on a branch protection change and weekly (`scorecard.yml`) and
+  publishes its result. Both upload to code scanning, so findings are under
+  the repository's Security tab, Code scanning; only their jobs write
+  `security-events`, and the Scorecard job also mints an OIDC token to
+  publish. Dependabot keeps their actions current.
 - Issues and feature requests will be read by an agent (roadmap, D4). Issue
   text is anyone's, so that agent holds no secrets, has a read-only token
   where it reads, and can't merge, release or change a workflow; what it
