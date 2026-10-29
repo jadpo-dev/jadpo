@@ -172,6 +172,46 @@ impl SqlType {
         })
     }
 
+    /// The PostgreSQL column a value of this type is kept in, the text
+    /// [`SqlType::of_column`] reads back as this type: an `Instant`'s
+    /// `timestamptz(3)`, in milliseconds (area 5, "Storage types"). A
+    /// system table's columns are typed by these (`jadpo_std::system`),
+    /// so this is the only PostgreSQL text they get; an entity's field,
+    /// whose width, scale or dimensions its declaration decides, gets its
+    /// column text from the checker instead.
+    pub fn postgres_column(self) -> String {
+        match self {
+            SqlType::Bool => "boolean".into(),
+            SqlType::Int2 => "smallint".into(),
+            SqlType::Int4 => "integer".into(),
+            SqlType::Int8 => "bigint".into(),
+            SqlType::Numeric => "numeric".into(),
+            SqlType::Text => "text".into(),
+            SqlType::Bytes => "bytea".into(),
+            SqlType::Uuid => "uuid".into(),
+            SqlType::Timestamp => "timestamptz(3)".into(),
+            SqlType::Date => "date".into(),
+            SqlType::Time => "time".into(),
+            SqlType::LocalTimestamp => "timestamp".into(),
+            SqlType::Json => "jsonb".into(),
+            SqlType::Array(inner) => {
+                let inner = inner.postgres_column();
+                let base = inner.split('(').next().unwrap_or(&inner);
+                format!("{base}[]")
+            }
+            SqlType::Range(inner) => match inner {
+                SqlType::Date => "daterange",
+                SqlType::Timestamp => "tstzrange",
+                SqlType::Numeric => "numrange",
+                _ => "int8range",
+            }
+            .into(),
+            SqlType::Vector => "vector".into(),
+            SqlType::Geography => "geography".into(),
+            SqlType::Float8 => "double precision".into(),
+        }
+    }
+
     /// The type a parameter compared with a column of this type is sent
     /// as: whole numbers go as `bigint`, which PostgreSQL compares with
     /// and assigns to every width.
@@ -753,5 +793,37 @@ mod tests {
         );
         assert_eq!(sides(170, 180), ["170", "180", "-180", "-180"], "to 180");
         assert_eq!(sides(-180, 180), ["-180", "180", "180", "180"], "all of it");
+    }
+
+    #[test]
+    fn a_column_type_reads_back_as_the_type_it_was_written_from() {
+        let plain = [
+            (SqlType::Bool, "boolean"),
+            (SqlType::Int2, "smallint"),
+            (SqlType::Int4, "integer"),
+            (SqlType::Int8, "bigint"),
+            (SqlType::Numeric, "numeric"),
+            (SqlType::Text, "text"),
+            (SqlType::Bytes, "bytea"),
+            (SqlType::Uuid, "uuid"),
+            (SqlType::Timestamp, "timestamptz(3)"),
+            (SqlType::Date, "date"),
+            (SqlType::Time, "time"),
+            (SqlType::LocalTimestamp, "timestamp"),
+            (SqlType::Json, "jsonb"),
+            (SqlType::Text.array(), "text[]"),
+            (SqlType::Date.range(), "daterange"),
+            (SqlType::Timestamp.range(), "tstzrange"),
+            (SqlType::Int8.range(), "int8range"),
+            (SqlType::Numeric.range(), "numrange"),
+            (SqlType::Vector, "vector"),
+            (SqlType::Geography, "geography"),
+        ];
+        for (ty, column) in plain {
+            assert_eq!(ty.postgres_column(), column, "{ty:?}");
+            assert_eq!(SqlType::of_column(column), Some(ty), "{column}");
+        }
+        assert_eq!(SqlType::Float8.postgres_column(), "double precision");
+        assert_eq!(SqlType::Uuid.array().postgres_column(), "uuid[]");
     }
 }

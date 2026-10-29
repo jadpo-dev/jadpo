@@ -328,14 +328,7 @@ compiled.
 - [x] **10.3e Loading a project from files in memory**: compiler/runtime §2.2, "Loading".
 - [x] **10.3f Where a connection's credential comes from**: compiler/runtime §2.6, "Where a connection's credential comes from"; [area 11](language/11-integrations.md), "How provider calls are made".
 - [x] **10.3g The graph's nodes for areas 8, 10, 11 and 12**: compiler/runtime §2.3, "Outside, access and services" and "Diff"; area 18, "The manifest" and "What is built".
-- [ ] **10.3h The runtime's own SQL beyond PostgreSQL** `opus · high`,
-  **needs a maintainer** for D1's transaction model first: about 145 runtime
-  statements rely on `RETURNING`, `ON CONFLICT`, `::uuid`, `unnest` and
-  `xmin`, `SystemColumn.sql_type` is PostgreSQL type text, and
-  `Transaction` is interactive, which D1's batches may not offer. Done when
-  area 5 records how an action runs on D1 (row versions, transactions),
-  and system columns are typed as `jadpo_std::SqlType`, so later system
-  tables add no PostgreSQL text.
+- [x] **10.3h The runtime's own SQL beyond PostgreSQL**: area 5, "Actions on D1" and "System tables".
 
 ## Security audit
 
