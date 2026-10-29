@@ -439,3 +439,113 @@ fn every_mutation_holds_its_row_version_in_its_own_where() {
     }
     assert!(checked >= 3);
 }
+
+/// A tenant's first membership founds it, and the system founds none
+/// (area 9, "Tenancy" and "Background work"): the system may add a
+/// membership only to a tenant someone belongs to already.
+#[test]
+fn the_system_adds_a_membership_only_where_someone_belongs_already() {
+    let plan = planned(
+        r#"principal {
+    user: {
+        subject: Person.handle
+    }
+}
+
+authentication {
+    api_token: {}
+}
+
+policy {
+    tenant: Company
+}
+
+type Handle = Text {
+    max_length: 40
+}
+
+entity Person {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        read: [id]
+        tenant: Tenancy.shared
+    }
+}
+
+type Role = Enum {
+    owner
+    member
+}
+
+entity Company {
+    id: Uuid
+    name: Handle
+
+    policy: {
+        read: [Role.owner, Role.member]
+    }
+}
+
+entity Membership {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    person_id: Person.id {
+        on_delete: OnDelete.cascade
+    }
+    role: Role
+
+    membership: {
+        scope: company_id
+        member: person_id
+        role: role
+    }
+
+    policy: {
+        create: [Role.owner, Access.system]
+        read: [Role.owner, person_id]
+    }
+}
+
+action seat(company_id: Company.id, person_id: Person.id) fails CompanyNotFound, PersonNotFound -> Membership {
+    return attempt Membership.create {
+        set: {
+            company_id: company_id
+            person_id: person_id
+            role: Role.owner
+        }
+    }
+}
+"#
+        .to_string(),
+    );
+    let callable = plan
+        .callables()
+        .iter()
+        .find(|callable| callable.key.name() == "seat")
+        .expect("seat");
+    let sql = callable
+        .sites
+        .iter()
+        .find_map(|site| match &site.decoded {
+            Decoded::Write { plan: Some(id), .. } => plan.write(*id),
+            _ => None,
+        })
+        .map(|found| found.plan.sql.clone())
+        .expect("the create");
+    // Founding is the caller's own first membership where nobody belongs
+    // (`NOT EXISTS`); the system's way in needs a membership there.
+    assert!(
+        sql.contains("NOT EXISTS (SELECT 1 FROM \"membership\" AS \"jadpo_f0\""),
+        "{sql}"
+    );
+    assert!(
+        sql.contains(" AND EXISTS (SELECT 1 FROM \"membership\" AS \"jadpo_s0\""),
+        "{sql}"
+    );
+}

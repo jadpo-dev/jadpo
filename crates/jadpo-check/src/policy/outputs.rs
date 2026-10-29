@@ -50,6 +50,154 @@ pub fn query_policy_problems(db: &dyn Db, project: Project, file: File) -> Vec<D
         let Some(model) = &read.model else { continue };
         out.extend(query(db, project, file, item.index, model));
     }
+    out.extend(visible_problems(db, project, file));
+    out.extend(backfill_problems(db, project, file));
+    out
+}
+
+/// A lifecycle's `visible:` is a condition on every read of its entity,
+/// so which records a caller sees shows the fields it tests: each one is
+/// a field everyone the entity's `read:` lets in may read (area 9, "Field
+/// restrictions", "Conditions and orders").
+fn visible_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
+    let path = file.path(db);
+    let mut out = Vec::new();
+    let Some(source) = tree::source(db, file) else {
+        return out;
+    };
+    let prover = Prover::new(db, project);
+    for item in &item_tree(db, file).items {
+        if item.kind != ItemKind::Entity {
+            continue;
+        }
+        let Some(model) =
+            crate::data::entity_model(db, project, Name::new(db, item.name.clone())).as_deref()
+        else {
+            continue;
+        };
+        let Some(visible) = model
+            .lifecycle
+            .as_ref()
+            .and_then(|lifecycle| lifecycle.visible.as_ref())
+        else {
+            continue;
+        };
+        let mut fields = std::collections::BTreeSet::new();
+        visible.fields(&mut fields);
+        let entity = &model.name;
+        let reached = prover.read(entity);
+        let Some(field) = fields
+            .into_iter()
+            .find(|field| !prover.field_proved(entity, field, &reached))
+        else {
+            continue;
+        };
+        let at = match tree::decl_at(&source, item.index) {
+            Some(Decl::EntityDecl(decl)) => section(decl.member_list(), "lifecycle")
+                .and_then(|lifecycle| section(lifecycle.block(), "visible"))
+                .map(|member| node_span(path, member.syntax())),
+            _ => None,
+        };
+        let Some(at) = at else { continue };
+        let who = prover.counterexample(&reached, |facts| {
+            prover.field_readable(entity, &field, facts)
+        });
+        let readers = prover.readers(entity, &field);
+        let among = who
+            .map(|who| format!(", {who} among them,"))
+            .unwrap_or_default();
+        out.push(
+            Diagnostic::new(
+                &rule::POLICY_OUTPUT_FIELD_UNPROVED,
+                format!("`{entity}`'s `visible:` tests `{entity}.{field}`, which not every caller may read"),
+            )
+            .at(at, format!("tests `{field}`"))
+            .reason(format!(
+                "Anyone `{entity}`'s `read:` lets in may read its records{among} and {readers} `{field}`. `visible:` decides which records every read sees, which shows each one's `{field}`, so it tests only fields every reader may read."
+            ))
+            .next(format!(
+                "Test a field every reader may read, or give `{field}`'s `read:` everyone `{entity}`'s `read:` names"
+            )),
+        );
+    }
+    out
+}
+
+/// A computed backfill copies its row's fields into the field it fills,
+/// and a copy doesn't escape a field's rules, so each field it reads is
+/// one everyone who may read the filled field may read (area 9, "Field
+/// restrictions", "Copies"; area 5, "Computed backfills"). Only the
+/// latest migration's backfills are read with the project's code.
+fn backfill_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
+    let path = file.path(db);
+    let mut out = Vec::new();
+    if !path.ends_with("/changes.jadpo") {
+        return out;
+    }
+    let latest = crate::data::migrations::migrations(db, project)
+        .list
+        .last()
+        .map(|migration| migration.changes_path());
+    if latest.as_deref() != Some(path.as_str()) {
+        return out;
+    }
+    let Some(source) = tree::source(db, file) else {
+        return out;
+    };
+    let prover = Prover::new(db, project);
+    for decl in source.decls() {
+        let Decl::SingletonDecl(migration) = decl else {
+            continue;
+        };
+        let count = migration
+            .member_list()
+            .map_or(0, |list| list.member_items().count());
+        for member in 0..count {
+            let Some((entity, filled, value)) =
+                crate::data::migrations::backfill_member(&migration, member)
+            else {
+                continue;
+            };
+            let mut reached = prover.read(&entity);
+            if let Some(grants) = prover
+                .policies
+                .entity(&entity)
+                .and_then(|policy| policy.field_grants(&filled, super::Effect::Read))
+            {
+                reached = reached.and(Reached::by(prover.way(&entity, grants)));
+            }
+            let prefix = format!("{entity}.");
+            let copied = value
+                .syntax()
+                .descendants()
+                .filter(|node| ast::FieldExpr::can_cast(node.kind()))
+                .find_map(|node| {
+                    let written = tree::written(&node);
+                    let field = written.strip_prefix(&prefix)?.to_string();
+                    (!field.contains('.')
+                        && field != filled
+                        && !prover.field_proved(&entity, &field, &reached))
+                    .then(|| (field, node_span(path, &node)))
+                });
+            let Some((field, at)) = copied else { continue };
+            let readers = prover.readers(&entity, &field);
+            out.push(
+                Diagnostic::new(
+                    &rule::POLICY_OUTPUT_FIELD_UNPROVED,
+                    format!(
+                        "The backfill for `{entity}.{filled}` copies `{entity}.{field}`, which not everyone who may read `{entity}.{filled}` may read"
+                    ),
+                )
+                .at(at, format!("reads `{field}`"))
+                .reason(format!(
+                    "Everyone who may read `{entity}.{filled}` would see what the backfill worked out from `{field}`, and {readers} `{field}`. A copy doesn't escape a field's rules, a migration's included."
+                ))
+                .next(format!(
+                    "Give `{filled}` a `read:` no wider than `{field}`'s, or work the backfill out from fields every reader of `{filled}` may read"
+                )),
+            );
+        }
+    }
     out
 }
 
