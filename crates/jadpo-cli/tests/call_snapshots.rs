@@ -28,7 +28,7 @@ use jadpo_value::Value;
 use crate::support::fake_provider::FakeProvider;
 
 // Shared ordinary Jadpo source with the focused performance fixture.
-#[path = "../../../tools/bench/version_fixture.rs"]
+#[path = "../../../benchmarks/harness/version_fixture.rs"]
 mod fixture;
 use fixture::files;
 

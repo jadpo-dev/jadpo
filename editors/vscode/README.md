@@ -79,7 +79,7 @@ finds it by walking up to `app.jadpo`, so open the project's folder.
 ## Checks
 
     npm test                              # in editors/vscode
-    python3 tools/editor_grammar.py --check   # from the repository root
+    python3 tools/checks/editor_grammar.py --check   # from the repository root
 
 `npm test` checks how the binary is found, and, when `target/debug/jadpo`
 exists (or `JADPO_BIN` names a binary), starts the real `jadpo lsp` through
@@ -87,7 +87,7 @@ the protocol library the client is built on and checks the handshake, an
 error, hover and go to definition. The server's behaviour is tested in
 `crates/jadpo-cli/tests/lsp.rs`.
 
-`tools/editor_grammar.py` is part of `python3 tools/verify.py` and needs no
+`tools/checks/editor_grammar.py` is part of `python3 tools/verify.py` and needs no
 Node. The highlighting grammar (`syntaxes/jadpo.tmLanguage.json`) is written
 by hand, since colouring reads a line at a time and the lexer does not, but
 the word lists are not: the check reads the reserved words and contextual

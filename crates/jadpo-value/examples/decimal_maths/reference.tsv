@@ -1,5 +1,5 @@
 # Reference values for area 19's maths on `Decimal` (chunk 5.5e), written by
-# tools/decimal_maths_reference.py: Python 3's `decimal` module at 250 digits
+# tools/references/decimal_maths_reference.py: Python 3's `decimal` module at 250 digits
 # (libmpdec's correctly rounded sqrt, exp and ln; π by the module's documented
 # series, checked against 100 published digits; sin and cos by Taylor series;
 # atan2 by Euler's series), rounded to the scale by the mode only where every

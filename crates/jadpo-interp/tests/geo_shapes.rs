@@ -261,7 +261,7 @@ fn pins_in_view_in_reach_and_in_a_circle() {
 fn a_patch_s_label_and_box() {
     let program = main(BAKERY);
     // PostGIS's ST_Centroid(x, false) for this patch is 51.515019338081686,
-    // -0.12499999998910921 (tools/geo_cases.py), 2 × 10⁻¹² of a degree away.
+    // -0.12499999998910921 (tools/references/geo_cases.py), 2 × 10⁻¹² of a degree away.
     assert_eq!(
         value(&program, "label", vec![polygon(LONDON, &[])]).to_string(),
         "Point { latitude: 51.51501933808094, longitude: -0.12499999998684845, altitude: none }"

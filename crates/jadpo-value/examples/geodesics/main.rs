@@ -1,7 +1,7 @@
 //! Area 20's geodesic measures against a sample of GeographicLib's test
 //! set, and its predicates and shapes against PostGIS's answers (chunk
 //! 5.5u3), as a program the gate (tools/verify.py) builds for
-//! `wasm32-unknown-unknown` and runs under Node (tools/run_wasm.mjs), so
+//! `wasm32-unknown-unknown` and runs under Node (tools/checks/run_wasm.mjs), so
 //! the answers are checked under WebAssembly as well as natively. Its exit
 //! code is how many disagree, at most 255; 255 too when there were none to
 //! check.

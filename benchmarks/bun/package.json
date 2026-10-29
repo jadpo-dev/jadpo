@@ -1,0 +1,10 @@
+{
+  "name": "jadpo-bench-bun",
+  "private": true,
+  "description": "Example 23's booking route hand-written in Bun and TypeScript, for the performance spike (benchmarks/README.md). Installed here by `bun install --frozen-lockfile`, never globally.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "dependencies": {
+    "postgres": "3.4.9"
+  }
+}

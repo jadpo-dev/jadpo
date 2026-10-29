@@ -1,5 +1,5 @@
 //! Area 19's maths on `Decimal` (chunk 5.5e) against its reference values,
-//! `reference.tsv` beside this file, which tools/decimal_maths_reference.py
+//! `reference.tsv` beside this file, which tools/references/decimal_maths_reference.py
 //! writes from Python's `decimal` module and says how. Shared by this
 //! example, which the gate runs under WebAssembly, and the native test
 //! (crates/jadpo-runtime/tests/maths.rs), so both targets are held to the

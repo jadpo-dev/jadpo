@@ -56,11 +56,11 @@ path = "tests/main.rs"
 # Scoped native-runtime AI accounting microfixture (no HTTP/provider).
 [[bin]]
 name = "jadpo-bench-ai"
-path = "../../tools/bench/ai_accounting.rs"
+path = "../../benchmarks/harness/ai_accounting.rs"
 test = false
 
 # Ordinary compiler-generated write plans through the shared runtime.
 [[bin]]
 name = "jadpo-bench-versions"
-path = "../../tools/bench/version_writes.rs"
+path = "../../benchmarks/harness/version_writes.rs"
 test = false

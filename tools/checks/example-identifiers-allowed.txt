@@ -1,0 +1,573 @@
+# Generic words the compiler may use although an example also declares them.
+# tools/checks/example_names.py leaves these out of the names it bans.
+# Add a word only when it is genuinely generic: ordinary English or programming
+# vocabulary, or a word the language itself defines. Never add an example
+# application's own nouns (todo, invoice, customer) to make a check pass.
+
+# Words the language itself defines: `Enum.all` lists an enum's variants
+# (area 19, "Closed value sets are enums"), and the standard types' names and parts
+all
+end
+first_day
+phone
+postal_code
+start
+passport
+vat
+# `Discount` and its `amount_off`, `money.apply_discount`, and `UnitPrice`'s
+# `price` (chunk 5.5i3)
+discount
+amount_off
+apply_discount
+price
+# A `RichTextBlock`'s `quote`, Portable Text's block quote (chunk 5.5o2)
+quote
+# Email's words (area 16, chunk 7.3): `application { display_name: }`, the
+# `recipient_rejected` failure (area 11's `EmailFailure`) and a MIME
+# part's `attachment`
+display_name
+recipient
+attachment
+# Email's words (area 16, chunk 7.3c): the parts of the message a mail
+# package's mapping gives (`message.html`, each attachment's
+# `item.content` and its `filename` on the wire), the `attachments`,
+# `receipt:`, and a `button`, the partial Jadpo's own sign-in email has too
+html
+content
+attachments
+filename
+receipt
+button
+# CSS properties in Jadpo's own sign-in email's inline styles
+# (`font-weight`, `white-space`; area 16, chunk 7.3b)
+weight
+white
+# the records' names (chunk 5.5m2)
+tracking
+
+# The geospatial types' names and parts, and the common names
+# `type.standard_exists` matches a `Point`'s by (chunk 5.5s)
+tile
+easting
+northing
+radius
+lat
+lng
+# GeoJSON's `coordinates`, a common name `type.standard_exists` matches a
+# `LineString`'s list of points by (chunk 5.5u6)
+coordinates
+# A map layer, a `FeatureCollection`, as a query gives one and the
+# messages about it say (area 6, chunk 5.5u8)
+layer
+
+# `colour`'s parameters and the media types' names and parts (chunk 5.5p)
+hue
+saturation
+lightness
+chroma
+rating
+paper
+video
+subtitle
+
+# HTML's own element names, which `Html`'s allow-list and the sanitiser's
+# nesting rule name (chunk 5.5o)
+caption
+small
+
+# Rust keywords and ordinary programming vocabulary
+# ordinary English: `configuration.move_name_taken`
+taken
+mut
+self
+add
+after
+before
+both
+bounds
+blank
+body
+# a statement batch: tokio-postgres's batch_execute and the runtime's Transaction::batch
+batch
+batches
+boxes
+broken
+calculate
+calculation
+change
+changed
+checked
+child
+parent
+choice
+choose
+combine
+comment
+complete
+completed
+count
+created
+date
+day
+describe
+dimensions
+disabled
+enabled
+doubled
+draft
+earlier
+echo
+edit
+edited
+editor
+elapsed
+execute
+existing
+failed
+filter
+find
+first
+second
+fixed
+free
+from
+group
+handle
+height
+width
+hot
+illegal
+incomplete
+initial
+input
+item
+items
+key
+kind
+label
+leak
+left
+right
+limit
+line
+lines
+list
+listing
+live
+alive
+load
+local
+lookup
+loose
+maximum
+missing
+misuse
+name
+named
+needless
+negate
+nested
+next
+normalise
+note
+# XLIFF's own element: `<notes>` holds a unit's `<note>`s
+notes
+notice
+now
+number
+one
+two
+three
+open
+opening
+order
+other
+outcome
+page
+pair
+party
+patch
+path
+pending
+phrase
+placed
+plain
+prefix
+suffix
+rank
+ratio
+raw
+reason
+record
+records
+recover
+reference
+refused
+region
+register
+remove
+rename
+reopen
+reorder
+replace
+replacement
+request
+requested
+response
+result
+reschedule
+reserve
+restore
+same
+save
+saved
+scan
+score
+seen
+sent
+settings
+share
+size
+slot
+slug
+spoof
+state
+status
+summary
+tag
+tags
+text
+thing
+token
+total
+trace
+unchanged
+unrelated
+value
+view
+viewer
+visit
+visitor
+verifier
+wait
+waiting
+weights
+web
+wrong
+accepted
+active
+actor
+allowed
+amount
+app
+archive
+available
+bad
+bump
+caller
+closed
+contact
+cutoff
+deliver
+# A delivery of an event to a subscriber, and its record (area 12, chunk 6.1b)
+delivery
+decline
+declined
+due
+done
+grace
+headline
+pinned
+project
+profile
+subject
+zone
+
+# Words the language, its standard library or its runtime define
+optional
+include
+pick
+omit
+account
+email
+mail
+event
+flag
+flags
+health
+intent
+member
+members
+membership
+money
+currency
+# the standard types `PaymentCardNumber`, `PaymentReference`,
+# `InvoiceNumber` and `UkCompanyNumber` (area 19, chunk 5.5i)
+payment
+card
+card_number
+invoice
+company
+# the standard types `Sku`, `Isbn`, `BookingReference`, `Allergen` and its
+# variants (the 14 a food label names) and `LawfulBasis.consent` (area 19,
+# chunk 5.5m)
+allergen
+booking
+consent
+eggs
+gluten
+isbn
+milk
+nuts
+sesame
+sku
+# the standard type `OpeningHours` and RFC 5545's frequencies (area 19,
+# chunk 5.5k2)
+hours
+opening_hours
+daily
+principal
+retention
+role
+rounding
+half_even
+service
+session
+temporal
+tenant
+user
+by_id
+request_id
+trace_id
+idempotency_key
+api_key
+signing_key
+database_url
+page_size
+sign_out
+# area 8's sign-in (`sign_in` providers and routes) and OpenAPI's `security`
+sign_in
+# a field of the built-in `MagicLinkEmail` (area 16), part of Jadpo's own message names
+sign_in_link
+# area 8's built-in sign-in event `SignedIn` (chunk 7.3b4)
+signed_in
+security
+# area 8's sign-in methods, route authentication and runtime failure codes
+browser_session
+fresh
+user_disabled
+# what `magic_links.redeem` gives, `MagicLinkRedeemed` and its `user_id`
+# (area 8, chunk 7.3b3)
+redeemed
+user_id
+# the toolchain's own error code, `toolchain.project_not_found` (area 14),
+# which a project's failure code for an entity called Project matches
+project_not_found
+
+# Generic names the language rejects for a domain or library (area 1)
+helpers
+
+# Ordinary English the teaching examples in examples/ use as names
+above
+address
+asked
+base
+code
+difference
+double
+each
+full
+large
+leave
+lost
+medium
+minutes
+needed
+nothing
+out
+over
+percent
+reserved
+returned
+used
+whole
+# ordinary words the test database harness and decimal rounding use
+# (Condvar::notify_all, a template being ready, low and high bounds)
+notify
+ready
+low
+high
+
+# The failure envelope's field (area 4) and OpenAPI's `info.title` (area 7):
+# protocol words the runtime and OpenAPI must write as they are.
+details
+title
+
+# The standard library's `IssuedToken` and `IssuedKey` (area 8), which the
+# API record writes as `output` sections of their own.
+issued_token
+issued_key
+
+# What the generated `POST /auth/exchange` answers with (area 8), which the
+# API record writes as an `output` section of its own.
+exchanged_token
+
+# What the generated passkey routes answer with (area 8, "Passkeys"), which
+# the API record writes as an `output` section of its own.
+passkey_view
+# WebAuthn's signature counter, as `webauthn-rs` names it in its stored
+# `Credential` (area 8, chunk 5.5z): a field of another crate's type.
+counter
+
+# Words the language defines for time (area 10): `temporal.add_days`'s
+# `days`, `Dst.later`, the `Weekday` variants, and an `InstantRange`, which
+# is also ordinary programming vocabulary (rowan's `text_range`).
+days
+later
+saturday
+sunday
+range
+
+# Words the language defines for showing time (area 10): `temporal.format`'s
+# `locale:`, a `Locale`.
+locale
+
+# Ordinary programming vocabulary the packages design's examples (2026-10-16)
+# also declare as fields: a file, an import, a step of a multi-step call, a
+# reply, when something started, how many attempts, a session's renewal.
+attempts
+file
+import
+renewal
+reply
+started
+step
+# words the language defines (area 19, chunk 5.5a): `InstantRange`'s shape
+# for `type.standard_exists`, and a `FileType` variant
+starts_at
+ends_at
+pdf
+# a standard type the language defines (area 19, chunk 5.5a2), which
+# `type.standard_clash`'s example declares as an application's own
+uuid
+# a word the language defines (area 19, chunk 5.5g2): the failure field
+# `json.read`'s `mismatch` fills with a `DecodeProblem`
+problem
+# words the language defines for money (area 19): `pence` among the names
+# `type.standard_exists` matches for an amount, `Yen` in CLDR's name for
+# `JPY`, and `BOB`, Bolivia's ISO 4217 code
+pence
+yen
+bob
+# a word the language defines for money (area 19, chunk 5.5h2):
+# `ExchangeRate`'s field `rate`, which `money.convert` takes as `rate`
+rate
+# words the language defines for physical quantities (area 19, chunk
+# 5.5j): `quantity` and the standard types `Temperature` and
+# `TemperatureDifference`, the units' names (`celsius`, and `metres` and the
+# rest as completion describes a suffix), and the "product and quotient
+# table" of two kinds
+quantity
+temperature
+celsius
+metres
+centimetres
+miles
+pounds
+grams
+kilograms
+product
+products
+# a standard operation's name, `text.trim` (area 19); the showcase's variable too
+trim
+# A JSON Web Key Set's one member (RFC 7517 §5), which a key set read with
+# `json.read` names (chunk 5.5r)
+keys
+# Ordinary English words the rules-across-fields examples name fields and
+# types with, as area 19's decision writes the rule (`ends > starts`): area
+# 2, chunk 5.5t
+arrives
+children
+ends
+leaves
+moment
+opens
+starts
+# An attribute type's short name RFC 4514 §3 defines, which a certificate's
+# distinguished name is written with (chunk 5.5r5)
+street
+# The language's own word for what work may spend (area 6's and area 12's
+# retry budget), and the runtime's for how long an invocation of
+# background work may run (area 12, chunk 6.7); area 9's example names a
+# field `budget` too
+budget
+
+# A package's folders and keys, and the provider names Jadpo reserves for
+# its curated packages (area 11, "The package format", "How the API is
+# reached" and "Names"; chunk 7.1)
+recipes
+new_key
+stripe
+
+# A package's surface (`surface.jadpo_record`), its guide (`GUIDE.md`)
+# and its recipes, words the language defines (area 11, "The surface";
+# chunk 7.1b)
+surface
+guide
+recipe
+
+# A package linked to a live checkout, and unlinked again, words the
+# language defines (area 11, "Developing and publishing a package";
+# chunk 7.1b2)
+checkout
+linked
+unlinked
+# Words the language itself defines for receiving from outside (area 11,
+# chunk 7.7): every webhook event's `occurred_at`, a connection's
+# `webhooks: { replies: }`, and the ids of events `received`
+occurred_at
+replies
+received
+# The members AWS SNS names its messages with, which the runtime reads to
+# check and confirm them (area 11, chunk 7.7b): `SubscribeURL`, and the
+# `SubscriptionConfirmation` type
+subscribe
+subscription
+# Wrangler's queue consumer setting `max_batch_size`, which the consumer
+# written for Cloudflare Queues names (area 11, chunk 7.7c2)
+batch_size
+# CSS's own property names, in the pages `jadpo dev` serves (chunk 7.3c2)
+outline
+
+# Area 12's rule `step.late_failure` (chunk 7.5e): a failure that comes
+# late, after a changing call took effect; ordinary English.
+late
+
+# The Fetch standard's `redirect: "manual"`, which the Workers host sends
+# with every request so no redirect is followed (chunk 8.2a)
+manual
+
+# WebAuthn's `packed` attestation statement format, which the Workers
+# host's passkey ceremonies read (chunk 8.2l); ordinary English.
+packed
+
+# Generic vocabulary exposed by the golden app's ordinary declarations:
+# AI/translation message collections and provider message identifiers;
+# authentication/user storage; resolver/query candidate collections;
+# and the CLI's existing delivery retry wording. None is a todo-specific noun.
+messages
+message_id
+users
+candidates
+queued
+
+# Ordinary English
+between
+gap
+mistaken
+more
+shares
+
+# Rust's own word for a package, which `jadpo build` counts and fetches
+# (chunk 9.2c); programming vocabulary.
+crates

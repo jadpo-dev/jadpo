@@ -6,7 +6,7 @@
 //! response on a news desk (`newsroom.rs`) and Cloudflare Queues' consumer
 //! on a warehouse (`queues.rs`).
 //!
-//! workerd, Cloudflare's own Workers runtime, pinned in `tools/workers/`,
+//! workerd, Cloudflare's own Workers runtime, pinned in `tools/fixtures/workers/`,
 //! runs each Worker's files as its Wrangler file describes them, against a
 //! PostgreSQL database on this machine reached through workerd's
 //! Hyperdrive binding, which hands `connect()` to the database's server.
@@ -20,7 +20,7 @@
 //! starts on `127.0.0.1` from the machine's PostgreSQL tools, since the
 //! one a local run of the gate starts listens on a Unix socket, which a
 //! Worker can't open; `JADPO_SKIP_POSTGRES=1` skips the serving part.
-//! Nothing leaves this machine: workerd is installed into `tools/workers/`
+//! Nothing leaves this machine: workerd is installed into `tools/fixtures/workers/`
 //! by `npm ci --ignore-scripts` the first time (`JADPO_WORKERD` names
 //! another), and the Worker reaches nothing but this machine.
 
@@ -235,7 +235,7 @@ impl Workerd {
     /// The Worker in `out` as `wrangler` describes it: its main module and
     /// the modules beside it by the file's rules, its compatibility date
     /// and its rate-limiting bindings, each a stand-in for Cloudflare's
-    /// (tools/workers/ratelimit-binding.mjs), given `bindings`, its
+    /// (tools/fixtures/workers/ratelimit-binding.mjs), given `bindings`, its
     /// outbound network reaching this machine. A binding the Wrangler file
     /// names as Hyperdrive's is given as workerd's Hyperdrive binding for
     /// the database at that address, which hands `connect()` to its server,
@@ -333,7 +333,7 @@ impl Workerd {
         // Work is handed on through `ctx.exports`, which workerd gives
         // each entrypoint the Worker exports (chunk 8.4b): no binding.
         assert!(wrangler.get("services").is_none(), "{wrangler}");
-        let tools = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/workers");
+        let tools = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/fixtures/workers");
         fs::copy(
             tools.join("ratelimit-binding.mjs"),
             dir.join("ratelimit-binding.mjs"),
@@ -695,7 +695,7 @@ fn dechunk(mut body: &str) -> String {
     out
 }
 
-/// workerd: `JADPO_WORKERD`, else the one pinned in `tools/workers/`,
+/// workerd: `JADPO_WORKERD`, else the one pinned in `tools/fixtures/workers/`,
 /// installed there by `npm ci` when it isn't yet, one process at a time
 /// (`jadpo_test::workerd_install`).
 fn workerd() -> PathBuf {

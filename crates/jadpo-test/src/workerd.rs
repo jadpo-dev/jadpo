@@ -12,7 +12,7 @@
 //! profile, offline, in a workspace it keeps, so a run with nothing
 //! changed compiles nothing; binds the module with wasm-bindgen's library
 //! (`jadpo_codegen::workers::bind`); and serves it under the workerd
-//! pinned in `tools/workers/`, its network the machine's own and nothing
+//! pinned in `tools/fixtures/workers/`, its network the machine's own and nothing
 //! past it. Then, for each project, it runs the route tests on the
 //! interpreter with records, seed 1, and asks the Worker to run each one
 //! by its key: on a copy of each store's database made on a server the

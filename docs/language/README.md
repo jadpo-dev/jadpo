@@ -68,16 +68,16 @@ structured diagnostics and tests to check the result.
 
 ## Maintaining the specification
 
-`tools/language_docs.py` checks these pages, their design notes in
+`tools/docs/language_docs.py` checks these pages, their design notes in
 [`notes/`](notes/) and the error pages in [`docs/errors/`](../errors/),
 renders them into `build/language-site/`, and builds the docs bundle
 ([documentation](../documentation.md), "The bundle"). The rendered decision
 log collects the decisions from every area's notes.
 
 ```sh
-python3 tools/language_docs.py --check
-python3 tools/language_docs.py
-python3 tools/language_docs.py --bundle build/docs-bundle
+python3 tools/docs/language_docs.py --check
+python3 tools/docs/language_docs.py
+python3 tools/docs/language_docs.py --bundle build/docs-bundle
 ```
 
 ## Writing a page
@@ -112,7 +112,7 @@ python3 tools/language_docs.py --bundle build/docs-bundle
   checkout, with `jadpo check`: the block must check cleanly and be
   canonically formatted (`jadpo fmt --check`), or, with `expect=rule.id`,
   fail with that rule and be followed by a ` ```text output ` block holding
-  the exact plain output (`python3 tools/language_docs.py --bless` rewrites
+  the exact plain output (`python3 tools/docs/language_docs.py --bless` rewrites
   it). A project with an `app.jadpo` block is checked as a project, with
   the layout rules on; without one, its blocks are loose files. Attributes
   after the language name:

@@ -109,7 +109,7 @@ What the compiler guarantees here:
 - **Orders belong to their customer.** The `Order` policy grants `create` and `read` only to the customer it names, and the route passes the signed-in customer, not an ID from the request.
 
 <!-- The rest of the project, so the files above are checked as a whole by
-tools/language_docs.py. GitHub does not show this comment.
+tools/docs/language_docs.py. GitHub does not show this comment.
 
 ```jadpo check project=homepage file=domains/shop/actions/place_order.jadpo uses
 use app { pay }
