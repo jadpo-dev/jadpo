@@ -89,8 +89,10 @@ def conformance():
     baseline = json.loads(typescript.stdout)
     if not baseline.get('completeContract') or baseline.get('preview', True):
         raise ValueError('TypeScript contract is incomplete or uses a preview source')
+    # The interpreted run is part of a complete contract but no timed
+    # target: only deployables are compared.
     reports = [{**row, 'target': 'workers' if row['target'] == 'workerd' else row['target']}
-               for row in jadpo['cases']]
+               for row in jadpo['cases'] if row['target'] != 'interpreted']
     reports += [{**row, 'target': 'ts-workerd' if row['runtime'] == 'workerd' else row['runtime']}
                 for row in baseline['cases']]
     validate_conformance(reports, contract_ids())

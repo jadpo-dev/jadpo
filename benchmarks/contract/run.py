@@ -26,6 +26,7 @@ from contract import CASES, Contract, validate_registry
 PROJECT=ROOT/'benchmarks/golden-todo'
 WORK=HERE/'work'
 CACHE=ROOT/'target/jadpo-compiled/golden-todo'
+TARGETS=['interpreted','native','workerd']
 class Unsupported(RuntimeError):pass
 
 def checked(arguments,**kwargs):return subprocess.run(arguments,check=True,**kwargs)
@@ -45,6 +46,9 @@ def build_native(source):
     manifest='[package]\nname="golden-native-contract"\nversion="0.0.0"\nedition="2024"\nbuild="build.rs"\n[workspace]\n[features]\ntesting=[]\n[dependencies]\n'
     for name in ['jadpo-runtime','jadpo-host-native','jadpo-drivers','jadpo-value','jadpo-std','jadpo-codegen']:
         manifest+=f'{name}={{path={json.dumps(str(source/"crates"/name))}'+(',features=["testing"]' if name=='jadpo-runtime' else '')+'}\n'
+    # The interpreter runs the same project's plan for the interpreted target.
+    for name in ['jadpo-db','jadpo-interp']:
+        manifest+=f'{name}={{path={json.dumps(str(source/"crates"/name))}}}\n'
     manifest+='serde_json="1"\nblake3="1"\n[build-dependencies]\n'
     for name in ['jadpo-db','jadpo-check','jadpo-interp','jadpo-codegen']:
         manifest+=f'{name}={{path={json.dumps(str(source/"crates"/name))}}}\n'
@@ -60,10 +64,11 @@ def build_native(source):
     return CACHE/'native/debug/golden-native-contract'
 
 class Native:
+    executor='compiled'
     supported={'clock','worker_reset','outage','mail','sql','request','drain','deliver_one','sweep','tick','schedule','jwks','jwt','digest','sign','open','mutation_hook','concurrent_tick'}
     def __init__(self,binary,url,compiler):
         self.binary=binary;self.compiler=compiler;self.lock=threading.Lock()
-        self.environment={**os.environ,'DATABASE_URL':url,'SESSION_SIGNING_KEY':secrets.token_urlsafe(32),'BROWSER_ORIGIN':'https://todo.example.test','OIDC_ISSUER':'https://identity.example/tenant/','OIDC_AUDIENCE':'golden-todo','MAIL_API_KEY':secrets.token_urlsafe(32),'JWT_SIGNING_KEY':secrets.token_urlsafe(24)}
+        self.environment={**os.environ,'GOLDEN_EXECUTOR':self.executor,'GOLDEN_PROJECT':str(PROJECT),'DATABASE_URL':url,'SESSION_SIGNING_KEY':secrets.token_urlsafe(32),'BROWSER_ORIGIN':'https://todo.example.test','OIDC_ISSUER':'https://identity.example/tenant/','OIDC_AUDIENCE':'golden-todo','MAIL_API_KEY':secrets.token_urlsafe(32),'JWT_SIGNING_KEY':secrets.token_urlsafe(24)}
         self.log=(WORK/'native/adapter.log').open('w+')
         self.process=subprocess.Popen([str(binary)],env=self.environment,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=self.log,text=True,bufsize=1)
     def call(self,command):
@@ -148,6 +153,35 @@ action reassign_todo(todo_id: Todo.id, new_owner: User.id) fails TodoNotFound ->
             except subprocess.TimeoutExpired:self.process.kill();self.process.wait()
         self.log.close()
 
+class Interpreted(Native):
+    """The same controller, the interpreter running the project's plan.
+    Startup reads settings as a deployable does, before serving; `jadpo
+    dev`'s stand-ins for unset provider settings (area 11, "Provider calls
+    in development") are a development convenience, not this case."""
+    executor='interpreted'
+    def preflight(self,changes):
+        def boot(changes):
+            environment=dict(self.environment)
+            for name,value in changes.items():
+                if value is None:environment.pop(name,None)
+                else:environment[name]=value
+            process=subprocess.Popen([str(self.binary)],env=environment,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+            try:output,errors=process.communicate('',timeout=60)
+            except subprocess.TimeoutExpired:process.kill();output,errors=process.communicate()
+            return process.returncode,output+errors
+        code,_=boot({})
+        if code!=0:raise AssertionError('positive control: the interpreted program did not start')
+        code,output=boot(changes)
+        events=[]
+        for line in output.splitlines():
+            try:events.append(json.loads(line))
+            except ValueError:pass
+        problems=[problem for event in events if isinstance(event,dict) for problem in event.get('problems',[])]
+        secrets_to_hide=[str(value) for name,value in changes.items() if value and name in ['DATABASE_URL','MAIL_API_KEY']]
+        secrets_to_hide += [self.environment['MAIL_API_KEY'],self.environment['SESSION_SIGNING_KEY']]
+        refused=code not in [None,0] and bool(problems)
+        return {'refused':refused,'handlerRan':not refused,'declarations':[p.get('variable') for p in problems if p.get('variable')],'safe':all(value not in output for value in secrets_to_hide),'diagnosticCodes':[p.get('problem') for p in problems]}
+
 def postgres_tools():
     spec=importlib.util.spec_from_file_location('golden_local_postgres',ROOT/'benchmarks/harness/run.py');module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
     module.WORK=WORK/'database';module.WORK.mkdir(parents=True,exist_ok=True)
@@ -173,9 +207,9 @@ class SharedPostgres:
         for database in self.owned:self.sql('postgres',f'DROP DATABASE {database} WITH (FORCE)')
 
 def complete_contract(targets,reports,case_filter,skip_build,own_compiler):
-    expected={(target,identifier) for target in ['native','workerd'] for identifier in CASES}
+    expected={(target,identifier) for target in TARGETS for identifier in CASES}
     observed=[(report['target'],report['id']) for report in reports]
-    return (len(targets)==2 and set(targets)=={'native','workerd'} and not case_filter
+    return (len(targets)==len(TARGETS) and set(targets)==set(TARGETS) and not case_filter
             and not skip_build and own_compiler and len(observed)==len(expected)
             and set(observed)==expected and all(report['status']=='passed' for report in reports))
 
@@ -183,7 +217,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--compiler',type=Path,default=Path(os.environ.get('JADPO_BIN',str(ROOT/'target/debug/jadpo'))))
     parser.add_argument('--runtime-source',type=Path,default=ROOT)
-    parser.add_argument('--targets',default='native,workerd')
+    parser.add_argument('--targets',default=','.join(TARGETS))
     parser.add_argument('--case',action='append',default=[])
     parser.add_argument('--skip-build',action='store_true')
     parser.add_argument('--json',action='store_true')
@@ -194,7 +228,7 @@ def main():
     if unknown:parser.error('unknown case: '+', '.join(sorted(unknown)))
     targets=args.targets.split(',')
     if not all(targets) or len(set(targets))!=len(targets):parser.error('targets must be nonempty and unique')
-    if set(targets)-{'native','workerd'}:parser.error('targets are native,workerd')
+    if set(targets)-set(TARGETS):parser.error('targets are '+','.join(TARGETS))
     WORK.mkdir(exist_ok=True)
     reports=[];postgres=None;driver=None
     metadata=json.loads(checked(['cargo','metadata','--no-deps','--format-version','1'],cwd=args.runtime_source,capture_output=True,text=True).stdout)
@@ -225,7 +259,7 @@ def main():
             else:postgres.sql('postgres',f'CREATE DATABASE {database}')
             applied=subprocess.run([str(args.compiler),'migrate','apply','--url',postgres.url(database),'--json'],cwd=PROJECT,capture_output=True,text=True)
             if applied.returncode:raise RuntimeError(applied.stdout+applied.stderr)
-            driver=Native(binary,postgres.url(database),args.compiler)
+            driver=(Interpreted if target=='interpreted' else Native)(binary,postgres.url(database),args.compiler)
             if target=='workerd':driver=worker.Worker(driver,args.runtime_source,PROJECT,HERE,WORK,postgres.url(database))
             for identifier in selected:
                 harness=Contract(driver)
