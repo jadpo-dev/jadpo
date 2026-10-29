@@ -1264,6 +1264,9 @@ fn a_deployable_carries_its_supported_locales_and_answers_what_dev_answers() {
     assert_eq!(expected[1]["weekday"], "jeudi", "{}", expected[1]);
 
     let cache = root.with_file_name("locale-shop-cache");
+    // Builds are kept per copy of `jadpo`, so a cache CI restores holds an
+    // earlier copy's folder beside this one's; start from this copy alone.
+    let _ = fs::remove_dir_all(cache.join("jadpo/builds"));
     let output = run(
         &["build".to_string(), "--json".to_string()],
         &at(&root, &cache),

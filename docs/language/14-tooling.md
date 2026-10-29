@@ -912,8 +912,32 @@ them is built as [Declared deployables](#declared-deployables) says.
   `build/target/app/openapi/`. It is built without the runtime's
   `testing` feature. cargo failing is `toolchain.build_failed`, since the
   Rust Jadpo writes always compiles; a file it can't write is
-  `toolchain.artifact_write_failed`. This Jadpo compiles a deployable
-  against the runtime crates it was built from, in its own checkout.
+  `toolchain.artifact_write_failed`.
+- **What it compiles with.** Everything a build needs comes with `jadpo`
+  or is fetched by it, so a released `jadpo` builds anywhere and nobody
+  installs Rust. The runtime crates' source is carried in the binary,
+  with their `Cargo.lock` and the toolchain file. The Rust toolchain
+  that file pins (`rustc`, `cargo` and the standard library for the
+  machine, and wasm32's once a Worker is built) is fetched from Rust's
+  dist server the first time a build needs it, into
+  `jadpo/toolchains/<version>-<host>/` of the cache folder, each archive
+  checked against the SHA-256 the release's manifest gives, and the
+  manifest against the digest this Jadpo pins; `JADPO_RUST_DIST_SERVER`
+  names a mirror, whose manifest is checked against the `.sha256` beside
+  it. The crates the lock names come from crates.io, or
+  whatever cargo's own configuration puts in its place, fetched by cargo
+  only when its cache can't build offline, into `CARGO_HOME` when that
+  is set, else the cache folder's `jadpo/cargo/`, each checked against
+  the lock's checksum. Each fetch says what it is fetching
+  (`Fetching Rust 1.99.0 for aarch64-apple-darwin`, `Fetching the
+  runtime's crates`): on the live line, each archive with a bar, where
+  stderr animates, else as a line on stderr, and nothing under `--json`;
+  the screen's `fetched` line, and `--json`'s `fetched`, say what came (`Rust 1.99.0 (146.9
+  MB) and 292 crates`); a fetch that fails is `toolchain.fetch_failed`. A
+  native build still needs the machine's C compiler, which links it and
+  compiles `ring`'s cryptography. With `CARGO` naming a cargo (cargo sets it
+  for what it runs, and the gate for this repository's tests), that
+  cargo builds instead and nothing is fetched.
 - **The build stamp** (area 18): the build id, `b_` and the first twelve
   hex digits of a SHA-256 over the deployable's program (what it is
   compiled from: its Rust and its plan, its name and its stores'
@@ -1533,6 +1557,7 @@ source example. Some rows belong to commands the decisions below replace
 | `toolchain.artifact_stage_failed` | `artifacts`, `build` | Build staging directory could not be created |
 | `toolchain.artifact_write_failed` | `check`, `build` | Generated file could not be written |
 | `toolchain.build_failed` | `build` | Rust compiler couldn't build the deployable |
+| `toolchain.fetch_failed` | `build` | Rust toolchain or crates couldn't be fetched |
 | `toolchain.project_not_found` | any command | Project path does not exist |
 | `toolchain.project_read_failed` | any command | Project directory could not be read |
 | `toolchain.scaffold_destination_exists` | `new` | Scaffold destination is an existing file |
