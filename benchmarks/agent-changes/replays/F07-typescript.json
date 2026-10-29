@@ -1,0 +1,45 @@
+{
+ "say": "Titles now allow 500 characters; reminders take the first 200.",
+ "steps": [
+  {
+   "edit": "src/schemas.ts",
+   "old": "[...value].length <= 200,",
+   "new": "[...value].length <= 500,"
+  },
+  {
+   "bash": "npm run check"
+  },
+  {
+   "edit": "src/schemas.ts",
+   "old": "minLength: 1, maxLength: 200 }",
+   "new": "minLength: 1, maxLength: 500 }"
+  },
+  {
+   "edit": "src/jobs.ts",
+   "old": "            title: current.title,",
+   "new": "            title: [...current.title].slice(0, 200).join(\"\"),"
+  },
+  {
+   "bash": "npm run check && npm run lint"
+  },
+  {
+   "bash": "npm test"
+  },
+  {
+   "edit": "test/strict-json.test.ts",
+   "old": "Title.safeParse(\"😀\".repeat(201))",
+   "new": "Title.safeParse(\"😀\".repeat(501))"
+  },
+  {
+   "edit": "test/boundaries.test.ts",
+   "old": "title: \"x\".repeat(201)",
+   "new": "title: \"x\".repeat(501)"
+  },
+  {
+   "bash": "npm run check && npm run lint && npm run format:check"
+  },
+  {
+   "bash": "npm test"
+  }
+ ]
+}
