@@ -18,10 +18,13 @@ package in `app.jadpo` and calls its operations like an SDK. The compiler
 owns the HTTP request, the secret, the host, the retries and the reading of
 the response; application code never builds a URL, sets a header or sees a
 raw response. The other kind of package, a **library package**, carries
-types, failures and pure functions that several apps share.
+types, failures and pure functions that several apps share. How packages,
+providers, connections, drivers, capabilities, built-in services and the
+services Jadpo runs relate, and where each runs, is the next section.
 
 | Topic | In short |
 |---|---|
+| How the pieces fit | Package, provider, connection, driver, capability, built-in service and service run by Jadpo: what each is, where it runs, what is built; Docker or Podman only for a service run by Jadpo |
 | Kinds of package | Library (types, failures, pure functions) and provider (one API); the kind follows from what is inside |
 | The golden rule | A package can do nothing the app cannot, and the app can do everything a package can |
 | The format | `package.jadpo` (`licence:`, `jadpo:`), an optional `provider.jadpo`, folders laid out as `shared/` is, `public` as the API |
@@ -38,6 +41,310 @@ types, failures and pure functions that several apps share.
 | Capabilities | Only jobs Jadpo itself does, each whole (email, files, search and the rest); the provider chosen in `app.jadpo` |
 | Development | Provider calls faked by default, let through to the sandbox by name, every call logged |
 | Tests | A generated fake per package; scheduled contract runs against the sandbox |
+
+## How packages, connections, capabilities and services fit together
+<!-- topic: how-integrations-fit-together -->
+
+Seven terms name how an app reaches past its own code, and only a
+service run by Jadpo uses Docker or Podman: package, provider,
+connection, driver, capability, built-in service and service run by
+Jadpo. This section says what each is, where it runs and
+what is built; the sections it links hold the rules.
+
+### What each one is
+
+| Term | What it is | Declared in | Runs |
+|---|---|---|---|
+| **Package** | Jadpo source shared between apps, laid out as `shared/` is. A *library package* holds types, failures and pure functions (`Postcodes.uk.parse`); a *provider package* describes one outside API: its operations, types, failures, webhook events and how it is reached ([Kinds of package](#kinds-of-package), [The package format](#the-package-format)) | `packages/<name>/<version>/` when installed; the app's own in `shared/providers/` | Compiled into the app and run in its process. A package is never a process, a container or native code of its own |
+| **Provider** | The outside API a provider package describes: Stripe, a courier, another Jadpo app, Gotenberg. The package's `provider.jadpo` says how it is reached | Nowhere in the app: it is the other end of the call | Wherever its owner runs it: on the internet (`hosts:`), at an address a setting gives (`host:` on the connection), or in a container Jadpo starts (`runs:`) |
+| **Connection** | One named entry in `connections:` in `app.jadpo`: a built-in driver (`driver: Driver.x`) or a provider package (`package: X.vN`), with its settings, its credential and the domains whose actions may call it. One connection is one resource: a database, a bucket, one account at a provider ([Connecting in `app.jadpo`](#connecting-in-appjadpo)) | `app.jadpo`, its values read from `config.jadpo` settings | Opened by the runtime, inside the app |
+| **Driver** | Native code in Jadpo's runtime that speaks one protocol: PostgreSQL, SMTP, the disk, Cloudflare Queues, OpenAI-compatible model servers; Redis, S3 and OpenID Connect to come. Drivers arrive only with a Jadpo release, never in a package ([No presets, no dependencies](#no-presets-no-dependencies)) | `driver:` on a connection | Inside the app, talking to a server the operator runs |
+| **Capability** | A job Jadpo itself does, with one API in app code whatever fills it: `database`, `cache`, `files`, `email`, `search`, `documents`, `ai` and the rest. One connection fills it: a driver, or a provider package whose `provides/<capability>.jadpo` maps the job onto its operations ([Capabilities](#capabilities)) | Chosen in `app.jadpo`: `email: { connection: mail }`, `store: sheets` on a `File` field | Wherever the connection that fills it runs |
+| **Built-in service** | A backend feature Jadpo provides, so the app installs nothing: feature flags, rate limits, files, email, audit, telemetry, search, documents, bot protection ([area 16](16-built-in-services.md)). Email, files, search and documents do their outside work through a capability; flags, rate limits and audit keep their state in the app's own stores | Where area 16 says: `flags.jadpo`, `rate_limit:`, `type X = EmailMessage`, `File` fields | Inside the app's runtime. It is a feature, not a process or a container |
+| **Service run by Jadpo** | A provider whose API is a stateless container image, declared by `runs:` in its package's `provider.jadpo` (Gotenberg turning HTML into PDFs, ClamAV scanning uploads). Jadpo starts and supervises the container through Docker or Podman and hands its connection the address ([Services](#services)) | `runs:` in the package, named by a connection | A container beside the app on the same machine. Not built yet |
+
+Two words mean two things each:
+
+- **"Service".** A built-in service is part of Jadpo's runtime, inside
+  the app's process; a service run by Jadpo is a container beside it. No
+  built-in service starts a container; one can use a service run by Jadpo
+  through its capability, as documents can use Gotenberg.
+- **`runs:`.** In a package's `provider.jadpo` it declares a container;
+  on a deployable in `app.jadpo` it lists the background work that
+  deployable runs, `runs: [Trigger.schedules]` (area 14,
+  [Declared deployables](14-tooling.md#declared-deployables)).
+
+### How they relate
+
+```text
+the app's process: jadpo dev's interpreter, or a native or Workers deployable
+│
+├── domain code ── calls ──► library package             pure functions, in process
+│
+├── domain code ── calls ──► connection: provider package ── HTTPS ──► provider's API
+│                                                    on the internet (hosts:), at host:,
+│                                                    or in a container Jadpo runs (runs:)
+│
+└── built-in services: flags, rate limits, email, files, search, documents, ...
+       │ outside work goes through a capability
+       └──► capability: email, files, database, documents, ai, ...
+              filled by one connection, either
+              ├── a built-in driver ──────────── its protocol ──► a server the operator runs:
+              │                                                  PostgreSQL, SMTP, S3
+              └── a provider package's provides/ ── HTTPS ──────► provider's API:
+                                                                 Resend, Postmark, Gotenberg
+```
+
+- **Code calls a provider's operations only through a connection**, from
+  an action in a domain the connection lists: `couriers.bookings.create(...)`
+  ([Calling](#calling)).
+- **Code never names what fills a capability.** It writes an
+  `EmailMessage` type or a `File` field, and `app.jadpo` picks the
+  connection, so changing provider changes `app.jadpo` and its settings,
+  never domain code.
+- **One provider package can be both.** Postmark fills `email` through
+  `provides/email.jadpo`, and the domains its connection lists call its
+  own operations (hosted templates, suppression lists) as any provider's.
+- **Packages fill capabilities and never invent them**, never bring a
+  driver and never depend on another package.
+- **Anything that keeps data is the operator's.** PostgreSQL, Redis, an
+  S3 bucket and an SMTP server are reached through a driver at the
+  address a setting gives; Jadpo never runs them. A service run by Jadpo
+  holds no data, and each app instance runs its own copy.
+
+### Where each runs
+
+| | `jadpo dev` | `jadpo test` | Native deployable | Workers deployable |
+|---|---|---|---|---|
+| Library package | In process | In process | Compiled in | Compiled in |
+| Provider package's calls | Faked by default, from its recordings or generated answers; operations named in `development: { sandbox: }` go to the sandbox, never live ([Provider calls in development](#provider-calls-in-development)) | Always faked; a test scripts answers with `fakes:` ([Tests and fakes](#tests-and-fakes)) | HTTPS to the live or sandbox host the connection's `environment:` picks, or to its `host:` | The same, through the Worker's `fetch` |
+| Database, `Driver.postgres` | The address its setting gives, else a disposable PostgreSQL started from the machine's PostgreSQL tools | A copy per test on a disposable PostgreSQL, or on `JADPO_TEST_DATABASE_URL`'s server | The operator's PostgreSQL | The operator's PostgreSQL, through Hyperdrive |
+| Email, by SMTP or a mail package | Caught in the dev inbox | Caught in `email.sent` | The SMTP server, or the mail package's API | The same; SMTP on port 587 only |
+| Files | The disk driver, in `.jadpo/files/` | An in-memory store | The disk (one server) or S3; neither built yet | S3, R2 included; not built yet |
+| Service run by Jadpo, `runs:`; not built yet | Started as a container by `jadpo dev` | Never started: the package's fake answers | A container beside the app: `jadpo build` writes the configuration that runs it (Compose first), then the deployable supervises it itself | None: Workers runs no containers, so the connection gives `host:` where the service is hosted elsewhere |
+
+`jadpo check` refuses a deployable whose target can't run a connection
+it reaches, naming what to use instead: on Workers the disk, a service
+run by Jadpo without `host:`, and SMTP on port 25
+([Capabilities](#capabilities), "Targets").
+
+### How Docker fits
+
+- **An app needs no Docker or Podman** to be checked, tested, run in
+  `jadpo dev` or built. Nothing above but a service run by Jadpo uses a
+  container: the disposable PostgreSQL comes from the machine's own
+  PostgreSQL tools, a native deployable is one binary (area 14,
+  [A native deployable](14-tooling.md#a-native-deployable)) and a
+  Workers deployable is a Worker. Neither is an image.
+- **Docker or Podman comes in only for a service run by Jadpo.** Jadpo is
+  a client of whichever engine the machine has, through the
+  Docker-compatible API both serve. It creates each container itself, with
+  no outbound network until the connection grants it, never privileged
+  and with no access to the host's disk; a new or changed image runs only
+  once a person accepts it in the approval report; and `jadpo services`
+  lists, starts, stops and shows the logs of each (area 14). An app author
+  never writes a Dockerfile or a Compose file, and an app with no such
+  connection never needs an engine ([Services](#services)).
+- **The operator's infrastructure is their own.** They may run
+  PostgreSQL or an SMTP server in Docker, or anywhere else; the app sees
+  only the address its setting gives.
+
+### Built and not built yet
+
+Built: library and provider packages, installed from a folder or git
+and locked; connections and the network report; provider calls with
+decoding, retries and idempotency keys; fakes in development and tests,
+recordings and sandbox calls; webhooks, queues, polls and package
+actions; the drivers for PostgreSQL, SMTP, the disk (in `jadpo dev` and
+tests), Cloudflare Queues and OpenAI-compatible servers; the `database`,
+`email` (SMTP, Resend and other mail packages), `receiving`,
+`schedules` and `ai` capabilities; and the built-in services email,
+rate limits and the first part of files.
+
+Not built yet: **services run by Jadpo** (`runs:`, `jadpo services`,
+and with them every use of Docker or Podman); the Redis and S3 drivers
+and a deployable's disk; OpenID Connect sign-in providers and OAuth
+grants; the `cache`, `publishing`, `search`, `documents`, `bot_check`
+and `scanning` capabilities; the built-in services flags, audit,
+telemetry's section, search, documents and bot protection; the hosted
+registry; and choosing a provider when deploying. Each area's "What is
+built" table is the record.
+
+### In an app
+
+One app with each kind of connection: a database on the PostgreSQL
+driver, mail on the SMTP driver filling the `email` capability, and the
+app's own provider package for a courier, which the `shipping` domain
+calls:
+
+```jadpo check project=pieces-fit file=app.jadpo
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.database_url
+        }
+        mail: {
+            driver: Driver.smtp
+            host: config.smtp_host
+            credential: {
+                username: config.smtp_username
+                password: config.smtp_password
+            }
+        }
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            credential: config.couriers_api_key
+            environment: config.couriers_environment
+        }
+    }
+    email: {
+        connection: mail
+        from: config.mail_sender
+    }
+}
+```
+
+```jadpo check project=pieces-fit file=config.jadpo hidden
+config {
+    couriers_api_key: Text {
+        secret: true
+    }
+    couriers_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
+    database_url: PostgresUrl
+    mail_sender: Email
+    smtp_host: Hostname
+    smtp_password: Text {
+        secret: true
+    }
+    smtp_username: Text
+}
+```
+
+```jadpo check project=pieces-fit file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' booking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=pieces-fit file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' booking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+    credential: CredentialScheme.bearer
+    error_code: "error.code"
+}
+```
+
+```jadpo check project=pieces-fit file=shared/providers/acme_couriers/v1/resources/bookings.jadpo hidden
+public resource bookings {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/bookings"
+        input: CreateBooking
+        output: Booking
+        changes: true
+        idempotent: true
+        failures: [SlotTaken]
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=pieces-fit file=shared/providers/acme_couriers/v1/types/postcode.jadpo hidden
+/// Where a collection is.
+public type Postcode = Text {
+    max_length: 8
+}
+```
+
+```jadpo check project=pieces-fit file=shared/providers/acme_couriers/v1/types/create_booking.jadpo hidden
+/// What booking a collection takes.
+public type CreateBooking = Object {
+    postcode: Postcode
+}
+```
+
+```jadpo check project=pieces-fit file=shared/providers/acme_couriers/v1/types/booking.jadpo hidden
+/// A booked collection.
+public type Booking = Object {
+    id: Text
+}
+```
+
+```jadpo check project=pieces-fit file=shared/providers/acme_couriers/v1/failures/slot_taken.jadpo hidden
+/// The slot went before the booking arrived.
+public type SlotTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That slot is taken."
+}
+```
+
+```jadpo check project=pieces-fit file=domains/shipping/failures/slot_gone.jadpo hidden
+/// The slot the customer chose has gone.
+type SlotGone = Failure {
+    kind: FailureKind.conflict
+    message: "That slot has gone; choose another."
+}
+```
+
+```jadpo check project=pieces-fit file=domains/shipping/actions/book.jadpo
+use app { couriers }
+use shipping/failures { SlotGone }
+use shared/providers/acme_couriers
+
+/// Books a collection with the courier, through its connection.
+action book(postcode: AcmeCouriers.Postcode) fails SlotGone -> AcmeCouriers.Booking {
+    return attempt couriers.bookings.create(
+        AcmeCouriers.CreateBooking {
+            postcode: postcode
+        }
+    ) {
+        slot_taken: SlotGone
+    }
+}
+```
+
+A service run by Jadpo, not built yet: Gotenberg's package declares its
+container, and a connection to it fills the `documents` capability. In
+`jadpo dev` and a native deployable Jadpo starts the container; on
+Workers the connection would give `host:` instead:
+
+```jadpo fragment
+// packages/gotenberg/v8/provider.jadpo
+/// Gotenberg's HTTP API, run by Jadpo as a container beside the app.
+provider {
+    protocol: Protocol.multipart_http
+    runs: {
+        image: "gotenberg/gotenberg:8@sha256:…"
+        port: 3000
+        asks: ["fonts.googleapis.com"]
+    }
+}
+
+// app.jadpo
+application {
+    connections: {
+        pdfs: {
+            package: Gotenberg.v8
+            domains: [billing]
+            outbound: ["fonts.googleapis.com"]
+        }
+    }
+    documents: {
+        connection: pdfs
+    }
+}
+```
 
 ## Kinds of package
 <!-- topic: kinds-of-package -->
@@ -3809,6 +4116,7 @@ optional parts. Changing provider changes `app.jadpo`, never domain code.
 | `bot_check` | `bot_check: true` on a route or generated feature (area 16) | A local driver passing every check in development and tests | Yes (Turnstile, hCaptcha, reCAPTCHA) |
 | `documents` | `type X = Document` rendered to HTML or PDF (area 16) | None: tests fake it | Yes (Gotenberg as a service, DocRaptor, PDFShift) |
 | `scanning` | Uploads scanned before they can be attached (area 16) | None | Yes (a ClamAV service, a scanning API); built when an app needs it |
+| `ai` | Prompts and `ai.generate`, embeddings (area 21) | OpenAI-compatible servers, for local models | Yes (`provides/ai.jadpo`: Anthropic, OpenAI and the rest) |
 
 Event delivery is not a capability: it stays inside the runtime, from the
 outbox in the main store, so logs and traces stay in one place and no
@@ -3954,11 +4262,12 @@ whatever the provider: `email.sent`, `published` (question 22).
 > capability's suite, the run pinned to the digest for the registry and
 > the scheduled CI run are not built yet.
 
-**Development.** In `jadpo dev` nothing leaves the machine: mail goes to the
-local inbox, files to local disk, published events to a log in the dev
-console, and search to PostgreSQL whatever production uses. The database
-runs its real engine; the cache runs in memory (question 23). `jadpo dev`
-starts the services the app's connections declare.
+**Development.** In `jadpo dev` nothing leaves the machine: published
+events go to a log in the dev console, search to PostgreSQL whatever
+production uses, and the cache runs in memory (question 23); where the
+other connections go in `jadpo dev`, in tests and on each target is the
+table in "How packages, connections, capabilities and services fit
+together".
 
 **Reports.** The manifest records each connection's capabilities, hosts,
 services and targets; the network report labels each host with its
