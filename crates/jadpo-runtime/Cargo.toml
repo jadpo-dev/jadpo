@@ -22,17 +22,35 @@ blake3.workspace = true
 # Unpacks a gzip file a file helper reads given `max_unpacked_size:`
 # (chunk 6.4b3); pure Rust, so it builds for wasm32.
 miniz_oxide.workspace = true
+# The passkey ceremonies (area 8, "Passkeys"; `webauthn`): a device's CBOR
+# read with `serde_cbor_2`, the reader `webauthn-rs` reads it with, pure
+# Rust, so every host checks an answer alike; the signatures are
+# jadpo-value's ES256 and RS256.
+serde.workspace = true
+serde_cbor_2.workspace = true
+# The test authenticator's ES256 keys and signatures (`testing` only):
+# RustCrypto's P-256, already jadpo-value's for checking them.
+p256 = { workspace = true, optional = true }
 
 [features]
 # What only `jadpo test` and `jadpo dev` run (chunk 8.1e): the fakes, the
-# recordings, the crash points and the plan's dev and test section. A
-# deployable built without it holds none of them.
-testing = ["jadpo-std/testing"]
+# recordings, the crash points, the test authenticator and the plan's dev
+# and test section. A deployable built without it holds none of them.
+testing = ["jadpo-std/testing", "dep:p256"]
 
 # The crate's own tests run with `testing` on.
 [dev-dependencies]
 jadpo-runtime = { path = ".", features = ["testing"] }
 stats_alloc.workspace = true
+
+# The reference the passkey ceremonies are held to (tests/passkeys.rs):
+# `webauthn-rs`, which verifies with OpenSSL, and OpenSSL for the keys and
+# signatures of answers a device shouldn't give. Natively only, and only
+# here: no deployable links either.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+webauthn-rs.workspace = true
+webauthn-rs-core.workspace = true
+openssl.workspace = true
 
 [[test]]
 name = "integration"

@@ -18,7 +18,7 @@ if (!url)
   throw Error(
     "TEST_DATABASE_URL required; use adapter/run.py --unit with an explicit contract source.",
   );
-describe.sequential("real PostgreSQL mutation/lifetime boundaries", () => {
+describe("real PostgreSQL mutation/lifetime boundaries", () => {
   const store = new Store(url ?? "postgres://127.0.0.1/unavailable");
   const scope = () => new RequestScope(new AbortController().signal, 3000);
   const user = "00000000-0000-4000-8000-000000000001";

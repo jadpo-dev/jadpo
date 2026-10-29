@@ -136,8 +136,8 @@ in git history.
   invocation"; area 14, "A Workers deployable"; area 11, Decisions.
 - [x] **8.2k Cloudflare Queues' consumer**: §2.6, "Cloudflare Queues'
   consumer"; area 11, "The Cloudflare Queues driver".
-- [x] **8.2l Passkeys on Workers**: §2.6, "The Workers host"; area 8,
-  Decisions, "Passkeys on Workers".
+- [x] **8.2l Passkeys on Workers**: §2.6, "Passkeys"; area 8,
+  Decisions, "One passkey implementation".
 - [x] **8.2m What `jadpo check` and `jadpo build` say for Workers**: area
   14, "A Workers deployable" and Decisions; area 10, "Client addresses".
 - [x] **8.2m2 Rate limits' store on Workers**: area 16, "Rate limits" and
@@ -261,10 +261,9 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   cargo features chosen from the plan, as `postgres` and `smtp` are;
   validators' patterns compiled when first used if 9.1 shows cold start
   pays for them.
-- [ ] **9.2b One passkey implementation** `opus · xhigh`: 8.2l's pure-Rust
-  checks used by both hosts, `webauthn-rs` kept only as a test reference,
-  the test authenticator on `p256`, so no native deployable links
-  OpenSSL and passkey route tests run on workerd.
+- [x] **9.2b One passkey implementation**: compiler/runtime §2.6,
+  "Passkeys" and "Route tests on workerd"; area 8, Decisions, "One passkey
+  implementation" and "Passkey attestation".
 - [x] **9.2c `jadpo build` outside this checkout**: area 14, "A native deployable" and Decisions, "Building outside this checkout"; compiler/runtime §2.8, "What a released `jadpo` builds with".
 - [ ] **9.3 The differential run's last two checks** `opus · high`
   (after 9.2; low priority, from chunk 8.4h): each path through a body

@@ -18,9 +18,9 @@ jadpo-db.workspace = true
 jadpo-diag.workspace = true
 jadpo-drivers.workspace = true
 jadpo-graph.workspace = true
-# The software authenticator `test_passkeys` drives the passkey routes
-# with (area 8; chunk 5.5z2): only tests have it.
-jadpo-host-native = { workspace = true, features = ["test-authenticator", "testing"] }
+# The native host a test's stores and passkey ceremonies are reached
+# through, with the runtime's `testing`.
+jadpo-host-native = { workspace = true, features = ["testing"] }
 # A test Worker's handler and the JSON of the run it is asked for and
 # answers (chunk 8.2e): route tests run inside workerd.
 jadpo-host-workers = { workspace = true, features = ["testing"] }

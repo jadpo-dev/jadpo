@@ -5,9 +5,10 @@
 Builds jadpo-host-native's `deployable` example, a deployable's shape on the
 native host, on its own, so nothing turns on the runtime's `testing` feature,
 then reads the binary's symbols: none may name the fakes, the recordings,
-the crash points, the outcome-and-effect record or the delivery between a
-test's steps, while the runtime's HTTP component and the driver factory must
-be there, so the check reads a real deployable.
+the crash points, the outcome-and-effect record, the delivery between a
+test's steps or the test authenticator, nor OpenSSL or `webauthn-rs` (area 8,
+"Passkeys"), while the runtime's HTTP component, its passkey ceremonies and
+the driver factory must be there, so the check reads a real deployable.
 
   python3 tools/deployable.py
 """
@@ -34,11 +35,17 @@ ABSENT = {
     'the crash points': path('jadpo_runtime', 'crashes'),
     'the outcome-and-effect record': path('jadpo_runtime', 'record'),
     'the delivery between a test\'s steps': path('jadpo_runtime', 'test_steps'),
+    'the test authenticator': path('jadpo_runtime', 'test_authenticator'),
+    # No native deployable links OpenSSL (area 8, "Passkeys"): the passkey
+    # ceremonies are the runtime's own, in pure Rust.
+    'OpenSSL\'s bindings': path('openssl'),
+    'the WebAuthn library the passkey tests are held to': path('webauthn_rs'),
 }
 
 PRESENT = {
     'the HTTP component': path('jadpo_runtime', 'http'),
     'the driver factory': path('jadpo_drivers', 'factory'),
+    'the passkey ceremonies': path('jadpo_runtime', 'webauthn'),
 }
 
 
