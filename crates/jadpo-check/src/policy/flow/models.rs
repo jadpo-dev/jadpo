@@ -16,8 +16,7 @@
 //!   can't follow to a record is that field ([`Src::Marked`]).
 //!
 //! What decided a value is sent with it, as the policy walk counts it (a
-//! condition, a `match`'s subject, a filter's predicate; Richard,
-//! 2026-10-21), but for what a loop goes through: the records of a `for`'s
+//! condition, a `match`'s subject, a filter's predicate), but for what a loop goes through: the records of a `for`'s
 //! list, and `list.map`'s and `list.count`'s, decide nothing made from
 //! them but what decided which records they are
 //! ([`super::Walk::iterated`]), or a loop over records would send every
@@ -37,7 +36,7 @@
 //! What a write stores is read later by whatever reads its field, a
 //! prompt among them, so a field that stores a marked field's value, or
 //! one it decided, has the same marks: each category and `to_models:
-//! false` (`semantic.ai_field_unmarked`; Richard, 2026-10-21). A
+//! false` (`semantic.ai_field_unmarked`). A
 //! parameter stored is checked where it is passed, and an event's part
 //! where a subscriber passes it.
 
@@ -209,7 +208,7 @@ impl Walk<'_> {
     /// whatever `declared`, the placeholder's type, holds: each holder of
     /// personal data in it checked against `allowed:`, and each parameter
     /// in it kept for the callers to check. What decided the value is
-    /// sent with it (Richard, 2026-10-21).
+    /// sent with it.
     fn reaches(
         &mut self,
         flow: &Flow<'_>,
@@ -266,8 +265,7 @@ impl Walk<'_> {
         }
     }
 
-    /// `prov`, given at `at`, stored in `entity`'s `field` (Richard,
-    /// 2026-10-21): each holder of personal data in it, or that decided
+    /// `prov`, given at `at`, stored in `entity`'s `field`: each holder of personal data in it, or that decided
     /// it, is one the field's own marks cover, each category it is and
     /// `to_models: false`, since whatever reads the field later, a prompt
     /// among them, sends what it holds; `callee` is the action it was

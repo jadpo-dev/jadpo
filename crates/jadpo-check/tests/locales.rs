@@ -470,7 +470,7 @@ fn sorting(locales: &str, body: &str) -> Vec<String> {
 
 #[test]
 fn sorting_by_a_locale_needs_the_application_s_locales() {
-    // Richard, 2026-10-22: a deployable keeps collation for the declared
+    // a deployable keeps collation for the declared
     // locales only, so an application with none sorts by none.
     let by_locale = "list.sort_by(loaves, loaf -> loaf, locale: shopper)";
     assert_eq!(sorting(DECLARED, by_locale), CLEAN);

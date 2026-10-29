@@ -26,3 +26,6 @@ benchmarks/load/target/
 
 # Golden contract adapter builds and local fixtures.
 benchmarks/contract/work/
+
+# Any cargo target, wherever a harness builds one.
+target/

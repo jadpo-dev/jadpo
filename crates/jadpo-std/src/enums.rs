@@ -356,7 +356,7 @@ std_enum! {
         #[default]
         Native: "native",
         /// Another scheduler running the deployable's `tick` command, one
-        /// tick and exit (Richard, 2026-10-21): the server never ticks.
+        /// tick and exit: the server never ticks.
         External: "external",
     }
 }
