@@ -336,13 +336,7 @@ compiled.
   and on workerd.
 - [x] **10.3d A key as a value**: [compiler-runtime](compiler-runtime.md) §2.5, "A key as a value"; area 19, "Hashing and cryptography".
 - [x] **10.3e Loading a project from files in memory**: compiler/runtime §2.2, "Loading".
-- [ ] **10.3f Where a connection's credential comes from** `opus · high`,
-  before item 8's OAuth grants: `ConnectionPlan.credential` is a setting
-  number read synchronously in `provider::request`, and a 401 or 403
-  marks the whole connection misconfigured. Done when the credential is a
-  source (`Setting` now, room for a per-owner grant), resolved in the
-  asynchronous caller and passed to the request, a 401's meaning decided
-  by that source, and every provider test passes unchanged.
+- [x] **10.3f Where a connection's credential comes from**: compiler/runtime §2.6, "Where a connection's credential comes from"; [area 11](language/11-integrations.md), "How provider calls are made".
 - [x] **10.3g The graph's nodes for areas 8, 10, 11 and 12**: compiler/runtime §2.3, "Outside, access and services" and "Diff"; area 18, "The manifest" and "What is built".
 - [ ] **10.3h The runtime's own SQL beyond PostgreSQL** `opus · high`,
   **needs a maintainer** for D1's transaction model first: about 145 runtime

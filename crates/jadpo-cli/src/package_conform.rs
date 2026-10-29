@@ -80,7 +80,7 @@ use jadpo_runtime::stream::ServerEvent;
 use jadpo_runtime::{Ctx, Env, FaultKind};
 use jadpo_std::RuleKey;
 use jadpo_std::ai::{AiDriver, AiMarker, PackageAi, SchemaMode};
-use jadpo_std::provider::Address;
+use jadpo_std::provider::{Address, CredentialSource};
 use jadpo_term::{Block, Environment, Fact, Json, Outcome, Row, RowState, Screen};
 use jadpo_value::Value;
 use serde_json::Value as J;
@@ -583,8 +583,8 @@ fn live_target(
             ),
         ));
     }
-    let key = match chosen.credential {
-        Some((_, at)) => match ready.config.text_at(at) {
+    let key = match chosen.credential.map(|credential| credential.source) {
+        Some(CredentialSource::Setting { secret, .. }) => match ready.config.text_at(secret) {
             Some(key) if !key.is_empty() => Some(key.to_string()),
             _ => {
                 return Err(refused(

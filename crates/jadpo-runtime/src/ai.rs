@@ -262,6 +262,9 @@ enum Via<'p> {
     Package {
         package: &'p PackageAi,
         providers: Providers<'p>,
+        /// Its connection's credential, resolved from its source before
+        /// any attempt's request is made (chunk 10.3f).
+        credential: Option<crate::provider::Credential<'p>>,
     },
 }
 
@@ -428,7 +431,16 @@ async fn generated(
                     return broke(RuleKey::TooLong);
                 }
             }
-            Via::Package { package, providers }
+            let credential = match crate::provider::credential_of(&providers, package.called) {
+                Ok(credential) => credential,
+                Err(crate::provider::Unready::Misconfigured) => return misconfigured(ctx),
+                Err(crate::provider::Unready::Fault(kind)) => return Done::Fault(kind),
+            };
+            Via::Package {
+                package,
+                providers,
+                credential,
+            }
         }
     };
     let first = match prepared(ctx, &via, &asked, &messages, site, settings) {
@@ -619,15 +631,15 @@ async fn generated(
                 }
             },
             Answer::Wire(text) => match &via {
-                Via::Package { package, providers } => {
-                    match package_reply(ctx, providers, &ai.plan.connection, package, text) {
-                        Ok(reply) => reply,
-                        Err(done) => {
-                            used.add(unanswered);
-                            return crate::ai_budget::debited(ctx, taken, used, done).await;
-                        }
+                Via::Package {
+                    package, providers, ..
+                } => match package_reply(ctx, providers, &ai.plan.connection, package, text) {
+                    Ok(reply) => reply,
+                    Err(done) => {
+                        used.add(unanswered);
+                        return crate::ai_budget::debited(ctx, taken, used, done).await;
                     }
-                }
+                },
                 Via::Driver(_) => {
                     return crate::ai_budget::debited(
                         ctx,
@@ -781,7 +793,7 @@ fn prepared(
     settings: &[(u32, Value)],
 ) -> Result<Request, crate::provider::Unready> {
     use crate::provider::Unready;
-    let (package, providers) = match via {
+    let (package, providers, credential) = match via {
         Via::Driver(url) => {
             return Ok(Request {
                 method: HttpMethod::Post,
@@ -801,7 +813,11 @@ fn prepared(
                 repeatable: false,
             });
         }
-        Via::Package { package, providers } => (package, providers),
+        Via::Package {
+            package,
+            providers,
+            credential,
+        } => (package, providers, credential),
     };
     let given = Given {
         model: model_name(&asked.model),
@@ -819,6 +835,7 @@ fn prepared(
         package.called,
         &json,
         settings,
+        credential.as_ref(),
         added,
         &site.prompt,
     )
@@ -828,12 +845,14 @@ fn prepared(
 /// `json`, its input as the mapping made it, and `added` written where it
 /// says; `asking` names the prompt or operation it is made for, in a
 /// fault.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn package_request(
     ctx: &mut Ctx<'_>,
     providers: &Providers<'_>,
     called: u32,
     json: &serde_json::Value,
     settings: &[(u32, Value)],
+    credential: Option<&crate::provider::Credential<'_>>,
     added: Option<(&str, serde_json::Value)>,
     asking: &str,
 ) -> Result<Request, crate::provider::Unready> {
@@ -876,6 +895,7 @@ pub(crate) fn package_request(
         called,
         input.as_ref(),
         settings,
+        credential,
         crate::provider::Site {
             call: &call,
             functions: &NoFunctions,
