@@ -172,6 +172,9 @@ pub async fn once(executor: &dyn Executor, host: &dyn Host, once: Once<'_>) -> R
             &outcome,
             executor.places(),
         )));
+        for span in crate::record::spans(ctx.spans(), executor.places()) {
+            record.push(span);
+        }
         for paths in crate::record::paths(&ctx.paths_taken(), executor.places()) {
             record.push(paths);
         }

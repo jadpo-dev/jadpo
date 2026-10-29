@@ -323,22 +323,37 @@ compiled.
   creates the tenant record. Done when area 9 says so, and a stranger
   seating themselves in a tenant whose members have all left gets 403
   while founding a new company still seats its founder.
-- [ ] **10.3c One record of what each invocation did** `opus · high`,
-  before item 4: observation comes through three narrow channels
-  (`serve::Observer`'s answered and ticked, dev's `Host::call_log`,
-  testing's `Ctx::steps_reached`), none of which sees queries, writes or
-  action steps, so timelines, spans, `watch` and access records would each
-  add a `Ctx` field of their own. Done when `Ctx` keeps one list of spans
-  per invocation (kind, callable and site, start and end on
-  `monotonic_ms`, rows, outcome), appended in `store::store`, the action
-  boundary and `effects::call`, and handed to `Observer::answered` through
-  `Answered`; and a route test gives the same spans interpreted, native
-  and on workerd.
+- [x] **10.3c One record of what each invocation did**: [compiler/runtime](compiler-runtime.md) §2.6, "What an invocation did".
 - [x] **10.3d A key as a value**: [compiler-runtime](compiler-runtime.md) §2.5, "A key as a value"; area 19, "Hashing and cryptography".
 - [x] **10.3e Loading a project from files in memory**: compiler/runtime §2.2, "Loading".
 - [x] **10.3f Where a connection's credential comes from**: compiler/runtime §2.6, "Where a connection's credential comes from"; [area 11](language/11-integrations.md), "How provider calls are made".
 - [x] **10.3g The graph's nodes for areas 8, 10, 11 and 12**: compiler/runtime §2.3, "Outside, access and services" and "Diff"; area 18, "The manifest" and "What is built".
 - [x] **10.3h The runtime's own SQL beyond PostgreSQL**: area 5, "Actions on D1" and "System tables".
+
+## Security audit
+
+Before 0.1.0 is published (D3).
+
+- [ ] **S1 A full security audit** `opus · xhigh`, after the Phase 10
+  review's chunks: a threat model first (who attacks a Jadpo app, a
+  developer's machine, CI and a release, and what each can reach), then
+  every surface checked against it. Covered: what the compiler promises
+  (policy, field restrictions, tenancy, identity and sessions, passkeys,
+  magic links, external tokens, webhooks' signatures, rate limits, the
+  outbound guard against SSRF, secrets and settings, crypto, migrations
+  that move data between readers); the runtime's request edge (HTTP
+  parsing, headers, sizes, time limits); generated code native and on
+  Workers (the Workers host, Wrangler file, bindings); supply chain
+  (`cargo audit` and `cargo deny` in the gate, npm, pinned toolchains and
+  the toolchain `jadpo build` fetches, GitHub Actions' permissions and
+  pinning, release artefacts' checksums and provenance); the docs bundle
+  and the extension; and D4's issue triage, whose input is anyone's.
+  Uses the Cloudflare plugin's Workers guidance for the Workers host and a
+  general audit checklist (finecomb or Claude Code's `/security-review`).
+  Done when each finding has a failing test or a reproduction, the
+  confirmed ones are fixed with tests or added here as chunks, `cargo
+  audit` and `cargo deny` run in the gate, and `SECURITY.md` says how to
+  report a vulnerability.
 
 ## After the first build, in order
 

@@ -1771,7 +1771,8 @@ runs one
 [language test project](https://raw.githubusercontent.com/gleam-lang/gleam/main/test/language/Makefile)
 on every target. Per test it compares outcome, failure code and internal
 fields, assertion values, the effect sequence (SQL and row counts, events,
-provider calls), the paths each body took and the final database diff;
+provider calls), the spans of what it did (§2.6, "What an invocation
+did"), the paths each body took and the final database diff;
 any difference fails the gate and prints both sides. Fuzzed function
 bodies are compared too, as Cranelift compares its own generated
 functions against its interpreter (below, "Fuzzed bodies").
@@ -2248,6 +2249,39 @@ ended through `Host::stopping`; it first waits as long
 for its connections to give the answers they owe (§2.5). `stop_signals`
 turns SIGTERM and SIGINT into that stop, a second ending the process at
 once; `jadpo dev` stops on them.
+
+**What an invocation did** (area 16, "Telemetry"). `Ctx` keeps one
+list of spans for the invocation it runs (`jadpo_runtime::spans`), in
+the order each started: a span for each action, read, write and outside
+call, with its kind (`Action`, `Read`, `Write`, `Call` with its
+connection and operation), where it is as a frame of the program
+(`callable` and `site`: an action at its declaration, anything else at
+its own site in the callable on top; none for what the runtime does on
+its own behalf, as a route's query), its start and end on
+`Host::monotonic_ms` (`None` on a host without one), the records a read
+gave or a write wrote, and how it ended (`Ended`: a value, a failure's
+code, a fault's classification, or `Open` for work its invocation
+abandoned, as a route past its deadline does). Each kind is appended in
+one place, so neither executor adds any: an action in `action` at the
+boundary, from its first run to its last (`ActionBody::callable`, which
+only a program's own action gives, so a store operation's boundary of
+its own or the request guarantees' keep none), a read or a write in
+`store`, and an outside call in `outside::send`, the one seam
+`effects::call` and every provider, model and file call goes through,
+its retries inside it; an executor's call site sets its frame's site
+first (`calls`). Past `MAX_SPANS` (10,000) an invocation counts the
+spans it doesn't keep (`Spans::dropped`), so long background work holds
+a bounded list. `serve_request` hands a request's spans on its
+`Response`, and `Serving` gives them to its `Observer` through
+`Answered::spans`; a test's run adds them to its record
+(`record::Entry::Span`, without their times), so the differential run
+holds both executors, natively and inside workerd, to the same spans.
+They carry places and codes, never values. Timelines, telemetry's
+spans, `watch` and access records read them rather than keeping lists
+of their own; the development call log (`Host::call_log`) and a
+record's steps (`Ctx::steps_reached`, `Response::steps`) stay for what
+a span leaves out, a call's request and answer and a step's place in
+its record.
 
 **The request guarantees,** in the same component. A body
 over `BODY_LIMIT` (1 MB) is 413 before routing; the native host stops

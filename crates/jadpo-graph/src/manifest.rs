@@ -305,7 +305,7 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             out.set_some("serverOnly", *server_only);
             if !*server_only {
                 out.set(
-                    "grants",
+                    "who",
                     Value::Object(
                         grants
                             .iter()
