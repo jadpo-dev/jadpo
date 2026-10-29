@@ -13,7 +13,7 @@ status table, with the [roadmap](../roadmap.md), say what is built. A
 
 ## Read by task
 
-- **Learn the language:** read areas 1–4, then the
+- **Learn the language:** read the [primer](../primer.md), then areas 1–4 and the
   [first nine teaching projects](../../examples/README.md).
 - **Build a data-backed HTTP API:** add areas 5–9 and 13; the
   [cake shop](../../examples/11-cake-shop/README.md) and

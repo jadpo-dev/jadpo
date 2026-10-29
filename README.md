@@ -586,8 +586,10 @@ to know the language from training or infer it from one example. You can
 use any coding assistant that can read the relevant files and run the CLI;
 Jadpo does not require a particular model provider.
 
-1. **Read the language map:** [all 21 specification areas](docs/language/README.md).
-   Start with layout, types, logic and failures (areas 1–4).
+1. **Read the [primer](docs/primer.md)** first: the layout, the syntax and
+   the constructs nearly every app uses, in one page. Then the
+   [language map](docs/language/README.md) lists all 21 areas; start with
+   layout, types, logic and failures (areas 1–4).
 2. **Read the rules for the task:** for an authenticated API that changes
    data, continue with areas 5–9 and 13. For integrations, read 11–12;
    for AI features, read 21. Read the current decisions and status notes

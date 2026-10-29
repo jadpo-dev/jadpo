@@ -4,9 +4,9 @@ How Jadpo's documentation is written, built and delivered, to people and to
 coding agents. The site at jadpo.dev is built in its own repository from
 what this one publishes; this page is the contract between the two.
 
-Decided. The structure and the bundle are built; the primer, releases,
-installers and the site are not yet, and the [roadmap](roadmap.md) says
-when each comes.
+Decided. The structure, the bundle and the [primer](primer.md) are built;
+releases, installers and the site are not yet, and the
+[roadmap](roadmap.md) says when each comes.
 
 ## Who reads it
 
@@ -100,8 +100,9 @@ out, and its relative links are by ID (`passkeys.md`,
 a link to anything else, design notes included, names the file on GitHub's
 `main`. An error page leads with its rule's summary, area and who usually
 decides the next step; a command's page is its usage, arguments, flags,
-examples and errors. The primer joins the bundle once `docs/primer.md`
-exists.
+examples and errors. The primer is `docs/primer.md` with its hidden blocks
+left out; the docs check compiles its every example, refuses a `fragment`
+in it and keeps it to 3,000 to 5,000 tokens, its words times 1.3.
 
 `python3 tools/language_docs.py --bundle <dir>` builds it; the gate builds
 it into `build/docs-bundle/`, and on `main` CI keeps that folder as the
