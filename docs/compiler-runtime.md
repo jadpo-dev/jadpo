@@ -1051,7 +1051,10 @@ everything above them for, so two sets in one target would undo each
 other's build, as two profiles would. A workspace's own paths reach
 rustc relative to it, and the cache, the runtime's source and cargo's
 home are remapped alike for every project, so the shared units are the
-same for each and a binary holds no machine's path. A build holds the
+same for each and the checkout's path never reaches a binary. A
+native binary still holds some machine paths that the remapping doesn't
+reach (cargo's registry, the cache's target folder, the toolchain's
+libraries); removing them is not built yet. A build holds the
 target's lock (`jadpo-build.lock`) from `cargo update` until it has
 copied what it built into its workspace: cargo's own lock keeps two
 builds from writing at once, not a second from replacing the first's
@@ -4813,8 +4816,12 @@ need pgvector for the vector tests and PostGIS for the geography tests
 in its target folder as well as the workspace's: the cache action keeps
 every registry crate's build in each target folder it finds there. The
 `supported-language` job needs all five and passes only when each did; it
-is the check branch protection requires. Benchmarks (§2.11) are a
-separate command, not the gate.
+is the check branch protection requires. Beside the gate, the
+`commit-type` workflow checks a pull request's Conventional Commit title
+against what it changes, rerunning alone when the title is edited, and
+release-please's and dist's workflows make releases
+([documentation](documentation.md), "Versions and releases"). Benchmarks
+(§2.11) are a separate command, not the gate.
 
 ### 2.8 Determinism and the build stamp
 

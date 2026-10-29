@@ -4,9 +4,10 @@ How Jadpo's documentation is written, built and delivered, to people and to
 coding agents. The site at jadpo.dev is built in its own repository from
 what this one publishes; this page is the contract between the two.
 
-Decided. The structure, the bundle and the [primer](primer.md) are built;
-releases, installers and the site are not yet, and the
-[roadmap](roadmap.md) says when each comes.
+Decided. The structure, the bundle, the [primer](primer.md) and the
+release machinery are built; releases are switched off until the steps
+under [Versions and releases](#versions-and-releases) are done. The site
+is not built yet, and the [roadmap](roadmap.md) says when it comes.
 
 ## Who reads it
 
@@ -148,28 +149,49 @@ GitHub; some agents cannot fetch from GitHub, which is why the site and
 ## Versions and releases
 
 - One version for the language, compiler and runtime, in semantic
-  versioning from 0.x: until 1.0, a breaking change raises the minor
+  versioning from 0.1.0: until 1.0, a breaking change raises the minor
   number.
 - Each pull request's Conventional Commit type sets the change: `fix` a
-  patch, `feat` a minor, `feat!` a breaking change. Claude chooses it, and
-  CI fails a pull request whose language behaviour changes (a spec
-  example's result, or a rule entering or leaving the catalogue) under a
-  type that says it doesn't.
-- release-please keeps a release pull request with the next version and
-  its notes; merging it tags `vX.Y.Z` and makes the GitHub Release. Claude
-  merges it, except 0.1.0, which Richard sees first. Release notes live on
-  the Release, not in a changelog file.
-- A tag builds the installers and the bundle, and the site publishes
+  patch, `feat` a minor, `feat!` a breaking change. Claude chooses it and
+  writes it as the pull request's title. A pull request merges with a
+  merge commit, so release-please reads the branch's own commits, and the
+  strongest of them must make the release the title says. CI
+  (`tools/commit_type.py`, in `.github/workflows/commit-type.yml`) fails a
+  title that isn't a Conventional Commit, a title its commits don't match,
+  and a language change under a title other than `feat` or `feat!`: a spec
+  example giving a different result for the same source (its `expect=` or
+  its output block, on any page under `docs/` or in `README.md`), or a
+  rule entering or leaving the catalogue.
+- release-please (`release-please-config.json`,
+  `.github/workflows/release-please.yml`) keeps a release pull request with
+  the next version and its notes; merging it tags `vX.Y.Z` and makes a
+  draft GitHub Release holding the notes. Claude merges it, except 0.1.0,
+  which Richard sees first. Release notes live on the Release, not in a
+  changelog file.
+- The release then gets the docs bundle as `docs-bundle.tar.gz`, and
+  dist's workflow (`.github/workflows/release.yml`) builds the installers,
+  attaches them and publishes the release. The site publishes
   `/v/X.Y.Z/`.
-- An app declares the version it needs in `app.jadpo`, and the compiler
-  refuses an app needing a newer one.
+- An app declares the version it needs in `app.jadpo`, as
+  `application { jadpo: "0.1" }`, and the compiler refuses an app needing a
+  newer one (area 1, "The root").
+- Switched off until Richard sets them up: release-please runs only when
+  the repository variable `JADPO_RELEASES` is `on`, with a
+  `RELEASE_PLEASE_TOKEN` secret, so its pull requests run CI; the
+  Homebrew formula and the npm package are built and attached to each
+  release but published nowhere until `publish-jobs` in
+  `dist-workspace.toml` names them, with a tap repository and tokens.
 
 ## Installing
 
-Prebuilt `jadpo` binaries, with a `curl | sh` installer, Homebrew,
-PowerShell and an npm wrapper (`npx jadpo`), so nobody installs Rust to
-check, test or run an app. `jadpo build` fetches its own pinned Rust
-toolchain into its cache on first use.
+Each release carries prebuilt `jadpo` binaries for macOS (arm64 and
+x86_64), Linux (x86_64 and arm64, glibc) and Windows (x86_64), built by
+dist (`dist-workspace.toml`, its version pinned there) with OpenSSL
+compiled in, so nobody installs Rust to check, test or run an app. Beside
+them: a shell installer (`jadpo-cli-installer.sh`, for `curl | sh`), a
+PowerShell one (`jadpo-cli-installer.ps1`), a Homebrew formula
+(`jadpo.rb`) and an npm package (`jadpo`, for `npx jadpo`). `jadpo build`
+fetches its own pinned Rust toolchain into its cache on first use.
 
 ## Not decided yet
 

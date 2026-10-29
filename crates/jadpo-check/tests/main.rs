@@ -55,6 +55,7 @@ mod identity;
 mod imports;
 mod incremental;
 mod isolation;
+mod jadpo_version;
 mod json_columns;
 mod lists;
 mod locales;
