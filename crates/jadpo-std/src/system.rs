@@ -451,7 +451,7 @@ pub const PASSKEYS: SystemTable = SystemTable {
 
 /// Passkey ceremonies under way (area 8, "Passkeys"): each found by its
 /// challenge's verifier and used once, bound to the browser or session
-/// that asked, with the state `webauthn-rs` checks the answer against.
+/// that asked, with the state the ceremony checks the answer against.
 pub const PASSKEY_CHALLENGES: SystemTable = SystemTable {
     table: "jadpo_passkey_challenges",
     columns: &[

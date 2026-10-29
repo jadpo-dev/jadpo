@@ -1,17 +1,20 @@
-//! The passkey ceremonies on Workers (area 8, "Passkeys"; chunk 8.2l): the
-//! Workers host's [`Passkeys`] capability, in pure Rust, since
-//! `webauthn-rs` 0.5 verifies with OpenSSL, which doesn't build for
-//! wasm32 (decided 2026-10-21).
+//! The passkey ceremonies (area 8, "Passkeys"): [`WebAuthn`], the
+//! [`Passkeys`] capability every host carries, in pure Rust, so a
+//! deployable links no OpenSSL and the native host and Workers check a
+//! passkey with the same code. A host gives it the generator its
+//! challenges are drawn from.
 //!
-//! Every check is the one `webauthn-rs` makes in the native host's
-//! ceremonies (`jadpo_host_native::passkeys`), and its tests hold the two
-//! to the same answers through the test authenticator:
+//! Every check is the one `webauthn-rs` 0.5.5 makes in its passkey
+//! ceremonies, and the crate's tests hold the two to the same answers
+//! (`tests/passkeys.rs`, with `webauthn-rs` a dev-dependency only), by the
+//! test authenticator and by answers made by hand to break one check at a
+//! time:
 //!
 //! - **The options** are `webauthn-rs`'s, member for member: a
 //!   discoverable passkey that verifies the person, no attestation, ES256
 //!   or RS256, the relying party the configured origin's host; signing in
 //!   with any discoverable passkey, offered in the address field's
-//!   autofill. The challenge is 32 bytes from Web Crypto's generator.
+//!   autofill. The challenge is 32 bytes from the host's generator.
 //! - **The answer** is read as `webauthn-rs` reads it: its client data's
 //!   type, challenge and origin (the configured one only: no subdomain,
 //!   no other port), not made in another site's frame when registering;
@@ -25,15 +28,15 @@
 //!   reads, and CBOR with the `serde_cbor_2` it reads it with.
 //! - **A key** is ES256 on P-256, a point on the curve, or RS256 with a
 //!   2,048-bit modulus and a three-byte exponent, the two `webauthn-rs`
-//!   calls secure; it is kept as the same COSE key in CBOR the native host
-//!   writes, so a passkey's record reads the same on either host.
+//!   calls secure; it is kept as a COSE key in CBOR (area 19,
+//!   `WebAuthnCredential`).
 //! - **Attestation** isn't asked for, so a device's statement is `none`,
 //!   or packed self-attestation, whose signature by the new key is
 //!   checked. Unlike `webauthn-rs`, a statement signed by a certificate
 //!   (packed with `x5c`, TPM, Android key, Apple, FIDO U2F) is refused
 //!   rather than checked against its chain: nothing here reads X.509
 //!   chains, and browsers send `none` when none is asked for (area 8,
-//!   "Passkey attestation on Workers").
+//!   "Passkey attestation").
 //!
 //! A ceremony's state is JSON the runtime keeps server-side and gives back
 //! once: the challenge and, registering, the passkeys not to make again.
@@ -41,14 +44,15 @@
 use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
 
-use jadpo_runtime::http::signed::origin_of;
-use jadpo_runtime::{PasskeyAnswer, PasskeyError, PasskeyParts, Passkeys};
 use jadpo_value::encoding::{from_base64url, to_base64url};
 use jadpo_value::hash::sha256;
 use jadpo_value::public_key;
 use serde::Deserialize;
 use serde_cbor_2::Value as Cbor;
 use serde_json::{Map, Value as Json, json};
+
+use crate::http::signed::origin_of;
+use crate::{PasskeyAnswer, PasskeyError, PasskeyParts, Passkeys};
 
 /// A challenge's length, as `webauthn-rs` makes one.
 const CHALLENGE_BYTES: usize = 32;
@@ -74,15 +78,17 @@ const EXTENSIONS: u8 = 0x80;
 
 /// The passkey ceremonies, with the generator a challenge is drawn from.
 #[derive(Debug, Clone, Copy)]
-pub struct WorkersPasskeys {
+pub struct WebAuthn {
     random: fn(&mut [u8]) -> bool,
 }
 
-impl WorkersPasskeys {
+impl WebAuthn {
     /// The ceremonies drawing challenges from `random`, which fills its
-    /// bytes or says it couldn't.
-    pub const fn new(random: fn(&mut [u8]) -> bool) -> WorkersPasskeys {
-        WorkersPasskeys { random }
+    /// bytes or says it couldn't: the operating system's generator
+    /// natively, Web Crypto's on Workers. A challenge it can't draw is
+    /// `Misconfigured`.
+    pub const fn new(random: fn(&mut [u8]) -> bool) -> WebAuthn {
+        WebAuthn { random }
     }
 
     fn challenge(&self) -> Result<[u8; CHALLENGE_BYTES], PasskeyError> {
@@ -302,9 +308,9 @@ impl Key {
         }
     }
 
-    /// The key as the native host keeps it: COSE in CBOR, `1` its key
-    /// type, `3` its algorithm, then `-1` the curve or RSA's `n`, `-2` `x`
-    /// or RSA's `e`, `-3` `y`.
+    /// The key as it is kept: COSE in CBOR, `1` its key type, `3` its
+    /// algorithm, then `-1` the curve or RSA's `n`, `-2` `x` or RSA's `e`,
+    /// `-3` `y`.
     fn to_cose(&self) -> Option<Vec<u8>> {
         let mut map = BTreeMap::new();
         map.insert(Cbor::Integer(3), Cbor::Integer(self.algorithm()));
@@ -493,7 +499,7 @@ fn client_checks(client: &ClientData, kind: &str, challenge: &[u8], site: &Site)
 /// The transports `webauthn-rs` keeps, by WebAuthn's names.
 const TRANSPORTS: [&str; 5] = ["usb", "nfc", "ble", "internal", "hybrid"];
 
-impl Passkeys for WorkersPasskeys {
+impl Passkeys for WebAuthn {
     fn start_registration(
         &self,
         origin: &str,

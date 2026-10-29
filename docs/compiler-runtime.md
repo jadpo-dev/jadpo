@@ -160,7 +160,7 @@ Rust 1.88 or later).
 | `jadpo-value` | Runtime values, operators, JSON codecs, validation, standard-library implementations | yes |
 | `jadpo-runtime` | Everything in §2.6, behind a `Host` trait | yes |
 | `jadpo-drivers` | Capability drivers over a host-supplied transport, a cargo feature each: PostgreSQL, the package driver (JSON over HTTP) and SMTP; Redis and S3 are not built yet | yes |
-| `jadpo-host-native` | tokio and hyper: the HTTP listener, timers, the background work a response leaves, passkey ceremonies, the disk driver `jadpo dev` keeps files with, HTTP for the package driver; the inbox with email | |
+| `jadpo-host-native` | tokio and hyper: the HTTP listener, timers, the background work a response leaves, the disk driver `jadpo dev` keeps files with, HTTP for the package driver; the inbox with email | |
 | `jadpo-host-workers` | wasm-bindgen and Jadpo's own bindings to Workers: `connect()` sockets, `fetch()`, timers, `waitUntil`, bindings (§2.6, "The Workers host"); with `testing`, a test Worker's handler (§2.6, "Route tests on workerd") | yes |
 | `jadpo-term` | The [CLI design language](cli-design-language.md): rich, plain and JSON output | |
 | `jadpo-test` | Test runner, PostgreSQL harness, field-by-field value diffs; the differential comparison with compiled code, natively and inside workerd | |
@@ -1776,9 +1776,13 @@ at a time so nothing sent after `STARTTLS`'s reply is read as the
 conversation; a TLS check that fails is `misconfigured`, a handshake the
 connection broke off `unavailable`. Natively it is rustls
 (`jadpo_host_native::tls`), the one TLS stack on the request path, the
-package driver's HTTPS and the runtime's own outward fetches included;
-OpenSSL stays only for `webauthn-rs` and the test authenticator, and
-`jadpo`'s own client for HQ. Its cryptography is `ring`, built with only
+package driver's HTTPS and the runtime's own outward fetches included.
+No deployable links OpenSSL: it stays only in `jadpo`'s own client for
+HQ and in the passkey tests, beside `webauthn-rs`, their reference
+("Passkeys", below). `crate_graph.rs` holds a native deployable's crates
+to it through `cargo tree` (normal and build edges, default features),
+and `tools/deployable.py` reads a deployable's symbols for OpenSSL's and
+`webauthn-rs`'s. Its cryptography is `ring`, built with only
 a C compiler; aws-lc-rs would add the post-quantum key exchange for a
 far larger C build, and is one provider value away. Servers are checked
 against Mozilla's roots compiled in (`webpki-roots`), not the platform's
@@ -2213,14 +2217,36 @@ each challenge server-side by its BLAKE3 verifier, bound to a
 `<cookie>_passkey` cookie's verifier or the session, takes it once with
 `DELETE … RETURNING` before the answer is checked, and starts the session
 in the transaction that writes the passkey's new counter, only if the
-counter is still the one read. The ceremonies are a host capability,
+counter is still the one read. The ceremonies are one implementation
+every host carries, `jadpo_runtime::webauthn::WebAuthn`, pure Rust, so
+no deployable links OpenSSL; a host gives it the generator its
+challenges are drawn from (the operating system's natively, Web
+Crypto's `getRandomValues` on Workers) and hands it to the runtime as
 `Host::passkeys` (`jadpo_runtime::Passkeys`), with the configured origin
-and plain data across it, so the runtime crate stays free of them on
-wasm32: the native host and a test's host carry `webauthn-rs` 0.5.5,
-whose OpenSSL doesn't build for wasm32, so the Workers host checks them
-with jadpo-value's pure-Rust ES256 and RSA instead; `jadpo_host_native::test_authenticator` (feature
-`test-authenticator`, tests only) is a software device the live tests
-sign in with.
+and plain data across it. Each check is the one `webauthn-rs` 0.5.5
+makes in its passkey ceremonies. The options are its own member for
+member, the challenge 32 bytes; an answer is read as it reads one
+(client data's type, challenge, origin and, when registering,
+`crossOrigin`; the authenticator data's relying party, presence,
+verification, backup flags and counter; byte strings in the four base64
+forms it reads, CBOR through the same `serde_cbor_2`) and its signature
+checked with `jadpo_value::public_key`'s ES256, its DER read strictly,
+and RS256 on RustCrypto's `p256` and `rsa`. A key is kept as COSE in
+CBOR. Attestation must be `none` or packed self-attestation (area 8).
+Its state is JSON of its own, the challenge and the passkeys excluded.
+`webauthn-rs` is a dev-dependency only, the reference
+(`crates/jadpo-runtime/tests/webauthn_reference.rs`, behind the same
+trait): `tests/passkeys.rs` runs each ceremony on both, with the test
+authenticator and with answers made by hand to break one check at a time
+(about sixty cases: origins, types, challenges, relying parties, flags,
+keys off the curve or of other kinds, attestation, counters, user
+handles, a high S), each kept or refused the same on both, and a
+statement signed by a certificate refused, which `webauthn-rs` would
+check against its chain. `jadpo_runtime::test_authenticator` (the
+`testing` feature, so no deployable holds it) is the software device a
+test signs in with, on `p256`, its keys and ids drawn from its seed and
+its signatures RFC 6979's, so it needs no generator:
+`SoftwareAuthenticators` is `jadpo test`'s host's and a test Worker's.
 
 **Magic links** (area 8, "Magic links"). The identity
 reads `sign_in: { magic_link: }` into `Identity::magic_link` and
@@ -3397,8 +3423,10 @@ program once per isolate with the settings a test run reads (`test:`
 values, defaults, throwaway secrets from Web Crypto) on
 `Target::Workers`, and runs the test through `test_run::once` on a host
 of its own: each copy reached over `connect()` by the PostgreSQL driver,
-its statements kept in the record; `test_run::Caught`; Workers' passkey
-ceremonies; no randomness, timer or clock, as a test's host has none.
+its statements kept in the record; `test_run::Caught`; the passkey
+ceremonies, their challenges from Web Crypto, and the test
+authenticators (`SoftwareAuthenticators`), as natively; no randomness,
+timer or clock, as a test's host has none.
 It answers `Answered`: the record's lines, the rows its stores held when
 it used one (`test_run::rows`, over the same connections), how the run
 ended, whether a delivery between its steps failed for good, the fakes'
@@ -3411,15 +3439,15 @@ interpreter's. The copies are made on the run's server when it is named
 by a URL, as CI's is, and otherwise on one the process starts on
 `127.0.0.1` (`Server::tcp_url`; `TestDatabases::on`, its templates kept
 per server), since a local run's listens on a Unix socket, which
-`connect()` can't open. A test's software authenticator
-(`test_passkeys`) is the native host's, over OpenSSL, so a test Worker
-has none: a route test that makes passkeys differs there until one is
-written in pure Rust. Proved (`crates/jadpo-cli/tests/compiled.rs`, a
+`connect()` can't open. Proved (`crates/jadpo-cli/tests/compiled.rs`, a
 step of the `wasm32` group, whose job builds for wasm32 already): area 7's
-`todos` (3 route tests) and teaching example 23's repair café (4, through
+`todos` (3 route tests), teaching example 23's repair café (4, through
 `settle:`'s subscribers, a request's work after its answer delivered
-before the next line, and its fixtures), every test passing with the
-interpreter's records, statements, events and rows among them. Nearly
+before the next line, and its fixtures), a write after an outside call
+(1) and teaching example 27's guest house (5, a passkey registered and
+signed in with, lost, and replaced after a magic link), every test
+passing with the interpreter's records, statements,
+events and rows among them. Nearly
 all of the step's time is building and binding the module, which is kept
 warm between runs. *Rejected:* the release profile,
 which would build every runtime crate optimised for tests that run in
@@ -4357,7 +4385,8 @@ never called, so the workspace builds, lints and tests as one.
   a fresh invocation of the Worker through the loopback `ctx.exports`
   gives its `JadpoHandOn` ("After the response on Workers"); a database needs the crate's `postgres`
   feature, so a deployable that keeps none links no driver for one; the
-  passkey ceremonies are `WorkersPasskeys`, below.
+  passkey ceremonies are the runtime's `WebAuthn`, their challenges from
+  `getRandomValues`.
 - **`WorkersTransport`** opens every connection with `secureTransport:
   "starttls"`, since a driver says it will upgrade only once its
   conversation has begun, waits for it to open, and upgrades with
@@ -4410,20 +4439,6 @@ never called, so the workspace builds, lints and tests as one.
   first, since a Worker has no resolver; whether Cloudflare's network
   reaches a private address a name resolves to is not yet checked on a
   real deploy.
-- **`WorkersPasskeys`** is `Host::passkeys` on Workers:
-  `webauthn-rs` 0.5's passkey ceremonies written again in pure Rust,
-  since it verifies with OpenSSL. The options are its own member for
-  member, the challenge 32 bytes from `getRandomValues`; an answer is
-  read as it reads one (client data's type, challenge, origin and, when
-  registering, `crossOrigin`; the authenticator data's relying party,
-  presence, verification, backup flags and counter; byte strings in the
-  four base64 forms it reads, CBOR through the same `serde_cbor_2`) and
-  its signature checked with `jadpo_value::public_key`'s ES256, its DER
-  read strictly, and RS256 on RustCrypto's `p256` and `rsa`. A key is
-  kept as the same COSE bytes the native host writes, so a passkey's
-  record reads the same on either. Attestation must be `none` or packed
-  self-attestation (area 8). Its state is JSON of
-  its own, the challenge and the passkeys excluded.
 
 Every Workers test runs on this machine under the pinned workerd, with
 no Cloudflare account and no network past the machine; only a real
@@ -4451,14 +4466,9 @@ isolate's requests, a connection's task run (one still running when its
 host is dropped ending after the answer), the drivers built only once a
 connection is reached, and the factory's supplies; and one registers a
 passkey made by the test
-authenticator and signs in with it twice, keeping what the native host
-keeps of the same device's passkey, an answer from another site and a
-counter gone back refused. Natively, `tests/passkeys.rs` holds
-`WorkersPasskeys` to `webauthn-rs`: each ceremony run on both, with the
-test authenticator and with answers made by hand to break one check at a
-time (about sixty cases: origins, types, challenges, relying parties,
-flags, keys off the curve or of other kinds, attestation, counters, user
-handles, a high S), each kept or refused the same on both.
+authenticator and signs in with it twice, keeping what the same
+ceremonies keep natively of the same device's passkey, an answer from
+another site and a counter gone back refused.
 The gate runs them as a step of its `wasm32` group, in cargo's lane since
 the test builds the probe; `compiler tests` leaves them out. *Rejected:*
 workers-rs, whose `Socket::start_tls` unwraps (a panic aborts the

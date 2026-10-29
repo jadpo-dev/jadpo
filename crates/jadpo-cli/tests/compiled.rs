@@ -672,7 +672,10 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
 /// the Worker reaches over `connect()`, and each test's record the
 /// interpreter's (chunk 8.2e): the café's through `settle:`'s subscribers,
 /// what a request leaves for after its answer delivered before the test's
-/// next line, and its fixtures.
+/// next line, and its fixtures. Teaching example 27, the guest house,
+/// registers and signs in with `test_passkeys` there, the test
+/// authenticator and the passkey ceremonies built for wasm32 (area 8,
+/// "Passkeys").
 #[test]
 fn route_tests_on_workerd_give_the_interpreters_records() {
     if !jadpo_test::live() {
@@ -697,6 +700,10 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
                 "workerd-version-write",
             ),
         ),
+        (
+            "the guest house",
+            example_project("27-guest-house", "workerd-guest-house"),
+        ),
     ];
     let folders: Vec<PathBuf> = projects
         .iter()
@@ -713,7 +720,7 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
         .iter()
         .map(|compared| (compared.tests, compared.passed))
         .collect();
-    assert_eq!(counts, [(3, 3), (4, 4), (1, 1)]);
+    assert_eq!(counts, [(3, 3), (4, 4), (1, 1), (5, 5)]);
     println!(
         "compared on workerd: {} route tests of {} projects with the interpreter's records, every one passing, in {:.0?}",
         counts.iter().map(|(tests, _)| tests).sum::<usize>(),

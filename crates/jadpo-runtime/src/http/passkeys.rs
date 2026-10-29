@@ -1,7 +1,7 @@
 //! Passkeys (area 8, "Passkeys"; chunk 5.5z): the routes `sign_in: {
 //! passkey: }` generates, answered by the runtime for every host and
 //! executor, with the ceremonies themselves on the host's [`Passkeys`]
-//! capability (`webauthn-rs` natively).
+//! capability (the runtime's own `webauthn::WebAuthn` on every host).
 //!
 //! - **Challenges** are made by the ceremony's options route and kept in
 //!   `jadpo_passkey_challenges` with the state the answer is checked

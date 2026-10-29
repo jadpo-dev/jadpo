@@ -772,8 +772,9 @@ ceremonies are where hand-written sign-in goes wrong:
 
 - **Registering and signing in** are built in: the one-time challenge, its
   expiry, the origin and relying-party check, and the signature counter,
-  on the well-established `webauthn-rs` crate rather than written by hand.
-  Attestation is not requested.
+  checked as the well-established `webauthn-rs` crate checks them and held
+  to its answers by Jadpo's tests, never written by the app. Attestation
+  is not requested.
 - **Stored with the user** as the standard `WebAuthnCredential` type (area
   19), never a biometric: area 15 has nothing to report beyond the
   credential's identifier and when it was last used.
@@ -864,8 +865,8 @@ Set-Cookie: notes_session=...; notes_session_csrf=...
 ```
 
 - Each options request makes a new challenge of 32 random bytes, kept in
-  the `jadpo_passkey_challenges` system table with what `webauthn-rs`
-  needs to check the answer: server-side, never in the cookie. The cookie,
+  the `jadpo_passkey_challenges` system table with what checking the
+  answer needs: server-side, never in the cookie. The cookie,
   `<cookie>_passkey` (`HttpOnly`, `Secure`, `SameSite=Strict`, lasting
   `expires_after:`), holds 32 more random bytes kept only as a verifier,
   and binds the challenge to the browser that asked; a new request
@@ -877,7 +878,7 @@ Set-Cookie: notes_session=...; notes_session_csrf=...
   link's confirm does. Its challenge is used up when the answer arrives,
   whether or not the answer checks: a replayed answer, one whose challenge
   expired, and one from another browser are `passkey_challenge_expired`.
-- `webauthn-rs` checks the answer: the challenge, the origin and the
+- The answer is checked: the challenge, the origin and the
   relying-party ID, that the person was present and verified, the
   signature against the stored public key, and the signature counter. Any
   failure is `passkey_rejected`, never saying which, and so is an answer

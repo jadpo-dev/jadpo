@@ -477,16 +477,17 @@ fn the_factory_is_supplied_for_workers() {
     );
 }
 
-/// A passkey is registered and signed in with under workerd (chunk 8.2l):
-/// the ceremonies built for wasm32, their challenges from Web Crypto, the
-/// test authenticator answering as the device. What the Worker keeps is
-/// what the native host's `webauthn-rs` keeps of the same passkey; an
-/// answer from another site, and a counter gone back, are refused.
+/// A passkey is registered and signed in with under workerd (area 8,
+/// "Passkeys"): the runtime's ceremonies built for wasm32, their
+/// challenges from Web Crypto, the test authenticator answering as the
+/// device. What the Worker keeps is what the same ceremonies keep
+/// natively of the same device's passkey; an answer from another site, and
+/// a counter gone back, are refused.
 #[test]
 fn a_passkey_registers_and_signs_in_under_workerd() {
-    use jadpo_host_native::passkeys::WebauthnPasskeys;
-    use jadpo_host_native::test_authenticator::TestAuthenticator;
     use jadpo_runtime::Passkeys;
+    use jadpo_runtime::test_authenticator::TestAuthenticator;
+    use jadpo_runtime::webauthn::WebAuthn;
     use jadpo_value::encoding::{from_base64url, to_base64url};
 
     const ORIGIN: &str = "https://notes.example";
@@ -516,12 +517,16 @@ fn a_passkey_registers_and_signs_in_under_workerd() {
         pack(&made)
     )));
 
-    // The same device registering with the native host keeps the same.
+    // The same device registering natively keeps the same.
+    let natively = WebAuthn::new(|bytes| {
+        bytes.fill(9);
+        true
+    });
     let mut twin = TestAuthenticator::seeded(ORIGIN, 82);
-    let (options, state) = WebauthnPasskeys
+    let (options, state) = natively
         .start_registration(ORIGIN, 300_000, [7; 16], "ada@example.com", &[])
         .unwrap();
-    let native = WebauthnPasskeys
+    let native = natively
         .finish_registration(ORIGIN, 300_000, &state, &twin.create(&options).unwrap())
         .unwrap();
     let kept_json: serde_json::Value = serde_json::from_str(&unpack(&stored)).unwrap();
