@@ -1,0 +1,43 @@
+use todo/entities { User }
+use todo/types { TodoStatus, TodoTitle }
+
+entity Todo {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.restricted
+    }
+    title: TodoTitle
+    status: TodoStatus
+    due_at: Instant?
+    reminder_revision: Int
+    reminder_queued_at: Instant?
+    reminder_sent_at: Instant?
+    deleted_at: Instant?
+    created_at: Instant {
+        generated: Generated.on_create
+    }
+    updated_at: Instant {
+        generated: Generated.on_change
+    }
+    lifecycle: {
+        visible: deleted_at == none
+        transitions: {
+            delete: {
+                when: deleted_at == none
+                set: {
+                    deleted_at: clock.now
+                }
+            }
+        }
+        purge: {
+            after: config.soft_delete_retention
+            since: deleted_at
+        }
+    }
+    policy: {
+        create: [owner_id]
+        read: [owner_id, Access.system]
+        update: [owner_id, Access.system]
+        delete: [owner_id]
+    }
+}

@@ -83,6 +83,10 @@ pub struct CallablePlan {
     /// The line its declaration starts on, for a frame at no site yet.
     pub line: u32,
     pub body: Arc<Body>,
+    /// Each way through the body, numbered (docs/compiler-runtime.md §2.3,
+    /// "Bodies"; chunk 9.3): what each branch adds to the path number both
+    /// executors keep for a test's record.
+    pub paths: jadpo_graph::paths::Paths,
     /// Each of the body's sites, decoded, by site number.
     pub sites: Vec<SitePlan>,
     /// The level a transaction of its own begins at, from the graph: for
@@ -914,6 +918,7 @@ impl Plan {
                 .then(|| jadpo_check::events::outbox_store(db, project, key.name()))
                 .flatten();
             let record = record_plans.get(&key).cloned();
+            let paths = jadpo_graph::paths::number(&body);
             callables.push(CallablePlan {
                 outbox,
                 record,
@@ -922,6 +927,7 @@ impl Plan {
                 file,
                 label,
                 line,
+                paths,
                 body,
                 sites,
                 isolation,

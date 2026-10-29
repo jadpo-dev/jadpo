@@ -150,6 +150,10 @@ pub struct Difference {
     /// Why there's no line to compare: the test didn't run, or no record
     /// was kept.
     pub missing: Option<&'static str>,
+    /// When the line that differs isn't a path's, the first path line
+    /// that differs, each run's (chunk 9.3): which body went another way,
+    /// and by which path.
+    pub paths: Option<(Option<String>, Option<String>)>,
 }
 
 impl std::fmt::Display for Difference {
@@ -166,7 +170,13 @@ impl std::fmt::Display for Difference {
         }
         let side = |line: &Option<String>| line.clone().unwrap_or_else(|| "(ends)".to_string());
         writeln!(f, "  first:  {}", side(&self.first))?;
-        write!(f, "  second: {}", side(&self.second))
+        write!(f, "  second: {}", side(&self.second))?;
+        if let Some((first, second)) = &self.paths {
+            writeln!(f, "\n  and its paths differ first at:")?;
+            writeln!(f, "  first:  {}", side(first))?;
+            write!(f, "  second: {}", side(second))?;
+        }
+        Ok(())
     }
 }
 
@@ -220,6 +230,7 @@ pub fn compare(
                 first: None,
                 second: None,
                 missing: Some(why),
+                paths: None,
             })
         };
         let (Some((_, one)), Some((_, two))) = (ones.get(&test.key), twos.get(&test.key)) else {
@@ -242,11 +253,39 @@ pub fn compare(
                 first: a.lines.get(at).cloned(),
                 second: b.lines.get(at).cloned(),
                 missing: None,
+                paths: path_difference(a, b, at),
             }));
         }
         compared += 1;
     }
     Ok(compared)
+}
+
+/// When line `at`, where `a` and `b` first differ, isn't a path's: the
+/// first of their path lines that differ, each side's.
+fn path_difference(
+    a: &TestRecord,
+    b: &TestRecord,
+    at: usize,
+) -> Option<(Option<String>, Option<String>)> {
+    let is_path = |line: &&String| line.starts_with("path ");
+    if a.lines.get(at).is_some_and(|line| is_path(&line))
+        || b.lines.get(at).is_some_and(|line| is_path(&line))
+    {
+        return None;
+    }
+    let (ones, twos): (Vec<&String>, Vec<&String>) = (
+        a.lines.iter().filter(is_path).collect(),
+        b.lines.iter().filter(is_path).collect(),
+    );
+    (0..ones.len().max(twos.len()))
+        .find(|&i| ones.get(i) != twos.get(i))
+        .map(|i| {
+            (
+                ones.get(i).map(|line| (*line).clone()),
+                twos.get(i).map(|line| (*line).clone()),
+            )
+        })
 }
 
 /// The index of the first line where `a` and `b` differ, one having ended
@@ -382,6 +421,37 @@ mod tests {
             Some("sql SELECT \"id\" FROM \"loans\" | (uuid) | read 2")
         );
         assert_eq!(difference.second.as_deref(), Some("test passed"));
+    }
+
+    /// When something else differs first, the first path line that
+    /// differs is named too: which body went another way (chunk 9.3).
+    #[test]
+    fn a_difference_names_the_first_path_that_differs() {
+        let taken = |path: u64| {
+            TestRecord::new(
+                &[
+                    statement("SELECT 1", usize::try_from(path).unwrap()),
+                    Entry::Paths {
+                        place: "main.jadpo:3  function graded body".into(),
+                        taken: vec![(path, 1)],
+                    },
+                ],
+                "passed",
+                &[],
+            )
+        };
+        let first = run(&[("a", Some(taken(1)))]);
+        let second = run(&[("a", Some(taken(2)))]);
+        let difference = differential(&first, &second).unwrap_err();
+        assert_eq!(
+            difference.to_string(),
+            "test \"a\" (main.test.jadpo:1) differs at line 1 of its record\n  \
+             first:  sql SELECT 1 | (uuid) | read 1\n  \
+             second: sql SELECT 1 | (uuid) | read 2\n  \
+             and its paths differ first at:\n  \
+             first:  path main.jadpo:3  function graded body | 1×1\n  \
+             second: path main.jadpo:3  function graded body | 2×1"
+        );
     }
 
     /// A test only one run ran, or one without a record, is a difference

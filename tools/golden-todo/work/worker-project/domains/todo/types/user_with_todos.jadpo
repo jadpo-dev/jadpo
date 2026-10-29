@@ -1,0 +1,7 @@
+use todo/entities { User }
+use todo/types { TodoView }
+
+type UserWithTodos = Output {
+    pick: [User.id]
+    todos: List<TodoView>
+}

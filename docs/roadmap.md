@@ -261,10 +261,7 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   "Passkeys" and "Route tests on workerd"; area 8, Decisions, "One passkey
   implementation" and "Passkey attestation".
 - [x] **9.2c `jadpo build` outside this checkout**: area 14, "A native deployable", and its design notes, "Building outside this checkout"; compiler/runtime §2.8, "What a released `jadpo` builds with".
-- [ ] **9.3 The differential run's last two checks** `opus · high`
-  (after 9.2; low priority, from chunk 8.4h): each path through a body
-  numbered and the paths each run took compared, and fuzzed function
-  bodies run both ways, as §2.5 once promised.
+- [x] **9.3 The differential run's last two checks**: compiler/runtime §2.3, "Path numbers"; §2.5, "Differential test" ("Paths" and "Fuzzed bodies"); §2.7, "The differential run".
 
 ## Documentation and releases
 
@@ -290,8 +287,11 @@ D1 first: the site starts once D1 has merged (Richard, 2026-10-28).
   and feature requests read, answered and turned into pull requests by an
   agent that holds no secrets and cannot merge or release, since issue text
   is anyone's; its pull requests pass the same gate and review.
+- [x] **D6 Packages, services and integrations explained**: [area 11](language/11-integrations.md), "How packages, connections, capabilities and services fit together".
 - [x] **D7 One place for the golden todo and the benchmarks**: [benchmarks](../benchmarks/README.md);
   `tools/` holds the gate and its `docs/`, `checks/`, `references/` and `fixtures/`.
+- [ ] **D8 The VS Code extension, finished and published**: area 14, "Editor support" and "What is built"; `editors/vscode/README.md`; `.github/workflows/vscode-extension.yml`.
+  Waits: the editor's rename, which comes with `jadpo rename` and the identity registry (after the first build, items 6 and 7).
 
 ## Phase 10 — Golden todo
 

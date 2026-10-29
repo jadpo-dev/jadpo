@@ -1,0 +1,6 @@
+use todo/entities { Todo, TodoNotFound }
+
+action delete_todo(todo_id: Todo.id) fails TodoNotFound -> Unit {
+    var item: Todo = attempt Todo.get(todo_id)
+    Todo.delete(item)
+}

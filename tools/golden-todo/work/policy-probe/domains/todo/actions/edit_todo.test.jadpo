@@ -1,0 +1,62 @@
+use todo/entities { Todo, User }
+use todo/types { CreateTodo, PatchTodo, TodoView }
+use todo/actions { add_todo }
+use todo/fixtures { alice }
+
+test "PATCH-001 omission keeps due date and reminder schedule" {
+    clock: "2026-01-15T12:00:00Z"
+    var owner: User = alice()
+    var item: TodoView = attempt add_todo(
+        CreateTodo {
+            title: "Original"
+            due_at: "2026-02-01T00:00:00Z"
+        },
+        Principal.user(owner)
+    )
+    var before: Todo = attempt Todo.get(item.id)
+    var edited: TodoView = attempt edit_todo(
+        item.id,
+        PatchTodo {
+            title: "Changed"
+        }
+    )
+    var after: Todo = attempt Todo.get(item.id)
+    assert edited.title == "Changed"
+    assert after.due_at == before.due_at
+    assert after.reminder_revision == before.reminder_revision
+}
+
+test "PATCH-002 explicit none clears due date and changes schedule" {
+    clock: "2026-01-15T12:00:00Z"
+    var owner: User = alice()
+    var item: TodoView = attempt add_todo(
+        CreateTodo {
+            title: "Original"
+            due_at: "2026-02-01T00:00:00Z"
+        },
+        Principal.user(owner)
+    )
+    var before: Todo = attempt Todo.get(item.id)
+    var edited: TodoView = attempt edit_todo(
+        item.id,
+        PatchTodo {
+            due_at: none
+        }
+    )
+    var after: Todo = attempt Todo.get(item.id)
+    assert edited.due_at == none
+    assert after.reminder_revision != before.reminder_revision
+}
+
+test "PATCH-003 empty patch succeeds without changing the todo" {
+    clock: "2026-01-15T12:00:00Z"
+    var owner: User = alice()
+    var item: TodoView = attempt add_todo(
+        CreateTodo {
+            title: "Original"
+        },
+        Principal.user(owner)
+    )
+    var edited: TodoView = attempt edit_todo(item.id, PatchTodo {})
+    assert edited == item
+}

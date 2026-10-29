@@ -59,6 +59,9 @@ pub fn lookup(
         None => match parent.kind() {
             NAME => lookup.name(&parent, token.text())?,
             NAME_REF => lookup.name_ref(&parent, token.text())?,
+            // A route's method or path: the route (area 7, "Route URL
+            // shown"), whose node is placed at its entry.
+            ROUTE_ENTRY | ROUTE_PATH => route_at(db, project, file, &parent)?,
             _ => return None,
         },
     };
@@ -66,6 +69,24 @@ pub fn lookup(
         Found::Node(key) if graph(db, project).find(key).is_none() => None,
         _ => Some((found, range)),
     }
+}
+
+/// The route whose entry holds `node`, its head's method or path.
+fn route_at(db: &dyn Db, project: Project, file: File, node: &SyntaxNode) -> Option<Found> {
+    let entry = node.ancestors().find(|node| node.kind() == ROUTE_ENTRY)?;
+    let start = u32::from(entry.text_range().start());
+    let path = file.path(db);
+    graph(db, project)
+        .nodes()
+        .iter()
+        .find(|node| {
+            node.kind == jadpo_graph::Kind::Route
+                && node
+                    .place
+                    .as_ref()
+                    .is_some_and(|place| place.file == *path && place.start == start)
+        })
+        .map(|node| Found::Node(node.key.clone()))
 }
 
 /// The identifier at an offset, preferring one on either side of it.
@@ -356,4 +377,109 @@ fn local(name: &str, ty: Option<String>, what: &'static str) -> Found {
         ty,
         what,
     }
+}
+
+/// One place a name is written that refers to what another does.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Reference {
+    pub path: String,
+    pub start: u32,
+    pub end: u32,
+    /// Whether this is where it is declared rather than used.
+    pub declaration: bool,
+}
+
+/// Every place in `project` written with a name that refers to what the
+/// name at byte `offset` of `file` refers to (area 14, "Editor support":
+/// find references), its declaration among them, in file and source
+/// order. Each candidate is resolved by [`lookup`], so a declaration of
+/// the same name elsewhere, which the checker resolves apart, is never
+/// counted; a parameter or variable is looked for in its own body only.
+pub fn references(
+    db: &dyn Db,
+    project: Project,
+    file: File,
+    offset: u32,
+) -> Option<Vec<Reference>> {
+    let (found, _) = lookup(db, project, file, offset)?;
+    match found {
+        Found::Node(key) => Some(node_references(db, project, &key)),
+        Found::Local { .. } => local_references(db, project, file, offset),
+    }
+}
+
+fn node_references(db: &dyn Db, project: Project, key: &jadpo_graph::Key) -> Vec<Reference> {
+    let graph = graph(db, project);
+    let now = jadpo_graph::manifest::name_now(graph, key);
+    let name = now.rsplit('.').next().unwrap_or(&now).to_string();
+    let mut out = Vec::new();
+    for &file in project.files(db) {
+        let Some(source) = tree::source(db, file) else {
+            continue;
+        };
+        for token in source
+            .syntax()
+            .descendants_with_tokens()
+            .filter_map(|element| element.into_token())
+            .filter(|token| token.kind() == IDENT && token.text() == name)
+        {
+            let start = u32::from(token.text_range().start());
+            let Some((Found::Node(other), (start, end))) = lookup(db, project, file, start) else {
+                continue;
+            };
+            if &other != key {
+                continue;
+            }
+            out.push(Reference {
+                path: file.path(db).clone(),
+                start,
+                end,
+                declaration: token.parent().is_some_and(|parent| parent.kind() == NAME),
+            });
+        }
+    }
+    out
+}
+
+fn local_references(
+    db: &dyn Db,
+    project: Project,
+    file: File,
+    offset: u32,
+) -> Option<Vec<Reference>> {
+    let source = tree::source(db, file)?;
+    let callable = callable_at(db, file, &source, offset, true)?;
+    let body = &typed_body(db, project, callable).body;
+    let id = match body.name_at(offset).map(|name| &name.refers) {
+        Some(Refers::Local(id)) => *id,
+        _ => {
+            let at = body
+                .locals
+                .iter()
+                .position(|local| local.start <= offset && offset <= local.end)?;
+            jadpo_graph::body::LocalId(at as u32)
+        }
+    };
+    let local = body.local(id);
+    let path = file.path(db).clone();
+    let mut out = vec![Reference {
+        path: path.clone(),
+        start: local.start,
+        end: local.end,
+        declaration: true,
+    }];
+    out.extend(
+        body.names
+            .iter()
+            .filter(|name| matches!(name.refers, Refers::Local(other) if other == id))
+            .filter(|name| name.start != local.start)
+            .map(|name| Reference {
+                path: path.clone(),
+                start: name.start,
+                end: name.end,
+                declaration: false,
+            }),
+    );
+    out.sort_by_key(|reference| reference.start);
+    Some(out)
 }

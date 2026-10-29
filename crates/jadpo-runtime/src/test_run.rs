@@ -152,6 +152,11 @@ pub async fn once(executor: &dyn Executor, host: &dyn Host, once: Once<'_>) -> R
     };
     let mut ctx = Ctx::of(executor, &faked, env(plan, once.key, once.callable));
     ctx.set_settings(plan.test_settings(once.callable));
+    // The paths its bodies take are kept with the rest of its record
+    // (chunk 9.3).
+    if once.record.is_some() {
+        ctx.track_paths();
+    }
     if let Some(order) = once.order {
         // What each step emits is delivered before the next statement
         // (chunk 6.11); each step reached is counted, or crashed at.
@@ -167,6 +172,9 @@ pub async fn once(executor: &dyn Executor, host: &dyn Host, once: Once<'_>) -> R
             &outcome,
             executor.places(),
         )));
+        for paths in crate::record::paths(&ctx.paths_taken(), executor.places()) {
+            record.push(paths);
+        }
     }
     if once.batches {
         let started: Vec<Deferred> = ctx

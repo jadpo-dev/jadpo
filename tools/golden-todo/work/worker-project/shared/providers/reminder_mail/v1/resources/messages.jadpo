@@ -1,0 +1,11 @@
+public resource messages {
+    send: {
+        method: HttpMethod.post
+        path: "/v1/reminders"
+        input: SendReminder
+        output: Receipt
+        changes: true
+        idempotent: true
+        source: PackageSource.written
+    }
+}

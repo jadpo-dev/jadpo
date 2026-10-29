@@ -393,7 +393,8 @@ check say which setting and which variable, never the value.
 <!-- topic: database-and-other-connection-urls -->
 
 Area 5 decided that stores take their address from configuration, and area 11
-put them in one `connections:` block:
+put them in one `connections:` block (what a connection, a driver and a
+provider package are is area 11's [How packages, connections, capabilities and services fit together](11-integrations.md#how-packages-connections-capabilities-and-services-fit-together)):
 
 ```jadpo check project=connection-urls file=app.jadpo
 application {

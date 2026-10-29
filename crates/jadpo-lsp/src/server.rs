@@ -15,8 +15,8 @@ use lsp_types::notification::{
     Initialized, Notification as _, PublishDiagnostics,
 };
 use lsp_types::request::{
-    CodeActionRequest, CodeActionResolveRequest, Completion, GotoDefinition, HoverRequest,
-    RegisterCapability, Request as _,
+    CodeActionRequest, CodeActionResolveRequest, Completion, Formatting, GotoDefinition,
+    HoverRequest, References, RegisterCapability, Request as _,
 };
 use lsp_types::{
     DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
@@ -55,6 +55,9 @@ pub struct Server {
     /// Whether the editor fills in a completion's snippet placeholders;
     /// otherwise a call is completed as its name.
     pub(crate) snippets: bool,
+    /// The plan a query's hover reads its SQL from, built once the project
+    /// has no errors and kept until the next edit.
+    pub(crate) plan: Option<std::sync::Arc<jadpo_plan::Plan>>,
 }
 
 impl Server {
@@ -136,6 +139,7 @@ impl Server {
             shown_root: None,
             resolves_edits: false,
             snippets: false,
+            plan: None,
         }
     }
 
@@ -211,6 +215,19 @@ impl Server {
             Completion::METHOD => {
                 match serde_json::from_value::<lsp_types::CompletionParams>(request.params) {
                     Ok(params) => Response::new_ok(id, self.completion(&params)),
+                    Err(error) => invalid(id, &error),
+                }
+            }
+            References::METHOD => {
+                match serde_json::from_value::<lsp_types::ReferenceParams>(request.params) {
+                    Ok(params) => Response::new_ok(id, self.references(&params)),
+                    Err(error) => invalid(id, &error),
+                }
+            }
+            Formatting::METHOD => {
+                match serde_json::from_value::<lsp_types::DocumentFormattingParams>(request.params)
+                {
+                    Ok(params) => Response::new_ok(id, self.formatting(&params)),
                     Err(error) => invalid(id, &error),
                 }
             }
@@ -291,6 +308,7 @@ impl Server {
         if let Some(loaded) = self.loaded.as_mut() {
             change(loaded);
             self.dirty = true;
+            self.plan = None;
         }
     }
 
@@ -380,16 +398,27 @@ impl Server {
         Some((found, text, range))
     }
 
-    fn hover(&self, params: &HoverParams) -> Option<Hover> {
+    fn hover(&mut self, params: &HoverParams) -> Option<Hover> {
         let position = &params.text_document_position_params;
         let (found, text, (start, end)) =
             self.found(&position.text_document.uri, position.position)?;
+        let sql = match &found {
+            Found::Node(key) if key.kind() == Some(jadpo_graph::Kind::Query) => {
+                Some(self.query_sql(key))
+            }
+            _ => None,
+        };
         let loaded = self.loaded.as_ref()?;
         let graph = graph(&loaded.db, loaded.project);
+        let mut value = hover::render(graph, &found)?;
+        if let Some(sql) = sql {
+            value.push_str("\n\n");
+            value.push_str(&sql);
+        }
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
-                value: hover::render(graph, &found)?,
+                value,
             }),
             range: Some(convert::range(&text, start, end, self.encoding)),
         })
@@ -447,6 +476,65 @@ impl Server {
     }
 }
 
+impl Server {
+    /// Every place the name under the cursor is used, from the checker's
+    /// own resolution of each (`jadpo_check::graph::references`), its
+    /// declaration too when the editor asks.
+    fn references(&self, params: &lsp_types::ReferenceParams) -> Option<Vec<Location>> {
+        let position = &params.text_document_position;
+        let loaded = self.loaded.as_ref()?;
+        let file = loaded.file(&self.relative(&position.text_document.uri)?)?;
+        let text = file.text(&loaded.db).clone();
+        let offset = convert::offset(&text, position.position, self.encoding)?;
+        let found = jadpo_check::graph::references(&loaded.db, loaded.project, file, offset)?;
+        let mut out = Vec::new();
+        for reference in found {
+            if reference.declaration && !params.context.include_declaration {
+                continue;
+            }
+            let Some(file) = loaded.file(&reference.path) else {
+                continue;
+            };
+            let Some(uri) = convert::uri_of(&self.uri_root(loaded).join(&reference.path)) else {
+                continue;
+            };
+            out.push(Location {
+                uri,
+                range: convert::range(
+                    file.text(&loaded.db),
+                    reference.start,
+                    reference.end,
+                    self.encoding,
+                ),
+            });
+        }
+        Some(out)
+    }
+
+    /// The document as `jadpo fmt` writes it, as one edit of the whole
+    /// text; none when it is formatted already or doesn't parse, whose
+    /// errors the diagnostics show.
+    fn formatting(
+        &mut self,
+        params: &lsp_types::DocumentFormattingParams,
+    ) -> Option<Vec<lsp_types::TextEdit>> {
+        let path = self.relative(&params.text_document.uri)?;
+        let encoding = self.encoding;
+        let loaded = self.loaded.as_mut()?;
+        let text = loaded.file(&path)?.text(&loaded.db).clone();
+        let Ok(formatted) = jadpo_check::formatting::formatted(loaded, &path) else {
+            return Some(Vec::new());
+        };
+        if formatted == text {
+            return Some(Vec::new());
+        }
+        Some(vec![lsp_types::TextEdit {
+            range: convert::range(&text, 0, text.len() as u32, encoding),
+            new_text: formatted,
+        }])
+    }
+}
+
 /// The project root `root` (a real path) as the editor names it, given
 /// that it named the real folder `real` as `given`: the same number of
 /// folders up from what it gave.
@@ -497,6 +585,8 @@ fn capabilities(encoding: Encoding) -> InitializeResult {
                 ..lsp_types::CompletionOptions::default()
             }),
             definition_provider: Some(OneOf::Left(true)),
+            references_provider: Some(OneOf::Left(true)),
+            document_formatting_provider: Some(OneOf::Left(true)),
             code_action_provider: Some(lsp_types::CodeActionProviderCapability::Options(
                 lsp_types::CodeActionOptions {
                     code_action_kinds: Some(vec![
