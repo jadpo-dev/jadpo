@@ -294,6 +294,10 @@ D1 first: the site starts once D1 has merged (Richard, 2026-10-28).
   Homebrew, PowerShell, npm) on each Release, the bundle attached; an
   app's declared version checked (area 14, "Scaffold"). **Needs Richard**
   before 0.1.0 is published.
+  Built, switched off: release-please, the commit-type check, dist's
+  installers and the bundle on each Release, and `application { jadpo: }`
+  ([documentation](documentation.md), "Versions and releases"); waits for
+  Richard's token, tap, npm account and his look at 0.1.0.
 - [ ] **D4 Issues triaged by an agent** `opus · high` after D3: issues
   and feature requests read, answered and turned into pull requests by an
   agent that holds no secrets and cannot merge or release, since issue text
