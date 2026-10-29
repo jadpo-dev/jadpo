@@ -4813,8 +4813,12 @@ need pgvector for the vector tests and PostGIS for the geography tests
 in its target folder as well as the workspace's: the cache action keeps
 every registry crate's build in each target folder it finds there. The
 `supported-language` job needs all five and passes only when each did; it
-is the check branch protection requires. Benchmarks (§2.11) are a
-separate command, not the gate.
+is the check branch protection requires. Beside the gate, the
+`commit-type` workflow checks a pull request's Conventional Commit title
+against what it changes, rerunning alone when the title is edited, and
+release-please's and dist's workflows make releases
+([documentation](documentation.md), "Versions and releases"). Benchmarks
+(§2.11) are a separate command, not the gate.
 
 ### 2.8 Determinism and the build stamp
 

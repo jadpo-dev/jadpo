@@ -1,0 +1,35 @@
+name: Commit type
+
+# A pull request's Conventional Commit type sets its release
+# (docs/documentation.md, "Versions and releases"): tools/commit_type.py
+# fails a title that isn't one, a language change under a title other than
+# `feat` or `feat!`, and a title whose release isn't the strongest of the
+# branch's commits, which release-please reads. Its own workflow, so
+# retitling a pull request reruns this check alone.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commit-type-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  commit-type:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: The title's type against what the pull request changes
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          TITLE: ${{ github.event.pull_request.title }}
+        run: python3 tools/commit_type.py --base "$BASE" --head "$HEAD" --title "$TITLE"
