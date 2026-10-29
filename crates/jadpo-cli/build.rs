@@ -178,7 +178,10 @@ fn workspace_manifest(workspace: &str, crates: &[String]) -> String {
         {
             match line.split_once(" = { path = \"crates/") {
                 Some((name, _)) if !crates.iter().any(|carried| carried == name) => {}
-                Some((name, _)) => out.push_str(&format!("\n{name} = {{ path = \"{name}\" }}")),
+                Some(_) => {
+                    out.push('\n');
+                    out.push_str(&line.replacen("path = \"crates/", "path = \"", 1));
+                }
                 None => {
                     out.push('\n');
                     out.push_str(line);
