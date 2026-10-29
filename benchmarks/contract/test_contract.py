@@ -49,13 +49,14 @@ class ContractVerifier(unittest.TestCase):
             self.assertEqual(len(fixture.receipts),1)
         finally:fixture.stop()
     def test_completion_refuses_partial_failed_stale_and_external_runs(self):
-        reports=[{'target':target,'id':identifier,'status':'passed'} for target in ['native','workerd'] for identifier in contract.CASES]
-        complete=lambda rows=reports,targets=['native','workerd'],filtered=False,stale=False,own=True:run.complete_contract(targets,rows,filtered,stale,own)
+        reports=[{'target':target,'id':identifier,'status':'passed'} for target in run.TARGETS for identifier in contract.CASES]
+        complete=lambda rows=reports,targets=run.TARGETS,filtered=False,stale=False,own=True:run.complete_contract(targets,rows,filtered,stale,own)
         self.assertTrue(complete())
         self.assertFalse(complete(reports[:-1]))
         self.assertFalse(complete(reports[:-1]+[reports[0]]))
         self.assertFalse(complete(targets=['native']))
-        self.assertFalse(complete(targets=['native','workerd','native']))
+        self.assertFalse(complete(targets=['native','workerd']))
+        self.assertFalse(complete(targets=[*run.TARGETS,'native']))
         self.assertFalse(complete(filtered=True))
         self.assertFalse(complete(stale=True))
         self.assertFalse(complete(own=False))

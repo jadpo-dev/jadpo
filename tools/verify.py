@@ -432,8 +432,10 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
         checks.append(Step(name, 'compiled', tests=modules(tests), args=[*args, '--show-output'],
                            show=COMPILED_SHOWN, postgres=True, env=dict(TEST_RELEASE_PROFILE)))
         checks.append(Step(RELEASED[0], 'compiled', tests=modules(RELEASED[1])))
-        checks.append(Step('golden todo: all 44 native cases', 'compiled',
-                           [python, 'benchmarks/contract/run.py', '--targets', 'native'], jadpo=True, postgres=True, lane='cargo',
+        # The interpreter and generated native code run the same contract
+        # through one controller binary, built once (chunk 10.1).
+        checks.append(Step('golden todo: all 44 cases interpreted and native', 'compiled',
+                           [python, 'benchmarks/contract/run.py', '--targets', 'interpreted,native'], jadpo=True, postgres=True, lane='cargo',
                            env=dict(TEST_RELEASE_PROFILE), show=True))
         # rust-toolchain.toml lists the target, so rustup installs it with
         # the pinned toolchain. The drivers build with every driver they
