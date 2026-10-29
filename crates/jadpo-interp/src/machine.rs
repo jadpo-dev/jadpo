@@ -29,11 +29,12 @@ use jadpo_graph::body::{
     Arm, ArmBody, BinaryOp, Body, Callee, ConflictArm, Expr, IfArm, LocalId, Node, Pattern,
     RuleArm, Site, SiteId, Stmt, UnaryOp,
 };
-use jadpo_plan::{ArmPattern, CallablePlan, Decoded};
+use jadpo_plan::{ArmPattern, CallablePlan, Decoded, KeySource};
 use jadpo_runtime::calls;
 use jadpo_runtime::effects::{self, Effect, Refused};
 use jadpo_runtime::{Assertion, AssertionDetail, Ctx, Failure, Fault, FaultKind, Frame, Got};
 use jadpo_std::{Kind as ParamKind, Op, RuleKey};
+use jadpo_value::crypto::Key;
 use jadpo_value::{Value, ops};
 
 use crate::drive::called;
@@ -207,9 +208,9 @@ enum Task<'p> {
     PushUnit,
     /// `none`, for an option a standard-library call leaves out.
     PushNone,
-    /// A `crypto` call's `key: config.<name>`: the setting's number, the
-    /// handle the operation finds its key by; the key itself is never a
-    /// value (area 19).
+    /// A `crypto` call's `key: config.<name>`: the key setting's key, as
+    /// the one opaque key value the runtime finds its key ring by (area
+    /// 19, chunk 10.3d); the key itself is never a value code reads.
     PushKey(u32),
     /// `translations.<domain>.<message>(locale:, ...)` (area 10): the
     /// locale and the message's fields on the stack, in the entry's
@@ -1052,7 +1053,7 @@ impl<'p> Machine<'p> {
             }
             Task::PushUnit => self.values.push(Value::Unit),
             Task::PushNone => self.values.push(Value::None),
-            Task::PushKey(setting) => self.values.push(Value::Int(i64::from(setting))),
+            Task::PushKey(setting) => self.values.push(Value::Key(Key::Setting(setting))),
             // A translation, a value an email's HTML template writes out
             // and a prompt rendered, through the runtime's entry points,
             // which compiled code calls too (chunk 8.1i).
@@ -1171,7 +1172,9 @@ impl<'p> Machine<'p> {
             Task::Field(at) => {
                 let receiver = self.pop();
                 let name = match self.decoded(at) {
-                    Some(Decoded::Field { name }) => name.as_str(),
+                    Some(
+                        Decoded::Field { name } | Decoded::Key(Some(KeySource::Field { name })),
+                    ) => name.as_str(),
                     _ => "",
                 };
                 let found = match &receiver {
@@ -2695,21 +2698,22 @@ impl<'p> Machine<'p> {
                 work.push(Task::Defect("an operation without one of its values", id));
                 break;
             };
-            // A key is given by its setting, never read as a value.
+            // A key comes from where the plan says (chunk 10.3d): its
+            // setting's, never read as a value, or the field that holds it.
             if matches!(param.kind, ParamKind::Builtin(builtin) if builtin.is_key()) {
-                match (self.site(*arg).map(|site| &site.node), self.decoded(*arg)) {
-                    (
-                        Some(Node::Expr(Expr::Config { .. })),
-                        Some(Decoded::Config(Some(setting))),
-                    ) => {
+                match self.decoded(*arg) {
+                    Some(Decoded::Key(Some(KeySource::Setting(setting)))) => {
                         work.push(Task::PushKey(*setting));
-                        count += 1;
+                    }
+                    Some(Decoded::Key(Some(KeySource::Field { .. }))) => {
+                        work.push(Task::Expr(*arg));
                     }
                     _ => {
-                        work.push(Task::Defect("a key that isn't read from its setting", id));
+                        work.push(Task::Defect("a key the plan gave no source", id));
                         break;
                     }
                 }
+                count += 1;
                 continue;
             }
             if param.kind == ParamKind::Function {

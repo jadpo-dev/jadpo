@@ -34,7 +34,7 @@ use jadpo_std::http::EventJson;
 use jadpo_std::subscriber::EventsPlan;
 use jadpo_std::{Kind, Op, RuleKey};
 use jadpo_value::Value;
-use jadpo_value::crypto::KeyRing;
+use jadpo_value::crypto::{Key, KeyRing};
 use jadpo_value::json::{Problem, Unread};
 
 use crate::capability::{Answer, Call, Repeat};
@@ -89,6 +89,12 @@ impl Keys {
                 .map(|at| crate::config::key_ring(plan, values, at as u32))
                 .collect(),
         )
+    }
+
+    /// The keys `rings` hold, by setting number, for a test.
+    #[cfg(test)]
+    pub(crate) fn of(rings: Vec<Option<KeyRing>>) -> Keys {
+        Keys(rings)
     }
 
     /// The key setting number `at` holds; `None` for one that isn't a key
@@ -429,10 +435,11 @@ fn json(
 }
 
 /// A `crypto` operation (area 19, "Hashing and cryptography"), in
-/// `jadpo-value`'s `crypto` module: given the key ring its `key:` names by
-/// the setting's number, never the key as a value, and the invocation's
-/// random bytes for a nonce or a salt. `decrypt`'s `unreadable` is for its
-/// `attempt` to map.
+/// `jadpo-value`'s `crypto` module: given the key ring the [`Key`] its
+/// `key:` holds stands for (chunk 10.3d), a key setting's as the program
+/// started with it or a key held as data, never the key as a value code
+/// reads, and the invocation's random bytes for a nonce or a salt.
+/// `decrypt`'s `unreadable` is for its `attempt` to map.
 fn crypto(
     ctx: &mut Ctx<'_>,
     effects: &Effects<'_>,
@@ -450,24 +457,22 @@ fn crypto(
     let started = ctx.started();
     let keys = match key_at.map(|place| values.get(place)) {
         None => None,
-        Some(Some(Value::Int(setting))) => {
-            let setting = u32::try_from(*setting).unwrap_or(u32::MAX);
-            match started.keys().get(setting) {
-                Some(keys) => Some(keys),
-                None => {
-                    let name = effects
-                        .config
-                        .fields
-                        .get(setting as usize)
-                        .map(|field| field.name.as_str())
-                        .unwrap_or_default();
-                    return Err(Refused::Defect(format!(
-                        "the key `config.{name}` has no value in this run"
-                    )));
-                }
+        Some(Some(Value::Key(Key::Setting(setting)))) => match started.keys().get(*setting) {
+            Some(keys) => Some(keys),
+            None => {
+                let name = effects
+                    .config
+                    .fields
+                    .get(*setting as usize)
+                    .map(|field| field.name.as_str())
+                    .unwrap_or_default();
+                return Err(Refused::Defect(format!(
+                    "the key `config.{name}` has no value in this run"
+                )));
             }
-        }
-        Some(_) => return Err(defect("a key that isn't read from its setting")),
+        },
+        Some(Some(Value::Key(Key::Held(keys)))) => Some(keys.as_ref()),
+        Some(_) => return Err(defect("a key that isn't a key")),
     };
     // `verify_jwt` checks a token's times against the invocation's clock,
     // as `clock.now` reads it (area 19, chunk 5.5r).
@@ -571,6 +576,107 @@ fn mismatch_written(problem: &Problem) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The draft-irtf-cfrg-xchacha key, 80 81 ... 9f, as a setting holds
+    /// it and as its bytes.
+    const KEY_TEXT: &str = "gIGCg4SFhoeIiYqLjI2Oj5CRkpOUlZaXmJmam5ydnp8";
+
+    fn key_bytes() -> Vec<u8> {
+        (0x80u8..=0x9f).collect()
+    }
+
+    /// `op` run on `values` in a context whose program started with
+    /// `KEY_TEXT` as key setting number 1, and none at 0.
+    fn crypto_run(op: Op, values: &[Value]) -> Result<Value, Refused> {
+        let places = crate::Places::new();
+        let host = crate::MemoryHost::new();
+        let mut ctx = Ctx::new(
+            &places,
+            &host,
+            crate::Env {
+                seed: Some(7),
+                clock: crate::Clock::TEST,
+            },
+        );
+        let ring = KeyRing::from_key_text(KEY_TEXT, None).expect("a key");
+        ctx.start(Rc::new(crate::Started::with_keys(Keys::of(vec![
+            None,
+            Some(ring),
+        ]))));
+        let config = ConfigPlan::default();
+        let effects = Effects {
+            json: crate::JsonCodecs::NONE,
+            event_numbers: &[],
+            events: &EventsPlan::default(),
+            config: &config,
+        };
+        run(&mut ctx, &effects, Effect::Std { op, json: None }, values)
+    }
+
+    fn seal(key: Key) -> Value {
+        crypto_run(
+            Op::CryptoEncrypt,
+            &[
+                Value::text("a note"),
+                Value::Key(key),
+                Value::text("note-1"),
+            ],
+        )
+        .expect("sealed")
+    }
+
+    fn open(sealed: Value, key: Key) -> Result<Value, Refused> {
+        crypto_run(
+            Op::CryptoDecrypt,
+            &[sealed, Value::Key(key), Value::text("note-1")],
+        )
+    }
+
+    #[test]
+    fn a_key_held_as_data_and_a_setting_s_key_seal_alike() {
+        let opened = Value::Bytes(Rc::from(&b"a note"[..]));
+        let by_setting = seal(Key::Setting(1));
+        let held = seal(Key::held(&key_bytes()));
+        assert_eq!(open(held, Key::Setting(1)), Ok(opened.clone()));
+        assert_eq!(
+            open(by_setting.clone(), Key::held(&key_bytes())),
+            Ok(opened)
+        );
+        assert!(matches!(
+            open(by_setting, Key::held(&[0u8; 32])),
+            Err(Refused::Broke {
+                rule: RuleKey::Unreadable,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn no_number_stands_for_a_key() {
+        for key in [Value::Int(1), Value::text(KEY_TEXT)] {
+            assert_eq!(
+                crypto_run(Op::CryptoHmac, &[Value::text("body"), key]),
+                Err(Refused::Defect("a key that isn't a key".to_string()))
+            );
+        }
+        assert_eq!(
+            crypto_run(
+                Op::CryptoHmac,
+                &[Value::text("body"), Value::Key(Key::Setting(0))]
+            ),
+            Err(Refused::Defect(
+                "the key `config.` has no value in this run".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn a_key_prints_as_nothing_of_itself() {
+        for key in [Key::Setting(1), Key::held(&key_bytes())] {
+            assert_eq!(Value::Key(key.clone()).to_string(), "<key>");
+            assert_eq!(Value::Key(key).described(), "a key");
+        }
+    }
 
     #[test]
     fn the_effects_are_json_crypto_with_a_key_and_random() {

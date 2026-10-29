@@ -864,13 +864,34 @@ none of it. The effect is named, never told by its source text:
 for the standard operations `effects::is_effect` names, which
 `jadpo_value::run` refuses: `random`'s, from the invocation's random
 bytes, kept on a recording's tape; `crypto`'s but `read_certificate`,
-given the key ring its `key:` names (`effects::Keys`, read from the
-settings), its random bytes (secret for an encryption's nonce) and, for
-`verify_jwt`, its clock; and `json.read`, `json.write` and `verify_jwt`'s
+given the key ring its `key:` stands for, its random bytes (secret for
+an encryption's nonce) and, for `verify_jwt`, its clock; and `json.read`, `json.write` and `verify_jwt`'s
 `as:` claims, through the codec the plan numbers for their site (`json`);
 and `Effect::Emit { event }`, whose payload is written as its type's
 contract JSON and kept, with its subscribers, in the running action's
-outbox. What they need of the program comes as `Effects` (the plan's JSON
+outbox.
+
+**A key as a value.** A `crypto` call's key reaches the runtime as one
+opaque value, `Value::Key(jadpo_value::crypto::Key)`, the only value
+that stands for a key; no number or text does. Where it comes from the
+plan decides once, on the `key:` argument's site
+(`Decoded::Key(Option<KeySource>)`): `KeySource::Setting(n)` for `key:
+config.<name>`, which each executor passes as `Key::Setting(n)` without
+reading the setting, and `KeySource::Field { name }` for a field whose
+type is a key type, which each executor reads as it reads any field,
+the field holding a `Key::Held`. `None` (anything else, which the
+checker refuses as `type.mismatch`) is a defect at the call.
+`effects::crypto` builds the operation's key ring from either: a
+setting's from the keys the program started with (`effects::Keys`, read
+from the settings, with its `_PREVIOUS`), a held key's from its own
+bytes, with no previous key, since a key held as data rotates by being
+replaced; any other value in the key's place is a defect. A key prints
+as `<key>`, has no storage or JSON form, and orders after every other
+kind (a setting's by number, then held keys in constant time), so the
+canonical order stays total although code never compares one. Nothing
+yet makes a held key: keys in encrypted fields come with personal data
+(the roadmap's "After the first build", item 3), which decrypts a
+field of a key type into one on load. What they need of the program comes as `Effects` (the plan's JSON
 table with the program's validators and shapes, the events' numbers and
 subscribers, and the settings), which the interpreter builds from its plan
 and compiled code holds as statics, and the keys as the program
