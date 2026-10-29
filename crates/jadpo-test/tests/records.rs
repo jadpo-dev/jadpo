@@ -488,3 +488,71 @@ fn the_corpus_run_twice_gives_the_same_records() {
         "the corpus's tests were compared: {compared}"
     );
 }
+
+/// The ways a body, a loop's turns and an inline function's runs went.
+const GRADED: &str = "type Count = Int {}\n\n/// A count's grade, the same either way past ten.\nfunction graded(count: Count) -> Count {\n    var mut grade: Count = 0\n    if (count > 10) {\n        grade = 1\n    } else {\n        grade = 1\n    }\n    for step in [1, 2, 3] {\n        if (step > 1) {\n            grade = Count(grade + step)\n        }\n    }\n    return Count(list.sum(list.map([count], each -> match each > 2 {\n        true -> Count(grade)\n        false -> Count(0)\n    })))\n}\n";
+
+/// Each body's paths are in its record: the body's own, each loop's turns
+/// and each inline function's runs, by the path each took and how many
+/// times (chunk 9.3).
+#[test]
+fn the_paths_each_body_took_are_in_its_record() {
+    let folder = written(
+        "paths",
+        &[
+            ("main.jadpo", GRADED),
+            (
+                "main.test.jadpo",
+                "test \"a count is graded\" {\n    assert graded(12) == 6\n}\n",
+            ),
+        ],
+    );
+    let run = recorded(&folder.0).expect("it runs");
+    let record = run.results[0].record.as_ref().expect("a record");
+    let paths: Vec<&str> = record
+        .lines()
+        .iter()
+        .filter(|line| line.starts_with("path "))
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        paths,
+        [
+            "path main.jadpo:4  function graded body | 1×1",
+            "path main.jadpo:11  function graded turn | 0×1, 1×2",
+            "path main.jadpo:16  function graded turn | 0×1",
+            "path main.test.jadpo:1  test \"a count is graded\" body | 0×1",
+        ],
+        "{:#?}",
+        record.lines()
+    );
+}
+
+/// A branch taken the other way, the outcome the same, shows in the record
+/// as the body and path that differ.
+#[test]
+fn a_branch_taken_another_way_is_named_by_its_body_and_path() {
+    let folder = written(
+        "paths-differ",
+        &[
+            ("main.jadpo", GRADED),
+            (
+                "main.test.jadpo",
+                "test \"a count is graded\" {\n    assert graded(12) == 6\n}\n",
+            ),
+        ],
+    );
+    let difference = changed(&folder, |root| {
+        perturb(&root.join("main.jadpo"), "count > 10", "count > 20");
+    });
+    assert_eq!(
+        difference.first.as_deref(),
+        Some("path main.jadpo:4  function graded body | 1×1"),
+        "{difference}"
+    );
+    assert_eq!(
+        difference.second.as_deref(),
+        Some("path main.jadpo:4  function graded body | 0×1"),
+        "{difference}"
+    );
+}
