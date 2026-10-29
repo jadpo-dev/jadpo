@@ -335,13 +335,7 @@ compiled.
   `Answered`; and a route test gives the same spans interpreted, native
   and on workerd.
 - [x] **10.3d A key as a value**: [compiler-runtime](compiler-runtime.md) §2.5, "A key as a value"; area 19, "Hashing and cryptography".
-- [ ] **10.3e Loading a project from files in memory** `opus · high`,
-  before item 6: `jadpo_db::load` mixes finding files on disk with the
-  rules that classify them (records, sources, package resources,
-  identities, links), so a base commit read from git couldn't be loaded
-  by the same rules. Done when loading is reading `(path, text)` pairs
-  plus one pure function over them holding every rule, and a project
-  loaded from an in-memory file set gives the same graph as from disk.
+- [x] **10.3e Loading a project from files in memory**: compiler/runtime §2.2, "Loading".
 - [x] **10.3f Where a connection's credential comes from**: compiler/runtime §2.6, "Where a connection's credential comes from"; [area 11](language/11-integrations.md), "How provider calls are made".
 - [ ] **10.3g The graph's nodes for areas 8, 10, 11 and 12**
   `opus · xhigh`, before item 6: connections, packages, operations,
