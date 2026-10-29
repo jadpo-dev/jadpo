@@ -17,8 +17,8 @@
 //!   finds with the full set, and writes the same text; and the root's,
 //!   with none declared. Collation is kept the same way, since
 //!   `list.sort_by` in a locale the app doesn't support orders by one it
-//!   does (chunk 8.4i), and sorting by a locale at all needs `locales { }`
-//!   (Richard, 2026-10-22). Case mapping takes any `Locale` (area 19,
+//!   does (chunk 8.4i), and sorting by a locale at all needs `locales { }`.
+//!   Case mapping takes any `Locale` (area 19,
 //!   "Text"), and its data is one table;
 //! - every marker with one entry for all locales in full (Unicode's
 //!   properties, normalisation, likely subtags, the fallback's parents).
@@ -367,7 +367,7 @@ mod tests {
 
     #[test]
     fn with_no_locales_only_the_roots_collation_is_kept() {
-        // Sorting by a locale needs `locales { }` (Richard, 2026-10-22), so
+        // Sorting by a locale needs `locales { }`, so
         // an app with none keeps no locale's collation but the root's.
         let tailoring = CollationTailoringV1::INFO;
         let kept_for_none = kept(&[], tailoring);

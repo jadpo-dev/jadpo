@@ -1,5 +1,0 @@
-/// The hosted template accepts the same bounded title.
-public type ReminderTitle = Text {
-    min_length: 1
-    max_length: 200
-}

@@ -8,6 +8,7 @@ mod syntax_examples;
 
 mod call_sites;
 mod deployable;
+mod keys;
 mod plan;
 mod runtime_plan;
 mod sql;

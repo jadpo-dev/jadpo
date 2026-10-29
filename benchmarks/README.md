@@ -9,6 +9,7 @@ never a timed run.
 | --- | --- |
 | [`golden-todo/`](golden-todo/README.md) | The golden todo: an ordinary Jadpo application, its contract cases (`acceptance*.json`), the adversarial changes, the expected audit and the contract's reviews. |
 | [`golden-todo/typescript/`](golden-todo/typescript/README.md) | Its TypeScript twin, the baseline every comparison and chunk 10.2's agent comparison measure against, with the adapter that runs the same contract on it. |
+| [`agent-changes/`](agent-changes/README.md) | Chunk 10.2's experiment: fresh agent sessions make the same changes to the golden todo in Jadpo and in TypeScript, scored by hidden tests. |
 | [`contract/`](contract/run.py) | Runs the golden todo's contract cases against its native and compiled workerd builds; `native/` and `workers/` are the hosts they run in. |
 | [`harness/`](harness/run.py) | The benchmark harnesses below, their result checks and the tests of those checks. |
 | [`fixtures/`](fixtures/) | The small Jadpo applications the focused harnesses build: `todo`, `deliveries` and `connected-deliveries`. |

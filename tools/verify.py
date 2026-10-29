@@ -339,6 +339,7 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
              postgres=full, env=no_postgres, show='skipped:'),
         Step('focused TypeScript baseline types and Unicode contracts', 'lint', [python, 'benchmarks/harness/check_typescript.py']),
         Step('benchmark verifier contracts', 'lint', [python, '-m', 'unittest', 'discover', '-s', 'benchmarks/harness', '-p', 'test_*.py']),
+        Step('agent-changes harness controls', 'lint', [python, '-m', 'unittest', 'discover', '-s', 'benchmarks/agent-changes', '-p', 'test_*.py']),
         Step('benchmark trusted proxy controls', 'lint', ['node', '--test', 'benchmarks/harness/golden_proxy.test.mjs']),
         Step('benchmark load correctness', 'lint', ['cargo', 'test', '--locked', '--manifest-path', 'benchmarks/load/Cargo.toml', '--bin', 'load', '--test', 'protocol'], lane='cargo'),
         Step('benchmark load formatting', 'lint', ['rustfmt', '--edition', '2024', '--check', 'benchmarks/load/src/bin/load.rs', 'benchmarks/load/tests/protocol.rs'], lane='cargo'),

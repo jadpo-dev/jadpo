@@ -11,4 +11,6 @@ install-updater = false
 create-release = false
 dispatch-releases = true
 pr-run-mode = "plan"
+# Dependabot keeps the generated release workflow's actions current.
+allow-dirty = ["ci"]
 publish-jobs = []
