@@ -198,7 +198,7 @@ POSTGRES = [
     # Vectors in pgvector: stored and read back unchanged, `ai.distance`
     # against pgvector's own operators, and a store without the
     # extension refused (area 21, chunk 5.5v1). The server needs
-    # pgvector: CI's image has it (tools/postgres/Dockerfile).
+    # pgvector: CI's image has it (tools/fixtures/postgres/Dockerfile).
     ('live PostgreSQL: vectors', [('jadpo-cli', 'vectors')], []),
     # Geometries in PostGIS: every geometry stored and read back
     # unchanged, each column's check, and a store without PostGIS, or a
@@ -206,7 +206,7 @@ POSTGRES = [
     # `geo.` condition and the order by distance giving the code's
     # answer through its index (chunk 5.5u5); a query's map layer
     # fetched from a `GET` route as GeoJSON (chunk 5.5u8). The server
-    # needs PostGIS: CI's image has it (tools/postgres/Dockerfile).
+    # needs PostGIS: CI's image has it (tools/fixtures/postgres/Dockerfile).
     ('live PostgreSQL: geography',
      [('jadpo-cli', 'geography'), ('jadpo-cli', 'geo_queries'), ('jadpo-cli', 'geo_layers')], []),
 ]
@@ -230,7 +230,7 @@ COMPILED = ('compiled code: the corpus interpreted and compiled with the same re
 # Route tests on workerd (chunk 8.2e): area 7's todos and teaching example
 # 23 built for wasm32 as a test Worker, in target/jadpo-compiled/workerd/,
 # and each route test run inside it with the interpreter's records, workerd
-# installed into tools/workers/ the first time.
+# installed into tools/fixtures/workers/ the first time.
 ROUTES_ON_WORKERD = ('route tests on workerd with the interpreter\'s records',
                      [('jadpo-cli', 'compiled::route_tests_on_workerd_give_the_interpreters_records')])
 COMPILED_SHOWN = ('compared ', 'teaching examples:', 'skipped:')
@@ -247,7 +247,7 @@ TEST_RELEASE_PROFILE = {'CARGO_PROFILE_RELEASE_LTO': 'false', 'CARGO_PROFILE_REL
 # machine (docs/compiler-runtime.md §2.6, "The Workers host"; chunk 8.2a):
 # the probe Worker built for wasm32 by the test itself (so the step takes
 # cargo's lane), bound by wasm-bindgen's library, and run by the workerd
-# pinned in tools/workers/, which the test installs there with `npm ci` the
+# pinned in tools/fixtures/workers/, which the test installs there with `npm ci` the
 # first time, against servers it starts; since chunk 8.2j its six
 # connections an invocation and `max_concurrent:`'s slots across an
 # isolate's invocations too (tests/connections.rs). The `wasm32` group;
@@ -268,7 +268,7 @@ WORKERD = ('the Workers host under workerd', [('jadpo-host-workers', 'workerd'),
 # consuming Cloudflare Queues (workers/queues.rs), its Wrangler file checked
 # by the pinned Wrangler's `deploy --dry-run` with the network refused. The
 # `wasm32` group, in cargo's lane beside the step above, since both install
-# workerd into tools/workers/ the first time; it prints the module's size.
+# workerd into tools/fixtures/workers/ the first time; it prints the module's size.
 WORKERS_DEPLOYABLE = ('a Workers deployable built and served by workerd', [('jadpo-cli', 'workers')])
 # A released `jadpo` builds outside this checkout (chunk 9.2c): the built
 # binary copied out and run with no Rust on PATH and an empty home and
@@ -327,42 +327,42 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
         # per rule and every link, and builds the docs bundle into
         # build/docs-bundle/, which CI keeps on main (docs/documentation.md).
         Step('language specification and jadpo test over the spec corpus', 'docs',
-             [python, 'tools/language_docs.py', '--check', '--export-corpus', '--bundle', 'build/docs-bundle'], jadpo=True,
+             [python, 'tools/docs/language_docs.py', '--check', '--export-corpus', '--bundle', 'build/docs-bundle'], jadpo=True,
              postgres=full, env=no_postgres, show='skipped:'),
         # Every teaching example in examples/ checks with no diagnostics,
         # is formatted, passes its own tests under `jadpo test`, has its
         # README, and is exported beside the pages' projects
         # (docs/compiler-runtime.md §2.7).
         Step('teaching examples: check, format and jadpo test', 'docs',
-             [python, 'tools/examples.py', '--export-corpus'], jadpo=True,
+             [python, 'tools/docs/examples.py', '--export-corpus'], jadpo=True,
              postgres=full, env=no_postgres, show='skipped:'),
-        Step('focused TypeScript baseline types and Unicode contracts', 'lint', [python, 'tools/bench/check_typescript.py']),
-        Step('benchmark verifier contracts', 'lint', [python, '-m', 'unittest', 'discover', '-s', 'tools/bench', '-p', 'test_*.py']),
-        Step('benchmark trusted proxy controls', 'lint', ['node', '--test', 'tools/bench/golden_proxy.test.mjs']),
-        Step('benchmark load correctness', 'lint', ['cargo', 'test', '--locked', '--manifest-path', 'tools/bench/load/Cargo.toml', '--bin', 'load', '--test', 'protocol'], lane='cargo'),
-        Step('benchmark load formatting', 'lint', ['rustfmt', '--edition', '2024', '--check', 'tools/bench/load/src/bin/load.rs', 'tools/bench/load/tests/protocol.rs'], lane='cargo'),
-        Step('focused benchmark fixture', 'docs', [python, 'tools/bench/check_fixture.py'], jadpo=True),
-        Step('example names', 'lint', [python, 'tools/example_names.py', '--check']),
-        Step('golden contract verifier controls', 'lint', [python, 'tools/golden-todo/test_contract.py']),
-        Step('golden shared database connection controls', 'lint', [python, 'tools/golden-todo/test_postgres.py']),
+        Step('focused TypeScript baseline types and Unicode contracts', 'lint', [python, 'benchmarks/harness/check_typescript.py']),
+        Step('benchmark verifier contracts', 'lint', [python, '-m', 'unittest', 'discover', '-s', 'benchmarks/harness', '-p', 'test_*.py']),
+        Step('benchmark trusted proxy controls', 'lint', ['node', '--test', 'benchmarks/harness/golden_proxy.test.mjs']),
+        Step('benchmark load correctness', 'lint', ['cargo', 'test', '--locked', '--manifest-path', 'benchmarks/load/Cargo.toml', '--bin', 'load', '--test', 'protocol'], lane='cargo'),
+        Step('benchmark load formatting', 'lint', ['rustfmt', '--edition', '2024', '--check', 'benchmarks/load/src/bin/load.rs', 'benchmarks/load/tests/protocol.rs'], lane='cargo'),
+        Step('focused benchmark fixture', 'docs', [python, 'benchmarks/harness/check_fixture.py'], jadpo=True),
+        Step('example names', 'lint', [python, 'tools/checks/example_names.py', '--check']),
+        Step('golden contract verifier controls', 'lint', [python, 'benchmarks/contract/test_contract.py']),
+        Step('golden shared database connection controls', 'lint', [python, 'benchmarks/contract/test_postgres.py']),
         # The docs renderer finishes every page, and its list parser's
-        # cases, each under a time limit (tools/language_docs_test.py).
-        Step('docs renderer', 'lint', [python, 'tools/language_docs_test.py']),
+        # cases, each under a time limit (tools/docs/language_docs_test.py).
+        Step('docs renderer', 'lint', [python, 'tools/docs/language_docs_test.py']),
         # A pull request's Conventional Commit type against what it changes
         # (docs/documentation.md, "Versions and releases"), and the
         # catalogue that check reads from the source agreeing with
         # `jadpo help --json`.
-        Step('commit type check', 'lint', [python, 'tools/commit_type_test.py']),
+        Step('commit type check', 'lint', [python, 'tools/checks/commit_type_test.py']),
         Step('commit type check reads the catalogue jadpo lists', 'docs',
-             [python, 'tools/commit_type.py', '--catalogue'], jadpo=True),
+             [python, 'tools/checks/commit_type.py', '--catalogue'], jadpo=True),
         # The maths on `Decimal`'s reference values are what their
         # generator writes (area 19, chunk 5.5e).
         Step('Decimal maths reference values in step with their generator', 'lint',
-             [python, 'tools/decimal_maths_reference.py', '--check']),
+             [python, 'tools/references/decimal_maths_reference.py', '--check']),
         # The VS Code extension's highlighting names every word the lexer
         # reserves and no other (editors/vscode; needs no Node).
         Step('editor grammar in step with the lexer', 'lint',
-             [python, 'tools/editor_grammar.py', '--check']),
+             [python, 'tools/checks/editor_grammar.py', '--check']),
     ]
     latency_test = 'a_save_shows_the_tests_it_reaches_within_the_target'
     own_steps = [
@@ -414,13 +414,13 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
     # and renamed.
     if full:
         checks.append(Step('warm delivery services: reuse, fresh ticks and durable failure controls', 'tests',
-                           [python, 'tools/bench/delivery_services.py'], postgres=True, alone=True))
+                           [python, 'benchmarks/harness/delivery_services.py'], postgres=True, alone=True))
         # One wrapper owns npm installation and the whole TS pipeline under an
         # OS lock; the raw-HTTP Node/Bun controllers use this run's PostgreSQL.
         # Real deadline controls and cold type-aware lint checks need the same
         # isolation from builders as watch latency, without relaxing deadlines.
         checks.append(Step('TypeScript golden todo: static, integration and shared conformance', 'tests',
-                           [python, 'examples/golden-todo/typescript/adapter/verify.py'], postgres=True, alone=True))
+                           [python, 'benchmarks/golden-todo/typescript/adapter/verify.py'], postgres=True, alone=True))
         # Each prints its `skipped:` lines (a server too old for a test, on
         # a developer's machine), which libtest otherwise keeps to itself.
         checks += [Step(name, 'tests', tests=modules(tests),
@@ -432,7 +432,7 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
                            show=COMPILED_SHOWN, postgres=True, env=dict(TEST_RELEASE_PROFILE)))
         checks.append(Step(RELEASED[0], 'compiled', tests=modules(RELEASED[1])))
         checks.append(Step('golden todo: all 44 native cases', 'compiled',
-                           [python, 'tools/golden-todo/run.py', '--targets', 'native'], jadpo=True, postgres=True, lane='cargo',
+                           [python, 'benchmarks/contract/run.py', '--targets', 'native'], jadpo=True, postgres=True, lane='cargo',
                            env=dict(TEST_RELEASE_PROFILE), show=True))
         # rust-toolchain.toml lists the target, so rustup installs it with
         # the pinned toolchain. The drivers build with every driver they
@@ -446,12 +446,12 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
         # feature, its symbols naming none of the fakes, recordings or crash
         # points.
         checks.append(Step('a deployable built without testing', 'tests',
-                           [python, 'tools/deployable.py'], lane='cargo'))
+                           [python, 'tools/checks/deployable.py'], lane='cargo'))
         checks.append(Step('golden todo: all 44 workerd cases', 'wasm32',
-                           [python, 'tools/golden-todo/run.py', '--targets', 'workerd'],
+                           [python, 'benchmarks/contract/run.py', '--targets', 'workerd'],
                            jadpo=True, postgres=True, lane='cargo', env=dict(TEST_RELEASE_PROFILE), show=True))
         checks.append(Step('benchmark workerd trusted ingress controls', 'wasm32',
-                           [python, 'tools/bench/check_transport.py'], lane='cargo'))
+                           [python, 'benchmarks/harness/check_transport.py'], lane='cargo'))
         checks.append(Step('shared and runtime crates for wasm32', 'wasm32',
                            ['cargo', 'build', '--locked', '--target', WASM, *packages, *features],
                            lane='cargo'))
@@ -463,7 +463,7 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
                  ['cargo', 'build', '--locked', '--target', WASM, '-p', 'jadpo-value',
                   '--example', 'decimal_maths'], lane='cargo'),
             Step('Decimal maths gives the reference digits under wasm32', 'wasm32',
-                 ['node', 'tools/run_wasm.mjs',
+                 ['node', 'tools/checks/run_wasm.mjs',
                   str(target_dir() / WASM / 'debug/examples/decimal_maths.wasm')], lane='cargo'),
             # SHA-256, the encodings and `json.write`'s text (area 19,
             # chunk 5.5g): the same fixed answers the native test checks,
@@ -472,7 +472,7 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
                  ['cargo', 'build', '--locked', '--target', WASM, '-p', 'jadpo-value',
                   '--example', 'formats'], lane='cargo'),
             Step('hashing, encodings and JSON give the fixed answers under wasm32', 'wasm32',
-                 ['node', 'tools/run_wasm.mjs',
+                 ['node', 'tools/checks/run_wasm.mjs',
                   str(target_dir() / WASM / 'debug/examples/formats.wasm')], lane='cargo'),
             # The geodesic measures (area 20, chunk 5.5u2): GeographicLib's
             # test sample and the digest of every answer, as natively; and
@@ -482,7 +482,7 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
                  ['cargo', 'build', '--locked', '--target', WASM, '-p', 'jadpo-value',
                   '--example', 'geodesics'], lane='cargo'),
             Step('geodesic measures give the native digits under wasm32', 'wasm32',
-                 ['node', 'tools/run_wasm.mjs',
+                 ['node', 'tools/checks/run_wasm.mjs',
                   str(target_dir() / WASM / 'debug/examples/geodesics.wasm')], lane='cargo'),
             Step(WORKERD[0], 'wasm32', tests=modules(WORKERD[1]), lane='cargo'),
             Step(WORKERS_DEPLOYABLE[0], 'wasm32', tests=modules(WORKERS_DEPLOYABLE[1]), lane='cargo',

@@ -313,7 +313,7 @@ fn runtime_crates_deny_panics() {
 /// on a `testing` feature by default or in what it depends on, outside
 /// its own tests, so only a tool that asks for it (`jadpo test`, `jadpo
 /// dev`) builds the fakes, recordings and crash points in.
-/// `tools/deployable.py` builds a deployable and reads its symbols.
+/// `tools/checks/deployable.py` builds a deployable and reads its symbols.
 #[test]
 fn no_runtime_crate_turns_on_testing() {
     let workspace = read();

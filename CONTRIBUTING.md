@@ -44,7 +44,7 @@ To render the language specification as web pages into
 `build/language-site/`:
 
 ```sh
-python3 tools/language_docs.py
+python3 tools/docs/language_docs.py
 ```
 
 ## Changes

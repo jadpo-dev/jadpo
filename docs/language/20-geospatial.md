@@ -879,7 +879,7 @@ function of a field otherwise stays refused.
   times its error, is far past what it can miss, and close enough that it
   rarely finds a row the code turns down. Verified: the four cases are
   each within the margin (`ST_DWithin` true where `ST_Covers` is false),
-  and every case of `tools/geo_cases.py`, run as a query against every
+  and every case of `tools/references/geo_cases.py`, run as a query against every
   case's shape at once, gives the code's answer on PostGIS 3.4.2
   (Postgres.app) and on CI's 3.6.4.
 - **A box is two envelopes.** The box filter searches the point cast to
@@ -1162,7 +1162,7 @@ Beyond the page's examples, `jadpo-cli`'s `geo_queries` test runs these
 queries over two thousand bakeries and three hundred patches, each
 giving the code's answer through its index (`EXPLAIN`), with boxes
 across and onto the antimeridian and round the pole, the recheck asking
-again, ties by `id`, and every case of `tools/geo_cases.py` as a query.
+again, ties by `id`, and every case of `tools/references/geo_cases.py` as a query.
 
 ## Precision and determinism
 <!-- topic: precision-and-determinism -->
@@ -1217,7 +1217,7 @@ again, ties by `id`, and every case of `tools/geo_cases.py` as a query.
 - **Checked against Karney's test set.** C. F. F. Karney's "Test set for
   geodesics" (2010, doi:10.5281/zenodo.32156, Creative Commons Zero),
   GeographicLib's `GeodTest-short.dat`, is 10,000 geodesics in nine
-  groups. `tools/geodtest_sample.py` writes every 20th line, 500 of them,
+  groups. `tools/references/geodtest_sample.py` writes every 20th line, 500 of them,
   with its group and line number, to
   `crates/jadpo-value/examples/geodesics/reference.tsv`, checking the
   file's SHA-256, and `--check` holds the sample to it; the full file
@@ -1261,7 +1261,7 @@ again, ties by `id`, and every case of `tools/geo_cases.py` as a query.
   whether a point is inside a ring is the inside known at a corner from
   the angle there, flipped by each edge the path from that corner to the
   point crosses. No float decides anything.
-- **Checked against PostGIS.** `tools/geo_cases.py` writes 169 cases,
+- **Checked against PostGIS.** `tools/references/geo_cases.py` writes 169 cases,
   every operation, with PostGIS 3.4.2's answers on PostgreSQL 16.3, to
   `crates/jadpo-value/examples/geodesics/shapes.tsv`: small, continental
   and pole-holding polygons, polygons across the antimeridian and the

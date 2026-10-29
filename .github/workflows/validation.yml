@@ -66,13 +66,13 @@ jobs:
         with:
           persist-credentials: false
       # PostgreSQL 16 with pgvector and PostGIS, built from
-      # tools/postgres/Dockerfile (chunk 5.5v1), with durability off, as the
+      # tools/fixtures/postgres/Dockerfile (chunk 5.5v1), with durability off, as the
       # disposable servers local runs start have it (docs/compiler-runtime.md
       # §2.7); a service container can't be built or given the settings. It
       # builds and starts in the background while the toolchain installs.
       - name: Start PostgreSQL
         run: |
-          (docker build --quiet --tag jadpo-postgres tools/postgres &&
+          (docker build --quiet --tag jadpo-postgres tools/fixtures/postgres &&
             docker run --detach --name postgres --publish 5432:5432 \
               --env POSTGRES_USER=jadpo --env POSTGRES_PASSWORD=jadpo --env POSTGRES_DB=postgres \
               jadpo-postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off \
@@ -122,13 +122,13 @@ jobs:
         with:
           persist-credentials: false
       # PostgreSQL 16 with pgvector and PostGIS, built from
-      # tools/postgres/Dockerfile (chunk 5.5v1), with durability off, as the
+      # tools/fixtures/postgres/Dockerfile (chunk 5.5v1), with durability off, as the
       # disposable servers local runs start have it (docs/compiler-runtime.md
       # §2.7); a service container can't be built or given the settings. It
       # builds and starts in the background while the toolchain installs.
       - name: Start PostgreSQL
         run: |
-          (docker build --quiet --tag jadpo-postgres tools/postgres &&
+          (docker build --quiet --tag jadpo-postgres tools/fixtures/postgres &&
             docker run --detach --name postgres --publish 5432:5432 \
               --env POSTGRES_USER=jadpo --env POSTGRES_PASSWORD=jadpo --env POSTGRES_DB=postgres \
               jadpo-postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off \
@@ -156,13 +156,13 @@ jobs:
       - name: Install the declared TypeScript runtimes
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: examples/golden-todo/typescript/.node-version
+          node-version-file: benchmarks/golden-todo/typescript/.node-version
           cache: npm
-          cache-dependency-path: examples/golden-todo/typescript/package-lock.json
+          cache-dependency-path: benchmarks/golden-todo/typescript/package-lock.json
       - name: Install the declared Bun runtime
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version-file: examples/golden-todo/typescript/.bun-version
+          bun-version-file: benchmarks/golden-todo/typescript/.bun-version
       - name: Every test, with live PostgreSQL
         env:
           JADPO_TEST_DATABASE_URL: postgresql://jadpo:jadpo@127.0.0.1:5432/postgres
@@ -195,7 +195,7 @@ jobs:
       # teaching example 22 pgvector 0.8 or later.
       - name: Start PostgreSQL
         run: |
-          (docker build --quiet --tag jadpo-postgres tools/postgres &&
+          (docker build --quiet --tag jadpo-postgres tools/fixtures/postgres &&
             docker run --detach --name postgres --publish 5432:5432 \
               --env POSTGRES_USER=jadpo --env POSTGRES_PASSWORD=jadpo --env POSTGRES_DB=postgres \
               jadpo-postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off \
@@ -249,7 +249,7 @@ jobs:
       # built and started in the background while the toolchain installs.
       - name: Start PostgreSQL
         run: |
-          (docker build --quiet --tag jadpo-postgres tools/postgres &&
+          (docker build --quiet --tag jadpo-postgres tools/fixtures/postgres &&
             docker run --detach --name postgres --publish 5432:5432 \
               --env POSTGRES_USER=jadpo --env POSTGRES_PASSWORD=jadpo --env POSTGRES_DB=postgres \
               jadpo-postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off \

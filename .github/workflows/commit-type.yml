@@ -1,7 +1,7 @@
 name: Commit type
 
 # A pull request's Conventional Commit type sets its release
-# (docs/documentation.md, "Versions and releases"): tools/commit_type.py
+# (docs/documentation.md, "Versions and releases"): tools/checks/commit_type.py
 # fails a title that isn't one and a language change under a title other than
 # `feat` or `feat!`. Pull requests merge with squash, so the title is the
 # commit release-please reads. Its own workflow, so
@@ -32,4 +32,4 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
           TITLE: ${{ github.event.pull_request.title }}
-        run: python3 tools/commit_type.py --base "$BASE" --head "$HEAD" --title "$TITLE"
+        run: python3 tools/checks/commit_type.py --base "$BASE" --head "$HEAD" --title "$TITLE"

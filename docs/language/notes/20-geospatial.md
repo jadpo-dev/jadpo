@@ -18,7 +18,7 @@ Why [Geospatial](../20-geospatial.md) is the way it is: the decisions behind it,
 - **Area 6:** "A condition must be one the database can use an index for"
   includes the `geo.` conditions; `order:` includes `geo.distance`.
 - **Area 13:** the test server needs PostGIS. Postgres.app's PostgreSQL 16
-  ships PostGIS 3.4.2 (verified). CI runs `tools/postgres/Dockerfile`,
+  ships PostGIS 3.4.2 (verified). CI runs `tools/fixtures/postgres/Dockerfile`,
   PostgreSQL 16 with PostGIS 3.6 and pgvector from apt.postgresql.org,
   since every `postgis/postgis` 16 tag is built on Debian bullseye, whose
   support has ended (area 21, "Without pgvector").

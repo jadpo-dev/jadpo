@@ -1,0 +1,18 @@
+# Type names an example declares that the language itself also gives a
+# meaning to, so the compiler may write them alone in a string.
+# tools/checks/example_names.py leaves these out of the type names it bans.
+# Never add an example application's own types to make a check pass.
+
+# The standard library's stubs: any type built on `Int` or `Decimal`
+Number
+# The CLI's heading for a command's flags (area 14)
+Flags
+# Area 6's built-in page types
+PageSize
+PageCursor
+# A standard type (area 19), which `type.standard_clash`'s example declares as
+# an application's own
+Uuid
+# The standard library stubs' word for a quantity of any kind (area 19),
+# which area 2's and area 4's examples declare as an `Int`
+Quantity

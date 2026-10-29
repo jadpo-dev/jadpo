@@ -4,8 +4,8 @@
 //! (`Driver.cloudflare_queues`) and records each shipment its messages tell
 //! it of. Its Wrangler file names the queue's consumer by Wrangler's own
 //! setting names, and Wrangler's `deploy --dry-run`, pinned in
-//! `tools/workers/`, accepts the file without a warning or a single network
-//! call (`tools/workers/offline.mjs` refuses and reports any). Under
+//! `tools/fixtures/workers/`, accepts the file without a warning or a single network
+//! call (`tools/fixtures/workers/offline.mjs` refuses and reports any). Under
 //! workerd, its `queue` handler is handed batches as Cloudflare Queues
 //! hands them, through a service binding's `queue()`: out of date it
 //! retries each message after the delay its attempts give; current, it
@@ -300,7 +300,7 @@ fn a_worker_consumes_a_cloudflare_queue_answering_each_message() {
 }
 
 /// Wrangler's `deploy --dry-run` of the Worker in `out`, as pinned in
-/// `tools/workers/`: what it wrote, standard output then standard error.
+/// `tools/fixtures/workers/`: what it wrote, standard output then standard error.
 /// It runs with no account, its banner's update check, telemetry and
 /// error reports off, a home of its own, and `offline.mjs` refusing and
 /// reporting any connection it would make.

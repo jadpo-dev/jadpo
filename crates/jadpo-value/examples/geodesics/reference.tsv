@@ -1,7 +1,7 @@
 # A sample of C. F. F. Karney's "Test set for geodesics" (2010),
 # doi:10.5281/zenodo.32156 (Creative Commons Zero v1.0), from GeographicLib's
 # GeodTest-short.dat (SHA-256 601de5a4...14734710), written by
-# tools/geodtest_sample.py: every 20th line, with its group and its line
+# tools/references/geodtest_sample.py: every 20th line, with its group and its line
 # number there. WGS84; degrees and metres; point 2 to 10^-18 degrees, s12
 # exact, S12 the area between the geodesic and the equator to 1 mm².
 # group	line	lat1	lon1	azi1	lat2	lon2	s12	a12	m12	S12

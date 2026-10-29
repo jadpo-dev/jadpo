@@ -1,5 +1,5 @@
 # Area 20's predicates and shapes (chunk 5.5u3), each with PostGIS's answer:
-# PostGIS 3.4.2 on PostgreSQL 16.3, written by tools/geo_cases.py,
+# PostGIS 3.4.2 on PostgreSQL 16.3, written by tools/references/geo_cases.py,
 # which says what each operation is held to. Geometries are GeoJSON;
 # `box:` is south,west,north,east, `circle:` a centre and a radius in metres.
 # `page` is set where the page's meaning and PostGIS's answer part: the

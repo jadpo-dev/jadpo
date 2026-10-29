@@ -1,6 +1,6 @@
-//! Every Jadpo example in the documentation and `examples/`, for the parse,
-//! fuzz and formatter tests. Shared by `jadpo-syntax` and `jadpo-fmt`
-//! through `#[path]`.
+//! Every Jadpo example in the documentation, `examples/` and the golden todo
+//! (`benchmarks/golden-todo/`), for the parse, fuzz and formatter tests.
+//! Shared by `jadpo-syntax` and `jadpo-fmt` through `#[path]`.
 
 #![allow(dead_code)]
 
@@ -65,6 +65,8 @@ pub fn all() -> Vec<Example> {
     markdown_files(&root.join("docs/language"), &mut files);
     markdown_files(&root.join("docs/errors"), &mut files);
     markdown_files(&root.join("examples"), &mut files);
+    // The golden todo, which the benchmarks and its contract run use.
+    markdown_files(&root.join("benchmarks/golden-todo"), &mut files);
     let mut examples = Vec::new();
     for path in files {
         let text = std::fs::read_to_string(&path).expect("readable");
@@ -167,7 +169,7 @@ pub fn projects() -> Vec<(String, Vec<(String, String)>)> {
         files.push((file, example.source));
     }
     // The teaching examples' projects (examples/<project>/), which the
-    // spec corpus holds too (tools/examples.py).
+    // spec corpus holds too (tools/docs/examples.py).
     for example in all() {
         let Some(rest) = example.place.strip_prefix("examples/") else {
             continue;
@@ -175,7 +177,7 @@ pub fn projects() -> Vec<(String, Vec<(String, String)>)> {
         let Some((project, file)) = rest.split_once('/') else {
             continue;
         };
-        if !file.ends_with(".jadpo") || project == "golden-todo" {
+        if !file.ends_with(".jadpo") {
             continue;
         }
         projects
