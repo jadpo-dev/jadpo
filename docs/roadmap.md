@@ -277,14 +277,7 @@ D1 first: the site starts once D1 has merged.
   is anyone's; its pull requests pass the same gate and review.
 - [x] **D5 No personal attributions**: [AGENTS.md](../AGENTS.md) (rules for
   every contributor) and this page, "How a session works".
-- [ ] **D6 Packages, services and integrations explained** `opus · high`:
-  one concept page (topic IDs, in the bundle) saying what a package, a
-  provider, a connection, a capability, a built-in service and a service run
-  by Jadpo (`runs:`, Docker or Podman behind `jadpo services`) each are,
-  where each runs (in-process, a local container, a remote provider), how
-  they relate, and what is built; areas 10, 11, 16 and the primer link to it
-  instead of re-explaining. Tested by asking a fresh agent, given only the
-  bundle, how Docker fits in.
+- [x] **D6 Packages, services and integrations explained**: [area 11](language/11-integrations.md), "How packages, connections, capabilities and services fit together".
 - [x] **D7 One place for the golden todo and the benchmarks**: [benchmarks](../benchmarks/README.md);
   `tools/` holds the gate and its `docs/`, `checks/`, `references/` and `fixtures/`.
 - [ ] **D8 The VS Code extension, finished and published**: area 14, "Editor support" and "What is built"; `editors/vscode/README.md`; `.github/workflows/vscode-extension.yml`.
