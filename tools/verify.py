@@ -340,6 +340,13 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
         # The docs renderer finishes every page, and its list parser's
         # cases, each under a time limit (tools/language_docs_test.py).
         Step('docs renderer', 'lint', [python, 'tools/language_docs_test.py']),
+        # A pull request's Conventional Commit type against what it changes
+        # (docs/documentation.md, "Versions and releases"), and the
+        # catalogue that check reads from the source agreeing with
+        # `jadpo help --json`.
+        Step('commit type check', 'lint', [python, 'tools/commit_type_test.py']),
+        Step('commit type check reads the catalogue jadpo lists', 'docs',
+             [python, 'tools/commit_type.py', '--catalogue'], jadpo=True),
         # The maths on `Decimal`'s reference values are what their
         # generator writes (area 19, chunk 5.5e).
         Step('Decimal maths reference values in step with their generator', 'lint',
