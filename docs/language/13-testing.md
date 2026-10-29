@@ -3,27 +3,16 @@ title: Testing
 area: 13
 status: decided
 checked-with: this checkout's jadpo on every gate run
-rules:
-  - semantic.request_invalid
-  - semantic.fake_invalid
-  - semantic.request_route_unknown
-  - syntax.assertion_form
-  - test.assertion_failed
-  - test.fake_exhausted
-  - test.fake_unused
-  - test.fault
-  - test.subscriber_failed
-  - test.unexpected_failure
-  - type.test_clock_context
 ---
 
 # Testing
+<!-- topic: testing -->
 
 How a Jadpo program is tested: where tests live, the four kinds of test,
 controlling the clock, configuration and fakes in tests, shared test data,
 assertions, the test database, and how tests meet caches and events.
 
-> Most of this page is built; the [status table](#status) says what is not.
+> Most of this page is built; [What is built](#what-is-built) says what is not.
 
 Examples use the golden todo app's `planning` domain: `User` and `Todo`
 entities, a `create_todo` action, a `TodoNotFound` failure, an
@@ -34,6 +23,7 @@ database; only the outside world and the clock are replaced.** There are no
 mocks of your own actions and no in-memory stand-in for the database.
 
 ## Where tests live
+<!-- topic: where-tests-live -->
 
 A test sits beside the file it tests, as `<name>.test.jadpo` (area 1). A
 scenario that spans several domains goes in the root `tests/` folder.
@@ -57,6 +47,7 @@ brings in anything else it uses on `use` lines, as any file does; a
 scenario imports all it uses (area 1, Imports).
 
 ## Writing a test
+<!-- topic: writing-a-test -->
 
 A test is a sentence and a body. The sentence names it, once in the whole
 project: a second test with the same sentence is
@@ -110,6 +101,7 @@ test "a todo due yesterday is overdue" {
 ```
 
 ## Kinds of test
+<!-- topic: kinds-of-test -->
 
 The kind of a test is known from what it calls (area 1), and
 `jadpo test --kind route` runs one kind. The report counts each kind
@@ -186,7 +178,7 @@ error: A test can't call `Shelf.update`
   reason: Only actions write records (area 6), so a test changes data through the action that does it, which is what it proves; a fixture, a test-only action, builds the data a test starts from. A test may still read, with `Shelf.get` and queries.
   next: Call the action that writes `Shelf`, or move the write into a fixture (agent)
   rule: semantic.not_callable
-  help: docs/language/01-project-layout-and-modules.html#semantic-not-callable
+  help: docs/errors/semantic.not_callable.md
 
 check failed: 1 error, 4 files
 ```
@@ -576,12 +568,13 @@ error: An action can't run schedule `tidy_up`
   reason: Only a test runs a schedule by hand, with `.run()`, to prove what one run does; in the application the tick runs it when it is due, and an operator runs it now with `jadpo schedules run`.
   next: Call the action `tidy_up` runs, or move this into the schedule's test (agent)
   rule: semantic.not_callable
-  help: docs/language/01-project-layout-and-modules.html#semantic-not-callable
+  help: docs/errors/semantic.not_callable.md
 
 check failed: 1 error, 4 files
 ```
 
 ## Test settings
+<!-- topic: test-settings -->
 
 A test's environment is set at the top of its body, before the first
 statement, as `name: value` settings. There are three, and all
@@ -599,6 +592,7 @@ the result in the test itself. Shared data is not a setting; it comes from
 fixtures, below.
 
 ## Acting as a user
+<!-- topic: acting-as-a-user -->
 
 An action receives its caller as a typed parameter (area 8), so a test
 passes one in. Tests, fixtures and seeds can make a caller from a user
@@ -626,6 +620,7 @@ it proves behaviour and data, and a route test or a call with a caller
 proves policy (area 9).
 
 ## Controlling time
+<!-- topic: controlling-time -->
 
 A test never waits for real time. The clock starts at `clock:` and moves
 only when the test says so, with `clock.advance(5m)`: the clock belongs to
@@ -661,6 +656,7 @@ seed, so a rerun gives the same tokens, codes and shuffles and a test may
 name the exact code it expects. New identities share the seed.
 
 ## Configuration in tests
+<!-- topic: configuration-in-tests -->
 
 Each configuration field can give a `test:` value in `config.jadpo`, used by
 every test (area 10 gives the configuration syntax). A test
@@ -708,6 +704,7 @@ no field (`configuration.field_unknown`). A value in `config:` is checked as a
 `default:` is.
 
 ## Fakes for integrations
+<!-- topic: fakes-for-integrations -->
 
 A test never reaches a real provider. Every provider call a test reaches
 answers through its package's fake: the operation's generated default,
@@ -745,8 +742,8 @@ count is a mistake in the test or the code, not a provider outcome.
 > capabilities' fakes are not built yet, but for `email.sent` (area 16)
 > and the `ai` capability's: its fake, `fakes: { ai.<prompt>: }`,
 > `ai.<prompt>.requests`, `recorded("<name>")`, the fake's embeddings and
-> `fakes: { ai.embed: }` (area 21, "Tests"). The choices are in area 11's
-> decisions.
+> `fakes: { ai.embed: }` (area 21, "Tests"). The choices are in [area 11's
+> notes](notes/11-integrations.md).
 
 Here a courier's booking is faked three ways: with a scripted
 `AcmeCouriers.Booking`, with the operation's `slot_taken`, which the
@@ -947,7 +944,7 @@ Every provider call in a test is faked (areas 11, 12 and 16), as in
   record (the crash not counted as an attempt), and a route's request is
   sent again under its key. A delivery that stops as `diverged` between a
   test's steps ends the test as
-  [`test.subscriber_failed`](#test-subscriber-failed), and a crash's
+  [`test.subscriber_failed`](../errors/test.subscriber_failed.md), and a crash's
   failure begins with a `crash` line, also in `--json`:
 
   ```text
@@ -967,8 +964,8 @@ Every provider call in a test is faked (areas 11, 12 and 16), as in
   request or delivery a crash sends again keeps none of the `ai` answers
   the crashed run was given, as a restarted runner keeps none, so a model
   asked before the steps is asked again and a different answer diverges
-  there as it would in production. The choices are in area 12's
-  decisions.
+  there as it would in production. The choices are in [area 12's
+  notes](notes/12-jobs-and-events.md).
 - **One fake per capability**: `email.sent` lists the mail
   the code sent (area 16); there is no `sms.sent`, since SMS is a package
   whose calls are faked like any other. A package that fills a capability
@@ -1003,6 +1000,7 @@ Every provider call in a test is faked (areas 11, 12 and 16), as in
   `batches.status`.
 
 ## Shared test data: fixtures
+<!-- topic: shared-test-data-fixtures -->
 
 Test data used by several test files lives in the domain's `fixtures/`
 folder (area 1). A fixture is a test-only action that creates data by
@@ -1113,6 +1111,7 @@ named object holding what they made (`setup.alice`, `setup.todos`), so a
 test never has to look its own data up again.
 
 ## Assertions
+<!-- topic: assertions -->
 
 `assert condition` fails the test when the condition is false. On failure,
 the report shows the file, the line, the source of the condition, and the
@@ -1233,6 +1232,7 @@ line, its `data` with a `watch` object (`event`, `changed`, `reached`,
 `failing`, `files`, `fixed`).
 
 ## Running tests
+<!-- topic: running-tests -->
 
 - `jadpo test` runs everything; `jadpo test <file>` one file;
   `jadpo test <file>:<line>` the test at that line; `--name <text>` tests
@@ -1258,6 +1258,7 @@ line, its `data` with a `watch` object (`event`, `changed`, `reached`,
   focused test is never committed by accident.
 
 ## The test database
+<!-- topic: the-test-database -->
 
 Every environment runs the same engine, PostgreSQL unless the
 application declares otherwise (area 5), so tests run on PostgreSQL too.
@@ -1280,6 +1281,7 @@ job of `jadpo test`:
   exactly what it did.
 
 ## Caches and events
+<!-- topic: caches-and-events -->
 
 Caches are copies used only by display reads from routes (area 5), and
 events run after the action that emits them commits (area 1). In a test:
@@ -1313,7 +1315,7 @@ What each step emits is delivered as area 12 decides:
   it.
 - A delivery that fails for good, with a failure not worth retrying, on
   its last attempt, or with a fault, ends the test there as
-  [`test.subscriber_failed`](#test-subscriber-failed), naming the event,
+  [`test.subscriber_failed`](../errors/test.subscriber_failed.md), naming the event,
   the subscriber and the attempt. What a route's `settle:` delivers
   while its request waits belongs to the request, and the response says
   how it ended (area 7, "Waiting for follow-on work").
@@ -1485,994 +1487,8 @@ In the second, the delivery fails with `NoChef`, which is worth
 retrying, so it waits 30 seconds; starting the shift doesn't move the
 clock, and the retry runs once `clock.advance(30s)` reaches it.
 
-## Errors
-
-Every error this area can produce, with an example that triggers it:
-first the six codes a failed test gets from `jadpo test`, each with its
-report (run with `--seed 1`), then the `jadpo check` errors.
-
-### `test.assertion_failed`
-
-An `assert` whose condition is false, or an `assert … fails` whose call
-returned or failed differently. Records are compared field by field:
-
-```jadpo check project=e-assertion-failed file=todos.jadpo hidden
-type TodoTitle = Text {
-    min_length: 1
-    max_length: 200
-}
-
-type Priority = Int {
-    min: 1
-    max: 9
-}
-
-type TodoDraft = Object {
-    title: TodoTitle
-    priority: Priority
-}
-
-function draft(title: TodoTitle) -> TodoDraft {
-    return TodoDraft {
-        title: title
-        priority: 3
-    }
-}
-```
-
-```jadpo check project=e-assertion-failed file=todos.test.jadpo expect=test.assertion_failed
-test "a new draft has normal priority" {
-    var fresh: TodoDraft = draft("Buy milk")
-    assert fresh == TodoDraft {
-        title: "Buy milk"
-        priority: 2
-    }
-}
-```
-
-```text output
-FAIL  a new draft has normal priority
- --> todos.test.jadpo:3
-
-  assert fresh == TodoDraft { ...
-         |        |
-         |        TodoDraft { title: "Buy milk", priority: 2 }
-         TodoDraft { title: "Buy milk", priority: 3 }
-
-  expected: TodoDraft { title: "Buy milk", priority: 2 }
-  actual: TodoDraft { title: "Buy milk", priority: 3 }
-  diff: ~ priority: expected 2, actual 3
-
-  rule: test.assertion_failed
-  rerun: jadpo test todos.test.jadpo:3 --seed 1
-
-test failed: 1 failed, 1 pure test
-```
-
-### `test.unexpected_failure`
-
-A call under `attempt` failed, so the test ended with a failure it didn't
-check for:
-
-```jadpo check project=e-unexpected-failure file=priorities.jadpo hidden
-type Priority = Int {
-    min: 1
-    max: 9
-}
-
-type PriorityTooHigh = Failure {
-    kind: FailureKind.invalid_value
-}
-
-action raise_priority(priority: Priority) fails PriorityTooHigh -> Priority {
-    var higher: Priority = attempt Priority(priority + 1) {
-        max: PriorityTooHigh
-    }
-    return higher
-}
-```
-
-```jadpo check project=e-unexpected-failure file=priorities.test.jadpo expect=test.unexpected_failure
-test "the top priority can still be raised" {
-    var bumped: Priority = attempt raise_priority(9)
-    assert bumped == 9
-}
-```
-
-```text output
-FAIL  the top priority can still be raised
- --> priorities.test.jadpo:2
-
-  failure: `PriorityTooHigh` from action raise_priority
-  at: priorities.jadpo:11:36
-   |
-11 |     var higher: Priority = attempt Priority(priority + 1) {
-   |                                    ^^^^^^^^^^^^^^^^^^^^^^ breaks `max: 9`
-  reason: The value built here breaks `max: 9`, so `attempt` raises the failure its block maps that rule to.
-  code: priority_too_high
-  kind: FailureKind.invalid_value
-  path: test "the top priority can still be raised" -> action raise_priority
-
-  rule: test.unexpected_failure
-  rerun: jadpo test priorities.test.jadpo:2 --seed 1
-
-test failed: 1 failed, 1 action test
-```
-
-### `test.fault`
-
-The runtime stopped the test with a fault (area 4), here an overflow:
-
-```jadpo check project=e-test-fault file=plans.jadpo hidden
-type Effort = Int {
-    min: 0
-}
-
-function plan_effort(per_todo: Effort, todos: Effort) -> Effort {
-    return Effort(per_todo * todos)
-}
-```
-
-```jadpo check project=e-test-fault file=plans.test.jadpo expect=test.fault
-test "a long plan still adds up" {
-    var per_todo: Effort = 4611686018427387904
-    assert plan_effort(per_todo, 2) > 0
-}
-```
-
-```text output
-FAIL  a long plan still adds up
- --> plans.test.jadpo:3
-
-  fault: int_overflow in function plan_effort
-  at: plans.jadpo:6:19
-  |
-6 |     return Effort(per_todo * todos)
-  |                   ^^^^^^^^^^^^^^^^ out of range
-  reason: `per_todo * todos` gives a whole number outside `Int`'s range, -9223372036854775808 to 9223372036854775807; Jadpo stops rather than wrap around.
-  next: Bound the values that feed it with `max`, so the result always fits (agent)
-  stack: plans.jadpo:6       function plan_effort
-         plans.test.jadpo:3  test "a long plan still adds up"
-
-  rule: test.fault
-  rerun: jadpo test plans.test.jadpo:3 --seed 1
-
-test failed: 1 failed, 1 pure test
-```
-
-### `test.subscriber_failed`
-
-A delivery between the test's steps failed for good, or stopped as
-`diverged`, its rerun no longer matching the record of its steps: here its subscriber's action refuses with a
-failure not worth retrying. The report names the event, the subscriber and the attempt,
-then the failure as `test.unexpected_failure` shows one, at the step
-whose events were being delivered:
-
-```jadpo check project=e-subscriber-failed file=app.jadpo hidden
-application {}
-```
-
-```jadpo check project=e-subscriber-failed file=domains/post/types/address.jadpo hidden
-/// Where a parcel goes.
-type Address = Text {
-    min_length: 1
-    max_length: 200
-}
-```
-
-```jadpo check project=e-subscriber-failed file=domains/post/entities/parcel.jadpo hidden
-use post/types { Address }
-
-/// A parcel handed in at the counter.
-entity Parcel {
-    id: Uuid
-    address: Address
-    labelled: Bool
-
-    policy: {
-        create: [Access.public]
-        read: [Access.public, Access.system]
-        update: [Access.system]
-    }
-}
-```
-
-```jadpo check project=e-subscriber-failed file=domains/post/events/parcel_handed_in.jadpo hidden
-use post/entities { Parcel }
-use post/types { Address }
-
-/// A parcel was handed in.
-type ParcelHandedIn = Event {
-    parcel_id: Parcel.id
-    address: Address
-}
-```
-
-```jadpo check project=e-subscriber-failed file=domains/post/events/events.jadpo_record hidden
-// Generated by Jadpo from the events of domain post; update it with `jadpo records update`, never by hand.
-record events 1
-
-event ParcelHandedIn
-    address: Text { min_length: 1, max_length: 200 }
-    parcel_id: Uuid
-```
-
-```jadpo check project=e-subscriber-failed file=domains/post/failures/no_such_place.jadpo hidden
-/// No round goes there.
-type NoSuchPlace = Failure {
-    kind: FailureKind.rejected
-    message: "We don't deliver there."
-}
-```
-
-```jadpo check project=e-subscriber-failed file=domains/post/actions/hand_in.jadpo hidden
-use post/entities { Parcel }
-use post/types { Address }
-use post/events { ParcelHandedIn }
-
-/// Takes a parcel in; labelling it follows in a subscriber.
-action hand_in(address: Address) -> Parcel {
-    var parcel: Parcel = Parcel.create {
-        set: {
-            address: address
-            labelled: false
-        }
-    }
-    emit ParcelHandedIn {
-        parcel_id: parcel.id
-        address: parcel.address
-    }
-    return parcel
-}
-```
-
-```jadpo check project=e-subscriber-failed file=domains/post/actions/label.jadpo
-use post/entities { Parcel, ParcelNotFound }
-use post/types { Address }
-use post/failures { NoSuchPlace }
-
-/// Labels a parcel for its round.
-action label(parcel_id: Parcel.id, address: Address) fails ParcelNotFound, NoSuchPlace -> Unit {
-    if (address == "The Moon") {
-        reject NoSuchPlace {}
-    }
-    attempt Parcel.update(parcel_id) {
-        set: {
-            labelled: true
-        }
-    }
-}
-```
-
-```jadpo check project=e-subscriber-failed file=domains/post/subscribers/label_handed_in.jadpo migrate=initial
-use post/actions { label }
-use post/events { ParcelHandedIn }
-
-/// Labels each parcel handed in.
-subscriber label_handed_in {
-    on: ParcelHandedIn
-    run: label(event.parcel_id, event.address)
-}
-```
-
-```jadpo check project=e-subscriber-failed file=domains/post/actions/hand_in.test.jadpo expect=test.subscriber_failed
-use post/entities { Parcel }
-
-test "a parcel for the moon is taken in" {
-    var parcel: Parcel = hand_in("The Moon")
-    assert parcel.labelled == false
-}
-```
-
-```text output
-FAIL  a parcel for the moon is taken in
- --> domains/post/actions/hand_in.test.jadpo:4
-
-  delivery: `ParcelHandedIn` to subscriber `label_handed_in` failed for good on attempt 1 of 10
-  failure: `NoSuchPlace` from action label
-  at: domains/post/actions/label.jadpo:8:9
-  |
-8 |         reject NoSuchPlace {}
-  |         ^^^^^^^^^^^^^^^^^^^^^ rejected here
-  code: no_such_place
-  kind: FailureKind.rejected
-  message: We don't deliver there.
-  path: test "a parcel for the moon is taken in" -> action label
-
-  rule: test.subscriber_failed
-  rerun: jadpo test domains/post/actions/hand_in.test.jadpo:4 --seed 1
-
-test failed: 1 failed, 1 action test
-```
-
-### `test.fake_exhausted`
-
-A test called a faked provider operation more times than its `fakes:`
-scripts answers. The call past the script was
-answered with the generated default, so whatever the test did next
-followed from a call it didn't expect; the report names the operation,
-at the line of its first scripted answer:
-
-```jadpo check project=e-fake-exhausted file=app.jadpo hidden
-application {
-    connections: {
-        couriers: {
-            package: AcmeCouriers.v1
-            domains: [shipping]
-            environment: config.couriers_environment
-        }
-    }
-}
-```
-
-```jadpo check project=e-fake-exhausted file=config.jadpo hidden
-config {
-    couriers_environment: ProviderEnvironment {
-        default: ProviderEnvironment.sandbox
-    }
-}
-```
-
-```jadpo check project=e-fake-exhausted file=shared/providers/acme_couriers/v1/package.jadpo hidden
-/// Acme Couriers' booking API.
-package AcmeCouriers.v1 {
-    licence: Licence.proprietary
-    jadpo: "1.0"
-}
-```
-
-```jadpo check project=e-fake-exhausted file=shared/providers/acme_couriers/v1/provider.jadpo hidden
-/// Acme Couriers' booking API.
-provider {
-    protocol: Protocol.json_http
-    hosts: {
-        live: "https://api.acme-couriers.example"
-        sandbox: "https://sandbox.acme-couriers.example"
-    }
-    error_code: "error.code"
-}
-```
-
-```jadpo check project=e-fake-exhausted file=shared/providers/acme_couriers/v1/resources/bookings.jadpo hidden
-public resource bookings {
-    create: {
-        method: HttpMethod.post
-        path: "/v1/bookings"
-        input: CreateBooking
-        output: Booking
-        changes: true
-        idempotent: true
-        failures: [SlotTaken]
-        source: PackageSource.written
-        docs: "https://docs.acme-couriers.example/bookings"
-    }
-}
-```
-
-```jadpo check project=e-fake-exhausted file=shared/providers/acme_couriers/v1/types/postcode.jadpo hidden
-/// Where a collection is.
-public type Postcode = Text {
-    max_length: 8
-}
-```
-
-```jadpo check project=e-fake-exhausted file=shared/providers/acme_couriers/v1/types/booking_id.jadpo hidden
-/// The courier's reference for a booking.
-public type BookingId = Text {
-    max_length: 40
-}
-```
-
-```jadpo check project=e-fake-exhausted file=shared/providers/acme_couriers/v1/types/create_booking.jadpo hidden
-/// What booking a collection takes.
-public type CreateBooking = Object {
-    postcode: Postcode
-}
-```
-
-```jadpo check project=e-fake-exhausted file=shared/providers/acme_couriers/v1/types/booking.jadpo hidden
-/// A booked collection.
-public type Booking = Object {
-    id: BookingId
-}
-```
-
-```jadpo check project=e-fake-exhausted file=shared/providers/acme_couriers/v1/failures/slot_taken.jadpo hidden
-/// The slot went before the booking arrived.
-public type SlotTaken = Failure {
-    kind: FailureKind.conflict
-    message: "That slot is taken."
-}
-```
-
-```jadpo check project=e-fake-exhausted file=domains/shipping/failures/slot_gone.jadpo hidden
-/// The slot the customer chose has gone.
-type SlotGone = Failure {
-    kind: FailureKind.conflict
-    message: "That slot has gone; choose another."
-}
-```
-
-```jadpo check project=e-fake-exhausted file=domains/shipping/actions/book.jadpo hidden
-use app { couriers }
-use shipping/failures { SlotGone }
-use shared/providers/acme_couriers
-
-/// Books a collection with the courier.
-action book(postcode: AcmeCouriers.Postcode) fails SlotGone -> AcmeCouriers.Booking {
-    return attempt couriers.bookings.create(
-        AcmeCouriers.CreateBooking {
-            postcode: postcode
-        }
-    ) {
-        slot_taken: SlotGone
-    }
-}
-```
-
-```jadpo check project=e-fake-exhausted file=domains/shipping/actions/book.test.jadpo expect=test.fake_exhausted
-use app { couriers }
-use shipping/failures { SlotGone }
-
-test "a taken slot is the app's own failure" {
-    fakes: {
-        couriers.bookings.create: [slot_taken]
-    }
-    assert book("N1 9GU") fails SlotGone
-    assert book("SW1A 1AA") fails SlotGone
-}
-```
-
-```text output
-FAIL  a taken slot is the app's own failure
- --> domains/shipping/actions/book.test.jadpo:6
-
-  fake: `couriers.bookings.create` was called twice, and its `fakes:` scripts 1 answer
-  reason: A scripted operation answers each call with the next scripted answer, so a call past the last means the code calls it more often than the test says; that call was answered with the generated default.
-  next: Script an answer for every call of `couriers.bookings.create`, or find why the code calls it again (agent)
-
-  rule: test.fake_exhausted
-  rerun: jadpo test domains/shipping/actions/book.test.jadpo:6 --seed 1
-
-test failed: 1 failed, 1 action test
-```
-
-### `test.fake_unused`
-
-A test that otherwise passed left answers its `fakes:` scripts for an
-operation untaken: the code made fewer calls than
-the test says.
-
-```jadpo check project=e-fake-unused file=app.jadpo hidden
-application {
-    connections: {
-        couriers: {
-            package: AcmeCouriers.v1
-            domains: [shipping]
-            environment: config.couriers_environment
-        }
-    }
-}
-```
-
-```jadpo check project=e-fake-unused file=config.jadpo hidden
-config {
-    couriers_environment: ProviderEnvironment {
-        default: ProviderEnvironment.sandbox
-    }
-}
-```
-
-```jadpo check project=e-fake-unused file=shared/providers/acme_couriers/v1/package.jadpo hidden
-/// Acme Couriers' booking API.
-package AcmeCouriers.v1 {
-    licence: Licence.proprietary
-    jadpo: "1.0"
-}
-```
-
-```jadpo check project=e-fake-unused file=shared/providers/acme_couriers/v1/provider.jadpo hidden
-/// Acme Couriers' booking API.
-provider {
-    protocol: Protocol.json_http
-    hosts: {
-        live: "https://api.acme-couriers.example"
-        sandbox: "https://sandbox.acme-couriers.example"
-    }
-    error_code: "error.code"
-}
-```
-
-```jadpo check project=e-fake-unused file=shared/providers/acme_couriers/v1/resources/bookings.jadpo hidden
-public resource bookings {
-    create: {
-        method: HttpMethod.post
-        path: "/v1/bookings"
-        input: CreateBooking
-        output: Booking
-        changes: true
-        idempotent: true
-        failures: [SlotTaken]
-        source: PackageSource.written
-        docs: "https://docs.acme-couriers.example/bookings"
-    }
-}
-```
-
-```jadpo check project=e-fake-unused file=shared/providers/acme_couriers/v1/types/postcode.jadpo hidden
-/// Where a collection is.
-public type Postcode = Text {
-    max_length: 8
-}
-```
-
-```jadpo check project=e-fake-unused file=shared/providers/acme_couriers/v1/types/booking_id.jadpo hidden
-/// The courier's reference for a booking.
-public type BookingId = Text {
-    max_length: 40
-}
-```
-
-```jadpo check project=e-fake-unused file=shared/providers/acme_couriers/v1/types/create_booking.jadpo hidden
-/// What booking a collection takes.
-public type CreateBooking = Object {
-    postcode: Postcode
-}
-```
-
-```jadpo check project=e-fake-unused file=shared/providers/acme_couriers/v1/types/booking.jadpo hidden
-/// A booked collection.
-public type Booking = Object {
-    id: BookingId
-}
-```
-
-```jadpo check project=e-fake-unused file=shared/providers/acme_couriers/v1/failures/slot_taken.jadpo hidden
-/// The slot went before the booking arrived.
-public type SlotTaken = Failure {
-    kind: FailureKind.conflict
-    message: "That slot is taken."
-}
-```
-
-```jadpo check project=e-fake-unused file=domains/shipping/failures/slot_gone.jadpo hidden
-/// The slot the customer chose has gone.
-type SlotGone = Failure {
-    kind: FailureKind.conflict
-    message: "That slot has gone; choose another."
-}
-```
-
-```jadpo check project=e-fake-unused file=domains/shipping/actions/book.jadpo hidden
-use app { couriers }
-use shipping/failures { SlotGone }
-use shared/providers/acme_couriers
-
-/// Books a collection with the courier.
-action book(postcode: AcmeCouriers.Postcode) fails SlotGone -> AcmeCouriers.Booking {
-    return attempt couriers.bookings.create(
-        AcmeCouriers.CreateBooking {
-            postcode: postcode
-        }
-    ) {
-        slot_taken: SlotGone
-    }
-}
-```
-
-```jadpo check project=e-fake-unused file=domains/shipping/actions/book.test.jadpo expect=test.fake_unused
-use app { couriers }
-use shipping/failures { SlotGone }
-
-test "a taken slot is the app's own failure" {
-    fakes: {
-        couriers.bookings.create: [slot_taken, unavailable]
-    }
-    assert book("N1 9GU") fails SlotGone
-}
-```
-
-```text output
-FAIL  a taken slot is the app's own failure
- --> domains/shipping/actions/book.test.jadpo:6
-
-  fake: `couriers.bookings.create` was called once, and its `fakes:` scripts 2 answers
-  reason: Each scripted answer is for a call the test expects, so one left over means the code calls the operation less often than the test says.
-  next: Remove the answers no call takes, or find why the code doesn't call `couriers.bookings.create` (agent)
-
-  rule: test.fake_unused
-  rerun: jadpo test domains/shipping/actions/book.test.jadpo:6 --seed 1
-
-test failed: 1 failed, 1 action test
-```
-
-### `semantic.fake_invalid`
-
-A test's `fakes:` scripts something no provider operation answers: an operation the app's connections don't have, a name
-that is none of the operation's failures' codes or a condition, an
-operation scripted twice or with no answers, or a value for one that
-gives nothing. A value of the wrong type is the usual `type.mismatch`.
-
-```jadpo check project=e-fake-invalid file=app.jadpo hidden
-application {
-    connections: {
-        couriers: {
-            package: AcmeCouriers.v1
-            domains: [shipping]
-            environment: config.couriers_environment
-        }
-    }
-}
-```
-
-```jadpo check project=e-fake-invalid file=config.jadpo hidden
-config {
-    couriers_environment: ProviderEnvironment {
-        default: ProviderEnvironment.sandbox
-    }
-}
-```
-
-```jadpo check project=e-fake-invalid file=shared/providers/acme_couriers/v1/package.jadpo hidden
-/// Acme Couriers' booking API.
-package AcmeCouriers.v1 {
-    licence: Licence.proprietary
-    jadpo: "1.0"
-}
-```
-
-```jadpo check project=e-fake-invalid file=shared/providers/acme_couriers/v1/provider.jadpo hidden
-/// Acme Couriers' booking API.
-provider {
-    protocol: Protocol.json_http
-    hosts: {
-        live: "https://api.acme-couriers.example"
-        sandbox: "https://sandbox.acme-couriers.example"
-    }
-    error_code: "error.code"
-}
-```
-
-```jadpo check project=e-fake-invalid file=shared/providers/acme_couriers/v1/resources/bookings.jadpo hidden
-public resource bookings {
-    create: {
-        method: HttpMethod.post
-        path: "/v1/bookings"
-        input: CreateBooking
-        output: Booking
-        changes: true
-        idempotent: true
-        failures: [SlotTaken]
-        source: PackageSource.written
-        docs: "https://docs.acme-couriers.example/bookings"
-    }
-}
-```
-
-```jadpo check project=e-fake-invalid file=shared/providers/acme_couriers/v1/types/postcode.jadpo hidden
-/// Where a collection is.
-public type Postcode = Text {
-    max_length: 8
-}
-```
-
-```jadpo check project=e-fake-invalid file=shared/providers/acme_couriers/v1/types/booking_id.jadpo hidden
-/// The courier's reference for a booking.
-public type BookingId = Text {
-    max_length: 40
-}
-```
-
-```jadpo check project=e-fake-invalid file=shared/providers/acme_couriers/v1/types/create_booking.jadpo hidden
-/// What booking a collection takes.
-public type CreateBooking = Object {
-    postcode: Postcode
-}
-```
-
-```jadpo check project=e-fake-invalid file=shared/providers/acme_couriers/v1/types/booking.jadpo hidden
-/// A booked collection.
-public type Booking = Object {
-    id: BookingId
-}
-```
-
-```jadpo check project=e-fake-invalid file=shared/providers/acme_couriers/v1/failures/slot_taken.jadpo hidden
-/// The slot went before the booking arrived.
-public type SlotTaken = Failure {
-    kind: FailureKind.conflict
-    message: "That slot is taken."
-}
-```
-
-```jadpo check project=e-fake-invalid file=domains/shipping/failures/slot_gone.jadpo hidden
-/// The slot the customer chose has gone.
-type SlotGone = Failure {
-    kind: FailureKind.conflict
-    message: "That slot has gone; choose another."
-}
-```
-
-```jadpo check project=e-fake-invalid file=domains/shipping/actions/book.jadpo hidden
-use app { couriers }
-use shipping/failures { SlotGone }
-use shared/providers/acme_couriers
-
-/// Books a collection with the courier.
-action book(postcode: AcmeCouriers.Postcode) fails SlotGone -> AcmeCouriers.Booking {
-    return attempt couriers.bookings.create(
-        AcmeCouriers.CreateBooking {
-            postcode: postcode
-        }
-    ) {
-        slot_taken: SlotGone
-    }
-}
-```
-
-```jadpo check project=e-fake-invalid file=domains/shipping/actions/book.test.jadpo expect=semantic.fake_invalid
-use app { couriers }
-use shipping/failures { SlotGone }
-
-test "a taken slot is the app's own failure" {
-    fakes: {
-        couriers.bookings.create: [slot_takn]
-    }
-    assert book("N1 9GU") fails SlotGone
-}
-```
-
-```text output
-error: `slot_takn` isn't an answer `couriers.bookings.create` gives
- --> domains/shipping/actions/book.test.jadpo:6:36
-  |
-6 |         couriers.bookings.create: [slot_takn]
-  |                                    ^^^^^^^^^ not a failure or a condition
-  reason: A scripted answer is a value of `AcmeCouriers.Booking`, one of `couriers.bookings.create`'s failures by its code (`slot_taken`), or a condition: `unavailable`, `lost`, `in_use` or `misconfigured`.
-  next: Use `slot_taken` instead of `slot_takn` (agent)
-  rule: semantic.fake_invalid
-  help: docs/language/13-testing.html#semantic-fake-invalid
-
-check failed: 1 error, 13 files
-```
-
-### `semantic.request_route_unknown`
-
-A request names a route the project has, by its method and its path as
-`jadpo routes` prints it:
-
-```jadpo check project=e-request-route expect=semantic.request_route_unknown
-type Memo = Text {
-    max_length: 200
-}
-
-type AddMemo = Input {
-    text: Memo
-}
-
-type MemoView = Output {
-    text: Memo
-}
-
-action add_memo(input: AddMemo) -> MemoView {
-    return MemoView {
-        text: input.text
-    }
-}
-
-routes Memos {
-    prefix: /memos
-
-    POST / {
-        authentication: RouteAuthentication.none
-        input: AddMemo
-        output: MemoView
-        status: SuccessStatus.created
-        run: add_memo(input)
-    }
-}
-
-policy {
-    actions: {
-        add_memo: [Access.public]
-    }
-}
-
-test "a memo comes back" {
-    var response: Response = request {
-        method: HttpMethod.post
-        path: "/memo"
-        input: AddMemo {
-            text: "Call the plumber"
-        }
-    }
-    assert response.status == 201
-}
-```
-
-```text output
-error: No route answers `POST /memo`
- --> main.jadpo:40:15
-   |
-40 |         path: "/memo"
-   |               ^^^^^^^ no such route
-  reason: A request names a route by its method and its path as `jadpo routes` prints it, placeholders by name; the `POST` routes are `/memos`.
-  next: Write the path of the route this test exercises, as `jadpo routes` lists it (agent)
-  rule: semantic.request_route_unknown
-  help: docs/language/13-testing.html#semantic-request-route-unknown
-
-check failed: 1 error, 1 file
-```
-
-### `semantic.request_invalid`
-
-A request gives what its route takes: each placeholder in `params:` and
-the route's `input:`:
-
-```jadpo check project=e-request-invalid expect=semantic.request_invalid
-type Memo = Text {
-    max_length: 200
-}
-
-type AddMemo = Input {
-    text: Memo
-}
-
-type MemoView = Output {
-    text: Memo
-}
-
-action add_memo(input: AddMemo) -> MemoView {
-    return MemoView {
-        text: input.text
-    }
-}
-
-routes Memos {
-    prefix: /memos
-
-    POST / {
-        authentication: RouteAuthentication.none
-        input: AddMemo
-        output: MemoView
-        status: SuccessStatus.created
-        run: add_memo(input)
-    }
-}
-
-policy {
-    actions: {
-        add_memo: [Access.public]
-    }
-}
-
-test "a memo comes back" {
-    var response: Response = request {
-        method: HttpMethod.post
-        path: "/memos"
-    }
-    assert response.status == 201
-}
-```
-
-```text output
-error: `POST /memos` takes `input:`, a `AddMemo`
- --> main.jadpo:38:30
-   |
-38 |     var response: Response = request {
-   |                              ^^^^^^^ doesn't fit the route
-  reason: A request gives the route's method, its path as `jadpo routes` prints it, each placeholder in `params:` and, when the route takes one, its `input:`; a request but a `GET` may give the `Idempotency-Key` it sends in `idempotency_key:`.
-  next: Give the request what its route takes (agent)
-  rule: semantic.request_invalid
-  help: docs/language/13-testing.html#semantic-request-invalid
-
-check failed: 1 error, 1 file
-```
-
-### `type.test_clock_context`
-
-Application code cannot move the clock:
-
-```jadpo check project=e-clock-context expect=type.test_clock_context
-type ShiftEnd = Instant {}
-
-action end_shift() -> ShiftEnd {
-    clock.advance(5m)
-    return ShiftEnd(clock.now)
-}
-```
-
-```text output
-error: An action can't move the clock
- --> main.jadpo:4:5
-  |
-4 |     clock.advance(5m)
-  |     ^^^^^^^^^^^^^ moves the clock
-  reason: Only a test moves its clock: elsewhere the time is the operation's `clock.now`, fixed while it runs, and a later request or schedule run reads a later one.
-  next: Move the clock in a test with `clock.advance(...)`, or remove this line (agent)
-  rule: type.test_clock_context
-  help: docs/language/13-testing.html#type-test-clock-context
-
-check failed: 1 error, 1 file
-```
-
-### `configuration.field_unknown`
-
-A test's `config:` names a setting `config { }` doesn't declare (the rule
-is area 10's):
-
-```jadpo check project=e-field-unknown expect=configuration.field_unknown
-type Label = Text {
-    min_length: 3
-}
-
-config {
-    label: Label {
-        test: "valid"
-    }
-}
-
-function label_in_use() -> Label {
-    return config.label
-}
-
-test "a test's label is its own" {
-    config: {
-        lable: "other"
-    }
-    assert label_in_use() == "other"
-}
-```
-
-```text output
-error: `lable` isn't a setting
- --> main.jadpo:17:9
-   |
-17 |         lable: "other"
-   |         ^^^^^ no such setting
-  reason: `config { }` declares no setting called `lable`, so a test has nothing to change. Did you mean `label`?
-  next: Use `label` instead of `lable` (agent)
-  rule: configuration.field_unknown
-  help: docs/language/10-configuration-and-time.html#configuration-field-unknown
-
-check failed: 1 error, 1 file
-```
-
-### `syntax.assertion_form`
-
-A test checks with `assert condition`: Rust's `assert_eq!`, JUnit's `assertEquals`, Python's `assertEqual`, Jest's `expect(...).toBe(...)` and Node's `assert.equal` are habits from other languages, one error each whose edit writes the `assert`.
-
-```jadpo check project=e-habit-assertion expect=syntax.assertion_form
-type Count = Int {
-    min: 0
-}
-
-function same(count: Count) -> Count {
-    return count
-}
-
-test "same gives back its count" {
-    assert_eq!(same(2), 2)
-}
-```
-
-```text output
-error: Jadpo writes `assert same(2) == 2`, not `assert_eq!(same(2), 2)`
- --> main.jadpo:10:5
-   |
-10 |     assert_eq!(same(2), 2)
-   |     ^^^^^^^^^^^^^^^^^^^^^^ write `assert same(2) == 2`
-  reason: `assert_eq!` checks a test's values in Rust, `assertEquals` in JUnit, `assertEqual` in Python's unittest, `expect(…).toBe(…)` in Jest and `assert.equal` in Node; a Jadpo test checks with `assert condition`.
-  next: Write `assert same(2) == 2` (agent)
-  rule: syntax.assertion_form
-  help: docs/language/13-testing.html#syntax-assertion-form
-
-check failed: 1 error, 1 file
-```
-
-## Review
-
-### Status
+## What is built
+<!-- topic: testing-built -->
 
 | Feature | Status |
 |---|---|
@@ -2480,72 +1496,36 @@ check failed: 1 error, 1 file
 | Kind of test | Built: the kind comes from what a test calls (an action, query or fixture makes it an action test, a `request` a route test, a schedule's `.run()` a schedule test), and the footer and `--json` count each kind. |
 | Schedule tests | Built: `schedule.run()` in a test runs the schedule once at the test's clock, its action called as the system with no tenant, with its own database like an action test; `--kind schedule` runs only these; anywhere but a test it is `semantic.not_callable`. |
 | Route tests | Built: `request { method: path: params: input: }` sends a request through the runtime's HTTP component and gives a `Response` with `status`, `code` and the route's typed `output`; a route test gets its own database like an action test, and a defect behind a 500 ends it as `test.fault`. `as:` signs in a user through a real browser session or API token, and a service through a real service key. Every request but a `GET` sends a fresh `Idempotency-Key`, or the one `idempotency_key:` gives ([Idempotency keys](#idempotency-keys)). An optional field the `input:` leaves out is left out of the body, so a `patch:` keeps it. A streaming route's `Response` has `pieces` in place of `output`, its events read to the last. |
-| Assertion messages | Built: a failed `assert` reports its file and line, its source with each part's value hung beneath it, expected and actual, a field-by-field diff for records, lists, sets and maps, a stable code and the rerun command with the order seed (see [Errors](#errors)). Not built: the trace, fakes, kept database and clock in the report. A statement over several lines shows its first line; `--json` has all of it. |
+| Assertion messages | Partly built: a failed `assert` reports its file and line, its source with each part's value hung beneath it, expected and actual, a field-by-field diff for records, lists, sets and maps, a stable code and the rerun command with the order seed (see [Errors](#errors)). Not built yet: the trace, fakes, kept database and clock in the report. A statement over several lines shows its first line; `--json` has all of it. |
 | Checking a failure | Built: `assert call(…) fails Failure`; when the call returns or fails differently, the report shows the value, or the other failure with its code, kind, fields and where it was raised. A failure under `attempt` ends the test as `test.unexpected_failure`, and a fault as `test.fault`, each with its `.jadpo` frames. |
 | Events | Built: what each step emits is delivered once it comes back and before the next statement, at the test's clock, until nothing is due, in an order the run's seed shuffles; a retry waits its full backoff until `clock.advance` reaches it, and a delivery that fails for good, or stops as `diverged`, ends the test as `test.subscriber_failed` ("Caches and events"). |
 | Clock | Built: a test's clock starts at its `clock:`, or at 2000-01-01T00:00:00Z without one, and `clock.advance(...)` moves it on for the calls after it; only a test moves it (`type.test_clock_context`, a fixture and a seed included), and a move backwards is the fault `clock_backward`. |
 | Configuration | Built: `test:` values on fields, defaults, generated secrets and a test's own `config:`; a request sent through a route is not followed for the compile-time check that every setting a test reads has a value, and a read with none then ends the test as a fault naming the setting. |
-| Integration fakes | Built for provider packages: every provider call a test reaches answers through its package's fake, with the operation's generated default unless the test's `fakes:` scripts its answers, each checked against the package (`semantic.fake_invalid`); a script the calls run past is `test.fake_exhausted`, one with answers left `test.fake_unused` ("Fakes for integrations"). Package fakes keep keys, and a test that reaches an action with several changing calls runs again with a crash at each step boundary ("Provider calls and capabilities in tests"). `email.sent` (area 16): every email a test sends is caught, rendered whole, a mail package's included, and read as a `List<SentEmail>`. Not built: `.requests` (built for the `ai` fake, `ai.<prompt>.requests`), the capability fakes but `ai`'s, grants, documents, batches and `fixture_file`. |
+| Integration fakes | Partly built: for provider packages, every provider call a test reaches answers through its package's fake, with the operation's generated default unless the test's `fakes:` scripts its answers, each checked against the package (`semantic.fake_invalid`); a script the calls run past is `test.fake_exhausted`, one with answers left `test.fake_unused` ("Fakes for integrations"). Package fakes keep keys, and a test that reaches an action with several changing calls runs again with a crash at each step boundary ("Provider calls and capabilities in tests"). `email.sent` (area 16): every email a test sends is caught, rendered whole, a mail package's included, and read as a `List<SentEmail>`. Not built yet: `.requests` (built for the `ai` fake, `ai.<prompt>.requests`), the capability fakes but `ai`'s, grants, documents, batches and `fixture_file`. |
 | Database | Built: `jadpo test` gives each action test in a project with tables its own copy of a template built from the migrations, on the server `JADPO_TEST_DATABASE_URL` names or a disposable one started from the machine's PostgreSQL tools; copies are prepared in the background, and a test gets its copy the first time it uses a store. `--keep-failed` keeps a failed test's database and names it in the report. Tests read and write records through actions, queries and fixtures; a concurrent change, which needs a second connection, is shown by the runtime's own tests. |
 | Caller | Built: `Principal.user(user)` and `Principal.service(service)` in tests, fixtures and seeds; a call passing a caller runs as that caller, one passing none runs without policy. |
 | Placement | Built: a test sits in `<name>.test.jadpo` beside its subject, or in root `tests/`; a test elsewhere is `layout.wrong_folder`, which names the `.test.jadpo` file beside it, and a test file with nothing beside it is `layout.test_without_subject`. |
-| Watch mode | Built: `jadpo test --watch` runs the tests asked for, then on every save the ones that reach what changed, through the graph's digests and `calls` and `uses` edges, on one long-lived database; a save no test reaches says `nothing to rerun`, a broken build shows its errors, and the next good save runs everything changed since the last run, or says `errors fixed` when no test reaches it; a removed file is a change like any other. Run from outside the project, its paths start with the project as typed. It ends when nothing reads its output any more, as when piped into `head`. A save shows its results in about 0.1 s on a 230-file project, and the gate fails above 1.25 s. The keys in the interactive screen (`enter`, `a`, `f`) wait for `--interactive`, which says `toolchain.not_built_yet`; ctrl-c quits. |
+| Watch mode | Partly built: `jadpo test --watch` runs the tests asked for, then on every save the ones that reach what changed, through the graph's digests and `calls` and `uses` edges, on one long-lived database; a save no test reaches says `nothing to rerun`, a broken build shows its errors, and the next good save runs everything changed since the last run, or says `errors fixed` when no test reaches it; a removed file is a change like any other. Run from outside the project, its paths start with the project as typed. It ends when nothing reads its output any more, as when piped into `head`. A save shows its results in about 0.1 s on a 230-file project, and the gate fails above 1.25 s. The keys in the interactive screen (`enter`, `a`, `f`) wait for `--interactive`, which says `toolchain.not_built_yet`; ctrl-c quits. |
 | Fixtures | Built: a fixture is checked like an action and called by name from tests, fixtures and seeds; an action calling one is `semantic.not_callable`. A `public` fixture is called through its domain from other domains' tests, fixtures and seeds and from root `tests/`; a private one from there is `visibility.private_cross_domain`. Seeds are checked but `jadpo seed` is not built. |
-| Data builders, `assert emitted` | Not built. |
+| Data builders, `assert emitted` | Not built yet. |
 | Golden application contract | Built: the shared black-box harness in `tools/golden-todo/` executes all 44 versioned application cases on generated native code and compiled workerd, with real credential verification, raw invalid inputs, physical SQL observation, persisted-state assertions, controlled clocks and provider faults. These checks supplement authored Jadpo tests; they add no application-facing test controls. Full-gate ownership is native in `compiled`, workerd in `wasm32`, and verifier negative controls in `lint`. |
-| `test.no_tests` | Raised by `jadpo test` only (area 14), when the project has no tests or a file, line, name, kind or `--failed` picks none. |
+| `test.no_tests` | Built: raised by `jadpo test` only (area 14), when the project has no tests or a file, line, name, kind or `--failed` picks none. |
 
-### Carried to later areas
+## Errors
 
-| Item | Area |
-|---|---|
-| The `request { }` form in route tests, the `Response` type, its `status`, `code` and typed output | 7 |
-| `Principal.user(user)` in tests, fixtures and seeds, and `as:` signing in through the real authentication method; a service caller in tests | 8 |
-| Policy tests are ordinary tests: call as another user and `assert … fails` with the failure policy reports | 9 |
-| `test:` values on configuration fields, and the `5m` duration literal | 10 |
-| Fake responses name the provider conditions in the integration's `failures:` block; checking a fake against the provider's contract or sandbox | 11 |
-| `overdue_reminders.run()` in tests, subscriber delivery order, and retries of a failing subscriber in tests | 12 |
-| Caches in tests once the Redis adapter exists | 6 |
-| `lost` and `in_use` answers and crash points for several changing calls; batches in tests | 12 |
-| One fake per capability; `bot_check_failed`; the placeholder PDF; PostgreSQL search in tests; `fixture_file` | 16 |
-| Declaring OAuth grants in tests | 11 |
-| `jadpo test` itself: starting PostgreSQL, template copies, parallel runs, `--kind`, `--keep-failed`, the report; `test.no_tests`, `test.failed` and `test.runtime_start_failed`, which only `jadpo test` raises | 14 |
-| Tests the compiler generates from facts it already owns (bad input, failure envelopes, closed output) | 14 |
-| `layout.test_without_subject` and test file contents | 1 |
+Every error this area can produce, with an example that triggers it:
+first the six codes a failed test gets from `jadpo test`, each with its
+report (run with `--seed 1`), then the `jadpo check` errors.
 
-### Decisions
-
-| Topic | Decision |
-|---|---|
-| Test placement | Carried from area 1: tests beside their subject as `<name>.test.jadpo`; cross-domain scenarios in root `tests/` |
-| Kinds of test | Carried from area 1: pure, action, route and schedule, known from what a test calls; no folder per kind; `jadpo test --kind route` runs one kind |
-| Fixtures folder | Carried from area 1: test data shared by several test files lives in the domain's `fixtures/` |
-| Database engine | Carried from area 5: one engine in every environment, PostgreSQL `main` by default, so tests run on PostgreSQL |
-| Seeds | Carried from area 5: seeds create data through the application's own actions and refuse to run against production |
-| Caches and events | Carried from areas 1 and 5: caches serve display reads only; events run after the emitting action commits |
-| Code in tests | Carried from areas 2 to 4: `var x: T`, literals take the expected type, `if (…)`, one `match` with `->`, failures named in arms, the colon rule |
-| What a test can reach | A test beside its code reaches anything in its domain; a scenario in root `tests/` sees only public declarations and routes |
-| Test environment | Optional `clock:`, `config:`, `fakes:` settings at the top of the test; the clock defaults to a fixed time |
-| Configuration in tests | Area 10: `test:` values, generated secrets, per-test override |
-| Fixtures | Test-only actions in `fixtures/` calling the real actions; return a named object of what they made |
-| Public fixtures | A fixture may be `public`: another domain's tests, fixtures and seeds, and scenarios in root `tests/`, call it through its domain (`planning.alice_with_todos()`); a private fixture stays its own domain's; only tests, fixtures and seeds ever call a fixture. This page wins over area 1 |
-| Route and schedule tests | `request { }` returning `Response`; `schedule.run()` under the test clock |
-| Assertions | `assert condition` with sub-expression values; `assert call(...) fails FailureName` |
-| Fakes | Generated per package with valid defaults; scripted answers; `.requests`; running out or leftovers fail the test |
-| Test database | Disposable PostgreSQL; a template from the migrations copied per test; parallel; real commits |
-| Events and caches in tests | Events delivered after each commit in a seeded shuffled order; in-memory cache emptied per test |
-| Acting as a user | `Principal.user(user)` in tests, fixtures and seeds; `as:` in route tests |
-| Acting as a service | `Principal.service(service)`; route tests sign in with a key from `Service.issue_key` |
-| Query cost assertions | None at runtime; the compiler reports query cost and changes show in review |
-| Test failure output | Every failed test reports the assertion broken into sub-expression values, record diffs, the failure that happened instead, the test's trace in short, fake usage, clock, seed, kept database and the rerun command; readable and `--json`; stable `test.*` codes |
-| Running tests | `jadpo test` by file, `file:line`, `--name`, `--kind`, `--failed`; `--watch` reruns affected tests on save; `--interactive` keyboard view to search, navigate and run every test in the app; editor run buttons; no `test.only` |
-| Data builders | Generated `make.Entity { ... }` with valid defaults through the real create operation; builders may set any non-generated field, including ones ordinary inputs do not accept, so hard-to-reach states are easy to build; validation still applies |
-| Side-effect assertions | `assert emitted Event { ... }` and fakes' `.requests` |
-| Comparing values | `==` on records and lists with field diffs; no snapshot assertions |
-| What a failed test leaves | `--keep-failed` keeps the database and trace |
-| Speed of database copies | Copies prepared in the background; measured on the golden app before changing approach |
-| Provider calls and capabilities in tests | Every provider call faked; scripted answers in the clean type; fakes honour keys and answer `lost` and `in_use`; crash points at each step boundary of multi-step actions, on by default; one fake per capability (`email.sent`, no `sms.sent`); placeholder PDF with readable HTML; `bot_check_failed` scripted; PostgreSQL search; `grants: { calendar: [alice] }` naming fixtures; file fixtures and failing stores; batches in batches of two with a restart between each |
-| Idempotency keys in route tests | A route test sends a fresh `Idempotency-Key` with every request but a `GET`, as a real client would, so a route on an API with `idempotency: Idempotency.required` is tested through its success; a test that gives its own key sends that one instead, to test repeats and refusals |
-| Writing a route test's key | A test writes the key it sends as `idempotency_key:` in `request { }`, text, as `as:` stands for the credential: the request has no headers of its own, and an `Input`'s `header:` field is the action's, which the runtime's key never reaches. The runtime checks it as it checks a client's. A `GET` reads no key, so a request to one that gives `idempotency_key:` is `semantic.request_invalid`. A fresh key is a new identity from the test's seed, so a run is the same every time; a route whose `Input` itself reads an `Idempotency-Key` header sends that one |
-| An omitted field in a route test | A route test's `input:` leaves an optional field it doesn't write out of the body it sends, as a client would, so a `patch:` keeps that field rather than clearing it; a field written as `none` is sent as `null`. A request's body goes with `Content-Type: application/json` |
-| The test clock | A test without `clock:` starts at 2000-01-01T00:00:00Z; `clock:` is an instant written out (`type.setting_value` otherwise). `clock.advance(duration)` moves the clock on for the calls after it, never one already running; it is `type.test_clock_context` anywhere but a test, a fixture and a seed included, and a negative duration is the fault `clock_backward` |
+- [`test.assertion_failed`](../errors/test.assertion_failed.md)
+- [`test.unexpected_failure`](../errors/test.unexpected_failure.md)
+- [`test.fault`](../errors/test.fault.md)
+- [`test.subscriber_failed`](../errors/test.subscriber_failed.md)
+- [`test.fake_exhausted`](../errors/test.fake_exhausted.md)
+- [`test.fake_unused`](../errors/test.fake_unused.md)
+- [`semantic.fake_invalid`](../errors/semantic.fake_invalid.md)
+- [`semantic.request_route_unknown`](../errors/semantic.request_route_unknown.md)
+- [`semantic.request_invalid`](../errors/semantic.request_invalid.md)
+- [`type.test_clock_context`](../errors/type.test_clock_context.md)
+- [`configuration.field_unknown`](../errors/configuration.field_unknown.md)
+- [`syntax.assertion_form`](../errors/syntax.assertion_form.md)

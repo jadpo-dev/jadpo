@@ -513,7 +513,7 @@ error: No test's name contains `add wrongly`
   reason: None of the 2 tests' names contains this text. Did you mean `adds wrongly`?
   next: Use `--name \"adds wrongly\"` (agent)
   rule: test.no_tests
-  help: docs/language/14-tooling.html#command-errors
+  help: docs/errors/test.no_tests.md
 "
     );
     let found = jadpo(&root, &["test", ".", "--name", "WRONG", "--seed", "1"]);
@@ -538,7 +538,7 @@ error: These files have no tests
   reason: No file holds a `test` declaration, so there is nothing to run.
   next: Add a test beside the code it tests, in a file named `<name>.test.jadpo` (agent)
   rule: test.no_tests
-  help: docs/language/14-tooling.html#command-errors
+  help: docs/errors/test.no_tests.md
 "
     );
     let document = json(&jadpo(&root, &["test", ".", "--json"]));
@@ -616,7 +616,7 @@ error: No schedule tests to run
   reason: Of the 1 test asked for, none is a schedule test: a test's kind comes from what it calls.
   next: Leave out `--kind` to run every kind (agent)
   rule: test.no_tests
-  help: docs/language/14-tooling.html#command-errors
+  help: docs/errors/test.no_tests.md
 "
     );
     let route = jadpo(&root, &["test", ".", "--kind", "route"]);
@@ -847,7 +847,7 @@ error: No test at `sizes.test.jadpo:4`
   reason: The tests in this file start at lines 1, 5 and 9.
   next: Give a line inside a test, such as `jadpo test sizes.test.jadpo:1` (agent)
   rule: test.no_tests
-  help: docs/language/14-tooling.html#command-errors
+  help: docs/errors/test.no_tests.md
 "
     );
     let file = jadpo(&root, &["test", "sizes.jadpo"]);
@@ -858,7 +858,7 @@ error: `sizes.jadpo` has no tests
   reason: The project's 3 tests are in `sizes.test.jadpo`.
   next: Give a file or folder that holds tests, or leave out the path to run every test (agent)
   rule: test.no_tests
-  help: docs/language/14-tooling.html#command-errors
+  help: docs/errors/test.no_tests.md
 "
     );
     // Loose files given by folder rerun under that folder.
@@ -1092,7 +1092,7 @@ error: `pur` isn't a kind of test
   reason: A test is `pure`, `action`, `route`, `schedule` or `recording`. Did you mean `pure`?
   next: Use `--kind pure` (agent)
   rule: cli.test_arguments
-  help: docs/language/14-tooling.html#command-errors
+  help: docs/errors/cli.test_arguments.md
 "
     );
     let seed = jadpo(&root, &["test", ".", "--seed", "soon"]);
@@ -1112,7 +1112,7 @@ error: `--name` needs some text
   reason: `--name` takes some text.
   next: Give it after the flag: `jadpo test --name <text>` (agent)
   rule: cli.test_arguments
-  help: docs/language/14-tooling.html#command-errors
+  help: docs/errors/cli.test_arguments.md
 "
     );
     let twice = jadpo(&root, &["test", ".", "--seed", "1", "--seed", "2"]);
@@ -1124,7 +1124,7 @@ error: `--seed` is given more than once
   reason: `--seed` takes one value, and this command line gives it `1` and then `2`.
   next: Keep one `--seed` (agent)
   rule: cli.test_arguments
-  help: docs/language/14-tooling.html#command-errors
+  help: docs/errors/cli.test_arguments.md
 "
     );
     let no_seed = jadpo(&root, &["test", ".", "--seed"]);

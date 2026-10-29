@@ -4,7 +4,9 @@ How Jadpo's documentation is written, built and delivered, to people and to
 coding agents. The site at jadpo.dev is built in its own repository from
 what this one publishes; this page is the contract between the two.
 
-Decided; mostly not built yet. The [roadmap](roadmap.md) says what is.
+Decided. The structure and the bundle are built; the primer, releases,
+installers and the site are not yet, and the [roadmap](roadmap.md) says
+when each comes.
 
 ## Who reads it
 
@@ -25,12 +27,20 @@ version's docs, and compiler errors name rule IDs that must match the error
 pages; none of that holds if the content lives anywhere else. The site
 repository renders and hosts; it never edits content.
 
+An area page keeps every rule an app author needs, and a short "What is
+built" table near its end; its notes hold the Decisions table, how the area
+fits the rest of the language, what it carried to other areas and the
+questions still open. Every compiler rule has its page, one only a command
+raises saying "No example yet." until it has one, and a diagnostic's
+`help:` line names that page (`docs/errors/failure.kind_required.md`); its
+area page lists it under `## Errors`.
+
 | Content | Source |
 |---|---|
 | Primer: layout, syntax essentials, the constructs nearly every app uses, what is built, where to look next; about 3,000 to 5,000 tokens | `docs/primer.md` |
 | The language, by topic | the area pages, `docs/language/NN-*.md` |
-| One page per compiler error | `docs/errors/<rule.id>.md` (examples), with the rule's message, reason and fix from the compiler's catalogue (`jadpo help --json`) |
-| Why the language is the way it is | each area's design notes, kept apart from what an app author reads |
+| One page per compiler error | `docs/errors/<rule.id>.md` (examples), with the rule's summary from the compiler's catalogue (`jadpo help --json`) |
+| Why the language is the way it is | each area's design notes, `docs/language/notes/NN-*.md`, kept apart from what an app author reads |
 | Commands | generated from `jadpo help --json` |
 | Standard types | generated from the compiler's contract data (roadmap, after the first build, item 2) |
 | Teaching projects | `examples/` |
@@ -42,7 +52,22 @@ unique across the docs, independent of the area that holds it
 (`translations`, `migrations`, `passkeys`). An ID is declared in the source
 next to its heading, never changes, and is never reused. Moving a section to
 another area, or regrouping the areas, changes no ID and breaks no link.
-Error pages use the rule ID itself (`data.migration_missing`).
+Error pages use the rule ID itself (`data.migration_missing`), commands
+`jadpo-<command>` (`jadpo-check`) and the primer `primer`.
+
+The declaration is an HTML comment on the line after the heading, which
+GitHub doesn't show and which leaves the heading's own anchor alone:
+
+```markdown
+## Declaring a failure
+<!-- topic: declaring-a-failure -->
+```
+
+Each `#` and `##` heading of an area page is a topic, but `## Errors`,
+which only lists the area's error pages; a topic runs to the next. The
+docs check (`tools/language_docs.py`) fails on a topic with no ID, an ID
+that isn't kebab case or is used twice, an ID line anywhere else, and a
+topic over 3,000 words as the bundle gives it, which is split.
 
 ## The bundle
 
@@ -52,18 +77,36 @@ pages.
 
 ```text
 bundle/
-  index.json             one entry per page
+  index.json                   one entry per page
   primer.md
-  topics/<id>.md         one per topic ID
-  errors/<rule.id>.md    one per catalogue rule, example or not
-  commands/<command>.md  generated from jadpo help --json
+  topics/<id>.md               one per topic ID
+  errors/<rule.id>.md          one per catalogue rule, example or not
+  commands/jadpo-<command>.md  generated from jadpo help --json
 ```
 
-Each `index.json` entry has `id`, `kind` (`primer`, `topic`, `error`,
-`command`), `title`, a one-line `summary`, `tokens` (an estimate), `hash`
-(of the page's markdown), the area it comes from, and the IDs it links to.
-Pages are plain markdown with relative links by ID. A release attaches the
-bundle to its GitHub Release; `main`'s bundle is a CI artifact.
+`index.json` is `{ "version": "<jadpo's version>", "pages": [...] }`, in
+the order above, topics in the areas' order. Each entry has `id`, `kind`
+(`primer`, `topic`, `error`, `command`), `title`, a one-line `summary` (a
+topic's first sentence, a rule's catalogue summary, a command's own),
+`tokens` (an estimate: a quarter of the page's characters), `hash`
+(`sha256:` and the hex digest of the page's markdown), the `area` it comes
+from (`null` for the primer, 14 for a command), and the IDs it `links` to.
+A page's path follows from its kind and ID.
+
+Pages are plain markdown. A topic's heading is its page's `#`, its hidden
+blocks (`hidden`, the support code its examples compile with) are left
+out, and its relative links are by ID (`passkeys.md`,
+`../errors/failure.kind_required.md`), keeping an anchor within the page;
+a link to anything else, design notes included, names the file on GitHub's
+`main`. An error page leads with its rule's summary, area and who usually
+decides the next step; a command's page is its usage, arguments, flags,
+examples and errors. The primer joins the bundle once `docs/primer.md`
+exists.
+
+`python3 tools/language_docs.py --bundle <dir>` builds it; the gate builds
+it into `build/docs-bundle/`, and on `main` CI keeps that folder as the
+`docs-bundle` artifact. A release attaches the bundle to its GitHub
+Release.
 
 ## What the site serves
 

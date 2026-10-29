@@ -139,7 +139,7 @@ pub fn build(call: &Call) -> Reply {
     // order they come: each reads only those of what it reaches.
     let mut settings: Vec<String> = Vec::new();
     // Each `max_concurrent:` a Worker reaches, which counts in each of its
-    // instances (area 11, "Decisions", 2026-10-21).
+    // instances (area 11's notes, "Decisions", 2026-10-21).
     let caps = jadpo_check::deployables::per_instance(db, project);
     let mut built = Vec::new();
     for deployable in chosen {
@@ -1212,7 +1212,7 @@ mod tests {
     }
 
     /// A Worker's caps on calls are said on its block, each counted in
-    /// each instance (area 11, "Decisions", 2026-10-21; chunk 8.2m).
+    /// each instance (area 11's notes, "Decisions", 2026-10-21; chunk 8.2m).
     #[test]
     fn a_workers_caps_on_calls_are_said_to_count_in_each_instance() {
         let worker = |per_instance: Vec<(String, u32)>| Binary {

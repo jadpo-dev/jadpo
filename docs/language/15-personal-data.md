@@ -7,6 +7,7 @@ rules: []
 ---
 
 # Personal data
+<!-- topic: personal-data -->
 
 How a Jadpo application says which data is about a person, so the compiler
 can export it, erase it, expire it and report where it lives. The aim is
@@ -35,6 +36,7 @@ write down.
 | Report | nothing | Writes `build/report/personal-data.md` |
 
 ## Marking personal fields
+<!-- topic: marking-personal-fields -->
 
 A field that identifies or describes a person says so in its block, with
 one category from a fixed list. The category decides how carefully the
@@ -96,6 +98,7 @@ extra ones CCPA/CPRA lists, government IDs and precise location.
   at, or describes, a person.
 
 ## The person
+<!-- topic: the-person -->
 
 The law calls the person data is about the *data subject*. An entity that
 represents one says `person: true`. Most applications have one, `User`;
@@ -117,6 +120,7 @@ say), and the report shows the whole tree for review. A record that refers
 to two people, such as a message from one user to another, belongs to both.
 
 ## Erasure
+<!-- topic: erasure -->
 
 Erasing a person is a generated operation, `User.erase(user_id)`, called from
 an action you write (for a "delete my account" route, or a support tool).
@@ -271,6 +275,7 @@ This is a declaration on the package, not part of any capability (area
 11), so Stripe and Postmark are erased the same way.
 
 ## Export
+<!-- topic: export -->
 
 `User.export(user_id)` returns everything held about the person: their
 record and every record that belongs to them, as JSON, one list per entity,
@@ -295,6 +300,7 @@ both reach every record that belongs to the person, as purge does, because a
 partial export or erasure is worse than none.
 
 ## Retention
+<!-- topic: retention -->
 
 GDPR's storage limitation means personal data needs an end date. A
 `retention:` block, in the same `after:` and `since:` shape as lifecycle
@@ -325,6 +331,7 @@ entity, or an entity holding marked fields, with no retention and no purge
 is listed in the report as "kept until erased".
 
 ## What the compiler checks
+<!-- topic: what-the-compiler-checks -->
 
 - **Marked fields nothing reads.** A personal field that no query, output or
   action reads is a declinable error (area 1): you are holding data you do
@@ -348,6 +355,7 @@ data, such as a `Consent` entity with the purpose and the time it was given
 and withdrawn.
 
 ## Data requests
+<!-- topic: data-requests -->
 
 `privacy:` in `app.jadpo` switches on generated routes for a person's
 requests to export or erase their data. Jadpo generates endpoints only,
@@ -414,6 +422,7 @@ erasure_confirmed: { } erasure_completed: { } } }`, each entry taking
 `email:` or `send:`, never both; their fields are in area 16.
 
 ## Access records
+<!-- topic: access-records -->
 
 Every export and erasure is recorded: who asked, for which person `id`, and
 when, never the values. So is every read of a sensitive field. These are
@@ -423,6 +432,7 @@ GDPR asks for accountability and security, not a log of every read, and
 that would log almost every request.
 
 ## Where data is stored
+<!-- topic: where-data-is-stored -->
 
 Each store is one database in one place. Data that must stay in the EU lives
 in a deployment whose stores are in the EU; an application serving several
@@ -432,6 +442,7 @@ the report lists each store with the configuration setting that says where
 it is.
 
 ## The personal-data report
+<!-- topic: the-personal-data-report -->
 
 `jadpo check` writes `build/report/personal-data.md` and a `.json` twin
 (area 14's report form). It lists, for each person entity:
@@ -456,6 +467,7 @@ review (area 9), so a pull request that starts sending email addresses to a
 new provider is seen by a person before it ships.
 
 ## Encrypted fields
+<!-- topic: encrypted-fields -->
 
 An entity field may be stored encrypted,
 `notes: ClinicalNote { encrypted: true }` (area 19), sealed with the application's one
@@ -467,6 +479,7 @@ encrypted field, usable only as a `crypto` call's `key:`). Every field sent
 to an AI model is listed in the report above (area 21).
 
 ## What this does not cover
+<!-- topic: what-this-does-not-cover -->
 
 The report says so plainly. Covered by the language: minimisation and
 storage limitation, access, rectification (ordinary updates), erasure,
@@ -479,70 +492,10 @@ marked data a breached store or provider held) and international transfers
 (provider packages declare where data is processed, shown in the report).
 This is not legal advice; a privacy professional reviews the report.
 
-## Review
+## What is built
+<!-- topic: personal-data-built -->
 
-### Status
-
-Nothing on this page is built yet, but for one reading: an entity's and
-an event's `personal: PersonalData.<category>` is read and checked against
-the fourteen categories, for area 21's check of what reaches a model. The
-rest is on [the roadmap](../roadmap.md).
-
-### Consistency with the rest of the language
-
-- **Hard delete.** Area 5 says code cannot hard-delete a record with a
-  lifecycle. Erasure does, as purge does; both are the compiler's own
-  operations, which area 9 exempts from policy.
-- **Two shapes for an end date.** `retention:` reuses purge's `after:` and
-  `since:` but applies to visible records too. Purge stays the form for
-  soft-deleted records.
-- **Grants for erasure and export.** Area 9's grants are create, read, update
-  and delete; this page maps erase to delete and export to read rather than
-  adding effects.
-- **`subject` already means something.** Area 8's principal has a `subject`
-  (the sign-in identifier), so this page uses "person", not "data subject",
-  in source.
-- **Options as enum values.** `PersonalData.contact` and `Erasure.deleted`
-  follow area 2's `Type.value` rule and its "values, not verbs" naming.
-
-### Carried to later areas
-
-| Item | Area |
+| Feature | Status |
 |---|---|
-| Hash every marked field in logs, whatever its type | 4 |
-| Erasure and retention as compiler operations alongside purge; `retention:` beside `purge:` | 5 |
-| Exports large enough to need paging or a snapshot read | 6, 12 |
-| Erase maps to the delete grant and export to read; personal-data report changes in the approval review | 9 |
-| Retention periods as settings | 10 |
-| Integrations that receive marked fields; asking a provider to delete | 11 |
-| Erasure of other stores by a generated subscriber; retention in the purge schedule; marked fields in event payloads | 12 |
-| Generated tests: after `erase`, `export` returns nothing and no cache holds the person | 13 |
-| The report's file and form | 14 |
-
-### Decisions
-
-| Topic | Decision |
-|---|---|
-| Setting options | Carried from area 2: options are enum values written `Type.value`, values rather than verbs |
-| References | Carried from area 5: every field typed `X.id` is a reference with a required `on_delete:` |
-| Lifecycle | Carried from area 5: `purge: { after: since: }` deletes hidden records; code cannot hard-delete a record with a lifecycle |
-| Caches | Carried from area 5: caches are opt-in copies for display reads; erasing personal data wipes cached copies immediately |
-| Logs | Carried from area 4: identifiers, numbers, enums, booleans and times as values; text as a keyed hash; secrets never |
-| Stores | Carried from area 5: an action writes at most one store; stores declared in `app.jadpo` |
-| Marking | `personal: PersonalData.category` from a fixed list of 14, eight sensitive |
-| The person | `person: true` on the entity; ownership found by following references; several person entities allowed |
-| Erasure outcomes | Generated `Person.erase(id)`; outcomes follow `on_delete:`; `erase: Erasure.deleted/.anonymised/.retained` required on restricted references |
-| Kept records | Field-by-field erasure on the person too: retained fields stay until retention ends, the rest is cleared, the person cannot sign in; purge deletes the rest automatically |
-| Backups | An erasure log replayed after restore; no per-person keys |
-| Legal holds | Left to the application |
-| Export | Generated `Person.export(id)` as JSON of everything belonging to the person, credentials left out |
-| Retention | `retention: { after: since: }` on a field (clears) or entity (deletes); periods from config; applied by the purge schedule |
-| Access records | Every export, erasure and read of a sensitive field recorded without values |
-| Logs of marked fields | Every marked field hashed in logs, whatever its type (amends area 4) |
-| Purpose and consent | Not in the language |
-| Report and residency | `build/report/personal-data.md` and `.json`, shown in review when it changes; residency by deployment per region |
-| Data requests | Endpoints only, no pages: `POST /privacy/requests`, `/confirm` and `/cancel` for self-service, the emails linking to the frontend's `link:` and `cancel_link:` paths; signed-in `POST /privacy/export` and `/privacy/erasure` for the person only; staff actions granted in policy; export by expiring link, erasure after a cooling-off period, events at every step; the emails are area 16's built-in emails, each taking `email:` or `send:` |
-| Unreachable personal data | A marked field that belongs to no person is a compile error; every reference into a person's records has an erasure outcome |
-| Erasure at providers | The package's `erasure: { call: by: }`, the connection's `erasure: { key: }`; the app erased first in one transaction, then each provider by a generated subscriber after commit, retried until confirmed; the completion email only when all confirm; parked deliveries shown; personal keys only in the outbox until delivered; a connection that cannot erase needs an acceptance stating why; OAuth grants deleted and revoked |
-| Report additions | Erasure per connection, keys waiting in the outbox, multi-step step records and OAuth grants listed in the personal-data report |
-| Coverage and gaps | The report states what the language covers, what is the app's choice and what is not code; breach-notification and transfer support to add |
+| An entity's and an event's `personal: PersonalData.<category>` | Built: it is read and checked against the fourteen categories, for area 21's check of what reaches a model. |
+| Everything else on this page | Not built yet: it is on [the roadmap](../roadmap.md). |

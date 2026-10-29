@@ -6,6 +6,7 @@ checked-with: this checkout's jadpo on every gate run
 ---
 
 # Data
+<!-- topic: data -->
 
 How a Jadpo program declares the records it keeps and how their schema
 changes. Reading and writing records is area 6; who may read or change one
@@ -18,6 +19,7 @@ Examples use the golden todo app's `planning` domain, plus a shop where Redis
 is needed.
 
 ## Stores
+<!-- topic: stores -->
 
 Stores are connections declared in `app.jadpo`, in its `connections:` block
 (area 11). Each store's driver is fixed in source, so every environment
@@ -166,7 +168,7 @@ error: A connection with `driver: Driver.postgres` takes no `sslmode:`
   reason: A connection to a PostgreSQL database gives `url:`, a `PostgresUrl` setting, and may give `authority:`, a `Certificate` setting its server's certificate is checked against, or `tls: false` for a server elsewhere that offers no TLS.
   next: Remove `sslmode:` (agent)
   rule: connection.key_invalid
-  help: docs/language/11-integrations.html#connection-key-invalid
+  help: docs/errors/connection.key_invalid.md
 
 check failed: 1 error, 2 files
 ```
@@ -201,7 +203,7 @@ error: `main`'s `authority:` must be a `Certificate` setting
   reason: `authority:` is the authority its server's certificate is checked against, as PEM: a `Certificate` setting, `config.<name>`, read from each deployment's environment.
   next: Declare `database_authority: Certificate` in `config.jadpo` (agent)
   rule: connection.value_invalid
-  help: docs/language/11-integrations.html#connection-value-invalid
+  help: docs/errors/connection.value_invalid.md
 
 check failed: 1 error, 2 files
 ```
@@ -235,7 +237,7 @@ error: `main`'s `tls:` is written only as `false`
   reason: A database connection uses TLS unless it says `tls: false`, for a server elsewhere that offers none; it is decided in `app.jadpo`, where a review sees it, never by a setting.
   next: Remove `tls: true` (agent)
   rule: connection.value_invalid
-  help: docs/language/11-integrations.html#connection-value-invalid
+  help: docs/errors/connection.value_invalid.md
 
 check failed: 1 error, 2 files
 ```
@@ -271,7 +273,7 @@ error: `main` names an authority and goes without TLS
   reason: `authority:` is what the server's certificate is checked against, and a connection with `tls: false` never asks for one.
   next: Remove `authority:`, or `tls: false` (human)
   rule: connection.key_invalid
-  help: docs/language/11-integrations.html#connection-key-invalid
+  help: docs/errors/connection.key_invalid.md
 
 check failed: 1 error, 2 files
 ```
@@ -315,6 +317,7 @@ with the id of the Hyperdrive configuration it is given in
   target.
 
 ## Entities and the `id`
+<!-- topic: entities-and-the-id -->
 
 An entity is a stored record with a lasting identity, in its own file under
 its domain's `entities/` folder. Its identity is one field, `id`, based on
@@ -347,6 +350,7 @@ entity Project {
 ```
 
 ## Fields and their settings
+<!-- topic: fields-and-their-settings -->
 
 A field's settings (`generated:`, `unique:`, `on_delete:`) go in a block
 after its type, one per line. A nullable field is `T?`; only `Input` has
@@ -369,6 +373,7 @@ entity Todo {
 ```
 
 ## Unique rules
+<!-- topic: unique-rules -->
 
 `unique: true` in a field's block makes that field unique. A rule over
 several fields is named in the entity's `unique: { }` section with its fields
@@ -402,6 +407,7 @@ entity Project {
 ```
 
 ## References and `on_delete`
+<!-- topic: references-and-on-delete -->
 
 Any field typed `X.id` is a reference, with a foreign key and index. Its
 block must say what happens when the referenced record is deleted; there is
@@ -435,6 +441,7 @@ entity Todo {
 ```
 
 ## Children
+<!-- topic: children -->
 
 A parent does not declare its children; the relationship is stated once, on
 the child's reference. A query wanting a project's todos names that field and
@@ -450,6 +457,7 @@ include: {
 ```
 
 ## Lifecycle
+<!-- topic: lifecycle -->
 
 A lifecycle describes the stages a record goes through and when it drops
 out of normal view. The common case is soft delete: deleting a todo hides it
@@ -577,6 +585,7 @@ The details:
   schedule logs.
 
 ## Indexes
+<!-- topic: indexes -->
 
 The compiler sees every read, so it creates every index its queries need,
 multi-column and partial (for `visible:`) included; a page of a user's
@@ -628,6 +637,7 @@ its snapshot, with no step for the index. Snapshots keep their format, so
 every existing one reads.
 
 ## Caches
+<!-- topic: caches -->
 
 A cache keeps a copy of data in a Redis store so busy pages read it quickly.
 Nothing is cached unless you add it, on an entity (single records) or on a
@@ -685,6 +695,7 @@ Redis", below). Which services can hold a cache (Redis-compatible ones, or
 are area 16's ("Caches: drivers and what they hold").
 
 ## Entities in Redis
+<!-- topic: entities-in-redis -->
 
 An entity may live in a Redis store, for data that is short-lived and
 harmless to lose (question 15). It must
@@ -745,6 +756,7 @@ without one, is a compile error. Not built yet: these come with the Redis
 driver.
 
 ## Storage types
+<!-- topic: storage-types -->
 
 Each column is the store engine's native type for the field's type; the
 source never names one. Structured fields, recursive ones included, are
@@ -1115,6 +1127,7 @@ and leaves the rest as they are.
   rewritten in 2 batches in Jadpo`, and `--json` gives each its `work`.
 
 ## Migrations
+<!-- topic: migrations -->
 
 Entities describe the schema you want; a migration records each step from
 one version of the database to the next. `jadpo migrate new add_priority`
@@ -1442,6 +1455,7 @@ PostgreSQL's 63 bytes. Each store that holds an entity also gets the
 runtime's system tables, prefixed `jadpo_` (below).
 
 ## System tables
+<!-- topic: system-tables -->
 
 Tables the runtime needs are generated, prefixed `jadpo_`, and part of the
 migration snapshots like any entity, so drift in them fails `jadpo check`
@@ -1526,6 +1540,7 @@ on a system table with an application's own, a session read with its
 user's record, are the plan's and are tested with it.
 
 ## Seeds
+<!-- topic: seeds -->
 
 A seed in `database/seeds/` creates development data by calling the
 application's own actions, so validation, lifecycle and policy apply.
@@ -1545,6 +1560,7 @@ seed {
 Seeds are not built yet.
 
 ## Where things live
+<!-- topic: where-things-live -->
 
 An entity's file holds only its data definition (store, fields, unique
 rules, indexes, lifecycle, policy, record cache) and gets generated
@@ -1569,6 +1585,28 @@ action complete_todo(todo_id: Todo.id) fails TodoNotFound -> Todo {
 }
 ```
 
+## What is built
+<!-- topic: data-built -->
+
+Each feature not built yet is `toolchain.not_built_yet` where it is used.
+
+| Feature | Status |
+|---|---|
+| Entities, their fields, references, unique rules, indexes and stores | Built. |
+| Migrations, computed backfills and the test database | Built. |
+| PostgreSQL over TLS and through Hyperdrive | Built. |
+| Lifecycles | Built. |
+| Structured values stored as JSON, and their migrations | Built. |
+| The check of every stored value on read | Built. |
+| Manifest nodes | Built: a node for each entity's placement, unique rule, index and reference, with `references` edges between entities, one for each system table and migration snapshot, and one for each lifecycle and transition (`lifecycle Todo`, `transition Todo.delete`, with its `when:`, whether it can refuse a record and the fields it sets). |
+| Other schema changes in `jadpo migrate new` | Not built yet: removing an entity, moving one between stores, dropping a retired column (it needs acceptances, area 18) and other column type changes. |
+| A worked-out backfill for a field that allows less | Not built yet. |
+| Entities in Redis and record caches (`caches:`) | Not built yet. |
+| Index kinds other than geographic and HNSW | Not built yet. |
+| A database implied only when something needs one (question 14) | Not built yet: it comes with the first feature that can run without one. |
+| Seeds and `jadpo seed` | Not built yet. |
+| `jadpo rename` | Not built yet: it writes the identity registry (area 14). |
+
 ## Errors
 
 Every error this area can produce, with an example that triggers it and the
@@ -1577,1496 +1615,41 @@ including a write to a field a lifecycle owns, are area 6's. An example's hidden
 files and the migrations its `jadpo migrate new` steps write are in the
 page's source.
 
-### `data.identity_missing`
-
-```jadpo check project=e-identity-missing expect=data.identity_missing
-entity Note {
-    body: Text
-}
-```
-
-```text output
-error: `Note` has no `id` field
- --> main.jadpo:1:8
-  |
-1 | entity Note {
-  |        ^^^^ no `id`
-  reason: Every entity's identity is one field, `id`, based on `Uuid`: generated when a record is created and never supplied by callers, so other code can refer to it as `Entity.id`.
-  next: Add `id: Uuid` as the entity's first field (agent)
-  rule: data.identity_missing
-  help: docs/language/05-data.html#data-identity-missing
-
-check failed: 1 error, 1 file
-```
-
-### `data.identity_type`
-
-```jadpo check project=e-identity-type expect=data.identity_type
-entity Note {
-    id: Text
-}
-```
-
-```text output
-error: `Note.id` must be a required `Uuid`
- --> main.jadpo:2:5
-  |
-2 |     id: Text
-  |     ^^ not a `Uuid`
-  reason: An entity's `id` is a `Uuid`, or a named type built on one; links between entities are references to it.
-  next: Write `id: Uuid` (agent)
-  rule: data.identity_type
-  help: docs/language/05-data.html#data-identity-type
-
-check failed: 1 error, 1 file
-```
-
-### `data.entity_in_field`
-
-```jadpo check project=e-entity-in-field expect=data.entity_in_field
-entity User {
-    id: Uuid
-}
-
-entity Todo {
-    id: Uuid
-    keeper: User
-}
-```
-
-```text output
-error: `Todo.keeper` holds a whole `User`
- --> main.jadpo:7:13
-  |
-7 |     keeper: User
-  |             ^^^^ a `User` record
-  reason: An entity value is a snapshot, never stored inside another record; a field refers to a record by its identity, `User.id`, which the database keeps as a foreign key.
-  next: Store `User.id` instead (agent)
-  rule: data.entity_in_field
-  help: docs/language/05-data.html#data-entity-in-field
-
-check failed: 1 error, 1 file
-```
-
-### `data.field_without_json`
-
-A structured field is stored as its type's JSON, so everything inside it
-has a stored form: no event, failure, email, message, prompt, `Input` or
-`Output`, and no map keyed by a type with no single text form.
-
-```jadpo check project=e-field-without-json expect=data.field_without_json
-type Tag = Text {
-    max_length: 20
-}
-
-/// A parcel was sent.
-type ParcelSent = Event {
-    label: Tag
-}
-
-/// What a parcel's shipments hold.
-type Shipments = Object {
-    sent: List<ParcelSent>
-}
-
-entity Parcel {
-    id: Uuid
-    shipments: Shipments
-}
-```
-
-```text output
-error: `Parcel.shipments` can't be stored as JSON
- --> main.jadpo:17:16
-   |
-17 |     shipments: Shipments
-   |                ^^^^^^^^^ `ParcelSent` has no stored form
-  reason: A structured field is stored whole as `jsonb` holding its type's JSON, made of values built on the built-in and standard types, enums, and objects made of them, in lists, sets and maps; `Parcel.shipments` holds `ParcelSent`, an event, which is emitted, not written.
-  next: Store what `Parcel.shipments` needs in an `Object` of the application's, or in fields of its own (agent)
-  rule: data.field_without_json
-  help: docs/language/05-data.html#data-field-without-json
-
-check failed: 1 error, 1 file
-```
-
-### `data.generated_type`
-
-```jadpo check project=e-generated-type expect=data.generated_type
-entity Note {
-    id: Uuid
-    created_on: CalendarDate {
-        generated: Generated.on_create
-    }
-}
-```
-
-```text output
-error: `Note.created_on` can't be generated
- --> main.jadpo:4:9
-  |
-4 |         generated: Generated.on_create
-  |         ^^^^^^^^^ not an `Instant`
-  reason: A generated field is a required `Instant` set from the operation's clock, on create or on every change; code never assigns it.
-  next: Type `created_on` as `Instant`, or remove `generated:` (agent)
-  rule: data.generated_type
-  help: docs/language/05-data.html#data-generated-type
-
-check failed: 1 error, 1 file
-```
-
-### `data.on_delete_required`
-
-```jadpo check project=e-on-delete-required expect=data.on_delete_required
-entity User {
-    id: Uuid
-}
-
-entity Todo {
-    id: Uuid
-    owner_id: User.id
-}
-```
-
-```text output
-error: `Todo.owner_id` doesn't say what deleting its `User` does
- --> main.jadpo:7:5
-  |
-7 |     owner_id: User.id
-  |     ^^^^^^^^ refers to a `User`
-  reason: Any field typed `User.id` is a reference with a foreign key, and its block must say what happens when the `User` is deleted: `OnDelete.restricted` refuses the delete, `OnDelete.cascade` deletes this record too, and `OnDelete.cleared` sets an optional reference to `none`. There is no default.
-  next: Add `on_delete:` to `owner_id`'s block (human)
-  rule: data.on_delete_required
-  help: docs/language/05-data.html#data-on-delete-required
-
-check failed: 1 error, 1 file
-```
-
-### `data.on_delete_not_reference`
-
-```jadpo check project=e-on-delete-not-reference expect=data.on_delete_not_reference
-entity Note {
-    id: Uuid
-    title: Text {
-        on_delete: OnDelete.cascade
-    }
-}
-```
-
-```text output
-error: `Note.title` isn't a reference
- --> main.jadpo:4:20
-  |
-4 |         on_delete: OnDelete.cascade
-  |                    ^^^^^^^^^^^^^^^^ nothing to delete
-  reason: `on_delete:` says what deleting a referenced record does, so it belongs only on a field typed `X.id`.
-  next: Remove `on_delete:` (agent)
-  rule: data.on_delete_not_reference
-  help: docs/language/05-data.html#data-on-delete-not-reference
-
-check failed: 1 error, 1 file
-```
-
-### `data.cleared_required_reference`
-
-```jadpo check project=e-cleared-required expect=data.cleared_required_reference
-entity Project {
-    id: Uuid
-}
-
-entity Todo {
-    id: Uuid
-    project_id: Project.id {
-        on_delete: OnDelete.cleared
-    }
-}
-```
-
-```text output
-error: `Todo.project_id` can't be cleared
- --> main.jadpo:8:20
-  |
-8 |         on_delete: OnDelete.cleared
-  |                    ^^^^^^^^^^^^^^^^ the field can't be `none`
-  reason: `OnDelete.cleared` sets the reference to `none` when the `Project` is deleted, which only an optional reference (`Project.id?`) can hold.
-  next: Make it `Project.id?`, or use `OnDelete.restricted` or `OnDelete.cascade` (agent)
-  rule: data.cleared_required_reference
-  help: docs/language/05-data.html#data-cleared-required-reference
-
-check failed: 1 error, 1 file
-```
-
-### `data.reference_cycle`
-
-Neither record could be created first, whatever happens on delete:
-
-```jadpo check project=e-reference-cycle expect=data.reference_cycle
-entity Team {
-    id: Uuid
-    lead_id: Member.id {
-        on_delete: OnDelete.restricted
-    }
-}
-
-entity Member {
-    id: Uuid
-    team_id: Team.id {
-        on_delete: OnDelete.restricted
-    }
-}
-```
-
-```text output
-error: Required references form a cycle through `Member`
- --> main.jadpo:10:5
-   |
- 3 |     lead_id: Member.id {
-   |     ------- and this one
-10 |     team_id: Team.id {
-   |     ^^^^^^^ required reference
-  reason: `Member.team_id` and `Team.lead_id` are both required, so no record could be created first: each needs one that already exists.
-  next: Make one of these references optional (`X.id?`) (human)
-  rule: data.reference_cycle
-  help: docs/language/05-data.html#data-reference-cycle
-
-check failed: 1 error, 1 file
-```
-
-### `data.reference_across_stores`
-
-```jadpo check project=e-across-stores file=app.jadpo hidden
-application {
-    connections: {
-        main: {
-            driver: Driver.postgres
-        }
-        archive: {
-            driver: Driver.postgres
-        }
-    }
-}
-```
-
-```jadpo check project=e-across-stores file=domains/planning/entities/user.jadpo hidden
-entity User {
-    id: Uuid
-}
-```
-
-```jadpo check project=e-across-stores file=domains/planning/entities/old_todo.jadpo expect=data.reference_across_stores
-use planning/entities { User }
-
-entity OldTodo {
-    id: Uuid
-    owner_id: User.id {
-        on_delete: OnDelete.cascade
-    }
-
-    store: archive
-}
-```
-
-```text output
-error: `OldTodo.owner_id` refers to a `User` in another store
- --> domains/planning/entities/old_todo.jadpo:5:5
-  |
-5 |     owner_id: User.id {
-  |     ^^^^^^^^ `OldTodo` is in `archive`
-  reason: A reference is a foreign key, which a database keeps only between its own tables; an action writes one store, and work across stores goes through an event and a subscriber.
-  next: Keep `OldTodo` and `User` in one store, or store the id as a plain `Uuid` (human)
-  rule: data.reference_across_stores
-  help: docs/language/05-data.html#data-reference-across-stores
-
-check failed: 1 error, 3 files
-```
-
-### `data.unknown_field`
-
-```jadpo check project=e-unknown-field expect=data.unknown_field
-entity Project {
-    id: Uuid
-    name: Text
-
-    unique: {
-        name_per_owner: [owner_id, name]
-    }
-}
-```
-
-```text output
-error: `Project` has no field `owner_id`
- --> main.jadpo:6:26
-  |
-6 |         name_per_owner: [owner_id, name]
-  |                          ^^^^^^^^ no such field
-  reason: The unique rule `name_per_owner` names fields of `Project`, its own.
-  next: Remove `owner_id` (agent)
-  rule: data.unknown_field
-  help: docs/language/05-data.html#data-unknown-field
-
-check failed: 1 error, 1 file
-```
-
-### `data.repeated_field`
-
-```jadpo check project=e-repeated-field expect=data.repeated_field
-entity Todo {
-    id: Uuid
-    due_at: Instant
-
-    indexes: {
-        by_due_at: [due_at, due_at]
-    }
-}
-```
-
-```text output
-error: The index `by_due_at` lists `due_at` twice
- --> main.jadpo:6:29
-  |
-6 |         by_due_at: [due_at, due_at]
-  |                             ^^^^^^ listed again
-  reason: Each field counts once in an index.
-  next: Remove the second `due_at` (agent)
-  rule: data.repeated_field
-  help: docs/language/05-data.html#data-repeated-field
-
-check failed: 1 error, 1 file
-```
-
-### `data.field_list_required`
-
-```jadpo check project=e-field-list expect=data.field_list_required
-entity Project {
-    id: Uuid
-    keeper: Text
-    name: Text
-
-    unique: {
-        name_per_keeper: keeper
-    }
-}
-```
-
-```text output
-error: The unique rule `name_per_keeper` isn't a list of fields
- --> main.jadpo:7:26
-  |
-7 |         name_per_keeper: keeper
-  |                          ^^^^^^ not a list
-  reason: Each unique rule is a list of the entity's fields in brackets: `name_per_keeper: [field, other]`.
-  next: Write `name_per_keeper: [field, ...]` (agent)
-  rule: data.field_list_required
-  help: docs/language/05-data.html#data-field-list-required
-
-check failed: 1 error, 1 file
-```
-
-### `data.unique_nullable_field`
-
-```jadpo check project=e-unique-nullable expect=data.unique_nullable_field
-entity Account {
-    id: Uuid
-    tenant: Text
-    handle: Text?
-
-    unique: {
-        tenant_handle: [tenant, handle]
-    }
-}
-```
-
-```text output
-error: `Account.handle` can be `none`
- --> main.jadpo:7:33
-  |
-7 |         tenant_handle: [tenant, handle]
-  |                                 ^^^^^^ optional field
-  reason: The fields of a unique rule over several fields must be required, so every engine agrees on what a duplicate is.
-  next: Make `handle` required, or leave it out of `tenant_handle` (agent)
-  rule: data.unique_nullable_field
-  help: docs/language/05-data.html#data-unique-nullable-field
-
-check failed: 1 error, 1 file
-```
-
-### `data.unique_single_field`
-
-```jadpo check project=e-unique-single expect=data.unique_single_field
-entity Account {
-    id: Uuid
-    handle: Text
-
-    unique: {
-        only_handle: [handle]
-    }
-}
-```
-
-```text output
-error: The unique rule `only_handle` has one field
- --> main.jadpo:6:9
-  |
-6 |         only_handle: [handle]
-  |         ^^^^^^^^^^^ one field
-  reason: The `unique:` section holds rules over several fields; a single field is made unique in its own block, `handle: ... { unique: true }`.
-  next: Move it to `handle`'s block as `unique: true` (agent)
-  rule: data.unique_single_field
-  help: docs/language/05-data.html#data-unique-single-field
-
-check failed: 1 error, 1 file
-```
-
-### `data.duplicate_rule`
-
-The same two fields in another order are the same rule:
-
-```jadpo check project=e-duplicate-rule expect=data.duplicate_rule
-entity Account {
-    id: Uuid
-    tenant: Text
-    handle: Text
-
-    unique: {
-        tenant_handle: [tenant, handle]
-        handle_tenant: [handle, tenant]
-    }
-}
-```
-
-```text output
-error: The unique rule `handle_tenant` repeats `tenant_handle`
- --> main.jadpo:8:9
-  |
-7 |         tenant_handle: [tenant, handle]
-  |         ------------- first here
-8 |         handle_tenant: [handle, tenant]
-  |         ^^^^^^^^^^^^^ same fields
-  reason: Both cover the same fields, in whatever order, so they are one rule; a write's conflict names one of them (area 6).
-  next: Remove `handle_tenant` (agent)
-  rule: data.duplicate_rule
-  help: docs/language/05-data.html#data-duplicate-rule
-
-check failed: 1 error, 1 file
-```
-
-### `data.store_unknown`
-
-```jadpo check project=e-store-unknown file=app.jadpo hidden
-application {}
-```
-
-```jadpo check project=e-store-unknown file=domains/notes/entities/note.jadpo expect=data.store_unknown
-entity Note {
-    id: Uuid
-
-    store: archive
-}
-```
-
-```text output
-error: `archive` isn't a database `Note` can live in
- --> domains/notes/entities/note.jadpo:4:12
-  |
-4 |     store: archive
-  |            ^^^^^^^ not a database
-  reason: `app.jadpo` declares no connection called `archive`; an entity's `store:` names a connection with `driver: Driver.postgres`, or `main` when `app.jadpo` declares no database.
-  next: Name a database connection, or declare one in `app.jadpo` (agent)
-  rule: data.store_unknown
-  help: docs/language/05-data.html#data-store-unknown
-
-check failed: 1 error, 2 files
-```
-
-### `data.store_required`
-
-`app.jadpo` declares a database, so `main` is no longer implied:
-
-```jadpo check project=e-store-required file=app.jadpo hidden
-application {
-    connections: {
-        archive: {
-            driver: Driver.postgres
-        }
-    }
-}
-```
-
-```jadpo check project=e-store-required file=domains/notes/entities/note.jadpo expect=data.store_required
-entity Note {
-    id: Uuid
-}
-```
-
-```text output
-error: `Note` names no store, and there is no `main`
- --> domains/notes/entities/note.jadpo:1:8
-  |
-1 | entity Note {
-  |        ^^^^ which store?
-  reason: An entity lives in `main` unless its file says `store: <connection>`, and `app.jadpo` declares no database called `main`; its databases are `archive`.
-  next: Add `store: archive` to `Note` (human)
-  rule: data.store_required
-  help: docs/language/05-data.html#data-store-required
-
-check failed: 1 error, 2 files
-```
-
-### `data.unknown_section`
-
-An entity has no `identity:` item:
-
-```jadpo check project=e-unknown-section expect=data.unknown_section
-entity Note {
-    id: Uuid
-
-    identity: id
-}
-```
-
-```text output
-error: `identity` isn't something an entity holds
- --> main.jadpo:4:5
-  |
-4 |     identity: id
-  |     ^^^^^^^^ not a field or a section
-  reason: An entity's file holds only its data definition: fields (`name: Type`), and the sections `store:`, `unique:`, `indexes:`, `lifecycle:`, `caches:`, `policy:` and `membership:`. Its identity is always the field `id`; actions, queries and failures go in the domain's own folders.
-  next: Remove it from `Note`, or move it where it belongs (agent)
-  rule: data.unknown_section
-  help: docs/language/05-data.html#data-unknown-section
-
-check failed: 1 error, 1 file
-```
-
-### `data.reserved_table_name`
-
-```jadpo check project=e-reserved-table expect=data.reserved_table_name
-entity JadpoAudit {
-    id: Uuid
-}
-```
-
-```text output
-error: `JadpoAudit`'s table would be called `jadpo_audit`
- --> main.jadpo:1:8
-  |
-1 | entity JadpoAudit {
-  |        ^^^^^^^^^^ a system table's prefix
-  reason: Tables whose names start with `jadpo_` are the runtime's own (the outbox, event deliveries, idempotency keys), so no entity's table may take that prefix.
-  next: Rename `JadpoAudit` (agent)
-  rule: data.reserved_table_name
-  help: docs/language/05-data.html#data-reserved-table-name
-
-check failed: 1 error, 1 file
-```
-
-### `data.name_too_long`
-
-```jadpo check project=e-name-too-long expect=data.name_too_long
-entity Note {
-    id: Uuid
-    the_date_this_note_was_last_shown_to_its_owner_in_the_weekly_digest: Instant?
-}
-```
-
-```text output
-error: `Note.the_date_this_note_was_last_shown_to_its_owner_in_the_weekly_digest` is too long a name for a column
- --> main.jadpo:3:5
-  |
-3 |     the_date_this_note_was_last_shown_to_its_owner_in_the_weekly_digest: Instant?
-  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 67 characters
-  reason: Its column would be called `the_date_this_note_was_last_shown_to_its_owner_in_the_weekly_digest`, and PostgreSQL keeps names of at most 63 bytes, so a longer one would be cut and could clash with another.
-  next: Choose a shorter name (agent)
-  rule: data.name_too_long
-  help: docs/language/05-data.html#data-name-too-long
-
-check failed: 1 error, 1 file
-```
-
-### `data.lifecycle_section`
-
-A lifecycle holds `visible:`, `initial:`, `transitions:` and `purge:`, each once; a transition holds `when:` and `set:`, and `purge:` holds `after:` and `since:`:
-
-```jadpo check project=e-lifecycle-section expect=data.lifecycle_section
-entity Todo {
-    id: Uuid
-    deleted_at: Instant?
-
-    lifecycle: {
-        visible: deleted_at == none
-        hidden: deleted_at != none
-    }
-}
-```
-
-```text output
-error: `hidden` isn't part of a lifecycle
- --> main.jadpo:7:9
-  |
-7 |         hidden: deleted_at != none
-  |         ^^^^^^ not a section here
-  reason: A lifecycle holds `visible:`, `initial:`, `transitions:` and `purge:`.
-  next: Remove `hidden` from the lifecycle (agent)
-  rule: data.lifecycle_section
-  help: docs/language/05-data.html#data-lifecycle-section
-
-check failed: 1 error, 1 file
-```
-
-### `data.lifecycle_condition`
-
-A lifecycle condition tests the record's own fields against fixed values, never another record or who is asking:
-
-```jadpo check project=e-lifecycle-condition expect=data.lifecycle_condition
-entity Todo {
-    id: Uuid
-    owner_id: Uuid
-    deleted_at: Instant?
-
-    lifecycle: {
-        visible: deleted_at == none and owner_id == current_user.id
-    }
-}
-```
-
-```text output
-error: `current_user.id` isn't something a lifecycle condition can compare with
- --> main.jadpo:7:53
-  |
-7 |         visible: deleted_at == none and owner_id == current_user.id
-  |                                                     ^^^^^^^^^^^^^^^ from outside the record
-  reason: A lifecycle condition compares the record's own fields with fixed values: a literal, an enum value or `clock.now`. It never mentions other records or who is asking, which is policy (area 9), so it can join every statement's `WHERE` and an index.
-  next: Compare with a literal, an enum value or `clock.now` (agent)
-  rule: data.lifecycle_condition
-  help: docs/language/05-data.html#data-lifecycle-condition
-
-check failed: 1 error, 1 file
-```
-
-### `data.lifecycle_unknown_field`
-
-Every field a lifecycle names is one of the record's own:
-
-```jadpo check project=e-lifecycle-unknown-field expect=data.lifecycle_unknown_field
-entity Todo {
-    id: Uuid
-    deleted_at: Instant?
-
-    lifecycle: {
-        visible: deletd_at == none
-    }
-}
-```
-
-```text output
-error: `Todo` has no field `deletd_at`
- --> main.jadpo:6:18
-  |
-6 |         visible: deletd_at == none
-  |                  ^^^^^^^^^ not declared
-  reason: A lifecycle names the fields of the record it is written in, and `Todo`'s fields are `id` and `deleted_at`. Did you mean `deleted_at`?
-  next: Use `deleted_at` instead of `deletd_at` (agent)
-  rule: data.lifecycle_unknown_field
-  help: docs/language/05-data.html#data-lifecycle-unknown-field
-
-check failed: 1 error, 1 file
-```
-
-### `data.lifecycle_value`
-
-A transition sets each field to a fixed value, the same every time it runs:
-
-```jadpo check project=e-lifecycle-value expect=data.lifecycle_value
-entity Todo {
-    id: Uuid
-    deleted_at: Instant?
-    edited_at: Instant?
-
-    lifecycle: {
-        visible: deleted_at == none
-        transitions: {
-            delete: {
-                set: {
-                    deleted_at: edited_at
-                }
-            }
-        }
-    }
-}
-```
-
-```text output
-error: `edited_at` is another field of the record
- --> main.jadpo:11:33
-   |
-11 |                     deleted_at: edited_at
-   |                                 ^^^^^^^^^ a field, not a value
-  reason: A transition sets each field to a fixed value (a literal, an enum value, `none` or `clock.now`), the same every time it runs; copying one field into another isn't one.
-  next: Use a literal, an enum value, `none` or `clock.now` (agent)
-  rule: data.lifecycle_value
-  help: docs/language/05-data.html#data-lifecycle-value
-
-check failed: 1 error, 1 file
-```
-
-### `data.lifecycle_initial_required`
-
-A required field only transitions change gets its first value from `initial:`:
-
-```jadpo check project=e-lifecycle-initial-required expect=data.lifecycle_initial_required
-type OrderStage = Enum {
-    placed
-    shipped
-}
-
-entity Order {
-    id: Uuid
-    stage: OrderStage
-
-    lifecycle: {
-        transitions: {
-            ship: {
-                when: stage == OrderStage.placed
-                set: {
-                    stage: OrderStage.shipped
-                }
-            }
-        }
-    }
-}
-```
-
-```text output
-error: `Order.stage` has no starting value
- --> main.jadpo:8:5
-   |
- 8 |     stage: OrderStage
-   |     ^^^^^ required, and only transitions set it
-12 |             ship: {
-   |             ---- set here
-  reason: Only the lifecycle's transitions change `stage`, so a create can't give it; a required field gets its first value from `initial:`, and an optional one starts as `none`.
-  next: Add `stage: <value>` to the lifecycle's `initial:` (agent)
-  rule: data.lifecycle_initial_required
-  help: docs/language/05-data.html#data-lifecycle-initial-required
-
-check failed: 1 error, 1 file
-```
-
-### `data.lifecycle_transition_name`
-
-A transition is an operation of its entity, so it can't take another operation's name or a field's:
-
-```jadpo check project=e-lifecycle-transition-name expect=data.lifecycle_transition_name
-entity Todo {
-    id: Uuid
-    archived_at: Instant?
-
-    lifecycle: {
-        transitions: {
-            update: {
-                set: {
-                    archived_at: clock.now
-                }
-            }
-        }
-    }
-}
-```
-
-```text output
-error: A transition can't be called `update`
- --> main.jadpo:7:13
-  |
-7 |             update: {
-  |             ^^^^^^ name in use
-  reason: `Todo.update` is already an operation every entity has, so a transition can't take its name; `delete` is the one a transition may take over.
-  next: Name the transition after the change it makes, such as `archive` (agent)
-  rule: data.lifecycle_transition_name
-  help: docs/language/05-data.html#data-lifecycle-transition-name
-
-check failed: 1 error, 1 file
-```
-
-### `data.lifecycle_purge_visible`
-
-Purge deletes records once they have been hidden for a while, so the lifecycle says which records are hidden:
-
-```jadpo check project=e-lifecycle-purge-visible expect=data.lifecycle_purge_visible
-entity Todo {
-    id: Uuid
-    deleted_at: Instant?
-
-    lifecycle: {
-        transitions: {
-            delete: {
-                set: {
-                    deleted_at: clock.now
-                }
-            }
-        }
-        purge: {
-            after: 30d
-            since: deleted_at
-        }
-    }
-}
-```
-
-```text output
-error: `Todo`'s lifecycle purges records but hides none
- --> main.jadpo:13:9
-   |
-13 |         purge: {
-   |         ^^^^^ no `visible:` above
-  reason: Purge permanently deletes records once they have been hidden for a while, so the lifecycle must say which records are hidden, with `visible:`.
-  next: Add `visible: <condition>` to the lifecycle (agent)
-  rule: data.lifecycle_purge_visible
-  help: docs/language/05-data.html#data-lifecycle-purge-visible
-
-check failed: 1 error, 1 file
-```
-
-### `data.lifecycle_purge_after`
-
-A hidden record is kept for a positive duration before purge deletes it:
-
-```jadpo check project=e-lifecycle-purge-after expect=data.lifecycle_purge_after
-entity Todo {
-    id: Uuid
-    deleted_at: Instant?
-
-    lifecycle: {
-        visible: deleted_at == none
-        purge: {
-            after: 0d
-            since: deleted_at
-        }
-    }
-}
-```
-
-```text output
-error: `after: 0d` isn't a positive duration
- --> main.jadpo:8:20
-  |
-8 |             after: 0d
-  |                    ^^ not a positive duration
-  reason: `after:` is how long a hidden record is kept before purge deletes it, a duration such as `30d` or `12h`, longer than nothing; a hidden record would be deleted the moment it is hidden.
-  next: Write a duration, such as `after: 30d` (agent)
-  rule: data.lifecycle_purge_after
-  help: docs/language/05-data.html#data-lifecycle-purge-after
-
-check failed: 1 error, 1 file
-```
-
-### `data.lifecycle_purge_since`
-
-`since:` names the time field purge counts from:
-
-```jadpo check project=e-lifecycle-purge-since expect=data.lifecycle_purge_since
-type TodoTitle = Text {
-    max_length: 200
-}
-
-entity Todo {
-    id: Uuid
-    title: TodoTitle
-    deleted_at: Instant?
-
-    lifecycle: {
-        visible: deleted_at == none
-        purge: {
-            after: 30d
-            since: title
-        }
-    }
-}
-```
-
-```text output
-error: `title` isn't a time
- --> main.jadpo:14:20
-   |
-14 |             since: title
-   |                    ^^^^^ a `TodoTitle`
-  reason: `since:` names the `Instant` field purge counts from: a record goes once it has been hidden for `after:` since that time.
-  next: Name an `Instant` field of the record (agent)
-  rule: data.lifecycle_purge_since
-  help: docs/language/05-data.html#data-lifecycle-purge-since
-
-check failed: 1 error, 1 file
-```
-
-### `migration.out_of_date`
-
-A project with an entity and no migration yet:
-
-```jadpo check project=e-out-of-date file=app.jadpo hidden
-application {}
-```
-
-```jadpo check project=e-out-of-date file=domains/notes/entities/note.jadpo expect=migration.out_of_date
-entity Note {
-    id: Uuid
-    body: Text
-}
-```
-
-```text output
-error: No migration creates these entities' tables yet
- --> domains/notes/entities/note.jadpo:1:8
-  |
-1 | entity Note {
-  |        ^^^^ no table yet
-  reason: `jadpo check` compares the database schema the entities ask for with the migrations in `database/migrations/`, and there are none: new entity `Note`, new system table for circuit breakers, new system table for deliveries, new system table for handled deliveries, new system table for housekeeping, and 3 more.
-  next: Run `jadpo migrate new initial` (agent)
-  rule: migration.out_of_date
-  help: docs/language/05-data.html#migration-out-of-date
-
-check failed: 1 error, 2 files
-```
-
-### `migration.record_invalid`
-
-A snapshot edited by hand:
-
-```jadpo check project=e-record-invalid file=app.jadpo hidden
-application {}
-```
-
-```jadpo check project=e-record-invalid file=domains/notes/entities/note.jadpo hidden migrate=initial
-entity Note {
-    id: Uuid
-}
-```
-
-```jadpo check project=e-record-invalid file=database/migrations/20261020T1400_initial/snapshot.json expect=migration.record_invalid
-{"format": 1}
-```
-
-```text output
-error: `database/migrations/20261020T1400_initial/snapshot.json` can't be read
- --> database/migrations/20261020T1400_initial/snapshot.json
-  reason: A migration's records are written by `jadpo migrate new` and never edited by hand; this one can't be used: it has no `stores` object.
-  next: Restore it from version control (human)
-  rule: migration.record_invalid
-  help: docs/language/05-data.html#migration-record-invalid
-
-check failed: 1 error, 2 files
-```
-
-### `migration.decision_required`
-
-`stars` is new and required; `jadpo migrate new add_stars` wrote the migration and left the decision to fill in:
-
-```jadpo check project=e-decision-required file=app.jadpo hidden
-application {}
-```
-
-```jadpo check project=e-decision-required file=domains/notes/entities/note.jadpo hidden migrate=initial
-entity Note {
-    id: Uuid
-}
-```
-
-```jadpo check project=e-decision-required file=domains/notes/types/stars.jadpo hidden
-type Stars = Int {
-    min: 1
-    max: 5
-}
-```
-
-```jadpo check project=e-decision-required file=domains/notes/entities/note.jadpo hidden migrate=add_stars
-use notes/types { Stars }
-
-entity Note {
-    id: Uuid
-    stars: Stars
-}
-```
-
-```jadpo check project=e-decision-required file=database/migrations/20261020T1401_add_stars/changes.jadpo expect=migration.decision_required
-migration {
-    Note.stars: {}
-}
-```
-
-```text output
-error: Migration `20261020T1401_add_stars` needs a decision about `Note.stars`
- --> database/migrations/20261020T1401_add_stars/changes.jadpo:2:5
-  |
-2 |     Note.stars: {}
-  |     ^^^^^^^^^^ decide here
-  reason: `Note.stars` is required, and the `Note` records already stored have no value for it.
-  next: Set `backfill:` for `Note.stars`, such as `backfill: 1`, then run `jadpo migrate new` to finish the migration (human)
-  rule: migration.decision_required
-  help: docs/language/05-data.html#migration-decision-required
-
-check failed: 1 error, 4 files
-```
-
-### `migration.decision_invalid`
-
-```jadpo check project=e-decision-invalid file=app.jadpo hidden
-application {}
-```
-
-```jadpo check project=e-decision-invalid file=domains/notes/entities/note.jadpo hidden migrate=initial
-entity Note {
-    id: Uuid
-}
-```
-
-```jadpo check project=e-decision-invalid file=domains/notes/types/stars.jadpo hidden
-type Stars = Int {
-    min: 1
-    max: 5
-}
-```
-
-```jadpo check project=e-decision-invalid file=domains/notes/entities/note.jadpo hidden migrate=add_stars
-use notes/types { Stars }
-
-entity Note {
-    id: Uuid
-    stars: Stars
-}
-```
-
-```jadpo check project=e-decision-invalid file=database/migrations/20261020T1401_add_stars/changes.jadpo expect=migration.decision_invalid
-migration {
-    Note.stars: {
-        backfill: 9
-    }
-}
-```
-
-```text output
-error: The decision about `Note.stars` doesn't fit its change
- --> database/migrations/20261020T1401_add_stars/changes.jadpo:3:19
-  |
-3 |         backfill: 9
-  |                   ^ doesn't fit
-  reason: This value can't fill `Note.stars`: it is above the field's `max`.
-  next: Write `Note.stars: { backfill: <value> }` with a value of its type (agent)
-  rule: migration.decision_invalid
-  help: docs/language/05-data.html#migration-decision-invalid
-
-check failed: 1 error, 4 files
-```
-
-### `migration.decision_unknown`
-
-```jadpo check project=e-decision-unknown file=app.jadpo hidden
-application {}
-```
-
-```jadpo check project=e-decision-unknown file=domains/notes/entities/note.jadpo hidden migrate=initial
-entity Note {
-    id: Uuid
-}
-```
-
-```jadpo check project=e-decision-unknown file=domains/notes/types/stars.jadpo hidden
-type Stars = Int {
-    min: 1
-    max: 5
-}
-```
-
-```jadpo check project=e-decision-unknown file=domains/notes/entities/note.jadpo hidden migrate=add_stars
-use notes/types { Stars }
-
-entity Note {
-    id: Uuid
-    stars: Stars
-}
-```
-
-```jadpo check project=e-decision-unknown file=database/migrations/20261020T1401_add_stars/changes.jadpo expect=migration.decision_unknown
-migration {
-    Note.stars: {
-        backfill: 3
-    }
-    Note.body: FieldChange.retired
-}
-```
-
-```text output
-error: Nothing about `Note.body` needs a decision
- --> database/migrations/20261020T1401_add_stars/changes.jadpo:5:5
-  |
-5 |     Note.body: FieldChange.retired
-  |     ^^^^^^^^^ no such change
-  reason: A migration's `changes.jadpo` holds only the decisions its own changes need, and nothing `20261020T1401_add_stars` changes about `Note.body` does: a decision is a value for existing rows of a required field or for rows a field no longer allows, or retiring a field that is gone.
-  next: Remove `Note.body` (agent)
-  rule: migration.decision_unknown
-  help: docs/language/05-data.html#migration-decision-unknown
-
-check failed: 1 error, 4 files
-```
-
-### `migration.unfinished`
-
-The decision is written, but the SQL was written before it:
-
-```jadpo check project=e-unfinished file=app.jadpo hidden
-application {}
-```
-
-```jadpo check project=e-unfinished file=domains/notes/entities/note.jadpo hidden migrate=initial
-entity Note {
-    id: Uuid
-}
-```
-
-```jadpo check project=e-unfinished file=domains/notes/types/stars.jadpo hidden
-type Stars = Int {
-    min: 1
-    max: 5
-}
-```
-
-```jadpo check project=e-unfinished file=domains/notes/entities/note.jadpo hidden migrate=add_stars
-use notes/types { Stars }
-
-entity Note {
-    id: Uuid
-    stars: Stars
-}
-```
-
-```jadpo check project=e-unfinished file=database/migrations/20261020T1401_add_stars/changes.jadpo expect=migration.unfinished
-migration {
-    Note.stars: {
-        backfill: 3
-    }
-}
-```
-
-```text output
-error: Migration `20261020T1401_add_stars` doesn't hold its decisions yet
- --> database/migrations/20261020T1401_add_stars/changes.jadpo:1:1
-  |
-1 | migration {
-  | ^^^^^^^^^ decided
-  reason: Its decisions are all written in `changes.jadpo`, but `database/migrations/20261020T1401_add_stars/postgres.sql` was written before them, so it doesn't carry them out.
-  next: Run `jadpo migrate new` to finish it (agent)
-  rule: migration.unfinished
-  help: docs/language/05-data.html#migration-unfinished
-
-check failed: 1 error, 4 files
-```
-
-### `migration.backfill_can_fail`
-
-A title can be empty or longer than five characters, so its length can
-break `Rank`'s `min` or `max`, and nothing says what such a record's rank
-would be:
-
-```jadpo check project=e-backfill-can-fail file=app.jadpo hidden
-application {}
-```
-
-```jadpo check project=e-backfill-can-fail file=domains/planning/entities/todo.jadpo hidden migrate=initial
-entity Todo {
-    id: Uuid
-    title: Text
-}
-```
-
-```jadpo check project=e-backfill-can-fail file=domains/planning/types/rank.jadpo hidden
-type Rank = Int {
-    min: 1
-    max: 5
-}
-```
-
-```jadpo check project=e-backfill-can-fail file=domains/planning/entities/todo.jadpo hidden migrate=add_rank
-use planning/types { Rank }
-
-entity Todo {
-    id: Uuid
-    title: Text
-    rank: Rank
-}
-```
-
-```jadpo check project=e-backfill-can-fail file=database/migrations/20261020T1401_add_rank/changes.jadpo expect=migration.backfill_can_fail
-migration {
-    Todo.rank: {
-        backfill: Rank(text.length(Todo.title))
-    }
-}
-```
-
-```text output
-error: The backfill for `Todo.rank` can fail
- --> database/migrations/20261020T1401_add_rank/changes.jadpo:3:19
-  |
-3 |         backfill: Rank(text.length(Todo.title))
-  |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ can break `Rank`'s `min` and `max`
-  reason: A backfill gives every `Todo` record already stored a value, and a record whose value failed would have none, so nothing in a backfill may fail.
-  next: Work the value out with operations that can't fail, such as `integer.min` and `integer.max` to keep a number in its range (agent)
-  rule: migration.backfill_can_fail
-  help: docs/language/05-data.html#migration-backfill-can-fail
-
-check failed: 1 error, 4 files
-```
-
-Kept in its range with `integer.min` and `integer.max`, the construction
-can't fail, and the backfill runs.
-
-### `migration.backfill_outside_row`
-
-A backfill reads only the record it fills:
-
-```jadpo check project=e-backfill-outside-row file=app.jadpo hidden
-application {}
-```
-
-```jadpo check project=e-backfill-outside-row file=domains/notes/entities/note.jadpo hidden
-entity Note {
-    id: Uuid
-    starred: Bool
-}
-```
-
-```jadpo check project=e-backfill-outside-row file=domains/notes/entities/draft.jadpo hidden migrate=initial
-entity Draft {
-    id: Uuid
-}
-```
-
-```jadpo check project=e-backfill-outside-row file=domains/notes/entities/draft.jadpo hidden migrate=add_starred
-entity Draft {
-    id: Uuid
-    starred: Bool
-}
-```
-
-```jadpo check project=e-backfill-outside-row file=database/migrations/20261020T1401_add_starred/changes.jadpo expect=migration.backfill_outside_row
-migration {
-    Draft.starred: {
-        backfill: Note.starred
-    }
-}
-```
-
-```text output
-error: The backfill for `Draft.starred` can't read `Note.starred`
- --> database/migrations/20261020T1401_add_starred/changes.jadpo:3:19
-  |
-3 |         backfill: Note.starred
-  |                   ^^^^^^^^^^^^ another entity's field
-  reason: A backfill works each `Draft` record's value out from that record's own fields, constants and pure functions, so it gives the same value whenever and wherever the migration runs.
-  next: Work the value out from `Draft`'s own fields, or a constant (agent)
-  rule: migration.backfill_outside_row
-  help: docs/language/05-data.html#migration-backfill-outside-row
-
-check failed: 1 error, 4 files
-```
-
-Nor does it read a setting through a function it calls, a `crypto`
-operation's `key:` included, since each deployment sets its own and
-`jadpo migrate apply` is given none:
-
-```jadpo check project=e-backfill-setting file=app.jadpo hidden
-application {}
-```
-
-```jadpo check project=e-backfill-setting file=domains/notes/types/label.jadpo hidden
-type Label = Text {}
-```
-
-```jadpo check project=e-backfill-setting file=config.jadpo hidden
-use notes/types { Label }
-
-config {
-    draft_label: Label {
-        default: "draft"
-    }
-}
-```
-
-```jadpo check project=e-backfill-setting file=domains/notes/entities/draft.jadpo hidden migrate=initial
-entity Draft {
-    id: Uuid
-}
-```
-
-```jadpo check project=e-backfill-setting file=domains/notes/entities/draft.jadpo hidden migrate=add_label
-use notes/types { Label }
-
-entity Draft {
-    id: Uuid
-    label: Label
-}
-```
-
-```jadpo check project=e-backfill-setting file=domains/notes/libraries/draft_labels.jadpo
-use notes/types { Label }
-
-library draft_labels {
-    function default_label() -> Label {
-        return config.draft_label
-    }
-}
-```
-
-```jadpo check project=e-backfill-setting file=database/migrations/20261020T1401_add_label/changes.jadpo expect=migration.backfill_outside_row
-migration {
-    Draft.label: {
-        backfill: draft_labels.default_label()
-    }
-}
-```
-
-```text output
-error: The backfill for `Draft.label` can't read `config.draft_label`
- --> database/migrations/20261020T1401_add_label/changes.jadpo:3:19
-  |
-3 |         backfill: draft_labels.default_label()
-  |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ reads a setting, through `draft_labels.default_label`
-  reason: A backfill gives each `Draft` record the value its own fields give, whenever and wherever the migration runs, and `draft_labels.default_label` reads `config.draft_label`, which each deployment sets for itself.
-  next: Work the value out without `config.draft_label`: from `Draft`'s own fields, or a constant (agent)
-  rule: migration.backfill_outside_row
-  help: docs/language/05-data.html#migration-backfill-outside-row
-
-check failed: 1 error, 6 files
-```
-
-Nor a field the same migration adds, which no record already stored has
-a value for while the backfill runs:
-
-```jadpo check project=e-backfill-added-field file=app.jadpo hidden
-application {}
-```
-
-```jadpo check project=e-backfill-added-field file=domains/notes/entities/draft.jadpo hidden migrate=initial
-entity Draft {
-    id: Uuid
-}
-```
-
-```jadpo check project=e-backfill-added-field file=domains/notes/types/title.jadpo hidden
-type Title = Text {}
-```
-
-```jadpo check project=e-backfill-added-field file=domains/notes/entities/draft.jadpo hidden migrate=add_titles
-use notes/types { Title }
-
-entity Draft {
-    id: Uuid
-    title: Title
-    subheading: Title
-}
-```
-
-```jadpo check project=e-backfill-added-field file=database/migrations/20261020T1401_add_titles/changes.jadpo expect=migration.backfill_outside_row
-migration {
-    Draft.title: {
-        backfill: "Untitled"
-    }
-    Draft.subheading: {
-        backfill: Draft.title
-    }
-}
-```
-
-```text output
-error: The backfill for `Draft.subheading` can't read `Draft.title`
- --> database/migrations/20261020T1401_add_titles/changes.jadpo:6:19
-  |
-6 |         backfill: Draft.title
-  |                   ^^^^^^^^^^^ a field this migration adds
-  reason: `Draft.title` is added by this same migration, so no `Draft` record already stored has a value for it while the backfill runs.
-  next: Work the value out from the fields `Draft` had before this migration, or a constant (agent)
-  rule: migration.backfill_outside_row
-  help: docs/language/05-data.html#migration-backfill-outside-row
-
-check failed: 1 error, 4 files
-```
-
-## Review
-
-### Status
-
-Built: entities, their fields, references, unique rules, indexes and
-stores; migrations, computed backfills and the test database; PostgreSQL
-over TLS and through Hyperdrive; lifecycles; structured values stored as
-JSON, and their migrations; and the check of every stored value on read.
-The manifest holds a node for each entity's placement, unique rule, index
-and reference, with `references` edges between entities, one for each
-system table and migration snapshot, and one for each lifecycle and
-transition (`lifecycle Todo`, `transition Todo.delete`, with its `when:`,
-whether it can refuse a record and the fields it sets).
-
-Not built yet, and said so where it is used (`toolchain.not_built_yet`):
-
-- Removing an entity, moving one between stores, dropping a retired column
-  (it needs acceptances, area 18) and other column type changes, in
-  `jadpo migrate new`; a worked-out backfill for a field that allows less.
-- Entities in Redis, record caches (`caches:`), and index kinds other than
-  geographic and HNSW. A database implied only when something needs one
-  (question 14) comes with the first feature that can run without one.
-- Seeds and `jadpo seed`.
-- `jadpo rename`, which writes the identity registry (area 14).
-
-An entity's `policy:` and `membership:` are area 9's.
-
-### Carried to later areas
-
-| Item | Area | Status |
-|---|---|---|
-| Reading and writing records: `query`, `create`, `update`, `patch`, `delete`, includes by the child's reference (question 6), `transition:` in an update, conflict mapping by unique rule name, and concurrent changes (area 6, "All-or-nothing actions and concurrent changes") | 6 | Input to area 6 |
-| Reading from a cache or projection (question 3) | 6 | Input to area 6 |
-| Whether children are hidden when their parent is soft-deleted; they stay visible, and a required include of a hidden parent reads as missing | 6, 9 | Open |
-| Field-level policy in the field's block (`role:`, `immutable:`, `policy: { }`), entity `policy: { }`, `membership`, and purge as a compiler-only authority | 9 | Input to area 9 |
-| Persisting presentation text (`type.presentation_text_persistence`) and `Instant` precision | 10 | Built: milliseconds, and an entity field holding `PresentationText` refused |
-| Scheduling the purge worker | 12 | Input to area 12 |
-| Test fixtures versus seeds | 13 | Input to area 13 |
-| `migration.*` rules raised only by `jadpo schema` commands (snapshot, diff, decision, plan and SQL errors, registry read and write failures, `migration.identity_registry_missing`, `migration.identity_registry_exists`, `migration.identity_additions_have_removal`, rename errors), `index.accept_*` and `index.recommendation_*` other than the check warning, `cli.schema_*`, and `toolchain.target_store_not_implemented` (raised by `jadpo build`); none can be triggered by `jadpo check` on source | 14 | Input to area 14 |
-| The `jadpo migrate` and rename commands themselves (question 11) | 14 | Input to area 14 |
-| GDPR support as its own review: personal-data marking on fields, erasure across every store and cache, export of everything held about a person, retention, and a build report of where personal data lives, since strong out-of-the-box compliance helps adoption | 15 | Moved to area 15 |
-
-### Decisions
-
-| Topic | Decision |
-|---|---|
-| Identity (question 1) | One field, `id`, based on `Uuid`, generated as version 7 on create (or the version its named type pins), never supplied by a caller; only seeds and migration backfills may set one. No compound identity: a many-to-many link is its own entity with a compound unique rule. Mapping an existing database with composite keys is out of scope |
-| Stores (question 2) | Every entity lives in exactly one declared store, `main` unless its file says `store: name`; anything never saved is a `type`; an entity in an engine that can lose data (Redis) declares an expiry. An action writes to at most one store; work across stores goes through an event and a subscriber |
-| Caches (question 3) | Record, query-result and computed caches beside what they copy, with the Redis driver: derived keys including tenant and policy inputs, compiler-driven invalidation, a required `keep:` of at most a day. Projections come with the first search, graph or edge engine. Display reads from routes may use caches; reads inside actions, policy and authentication never do. Erasing personal data wipes its cached copies immediately |
-| Compound unique rules (question 4) | A named list in the entity's `unique: { }` section, `tenant_owner: [tenant, owner_email]`; the name stays because conflict mapping refers to it |
-| References (question 5) | Any field typed `X.id` is a reference: the compiler creates the foreign key and index, and `on_delete:` goes in the field's block with no default |
-| Children (question 6) | A parent does not declare its children: a query includes them by naming the child's reference field, and gets a list, or at most one record when that field is unique (area 6) |
-| Lifecycle form (question 7) | The general lifecycle, in the colon form: `visible:`, `transitions: { delete: { when: ... set: { } } }` and `purge: { after: ... since: ... }`, with no soft-delete shorthand. Its details are under [Lifecycle](#lifecycle) |
-| Storage types (question 8) | Each store uses its engine's native column types (on PostgreSQL `uuid`, `numeric`, `timestamptz`, `jsonb`, integer widths from declared ranges); structured fields are `jsonb`; caches and Redis entities store the same JSON as API responses |
-| Indexes (question 9) | The compiler creates every index its named queries need, multi-column and partial ones included, and lists each with the query that needs it. Lookups from outside the application use `indexes: { by_tenant_created: [tenant, created_at] }`; special kinds take a `kind:` option where the store supports it. Every index change appears in its migration, and the build includes a schema report |
-| Receivers (question 10) | No `self`: parameters are ordinary (`todo: Todo` for a snapshot, `todo_id: Todo.id` for a reference) and written actions are called by name, `complete_todo(todo_id)` |
-| Migration workflow (question 11) | `jadpo migrate new <purpose>` writes the next migration, one section per store; `jadpo check` fails while source and the latest migration disagree; `jadpo migrate apply` runs pending migrations as a deploy step, each in a transaction; the application refuses to start against a database that does not match; moving an entity between stores needs explicit acceptance |
-| Removing data (question 12) | Two migrations: retire (the code stops using it, the column stays), then drop in a later one, which needs explicit acceptance and shows in the approval review (area 18). Removing an entity works the same way |
-| Seeds (question 13) | A `seed { }` file in `database/seeds/` creates data by calling the application's own actions; `jadpo seed <name>` refuses a production database; reference data production needs is a migration backfill |
-| Store declaration (question 14) | Stores are connections declared in `app.jadpo`; each store's driver is fixed in source, so every environment uses the same engine. No database is required unless something uses one: `main` on PostgreSQL is implied only when needed, and where a feature needs a database and none can hold it, `jadpo check` is an error naming the feature (sign-in, events and the outbox, idempotency keys, webhook de-duplication, flags, audit, any database entity) |
-| Redis entities (question 15) | `expires_after:` on the entity, beside `store:`, measured from the record's last write, required on a Redis entity and refused elsewhere; expired records hidden as area 6 says. A Redis entity supports get, create, update and delete by `id` (counters as one Redis `increment`), lookup by a `unique:` field, listing and counting by equality on one field in `indexes:` (pages in creation order), and concurrent-change checks through a revision; no lifecycle, expiry taking its place; anything else is a compile error naming PostgreSQL |
-| PostgreSQL over TLS | A database connection always uses TLS, checked against Mozilla's root certificates compiled in, except to this machine (a Unix socket, `localhost`, `127.0.0.1`, `::1`), as area 16 decides for SMTP. A connection may name a private authority, `authority: config.<name>`, a `Certificate` setting read from one certificate's PEM, trusted alone and used to this machine too but over a Unix socket. A server elsewhere without TLS is reached only with `tls: false`, the narrowest form, a word written in source and never a setting, which the network report lists. `sslmode` in the URL is refused, since the connection decides. A local server is reached without TLS rather than offered it, since a local server's own certificate, Debian's snakeoil among them, would fail the check |
-| PostgreSQL through Hyperdrive | On Workers a database connection's address setting's variable names a Hyperdrive binding, so `app.jadpo` gains nothing (a text binding of that name stays a direct address). The Worker reaches Hyperdrive without TLS, since the binding's address says `sslmode=disable` and its socket offers none; TLS to the database is Hyperdrive's, by default checked against the public authorities, a private `authority:` uploaded to Hyperdrive with `--sslmode verify-full`. TLS through `startTls()` applies to a direct connection only. Caching off (`--caching-disabled`) is required and stated, since a Worker can't see it; `jadpo build` writes the binding with the id `JADPO_HYPERDRIVE_<variable>` gives, or without one, which `wrangler deploy` refuses. Each choice is reversible |
-| Connecting, and a statement that may have run | An attempt at a server waits the address's `connect_timeout`, or 10 seconds when it sets none or 0, stricter than libpq's forever. An autocommitted statement whose connection dropped after any of it was written is `unavailable` to its caller, never sent again by the driver, since the server may have committed it |
-| Layout | From area 1: an entity lives in its own file under its domain's `entities/` folder; `database/` holds the identity registry, timestamped migration folders and `seeds/` |
-| Keyword | From area 4: a declaration with its own folder keeps its keyword (`entity`); anything in `types/` is a `type` |
-| Field settings | From area 2: a field's settings go in a block after its type, one per line, including entity facts (`unique`, `generated`, the reference); only `Input` has `optional` and `default` |
-| Colon rule | From area 3: entity sections are `name: { ... }` (`lifecycle: { }`, `policy: { }`) |
-| Setting options and lists | From area 2: closed options are written `Type.value` (`on_delete: OnDelete.restricted`); lists are `[ ]` |
-| Calls and settings | From areas 1 and 3: the dot names the owner (`Todo.get(id)`); actions have no settings and every write checks for concurrent change |
-| Mapping form | From area 4: write conflicts map with `condition: Failure`, and a hidden record reports the same `not_found` failure |
-| Cache outages | An unreachable cache never fails a request: reads fall back to the database after a short timeout, failed clears are retried, bounded by `keep:`, and readiness ignores caches |
-| Cache configuration | Opt-in: `caches: { records: { store: keep: } }` on an entity, `cache: { store: keep: }` on a query; by default a change clears every cached result reading that entity; entries are one JSON value each |
-| Query and action placement | Every query lives in its domain's `queries/` folder and every action in `actions/`, one per file, whatever it reads; entity files hold the data definition, a query's cache sits in its file, and the generated operations (`Todo.get`, create, update, delete) stay on the entity |
-| Generated fields | `generated: Generated.on_create` (set once when created) or `Generated.on_change` (set when created and on every change) |
-| Lifecycle conditions | `visible:` and `when:` name the record's own fields bare and may use comparisons, `and`, `or`, `none` checks and `clock.now`; never other records or the caller |
-| What a lifecycle owns, deleting and purge | See [Lifecycle](#lifecycle): every field a transition sets or `initial:` gives changes only through transitions; `delete` runs the `delete` transition; purge deletes hidden records in batches of at most 500 |
-| Stores for system features | Never assumed: there may be no database or several. A feature that only needs somewhere to keep state names its store explicitly (`flags: { store: main }`, `schedules: { store: main }`, `sessions:`, `privacy:`, access records, the erasure log); a missing one is a compile error naming the feature. Tables that must commit with the action's own writes (event outbox, delivery records, idempotency keys, audit history) go in each store that actions write to, placed by the compiler for correctness; the build report lists where every system table lives |
-| System tables | Tables the runtime needs are generated, prefixed `jadpo_`, and part of the migration snapshots like any entity; drift in them fails `jadpo check`; see [System tables](#system-tables) |
-| Migration snapshots | Each migration folder holds a generated `snapshot.json`, generated SQL and `changes.jadpo` only for decisions; the compiler diffs consecutive snapshots; `jadpo check` fails with the command to run when entities and the latest snapshot disagree |
-| Table names | A table is named after its entity's born name in singular snake_case (`Todo` is `todo`, `LoanRecord` is `loan_record`), never pluralised: no English inflection rules to get wrong, and the code and the database use the same word |
-| Computed backfills | `backfill:` may be an expression over each row's own stored fields, constants and pure functions, including a field this migration retires; filled in batches, by `UPDATE` where the expression has a SQL form and in Jadpo otherwise, then made required; no freeform SQL. See [Computed backfills](#computed-backfills) |
-| A field's rules on read | A stored value is checked against every rule its field's type has when it is read; a row written around Jadpo that breaks one is a defect naming the rule and never the value; `CHECK` constraints may follow |
+- [`data.identity_missing`](../errors/data.identity_missing.md)
+- [`data.identity_type`](../errors/data.identity_type.md)
+- [`data.entity_in_field`](../errors/data.entity_in_field.md)
+- [`data.field_without_json`](../errors/data.field_without_json.md)
+- [`data.generated_type`](../errors/data.generated_type.md)
+- [`data.on_delete_required`](../errors/data.on_delete_required.md)
+- [`data.on_delete_not_reference`](../errors/data.on_delete_not_reference.md)
+- [`data.cleared_required_reference`](../errors/data.cleared_required_reference.md)
+- [`data.reference_cycle`](../errors/data.reference_cycle.md)
+- [`data.reference_across_stores`](../errors/data.reference_across_stores.md)
+- [`data.unknown_field`](../errors/data.unknown_field.md)
+- [`data.repeated_field`](../errors/data.repeated_field.md)
+- [`data.field_list_required`](../errors/data.field_list_required.md)
+- [`data.unique_nullable_field`](../errors/data.unique_nullable_field.md)
+- [`data.unique_single_field`](../errors/data.unique_single_field.md)
+- [`data.duplicate_rule`](../errors/data.duplicate_rule.md)
+- [`data.store_unknown`](../errors/data.store_unknown.md)
+- [`data.store_required`](../errors/data.store_required.md)
+- [`data.unknown_section`](../errors/data.unknown_section.md)
+- [`data.reserved_table_name`](../errors/data.reserved_table_name.md)
+- [`data.name_too_long`](../errors/data.name_too_long.md)
+- [`data.lifecycle_section`](../errors/data.lifecycle_section.md)
+- [`data.lifecycle_condition`](../errors/data.lifecycle_condition.md)
+- [`data.lifecycle_unknown_field`](../errors/data.lifecycle_unknown_field.md)
+- [`data.lifecycle_value`](../errors/data.lifecycle_value.md)
+- [`data.lifecycle_initial_required`](../errors/data.lifecycle_initial_required.md)
+- [`data.lifecycle_transition_name`](../errors/data.lifecycle_transition_name.md)
+- [`data.lifecycle_purge_visible`](../errors/data.lifecycle_purge_visible.md)
+- [`data.lifecycle_purge_after`](../errors/data.lifecycle_purge_after.md)
+- [`data.lifecycle_purge_since`](../errors/data.lifecycle_purge_since.md)
+- [`migration.out_of_date`](../errors/migration.out_of_date.md)
+- [`migration.record_invalid`](../errors/migration.record_invalid.md)
+- [`migration.decision_required`](../errors/migration.decision_required.md)
+- [`migration.decision_invalid`](../errors/migration.decision_invalid.md)
+- [`migration.decision_unknown`](../errors/migration.decision_unknown.md)
+- [`migration.unfinished`](../errors/migration.unfinished.md)
+- [`migration.backfill_can_fail`](../errors/migration.backfill_can_fail.md)
+- [`migration.backfill_outside_row`](../errors/migration.backfill_outside_row.md)

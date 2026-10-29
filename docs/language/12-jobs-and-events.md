@@ -3,16 +3,10 @@ title: Jobs and events
 area: 12
 status: decided
 checked-with: this checkout's jadpo on every gate run
-rules:
-  - event.*
-  - receiving.*
-  - schedule.*
-  - step.*
-  - subscriber.*
-  - type.batch_*
 ---
 
 # Jobs and events
+<!-- topic: jobs-and-events -->
 
 Work that does not happen inside a request: schedules that run an action on a
 timer, events an action announces, subscribers that react to them, and what
@@ -37,6 +31,7 @@ produces events for subscribers: webhooks, a package's own events and
 polls, and messages read from a queue ("Events from outside", below).
 
 ## Schedules
+<!-- topic: schedules -->
 
 A schedule runs one action at a fixed interval. It has a name, an `every:`
 and a `run:` that calls an action in the same domain with no arguments
@@ -238,6 +233,7 @@ run records count the records it deleted (`items`): the screens show
 batch deleted. No test runs it (area 13).
 
 ## Batch work keeps its progress
+<!-- topic: batch-work-keeps-its-progress -->
 
 An action is all-or-nothing (area 3). If one action emailed 500 owners and
 failed on the 300th, its database writes would roll back but 299 emails would
@@ -282,6 +278,7 @@ bound (every row of an uploaded file, a large export, every page of a
 provider's list) is a batch.
 
 ## Batches: work over many items
+<!-- topic: batches-work-over-many-items -->
 
 One way reads and writes row data of any
 size, and walks any large set of items: explicit helpers per format and
@@ -401,7 +398,7 @@ text is only for single
 JSON documents in memory. An export walks live data, so a
 record changed during it appears as its page saw it; a `from:` that
 orders by a field that can be updated is a declinable error
-([`type.batch_order_updatable`](#type-batch-order-updatable), area 1's
+([`type.batch_order_updatable`](../errors/type.batch_order_updatable.md), area 1's
 "Declining a judgement call"; Jadpo has no warnings), since ordering by
 a field no update changes (`id`, or a creation time with `id`) is what
 keeps every record in exactly once.
@@ -502,7 +499,8 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
 }
 ```
 
-### How a run is kept
+## How a run is kept
+<!-- topic: how-a-run-is-kept -->
 
 - **A batch is a page.** Each transaction is one page of `from:`, at the
   size its query's `page:` reads, so 60 items in pages of 3 commit 20
@@ -661,7 +659,8 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
 - **Names.** `batches` is a standard namespace, so, as every one, it names
   no variable.
 
-### How a file's run is kept
+## How a file's run is kept
+<!-- topic: how-a-file-s-run-is-kept -->
 
 What a file helper's run (`csv.read`, `tsv.read`, `json_lines.read` and
 `json.read`'s file form) does beyond a query's run, taking the most
@@ -755,7 +754,8 @@ conservative reading of "Batches" above and area 19's "Data formats":
 - **Encodings.** UTF-8, a byte-order mark removed, and UTF-16 with its
   mark, little- or big-endian, never guessed; anything else isn't text.
 
-### How an export's run is kept
+## How an export's run is kept
+<!-- topic: how-an-export-s-run-is-kept -->
 
 What a file helper's write (`csv.write`, `tsv.write`, `json_lines.write`
 and `json.write`'s file form) does beyond a query's run, taking the most
@@ -800,7 +800,8 @@ which says how each row is written:
 - **A store with no room** pauses the run, as one that can't be reached
   does: what committed stands, and the tick carries it on.
 
-### Batches, tenants and grants
+## Batches, tenants and grants
+<!-- topic: batches-tenants-and-grants -->
 
 In an application with a `tenant:`, each page's read, its items and
 `finished:` act as the system limited to the tenant the run's saved values
@@ -886,7 +887,7 @@ error: `items` runs as the system, which only `Access.public` lets read `Item`
   reason: A batch runs as the system, which an entity grants background work by naming `Access.system`; `Item`'s `read:` names `Access.public` and not `Access.system`, and anyone at all is never how background work is let in.
   next: Add `Access.system` to `Item`'s `read:`, or reach `Item` from a route instead (human)
   rule: policy.system_grant_missing
-  help: docs/language/09-policy.html#policy-system-grant-missing
+  help: docs/errors/policy.system_grant_missing.md
 
 check failed: 1 error, 1 file
 ```
@@ -952,12 +953,13 @@ error: `mark_seen` runs as the system, which only `Access.public` lets update `I
   reason: A batch runs as the system, which an entity grants background work by naming `Access.system`; `Item`'s `update:` names `Access.public` and not `Access.system`, and anyone at all is never how background work is let in.
   next: Add `Access.system` to `Item`'s `update:`, or reach `Item` from a route instead (human)
   rule: policy.system_grant_missing
-  help: docs/language/09-policy.html#policy-system-grant-missing
+  help: docs/errors/policy.system_grant_missing.md
 
 check failed: 1 error, 1 file
 ```
 
-### What a run reaches under policy
+## What a run reaches under policy
+<!-- topic: what-a-run-reaches-under-policy -->
 
 - **What the summary carries.** An `ImportSummary` holds counts and
   problems, never a record's fields. `items` shows nothing of the items
@@ -986,7 +988,7 @@ check failed: 1 error, 1 file
   subscriber or a batch reaches is checked against the line under
   `actions:` of every action it reaches, not only the one it runs, and a
   listed action's line decides its own body's writes wherever it is
-  called from (area 9's Decisions, "Lines of the actions background work
+  called from ([area 9's design notes](notes/09-policy.md), "Lines of the actions background work
   calls"). Routes are checked the same way.
 - **What the run's actions show.** Nothing reaches whoever started the
   run: a failure's fields and a record found by a value are shown to
@@ -1123,7 +1125,7 @@ error: `post_all` passes `Diary.confession` to `post_item`, which stores it in `
   reason: `post_item` stores what it is given here in `Board.text`, and everyone who may read `Board.text`, anyone signed in among them, reads what is stored there, from any request, and only the user `owner_id` points at and schedules and subscribers may read `confession`. A value stored in a field keeps its own field's rules, as one sent in an output does, so it is stored only where everyone who may read it may read the value.
   next: Pass `post_item` what everyone who may read `Board.text` may read, or give `text`'s `read:` only those who may read `confession` (agent)
   rule: policy.output_field_unproved
-  help: docs/language/09-policy.html#policy-output-field-unproved
+  help: docs/errors/policy.output_field_unproved.md
 
 check failed: 1 error, 2 files
 ```
@@ -1241,7 +1243,7 @@ error: `DraftCount.drafts` carries `Diary.confession`, which not every caller of
   reason: `batches.status` finds a run by its `id` alone, so what it gives shows what decides the failures of every batch the application starts, `Diary.confession` among them, to anyone who may call `count_drafts`, and only the user `owner_id` points at and schedules and subscribers may read `confession`.
   next: Let only those who may read `confession` call `count_drafts`, through its line under `actions:`, or decide which items fail by what its callers may read (agent)
   rule: policy.output_field_unproved
-  help: docs/language/09-policy.html#policy-output-field-unproved
+  help: docs/errors/policy.output_field_unproved.md
 
 check failed: 1 error, 2 files
 ```
@@ -1329,12 +1331,13 @@ error: Placeholder `shelf_run` holds a `BatchRun`, which no request carries
   reason: Only the runtime builds a `BatchRun`: a run comes from `batches.each`, or from a field the caller may read where the application kept it, and `batches.status` and `batches.cancel` find it by its `id` alone. A request that named one could read or stop any run.
   next: Take the `id` of the record that keeps the run, and read the `BatchRun` from its field (agent)
   rule: type.batch_input
-  help: docs/language/12-jobs-and-events.html#type-batch-input
+  help: docs/errors/type.batch_input.md
 
 check failed: 1 error, 2 files
 ```
 
 ## Declaring an event
+<!-- topic: declaring-an-event -->
 
 An event records that something happened. It is a type with the `Event` base,
 named in the past tense, one per file in the domain's `events/` folder, and
@@ -1388,6 +1391,7 @@ build ships is read with the new shape. There is no command of its own:
   area 18's acceptances with the API record's.
 
 ## Emitting an event
+<!-- topic: emitting-an-event -->
 
 `emit` is a statement, written like `reject` (question 4).
 
@@ -1434,6 +1438,7 @@ action complete_todo(todo_id: Todo.id) fails TodoNotFound -> Todo {
   subscribers do.
 
 ## Subscribers
+<!-- topic: subscribers -->
 
 A subscriber names one event and the action it runs. Inside `run:`, `event`
 is the delivered event (question 5).
@@ -1484,6 +1489,7 @@ that needs more passes the event's ids and reads the current state, as
 "Declaring an event" advises.
 
 ## Background work and tenants
+<!-- topic: background-work-and-tenants -->
 
 In an application with a `tenant:`, each kind of background work reaches
 one stated set of tenants, and "no tenant" means one thing for each
@@ -1509,6 +1515,7 @@ tenant its action reached under its caller's policy, or it is
 can never aim background work at a tenant they don't belong to.
 
 ## Reacting in another domain
+<!-- topic: reacting-in-another-domain -->
 
 A domain changes another domain in one of two ways (area 1):
 
@@ -1536,6 +1543,7 @@ action send_completion_email(event: TodoCompleted) fails EmailRejected -> Unit {
 ```
 
 ## Long-running coordination
+<!-- topic: long-running-coordination -->
 
 A process that waits for several things over time, such as an order waiting
 for payment and stock, needs no workflow language (area 1). Its
@@ -1569,6 +1577,7 @@ both complete the order, because every write checks for concurrent change
 between steps.
 
 ## Delivery: at least once, safe to repeat
+<!-- topic: delivery-at-least-once-safe-to-repeat -->
 
 - **At least once.** An event committed is delivered to each subscriber at
   least once. A crash can deliver it again.
@@ -1639,6 +1648,7 @@ build no longer has fails as a defect, and an event 16 deep in a chain
 fails with `event_chain_limit`.
 
 ## Several changing calls in one action
+<!-- topic: several-changing-calls-in-one-action -->
 
 Starting a
 subscription at a payment provider takes several calls (create the
@@ -1780,15 +1790,15 @@ key for a day, so it parks the action for an operator rather than being
 retried.
 
 `jadpo check` keeps: up to 8 changing calls on
-one way through an action ([`step.too_many`](#step-too-many)), a changing
+one way through an action ([`step.too_many`](../errors/step.too_many.md)), a changing
 call with no key the only one in its action
-([`step.unkeyed`](#step-unkeyed)), several only from a subscriber or a
+([`step.unkeyed`](../errors/step.unkeyed.md)), several only from a subscriber or a
 route whose API requires `Idempotency-Key`
-([`step.context`](#step-context)), no `large_output: true` operation
-among them ([`step.large_output`](#step-large-output)), a store for their
-record ([`step.store_required`](#step-store-required)), and no outside
+([`step.context`](../errors/step.context.md)), no `large_output: true` operation
+among them ([`step.large_output`](../errors/step.large_output.md)), a store for their
+record ([`step.store_required`](../errors/step.store_required.md)), and no outside
 call inside `for` (area 3's
-[`effect.call_in_loop`](03-logic.md#effect-call-in-loop)). A *changing
+[`effect.call_in_loop`](../errors/effect.call_in_loop.md)). A *changing
 call* is a provider's operation with `changes: true` or a store's `put`;
 each way through an `if` or a `match` counts on its own, a `return` ends
 its way, and an action called counts the changing calls of the longest
@@ -1796,7 +1806,7 @@ way through it.
 
 The warning: after the first changing call on a way
 through an action, each point that can end it for good is
-[`step.late_failure`](#step-late-failure), one finding for the action at
+[`step.late_failure`](../errors/step.late_failure.md), one finding for the action at
 the first such point with the others beside it, declinable since the
 condition may be unable to change. A point is an `attempt` whose call or
 write passes on a failure that isn't `unavailable` or `rate_limited` (an
@@ -1809,7 +1819,7 @@ its own changing call, and the app's `attempt` of it is the point, even
 as the app's first call. It holds for single calls too (area 11's
 question 26). The same walk sums how long a route's outside calls
 can take, area 11's
-[`route.calls_past_deadline`](11-integrations.md#route-calls-past-deadline).
+[`route.calls_past_deadline`](../errors/route.calls_past_deadline.md).
 Choices in the decisions table, "The late-failure warning and the
 deadline sum".
 
@@ -1836,8 +1846,8 @@ delivery's later attempt, a route's later claim) takes no write from an
 older one; a `put` in such an action keeps its object under a key
 derived from its step; and the record is deleted in the action's commit.
 Answers are sealed with `application { steps: { encryption_key: } }`
-([`step.encryption_key_required`](#step-encryption-key-required),
-[`step.settings_invalid`](#step-settings-invalid)). Choices in the
+([`step.encryption_key_required`](../errors/step.encryption_key_required.md),
+[`step.settings_invalid`](../errors/step.settings_invalid.md)). Choices in the
 decisions table, "The record".
 
 A bakery pays an approved invoice and keeps a copy of it, two changing
@@ -2102,6 +2112,7 @@ test "an approved invoice is paid once" {
 ```
 
 ## Where events travel
+<!-- topic: where-events-travel -->
 
 Events stay inside the Jadpo runtime. They are stored
 in the outbox of the store the action writes, in the same transaction as
@@ -2177,7 +2188,7 @@ stops short.
   itself, through the loopback binding `ctx.exports` gives its own
   `JadpoHandOn` entrypoint, naming each piece by its record, which the
   fresh invocation reads back and runs in its own `waitUntil`, within
-  what is left of its own 30 seconds, counted from its start (Decisions,
+  what is left of its own 30 seconds, counted from its start ([design notes](notes/12-jobs-and-events.md),
   "Work handed on, on Workers"). A
   hand-on the platform refuses, as past its limit on invocations one
   request chains, leaves the work in the store for the minute's cron. The tick finds what is due at its time, then runs
@@ -2200,6 +2211,7 @@ stops short.
   rules as any value of the field's type is.
 
 ## Events from outside
+<!-- topic: events-from-outside -->
 
 Besides events the app's actions emit, four
 sources outside the app produce events. Each is written to the app's
@@ -2303,6 +2315,7 @@ application {
   reaches it.
 
 ## Retries and giving up
+<!-- topic: retries-and-giving-up -->
 
 What happens after a run depends on how it ended, using the failure kinds
 from area 4 (question 7):
@@ -2418,6 +2431,7 @@ detail:
   "since": …, "held": …}`, and `jadpo dev` prints it with the schedules'.
 
 ## What an operator sees
+<!-- topic: what-an-operator-sees -->
 
 Every delivery and schedule run has a state:
 
@@ -2661,6 +2675,7 @@ Where it runs depends on the database:
   `runRequested`.
 
 ## Limits and runtime faults
+<!-- topic: limits-and-runtime-faults -->
 
 | Limit | Value | When it is exceeded |
 |---|---|---|
@@ -2673,2354 +2688,47 @@ Where it runs depends on the database:
 
 Numbers are recommendations to confirm with measured runs (question 12).
 
-## Errors
-
-### `event.emit_invalid`
-
-Only an action emits, and only an event; a function emits by calling an action:
-
-```jadpo check project=e-emit-invalid expect=event.emit_invalid
-type Note = Text {
-    max_length: 200
-}
-
-type NoteSeen = Event {
-    note: Note
-}
-
-function seen(note: Note) -> NoteSeen {
-    emit NoteSeen {
-        note: note
-    }
-    return NoteSeen {
-        note: note
-    }
-}
-```
-
-```text output
-error: A function can't emit `NoteSeen`
- --> main.jadpo:10:5
-   |
-10 |     emit NoteSeen {
-   |     ^^^^^^^^^^^^^^^ only actions emit
-  reason: An event is kept in the same transaction as an action's writes and handed to its subscribers once it commits, so only actions emit; a function emits by calling an action.
-  next: Move the `emit` into the action this code calls, or make this an action (agent)
-  rule: event.emit_invalid
-  help: docs/language/12-jobs-and-events.html#event-emit-invalid
-
-check failed: 1 error, 1 file
-```
-
-### `event.settings_invalid`
-
-`events: { store: }` names a database:
-
-```jadpo check project=e-events-settings file=app.jadpo expect=event.settings_invalid
-application {
-    events: {
-        store: archive
-    }
-}
-```
-
-```text output
-error: `store: archive` isn't a database
- --> app.jadpo:3:16
-  |
-3 |         store: archive
-  |                ^^^^^^^ not a database
-  reason: An event is kept in a database's outbox until its subscribers have it; this application's databases are `main`.
-  next: Name a database connection (agent)
-  rule: event.settings_invalid
-  help: docs/language/12-jobs-and-events.html#event-settings-invalid
-
-check failed: 1 error, 1 file
-```
-
-### `event.store_required`
-
-An action that emits and writes no store has nowhere to keep its events until `events: { store: }` names one:
-
-```jadpo check project=e-store-required expect=event.store_required
-type Note = Text {
-    max_length: 200
-}
-
-type NoteSeen = Event {
-    note: Note
-}
-
-action glance(note: Note) -> Unit {
-    emit NoteSeen {
-        note: note
-    }
-}
-```
-
-```text output
-error: `glance` emits `NoteSeen` but writes no store to keep it in
- --> main.jadpo:10:5
-   |
-10 |     emit NoteSeen {
-   |     ^^^^^^^^^^^^^^^ no outbox
-  reason: An event is kept in the outbox of the store its action writes, in the same transaction, until its subscribers have it; `glance` writes no store, itself or through what it calls, and `app.jadpo` names none with `events: { store: }`.
-  next: Add `events: { store: main }` to `application { }` in `app.jadpo` (human)
-  rule: event.store_required
-  help: docs/language/12-jobs-and-events.html#event-store-required
-
-check failed: 1 error, 1 file
-```
-
-### `receiving.invalid`
-
-A queue in `receiving:` is read through a connection to a package that
-provides `receiving` or to Cloudflare Queues (`driver:
-Driver.cloudflare_queues`), says where each message's id is with `id_at:`, and
-lists the events its messages may be; with more than one event, `type_at:`
-says where each message's type is. A database's connection reads no queue:
-
-```jadpo check project=e-receiving-invalid file=app.jadpo expect=receiving.invalid
-application {
-    connections: {
-        main: {
-            driver: Driver.postgres
-        }
-    }
-    receiving: {
-        main: {
-            id_at: "message_id"
-            events: []
-        }
-    }
-}
-```
-
-```text output
-error: `main` isn't a connection a queue is read through
- --> app.jadpo:8:9
-  |
-8 |         main: {
-  |         ^^^^ not a queue's connection
-  reason: A queue in `receiving:` is a connection to a package that provides `receiving`, or one with `driver: Driver.cloudflare_queues`; it gives `id_at:`, where each message's id is in its body, `events:`, the events its messages may be, and `type_at:`, where each message's type is, unless it lists one event.
-  next: Add `main` to `connections:` with the `package:` its queue is read through, or `driver: Driver.cloudflare_queues`, or name one that is (agent)
-  rule: receiving.invalid
-  help: docs/language/12-jobs-and-events.html#receiving-invalid
-
-check failed: 1 error, 1 file
-```
-
-### `schedule.every_invalid`
-
-`every:` is a whole number of seconds, minutes, hours or days:
-
-```jadpo check project=e-schedule-every expect=schedule.every_invalid
-action tidy() -> Unit {}
-
-/// Tidies up four times a second.
-schedule tidy_up {
-    every: 250ms
-    run: tidy()
-}
-```
-
-```text output
-error: `every: 250ms` can't be how often a schedule runs
- --> main.jadpo:5:12
-  |
-5 |     every: 250ms
-  |            ^^^^^ not seconds, minutes, hours or days
-  reason: `every:` is a whole number of seconds, minutes, hours or days above zero (`30s`, `15m`, `1h`, `1d`), counted in UTC from when the application starts.
-  next: Write a duration such as `every: 15m` (agent)
-  rule: schedule.every_invalid
-  help: docs/language/12-jobs-and-events.html#schedule-every-invalid
-
-check failed: 1 error, 1 file
-```
-
-### `schedule.item_invalid`
-
-A schedule holds `every:` and `run:`, once each; how it is retried is the same for every schedule:
-
-```jadpo check project=e-schedule-item expect=schedule.item_invalid
-action tidy() -> Unit {}
-
-/// Tidies up every quarter of an hour.
-schedule tidy_up {
-    every: 15m
-    run: tidy()
-    retry: next_schedule
-}
-```
-
-```text output
-error: `retry` isn't something a schedule holds
- --> main.jadpo:7:5
-  |
-7 |     retry: next_schedule
-  |     ^^^^^ not a schedule item
-  reason: A schedule says how often it runs with `every:` and the action it runs with `run:`; nothing else, since one run at a time, merged missed ticks and the next tick as the retry are how every schedule runs.
-  next: Write `every: <duration>` and `run: <action>()`, once each (agent)
-  rule: schedule.item_invalid
-  help: docs/language/12-jobs-and-events.html#schedule-item-invalid
-
-check failed: 1 error, 1 file
-```
-
-### `schedule.run_invalid`
-
-`run:` calls an action of the schedule's own domain with nothing; the time is `clock.now`, fixed for the run:
-
-```jadpo check project=e-schedule-run expect=schedule.run_invalid
-type RemindAt = Instant {}
-
-action remind(at: RemindAt) -> Unit {}
-
-/// Sends the reminders due.
-schedule reminders {
-    every: 15m
-    run: remind(RemindAt(clock.now))
-}
-```
-
-```text output
-error: A schedule passes nothing to `remind`
- --> main.jadpo:8:16
-  |
-8 |     run: remind(RemindAt(clock.now))
-  |                ^^^^^^^^^^^^^^^^^^^^^ arguments given
-  reason: `run:` calls one action of the schedule's own domain with no arguments; the action reads `clock.now`, fixed for the run, and queries for anything else, so all the logic lives in the action.
-  next: Write `run: remind()`, and let `remind` read `clock.now` and its queries for what it needs (agent)
-  rule: schedule.run_invalid
-  help: docs/language/12-jobs-and-events.html#schedule-run-invalid
-
-check failed: 1 error, 1 file
-```
-
-### `schedule.settings_invalid`
-
-`schedules: { store: }` names a database:
-
-```jadpo check project=e-schedules-settings file=app.jadpo expect=schedule.settings_invalid
-application {
-    schedules: {
-        store: archive
-    }
-}
-```
-
-```text output
-error: `store: archive` isn't a database
- --> app.jadpo:3:16
-  |
-3 |         store: archive
-  |                ^^^^^^^ not a database
-  reason: A schedule's next due time and its lease are kept in a database; this application's databases are `main`.
-  next: Name a database connection (agent)
-  rule: schedule.settings_invalid
-  help: docs/language/12-jobs-and-events.html#schedule-settings-invalid
-
-check failed: 1 error, 1 file
-```
-
-`trigger:` is a `ScheduleTrigger`:
-
-```jadpo check project=e-schedules-trigger file=app.jadpo expect=schedule.settings_invalid
-application {
-    schedules: {
-        trigger: ScheduleTrigger.cron
-    }
-}
-```
-
-```text output
-error: `ScheduleTrigger.cron` isn't a schedule trigger
- --> app.jadpo:3:18
-  |
-3 |         trigger: ScheduleTrigger.cron
-  |                  ^^^^^^^^^^^^^^^^^^^^ not a `ScheduleTrigger`
-  reason: A native deployable ticks on the server's own timer, `ScheduleTrigger.native`, or when another scheduler runs its `tick` command, `ScheduleTrigger.external`; a Worker always ticks on Cloudflare's cron.
-  next: Use `ScheduleTrigger.external` instead (agent)
-  rule: schedule.settings_invalid
-  help: docs/language/12-jobs-and-events.html#schedule-settings-invalid
-
-check failed: 1 error, 1 file
-```
-
-### `schedule.store_required`
-
-With several databases, `schedules: { store: }` says which keeps every schedule's state and lease; with one, it is that one:
-
-```jadpo check project=e-schedule-store file=app.jadpo hidden
-application {
-    connections: {
-        archive: {
-            driver: Driver.postgres
-            url: config.archive_url
-        }
-        main: {
-            driver: Driver.postgres
-            url: config.main_url
-        }
-    }
-}
-```
-
-```jadpo check project=e-schedule-store file=config.jadpo hidden
-config {
-    archive_url: PostgresUrl
-    main_url: PostgresUrl
-}
-```
-
-```jadpo check project=e-schedule-store file=domains/planning/actions/tidy.jadpo hidden
-action tidy() -> Unit {}
-```
-
-```jadpo check project=e-schedule-store file=domains/planning/schedules/tidy_up.jadpo expect=schedule.store_required
-use planning/actions { tidy }
-
-/// Tidies up every quarter of an hour.
-schedule tidy_up {
-    every: 15m
-    run: tidy()
-}
-```
-
-```text output
-error: `tidy_up` has no database named to keep its state in
- --> domains/planning/schedules/tidy_up.jadpo:4:10
-  |
-4 | schedule tidy_up {
-  |          ^^^^^^^ no store for its state
-  reason: Each schedule keeps its next due time and the lease that lets one instance run it at a time in a database; this application has `archive` and `main`, and `app.jadpo` names none with `schedules: { store: }`.
-  next: Add `schedules: { store: archive }` to `application { }` in `app.jadpo` (human)
-  rule: schedule.store_required
-  help: docs/language/12-jobs-and-events.html#schedule-store-required
-
-check failed: 1 error, 4 files
-```
-
-An entity's built-in purge schedule keeps its state in the same store, so
-with several databases a lifecycle that purges needs `schedules: { store: }`
-too:
-
-```jadpo check project=e-purge-schedule-store file=app.jadpo hidden
-application {
-    connections: {
-        archive: {
-            driver: Driver.postgres
-            url: config.archive_url
-        }
-        main: {
-            driver: Driver.postgres
-            url: config.main_url
-        }
-    }
-}
-```
-
-```jadpo check project=e-purge-schedule-store file=config.jadpo hidden
-config {
-    archive_url: PostgresUrl
-    main_url: PostgresUrl
-}
-```
-
-```jadpo check project=e-purge-schedule-store file=domains/planning/entities/todo.jadpo expect=schedule.store_required
-/// Something to do.
-entity Todo {
-    id: Uuid
-    deleted_at: Instant?
-
-    store: main
-
-    lifecycle: {
-        visible: deleted_at == none
-        transitions: {
-            delete: {
-                when: deleted_at == none
-                set: {
-                    deleted_at: clock.now
-                }
-            }
-        }
-        purge: {
-            after: 30d
-            since: deleted_at
-        }
-    }
-}
-```
-
-```text output
-error: `Todo`'s purge has no database named to keep its state in
- --> domains/planning/entities/todo.jadpo:18:9
-   |
-18 |         purge: {
-   |         ^^^^^ a schedule with no store for its state
-  reason: Purge runs as a built-in schedule every hour, and each schedule keeps its next due time and the lease that lets one instance run it at a time in a database; this application has `archive` and `main`, and `app.jadpo` names none with `schedules: { store: }`.
-  next: Add `schedules: { store: main }` to `application { }` in `app.jadpo` (human)
-  rule: schedule.store_required
-  help: docs/language/12-jobs-and-events.html#schedule-store-required
-
-check failed: 1 error, 3 files
-```
-
-### `step.context`
-
-Several changing calls are made only where a retry can carry on from the
-last answer: a subscriber, or a route whose API requires
-`Idempotency-Key`. A route of an API that doesn't require it gets a new key
-each time its client tries again:
-
-```jadpo check project=e-step-context file=app.jadpo hidden
-application {
-    connections: {
-        sheets: {
-            driver: Driver.disk
-            path: "/var/lib/bakery/sheets"
-        }
-    }
-    steps: {
-        encryption_key: config.step_encryption_key
-    }
-}
-```
-
-```jadpo check project=e-step-context file=config.jadpo hidden
-config {
-    step_encryption_key: SigningKey
-}
-```
-
-```jadpo check project=e-step-context file=policy.jadpo hidden
-use bakery
-
-policy {
-    actions: {
-        bakery.file_prices: [Access.public]
-    }
-}
-```
-
-```jadpo check project=e-step-context file=domains/bakery/types/sheet_text.jadpo hidden
-/// A price sheet as a supplier sends it.
-type SheetText = Text {
-    min_length: 1
-    max_length: 100000
-}
-```
-
-```jadpo check project=e-step-context file=domains/bakery/types/price_sheet_upload.jadpo hidden
-use bakery/types { SheetText }
-
-/// A price sheet a supplier uploads.
-type PriceSheetUpload = Input {
-    sheet_text: SheetText
-}
-```
-
-```jadpo check project=e-step-context file=domains/bakery/failures/sheet_not_kept.jadpo hidden
-/// The sheets store had no room for a sheet.
-type SheetNotKept = Failure {
-    kind: FailureKind.unavailable
-    message: "There was no room to keep the sheet."
-}
-```
-
-```jadpo check project=e-step-context file=api/main.jadpo_record hidden
-// Generated by Jadpo from the routes of API main; update it with `jadpo api update`, never by hand.
-record api 1
-
-GET /openapi.json
-    generated openapi
-    authentication none
-    status 200
-
-POST /price-sheets
-    authentication none
-    input PriceSheetUpload (body)
-    status 204
-    fails sheet_not_kept
-
-input PriceSheetUpload
-    sheet_text: Text { min_length: 1, max_length: 100000 }
-
-failure sheet_not_kept
-    status 503
-    message "There was no room to keep the sheet."
-```
-
-```jadpo check project=e-step-context file=domains/bakery/actions/file_prices.jadpo
-use app { sheets }
-use bakery/types { PriceSheetUpload }
-use bakery/failures { SheetNotKept }
-
-/// Keeps a supplier's price sheet, then a copy for the accountant.
-action file_prices(sent_sheet: PriceSheetUpload) fails SheetNotKept -> Unit {
-    var sheet: File = attempt sheets.put(encoding.to_utf8(sent_sheet.sheet_text), FileType.csv) {
-        storage_full: SheetNotKept
-    }
-    var invoice_copy: File = attempt sheets.put(
-        encoding.to_utf8(sent_sheet.sheet_text),
-        FileType.csv
-    ) {
-        storage_full: SheetNotKept
-    }
-    assert sheet != invoice_copy
-}
-```
-
-```jadpo check project=e-step-context file=domains/bakery/routes/price_sheets.jadpo expect=step.context
-use bakery/types { PriceSheetUpload }
-use bakery/actions { file_prices }
-
-/// Where suppliers send their price sheets.
-routes PriceSheets {
-    prefix: /price-sheets
-
-    /// Keeps a supplier's price sheet.
-    POST / {
-        authentication: RouteAuthentication.none
-        input: PriceSheetUpload
-        status: SuccessStatus.no_content
-        run: file_prices(input)
-    }
-}
-```
-
-```text output
-error: `POST /price-sheets` runs `file_prices`, which makes 2 changing calls, but API `main` doesn't require `Idempotency-Key`
- --> domains/bakery/routes/price_sheets.jadpo:9:5
-  |
-9 |     POST / {
-  |     ^^^^^^ a retry can't resume them
-  reason: Several changing calls are each recorded under their action's key, so a retry carries on from the last answer instead of sending them again; a route keeps its key across a retry only when its API requires the client's `Idempotency-Key`.
-  next: Require the key with `idempotency: Idempotency.required` on API `main`, or answer `202` and make the calls in a subscriber (human)
-  rule: step.context
-  help: docs/language/12-jobs-and-events.html#step-context
-
-check failed: 1 error, 8 files
-```
-
-A schedule's retry is its next run, under a key of its own, and a run
-keeps each item to one changing call, so a schedule and a `batches.each`
-whose action makes several are refused the same way, at the schedule and
-at the run's call.
-
-### `step.encryption_key_required`
-
-The answers of an action with several changing calls are kept, encrypted,
-until it commits, so `app.jadpo` names the `SigningKey` setting they are
-encrypted with. The error is reported once, at the
-first such action:
-
-```jadpo check project=e-step-encryption-key-required file=app.jadpo hidden
-application {
-    connections: {
-        main: {
-            driver: Driver.postgres
-            url: config.main_url
-        }
-        sheets: {
-            driver: Driver.disk
-            path: "/var/lib/bakery/sheets"
-        }
-    }
-    events: {
-        store: main
-    }
-}
-```
-
-```jadpo check project=e-step-encryption-key-required file=config.jadpo hidden
-config {
-    main_url: PostgresUrl
-}
-```
-
-```jadpo check project=e-step-encryption-key-required file=domains/bakery/types/price_list.jadpo hidden
-/// A supplier's prices, one line for each loaf.
-type PriceList = Text {
-    min_length: 1
-    max_length: 2000
-}
-```
-
-```jadpo check project=e-step-encryption-key-required file=domains/bakery/failures/sheet_not_kept.jadpo hidden
-/// The sheets store had no room for a sheet.
-type SheetNotKept = Failure {
-    kind: FailureKind.unavailable
-    message: "There was no room to keep the sheet."
-}
-```
-
-```jadpo check project=e-step-encryption-key-required file=domains/bakery/events/prices_changed.jadpo hidden
-use bakery/types { PriceList }
-
-/// A supplier sent new prices.
-type PricesChanged = Event {
-    price_list: PriceList
-}
-```
-
-```jadpo check project=e-step-encryption-key-required file=domains/bakery/events/events.jadpo_record hidden
-// Generated by Jadpo from the events of domain bakery; update it with `jadpo records update`, never by hand.
-record events 1
-
-event PricesChanged
-    price_list: Text { min_length: 1, max_length: 2000 }
-```
-
-```jadpo check project=e-step-encryption-key-required file=domains/bakery/subscribers/file_new_prices.jadpo hidden
-use bakery/actions { file_prices }
-use bakery/events { PricesChanged }
-
-/// Files each supplier's new prices.
-subscriber file_new_prices {
-    on: PricesChanged
-    run: file_prices(event)
-}
-```
-
-```jadpo check project=e-step-encryption-key-required file=domains/bakery/actions/file_prices.jadpo expect=step.encryption_key_required
-use app { sheets }
-use bakery/failures { SheetNotKept }
-use bakery/events { PricesChanged }
-
-/// Keeps a supplier's new prices as a sheet, then a copy for the
-/// accountant.
-action file_prices(event: PricesChanged) fails SheetNotKept -> Unit {
-    var sheet: File = attempt sheets.put(encoding.to_utf8(event.price_list), FileType.csv) {
-        storage_full: SheetNotKept
-    }
-    var invoice_copy: File = attempt sheets.put(encoding.to_utf8(event.price_list), FileType.csv) {
-        storage_full: SheetNotKept
-    }
-    assert sheet != invoice_copy
-}
-```
-
-```text output
-error: `file_prices` makes 2 changing calls, but `app.jadpo` names no key to encrypt their answers with
- --> domains/bakery/actions/file_prices.jadpo:8:31
-  |
-8 |     var sheet: File = attempt sheets.put(encoding.to_utf8(event.price_list), FileType.csv) {
-  |                               ^^^^^^^^^^ its answers are kept
-  reason: Each answer of an action with several changing calls is kept, encrypted, until the action commits, so a retry can replay it; `application { steps: { encryption_key: } }` names the `SigningKey` setting it is encrypted with, and `file_prices` is the first action that needs it.
-  next: Add `steps: { encryption_key: config.step_encryption_key }` to `application { }` in `app.jadpo`, and declare `step_encryption_key: SigningKey` in `config.jadpo` (human)
-  rule: step.encryption_key_required
-  help: docs/language/12-jobs-and-events.html#step-encryption-key-required
-
-check failed: 1 error, 7 files
-```
-
-### `step.large_output`
-
-An answer kept for a rerun is at most 1 MB, so an operation its package
-marks `large_output: true` is never one of several changing calls:
-
-```jadpo check project=e-step-large-output file=app.jadpo hidden
-application {
-    connections: {
-        pay: {
-            package: AcmePay.v1
-            domains: [bakery]
-            credential: config.pay_api_key
-            environment: config.pay_environment
-        }
-    }
-    steps: {
-        encryption_key: config.step_encryption_key
-    }
-}
-```
-
-```jadpo check project=e-step-large-output file=config.jadpo hidden
-config {
-    pay_api_key: Text {
-        secret: true
-    }
-    pay_environment: ProviderEnvironment
-    step_encryption_key: SigningKey
-}
-```
-
-```jadpo check project=e-step-large-output file=shared/providers/acme_pay/v1/package.jadpo hidden
-/// Acme Pay's payments API.
-package AcmePay.v1 {
-    licence: Licence.proprietary
-    jadpo: "1.0"
-}
-```
-
-```jadpo check project=e-step-large-output file=shared/providers/acme_pay/v1/provider.jadpo hidden
-/// Acme Pay's payments API.
-provider {
-    protocol: Protocol.json_http
-    hosts: {
-        live: "https://api.acme-pay.example"
-        sandbox: "https://sandbox.acme-pay.example"
-    }
-    credential: CredentialScheme.bearer
-    idempotency: {
-        header: "Idempotency-Key"
-        window: 24h
-        max_length: 255
-    }
-}
-```
-
-```jadpo check project=e-step-large-output file=shared/providers/acme_pay/v1/resources/payments.jadpo hidden
-public resource payments {
-    create: {
-        method: HttpMethod.post
-        path: "/v1/payments"
-        input: PaymentRequest
-        output: Payment
-        changes: true
-        idempotent: true
-        source: PackageSource.written
-    }
-}
-```
-
-```jadpo check project=e-step-large-output file=shared/providers/acme_pay/v1/resources/bank_statements.jadpo hidden
-public resource bank_statements {
-    export: {
-        method: HttpMethod.post
-        path: "/v1/bank_statements"
-        input: PaymentRequest
-        output: Payment
-        changes: true
-        idempotent: true
-        large_output: true
-        source: PackageSource.written
-    }
-}
-```
-
-```jadpo check project=e-step-large-output file=shared/providers/acme_pay/v1/types/payment_request.jadpo hidden
-/// What a payment, a receipt or a statement is for.
-public type PaymentRequest = Object {
-    reference: Reference
-}
-```
-
-```jadpo check project=e-step-large-output file=shared/providers/acme_pay/v1/types/payment.jadpo hidden
-/// What Acme Pay gives back.
-public type Payment = Object {
-    id: Reference
-}
-```
-
-```jadpo check project=e-step-large-output file=shared/providers/acme_pay/v1/types/reference.jadpo hidden
-/// Acme Pay's reference for a record.
-public type Reference = Text {
-    max_length: 40
-}
-```
-
-```jadpo check project=e-step-large-output file=domains/bakery/actions/pay_supplier.jadpo expect=step.large_output
-use app { pay }
-use shared/providers/acme_pay
-
-/// Pays a supplier's invoice, then exports the month's statement.
-action pay_supplier(invoice: AcmePay.Reference) -> AcmePay.Payment {
-    var payment: AcmePay.Payment = pay.payments.create(
-        AcmePay.PaymentRequest {
-            reference: invoice
-        }
-    )
-    var bank_statement: AcmePay.Payment = pay.bank_statements.export(
-        AcmePay.PaymentRequest {
-            reference: payment.id
-        }
-    )
-    assert bank_statement.id == payment.id
-    return payment
-}
-```
-
-```text output
-error: `pay.bank_statements.export` gives a large answer, and `pay_supplier` makes several changing calls
- --> domains/bakery/actions/pay_supplier.jadpo:11:43
-   |
-11 |     var bank_statement: AcmePay.Payment = pay.bank_statements.export(
-   |                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^ `large_output: true`
-  reason: In an action with several changing calls, each answer is kept, up to 1 MB, for a retry to replay, and its package marks this operation's answer as large.
-  next: Move `pay.bank_statements.export` to an action of its own, run by a subscriber of an event `pay_supplier` emits (agent)
-  rule: step.large_output
-  help: docs/language/12-jobs-and-events.html#step-large-output
-
-check failed: 1 error, 10 files
-```
-
-### `step.late_failure`
-
-After an action's first changing call has taken effect, a failure that
-ends it for good rolls back its writes but not what the call did, and a
-retry fails the same way. Such a point (an `attempt` whose call or write
-can fail with a failure that isn't retried, `reject`, `propagate`) is an
-error until it is moved before the changing call, handled with `match`,
-or declined. Here the shop could be checked before the sheet is kept:
-
-```jadpo check project=e-step-late-failure file=app.jadpo hidden
-application {
-    connections: {
-        sheets: {
-            driver: Driver.disk
-            path: "/var/lib/bakery/sheets"
-        }
-    }
-}
-```
-
-```jadpo check project=e-step-late-failure file=domains/bakery/types/price_list.jadpo hidden
-/// A supplier's prices, one line for each loaf.
-type PriceList = Text {
-    min_length: 1
-    max_length: 2000
-}
-```
-
-```jadpo check project=e-step-late-failure file=domains/bakery/types/shop_state.jadpo hidden
-/// Whether a shop is trading this week.
-type ShopState = Enum {
-    open
-    closed
-}
-```
-
-```jadpo check project=e-step-late-failure file=domains/bakery/failures/sheet_not_kept.jadpo hidden
-/// The sheets store had no room for a sheet.
-type SheetNotKept = Failure {
-    kind: FailureKind.unavailable
-    message: "There was no room to keep the sheet."
-}
-```
-
-```jadpo check project=e-step-late-failure file=domains/bakery/failures/shop_closed.jadpo hidden
-/// The shop isn't trading this week.
-type ShopClosed = Failure {
-    kind: FailureKind.rejected
-    message: "The shop is closed this week."
-}
-```
-
-```jadpo check project=e-step-late-failure file=domains/bakery/actions/keep_price_sheet.jadpo expect=step.late_failure
-use app { sheets }
-use bakery/types { PriceList, ShopState }
-use bakery/failures { SheetNotKept, ShopClosed }
-
-/// Keeps the week's price sheet for a shop that is trading.
-action keep_price_sheet(
-    price_list: PriceList,
-    state: ShopState
-) fails SheetNotKept, ShopClosed -> File {
-    var sheet: File = attempt sheets.put(encoding.to_utf8(price_list), FileType.csv) {
-        storage_full: SheetNotKept
-    }
-    if (state == ShopState.closed) {
-        reject ShopClosed
-    }
-    return sheet
-}
-```
-
-```text output
-error: `keep_price_sheet` can fail for good at `reject ShopClosed`, after `sheets.put` took effect
- --> domains/bakery/actions/keep_price_sheet.jadpo:14:9
-   |
-10 |     var sheet: File = attempt sheets.put(encoding.to_utf8(price_list), FileType.csv) {
-   |                               ---------- takes effect first
-14 |         reject ShopClosed
-   |         ^^^^^^^^^^^^^^^^^ can fail with `ShopClosed`
-  reason: Once a changing call has taken effect, a failure that ends `keep_price_sheet` for good rolls back its writes but not what `sheets.put` did, and a retry fails the same way; a failure of kind `unavailable` or `rate_limited` is retried instead, and one handled with `match` doesn't end it.
-  next: Check the condition before `sheets.put`, record what happened and finish in a subscriber of an event `keep_price_sheet` emits, or undo `sheets.put` as another step in a `match` arm, or write `decline step.late_failure: "<why>"` above it if this is deliberate (agent)
-  rule: step.late_failure
-  help: docs/language/12-jobs-and-events.html#step-late-failure
-
-check failed: 1 error, 6 files
-```
-
-### `step.settings_invalid`
-
-`steps:` holds one setting, `encryption_key:`, which reads a `SigningKey`
-setting:
-
-```jadpo check project=e-step-settings-invalid file=config.jadpo hidden
-config {
-    step_encryption_key: Text {
-        secret: true
-    }
-}
-```
-
-```jadpo check project=e-step-settings-invalid file=app.jadpo expect=step.settings_invalid
-application {
-    steps: {
-        encryption_key: config.step_encryption_key
-    }
-}
-```
-
-```text output
-error: `encryption_key:` reads `step_encryption_key`, which isn't a `SigningKey`
- --> app.jadpo:3:25
-  |
-3 |         encryption_key: config.step_encryption_key
-  |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^ `step_encryption_key` is `Text`
-  reason: A record's answers are encrypted with a `SigningKey` setting: secret, at least 32 characters, and replaced by moving the old value to the variable with `_PREVIOUS` after its name (area 10), as grants' `encryption_key:` is.
-  next: Declare `step_encryption_key: SigningKey` in `config.jadpo` (agent)
-  rule: step.settings_invalid
-  help: docs/language/12-jobs-and-events.html#step-settings-invalid
-
-check failed: 1 error, 2 files
-```
-
-### `step.store_required`
-
-Each changing call is recorded beside the outbox of the store its action
-writes, so an action that writes none needs `events: { store: }`:
-
-```jadpo check project=e-step-store-required file=app.jadpo hidden
-application {
-    connections: {
-        sheets: {
-            driver: Driver.disk
-            path: "/var/lib/bakery/sheets"
-        }
-    }
-    steps: {
-        encryption_key: config.step_encryption_key
-    }
-}
-```
-
-```jadpo check project=e-step-store-required file=config.jadpo hidden
-config {
-    step_encryption_key: SigningKey
-}
-```
-
-```jadpo check project=e-step-store-required file=domains/bakery/types/price_list.jadpo hidden
-/// A supplier's prices, one line for each loaf.
-type PriceList = Text {
-    min_length: 1
-    max_length: 2000
-}
-```
-
-```jadpo check project=e-step-store-required file=domains/bakery/failures/sheet_not_kept.jadpo hidden
-/// The sheets store had no room for a sheet.
-type SheetNotKept = Failure {
-    kind: FailureKind.unavailable
-    message: "There was no room to keep the sheet."
-}
-```
-
-```jadpo check project=e-step-store-required file=domains/bakery/events/prices_changed.jadpo hidden
-use bakery/types { PriceList }
-
-/// A supplier sent new prices.
-type PricesChanged = Event {
-    price_list: PriceList
-}
-```
-
-```jadpo check project=e-step-store-required file=domains/bakery/events/events.jadpo_record hidden
-// Generated by Jadpo from the events of domain bakery; update it with `jadpo records update`, never by hand.
-record events 1
-
-event PricesChanged
-    price_list: Text { min_length: 1, max_length: 2000 }
-```
-
-```jadpo check project=e-step-store-required file=domains/bakery/subscribers/file_new_prices.jadpo hidden
-use bakery/actions { file_prices }
-use bakery/events { PricesChanged }
-
-/// Files each supplier's new prices.
-subscriber file_new_prices {
-    on: PricesChanged
-    run: file_prices(event)
-}
-```
-
-```jadpo check project=e-step-store-required file=domains/bakery/actions/file_prices.jadpo expect=step.store_required
-use app { sheets }
-use bakery/failures { SheetNotKept }
-use bakery/events { PricesChanged }
-
-/// Keeps a supplier's new prices as a sheet, then a copy for the
-/// accountant.
-action file_prices(event: PricesChanged) fails SheetNotKept -> Unit {
-    var sheet: File = attempt sheets.put(encoding.to_utf8(event.price_list), FileType.csv) {
-        storage_full: SheetNotKept
-    }
-    var invoice_copy: File = attempt sheets.put(encoding.to_utf8(event.price_list), FileType.csv) {
-        storage_full: SheetNotKept
-    }
-    assert sheet != invoice_copy
-}
-```
-
-```text output
-error: `file_prices` makes 2 changing calls but writes no store to keep their record in
- --> domains/bakery/actions/file_prices.jadpo:8:31
-  |
-8 |     var sheet: File = attempt sheets.put(encoding.to_utf8(event.price_list), FileType.csv) {
-  |                               ^^^^^^^^^^ no store for the record
-  reason: Each changing call is recorded before it goes out, beside the outbox of the store its action writes, so a retry can replay it; `file_prices` writes no store, itself or through what it calls, and `app.jadpo` names none with `events: { store: }`.
-  next: Add `events: { store: main }` to `application { }` in `app.jadpo` (human)
-  rule: step.store_required
-  help: docs/language/12-jobs-and-events.html#step-store-required
-
-check failed: 1 error, 7 files
-```
-
-### `step.too_many`
-
-An action makes at most 8 changing calls on one way through it, counting
-those of the actions it calls:
-
-```jadpo check project=e-step-too-many file=app.jadpo hidden
-application {
-    connections: {
-        sheets: {
-            driver: Driver.disk
-            path: "/var/lib/bakery/sheets"
-        }
-    }
-    steps: {
-        encryption_key: config.step_encryption_key
-    }
-}
-```
-
-```jadpo check project=e-step-too-many file=config.jadpo hidden
-config {
-    step_encryption_key: SigningKey
-}
-```
-
-```jadpo check project=e-step-too-many file=domains/bakery/types/price_list.jadpo hidden
-/// A supplier's prices, one line for each loaf.
-type PriceList = Text {
-    min_length: 1
-    max_length: 2000
-}
-```
-
-```jadpo check project=e-step-too-many file=domains/bakery/failures/sheet_not_kept.jadpo hidden
-/// The sheets store had no room for a sheet.
-type SheetNotKept = Failure {
-    kind: FailureKind.unavailable
-    message: "There was no room to keep the sheet."
-}
-```
-
-```jadpo check project=e-step-too-many file=domains/bakery/actions/share_prices.jadpo expect=step.too_many
-use app { sheets }
-use bakery/types { PriceList }
-use bakery/failures { SheetNotKept }
-
-/// Keeps the week's price sheet for each of the bakery's nine shops.
-action share_prices(price_list: PriceList) fails SheetNotKept -> List<File> {
-    var bakehouse: File = attempt sheets.put(encoding.to_utf8(price_list), FileType.csv) {
-        storage_full: SheetNotKept
-    }
-    var market: File = attempt sheets.put(encoding.to_utf8(price_list), FileType.csv) {
-        storage_full: SheetNotKept
-    }
-    var station: File = attempt sheets.put(encoding.to_utf8(price_list), FileType.csv) {
-        storage_full: SheetNotKept
-    }
-    var harbour: File = attempt sheets.put(encoding.to_utf8(price_list), FileType.csv) {
-        storage_full: SheetNotKept
-    }
-    var castle: File = attempt sheets.put(encoding.to_utf8(price_list), FileType.csv) {
-        storage_full: SheetNotKept
-    }
-    var bridge: File = attempt sheets.put(encoding.to_utf8(price_list), FileType.csv) {
-        storage_full: SheetNotKept
-    }
-    var mill: File = attempt sheets.put(encoding.to_utf8(price_list), FileType.csv) {
-        storage_full: SheetNotKept
-    }
-    var abbey: File = attempt sheets.put(encoding.to_utf8(price_list), FileType.csv) {
-        storage_full: SheetNotKept
-    }
-    var quayside: File = attempt sheets.put(encoding.to_utf8(price_list), FileType.csv) {
-        storage_full: SheetNotKept
-    }
-    return [bakehouse, market, station, harbour, castle, bridge, mill, abbey, quayside]
-}
-```
-
-```text output
-error: `share_prices` makes 9 changing calls in a row, more than 8
- --> domains/bakery/actions/share_prices.jadpo:31:34
-   |
-31 |     var quayside: File = attempt sheets.put(encoding.to_utf8(price_list), FileType.csv) {
-   |                                  ^^^^^^^^^^ the 9th changing call
-  reason: Each changing call is a step its action records before sending and replays on a retry, and an action makes at most 8 on any one way through it, counting those of the actions it calls.
-  next: Finish part of the work in a subscriber of an event `share_prices` emits (agent)
-  rule: step.too_many
-  help: docs/language/12-jobs-and-events.html#step-too-many
-
-check failed: 1 error, 5 files
-```
-
-### `step.unkeyed`
-
-A changing call with no idempotency key is the only changing call in its
-action, so a receipt sent after a payment belongs in a subscriber of the
-payment's event:
-
-```jadpo check project=e-step-unkeyed file=app.jadpo hidden
-application {
-    connections: {
-        pay: {
-            package: AcmePay.v1
-            domains: [bakery]
-            credential: config.pay_api_key
-            environment: config.pay_environment
-        }
-    }
-    steps: {
-        encryption_key: config.step_encryption_key
-    }
-}
-```
-
-```jadpo check project=e-step-unkeyed file=config.jadpo hidden
-config {
-    pay_api_key: Text {
-        secret: true
-    }
-    pay_environment: ProviderEnvironment
-    step_encryption_key: SigningKey
-}
-```
-
-```jadpo check project=e-step-unkeyed file=shared/providers/acme_pay/v1/package.jadpo hidden
-/// Acme Pay's payments API.
-package AcmePay.v1 {
-    licence: Licence.proprietary
-    jadpo: "1.0"
-}
-```
-
-```jadpo check project=e-step-unkeyed file=shared/providers/acme_pay/v1/provider.jadpo hidden
-/// Acme Pay's payments API.
-provider {
-    protocol: Protocol.json_http
-    hosts: {
-        live: "https://api.acme-pay.example"
-        sandbox: "https://sandbox.acme-pay.example"
-    }
-    credential: CredentialScheme.bearer
-    idempotency: {
-        header: "Idempotency-Key"
-        window: 24h
-        max_length: 255
-    }
-}
-```
-
-```jadpo check project=e-step-unkeyed file=shared/providers/acme_pay/v1/resources/payments.jadpo hidden
-public resource payments {
-    create: {
-        method: HttpMethod.post
-        path: "/v1/payments"
-        input: PaymentRequest
-        output: Payment
-        changes: true
-        idempotent: true
-        source: PackageSource.written
-    }
-}
-```
-
-```jadpo check project=e-step-unkeyed file=shared/providers/acme_pay/v1/resources/receipts.jadpo hidden
-public resource receipts {
-    send: {
-        method: HttpMethod.post
-        path: "/v1/receipts"
-        input: PaymentRequest
-        output: Payment
-        changes: true
-        source: PackageSource.written
-    }
-}
-```
-
-```jadpo check project=e-step-unkeyed file=shared/providers/acme_pay/v1/types/payment_request.jadpo hidden
-/// What a payment, a receipt or a statement is for.
-public type PaymentRequest = Object {
-    reference: Reference
-}
-```
-
-```jadpo check project=e-step-unkeyed file=shared/providers/acme_pay/v1/types/payment.jadpo hidden
-/// What Acme Pay gives back.
-public type Payment = Object {
-    id: Reference
-}
-```
-
-```jadpo check project=e-step-unkeyed file=shared/providers/acme_pay/v1/types/reference.jadpo hidden
-/// Acme Pay's reference for a record.
-public type Reference = Text {
-    max_length: 40
-}
-```
-
-```jadpo check project=e-step-unkeyed file=domains/bakery/actions/pay_supplier.jadpo expect=step.unkeyed
-use app { pay }
-use shared/providers/acme_pay
-
-/// Pays a supplier's invoice, then sends them a receipt.
-action pay_supplier(invoice: AcmePay.Reference) -> AcmePay.Payment {
-    var payment: AcmePay.Payment = pay.payments.create(
-        AcmePay.PaymentRequest {
-            reference: invoice
-        }
-    )
-    var receipt: AcmePay.Payment = pay.receipts.send(
-        AcmePay.PaymentRequest {
-            reference: payment.id
-        }
-    )
-    assert receipt.id == payment.id
-    return payment
-}
-```
-
-```text output
-error: `pay.receipts.send` takes no idempotency key, but `pay_supplier` makes another changing call, `pay.payments.create`
- --> domains/bakery/actions/pay_supplier.jadpo:11:36
-   |
-11 |     var receipt: AcmePay.Payment = pay.receipts.send(
-   |                                    ^^^^^^^^^^^^^^^^^ no key
-  reason: A changing call with no key may act twice if it is sent again, and once its answer is lost only an operator can say whether it went through, so it stays the only changing call in its action.
-  next: Move `pay.receipts.send` to a subscriber of an event `pay_supplier` emits (agent)
-  rule: step.unkeyed
-  help: docs/language/12-jobs-and-events.html#step-unkeyed
-
-check failed: 1 error, 10 files
-```
-
-### `subscriber.argument_invalid`
-
-A subscriber passes its event or the event's fields:
-
-```jadpo check project=e-subscriber-argument expect=subscriber.argument_invalid
-type Note = Text {
-    max_length: 200
-}
-
-entity Reminder {
-    id: Uuid
-    note: Note
-    sent: Bool
-
-    policy: {
-        create: [Access.authenticated]
-        read: [Access.system]
-        update: [Access.system]
-    }
-}
-
-type ReminderDue = Event {
-    reminder_id: Reminder.id
-}
-
-action send_reminder(reminder_id: Reminder.id) fails ReminderNotFound -> Unit {
-    attempt Reminder.update(reminder_id) {
-        set: {
-            sent: true
-        }
-    }
-}
-
-subscriber send_due {
-    on: ReminderDue
-    run: send_reminder(Reminder.id)
-}
-```
-
-```text output
-error: A subscriber passes its event, not `Reminder`
- --> main.jadpo:31:24
-   |
-31 |     run: send_reminder(Reminder.id)
-   |                        ^^^^^^^^ `Reminder`
-  reason: A subscriber's `run:` passes `event` or fields read through it, as written; the action works out anything else itself.
-  next: Pass `event` or a field of it, and move the rest into the action (agent)
-  rule: subscriber.argument_invalid
-  help: docs/language/12-jobs-and-events.html#subscriber-argument-invalid
-
-check failed: 1 error, 1 file
-```
-
-### `subscriber.event_invalid`
-
-`on:` names an event, not an entity:
-
-```jadpo check project=e-subscriber-event expect=subscriber.event_invalid
-type Note = Text {
-    max_length: 200
-}
-
-entity Reminder {
-    id: Uuid
-    note: Note
-    sent: Bool
-
-    policy: {
-        create: [Access.authenticated]
-        read: [Access.system]
-        update: [Access.system]
-    }
-}
-
-type ReminderDue = Event {
-    reminder_id: Reminder.id
-}
-
-action send_reminder(reminder_id: Reminder.id) fails ReminderNotFound -> Unit {
-    attempt Reminder.update(reminder_id) {
-        set: {
-            sent: true
-        }
-    }
-}
-
-subscriber send_due {
-    on: Reminder
-    run: send_reminder(event.reminder_id)
-}
-```
-
-```text output
-error: `on: Reminder` isn't an event
- --> main.jadpo:30:9
-   |
-30 |     on: Reminder
-   |         ^^^^^^^^ not an event
-  reason: A subscriber listens for one event, a type with the `Event` base that an action emits.
-  next: Name an event, declared as `type <Name> = Event { ... }` in a domain's `events/` folder (agent)
-  rule: subscriber.event_invalid
-  help: docs/language/12-jobs-and-events.html#subscriber-event-invalid
-
-check failed: 1 error, 1 file
-```
-
-### `subscriber.item_invalid`
-
-A subscriber holds `on:`, `run:` and `retry:` only:
-
-```jadpo check project=e-subscriber-item expect=subscriber.item_invalid
-type Note = Text {
-    max_length: 200
-}
-
-entity Reminder {
-    id: Uuid
-    note: Note
-    sent: Bool
-
-    policy: {
-        create: [Access.authenticated]
-        read: [Access.system]
-        update: [Access.system]
-    }
-}
-
-type ReminderDue = Event {
-    reminder_id: Reminder.id
-}
-
-action send_reminder(reminder_id: Reminder.id) fails ReminderNotFound -> Unit {
-    attempt Reminder.update(reminder_id) {
-        set: {
-            sent: true
-        }
-    }
-}
-
-subscriber send_due {
-    on: ReminderDue
-    run: send_reminder(event.reminder_id)
-    timeout: 5m
-}
-```
-
-```text output
-error: `timeout` isn't something a subscriber holds
- --> main.jadpo:32:5
-   |
-32 |     timeout: 5m
-   |     ^^^^^^^ not a subscriber item
-  reason: A subscriber names the event it listens for with `on:` and the action it runs with `run:`, and may change how it is retried with `retry: { attempts: within: }`; nothing else.
-  next: Write `on: <Event>` and `run: <action>(event)`, once each (agent)
-  rule: subscriber.item_invalid
-  help: docs/language/12-jobs-and-events.html#subscriber-item-invalid
-
-check failed: 1 error, 1 file
-```
-
-### `subscriber.retry_invalid`
-
-`attempts:` is from 1 to 100:
-
-```jadpo check project=e-subscriber-retry expect=subscriber.retry_invalid
-type Note = Text {
-    max_length: 200
-}
-
-entity Reminder {
-    id: Uuid
-    note: Note
-    sent: Bool
-
-    policy: {
-        create: [Access.authenticated]
-        read: [Access.system]
-        update: [Access.system]
-    }
-}
-
-type ReminderDue = Event {
-    reminder_id: Reminder.id
-}
-
-action send_reminder(reminder_id: Reminder.id) fails ReminderNotFound -> Unit {
-    attempt Reminder.update(reminder_id) {
-        set: {
-            sent: true
-        }
-    }
-}
-
-subscriber send_due {
-    on: ReminderDue
-    run: send_reminder(event.reminder_id)
-    retry: {
-        attempts: 500
-    }
-}
-```
-
-```text output
-error: `attempts: 500` can't be how often it is tried
- --> main.jadpo:33:19
-   |
-33 |         attempts: 500
-   |                   ^^^ not 1 to 100
-  reason: `retry:` holds `attempts:`, how many times a delivery is tried, from 1 to 100 (10 by default), and `within:`, a duration up to 30 days after the event was emitted (24 hours by default).
-  next: Write `retry: { attempts: 20  within: 3d }`, or leave `retry:` out for the default (agent)
-  rule: subscriber.retry_invalid
-  help: docs/language/12-jobs-and-events.html#subscriber-retry-invalid
-
-check failed: 1 error, 1 file
-```
-
-### `subscriber.run_invalid`
-
-`run:` calls the action:
-
-```jadpo check project=e-subscriber-run expect=subscriber.run_invalid
-type Note = Text {
-    max_length: 200
-}
-
-entity Reminder {
-    id: Uuid
-    note: Note
-    sent: Bool
-
-    policy: {
-        create: [Access.authenticated]
-        read: [Access.system]
-        update: [Access.system]
-    }
-}
-
-type ReminderDue = Event {
-    reminder_id: Reminder.id
-}
-
-action send_reminder(reminder_id: Reminder.id) fails ReminderNotFound -> Unit {
-    attempt Reminder.update(reminder_id) {
-        set: {
-            sent: true
-        }
-    }
-}
-
-subscriber send_due {
-    on: ReminderDue
-    run: send_reminder
-}
-```
-
-```text output
-error: `run: send_reminder` isn't a call
- --> main.jadpo:31:10
-   |
-31 |     run: send_reminder
-   |          ^^^^^^^^^^^^^ not a call
-  reason: `run:` calls one action of the subscriber's own domain, passing the event or its fields; all the logic lives in the action.
-  next: Write `run: <action>(event)` (agent)
-  rule: subscriber.run_invalid
-  help: docs/language/12-jobs-and-events.html#subscriber-run-invalid
-
-check failed: 1 error, 1 file
-```
-
-### `type.batch_capture_not_storable`
-
-What a run saves (`from:`'s query's arguments, what `each:` and
-`finished:` capture, and `key:`) is kept as its type's JSON, so the run can
-resume after a crash or a deploy; a value an entity field couldn't hold,
-such as a request's `Input`, is refused, naming it:
-
-```jadpo check project=e-batch-capture-not-storable file=stock.jadpo hidden
-type ShelfCode = Text {
-    min_length: 1
-    max_length: 40
-}
-
-type ItemPage = Input {
-    page_size: PageSize {
-        default: 25
-    }
-    after: PageCursor {
-        optional: true
-    }
-}
-
-entity Item {
-    id: Uuid
-    code: ShelfCode
-    seen: Bool
-
-    policy: {
-        create: [Access.public]
-        read: [Access.public, Access.system]
-        update: [Access.system]
-    }
-}
-
-query items(page: ItemPage) -> Page<Item> {
-    from: Item
-    order: [Item.id asc]
-    page: {
-        size: page.page_size
-        after: page.after
-    }
-}
-
-action mark_seen(item: Item) -> Unit {
-    var seen: Item = Item.update(item) {
-        set: {
-            seen: true
-        }
-    }
-    assert seen.seen
-}
-```
-
-```jadpo check project=e-batch-capture-not-storable expect=type.batch_capture_not_storable
-action mark_on(item: Item, page: ItemPage) -> Unit {
-    assert item.seen == item.seen
-}
-
-action sweep_shelf(page: ItemPage) -> BatchRun {
-    return batches.each(from: items(page), each: item -> mark_on(item, page))
-}
-```
-
-```text output
-error: `batches.each` can't save `page`
- --> main.jadpo:6:72
-  |
-6 |     return batches.each(from: items(page), each: item -> mark_on(item, page))
-  |                                                                        ^^^^ `ItemPage` has no stored form
-  reason: What `each:` captures is worked out when the run starts and saved with it, as its type's JSON, so the run can resume after a crash or a deploy; `page` is `ItemPage`, an `Input`, the shape a request arrives in, where a record keeps an `Object`.
-  next: Pass something an entity field could hold instead, such as the `id` that finds `page` (agent)
-  rule: type.batch_capture_not_storable
-  help: docs/language/12-jobs-and-events.html#type-batch-capture-not-storable
-
-check failed: 1 error, 2 files
-```
-
-### `type.batch_context`
-
-Only an action starts a run, reads its progress or cancels it, keeping
-what it does in the action's transaction:
-
-```jadpo check project=e-batch-context file=stock.jadpo hidden
-type ShelfCode = Text {
-    min_length: 1
-    max_length: 40
-}
-
-type ItemPage = Input {
-    page_size: PageSize {
-        default: 25
-    }
-    after: PageCursor {
-        optional: true
-    }
-}
-
-entity Item {
-    id: Uuid
-    code: ShelfCode
-    seen: Bool
-
-    policy: {
-        create: [Access.public]
-        read: [Access.public, Access.system]
-        update: [Access.system]
-    }
-}
-
-query items(page: ItemPage) -> Page<Item> {
-    from: Item
-    order: [Item.id asc]
-    page: {
-        size: page.page_size
-        after: page.after
-    }
-}
-
-action mark_seen(item: Item) -> Unit {
-    var seen: Item = Item.update(item) {
-        set: {
-            seen: true
-        }
-    }
-    assert seen.seen
-}
-```
-
-```jadpo check project=e-batch-context expect=type.batch_context
-action sweep_shelf(page: ItemPage) -> BatchRun {
-    return batches.each(from: items(page), each: item -> mark_seen(item))
-}
-
-/// How far a sweep has got, for a report.
-function shelf_report(shelf_run: BatchRun) -> BatchProgress {
-    return batches.status(shelf_run)
-}
-```
-
-```text output
-error: A function can't call `batches.status`
- --> main.jadpo:7:12
-  |
-7 |     return batches.status(shelf_run)
-  |            ^^^^^^^^^^^^^^ outside an action
-  reason: `batches.status` reads a run the runtime keeps in the store an action writes, so only an action calls it.
-  next: Call `batches.status` in an action (agent)
-  rule: type.batch_context
-  help: docs/language/12-jobs-and-events.html#type-batch-context
-
-check failed: 1 error, 2 files
-```
-
-### `type.batch_each_invalid`
-
-`each:` and `finished:` are one call of an action in the same domain,
-whose arguments are the item, a field inside it, or a value saved with
-the run. (A file helper's write's `each:` is one inline function giving
-the item's row instead, refused when it is anything else.)
-One that works something out of the item is refused:
-
-```jadpo check project=e-batch-each-invalid file=stock.jadpo hidden
-type ShelfCode = Text {
-    min_length: 1
-    max_length: 40
-}
-
-type ItemPage = Input {
-    page_size: PageSize {
-        default: 25
-    }
-    after: PageCursor {
-        optional: true
-    }
-}
-
-entity Item {
-    id: Uuid
-    code: ShelfCode
-    seen: Bool
-
-    policy: {
-        create: [Access.public]
-        read: [Access.public, Access.system]
-        update: [Access.system]
-    }
-}
-
-query items(page: ItemPage) -> Page<Item> {
-    from: Item
-    order: [Item.id asc]
-    page: {
-        size: page.page_size
-        after: page.after
-    }
-}
-
-action mark_seen(item: Item) -> Unit {
-    var seen: Item = Item.update(item) {
-        set: {
-            seen: true
-        }
-    }
-    assert seen.seen
-}
-```
-
-```jadpo check project=e-batch-each-invalid expect=type.batch_each_invalid
-action mark_code(code: ShelfCode) -> Unit {
-    assert code == code
-}
-
-action sweep_shelf(page: ItemPage) -> BatchRun {
-    return batches.each(from: items(page), each: item -> mark_code(ShelfCode(item.code)))
-}
-```
-
-```text output
-error: `batches.each`'s `each:` isn't one call of an action
- --> main.jadpo:6:68
-  |
-6 |     return batches.each(from: items(page), each: item -> mark_code(ShelfCode(item.code)))
-  |                                                                    ^^^^^^^^^^^^^^^^^^^^ the item and more
-  reason: An argument reading `item` is `item` itself or a field inside it, which the run reads from each item; one that reads nothing of it is worked out now and saved with the run. Work the rest out in the action it calls.
-  next: Write `each: item -> <action>(...)`, calling an action in this domain (agent)
-  rule: type.batch_each_invalid
-  help: docs/language/12-jobs-and-events.html#type-batch-each-invalid
-
-check failed: 1 error, 2 files
-```
-
-### `type.batch_from_invalid`
-
-A run walks `from:` a page at a time, so it is a call of a named query
-giving a `Page`; a list's query, or a page already read, is refused:
-
-```jadpo check project=e-batch-from-invalid file=stock.jadpo hidden
-type ShelfCode = Text {
-    min_length: 1
-    max_length: 40
-}
-
-type ItemPage = Input {
-    page_size: PageSize {
-        default: 25
-    }
-    after: PageCursor {
-        optional: true
-    }
-}
-
-entity Item {
-    id: Uuid
-    code: ShelfCode
-    seen: Bool
-
-    policy: {
-        create: [Access.public]
-        read: [Access.public, Access.system]
-        update: [Access.system]
-    }
-}
-
-query items(page: ItemPage) -> Page<Item> {
-    from: Item
-    order: [Item.id asc]
-    page: {
-        size: page.page_size
-        after: page.after
-    }
-}
-
-action mark_seen(item: Item) -> Unit {
-    var seen: Item = Item.update(item) {
-        set: {
-            seen: true
-        }
-    }
-    assert seen.seen
-}
-```
-
-```jadpo check project=e-batch-from-invalid expect=type.batch_from_invalid
-query first_items() -> List<Item> {
-    from: Item
-    order: [Item.code asc]
-    limit: 10
-}
-
-action sweep_shelf() -> BatchRun {
-    return batches.each(from: first_items(), each: item -> mark_seen(item))
-}
-```
-
-```text output
-error: `batches.each`'s `from:` isn't a call of a named query giving a `Page`
- --> main.jadpo:8:31
-  |
-8 |     return batches.each(from: first_items(), each: item -> mark_seen(item))
-  |                               ^^^^^^^^^^^^^ gives `List<Item>`
-  reason: A run walks `from:` a page at a time, after the action that starts it commits: it calls a named query that gives a `Page<T>`, and each item is a `T`; the query's arguments are worked out now and saved with the run.
-  next: Write `batches.each(from: <query>(...), ...)`, with a query whose result is `Page<T>` (agent)
-  rule: type.batch_from_invalid
-  help: docs/language/12-jobs-and-events.html#type-batch-from-invalid
-
-check failed: 1 error, 2 files
-```
-
-### `type.batch_input`
-
-Only the runtime builds a batch type, and `batches.status` and
-`batches.cancel` find a run by its `id` alone, so no request carries one:
-an `Input`, read from a body or a query string, and a route's placeholder
-may not hold a `BatchRun`, a `BatchProgress`, a `RowProblem` or an
-`ImportSummary`, however deep. A run comes from
-`batches.each`, or from a field the caller may read where the
-application kept it:
-
-```jadpo check project=e-batch-input file=stock.jadpo hidden
-type ShelfCode = Text {
-    min_length: 1
-    max_length: 40
-}
-
-type ItemPage = Input {
-    page_size: PageSize {
-        default: 25
-    }
-    after: PageCursor {
-        optional: true
-    }
-}
-
-entity Item {
-    id: Uuid
-    code: ShelfCode
-    seen: Bool
-
-    policy: {
-        create: [Access.public]
-        read: [Access.public, Access.system]
-        update: [Access.system]
-    }
-}
-
-query items(page: ItemPage) -> Page<Item> {
-    from: Item
-    order: [Item.id asc]
-    page: {
-        size: page.page_size
-        after: page.after
-    }
-}
-
-action mark_seen(item: Item) -> Unit {
-    var seen: Item = Item.update(item) {
-        set: {
-            seen: true
-        }
-    }
-    assert seen.seen
-}
-
-action sweep_shelf(page: ItemPage) -> BatchRun {
-    return batches.each(from: items(page), each: item -> mark_seen(item))
-}
-```
-
-```jadpo check project=e-batch-input expect=type.batch_input
-type StopSweep = Input {
-    shelf_run: BatchRun
-}
-
-action stop_sweep(request: StopSweep) -> Unit {
-    batches.cancel(request.shelf_run)
-}
-```
-
-```text output
-error: `StopSweep.shelf_run` holds a `BatchRun`, which no request carries
- --> main.jadpo:2:16
-  |
-2 |     shelf_run: BatchRun
-  |                ^^^^^^^^ a `BatchRun`
-  reason: Only the runtime builds a `BatchRun`: a run comes from `batches.each`, or from a field the caller may read where the application kept it, and `batches.status` and `batches.cancel` find it by its `id` alone. A request that named one could read or stop any run.
-  next: Take the `id` of the record that keeps the run, and read the `BatchRun` from its field (agent)
-  rule: type.batch_input
-  help: docs/language/12-jobs-and-events.html#type-batch-input
-
-check failed: 1 error, 2 files
-```
-
-### `type.batch_order_updatable`
-
-A run walks live records a page at a time, each page after the record
-the one before ended on, so a `from:` whose query orders by a field an
-update can change can miss a record whose field moved behind that place
-mid-run, or meet it twice. An order no update changes keeps every record
-in exactly once: `id`, a field marked `immutable: true`, or a time
-generated as the record is created, then `id` ("How a run is
-kept"):
-
-```jadpo check project=e-batch-order-updatable file=stock.jadpo hidden
-type ShelfCode = Text {
-    min_length: 1
-    max_length: 40
-}
-
-type StockCount = Int {
-    min: 0
-    max: 100000
-}
-
-type ItemPage = Input {
-    page_size: PageSize {
-        default: 25
-    }
-    after: PageCursor {
-        optional: true
-    }
-}
-
-entity Item {
-    id: Uuid
-    code: ShelfCode
-    stock: StockCount
-    seen: Bool
-
-    policy: {
-        create: [Access.public]
-        read: [Access.public, Access.system]
-        update: [Access.system]
-    }
-}
-
-action mark_seen(item: Item) -> Unit {
-    var seen: Item = Item.update(item) {
-        set: {
-            seen: true
-        }
-    }
-    assert seen.seen
-}
-```
-
-```jadpo check project=e-batch-order-updatable expect=type.batch_order_updatable
-/// The items, a page at a time, in code order.
-query items_by_code(page: ItemPage) -> Page<Item> {
-    from: Item
-    order: [Item.code asc]
-    page: {
-        size: page.page_size
-        after: page.after
-    }
-}
-
-/// Starts marking every item seen.
-action sweep_shelves(page: ItemPage) -> BatchRun {
-    return batches.each(from: items_by_code(page), each: item -> mark_seen(item))
-}
-```
-
-```text output
-error: `batches.each` walks `items_by_code` in an order an update can change
- --> main.jadpo:13:31
-   |
-13 |     return batches.each(from: items_by_code(page), each: item -> mark_seen(item))
-   |                               ^^^^^^^^^^^^^^^^^^^ ordered by `Item.code`, which an update can change
-  reason: A run walks live records a page at a time, each page after the record the one before ended on, so a record whose `Item.code` changes mid-run can move behind that place and be missed, or ahead of it and be met twice. An order no update changes meets every record once: `id`, or a time generated as the record is created, then `id`.
-  next: Order `items_by_code` by `Item.id`, or by a field marked `immutable: true` or generated with `Generated.on_create` and then `Item.id`, or write `decline type.batch_order_updatable: "<why>"` above it if this is deliberate (agent)
-  rule: type.batch_order_updatable
-  help: docs/language/12-jobs-and-events.html#type-batch-order-updatable
-
-check failed: 1 error, 2 files
-```
-
-It is a judgement call, so it can be declined on the action, with the
-reason the order is safe. Here the walk goes from the most stock to the
-least while sales only ever lower an item's stock: a sale moves an item
-further along the walk, so it can be met twice but never missed, and
-marking an item seen twice does no harm:
-
-```jadpo check project=batch-order-declined file=stock.jadpo hidden
-type StockCount = Int {
-    min: 0
-    max: 100000
-}
-
-type ItemPage = Input {
-    page_size: PageSize {
-        default: 25
-    }
-    after: PageCursor {
-        optional: true
-    }
-}
-
-entity Item {
-    id: Uuid
-    stock: StockCount
-    seen: Bool
-
-    policy: {
-        create: [Access.public]
-        read: [Access.public, Access.system]
-        update: [Access.system]
-    }
-}
-
-action mark_seen(item: Item) -> Unit {
-    var seen: Item = Item.update(item) {
-        set: {
-            seen: true
-        }
-    }
-    assert seen.seen
-}
-```
-
-```jadpo check project=batch-order-declined
-/// The items, a page at a time, the most stock first.
-query items_by_stock(page: ItemPage) -> Page<Item> {
-    from: Item
-    order: [Item.stock desc]
-    page: {
-        size: page.page_size
-        after: page.after
-    }
-}
-
-/// Starts marking every item seen, the best stocked first.
-decline type.batch_order_updatable: "Sales only lower stock, which moves an item further along the walk, never past it; marking one seen twice does no harm"
-action sweep_by_stock(page: ItemPage) -> BatchRun {
-    return batches.each(from: items_by_stock(page), each: item -> mark_seen(item))
-}
-```
-
-### `type.batch_row_invalid`
-
-A file helper reads each row as the `Input` its `as:` names, and writes
-each as the `Output` its `each:` gives. A CSV or TSV row
-holds one value a cell, so a row type holding a list, a map, an object
-or a standard type with no one text form is refused, pointing at JSON
-Lines, whose rows hold any JSON value; so is a row type that isn't an
-`Input` (or, written, an `Output`), or two fields reading or writing one
-column. The same rule refuses `json.read`'s `items_at:`
-when it isn't member names written out between dots (`"data.items"`),
-and a reader's `max_unpacked_size:` when it isn't a size (`200mb`):
-
-```jadpo check project=e-batch-row-invalid file=app.jadpo hidden
-application {
-    connections: {
-        sheets: {
-            driver: Driver.disk
-            path: "/var/lib/bakery/sheets"
-        }
-    }
-}
-```
-
-```jadpo check project=e-batch-row-invalid file=domains/bakery/types/order_code.jadpo hidden
-/// A line's code on an order.
-type OrderCode = Text {
-    min_length: 1
-    max_length: 20
-}
-```
-
-```jadpo check project=e-batch-row-invalid file=domains/bakery/types/code_row.jadpo hidden
-use bakery/types { OrderCode }
-
-/// One code a sheet lists.
-type CodeRow = Input {
-    reference: OrderCode
-}
-```
-
-```jadpo check project=e-batch-row-invalid file=domains/bakery/entities/order_sheet.jadpo hidden
-/// A sheet of order_sheet, kept as it was sent.
-entity OrderSheet {
-    id: Uuid
-    sheet: File {
-        store: sheets
-        max_size: 5mb
-    }
-
-    policy: {
-        create: [Access.public]
-        read: [Access.public, Access.system]
-    }
-}
-```
-
-```jadpo check project=e-batch-row-invalid file=domains/bakery/actions/take_code.jadpo hidden
-use bakery/types { CodeRow }
-
-/// Takes one code a sheet lists.
-action take_code(listed_code: CodeRow) -> Unit {
-    assert listed_code.reference == listed_code.reference
-}
-```
-
-```jadpo check project=e-batch-row-invalid file=domains/bakery/actions/read_codes.jadpo hidden migrate=initial
-use bakery/entities { OrderSheet, OrderSheetNotFound }
-use bakery/types { CodeRow }
-use bakery/actions { take_code }
-
-/// Starts taking the codes a kept sheet lists.
-action read_codes(sheet_id: OrderSheet.id) fails OrderSheetNotFound -> BatchRun {
-    var code_sheet: OrderSheet = attempt OrderSheet.get(sheet_id)
-    return csv.read(code_sheet.sheet, as: CodeRow, each: listed_code -> take_code(listed_code))
-}
-```
-
-```jadpo check project=e-batch-row-invalid file=domains/bakery/types/order_row.jadpo
-use bakery/types { OrderCode }
-
-/// One order a sheet lists, with its lines.
-type OrderRow = Input {
-    reference: OrderCode
-    lines: List<OrderCode>
-}
-```
-
-```jadpo check project=e-batch-row-invalid file=domains/bakery/actions/take_order.jadpo hidden
-use bakery/types { OrderRow }
-
-/// Takes one order a sheet lists.
-action take_order(order_entry: OrderRow) -> Unit {
-    assert order_entry.reference == order_entry.reference
-}
-```
-
-```jadpo check project=e-batch-row-invalid file=domains/bakery/actions/read_orders.jadpo expect=type.batch_row_invalid
-use bakery/entities { OrderSheet, OrderSheetNotFound }
-use bakery/types { OrderRow }
-use bakery/actions { take_order }
-
-/// Starts taking the orders a kept sheet lists.
-action read_orders(sheet_id: OrderSheet.id) fails OrderSheetNotFound -> BatchRun {
-    var order_sheet: OrderSheet = attempt OrderSheet.get(sheet_id)
-    return csv.read(order_sheet.sheet, as: OrderRow, each: order_entry -> take_order(order_entry))
-}
-```
-
-```text output
-error: `csv.read` can't read its rows as `OrderRow`
- --> domains/bakery/actions/read_orders.jadpo:8:44
-  |
-8 |     return csv.read(order_sheet.sheet, as: OrderRow, each: order_entry -> take_order(order_entry))
-  |                                            ^^^^^^^^ `OrderRow.lines` holds a list
-  reason: A CSV row holds one value a cell, and `OrderRow.lines` holds a list; a JSON Lines row holds lists and objects, each line one JSON value.
-  next: Read the file with `json_lines.read`, or give `lines` a type one cell holds (agent)
-  rule: type.batch_row_invalid
-  help: docs/language/12-jobs-and-events.html#type-batch-row-invalid
-
-check failed: 1 error, 9 files
-```
-
-## Review
-
-### Status
-
-Everything on this page is built except:
-
-- publishing chosen public events outward;
-- each step's state in `jadpo watch`, and in `jadpo trace` with the
-  request timelines (area 17), and a record's entry in the personal-data
-  report (area 15);
-- sending the metrics and the alerts' log events to a monitoring tool,
-  which waits for telemetry (area 16), and the console's timeline
-  (area 17).
+## What is built
+<!-- topic: jobs-and-events-built -->
+
+| Feature | Status |
+|---|---|
+| Everything else on this page | Built. |
+| Publishing chosen public events outward | Not built yet. |
+| Each step's state in `jadpo watch`, and in `jadpo trace` with the request timelines (area 17), and a record's entry in the personal-data report (area 15) | Not built yet. |
+| Sending the metrics and the alerts' log events to a monitoring tool | Not built yet: waits for telemetry (area 16). |
+| The console's timeline | Not built yet (area 17). |
 
 [The roadmap](../roadmap.md) says when.
 
-### Consistency with the rest of the language
+## Errors
 
-What this area sets in other areas:
-
-| Area | Rule |
-|---|---|
-| 2 | `BatchRun`, `BatchProgress`, `RowProblem`, `ImportSummary` and `ExportSummary` are area 2's types |
-| 3 | The batch helpers' `each:` and `finished:` take the inline `->` form; no action makes an outside call inside `for` |
-| 5 | An entity's `purge:` runs as a built-in hourly schedule per entity |
-| 6, 10 | Writes come after the last call; `clock.now` is fixed for a run, and for a multi-step record's life, reruns included |
-| 9 | Schedules, subscribers and batches act as `Access.system`, which an entity grants explicitly, each limited to the tenants "Background work and tenants" says |
-| 11 | The delivery key is an input to each provider call's idempotency key; work over many pages of a provider's list is `batches.each`; area 11's question 26 is answered by the late-failure warning |
-| 13 | Tests run a schedule with `schedule.run()` and deliver events after each commit in a shuffled order; fakes answer `lost` and `in_use`; crash points at each step |
-| 14 | The operator's commands: `jadpo deliveries` (with `diverged` and unfinished multi-step runs, batch runs and parked queue messages), `jadpo schedules`, and `jadpo runs unfinished --build <build id>` |
-| 15 | Multi-step records and batch runs' captured values are in the personal-data report |
-| 17 | Each step's state shows in `jadpo dev`, `jadpo watch` and `jadpo trace` |
-
-### Decisions
-
-Numbered as the questions they settled, which other pages cite.
-
-1. **A schedule is `schedule name { every: 15m  run: action() }`.** The
-   action takes no arguments and reads `clock.now`, fixed for the run. One
-   run happens at a time, missed ticks merge, and the next due time is the
-   retry. Runs never overlap: a tick that arrives while a run is going is
-   skipped, not queued, and there is no option to allow overlap; work too
-   large for one run emits one event per item. Calendar times, as Rails'
-   Solid Queue and Oban's cron plugin offer, are added only when an
-   application needs them.
-2. **There is no delivery descriptor.** Work over a set of items is an
-   ordinary query, action and subscriber ("Batch work keeps its
-   progress"), not a closed syntax that restates a query.
-3. **An event is `type TodoCompleted = Event { ... }`**, one type per file
-   in `events/`, with no families and no per-event policy. It matches
-   failures, and Laravel and Rails define one class per event or job too.
-4. **`emit TodoCompleted { ... }` is a statement** with no `attempt`, only
-   in actions, delivered after commit. It mirrors `reject`, and areas 3
-   and 4 rule out `attempt` on something that can't fail.
-5. **A subscriber is `subscriber name { on: Event  run: action(event) }`**,
-   one event each, the same shape as routes and schedules: several events
-   in one subscriber would read as "all of them" to some readers and "any
-   of them" to others.
-6. **No delivery order is promised.** Order per key needs per-key queues
-   and lets one stuck item block the rest; Sidekiq, Laravel and EventBridge
-   promise none either. Subscribers read current state, which retries need
-   anyway.
-7. **Retries go by failure kind**, as the table under "Retries and giving
-   up" says: by default 10 attempts within 24 hours, changeable per
-   subscriber with `retry: { attempts:  within: }`, with exponential
-   backoff and full jitter. A day suits an outage, and a payment webhook
-   can ask for more (Sidekiq defaults to 25 retries over about 20 days,
-   Oban to 20 attempts).
-8. **Schedules and subscribers act as `Access.system`**, a fourth kind of
-   "who" (area 9) that an entity grants explicitly (`update: [owner_id,
-   Access.system]`), never as the user who caused the event. A subscriber
-   is limited to the tenant its event came from, and the permissions
-   report shows what background work can touch. The event carries the
-   user's id when the reaction needs it.
-9. **Lifecycle transitions don't emit events by themselves**: the action
-   that makes the change emits, one way to do it.
-10. **There is no delayed delivery** (`in 24h`): a schedule querying a due
-    field covers it, rereads current state, and keeps one way to wait.
-11. **An action repeats as a unit.** A changing call that takes no
-    idempotency key is the only changing call in its action; keyed calls
-    may be up to 8 in order, each recorded and replayed on a rerun
-    (question 20). The runtime stops at the first call whose outcome is
-    unknown, so the rule isn't there to know which call to ask about: it
-    is there so that a rerun repeats each call under its key, and no
-    second call fails for good after the first took effect without the
-    warning ("Several changing calls in one action").
-12. **The limits** under "Limits and runtime faults" are defaults, to
-    confirm with measured runs: 1,000 events per action, 64 KB per event,
-    chains 16 deep, which stops only loops since paging uses batches, 15
-    minutes per run, batches of up to 1,000 items or 4 MiB of file, and at
-    most 8 changing calls per action.
-13. **An export reads live data**, a batch walking keyset pages, not one
-    consistent snapshot; a `from:` ordered by a field that can be updated
-    is the declinable error `type.batch_order_updatable`, since every
-    finding is an error (area 1, question 11). Area 15's export of a
-    person's data reads in one transaction.
-14. **Work after a route answers `202`** (`status: SuccessStatus.accepted`)
-    carries on in an event and a subscriber, and the client reads a record
-    with a status field; a route that wants the result waits with
-    `settle:` (area 7).
-15. **Tests run schedules and subscribers** as area 13 says:
-    `schedule.run()` runs a schedule under the test clock; events are
-    delivered after each commit; a fake can fail a subscriber to test
-    retries; delivery order is shuffled with a printed seed, so a test
-    that depends on order fails visibly.
-16. **The tick is split from the state.** Each schedule's next due time and
-    lease are a row in `schedules: { store: }`, or the only database, and a
-    tick takes a due schedule whose lease is free in one conditional
-    update, so a duplicate tick is harmless: Cloudflare's cron triggers can
-    fire more than once and don't wait for a running invocation. What
-    ticks is `trigger:`: `ScheduleTrigger.native`, the server's own timer,
-    by default, or `ScheduleTrigger.external`, the native deployable's
-    `tick` command, which reads the settings, checks migrations as `serve`
-    does, runs one tick and exits, so a Kubernetes CronJob, an ECS task or a
-    systemd timer runs it each minute. There is no HTTP endpoint and no
-    tick secret; a scheduler that can only call a URL needs its own
-    wrapper. On Workers the cron trigger calls the Worker's scheduled
-    handler. One entry ticks every schedule, so `every: 7m` works where
-    cron syntax can't and Cloudflare's per-account cron limit is never
-    reached. A Durable Objects adapter that also holds the lease is a
-    possible later optimisation. A schedule or an event with no store to
-    keep its state in is a compile error saying which store to add, and the
-    system tables (schedule state, the outbox, delivery records, idempotency
-    keys, sessions) are in the migration snapshots like any entity,
-    prefixed `jadpo_`, so `jadpo migrate new` makes and changes them and
-    `jadpo check` reports drift in them.
-17. **Tracing through events is always on.** An event is stored with the
-    W3C `traceparent` of the action that emitted it, in the same
-    transaction, and each subscriber run is a child of it, so route,
-    action, events, subscribers, further events and provider calls form
-    one trace. Schedules start a trace per run; provider webhooks start one
-    linked to the provider's event id; calls between Jadpo applications
-    pass the context on. Each event records what caused it (a request id or
-    a parent event), which the 16-deep chain limit needs. `jadpo trace
-    <request id>` and the console (area 17) show the tree, and area 16's
-    OpenTelemetry export carries it.
-18. **Deliveries pause when a provider keeps failing**, through a circuit
-    breaker per connection ("When a provider keeps failing"), built in so
-    nobody has to remember it, as Resilience4j and Polly offer it.
-19. **Work over many items is a batch**, the one way: explicit helpers per
-    format and direction, and `batches.each` for work with no file
-    ("Batches: work over many items").
-20. **An action may make several changing calls**, as "Several changing
-    calls in one action" says. A route without a required
-    `Idempotency-Key` starting them is refused, not warned; 8 steps is the
-    limit; an unkeyed call is never allowed as a last step; timestamps
-    after a resumed action are from when it started; a diverged action is
-    held, not failed; crash-point test runs are on by default. Jadpo has
-    no deploy command, so before a deploy `jadpo runs unfinished --build
-    <build id>` lists the unfinished runs whose path the new build
-    changes, and a run resumed under a changed build stops as `diverged`.
-21. **The app reads a queue directly** through the `receiving` capability
-    ("Events from outside").
-22. **Packages produce events** only about the outside world: webhooks,
-    events their own subscribers emit from them, and polls ("Events from
-    outside").
-
-Carried from other areas, and the choices the topic sections leave open:
-
-| Topic | Decision |
-|---|---|
-| Triggers | From area 1: routes, schedules and subscribers each call actions; durable workflows are subscribers |
-| Keyword and folders | From area 1: `schedule` in `schedules/`; events in `events/`; subscribers in `subscribers/` |
-| Cross-domain changes | From area 1: public actions inside the caller's transaction, or events for reactions that need not be all-or-nothing |
-| Actions | From area 3: every action is all-or-nothing and has no settings; `attempt` only on calls that can fail |
-| Faults | From area 4: faults are never listed in `fails` or matched; provider problems are mapped to declared failures at the call |
-| Outbox placement | Each store an action writes keeps its outbox, its delivery records and its idempotency keys; an action writing no store needs `events: { store: <connection> }`, or it is a compile error. A subscriber's handled record goes in the store it writes, with no reference across stores. Schedule leases go in `schedules: { store: }` (area 5), the only store when there is one |
-| Schedule and batch defaults | A schedule's first run is due one `every:` after the first tick that sees it; a failed run is retried at its next due time; schedule state defaults to the only database; batch runs are kept in the store the `from:` query reads; several saved values naming the same tenant count as that tenant; a route whose action starts a batch answers `202` |
-| Multi-step calls' encryption key | Recorded answers are encrypted with `application { steps: { encryption_key: config.step_encryption_key } }`, a `SigningKey` setting rotated as grants' `encryption_key:` is; required only when some action makes several changing calls, a compile error naming the first such action otherwise |
-| Several changing calls, checked | A changing call is a provider's operation with `changes: true` or a store's `put`; reads are never counted. Each way through an `if` or a `match` counts on its own, a `return`, `reject` or `propagate` ending its way, an action called counting the changing calls of its longest way, and a loop's body once, since a call in it is refused. A changing call with no key may share its action with no other changing call on any way through it, another way included, since a rerun after a fresh read can take another way (`step.unkeyed`). `step.context` is reported where the action is run: a schedule, a route whose API doesn't require `Idempotency-Key`, and a run's `each:` or `finished:`, whose items stay one changing call each; tests and fixtures may call such an action. `large_output: true` is refused on any operation, one that reads included, in an action whose longest way makes several changing calls. The record's store is checked for an action a subscriber, or a route whose API requires the key, runs: the record belongs to the action that is run, and a called action's calls join it. A recorded answer's cap is 1 MB |
-| The record | A record is kept only where the action's key survives a retry: a subscriber's delivery, and a route whose API requires `Idempotency-Key` under the key it claimed; a test calling the action directly keeps none. It is one row keyed by a digest of the key's scope and the key, with a row per step, in the store the action writes or `events: { store: }`'s. A request's fingerprint is an HMAC-SHA-256 of each top-level field as the provider is sent it, by its name there, under a key derived from the steps key (checked under the current and the previous one), so a low-entropy field can't be guessed from it; an answer is sealed with XChaCha20-Poly1305 under another key derived from it (`crypto.encrypt`'s construction; grants' encryption isn't built yet), bound to the record and the step. The generation every write checks is a delivery's attempt or a route's claim time; a write takes the record over from an equal or older one only. A rerun is checked step by step (its operation and fields) and at the end (every recorded step replayed), before anything more is sent; the record keeps the build it started under (until area 18's build id, a digest of every graph node's key and digest) and a digest of its step shape for `jadpo runs unfinished`, and a rerun doesn't compare the digest, since steps added after the last recorded one aren't a change. A step answered "did nothing" (`unavailable`, `misconfigured`) stays in doubt, so the window rule still holds it. A `put` keeps its object under a key derived from the record and its step and goes again whatever the window. `diverged` is a runtime fault that holds a delivery in the state `diverged` with the step, its operation and the fields; a route answers it `500` and keeps no response, so a client's retry after a fix finishes it. `new_key_on:` sends the step again under the next key generation ("Operators") |
-| Operators | A route's record becomes an item once a day has passed since its last run took it (area 11's 24 hours), whatever its own `window:`; before that it is its client's to retry, and an operator can only abandon it, since only its client holds the request. "Not done" acts on the record's last step when it has no answer or failed, clearing its answer and moving its key to the next generation, with its window counted from the operator's action; with nothing in doubt it is a plain retry, and on a delivery with no record it is `retry` (failed) or `resolve --not-done` (in doubt). A retry resets the record's generation to none with the delivery's attempts. A delivery with a record is refused `dismiss` and `resolve --done`, pointing at `abandon`; `abandon` on one without is refused. A record whose answers were dropped can't be retried, only abandoned. Answers are dropped 30 days after the record's last run; an abandoned record and its delivery go 30 days after the abandon. A route's client retrying under an abandoned record's key stops as a fault, answered `500`, sending nothing. `new_key_on:` sends again once per call; a second such answer is the operation's failure. `show` never shows a key: the CLI reads no setting it would be derived from. `jadpo runs unfinished` requires `--build`, refuses a build the checkout doesn't make (naming the one it does), lists a record whose build differs and whose action's step shape the build changes or no longer keeps, and a running batch run whose call the build changes or no longer has; it succeeds whatever it lists, as listing commands do |
-| Tests | A package's fake keeps a keyed call's first answer under its key, as its provider does: the same key and request are given it again without taking a scripted answer, and a different request the package's `reused:` answer (with none, a refusal without a code, a fault). A failure is kept as Stripe keeps one, whatever the package's `replays_failures:`, unless its kind is `unavailable` or `rate_limited`, so a step sent again after a crash is answered as it was the first time. `lost` acted: what it did, the generated default, answers the next call under its key. `in_use` is another runner's request under the key, the one that acts, so it keeps nothing and answers as `unavailable`; `unavailable` and `misconfigured` keep nothing either. `jadpo dev`'s fake keeps keys the same way, its last 10,000. Crash points count every step a test's run reaches under a record, a step sent again counted again, across the whole run; only a run that passed is crashed, once for each boundary of each step, each on its own copy of the database with a fresh fake, and the first crash that fails is the one reported, with a `crash` line first. A crash isn't counted as an attempt: the delivery is given back, due at once, and a route's claim is given up and its request sent again under its key. A crashed run whose fake acted more or less often than the run without one is a defect in Jadpo, reported as `test.fault`. A delivery that stops as `diverged` between a test's steps ends the test as `test.subscriber_failed`, since it never finishes; one parked as `outcome_unknown` doesn't. Each delivery attempt in a test counts its keyed calls from none under the delivery's own key, as a runner's fresh context does, and gives the test's back after. An `ai.generate` call kept as a step gets crash points like any other step; the `ai` fake keeps no keys, area 21 asking none of it, so a step sent again after a crash once it was answered takes the prompt's next scripted answer, as a model asked again answers afresh. Crash points have no switch to turn them off |
-| The late-failure warning and the deadline sum | A failure ends a run for good unless its kind is `unavailable` or `rate_limited`, the two retried ("Retries and giving up"); one whose kind isn't known counts as ending it. A point after the first changing call is an `attempt` passing a failure on (the failures its arms map to, or else the call's or write's own), `reject` and `propagate`; a failure handled by an outcome `match` isn't one. Where two ways meet, a changing call on either may have been made. One finding for each action, at its first point, the others shown beside it, so one `decline` answers it, as declines answer one finding each. A package's action is never told, since the app decides what can be left behind: its surface lists each failure that can follow its own changing call as `after_effect`, and an app's `attempt` of it is a point even before the app's own first changing call; an app's action called before any is told itself instead. The deadline sum is one analysis over every outside call a route reaches, a provider's operation and an `ai` call alike, so streaming routes rely on it: a provider call through a connection costs its `timeout:` (3s by default, area 11's question 8) times its `retry: { attempts: }` (3), a package's action its own calls through the connection the app called it through, and `ai.generate` its `timeout:` times its `attempts:`; the waits between attempts and `within:` aren't counted, and a store's `put` and `read` have no `timeout:` and cost nothing. The ways are summed and the longest compared with the route's `deadline:` (10s by default): more is `route.calls_past_deadline` at the route, a plain mistake, not declinable (area 1, question 11), whatever its API; equal fits. Schedules and subscribers have no deadline to compare |
-| Development and the metric | Until area 17's request timelines (`jadpo trace`), a request's timeline in `jadpo dev` is its line and the trace lines under it, so each step a request's action reached is a trace line there, in place of the call it made; a delivery, which `jadpo dev` doesn't otherwise print, gets a line of its own only when its subscriber's action reached steps under a record, since that is when one needs following, with `jadpo deliveries show <id>` under it when the attempt failed, parked or diverged. A step's state is what this run made of it, from the record: `replayed` (answered on an earlier run), `answered`, its failure's code, `in doubt` (sent, no answer kept), `diverged` or `outcome unknown` (in doubt and not to be sent again), with where its answer came from; never its request, answer or key, nor the key's generation. The metric counts the records not abandoned, a run under way included, and gives when the oldest's first run started; the tick carries it for each store that keeps records, until telemetry (area 16) sends it. The alert holds once a record has been unfinished a day from its first run's start, a subscriber's default `within:` and a route's key's lapse, so no retry with the default budget is still to finish it; each such record is marked in `jadpo_step_records.alerted_at`, and the tick raises the alert only when none still unfinished was marked before, so it is raised once until no record is unfinished past a day, by one instance's tick. `jadpo deliveries` shows it in its default list and with `--state diverged` or `unfinished` |
-| Keys and replays | A route's action keeps its client's `Idempotency-Key` in the store it writes, else beside its events, else, when it makes a changing call (a provider's operation with `changes: true`, a store's `put`), in the store `events: { store: }` names, where its record of several steps is kept too, so its steps are resumed under the key and one call's response is kept for a repeat; an action that only reads keeps none, and its OpenAPI says where the key is kept. With no store to keep it, the route's calls' keys are still derived from the client's key in its caller's scope, never the request's id. A delivery's attempt counts its keyed calls from none under its own key and with none of the `ai` answers kept for a rerun, wherever it runs (a route waiting with `settle:`, a test), giving back whoever ran it theirs after. A sign-in email (`MagicLinkEmail`, and the action `send:` names) is keyed per attempt, from fresh randomness, since each attempt makes a link and a code that end the last's: a provider replaying the last attempt's key would leave the person a dead code; its key doesn't survive a retry, so it keeps no record of its steps. A step's own failure whose kind is `unavailable` or `rate_limited` is never kept, and one kept by an earlier runtime never replayed: the step stays in doubt and goes again under its key. Code's `clock.now` is the record's fixed time; an event's `emitted_at`, a delivery's handled record, a request's AWS signature, the day an `ai` budget counts and a received event's stamp are the host's. An unkeyed change that went out (answered, or no answer) stops a rerun after a concurrent change, in the boundary or at a held commit, as `outcome_unknown`, which a route keeps for its key and a delivery parks; areas 6, 12 and 16 say the same. In `jadpo test` how often each scripted operation and prompt was called is judged on the run without a crash only, since a crash sends its step again and the `ai` fake, or a call with no key, answers it afresh; a request a crash sends again forgets the `ai` answers kept for a rerun, as a client's retry reaches a runner that kept none, so a model asked before the steps is asked again there as in production |
-| One outside-call path | Every outside call (a provider's operation, `ai.generate`, `ai.embed`, `ai.stream`, a store's file, an email, a capability's delivery) goes out through one exchange and one retrying send, and where its answer is given back from (the action's record, an `ai` call's earlier run, a replayed run's recording) is decided in one place. `max_concurrent:` caps every call through its connection: a provider operation's, and where a package fills `ai`, its `ai.generate`, `ai.embed` and `ai.stream` calls too; the built-in `Driver.openai_compatible` has no cap. A call takes a slot only once it is cleared to go (no transaction open, no recording answering it, a driver found), before its step is written, and gives it back once answered, a stream once its answer starts to come, so a later call of the same action through the connection never waits on a stream the route hasn't sent yet. A delivery whose action calls `ai` through a connection with every slot out waits for one within its budget, as a route's call does, rather than being given back to the outbox: giving back reads the connections the circuit breaker does, a provider's operations'. No wait to send a call again outlasts the invocation's time, a route's remaining deadline or what background work's budget leaves before the time it keeps back: a wait that wouldn't end within it, a `Retry-After` past it included, ends the sending at once and the last answer stands, so a `429` or a provider that couldn't be reached is `unavailable`, and no answer in time `timed_out` where the call maps it, as when `within:` or an `ai` call's `timeout:` ends it. Each send's own timeout isn't shortened: the deadline and the budget stop a call still out. A store's file, an email and a capability's delivery are sent once, having no `retry:` (the outbox retries a delivery). An embedding given back from the action's record is logged as the step it is, as the other calls are |
-| Work handed on, on Workers | `Host::hand_on` on Workers is a request to the Worker itself, through the loopback binding `ctx.exports` gives the Worker's own `JadpoHandOn` entrypoint of its shim, never its default export, so nothing from outside reaches it. It isn't a service binding naming the Worker, since Wrangler keeps a binding's `service` when `wrangler deploy --name` or `--env` deploys the file under another name, which would hand a staging Worker's work to production's; workerd gives `ctx.exports` at the compatibility date without a flag. It is sent JSON naming each piece by its record and store, never an event's value; the fresh invocation reads each delivery back from its record, leaving out one run or given up since, and each batch run from its row, and carries them on in its own `waitUntil`, handing on in turn, within its 30 seconds counted from its start, so starting the isolate and reading the work back are spent from them; the invocation that handed it on is kept until that call returns. A hand-on that fails, as past the platform's limit on invocations one request chains, leaves the work in the store for the minute's cron. It isn't a queue, which needs a queue made in the account and a consumer for every Worker and delays each hand-on by its batching, nor a request to the Worker's own URL, which would reach its public `fetch` and need a secret to tell itself from a caller |
-| The tick on Workers | A Workers deployable reaches a schedule when its `runs:` lists `Trigger.schedules`, and one more often than once a minute is `deployable.target_unsupported` (area 14), at its `every:`, rather than a rule of its own, since it is one more thing a target can't run; the Wrangler file names the cron `* * * * *` for every Workers deployable whose tick has a store to keep or sweep, as every native deployable ticks; each run of the cron ticks once its stores are current (out of date, it logs why as a request does and ticks nothing), then, while the app ticks more often than once a minute (a received queue, every 10 seconds, as natively), again at each such mark of the cron's minute, one tick after the last ends, never two at once, so a Worker holds no more connections than one tick does, and a mark a long tick passed is not made up; the invocation ends with its minute, and each of its ticks has what is left of the cron's 15 minutes |
-| The `trigger:` adapter | `trigger:` (question 16) takes `ScheduleTrigger.native`, the default, or `ScheduleTrigger.external`, and changes only a native deployable, a Worker ticking on its cron whichever is written, so an app with a server and a Worker can write either; `<deployable> tick` (and `serve`, the same as no command; anything else ends with code 2, `command_unknown`) doesn't wait for a database it can't reach, ending with code 1 (`store_unreachable`), since the scheduler's next run is the next try and the ticks missed become one run; it logs `runtime.ticked` (each run by its schedule's name, deliveries, what it received and polled, rows deleted, alerts, each store it couldn't work in) and ends with code 1 only when a store couldn't be worked in, a failed run being recorded, alerted and retried at its next due time as a server's is; the first SIGTERM drains it as a server drains its background work; `tick` runs whatever is written, the lease deciding; nothing refuses an `every:` under a minute with `external`, since a scheduler can run `tick` each second: `jadpo build` says how often to run it, and the ticks-stopped alert says when it runs less often |
-| Queue messages the store refuses | A message whose event the store refuses as a statement, as it would every time it was sent (a value it can't take, such as a text holding `\u0000`, which `jsonb` can't hold), is parked `unreadable` and acknowledged, so the queue doesn't send it again until its retention deletes it. A store that can't be reached, a conflict, a concurrent change or a fault the driver can't classify still leaves it on the queue, to be kept when it is sent again |
-| A delivery's answer closes its breaker | A delivery attempt whose call through a connection its provider answered closes the connection's breaker and releases what it holds, whatever the breaker's state when the delivery was claimed, as "When a provider keeps failing" says of a delivery already running when the breaker opened. It is one conditional statement after each attempt that called the provider, changing nothing while the breaker is closed with no failures in a run |
+- [`event.emit_invalid`](../errors/event.emit_invalid.md)
+- [`event.settings_invalid`](../errors/event.settings_invalid.md)
+- [`event.store_required`](../errors/event.store_required.md)
+- [`receiving.invalid`](../errors/receiving.invalid.md)
+- [`schedule.every_invalid`](../errors/schedule.every_invalid.md)
+- [`schedule.item_invalid`](../errors/schedule.item_invalid.md)
+- [`schedule.run_invalid`](../errors/schedule.run_invalid.md)
+- [`schedule.settings_invalid`](../errors/schedule.settings_invalid.md)
+- [`schedule.store_required`](../errors/schedule.store_required.md)
+- [`step.context`](../errors/step.context.md)
+- [`step.encryption_key_required`](../errors/step.encryption_key_required.md)
+- [`step.large_output`](../errors/step.large_output.md)
+- [`step.late_failure`](../errors/step.late_failure.md)
+- [`step.settings_invalid`](../errors/step.settings_invalid.md)
+- [`step.store_required`](../errors/step.store_required.md)
+- [`step.too_many`](../errors/step.too_many.md)
+- [`step.unkeyed`](../errors/step.unkeyed.md)
+- [`subscriber.argument_invalid`](../errors/subscriber.argument_invalid.md)
+- [`subscriber.event_invalid`](../errors/subscriber.event_invalid.md)
+- [`subscriber.item_invalid`](../errors/subscriber.item_invalid.md)
+- [`subscriber.retry_invalid`](../errors/subscriber.retry_invalid.md)
+- [`subscriber.run_invalid`](../errors/subscriber.run_invalid.md)
+- [`type.batch_capture_not_storable`](../errors/type.batch_capture_not_storable.md)
+- [`type.batch_context`](../errors/type.batch_context.md)
+- [`type.batch_each_invalid`](../errors/type.batch_each_invalid.md)
+- [`type.batch_from_invalid`](../errors/type.batch_from_invalid.md)
+- [`type.batch_input`](../errors/type.batch_input.md)
+- [`type.batch_order_updatable`](../errors/type.batch_order_updatable.md)
+- [`type.batch_row_invalid`](../errors/type.batch_row_invalid.md)

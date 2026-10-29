@@ -266,7 +266,7 @@ fn seconds(millis: i64) -> i64 {
     ((millis + 999) / 1000).max(1)
 }
 
-/// What one request for a link and a code keeps (area 8, Decisions,
+/// What one request for a link and a code keeps (area 8's notes, Decisions,
 /// "What is kept").
 struct Asking<'a> {
     now: i64,

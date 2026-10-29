@@ -442,7 +442,7 @@ fn unknown_command_plain(word: &str, reason: &str, next: &str) -> String {
   reason: {reason}
   next: {next} (agent)
   rule: cli.unknown_command
-  help: docs/language/14-tooling.html#command-errors
+  help: docs/errors/cli.unknown_command.md
 "
     )
 }
@@ -527,7 +527,7 @@ fn errors_in_a_terminal_are_rich() {
   reason    Jadpo has no command with this name. Did you mean `help`?
   next      Use `help` instead of `hlep` (agent)
   rule      cli.unknown_command
-  help      docs/language/14-tooling.html#command-errors
+  help      docs/errors/cli.unknown_command.md
 "
     );
 }
@@ -557,7 +557,7 @@ fn an_unknown_flag_suggests_the_nearest_flag() {
   reason: `jadpo help` has no flag with this name. Did you mean `--json`?
   next: Use `--json` instead of `--jsno` (agent)
   rule: cli.unknown_flag
-  help: docs/language/14-tooling.html#command-errors
+  help: docs/errors/cli.unknown_flag.md
 "
     );
     let output = jadpo(&["--frob"]);
@@ -567,7 +567,7 @@ fn an_unknown_flag_suggests_the_nearest_flag() {
   reason: Jadpo has no flag with this name.
   next: Run `jadpo --help` to see every flag (agent)
   rule: cli.unknown_flag
-  help: docs/language/14-tooling.html#command-errors
+  help: docs/errors/cli.unknown_flag.md
 "
     );
 }
@@ -582,7 +582,7 @@ fn a_bad_color_value_lists_the_valid_ones() {
   reason: `--color` takes auto, always or never.
   next: Use `--color=auto`, `--color=always` or `--color=never` (agent)
   rule: cli.presentation_arguments
-  help: docs/language/14-tooling.html#command-errors
+  help: docs/errors/cli.presentation_arguments.md
 "
     );
     assert!(
@@ -610,7 +610,7 @@ fn completions_without_a_shell_lists_the_shells() {
   reason: Each shell gets its own script: zsh, bash or fish.
   next: Add the shell, for example `jadpo completions zsh` (agent)
   rule: cli.completions_arguments
-  help: docs/language/14-tooling.html#command-errors
+  help: docs/errors/cli.completions_arguments.md
 "
     );
 }
@@ -625,7 +625,7 @@ fn completions_for_an_unknown_shell_suggests_one() {
   reason: Jadpo writes completion scripts for zsh, bash and fish. Did you mean `zsh`?
   next: Use `zsh` instead of `zhs` (agent)
   rule: cli.completions_arguments
-  help: docs/language/14-tooling.html#command-errors
+  help: docs/errors/cli.completions_arguments.md
 "
     );
     assert!(
@@ -645,7 +645,7 @@ fn extra_arguments_are_refused() {
   reason: It was given `extra`.
   next: Run `jadpo version` (agent)
   rule: cli.version_arguments
-  help: docs/language/14-tooling.html#command-errors
+  help: docs/errors/cli.version_arguments.md
 "
     );
     let output = jadpo(&["completions", "zsh", "bash"]);

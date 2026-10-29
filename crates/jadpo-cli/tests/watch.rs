@@ -677,7 +677,7 @@ error: `north_step_0` isn't used
   reason: A library function exists to be used by several files; one that nothing uses is dead code. Tests don't count as users.
   next: Remove `north_step_0` (agent)
   rule: layout.unused_declaration
-  help: docs/language/01-project-layout-and-modules.html#layout-unused-declaration
+  help: docs/errors/layout.unused_declaration.md
 
 error: `north_stp_0` isn't a function, action or query
  --> domains/north/libraries/north_maths.jadpo:9:28
@@ -687,7 +687,7 @@ error: `north_stp_0` isn't a function, action or query
   reason: Nothing in this project called `north_stp_0` can be called.
   next: Declare `north_stp_0`, or call an existing function (agent)
   rule: semantic.unknown_callee
-  help: docs/language/01-project-layout-and-modules.html#semantic-unknown-callee
+  help: docs/errors/semantic.unknown_callee.md
 
 tests not run: 2 errors, 12 files
 "#,
@@ -815,7 +815,7 @@ watching 12 files · 1 failing  ctrl-c quit"#,
             nothing uses is dead code. Tests don't count as users.
   next      Remove `north_step_0` (agent)
   rule      layout.unused_declaration
-  help      docs/language/01-project-layout-and-modules.html#layout-unused-declaration
+  help      docs/errors/layout.unused_declaration.md
 
 ✗ error  `north_stp_0` isn't a function, action or query
   domains/north/libraries/north_maths.jadpo:9:28
@@ -826,7 +826,7 @@ watching 12 files · 1 failing  ctrl-c quit"#,
   reason    Nothing in this project called `north_stp_0` can be called.
   next      Declare `north_stp_0`, or call an existing function (agent)
   rule      semantic.unknown_callee
-  help      docs/language/01-project-layout-and-modules.html#semantic-unknown-callee
+  help      docs/errors/semantic.unknown_callee.md
 
 ✗ tests not run  2 errors · 12 files
 "#,

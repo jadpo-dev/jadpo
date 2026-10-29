@@ -28,16 +28,28 @@ the compiler doesn't check yet. A block that is neither fails the check.
   python3 tools/language_docs.py             # verify and write build/language-site
   python3 tools/language_docs.py --bless     # rewrite the output blocks after `check` blocks
   python3 tools/language_docs.py --check --export-corpus  # also write build/spec-corpus/
+  python3 tools/language_docs.py --bundle <dir>  # build the docs bundle (docs/documentation.md)
 
-Areas 1-9 own exactly the compiler's rules whose catalogue entry (`jadpo
-help --json`) names their area; the other pages list the rules they own in
-front matter, as globs over the same catalogue. Each owned rule needs a
-`check` block failing with it, and every rule belongs to one page (area 14's
-command errors are shown by the CLI's own tests). On areas 1-9 no `fragment`
-may check cleanly, since one that does is an example the compiler can check.
+The blocks of the area pages, their design notes (docs/language/notes/) and
+the error pages (docs/errors/) are all checked this way. Every rule in the
+compiler's catalogue (`jadpo help --json`) has a page, docs/errors/<rule>.md,
+and no page names a rule the catalogue doesn't have. A rule's page needs a
+`check` block failing with it, unless only a command raises the rule (area
+14), whose page needs one only once it has a `check` block at all. On areas
+1-9 no `fragment` may check cleanly, since one that does is an example the
+compiler can check.
+
+Every section an app author reads, each `#` and `##` heading of an area page
+but `## Errors`, declares its topic ID on the line after it, as
+`<!-- topic: <id> -->`: lowercase kebab case, unique across the docs. A
+topic is at most TOPIC_WORDS words as the bundle gives it. Every relative
+link in the repository's Markdown and llms.txt resolves, to a file and, for
+Markdown, a heading GitHub gives that anchor; every area-page anchor the
+compiler prints (`help_at`) names a heading of that page.
 """
 
 import argparse
+import hashlib
 import html
 import json
 import os
@@ -48,11 +60,27 @@ import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from fnmatch import fnmatch
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / 'docs/language'
+# One page per compiler rule, its examples (docs/documentation.md).
+ERRORS = ROOT / 'docs/errors'
+# Each area's design notes: what a person changing the language reads.
+NOTES = DOCS / 'notes'
+PRIMER = ROOT / 'docs/primer.md'
+# A topic's ID, on the line after its heading.
+TOPIC = re.compile(r'^<!-- topic: (\S*) -->$')
+TOPIC_ID = re.compile(r'^[a-z0-9]+(?:-[a-z0-9]+)*$')
+# The most words a topic holds, as the bundle gives it.
+TOPIC_WORDS = 3000
+# Where a bundle page's link to a file outside the bundle goes.
+REPO_URL = 'https://github.com/richardwillars/jadpo/blob/main/'
+RAW_URLS = ('https://raw.githubusercontent.com/richardwillars/jadpo/main/',
+            'https://github.com/richardwillars/jadpo/blob/main/',
+            'https://github.com/richardwillars/jadpo/tree/main/')
+# What the page of a rule with no example says.
+NO_EXAMPLE = 'No example yet.'
 JADPO = ROOT / 'target/debug/jadpo'
 OUTPUT_FENCE = '```text output'
 TEMPLATE = Path(__file__).resolve().parent / 'language_docs_template.html'
@@ -63,8 +91,8 @@ TEST_SEED = '1'
 TEST_DECLARATION = re.compile(r'^\s*test\s+"', re.MULTILINE)
 # Optional build/language-site/published.json maps page stems to published URLs for cross-page links.
 FENCE = re.compile(r'^```(\S*)(.*)$')
-# Areas 1 to this one own the compiler's rules by the catalogue's `area`;
-# later pages name theirs in front matter.
+# On areas 1 to this one, and their notes and error pages, no fragment may
+# check cleanly.
 AREA_OWNED = 9
 # `migrate=<purpose>` on a block runs `jadpo migrate new <purpose>` once
 # the project's blocks up to it are written, at a fixed time per step, so
@@ -127,13 +155,18 @@ def jadpo(args, cwd=None, env=None):
     return result.returncode, result.stdout + result.stderr
 
 
-def load_catalogue():
-    """The compiler's rules (`jadpo help --json`), by id; each entry's
-    `area` says which page owns it."""
+def load_help():
+    """`jadpo help --json`'s data: its commands, and its rules, each of
+    whose `area` names the page it belongs to."""
     code, out = jadpo(['help', '--json'])
     if code:
         sys.exit(f'jadpo help --json failed:\n{out}')
-    return {rule['id']: rule for rule in json.loads(out)['data']['rules']}
+    return json.loads(out)['data']
+
+
+def load_catalogue():
+    """The compiler's rules (`jadpo help --json`), by id."""
+    return {rule['id']: rule for rule in load_help()['rules']}
 
 
 def parse_front_matter(text):
@@ -386,15 +419,6 @@ class Page:
                                      'neither `check` nor `fragment`: make it a check block, or a fragment if '
                                      'the compiler can\'t check it yet')
 
-    def claimed_rules(self):
-        """The rules this page owns. Areas 1 to AREA_OWNED own exactly the
-        compiler's rules whose catalogue entry names their area; the other
-        pages list theirs in front matter."""
-        if self.area_owned():
-            return sorted(r for r, entry in self.catalogue.items() if entry.get('area') == self.area())
-        patterns = self.meta.get('rules', [])
-        return sorted(r for r in self.catalogue if any(fnmatch(r, p) for p in patterns))
-
     def covered_rules(self):
         """Rules a `check` example here shows failing as stated."""
         return {r['expected'] for r in self.results.values() if r['expected'] != 'pass' and r['ok']}
@@ -429,10 +453,49 @@ class Page:
         self.check_marked()
         self.check_projects(bless)
         self.check_fragments()
-        missing = [r for r in self.claimed_rules() if r not in self.covered_rules()]
-        for rule in missing:
-            self.problems.append(f'no example for {rule}')
-        return missing
+
+    def topics(self):
+        """The page's topics, in order: each `#` and `##` heading but
+        `## Errors`, with the ID on the line after it, up to the next of
+        them or `## Errors`. Each is a dict of `id` (None when missing),
+        `title`, `level`, and its `start` and `end` lines in the body."""
+        lines = self.body.split('\n')
+        found = []
+        for i, line, fenced in body_lines(lines):
+            heading = HEADING.match(line) if not fenced else None
+            if not heading or len(heading.group(1)) > 2:
+                continue
+            title = heading.group(2)
+            if found:
+                found[-1]['end'] = i
+            if len(heading.group(1)) == 2 and title == 'Errors':
+                found.append(None)
+                continue
+            declared = TOPIC.match(lines[i + 1]) if i + 1 < len(lines) else None
+            found.append({'id': declared.group(1) if declared else None, 'title': title,
+                          'level': len(heading.group(1)), 'start': i, 'end': len(lines)})
+        return [t for t in found if t]
+
+    def check_topics(self):
+        """Problems with the page's topic IDs: every topic declares a
+        well-formed ID beside its heading, and no ID line stands anywhere
+        else."""
+        lines = self.body.split('\n')
+        declared, problems = set(), []
+        for topic in self.topics():
+            where = f'line {topic["start"] + self.offset + 1}'
+            if topic['id'] is None:
+                problems.append(f'{where}: "{topic["title"]}" declares no topic ID '
+                                '(add <!-- topic: <id> --> on the line after it)')
+            elif not TOPIC_ID.match(topic['id']):
+                problems.append(f'{where}: topic ID "{topic["id"]}" is not lowercase kebab case')
+            else:
+                declared.add(topic['start'] + 1)
+        for i, line, fenced in body_lines(lines):
+            if not fenced and TOPIC.match(line) and i not in declared:
+                problems.append(f'line {i + self.offset + 1}: a topic ID belongs on the line after '
+                                'a `#` or `##` heading')
+        return problems
 
 
 class Readme(Page):
@@ -460,6 +523,458 @@ class Readme(Page):
     def check(self, bless=False):
         self.collect_blocks()
         self.check_projects(bless)
+
+
+class ErrorPage(Page):
+    """docs/errors/<rule>.md: one rule's examples, headed by the rule. Its
+    area is the catalogue's."""
+
+    def __init__(self, path, catalogue):
+        super().__init__(path, catalogue)
+        self.rule = path.stem
+        self.meta = {'title': self.rule}
+
+    def area(self):
+        return int(self.catalogue.get(self.rule, {}).get('area', 0))
+
+    def check(self, bless=False):
+        super().check(bless)
+        self.check_rule()
+
+    def check_rule(self):
+        """The page names a rule of the catalogue, is headed by it, and
+        shows it failing, but for a rule only a command raises."""
+        entry = self.catalogue.get(self.rule)
+        if entry is None:
+            self.problems.append(f'{self.rule} is not a rule in the compiler\'s catalogue (jadpo help --json)')
+            return
+        if not self.body.startswith(f'# `{self.rule}`\n'):
+            self.problems.append(f'the page starts with its heading, # `{self.rule}`')
+        has_checks = any(b['attrs'].get('check') for b in self.blocks)
+        # Only a command raises an area-14 rule, so its CLI tests show it;
+        # once its page has a check block, one of them must show the rule.
+        needs_example = entry.get('area') != COMMAND_AREA or has_checks
+        if needs_example and self.rule not in self.covered_rules():
+            self.problems.append(f'no example for {self.rule}: add a check block failing with it')
+        if not has_checks and entry.get('area') == COMMAND_AREA and NO_EXAMPLE not in self.body \
+                and '```' not in self.body:
+            self.problems.append(f'say "{NO_EXAMPLE}" on a page with no example')
+
+
+class Notes(Page):
+    """docs/language/notes/NN-*.md: an area's design notes, whose blocks are
+    checked as the area page's are."""
+
+
+def body_lines(lines):
+    """(index, line, inside a fence) for each line, fences as the block
+    collector reads them: a line starting ``` opens one and the next closes
+    it."""
+    fenced = False
+    for i, line in enumerate(lines):
+        if line.startswith('```'):
+            yield i, line, True
+            fenced = not fenced
+            continue
+        yield i, line, fenced
+
+
+HEADING = re.compile(r'^(#{1,6}) (.+?)\s*$')
+LINK = re.compile(r'(?<!!)\[((?:[^\[\]]|\[[^\]]*\])*)\]\(([^)\s]+)\)')
+
+
+def github_slug(text, seen):
+    """The anchor GitHub gives a heading, counting repeats in `seen`."""
+    text = re.sub(r'<[^>]+>', '', text)
+    text = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', text)
+    text = re.sub(r'[`*]', '', text).strip().lower()
+    text = re.sub(r'[^\w\- ]', '', text).replace(' ', '-')
+    count = seen.get(text, 0)
+    seen[text] = count + 1
+    return text if not count else f'{text}-{count}'
+
+
+def headings_of(text):
+    """(line, level, title, GitHub anchor) of each heading outside fences."""
+    seen, out = {}, []
+    for i, line, fenced in body_lines(text.split('\n')):
+        heading = None if fenced else HEADING.match(line)
+        if heading:
+            out.append((i, len(heading.group(1)), heading.group(2), github_slug(heading.group(2), seen)))
+    return out
+
+
+def anchors_of(text):
+    found = {anchor for _, _, _, anchor in headings_of(text)}
+    return found | set(re.findall(r'<a (?:id|name)="([^"]+)"', text))
+
+
+def map_links(text, change):
+    """`text` with each link's target outside code passed through
+    `change(target)`; returns the new text."""
+    out = []
+    for _, line, fenced in body_lines(text.split('\n')):
+        if fenced:
+            out.append(line)
+            continue
+        spans = code_spans(line)
+        out.append(LINK.sub(lambda m: m.group(0) if in_code(m.start(), spans)
+                            else f'[{m.group(1)}]({change(m.group(2))})', line))
+    return '\n'.join(out)
+
+
+def code_spans(line):
+    return [m.span() for m in re.finditer(r'`[^`]*`', line)]
+
+
+def in_code(at, spans):
+    return any(start <= at < end for start, end in spans)
+
+
+def links_in(text):
+    """(line number, target) of each link outside code; a link's text may
+    hold code."""
+    for i, line, fenced in body_lines(text.split('\n')):
+        if not fenced:
+            spans = code_spans(line)
+            for m in LINK.finditer(line):
+                if not in_code(m.start(), spans):
+                    yield i + 1, m.group(2)
+
+
+def markdown_files(root=ROOT):
+    """The repository's Markdown and llms.txt, tracked or new."""
+    listed = subprocess.run(['git', 'ls-files', '-co', '--exclude-standard', '*.md', 'llms.txt'],
+                            cwd=root, capture_output=True, text=True)
+    if listed.returncode:
+        return sorted(p for p in root.rglob('*.md') if not {'target', 'build', 'node_modules'} & set(p.parts))
+    return sorted(root / name for name in set(listed.stdout.split()) if (root / name).exists())
+
+
+def check_links(files, root=ROOT):
+    """Problems with the relative links in `files`: a file that isn't
+    there, or an anchor no heading of a Markdown target has. llms.txt's
+    links name the repository's main branch, so they are read as paths."""
+    anchors, problems = {}, []
+    for path in files:
+        text = path.read_text()
+        for number, target in links_in(text):
+            for prefix in RAW_URLS:
+                if target.startswith(prefix):
+                    target = str(root / target[len(prefix):])
+                    break
+            else:
+                if re.match(r'^[a-z][a-z0-9+.-]*:', target):
+                    continue
+            name, _, fragment = target.partition('#')
+            resolved = (path.parent / name).resolve() if name else path.resolve()
+            where = f'{path.relative_to(root)}:{number}'
+            if not resolved.exists():
+                problems.append(f'{where}: links to {target}, which isn\'t there')
+            elif fragment and resolved.suffix == '.md':
+                if resolved not in anchors:
+                    anchors[resolved] = anchors_of(resolved.read_text())
+                if fragment not in anchors[resolved]:
+                    problems.append(f'{where}: links to {target}, but {resolved.name} has no heading '
+                                    f'with that anchor')
+    return problems
+
+
+HELP_ANCHOR = re.compile(r'"(\d\d-[a-z0-9-]+)\.html#([a-z0-9-]+)"')
+
+
+def check_help_anchors(root=ROOT):
+    """Every area-page section the compiler's source names for a `help`
+    line, `"NN-page.html#anchor"`, is a heading of that page as the site
+    renders it."""
+    slugs, problems = {}, []
+    for path in sorted(root.glob('crates/*/src/**/*.rs')):
+        for number, line in enumerate(path.read_text().split('\n'), 1):
+            for stem, anchor in HELP_ANCHOR.findall(line):
+                page = root / 'docs/language' / f'{stem}.md'
+                if page not in slugs:
+                    slugs[page] = {slug(t) for _, _, t, _ in headings_of(page.read_text())} if page.exists() else set()
+                if anchor not in slugs[page]:
+                    problems.append(f'{path.relative_to(root)}:{number}: help names {stem}.html#{anchor}, '
+                                    'which is no heading of that page')
+    return problems
+
+
+# --- the bundle --------------------------------------------------------------
+
+def words(text):
+    return len(text.split())
+
+
+def plain(text):
+    """Markdown inline text as plain words."""
+    text = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', text)
+    return re.sub(r'\*\*?([^*]+)\*\*?', r'\1', text).strip()
+
+
+def summary_of(markdown, fallback):
+    """The first sentence of a page's first paragraph of prose, at most 200
+    characters."""
+    paragraph = []
+    for _, line, fenced in body_lines(markdown.split('\n')[1:]):
+        if fenced or line.startswith(('#', '|', '>', '<!--', '- ', '* ')) or re.match(r'^\d+\. ', line):
+            if paragraph:
+                break
+            continue
+        if not line.strip():
+            if paragraph:
+                break
+            continue
+        paragraph.append(line.strip())
+    text = plain(' '.join(paragraph))
+    if not text:
+        return fallback
+    sentence = re.split(r'(?<=[.!?])\s+(?=[A-Z`*])', text)[0]
+    if len(sentence) > 200:
+        sentence = sentence[:200].rsplit(' ', 1)[0] + '…'
+    return sentence
+
+
+class Bundle:
+    """The built docs (docs/documentation.md, "The bundle"): the primer,
+    a page per topic, per rule and per command, and index.json. Pages link
+    each other by ID; a link to anything else names the file on GitHub."""
+
+    def __init__(self, pages, errors, help_data, root=ROOT, primer=None):
+        self.pages, self.errors, self.root = pages, errors, root
+        self.catalogue = {r['id']: r for r in help_data.get('rules', [])}
+        self.commands = help_data.get('commands', [])
+        self.version = help_data.get('version')
+        self.primer = primer
+        self.problems = []
+        # Where each anchor of an area page went: (page, anchor) -> topic ID.
+        self.topic_of, self.overview = {}, {}
+        for page in pages:
+            topics = page.topics()
+            if not topics:
+                continue
+            path = page.path.resolve()
+            self.overview[path] = topics[0]['id']
+            spans = [(t['start'], t['end'], t['id']) for t in topics]
+            for line, _, _, anchor in headings_of(page.body):
+                owner = next((tid for start, end, tid in spans if start <= line < end), topics[0]['id'])
+                self.topic_of[(path, anchor)] = owner
+
+    def link(self, source, target, here, linked):
+        """`target`, written in `source`, as a bundle page in folder `here`
+        ('', 'topics', 'errors' or 'commands') links it."""
+        if re.match(r'^[a-z][a-z0-9+.-]*:', target):
+            return target
+        name, _, fragment = target.partition('#')
+        resolved = (source.parent / name).resolve() if name else source.resolve()
+        tail = f'#{fragment}' if fragment else ''
+
+        def to(folder, page_id, keep=True):
+            linked.add(page_id)
+            path = f'{folder}/{page_id}.md' if folder else f'{page_id}.md'
+            return os.path.relpath(path, here or '.') + (tail if keep else '')
+
+        if resolved in self.overview:
+            topic = self.topic_of.get((resolved, fragment)) if fragment else self.overview[resolved]
+            if topic is None:
+                self.problems.append(f'{source.relative_to(self.root)}: no topic holds {target}')
+                topic = self.overview[resolved]
+            own = fragment and github_slug(self.title_of(topic), {}) == fragment
+            return to('topics', topic, keep=bool(fragment) and not own)
+        if resolved.parent == (self.root / 'docs/errors').resolve() and resolved.suffix == '.md':
+            return to('errors', resolved.stem)
+        if self.primer is not None and resolved == self.primer.resolve():
+            return to('', 'primer')
+        try:
+            relative = resolved.relative_to(self.root.resolve())
+        except ValueError:
+            return target
+        return REPO_URL + str(relative) + tail
+
+    def title_of(self, topic_id):
+        for page in self.pages:
+            for topic in page.topics():
+                if topic['id'] == topic_id:
+                    return topic['title']
+        return ''
+
+    def topic_markdown(self, page, topic, linked):
+        """A topic as its own page: its heading the page's `#`, its hidden
+        blocks and topic ID left out, its links by ID."""
+        lines = page.body.split('\n')[topic['start']:topic['end']]
+        hidden = {b['line'] - topic['start'] for b in page.blocks if b['attrs'].get('hidden')
+                  and topic['start'] <= b['line'] < topic['end']}
+        out, skip_to = [], -1
+        shift = topic['level'] - 1
+        for i, line, fenced in body_lines(lines):
+            if i <= skip_to:
+                continue
+            if i in hidden:
+                skip_to = next(j for j in range(i + 1, len(lines)) if lines[j].startswith('```'))
+                if out and not out[-1].strip():
+                    out.pop()
+                continue
+            if not fenced and TOPIC.match(line):
+                continue
+            heading = None if fenced else HEADING.match(line)
+            if heading and shift:
+                line = '#' * max(1, len(heading.group(1)) - shift) + ' ' + heading.group(2)
+            out.append(line)
+        text = '\n'.join(out).strip('\n') + '\n'
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        return map_links(text, lambda t: self.link(page.path, t, 'topics', linked))
+
+    def error_markdown(self, page, linked):
+        entry = self.catalogue[page.rule]
+        area = int(entry.get('area', 0))
+        area_page = next((p for p in self.pages if p.area() == area), None)
+        lines = page.body.split('\n')
+        hidden = {b['line'] for b in page.blocks if b['attrs'].get('hidden')}
+        out, skip_to = [], -1
+        for i, line, _ in body_lines(lines[1:]):
+            if i + 1 <= skip_to:
+                continue
+            if i + 1 in hidden:
+                skip_to = next(j for j in range(i + 2, len(lines)) if lines[j].startswith('```'))
+                continue
+            out.append(line)
+        body = map_links('\n'.join(out).strip('\n'), lambda t: self.link(page.path, t, 'errors', linked))
+        facts = [f'Area {area}']
+        if area_page is not None and area_page.topics():
+            overview = area_page.topics()[0]
+            linked.add(overview['id'])
+            facts[0] = f'Area {area}, [{overview["title"]}](../topics/{overview["id"]}.md)'
+        facts.append('declinable' if entry.get('declinable') else 'not declinable')
+        if entry.get('decides'):
+            facts.append(f'the next step is usually the {entry["decides"]}\'s')
+        head = f'# `{page.rule}`\n\n{entry["summary"]}.\n\n{"; ".join(facts)}.\n'
+        return head + (f'\n{body}\n' if body else '')
+
+    def command_markdown(self, command, linked):
+        name = command['name']
+        out = [f'# `jadpo {name}`', '', f'{command["summary"]}.', '']
+        if command.get('description'):
+            out += [command['description'], '']
+        if command.get('synonyms'):
+            out += ['Also: ' + ', '.join(f'`jadpo {s}`' for s in command['synonyms']) + '.', '']
+        out += ['```text', command.get('usage', f'jadpo {name}'), '```', '']
+        if command.get('arguments'):
+            out += ['## Arguments', '']
+            for arg in command['arguments']:
+                need = '' if arg.get('required') else ' (optional)'
+                out.append(f'- `{arg["name"]}`{need}: {arg.get("description", "")}')
+            out.append('')
+        if command.get('flags'):
+            out += ['## Flags', '']
+            for flag in command['flags']:
+                value = f' <{flag["value"]}>' if flag.get('value') else ''
+                out.append(f'- `{flag["name"]}{value}`: {flag.get("description", "")}')
+            out.append('')
+        if command.get('examples'):
+            out += ['## Examples', '', '```text']
+            for example in command['examples']:
+                out += [f'# {example["description"]}', example['command']]
+            out += ['```', '']
+        rules = [r for r in command.get('rules', []) if r in self.catalogue]
+        if rules:
+            out += ['## Errors', '']
+            for rule in rules:
+                linked.add(rule)
+                out.append(f'- [`{rule}`](../errors/{rule}.md): {self.catalogue[rule]["summary"]}')
+            out.append('')
+        return '\n'.join(out).rstrip('\n') + '\n'
+
+    def build(self):
+        """Every page, as (kind, id, path in the bundle, title, area,
+        markdown, the IDs it links)."""
+        built = []
+        if self.primer is not None and self.primer.exists():
+            linked = set()
+            text = map_links(self.primer.read_text(), lambda t: self.link(self.primer, t, '', linked))
+            built.append(('primer', 'primer', 'primer.md', 'Primer', None, text, linked))
+        for page in self.pages:
+            topics = page.topics()
+            for topic in topics:
+                linked = set()
+                text = self.topic_markdown(page, topic, linked)
+                built.append(('topic', topic['id'], f'topics/{topic["id"]}.md', plain(topic['title'].replace('`', '')),
+                              page.area(), text, linked))
+        for page in sorted(self.errors, key=lambda p: p.rule):
+            if page.rule in self.catalogue:
+                linked = set()
+                text = self.error_markdown(page, linked)
+                built.append(('error', page.rule, f'errors/{page.rule}.md', page.rule,
+                              int(self.catalogue[page.rule].get('area', 0)) or None, text, linked))
+        for command in self.commands:
+            linked = set()
+            command_id = 'jadpo-' + re.sub(r'[^a-z0-9]+', '-', command['name'])
+            built.append(('command', command_id, f'commands/{command_id}.md', f'jadpo {command["name"]}',
+                          COMMAND_AREA, self.command_markdown(command, linked), linked))
+        return built
+
+    def index(self, built):
+        areas = {area: title for kind, page_id, _, title, area, _, _ in built
+                 if kind == 'topic' and page_id in self.overview.values()}
+        entries = []
+        for kind, page_id, _, title, area, text, linked in built:
+            fallback = title
+            if kind == 'topic' and title == 'What is built':
+                # Each area's table of what is built leads with the table.
+                fallback = f'Which parts of {areas.get(area, "the area")} are built, and what the rest waits on'
+            summary = (self.catalogue[page_id]['summary'] if kind == 'error'
+                       else summary_of(text, fallback))
+            entries.append({
+                'id': page_id, 'kind': kind, 'title': title, 'summary': summary,
+                # About four characters a token, as tokenizers average on English.
+                'tokens': (len(text) + 3) // 4,
+                'hash': 'sha256:' + hashlib.sha256(text.encode()).hexdigest(),
+                'area': area, 'links': sorted(linked - {page_id}),
+            })
+        return {'version': self.version, 'pages': entries}
+
+    def write(self, out):
+        """Writes the bundle into `out`, replacing what was there."""
+        import shutil
+        built = self.build()
+        if out.exists():
+            shutil.rmtree(out)
+        for _, _, path, _, _, text, _ in built:
+            target = out / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text)
+        (out / 'index.json').write_text(json.dumps(self.index(built), indent=2, ensure_ascii=False) + '\n')
+        return built
+
+
+def check_structure(pages, errors, catalogue, commands=(), root=ROOT):
+    """Problems with the docs' shape, none of which needs an example
+    compiled: topic IDs, a page per rule, topic sizes and links."""
+    problems = []
+    seen = {}
+    for page in pages:
+        problems += [f'{page.path.name} {problem}' for problem in page.check_topics()]
+        for topic in page.topics():
+            if topic['id']:
+                seen.setdefault(topic['id'], []).append(f'{page.path.name} "{topic["title"]}"')
+    for command in commands:
+        seen.setdefault('jadpo-' + re.sub(r'[^a-z0-9]+', '-', command['name']), []).append(
+            f'the command `jadpo {command["name"]}`')
+    seen.setdefault('primer', []).append('the primer')
+    for topic_id, places in sorted(seen.items()):
+        if len(places) > 1:
+            problems.append(f'topic ID "{topic_id}" is used by {", ".join(places)}')
+    pages_by_rule = {page.rule for page in errors}
+    for rule, entry in sorted(catalogue.items()):
+        if rule not in pages_by_rule:
+            problems.append(f'{rule} (area {entry.get("area")}) has no page: add docs/errors/{rule}.md')
+    bundle = Bundle(pages, errors, {'rules': list(catalogue.values()), 'commands': list(commands)}, root)
+    for kind, page_id, _, _, _, text, _ in bundle.build():
+        if kind == 'topic' and words(text) > TOPIC_WORDS:
+            problems.append(f'topic "{page_id}" is {words(text)} words, over {TOPIC_WORDS}: split it')
+    problems += bundle.problems
+    problems += check_links(markdown_files(root), root)
+    problems += check_help_anchors(root)
+    return problems
 
 
 # --- rendering -------------------------------------------------------------
@@ -595,20 +1110,11 @@ class Renderer:
 
     def close_sections(self):
         out = self.close_questions()
-        if self.in_errors:
-            out += self.missing_rules()
-            self.in_errors = False
+        self.in_errors = False
         if self.in_review:
             out += '</section>'
             self.in_review = False
         return out
-
-    def missing_rules(self):
-        missing = [r for r in self.page.claimed_rules() if r not in self.page.covered_rules()]
-        if not missing:
-            return f'<p class="coverage">All {len(self.page.claimed_rules())} errors this area owns have an example above.</p>'
-        items = ''.join(f'<li><code>{html.escape(r)}</code> {html.escape(self.page.catalogue[r]["summary"])}</li>' for r in missing)
-        return f'<div class="gap"><h3>Errors without an example yet</h3><ul>{items}</ul></div>'
 
     def render(self, start=0, end=None):
         lines = self.page.body.splitlines()
@@ -637,6 +1143,12 @@ class Renderer:
                     out.append(f'<div class="code plain"><div class="label"><span>{html.escape(label)}</span></div>'
                                f'<pre><code>{html.escape(chr(10).join(lines[i + 1:j]))}</code></pre></div>')
                 i = j + 1
+                continue
+            # A topic ID, and any other comment on a line of its own, is for
+            # tools, not readers.
+            if line.startswith('<!--') and line.rstrip().endswith('-->'):
+                flush()
+                i += 1
                 continue
             heading = re.match(r'^(#{1,4}) (.+)$', line)
             if heading:
@@ -686,57 +1198,6 @@ class Renderer:
         out.append(self.close_sections())
         return '\n'.join(out)
 
-    def render_decided(self):
-        """Lead with the decisions; collapse the rest of the body and the review notes."""
-        lines = self.page.body.splitlines()
-        heading = lambda i, level: lines[i].startswith('#' * level + ' ')
-        review = next(i for i, line in enumerate(lines) if line.strip() == '## Review')
-        first_h2 = next(i for i, line in enumerate(lines) if heading(i, 2))
-        h3 = [i for i in range(review + 1, len(lines)) if heading(i, 3)] + [len(lines)]
-        sections = [(h3[k], h3[k + 1], lines[h3[k]][4:].strip()) for k in range(len(h3) - 1)]
-        decided = [x for x in sections if x[2].lower().startswith(('decided', 'carried')) or x[2].lower() == 'decisions']
-        questions = next((x for x in sections if x[2].lower() == 'open questions'), None)
-        if questions and any(not q[2] for q in question_titles(lines[questions[0] + 1:questions[1]])):
-            decided.insert(0, questions)
-        notes = [x for x in sections if x not in decided]
-        inline_decisions = not any(t.lower().startswith('decided') for _, _, t in sections)
-        if inline_decisions:
-            # Decisions live in the sections they change: keep the body.
-            out = [self.render(0, review)]
-            self.toc = [(a, t, c) for a, t, c in self.toc]
-            for a, b, title in decided:
-                self.toc.append((slug(title), title, ''))
-                self.review_mode = title.lower() == 'open questions'
-                out.append(self.render(a, b))
-                self.review_mode = False
-            review_notes = Renderer(self.page)
-            review_notes.review_mode = True
-            body = ''.join(review_notes.render(a, b) for a, b, _ in notes)
-            out.append('<details class="collapsed review" id="review"><summary>Review notes: status, consistency and the questions as asked</summary>'
-                       + body + '</details>')
-            self.toc.append(('review', 'Review notes (collapsed)', 'review-link'))
-            return '\n'.join(out)
-        out = [self.render(0, first_h2)]
-        for a, b, title in decided:
-            self.toc.append((slug(title), title, ''))
-            self.review_mode = title.lower() == 'open questions'
-            part = self.render(a, b)
-            self.review_mode = False
-            for level in (3, 4):
-                part = part.replace(f'<h{level} ', f'<h{level - 1} ').replace(f'</h{level}>', f'</h{level - 1}>')
-            out.append(part)
-        full = Renderer(self.page)
-        out.append('<details class="collapsed" id="reference"><summary>Reference: the full page, with every example and error</summary>'
-                   + full.render(first_h2, review) + '</details>')
-        self.toc.append(('reference', 'Full reference (collapsed)', ''))
-        review_notes = Renderer(self.page)
-        review_notes.review_mode = True
-        body = ''.join(review_notes.render(a, b) for a, b, _ in notes)
-        out.append('<details class="collapsed review" id="review"><summary>Review notes: status, consistency and the questions as asked</summary>'
-                   + body + '</details>')
-        self.toc.append(('review', 'Review notes (collapsed)', 'review-link'))
-        return '\n'.join(out)
-
     def question(self, number, text):
         title, _, rest = text.partition('** ')
         title = title.lstrip('*').rstrip('*')
@@ -766,17 +1227,25 @@ def build_nav(page, pages, published):
     return nav
 
 
-def render_page(page, pages):
+def render_page(page, pages, notes=None, source=None):
+    """An area page, its design notes collapsed under it; or an error page."""
     template = TEMPLATE.read_text()
     renderer = Renderer(page)
-    content = renderer.render_decided() if page.meta.get('status') == 'decided' else renderer.render()
+    content = renderer.render()
+    if notes is not None:
+        review = Renderer(notes)
+        review.review_mode = True
+        content += ('<details class="collapsed review" id="review"><summary>Design notes: the decisions, '
+                    'how the area fits the rest of the language and the questions as asked</summary>'
+                    + review.render() + review.close_sections() + '</details>')
+        renderer.toc.append(('review', 'Design notes (collapsed)', 'review-link'))
     published = load_published()
     nav = build_nav(page, pages, published)
     toc = ''.join(f'<li><a class="{cls}" href="#{a}">{html.escape(t)}</a></li>' for a, t, cls in renderer.toc)
     return (template.replace('{{title}}', html.escape(page.meta.get('title', page.path.stem)))
             .replace('{{area}}', f'{int(page.meta.get("area", 0)):02d}')
             .replace('{{checked}}', html.escape(page.meta.get('checked-with', '')))
-            .replace('{{source}}', f'docs/language/{page.path.name}')
+            .replace('{{source}}', source or f'docs/language/{page.path.name}')
             .replace('{{nav}}', ''.join(nav))
             .replace('{{toc}}', toc)
             .replace('{{content}}', content))
@@ -784,9 +1253,11 @@ def render_page(page, pages):
 
 
 def section(body, title):
+    """The lines under the `##` heading `title` (a design notes page's
+    sections), up to the next `##` or `###`."""
     lines = body.splitlines()
     try:
-        start = next(i for i, line in enumerate(lines) if line.strip() == f'### {title}')
+        start = next(i for i, line in enumerate(lines) if line.strip() == f'## {title}')
     except StopIteration:
         return []
     end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith('## ') or lines[i].startswith('### ')), len(lines))
@@ -813,8 +1284,10 @@ def question_titles(lines):
     return out
 
 
-def render_log(pages, published):
-    """One page listing every decision, open question and carried item, built from the area pages."""
+def render_log(pages, published, notes=None):
+    """One page listing every decision, open question and carried item,
+    built from the areas' design notes."""
+    notes = notes or {}
     out = ['<h1>Decision log</h1>',
            '<p>Everything decided in the language review so far, every question still open, and items carried '
            'to later areas. Built from the area pages each time they are generated, so it cannot drift from them.</p>']
@@ -825,11 +1298,12 @@ def render_log(pages, published):
         name = page.meta.get('title', page.path.stem)
         anchor = f'area-{area}'
         href = published.get(page.path.stem, f'{page.path.stem}.html')
-        decided = [r for r in table_rows(section(page.body, 'Decisions')) if len(r) > 1 and r[1]]
-        questions = question_titles(section(page.body, 'Open questions'))
+        body = notes[page.path.name].body if page.path.name in notes else ''
+        decided = [r for r in table_rows(section(body, 'Decisions')) if len(r) > 1 and r[1]]
+        questions = question_titles(section(body, 'Open questions'))
         open_q = [q for q in questions if not q[2]]
-        carried_title = 'Carried to later areas' if section(page.body, 'Carried to later areas') else 'Related areas'
-        carried = table_rows(section(page.body, carried_title))
+        carried_title = 'Carried to later areas' if section(body, 'Carried to later areas') else 'Related areas'
+        carried = table_rows(section(body, carried_title))
         totals[0] += len(decided)
         totals[1] += len(open_q)
         toc.append((anchor, f'{area:02d} {name}', ''))
@@ -878,21 +1352,29 @@ AREAS = [
 ]
 
 
-def write_site(pages, out):
-    """Every page and the decision log, as HTML in `out`, each page under
+def write_site(pages, out, notes=None, errors=()):
+    """Every area page with its design notes, every error page under
+    errors/, and the decision log, as HTML in `out`, each page under
     RENDER_LIMIT."""
+    notes = notes or {}
     out.mkdir(parents=True, exist_ok=True)
     for page in pages:
         with time_limit(page.path.name):
-            (out / f'{page.path.stem}.html').write_text(render_page(page, pages))
+            (out / f'{page.path.stem}.html').write_text(render_page(page, pages, notes.get(page.path.name)))
+    if errors:
+        (out / 'errors').mkdir(exist_ok=True)
+    for page in errors:
+        with time_limit(page.path.name):
+            (out / 'errors' / f'{page.rule}.html').write_text(
+                render_page(page, pages, source=f'docs/errors/{page.path.name}'))
     published = load_published()
     with time_limit('the decision log'):
-        content, toc = render_log(pages, published)
+        content, toc = render_log(pages, published, notes)
     toc_html = ''.join(f'<li><a href="#{a}">{html.escape(t)}</a></li>' for a, t, _ in toc)
     (out / 'decisions.html').write_text(
         TEMPLATE.read_text()
         .replace('{{area}}', 'log').replace('{{checked}}', 'all pages')
-        .replace('{{source}}', 'docs/language/*.md (Decisions, Open questions, Carried tables)')
+        .replace('{{source}}', 'docs/language/notes/*.md (Decisions, Open questions, Carried tables)')
         .replace('{{nav}}', ''.join(build_nav(None, pages, published)))
         .replace('{{toc}}', toc_html).replace('{{content}}', content))
 
@@ -912,6 +1394,16 @@ def time_limit(what):
         signal.signal(signal.SIGALRM, previous)
 
 
+def load_pages(catalogue, root=ROOT):
+    """The area pages, their design notes by page name, and the error
+    pages."""
+    docs = root / 'docs/language'
+    pages = [Page(p, catalogue) for p in sorted(docs.glob('[0-9][0-9]-*.md'))]
+    notes = {p.name: Notes(p, catalogue) for p in sorted((docs / 'notes').glob('[0-9][0-9]-*.md'))}
+    errors = [ErrorPage(p, catalogue) for p in sorted((root / 'docs/errors').glob('*.md'))]
+    return pages, notes, errors
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--check', action='store_true', help='verify examples and render the pages without writing them')
@@ -919,62 +1411,75 @@ def main():
     parser.add_argument('--bless', action='store_true', help='rewrite the output blocks after check blocks')
     parser.add_argument('--export-corpus', action='store_true',
                         help=f'write the projects with tests and their jadpo test --json to {CORPUS.relative_to(ROOT)}')
+    parser.add_argument('--bundle', metavar='DIR',
+                        help='build the docs bundle into DIR; alone, it checks only the docs\' shape, not their examples')
     args = parser.parse_args()
-    catalogue = load_catalogue()
-    pages = [Page(p, catalogue) for p in sorted(DOCS.glob('[0-9][0-9]-*.md'))]
+    help_data = load_help()
+    catalogue = {rule['id']: rule for rule in help_data['rules']}
+    pages, notes, errors = load_pages(catalogue)
     failed = False
-    owners = {}
-    for page in pages:
+    compile_examples = args.check or args.bless or args.export_corpus or not args.bundle
+    checked = pages + list(notes.values()) + errors if compile_examples else []
+    for page in checked:
         page.check(bless=args.bless)
         blessed = page.bless() if args.bless else 0
         if blessed:
-            print(f'{page.path.name}: blessed {blessed} output block(s)')
-        for rule in page.claimed_rules():
-            owners.setdefault(rule, []).append(page.path.name)
+            print(f'{page.path.relative_to(ROOT)}: blessed {blessed} output block(s)')
+    for page in pages:
+        if not compile_examples:
+            page.collect_blocks()
         examples = len([b for b in page.blocks if not b['attrs'].get('fragment')])
-        claimed = page.claimed_rules()
-        covered = page.covered_rules() & set(claimed)
-        print(f'{page.path.name}: {examples} examples, {len(covered)}/{len(claimed)} errors covered')
+        print(f'{page.path.name}: {examples} examples, {len(page.topics())} topics')
         for problem in page.problems:
             failed = True
             print(f'  FAIL {problem}')
-    # The homepage example in README.md is compiled like a page's examples.
-    readme = Readme(ROOT / 'README.md', catalogue)
-    readme.check(bless=args.bless)
-    if args.bless and readme.bless():
-        print('README.md: blessed output block(s)')
-    print(f'README.md: {len([b for b in readme.blocks if b["attrs"]["file"].endswith(".jadpo")])} checked file(s)')
-    for problem in readme.problems:
+    for page in list(notes.values()) + errors:
+        if not compile_examples:
+            page.collect_blocks()
+        for problem in page.problems:
+            failed = True
+            print(f'  FAIL {page.path.relative_to(ROOT)}: {problem}')
+    if compile_examples:
+        covered = sum(1 for page in errors if page.rule in page.covered_rules())
+        print(f'{len(errors)} error page(s) for {len(catalogue)} rules; {covered} with a checked example')
+    for problem in check_structure(pages, errors, catalogue, help_data.get('commands', [])):
         failed = True
-        print(f'  FAIL README.md: {problem}')
-    for rule, files in owners.items():
-        if len(files) > 1:
+        print(f'  FAIL {problem}')
+    if compile_examples:
+        # The homepage example in README.md is compiled like a page's examples.
+        readme = Readme(ROOT / 'README.md', catalogue)
+        readme.check(bless=args.bless)
+        if args.bless and readme.bless():
+            print('README.md: blessed output block(s)')
+        print(f'README.md: {len([b for b in readme.blocks if b["attrs"]["file"].endswith(".jadpo")])} checked file(s)')
+        for problem in readme.problems:
             failed = True
-            print(f'  FAIL {rule} is claimed by {", ".join(files)}')
-    # Every rule the compiler has belongs to a page. Area 14's are
-    # errors from running a command, not from checking source, so the CLI's
-    # own tests show them (crates/jadpo-cli/tests).
-    for rule, entry in sorted(catalogue.items()):
-        if rule not in owners and entry.get('area') != COMMAND_AREA:
-            failed = True
-            print(f'  FAIL {rule} (area {entry.get("area")}) is claimed by no page')
-    print(f'{len(owners)}/{len(catalogue)} of the compiler\'s rules are assigned to an area')
-    corpus = [(page, entry) for page in pages + [readme] for entry in page.corpus]
-    print(f'{len(corpus)} spec project(s) with tests ran under jadpo test')
-    skipped = [f'{page.path.name} {name}' for page in pages + [readme] for name in page.skipped]
-    if skipped:
-        print(f'skipped: jadpo test for {len(skipped)} project(s) with migrations, which need PostgreSQL '
-              f'(JADPO_SKIP_POSTGRES is set): {", ".join(skipped)}')
-    if args.export_corpus:
-        export_corpus(corpus)
+            print(f'  FAIL README.md: {problem}')
+        everything = pages + list(notes.values()) + errors + [readme]
+        corpus = [(page, entry) for page in everything for entry in page.corpus]
+        print(f'{len(corpus)} spec project(s) with tests ran under jadpo test')
+        skipped = [f'{page.path.name} {name}' for page in everything for name in page.skipped]
+        if skipped:
+            print(f'skipped: jadpo test for {len(skipped)} project(s) with migrations, which need PostgreSQL '
+                  f'(JADPO_SKIP_POSTGRES is set): {", ".join(skipped)}')
+        if args.export_corpus:
+            export_corpus(corpus)
+    if args.bundle:
+        out = Path(args.bundle)
+        bundle = Bundle(pages, errors, help_data, primer=PRIMER)
+        built = bundle.write(out)
+        kinds = {}
+        for kind, *_ in built:
+            kinds[kind] = kinds.get(kind, 0) + 1
+        print(f'wrote the docs bundle to {out}: ' + ', '.join(f'{n} {k}(s)' for k, n in kinds.items()))
     # `--check` renders too, into a scratch folder, so a page the renderer
     # can't finish fails the gate rather than only `language_docs.py`.
     if args.check:
         with tempfile.TemporaryDirectory() as scratch:
-            write_site(pages, Path(scratch))
-        print(f'rendered {len(pages)} page(s)')
-    else:
-        write_site(pages, Path(args.out))
+            write_site(pages, Path(scratch), notes, errors)
+        print(f'rendered {len(pages)} page(s) and {len(errors)} error page(s)')
+    elif not args.bundle:
+        write_site(pages, Path(args.out), notes, errors)
         print(f'wrote {len(pages)} page(s) to {args.out}')
     sys.exit(1 if failed else 0)
 

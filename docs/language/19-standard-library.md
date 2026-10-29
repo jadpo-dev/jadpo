@@ -3,25 +3,10 @@ title: Standard library
 area: 19
 status: decided
 checked-with: this checkout's jadpo on every gate run
-rules:
-  - semantic.standard_operation_moved
-  - type.argument_empty
-  - type.argument_negative
-  - type.money_split
-  - type.password_hash_exposed
-  - type.random_context
-  - type.reserved_variant_name
-  - type.secret_exposed
-  - type.standard_clash
-  - syntax.percent_ambiguous
-  - type.standard_exists
-  - type.temporal_format_part_missing
-  - type.unit_required
-  - type.unit_unknown
-  - type.variant_retired
 ---
 
 # Standard library
+<!-- topic: standard-library -->
 
 The standard library is the set of types and operations every program can
 use without declaring them: `Money`, `list.count(items)`,
@@ -30,7 +15,7 @@ features need. This page collects them, adds what real applications keep
 reaching for, lists the language changes they rely on, and says what is
 left out on purpose and why.
 
-> The "Status" table under "Review" says what is not built yet and what it waits on; the "Decisions" table there records each decision.
+> "What is built", near the end of this page, says what is not built yet and what it waits on; the [design notes](notes/19-standard-library.md) record each decision.
 
 | Namespace | Holds | Operations | Defined in |
 |---|---|---|---|
@@ -66,6 +51,7 @@ counted per type. One operation, `crypto.verify_totp`, waits on keys held
 as data. The geospatial and AI areas' operations are counted in those areas.
 
 ## Shared vocabulary types
+<!-- topic: shared-vocabulary-types -->
 
 **The standard library defines the types two packages would otherwise
 each invent**. Geospatial libraries disagree on
@@ -100,7 +86,8 @@ a package or a later area.
   declinable error `type.standard_exists`, pointing at it ("Packages use
   the standard types", below), since area 1 has no warnings.
 
-### The standard types
+## The standard types
+<!-- topic: the-standard-types -->
 
 All of them are built (bold). Beside the 247 adopted, each part or kind a standard type names is a standard type too, so it is read, sent and stored by its code: `IdentityDocumentKind`, `InterestRateBasis`, `ContentRatingScheme`, `RichTextBlock`, `RichTextSpan`, `RichTextMark`, `ClothingSizeSystem`, `ShoeSizeSystem`, `RouteOfAdministration` and `ChatRole`. GeoJSON's `Feature` and `FeatureCollection` are [area 20](20-geospatial.md)'s. "(enum)" marks a closed list held as a built-in enum.
 Units fold into their quantity type, roles into the general type,
@@ -170,7 +157,8 @@ rule (`File`, `Page`, `Access`) keep their names.
 | `HashAlgorithm`, `KeyAlgorithm`; `SessionId`; `AcceptLanguage` | Out: no algorithm choices; the runtime's (area 8); a call, `locale.from_accept_language` |
 | Niche, silly, or a maybe with no published standard | Out: 729 entries, a package's to define |
 
-### Every standard type meets one contract
+## Every standard type meets one contract
+<!-- topic: every-standard-type-meets-one-contract -->
 
 Every standard type has a library, at least a baseline, and the baseline
 is the same for every type, not chosen type by type.
@@ -283,7 +271,7 @@ test "standard values are read, written and shown one way" {
 | AI (`Vector`, `Embedding`, `ChatMessage`) | `ai.generate`, `stream`, `embed`, `embed_all`, `distance` | [Area 21](21-ai.md) |
 | People, places, identity numbers, commerce codes, health, travel, other | Baseline only: each identifier's check digit or pattern is its construction | |
 
-#### Rules across a type's parts
+### Rules across a type's parts
 
 A standard object type whose parts constrain each other names each
 constraint as a rule, as an application's object type names its own
@@ -442,7 +430,7 @@ error: `"2026-12-27/2027-01-03"` can't be checked as a `DateRange` while compili
   reason: A `DateRange` has rules across its parts, which every literal is checked against while compiling; text written where one goes is its canonical text, which isn't read until the program runs, so its rules can't be checked.
   next: Write it out as `DateRange { ... }`, or read the text with `text.parse(..., as: DateRange)` and `attempt` (agent)
   rule: type.invalid_literal
-  help: docs/language/02-values-and-types.html#type-invalid-literal
+  help: docs/errors/type.invalid_literal.md
 
 check failed: 1 error, 1 file
 ```
@@ -459,7 +447,8 @@ function winter_sale() -> DateRange {
 }
 ```
 
-### Every boundary through the contract
+## Every boundary through the contract
+<!-- topic: every-boundary-through-the-contract -->
 
 No standard type loses its currency, unit or precision on the way into
 or out of a program, so every place a value crosses encodes a standard
@@ -676,7 +665,8 @@ doesn't know its field, so the field isn't named there.
   literal in a `where:` line, or testing it `in` a list of literals,
   compiles; it isn't `query.optional_value`.
 
-### Changing a standard type's encoding
+## Changing a standard type's encoding
+<!-- topic: changing-a-standard-type-s-encoding -->
 
 A Jadpo release changes how a standard type is sent, stored or written as text only
 together with a reader for the old form and a release note. A golden file
@@ -751,7 +741,8 @@ golden files by a test:
 > encoding it records. A new type, or a new example, needs only the last
 > step.
 
-### Packages use the standard types
+## Packages use the standard types
+<!-- topic: packages-use-the-standard-types -->
 
 A type whose shape is a standard type's is the error
 `type.standard_exists`: in a package's public types (`surface.jadpo_record`
@@ -832,7 +823,8 @@ The `Country`, `Language` and `PhoneNumber` lists ship with each Jadpo
 release, as the time-zone database does: fixed reference data is
 declared in the release, as these enums, not by applications.
 
-### A release that adds a standard type
+## A release that adds a standard type
+<!-- topic: a-release-that-adds-a-standard-type -->
 
 A Jadpo upgrade that adds a
 standard type an application already names for itself never breaks it
@@ -930,6 +922,7 @@ have notes of their own:
 > `jadpo rename` ([the roadmap](../roadmap.md)).
 
 ## What every operation follows
+<!-- topic: what-every-operation-follows -->
 
 These hold for every namespace.
 
@@ -1000,6 +993,7 @@ attempt encoding.from_base64(input.attachment) {
 ```
 
 ## Validating in the middle of a program
+<!-- topic: validating-in-the-middle-of-a-program -->
 
 **Construction is the way.** `Type(value)` checks every rule
 on the type and the types it builds on, and an `attempt` maps each rule
@@ -1037,6 +1031,7 @@ fields ("ends after it starts") is a named rule on the object type
 same construction.
 
 ## Operations
+<!-- topic: standard-library-operations -->
 
 Every operation beyond the contract's baseline, with its signature,
 failures and SQL form, one section per namespace or type group. The
@@ -1068,6 +1063,7 @@ type meets one contract", and isn't repeated here.
 | Locale | `locale` | 1 (area 10) |
 
 ## The standard operator table
+<!-- topic: the-standard-operator-table -->
 
 Operators on standard types follow one fixed, documented table, instead of
 a library function per job. It generalises area 10's rule
@@ -1363,6 +1359,7 @@ test "a voucher keeps its discount as it was issued" {
 ```
 
 ## SQL forms
+<!-- topic: sql-forms -->
 
 A **SQL form** is a PostgreSQL 16 expression that gives exactly the result
 the runtime gives, for every argument. It matters in three places. A
@@ -1485,6 +1482,7 @@ form yet.
 In the tables below, `x` is the first argument and `a`, `b` the others.
 
 ## Lists
+<!-- topic: lists -->
 
 Each operation is called as `list.<name>`. `collection` stays a reserved namespace with no operations:
 a call through it is `semantic.standard_operation_moved`, its edit
@@ -1727,6 +1725,7 @@ A count or a position that might be negative is `type.argument_negative`
 `Bool`, is area 3's `type.ordering_operand`.
 
 ## Sets
+<!-- topic: sets -->
 
 Each operation is called as `set.<name>`. All return a new set.
 
@@ -1831,6 +1830,7 @@ written in any order; walking one is the only place its order shows, and
 it is always the canonical one, on every target.
 
 ## Maps
+<!-- topic: maps -->
 
 Each operation is called as `map.<name>`. All return a new map.
 
@@ -1947,6 +1947,7 @@ test "map operations give new maps" {
 read; `map.has` says whether it is there without reading it.
 
 ## Ranges
+<!-- topic: ranges -->
 
 `Range<T>` holds a `start` and an `end` of one ordered type, either of
 which may be `none` for an open end; `DateRange` includes its end date and
@@ -2157,6 +2158,7 @@ test "a range of any ordered type, either end open" {
 ```
 
 ## Numbers
+<!-- topic: numbers -->
 
 `integer` operations take values built on `Int`, and `decimal` operations
 values built on `Decimal`. `/` and `%` are area 3's; these cover
@@ -2487,6 +2489,7 @@ test "each mode rounds the true value" {
 ```
 
 ## Money and payments
+<!-- topic: money-and-payments -->
 
 `Money` and `Currency` are standard types. An amount is held as a whole
 number of the currency's minor units (pence, cents) and its `Currency`,
@@ -2655,6 +2658,9 @@ function sterling(paid: Payment) -> SterlingPayment? {
 }
 ```
 
+## Exchange rates
+<!-- topic: exchange-rates -->
+
 An `ExchangeRate` is a standard object of `from` and `to`, each a
 `Currency`, `rate`, a `Decimal`, and `at`, the `Instant` it was quoted
 at, built with its object literal and read by its fields. One `from` is
@@ -2777,7 +2783,7 @@ error: `rate` converts from EUR, and `cake` is in GBP
   reason: `money.convert` applies a rate to an amount in the rate's `from` currency. `cake` is in GBP and `rate` converts from EUR, as their types, how they were made or a condition around the call fix, so the rate is the wrong way round or for another currency.
   next: Pass a rate from GBP, or an amount in EUR (agent)
   rule: type.mismatch
-  help: docs/language/02-values-and-types.html#type-mismatch
+  help: docs/errors/type.mismatch.md
 
 check failed: 1 error, 1 file
 ```
@@ -2925,7 +2931,7 @@ error: `rate` converts from EUR, and `cake` is in GBP
   reason: `money.convert` applies a rate to an amount in the rate's `from` currency. `cake` is in GBP and `rate` converts from EUR, as their types, how they were made or a condition around the call fix, so the rate is the wrong way round or for another currency.
   next: Pass a rate from GBP, or an amount in EUR (agent)
   rule: type.mismatch
-  help: docs/language/02-values-and-types.html#type-mismatch
+  help: docs/errors/type.mismatch.md
 
 check failed: 1 error, 1 file
 ```
@@ -2959,10 +2965,13 @@ error: `currency: Currency.eur` is different from `CakePrice`'s `currency: Curre
   reason: `CakePrice` fixes the currency at GBP, and a type built on another only narrows it, so it repeats that currency or leaves it out; with another one no value could follow both, and the type could never be built.
   next: Remove `currency:`, so the type keeps `CakePrice`'s GBP (agent)
   rule: type.constraint_contradiction
-  help: docs/language/02-values-and-types.html#type-constraint-contradiction
+  help: docs/errors/type.constraint_contradiction.md
 
 check failed: 1 error, 1 file
 ```
+
+## Money operations
+<!-- topic: money-operations -->
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
@@ -3132,7 +3141,8 @@ test "an order keeps its amounts as they were written" {
 }
 ```
 
-### Prices, discounts and rates
+## Prices, discounts and rates
+<!-- topic: prices-discounts-and-rates -->
 
 The money group's records are built on `Money`, `Percentage` and the
 quantities:
@@ -3349,7 +3359,7 @@ error: `120%` isn't a valid `Discount.percentage_off.percentage`
   reason: `Discount.percentage_off.percentage` declares `max: 100%`, and the value is above 100%. A literal is checked against every rule while compiling.
   next: Use a value that `Discount.percentage_off.percentage` allows (agent)
   rule: type.invalid_literal
-  help: docs/language/02-values-and-types.html#type-invalid-literal
+  help: docs/errors/type.invalid_literal.md
 
 check failed: 1 error, 1 file
 ```
@@ -3399,7 +3409,8 @@ test "a loan keeps its rate over base as it was written" {
 }
 ```
 
-### Bank accounts
+## Bank accounts
+<!-- topic: bank-accounts -->
 
 A `BankAccount` is a choice of the three ways an account is written down:
 
@@ -3563,12 +3574,13 @@ error: `"08-99-99"` isn't a valid `BankAccount.uk.sort_code`
   reason: The value isn't a valid `UkSortCode`: its pattern and check digits accept only `UkSortCode`'s canonical text, and a literal is checked while compiling.
   next: Write a valid `UkSortCode` in its canonical text (agent)
   rule: type.invalid_literal
-  help: docs/language/02-values-and-types.html#type-invalid-literal
+  help: docs/errors/type.invalid_literal.md
 
 check failed: 1 error, 1 file
 ```
 
 ## Physical quantities
+<!-- topic: physical-quantities -->
 
 Each quantity type (`Length`, `Mass`, `Temperature` ... and `DataSize`,
 `Bitrate`) holds an exact `Decimal` in its SI base unit at a fixed scale
@@ -3943,6 +3955,7 @@ test "a shelf keeps its length as it was cut" {
 standard operator table".
 
 ## Time and calendar additions
+<!-- topic: time-and-calendar-additions -->
 
 Area 10's 21 `temporal` operations stand, three of them with SQL forms,
 for an aggregate query's time buckets. The time types here add three.
@@ -4156,6 +4169,9 @@ test "a month on from the 31st is the month's last day" {
 }
 ```
 
+## Recurrences and opening hours
+<!-- topic: recurrences-and-opening-hours -->
+
 **`RecurrenceRule` and `OpeningHours` are held as text:** types built on
 `Text` that the standard library declares (`Holds::Text`), as the payment
 numbers are. A value is its standard text, its JSON a string, its storage
@@ -4330,6 +4346,9 @@ test "a night past midnight is open by the clock on the wall" {
     assert not is_open(club_hours, "2026-11-01T07:00:00Z")
 }
 ```
+
+## Calendar events
+<!-- topic: calendar-events -->
 
 A calendar event is all-day or timed. An all-day event holds its first
 and last days, both included, and no zone: a holiday on 25 December is on
@@ -4805,6 +4824,7 @@ test "an event is kept part by part" {
 ```
 
 ## Text
+<!-- topic: text -->
 
 Each operation is called as `text.<name>`. Text is counted, cut and
 padded in Unicode code points, as `max_length`
@@ -5176,12 +5196,13 @@ error: `text` is a standard-library namespace
   reason: Standard-library namespaces can't name a declaration, domain, library or variable, so `text.` always means the standard library.
   next: Choose another name than `text` (agent)
   rule: semantic.standard_namespace_reserved
-  help: docs/language/01-project-layout-and-modules.html#semantic-standard-namespace-reserved
+  help: docs/errors/semantic.standard_namespace_reserved.md
 
 check failed: 1 error, 1 file
 ```
 
 ## Text formats
+<!-- topic: text-formats -->
 
 `Html` is always safe: its construction from text keeps only the allowed
 elements and attributes (no scripts, no event handlers, links only to
@@ -5475,6 +5496,7 @@ is sent as JSON's own collection, and a `RichText`, a `RichTextBlock` and
 a `LocalisedText` are each stored as that JSON in one `jsonb` column.
 
 ## Hashing and cryptography
+<!-- topic: hashing-and-cryptography -->
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
@@ -5767,7 +5789,7 @@ error: `config.notes_key` is a key
   reason: An `EncryptionKey` is opaque: code never reads, prints, stores, compares or passes on a key, so the one place it goes is a `crypto` call's `key:`, which the compiler owns.
   next: Give `config.notes_key` only as a `crypto` call's `key:`, written `key: config.notes_key` (agent)
   rule: configuration.secret_flow
-  help: docs/language/10-configuration-and-time.html#configuration-secret-flow
+  help: docs/errors/configuration.secret_flow.md
 
 check failed: 1 error, 1 file
 ```
@@ -5779,6 +5801,9 @@ check failed: 1 error, 1 file
 > 0.11.1, `ed25519-dalek` 3.0.0 with its precomputed tables). None reads
 > randomness itself, and the cipher, Argon2 and Ed25519 wipe their own
 > copies of a key when dropped.
+
+## Signed tokens
+<!-- topic: signed-tokens -->
 
 `crypto.verify_jwt` checks a token as RFC 8725 advises:
 
@@ -6005,7 +6030,8 @@ test "a partner's token signs in only while it holds" {
 > private key through the timing of decryption and signing, which nothing
 > here does with RSA.
 
-### Secret values
+## Secret values
+<!-- topic: secret-values -->
 
 A `Password`, an `ApiKey`, a `BearerToken`, a `TotpSecret`, a `SecretText`,
 a `Jwt` and a `OneTimeCode`, the code a person types, are secret values:
@@ -6179,7 +6205,7 @@ error: `Member.chosen_password` keeps a `Password`
   reason: A `Password` is never stored as itself, so a copy of the database holds none. A password is hashed with `crypto.hash_password` and checked with `crypto.verify_password`.
   next: Store `crypto.hash_password(...)` of it in a `PasswordHash` field in `chosen_password`'s place (agent)
   rule: type.secret_exposed
-  help: docs/language/19-standard-library.html#type-secret-exposed
+  help: docs/errors/type.secret_exposed.md
 
 check failed: 1 error, 1 file
 ```
@@ -6240,7 +6266,8 @@ test failed: 1 failed, 1 pure test
 > never write, show or store them (`TextForm::Secret`, `Json::Secret`,
 > `FormatKey::Redacted`, `Storage::Never`).
 
-### Security records
+## Security records
+<!-- topic: security-records -->
 
 `Hash`, `Hmac` and `EncryptedValue` are the bytes `hash.sha256`,
 `crypto.hmac` and `crypto.encrypt` give, as types: each is built on
@@ -6565,7 +6592,7 @@ error: `Certificate` isn't built from its parts
   reason: A `Certificate`'s subject, issuer, serial number, validity and fingerprint are read from the DER its issuer signed, so code reads them and never sets them.
   next: Read the `Certificate` from its PEM with `text.parse(..., as: Certificate)`, or from JSON with `json.read` (agent)
   rule: type.constructor_input
-  help: docs/language/02-values-and-types.html#type-constructor-input
+  help: docs/errors/type.constructor_input.md
 
 check failed: 1 error, 1 file
 ```
@@ -6576,6 +6603,7 @@ check failed: 1 error, 1 file
 > feature, so with no `ring`.
 
 ## Randomness
+<!-- topic: randomness -->
 
 `random` is a generated namespace like `clock`: it reads
 the operating system's cryptographic generator in production, is called
@@ -6696,6 +6724,7 @@ test "a prize draw picks different entrants" {
 ```
 
 ## Encodings
+<!-- topic: encodings -->
 
 Each operation is called as `encoding.<name>`.
 
@@ -6862,6 +6891,7 @@ test "hashing and the encodings give what the page says" {
 ```
 
 ## Data formats: JSON, CSV, TSV and JSON Lines
+<!-- topic: data-formats-json-csv-tsv-and-json-lines -->
 
 The four format namespaces, each in one shape: `json` for one document in
 memory and for a large JSON list in a file, and `csv`, `tsv` and
@@ -7303,7 +7333,8 @@ A JSON Lines row may hold lists and objects, which is why a CSV row that
 needs them is pointed here. Encodings and gzip are as for `csv`, and a
 JSON Lines file takes no `format:`.
 
-### `json`
+## `json`
+<!-- topic: json -->
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
@@ -7781,6 +7812,7 @@ on:
 There is no XML format namespace yet.
 
 ## Colour
+<!-- topic: colour -->
 
 `Colour` holds `red`, `green`, `blue` and `alpha`, each 0 to 255, in sRGB,
 and is written as CSS writes a hex colour, `#1e6fd9`, or `#1e6fd980` when
@@ -7960,6 +7992,7 @@ test "lightness, mixes, HSL and OKLCH give sRGB colours" {
 ```
 
 ## Media
+<!-- topic: media -->
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
@@ -8130,6 +8163,7 @@ test "a timecode is shown in SMPTE's notation, a cue as WebVTT writes it" {
 ```
 
 ## Web and software
+<!-- topic: web-and-software -->
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
@@ -8383,6 +8417,9 @@ test "a status's class is a comparison, and a problem is sent as RFC 9457 has it
 }
 ```
 
+## Software types
+<!-- topic: software-types -->
+
 Each software type follows its standard in the same way: a
 `SemanticVersion` is SemVer 2.0.0's (`1.2.3-alpha.1+build.5`), an object
 of its numbers, pre-release and build metadata, ordered by SemVer's
@@ -8575,6 +8612,7 @@ test "a range takes a pre-release only where it names one" {
 ```
 
 ## Groups with the baseline only
+<!-- topic: groups-with-the-baseline-only -->
 
 These groups have nothing beyond the contract: each type's rules are its
 construction, which the contract's `text.parse` and data entry already
@@ -8719,6 +8757,9 @@ and `NhsNumber`.
   GLEIF's LEIs), and made up to the rules where it doesn't; each entry
   says which.
 
+## Cards and identity documents
+<!-- topic: cards-and-identity-documents -->
+
 A shop keeps what it may of a customer's card once its payment provider
 has the number, checks a supplier's VAT number by its country's form,
 and records the passport a traveller shows, each number shown masked:
@@ -8816,7 +8857,7 @@ error: This `PassportNumber` breaks its rule `number_of_country`
   reason: A `PassportNumber`'s `number` is in the form its `country`'s passport office writes. A literal is checked while compiling.
   next: Write a number in the country's form, or change `country` (agent)
   rule: type.invalid_literal
-  help: docs/language/02-values-and-types.html#type-invalid-literal
+  help: docs/errors/type.invalid_literal.md
 
 check failed: 1 error, 1 file
 ```
@@ -8922,6 +8963,9 @@ check failed: 1 error, 1 file
 
 The money group's records are under "Money and payments", and
 `BankAccount` under "Bank accounts".
+
+## Names, addresses and countries
+<!-- topic: names-addresses-and-countries -->
 
 A shop sends parcels abroad and prints each label for the person who
 packs it, greets its customers by name, and reads the countries a
@@ -9215,6 +9259,9 @@ a nationality `demographic`. The lists of places aren't. **No shapes:**
 }` and `{ first_name, last_name }` are too common in applications' own
 types to be distinctive.
 
+## Phone numbers and postal codes
+<!-- topic: phone-numbers-and-postal-codes -->
+
 A shop takes a customer's phone number and postcode as they type them in
 their own country, and shows the number to its staff as their region
 dials it:
@@ -9346,6 +9393,9 @@ redistribution, while its footer says UN/CEFACT standards are under CC BY
 4.0, and which covers the code list isn't stated (as the
 `datasets/un-locode` package records it). **No shapes:**
 `type.standard_exists` matches none of the four, each a single value.
+
+## Commerce, travel and health codes
+<!-- topic: commerce-travel-and-health-codes -->
 
 A till scans a product's barcode, a supplier's order names its delivery
 term in whatever case its system writes, and a dock prints each
@@ -9483,6 +9533,9 @@ allergy is an application's own field, which it marks.
 (GS1's, the ISBN Users' Manual's, NHTSA's, ISO 6346's, ORCID's, SNOMED
 CT's, UPS's sample tracking number), and made up to the rules where it
 doesn't; each entry says which.
+
+## Records and health measures
+<!-- topic: records-and-health-measures -->
 
 A courier labels each parcel with its size and its carrier's tracking
 number, a travel desk reads the flight a booking names, and a library
@@ -9740,7 +9793,7 @@ error: This `BloodPressure` breaks its rule `diastolic_below_systolic`
   reason: A `BloodPressure`'s `diastolic`, the pressure between beats, is below its `systolic`, the pressure as the heart beats (LOINC 85354-9). A literal is checked while compiling.
   next: Write a `diastolic` below the `systolic`, or swap the two (agent)
   rule: type.invalid_literal
-  help: docs/language/02-values-and-types.html#type-invalid-literal
+  help: docs/errors/type.invalid_literal.md
 
 check failed: 1 error, 1 file
 ```
@@ -9861,6 +9914,7 @@ writes one: asking is `type.temporal_option_unused`, as for a form a
 list hasn't.
 
 ## Logic and bits
+<!-- topic: logic-and-bits -->
 
 `and`, `or` and `not` are the logical operators (area 3), and exclusive or
 on `Bool` is `!=`. Any other gate is a one-line function, so none is
@@ -9878,6 +9932,7 @@ read, and the one scenario with bit-packed data, device payloads, decodes
 them in the provider package that knows the format.
 
 ## Geospatial types
+<!-- topic: geospatial-types -->
 
 [Area 20](20-geospatial.md) specifies geospatial work: the `geo.`
 operations, from the measures and predicates to the constructions
@@ -10000,9 +10055,10 @@ themselves, all in WGS84, with named fields, never a pair:
   often as where a person is; an application marks a person's position
   with area 15's `location`.
 
-Area 20's "Status" says what of its page is built.
+Area 20's "What is built" says what of its page is built.
 
 ## AI types
+<!-- topic: ai-types -->
 
 AI models are provider packages (area 11). What makes them first class
 in typed applications is a set of standard pieces Jadpo itself does, as a
@@ -10104,7 +10160,7 @@ and the app calls the result. This section is the AI types themselves:
   `type.standard_exists`; a `{ role, content }` or an
   `{ input, output }` is too common to flag.
 
-Area 21's "Status" says what of its page is built.
+Area 21's "What is built" says what of its page is built.
 
 A help article's embedding is three numbers here, where a real model's
 are 1,536 or more; a list of the wrong length is refused by name:
@@ -10141,6 +10197,7 @@ test "an embedding has its model's length" {
 ```
 
 ## Scenario applications
+<!-- topic: scenario-applications -->
 
 Nine applications Jadpo is meant for, what each does, and the operations
 that needs. The coverage matrix follows; each gap is fixed on this page or
@@ -10290,6 +10347,7 @@ and AI, areas 20 and 21. Left out with a reason: bits (device packages),
 TOTP (a package), calendar files (a package).
 
 ## Language gaps this page depends on
+<!-- topic: language-gaps-this-page-depends-on -->
 
 Nothing is left out because the language can't do it: each gap is
 either left out by design (with its reason, above and in the next table)
@@ -10338,6 +10396,7 @@ page. Only keys held as data are not built yet
 | Aliases (`size` for `count`) | One obvious name each | The table's name |
 
 ## How the five languages compare
+<!-- topic: how-the-five-languages-compare -->
 
 What TypeScript, Rust, Go, Elixir and Python do for the same jobs, and the
 choice each row led to. Rust's and Go's numbers are for their standard
@@ -10362,778 +10421,41 @@ didn't: TypeScript's string-comparing default sort and asynchronous
 hashing, negative positions, Rust's and Go's byte lengths, and the aliases
 and second ways every one of them has.
 
+## What is built
+<!-- topic: standard-library-built -->
+
+| Feature | Status |
+|---|---|
+| Everything on this page not listed below | Built |
+| Keys held as data, with encrypted fields: `crypto.verify_totp`, HS256 in `crypto.verify_jwt`, per-device signatures, storing a `TotpSecret` or a `SecretText` | Not built yet: waits on personal data (area 15), after the first build ([the roadmap](../roadmap.md)) |
+| A `type.standard_exists` or `type.standard_clash` swap of a type already stored or on the wire, and `jadpo rename` | Not built yet: a swap waits on area 18's records, `jadpo rename` on area 14 |
+| A query comparing or ordering by an amount of money, a one-step update working one out, a backfill of a new required one, and a condition on a JSON-held field | Not built yet: `toolchain.not_built_yet` names each |
+| The UK modulus check in `BankAccount` | Not built yet: waits on Vocalink's permission to ship its tables |
+| Checking `UnLocode`, `IataAirport`, `IcaoAirport`, `IataAirline` and `Icd10Code` against their lists | Not built yet: waits on licences that allow shipping the lists |
+| Area 9's scopes narrowing `OAuthScope` | Not built yet: waits on area 9 |
+| Legacy encodings in the file readers | Not built yet: waits on an application that needs one |
+| `jadpo replay`, and a calendar file's writer | Not built yet: `jadpo replay` waits on area 17, a calendar file's writer on an application that needs one |
+| What area 15 does with each standard type's personal data category | Not built yet: waits on area 15 |
+| The rest of geospatial and AI | Partly built: [area 20](20-geospatial.md)'s and [area 21](21-ai.md)'s "What is built" say which parts |
+
 ## Errors
 
 Every error this area can produce, with an example that triggers it and the
 new compiler's real output from `jadpo check`. The examples are checked as
 loose files.
 
-### `type.standard_clash`
-
-A declaration named like a standard type: a Jadpo release added the
-standard type after the application named its own. Its fixes are the swap
-and the rename, each made by `jadpo fix`.
-
-```jadpo check project=e-standard-clash expect=type.standard_clash
-/// A room booking's reference, from before Jadpo had a `Uuid` of its own.
-type Uuid = Text {
-    max_length: 36
-}
-```
-
-```text output
-error: `Uuid` is the name of a standard type
- --> main.jadpo:2:6
-  |
-2 | type Uuid = Text {
-  |      ^^^^ standard since Jadpo 0.1.0
-  reason: Jadpo 0.1.0 added the standard type `Uuid`, and the application's own type can't share its name, or `Uuid` would mean two things. An upgrade never changes what code means silently, so `check` stops here until this type is swapped for the standard type or renamed.
-  next: Run `jadpo fix Uuid swap` to use the standard `Uuid` in its place, or `jadpo fix Uuid rename <NewName>` to keep this one under a name of its own (agent)
-  rule: type.standard_clash
-  help: docs/language/19-standard-library.html#type-standard-clash
-
-check failed: 1 error, 1 file
-```
-
-### `type.standard_exists`
-
-A declaration whose only fields are a standard type's, by their common
-names in any order and what they are built on, is that type under another
-name. It is declinable: a type that means something else keeps its shape
-with a reason on the declaration.
-
-```jadpo check project=e-standard-exists expect=type.standard_exists
-/// When a room is booked, from its start to its end.
-type Booking = Object {
-    starts_at: Instant
-    ends_at: Instant
-}
-```
-
-```text output
-error: `Booking` is the standard `InstantRange` under another name
- --> main.jadpo:2:6
-  |
-2 | type Booking = Object {
-  |      ^^^^^^^ a start and an end
-  reason: `Booking` has only a start (`starts_at`) and an end (`ends_at`), each built on `Instant`, which is the standard `InstantRange`. Declarations of one shape under different names disagree on names and meaning, and every package and application has to convert between them; the standard type has one construction, one wire shape and one storage shape.
-  next: Run `jadpo fix Booking swap` to use `InstantRange` where `Booking` is used, then convert at the edge where data arrives in another shape, or write `decline type.standard_exists: "<why>"` above it if this is deliberate (agent)
-  rule: type.standard_exists
-  help: docs/language/19-standard-library.html#type-standard-exists
-
-check failed: 1 error, 1 file
-```
-
-`Point`'s shape is a latitude and a longitude by their common names, so a
-van's last position is the standard `Point`:
-
-```jadpo check project=e-standard-exists-point expect=type.standard_exists
-/// Where a delivery van was when its tracker last reported.
-type VanPosition = Object {
-    lat: Decimal
-    lng: Decimal
-}
-```
-
-```text output
-error: `VanPosition` is the standard `Point` under another name
- --> main.jadpo:2:6
-  |
-2 | type VanPosition = Object {
-  |      ^^^^^^^^^^^ a latitude and a longitude
-  reason: `VanPosition` has only a latitude (`lat`) and a longitude (`lng`), each built on `Decimal` or `Int`, which is the standard `Point`. Declarations of one shape under different names disagree on names and meaning, and every package and application has to convert between them; the standard type has one construction, one wire shape and one storage shape.
-  next: Run `jadpo fix VanPosition swap` to use `Point` where `VanPosition` is used, then convert at the edge where data arrives in another shape, or write `decline type.standard_exists: "<why>"` above it if this is deliberate (agent)
-  rule: type.standard_exists
-  help: docs/language/19-standard-library.html#type-standard-exists
-
-check failed: 1 error, 1 file
-```
-
-A list of points is the standard `LineString`, or a `Polygon`'s ring, and
-only the application knows which, so the error names both (area 20):
-
-```jadpo check project=e-standard-exists-line expect=type.standard_exists
-/// A van's round, stop to stop, as its tracker sends it.
-type VanRound = Object {
-    coordinates: List<Point>
-}
-```
-
-```text output
-error: `VanRound` is the standard `LineString` or `Polygon` under another name
- --> main.jadpo:2:6
-  |
-2 | type VanRound = Object {
-  |      ^^^^^^^^ a list of points
-  reason: `VanRound` has only a list of points (`coordinates`), each a `Point`, which is the standard `LineString` or `Polygon`. Declarations of one shape under different names disagree on names and meaning, and every package and application has to convert between them; the standard type has one construction, one wire shape and one storage shape.
-  next: Run `jadpo fix VanRound swap` to use `LineString` where `VanRound` is used, or use `Polygon` if that is what it means, then convert at the edge where data arrives in another shape, or write `decline type.standard_exists: "<why>"` above it if this is deliberate (agent)
-  rule: type.standard_exists
-  help: docs/language/19-standard-library.html#type-standard-exists
-
-check failed: 1 error, 1 file
-```
-
-Declined, with the reason review reads:
-
-```jadpo check project=standard-exists-declined
-/// A shift as the rota plans it, before anyone has worked it.
-decline type.standard_exists: "Planned hours on the rota, not a range anyone has worked"
-type PlannedShift = Object {
-    starts_at: Instant
-    ends_at: Instant
-}
-```
-
-### `semantic.standard_operation_moved`
-
-An operation the standard library has moved to another name: its edit
-writes the new name, and the call is checked as the new operation.
-`temporal.format` has moved to the time types' `text.format`:
-
-```jadpo check project=e-operation-moved expect=semantic.standard_operation_moved
-type OrderedAt = Instant {}
-
-function placed(at: OrderedAt) -> PresentationText {
-    return temporal.format(
-        at,
-        zone: Zone.europe_london,
-        locale: Locale.en_gb,
-        format: TimeFormat.date_long
-    )
-}
-```
-
-```text output
-error: `temporal.format` is now `text.format`
- --> main.jadpo:4:12
-  |
-4 |     return temporal.format(
-  |            ^^^^^^^^^^^^^^^ moved
-  reason: The standard library has one name for each operation; `temporal.format` moved to `text.format`, which takes the same values.
-  next: Write `text.format` (agent)
-  rule: semantic.standard_operation_moved
-  help: docs/language/19-standard-library.html#semantic-standard-operation-moved
-
-check failed: 1 error, 1 file
-```
-
-`collection.` has moved to `list.`, `set.` and `map.`: a call
-through it is reported with an edit to the namespace for its first value,
-a list unless it is a set or a map, and checked as that operation where
-it is built.
-
-```jadpo check project=e-collection-moved expect=semantic.standard_operation_moved
-type BatchName = Text {
-    min_length: 1
-}
-
-type BatchCount = Int {
-    min: 0
-}
-
-function batches_baked(bakings: List<BatchName>) -> BatchCount {
-    return BatchCount(collection.count(bakings))
-}
-```
-
-```text output
-error: `collection.count` is now `list.count`
- --> main.jadpo:10:23
-   |
-10 |     return BatchCount(collection.count(bakings))
-   |                       ^^^^^^^^^^^^^^^^ moved
-  reason: The standard library has one namespace for each type an operation works on, so `collection.` became `list.`, `set.` and `map.`; `bakings` is a list.
-  next: Write `list.count` (agent)
-  rule: semantic.standard_operation_moved
-  help: docs/language/19-standard-library.html#semantic-standard-operation-moved
-
-check failed: 1 error, 1 file
-```
-
-### `type.argument_negative`
-
-A count or a position is never negative: `list.at`'s
-`position`, `slice`'s `from` and `count`, and the `n` of `keep_first`,
-`keep_last`, `drop_first` and `drop_last`. A literal isn't below `0` and a
-value's type has a `min` of at least `0`, so an off-by-one never reads
-from the other end, as a negative position does in JavaScript.
-
-```jadpo check project=e-argument-negative expect=type.argument_negative
-type BatchName = Text {
-    min_length: 1
-}
-
-type TraysOut = Int {}
-
-/// The batches still to bake once `done` of them are out of the oven.
-function still_to_bake(bakings: List<BatchName>, done: TraysOut) -> List<BatchName> {
-    return list.drop_first(bakings, done)
-}
-```
-
-```text output
-error: `done` may be negative
- --> main.jadpo:9:37
-  |
-9 |     return list.drop_first(bakings, done)
-  |                                     ^^^^ `TraysOut` can be below `0`
-  reason: `list.drop_first`'s `n` counts from the start, so it is never negative, which is proved while compiling: a literal isn't below `0` and a value's type has a `min` of at least `0`; `TraysOut` allows values below `0`.
-  next: Pass a value whose type has `min: 0`, building it where a negative one is handled; count from the end with `keep_last` or `drop_last` (agent)
-  rule: type.argument_negative
-  help: docs/language/19-standard-library.html#type-argument-negative
-
-check failed: 1 error, 1 file
-```
-
-### `type.argument_empty`
-
-Text an operation never takes empty (`never_empty`): `text.replace`'s
-`find` and `text.split`'s `separator`. A literal isn't `""` and a value's
-type has a `min_length` of at least 1, so a search never looks for
-nothing and a split never cuts between every character, which other
-languages each do differently.
-
-```jadpo check project=e-argument-empty expect=type.argument_empty
-type Ingredients = Text {
-    max_length: 400
-}
-
-type Divider = Text {
-    max_length: 3
-}
-
-type IngredientCount = Int {
-    min: 0
-}
-
-/// How many ingredients a recipe line lists, split where the cook says.
-function ingredient_count(line: Ingredients, spacer: Divider) -> IngredientCount {
-    return IngredientCount(list.count(text.split(line, spacer)))
-}
-```
-
-```text output
-error: `spacer` may be empty
- --> main.jadpo:15:56
-   |
-15 |     return IngredientCount(list.count(text.split(line, spacer)))
-   |                                                        ^^^^^^ `Divider` can be empty
-  reason: `text.split`'s `separator` is never empty, which is proved while compiling: a literal isn't `""` and a value's type has a `min_length` of at least 1; `Divider` allows empty text.
-  next: Pass a value whose type has `min_length: 1`, building it where empty text is handled (agent)
-  rule: type.argument_empty
-  help: docs/language/19-standard-library.html#type-argument-empty
-
-check failed: 1 error, 1 file
-```
-
-### `type.money_split`
-
-Money divided by a count: `/` by an `Int`. Dividing money by a count is
-sharing it out, and rounding each share loses a minor unit; `money.split`
-hands every one to some share, and `money.allocate` shares in proportion.
-`/` by a `Decimal` stays, since that is a rate (`/ 1.20` takes VAT off).
-
-```jadpo check project=e-money-split expect=type.money_split
-type BillTotal = Money {
-    currency: Currency.gbp
-    min: 0
-}
-
-/// One friend's share of a bill split three ways.
-function share(total: BillTotal) -> BillTotal {
-    return BillTotal(total / 3)
-}
-```
-
-```text output
-error: `BillTotal` is divided by a count
- --> main.jadpo:8:22
-  |
-8 |     return BillTotal(total / 3)
-  |                      ^^^^^^^^^ money shared out by `/`
-  reason: Dividing money by a count is sharing it out, and rounding each share loses minor units: £10.00 / 3 is £3.33, three times £9.99. `money.split` hands every minor unit to some share, and `/` takes only a `Decimal` rate, as `/ 1.20` takes a 20% tax off; `3` is a whole number.
-  next: Share it with `money.split(total, 3)`, which gives a list of shares adding up to the total, or `money.allocate` for unequal shares; halve an amount with `* 0.5` (agent)
-  rule: type.money_split
-  help: docs/language/19-standard-library.html#type-money-split
-
-check failed: 1 error, 1 file
-```
-
-Two amounts in currencies both types fix differently don't compile, by
-area 3's `type.arithmetic_operand` (and `type.ordering_operand` for `<`):
-
-```jadpo check project=e-currency-mismatch expect=type.arithmetic_operand
-type CakePrice = Money {
-    currency: Currency.gbp
-}
-
-type EuroPrice = Money {
-    currency: Currency.eur
-}
-
-/// A cake priced in pounds, delivered from a shop that charges in euros.
-function delivered(price: CakePrice, delivery: EuroPrice) -> CakePrice {
-    return CakePrice(price + delivery)
-}
-```
-
-```text output
-error: `CakePrice` and `EuroPrice` can't be added: they're in different currencies
- --> main.jadpo:11:22
-   |
-11 |     return CakePrice(price + delivery)
-   |                      ^^^^^^^^^^^^^^^^ GBP and EUR
-  reason: `CakePrice` is in GBP and `EuroPrice` in EUR, as their types or the calls that made them fix; amounts are added only in one currency.
-  next: Use two amounts in the same currency (agent)
-  rule: type.arithmetic_operand
-  help: docs/language/03-logic.html#type-arithmetic-operand
-
-check failed: 1 error, 1 file
-```
-
-### `type.unit_required`
-
-A bare number where a physical quantity goes: a quantity is always made
-with its unit, a suffixed literal (`90cm`), `units.of(90,
-LengthUnit.centimetre)`, `text.parse` of text that names one, or another
-quantity of its kind. A number alone could be any length, which is the
-mistake the type exists to prevent, so this is never declinable. A plain
-number still scales a quantity, by `*` and `/`.
-
-```jadpo check project=e-unit-required expect=type.unit_required
-type ShelfLength = Length {
-    max: 3metre
-}
-
-/// The shelf a kitchen gets unless the customer asks for another.
-function standard_shelf() -> ShelfLength {
-    return ShelfLength(90)
-}
-```
-
-```text output
-error: `ShelfLength` needs a unit, and `90` is a bare number
- --> main.jadpo:7:24
-  |
-7 |     return ShelfLength(90)
-  |                        ^^ no unit
-  reason: A `Length` is always made with its unit, so a number alone could be any length: a number without its unit is the mistake the type exists to prevent.
-  next: Write its unit after the number, such as `90metre`, or make it with `units.of(90, LengthUnit.metre)` in any of `LengthUnit`'s units (agent)
-  rule: type.unit_required
-  help: docs/language/19-standard-library.html#type-unit-required
-
-check failed: 1 error, 1 file
-```
-
-Two kinds that the table doesn't combine don't compile either, by area
-3's `type.arithmetic_operand`, which names the two kinds:
-
-```jadpo check project=e-quantity-kinds expect=type.arithmetic_operand
-type ShelfLength = Length {}
-
-type ShelfLoad = Mass {}
-
-/// What a shelf is rated for, with its length added by mistake.
-function rated(shelf_span: ShelfLength, load: ShelfLoad) -> ShelfLoad {
-    return ShelfLoad(load + shelf_span)
-}
-```
-
-```text output
-error: `ShelfLoad` and `ShelfLength` can't be added: a `Mass` and a `Length` are different kinds
- --> main.jadpo:7:22
-  |
-7 |     return ShelfLoad(load + shelf_span)
-  |                      ^^^^^^^^^^^^^^^^^ different kinds
-  reason: `+` works within one kind of quantity, in any of its units; a `Mass` and a `Length` are different kinds, so the sum means nothing.
-  next: Use values of one kind, or a product or quotient the table defines (agent)
-  rule: type.arithmetic_operand
-  help: docs/language/03-logic.html#type-arithmetic-operand
-
-check failed: 1 error, 1 file
-```
-
-### `type.unit_unknown`
-
-A number written with a suffix that is no unit: neither a duration's
-(`ms`, `s`, `m`, `h`, `d`) nor a quantity's ("Suffixed literals"). Units
-are written as SI writes them, and case matters, so a suffix that misses
-one only by case names each it was near: `mw` is between milliwatts and
-megawatts, and the program can't guess which.
-
-```jadpo check project=e-unit-unknown expect=type.unit_unknown
-type HeaterPower = Power {}
-
-/// The fan heater the workshop runs in winter.
-function workshop_heater() -> HeaterPower {
-    return HeaterPower(2mw)
-}
-```
-
-```text output
-error: `2mw` has no unit `mw`: did you mean `2mW` (milliwatts) or `2MW` (megawatts)?
- --> main.jadpo:5:24
-  |
-5 |     return HeaterPower(2mw)
-  |                        ^^^ unit in the wrong case
-  reason: Units are written as SI writes them, and case matters: `mW` is milliwatts and `MW` is megawatts.
-  next: Write `2mW` (milliwatts) or `2MW` (megawatts), whichever is meant (agent)
-  rule: type.unit_unknown
-  help: docs/language/19-standard-library.html#type-unit-unknown
-
-check failed: 1 error, 1 file
-```
-
-### `syntax.percent_ambiguous`
-
-A number touching `%` is a percentage, `20%`, and the remainder (area 3)
-is written with spaces, `20 % 3`, as the formatter writes every binary
-operator. With a number or a name touching the `%` on both sides, either
-could be meant, so neither is guessed.
-
-```jadpo check project=e-percent-ambiguous expect=syntax.percent_ambiguous
-type BoxCount = Int {}
-
-/// The cakes left over when twenty are packed in boxes of three.
-function twenty_in_threes() -> BoxCount {
-    return BoxCount(20%3)
-}
-```
-
-```text output
-error: `20%3` could be `20% 3` or `20 % 3`
- --> main.jadpo:5:21
-  |
-5 |     return BoxCount(20%3)
-  |                     ^^^^ a percentage or a remainder
-  reason: A number touching `%` is a percentage, `20%`, and the remainder is written with spaces, `20 % 3`, as the formatter writes every binary operator; with `3` touching the `%` too, either could be meant.
-  next: Write `20 % 3` for the remainder, or put the percentage `20%` apart from what follows it (agent)
-  rule: syntax.percent_ambiguous
-  help: docs/language/19-standard-library.html#syntax-percent-ambiguous
-
-check failed: 1 error, 1 file
-```
-
-Adding a percentage to money doesn't compile either, by area 3's
-`type.arithmetic_operand`, since it could mean the price raised by a
-fifth or a fifth of something else; the fix writes both:
-
-```jadpo check project=e-money-plus-percentage expect=type.arithmetic_operand
-type CakePrice = Money {
-    currency: Currency.gbp
-}
-
-/// A cake's price with VAT added.
-function with_vat(price: CakePrice) -> CakePrice {
-    return CakePrice(price + 20%)
-}
-```
-
-```text output
-error: `CakePrice` and a percentage can't be added: it could mean two things
- --> main.jadpo:7:22
-  |
-7 |     return CakePrice(price + 20%)
-  |                      ^^^^^^^^^^^ an amount and a percentage
-  reason: `price + 20%` could mean the amount raised by 20% of itself, or 20% of some other amount; the standard operator table refuses it rather than guess. A percentage scales money by `*`.
-  next: Write `price * 120%`, or `price + price * 20%`, whichever is meant (agent)
-  rule: type.arithmetic_operand
-  help: docs/language/03-logic.html#type-arithmetic-operand
-
-check failed: 1 error, 1 file
-```
-
-### `type.temporal_format_part_missing`
-
-A `LocalTime` is a clock time with no date or zone, and a
-`LocalDateTime` a date and a clock time with no zone, so `text.format`
-shows each only in a format of the parts it has: a format showing a
-date is refused for a `LocalTime`, and one showing a zone for either, as
-`type.temporal_format_requires_time` refuses a clock time for a date
-(area 10). Nothing is made up to fill the part.
-
-```jadpo check project=e-temporal-format-part-missing expect=type.temporal_format_part_missing
-type OpeningSign = PresentationText {}
-
-/// When the shop opens each day, as its sign shows it.
-function opening_sign(doors: LocalTime, sign_locale: Locale) -> OpeningSign {
-    return OpeningSign(text.format(doors, locale: sign_locale, format: TimeFormat.date_time_short))
-}
-```
-
-```text output
-error: `TimeFormat.date_time_short` shows a part `LocalTime` doesn't have
- --> main.jadpo:5:72
-  |
-5 |     return OpeningSign(text.format(doors, locale: sign_locale, format: TimeFormat.date_time_short))
-  |                                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^ shows a date
-  reason: `LocalTime` is a clock time, with no date or zone, so `text.format` can show only the parts it has.
-  next: Use a time format such as `TimeFormat.time_short` (agent)
-  rule: type.temporal_format_part_missing
-  help: docs/language/19-standard-library.html#type-temporal-format-part-missing
-
-check failed: 1 error, 1 file
-```
-
-### `type.variant_retired`
-
-A closed list keeps a code its authority withdraws, so
-stored data and old messages still read, but new code that writes one
-is refused: a shipment can't be sent to Yugoslavia. It is declinable,
-since code that reads old records names the code on purpose, with
-`decline type.variant_retired: "..."` and its reason above the
-declaration. A `match` arm on one is reading, and isn't refused.
-
-```jadpo check project=e-variant-retired expect=type.variant_retired
-type Consignment = Object {
-    delivered_to: Country
-}
-
-/// A consignment to a country by its old code.
-function to_belgrade() -> Consignment {
-    return Consignment {
-        delivered_to: Country.yu
-    }
-}
-```
-
-```text output
-error: `Country.yu` is a retired code
- --> main.jadpo:8:23
-  |
-8 |         delivered_to: Country.yu
-  |                       ^^^^^^^^^^ only read
-  reason: ISO 3166-1 withdrew `YU` (Yugoslavia). `Country.yu` stays so that stored data and old messages still read, but new code doesn't write it.
-  next: Use the code that replaced it, or write `decline type.variant_retired: "<why>"` above it if this is deliberate (agent)
-  rule: type.variant_retired
-  help: docs/language/19-standard-library.html#type-variant-retired
-
-check failed: 1 error, 1 file
-```
-
-### `type.reserved_variant_name`
-
-`.all` lists every variant of an enum whose variants carry no data, so
-no enum declares a variant called `all`. A closed list
-whose code is `all` writes it with a trailing `_`, as Albania's lek is
-`Currency.all_`.
-
-```jadpo check project=e-reserved-variant-name expect=type.reserved_variant_name
-type Newsletter = Enum {
-    subscribed
-    all
-}
-```
-
-```text output
-error: `all` can't be a variant of `Newsletter`
- --> main.jadpo:3:5
-  |
-3 |     all
-  |     ^^^ reserved
-  reason: `Newsletter.all` lists every variant of `Newsletter`, so no variant takes the name `all`.
-  next: Rename the variant (agent)
-  rule: type.reserved_variant_name
-  help: docs/language/19-standard-library.html#type-reserved-variant-name
-
-check failed: 1 error, 1 file
-```
-
-### `type.random_context`
-
-A `random` operation reads the generator, so only actions, tests and
-fixtures call it; a function is pure, and so is an inline function or a
-constant, as for area 10's `type.clock_context`. So do `crypto.encrypt`,
-for its nonce, and `crypto.hash_password`, for its salt.
-
-```jadpo check project=e-random-context expect=type.random_context
-type OrderReference = Text {}
-
-/// An order's reference, which a customer reads out on the phone.
-function order_reference() -> OrderReference {
-    return OrderReference(random.code(8))
-}
-```
-
-```text output
-error: A function can't call `random.code`
- --> main.jadpo:5:27
-  |
-5 |     return OrderReference(random.code(8))
-  |                           ^^^^^^^^^^^^^^ reads the generator
-  reason: A function is pure: it gives the same result for the same arguments, so a random value it needs arrives as a parameter; only actions read the generator, which a test seeds so that it repeats.
-  next: Pass the value in as a parameter, made in the action that calls this (agent)
-  rule: type.random_context
-  help: docs/language/19-standard-library.html#type-random-context
-
-check failed: 1 error, 1 file
-```
-
-### `type.password_hash_exposed`
-
-A `PasswordHash` is stored and checked, and never leaves the server: an
-`Output`, a request's `Input` and a failure's fields refuse one, however
-deep, as `json.write` and `json.read` do. A client that needs to know
-whether a password is set is sent that instead.
-
-```jadpo check project=e-password-hash-exposed expect=type.password_hash_exposed
-type StaffName = Text {
-    max_length: 100
-}
-
-/// What the staff page shows of a member of staff.
-type StaffProfile = Output {
-    name: StaffName
-    hashed_password: PasswordHash
-}
-```
-
-```text output
-error: `StaffProfile.hashed_password` holds a password's hash
- --> main.jadpo:8:22
-  |
-8 |     hashed_password: PasswordHash
-  |                      ^^^^^^^^^^^^ sent to a client
-  reason: A `PasswordHash` is stored and checked with `crypto.verify_password`, and never leaves the server. A client never needs a password's hash, and anyone who gets one can guess passwords against it offline, at their own pace.
-  next: Remove `hashed_password`, and send what the client needs instead, such as whether a password is set (agent)
-  rule: type.password_hash_exposed
-  help: docs/language/19-standard-library.html#type-password-hash-exposed
-
-check failed: 1 error, 1 file
-```
-
-### `type.secret_exposed`
-
-A secret value ("Secret values") is never sent, logged,
-stored or shown: an `Output`, a failure's fields, an event, an email, a
-message and an entity refuse one, however deep, and so does any
-operation, operator or construction but the one made to take it. It
-arrives in an `Input`. A client that needs to know whether a key is set is
-sent that instead.
-
-```jadpo check project=e-secret-exposed expect=type.secret_exposed
-type PartnerName = Text {
-    max_length: 100
-}
-
-/// What the partners page shows of a partner.
-type PartnerProfile = Output {
-    name: PartnerName
-    partner_key: ApiKey
-}
-```
-
-```text output
-error: `PartnerProfile.partner_key` holds an `ApiKey`
- --> main.jadpo:8:18
-  |
-8 |     partner_key: ApiKey
-  |                  ^^^^^^ sent to a client
-  reason: An `ApiKey` is a secret value: it is never sent, logged, stored or shown. A response is written out, logged by proxies and kept by browsers, and a client never needs a secret back.
-  next: Remove `partner_key`, and send what the client needs instead, such as whether one is set (agent)
-  rule: type.secret_exposed
-  help: docs/language/19-standard-library.html#type-secret-exposed
-
-check failed: 1 error, 1 file
-```
-
-## Review
-
-### Status
-
-Everything on this page is built except:
-
-| Not built yet | Waits on |
-|---|---|
-| Keys held as data, with encrypted fields: `crypto.verify_totp`, HS256 in `crypto.verify_jwt`, per-device signatures, storing a `TotpSecret` or a `SecretText` | Personal data (area 15), after the first build ([the roadmap](../roadmap.md)) |
-| A `type.standard_exists` or `type.standard_clash` swap of a type already stored or on the wire, and `jadpo rename` | Area 18's records; area 14 |
-| A query comparing or ordering by an amount of money, a one-step update working one out, a backfill of a new required one, and a condition on a JSON-held field | `toolchain.not_built_yet` names each |
-| The UK modulus check in `BankAccount` | Vocalink's permission to ship its tables |
-| Checking `UnLocode`, `IataAirport`, `IcaoAirport`, `IataAirline` and `Icd10Code` against their lists | Licences that allow shipping the lists |
-| Area 9's scopes narrowing `OAuthScope` | Area 9 |
-| Legacy encodings in the file readers | An application that needs one |
-| `jadpo replay`, and a calendar file's writer | Area 17; an application that needs one |
-| What area 15 does with each standard type's personal data category | Area 15 |
-| The rest of geospatial and AI | [Area 20](20-geospatial.md)'s and [area 21](21-ai.md)'s "Status" |
-
-### Consistency with the rest of the language
-
-- **Area 1:** `list`, `set`, `map`, `range`, `text`, `markup`, `money`,
-  `units`, `hash`, `encoding`, `crypto`, `random`, `json`, `csv`, `tsv`,
-  `json_lines`, `colour`, `media`, `web`, `semver`, `geo`, `ai` and
-  `locale` are reserved namespaces; fields and named arguments keep every
-  word (`note.text`, `set:`). It is `units` rather than `quantity`, since
-  areas 1 and 4 name variables `quantity`.
-- **Area 2:** the standard types, `EncryptionKey` and `PasswordCheck` are
-  built-in names; `for` and maps as "Language gaps" says.
-- **Area 3:** inline functions may take two parameters for standard
-  operations; `any`, `all`, `find`, `min_by`, `max_by`, `sort_by` and
-  `group_by` take inline functions. Text order is `sort_by` with a text
-  key. No user-defined operators stands beside area 3's generics rule,
-  and the `%` literal beside its remainder operator.
-- **Area 4:** decoding failures are conditions mapped by name, as area
-  10's `dst:` is, and overflow stays a defect.
-- **Areas 5 and 6:** `Money`'s two columns; aggregate queries (area 6);
-  one-step updates as area 6 has them.
-- **Area 10:** a secret stays unreadable, with the `key:` of `crypto`
-  among the compiler's places; `random` is generated like `clock`;
-  `{price, number, currency}` is among the placeholder styles; the time
-  types' format is `text.format`.
-- **Area 15:** encrypted fields with one application key; per-person keys
-  stay out; data sent to a model is listed in its report.
-- **Packages:** money, countries, languages and phone numbers are built
-  in, not packages; the file formats' operations live here, and area 12
-  points to them.
-- **Compiler design** (`docs/compiler-runtime.md`, the standard library):
-  the operation table has `never_empty`, `never_negative`,
-  `at_most_length_of`, literal-only `scale:` and `fill:`, conditions no
-  option settles (`malformed`, `mismatch`, `unreadable`,
-  `currency_mismatch`, `too_many_places`), a `sort_by` key limited to
-  ordered kinds, actions-only operations, and a SQL form per operation.
-
-### Decisions
-
-| Topic | Decision |
-|---|---|
-| Shared vocabulary types | The standard library defines a type wherever two packages would otherwise each invent their own, even when the heavy operations live in a package or another area; each has one construction that validates, one wire shape and one storage shape; positional pairs are designed out by named fields, and an axis order exists only in a conversion that names it (`geo.from_lng_lat`) |
-| Standard types are global, in one flat set | Every standard type is a global name, with no split between core types and types inside namespaces; functions stay in namespaces. Apps name their own types for purpose and shape (`DeliveryStop { address: PostalAddress }`, `BillingContact`), never re-declaring a standard one |
-| The standard types | 247 adopted types in 18 groups (table under "The standard types"), and the parts and kinds they name; units folded into their quantity type, roles into the general type, duplicates merged, formats and application entities out; country-specific identifiers are global types; gender and sex at birth stay out; a quantity is stored in its SI base unit, with the unit chosen at construction and display |
-| A standard type's parts are standard types | Each part or kind a standard type names (`IdentityDocumentKind`, `InterestRateBasis`, `ContentRatingScheme`, `RichTextBlock`, `RichTextSpan`, `RichTextMark`, `ClothingSizeSystem`, `ShoeSizeSystem`, `RouteOfAdministration`, `ChatRole`) is a standard type too, so it is read, sent and stored by its code |
-| Every standard type meets one contract | Every standard type has a library with the same baseline: construction and validation from its parts and from text with failures named by rule; formatting for people as `PresentationText`, through the locale where it matters; a canonical text form where one exists; one JSON shape and one storage shape; `==`, and order where the type is ordered; conversions at named edges. Some groups add extras |
-| The contract, generated | Each standard type is a stub declaration in `crates/jadpo-check/std/` plus a data entry (canonical text grammar, JSON shape, storage columns, CLDR format key and options, order, conversions) and at most one named validator where data can't say it (IBAN's mod-97, Luhn, ISBN and NHS check digits, E.164's metadata); one implementation of each baseline operation reads the data in the operation table, the interpreter and the runtime, and one harness tests every type: valid and invalid examples per rule, and the round trip through text, JSON and storage. Calls are `text.parse(raw, as: T)`, `text.format(value, locale:)` and `text.from(value)` over every type; the time types' format is `text.format`, with a habit error whose edit writes it; `format_relative` stays in `temporal` |
-| Precise names | A standard type's name is (a) the defining standard's term, qualified until unambiguous, else (b) the noun qualified by what it holds, and (c) never a bare word an app plausibly uses for something else, except a generic container; `Point` and `Length` are the exceptions; built-in names older than the rule keep their names |
-| `type.standard_exists` | A type whose shape is a standard type's is the declinable error `type.standard_exists`, in packages' public types and app code alike; it stops `check` and the build until the type is swapped (in one step when not stored or on the wire, otherwise with its data migration through `ApiChange` and `DataChange` acceptances) or declined with area 1's `decline type.standard_exists: "<reason>"` line, which an agent or a person may write and `jadpo approval` lists |
-| Distinctive shapes only | The shape check matches only distinctive shapes: at least two fields, at least one domain field name (not `name`, `value`, `id`, `code`, `type`, `text`), field types lining up, no extra fields; single values never match by shape |
-| A release adding a standard type | Never a silent break: `check` reports each clash with the new type and its release (`type.standard_clash`), fixed by swapping or renaming; `jadpo fix` applies the chosen fix through the editor's code; release notes list added names |
-| Changing a standard type's encoding | A Jadpo release changes how a standard type is sent, stored or written as text only together with a reader for the old form and a release note; a golden file per type, built from its examples, pins every form so a change can't pass unnoticed |
-| Every boundary through the contract | No standard type loses its currency, unit or precision on the way into or out of a program: every boundary encodes a standard type only through its contract's JSON, storage and text shapes, as the table under "Every boundary through the contract" lists; every object and choice is stored in named columns; fault text never carries a value; one reader per text form, and map keys as canonical text; JSON-held values stored as their contract's JSON; one JSON encoder and one OpenAPI schema per type, read from its entry; every SQL literal the value the storage codec binds, a parameter wherever the statement takes one |
-| One namespace per type | `list.`, `set.` and `map.`, with a habit error for `collection.` |
-| Reserved namespaces | Every standard namespace is reserved; fields and named arguments keep every word |
-| List operations | No push or pop; `last`, `at`, `min_by`, `max_by`, `append`, `flatten` and `group_by` |
-| Cutting from either end | `keep_first`, `keep_last`, `drop_first`, `drop_last` on text and lists, `n` never negative and proved so; `slice` for the middle; no negative positions |
-| Sets and maps | The seven `set` and ten `map` operations, returning new values; `for` walks a set in area 2's canonical order; maps walked through `map.keys`; `[]` is an empty map where one is expected; no dynamic keys on records |
-| `at_most_length_of` | Recorded for `trim`, `slice`, `keep_*` and `drop_*` only |
-| Code points | Text is counted and cut in Unicode code points; graphemes left out |
-| Slugs and text order | `text.slug` is ASCII-only; text sorts in code points unless `locale:` says otherwise |
-| `Rounding.down` | `Rounding` has `down`, toward zero, with SQL form `trunc`; `floor`, `ceiling` and `half_down` stay out |
-| Maths on `Decimal` | The eight operations, correctly rounded to a named scale, the same on every target; no `Float` |
-| `Money` and the operator table | Minor units with the ISO 4217 exponent, stored as a `bigint` and a currency column; `money.from_minor` and `money.of` (failing `too_many_places`); arithmetic through the standard operator table, functions only for `allocate`, `split` and `convert`; a currency mismatch a compile error where both types fix it, else `currency_mismatch` under `attempt`, needing no arm inside an `if` comparing currencies; a `rounding:` setting, `half_even` by default; `/` by an `Int` refused as `type.money_split`; wire `{"amount": 1050, "currency": "GBP"}`; `text.format` in code and `{price, number, currency}` and `{n, number, percent}` in messages; `20%` a `Percentage`, remainder keeping its spaced `%`, `20%3` an error; no user-defined operators |
-| Quantities | Always made with a unit; inside a program no unit; a bare number where a quantity is expected is `type.unit_required`, never declinable; the product and quotient table, `==` across units, any other mix an error; wire `{ "value": "2.5", "unit": "kg" }`; case-sensitive suffixed literals as tabled under "Suffixed literals", `m` staying minutes and metres written `5metre`, the longest suffix winning, a near-miss by case an error; a `Mass` held to the microgram |
-| `Colour` | `red`, `green`, `blue`, `alpha`, each 0 to 255, in sRGB, written `#rrggbb` or `#rrggbbaa`; extras `colour.from_hsl`, `from_oklch`, `mix`, `with_lightness` and `contrast` (WCAG 2), all giving sRGB; CMYK a package |
-| JSON in memory | `json.read(text, as:)` and `json.write(value)`, one name per direction beside the batch forms; `mismatch` carries the first problem's path and rule; no dynamic JSON value; CSV file-only |
-| Data formats | The `csv`, `tsv`, `json_lines` and `json` file operations work through batches (area 12) and are tabled on this page, one shape per namespace with the in-memory `json` forms |
-| Validating mid-program | Construction is the way, nothing new for values or records; rules across an object's fields are area 2's |
-| Closed value sets are enums | A closed, authority-published, rarely changing list is a built-in enum (those marked "(enum)", `CountrySubdivision` included); large or fast-changing lists stay text with a `pattern:`; variants are the code in lower case with `_` (`Country.gb`), a reserved word or `all` taking a trailing `_`; text becomes an enum at a boundary and by `text.parse` mid-program, ignoring case; other code systems through `form: CodeForm.alpha3`; `text.format` gives the CLDR name and `.all` lists every variant of an enum without data; no matching of names; retired codes stay readable, and writing one is the declinable error `type.variant_retired` |
-| `HttpMethod`'s variants | The five a route is written with (`get`, `post`, `put`, `patch`, `delete`), its codes RFC 9110's tokens |
-| A digest is `Bytes` | `hash.sha256` gives `Bytes`, written as text by `encoding` |
-| `crypto` | Ten operations with no algorithm choices: XChaCha20-Poly1305 with a required `context:`, Argon2id with `PasswordCheck.correct_outdated`, HMAC-SHA-256 checked in constant time, Ed25519, JWT and TOTP checks; keys are opaque settings written `key: config.<name>`, a compiler-owned place; `crypto.public_key` gives a `PrivateKey` setting's public half |
-| A `PasswordHash` never leaves the server | It is stored as its PHC string, but refused in an `Output`, a request's `Input`, a failure's fields and `json.write` and `json.read`, as `type.password_hash_exposed` or `type.mismatch` |
-| JWTs | `crypto.verify_jwt` verifies EdDSA, RS256 and ES256, verification only, each key's own algorithm; `as:` decodes the claims into an application's `Object`, a field named for a registered claim filled with the value checked; a `Jwt` is a secret value |
-| Encrypted fields | An `encrypted: true` field setting, specified in area 15, with one application key, kept out of indexes, unique rules, filters, ordering, search and logs; per-person keys stay out |
-| Randomness | A generated `random` namespace, actions only, seeded per test, recorded for replay, with `random.token` and `random.code` |
-| No gates or bits | No logic gates beyond `and`, `or`, `not` (`!=` is exclusive or); no bitwise operations |
-| SQL forms | Used by computed backfills and by aggregate queries, each tested against the runtime |
-| Geospatial and AI | Each its own area, [20](20-geospatial.md) and [21](21-ai.md); this page holds their types |
-| A chat message is sensitive personal data | `ChatMessage` is personal data whatever field holds it, in area 15's sensitive `health` category, the most protective that fits free text |
-| `TokenUsage` keeps no total | Its `input`, `output` and optional `cached`; the total is `input + output`, worked out where needed, and a `total` member is refused |
-| Generated scopes narrow `OAuthScope` | Area 9's enum of an application's declared scopes narrows the standard `OAuthScope` to them, a closed subset, rather than reusing the name |
+- [`type.standard_clash`](../errors/type.standard_clash.md)
+- [`type.standard_exists`](../errors/type.standard_exists.md)
+- [`semantic.standard_operation_moved`](../errors/semantic.standard_operation_moved.md)
+- [`type.argument_negative`](../errors/type.argument_negative.md)
+- [`type.argument_empty`](../errors/type.argument_empty.md)
+- [`type.money_split`](../errors/type.money_split.md)
+- [`type.unit_required`](../errors/type.unit_required.md)
+- [`type.unit_unknown`](../errors/type.unit_unknown.md)
+- [`syntax.percent_ambiguous`](../errors/syntax.percent_ambiguous.md)
+- [`type.temporal_format_part_missing`](../errors/type.temporal_format_part_missing.md)
+- [`type.variant_retired`](../errors/type.variant_retired.md)
+- [`type.reserved_variant_name`](../errors/type.reserved_variant_name.md)
+- [`type.random_context`](../errors/type.random_context.md)
+- [`type.password_hash_exposed`](../errors/type.password_hash_exposed.md)
+- [`type.secret_exposed`](../errors/type.secret_exposed.md)

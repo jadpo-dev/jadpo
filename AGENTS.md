@@ -13,7 +13,9 @@ compiled native and WebAssembly deployables.
   in git history.
 - What the language means: [docs/language](docs/language/README.md), twenty-one
   decided areas. Where anything else disagrees, the area page wins. Language
-  decisions are recorded on the area page.
+  decisions are recorded in the area's design notes
+  (`docs/language/notes/`), the rules they settle on the area page; each
+  error's examples are in `docs/errors/<rule.id>.md`.
 - How it is built: [docs/compiler-runtime.md](docs/compiler-runtime.md).
 - Process rules: the working rules above.
 - The first compiler (v0): git tag `archive/compiler-v0`. Never copy its

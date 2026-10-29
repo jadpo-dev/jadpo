@@ -7,6 +7,7 @@ rules: []
 ---
 
 # Debugging and review
+<!-- topic: debugging-and-review -->
 
 Jadpo code is written mainly by models and read by people. Two jobs follow
 from that. When something goes wrong, a person or an agent must get from the
@@ -16,7 +17,7 @@ what it does to the application (who can now do what to which data) before
 reading it line by line. This page covers both: where errors point, how to
 see what a request did and why, and how a change is reviewed.
 
-> Mostly not built yet; the Status section says what is. Commands, `--json` and the build folder are area 14's; logging is area 4's; tracing is area 16's.
+> Mostly not built yet; [What is built](#what-is-built) says what is. Commands, `--json` and the build folder are area 14's; logging is area 4's; tracing is area 16's.
 
 **One rule behind all of it.** The command line, the developer console and
 the agent's MCP server are three views of one set of evidence, produced by
@@ -45,6 +46,7 @@ refused, it is because the compiler and the runtime recorded it.
 | Query cost of a change | Queries added or removed per path, in the approval report |
 
 ## Errors point at the `.jadpo` line
+<!-- topic: errors-point-at-the-jadpo-line -->
 
 Every stack, log event and error response that names a place names a
 `.jadpo` file and line, never the generated code. This is always on, not
@@ -73,6 +75,7 @@ WebAssembly hosts differ in how much debug information they keep. Mapping in
 the runtime works the same under any host.
 
 ## Production incidents after the code has changed
+<!-- topic: production-incidents-after-the-code-has-changed -->
 
 A production event names its build and its `.jadpo` frames. `jadpo incident`
 takes that event and answers two things:
@@ -95,6 +98,7 @@ int_overflow in action price_line
 ```
 
 ## Breakpoints and stepping
+<!-- topic: breakpoints-and-stepping -->
 
 Stepping through `.jadpo` code in an editor needs the debugger to map the
 generated Rust or WebAssembly back to `.jadpo` lines, which Rust's and
@@ -105,6 +109,7 @@ the same questions in a form both people and agents can read. Stepping is
 revisited on the Rust and WebAssembly targets.
 
 ## `jadpo why`: why the language decided something
+<!-- topic: jadpo-why-why-the-language-decided-something -->
 
 Much of what surprises people in Jadpo is a decision the language made for
 them: policy hid a record, a lifecycle filtered it, a subscriber did not
@@ -144,6 +149,7 @@ an exported log event, as `jadpo incident` does, and so can only explain what
 the logs recorded.
 
 ## The request timeline in `jadpo dev`
+<!-- topic: the-request-timeline-in-jadpo-dev -->
 
 `jadpo dev` records every request it serves and prints one line for each,
 with its request id. `jadpo trace <request id>` shows the
@@ -184,9 +190,10 @@ POST /todos/0192…/complete   409 todo_mutation_conflict   41 ms   as user 0192
   replayed, in doubt (area 12). Until the timelines are built, each step
   a request's action reached is a trace line under its request's line in
   `jadpo dev`, and a delivery whose action reached steps gets a line of
-  its own (area 12's decisions).
+  its own ([area 12's notes](notes/12-jobs-and-events.md)).
 
 ## Watching code run: `jadpo watch`
+<!-- topic: watching-code-run-jadpo-watch -->
 
 An agent can wait for a particular part of the code to run, then see its
 inputs and outputs, without reading whole logs.
@@ -216,6 +223,7 @@ jadpo watch file domains/shipping/actions/book_collection.jadpo
   never shown. Production keeps area 16's spans with no values.
 
 ## Provider calls in development: `jadpo calls`
+<!-- topic: provider-calls-in-development-jadpo-calls -->
 
 In `jadpo dev` every provider operation is
 faked by default, answered from the package's recordings where there are
@@ -302,10 +310,11 @@ next call to stripe.payment_intents.create answers card_declined
 > The request id in the list is cut as `jadpo dev`'s request lines cut
 > it, and `--request` takes any start of it. With no calls yet the list
 > says `No calls yet` and points at `jadpo dev`; with filters that match
-> none, `No calls match` and the filters. The choices are in area 11's
-> decisions on the development call log.
+> none, `No calls match` and the filters. The choices are in [area 11's
+> notes](notes/11-integrations.md) on the development call log.
 
 ## Traces, metrics and logs in development
+<!-- topic: traces-metrics-and-logs-in-development -->
 
 In development the app's telemetry (area 16)
 stays on the machine unless `jadpo dev --export-telemetry` sends it on,
@@ -325,6 +334,7 @@ design skills before they are built, as `jadpo watch`'s and `jadpo
 calls`' are.
 
 ## Capturing a failing request as a test
+<!-- topic: capturing-a-failing-request-as-a-test -->
 
 The quickest reliable fix is: reproduce, then fix. `jadpo test new --from
 <request id>` writes a route test that replays a request recorded by
@@ -364,6 +374,7 @@ test "completing a todo twice answers a conflict" {
   fill in.
 
 ## Running a query or action: `jadpo call`
+<!-- topic: running-a-query-or-action-jadpo-call -->
 
 Rails has `rails console`; Jadpo has a one-shot command instead.
 `jadpo call` runs one query or action against the local database as a
@@ -389,6 +400,7 @@ rolled back
   work on it.
 
 ## The developer console and MCP
+<!-- topic: the-developer-console-and-mcp -->
 
 The same evidence, as a web page and as tools for an agent. Both are
 product work, after the evidence they read exists, and the command line
@@ -421,6 +433,7 @@ monitoring, including any hosted service, is later product work and
 stays with OpenTelemetry tools; the local console comes first.
 
 ## Reviewing a change
+<!-- topic: reviewing-a-change -->
 
 A reviewer should meet a model's change in the order it matters.
 `jadpo approval --before <ref>` writes the report in that
@@ -470,6 +483,7 @@ records no approvals. Acceptances stay files reviewed on the git host
 (area 7).
 
 ## What the graph and production evidence add
+<!-- topic: what-the-graph-and-production-evidence-add -->
 
 Each of these joins the compiler's graph to path IDs (area 16).
 Production data is always an optional input: a
@@ -498,6 +512,7 @@ command works without it.
   `POST /orders`", the hottest path when production counts are given.
 
 ## Everything as JSON
+<!-- topic: everything-as-json -->
 
 Every command on this page takes `--json` (area 14), and each kind of
 evidence has one versioned schema: the fault event, the request timeline,
@@ -518,90 +533,13 @@ people and agents and never read back as data, so it is not one of area
 standard type loses its currency, unit or precision (area 19, "Every
 boundary through the contract").
 
-## Review
+## What is built
+<!-- topic: debugging-and-review-built -->
 
-### Status
-
-Built: `jadpo calls`, `calls show` and `calls script` (above); each step a
-request's action reached as a trace line in `jadpo dev`; and
-`jadpo why <schedule>`, which answers why a schedule didn't run (area 12,
-"Watching schedules"). The rest is not built yet: mapped `.jadpo` stacks,
-`jadpo incident`, the other forms of `why`, timelines, `test new --from`,
-`call` and the approval report come first, then the developer console,
-MCP and the review web view as product work. Build order: mapped stacks,
-the timeline and `trace`, `why`, `test new --from`, `call`, the review
-report's order, MCP, the console, then the review web view. See [the
-roadmap](../roadmap.md).
-
-### Consistency with the rest of the language
-
-- **Values never, places always.** Stacks, timelines and `why` answers follow
-  area 4's log rule and area 16's span rule. The exceptions are all local
-  to `jadpo dev`: the timeline kept for `test new --from`, which holds the
-  full request, and the development call log and `jadpo watch`, which show
-  values in full. All live in `build/dev/` on the developer's machine,
-  never logged, committed or exported, and never show secrets.
-- **`jadpo call` and `jadpo calls`.** One runs a query or action; the other
-  lists provider calls. The names are close; `jadpo help` gives both.
-- **Concealment.** `jadpo why` says a record was concealed by policy, which
-  the client must never learn (area 4). It reads local evidence or logs the
-  operator already has, so this reveals nothing to a client.
-- **A caller from outside a route.** `jadpo call --as` makes a principal
-  outside a route, which area 8 keeps out of application code. Like tests
-  and seeds, it is a tool, not code, and goes through the generated
-  principal.
-- **Read-only screens.** Area 16 leaves background job dashboards to area
-  14's commands. The console shows deliveries but acts only through those
-  commands, so there is one way to change them.
-- **Sign-off.** Acceptances are files owned in CODEOWNERS (area 7) and
-  there are no Jadpo accounts (area 14), so the review view only reads.
-- **A new folder in `build/`.** `build/dev/` and `build/review/` join area
-  14's list; `build/` stays generated and uncommitted.
-
-### Carried to later areas
-
-| Item | Area |
+| Feature | Status |
 |---|---|
-| Compiler writes a source map; runtime logs `.jadpo` frames | 4 |
-| Stable identity for actions, queries and routes, beside the schema identity registry | 5 |
-| Commit recorded in the build stamp; `jadpo why`, `trace`, `call`, `test new --from`, `mcp`; `build/dev/` and `build/review/` | 14 |
-| The approval report's order and format | 14 |
-| Captured tests: fixtures, `fakes:`, personal fields replaced | 13 |
-| The developer console and MCP server; application graph and overlays; production monitoring | Product work |
-| The review web view; interdiff between agent revisions | Product work |
-| Breakpoints in `.jadpo` on the Rust and WebAssembly targets | Roadmap |
-| Path IDs and per-path query counts | 16 |
-| Path coverage in `jadpo test`; production counts as a test input | 13 |
-| What a replay recording may hold | 15 |
-| `jadpo watch`, `calls`, `traces`, `metrics` and `logs`, and `jadpo dev --export-telemetry`, `--fake`, `--sandbox` and `grants add`, in the command reference | 14 |
-| Unfinished multi-step runs and `diverged` deliveries as operator items, in `jadpo deliveries` | 12, 14 |
-| Unverified publishers and service approvals in the approval report | 11, 18 |
-
-### Decisions
-
-| Topic | Decision |
-|---|---|
-| Logging | Carried from area 4: one structured event per failure or fault; internal values by area 4's rule; no stack for domain failures |
-| Request id | Carried from area 4: every error response and every failure log carries `request_id` |
-| Acceptances | Carried from area 7: breaking changes, drops, policy weakening and new domains need a person-written file in `acceptances/`, owned in CODEOWNERS |
-| Reading the caller | Carried from area 8: `current_principal` in routes only |
-| Permissions report | Carried from area 9: `build/report/permissions.md` and `.json`, shown in the approval review |
-| `.jadpo` locations | Always `.jadpo` file and line on every target; the runtime maps its own frames; internal frames as `runtime: <component>` |
-| Production incidents | Events carry build and commit; `jadpo incident` shows the line then and now, or changed, removed or split |
-| Breakpoints | Not now; revisit on the Rust and WebAssembly targets |
-| `jadpo why` | One command explaining policy, lifecycle, concealment, cache use and subscriber runs, ending at the responsible `.jadpo` line |
-| Request timeline | Last 500 requests in `jadpo dev`; `jadpo trace <id>`; provider calls with full inputs and answers in development only |
-| Tests from requests | `jadpo test new --from <request id>` writes a replay test |
-| `jadpo call` | One-shot `jadpo call <name> --as <user>`, JSON in and out, local writes with `--rollback`, production refused, policy always applies |
-| Developer console and MCP | Local, read-only console in `jadpo dev`; CLI first for agents; MCP later for agents without a shell, generated from the command reference, read-only, OAuth-protected |
-| Review report and view | `jadpo approval` ordered decisions first; Markdown and JSON; the graph web view later; acceptances stay files |
-| Contract and order | The evidence and commands are decided; console, MCP, review view and breakpoints are product work; build order as listed under Status |
-| Coverage by path | Paths run by tests, untested production paths by traffic, paths unseen for 90 days |
-| Production in review | Optional production counts in the approval report |
-| Production replay | Opt-in per deployment, failing requests only, personal fields replaced, recordings expire |
-| Query cost of a change | Queries per path computed by the compiler in the approval report |
-| Unaccepted translations | With `TranslationReview.required`, changed wording not yet accepted appears in the approval report (area 10) |
-| Watching code run | `jadpo watch` on a named route, action, query, subscriber, schedule, provider operation, domain or file, optionally failures or faults only; prints inputs, outputs, what ran inside and the request id; `--once`, `--count`, `--timeout`, `--json`; development only, values in full, secrets never |
-| Development call log | Provider calls faked by default, let through to the sandbox by name; every call logged with full inputs and answers in development only, its source, attempts, duration and request; `jadpo calls`, `calls show`, `calls script`, `--json` |
-| Telemetry in development | Nothing exported unless `--export-telemetry`; `jadpo traces`, `metrics` and `logs`, filterable by route, action, domain, path, failure and slowness, `--follow`, `--json` |
-| Packages in the approval report | Unverified third-party packages from git, new or changed service images, outbound grants for services, connections that cannot erase and fail-open bot checks need a person's acceptance |
+| `jadpo calls`, `calls show` and `calls script` | Built. |
+| Each step a request's action reached, as a trace line in `jadpo dev` | Built. |
+| `jadpo why <schedule>` | Built: it answers why a schedule didn't run (area 12, "Watching schedules"). |
+| Mapped `.jadpo` stacks, `jadpo incident`, the other forms of `why`, timelines, `test new --from`, `call` and the approval report | Not built yet: these come first ([the roadmap](../roadmap.md)). |
+| The developer console, MCP and the review web view | Not built yet: they come after those, as product work. |
