@@ -77,6 +77,7 @@ mod package_translation_versions;
 mod package_translations;
 mod packages;
 mod passkeys;
+mod paths;
 mod people_places;
 mod percentages;
 mod policy;

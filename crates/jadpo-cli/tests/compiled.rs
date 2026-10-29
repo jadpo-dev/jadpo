@@ -496,6 +496,88 @@ test "a price list's export starts" {
     ),
 ];
 
+/// Each kind of choice the path numbers count (chunk 9.3): an `if` chain,
+/// a `match` on a value and on a call's outcome, an `and` whose right side
+/// chooses, a loop's turns left through a `return`, an inline function's
+/// runs, and a body with more ways than a number holds, cut into segments;
+/// each run both ways with the same paths.
+const PATHS: &str = r#"type Count = Int {}
+
+type Shade = Enum {
+    red
+    green
+    blue
+}
+
+type Refused = Failure {
+    kind: FailureKind.rejected
+}
+
+/// Refuses a large count.
+function checked(count: Count) fails Refused -> Count {
+    if (count > 50) {
+        reject Refused
+    }
+    return count
+}
+
+/// Each kind of choice.
+function chosen(count: Count, shade: Shade) -> Count {
+    var mut out: Count = 0
+    if (count > 10) {
+        out = 1
+    } else if (count > 5 and match shade {
+        Shade.red -> true
+        Shade.green -> count > 7
+        Shade.blue -> false
+    }) {
+        out = 2
+    }
+    for step in [1, 2, 3, count] {
+        if (step > 20) {
+            return Count(out + step)
+        }
+        out = Count(out + step)
+    }
+    var safe: Count = match checked(count) {
+        success(value) -> value
+        Refused -> 0
+    }
+    return Count(list.sum(list.map([out, safe], each -> match each > 4 {
+        true -> each
+        false -> Count(0)
+    })))
+}
+"#;
+
+/// The project's own file: [`PATHS`], and a body with more ways than a
+/// number holds, seventy conditions one after another.
+fn paths_main() -> String {
+    let checks: String = (0..70)
+        .map(|n| format!("    if (count == {n}) {{\n        out = Count(out + {n})\n    }}\n"))
+        .collect();
+    format!(
+        "{PATHS}\n/// More ways than a number holds.\nfunction many(count: Count) -> Count {{\n    var mut out: Count = 0\n{checks}    return out\n}}\n"
+    )
+}
+
+/// Its tests: each way through `chosen`, and the body cut into segments.
+const PATHS_TEST: &str = r#"test "every way through each choice" {
+    assert chosen(12, Shade.red) == 31
+    assert chosen(6, Shade.red) == 20
+    assert chosen(6, Shade.green) == 18
+    assert chosen(8, Shade.green) == 24
+    assert chosen(3, Shade.red) == 9
+    assert chosen(30, Shade.blue) == 37
+    assert chosen(60, Shade.blue) == 67
+}
+
+test "a body cut into segments" {
+    assert many(3) == 3
+    assert many(69) == 69
+}
+"#;
+
 /// The projects chunk 8.4a compares: a package's action caught, and a
 /// recursion to the limits.
 fn parity_projects() -> Vec<(String, PathBuf)> {
@@ -517,6 +599,24 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
             corpus_project(&recursion, "compiled-recursion").expect("it checks"),
         ),
     ]
+}
+
+/// The fuzzed bodies the run asks for (chunk 9.3): `JADPO_FUZZ_BODIES` from
+/// `JADPO_FUZZ_SEED`, `tools/verify.py --fuzz`'s, or the gate's bounded
+/// run; each project written into a folder of its own, and each one
+/// checking, since a body the generator made that doesn't check is the
+/// generator's mistake.
+fn fuzzed_projects() -> Vec<(String, PathBuf)> {
+    let (seed, bodies) = jadpo_test::fuzz::asked();
+    jadpo_test::fuzz::made(seed, bodies)
+        .into_iter()
+        .enumerate()
+        .map(|(n, (name, files))| {
+            let folder = corpus_project(&files, &format!("compiled-fuzzed-{n}"))
+                .unwrap_or_else(|| panic!("{name} checks"));
+            (name, folder)
+        })
+        .collect()
 }
 
 /// The export project, written into a folder of its own.
@@ -559,6 +659,16 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
     let export = export_project();
     projects.push(("an export run to its end".into(), export.clone()));
     projects.extend(parity_projects());
+    let paths = [
+        ("main.jadpo".to_string(), paths_main()),
+        ("main.test.jadpo".to_string(), PATHS_TEST.to_string()),
+    ];
+    projects.push((
+        "each kind of choice's paths".into(),
+        corpus_project(&paths, "compiled-paths").expect("it checks"),
+    ));
+    let fuzzed = fuzzed_projects();
+    projects.extend(fuzzed.iter().cloned());
     let (done, skipped) = compared(&projects, "corpus");
     // Sessions, tokens and keys, a test's passkeys, callers made from
     // their records, a test's clock, a batch started, read and run to its
@@ -626,6 +736,15 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
     assert_eq!(counted("an export run to its end"), Some((1, 1)));
     assert_eq!(counted("a package's action caught"), Some((2, 2)));
     assert_eq!(counted("a recursion to the limits"), Some((4, 2)));
+    assert_eq!(counted("each kind of choice's paths"), Some((2, 2)));
+    // Every fuzzed body's tests compared (chunk 9.3).
+    for (name, _) in &fuzzed {
+        assert!(
+            counted(name).is_some_and(|(tests, _)| tests > 0),
+            "{name}: {:?}",
+            counted(name)
+        );
+    }
     // Every route's typed entry read requests and wrote values as the
     // codec walk does (chunk 8.1p): the first route's among them.
     let todos = done

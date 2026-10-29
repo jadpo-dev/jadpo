@@ -86,6 +86,12 @@ pub enum Entry {
     },
     /// How the invocation ended ([`outcome`]).
     Outcome(String),
+    /// The paths one body's region took ([`paths`]): where it is, and
+    /// each path number with how many times it was taken.
+    Paths {
+        place: String,
+        taken: Vec<(u64, u64)>,
+    },
 }
 
 /// How a statement or a transaction's end went.
@@ -291,6 +297,13 @@ impl Entry {
                 one_line(answer)
             ),
             Entry::Outcome(outcome) => format!("outcome {outcome}"),
+            Entry::Paths { place, taken } => {
+                let taken: Vec<String> = taken
+                    .iter()
+                    .map(|(path, times)| format!("{path}×{times}"))
+                    .collect();
+                format!("path {place} | {}", taken.join(", "))
+            }
         }
     }
 }
@@ -403,6 +416,52 @@ pub fn outcome(outcome: &Outcome, places: &Places) -> String {
             )
         }
     }
+}
+
+/// The paths a run's bodies took ([`crate::paths`]; chunk 9.3), one entry
+/// per body region and segment, in callable, region and segment order:
+/// each placed as `main.jadpo:3  function grade body` (a body from its
+/// declaration), `main.jadpo:7  function grade turn` (a `for`'s or an
+/// inline function's turns, from its line) or with `after line 40` for a
+/// segment begun after that line's statement.
+pub fn paths(taken: &[crate::paths::Taken], places: &Places) -> Vec<Entry> {
+    let mut out: Vec<Entry> = Vec::new();
+    let mut last: Option<(u32, u32, u32)> = None;
+    for taken in taken {
+        let key = (taken.callable, taken.region, taken.segment);
+        if last != Some(key) {
+            last = Some(key);
+            let site = |site: u32| match site {
+                0 => Frame::ENTRY,
+                site => site - 1,
+            };
+            let at = site(taken.region);
+            let mut place = self::site(
+                Some(Frame {
+                    callable: taken.callable,
+                    site: at,
+                }),
+                places,
+            );
+            place.push_str(if taken.region == 0 { " body" } else { " turn" });
+            if taken.segment > 0
+                && let Some(after) = places.place(Frame {
+                    callable: taken.callable,
+                    site: site(taken.segment),
+                })
+            {
+                place.push_str(&format!(" after line {}", after.line));
+            }
+            out.push(Entry::Paths {
+                place,
+                taken: Vec::new(),
+            });
+        }
+        if let Some(Entry::Paths { taken: paths, .. }) = out.last_mut() {
+            paths.push((taken.path, taken.times));
+        }
+    }
+    out
 }
 
 /// A failure's code, the site it was raised at, its client and internal

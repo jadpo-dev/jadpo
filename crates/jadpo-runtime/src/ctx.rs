@@ -271,6 +271,9 @@ pub struct Ctx<'p> {
     /// 21, "Budgets"; chunk 5.5v5), with the action that request is: each
     /// action a test calls is a request of its own.
     ai_spent: (u32, u64),
+    /// The paths its bodies took, while a test's record keeps them
+    /// ([`Ctx::track_paths`]; chunk 9.3).
+    paths: Option<Box<crate::paths::PathLog>>,
 }
 
 /// What a provider call's idempotency key is derived from besides the
@@ -342,6 +345,7 @@ impl<'p> Ctx<'p> {
             shown: Vec::new(),
             streams: Vec::new(),
             ai_spent: (0, 0),
+            paths: None,
         }
     }
 
@@ -959,12 +963,73 @@ impl<'p> Ctx<'p> {
             callable,
             site: Frame::ENTRY,
         });
+        if let Some(paths) = &mut self.paths {
+            paths.enter(callable);
+        }
         Ok(())
     }
 
     /// Leaves the current callable.
     pub fn leave(&mut self) {
         self.frames.pop();
+        if let Some(paths) = &mut self.paths {
+            paths.leave();
+        }
+    }
+
+    // --- paths ------------------------------------------------------------
+
+    /// From here on, the path each body entered takes is kept, for a
+    /// test's record (docs/compiler-runtime.md §2.5, "Differential test";
+    /// chunk 9.3).
+    pub fn track_paths(&mut self) {
+        self.paths = Some(Box::default());
+    }
+
+    /// Whether the paths its bodies take are kept.
+    pub fn tracks_paths(&self) -> bool {
+        self.paths.is_some()
+    }
+
+    /// The current frame took a branch, left through a `return` or worked
+    /// out an `and`'s right side, which adds `increment` to region
+    /// `region`'s path number (`jadpo_graph::paths::Edge`).
+    pub fn branch(&mut self, region: u32, increment: u64) {
+        if let Some(paths) = &mut self.paths {
+            paths.branch(region, increment);
+        }
+    }
+
+    /// A turn of the current frame's region `region` starts: a `for`'s
+    /// body's, or an inline function's.
+    pub fn turn(&mut self, region: u32) {
+        if let Some(paths) = &mut self.paths {
+            paths.turn(region);
+        }
+    }
+
+    /// A turn of the current frame's region `region` ran to its end.
+    pub fn turned(&mut self, region: u32) {
+        if let Some(paths) = &mut self.paths {
+            paths.turned(region);
+        }
+    }
+
+    /// Region `region`'s way so far ends as a segment after statement
+    /// `site`, the rest numbered from 0 (`jadpo_graph::paths::Paths::cuts`).
+    pub fn cut(&mut self, region: u32, site: u32) {
+        if let Some(paths) = &mut self.paths {
+            paths.cut(region, site);
+        }
+    }
+
+    /// Every path its bodies took, each open frame closed first; nothing
+    /// when they aren't kept.
+    pub fn paths_taken(&mut self) -> Vec<crate::paths::Taken> {
+        self.paths
+            .as_mut()
+            .map(|paths| paths.taken())
+            .unwrap_or_default()
     }
 
     /// An operation is about to run an inline function: `false`, and
