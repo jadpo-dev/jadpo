@@ -1,36 +1,29 @@
-# Golden todo design contract
+# Golden todo
 
-**Active executable contract:** `todo-v0.2`
+An ordinary Jadpo application, written in the decided language with no
+compiler special case (the gate's name ban covers its names), and the
+contract it is held to: [`acceptance-v0.2.json`](acceptance-v0.2.json),
+`todo-v0.2`, 44 cases (34 HTTP, four job, two persistence, two preflight,
+one policy and one runtime). The language area pages govern what each case
+means; where a case and a page disagree, the page wins and the case is
+corrected in a new contract version, never the source weakened to fit.
+[`acceptance.json`](acceptance.json) is the earlier `todo-v0.1`, kept
+unchanged because `todo-v0.2` records its SHA-256.
 
-**Status:** implemented and locally validated; independent freeze outstanding
+The other documents here:
 
-The golden todo is an ordinary Jadpo application whose 44-case contract runs
-on native and compiled workerd. [`acceptance-v0.2.json`](acceptance-v0.2.json)
-is the active executable specification. The language area pages govern its
-meaning; the corrections from the historical candidate are explained below.
-
-The original [`acceptance.json`](acceptance.json), `todo-v0.1`, remains
-byte-for-byte unchanged. It records the earlier candidate contract. Its
-source, written for the archived compiler, is at `archive/compiler-v0`.
-The shared harness checks raw HTTP, credentials, persisted state, jobs,
-preflight and outages. An unavailable obligation fails visibly. The
-supporting documents describe the required review and comparison surface:
-
-1. [`expected-audit.md`](expected-audit.md) defines the review surface the
-   compiler must derive.
-2. [`adversarial-changes.md`](adversarial-changes.md) defines change-pressure
+1. [`expected-audit.md`](expected-audit.md): the review surface the
+   compiler derives.
+2. [`adversarial-changes.md`](adversarial-changes.md): change-pressure
    cases and the compiler's required response to each.
-3. [`typescript-baseline.md`](typescript-baseline.md) fixes the equivalent
-   TypeScript stack that Phase 9's benchmarks and chunk 10.2's agent
-   comparison measure against.
-4. [`REVIEW.md`](REVIEW.md) records the contract's review history and the
-   pending independent-review checklist.
-
-If the source and the acceptance behaviour disagree, the contradiction blocks
-the freeze until it is resolved. If acceptance behaviour exceeds the policy a
-person approved, policy wins and the case is invalid until a human-reviewed
-contract revision reconciles them. An agent may not edit policy to make an
-implementation compile.
+3. [`typescript-baseline.md`](typescript-baseline.md): the equivalent
+   TypeScript stack, in [`typescript/`](typescript/README.md), that the
+   benchmarks and chunk 10.2's agent comparison measure against.
+4. [`REVIEW.md`](REVIEW.md): the contract's review log. The contract has
+   not had an independent freeze; until it has, review may correct an
+   ambiguity once, and afterwards a change needs a new contract version
+   and its reason. A case may be classified `unsupported`, `cannot prove`
+   or `requires human decision`, but never silently dropped.
 
 ## Product behaviour
 
@@ -55,25 +48,7 @@ Sharing and administrator access are not present in the initial contract. They
 enter through the frozen change sequence so the experiment can measure policy
 evolution rather than beginning at the final answer.
 
-## Freeze rule
-
-This is a **candidate** freeze. Independent review may correct ambiguity once.
-After it is marked frozen, changes need a new contract version and a
-rationale, and the implementation must not weaken or rewrite the cases to fit
-compiler limitations. A case may be classified `unsupported`, `cannot prove`,
-or `requires human decision`, but it may not silently disappear.
-
-
-## Current-language successor: `todo-v0.2`
-
-[`acceptance-v0.2.json`](acceptance-v0.2.json) preserves the 34 HTTP, four
-job, two persistence, two preflight, one policy and one runtime case IDs.
-Neither version is an independently reviewed freeze. The original
-[`acceptance.json`](acceptance.json) remains byte-for-byte unchanged; its
-SHA-256 is recorded in the successor.
-
-These corrections follow the area pages, retaining each original safety
-obligation:
+## How the cases read the area pages
 
 | Cases | Decided clause and executable reading |
 |---|---|
@@ -85,6 +60,7 @@ obligation:
 | JOB-001–003 | Areas 11, “Calling”, and 12, “Emitting an event” / “Delivery: at least once, safe to repeat”: runtime-derived keys belong to durable deliveries and steps. A private increasing revision distinguishes A→B→A due-date changes. Queue marking and the first event commit together. A preparation subscriber snapshots immutable mail data in a second event; the send subscriber checks current revision, eligibility and owner status, uses that immutable payload, then records the provider’s acknowledged `accepted_at`. Queuing is never counted as sending. This is a provider acceptance receipt, not proof of inbox placement. Lost acknowledgements, in-flight edits, stale work, concurrent runners, safe retries and unknown outcomes remain obligations. |
 | JOB-004 | Areas 5, “Lifecycle”, and 12, “The purge schedule”: compiler-generated `Todo.purge`, 30-day configured retention, at most 500 records per batch and 20 batches per run. Repeats and boundaries are asserted; ordinary code cannot hard-delete lifecycle rows. |
 | CONFIG-001–002 | Area 10, “Checking values before the app starts”, and area 14, “A Workers deployable”: native refuses configuration before listening and exits nonzero; a Worker has no process exit and refuses application execution with safe 503 while reporting declaration names privately. Configuration is the unnamed `config` singleton. |
+
 
 The source has three stored entities: User, Todo, and the Service principal
 required by AUTH-009/011. It has no sharing, administrator bypass, ownership
@@ -103,23 +79,43 @@ its queue emission supplies no application delivery receipt.
 
 ## Verification
 
-`jadpo check` and `jadpo test` run the source and authored business tests.
-The shared contract runner under `benchmarks/contract/` targets generated native
-code and compiled Wasm under workerd, with controlled test clocks, actual
-credential verification, raw HTTP inputs and SQL-level query observation.
-All 44 cases pass on each target using the integrated checkout. Partial
-and prerequisite-preview runs do not establish complete conformance.
-The fixture intercepts only its declared public HTTPS identity/key/mail hosts
-and supplies local responses; it does not prove production DNS or TLS filtering.
-SQL fixture writes and signing helpers are private test controls, and HTTP
-responses always execute the selected target.
-Passing authored typed tests alone does not establish the complete contract.
-The runner must report every ID on each target and fail if a target or
-obligation is unavailable. TypeScript and comparative timing remain 9.1d3/4.
-
-During development, the compiler and runtime source may be supplied explicitly
-from a verified prerequisite checkout. Such a preview is identified by path
-and revision and does not establish this branch’s full gate. The final gate
-runs against this worktree’s compiler/runtime and exact incorporated prerequisite
-histories. Stacked builds before prerequisite PR review and merge were
-authorized on 2026-10-23; that authorization does not establish independent review.
+- `jadpo check`, `jadpo fmt --check` and `jadpo test` run the source and
+  its authored business tests, as for every teaching example
+  (`tools/docs/examples.py`).
+- `benchmarks/contract/run.py` runs all 44 cases on three targets, built
+  by this checkout's own compiler and runtime: **interpreted**, the
+  interpreter running the project's plan; **native**, generated Rust; and
+  **workerd**, generated Wasm under the pinned workerd. Interpreted and
+  native share one controller binary, the interpreter chosen by
+  `GOLDEN_EXECUTOR=interpreted`. Every case crosses raw HTTP through the
+  production request decoder, with controlled clocks, real credential
+  verification and SQL-level query observation against the gate's
+  PostgreSQL. A target, control or case that is missing or fails, fails
+  visibly; a complete contract needs all 44 on all three targets, unfiltered,
+  from fresh builds.
+- The gate runs interpreted and native in one step of its `compiled`
+  group and workerd in `wasm32`; the verifier's negative controls run in
+  `lint`.
+- Startup refusal (CONFIG-001/002): the native deployable built by
+  `jadpo build` exits nonzero before listening; a Worker answers a safe
+  503; the interpreted program reads its settings as a deployable does
+  and exits nonzero. `jadpo dev`'s stand-ins for unset provider settings
+  (area 11, "Provider calls in development") are a development
+  convenience, not this case.
+- Both deployables build with `jadpo build` from a copy of `jadpo` outside
+  the checkout, with no Rust installed
+  (`crates/jadpo-cli/tests/released.rs`): natively as written, and for
+  Workers with the rate-limit store and deployable area 16's "Rate limits
+  on Workers" gives a Worker, the same addition `benchmarks/contract/worker.py`
+  makes for workerd. The source declares no deployable: a native and a
+  Workers deployable share a rate-limit store only as Redis, which until
+  its driver comes leaves each Worker counting in its own memory, a
+  `decline` the golden todo has no reason to make (area 14, "Its target,
+  checked").
+- The fixture intercepts only the declared public identity, key and mail
+  hosts and answers locally; it proves nothing about production DNS or
+  TLS filtering. SQL fixture writes and signing helpers are private test
+  controls.
+- Passing the authored tests alone does not establish the contract.
+  TypeScript's run of the same cases is in
+  [`typescript/`](typescript/README.md).

@@ -825,10 +825,14 @@ entity Project {
   may read that field; otherwise `policy.output_field_unproved` names the
   condition or order. A
   transition's `when:` is a write's condition: refusing a record shows what
-  it tests.
+  it tests. A lifecycle's `visible:` is a condition on every read of its
+  entity, so it tests only fields everyone the entity's `read:` lets in
+  may read.
 - **Copies.** Passing a value through a variable, another type, a
   function or the record a write stores it in does not escape the field's
-  rules; the compiler tracks where it came from.
+  rules; the compiler tracks where it came from. A migration's computed
+  backfill (area 5) is a copy too: each field it reads is one everyone who
+  may read the field it fills may read.
 - **What decides a value.** A value made under an `if`, a `match` or a
   loop, or kept by a filter, shows what they test, so it carries their
   fields' rules too, as does a count of what a filter kept, a failure
