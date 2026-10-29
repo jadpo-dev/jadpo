@@ -301,8 +301,8 @@ What the first build's independent review found that this phase didn't
 fix, in order. Each chunk keeps every test passing interpreted and
 compiled.
 
-- [ ] **10.3a A unique rule within a tenant** `opus · high`, **needs
-  Richard** for the language decision first: a `unique:` rule on a
+- [ ] **10.3a A unique rule within a tenant** `opus · high`, **needs a
+  maintainer** for the language decision first: a `unique:` rule on a
   tenant-scoped entity is checked across every tenant, so a `conflict:`
   tells one tenant what another stores (area 9, "Tenancy"). Recommendation:
   such a rule holds within its tenant, the compiler adding the tenancy
@@ -311,7 +311,7 @@ compiled.
   so with a `check` block, the migration's key holds the tenancy column,
   and two tenants storing the same value both succeed while a second in
   one tenant is that tenant's conflict.
-- [ ] **10.3b Founding only a new tenant** `opus · high`, **needs Richard**
+- [ ] **10.3b Founding only a new tenant** `opus · high`, **needs a maintainer**
   for the language decision first: once a tenant's last membership is
   deleted outright, anyone signed in can "found" it again and read what
   it holds, since founding checks only that no membership row exists
@@ -365,7 +365,7 @@ compiled.
   callable to the operation it calls), the graph's diff classifies their
   changes, and items 3 and 4 add their own kinds as `Built`.
 - [ ] **10.3h The runtime's own SQL beyond PostgreSQL** `opus · high`,
-  **needs Richard** for D1's transaction model first: about 145 runtime
+  **needs a maintainer** for D1's transaction model first: about 145 runtime
   statements rely on `RETURNING`, `ON CONFLICT`, `::uuid`, `unnest` and
   `xmin`, `SystemColumn.sql_type` is PostgreSQL type text, and
   `Transaction` is interactive, which D1's batches may not offer. Done when
