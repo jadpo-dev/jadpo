@@ -148,6 +148,7 @@ pub mod schedules;
 pub mod serve;
 pub mod sigv4;
 pub mod slots;
+pub mod spans;
 mod started;
 pub mod statements;
 pub mod steps;

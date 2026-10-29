@@ -583,6 +583,10 @@ impl<'p> ActionBody<'p> for Action<'_> {
         self.at
     }
 
+    fn callable(&self) -> Option<u32> {
+        Some(self.callee)
+    }
+
     fn outbox(&self) -> Option<&str> {
         self.plan().and_then(|plan| plan.outbox.as_deref())
     }

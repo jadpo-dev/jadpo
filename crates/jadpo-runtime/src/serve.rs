@@ -38,6 +38,9 @@ pub struct Answered<'a> {
     /// How long answering it took, in milliseconds on the host's monotonic
     /// clock; 0 on a host without one.
     pub ms: u64,
+    /// What answering it did: a span for each action, read, write and
+    /// outside call, in the order each started (chunk 10.3c).
+    pub spans: &'a crate::spans::Spans,
 }
 
 /// What hears what [`Serving`] does, on the thread it serves on.
@@ -80,6 +83,7 @@ impl std::fmt::Debug for Answered<'_> {
             .field("request", self.request)
             .field("response", self.response)
             .field("ms", &self.ms)
+            .field("spans", self.spans)
             .finish_non_exhaustive()
     }
 }
@@ -144,12 +148,14 @@ impl Serving {
             Rc::clone(&self.host),
             std::mem::take(&mut response.deferred),
         );
+        let spans = std::mem::take(&mut response.spans);
         if let Some(observer) = &self.observer {
             observer.answered(&Answered {
                 request,
                 response: &response,
                 program: program.as_ref(),
                 ms: since(self.host.as_ref(), began),
+                spans: &spans,
             });
         }
         response
@@ -309,6 +315,180 @@ mod tests {
         fn now_ms(&self) -> Option<i64> {
             Some(1_792_486_800_000)
         }
+    }
+
+    /// An action that sends an outside call and calls an action of its
+    /// own, as a route runs it: one span for each, in the order each
+    /// started, timed on the host's monotonic clock.
+    struct Calling {
+        places: Places,
+        table: RouteTable,
+        routes: Routes,
+    }
+
+    /// Action `callable`'s body: action 1 inside action 0, then a call to
+    /// `mailer.send`, which no driver fills.
+    struct Nested(u32);
+
+    impl<'p> crate::ActionBody<'p> for Nested {
+        fn isolation(&self) -> jadpo_std::Isolation {
+            jadpo_std::Isolation::ReadCommitted
+        }
+
+        fn callable(&self) -> Option<u32> {
+            Some(self.0)
+        }
+
+        fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
+            Box::pin(async move {
+                if self.0 == 0 {
+                    let inner = crate::action(ctx, &mut Nested(1)).await;
+                    if !matches!(inner, Outcome::Value(_)) {
+                        return inner;
+                    }
+                    let call = crate::capability::Call::new(
+                        "mailer",
+                        "send",
+                        Value::Unit,
+                        jadpo_std::subscriber::Repeat::Safe,
+                    );
+                    let _ = crate::effects::call(ctx, call).await;
+                }
+                Outcome::Value(Value::Text("sent".into()))
+            })
+        }
+    }
+
+    impl Executor for Calling {
+        fn places(&self) -> &Places {
+            &self.places
+        }
+
+        fn app(&self) -> App<'_> {
+            App {
+                table: &self.table,
+                routes: &self.routes,
+                codecs: Codecs {
+                    codecs: &CODECS,
+                    validators: &[],
+                    shapes: &[],
+                    coder: None,
+                },
+                failures: &[],
+                json: JsonCodecs::NONE,
+                entries: None,
+            }
+        }
+
+        fn run<'a, 'p: 'a>(
+            &'a self,
+            ctx: &'a mut Ctx<'p>,
+            _callable: u32,
+            _args: Vec<Value>,
+        ) -> LocalFuture<'a, Outcome> {
+            Box::pin(async move { crate::action(ctx, &mut Nested(0)).await })
+        }
+    }
+
+    /// A host with a clock, a monotonic clock that moves a millisecond
+    /// each time it is read, and no store.
+    struct Timed(NoStore, std::cell::Cell<u64>);
+
+    impl Host for Timed {
+        fn database(&self, _store: &str) -> Option<&dyn Database> {
+            Some(&self.0)
+        }
+
+        fn random(&self, _bytes: &mut [u8]) -> bool {
+            false
+        }
+
+        fn now_ms(&self) -> Option<i64> {
+            Some(1_792_486_800_000)
+        }
+
+        fn monotonic_ms(&self) -> Option<u64> {
+            let now = self.1.get() + 1;
+            self.1.set(now);
+            Some(now)
+        }
+    }
+
+    /// What it heard of each request.
+    #[derive(Default)]
+    struct Heard(std::cell::RefCell<Vec<crate::spans::Span>>);
+
+    impl Observer for Heard {
+        fn answered(&self, answered: &Answered<'_>) {
+            self.0.borrow_mut().extend(answered.spans.iter().cloned());
+        }
+    }
+
+    /// The observer hears what the request did as one list of spans
+    /// (chunk 10.3c): each action and the outside call, in the order each
+    /// started, each with its start and end on the host's monotonic clock
+    /// and how it ended.
+    #[test]
+    fn the_observer_hears_each_span_a_request_made() {
+        use crate::spans::{Ended, Kind};
+        let table = table();
+        let routes = Routes::new(&table, &[]);
+        let program: Rc<dyn Executor> = Rc::new(Calling {
+            places: Places::new(),
+            table,
+            routes,
+        });
+        let heard = Rc::new(Heard::default());
+        let serving = Serving::new(
+            Rc::new(Timed(NoStore, std::cell::Cell::new(0))),
+            move || Rc::clone(&program),
+        )
+        .observed_by(Rc::clone(&heard) as Rc<dyn Observer>);
+        let request = Request {
+            method: "GET".into(),
+            path: "/widgets".into(),
+            ..Request::default()
+        };
+        let response = block_on(serving.handle(&request)).expect("nothing waits");
+        assert_eq!(response.status, 200, "{response:?}");
+        let spans = heard.0.borrow();
+        let shown: Vec<(Kind, Option<u32>, Option<u64>, Ended)> = spans
+            .iter()
+            .map(|span| {
+                (
+                    span.kind.clone(),
+                    span.callable,
+                    span.rows,
+                    span.ended.clone(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            shown,
+            [
+                (Kind::Action, Some(0), None, Ended::Value),
+                (Kind::Action, Some(1), None, Ended::Value),
+                (
+                    Kind::Call {
+                        connection: "mailer".into(),
+                        operation: "send".into(),
+                    },
+                    None,
+                    None,
+                    Ended::Failed("misconfigured".into()),
+                ),
+            ],
+            "{spans:#?}"
+        );
+        for span in spans.iter() {
+            let (Some(start), Some(end)) = (span.start_ms, span.end_ms) else {
+                panic!("an untimed span: {span:?}");
+            };
+            assert!(start < end, "{span:?}");
+        }
+        // The outer action holds the others.
+        assert!(spans[0].start_ms < spans[1].start_ms && spans[2].end_ms < spans[0].end_ms);
+        assert!(response.spans.is_empty(), "handed on to the observer");
     }
 
     /// What a host serves is what the program answers its routes with,
