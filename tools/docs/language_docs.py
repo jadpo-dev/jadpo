@@ -42,6 +42,10 @@ and no page names a rule the catalogue doesn't have. A rule's page needs a
 1-9 no `fragment` may check cleanly, since one that does is an example the
 compiler can check.
 
+The Learn path (docs/learn/) is checked the same way, each page's
+project built on the pages before it (LearnPage), and it and the primer
+follow the mechanical rules of docs/writing.md (user_page_problems).
+
 Every section an app author reads, each `#` and `##` heading of an area page
 but `## Errors`, declares its topic ID on the line after it, as
 `<!-- topic: <id> -->`: lowercase kebab case, unique across the docs. A
@@ -72,6 +76,7 @@ ERRORS = ROOT / 'docs/errors'
 # Each area's design notes: what a person changing the language reads.
 NOTES = DOCS / 'notes'
 PRIMER = ROOT / 'docs/primer.md'
+LEARN = ROOT / 'docs/learn'
 # The primer's length in tokens, estimated as its words times 1.3, as the
 # bundle gives it (docs/documentation.md, "Where the content lives").
 PRIMER_TOKENS = (3000, 5000)
@@ -283,6 +288,7 @@ class Page:
                         steps += 1
                         if migrated:
                             problems.append(f'{name}: jadpo migrate new {purpose} failed:\n{said}')
+                problems += self.prepare(tmp, name, blocks)
                 code, out = jadpo(['check', tmp])
                 json_code, json_out = jadpo(['check', '--json', tmp])
                 formatted, _ = jadpo(['fmt', '--check', tmp])
@@ -400,6 +406,11 @@ class Page:
             self.corpus.append((name, files, test_json))
         self.results[name] = {'expected': expected, 'ok': ok, 'output': (test_out or '').strip(), 'rules': codes,
                               'check': True}
+
+    def prepare(self, tmp, name, blocks):
+        """Anything a project needs after its files are written and before
+        it is checked; problems found doing it. Only a Learn page has any."""
+        return []
 
     def bless(self):
         """Writes each check block's real output after it."""
@@ -595,6 +606,142 @@ class Primer(Page):
         if not low <= tokens <= high:
             self.problems.append(f'the primer is about {tokens} tokens (its words times 1.3), '
                                  f'outside {low:,} to {high:,}')
+
+
+class LearnPage(Page):
+    """docs/learn/: the Learn path, one app built a page at a time
+    (docs/documentation.md). A page shows only the files it adds or
+    changes; its project is the one the pages before it built, less the
+    files its front matter `removes:`, with its own on top. A reader makes
+    the migrations and the API record with commands, so a page's check
+    makes them too: `jadpo migrate new initial` and, unless the page shows
+    the record, `jadpo api update`. A record is never inherited, since an
+    earlier page's is out of date once the routes change. Each page is
+    one topic, its `#` heading."""
+
+    def __init__(self, path, catalogue, inherited=None, root=ROOT):
+        super().__init__(path, catalogue)
+        # The files the pages before this one built: path -> source.
+        self.inherited = inherited or {}
+        self.root = root
+
+    def removes(self):
+        return set(str(self.meta.get('removes', '')).split())
+
+    def own_files(self):
+        """The files this page's check blocks write, in order."""
+        found = {}
+        for block in self.blocks:
+            if block['attrs'].get('check') and not block['attrs'].get('inherited'):
+                found[block['attrs']['file']] = block['source']
+        return found
+
+    def collect_blocks(self):
+        super().collect_blocks()
+        own = [b for b in self.blocks if b['attrs'].get('check')]
+        if not own:
+            return
+        project = own[0]['attrs']['project']
+        shown = {b['attrs']['file'] for b in own}
+        inherited = [{'line': -1, 'end': -1, 'source': source,
+                      'attrs': {'check': True, 'project': project, 'file': file, 'inherited': True}}
+                     for file, source in self.inherited.items() if file not in shown]
+        self.blocks = inherited + self.blocks
+
+    def prepare(self, tmp, name, blocks):
+        problems = []
+        steps = [(['migrate', 'new', 'initial'], {'SOURCE_DATE_EPOCH': str(MIGRATION_EPOCH)})]
+        if not any(b['attrs']['file'].endswith('.jadpo_record') for b in blocks):
+            steps.append((['api', 'update'], None))
+        for args, env in steps:
+            code, said = jadpo(args, cwd=tmp, env=env)
+            if code:
+                problems.append(f'{name}: jadpo {" ".join(args)} failed:\n{said}')
+        return problems
+
+    def area(self):
+        return 0
+
+    def topics(self):
+        lines = self.body.split('\n')
+        for i, line, fenced in body_lines(lines):
+            heading = HEADING.match(line) if not fenced else None
+            if heading and len(heading.group(1)) == 1:
+                declared = TOPIC.match(lines[i + 1]) if i + 1 < len(lines) else None
+                return [{'id': declared.group(1) if declared else None, 'title': heading.group(2),
+                         'level': 1, 'start': i, 'end': len(lines)}]
+        return []
+
+
+def load_learn(catalogue, root=ROOT):
+    """The Learn path in order, its outline first, each page holding the
+    files the pages before it built."""
+    learn = root / 'docs/learn'
+    paths = ([learn / 'README.md'] if (learn / 'README.md').exists() else []) + sorted(learn.glob('[0-9][0-9]-*.md'))
+    pages, built = [], {}
+    for path in paths:
+        page = LearnPage(path, catalogue, root=root)
+        inherited = {f: s for f, s in built.items() if f not in page.removes()}
+        page.inherited = inherited
+        Page.collect_blocks(page)
+        built = dict(inherited)
+        built.update({f: s for f, s in page.own_files().items() if not f.endswith('.jadpo_record')})
+        page.blocks = []
+        pages.append(page)
+    return pages
+
+
+# What docs/writing.md says a user page never does, outside code.
+NUMBERED = re.compile(r'\b(?:areas?|questions?) \d+', re.IGNORECASE)
+BUILD_STATUS = re.compile(r"\b(?:not built yet|isn't built|aren't built|not yet built)\b|not_built_yet",
+                          re.IGNORECASE)
+SPEC_WORDS = re.compile(r'^Decided\.|\bcarried to\b')
+NOT_BUILT = '## Not built yet'
+REPOSITORY_URL = re.compile(r'^https://github\.com/richardwillars/jadpo/(?:blob|tree)/')
+
+
+def user_page_problems(page, root=ROOT):
+    """Problems with a user page (the primer, the Learn path) against the
+    mechanical rules of docs/writing.md: no area or question by number, build
+    status only in a final `## Not built yet` section, no spec vocabulary,
+    no `fragment`, and links only to pages of the docs."""
+    problems = []
+    lines = page.body.split('\n')
+    sections = [i for i, line, fenced in body_lines(lines) if not fenced and line.startswith('## ')]
+    note = next((i for i in sections if lines[i].strip() == NOT_BUILT), None)
+    if note is not None and note != sections[-1]:
+        problems.append(f'`{NOT_BUILT}` is the last section of a page')
+    for i, line, fenced in body_lines(lines):
+        if fenced:
+            continue
+        prose = re.sub(r'`[^`]*`', '', line)
+        where = f'line {i + page.offset + 1}'
+        for match in NUMBERED.finditer(prose):
+            problems.append(f'{where}: "{match.group(0)}": link the topic by its title instead')
+        if BUILD_STATUS.search(prose) and (note is None or i < note):
+            problems.append(f'{where}: build status belongs in the final `{NOT_BUILT}` section')
+        if SPEC_WORDS.search(prose):
+            problems.append(f'{where}: spec vocabulary ("Decided.", "carried to") belongs on area pages')
+    for block in page.blocks:
+        if block['attrs'].get('fragment'):
+            problems.append(f'line {block["line"] + page.offset + 1}: a user page holds no `fragment`')
+    docs_dir = (root / 'docs').resolve()
+    for number, target in links_in(page.body):
+        where = f'line {number + page.offset}'
+        if REPOSITORY_URL.match(target):
+            problems.append(f'{where}: {target} links a file in this repository; link a page of the docs')
+            continue
+        if re.match(r'^[a-z][a-z0-9+.-]*:', target) or target.startswith('#'):
+            continue
+        resolved = (page.path.parent / target.partition('#')[0]).resolve()
+        allowed = (resolved == docs_dir / 'primer.md'
+                   or (resolved.parent == docs_dir / 'language' and re.match(r'^\d\d-.*\.md$', resolved.name))
+                   or (resolved.parent == docs_dir / 'errors' and resolved.suffix == '.md')
+                   or (resolved.parent == docs_dir / 'learn' and resolved.suffix == '.md'))
+        if not allowed:
+            problems.append(f'{where}: {target} links a file in this repository, which a reader can\'t open; '
+                            'link a page of the docs')
+    return problems
 
 
 def body_lines(lines):
@@ -794,8 +941,12 @@ class Bundle:
     a page per topic, per rule and per command, and index.json. Pages link
     each other by ID; a link to anything else names the file on GitHub."""
 
-    def __init__(self, pages, errors, help_data, root=ROOT, primer=None):
+    def __init__(self, pages, errors, help_data, root=ROOT, primer=None, learn=()):
         self.pages, self.errors, self.root = pages, errors, root
+        self.learn = list(learn)
+        # Each Learn page's file -> its topic ID.
+        self.learn_of = {page.path.resolve(): page.topics()[0]['id'] for page in self.learn
+                         if page.topics() and page.topics()[0]['id']}
         self.catalogue = {r['id']: r for r in help_data.get('rules', [])}
         self.commands = help_data.get('commands', [])
         self.version = help_data.get('version')
@@ -828,6 +979,8 @@ class Bundle:
             path = f'{folder}/{page_id}.md' if folder else f'{page_id}.md'
             return os.path.relpath(path, here or '.') + (tail if keep else '')
 
+        if resolved in self.learn_of:
+            return to('learn', self.learn_of[resolved])
         if resolved in self.overview:
             topic = self.topic_of.get((resolved, fragment)) if fragment else self.overview[resolved]
             if topic is None:
@@ -852,7 +1005,7 @@ class Bundle:
                     return topic['title']
         return ''
 
-    def topic_markdown(self, page, topic, linked):
+    def topic_markdown(self, page, topic, linked, here='topics'):
         """A topic as its own page: its heading the page's `#`, its hidden
         blocks and topic ID left out, its links by ID."""
         lines = page.body.split('\n')[topic['start']:topic['end']]
@@ -876,7 +1029,7 @@ class Bundle:
             out.append(line)
         text = '\n'.join(out).strip('\n') + '\n'
         text = re.sub(r'\n{3,}', '\n\n', text)
-        return map_links(text, lambda t: self.link(page.path, t, 'topics', linked))
+        return map_links(text, lambda t: self.link(page.path, t, here, linked))
 
     def error_markdown(self, page, linked):
         entry = self.catalogue[page.rule]
@@ -947,13 +1100,22 @@ class Bundle:
             text = map_links(without_hidden(self.primer.read_text()),
                              lambda t: self.link(self.primer, t, '', linked))
             built.append(('primer', 'primer', 'primer.md', 'Primer', None, text, linked))
+        for page in self.learn:
+            for topic in page.topics():
+                linked = set()
+                text = self.topic_markdown(page, topic, linked, here='learn')
+                built.append(('learn', topic['id'], f'learn/{topic["id"]}.md', plain(topic['title'].replace('`', '')),
+                              None, text, linked))
         for page in self.pages:
             topics = page.topics()
             for topic in topics:
                 linked = set()
                 text = self.topic_markdown(page, topic, linked)
-                built.append(('topic', topic['id'], f'topics/{topic["id"]}.md', plain(topic['title'].replace('`', '')),
-                              page.area(), text, linked))
+                title = plain(topic['title'].replace('`', ''))
+                if title == 'What is built' and topics:
+                    # Every area has one; the title says whose.
+                    title = f'What is built: {plain(topics[0]["title"].replace("`", ""))}'
+                built.append(('topic', topic['id'], f'topics/{topic["id"]}.md', title, page.area(), text, linked))
         for page in sorted(self.errors, key=lambda p: p.rule):
             if page.rule in self.catalogue:
                 linked = set()
@@ -973,7 +1135,7 @@ class Bundle:
         entries = []
         for kind, page_id, _, title, area, text, linked in built:
             fallback = title
-            if kind == 'topic' and title == 'What is built':
+            if kind == 'topic' and title.startswith('What is built: '):
                 # Each area's table of what is built leads with the table.
                 fallback = f'Which parts of {areas.get(area, "the area")} are built, and what the rest waits on'
             summary = (self.catalogue[page_id]['summary'] if kind == 'error'
@@ -1001,12 +1163,12 @@ class Bundle:
         return built
 
 
-def check_structure(pages, errors, catalogue, commands=(), root=ROOT):
+def check_structure(pages, errors, catalogue, commands=(), root=ROOT, learn=()):
     """Problems with the docs' shape, none of which needs an example
     compiled: topic IDs, a page per rule, topic sizes and links."""
     problems = []
     seen = {}
-    for page in pages:
+    for page in list(pages) + list(learn):
         problems += [f'{page.path.name} {problem}' for problem in page.check_topics()]
         for topic in page.topics():
             if topic['id']:
@@ -1023,9 +1185,9 @@ def check_structure(pages, errors, catalogue, commands=(), root=ROOT):
         if rule not in pages_by_rule:
             problems.append(f'{rule} (area {entry.get("area")}) has no page: add docs/errors/{rule}.md')
     bundle = Bundle(pages, errors, {'rules': list(catalogue.values()), 'commands': list(commands)}, root,
-                    primer=root / 'docs/primer.md')
+                    primer=root / 'docs/primer.md', learn=learn)
     for kind, page_id, _, _, _, text, _ in bundle.build():
-        if kind == 'topic' and words(text) > TOPIC_WORDS:
+        if kind in ('topic', 'learn') and words(text) > TOPIC_WORDS:
             problems.append(f'topic "{page_id}" is {words(text)} words, over {TOPIC_WORDS}: split it')
     problems += bundle.problems
     problems += check_links(markdown_files(root), root)
@@ -1473,9 +1635,10 @@ def main():
     help_data = load_help()
     catalogue = {rule['id']: rule for rule in help_data['rules']}
     pages, notes, errors = load_pages(catalogue)
+    learn = load_learn(catalogue)
     failed = False
     compile_examples = args.check or args.bless or args.export_corpus or not args.bundle
-    checked = pages + list(notes.values()) + errors if compile_examples else []
+    checked = pages + list(notes.values()) + errors + learn if compile_examples else []
     for page in checked:
         page.check(bless=args.bless)
         blessed = page.bless() if args.bless else 0
@@ -1495,10 +1658,18 @@ def main():
         for problem in page.problems:
             failed = True
             print(f'  FAIL {page.path.relative_to(ROOT)}: {problem}')
+    for page in learn:
+        if not compile_examples:
+            page.collect_blocks()
+        projects = len({b['attrs']['project'] for b in page.blocks if b['attrs'].get('check')})
+        print(f'{page.path.relative_to(ROOT)}: {projects} project(s) checked')
+        for problem in page.problems + user_page_problems(page):
+            failed = True
+            print(f'  FAIL {page.path.relative_to(ROOT)}: {problem}')
     if compile_examples:
         covered = sum(1 for page in errors if page.rule in page.covered_rules())
         print(f'{len(errors)} error page(s) for {len(catalogue)} rules; {covered} with a checked example')
-    for problem in check_structure(pages, errors, catalogue, help_data.get('commands', [])):
+    for problem in check_structure(pages, errors, catalogue, help_data.get('commands', []), learn=learn):
         failed = True
         print(f'  FAIL {problem}')
     primer = Primer(PRIMER, catalogue) if PRIMER.exists() else None
@@ -1514,7 +1685,7 @@ def main():
             primer.collect_blocks()
             primer.check_primer()
         print(f'docs/primer.md: {len(primer.blocks)} examples, about {primer_tokens(primer.body):,} tokens')
-        for problem in primer.problems:
+        for problem in primer.problems + user_page_problems(primer):
             failed = True
             print(f'  FAIL docs/primer.md: {problem}')
     if compile_examples:
@@ -1538,7 +1709,7 @@ def main():
             export_corpus(corpus)
     if args.bundle:
         out = Path(args.bundle)
-        bundle = Bundle(pages, errors, help_data, primer=PRIMER)
+        bundle = Bundle(pages, errors, help_data, primer=PRIMER, learn=learn)
         built = bundle.write(out)
         kinds = {}
         for kind, *_ in built:

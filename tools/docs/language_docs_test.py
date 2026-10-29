@@ -322,6 +322,144 @@ class Structure(unittest.TestCase):
         self.assertIn('links to 01-one.md#lost, but 01-one.md has no heading with that anchor', found)
 
 
+
+LEARN_INDEX = """# Learn
+<!-- topic: learn -->
+
+Start with [the first page](01-first.md).
+"""
+
+LEARN_ONE = """# The first page
+<!-- topic: learn-first -->
+
+What the first page teaches. See [one](../language/01-one.md).
+
+`app.jadpo`:
+
+```jadpo check project=learn-app file=app.jadpo
+application {}
+```
+
+`policy.jadpo`:
+
+```jadpo check project=learn-app file=policy.jadpo
+policy {}
+```
+"""
+
+LEARN_TWO = """---
+removes: policy.jadpo
+---
+
+# The second page
+<!-- topic: learn-second -->
+
+It builds on the first.
+
+`main.jadpo`:
+
+```jadpo check project=learn-app file=main.jadpo
+type Count = Int {}
+```
+
+## Not built yet
+
+Some of it isn't built yet.
+"""
+
+
+def learn_tree(root, one=LEARN_ONE, two=LEARN_TWO):
+    learn = root / 'docs/learn'
+    learn.mkdir(parents=True)
+    (learn / 'README.md').write_text(LEARN_INDEX)
+    (learn / '01-first.md').write_text(one)
+    (learn / '02-second.md').write_text(two)
+    return docs.load_learn({}, root)
+
+
+class Learn(unittest.TestCase):
+    def test_a_page_builds_on_the_pages_before_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pages = learn_tree(Path(tmp))
+            for page in pages:
+                page.collect_blocks()
+            index, first, second = pages
+            self.assertEqual(index.blocks, [])
+            self.assertEqual(sorted(b['attrs']['file'] for b in first.blocks), ['app.jadpo', 'policy.jadpo'])
+            # The second page's project is the first's, less what it removes,
+            # with its own files; only its own are shown.
+            self.assertEqual(sorted(b['attrs']['file'] for b in second.blocks), ['app.jadpo', 'main.jadpo'])
+            self.assertEqual([b['attrs']['file'] for b in second.blocks if not b['attrs'].get('inherited')],
+                             ['main.jadpo'])
+            self.assertEqual({b['attrs']['project'] for b in second.blocks}, {'learn-app'})
+
+    def test_a_record_is_never_inherited(self):
+        one = LEARN_ONE + '\n`api/main.jadpo_record`:\n\n```jadpo check project=learn-app file=api/main.jadpo_record\nrecord api 1\n```\n'
+        with tempfile.TemporaryDirectory() as tmp:
+            pages = learn_tree(Path(tmp), one=one)
+            pages[2].collect_blocks()
+            self.assertNotIn('api/main.jadpo_record', [b['attrs']['file'] for b in pages[2].blocks])
+
+    def test_each_page_is_one_topic(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pages = learn_tree(Path(tmp))
+            self.assertEqual([[(t['id'], t['title']) for t in p.topics()] for p in pages],
+                             [[('learn', 'Learn')], [('learn-first', 'The first page')],
+                              [('learn-second', 'The second page')]])
+            self.assertEqual([p.check_topics() for p in pages], [[], [], []])
+
+    def test_the_bundle_holds_the_path_in_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalogue, pages, errors = tree(root)
+            learn = learn_tree(root)
+            for page in learn:
+                page.collect_blocks()
+            bundle = docs.Bundle(pages, errors, {'version': '0.1.0', 'rules': list(catalogue.values()),
+                                                 'commands': []}, root, learn=learn)
+            bundle.write(root / 'bundle')
+            index = json.loads((root / 'bundle/index.json').read_text())
+            entries = [(e['kind'], e['id'], e['area']) for e in index['pages'] if e['kind'] == 'learn']
+            first = (root / 'bundle/learn/learn-first.md').read_text()
+            start = (root / 'bundle/learn/learn.md').read_text()
+            second = (root / 'bundle/learn/learn-second.md').read_text()
+        self.assertEqual(entries, [('learn', 'learn', None), ('learn', 'learn-first', None),
+                                   ('learn', 'learn-second', None)])
+        self.assertEqual([e['kind'] for e in index['pages']][:3], ['learn'] * 3)
+        self.assertIn('[the first page](learn-first.md)', start)
+        self.assertIn('[one](../topics/one.md)', first)
+        self.assertNotIn('topic:', first)
+        self.assertNotIn('removes:', second)
+        self.assertTrue(second.startswith('# The second page\n'), second)
+
+    def user_problems(self, text):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'docs/language').mkdir(parents=True)
+            (root / 'docs/language/01-one.md').write_text('# One\n')
+            (root / 'examples').mkdir()
+            (root / 'examples/README.md').write_text('# Examples\n')
+            path = root / 'docs/learn/01-page.md'
+            path.parent.mkdir(parents=True)
+            path.write_text(text)
+            page = docs.LearnPage(path, {}, root=root)
+            page.collect_blocks()
+            return ' '.join(docs.user_page_problems(page, root))
+
+    def test_a_user_page_follows_the_writing_guide(self):
+        clean = '# A page\n<!-- topic: a-page -->\n\nSee [one](../language/01-one.md).\n\n## Not built yet\n\nIt isn\'t built yet.\n'
+        self.assertEqual(self.user_problems(clean), '')
+        found = self.user_problems(
+            '# A page\n<!-- topic: a-page -->\n\nAs area 8 says, and question 11.\n\n'
+            'This is not built yet.\n\nDecided. It was carried to area 9.\n\n'
+            '[examples](../../examples/README.md) and '
+            '[code](https://github.com/richardwillars/jadpo/blob/main/README.md).\n\n'
+            '```jadpo fragment\nx\n```\n\n## Not built yet\n\nNone.\n\n## After\n\nMore.\n')
+        for expected in ('"area 8"', '"question 11"', 'build status', 'spec vocabulary',
+                         'links a file in this repository', 'fragment', '`## Not built yet` is the last section'):
+            self.assertIn(expected, found)
+        self.assertEqual(self.user_problems('# A\n<!-- topic: a -->\n\n`area 8` in code is fine.\n'), '')
+
 class Links(unittest.TestCase):
     def test_github_anchors(self):
         seen = {}

@@ -1,7 +1,8 @@
 # Jadpo documentation
 
 Jadpo is an experimental programming language for web backends written mainly
-by LLMs and reviewed by people. Start with the [project introduction](../README.md),
+by LLMs and reviewed by people. New to it? Start on the [Learn path](learn/README.md).
+Otherwise start with the [project introduction](../README.md),
 [teaching examples](../examples/README.md) or the [language map](language/README.md).
 
 ## What is current
@@ -11,6 +12,9 @@ by LLMs and reviewed by people. Start with the [project introduction](../README.
 | [Roadmap](roadmap.md) | The only list of outstanding work: the delivery plan, one chunk per session |
 | [Language specification](language/README.md) | Twenty-one areas, all decided; the source of truth for what Jadpo means. The rendered decision log collects every decision |
 | [Compiler and runtime architecture](compiler-runtime.md) | The graph-centred build approach (§1) and the architecture |
+| [Learn Jadpo](learn/README.md) | A todo app built a page at a time, for a newcomer: the user layer, every page's project compiled and tested |
+| [Primer](primer.md) | The one page an agent reads before writing an app |
+| [Writing guide](writing.md) | How user-facing docs are written, and the rules the docs check enforces |
 | [Documentation](documentation.md) | How the docs are built and delivered to people and agents; the contract with the jadpo.dev site |
 | [CLI design language](cli-design-language.md) | How every CLI screen and generated page looks |
 | [Security](security.md) | Who attacks a Jadpo app, a developer's machine, CI and a release, what each can reach, and what stops them; [SECURITY.md](../SECURITY.md) says how to report a vulnerability |

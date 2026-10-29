@@ -1,63 +1,110 @@
 # Jadpo primer
 
-Read this once before writing a Jadpo app. It covers how a project is laid
-out, the syntax, the constructs nearly every app uses, what is built, and
-where to find the rest. Every example here is compiled by this
-repository's gate, so it is valid Jadpo for this version.
+Read this once before you write a Jadpo app. It shows how a project is
+laid out, the syntax, and the parts nearly every app uses, and it ends
+with a small app you can run on your own machine. Every example on this
+page is compiled and tested, so you can copy it.
 
 ## What Jadpo is
 
-Jadpo is a statically typed language for web backends. Agents write it and
-people review it. One compiler checks the whole application: its types,
-stored data, HTTP routes, sign-in, permissions, settings, outside services,
-background work and tests. You write the rules once, in the place the
-language gives them, and the compiler applies them everywhere.
+Jadpo is a language for web backends: the server side of an app, which
+stores its data and answers its HTTP requests. Coding agents write most
+of it, and people review it.
 
-Jadpo is not a general-purpose language and has no front end. It is
-experimental and at version 0.x, so a minor release can break an app.
+One compiler checks the whole app at once. That covers the types, the
+stored data, the HTTP routes, who can sign in, what each person may see
+and change, the settings, calls to outside services, background work and
+the tests. You write each rule once, in the place the language gives it,
+and the compiler applies it everywhere.
 
-Many habits from other languages are not Jadpo. Most have their own
-error, with an edit that writes the Jadpo form:
+Jadpo has no front end: a web page or a phone app calls it over HTTP.
+It is at version 0.x, so a new minor release can still break your app.
+
+Some habits from TypeScript and other languages don't carry over. The
+compiler catches most of them and shows you the Jadpo way:
 
 - No `null`. A type ending in `?` may hold `none`, and `match` reads it.
-- No exceptions. A callable lists its failures with `fails`, raises one with
-  `reject` and passes one on with `attempt`.
+- No exceptions. A function lists what can go wrong with `fails`, raises
+  a failure with `reject` and passes one on with `attempt`.
 - No `async`, classes, methods, your own generics, `while`, `break` or
-  floating point. `for` is the only loop and `Decimal` is exact.
-- No hand-written SQL. Queries and writes are declarations the compiler
-  turns into SQL, with permissions added.
-- No truthiness, no semicolons, and no `!`, `&&` or `||`: write `not`, `and`
-  and `or`.
+  floating point. `for` is the only loop, and `Decimal` is exact.
+- No hand-written SQL. You declare queries and writes, and the compiler
+  turns them into SQL, with each person's permissions added.
+- No truthiness, no semicolons, and no `!`, `&&` or `||`: write `not`,
+  `and` and `or`.
 
-## How you work
+## The commands
 
-The `jadpo` command does everything. It finds the project by walking up to
-`app.jadpo`.
+Everything goes through one command, `jadpo`. Run it anywhere inside
+your project: it finds the project by looking upwards for `app.jadpo`.
 
-| Command | Does |
+| Command | What it does |
 |---|---|
-| `jadpo check` | Checks the whole project; quick, since it builds nothing |
-| `jadpo fmt` | Formats, and adds, removes and sorts `use` lines |
-| `jadpo test` | Runs the tests; with tables it needs PostgreSQL's tools on the machine |
-| `jadpo migrate new <purpose>` | Writes the next migration from the entities |
-| `jadpo api update` | Rewrites the committed API records from the routes |
-| `jadpo dev` | Serves the app on `http://127.0.0.1:3000` and reloads on save |
-| `jadpo help <command>` | Explains a command; `jadpo help --json` describes them all |
+| `jadpo check` | Checks the whole project. It's quick, because it builds nothing |
+| `jadpo fmt` | Formats your files, and adds, removes and sorts their `use` lines |
+| `jadpo test` | Runs the tests. Tests that use the database need PostgreSQL installed |
+| `jadpo migrate new <purpose>` | Writes the next database migration from your entities |
+| `jadpo api update` | Updates the committed record of your API after you change a route |
+| `jadpo dev` | Runs the app on `http://127.0.0.1:3000` and reloads it when you save |
+| `jadpo help <command>` | Explains a command |
 
-Every finding is an error; there are no warnings. Each one gives a place,
-a `reason:`, a `next:` step saying who acts (`agent` or `human`), a
-`rule:` and a `help:` page. Do what `next:` says. Read the `help:` page
-only when the reason and the step are not enough. `--json` gives the same
-fields to tools. Stop and ask a person when `next:` names `human`. A few
-rules are judgement calls: when the code is right as written, decline the
-finding with `decline <rule>: "<why>"` on the line above the declaration.
+## Reading an error
 
-## A project's layout
+Jadpo has no warnings. Everything it reports is an error, and the app
+doesn't run until you fix it. Here a function returns a number its type
+doesn't allow:
 
-A project is the folder holding `app.jadpo`. Code lives in domains, business
-areas under `domains/`, one level deep. Each domain has fixed folders named
-after what they hold, one declaration per file, and the file is named after
-it. This primer builds a tool-sharing app for one street:
+```jadpo check project=first-error expect=type.invalid_literal
+/// How many tools a member lends at once.
+type ToolCount = Int {
+    min: 0
+    max: 20
+}
+
+/// The most a member may lend.
+function limit() -> ToolCount {
+    return 25
+}
+```
+
+```text output
+error: `25` isn't a valid `ToolCount`
+ --> main.jadpo:9:12
+  |
+9 |     return 25
+  |            ^^ breaks `max: 20`
+  reason: `ToolCount` declares `max: 20`, and the value is above 20. A literal is checked against every rule while compiling.
+  next: Use a value that `ToolCount` allows (agent)
+  rule: type.invalid_literal
+  help: docs/errors/type.invalid_literal.md
+
+check failed: 1 error, 1 file
+```
+
+Every error has the same parts:
+
+- `reason:` says why the code is wrong.
+- `next:` says what to do, and who does it. `(agent)` means a coding
+  agent can make the fix. `(human)` means stop and ask a person, because
+  the fix needs a decision only they can make.
+- `rule:` is the error's name. Its page, on the site at
+  `https://jadpo.dev/docs/errors/<rule>`, explains it; read it only when
+  the reason and the next step aren't enough.
+
+`jadpo check --json` gives the same parts as JSON, for tools. A few rules
+are judgement calls: when the code is right as written, a line
+`decline <rule>: "<why>"` above the declaration answers that one finding.
+
+## How a project is laid out
+
+A project is a folder with `app.jadpo` at its top. Your code lives in
+domains: one folder for each part of the business, such as `lending` or
+`billing`, inside `domains/`. In a domain, each kind of declaration has
+its own folder, such as `types/`, `entities/` or `actions/`. Each file
+holds one declaration and is named after it.
+
+This primer builds a small app for neighbours on one street to lend each
+other tools. These are all the files it ends with:
 
 ```text
 app.jadpo               the application and who can sign in
@@ -75,8 +122,9 @@ domains/
     routes/             tools.jadpo  tools.test.jadpo
 ```
 
-A file starts with `use` lines naming where each name it uses comes from:
-`use lending/types { ToolName }` reads `domains/lending/types/tool_name.jadpo`.
+A file starts with `use` lines naming where each name it uses comes from,
+the domain and then the folder: `use lending/types { ToolName }` reads
+`domains/lending/types/tool_name.jadpo`.
 Built-in types and the standard library (`list.`, `money.`, `temporal.`)
 are never imported. `jadpo fmt` adds missing imports and removes unused
 ones, so run it after writing a file. A type that a second file uses must move to its own file in
@@ -133,8 +181,9 @@ function sticker(parcel: Parcel) -> Label {
   item per line, with no commas; only a `use` line's names take commas.
   `///` documents the next declaration; `//` is a plain comment.
 - Types are `UpperCamelCase`; everything else is `lower_snake_case`.
-- Every variable states its type. `var` never changes; `var mut` can be
-  given a new value. Values never change: build a new object instead.
+- Every variable states its type. `var` is like `const` and never
+  changes; `var mut` can be given a new value. Values never change:
+  build a new object instead.
 - Conditions are in brackets and must be `Bool`. `match` must cover every
   case and can give a value.
 - Arithmetic gives the plain representation (`Int`), so `Count(total + 1)`
@@ -149,7 +198,8 @@ text, but they are different types, and the compiler never converts
 between them silently. The built-in representations are `Bool`, `Int`,
 `Decimal`, `Text`, `Bytes` and `Uuid`. About 250 standard types cover the
 rest (`Email`, `Money`, `Instant`, `Duration`, `Url`, `PostalAddress` and
-more), so check area 19 before inventing one.
+more), so look in the [standard library](language/19-standard-library.md)
+before inventing one.
 
 ```jadpo check project=tool-share file=domains/lending/types/tool_name.jadpo
 /// What a tool is called, as its owner wrote it.
@@ -332,7 +382,8 @@ action join(email: Member.email) fails EmailTaken -> Member {
 }
 ```
 
-An action that needs the caller takes it as a parameter, `Principal.user`.
+An action that needs the caller takes it as a parameter of type
+`Principal.user`, the signed-in user (see "Signing in and permissions").
 An `Input` used by one action lives in the action's file:
 
 ```jadpo check project=tool-share file=domains/lending/actions/add_tool.jadpo
@@ -531,9 +582,13 @@ authentication {
 }
 ```
 
-The other methods are `api_token`, `service_key` and `external_token`, and
-magic links and passkeys check the person. Code never sees a cookie or a
-token. Every route needs a signed-in caller unless it says
+This keeps people signed in with a cookie, but gives them no way to sign
+in yet. `sign_in: { magic_link: { link: "/sign-in" } }` emails a link and
+a six-digit code that sign the person in, and needs the session's
+`origin:` and an email connection; the [Learn path](learn/11-sign-in.md)
+builds it step by step. There are no passwords. Passkeys go beside the
+magic link, and `api_token`, `service_key` and `external_token` sign in
+other programs. Code never sees a cookie or a token. Every route needs a signed-in caller unless it says
 `authentication: RouteAuthentication.none`; without one it answers 401. A
 route reads the caller as `current_principal` and passes
 `current_principal.user` to its action.
@@ -665,79 +720,73 @@ test "only a tool's owner lends it out" {
 Shared test data goes in a `fixture` in `fixtures/`. A test's `fakes:`
 scripts what a provider package answers.
 
-## What is built
+## Run it
 
-The language is fully specified; not all of it is built. A feature that
-isn't built is the error `toolchain.not_built_yet` where you use it. Each
-area's "What is built" table is the record:
-[1](language/01-project-layout-and-modules.md#what-is-built) ·
-[2](language/02-values-and-types.md#what-is-built) ·
-[3](language/03-logic.md#what-is-built) ·
-[4](language/04-failures.md#what-is-built) ·
-[5](language/05-data.md#what-is-built) ·
-[6](language/06-reads-and-writes.md#what-is-built) ·
-[7](language/07-http.md#what-is-built) ·
-[8](language/08-identity.md#what-is-built) ·
-[9](language/09-policy.md#what-is-built) ·
-[10](language/10-configuration-and-time.md#what-is-built) ·
-[11](language/11-integrations.md#what-is-built) ·
-[12](language/12-jobs-and-events.md#what-is-built) ·
-[13](language/13-testing.md#what-is-built) ·
-[14](language/14-tooling.md#what-is-built) ·
-[15](language/15-personal-data.md#what-is-built) ·
-[16](language/16-built-in-services.md#what-is-built) ·
-[17](language/17-debugging-and-review.md#what-is-built) ·
-[18](language/18-records-and-manifest.md#what-is-built) ·
-[19](language/19-standard-library.md#what-is-built) ·
-[20](language/20-geospatial.md#what-is-built) ·
-[21](language/21-ai.md#what-is-built).
+Copy each file above to its path in an empty folder, all but the API
+record, which a command writes. Then make the migration and the record,
+check, and run the tests (they need PostgreSQL installed):
 
-Built: everything in this primer; migrations; sign-in by session, token,
-key, magic link and passkey; roles and tenancy; time zones, money, units
-and translations; provider packages and webhooks; events, subscribers,
-schedules and batches; email; AI calls and vector search; and native and
-WebAssembly builds with `jadpo build`.
+```sh
+jadpo migrate new initial
+jadpo api update
+jadpo check
+jadpo test
+```
 
-Not built yet, among others: `jadpo new` (write `app.jadpo` by hand);
-seeds and `jadpo seed`; `jadpo rename`; entities and caches in Redis;
-failure logging; OAuth sign-in providers and grants; token scopes; most of
-personal data (area 15) and of debugging and review (area 17); data
-builders and `assert emitted` in tests; flags, audit, search and
-documents (area 16); and installers, so `jadpo` is
-built from this repository with `cargo build --release -p jadpo-cli`.
+```text
+checked: 19 files in 0.1 s
+tested: 4 passed, 2 action tests, 2 route tests in 1.0 s
+```
+
+`jadpo dev` serves it, with a throwaway database of its own. Every route
+needs someone signed in, so until you add a way to sign in, a request
+is refused:
+
+```sh
+curl http://localhost:3000/tools
+```
+
+```text
+{"error":{"code":"authentication_required","message":"Sign in first.","request_id":"req_9342ee18ff3ce32e"}}
+```
 
 ## Finding more
 
 Read only what a task needs.
 
-- **Topics.** Every section of the area pages is a topic with a stable ID,
+- **The Learn path** builds a todo app with sign-in a step at a time,
+  starting from [Learn Jadpo](learn/README.md).
+- **Topics.** Every section of the reference is a topic with a stable ID,
   such as [`named-queries`](language/06-reads-and-writes.md#named-queries),
   [`the-operations-every-entity-gets`](language/06-reads-and-writes.md#the-operations-every-entity-gets),
   [`grants`](language/09-policy.md#grants),
   [`magic-links`](language/08-identity.md#magic-links),
-  [`settings-config-jadpo`](language/10-configuration-and-time.md#settings-configjadpo),
   [`migrations`](language/05-data.md#migrations) and
   [`kinds-of-test`](language/13-testing.md#kinds-of-test). The IDs never
   change.
-- **The bundle.** The docs are published as a bundle: `primer.md`,
-  `topics/<id>.md`, `errors/<rule.id>.md`, `commands/jadpo-<command>.md`
-  and `index.json`, one entry per page with its `id`, `kind`, `title`, a
-  one-line `summary` and its `tokens`. Read `index.json`, pick pages by
-  title and summary, and fetch only those. In a checkout,
-  `python3 tools/docs/language_docs.py --bundle <dir>` builds it, and
-  [documentation](documentation.md) describes it. `llms.txt` at the
-  repository's root links the primer and the area pages.
-- **Outside services.** Packages, providers, connections, drivers,
-  capabilities, built-in services and services Jadpo runs (the only part
-  that uses Docker or Podman, and not built yet) are explained together,
-  with where each runs, in
+- **The index.** The docs are published with `index.json`, one entry per
+  page with its `id`, `kind`, `title`, a one-line `summary` and its
+  `tokens`. Read it, pick pages by title and summary, and fetch only
+  those.
+- **Outside services.** Packages, providers, connections, drivers and
+  capabilities are explained together in
   [`how-integrations-fit-together`](language/11-integrations.md#how-packages-connections-capabilities-and-services-fit-together).
 - **Errors.** Each rule has a page named after its ID, such as
-  [`failure.kind_required`](errors/failure.kind_required.md). A
-  diagnostic's `help:` line names it.
+  [`failure.kind_required`](errors/failure.kind_required.md).
 - **Commands.** `jadpo help <command>`, or `jadpo <command> --help`.
-- **Whole apps.** The [teaching projects](../examples/README.md) build up
-  from a first project to a cake shop, a recipe book with tenants and
-  roles, and apps using providers, jobs and AI. Each passes its tests.
-- **The rules.** The [language map](language/README.md) lists the 21
-  areas. Where anything disagrees with an area page, the area page wins.
+- **Whole apps.** The teaching projects in the repository's `examples/`
+  folder build up from a first project to apps with tenants, roles,
+  providers, background work and AI. Each passes its tests.
+- **The rules.** Where anything disagrees with the reference, the
+  reference wins.
+
+## Not built yet
+
+A feature that isn't built is the error `toolchain.not_built_yet` where
+you use it. Not built yet, among others: `jadpo new`, so you write
+`app.jadpo` by hand; seeds and `jadpo seed`; `jadpo rename`; entities and
+caches in Redis; failure logging; sign-in with OAuth providers, and OAuth
+grants; token scopes; most of personal data, and of the debugging and
+review tools; data builders and `assert emitted` in tests; flags, audit,
+search and documents; and installers, so `jadpo` is built from its
+source with `cargo build --release -p jadpo-cli`.

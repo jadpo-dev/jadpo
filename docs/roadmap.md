@@ -279,6 +279,35 @@ D1 first: the site starts once D1 has merged.
   `tools/` holds the gate and its `docs/`, `checks/`, `references/` and `fixtures/`.
 - [ ] **D8 The VS Code extension, finished and published**: area 14, "Editor support" and "What is built"; `editors/vscode/README.md`; `.github/workflows/vscode-extension.yml`.
   Waits: the editor's rename, which comes with `jadpo rename` and the identity registry (after the first build, items 6 and 7).
+- [x] **D9 Docs for newcomers**: [writing guide](writing.md); the [Learn path](learn/README.md); the [primer](primer.md); [documentation](documentation.md), "The bundle".
+- [ ] **D10 Area pages to the writing guide** `opus · high`: the area pages'
+  author-facing sections rewritten to [docs/writing.md](writing.md),
+  mechanically where possible. References to an area or a question by
+  number become topic links, or move to the design notes; build status
+  moves to each page's "What is built"; the example comes first where a
+  topic has one; garbled sentences are fixed (the cold read named
+  `/docs/http` and `/docs/named-queries`). Topic IDs that read like slugs
+  of their titles (`jadpo-why-why-the-language-decided-something`,
+  `jadpo-s-own-magic-link-email`, `levels-4-and-5-of-the-magic-link-email`,
+  `capabilities-on-this-page`, `a-release-that-adds-a-standard-type`) get
+  names a reader would search for, the old ID still reaching the new
+  page.
+- [ ] **D11 Task guides** `opus · high`: how-to pages in the bundle, a
+  page kind of their own beside `learn`, for the commonest jobs (add
+  sign-in, store and change a record, query records, call an outside API,
+  handle failures, write tests, deploy to Workers, deploy natively), each
+  compiled by the gate and linking the reference. They replace the site's
+  own `src/data/tasks.json`.
+- [ ] **D12 What the Learn path found** `opus · high`, before 0.1.0: each
+  with a failing test first. A required secret that isn't set doesn't
+  stop a native program starting; `jadpo build`'s `settings:` line and
+  `wrangler.json`'s required secrets leave out the SMTP connection's
+  settings; a route test can't call the generated `/auth/magic-link`
+  routes, which area 8, "In development and tests", says it can; a
+  diagnostic's `help:` line prints a source path a reader can't open, and
+  should print the error's page on the site; the bundle keeps each code
+  fence's attributes (`check project=… file=…`), which the site has to
+  hide.
 
 ## Phase 10 — Golden todo
 
