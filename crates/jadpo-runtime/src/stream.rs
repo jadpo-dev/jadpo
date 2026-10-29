@@ -779,12 +779,20 @@ async fn streamed(
             let Some(json) = crate::ai::mapped_input(&mapped.input, &given, settings) else {
                 return refused(ctx);
             };
+            // Resolved from its connection's source before the request
+            // is made (chunk 10.3f).
+            let credential = match crate::provider::credential_of(&providers, mapped.called) {
+                Ok(credential) => credential,
+                Err(crate::provider::Unready::Misconfigured) => return refused(ctx),
+                Err(crate::provider::Unready::Fault(kind)) => return Done::Fault(kind),
+            };
             let mut request = match crate::ai::package_request(
                 ctx,
                 &providers,
                 mapped.called,
                 &json,
                 settings,
+                credential.as_ref(),
                 None,
                 &site.prompt,
             ) {

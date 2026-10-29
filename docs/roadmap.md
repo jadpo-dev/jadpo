@@ -360,13 +360,7 @@ compiled.
   by the same rules. Done when loading is reading `(path, text)` pairs
   plus one pure function over them holding every rule, and a project
   loaded from an in-memory file set gives the same graph as from disk.
-- [ ] **10.3f Where a connection's credential comes from** `opus · high`,
-  before item 8's OAuth grants: `ConnectionPlan.credential` is a setting
-  number read synchronously in `provider::request`, and a 401 or 403
-  marks the whole connection misconfigured. Done when the credential is a
-  source (`Setting` now, room for a per-owner grant), resolved in the
-  asynchronous caller and passed to the request, a 401's meaning decided
-  by that source, and every provider test passes unchanged.
+- [x] **10.3f Where a connection's credential comes from**: compiler/runtime §2.6, "Where a connection's credential comes from"; [area 11](language/11-integrations.md), "How provider calls are made".
 - [ ] **10.3g The graph's nodes for areas 8, 10, 11 and 12**
   `opus · xhigh`, before item 6: connections, packages, operations,
   capability mappings, hosts, lock entries, generated routes, principals,

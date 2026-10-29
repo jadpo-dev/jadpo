@@ -260,8 +260,8 @@ pub(crate) fn provider_settings(prepared: &Prepared) -> BTreeMap<String, Vec<u32
     let mut out: BTreeMap<String, Vec<u32>> = BTreeMap::new();
     for (_, name, connection) in prepared.plan().package_connections() {
         let mut read = Vec::new();
-        if let Some((_, at)) = connection.credential {
-            read.push(at);
+        if let Some(credential) = connection.credential {
+            read.extend(credential.source.settings());
         }
         match &connection.address {
             Address::Hosts { environment, .. } => read.push(*environment),
