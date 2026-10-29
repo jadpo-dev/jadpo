@@ -44,7 +44,8 @@ no HTTP route to start background work.
   `deny.toml` and `.cargo/audit.toml`.
 - npm is used only on this machine and in CI (benchmarks, the Workers
   test bed, the extension), from lockfiles, with `npm ci --ignore-scripts`
-  wherever the gate installs.
+  wherever the gate installs and wherever CI packages or publishes the
+  extension, so no dependency's install script runs.
 - Dependabot opens grouped updates and security updates for every lockfile
   and for the workflows' actions.
 
@@ -59,14 +60,15 @@ no HTTP route to start background work.
 - A pull request from a fork gets a read-only token and no secrets; the
   secrets (release-please's token, the extension's publishing tokens) are
   read only on a push to `main` or a release started by hand.
-- dist builds the installers on each release and writes a SHA-256 beside
-  each archive.
+- dist builds the installers on each release, installed itself from its
+  own release archive checked against a SHA-256 pinned in
+  `.github/install-dist.sh`, and writes a SHA-256 beside each archive.
+- Each archive and installer dist builds, and the VS Code extension's
+  `.vsix`, has a GitHub artifact attestation, which `gh attestation verify`
+  checks (documentation, "Installing"): dist's two build jobs attest what
+  they build, and the extension's `attach` job the `.vsix` before
+  attaching it. Only those jobs may mint an OIDC token.
 - Issues and feature requests will be read by an agent (roadmap, D4). Issue
   text is anyone's, so that agent holds no secrets, has a read-only token
   where it reads, and can't merge, release or change a workflow; what it
   writes is a pull request that passes the same gate and review.
-
-## Not covered yet
-
-The roadmap's "Security audit" section lists what the audit found and
-didn't fix.

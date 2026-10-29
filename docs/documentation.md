@@ -201,6 +201,15 @@ PowerShell one (`jadpo-cli-installer.ps1`), a Homebrew formula
 (`jadpo.rb`) and an npm package (`jadpo`, for `npx jadpo`). `jadpo build`
 fetches its own pinned Rust toolchain into its cache on first use.
 
+Each archive has a SHA-256 beside it, and each of those files, like the
+VS Code extension's `.vsix`, has a GitHub artifact attestation saying
+which workflow run in `richardwillars/jadpo` built it, from which commit.
+Check one before running it, with the GitHub CLI:
+
+```sh
+gh attestation verify jadpo-cli-aarch64-apple-darwin.tar.xz --repo richardwillars/jadpo
+```
+
 ## Not decided yet
 
 - How `jadpo` serves the bundle itself: `jadpo docs <id>` and
