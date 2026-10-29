@@ -2625,8 +2625,12 @@ record is proved once for each record its target may be (`targets`);
 role, `Prover::proves_on` proves a list naming every role held in the
 tenant from the tenant alone, and an optional `role:` proves none.
 `policy::outputs` checks each include's reference (`Unproved::Via`). The
-plan founds a tenant only while `jadpo_sql::policy::unheld` holds for every
-membership held in it (`Planner::nobody_in`), adds the caller's membership
+plan founds a tenant only at a membership's create whose scope is the `id`
+of the tenant record the same body created (`Planner::founds`), while
+`jadpo_sql::policy::unheld` holds for every membership held in it
+(`Planner::nobody_in`); a tenant's unique keys end with the tenancy
+column (`data::key_columns`, from `policy::unique_within`), and
+`Entities::key_decides` says when tested fields find one record. It adds the caller's membership
 in the new tenant to a move (`Planner::moved_to`), and asks a guarded
 transition's probe with its fields' grants, so a field's refusal is 403
 before the condition's 409. `types::decl::holds_principal` follows named

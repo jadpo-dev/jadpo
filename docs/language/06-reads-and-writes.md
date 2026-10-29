@@ -35,6 +35,11 @@ come back, so there is no separate word for it:
 | `Page<TodoView>` | one page and a cursor for the next | `order:` and `page:` |
 | `FeatureCollection<Point, TodoPin>` | a map layer of up to a fixed number, each record a feature ("A query giving a map layer") | `geometry:`, `order:` and `limit:` |
 
+On a tenant's records a unique key holds the tenancy reference too, so a
+query for one record tests it beside the unique field, unless it tests a
+reference to another of the tenant's records (area 9, ["A unique rule holds
+within its tenant"](09-policy.md#a-unique-rule-holds-within-its-tenant)).
+
 The element type is the entity or a type derived from it
 (`type TodoView = Output { pick: [Todo.id, Todo.title] }`, area 2); the compiler
 reads only the fields that type needs. It names no rule across its fields

@@ -610,6 +610,63 @@ impl<'db> Entities<'db> {
     pub fn all(&self) -> &'db DataModel {
         data_model(self.db, self.project)
     }
+
+    /// The tenancy reference the unique rules of the entity called `name`
+    /// hold within, which each rule's key holds too (area 9, "A unique
+    /// rule holds within its tenant").
+    pub fn unique_within(&self, name: &str) -> Option<String> {
+        crate::policy::unique_within(self.db, self.project, name)
+    }
+
+    /// Whether testing the fields `pinned` says with `==` finds at most one
+    /// record of `entity` through its unique rule over `fields`: every one
+    /// of them is tested and, on a tenant's records, whose key holds the
+    /// tenancy reference too, so is the tenancy, or a reference to another
+    /// of the tenant's records, which stays inside the tenant.
+    pub fn key_decides(
+        &self,
+        entity: &EntityModel,
+        fields: &[&str],
+        pinned: &dyn Fn(&str) -> bool,
+    ) -> bool {
+        if !fields.iter().all(|field| pinned(field)) {
+            return false;
+        }
+        let Some(via) = self.unique_within(&entity.name) else {
+            return true;
+        };
+        fields.contains(&via.as_str())
+            || pinned(&via)
+            || entity.fields.iter().any(|field| {
+                pinned(&field.name)
+                    && field
+                        .reference
+                        .as_ref()
+                        .is_some_and(|reference| self.unique_within(&reference.target).is_some())
+            })
+    }
+
+    /// Whether `field` of `entity`, `unique: true`, finds at most one
+    /// record on its own (see [`Entities::key_decides`]).
+    pub fn unique_alone(&self, entity: &EntityModel, field: &FieldModel) -> bool {
+        field.unique && {
+            let name = field.name.as_str();
+            self.key_decides(entity, &[name], &|pinned| pinned == name)
+        }
+    }
+}
+
+/// The columns of a unique key over `columns` of a record whose rules
+/// hold within the tenancy reference's `within` (area 9, "A unique rule
+/// holds within its tenant"): the tenancy column added last, unless the
+/// rule holds it already.
+pub fn key_columns(mut columns: Vec<String>, within: Option<&str>) -> Vec<String> {
+    if let Some(within) = within
+        && !columns.iter().any(|column| column == within)
+    {
+        columns.push(within.to_string());
+    }
+    columns
 }
 
 /// Every entity, without positions, in name order.
@@ -2651,7 +2708,11 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
                 tables: BTreeMap::new(),
             })
             .tables;
-        tables.insert(entity.table.clone(), table_of(entity, &by_name));
+        let within = crate::policy::unique_within(db, project, &entity.name);
+        tables.insert(
+            entity.table.clone(),
+            table_of(entity, &by_name, within.as_deref()),
+        );
     }
     derived_indexes(db, project, model, &mut schema);
     for store in schema.stores.values_mut() {
@@ -3219,7 +3280,13 @@ fn nearest_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &
     }
 }
 
-fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> physical::Table {
+/// `entity`'s table; `within` names the tenancy reference its unique
+/// rules hold within, which each key's columns end with (area 9).
+fn table_of(
+    entity: &EntityModel,
+    by_name: &BTreeMap<&str, &EntityModel>,
+    within: Option<&str>,
+) -> physical::Table {
     let table = entity.table.as_str();
     let mut out = physical::Table {
         holds: physical::Holds::Entity(entity.born.clone()),
@@ -3240,6 +3307,7 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
             None => vec![name.to_string()],
         }
     };
+    let tenancy = within.and_then(|within| column(within).into_iter().next());
     let mut position = 0u32;
     for field in &entity.fields {
         let columns = field.columns();
@@ -3332,7 +3400,10 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
             out.unique.insert(
                 physical::object_name(&[table, &field.born], "key"),
                 physical::Unique {
-                    columns: columns.iter().map(|(name, _)| name.clone()).collect(),
+                    columns: key_columns(
+                        columns.iter().map(|(name, _)| name.clone()).collect(),
+                        tenancy.as_deref(),
+                    ),
                     rule: format!("{}.{}", entity.born, field.born),
                 },
             );
@@ -3379,7 +3450,10 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
         out.unique.insert(
             physical::object_name(&[table, &rule.name], "key"),
             physical::Unique {
-                columns: rule.fields.iter().flat_map(|f| column(f)).collect(),
+                columns: key_columns(
+                    rule.fields.iter().flat_map(|f| column(f)).collect(),
+                    tenancy.as_deref(),
+                ),
                 rule: format!("{}.{}", entity.born, rule.name),
             },
         );

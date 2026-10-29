@@ -137,7 +137,9 @@ impl Reader<'_> {
                 .as_ref()
                 .is_some_and(|r| r.target == entity.name)
         {
-            let kind = if f.unique {
+            // A unique reference gives one child, unless the key holds the
+            // tenancy as well, one child in each tenant (area 9).
+            let kind = if entities.unique_alone(other, f) {
                 IncludeKind::Child
             } else {
                 IncludeKind::Children

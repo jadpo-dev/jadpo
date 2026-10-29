@@ -440,9 +440,10 @@ fn every_mutation_holds_its_row_version_in_its_own_where() {
     assert!(checked >= 3);
 }
 
-/// A tenant's first membership founds it, and the system founds none
-/// (area 9, "Tenancy" and "Background work"): the system may add a
-/// membership only to a tenant someone belongs to already.
+/// A tenant's first membership founds it, only in the action that
+/// creates the tenant, and the system founds none (area 9, "Founding a
+/// tenant" and "Background work"): the system may add a membership only
+/// to a tenant someone belongs to already.
 #[test]
 fn the_system_adds_a_membership_only_where_someone_belongs_already() {
     let plan = planned(
@@ -521,31 +522,51 @@ action seat(company_id: Company.id, person_id: Person.id) fails CompanyNotFound,
         }
     }
 }
+
+action found(name: Handle, founder: Principal.user) -> Membership {
+    var company: Company = Company.create {
+        set: {
+            name: name
+        }
+    }
+    return Membership.create {
+        set: {
+            company_id: company.id
+            person_id: founder.id
+            role: Role.owner
+        }
+    }
+}
 "#
         .to_string(),
     );
-    let callable = plan
-        .callables()
-        .iter()
-        .find(|callable| callable.key.name() == "seat")
-        .expect("seat");
-    let sql = callable
-        .sites
-        .iter()
-        .find_map(|site| match &site.decoded {
-            Decoded::Write { plan: Some(id), .. } => plan.write(*id),
-            _ => None,
-        })
-        .map(|found| found.plan.sql.clone())
-        .expect("the create");
+    let create = |name: &str| {
+        let callable = plan
+            .callables()
+            .iter()
+            .find(|callable| callable.key.name() == name)
+            .expect("the action");
+        callable
+            .sites
+            .iter()
+            .filter_map(|site| match &site.decoded {
+                Decoded::Write { plan: Some(id), .. } => plan.write(*id),
+                _ => None,
+            })
+            .map(|found| found.plan.sql.clone())
+            .find(|sql| sql.contains("INSERT INTO \"membership\""))
+            .expect("the membership's create")
+    };
+    let founding = "NOT EXISTS (SELECT 1 FROM \"membership\" AS \"jadpo_f0\"";
     // Founding is the caller's own first membership where nobody belongs
-    // (`NOT EXISTS`); the system's way in needs a membership there.
+    // (`NOT EXISTS`), in the action that created the tenant (area 9,
+    // "Founding a tenant"); the system's way in needs a membership there.
+    let found = create("found");
+    assert!(found.contains(founding), "{found}");
+    let seat = create("seat");
+    assert!(!seat.contains(founding), "{seat}");
     assert!(
-        sql.contains("NOT EXISTS (SELECT 1 FROM \"membership\" AS \"jadpo_f0\""),
-        "{sql}"
-    );
-    assert!(
-        sql.contains(" AND EXISTS (SELECT 1 FROM \"membership\" AS \"jadpo_s0\""),
-        "{sql}"
+        seat.contains(" AND EXISTS (SELECT 1 FROM \"membership\" AS \"jadpo_s0\""),
+        "{seat}"
     );
 }

@@ -10,7 +10,7 @@
 //! root `policy { actions: }` makes in its own body, that line's. Tenancy
 //! limits every grant to the tenants where the caller has a membership: a
 //! tenant's own record being created belongs to nobody yet, a new
-//! membership in a tenant nobody belongs to yet makes its member the
+//! membership in the tenant the same action created makes its member the
 //! first, and a record moved to another tenant needs the caller's
 //! membership there too.
 //!
@@ -48,8 +48,13 @@ impl CallerBind for Statement {
 pub(crate) enum Row<'r> {
     /// The row of the table the statement reaches.
     Table,
-    /// A record being created: each field's value as SQL, by field name.
-    New(&'r [(String, String)]),
+    /// A record being created: each field's value as SQL, by field name,
+    /// and whether it is a membership that founds its tenant, given the
+    /// `id` of the tenant record the same action created (area 9).
+    New {
+        values: &'r [(String, String)],
+        founds: bool,
+    },
 }
 
 /// The part of the caller a grant compares a field with.
@@ -84,7 +89,7 @@ impl Planner<'_> {
     fn value_of(&self, entity: &EntityModel, name: &str, row: &Row<'_>) -> Option<String> {
         match row {
             Row::Table => Some(qualified(&entity.table, &field(entity, name)?.born)),
-            Row::New(values) => values
+            Row::New { values, .. } => values
                 .iter()
                 .find(|(field, _)| field == name)
                 .map(|(_, value)| value.clone()),
@@ -235,7 +240,7 @@ impl Planner<'_> {
             .entity(&entity.name)
             .and_then(|policy| policy.tenancy.as_ref())
         {
-            let creating_tenant = matches!(row, Row::New(_)) && tenancy.via == "id";
+            let creating_tenant = matches!(row, Row::New { .. }) && tenancy.via == "id";
             if !creating_tenant {
                 let at = self.value_of(entity, &tenancy.via, row)?;
                 let mut tenants: Vec<Who> = Vec::new();
@@ -250,10 +255,12 @@ impl Planner<'_> {
                         None,
                     )?));
                 }
-                // A new membership in a tenant nobody belongs to yet makes
-                // its member the first (founding it); in any other tenant,
-                // only someone who belongs to it already may add one.
-                if let Row::New(_) = row
+                // A new membership, in the action that created its tenant,
+                // makes its member the first while nobody belongs to the
+                // tenant yet (founding it); anywhere else, only someone who
+                // belongs to the tenant already may add one, so nobody
+                // seats themselves in a tenant whose members have all left.
+                if let Row::New { founds: true, .. } = row
                     && let Some(held) = self.access.membership(&entity.name)
                     && held.scope.as_deref() == Some(tenancy.via.as_str())
                 {
@@ -269,7 +276,7 @@ impl Planner<'_> {
                     let mut within = jadpo_sql::policy::system_in_tenant(&system, &tenant, &at);
                     // The system founds no tenant's first membership: it
                     // adds one only where someone belongs already.
-                    if let Row::New(_) = row
+                    if let Row::New { .. } = row
                         && self.access.membership(&entity.name).is_some()
                     {
                         let held = self.somebody_in(&at)?;

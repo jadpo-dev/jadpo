@@ -111,6 +111,7 @@ mod steps;
 mod stores;
 mod suggest;
 mod surfaces;
+mod tenant_keys;
 mod tenant_proofs;
 mod text;
 mod text_formats;

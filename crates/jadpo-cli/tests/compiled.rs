@@ -870,13 +870,24 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
         return;
     }
     let started = std::time::Instant::now();
-    let files = examples::projects()
-        .into_iter()
-        .find(|(name, _)| name == "docs/language/07-http.md todos")
-        .map(|(_, files)| files)
-        .expect("area 7's todos");
+    let corpus = examples::projects();
+    let page = |wanted: &str| {
+        corpus
+            .iter()
+            .find(|(name, _)| name == wanted)
+            .map(|(_, files)| files.clone())
+            .unwrap_or_else(|| panic!("{wanted}"))
+    };
+    let files = page("docs/language/07-http.md todos");
+    // Area 9's unique rules and founding within a tenant (chunks 10.3a and
+    // 10.3b), whose constraint and founding conditions are the plan's SQL.
+    let tenant_keys = page("docs/language/09-policy.md tenant-keys");
     let projects = [
         ("area 7's todos", corpus_project(&files, "workerd-todos")),
+        (
+            "area 9's tenant keys",
+            corpus_project(&tenant_keys, "workerd-tenant-keys"),
+        ),
         (
             "the repair café",
             example_project("23-repair-cafe", "workerd-repair-cafe"),
@@ -908,7 +919,7 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
         .iter()
         .map(|compared| (compared.tests, compared.passed))
         .collect();
-    assert_eq!(counts, [(3, 3), (4, 4), (1, 1), (5, 5)]);
+    assert_eq!(counts, [(3, 3), (2, 2), (4, 4), (1, 1), (5, 5)]);
     println!(
         "compared on workerd: {} route tests of {} projects with the interpreter's records, every one passing, in {:.0?}",
         counts.iter().map(|(tests, _)| tests).sum::<usize>(),

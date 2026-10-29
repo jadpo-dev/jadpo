@@ -421,7 +421,9 @@ entity Todo {
 several fields is named in the entity's `unique: { }` section with its fields
 as a list; its fields must exist, be distinct and be required, so every
 engine agrees on what a duplicate is. The name is what a write's conflict
-mapping refers to (area 6).
+mapping refers to (area 6). On a tenant's records a rule holds within each
+tenant, its key holding the tenancy reference too (area 9, ["A unique rule
+holds within its tenant"](09-policy.md#a-unique-rule-holds-within-its-tenant)).
 
 ```jadpo check project=unique
 type ProjectName = Text {
