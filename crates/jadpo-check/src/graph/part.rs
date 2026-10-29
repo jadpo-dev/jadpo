@@ -184,7 +184,7 @@ impl Part<'_> {
                     self.constant(key, item.name.clone(), decl.syntax(), item, None, None);
                 }
             }
-            Decl::RoutesDecl(_) | Decl::ScheduleDecl(_) | Decl::SubscriberDecl(_) => {
+            Decl::RoutesDecl(group) => {
                 if let Some(item) = item
                     && let Some(kind) = super::kind_of(&item.kind)
                 {
@@ -192,9 +192,20 @@ impl Part<'_> {
                     let node =
                         self.node(key.clone(), kind, item.name.clone(), decl.syntax().clone());
                     self.out.nodes.push(node);
-                    if let Decl::RoutesDecl(group) = decl {
-                        self.routes(group, item, &key);
-                    }
+                    self.routes(group, item, &key);
+                }
+            }
+            Decl::ScheduleDecl(_) | Decl::SubscriberDecl(_) => {
+                if let Some(item) = item
+                    && let Some(kind) = super::kind_of(&item.kind)
+                {
+                    // A package's own subscriber carries its package's
+                    // name, as its model's key does (chunk 7.6b).
+                    let key = self.item_key(kind, &item.kind, &item.name);
+                    let name = key.name().to_string();
+                    let node = self.node(key.clone(), kind, name, decl.syntax().clone());
+                    self.out.nodes.push(node);
+                    self.trigger(kind, &key, &item.name);
                 }
             }
             Decl::SeedDecl(d) => {
@@ -210,11 +221,214 @@ impl Part<'_> {
                     self.runnable(key, Kind::Test, name, d.syntax(), index);
                 }
             }
-            Decl::PackageDecl(_)
-            | Decl::ResourceDecl(_)
-            | Decl::ProvideDecl(_)
-            | Decl::SingletonDecl(_) => {}
+            Decl::PackageDecl(d) => self.package(d),
+            Decl::ResourceDecl(d) => self.resource(d),
+            Decl::ProvideDecl(d) => self.mapping(d),
+            Decl::SingletonDecl(_) => {}
         }
+    }
+
+    /// A schedule's or subscriber's detail and what it runs, hears or
+    /// deletes, from its model (area 12).
+    fn trigger(&mut self, kind: Kind, key: &Key, name: &str) {
+        let Some(node) = self.out.nodes.last_mut() else {
+            return;
+        };
+        if kind == Kind::Schedule {
+            let Some(model) = crate::schedules::schedules_in(self.db, self.project, self.file)
+                .iter()
+                .find(|read| read.name == name)
+                .and_then(|read| read.model.as_ref())
+            else {
+                return;
+            };
+            node.detail = Detail::Schedule {
+                every_ms: model.every_ms,
+            };
+            if let Some(action) = model.run.action() {
+                self.out
+                    .edges
+                    .push((key.clone(), EdgeKind::Runs, action.clone()));
+            }
+            return;
+        }
+        let Some(model) = crate::events::subscribers_in(self.db, self.project, self.file)
+            .iter()
+            .filter_map(|read| read.model.as_ref())
+            .find(|model| model.key == *key)
+        else {
+            return;
+        };
+        node.detail = Detail::Subscriber {
+            attempts: model.retry.attempts,
+            within_ms: model.retry.within_ms,
+            tenant_field: match &model.tenant {
+                crate::events::Tenant::Field(field) => Some(field.clone()),
+                crate::events::Tenant::Untenanted | crate::events::Tenant::None => None,
+            },
+        };
+        self.out
+            .edges
+            .push((key.clone(), EdgeKind::Subscribes, model.event.clone()));
+        self.out
+            .edges
+            .push((key.clone(), EdgeKind::Runs, model.run.clone()));
+    }
+
+    /// The package this file belongs to, when it is a package's.
+    fn home(&self) -> Option<&jadpo_db::PackageHome> {
+        match &self.ownership {
+            jadpo_db::Ownership::Package(home) => Some(home),
+            _ => None,
+        }
+    }
+
+    fn package_key(&self, home: &jadpo_db::PackageHome) -> Key {
+        self.lookup
+            .registry()
+            .key(Kind::Package, &home.through, None)
+    }
+
+    /// A package's index (area 11): the package, keyed by the name its
+    /// declarations are written through.
+    fn package(&mut self, decl: &ast::PackageDecl) {
+        let Some(home) = self.home().cloned() else {
+            return;
+        };
+        let key = self.package_key(&home);
+        let mut node = self.node(
+            key,
+            Kind::Package,
+            home.through.clone(),
+            decl.syntax().clone(),
+        );
+        let provider = crate::connections::reach(self.db, self.project, &home).is_some();
+        node.detail = Detail::Package {
+            version: home.version.clone(),
+            package_kind: if provider { "provider" } else { "library" }.to_string(),
+            installed: home.installed,
+        };
+        self.out.nodes.push(node);
+    }
+
+    /// A provider package's resource and its operations (area 11), each
+    /// with the failures it answers with and the types it takes and gives.
+    fn resource(&mut self, decl: &ast::ResourceDecl) {
+        let Some(home) = self.home().cloned() else {
+            return;
+        };
+        let Some(resource) = decl.name().as_ref().and_then(tree::name_text) else {
+            return;
+        };
+        let registry = self.lookup.registry();
+        let key = registry.key(
+            Kind::Resource,
+            &format!("{}.{resource}", home.through),
+            None,
+        );
+        let mut node = self.node(
+            key.clone(),
+            Kind::Resource,
+            key.name().to_string(),
+            decl.syntax().clone(),
+        );
+        node.public = decl.visibility().is_some();
+        node.parent = Some(self.package_key(&home));
+        self.out.nodes.push(node);
+        let operations = crate::providers::operations(self.db, self.project);
+        for (name, member) in tree::members(decl.member_list()) {
+            let Some(operation) = tree::name_text(&name) else {
+                continue;
+            };
+            let op_key = super::areas::operation_key(
+                self.db,
+                self.project,
+                &home.through,
+                &format!("{resource}.{operation}"),
+            );
+            let mut node = self.node(
+                op_key.clone(),
+                Kind::Operation,
+                op_key.name().to_string(),
+                member.syntax().clone(),
+            );
+            node.parent = Some(key.clone());
+            node.public = decl.visibility().is_some();
+            if let Some(read) = operations.find(&home.folder, &resource, &operation) {
+                let input = read.input.as_ref().map(|(ty, _)| type_ref(self.lookup, ty));
+                let output = type_ref(self.lookup, &read.output);
+                let mut uses: BTreeSet<Key> = BTreeSet::new();
+                for ty in input.iter().chain(std::iter::once(&output)) {
+                    uses.extend(ty.keys().into_iter().cloned());
+                }
+                let raises: BTreeSet<Key> = read
+                    .failures
+                    .iter()
+                    .filter_map(|failure| declaration_key(self.lookup, failure))
+                    .collect();
+                node.detail = Detail::Operation {
+                    method: read.method.word().to_string(),
+                    path: read.written_path(),
+                    input,
+                    output,
+                    changes: read.changes,
+                    idempotent: read.idempotent,
+                };
+                self.edges(&op_key, EdgeKind::Uses, uses);
+                self.edges(&op_key, EdgeKind::Raises, raises);
+            }
+            self.out.nodes.push(node);
+        }
+    }
+
+    /// A provider package's `provide <capability>` (area 11,
+    /// "Capabilities"): the mapping its package provides, calling each
+    /// operation a `call:` in it names.
+    fn mapping(&mut self, decl: &ast::ProvideDecl) {
+        let Some(home) = self.home().cloned() else {
+            return;
+        };
+        let Some(capability) = decl.name().as_ref().and_then(tree::name_text) else {
+            return;
+        };
+        let key = self.lookup.registry().key(
+            Kind::CapabilityMapping,
+            &format!("{}.{capability}", home.through),
+            None,
+        );
+        let mut node = self.node(
+            key.clone(),
+            Kind::CapabilityMapping,
+            key.name().to_string(),
+            decl.syntax().clone(),
+        );
+        let package = self.package_key(&home);
+        node.parent = Some(package.clone());
+        node.detail = Detail::CapabilityMapping {
+            capability: capability.clone(),
+        };
+        self.out.nodes.push(node);
+        self.out
+            .edges
+            .push((package, EdgeKind::Provides, key.clone()));
+        let calls: BTreeSet<Key> = decl
+            .syntax()
+            .descendants()
+            .filter_map(ast::Member::cast)
+            .filter(|member| {
+                member
+                    .member_key()
+                    .map(|key| tree::written(key.syntax()))
+                    .as_deref()
+                    == Some("call")
+            })
+            .filter_map(|member| member.value())
+            .map(|value| tree::written(value.syntax()))
+            .map(|operation| {
+                super::areas::operation_key(self.db, self.project, &home.through, &operation)
+            })
+            .collect();
+        self.edges(&key, EdgeKind::Calls, calls);
     }
 
     /// A group's routes (area 7), each a node under it with what it runs
@@ -485,6 +699,55 @@ impl Part<'_> {
             .collect();
         // Its `create`, `update` and `delete` write the entity (area 6).
         let writes: BTreeSet<Key> = body.writes().map(|(_, entity, _)| entity.clone()).collect();
+        // The events it emits (area 12), by their types.
+        let emits: BTreeSet<Key> = body
+            .sites
+            .iter()
+            .filter_map(|site| match &site.node {
+                jadpo_graph::body::Node::Stmt(jadpo_graph::body::Stmt::Emit {
+                    value: Some(value),
+                }) => match &body.site(*value).ty {
+                    TypeRef::Node(event) => Some(event.clone()),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect();
+        // A provider operation it calls through a connection (area 11),
+        // or a package's own action through its own; and the connection.
+        let mut calls = calls;
+        let mut connections: BTreeSet<String> = BTreeSet::new();
+        let through = self.home().map(|home| home.through.clone());
+        for (_, callee) in body.calls() {
+            match callee {
+                jadpo_graph::body::Callee::Provider {
+                    connection,
+                    operation,
+                } => {
+                    let package = if connection == jadpo_graph::body::OWN_CONNECTION {
+                        through.clone()
+                    } else {
+                        connections.insert(connection.clone());
+                        super::areas::connection_packages(self.db, self.project)
+                            .get(connection)
+                            .cloned()
+                    };
+                    if let Some(package) = package {
+                        calls.insert(super::areas::operation_key(
+                            self.db,
+                            self.project,
+                            &package,
+                            operation,
+                        ));
+                    }
+                }
+                jadpo_graph::body::Callee::PackageAction { connection, .. }
+                | jadpo_graph::body::Callee::Files { connection, .. } => {
+                    connections.insert(connection.clone());
+                }
+                _ => {}
+            }
+        }
         // The translation keys it shows people (area 10): a change to one
         // reaches it.
         let registry = self.lookup.registry();
@@ -498,10 +761,25 @@ impl Part<'_> {
             jadpo_graph::body::Callee::Prompt(name) => Some(registry.key(Kind::Prompt, name, None)),
             _ => None,
         }));
+        // The settings it reads (area 10), and the connections it goes
+        // through (area 11).
+        uses.extend(body.sites.iter().filter_map(|site| match &site.node {
+            jadpo_graph::body::Node::Expr(jadpo_graph::body::Expr::Config { field }) => {
+                Some(field.clone())
+            }
+            _ => None,
+        }));
+        uses.extend(
+            connections
+                .iter()
+                .filter(|name| !name.is_empty())
+                .map(|name| registry.key(Kind::Connection, name, None)),
+        );
         self.edges(key, EdgeKind::Uses, uses);
         self.edges(key, EdgeKind::Calls, calls);
         self.edges(key, EdgeKind::Reads, reads);
         self.edges(key, EdgeKind::Writes, writes);
+        self.edges(key, EdgeKind::Emits, emits);
         if let Some((_, set)) = &checked.set {
             let raises: BTreeSet<Key> = set
                 .failures

@@ -19,6 +19,7 @@
 //! record ([`record`], [`openapi`]).
 
 pub mod apis;
+pub mod generated;
 pub mod openapi;
 pub mod record;
 pub mod served;

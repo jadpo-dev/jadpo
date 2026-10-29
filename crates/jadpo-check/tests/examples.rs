@@ -1321,12 +1321,31 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
             | Detail::Tenancy { .. }
             | Detail::ActionException { .. }
             | Detail::Prompt { .. }
-            | Detail::Api { .. } => {}
+            | Detail::Api { .. }
+            | Detail::Connection { .. }
+            | Detail::Package { .. }
+            | Detail::CapabilityMapping { .. }
+            | Detail::Host { .. }
+            | Detail::LockEntry { .. }
+            | Detail::GeneratedRoute { .. }
+            | Detail::Principal { .. }
+            | Detail::AuthenticationMethod { .. }
+            | Detail::SignInProvider { .. }
+            | Detail::LocaleSet { .. }
+            | Detail::RateLimit { .. }
+            | Detail::Schedule { .. }
+            | Detail::Subscriber { .. } => {}
             Detail::Route { input, output, .. } => {
                 for ty in input.iter().chain(output) {
                     shapes(ty, &mut used);
                 }
             }
+            Detail::Operation { input, output, .. } => {
+                for ty in input.iter().chain(std::iter::once(output)) {
+                    shapes(ty, &mut used);
+                }
+            }
+            Detail::ConfigField { ty, .. } => shapes(ty, &mut used),
         }
     }
     // Area 10's settings: no graph node holds a setting's type, so a key
