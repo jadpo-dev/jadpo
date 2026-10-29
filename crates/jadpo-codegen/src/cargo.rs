@@ -4,6 +4,7 @@
 //! version is the lock's, into a target folder of its own that is kept
 //! between builds, so a second build compiles only what changed.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -38,6 +39,27 @@ impl std::fmt::Display for Failed {
 }
 
 impl std::error::Error for Failed {}
+
+/// A cargo to run, and what its environment adds: `jadpo build`'s
+/// fetched toolchain, or the cargo running this process's build (chunk
+/// 9.2c).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Cargo {
+    pub program: PathBuf,
+    /// Variables set for it, over what it inherits.
+    pub env: Vec<(OsString, OsString)>,
+}
+
+impl Cargo {
+    /// The cargo running this process's build when there is one, else the
+    /// one on `PATH`, with nothing added.
+    pub fn running() -> Cargo {
+        Cargo {
+            program: cargo(),
+            env: Vec::new(),
+        }
+    }
+}
 
 /// The cargo to run: the one running this process's build when there is
 /// one, else the one on `PATH`, which picks the toolchain the repository

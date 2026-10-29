@@ -1,7 +1,9 @@
 //! The live line a slow step shows on stderr (CLI design language,
 //! "Timing"): nothing for the first 300 ms, so quick steps never flash;
 //! then a spinner in the accent colour and what is running, a frame every
-//! 80 ms (130 ms in ASCII), with the elapsed time joining after 2 s. When
+//! 80 ms (130 ms in ASCII), with the elapsed time joining after 2 s, and
+//! a bar after the words while a step whose total is known says how far
+//! it has got ([`Spinner::progress`]: a download, chunk 9.2c). When
 //! the step ends the line is erased, and the step's own result follows on
 //! stdout. Only where the style animates: stderr a terminal, rich, and not
 //! in CI.
@@ -34,23 +36,34 @@ pub struct Spinner {
     /// What the live line says, which [`Spinner::say`] changes as the step
     /// goes on (`Filling Todo.priority  2000 of 5000 rows`).
     words: Arc<Mutex<String>>,
+    /// How far a step whose total is known has got: done, of the total.
+    progress: Progress,
 }
+
+/// How far a step has got, shared with the code doing it.
+pub type Progress = Arc<Mutex<Option<(u64, u64)>>>;
+
+/// How many cells the bar takes.
+const BAR: u64 = 20;
 
 impl Spinner {
     /// Starts the live line for `words` ("Running tests") on stderr, or
     /// nothing when `style` doesn't animate.
     pub fn start(style: &Style, words: &str) -> Spinner {
         let shared = Arc::new(Mutex::new(words.to_string()));
+        let progress: Progress = Arc::default();
         if !style.animate {
             return Spinner {
                 stop: None,
                 thread: None,
                 words: shared,
+                progress,
             };
         }
         let (stop, stopped) = mpsc::channel::<()>();
         let style = *style;
         let words = Arc::clone(&shared);
+        let far = Arc::clone(&progress);
         let thread = std::thread::spawn(move || {
             let started = Instant::now();
             if !matches!(
@@ -66,7 +79,14 @@ impl Spinner {
             let mut stderr = std::io::stderr();
             for i in 0.. {
                 let now = words.lock().map(|w| w.clone()).unwrap_or_default();
-                let line = frame(&style, frames[i % frames.len()], &now, started.elapsed());
+                let got = far.lock().map(|got| *got).unwrap_or_default();
+                let line = frame(
+                    &style,
+                    frames[i % frames.len()],
+                    &now,
+                    got,
+                    started.elapsed(),
+                );
                 let _ = stderr.write_all(format!("{ERASE}{line}").as_bytes());
                 let _ = stderr.flush();
                 if !matches!(stopped.recv_timeout(every), Err(RecvTimeoutError::Timeout)) {
@@ -80,7 +100,14 @@ impl Spinner {
             stop: Some(stop),
             thread: Some(thread),
             words: shared,
+            progress,
         }
+    }
+
+    /// How far the step has got, shared, for code that can't hold the
+    /// spinner to change it: `None` for no bar.
+    pub fn progress(&self) -> Progress {
+        Arc::clone(&self.progress)
     }
 
     /// What the live line says, shared, for code that can't hold the
@@ -106,13 +133,32 @@ impl Spinner {
 }
 
 /// One frame of the live line: the spinner in the accent colour, what is
-/// running, and after 2 s the time so far, muted.
-pub fn frame(style: &Style, symbol: &str, words: &str, elapsed: Duration) -> String {
+/// running, a bar of how far it has got when that is known (accent, then
+/// muted), and after 2 s the time so far, muted.
+pub fn frame(
+    style: &Style,
+    symbol: &str,
+    words: &str,
+    progress: Option<(u64, u64)>,
+    elapsed: Duration,
+) -> String {
     let paint = |token: Token, text: &str| match style.color {
         Some(depth) => format!("\x1b[{}m{text}\x1b[0m", token.sgr(depth, style.theme)),
         None => text.to_string(),
     };
     let mut line = format!("{} {words}", paint(Token::Accent, symbol));
+    if let Some((done, total)) = progress.filter(|(_, total)| *total > 0) {
+        let filled = (done.min(total) * BAR / total) as usize;
+        let (on, off) = match style.symbols {
+            Symbols::Unicode => ("━", "─"),
+            Symbols::Ascii => ("#", "-"),
+        };
+        line.push_str(&format!(
+            "  {}{}",
+            paint(Token::Accent, &on.repeat(filled)),
+            paint(Token::Muted, &off.repeat(BAR as usize - filled))
+        ));
+    }
     if elapsed >= SHOW_ELAPSED_FROM {
         line.push_str(&format!(
             "  {}",
@@ -131,12 +177,43 @@ mod tests {
     fn a_frame_shows_the_time_only_after_two_seconds() {
         let style = Style::new(Mode::Rich);
         assert_eq!(
-            frame(&style, "⠋", "Running tests", Duration::from_millis(500)),
+            frame(
+                &style,
+                "⠋",
+                "Running tests",
+                None,
+                Duration::from_millis(500)
+            ),
             "⠋ Running tests"
         );
         assert_eq!(
-            frame(&style, "⠙", "Running tests", Duration::from_millis(3200)),
+            frame(
+                &style,
+                "⠙",
+                "Running tests",
+                None,
+                Duration::from_millis(3200)
+            ),
             "⠙ Running tests  3 s"
+        );
+    }
+
+    #[test]
+    fn a_step_whose_total_is_known_shows_a_bar() {
+        let style = Style::new(Mode::Rich);
+        assert_eq!(
+            frame(
+                &style,
+                "⠋",
+                "Fetching rustc 1.99.0  21 of 84 MB",
+                Some((21, 84)),
+                Duration::from_millis(500)
+            ),
+            "⠋ Fetching rustc 1.99.0  21 of 84 MB  ━━━━━───────────────"
+        );
+        assert_eq!(
+            frame(&style, "⠋", "Unpacking", Some((0, 0)), Duration::ZERO),
+            "⠋ Unpacking"
         );
     }
 

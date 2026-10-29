@@ -484,6 +484,7 @@ pub static COMMANDS: &[Command] = &[
         arguments_rule: &rule::CLI_BUILD_ARGUMENTS,
         raises: &[
             &rule::TOOLCHAIN_BUILD_FAILED,
+            &rule::TOOLCHAIN_FETCH_FAILED,
             &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
         ],

@@ -401,7 +401,7 @@ fn constant(deployable: &Deployable<'_>) -> proc_macro2::TokenStream {
 }
 
 /// How [`build`] builds a workspace.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy)]
 pub struct Release<'a> {
     /// The workspace's folder, as [`workspace`] wrote it.
     pub folder: &'a Path,
@@ -426,6 +426,36 @@ pub struct Release<'a> {
     /// one folder for every build with the same data, so a shared target
     /// compiles them once.
     pub cldr: &'a Path,
+    /// The cargo that builds it.
+    pub cargo: &'a crate::cargo::Cargo,
+    /// The target cargo runs on (`aarch64-apple-darwin`), whose crates,
+    /// with wasm32's for a Worker, are fetched when the cargo cache lacks
+    /// them.
+    pub machine: &'a str,
+    /// Called once before crates are fetched, when the cargo cache can't
+    /// build it offline.
+    pub fetching: &'a dyn Fn(),
+}
+
+impl std::fmt::Debug for Release<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Release")
+            .field("folder", &self.folder)
+            .field("name", &self.name)
+            .field("host", &self.host)
+            .field("target", &self.target)
+            .field("cargo", &self.cargo)
+            .finish_non_exhaustive()
+    }
+}
+
+/// What [`build`] built.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Compiled {
+    /// A copy, in the workspace's folder, of what cargo built.
+    pub path: PathBuf,
+    /// How many crates it fetched first.
+    pub crates: usize,
 }
 
 /// The file in a target whose lock a build holds from its first cargo
@@ -441,6 +471,13 @@ const BUILT_BY: &str = "jadpo-built-by";
 /// to the lock, with the CLDR data in `release.cldr`: its path, a copy in
 /// the workspace's folder of what cargo built.
 ///
+/// The lock's crates come from the cargo cache. When it can't give them
+/// (a first build, with nothing cached), cargo fetches them first,
+/// online: the index entries the two generated packages need to join the
+/// lock, then each crate the lock names for the host and the build's
+/// target, each checked against the lock's checksum as cargo checks one.
+/// The build itself is always offline.
+///
 /// The target is shared, so the build holds the target's lock until that
 /// copy is made: cargo's own lock keeps two builds from writing the
 /// target at once, but not a second build from replacing what the first
@@ -451,7 +488,7 @@ const BUILT_BY: &str = "jadpo-built-by";
 /// of date by its files' times, which another project's may predate, so
 /// a workspace building units another built last marks its files changed
 /// first.
-pub fn build(release: &Release<'_>) -> Result<PathBuf, Failed> {
+pub fn build(release: &Release<'_>) -> Result<Compiled, Failed> {
     let io = |error: std::io::Error| Failed::Start(error.to_string());
     std::fs::create_dir_all(release.target.join(BUILT_BY)).map_err(io)?;
     let lock = std::fs::File::options()
@@ -471,7 +508,32 @@ pub fn build(release: &Release<'_>) -> Result<PathBuf, Failed> {
     }
     // The two generated packages join the runtime crates' lock; nothing
     // else in it moves, which the build then holds it to.
-    run(release, &["update", "--workspace", "--offline", "--quiet"])?;
+    let mut said = false;
+    let mut say = || {
+        if !said {
+            (release.fetching)();
+            said = true;
+        }
+    };
+    if run(release, &["update", "--workspace", "--offline", "--quiet"]).is_err() {
+        say();
+        run(release, &["update", "--workspace", "--quiet"])?;
+    }
+    let mut targets = vec!["--target", release.machine];
+    if matches!(release.host, Host::Workers(_)) {
+        targets.extend(["--target", WASM]);
+    }
+    let mut crates = 0;
+    if run(
+        release,
+        &[&["fetch", "--locked", "--offline", "--quiet"][..], &targets].concat(),
+    )
+    .is_err()
+    {
+        say();
+        let said = run(release, &[&["fetch", "--locked"][..], &targets].concat())?;
+        crates = downloaded(&said);
+    }
     let built = ["build", "--release", "--locked", "--offline", "--quiet"];
     let compiled = match release.host {
         Host::Native => {
@@ -513,7 +575,20 @@ pub fn build(release: &Release<'_>) -> Result<PathBuf, Failed> {
     }
     std::fs::copy(&compiled, &kept).map_err(io)?;
     drop(lock);
-    Ok(kept)
+    Ok(Compiled { path: kept, crates })
+}
+
+/// How many crates cargo says it downloaded: a line `Downloaded <crate>
+/// v<version>` each, beside the line counting them.
+fn downloaded(said: &str) -> usize {
+    said.lines()
+        .filter(|line| {
+            let mut words = line.split_whitespace();
+            words.next() == Some("Downloaded")
+                && words.next().is_some()
+                && words.next().is_some_and(|version| version.starts_with('v'))
+        })
+        .count()
 }
 
 /// Marks every file under `folder` changed now.
@@ -536,8 +611,9 @@ fn touched(folder: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// cargo with `args` in the workspace, as [`build`] runs it.
-fn run(release: &Release<'_>, args: &[&str]) -> Result<(), Failed> {
+/// cargo with `args` in the workspace, as [`build`] runs it: what it
+/// said.
+fn run(release: &Release<'_>, args: &[&str]) -> Result<String, Failed> {
     // Each flag apart, so a path with a space in it stays one.
     let mut flags = OsString::new();
     for (at, (from, to)) in release.remap.iter().enumerate() {
@@ -551,7 +627,8 @@ fn run(release: &Release<'_>, args: &[&str]) -> Result<(), Failed> {
     }
     let cldr =
         std::path::absolute(release.cldr).map_err(|error| Failed::Start(error.to_string()))?;
-    let output = Command::new(crate::cargo::cargo())
+    let output = Command::new(&release.cargo.program)
+        .envs(release.cargo.env.iter().map(|(name, value)| (name, value)))
         .current_dir(release.folder)
         .args(args)
         .env("CARGO_TARGET_DIR", release.target)
@@ -564,10 +641,10 @@ fn run(release: &Release<'_>, args: &[&str]) -> Result<(), Failed> {
         .env("ICU4X_DATA_DIR", cldr)
         .output()
         .map_err(|error| Failed::Start(error.to_string()))?;
-    if output.status.success() {
-        return Ok(());
-    }
     let mut shown = String::from_utf8_lossy(&output.stderr).into_owned();
     shown.push_str(&String::from_utf8_lossy(&output.stdout));
+    if output.status.success() {
+        return Ok(shown);
+    }
     Err(Failed::Refused(shown))
 }

@@ -567,3 +567,7 @@ gap
 mistaken
 more
 shares
+
+# Rust's own word for a package, which `jadpo build` counts and fetches
+# (chunk 9.2c); programming vocabulary.
+crates

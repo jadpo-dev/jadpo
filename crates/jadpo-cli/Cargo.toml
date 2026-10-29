@@ -54,6 +54,12 @@ miniz_oxide.workspace = true
 getrandom.workspace = true
 openssl.workspace = true
 
+# The runtime's source this `jadpo` carries, packed by build.rs (chunk
+# 9.2c): deflated and named by its digest, with crates already in the lock.
+[build-dependencies]
+miniz_oxide.workspace = true
+sha2.workspace = true
+
 [dev-dependencies]
 # Local OIDC provider TLS fixtures, using the native host's test authority.
 rcgen.workspace = true

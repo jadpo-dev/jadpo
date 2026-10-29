@@ -5,6 +5,7 @@ pub mod fake_provider;
 pub mod fake_smtp;
 pub mod fake_sqs;
 pub mod probes;
+pub mod rust_dist;
 
 /// A slow machine adds the run's duration to the footer (` in 0.1 s`);
 /// snapshots compare the output without it. Rich output ends the footer
