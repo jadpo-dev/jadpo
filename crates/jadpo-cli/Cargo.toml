@@ -31,8 +31,9 @@ jadpo-graph.workspace = true
 # `jadpo dev` serves its fakes in front of the drivers (chunk 8.1e).
 jadpo-host-native = { workspace = true, features = ["testing"] }
 jadpo-interp.workspace = true
-# The fakes, recordings, crash points and the plan's dev and test
-# section (chunk 8.1e), which `jadpo test` and `jadpo dev` run with.
+# The fakes, recordings, crash points, the test authenticator and the
+# plan's dev and test section (chunk 8.1e), which `jadpo test` and `jadpo
+# dev` run with.
 jadpo-runtime = { workspace = true, features = ["testing"] }
 jadpo-std.workspace = true
 jadpo-lsp.workspace = true
@@ -48,8 +49,8 @@ sha2.workspace = true
 # upload's, on `jadpo build`'s screen (chunk 8.2b).
 miniz_oxide.workspace = true
 # `jadpo suggest share` (area 14, chunk 5.5y): the project token from the
-# operating system's generator, and HTTPS to Jadpo HQ through the OpenSSL
-# `webauthn-rs` already links, so no crate is added.
+# operating system's generator, and HTTPS to Jadpo HQ through OpenSSL,
+# which only the `jadpo` tool links: no deployable does.
 getrandom.workspace = true
 openssl.workspace = true
 
@@ -57,8 +58,8 @@ openssl.workspace = true
 # Local OIDC provider TLS fixtures, using the native host's test authority.
 rcgen.workspace = true
 rustls.workspace = true
-# The software authenticator the passkey tests sign in with (area 8).
-jadpo-host-native = { workspace = true, features = ["test-authenticator", "test-outbound"] }
+# A test's server on this machine standing in for AWS's SNS host.
+jadpo-host-native = { workspace = true, features = ["test-outbound"] }
 regex.workspace = true
 tokio.workspace = true
 

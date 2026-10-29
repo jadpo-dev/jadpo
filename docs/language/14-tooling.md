@@ -778,9 +778,9 @@ a versioned path.
   address as the default.
   `http://` is accepted only for a loopback host
   (`localhost`, `127.0.0.1`, `[::1]`), which is how the tests reach the
-  fake; anything else must be `https://`, through OpenSSL (already linked
-  by the passkey ceremonies) with the platform's certificate store and the
-  host name checked.
+  fake; anything else must be `https://`, through OpenSSL, which only the
+  `jadpo` tool links (no deployable does), with the platform's certificate
+  store and the host name checked.
 - **Headers.** `Content-Type: application/json`, `Accept:
   application/json`, `User-Agent: jadpo`, without a version, and
   `Connection: close`: the client is a small HTTP/1.1 one of `jadpo`'s

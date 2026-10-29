@@ -175,8 +175,8 @@ pub struct Event {
 }
 
 /// What is kept of a passkey for its ceremonies (area 8, "Passkeys"):
-/// `WebAuthnCredential`'s parts that `webauthn-rs` reads (area 19, chosen
-/// in chunk 5.5r3), never a secret.
+/// `WebAuthnCredential`'s parts that checking an answer reads (area 19),
+/// never a secret.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PasskeyParts {
     pub credential_id: Vec<u8>,
@@ -210,11 +210,13 @@ pub enum PasskeyError {
     Misconfigured,
 }
 
-/// The passkey ceremonies (area 8, "Passkeys"), on an audited WebAuthn
-/// implementation the host carries: `webauthn-rs` natively. `origin` is
-/// the browser session's configured origin, whose host is the
-/// relying-party ID; nothing here reads the request. A ceremony's state
-/// is JSON the runtime keeps server-side, used once.
+/// The passkey ceremonies (area 8, "Passkeys"): the runtime's own on every
+/// host ([`crate::webauthn::WebAuthn`]), each host giving it the generator
+/// its challenges are drawn from, and `webauthn-rs` behind the same seam
+/// in the tests that hold the two to the same answers. `origin` is the
+/// browser session's configured origin, whose host is the relying-party
+/// ID; nothing here reads the request. A ceremony's state is JSON the
+/// runtime keeps server-side, used once.
 pub trait Passkeys {
     /// The options for adding a passkey, as WebAuthn's
     /// `PublicKeyCredentialCreationOptionsJSON` inside `publicKey`, and
@@ -268,8 +270,9 @@ pub trait Passkeys {
 /// A software authenticator (area 8, "In development and tests"; chunk
 /// 5.5z2): what a browser and a device do between a passkey route's
 /// options and the answer posted back, so `test_passkeys` drives the
-/// generated routes for real. Only a test's host has one: a `TestPasskey`
-/// exists nowhere else.
+/// generated routes for real. Only a test's host has one
+/// (`test_authenticator::SoftwareAuthenticators`, natively and on workerd):
+/// a `TestPasskey` exists nowhere else.
 pub trait TestAuthenticators {
     /// A new device in a browser at `origin`, making a passkey from the
     /// registration `options` (`navigator.credentials.create`): the
@@ -394,8 +397,8 @@ pub trait Host {
     }
 
     /// The passkey ceremonies (area 8, "Passkeys"): `None` on a host that
-    /// carries no WebAuthn implementation, whose passkey routes answer
-    /// `authentication_misconfigured`.
+    /// carries none, such as a test's with no store, whose passkey routes
+    /// answer `authentication_misconfigured`.
     fn passkeys(&self) -> Option<&dyn Passkeys> {
         None
     }

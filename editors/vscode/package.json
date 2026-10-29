@@ -78,11 +78,14 @@
     }
   },
   "dependencies": {
-    "vscode-languageclient": "10.1.2"
+    "vscode-languageclient": "11.0.0"
   },
   "devDependencies": {
-    "@vscode/vsce": "4.0.0",
-    "vscode-jsonrpc": "9.0.3",
-    "vscode-languageserver-protocol": "3.18.4"
+    "@vscode/vsce": "4.1.0",
+    "vscode-jsonrpc": "10.0.0",
+    "vscode-languageserver-protocol": "3.18.5"
+  },
+  "overrides": {
+    "@azure/msal-node": "7.1.2"
   }
 }

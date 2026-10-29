@@ -5,6 +5,6 @@
   "license": "Apache-2.0",
   "type": "module",
   "dependencies": {
-    "postgres": "3.4.7"
+    "postgres": "3.4.9"
   }
 }

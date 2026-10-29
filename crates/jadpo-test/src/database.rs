@@ -892,42 +892,11 @@ pub struct TestHost<'d> {
     /// ([`jadpo_runtime::test_run::Caught`]).
     caught: jadpo_runtime::test_run::Caught,
     /// The authenticators `test_passkeys.register` made, each holding one
-    /// passkey, by number (area 8; chunk 5.5z2).
-    authenticators: TestPasskeyAuthenticators,
+    /// passkey, by number (area 8, "In development and tests").
+    authenticators: jadpo_runtime::test_authenticator::SoftwareAuthenticators,
     /// The record its stores keep each statement in, when the run keeps
     /// one (chunk 8.1c).
     record: Option<std::rc::Rc<jadpo_runtime::record::Record>>,
-}
-
-/// A test's software authenticators: one device per passkey
-/// `test_passkeys.register` adds, which only a test's host has.
-#[derive(Default)]
-struct TestPasskeyAuthenticators(
-    std::cell::RefCell<Vec<jadpo_host_native::test_authenticator::TestAuthenticator>>,
-);
-
-impl jadpo_runtime::TestAuthenticators for TestPasskeyAuthenticators {
-    fn create(&self, origin: &str, options: &str) -> Result<(u32, String), String> {
-        let mut authenticators = self.0.borrow_mut();
-        let number = u32::try_from(authenticators.len()).map_err(|e| e.to_string())?;
-        // Its passkeys the same every run, so a test's record is (chunk
-        // 8.1c); each device of a test its own.
-        let mut device = jadpo_host_native::test_authenticator::TestAuthenticator::seeded(
-            origin,
-            u64::from(number),
-        );
-        let answer = device.create(options)?;
-        authenticators.push(device);
-        Ok((number, answer))
-    }
-
-    fn get(&self, device: u32, options: &str) -> Result<String, String> {
-        let mut authenticators = self.0.borrow_mut();
-        let device = authenticators
-            .get_mut(device as usize)
-            .ok_or("no such device in this test")?;
-        device.get(options)
-    }
 }
 
 enum Held {
@@ -986,7 +955,7 @@ impl<'d> TestHost<'d> {
             databases,
             held: std::cell::OnceCell::new(),
             caught: jadpo_runtime::test_run::Caught::default(),
-            authenticators: TestPasskeyAuthenticators::default(),
+            authenticators: jadpo_runtime::test_authenticator::SoftwareAuthenticators::default(),
             record: None,
         }
     }
@@ -1066,14 +1035,10 @@ impl<'d> TestHost<'d> {
     }
 }
 
-/// The passkey ceremonies a test's requests run, as a native host's do.
-static PASSKEYS: jadpo_host_native::passkeys::WebauthnPasskeys =
-    jadpo_host_native::passkeys::WebauthnPasskeys;
-
 impl jadpo_runtime::Host for TestHost<'_> {
-    /// `webauthn-rs`, as natively (area 8, "Passkeys").
+    /// The ceremonies a native host's requests run (area 8, "Passkeys").
     fn passkeys(&self) -> Option<&dyn jadpo_runtime::Passkeys> {
-        Some(&PASSKEYS)
+        Some(&jadpo_host_native::PASSKEYS)
     }
 
     /// The authenticators `test_passkeys` makes (chunk 5.5z2).

@@ -1,16 +1,18 @@
-//! The Workers host's passkey ceremonies held to `webauthn-rs`'s answers
-//! (area 8, "Passkeys"; chunk 8.2l), natively: every ceremony is run on
-//! both, the native host's `WebauthnPasskeys` and the Workers host's
-//! `WorkersPasskeys`, each with its own challenge, and the answer a device
-//! gives each, made by the test authenticator or by hand where a device
-//! shouldn't answer so, must come out the same way on both: the same
-//! passkey kept, or the same refusal.
+//! The runtime's passkey ceremonies held to `webauthn-rs`'s answers (area
+//! 8, "Passkeys"): every ceremony is run on both, `webauthn-rs` 0.5.5
+//! behind the same seam (`tests/webauthn_reference.rs`, a dev-dependency
+//! only) and the runtime's own `WebAuthn`, which both hosts carry, each
+//! with its own challenge, and the answer a device gives each, made by the
+//! test authenticator or by hand where a device shouldn't answer so, must
+//! come out the same way on both: the same passkey kept, or the same
+//! refusal. The one place they differ on purpose is attestation signed by
+//! a certificate, which the runtime refuses (area 8, "Passkey
+//! attestation").
 
 use std::collections::BTreeMap;
 
-use jadpo_host_native::passkeys::WebauthnPasskeys;
-use jadpo_host_native::test_authenticator::TestAuthenticator;
-use jadpo_host_workers::WorkersPasskeys;
+use jadpo_runtime::test_authenticator::TestAuthenticator;
+use jadpo_runtime::webauthn::WebAuthn;
 use jadpo_runtime::{PasskeyError, PasskeyParts, Passkeys};
 use jadpo_value::encoding::{from_base64url, to_base64url};
 use openssl::bn::{BigNum, BigNumContext};
@@ -25,6 +27,8 @@ use openssl::sign::Signer;
 use serde_cbor_2::Value as Cbor;
 use serde_json::{Value as Json, json};
 
+use crate::webauthn_reference::Reference;
+
 const ORIGIN: &str = "https://notes.example";
 const RP_ID: &str = "notes.example";
 const TIMEOUT: u32 = 300_000;
@@ -35,12 +39,12 @@ fn random(bytes: &mut [u8]) -> bool {
     openssl::rand::rand_bytes(bytes).is_ok()
 }
 
-const NATIVE: WebauthnPasskeys = WebauthnPasskeys;
-const WORKERS: WorkersPasskeys = WorkersPasskeys::new(random);
+const REFERENCE: Reference = Reference;
+const JADPO: WebAuthn = WebAuthn::new(random);
 
-/// Both hosts' ceremonies, the native one first.
+/// Both ceremonies, the reference first.
 fn both() -> [&'static dyn Passkeys; 2] {
-    [&NATIVE, &WORKERS]
+    [&REFERENCE, &JADPO]
 }
 
 /// The challenge some options ask a device to sign.
@@ -277,9 +281,9 @@ fn same(
     results: [Result<PasskeyParts, PasskeyError>; 2],
     case: &str,
 ) -> Result<PasskeyParts, PasskeyError> {
-    let [native, workers] = results;
-    assert_eq!(native, workers, "{case}: native, then Workers");
-    native
+    let [reference, jadpo] = results;
+    assert_eq!(reference, jadpo, "{case}: webauthn-rs, then Jadpo's");
+    reference
 }
 
 fn registers(key: &Signing, case: &str, change: impl Fn(&mut Making)) -> PasskeyParts {
@@ -302,15 +306,15 @@ fn the_options_are_webauthn_rss() {
         options
     };
     for exclude in [vec![], vec![vec![1, 2, 3], vec![4; 32]]] {
-        let [native, workers] = both().map(|ceremonies| {
+        let [reference, jadpo] = both().map(|ceremonies| {
             let (options, _) = ceremonies
                 .start_registration(ORIGIN, 120_000, HANDLE, ACCOUNT, &exclude)
                 .unwrap();
             blank(options)
         });
-        assert_eq!(native, workers);
+        assert_eq!(reference, jadpo);
     }
-    let [native, workers] = both().map(|ceremonies| {
+    let [reference, jadpo] = both().map(|ceremonies| {
         blank(
             ceremonies
                 .start_sign_in("http://localhost:8080", 60_000)
@@ -318,29 +322,68 @@ fn the_options_are_webauthn_rss() {
                 .0,
         )
     });
-    assert_eq!(native, workers);
+    assert_eq!(reference, jadpo);
     // Each challenge is new, and 32 bytes.
-    let (first, _) = WORKERS.start_sign_in(ORIGIN, TIMEOUT).unwrap();
-    let (second, _) = WORKERS.start_sign_in(ORIGIN, TIMEOUT).unwrap();
+    let (first, _) = JADPO.start_sign_in(ORIGIN, TIMEOUT).unwrap();
+    let (second, _) = JADPO.start_sign_in(ORIGIN, TIMEOUT).unwrap();
     assert_eq!(challenge_of(&first).len(), 32);
     assert_ne!(challenge_of(&first), challenge_of(&second));
+    // The relying party is the origin's host; the person is verified, the
+    // passkey discoverable, no attestation asked for.
+    let options: Json = serde_json::from_str(&first).unwrap();
+    assert_eq!(options["publicKey"]["rpId"], RP_ID);
+    assert_eq!(options["publicKey"]["userVerification"], "required");
+    assert_eq!(options["publicKey"]["timeout"], TIMEOUT);
+    assert_eq!(options["mediation"], "conditional");
+    let (options, _) = JADPO
+        .start_registration(ORIGIN, TIMEOUT, HANDLE, ACCOUNT, &[vec![1, 2, 3]])
+        .unwrap();
+    let options: Json = serde_json::from_str(&options).unwrap();
+    let key = &options["publicKey"];
+    assert_eq!(key["rp"]["id"], RP_ID);
+    assert_eq!(key["user"]["id"], to_base64url(&HANDLE));
+    assert_eq!(key["authenticatorSelection"]["residentKey"], "required");
+    assert_eq!(
+        key["authenticatorSelection"]["userVerification"],
+        "required"
+    );
+    assert_eq!(key["attestation"], "none");
+    assert_eq!(key["excludeCredentials"][0]["id"], "AQID");
+    // A generator that can't give makes no challenge.
+    let broken = WebAuthn::new(|_| false);
+    assert_eq!(
+        broken.start_sign_in(ORIGIN, TIMEOUT).err(),
+        Some(PasskeyError::Misconfigured)
+    );
 }
 
 #[test]
 fn an_origin_that_cant_be_a_relying_party_is_misconfigured_on_both() {
-    for origin in ["not a url", "https://127.0.0.1", "https://"] {
-        let [native, workers] =
+    for origin in [
+        "not a url",
+        "https://127.0.0.1",
+        "https://[::1]",
+        "https://",
+    ] {
+        let [reference, jadpo] =
             both().map(|ceremonies| ceremonies.start_sign_in(origin, TIMEOUT).err());
-        assert_eq!(native, Some(PasskeyError::Misconfigured), "{origin}");
-        assert_eq!(workers, Some(PasskeyError::Misconfigured), "{origin}");
+        assert_eq!(reference, Some(PasskeyError::Misconfigured), "{origin}");
+        assert_eq!(jadpo, Some(PasskeyError::Misconfigured), "{origin}");
     }
-    let [native, workers] = both().map(|ceremonies| {
+    // `localhost`, which `jadpo dev` serves on, is a relying party.
+    let [reference, jadpo] = both().map(|ceremonies| {
+        ceremonies
+            .start_sign_in("http://localhost:8080", TIMEOUT)
+            .is_ok()
+    });
+    assert!(reference && jadpo);
+    let [reference, jadpo] = both().map(|ceremonies| {
         ceremonies
             .start_registration(ORIGIN, TIMEOUT, HANDLE, "", &[])
             .err()
     });
     assert_eq!(
-        (native, workers),
+        (reference, jadpo),
         (
             Some(PasskeyError::Misconfigured),
             Some(PasskeyError::Misconfigured)
@@ -523,39 +566,39 @@ fn what_webauthn_rs_refuses_registering_both_refuse() {
             json!({ "id": "AQ", "rawId": "AQ", "type": "public-key" }).to_string(),
         ),
     ] {
-        let [native, workers] = both().map(|ceremonies| {
+        let [reference, jadpo] = both().map(|ceremonies| {
             let (_, state) = ceremonies
                 .start_registration(ORIGIN, TIMEOUT, HANDLE, ACCOUNT, &[])
                 .unwrap();
             ceremonies.finish_registration(ORIGIN, TIMEOUT, &state, &credential)
         });
-        assert_eq!(native, Err(PasskeyError::Rejected), "{case}");
-        assert_eq!(workers, Err(PasskeyError::Rejected), "{case}");
+        assert_eq!(reference, Err(PasskeyError::Rejected), "{case}");
+        assert_eq!(jadpo, Err(PasskeyError::Rejected), "{case}");
     }
-    let [native, workers] = both()
+    let [reference, jadpo] = both()
         .map(|ceremonies| ceremonies.finish_registration(ORIGIN, TIMEOUT, "not a state", "{}"));
-    assert_eq!(native, Err(PasskeyError::Misconfigured));
-    assert_eq!(workers, Err(PasskeyError::Misconfigured));
+    assert_eq!(reference, Err(PasskeyError::Misconfigured));
+    assert_eq!(jadpo, Err(PasskeyError::Misconfigured));
 }
 
-/// Attestation signed by a certificate is refused on Workers, which reads
-/// no certificate chains (area 8, chosen in chunk 8.2l): `webauthn-rs`
-/// would check it, and browsers send `none` when none is asked for.
+/// Attestation signed by a certificate is refused, since the runtime reads
+/// no certificate chains (area 8, "Passkey attestation"): `webauthn-rs`
+/// would check one, and browsers send `none` when none is asked for.
 #[test]
-fn a_statement_signed_by_a_certificate_is_refused_on_workers() {
+fn a_statement_signed_by_a_certificate_is_refused() {
     let es256 = Signing::es256();
     for format in ["fido-u2f", "tpm", "android-key", "apple"] {
-        let [native, workers] = register_with(&es256, &[], |making| {
+        let [reference, jadpo] = register_with(&es256, &[], |making| {
             making.statement = Statement::Other(format);
         });
         assert_eq!(
-            native,
+            reference,
             Err(PasskeyError::Rejected),
             "{format}: an empty statement"
         );
-        assert_eq!(workers, Err(PasskeyError::Rejected), "{format}");
+        assert_eq!(jadpo, Err(PasskeyError::Rejected), "{format}");
     }
-    let (options, state) = WORKERS
+    let (options, state) = JADPO
         .start_registration(ORIGIN, TIMEOUT, HANDLE, ACCOUNT, &[])
         .unwrap();
     let making = Making::new(&options, &es256);
@@ -584,7 +627,7 @@ fn a_statement_signed_by_a_certificate_is_refused_on_workers() {
         &serde_cbor_2::to_vec(&Cbor::Map(object)).unwrap()
     ));
     assert_eq!(
-        WORKERS.finish_registration(ORIGIN, TIMEOUT, &state, &credential.to_string()),
+        JADPO.finish_registration(ORIGIN, TIMEOUT, &state, &credential.to_string()),
         Err(PasskeyError::Rejected)
     );
 }
@@ -808,9 +851,9 @@ fn signing_in_comes_out_the_same_on_both() {
         public_key: vec![0xa0],
         ..stored.clone()
     };
-    let [native, workers] = sign_in_with(&rs256, &unreadable, |_| {});
-    assert_eq!(native, Err(PasskeyError::Misconfigured));
-    assert_eq!(workers, Err(PasskeyError::Misconfigured));
+    let [reference, jadpo] = sign_in_with(&rs256, &unreadable, |_| {});
+    assert_eq!(reference, Err(PasskeyError::Misconfigured));
+    assert_eq!(jadpo, Err(PasskeyError::Misconfigured));
 }
 
 /// The test authenticator, the device the live route tests sign in with,
@@ -867,11 +910,11 @@ fn the_test_authenticator_gets_the_same_answers_from_both() {
         outcomes.push(sign_in(&mut synced, &mut synced_stored));
         kept.push((stored, outcomes));
     }
-    let workers = kept.pop().unwrap();
-    let native = kept.pop().unwrap();
-    assert_eq!(native, workers);
+    let jadpo = kept.pop().unwrap();
+    let reference = kept.pop().unwrap();
+    assert_eq!(reference, jadpo);
     assert_eq!(
-        native.1,
+        reference.1,
         [
             Ok(1),
             Ok(2),

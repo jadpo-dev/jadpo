@@ -153,10 +153,13 @@ pub mod steps;
 mod store;
 pub mod stream;
 #[cfg(feature = "testing")]
+pub mod test_authenticator;
+#[cfg(feature = "testing")]
 pub mod test_run;
 #[cfg(feature = "testing")]
 pub mod test_steps;
 pub mod unfinished;
+pub mod webauthn;
 pub mod webhooks;
 mod write;
 

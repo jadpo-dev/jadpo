@@ -65,11 +65,8 @@ pub mod dns;
 pub mod fetch;
 pub mod files;
 pub mod http;
-pub mod passkeys;
 mod signals;
 pub mod spamassassin;
-#[cfg(feature = "test-authenticator")]
-pub mod test_authenticator;
 pub mod tls;
 mod tracked;
 
@@ -401,8 +398,17 @@ impl NativeHost {
     }
 }
 
-/// The passkey ceremonies every native host carries.
-static PASSKEYS: passkeys::WebauthnPasskeys = passkeys::WebauthnPasskeys;
+/// The passkey ceremonies every native host carries, and a test's host
+/// natively: the runtime's own (area 8, "Passkeys"), their challenges from
+/// the operating system's generator.
+pub static PASSKEYS: jadpo_runtime::webauthn::WebAuthn =
+    jadpo_runtime::webauthn::WebAuthn::new(os_random);
+
+/// The operating system's cryptographic generator, through getrandom:
+/// `false` when it can't give, never a weaker source.
+fn os_random(bytes: &mut [u8]) -> bool {
+    getrandom::fill(bytes).is_ok()
+}
 
 impl Host for NativeHost {
     /// The disk driver given for a store of files (chunk 6.4b; narrowed
@@ -421,7 +427,7 @@ impl Host for NativeHost {
         self.call_log.as_ref().map(|log| log.0.as_ref())
     }
 
-    /// `webauthn-rs` (area 8, "Passkeys").
+    /// The runtime's ceremonies ([`PASSKEYS`]).
     fn passkeys(&self) -> Option<&dyn jadpo_runtime::Passkeys> {
         Some(&PASSKEYS)
     }
@@ -469,7 +475,7 @@ impl Host for NativeHost {
     /// The operating system's cryptographic generator, through getrandom:
     /// `false` when it can't give, never a weaker source.
     fn random(&self, bytes: &mut [u8]) -> bool {
-        getrandom::fill(bytes).is_ok()
+        os_random(bytes)
     }
 
     /// tokio's timer, which runs inside [`Runtime::block_on`].

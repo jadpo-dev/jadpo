@@ -208,12 +208,14 @@ subtle = { version = "=2.6.1", default-features = false }
 # feature (`ring`): a certificate is read, never checked against a chain,
 # and it builds for wasm32.
 x509-parser = { version = "=0.16.0", default-features = false }
-# RS256 and ES256 for `crypto.verify_jwt` (area 19, chunk 5.5r4;
-# jadpo-value only): RustCrypto's `rsa`, its latest stable release, and
-# `p256`, verification only. Neither hashes for us: the signed input is
-# hashed once with the `sha2` above and checked as a prehash, so `rsa`'s
-# older `digest` isn't used. No default features: no `std`, so no
-# `getrandom`, and both build for wasm32. RUSTSEC-2023-0071 (Marvin), open
+# RS256 and ES256 for `crypto.verify_jwt` (area 19, chunk 5.5r4) and the
+# passkey ceremonies (area 8): RustCrypto's `rsa`, its latest stable
+# release, and `p256`, in jadpo-value to verify. Neither hashes for us: the
+# signed input is hashed once with the `sha2` above and checked as a
+# prehash, so `rsa`'s older `digest` isn't used. No default features: no
+# `std`, so no `getrandom`, and both build for wasm32. jadpo-runtime's
+# `testing` signs with `p256` for the test authenticator, its nonces
+# RFC 6979's, so it needs no generator either. RUSTSEC-2023-0071 (Marvin), open
 # against every `rsa` release, leaks a private key through the timing of
 # decryption and signing; verifying holds no private key, so it is not
 # reached.
@@ -263,27 +265,25 @@ bytes = "=1.12.1"
 # here: a Workers host takes the Web Crypto API's, and `jadpo-value` takes
 # random bytes only from the host.
 getrandom = { version = "=0.4.3", default-features = false }
-# Passkeys (area 8, "Passkeys", chunk 5.5z; jadpo-host-native only): the
-# registration and sign-in ceremonies on Kanidm's `webauthn-rs`, MPL-2.0,
-# used unmodified. Its 0.5 line verifies with OpenSSL, which doesn't build
-# for wasm32, so the runtime reaches it through the host's `Passkeys`
-# capability, and the Workers host checks passkeys with jadpo-value's
-# pure-Rust ES256 and RSA (roadmap 8.2l, decided 2026-10-21). No
-# attestation (`default-features = false`); `conditional-ui` signs in with
-# a discoverable credential, so no address is asked for first;
-# `danger-allow-state-serialisation` keeps a ceremony's state in the
-# database, server-side and single-use, never in a cookie; and
+# The reference the passkey ceremonies are held to (area 8, "Passkeys";
+# jadpo-runtime's tests only, a dev-dependency): Kanidm's `webauthn-rs`,
+# MPL-2.0, unmodified. It verifies with OpenSSL, so no deployable links
+# it: the ceremonies every host runs are jadpo-runtime's own, in pure
+# Rust, and its tests run each one on both. No attestation
+# (`default-features = false`); `conditional-ui` signs in with a
+# discoverable credential; `danger-allow-state-serialisation` keeps a
+# ceremony's state as the runtime keeps it, as JSON; and
 # `danger-credential-internals` loads a stored `WebAuthnCredential` part by
-# part, whose types `webauthn-rs-core` names; `serde_cbor_2` reads and
-# writes its COSE key. Both are already under `webauthn-rs`. The Workers
-# host reads a device's CBOR with the same `serde_cbor_2`, pure Rust, so
-# both hosts read an answer alike (chunk 8.2l).
+# part, whose types `webauthn-rs-core` names.
 webauthn-rs = { version = "=0.5.5", default-features = false, features = ["conditional-ui", "danger-allow-state-serialisation", "danger-credential-internals"] }
 webauthn-rs-core = { version = "=0.5.5", default-features = false }
+# A device's CBOR and a passkey's COSE key (jadpo-runtime's passkey
+# ceremonies): pure Rust, the reader `webauthn-rs` reads them with, so the
+# runtime reads an answer as its reference does.
 serde_cbor_2 = { version = "=0.13.0", default-features = false, features = ["std"] }
-# The test authenticator's ES256 keys (jadpo-host-native's
-# `test-authenticator`, for tests only): the OpenSSL bindings `webauthn-rs`
-# already links.
+# OpenSSL's bindings, for the `jadpo` tool only: HTTPS to Jadpo HQ
+# (jadpo-cli), and the keys and signatures of answers a device shouldn't
+# give in the passkey tests, beside `webauthn-rs`. No deployable links it.
 openssl = { version = "=0.10.81", default-features = false }
 # TLS for the native host (jadpo-host-native only; chunk 8.1b): the one
 # stack every connection a deployable makes is secured with, rustls, so no
