@@ -365,3 +365,9 @@ opt-level = 3
 
 [profile.dev.package.miniz_oxide]
 opt-level = 3
+
+# The prebuilt `jadpo` each release carries (dist-workspace.toml): an
+# optimised build, with thin link-time optimisation.
+[profile.dist]
+inherits = "release"
+lto = "thin"
