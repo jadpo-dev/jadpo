@@ -471,3 +471,17 @@ fn formatting_is_checked_like_any_operation() {
         ["semantic.standard_operation_moved"]
     );
 }
+
+/// A sibling mismatch names the nearest type both refine: a recipe's id
+/// and its author's both refine `Uuid`, not the author's `Baker.id`.
+#[test]
+fn a_sibling_mismatch_names_the_type_both_refine() {
+    let source = "entity Baker {\n    id: Uuid\n}\n\nentity Recipe {\n    id: Uuid\n    author_id: Baker.id {\n        on_delete: OnDelete.restricted\n    }\n}\n\nfunction f(value: Recipe.author_id) -> Recipe.id {\n    return value\n}\n";
+    let db = jadpo_db::Database::default();
+    let project = support::project(&db, Layout::Loose, &[("main.jadpo", source)]);
+    let found = jadpo_check::check(&db, project);
+    assert_eq!(found.len(), 1, "{found:#?}");
+    assert_eq!(found[0].rule.id, "type.sibling_mismatch");
+    let reason = found[0].reason.as_deref().unwrap_or_default();
+    assert!(reason.starts_with("Both refine `Uuid`,"), "{reason}");
+}
