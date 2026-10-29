@@ -152,7 +152,7 @@ Rust 1.88 or later).
 | `jadpo-fmt` | Formatter | |
 | `jadpo-sql` | Every PostgreSQL text the compiler writes: conditions and their one lowering (an exact SQL form, or an index search the runtime rechecks), statements, aggregates, identity lookups and table definitions, rendered from what the graph, the checker and the plan decide | |
 | `jadpo-graph` | Node and edge model, identity keys, canonical JSON, diff; the physical schema, its snapshots and migration diffs | |
-| `jadpo-db` | Incremental database: source inputs, project layout, the lock and the identity registry; the only compiler crate that does I/O (the before side from git comes later) | |
+| `jadpo-db` | Incremental database: source inputs, project layout, the lock and the identity registry; the only compiler crate that does I/O, reading a project's files from disk for rules that read none (§2.2, "Loading") | |
 | `jadpo-check` | Resolution, types, failures, effects, policy, data and layout rules, as queries that build the graph | |
 | `jadpo-plan` | What both executors need besides control flow: numbered callables and their frame tables, type and failure plans, constants, each read and write site's statements with policy compiled in (written by `jadpo-sql`), codecs per type, and the route, settings, JSON, translation and prompt tables; schedule and subscriber tables come with area 12 | |
 | `jadpo-interp` | The interpreter | |
@@ -277,6 +277,26 @@ native test checks. Compiler crates do no I/O below `jadpo-db`, which keeps
 a browser playground possible.
 
 ### 2.2 Source to graph
+
+**Loading.** A project is loaded in two steps. `jadpo_db::read` finds it
+on disk (up to `app.jadpo`, or loose files) and reads every file it could
+hold into a `FileSet`: each path, relative to the root with `/`, with its
+text or why it couldn't be read, a folder that couldn't be listed as its
+path and a trailing `/`, and each checkout `jadpo.lock` links a package to
+under the checkout's path as the lock writes it (`../acme-pricing/...`).
+`jadpo_db::assemble` then makes the set a project by every rule, reading
+nothing: a set with `app.jadpo` at its root is a project, otherwise loose
+files; which paths a project holds (`role`: nothing hidden, nothing in a
+root `build/`, outside a project's code folders and records only source,
+and loose files a prompt's text beside its type); which of those are
+source, records or other files; which installed package resources wait
+until the app calls into them; the identity registry's lines; and which
+package folders a link replaces with its checkout's files (a link whose
+checkout has no index in the set is unreadable). `load_files` loads a set read from
+anywhere, so a base commit read from git loads by the same rules as the
+working tree; a test holds every example to the same graph and problems
+either way. The watcher's `Loaded::refresh` reads one path from disk and
+applies the same `role`.
 
 **Lexer and parser.** Hand-written. The lexer has modes for route paths
 (`GET /todos/{todo_id}`), durations (`15m`) and template text (`{{ }}`).
@@ -620,6 +640,49 @@ graph gives a query a `reads` edge to its entity, an `includes` edge to
 each entity it includes and a `raises` edge to its `missing:` failure; a
 body calling `Entity.get` gets a `reads` edge too.
 
+**Outside, access and services** (areas 8, 10, 11 and 12). A package's
+declarations are its files' parts: a `package` node for its index, keyed
+by the name its declarations are written through (`package SwiftCouriers`,
+`package Postcodes.v2` while two versions are held), with its version
+folder, whether it is a library or provider and whether it is installed;
+a `resource` and an `operation` for each of a provider's resources and
+operations (`operation SwiftCouriers.pickups.create`, under its resource,
+with its method, path, input and output, `raises` edges to its failures);
+and a `capability_mapping` for each `provide <capability>`, which its
+package `provides` and which `calls` each operation a `call:` in it names.
+A body's call through a connection `calls` the operation and `uses` the
+connection, as a package's own action calls its own operations; a body
+`uses` each setting it reads and `emits` each event type it emits. A
+schedule `runs` its action and a subscriber `runs` its action and
+`subscribes` to its event, each with its every or retry, and a package's
+own subscriber is keyed with its package's name as its model is; an
+entity's built-in purge schedule is placed at its `purge:` and `writes`
+the entity. What a declaration existing once holds is three queries of
+its own (`graph::areas`): `outside_nodes`, a `connection` for each entry of
+`connections:` and the implied `main` while something is stored there
+(what its driver serves, its package, domains and credential scheme, and
+`uses` edges to its package and the settings it reads), a `host` for each
+row of the network report (one list, `connections::hosts`, so the report
+and the graph never disagree), keyed by its connection and, where a
+setting chooses one, the environment (`host couriers.live`), so a changed
+address reads as a change, not a new host, and a `lock_entry` for each line
+of `jadpo.lock` under its package; `access_nodes`, a `principal` for each
+kind of caller (using its entity and subject field), an
+`authentication_method` for each sign-in method (using the settings it
+reads), a `sign_in_provider` for each way `sign_in:` checks a person that
+is built (`magic_link`, `passkey`), and a `generated_route` for each route
+the runtime answers itself, keyed by its method and path and placed under
+what generates it, from the one list the API record also reads
+(`routes::generated`), each connection's webhook whether or not the app
+declares the `webhooks` API, and health beside any API; and
+`service_nodes`, a `config_field` for each setting, the `locale_set
+application`, and, beside any API, `rate_limit address` and `rate_limit
+caller`, using the connection they are counted in. `cache` and
+`oauth_scope` stay reserved: nothing the language builds declares one yet
+(`caches:` comes with Redis entities, area 5; scope declarations with OAuth
+grants and tokens for other applications, areas 8 and 11), and they are
+built with those (decided in chunk 10.3g).
+
 Each site says whether it can pause (§2.5): an effect (a
 store read or write, `emit`, an integration call, `clock.now`, a new
 identity) or a call to an action, query or fixture, which the runtime
@@ -649,9 +712,22 @@ schema in `jadpo help --json`.
 **Diff.** One operation: match nodes by key, compare digests, then let each
 kind classify its change into the decided kinds (`ApiChange`, `DataChange`,
 `PolicyChange`, `DomainChange`, `PackageChange`, `ThresholdChange`), other
-behaviour, and newly reachable nodes. The before side is read from the
-base commit through `git cat-file --batch` into an in-memory file set,
-checked by the same compiler and cached in `build/before/<commit>/`.
+behaviour, and newly reachable nodes. Built so far: `DomainChange.created`
+and `.renamed`; `PackageChange.operation_removed`, `.operation_changed`
+and `.failure_added` for an operation something other than a test calls,
+`.host_changed` for a host's address changed or one added to a connection
+the app already had, `.service_image` for a service's image new or
+changed, `.credential_changed` for a connection's credential scheme, and
+`.git_source` for a package locked from git; `PolicyChange.principal_added`,
+`.principal_changed`, `.sign_in_method_added` and `.sign_in_added`. A new
+connection and its hosts need no one (area 18, "Package upgrades"). Every
+git package needs a person, since telling the app's own company's
+repository from a third party's needs a setting the pages don't decide;
+this is the conservative reading of area 11's "Publisher trust". The
+before side is read from the base commit through `git cat-file --batch`
+into an in-memory file set (`jadpo_db::FileSet`, loaded by `load_files`,
+§2.2, "Loading"), checked by the same compiler and cached in
+`build/before/<commit>/`.
 
 **Packages.** A package's index is always parsed, a resource file only when
 the app calls into it. A checked package subgraph is cached on disk by
@@ -864,13 +940,34 @@ none of it. The effect is named, never told by its source text:
 for the standard operations `effects::is_effect` names, which
 `jadpo_value::run` refuses: `random`'s, from the invocation's random
 bytes, kept on a recording's tape; `crypto`'s but `read_certificate`,
-given the key ring its `key:` names (`effects::Keys`, read from the
-settings), its random bytes (secret for an encryption's nonce) and, for
-`verify_jwt`, its clock; and `json.read`, `json.write` and `verify_jwt`'s
+given the key ring its `key:` stands for, its random bytes (secret for
+an encryption's nonce) and, for `verify_jwt`, its clock; and `json.read`, `json.write` and `verify_jwt`'s
 `as:` claims, through the codec the plan numbers for their site (`json`);
 and `Effect::Emit { event }`, whose payload is written as its type's
 contract JSON and kept, with its subscribers, in the running action's
-outbox. What they need of the program comes as `Effects` (the plan's JSON
+outbox.
+
+**A key as a value.** A `crypto` call's key reaches the runtime as one
+opaque value, `Value::Key(jadpo_value::crypto::Key)`, the only value
+that stands for a key; no number or text does. Where it comes from the
+plan decides once, on the `key:` argument's site
+(`Decoded::Key(Option<KeySource>)`): `KeySource::Setting(n)` for `key:
+config.<name>`, which each executor passes as `Key::Setting(n)` without
+reading the setting, and `KeySource::Field { name }` for a field whose
+type is a key type, which each executor reads as it reads any field,
+the field holding a `Key::Held`. `None` (anything else, which the
+checker refuses as `type.mismatch`) is a defect at the call.
+`effects::crypto` builds the operation's key ring from either: a
+setting's from the keys the program started with (`effects::Keys`, read
+from the settings, with its `_PREVIOUS`), a held key's from its own
+bytes, with no previous key, since a key held as data rotates by being
+replaced; any other value in the key's place is a defect. A key prints
+as `<key>`, has no storage or JSON form, and orders after every other
+kind (a setting's by number, then held keys in constant time), so the
+canonical order stays total although code never compares one. Nothing
+yet makes a held key: keys in encrypted fields come with personal data
+(the roadmap's "After the first build", item 3), which decrypts a
+field of a key type into one on load. What they need of the program comes as `Effects` (the plan's JSON
 table with the program's validators and shapes, the events' numbers and
 subscribers, and the settings), which the interpreter builds from its plan
 and compiled code holds as statics, and the keys as the program
@@ -1674,7 +1771,8 @@ runs one
 [language test project](https://raw.githubusercontent.com/gleam-lang/gleam/main/test/language/Makefile)
 on every target. Per test it compares outcome, failure code and internal
 fields, assertion values, the effect sequence (SQL and row counts, events,
-provider calls), the paths each body took and the final database diff;
+provider calls), the spans of what it did (§2.6, "What an invocation
+did"), the paths each body took and the final database diff;
 any difference fails the gate and prints both sides. Fuzzed function
 bodies are compared too, as Cranelift compares its own generated
 functions against its interpreter (below, "Fuzzed bodies").
@@ -2151,6 +2249,39 @@ ended through `Host::stopping`; it first waits as long
 for its connections to give the answers they owe (§2.5). `stop_signals`
 turns SIGTERM and SIGINT into that stop, a second ending the process at
 once; `jadpo dev` stops on them.
+
+**What an invocation did** (area 16, "Telemetry"). `Ctx` keeps one
+list of spans for the invocation it runs (`jadpo_runtime::spans`), in
+the order each started: a span for each action, read, write and outside
+call, with its kind (`Action`, `Read`, `Write`, `Call` with its
+connection and operation), where it is as a frame of the program
+(`callable` and `site`: an action at its declaration, anything else at
+its own site in the callable on top; none for what the runtime does on
+its own behalf, as a route's query), its start and end on
+`Host::monotonic_ms` (`None` on a host without one), the records a read
+gave or a write wrote, and how it ended (`Ended`: a value, a failure's
+code, a fault's classification, or `Open` for work its invocation
+abandoned, as a route past its deadline does). Each kind is appended in
+one place, so neither executor adds any: an action in `action` at the
+boundary, from its first run to its last (`ActionBody::callable`, which
+only a program's own action gives, so a store operation's boundary of
+its own or the request guarantees' keep none), a read or a write in
+`store`, and an outside call in `outside::send`, the one seam
+`effects::call` and every provider, model and file call goes through,
+its retries inside it; an executor's call site sets its frame's site
+first (`calls`). Past `MAX_SPANS` (10,000) an invocation counts the
+spans it doesn't keep (`Spans::dropped`), so long background work holds
+a bounded list. `serve_request` hands a request's spans on its
+`Response`, and `Serving` gives them to its `Observer` through
+`Answered::spans`; a test's run adds them to its record
+(`record::Entry::Span`, without their times), so the differential run
+holds both executors, natively and inside workerd, to the same spans.
+They carry places and codes, never values. Timelines, telemetry's
+spans, `watch` and access records read them rather than keeping lists
+of their own; the development call log (`Host::call_log`) and a
+record's steps (`Ctx::steps_reached`, `Response::steps`) stay for what
+a span leaves out, a call's request and answer and a step's place in
+its record.
 
 **The request guarantees,** in the same component. A body
 over `BODY_LIMIT` (1 MB) is 413 before routing; the native host stops
@@ -4104,7 +4235,7 @@ writes, for a query's, a file's and an export's run alike.
 provider operation's call is `Callee::Provider` (its connection and
 `resource.operation`), which the interpreter runs through
 `jadpo_runtime::provider::call` with the plan's `ProviderPlan`
-(`jadpo_std::provider`: each connection's address, credential setting,
+(`jadpo_std::provider`: each connection's address, credential,
 timeout, `idempotency:` and `error_code:`, and each public operation's
 method, path, input and output numbered in the JSON table, `output_at:`,
 `failed_when:`, `Repeat` and failures), the credentials the program
@@ -4129,6 +4260,34 @@ at the call's `attempt` (`RuleArm::named`, `Task::RaiseMapped`) or ends
 in `FaultKind::Provider`. Natively the host's `Fetch` is
 `jadpo_host_native::fetch::NativeFetch`: HTTPS through rustls, or plain HTTP to this machine, over a connection kept for
 its host ("A pooled HTTP client" below).
+
+**Where a connection's credential comes from** (area 11, `credential:`
+and "Acting for each user: OAuth grants"). A connection's credential in
+the plan is a `CredentialPlan`: the scheme its package sends it with
+(`CredentialScheme`: bearer, basic, a named header, AWS Signature
+Version 4) and its source (`CredentialSource`). The one source built is
+`Setting { secret, key_id }`, one credential for the whole connection:
+the secret setting's number, and an AWS key's id beside it, so the
+scheme says only how a credential is sent and the source every setting
+it is read from (`CredentialSource::settings`, which a driver's
+settings, `jadpo dev`'s stand-ins and the conformance suite's `--live`
+read). The values are read at start-up into `provider::Credentials`, by
+connection. A call's asynchronous caller resolves the credential before
+its request is made (`provider::credential`, a `provider::Credential`
+whose `Debug` never shows its secret): `provider::call` for every
+operation, the runtime's own calls included, and `ai`, `stream` and
+`embed` through a package once per call, before any attempt
+(`provider::credential_of`). A source holding nothing is
+`misconfigured`, logged as refused and sent to nobody; the request only
+sends what it is given as its scheme says. The source also decides what
+a provider rejecting it means: the request's `Reading::rejected`, which
+`provider::classify` reads for a `401` and a `403` alike, is
+`Rejected::Misconfigured` for a setting's credential and for a call that
+sends none, since the connection's configuration is what is wrong. A
+grant owned by one of the app's records is another source when it is
+built, resolved in the same caller from its owner's store and renewed
+there, with its own meaning for a rejection (`grant_revoked`); nothing
+of it is built yet.
 
 **A pooled HTTP client.** Natively
 every request that leaves the process, a provider's call

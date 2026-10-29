@@ -349,8 +349,13 @@ that path numbers decode against, and each deployable's build id.
 > and its edges as sorted lists by kind: `calls`, `uses`, and `raises` for
 > the failures that can leave a callable (the `fails` above). Nodes are
 > built for areas 1 to 4, with the build stamp (`source`, `deployables`,
-> build ids), policy and prompts; routes, schedules, hosts, personal
-> fields and thresholds join as their areas are built. `jadpo help --json`
+> build ids), policy and prompts, and areas 8, 10, 11 and 12's: each
+> connection, package, resource, operation, capability mapping, host and
+> lock line, each kind of caller, sign-in method, way of signing in and
+> route the runtime answers itself, each setting, the locale set, the rate
+> limits, and each schedule and subscriber, with `emits`, `subscribes`,
+> `runs` and `provides` edges; personal fields and thresholds join as
+> their areas are built. `jadpo help --json`
 > prints the schema with every node and edge kind and whether it is built
 > yet. Policy (area 9) is a `grant` node for each list an entity's
 > `policy:` writes, a `field_restriction` for each field's own policy (`serverOnly`, or `who`:
@@ -625,7 +630,7 @@ that the path number cannot be decoded.
 
 | Feature | Status |
 |---|---|
-| Manifest | Built: `jadpo check` writes `build/manifest.json` at `format` 2, with nodes for areas 1 to 4 and their `calls`, `uses` and `raises` edges, policy's grants, field restrictions, tenancies and listed actions with `grants` and `scopes` edges, prompts, and the build stamp. Schedules, hosts, personal fields and thresholds join as their areas are built. |
+| Manifest | Built: `jadpo check` writes `build/manifest.json` at `format` 2, with nodes for areas 1 to 4 and their `calls`, `uses` and `raises` edges, policy's grants, field restrictions, tenancies and listed actions with `grants` and `scopes` edges, prompts, areas 8, 10, 11 and 12's connections, packages, operations, hosts, lock lines, principals, sign-in, generated routes, settings, locale set, rate limits, schedules and subscribers, and the build stamp. The graph's diff classifies their changes as "Package upgrades" and the table above say (`PackageChange`, `PolicyChange`). Caches, OAuth scopes, personal fields and thresholds join as their areas are built. |
 | Views of it | Partly built: the library and failure catalogues are built, and one OpenAPI document per API in `build/openapi/`; the other reports and the monitoring rules come with their areas. |
 | Migrations | Built: `jadpo migrate new` writes each folder, and `jadpo check` fails while the entities and the latest snapshot disagree. Each folder is a `migration_snapshot` node in the manifest. |
 | Stable identity | Built: a key is the kind and the born name, a function or type declared in a domain carries its domain, and a test's key is the file it sits beside and its sentence. The registry is read once `jadpo rename` writes it (area 14). |

@@ -6,10 +6,14 @@
 //!
 //! Each file's part is a query of its own ([`file_part`]), so an edit
 //! rebuilds that file's nodes and the project's graph is only assembled
-//! again ([`graph`]). Declarations later areas define (entities' sections,
-//! routes, schedules, subscribers, queries' bodies) have their nodes, with
-//! identity, place and digest; their contents come with their areas.
+//! again ([`graph`]). The nodes of areas 8, 10 and 11 that a declaration
+//! existing once holds (connections, hosts, lock lines, principals,
+//! sign-in, generated routes, settings, the locale set, rate limits) are
+//! queries of their own too ([`areas`]); packages, their resources,
+//! operations and capability mappings, schedules and subscribers are
+//! their files' parts (chunk 10.3g).
 
+pub mod areas;
 mod lookup;
 mod part;
 pub(crate) mod paths;
@@ -334,9 +338,55 @@ pub fn graph(db: &dyn Db, project: Project) -> Arc<Graph> {
     for (from, kind, to) in edges {
         builder.edge(from.clone(), *kind, to.clone());
     }
+    // Areas 8, 10 and 11 (chunk 10.3g).
+    for (nodes, edges) in [
+        areas::outside_nodes(db, project),
+        areas::access_nodes(db, project),
+        areas::service_nodes(db, project),
+    ] {
+        for node in nodes {
+            builder.node(node.clone());
+        }
+        for (from, kind, to) in edges {
+            builder.edge(from.clone(), *kind, to.clone());
+        }
+    }
+    // Each entity's built-in purge schedule (area 12), placed at its
+    // `purge:`, which deletes the entity's hidden records.
+    for (model, span) in crate::schedules::purge_schedules(db, project) {
+        let crate::schedules::ScheduleRun::Purge(entity) = &model.run else {
+            continue;
+        };
+        let mut node = Node::new(model.key.clone(), Kind::Schedule, model.name.clone());
+        if let Some(file) = crate::lookups::file_at(
+            db,
+            project,
+            crate::lookups::Name::new(db, span.path.clone()),
+        ) {
+            let lines = LineIndex::new(file.text(db));
+            let last = span.end.saturating_sub(1).max(span.start);
+            node.place = Some(jadpo_graph::Place {
+                file: span.path.clone(),
+                start: span.start,
+                end: span.end,
+                lines: (lines.line(span.start), lines.line(last)),
+            });
+        }
+        node.digest = Some(jadpo_graph::Digest::of([
+            model.key.as_str(),
+            &model.every_ms.to_string(),
+        ]));
+        let entity = registry.key(Kind::Entity, entity, None);
+        node.parent = Some(entity.clone());
+        node.detail = jadpo_graph::Detail::Schedule {
+            every_ms: model.every_ms,
+        };
+        builder.edge(model.key.clone(), jadpo_graph::EdgeKind::Writes, entity);
+        builder.node(node);
+    }
     // The APIs (area 7), once there is a route or `apis:` declares them.
     let apis = crate::routes::api_table(db, project);
-    if apis.declared || !crate::routes::group_names(db, project).is_empty() {
+    if has_apis(db, project) {
         for api in &apis.apis {
             let mut node = Node::new(
                 registry.key(Kind::Api, &api.name, None),
@@ -348,6 +398,13 @@ pub fn graph(db: &dyn Db, project: Project) -> Arc<Graph> {
         }
     }
     Arc::new(builder.build())
+}
+
+/// Whether the project has an HTTP surface: a route, or APIs `apis:`
+/// declares (area 7).
+pub(crate) fn has_apis(db: &dyn Db, project: Project) -> bool {
+    crate::routes::api_table(db, project).declared
+        || !crate::routes::group_names(db, project).is_empty()
 }
 
 /// The project's data nodes that no source file holds (area 5): the system

@@ -43,6 +43,7 @@ fn rank(value: &Value) -> u8 {
         Value::Money(_) => 16,
         Value::Quantity(_) => 17,
         Value::Percentage(_) => 18,
+        Value::Key(_) => 19,
     }
 }
 
@@ -78,6 +79,7 @@ pub fn compare(a: &Value, b: &Value) -> Ordering {
         (Value::Text(a), Value::Secret(b)) => {
             crate::secret::constant_time_cmp(a.as_bytes(), b.expose().as_bytes())
         }
+        (Value::Key(a), Value::Key(b)) => a.order(b),
         (Value::Instant(a), Value::Instant(b)) | (Value::Duration(a), Value::Duration(b)) => {
             a.cmp(b)
         }

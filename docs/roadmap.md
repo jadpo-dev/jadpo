@@ -323,50 +323,11 @@ compiled.
   creates the tenant record. Done when area 9 says so, and a stranger
   seating themselves in a tenant whose members have all left gets 403
   while founding a new company still seats its founder.
-- [ ] **10.3c One record of what each invocation did** `opus · high`,
-  before item 4: observation comes through three narrow channels
-  (`serve::Observer`'s answered and ticked, dev's `Host::call_log`,
-  testing's `Ctx::steps_reached`), none of which sees queries, writes or
-  action steps, so timelines, spans, `watch` and access records would each
-  add a `Ctx` field of their own. Done when `Ctx` keeps one list of spans
-  per invocation (kind, callable and site, start and end on
-  `monotonic_ms`, rows, outcome), appended in `store::store`, the action
-  boundary and `effects::call`, and handed to `Observer::answered` through
-  `Answered`; and a route test gives the same spans interpreted, native
-  and on workerd.
-- [ ] **10.3d A key as a value** `opus · high`, before item 3: a `crypto`
-  operation's key reaches the runtime only as its setting's number, each
-  executor refusing any other key itself (`jadpo-interp`'s `machine.rs`,
-  `jadpo-codegen`'s `body.rs`) and `effects::crypto` reading a
-  `Value::Int` as a key handle, so a key held in an encrypted field can't
-  be expressed. Done when the plan decides a key's source once
-  (`Decoded::Key`, from a setting or a field), both executors pass one
-  opaque key value, `effects::crypto` builds its key ring from either, and
-  no `Int` stands for a key.
-- [ ] **10.3e Loading a project from files in memory** `opus · high`,
-  before item 6: `jadpo_db::load` mixes finding files on disk with the
-  rules that classify them (records, sources, package resources,
-  identities, links), so a base commit read from git couldn't be loaded
-  by the same rules. Done when loading is reading `(path, text)` pairs
-  plus one pure function over them holding every rule, and a project
-  loaded from an in-memory file set gives the same graph as from disk.
-- [ ] **10.3f Where a connection's credential comes from** `opus · high`,
-  before item 8's OAuth grants: `ConnectionPlan.credential` is a setting
-  number read synchronously in `provider::request`, and a 401 or 403
-  marks the whole connection misconfigured. Done when the credential is a
-  source (`Setting` now, room for a per-owner grant), resolved in the
-  asynchronous caller and passed to the request, a 401's meaning decided
-  by that source, and every provider test passes unchanged.
-- [ ] **10.3g The graph's nodes for areas 8, 10, 11 and 12**
-  `opus · xhigh`, before item 6: connections, packages, operations,
-  capability mappings, hosts, lock entries, generated routes, principals,
-  sign-in methods and providers, OAuth scopes, settings, locale sets,
-  rate limits and caches are still `Reserved`, and schedules and
-  subscribers only `Declared` (`jadpo-graph`'s `kind.rs`), so the approval
-  report would have nothing to classify a package or sign-in change by.
-  Done when each is a `Built` node with its edges (`calls` from a
-  callable to the operation it calls), the graph's diff classifies their
-  changes, and items 3 and 4 add their own kinds as `Built`.
+- [x] **10.3c One record of what each invocation did**: [compiler/runtime](compiler-runtime.md) §2.6, "What an invocation did".
+- [x] **10.3d A key as a value**: [compiler-runtime](compiler-runtime.md) §2.5, "A key as a value"; area 19, "Hashing and cryptography".
+- [x] **10.3e Loading a project from files in memory**: compiler/runtime §2.2, "Loading".
+- [x] **10.3f Where a connection's credential comes from**: compiler/runtime §2.6, "Where a connection's credential comes from"; [area 11](language/11-integrations.md), "How provider calls are made".
+- [x] **10.3g The graph's nodes for areas 8, 10, 11 and 12**: compiler/runtime §2.3, "Outside, access and services" and "Diff"; area 18, "The manifest" and "What is built".
 - [ ] **10.3h The runtime's own SQL beyond PostgreSQL** `opus · high`,
   **needs a maintainer** for D1's transaction model first: about 145 runtime
   statements rely on `RETURNING`, `ON CONFLICT`, `::uuid`, `unnest` and

@@ -43,6 +43,7 @@
 //! gets no answer in time is its site's `timed_out` failure where its
 //! `attempt` maps it.
 
+use std::borrow::Cow;
 use std::fmt;
 use std::rc::Rc;
 
@@ -50,8 +51,8 @@ use std::cell::RefCell;
 
 use jadpo_std::HttpMethod;
 use jadpo_std::provider::{
-    Address, CallSite, ConnectionPlan, CredentialScheme, OperationPlan, PathPart, Protocol,
-    ProviderPlan, RETRY_BASE_MS,
+    Address, CallSite, ConnectionPlan, CredentialScheme, CredentialSource, OperationPlan, PathPart,
+    Protocol, ProviderPlan, RETRY_BASE_MS,
 };
 use jadpo_std::subscriber::Repeat;
 use jadpo_std::types::FailurePlan;
@@ -80,6 +81,22 @@ pub struct Reading {
     /// read as the failure's code it names, `queue_does_not_exist` (chunk
     /// 7.7c).
     pub aws: bool,
+    /// What a `401` or `403` means, decided by where the request's
+    /// credential came from (chunk 10.3f).
+    pub rejected: Rejected,
+}
+
+/// What a provider rejecting a call's credential, a `401` or `403`, means
+/// (chunk 10.3f): decided by the credential's source
+/// ([`Credential::rejected`]), since a setting's credential the provider
+/// refuses is the connection's configuration, where a grant's is its
+/// owner's.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Rejected {
+    /// The connection's settings are wrong: `misconfigured`. A setting's
+    /// credential's meaning, and a call's that sends none.
+    #[default]
+    Misconfigured,
 }
 
 /// An AWS error type as the failure code it names: what follows its
@@ -208,9 +225,13 @@ pub fn classify(request: &Request, response: &Response) -> Answer {
                 text.as_ref()
             }))
         }
-        // A rejected credential, and a redirect, which is never followed
-        // (area 11, question 9): the connection's settings are wrong.
-        300..=399 | 401 | 403 => Answer::Misconfigured,
+        // A redirect, which is never followed (area 11, question 9): the
+        // connection's settings are wrong.
+        300..=399 => Answer::Misconfigured,
+        // A rejected credential, as its source says (chunk 10.3f).
+        401 | 403 => match reading.rejected {
+            Rejected::Misconfigured => Answer::Misconfigured,
+        },
         // It did nothing: sending it again is safe, after the wait it
         // asks for, if any (chunk 7.2c2).
         408 | 429 => match retry_after(response) {
@@ -389,19 +410,21 @@ impl Credentials {
         let package = |at: usize| {
             jadpo_std::connections::package(table, u32::try_from(at).unwrap_or(u32::MAX))
         };
+        // A setting's credential, the connection's for every call.
+        let setting = |at: usize| match package(at)?.credential?.source {
+            CredentialSource::Setting { secret, key_id } => Some((secret, key_id)),
+        };
         Credentials {
             held: (0..table.len())
                 .map(|at| {
-                    let (_, at) = package(at)?.credential?;
-                    values.text_at(at).map(str::to_string)
+                    let (secret, _) = setting(at)?;
+                    values.text_at(secret).map(str::to_string)
                 })
                 .collect(),
             key_ids: (0..table.len())
-                .map(|at| match package(at)?.credential? {
-                    (CredentialScheme::AwsSigV4 { key_id }, _) => {
-                        values.text_at(key_id).map(str::to_string)
-                    }
-                    _ => None,
+                .map(|at| {
+                    let (_, key_id) = setting(at)?;
+                    values.text_at(key_id?).map(str::to_string)
                 })
                 .collect(),
             webhooks: plan
@@ -463,6 +486,60 @@ impl Credentials {
             .map(|secret| secret.map(|secret| (secret, None)))
             .collect();
         self
+    }
+}
+
+/// A connection's credential as one call sends it (chunk 10.3f): resolved
+/// from its source by the call's asynchronous caller ([`credential`]) and
+/// handed to the request, which only sends it as its scheme says.
+pub struct Credential<'a> {
+    /// The secret: a bearer token, `user:password`, an API key, an AWS
+    /// secret access key.
+    pub(crate) secret: Cow<'a, str>,
+    /// An AWS access key id, beside its secret.
+    pub(crate) key_id: Option<Cow<'a, str>>,
+    /// What the provider rejecting it means.
+    pub(crate) rejected: Rejected,
+}
+
+impl fmt::Debug for Credential<'_> {
+    /// Never its secret or key id.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Credential")
+            .field("rejected", &self.rejected)
+            .finish_non_exhaustive()
+    }
+}
+
+/// The credential a call through the connection at `at`, made as `plan`
+/// says, sends (chunk 10.3f): none when its package sends none, and
+/// `misconfigured` when its source holds nothing. A setting's is the one
+/// the program started with, `credentials`; the caller resolves it before
+/// the request is made, so a source that has to be read and renewed, a
+/// grant, is resolved there too.
+pub(crate) fn credential<'a>(
+    credentials: &'a Credentials,
+    plan: &ConnectionPlan,
+    at: u32,
+) -> Result<Option<Credential<'a>>, Unready> {
+    let Some(credential) = &plan.credential else {
+        return Ok(None);
+    };
+    match credential.source {
+        CredentialSource::Setting { key_id, .. } => {
+            let secret = credentials.get(at).ok_or(Unready::Misconfigured)?;
+            let key_id = match key_id {
+                Some(_) => Some(Cow::Borrowed(
+                    credentials.key_id(at).ok_or(Unready::Misconfigured)?,
+                )),
+                None => None,
+            };
+            Ok(Some(Credential {
+                secret: Cow::Borrowed(secret),
+                key_id,
+                rejected: Rejected::Misconfigured,
+            }))
+        }
     }
 }
 
@@ -752,19 +829,25 @@ async fn made(
         input.clone().unwrap_or(Value::Unit),
         op.repeat,
     );
+    // Resolved here, before the request is made, so a source read from a
+    // store resolves the same way (chunk 10.3f).
+    let made_request = credential(providers.credentials, plan, at).and_then(|credential| {
+        request(
+            ctx,
+            providers,
+            (connection, plan, op, at),
+            input.as_ref(),
+            settings,
+            credential.as_ref(),
+            site,
+            None,
+        )
+    });
     let Made {
         mut request,
         fields,
         keying,
-    } = match request(
-        ctx,
-        providers,
-        (connection, plan, op, at),
-        input.as_ref(),
-        settings,
-        site,
-        None,
-    ) {
+    } = match made_request {
         Ok(made) => made,
         Err(Unready::Misconfigured) => {
             let now = ctx.now();
@@ -1118,12 +1201,14 @@ fn add_at(
 /// `added`'s value written at its place beside it (area 21,
 /// "How a provider fills it"; chunk 5.5v3b): what a package filling `ai`
 /// is sent, through the capability seam by the `ai` call's own site.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn request_adding(
     ctx: &mut Ctx<'_>,
     providers: &Providers<'_>,
     number: u32,
     input: Option<&Value>,
     settings: &[(u32, Value)],
+    credential: Option<&Credential<'_>>,
     site: Site<'_>,
     added: Option<(&str, serde_json::Value)>,
 ) -> Result<Request, Unready> {
@@ -1139,20 +1224,39 @@ pub(crate) fn request_adding(
         (connection, plan, op, at),
         input,
         settings,
+        credential,
         site,
         added,
     )
     .map(|made| made.request)
 }
 
+/// The credential a call of the operation numbered `number` sends, from
+/// its connection's source ([`credential`]): what an `ai` call's
+/// asynchronous caller resolves before its package's request is made.
+pub(crate) fn credential_of<'a>(
+    providers: &Providers<'a>,
+    number: u32,
+) -> Result<Option<Credential<'a>>, Unready> {
+    let Some((plan, op, _)) = providers.numbered(number) else {
+        return Err(Unready::Fault(FaultKind::Defect(
+            "a provider's operation the plan doesn't have".into(),
+        )));
+    };
+    credential(providers.credentials, plan, op.connection)
+}
+
 /// The request `op` sends with `input`, its fields written as the
-/// provider takes them, each field's own encoder run at `site`.
+/// provider takes them, each field's own encoder run at `site`, with
+/// `credential`, resolved from its connection's source by the caller.
+#[allow(clippy::too_many_arguments)]
 fn request(
     ctx: &mut Ctx<'_>,
     providers: &Providers<'_>,
-    (name, plan, op, at): (&str, &ConnectionPlan, &OperationPlan, u32),
+    (name, plan, op, _): (&str, &ConnectionPlan, &OperationPlan, u32),
     input: Option<&Value>,
     settings: &[(u32, Value)],
+    credential: Option<&Credential<'_>>,
     site: Site<'_>,
     added: Option<(&str, serde_json::Value)>,
 ) -> Result<Made, Unready> {
@@ -1337,11 +1441,12 @@ fn request(
     } else {
         body
     };
-    if let Some((scheme, _)) = plan.credential {
-        let Some(secret) = providers.credentials.get(at) else {
+    if let Some(sent) = plan.credential {
+        let Some(credential) = credential else {
             return Err(Unready::Misconfigured);
         };
-        match scheme {
+        let secret = credential.secret.as_ref();
+        match sent.scheme {
             CredentialScheme::Bearer => {
                 headers.push(("Authorization".to_string(), format!("Bearer {secret}")));
             }
@@ -1358,9 +1463,8 @@ fn request(
                     jadpo_value::encoding::to_base64(secret.as_bytes())
                 ),
             )),
-            CredentialScheme::AwsSigV4 { .. } => {
-                let (Some(key_id), Some(aws)) = (providers.credentials.key_id(at), &plan.aws)
-                else {
+            CredentialScheme::AwsSigV4 => {
+                let (Some(key_id), Some(aws)) = (credential.key_id.as_deref(), &plan.aws) else {
                     return Err(Unready::Misconfigured);
                 };
                 let region = crate::sigv4::region_of(&base);
@@ -1399,6 +1503,7 @@ fn request(
         in_use: None,
         reused: None,
         aws: aws_json,
+        rejected: credential.map_or_else(Rejected::default, |credential| credential.rejected),
     };
     let mut keying = None;
     if let Some(idempotency) = &plan.idempotency {
@@ -1693,6 +1798,7 @@ fn failed(providers: &Providers<'_>, op: &OperationPlan, name: &str, code: &str)
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jadpo_std::provider::CredentialPlan;
 
     fn parts(scope: &str, action: &str, step: u32) -> KeyParts<'static> {
         KeyParts {
@@ -1766,6 +1872,7 @@ mod tests {
             in_use: Some("key_in_use".into()),
             reused: Some("key_reused".into()),
             aws: false,
+            rejected: Rejected::Misconfigured,
         };
         let sent = request(reading);
         assert_eq!(
@@ -1791,7 +1898,10 @@ mod tests {
             classify(&sent, &answer(400, "not json")),
             Answer::Failed(String::new())
         );
+        // A setting's credential rejected: the connection's settings are
+        // wrong, as its source says.
         assert_eq!(classify(&sent, &answer(401, "")), Answer::Misconfigured);
+        assert_eq!(classify(&sent, &answer(403, "")), Answer::Misconfigured);
         assert_eq!(classify(&sent, &answer(302, "")), Answer::Misconfigured);
         assert_eq!(classify(&sent, &answer(429, "")), Answer::Unavailable);
         assert_eq!(classify(&sent, &answer(502, "")), Answer::Unknown);
@@ -1805,6 +1915,65 @@ mod tests {
             !shown.contains("secret") && !shown.contains("sk_live"),
             "{shown}"
         );
+    }
+
+    fn connection(credential: Option<CredentialPlan>) -> ConnectionPlan {
+        ConnectionPlan {
+            package: "AcmeCouriers.v1".into(),
+            address: Address::Setting(0),
+            credential,
+            credential_header: None,
+            headers: Vec::new(),
+            protocol: Protocol::JsonHttp,
+            aws: None,
+            timeout_ms: 1000,
+            retry: jadpo_std::provider::RetryPlan::default(),
+            idempotency: None,
+            error_code: None,
+            sandbox: Vec::new(),
+            max_concurrent: None,
+        }
+    }
+
+    /// A call's credential comes from its connection's source, resolved
+    /// before its request is made (chunk 10.3f): a setting's is the one
+    /// the program started with, the same for every call, with an AWS
+    /// key's id beside it; one whose setting holds nothing is
+    /// `misconfigured`; and the source decides what a `401` means.
+    #[test]
+    fn a_calls_credential_comes_from_its_connections_source() {
+        let setting = |scheme, key_id| {
+            connection(Some(CredentialPlan {
+                scheme,
+                source: CredentialSource::Setting { secret: 4, key_id },
+            }))
+        };
+        let held = Credentials::given(vec![None, Some("sk_test".into())])
+            .with_key_ids(vec![None, Some("AKID".into())]);
+        let bearer = setting(CredentialScheme::Bearer, None);
+        let sent = credential(&held, &bearer, 1)
+            .ok()
+            .flatten()
+            .expect("the setting's credential");
+        assert_eq!(sent.secret, "sk_test");
+        assert_eq!(sent.key_id, None);
+        assert_eq!(sent.rejected, Rejected::Misconfigured);
+        // Never its secret in a log.
+        assert!(!format!("{sent:?}").contains("sk_test"));
+        assert!(matches!(
+            credential(&held, &bearer, 0),
+            Err(Unready::Misconfigured)
+        ));
+        let aws = setting(CredentialScheme::AwsSigV4, Some(5));
+        let signed = credential(&held, &aws, 1).ok().flatten().expect("held");
+        assert_eq!(signed.key_id.as_deref(), Some("AKID"));
+        let unkeyed = Credentials::given(vec![None, Some("sk_test".into())]);
+        assert!(matches!(
+            credential(&unkeyed, &aws, 1),
+            Err(Unready::Misconfigured)
+        ));
+        // A package that sends none sends none, whatever is held.
+        assert!(matches!(credential(&held, &connection(None), 1), Ok(None)));
     }
 
     /// A retry waits twice as long each time, drawn up to that ceiling,

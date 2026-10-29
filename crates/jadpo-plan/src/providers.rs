@@ -13,9 +13,9 @@ use jadpo_check::providers::Operation;
 use jadpo_db::{Db, Project};
 use jadpo_graph::{Key, TypeRef};
 use jadpo_std::provider::{
-    Address, AwsPlan, Called, ConnectionPlan, CredentialScheme, DEFAULT_TIMEOUT_MS,
-    IdempotencyPlan, OperationPlan, PathPart, PollPlan, Protocol, ProviderPlan, RecordedPlan,
-    WebhookEvent, WebhookPlan, WebhookReply,
+    Address, AwsPlan, Called, ConnectionPlan, CredentialPlan, CredentialScheme, CredentialSource,
+    DEFAULT_TIMEOUT_MS, IdempotencyPlan, OperationPlan, PathPart, PollPlan, Protocol, ProviderPlan,
+    RecordedPlan, WebhookEvent, WebhookPlan, WebhookReply,
 };
 use jadpo_std::receiving::{
     AcknowledgePlan, CloudflareQueue, Mapped, QueueEvent, QueuePlan, QueueSource, ReceivePlan,
@@ -401,18 +401,23 @@ pub(crate) fn connection_plan(
         connection.credential.as_deref(),
     ) {
         (Some(scheme), Some(name)) => {
+            // Each scheme's credential is one setting for the whole
+            // connection; an AWS key's id is a second beside it.
+            let key_id = connection.key_id.as_deref().and_then(setting);
             let scheme = match scheme {
                 "bearer" => Some(CredentialScheme::Bearer),
                 "basic" => Some(CredentialScheme::Basic),
                 "header" => Some(CredentialScheme::Header),
-                "aws_sigv4" => connection
-                    .key_id
-                    .as_deref()
-                    .and_then(setting)
-                    .map(|key_id| CredentialScheme::AwsSigV4 { key_id }),
+                "aws_sigv4" if key_id.is_some() => Some(CredentialScheme::AwsSigV4),
                 _ => None,
             };
-            scheme.zip(setting(name))
+            let key_id = key_id.filter(|_| scheme == Some(CredentialScheme::AwsSigV4));
+            scheme
+                .zip(setting(name))
+                .map(|(scheme, secret)| CredentialPlan {
+                    scheme,
+                    source: CredentialSource::Setting { secret, key_id },
+                })
         }
         _ => None,
     };

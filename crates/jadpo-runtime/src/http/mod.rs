@@ -136,6 +136,10 @@ pub struct Response {
     /// changing calls: what `jadpo dev` shows under its line (chunk
     /// 7.5f); never sent.
     pub steps: Vec<crate::steps::RunSteps>,
+    /// What answering it did, a span for each action, read, write and
+    /// outside call (chunk 10.3c): what [`crate::serve::Serving`] hands its
+    /// observer; never sent.
+    pub spans: crate::spans::Spans,
     /// Why a sign-in was refused, for the host's log line (area 8,
     /// "Events"; chunk 7.3b4); never sent.
     pub refused: Option<crate::ctx::SignInRefused>,
@@ -373,6 +377,7 @@ pub async fn serve_request(
     response.deferred = ctx.take_deferred();
     response.calls = ctx.take_calls();
     response.steps = ctx.take_steps(0);
+    response.spans = ctx.take_spans();
     response
 }
 
@@ -1718,6 +1723,7 @@ fn json_response(status: u16, code: &str, body: Vec<u8>) -> Response {
         deferred: Vec::new(),
         calls: Vec::new(),
         steps: Vec::new(),
+        spans: crate::spans::Spans::default(),
         refused: None,
         stream: None,
     }
