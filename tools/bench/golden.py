@@ -510,6 +510,8 @@ def measure(server, pg, owners, cases, route, connections, warmup, duration, row
                    load_cpu_cores=row['load_cpu_s']/row['load_wall_s'], persisted_delta=len(after)-len(before),
                    complete_write_receipts_verified=len(receipts),
                    helper_cpu_ms_per_request=(helper_after-helper_before)*1000/row['requests'])
+        # A Worker's stand-in pool does what Hyperdrive would; it counts with the server.
+        row['server_and_helper_cpu_ms_per_request'] = row['cpu_ms_per_request'] + row['helper_cpu_ms_per_request']
         validate_measurement(row)
         row.pop('created_rows')
         row['verified'] = True
@@ -565,14 +567,15 @@ def summarize(rows):
                 summary.append({'target': target, 'route': route, 'connections': connections,
                     'rounds': len(group), **{field: {'median': statistics.median(row[field] for row in group),
                     'min': min(row[field] for row in group), 'max': max(row[field] for row in group)}
-                    for field in ('rps', 'p95_us', 'cpu_ms_per_request', 'sampled_peak_rss_mb')}})
+                    for field in ('rps', 'p95_us', 'cpu_ms_per_request', 'server_and_helper_cpu_ms_per_request',
+                                  'sampled_peak_rss_mb')}})
     return summary
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--skip-build', action='store_true')
-    parser.add_argument('--prepare-only', action='store_true', help='build and run all 176 contract checks without timing')
+    parser.add_argument('--prepare-only', action='store_true', help='build and run all 220 contract checks without timing')
     parser.add_argument('--rounds', type=int, default=3)
     parser.add_argument('--connections', default='1,16,64')
     parser.add_argument('--duration', type=float, default=10)
@@ -605,7 +608,7 @@ def main():
     validate_build(stamp, fingerprint())
     validate_conformance(stamp['conformance'], contract_ids())
     if args.prepare_only:
-        print('passed: golden todo · 176/176 contract cases · production artifacts ready')
+        print('passed: golden todo · 220/220 contract cases · production artifacts ready')
         return
     result = {'schemaVersion': 1, 'method': metadata(stamp), 'conformance': stamp['conformance'],
               'options': {**vars(args), 'output': str(args.output)}, 'starts': [], 'rows': [], 'ok': False}
