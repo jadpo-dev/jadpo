@@ -419,7 +419,7 @@ fn toolchain(call: &Call, cache: &Path, wasm: bool) -> Result<Toolchain, Box<Dia
                 ),
             )
             .reason(format!(
-                "`jadpo build` compiles with the Rust toolchain this Jadpo pins, fetched once from `{server}` into `{}`: {reason}",
+                "`jadpo build` compiles with the Rust toolchain this Jadpo is pinned to, fetched once from `{server}` into `{}`: {reason}",
                 cache.join("toolchains").display()
             ))
             .next_for(
@@ -508,12 +508,12 @@ fn of(done: u64, total: u64) -> String {
         .next()
         .unwrap_or_default()
         .to_string();
-    let scaled = match unit.as_str() {
+    let so_far = match unit.as_str() {
         "MB" => format!("{:.1}", done as f64 / 1_000_000.0),
         "KB" => format!("{}", (done + 500) / 1_000),
         _ => done.to_string(),
     };
-    format!("{scaled} of {total_text}")
+    format!("{so_far} of {total_text}")
 }
 
 /// The first `length` hex digits of the SHA-256 of `parts`, each

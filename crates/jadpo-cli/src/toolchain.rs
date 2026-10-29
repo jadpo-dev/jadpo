@@ -230,7 +230,7 @@ fn manifest(server: &str, version: &str) -> Result<String, String> {
     let expected = if server == DEFAULT_SERVER {
         if version != MANIFEST_VERSION {
             return Err(format!(
-                "This Jadpo pins the manifest of Rust {MANIFEST_VERSION}, not {version}."
+                "This Jadpo holds the manifest digest of Rust {MANIFEST_VERSION}, not {version}."
             ));
         }
         MANIFEST_SHA256.to_string()
