@@ -224,15 +224,7 @@ Developers won't touch Jadpo if it's slower.
 - [x] **9.1d2b Golden todo and all 44 cases**: compiler/runtime §2.11; `examples/golden-todo/README.md`.
 - [x] **9.1d3 Strong TypeScript golden todo**: compiler/runtime §2.7 and §2.11; `examples/golden-todo/typescript/README.md`.
 - [x] **9.1d4 Local application comparison**: compiler/runtime §2.11; `tools/bench/README.md`.
-- [ ] **9.1d5 TypeScript on workerd baseline:** `opus · high` after 9.1d4:
-  run the strong TypeScript golden todo on workerd (Hono's Workers entry,
-  the same local connection stand-in Jadpo's Workers build uses) with all
-  44 cases passing, and compare it with Jadpo's Wasm build under the 9.1d4
-  method. The headline pairs are native against Bun and Node, and Wasm
-  against TypeScript on workerd, led by CPU time per request, cold start and
-  p95. Native's CPU time per request against Bun's
-  and Node's is measured too, since native serves on every core and they
-  on one.
+- [x] **9.1d5 TypeScript on workerd baseline**: compiler/runtime §2.11; `tools/bench/README.md`; `examples/golden-todo/typescript/README.md`.
 - [x] **9.1b Runtime performance**: compiler/runtime §2.6 and §2.11; `tools/bench/README.md` (9.1b1–9.1b5, including 9.1b1a).
 - [x] **9.1b1 Bounded delivery sweeps and the backlog**: compiler/runtime §2.6, "Bounded delivery sweeps", and §2.11; `tools/bench/README.md`.
 - [x] **9.1b1a Warm delivery comparison**: compiler/runtime §2.11; `tools/bench/README.md`.
@@ -246,26 +238,10 @@ Developers won't touch Jadpo if it's slower.
   TypeScript app and Node; results published with the method. Include the
   10,000-delivery backlog and the runtime improvements' before/after results.
   Real edge measurement is required before Phase 9 finishes.
-- [ ] **9.2 Optimise WebAssembly** `opus · xhigh`, only if 9.1d5 shows a
-  gap: until Jadpo's Wasm build matches TypeScript on workerd, and native
-  matches Bun and Node, on CPU time per request, cold start and p95, or
-  a maintainer accepts a measured gap. Bun is not the Wasm build's comparison. If 9.1d5 shows no gap, this chunk is ticked as
-  not needed and what follows stays as the place to start when one
-  appears.
-  From chunk 8.1p: typed values in compiled bodies (a struct or enum per
-  type, locals and parameters typed, a `Value` made only at the runtime's
-  entry points), if profiling shows a body's own work matters beside the
-  request's edge and the store; an answer's body sized before it is
-  written, and a UUID's or an instant's text written without a string of
-  its own (17 allocations write example 23's ticket either way).
-  From the Phase 8 review: the module is the runtime, not the app (the
-  generated program 32 KB of 13.4 MB): compiled code calling each
-  standard operation's own function, `effects::standard` the
-  interpreter's dispatcher over the same functions, and the runtime's
-  subsystems (HTML, regex, Markdown, geodesy, batches, webhooks, sign-in)
-  cargo features chosen from the plan, as `postgres` and `smtp` are;
-  validators' patterns compiled when first used if 9.1 shows cold start
-  pays for them.
+- [x] **9.2 Optimise WebAssembly**: not built; 9.1d5 put Jadpo ahead on
+  CPU time per request and p95 in every cell, and the Wasm build's 4.6 ms
+  cold-start gap to TypeScript on workerd is accepted (§2.11). Its ideas
+  for a later gap are in this line's git history.
 - [x] **9.2b One passkey implementation**: compiler/runtime §2.6,
   "Passkeys" and "Route tests on workerd"; area 8, Decisions, "One passkey
   implementation" and "Passkey attestation".

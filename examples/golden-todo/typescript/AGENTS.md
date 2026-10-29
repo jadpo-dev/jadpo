@@ -15,6 +15,7 @@ shared acceptance expectations to make this implementation pass.
 - `src/egress.ts` owns public HTTPS/DNS/TLS and prohibits redirects. Jobs release
   transactions before IO, keep immutable keyed payloads and fence receipts.
 - Runtime probes and native host binding live outside application auth/policy.
+  `src/worker.ts` is the Workers entry: a Store per request, fetch egress.
 - `adapter/` is private test infrastructure. Never import it from `src/`, add
   test/authentication fixture routes, or expose fixture secrets in production.
 - Run `npm run check`, `npm run lint`, `npm test`, `npm run format:check`, then

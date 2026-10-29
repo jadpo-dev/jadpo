@@ -2,14 +2,17 @@
 
 The `todo-v0.2` baseline uses strict TypeScript, Hono, Zod, Drizzle, CASL and
 JOSE, with pinned dependencies and a checked-in npm lock. Node uses Hono's Node
-HTTP adapter; Bun uses `Bun.serve`. Both serve the same production application.
-No mail or identity account is needed for local verification.
+HTTP adapter; Bun uses `Bun.serve`; Cloudflare Workers use `src/worker.ts`, the
+Workers fetch and scheduled entry, deployed with `wrangler.jsonc`. All three
+serve the same production application. No mail or identity account is needed
+for local verification.
 
 The full repository gate runs `python3 adapter/verify.py` in its `tests` group.
 The wrapper installs the checked-in npm lock with scripts disabled, runs the
 orchestration controls, typecheck, lint and formatting, then Vitest integration
-negatives and every shared case through the production Node/Bun hosts. CI and
-the wrapper use `.node-version` and `.bun-version`. Installation and execution
+negatives and every shared case through the production Node/Bun hosts and
+under workerd. CI and the wrapper use `.node-version` and `.bun-version`;
+workerd and Wrangler are the releases `tools/workers/package.json` pins. Installation and execution
 hold one OS lock, so concurrent verification cannot remove active dependencies.
 
 Run the wrapper from this directory:
@@ -26,7 +29,7 @@ still clean up owned databases and await child shutdown.
 
 The default shared contract comes from the same checkout's
 `tools/golden-todo/contract.py` and `acceptance-v0.2.json`. A successful full
-Node/Bun run against those actual files can report `completeContract: true`;
+Node/Bun/workerd run against those actual files can report `completeContract: true`;
 missing prerequisites list every unavailable case as failed. An explicit
 checkpoint remains available for independent authoring:
 
@@ -39,6 +42,21 @@ conformance. The private `adapter/run.py --unit` entry performs the same runtime
 checks without reinstalling or repeating static checks; it takes the same lock.
 Both entries emit the machine result on stdout and subprocess output on stderr.
 No compiler/runtime implementation from another checkout is imported or built.
+
+On workerd the cases run in `adapter/workerd-controller.ts`, a fixture Worker
+that drives `src/worker.ts`'s own entry and per-request Store over a Hyperdrive
+binding straight to PostgreSQL, with a fixture clock, statement observation and
+injected issuer and mail answers. SQL fixtures, signing and the static probes
+come from the Node controller on the same database; configuration preflight
+serves the production bundle itself. Both bundles are Wrangler's `deploy
+--dry-run` output, kept off the network.
+
+A Worker can't reuse a connection another request opened, so `src/worker.ts`
+opens a Store per request over its `DATABASE_URL` Hyperdrive binding (two
+general and two transaction connections, unprepared, no type lookup) and closes
+it once the request has answered; configuration, the application, its limits and
+key cache last the isolate. Its egress is `fetch` under the same public-HTTPS,
+no-redirect, deadline and size rules; its rate limits are per isolate.
 
 For production startup, supply `DATABASE_URL`, `BROWSER_ORIGIN`, `OIDC_ISSUER`,
 `OIDC_AUDIENCE`, `SESSION_SIGNING_KEY` and `MAIL_API_KEY`, then `npm start` or
