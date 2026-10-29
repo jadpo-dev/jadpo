@@ -1557,7 +1557,7 @@ impl Body<'_> {
             self.locales_for_choosing(call, written);
         }
         // Sorting by a locale's alphabet needs the application's locales
-        // (Richard, 2026-10-22), unless `locale:` is already reported as
+        //, unless `locale:` is already reported as
         // meaning nothing for the key.
         if let Some(table) = table
             && table.op == jadpo_std::Op::ListSortBy

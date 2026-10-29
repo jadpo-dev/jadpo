@@ -8,7 +8,7 @@
 //! The live run is never made here: no real provider, no network and no
 //! key. It is refused without `--live` and a set credential, and without
 //! `--live` nothing goes to the connection's address even when a key is
-//! set; the run against the provider's API is left to Richard.
+//! set; the run against the provider's API is left to a maintainer.
 
 use std::fs;
 use std::path::{Path, PathBuf};

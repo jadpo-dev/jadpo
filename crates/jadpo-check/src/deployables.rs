@@ -15,7 +15,7 @@
 //!
 //! With none declared there is one deployable, `app`, which serves every
 //! API and runs everything, and which has no target until a build asks
-//! for one (Richard, 2026-10-21): `jadpo build` builds it natively, and
+//! for one: `jadpo build` builds it natively, and
 //! no driver is refused for it. Once declared, every API with routes must
 //! be served by one, and the app's schedules and subscribers run by one
 //! ([`unserved`]).
@@ -1269,7 +1269,7 @@ pub struct PerInstance {
 /// Each connection with a `max_concurrent:` cap that a deployable built
 /// for Workers reaches, with the cap and that deployable: on Workers it
 /// counts per instance, since Workers runs as many as traffic needs
-/// (Richard, 2026-10-21; area 11's notes, "Decisions").
+/// (area 11's notes, "Decisions").
 pub fn per_instance(db: &dyn Db, project: Project) -> Vec<PerInstance> {
     let deployables = deployables(db, project);
     let workers =

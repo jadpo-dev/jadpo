@@ -1,5 +1,0 @@
-/// Provider evidence of acceptance, rather than application queue time.
-public type Receipt = Object {
-    message_id: Text
-    accepted_at: Instant
-}

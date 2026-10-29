@@ -1,4 +1,0 @@
-type UserStatus = Enum {
-    active
-    disabled
-}
