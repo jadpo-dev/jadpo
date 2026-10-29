@@ -1,11 +1,27 @@
 {
-  "name": "jadpo-bench-todo-baseline", "version": "0.0.0", "private": true,
-  "type": "module", "license": "Apache-2.0",
-  "scripts": {"check": "tsc --noEmit", "build": "tsc --noEmit false --outDir build", "test": "npm run build && node --test build/validation.test.js"},
-  "dependencies": {
-    "hono": "4.10.0", "@hono/node-server": "1.19.5", "@hono/zod-openapi": "1.1.0",
-    "zod": "4.1.12", "drizzle-orm": "0.44.7", "postgres": "3.4.7",
-    "uuid": "13.0.0", "@casl/ability": "6.7.3", "jose": "6.1.0"
+  "name": "jadpo-bench-todo-baseline",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "build": "tsc --noEmit false --outDir build",
+    "test": "npm run build && node --test build/validation.test.js"
   },
-  "devDependencies": {"typescript": "5.9.3", "@types/node": "24.10.0"}
+  "dependencies": {
+    "@casl/ability": "7.1.0",
+    "@hono/node-server": "2.1.5",
+    "@hono/zod-openapi": "1.6.3",
+    "drizzle-orm": "0.45.4",
+    "hono": "4.13.14",
+    "jose": "6.2.13",
+    "postgres": "3.4.9",
+    "uuid": "14.0.3",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "typescript": "6.0.3"
+  }
 }

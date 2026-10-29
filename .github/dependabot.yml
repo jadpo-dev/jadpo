@@ -1,0 +1,83 @@
+# Everything below runs only on this machine and in CI (benchmarks, tests, the
+# editor extension), never in a deployable. One monthly grouped pull request
+# per folder, and one grouped security pull request per folder.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /examples/golden-todo/typescript
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: build
+    groups:
+      golden-todo-updates:
+        applies-to: version-updates
+        patterns: ["*"]
+      golden-todo-security:
+        applies-to: security-updates
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /tools/bench/typescript
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: build
+    groups:
+      bench-typescript-updates:
+        applies-to: version-updates
+        patterns: ["*"]
+      bench-typescript-security:
+        applies-to: security-updates
+        patterns: ["*"]
+  - package-ecosystem: bun
+    directory: /tools/bench/bun
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: build
+    groups:
+      bench-bun-updates:
+        applies-to: version-updates
+        patterns: ["*"]
+      bench-bun-security:
+        applies-to: security-updates
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /tools/workers
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: build
+    groups:
+      workers-updates:
+        applies-to: version-updates
+        patterns: ["*"]
+      workers-security:
+        applies-to: security-updates
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /editors/vscode
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: build
+    groups:
+      vscode-updates:
+        applies-to: version-updates
+        patterns: ["*"]
+      vscode-security:
+        applies-to: security-updates
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: build
+    groups:
+      actions-updates:
+        applies-to: version-updates
+        patterns: ["*"]
+      actions-security:
+        applies-to: security-updates
+        patterns: ["*"]
