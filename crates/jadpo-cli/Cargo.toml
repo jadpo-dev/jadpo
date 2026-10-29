@@ -6,6 +6,8 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage = "https://github.com/richardwillars/jadpo"
 # One integration-test binary: tests/main.rs.
 autotests = false
 
@@ -69,3 +71,17 @@ workspace = true
 [[test]]
 name = "integration"
 path = "tests/main.rs"
+
+# The prebuilt `jadpo` each Release carries (docs/documentation.md,
+# "Installing"; dist-workspace.toml): this is the one package dist builds,
+# with OpenSSL compiled in, so the binary needs no OpenSSL on the machine it
+# runs on, and its installers name it `jadpo`.
+[package.metadata.dist]
+dist = true
+features = ["vendored-openssl"]
+formula = "jadpo"
+npm-package = "jadpo"
+
+[features]
+# OpenSSL built from source and linked statically, for the Release builds.
+vendored-openssl = ["openssl/vendored"]
