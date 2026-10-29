@@ -1,0 +1,4 @@
+type DueDateInPast = Failure {
+    kind: FailureKind.invalid_value
+    message: "The due date must be in the future."
+}

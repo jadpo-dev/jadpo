@@ -1,0 +1,12 @@
+use todo/entities { Todo }
+use todo/types { TodoStatus }
+
+query overdue_candidates() -> List<Todo> {
+    from: Todo
+    where: Todo.status == TodoStatus.open
+    where: Todo.due_at < clock.now
+    where: Todo.reminder_sent_at == none
+    where: Todo.reminder_queued_at == none
+    order: [Todo.created_at asc, Todo.id asc]
+    limit: 500
+}

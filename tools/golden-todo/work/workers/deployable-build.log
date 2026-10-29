@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 2,
+  "command": "build",
+  "ok": true,
+  "data": {
+    "deployables": [
+      {
+        "deployable": "app",
+        "target": "wasm",
+        "binary": null,
+        "tick": null,
+        "wrangler": "build/target/app/wrangler.json",
+        "module": {
+          "path": "build/target/app/app.wasm",
+          "bytes": 9291914,
+          "gzip_bytes": 3126228
+        },
+        "hyperdrive": [
+          {
+            "binding": "DATABASE_URL",
+            "id": null
+          }
+        ],
+        "openapi": [
+          "build/target/app/openapi/main.json"
+        ],
+        "build": "b_5ef55f3546c6",
+        "serves": [
+          "main"
+        ],
+        "runs": [
+          "schedules",
+          "subscribers"
+        ],
+        "per_instance": []
+      }
+    ],
+    "commit": null,
+    "modified": true,
+    "compiler": "0.1.0",
+    "settings": [
+      "BROWSER_ORIGIN",
+      "DATABASE_URL",
+      "MAIL_API_KEY",
+      "MAIL_ENVIRONMENT",
+      "OIDC_AUDIENCE",
+      "OIDC_ISSUER",
+      "SESSION_SIGNING_KEY",
+      "SOFT_DELETE_RETENTION"
+    ],
+    "fetched": {
+      "rust": null,
+      "crates": 0
+    }
+  },
+  "diagnostics": []
+}

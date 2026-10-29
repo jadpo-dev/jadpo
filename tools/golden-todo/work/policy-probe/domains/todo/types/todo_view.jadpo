@@ -1,0 +1,5 @@
+use todo/entities { Todo }
+
+type TodoView = Output {
+    pick: [Todo.id, Todo.title, Todo.status, Todo.due_at, Todo.created_at, Todo.updated_at]
+}

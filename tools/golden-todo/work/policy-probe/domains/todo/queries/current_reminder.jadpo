@@ -1,0 +1,11 @@
+use todo/entities { Todo }
+use todo/types { TodoStatus }
+
+query current_reminder(todo_id: Todo.id, revision: Todo.reminder_revision) -> Todo? {
+    from: Todo
+    where: Todo.id == todo_id
+    where: Todo.reminder_revision == revision
+    where: Todo.status == TodoStatus.open
+    where: Todo.due_at < clock.now
+    where: Todo.reminder_sent_at == none
+}

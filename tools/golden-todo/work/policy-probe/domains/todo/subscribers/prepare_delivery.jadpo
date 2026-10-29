@@ -1,0 +1,11 @@
+use todo/actions { prepare_reminder }
+use todo/events { ReminderQueued }
+
+subscriber prepare_delivery {
+    on: ReminderQueued
+    run: prepare_reminder(event)
+    retry: {
+        attempts: 5
+        within: 24h
+    }
+}

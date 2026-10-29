@@ -1,0 +1,15 @@
+use todo/entities { Todo, User, UserNotFound }
+use todo/types { UserWithTodos }
+
+query user_todos(user_id: User.id) fails UserNotFound -> UserWithTodos {
+    from: User
+    where: User.id == user_id
+    missing: UserNotFound
+    include: {
+        todos: {
+            via: Todo.owner_id
+            order: [Todo.created_at asc, Todo.id asc]
+            limit: 100
+        }
+    }
+}

@@ -22,6 +22,9 @@
 //! interpreter and compares their records, and [`workerd`] its route tests
 //! on its compiled program inside workerd (chunk 8.2e).
 //!
+//! [`fuzz`] generates well-typed function bodies and their inputs from a
+//! seed, for the differential run to compare both ways (chunk 9.3).
+//!
 //! [`postgres`] gives tests a PostgreSQL server: the one
 //! `JADPO_TEST_DATABASE_URL` names, or a disposable one from the machine's
 //! own PostgreSQL tools; [`live`] says whether a Rust test's live part
@@ -38,6 +41,7 @@ mod diff;
 pub mod differential;
 mod entries;
 mod env;
+pub mod fuzz;
 pub mod host;
 mod json;
 mod live;

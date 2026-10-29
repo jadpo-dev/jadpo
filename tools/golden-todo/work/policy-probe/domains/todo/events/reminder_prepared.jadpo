@@ -1,0 +1,10 @@
+use todo/entities { Todo }
+use todo/types { TodoTitle }
+
+/// Immutable provider request, prepared only after current eligibility checks.
+type ReminderPrepared = Event {
+    todo_id: Todo.id
+    revision: Todo.reminder_revision
+    recipient: Email
+    title: TodoTitle
+}
