@@ -5,7 +5,18 @@ reviewed by people. The language is fully specified; the compiler is being
 rebuilt around one graph, in Rust, with an interpreter for development and
 compiled native and WebAssembly deployables.
 
-## Where things are
+## Using Jadpo
+
+To learn Jadpo or write an app in it, read [docs/primer.md](docs/primer.md)
+first, then pick topics from the bundle's index
+([docs/documentation.md](docs/documentation.md) says where it is). A
+compiler error names a rule; its page is `docs/errors/<rule.id>.md`.
+`examples/` holds the teaching projects. Nothing below applies unless you
+are changing Jadpo itself.
+
+## Changing Jadpo
+
+### Where things are
 
 - Outstanding work, in order: [docs/roadmap.md](docs/roadmap.md). It is the
   only tracker; each session takes the first unticked chunk. A finished chunk
@@ -21,7 +32,7 @@ compiled native and WebAssembly deployables.
 - The first compiler (v0): git tag `archive/compiler-v0`. Never copy its
   special cases.
 
-## Performance results and review
+### Performance results and review
 
 Each optimisation's pull request description carries its results: what
 changed and why, reference and candidate revisions, before/after with run
@@ -40,7 +51,7 @@ lifetimes and warmup, and name the workload and its scope. After each
 chunk, report what was built, the gate result and the PR link in three
 lines.
 
-## Working rules
+### Working rules
 
 - `python3 tools/verify.py` is the gate. It must pass before a chunk merges.
   Run the full gate once per chunk, where the building happens; the session
