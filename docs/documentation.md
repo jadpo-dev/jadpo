@@ -171,6 +171,11 @@ GitHub; some agents cannot fetch from GitHub, which is why the site and
   dist's workflow (`.github/workflows/release.yml`) builds the installers,
   attaches them and publishes the release. The site publishes
   `/v/X.Y.Z/`.
+- The VS Code extension (`editors/vscode`) is packaged at the release's
+  version and attached to the release, then published to the VS Code
+  Marketplace and Open VSX once the release is out
+  (`.github/workflows/vscode-extension.yml`); release-please keeps its
+  `package.json` version in step.
 - An app declares the version it needs in `app.jadpo`, as
   `application { jadpo: "0.1" }`, and the compiler refuses an app needing a
   newer one (area 1, "The root").
@@ -179,7 +184,11 @@ GitHub; some agents cannot fetch from GitHub, which is why the site and
   `RELEASE_PLEASE_TOKEN` secret, so its pull requests run CI; the
   Homebrew formula and the npm package are built and attached to each
   release but published nowhere until `publish-jobs` in
-  `dist-workspace.toml` names them, with a tap repository and tokens.
+  `dist-workspace.toml` names them, with a tap repository and tokens; the
+  extension is published only when the repository variable
+  `JADPO_VSCODE_PUBLISH` is `on`, with the Marketplace publisher `jadpo`
+  and its `VSCE_PAT` secret, and the Open VSX namespace `jadpo` and its
+  `OVSX_PAT` secret.
 
 ## Installing
 

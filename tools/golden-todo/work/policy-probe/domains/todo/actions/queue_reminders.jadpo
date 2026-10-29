@@ -1,0 +1,18 @@
+use todo/entities { Todo }
+use todo/queries { overdue_candidates }
+use todo/events { ReminderQueued }
+
+action queue_reminders() -> Unit {
+    var candidates: List<Todo> = overdue_candidates()
+    for item in candidates {
+        var queued: Todo = Todo.update(item) {
+            set: {
+                reminder_queued_at: clock.now
+            }
+        }
+        emit ReminderQueued {
+            todo_id: queued.id
+            revision: queued.reminder_revision
+        }
+    }
+}

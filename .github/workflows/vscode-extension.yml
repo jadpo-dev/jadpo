@@ -1,0 +1,156 @@
+name: VS Code extension
+
+# The VS Code extension (editors/vscode) on each Release (docs/language/
+# 14-tooling.md, "Editor support"): packaged with vsce, its version the
+# release's, attached to the Release, then published to the VS Code
+# Marketplace and Open VSX once the Release's installers are out, so the
+# extension never asks for a `jadpo` that can't be installed yet.
+# release-please.yml starts it for each release it makes; it can also be
+# run by hand for a tag. A pull request that touches the extension
+# packages it too, testing it and publishing nothing.
+#
+# Publishing is switched off until the repository variable
+# JADPO_VSCODE_PUBLISH is `on`, which needs, first: the Marketplace
+# publisher `jadpo` and an Azure DevOps token for it in the VSCE_PAT
+# secret, and the Open VSX namespace `jadpo` and a token for it in the
+# OVSX_PAT secret. Packaging and attaching run without them.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release's tag, vX.Y.Z
+        required: true
+        type: string
+  pull_request:
+    paths:
+      - editors/vscode/**
+      - .github/workflows/vscode-extension.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vscode-extension-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      file: ${{ steps.version.outputs.file }}
+    defaults:
+      run:
+        working-directory: editors/vscode
+    env:
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+      # The release's version, which the Marketplace takes only as
+      # MAJOR.MINOR.PATCH; a pull request keeps package.json's.
+      - id: version
+        run: |
+          if [ -n "$TAG" ]; then
+            version="${TAG#v}"
+          else
+            version="$(node -p 'require("./package.json").version')"
+          fi
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::The extension's version must be MAJOR.MINOR.PATCH for the Marketplace; the tag gives \`$version\`."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "file=jadpo-$version.vsix" >> "$GITHUB_OUTPUT"
+      - run: npm ci --no-audit --no-fund
+      - run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version
+      # The protocol test needs a `jadpo` binary and skips without one; the
+      # language server's own tests run in validation.yml.
+      - run: npm test
+      - run: npx vsce package --skip-license --out "${{ steps.version.outputs.file }}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vscode-extension
+          path: editors/vscode/${{ steps.version.outputs.file }}
+          if-no-files-found: error
+      - name: Attach it to the release
+        if: inputs.tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" "${{ steps.version.outputs.file }}" --clobber --repo "$GITHUB_REPOSITORY"
+
+  # dist's Release workflow for the tag, which release-please.yml started
+  # just before this one, has to finish and publish the Release first.
+  released:
+    needs: package
+    if: inputs.tag && vars.JADPO_VSCODE_PUBLISH == 'on'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      actions: read
+      contents: read
+    env:
+      TAG: ${{ inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Wait for the Release's installers
+        run: |
+          run=""
+          for _ in $(seq 30); do
+            run="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow release.yml --event workflow_dispatch \
+              --branch "$TAG" --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+            [ -n "$run" ] && break
+            sleep 20
+          done
+          if [ -z "$run" ]; then
+            echo "::error::No Release run for $TAG: release.yml builds the installers and publishes the Release first."
+            exit 1
+          fi
+          gh run watch "$run" --repo "$GITHUB_REPOSITORY" --exit-status --interval 60
+          if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" != "false" ]; then
+            echo "::error::The $TAG Release is still a draft, so its installers aren't out."
+            exit 1
+          fi
+
+  marketplace:
+    needs: [package, released]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: vscode-extension
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Publish to the VS Code Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx --yes @vscode/vsce@4.1.0 publish --packagePath "${{ needs.package.outputs.file }}"
+
+  open-vsx:
+    needs: [package, released]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: vscode-extension
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Publish to Open VSX
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: npx --yes ovsx@1.2.0 publish "${{ needs.package.outputs.file }}" --pat "$OVSX_PAT"

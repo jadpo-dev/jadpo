@@ -1,0 +1,17 @@
+use todo/entities { User }
+use todo/types { UserWithTodos }
+use todo/actions { disable_user }
+use todo/queries { user_todos }
+
+routes Users {
+    prefix: /users
+    GET /{user_id: User.id}/todos {
+        output: UserWithTodos
+        run: user_todos(user_id)
+    }
+    DELETE /{user_id: User.id} {
+        authentication: RouteAuthentication.fresh
+        status: SuccessStatus.no_content
+        run: disable_user(user_id)
+    }
+}

@@ -1,0 +1,18 @@
+use todo/types { UserStatus }
+
+entity User {
+    id: Uuid
+    authentication_subject: Text {
+        unique: true
+    }
+    status: UserStatus
+    email: Email {
+        policy: {
+            read: [Access.system]
+        }
+    }
+    policy: {
+        read: [id, Access.system]
+        update: [id]
+    }
+}

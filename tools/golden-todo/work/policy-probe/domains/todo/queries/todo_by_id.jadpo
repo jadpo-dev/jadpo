@@ -1,0 +1,8 @@
+use todo/entities { Todo, TodoNotFound }
+use todo/types { TodoView }
+
+query todo_by_id(todo_id: Todo.id) fails TodoNotFound -> TodoView {
+    from: Todo
+    where: Todo.id == todo_id
+    missing: TodoNotFound
+}

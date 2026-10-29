@@ -1,0 +1,16 @@
+use todo/entities { User }
+use todo/types { UserStatus }
+use todo/failures { SubjectTaken }
+
+fixture alice() -> User {
+    return attempt User.create {
+        set: {
+            authentication_subject: "alice"
+            status: UserStatus.active
+            email: "alice@example.test"
+        }
+        conflict: {
+            User.authentication_subject: SubjectTaken
+        }
+    }
+}
