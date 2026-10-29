@@ -172,7 +172,7 @@ fn a_test_in_a_code_file_is_sent_beside_it() {
 
 #[test]
 fn public_is_only_for_what_another_domain_uses() {
-    // Area 1, "Unused `public`" (Richard, 2026-10-14).
+    // Area 1, "Unused `public`".
     let db = jadpo_db::Database::default();
     let mut files = SHOP.to_vec();
     files.push((

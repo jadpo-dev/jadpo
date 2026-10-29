@@ -24,7 +24,7 @@ fn with_status(source: &str) -> Vec<String> {
 #[test]
 fn a_value_or_a_call_is_never_a_fields_type() {
     let cases: &[&str] = &[
-        // Richard's two, in an input.
+        // Two reported cases, in an input.
         "type HandedIn = Input {\n    label: Label\n    testy: Status(\"Ajuij\")\n}\n",
         "type HandedIn = Input {\n    label: Label\n    testy: Status.open\n}\n",
         // Literals, and a variant made nullable or given settings.

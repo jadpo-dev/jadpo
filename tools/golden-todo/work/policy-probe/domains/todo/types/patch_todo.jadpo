@@ -1,6 +1,0 @@
-use todo/entities { Todo }
-
-type PatchTodo = Input {
-    pick: [Todo.title, Todo.status, Todo.due_at]
-    optional: all
-}
