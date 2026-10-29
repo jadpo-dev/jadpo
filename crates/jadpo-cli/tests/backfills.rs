@@ -427,6 +427,67 @@ fn a_backfill_that_can_fail_is_refused() {
     assert_eq!(jadpo(&root, &["check"]).code, 0);
 }
 
+#[test]
+fn a_backfill_copies_a_field_only_into_one_its_readers_may_read() {
+    // A note's secret is its owner's; copied into a field every signed-in
+    // reader may read, the migration would show it to them (area 9,
+    // "Copies"). Copied into a field held as tightly, it is clean.
+    let root = folder("field-rules");
+    write(
+        &root,
+        "app.jadpo",
+        "use notes/entities { Person }\n\nprincipal {\n    user: {\n        subject: Person.handle\n    }\n}\n\nauthentication {\n    api_token: {}\n}\n",
+    );
+    write(
+        &root,
+        "domains/notes/types/label.jadpo",
+        "type Label = Text {\n    max_length: 80\n}\n",
+    );
+    write(
+        &root,
+        "domains/notes/entities/person.jadpo",
+        "use notes/types { Label }\n\nentity Person {\n    id: Uuid\n    handle: Label {\n        unique: true\n    }\n\n    policy: {\n        read: [id]\n    }\n}\n",
+    );
+    let note = |extra: &str| {
+        format!(
+            "use notes/entities {{ Person }}\nuse notes/types {{ Label }}\n\nentity Note {{\n    id: Uuid\n    owner_id: Person.id {{\n        on_delete: OnDelete.cascade\n    }}\n    secret: Label {{\n        policy: {{\n            read: [owner_id]\n        }}\n    }}\n{extra}\n    policy: {{\n        create: [owner_id]\n        read: [owner_id, Access.authenticated]\n    }}\n}}\n"
+        )
+    };
+    const NOTE: &str = "domains/notes/entities/note.jadpo";
+    write(&root, NOTE, &note(""));
+    let made = jadpo(&root, &["migrate", "new", "initial"]);
+    assert_eq!(made.code, 0, "{}{}", made.stdout, made.stderr);
+    write(&root, NOTE, &note("    shown: Label\n"));
+    let made = jadpo(&root, &["migrate", "new", "show_secret"]);
+    assert_eq!(made.code, 0, "{}{}", made.stdout, made.stderr);
+    let name = latest(&root);
+    write(
+        &root,
+        &format!("database/migrations/{name}/changes.jadpo"),
+        "migration {\n    Note.shown: {\n        backfill: Note.secret\n    }\n}\n",
+    );
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 1, "{}", checked.stdout);
+    assert!(
+        checked.stdout.contains(
+            "error: The backfill for `Note.shown` copies `Note.secret`, which not everyone who may read `Note.shown` may read\n"
+        ) && checked.stdout.contains("rule: policy.output_field_unproved"),
+        "{}",
+        checked.stdout
+    );
+    write(
+        &root,
+        NOTE,
+        &note(
+            "    shown: Label {\n        policy: {\n            read: [owner_id]\n        }\n    }\n",
+        ),
+    );
+    let finished = jadpo(&root, &["migrate", "new"]);
+    assert_eq!(finished.code, 0, "{}{}", finished.stdout, finished.stderr);
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}", checked.stdout);
+}
+
 /// `from_flag` with a `var mut`, which has no SQL form, so the backfill
 /// calling it is worked out in Jadpo.
 const FROM_FLAG_IN_JADPO: &str = "use planning/types { LegacyFlag, Priority }\n\nlibrary priorities {\n    function from_flag(legacy_flag: LegacyFlag) -> Priority {\n        var mut priority: Priority = Priority.normal\n        if (legacy_flag) {\n            priority = Priority.high\n        }\n        return priority\n    }\n}\n";

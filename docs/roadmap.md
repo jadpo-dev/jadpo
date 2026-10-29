@@ -261,10 +261,7 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   "Passkeys" and "Route tests on workerd"; area 8, Decisions, "One passkey
   implementation" and "Passkey attestation".
 - [x] **9.2c `jadpo build` outside this checkout**: area 14, "A native deployable", and its design notes, "Building outside this checkout"; compiler/runtime §2.8, "What a released `jadpo` builds with".
-- [ ] **9.3 The differential run's last two checks** `opus · high`
-  (after 9.2; low priority, from chunk 8.4h): each path through a body
-  numbered and the paths each run took compared, and fuzzed function
-  bodies run both ways, as §2.5 once promised.
+- [x] **9.3 The differential run's last two checks**: compiler/runtime §2.3, "Path numbers"; §2.5, "Differential test" ("Paths" and "Fuzzed bodies"); §2.7, "The differential run".
 
 ## Documentation and releases
 
@@ -298,9 +295,7 @@ D1 first: the site starts once D1 has merged (Richard, 2026-10-28).
 
 ## Phase 10 — Golden todo
 
-- [ ] **10.1 The golden todo end to end** `opus · high` on both targets, rewritten in the
-  decided language, its contract cases passing. One independent review of
-  the whole first build.
+- [x] **10.1 The golden todo end to end**: [golden todo](../benchmarks/golden-todo/README.md), "Verification"; compiler/runtime §2.7, "The golden todo's contract", and §2.8, "What a released `jadpo` builds with"; area 9, "Field restrictions".
 - [ ] **10.2 How easily agents write Jadpo** `opus · high`: the same 10–20
   realistic changes to one app (the golden todo, with its TypeScript
   baseline and adversarial changes) done by fresh agent sessions in Jadpo
@@ -315,6 +310,84 @@ D1 first: the site starts once D1 has merged (Richard, 2026-10-28).
   Built: the method, 18 changes and the harness, in [agent-changes](../benchmarks/agent-changes/README.md); the
   measured runs (108 sessions at `claude-opus-5-5`, about $200 estimated before any was measured, $648 at most by the
   $6 cap a run) wait for a maintainer's approval and a signed-in `claude`.
+
+## Phase 10 review
+
+What the first build's independent review found that this phase didn't
+fix, in order. Each chunk keeps every test passing interpreted and
+compiled.
+
+- [ ] **10.3a A unique rule within a tenant** `opus · high`, **needs
+  Richard** for the language decision first: a `unique:` rule on a
+  tenant-scoped entity is checked across every tenant, so a `conflict:`
+  tells one tenant what another stores (area 9, "Tenancy"). Recommendation:
+  such a rule holds within its tenant, the compiler adding the tenancy
+  reference to the key, as a reference already stays inside its tenant;
+  an entity shared by every tenant keeps one key. Done when area 9 says
+  so with a `check` block, the migration's key holds the tenancy column,
+  and two tenants storing the same value both succeed while a second in
+  one tenant is that tenant's conflict.
+- [ ] **10.3b Founding only a new tenant** `opus · high`, **needs Richard**
+  for the language decision first: once a tenant's last membership is
+  deleted outright, anyone signed in can "found" it again and read what
+  it holds, since founding checks only that no membership row exists
+  (area 9, "Tenancy": "only while nobody belongs to the company yet").
+  Recommendation: a membership founds its tenant only in the action that
+  creates the tenant record. Done when area 9 says so, and a stranger
+  seating themselves in a tenant whose members have all left gets 403
+  while founding a new company still seats its founder.
+- [ ] **10.3c One record of what each invocation did** `opus · high`,
+  before item 4: observation comes through three narrow channels
+  (`serve::Observer`'s answered and ticked, dev's `Host::call_log`,
+  testing's `Ctx::steps_reached`), none of which sees queries, writes or
+  action steps, so timelines, spans, `watch` and access records would each
+  add a `Ctx` field of their own. Done when `Ctx` keeps one list of spans
+  per invocation (kind, callable and site, start and end on
+  `monotonic_ms`, rows, outcome), appended in `store::store`, the action
+  boundary and `effects::call`, and handed to `Observer::answered` through
+  `Answered`; and a route test gives the same spans interpreted, native
+  and on workerd.
+- [ ] **10.3d A key as a value** `opus · high`, before item 3: a `crypto`
+  operation's key reaches the runtime only as its setting's number, each
+  executor refusing any other key itself (`jadpo-interp`'s `machine.rs`,
+  `jadpo-codegen`'s `body.rs`) and `effects::crypto` reading a
+  `Value::Int` as a key handle, so a key held in an encrypted field can't
+  be expressed. Done when the plan decides a key's source once
+  (`Decoded::Key`, from a setting or a field), both executors pass one
+  opaque key value, `effects::crypto` builds its key ring from either, and
+  no `Int` stands for a key.
+- [ ] **10.3e Loading a project from files in memory** `opus · high`,
+  before item 6: `jadpo_db::load` mixes finding files on disk with the
+  rules that classify them (records, sources, package resources,
+  identities, links), so a base commit read from git couldn't be loaded
+  by the same rules. Done when loading is reading `(path, text)` pairs
+  plus one pure function over them holding every rule, and a project
+  loaded from an in-memory file set gives the same graph as from disk.
+- [ ] **10.3f Where a connection's credential comes from** `opus · high`,
+  before item 8's OAuth grants: `ConnectionPlan.credential` is a setting
+  number read synchronously in `provider::request`, and a 401 or 403
+  marks the whole connection misconfigured. Done when the credential is a
+  source (`Setting` now, room for a per-owner grant), resolved in the
+  asynchronous caller and passed to the request, a 401's meaning decided
+  by that source, and every provider test passes unchanged.
+- [ ] **10.3g The graph's nodes for areas 8, 10, 11 and 12**
+  `opus · xhigh`, before item 6: connections, packages, operations,
+  capability mappings, hosts, lock entries, generated routes, principals,
+  sign-in methods and providers, OAuth scopes, settings, locale sets,
+  rate limits and caches are still `Reserved`, and schedules and
+  subscribers only `Declared` (`jadpo-graph`'s `kind.rs`), so the approval
+  report would have nothing to classify a package or sign-in change by.
+  Done when each is a `Built` node with its edges (`calls` from a
+  callable to the operation it calls), the graph's diff classifies their
+  changes, and items 3 and 4 add their own kinds as `Built`.
+- [ ] **10.3h The runtime's own SQL beyond PostgreSQL** `opus · high`,
+  **needs Richard** for D1's transaction model first: about 145 runtime
+  statements rely on `RETURNING`, `ON CONFLICT`, `::uuid`, `unnest` and
+  `xmin`, `SystemColumn.sql_type` is PostgreSQL type text, and
+  `Transaction` is interactive, which D1's batches may not offer. Done when
+  area 5 records how an action runs on D1 (row versions, transactions),
+  and system columns are typed as `jadpo_std::SqlType`, so later system
+  tables add no PostgreSQL text.
 
 ## After the first build, in order
 

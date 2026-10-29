@@ -14,7 +14,11 @@
 //! are compiled with cargo's codegen units, no link-time optimisation and
 //! no optimisation (what is proved doesn't depend on them), and the first
 //! build compiles the runtime from nothing, so the test takes minutes:
-//! it is a step of the gate's `compiled` group of its own.
+//! it is a step of the gate's `compiled` group of its own. What it builds
+//! is the golden todo (`benchmarks/golden-todo/`, roadmap chunk 10.1):
+//! natively as it is written, and for Workers with the rate-limit store
+//! and deployable area 16's "Rate limits on Workers" gives a Worker, as
+//! `benchmarks/contract/worker.py` builds it for workerd.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -96,10 +100,39 @@ fn without_rust() -> String {
         .into_owned()
 }
 
-/// Copies example 01 into `to`, its `app.jadpo` replaced by `app`.
-fn project(to: &Path, app: &str) {
-    copy(&checkout().join("examples/01-first-project"), to);
-    std::fs::write(to.join("app.jadpo"), app).expect("app.jadpo");
+/// Copies the golden todo's Jadpo project into `to`, without its
+/// TypeScript twin; with `workers`, its `app.jadpo` also counts rate
+/// limits in Cloudflare's binding and declares one deployable for Workers.
+fn golden(to: &Path, workers: bool) {
+    let from = checkout().join("benchmarks/golden-todo");
+    std::fs::create_dir_all(to).expect("a folder");
+    for entry in std::fs::read_dir(&from).expect("a folder").flatten() {
+        let name = entry.file_name();
+        if name == "typescript" || name == "build" || name == ".jadpo" {
+            continue;
+        }
+        if entry.path().is_dir() {
+            copy(&entry.path(), &to.join(name));
+        } else {
+            std::fs::copy(entry.path(), to.join(name)).expect("copied");
+        }
+    }
+    if workers {
+        let app = std::fs::read_to_string(to.join("app.jadpo")).expect("app.jadpo");
+        let app = app
+            .replacen(
+                "    connections: {\n",
+                "    connections: {\n        limits: {\n            driver: Driver.cloudflare_rate_limits\n            namespace: 1101\n        }\n",
+                1,
+            )
+            .replacen(
+                "    revocation_delay: 5m\n",
+                "    revocation_delay: 5m\n    rate_limits: {\n        store: limits\n    }\n    deployables: {\n        edge: {\n            serves: [main]\n            runs: [Trigger.subscribers, Trigger.schedules]\n            target: Target.wasm\n        }\n    }\n",
+                1,
+            );
+        assert!(app.contains("Target.wasm"), "{app}");
+        std::fs::write(to.join("app.jadpo"), app).expect("app.jadpo");
+    }
 }
 
 fn copy(from: &Path, to: &Path) {
@@ -220,7 +253,7 @@ fn a_released_jadpo_fetches_its_toolchain_and_builds_both_targets_outside_this_c
     // A native deployable: the toolchain for the host is fetched, the
     // runtime's crates too, and the binary built and run.
     let shop = work.join("shop");
-    project(&shop, "application {}\n");
+    golden(&shop, false);
     let first = released.run(&shop, &["build"]);
     let (stdout, stderr) = (text(&first.stdout), text(&first.stderr));
     assert!(first.status.success(), "{stdout}{stderr}");
@@ -301,10 +334,7 @@ fn a_released_jadpo_fetches_its_toolchain_and_builds_both_targets_outside_this_c
 
     // A Workers deployable: only wasm32's library is fetched.
     let edge = work.join("edge");
-    project(
-        &edge,
-        "application {\n    connections: {\n        limits: {\n            driver: Driver.cloudflare_rate_limits\n            namespace: 1001\n        }\n    }\n    rate_limits: {\n        store: limits\n    }\n    deployables: {\n        edge: {\n            serves: [main]\n            target: Target.wasm\n        }\n    }\n}\n",
-    );
+    golden(&edge, true);
     let before = server.asked().len();
     let worker = released.run(&edge, &["build"]);
     let (stdout, stderr) = (text(&worker.stdout), text(&worker.stderr));

@@ -10,6 +10,7 @@ here, so this script stays the single gate that CI and every session run
   python3 tools/verify.py --group lint     # one CI job's share (repeatable)
   python3 tools/verify.py --group compiled # the differential run alone
   python3 tools/verify.py --require-examples  # fail on a feature no example uses
+  python3 tools/verify.py --group compiled --fuzz 2000 --fuzz-seed 7  # a longer fuzzed run
 
 It builds the workspace and its tests once, then runs every step that
 needs nothing else concurrently: each test binary straight from that build,
@@ -432,8 +433,10 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
         checks.append(Step(name, 'compiled', tests=modules(tests), args=[*args, '--show-output'],
                            show=COMPILED_SHOWN, postgres=True, env=dict(TEST_RELEASE_PROFILE)))
         checks.append(Step(RELEASED[0], 'compiled', tests=modules(RELEASED[1])))
-        checks.append(Step('golden todo: all 44 native cases', 'compiled',
-                           [python, 'benchmarks/contract/run.py', '--targets', 'native'], jadpo=True, postgres=True, lane='cargo',
+        # The interpreter and generated native code run the same contract
+        # through one controller binary, built once (chunk 10.1).
+        checks.append(Step('golden todo: all 44 cases interpreted and native', 'compiled',
+                           [python, 'benchmarks/contract/run.py', '--targets', 'interpreted,native'], jadpo=True, postgres=True, lane='cargo',
                            env=dict(TEST_RELEASE_PROFILE), show=True))
         # rust-toolchain.toml lists the target, so rustup installs it with
         # the pinned toolchain. The drivers build with every driver they
@@ -803,7 +806,20 @@ def main() -> int:
         '--require-examples', action='store_true',
         help='fail on a built feature no teaching example uses, as the phase\'s examples chunk does '
              '(default: note it)')
+    parser.add_argument(
+        '--fuzz', type=int, metavar='BODIES',
+        help='how many fuzzed function bodies the differential run compares both ways '
+             '(default: the bounded run, 40; JADPO_FUZZ_BODIES)')
+    parser.add_argument(
+        '--fuzz-seed', type=int, metavar='SEED',
+        help='the seed the fuzzed bodies are made from (default: 1; JADPO_FUZZ_SEED)')
     args = parser.parse_args()
+    # The fuzzed bodies' run (docs/compiler-runtime.md §2.7, "The
+    # differential run"): its steps read how many bodies and their seed.
+    if args.fuzz is not None:
+        os.environ['JADPO_FUZZ_BODIES'] = str(args.fuzz)
+    if args.fuzz_seed is not None:
+        os.environ['JADPO_FUZZ_SEED'] = str(args.fuzz_seed)
     # `jadpo build` compiles with the cargo `CARGO` names, as cargo sets it
     # for what it runs, and otherwise fetches the toolchain it pins (chunk
     # 9.2c). The gate runs its test binaries and tools itself, so it names

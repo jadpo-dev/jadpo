@@ -250,10 +250,24 @@ impl Body<'_> {
             return;
         }
         if self.table.siblings(actual, expected) {
-            let common = self
-                .table
-                .parent(expected.strip_nullable())
-                .map_or_else(|| "the same type".to_string(), |t| format!("`{t}`"));
+            // The nearest type both refine: `Recipe.id` and
+            // `Recipe.author_id` both refine `Uuid`, not `Baker.id`.
+            let mut theirs = Vec::new();
+            let mut at = self.table.parent(actual.strip_nullable());
+            while let Some(ty) = at {
+                at = self.table.parent(&ty);
+                theirs.push(ty);
+            }
+            let mut at = self.table.parent(expected.strip_nullable());
+            let mut shared = None;
+            while let Some(ty) = at {
+                if theirs.contains(&ty) {
+                    shared = Some(ty);
+                    break;
+                }
+                at = self.table.parent(&ty);
+            }
+            let common = shared.map_or_else(|| "the same type".to_string(), |t| format!("`{t}`"));
             self.out.push(
                 Diagnostic::new(
                     &rule::TYPE_SIBLING_MISMATCH,

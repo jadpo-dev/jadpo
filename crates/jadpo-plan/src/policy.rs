@@ -266,9 +266,16 @@ impl Planner<'_> {
                 if system {
                     let system = bind.caller(CallerPart::System);
                     let tenant = bind.caller(CallerPart::SystemTenant);
-                    tenants.push(Who::Condition(jadpo_sql::policy::system_in_tenant(
-                        &system, &tenant, &at,
-                    )));
+                    let mut within = jadpo_sql::policy::system_in_tenant(&system, &tenant, &at);
+                    // The system founds no tenant's first membership: it
+                    // adds one only where someone belongs already.
+                    if let Row::New(_) = row
+                        && self.access.membership(&entity.name).is_some()
+                    {
+                        let held = self.somebody_in(&at)?;
+                        within = jadpo_sql::policy::grouped(&[within, held]);
+                    }
+                    tenants.push(Who::Condition(within));
                 }
                 let tenants = any_of(&tenants);
                 condition = if anyone {
@@ -298,6 +305,24 @@ impl Planner<'_> {
             ));
         }
         Some(out)
+    }
+
+    /// That some membership is held in the tenant `at` (SQL), hidden ones
+    /// included: `EXISTS` per membership held in the tenant, any of them.
+    fn somebody_in(&self, at: &str) -> Option<String> {
+        let mut out = Vec::new();
+        for (i, name) in self.access.root.tenant_memberships.iter().enumerate() {
+            let held = self.access.membership(name)?;
+            let model = self.model.entity(&held.entity)?;
+            let scope = &field(model, held.scope.as_deref()?)?.born;
+            out.push(Who::Condition(jadpo_sql::policy::held_in(
+                &model.table,
+                &format!("jadpo_s{i}"),
+                scope,
+                at,
+            )));
+        }
+        Some(any_of(&out))
     }
 
     /// The condition a write moving a record of `entity` to another tenant
