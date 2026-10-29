@@ -60,6 +60,16 @@ impl fmt::Debug for Started {
 }
 
 impl Started {
+    /// A program that started with only `keys`, for a test of what a key
+    /// reaches.
+    #[cfg(test)]
+    pub(crate) fn with_keys(keys: Keys) -> Started {
+        Started {
+            keys,
+            ..Started::default()
+        }
+    }
+
     /// What a program of `plan` starts with on `target`, its settings
     /// given `values`: what the application started with, or a test run's.
     /// With no values, no setting has one, and each purge waits only as

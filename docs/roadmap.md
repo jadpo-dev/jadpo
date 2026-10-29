@@ -344,15 +344,7 @@ compiled.
   boundary and `effects::call`, and handed to `Observer::answered` through
   `Answered`; and a route test gives the same spans interpreted, native
   and on workerd.
-- [ ] **10.3d A key as a value** `opus · high`, before item 3: a `crypto`
-  operation's key reaches the runtime only as its setting's number, each
-  executor refusing any other key itself (`jadpo-interp`'s `machine.rs`,
-  `jadpo-codegen`'s `body.rs`) and `effects::crypto` reading a
-  `Value::Int` as a key handle, so a key held in an encrypted field can't
-  be expressed. Done when the plan decides a key's source once
-  (`Decoded::Key`, from a setting or a field), both executors pass one
-  opaque key value, `effects::crypto` builds its key ring from either, and
-  no `Int` stands for a key.
+- [x] **10.3d A key as a value**: [compiler-runtime](compiler-runtime.md) §2.5, "A key as a value"; area 19, "Hashing and cryptography".
 - [ ] **10.3e Loading a project from files in memory** `opus · high`,
   before item 6: `jadpo_db::load` mixes finding files on disk with the
   rules that classify them (records, sources, package resources,

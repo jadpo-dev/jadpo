@@ -20,7 +20,7 @@ use jadpo_graph::body::{
     Stmt, UnaryOp,
 };
 use jadpo_graph::{Kind, TypeRef};
-use jadpo_plan::{ArmPattern, CallablePlan, Decoded, Plan};
+use jadpo_plan::{ArmPattern, CallablePlan, Decoded, KeySource, Plan};
 use jadpo_std::Kind as ParamKind;
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
@@ -657,7 +657,9 @@ impl Emitter<'_> {
             }
             Expr::Field { receiver, .. } => {
                 let name = match self.decoded(id) {
-                    Some(Decoded::Field { name }) => name.clone(),
+                    Some(
+                        Decoded::Field { name } | Decoded::Key(Some(KeySource::Field { name })),
+                    ) => name.clone(),
                     _ => String::new(),
                 };
                 let receiver = self.expr(receiver);
@@ -1963,7 +1965,7 @@ impl Emitter<'_> {
     }
 
     /// A standard-library operation at `id`: its arguments worked out in
-    /// its parameters' order (a key by its setting's number, an option
+    /// its parameters' order (a key as the plan says it comes, an option
     /// left out as `none`), then the runtime's one entry point for the
     /// standard library, an inline function a closure it calls per item.
     fn standard(&mut self, id: SiteId, op: jadpo_std::Op, args: &[Option<SiteId>]) -> TokenStream {
@@ -1988,22 +1990,26 @@ impl Emitter<'_> {
                 .sites
                 .get(arg.0 as usize)
                 .map(|site| site.node.clone());
-            // A key is given by its setting, never read as a value.
+            // A key comes from where the plan says (chunk 10.3d): its
+            // setting's, never read as a value, or the field that holds it.
             if matches!(param.kind, ParamKind::Builtin(builtin) if builtin.is_key()) {
-                match (node, self.decoded(*arg)) {
-                    (
-                        Some(Node::Expr(Expr::Config { .. })),
-                        Some(Decoded::Config(Some(setting))),
-                    ) => {
-                        let setting = Literal::i64_unsuffixed(i64::from(*setting));
-                        lets.push(quote!(let #name = Value::Int(#setting);));
-                        names.push(name);
+                match self.decoded(*arg) {
+                    Some(Decoded::Key(Some(KeySource::Setting(setting)))) => {
+                        let setting = number(*setting);
+                        lets.push(quote!(
+                            let #name = Value::Key(jadpo_value::crypto::Key::Setting(#setting));
+                        ));
+                    }
+                    Some(Decoded::Key(Some(KeySource::Field { .. }))) => {
+                        let value = self.expr(*arg);
+                        lets.push(quote!(let #name = #value;));
                     }
                     _ => {
-                        stopped = Some(self.defect("a key that isn't read from its setting", id));
+                        stopped = Some(self.defect("a key the plan gave no source", id));
                         break;
                     }
                 }
+                names.push(name);
                 continue;
             }
             if param.kind == ParamKind::Function {
