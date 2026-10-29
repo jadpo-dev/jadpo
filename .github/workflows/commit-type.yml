@@ -2,9 +2,9 @@ name: Commit type
 
 # A pull request's Conventional Commit type sets its release
 # (docs/documentation.md, "Versions and releases"): tools/commit_type.py
-# fails a title that isn't one, a language change under a title other than
-# `feat` or `feat!`, and a title whose release isn't the strongest of the
-# branch's commits, which release-please reads. Its own workflow, so
+# fails a title that isn't one and a language change under a title other than
+# `feat` or `feat!`. Pull requests merge with squash, so the title is the
+# commit release-please reads. Its own workflow, so
 # retitling a pull request reruns this check alone.
 
 on:

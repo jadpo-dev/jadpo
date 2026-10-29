@@ -62,8 +62,11 @@ lines.
 - Dependabot's grouped pull requests are merged by Claude when CI passes,
   without asking Richard (Richard, 2026-10-28).
 - Keep the process lean (Richard, 2026-10-15):
-  - Open each chunk's pull request with `gh pr merge --merge --auto`, so it
-    merges itself when CI passes.
+  - Open each chunk's pull request with `gh pr merge --squash --auto`, so it
+    merges itself when CI passes (Richard, 2026-10-29). A pull request
+    merges as one commit on `main` whose message is the pull request's
+    title, so the title is the commit and must be the Conventional Commit
+    for the whole change.
   - Run chunks that touch different crates and pages at the same time, each
     in its own worktree beside the repository; otherwise take them in order.
   - Teaching examples are brought up to date once per phase, in the phase's
