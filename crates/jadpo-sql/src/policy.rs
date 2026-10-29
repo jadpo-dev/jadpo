@@ -171,6 +171,19 @@ pub fn unheld(table: &str, alias: &str, scope: &str, value: &str) -> String {
     )
 }
 
+/// `EXISTS (SELECT 1 FROM <table> AS <alias> WHERE <alias>.<scope> =
+/// <value>)`: some membership of `table` is held in the record `value`
+/// names, hidden or not (area 9, "Background work": the system adds a
+/// membership only where someone belongs).
+pub fn held_in(table: &str, alias: &str, scope: &str, value: &str) -> String {
+    let alias = ident(alias);
+    format!(
+        "EXISTS (SELECT 1 FROM {} AS {alias} WHERE {alias}.{} = {value})",
+        ident(table),
+        ident(scope)
+    )
+}
+
 /// `<holder> IN (SELECT "id" FROM <table> WHERE <conditions>)`: a
 /// credential whose holder (a column or a parameter) has a record the
 /// conditions let in (area 9, question 8).

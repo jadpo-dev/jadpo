@@ -1238,6 +1238,58 @@ action close_ticket(ticket_id: Ticket.id) fails TicketNotFound, Closed -> Unit {
     );
 }
 
+#[test]
+fn a_lifecycles_visible_condition_tests_only_fields_every_reader_may_read() {
+    // Which tickets a viewer sees shows each one's stage, which only
+    // editors may read; a condition on a field every reader may read is
+    // clean.
+    let ticket = |visible: &str| {
+        format!(
+            r#"type Stage = Enum {{
+    open
+    closed
+}}
+
+entity Ticket {{
+    id: Uuid
+    company_id: Company.id {{
+        on_delete: OnDelete.cascade
+    }}
+    open: Bool
+    stage: Stage {{
+        policy: {{
+            read: [Role.editor]
+        }}
+    }}
+
+    lifecycle: {{
+        visible: {visible}
+    }}
+
+    policy: {{
+        read: [Role.owner, Role.editor, Role.viewer]
+        update: [Role.owner, Role.editor]
+    }}
+}}
+"#
+        )
+    };
+    let found = company(&ticket("stage == Stage.open"));
+    assert_eq!(
+        rules_of(&found),
+        ["policy.output_field_unproved"],
+        "{found:#?}"
+    );
+    assert!(
+        found[0].contains(
+            "`Ticket`'s `visible:` tests `Ticket.stage`, which not every caller may read"
+        ),
+        "{found:#?}"
+    );
+    let clean = company(&ticket("open == true"));
+    assert!(clean.is_empty(), "{clean:#?}");
+}
+
 // --- chunk 4.8: the Phase 4 review's policy findings ---------------------------
 
 #[test]
