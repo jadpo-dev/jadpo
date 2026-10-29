@@ -7,6 +7,7 @@ rules: []
 ---
 
 # Geospatial
+<!-- topic: geospatial -->
 
 Where things are, and what is near or inside what: a bakery's position,
 the delivery patches it serves, the shops within five kilometres of a
@@ -17,7 +18,7 @@ named `latitude` and `longitude`, the five other geometries and
 operations, storage in
 PostGIS, query conditions and indexes, and the formats other systems use.
 
-> Built, all but geometries in Redis, which waits for Redis entities. The "Decisions" table under "Review" records each decision, numbered as the compiler's messages cite them. Facts marked "verified" were checked against PostGIS 3.4.2 on PostgreSQL 16; "estimate" marks a number the build measures.
+> Built, all but geometries in Redis, which waits for Redis entities. The "Decisions" table in the [design notes](notes/20-geospatial.md) records each decision, numbered as the compiler's messages cite them. Facts marked "verified" were checked against PostGIS 3.4.2 on PostgreSQL 16; "estimate" marks a number the build measures.
 
 | Part | What | Builds on |
 |---|---|---|
@@ -27,6 +28,7 @@ PostGIS, query conditions and indexes, and the formats other systems use.
 | Interop | GeoJSON `Feature` and `FeatureCollection`; WKT at named edges | Area 19's GeoJSON |
 
 ## What every geospatial operation follows
+<!-- topic: what-every-geospatial-operation-follows -->
 
 - **WGS84, latitude and longitude by name** (area 19, decided). An axis
   order exists only inside `geo.from_geojson`, `geo.from_lng_lat`,
@@ -68,6 +70,7 @@ PostGIS, query conditions and indexes, and the formats other systems use.
   `Shapes` lists the types a parameter takes).
 
 ## Operations
+<!-- topic: geometry-operations -->
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
@@ -253,6 +256,9 @@ test "a round is its legs summed" {
     assert round_length(van_round) == 687793.782534metre
 }
 ```
+
+## Predicates and shapes
+<!-- topic: predicates-and-shapes -->
 
 The predicates and shapes on the bakery's
 patches, its pins on a map and its shops:
@@ -586,12 +592,13 @@ error: This `Polygon` breaks its rule `rings_valid`
   reason: A `Polygon`'s rings are closed with four points or more, never cross or meet themselves or each other, keep each hole inside the outer ring, and have every edge shorter than half the globe, so the polygon is the smaller side its outer ring bounds (area 20, "Polygons are valid when built"). A literal is checked while compiling.
   next: Close each ring and move its points so no edge meets another, with each hole inside the outer ring (agent)
   rule: type.invalid_literal
-  help: docs/language/02-values-and-types.html#type-invalid-literal
+  help: docs/errors/type.invalid_literal.md
 
 check failed: 1 error, 1 file
 ```
 
 ## Storage
+<!-- topic: storage -->
 
 A geometry field is one PostgreSQL column, PostGIS's `geography`, which
 holds longitude and latitude on WGS84 and measures in metres, so no
@@ -833,6 +840,7 @@ error: `main` has no `postgis` extension, and its role can't create it
 ```
 
 ## Queries
+<!-- topic: queries -->
 
 Area 6 allows only conditions an index can serve: a field, named first,
 compared with a value. This page adds the `geo.` conditions to that list,
@@ -1157,6 +1165,7 @@ across and onto the antimeridian and round the pole, the recheck asking
 again, ties by `id`, and every case of `tools/geo_cases.py` as a query.
 
 ## Precision and determinism
+<!-- topic: precision-and-determinism -->
 
 | Where | Arithmetic | Same on every target? |
 |---|---|---|
@@ -1297,6 +1306,7 @@ again, ties by `id`, and every case of `tools/geo_cases.py` as a query.
   a thousand bakeries spends some 40 ms sorting them by distance.
 
 ## Interop
+<!-- topic: interop -->
 
 | Format | Decided | Where the axis order lives |
 |---|---|---|
@@ -1700,6 +1710,7 @@ test "a pasted patch is read longitude first" {
   through it or `geo.to_wkt`.
 
 ## Left out, and why
+<!-- topic: geospatial-left-out -->
 
 | Left out | Why | Instead |
 |---|---|---|
@@ -1712,66 +1723,10 @@ test "a pasted patch is read longitude first" {
 | `GeometryCollection`, and a `Feature` with no geometry | Rare, and each makes every consumer handle an extra case | A `MultiPolygon`, or the right geometry type |
 | Altitude in any operation | WGS84's operations are on the surface; height above the ellipsoid isn't height above the ground | Kept and stored, never measured |
 
-## Review
+## What is built
+<!-- topic: geospatial-built -->
 
-### Status
-
-Everything on this page is built, but for geometries in Redis, which wait
-for Redis entities (area 5).
-
-### Consistency with the rest of the language
-
-- **Area 2:** `rings_valid` and `altitudes_agree` are cross-field rules on
-  standard types, as the others are. `Feature<G, P>` and
-  `FeatureCollection<G, P>` are generic standard types like `Range<T>` and
-  `Page<T>`.
-- **Area 5:** the storage table has `geography`; `kind:` on `indexes:` is
-  built for `IndexKind.geographic`; derived indexes include GiST.
-- **Area 6:** "A condition must be one the database can use an index for"
-  includes the `geo.` conditions; `order:` includes `geo.distance`.
-- **Area 13:** the test server needs PostGIS. Postgres.app's PostgreSQL 16
-  ships PostGIS 3.4.2 (verified). CI runs `tools/postgres/Dockerfile`,
-  PostgreSQL 16 with PostGIS 3.6 and pgvector from apt.postgresql.org,
-  since every `postgis/postgis` 16 tag is built on Debian bullseye, whose
-  support has ended (area 21, "Without pgvector").
-- **Area 14:** `migration.extension_missing` is raised by `jadpo migrate
-  apply`, like the other `migration.*` rules no source can trigger.
-- **Area 15:** a position isn't personal data by type; an application
-  marks a person's with `location`.
-- **Area 19:** `geo` is a reserved namespace. Measures are on the
-  ellipsoid (question 3), coordinates are held as doubles' shortest
-  decimals (question 2), and `BoundingBox` and `Circle` are stored in
-  named columns (question 7). `LineString`'s and `Polygon`'s
-  `type.standard_exists` shapes are one shape: a single field `points` or
-  `coordinates` holding a list whose items are `Point`s or an `Object` of
-  `Point`'s shape, named list types included; a list that may hold
-  `none`, a set, or another field beside it isn't the shape. A list of
-  points is a path or an area's ring, and only the application knows
-  which, so the error names both, and `jadpo fix` swaps to `LineString`,
-  the list read as its `points`; a `Polygon` is the application's own
-  edit. `jadpo suggest` leaves the shape to the error, as it is only ever
-  a type's whole. `Feature` and `FeatureCollection` are in release 0.1.0
-  beside the others, so 259 standard types are built, and
-  `type.type_argument_count` lists them beside `List`, `Set`, `Map` and
-  `Range`.
-
-### Decisions
-
-The numbers are the ones the compiler's messages cite.
-
-| Topic | Decision |
+| Feature | Status |
 |---|---|
-| Edges (question 1) | Great circles in code and in the database, as PostGIS's `geography` draws them, not RFC 7946's straight lines |
-| Coordinates (question 2) | Held as the shortest decimal of the nearest double, so storage and GeoJSON are exact |
-| Measures (question 3) | `geo.distance`, `length`, `bearing` and `area` on the WGS84 ellipsoid by Karney's methods, in Jadpo's own whole-number code, the same on every target |
-| Order by distance (question 4) | Only `asc`, only beside `geo.within(field, point, distance:)` on the same field and point, only in a `List`, sorted by `ST_Distance`; pages by distance stay out |
-| PostGIS (question 5) | Required only once an application has a geometry column or index: the first migration adding one writes `CREATE EXTENSION postgis`; `jadpo migrate apply` fails with `migration.extension_missing` when it can't; Redis and D1 keep GeoJSON and refuse `geo.` conditions at compile time |
-| GeoJSON features (question 6) | `Feature<G, P>` and `FeatureCollection<G, P>` as standard types, `G` a geometry type and `P` an `Object`, read strictly, no `id` |
-| `BoundingBox` and `Circle` storage (question 7) | Named columns: a box's four sides as `numeric`, a circle's centre as `geography` and radius as `numeric(38, 6)` |
-| Polygon validity (question 8) | Simple rings, holes inside, edges under 180° of arc, under half the globe: `format` when read, the rule `rings_valid` when built |
-| WKT and WKB (question 9) | `geo.from_wkt` and `geo.to_wkt`, longitude first, `SRID=4326;` read and any other refused; WKB inside the driver only |
-| Point-only distance (question 10) | `geo.distance` and `within(distance:)` between points only; a line or polygon is `type.mismatch` naming this page |
-| Box filter (question 11) | On `Point` fields only, through an index on the column cast to `geometry`, which is exact for points; a shape field uses `geo.intersects` with a `Polygon` |
-| The rest of the page | Operations, storage, queries, precision, interop and what is left out, as written |
-| Altitudes | Every position in a geometry has an altitude or none does: `format` when read, the rule `altitudes_agree` when built |
-| A layer from a route | A route may send a `FeatureCollection<G, P>` bare, as it sends a `List` or `Page` of an `Output`, so a mapping library fetches the layer itself; `P` holds only what clients may see (area 7). A query gives one for a `GET` route (area 6) |
+| Everything on this page but geometries in Redis | Built. |
+| Geometries in Redis | Not built yet: waits for Redis entities (area 5). |

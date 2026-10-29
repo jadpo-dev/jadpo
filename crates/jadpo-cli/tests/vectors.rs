@@ -264,7 +264,7 @@ fn a_database_without_an_extension_is_refused_before_anything_runs() {
     assert_eq!(refused.code, 1, "{}{}", refused.stdout, refused.stderr);
     assert_eq!(
         refused.stderr,
-        "error: `main` has no `jadpo_missing` extension\n  reason: `jadpo_missing` is a PostgreSQL extension the project's columns need. The project's migrations create it, and its database server neither has it nor offers it, so nothing was applied.\n  next: Install `jadpo_missing` on the database server, or use a server that has it, then run the command again (human)\n  rule: migration.extension_missing\n  help: docs/language/14-tooling.html#command-errors\n"
+        "error: `main` has no `jadpo_missing` extension\n  reason: `jadpo_missing` is a PostgreSQL extension the project's columns need. The project's migrations create it, and its database server neither has it nor offers it, so nothing was applied.\n  next: Install `jadpo_missing` on the database server, or use a server that has it, then run the command again (human)\n  rule: migration.extension_missing\n  help: docs/errors/migration.extension_missing.md\n"
     );
     let status = jadpo(&root, &["migrate", "status", "--url", &url]);
     assert!(
@@ -641,7 +641,7 @@ fn an_older_pgvector_is_refused_before_a_nearest_query_s_index_is_built() {
     assert_eq!(
         applied.stderr,
         format!(
-            "error: `main` has pgvector {shown}, and its nearest-neighbour queries need 0.8.0\n  reason: The project's migrations build an HNSW index for a `nearest` query, which runs with pgvector's iterative index scans so a filtered search still fills its limit; they came in pgvector 0.8.0, and the database server offers {shown}, so nothing was applied.\n  next: Upgrade pgvector on the database server to 0.8.0 or later (the major hosted services offer it), then run the command again (human)\n  rule: migration.extension_outdated\n  help: docs/language/14-tooling.html#command-errors\n"
+            "error: `main` has pgvector {shown}, and its nearest-neighbour queries need 0.8.0\n  reason: The project's migrations build an HNSW index for a `nearest` query, which runs with pgvector's iterative index scans so a filtered search still fills its limit; they came in pgvector 0.8.0, and the database server offers {shown}, so nothing was applied.\n  next: Upgrade pgvector on the database server to 0.8.0 or later (the major hosted services offer it), then run the command again (human)\n  rule: migration.extension_outdated\n  help: docs/errors/migration.extension_outdated.md\n"
         )
     );
     let status = jadpo(&root, &["migrate", "status", "--url", &url]);

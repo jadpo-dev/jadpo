@@ -73,8 +73,9 @@ Compiled native code (8.1) and WebAssembly on Cloudflare Workers (8.2),
 every test passing interpreted and compiled. A ticked chunk names where
 what it built is written: § is a section of
 [compiler-runtime.md](compiler-runtime.md), an area a
-[language page](language/README.md); the full text of a finished chunk is
-in git history.
+[language page](language/README.md), and an area's Decisions the
+Decisions table of its [design notes](language/notes/); the full text of
+a finished chunk is in git history.
 
 - [x] **8.1a One runtime plan and its encoding**: §2.5, "The plan compiled
   code holds"; §2.6, "The start-up state and the runtime's plan".
@@ -264,7 +265,7 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
 - [x] **9.2b One passkey implementation**: compiler/runtime §2.6,
   "Passkeys" and "Route tests on workerd"; area 8, Decisions, "One passkey
   implementation" and "Passkey attestation".
-- [x] **9.2c `jadpo build` outside this checkout**: area 14, "A native deployable" and Decisions, "Building outside this checkout"; compiler/runtime §2.8, "What a released `jadpo` builds with".
+- [x] **9.2c `jadpo build` outside this checkout**: area 14, "A native deployable", and its design notes, "Building outside this checkout"; compiler/runtime §2.8, "What a released `jadpo` builds with".
 - [ ] **9.3 The differential run's last two checks** `opus · high`
   (after 9.2; low priority, from chunk 8.4h): each path through a body
   numbered and the paths each run took compared, and fuzzed function
@@ -276,16 +277,10 @@ What the jadpo.dev site, built in its own repository, needs from this one
 ([documentation](documentation.md)). Claude builds these beside Phase 9,
 D1 first: the site starts once D1 has merged (Richard, 2026-10-28).
 
-- [ ] **D1 The docs' structure and bundle** `opus · high`: each error's
-  examples in `docs/errors/<rule.id>.md` and the docs check requiring a
-  file per catalogue rule; each area's design notes kept apart from what an
-  app author reads, with a short "what is built" table left on the page;
-  a topic ID declared beside every section; the seven sections over 3,000
-  words split; the bundle and its `index.json` built by the gate and
-  uploaded by CI.
-- [ ] **D2 The primer** `opus · high` after D1: `docs/primer.md`, about
-  3,000 to 5,000 tokens, every example compiled by the gate; `llms.txt`
-  leads with it.
+- [x] **D1 The docs' structure and bundle**: [documentation](documentation.md),
+  "Where the content lives", "Topic IDs" and "The bundle"; each area's
+  "What is built" and Errors; `docs/errors/`; `docs/language/notes/`.
+- [x] **D2 The primer**: [primer](primer.md), and [documentation](documentation.md), "The bundle".
 - [ ] **D3 Releases** `opus · high` after D1: semantic versions from 0.1.0,
   release-please over the Conventional Commit types, CI failing a
   language change under a type that says it isn't one, installers (shell,

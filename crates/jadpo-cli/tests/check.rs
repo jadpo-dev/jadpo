@@ -101,7 +101,7 @@ fn problems_print_in_the_error_shape_then_the_summary() {
   reason: Nothing in this project called `dobule` can be called. Did you mean `double`?
   next: Use `double` instead of `dobule` (agent)
   rule: semantic.unknown_callee
-  help: docs/language/01-project-layout-and-modules.html#semantic-unknown-callee
+  help: docs/errors/semantic.unknown_callee.md
 
 check failed: 1 error, 3 files
 "
@@ -127,7 +127,7 @@ fn a_terminal_gets_the_rich_form() {
             `double`?
   next      Use `double` instead of `dobule` (agent)
   rule      semantic.unknown_callee
-  help      docs/language/01-project-layout-and-modules.html#semantic-unknown-callee
+  help      docs/errors/semantic.unknown_callee.md
 
 ✗ check failed  1 error · 3 files
 "
@@ -191,7 +191,7 @@ fn without_a_project_or_a_path_it_says_where_it_looked() {
   reason: Jadpo looks for `app.jadpo` in this folder and every folder above it, and found none.
   next: Run `jadpo check` inside a project, or give a file or folder: `jadpo check <path>` (agent)
   rule: toolchain.project_not_found
-  help: docs/language/14-tooling.html#the-jadpo-command
+  help: docs/errors/toolchain.project_not_found.md
 "
     );
     assert_eq!(output.code, 1);
@@ -226,7 +226,7 @@ fn layout_problems_name_the_file_without_a_frame() {
   reason: A domain holds only `entities/`, `types/`, `failures/`, `actions/`, `queries/`, `libraries/`, `routes/`, `schedules/`, `events/`, `subscribers/`, `emails/`, `translations/`, `prompts/` and `fixtures/`, each named after what its files declare.
   next: Move the file to `domains/planning/types/day.jadpo` (agent)
   rule: layout.unknown_location
-  help: docs/language/01-project-layout-and-modules.html#layout-unknown-location
+  help: docs/errors/layout.unknown_location.md
 
 check failed: 1 error, 4 files
 "
@@ -319,7 +319,7 @@ fn a_long_else_if_chain_checks_and_formats() {
 
 /// A deployable built for Workers that reaches a connection with
 /// `max_concurrent:` passes, and the check says the cap counts per
-/// instance there (area 11, Decisions, 2026-10-21; chunk 8.1o2).
+/// instance there (area 11's notes, Decisions, 2026-10-21; chunk 8.1o2).
 #[test]
 fn a_cap_on_calls_from_workers_is_said_to_count_per_instance() {
     let root = folder("per-instance");

@@ -320,11 +320,14 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
     # their `jadpo test` runs are reported as skipped.
     no_postgres = {} if full else {'JADPO_SKIP_POSTGRES': '1'}
     checks = [
-        # Runs jadpo over the `check` blocks; projects that declare tests
-        # also run under `jadpo test` (Phase 2) and are exported to
-        # build/spec-corpus/ (docs/compiler-runtime.md §2.7).
+        # Runs jadpo over the `check` blocks of the area pages, their notes
+        # and the error pages; projects that declare tests also run under
+        # `jadpo test` (Phase 2) and are exported to build/spec-corpus/
+        # (docs/compiler-runtime.md §2.7). It checks the topic IDs, a page
+        # per rule and every link, and builds the docs bundle into
+        # build/docs-bundle/, which CI keeps on main (docs/documentation.md).
         Step('language specification and jadpo test over the spec corpus', 'docs',
-             [python, 'tools/language_docs.py', '--check', '--export-corpus'], jadpo=True,
+             [python, 'tools/language_docs.py', '--check', '--export-corpus', '--bundle', 'build/docs-bundle'], jadpo=True,
              postgres=full, env=no_postgres, show='skipped:'),
         # Every teaching example in examples/ checks with no diagnostics,
         # is formatted, passes its own tests under `jadpo test`, has its

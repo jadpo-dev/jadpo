@@ -8,6 +8,7 @@ The public project home is https://github.com/richardwillars/jadpo. Links below 
 
 ## Start here
 
+- [Primer](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/primer.md): Read this first before writing an app: layout, syntax, the constructs nearly every app uses, what is built and where to look next; 3,000 to 5,000 tokens, every example compiled.
 - [Project README](https://raw.githubusercontent.com/richardwillars/jadpo/main/README.md): Purpose, capabilities, maturity, setup and agent access.
 - [Language map](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/README.md): Task-based reading paths and all 21 specification areas.
 - [Examples](https://raw.githubusercontent.com/richardwillars/jadpo/main/examples/README.md): 28 complete teaching projects with comments and tests.
@@ -17,7 +18,7 @@ The public project home is https://github.com/richardwillars/jadpo. Links below 
 
 ## Language specification
 
-Start with areas 1–4. For a data-backed authenticated API, add 5–9 and 13. For integrations and background work, add 10–12. For AI features, read 21 and its linked rules. For design review, read 9 and 15–18, keeping their planned features distinct from implemented checks.
+Each area page holds what an app author reads; its design notes, the reasons and decisions, are in docs/language/notes/. Each compiler error has its own page, `docs/errors/<rule.id>.md` (for example https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/errors/failure.kind_required.md), which the error's `help:` line names. Start with areas 1–4. For a data-backed authenticated API, add 5–9 and 13. For integrations and background work, add 10–12. For AI features, read 21 and its linked rules. For design review, read 9 and 15–18, keeping their planned features distinct from implemented checks.
 
 - [1. Project layout and modules](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/01-project-layout-and-modules.md): Domains, paths, visibility, imports and naming.
 - [2. Values and types](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/02-values-and-types.md): Named types, validation, refinements, objects, enums and collections.

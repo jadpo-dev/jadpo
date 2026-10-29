@@ -19,7 +19,7 @@ Checks run with `python3 tools/verify.py`.
 
 ## Where to record things
 
-- A language decision goes on its area page under `## Review` → Decisions.
+- A language decision goes in its area's design notes ([`language/notes/`](language/notes/)), as a row of Decisions, and the rule it settles on the area page.
 - A process rule goes in [AGENTS.md](../AGENTS.md).
 - Progress is a tick on the [roadmap](roadmap.md): one line naming where the
   chunk's work is written. Its full text lives in git history.

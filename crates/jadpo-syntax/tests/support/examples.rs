@@ -15,7 +15,8 @@ pub struct Example {
     pub source: String,
     /// Inside a `::: today` box: the archived v0 compiler's syntax.
     pub today: bool,
-    /// On one of the nineteen area pages.
+    /// On one of the area pages, their design notes (`docs/language/notes/`)
+    /// or the error pages (`docs/errors/`), whose examples are the area's.
     pub area_page: bool,
 }
 
@@ -62,6 +63,7 @@ pub fn all() -> Vec<Example> {
     let root = root();
     let mut files = Vec::new();
     markdown_files(&root.join("docs/language"), &mut files);
+    markdown_files(&root.join("docs/errors"), &mut files);
     markdown_files(&root.join("examples"), &mut files);
     let mut examples = Vec::new();
     for path in files {
@@ -72,9 +74,13 @@ pub fn all() -> Vec<Example> {
             .to_string_lossy()
             .into_owned();
         let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        let area_page = path.parent().is_some_and(|p| p.ends_with("docs/language"))
-            && file_name.len() > 3
-            && file_name.as_bytes()[..2].iter().all(u8::is_ascii_digit);
+        let numbered =
+            file_name.len() > 3 && file_name.as_bytes()[..2].iter().all(u8::is_ascii_digit);
+        let area_page = path.parent().is_some_and(|p| p.ends_with("docs/errors"))
+            || (numbered
+                && path.parent().is_some_and(|p| {
+                    p.ends_with("docs/language") || p.ends_with("docs/language/notes")
+                }));
         if path.extension().and_then(|e| e.to_str()) == Some("jadpo") {
             examples.push(Example {
                 place: relative,

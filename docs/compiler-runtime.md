@@ -132,8 +132,8 @@ executors:
 ## 2. Architecture
 
 Each subsection gives the decision, the reason and the main alternative
-rejected. Where an area page's body and its Decisions table differ, the
-table wins: `connections:` replaces area 5's `stores:` (area 11), email
+rejected. Where an area page's body and the Decisions table of its design
+notes differ, the table wins: `connections:` replaces area 5's `stores:` (area 11), email
 types and templates live in `emails/` (area 16), and tests use an
 in-memory cache (area 13).
 
@@ -3669,7 +3669,7 @@ by a subscriber in two seconds, and a batch run over eighteen clippings
 the same, both past one invocation's budget and finished by the
 invocation each handed on to, then the minute's cron telling the at most one summary the budget's end cut short; natively, `tests/background_budget.rs` carries
 work on from its message alone, a delivery run meanwhile left out.
-*Rejected:* a queue (area 12, Decisions, "Work handed on, on Workers");
+*Rejected:* a queue (area 12's notes, Decisions, "Work handed on, on Workers");
 a request to the Worker's own URL, which reaches its public `fetch`; and a
 `TransformStream` written by a task of its own, which would read the
 model's answer ahead of the client rather than as it is taken.
@@ -4842,7 +4842,7 @@ separate command, not the gate.
   Bit-identical binaries are a goal, not checked yet, and not a
   dependency of incidents.
 - **What a released `jadpo` builds with** (area 14, "A native
-  deployable" and Decisions, "Building outside this checkout"). Nothing
+  deployable", and its design notes, "Building outside this checkout"). Nothing
   is read from where `jadpo` was compiled. jadpo-cli's build script packs
   the shared and runtime layers' crates (each `Cargo.toml`, without the
   sections only its own tests read, and its `src/`), with a workspace

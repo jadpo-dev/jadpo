@@ -213,7 +213,7 @@ fn a_fix_that_would_add_an_error_changes_nothing() {
   reason: `Weekday`'s variants are `monday`, `tuesday`, `wednesday`, `thursday`, `friday`, `saturday` and `sunday`. Did you mean `saturday`?
   next: Use `Weekday.saturday` (agent)
   rule: type.unknown_enum_variant
-  help: docs/language/02-values-and-types.html#type-unknown-enum-variant
+  help: docs/errors/type.unknown_enum_variant.md
 
 fix stopped: 1 error after the fix, nothing changed
 "

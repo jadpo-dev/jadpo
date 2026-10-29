@@ -547,7 +547,7 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
     if !jadpo_test::live() {
         return;
     }
-    let mut projects = corpus_projects(&["docs/language/", "examples "]);
+    let mut projects = corpus_projects(&["docs/language/", "docs/errors/", "examples "]);
     let returns = [
         ("main.jadpo".to_string(), RETURNS.to_string()),
         ("main.test.jadpo".to_string(), RETURNS_TEST.to_string()),
