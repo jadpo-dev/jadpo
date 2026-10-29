@@ -337,16 +337,7 @@ compiled.
 - [x] **10.3d A key as a value**: [compiler-runtime](compiler-runtime.md) §2.5, "A key as a value"; area 19, "Hashing and cryptography".
 - [x] **10.3e Loading a project from files in memory**: compiler/runtime §2.2, "Loading".
 - [x] **10.3f Where a connection's credential comes from**: compiler/runtime §2.6, "Where a connection's credential comes from"; [area 11](language/11-integrations.md), "How provider calls are made".
-- [ ] **10.3g The graph's nodes for areas 8, 10, 11 and 12**
-  `opus · xhigh`, before item 6: connections, packages, operations,
-  capability mappings, hosts, lock entries, generated routes, principals,
-  sign-in methods and providers, OAuth scopes, settings, locale sets,
-  rate limits and caches are still `Reserved`, and schedules and
-  subscribers only `Declared` (`jadpo-graph`'s `kind.rs`), so the approval
-  report would have nothing to classify a package or sign-in change by.
-  Done when each is a `Built` node with its edges (`calls` from a
-  callable to the operation it calls), the graph's diff classifies their
-  changes, and items 3 and 4 add their own kinds as `Built`.
+- [x] **10.3g The graph's nodes for areas 8, 10, 11 and 12**: compiler/runtime §2.3, "Outside, access and services" and "Diff"; area 18, "The manifest" and "What is built".
 - [x] **10.3h The runtime's own SQL beyond PostgreSQL**: area 5, "Actions on D1" and "System tables".
 
 ## After the first build, in order
