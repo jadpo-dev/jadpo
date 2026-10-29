@@ -359,7 +359,41 @@ pub fn spinner(args: &[String], env: &Environment) -> jadpo_term::Spinner {
     if let Ok(mut live) = LIVE.lock() {
         *live = Some(spinner.words());
     }
+    if let Ok(mut far) = FAR.lock() {
+        *far = Some(spinner.progress());
+    }
+    NOTED.store(!style.animate, std::sync::atomic::Ordering::Relaxed);
     spinner
+}
+
+/// How far the live line's step has got, when it shows one.
+static FAR: std::sync::Mutex<Option<jadpo_term::Progress>> = std::sync::Mutex::new(None);
+
+/// Whether the running command's long steps are each a line on stderr: a
+/// command with a live line where stderr doesn't animate (piped, `CI`).
+static NOTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// A long step starting that people waiting should know of (`jadpo build`
+/// fetching its toolchain, chunk 9.2c): the live line's words where it
+/// animates, else a line on stderr, as append-only output is; nothing
+/// under `--json`.
+pub(crate) fn announce(words: &str) {
+    say(words);
+    if NOTED.load(std::sync::atomic::Ordering::Relaxed) {
+        use std::io::Write;
+        let _ = writeln!(std::io::stderr(), "{words}");
+    }
+}
+
+/// Shows how far the live line's step has got, `done` of `total`, as a
+/// bar; `None` takes the bar away.
+pub(crate) fn progress(far: Option<(u64, u64)>) {
+    let shared = FAR.lock().ok().and_then(|shared| shared.clone());
+    if let Some(shared) = shared
+        && let Ok(mut now) = shared.lock()
+    {
+        *now = far;
+    }
 }
 
 /// What the running command's live line says, when it shows one.

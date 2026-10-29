@@ -864,8 +864,32 @@ them is built as [Declared deployables](#declared-deployables) says.
   `build/target/app/openapi/`. It is built without the runtime's
   `testing` feature. cargo failing is `toolchain.build_failed`, since the
   Rust Jadpo writes always compiles; a file it can't write is
-  `toolchain.artifact_write_failed`. This Jadpo compiles a deployable
-  against the runtime crates it was built from, in its own checkout.
+  `toolchain.artifact_write_failed`.
+- **What it compiles with.** Everything a build needs comes with `jadpo`
+  or is fetched by it, so a released `jadpo` builds anywhere and nobody
+  installs Rust. The runtime crates' source is carried in the binary,
+  with their `Cargo.lock` and the toolchain file. The Rust toolchain
+  that file pins (`rustc`, `cargo` and the standard library for the
+  machine, and wasm32's once a Worker is built) is fetched from Rust's
+  dist server the first time a build needs it, into
+  `jadpo/toolchains/<version>-<host>/` of the cache folder, each archive
+  checked against the SHA-256 the release's manifest gives, and the
+  manifest against the digest this Jadpo pins; `JADPO_RUST_DIST_SERVER`
+  names a mirror, whose manifest is checked against the `.sha256` beside
+  it. The crates the lock names come from crates.io, or
+  whatever cargo's own configuration puts in its place, fetched by cargo
+  only when its cache can't build offline, into `CARGO_HOME` when that
+  is set, else the cache folder's `jadpo/cargo/`, each checked against
+  the lock's checksum. Each fetch says what it is fetching
+  (`Fetching Rust 1.99.0 for aarch64-apple-darwin`, `Fetching the
+  runtime's crates`): on the live line, each archive with a bar, where
+  stderr animates, else as a line on stderr, and nothing under `--json`;
+  the screen's `fetched` line, and `--json`'s `fetched`, say what came (`Rust 1.99.0 (146.9
+  MB) and 292 crates`); a fetch that fails is `toolchain.fetch_failed`. A
+  native build still needs the machine's C compiler, which links it and
+  compiles `ring`'s cryptography. With `CARGO` naming a cargo (cargo sets it
+  for what it runs, and the gate for this repository's tests), that
+  cargo builds instead and nothing is fetched.
 - **The build stamp** (area 18): the build id, `b_` and the first twelve
   hex digits of a SHA-256 over the deployable's program (what it is
   compiled from: its Rust and its plan, its name and its stores'
@@ -1482,6 +1506,7 @@ source example. Some rows belong to commands the decisions below replace
 | `toolchain.artifact_stage_failed` | `artifacts`, `build` | Build staging directory could not be created |
 | `toolchain.artifact_write_failed` | `check`, `build` | Generated file could not be written |
 | `toolchain.build_failed` | `build` | Rust compiler couldn't build the deployable |
+| `toolchain.fetch_failed` | `build` | Rust toolchain or crates couldn't be fetched |
 | `toolchain.project_not_found` | any command | Project path does not exist |
 | `toolchain.project_read_failed` | any command | Project directory could not be read |
 | `toolchain.scaffold_destination_exists` | `new` | Scaffold destination is an existing file |
@@ -2441,7 +2466,8 @@ what other areas carried here and where this page answers it.
 | What `jadpo check` and `jadpo build` say for Workers | A `client_address:` source other than `cloudflare` is `deployable.target_unsupported`, one more thing a target can't run, rather than a rule of its own, at its `source:` with the deployable's `target:` beside it, once for each Workers deployable, any deployable on Workers being held to it since the Worker's start refuses it whatever it serves; a `client_address:` with a problem of its own is reported as that alone; the build screen says a Worker's caps on calls as one field, `calls`, after what it serves and runs, rather than repeating `jadpo check`'s "On Workers" section, since `jadpo build` checks first and each Worker's block is where its facts are read |
 | Six connections an invocation | An invocation's connections are counted as Cloudflare counts them, six waiting for their answer's head at once (a `fetch()` until its status and headers come, a `connect()` until its socket opens), not six held open, which would hold a seventh behind a store's idle connections; the runtime counts them itself, since workerd counts none and a seventh left to the platform's queue runs out its timer unseen; the six are shared by everything one invocation opens (its drivers, its own fetches, the work it leaves in `waitUntil`); a seventh waits in the order asked, within its own timeout, and one whose timeout passes first is `NotSent`; the service binding work is handed on through, the rate-limiting binding and `startTls()` aren't counted, as Cloudflare's list leaves them out; `max_concurrent:`'s slots are the isolate's, a slot given back handed to the longest-waiting call, which looks for it every 10 ms on its own invocation's timer, so no invocation wakes another's work, and a holder that hasn't said it is there for five seconds, beating every second, is forgotten, as is a waiter that hasn't looked, since Workers ends an invocation whose client went away without dropping what it held |
 | What a deployable keeps of sign-in, and logs of its ticks | A deployable keeps who signs in (the principal, the session and key stores, the passkey and magic-link plans an action's own route may call), but a method's signing key only where it serves an API that takes the method and the browser session's origin only where it serves one that takes browser sessions, so one serving no such API neither needs nor reads them; the magic-link email still reads the origin where subscribers run, since its link is built from it. Every tick is logged as `runtime.ticked`, a server's own timer's and a Worker's cron's as well as `<deployable> tick`'s, even one that did nothing, so a store a tick can't work in is seen wherever it ticks; a tick a stop cut short logs nothing, the `runtime.stopped` that follows saying why |
-| Where deployables are compiled | `jadpo build` compiles every project's deployables into cargo targets shared by them all (docs/compiler-runtime.md §2.5, "Keeping rustc time down"), in `jadpo/builds/<version>-<runtime>/` of the user's cache folder, where the package cache is (`$XDG_CACHE_HOME`, else `~/.cache`; with neither, the project's `build/rust/cache/`), one target for each host, locale data and set of cargo's `CARGO_PROFILE_RELEASE_*` overrides, and the locale data in a folder named by its digest, written whole and renamed into place; so only an app's own crates compile after Jadpo's first build of a host and locale set, rather than every app's first build being a cold release build. A build holds the target's lock until it has copied out what it built, and marks its files changed when another project last built a deployable of its name, so builds at once and builds of two projects never take each other's program. Nothing prunes the cache yet; deleting it costs a rebuild |
+| Where deployables are compiled | `jadpo build` compiles every project's deployables into cargo targets shared by them all (docs/compiler-runtime.md §2.5, "Keeping rustc time down"), in `jadpo/builds/<version>-<copy>/` of the user's cache folder (`<copy>` a digest of where the running `jadpo` is), where the package cache is (`$XDG_CACHE_HOME`, else `~/.cache`; with neither, the project's `build/rust/cache/`), one target for each host, locale data and set of cargo's `CARGO_PROFILE_RELEASE_*` overrides, and the locale data in a folder named by its digest, written whole and renamed into place; so only an app's own crates compile after Jadpo's first build of a host and locale set, rather than every app's first build being a cold release build. A build holds the target's lock until it has copied out what it built, and marks its files changed when another project last built a deployable of its name, so builds at once and builds of two projects never take each other's program. Nothing prunes the cache yet; deleting it costs a rebuild |
+| Building outside this checkout | A released `jadpo` carries the runtime crates' source, packed into the binary at its build (their manifests without what only their own tests read, beside a workspace manifest of their own), written into `jadpo/runtime/<version>-<copy>/` of the cache folder, a file left alone when its bytes are unchanged so cargo rebuilds only what changed; and fetches the pinned Rust toolchain from Rust's dist server as rustup does, the `.tar.gz` archives (the `.tar.xz` ones, a third smaller, would need liblzma or another decoder), the manifest checked against the SHA-256 this Jadpo pins and each archive against the manifest's, a mirror named by `JADPO_RUST_DIST_SERVER` trusted for its manifest's `.sha256` as rustup trusts `RUSTUP_DIST_SERVER`'s; crates come through cargo from crates.io, pinned by the lock, fetched only when an offline resolve or fetch fails, so a warm cache never touches the network. Rejected: vendoring every crate into the binary, hundreds of megabytes for each release; and shelling out to rustup, which a machine without Rust hasn't got (Richard, 2026-10-28, for fetching the toolchain; chunk 9.2c for the rest) |
 | A deployable's target when none is declared | An app with no `deployables:` has no target until one is asked for: `jadpo check` refuses no driver by target, and `jadpo build` builds native; a target is checked once a deployable declares one, or a build asks for Workers |
 | Formatting | Carried from area 1: the formatter owns blank lines and section order within a file |
 | Promotion | Carried from area 1: required with a one-step fix, applied through the editor or `jadpo fmt --layout`, never on save; demotion never forced |

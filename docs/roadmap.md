@@ -265,12 +265,7 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   checks used by both hosts, `webauthn-rs` kept only as a test reference,
   the test authenticator on `p256`, so no native deployable links
   OpenSSL and passkey route tests run on workerd.
-- [ ] **9.2c `jadpo build` outside this checkout** `opus · high`: the
-  runtime's sources and crates found without the path `jadpo` was
-  compiled at or a warm cargo cache, so CI or a released `jadpo` can
-  build a deployable; `jadpo build` fetches its own pinned Rust toolchain
-  into its cache on first use, so nobody installs Rust
-  ([documentation](documentation.md), "Installing"; Richard, 2026-10-28).
+- [x] **9.2c `jadpo build` outside this checkout**: area 14, "A native deployable" and Decisions, "Building outside this checkout"; compiler/runtime §2.8, "What a released `jadpo` builds with".
 - [ ] **9.3 The differential run's last two checks** `opus · high`
   (after 9.2; low priority, from chunk 8.4h): each path through a body
   numbered and the paths each run took compared, and fuzzed function

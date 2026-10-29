@@ -1084,6 +1084,8 @@ rules! {
         "14-tooling.html#command-errors", "Rust compiler couldn't build the deployable";
     TOOLCHAIN_EMPTY_PROJECT: "toolchain.empty_project", area 1, Error, Agent,
         "01-project-layout-and-modules.html#toolchain-empty-project", "Project declares nothing";
+    TOOLCHAIN_FETCH_FAILED: "toolchain.fetch_failed", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Rust toolchain or crates couldn't be fetched";
     TOOLCHAIN_NOT_BUILT_YET: "toolchain.not_built_yet", area 3, Error, Agent,
         "03-logic.html#toolchain-not-built-yet", "Operation is declared but not built yet";
     TOOLCHAIN_PROJECT_NOT_FOUND: "toolchain.project_not_found", area 14, Error, Agent,
