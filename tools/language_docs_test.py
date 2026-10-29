@@ -228,6 +228,65 @@ class Bundle(unittest.TestCase):
         self.assertIn('- [`a.b`](../errors/a.b.md): A is b', files['commands/jadpo-check.md'])
 
 
+PRIMER = """# Primer
+
+Read this first. See [one](language/01-one.md) and [the rule](errors/a.b.md).
+
+```jadpo check project=p
+type Shown = Int {}
+```
+
+```jadpo check project=p file=support.jadpo hidden
+type Support = Int {}
+```
+
+The end.
+"""
+
+
+class Primer(unittest.TestCase):
+    def test_the_bundle_leads_with_the_primer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalogue, pages, errors = tree(root)
+            (root / 'docs/primer.md').write_text(PRIMER)
+            bundle = docs.Bundle(pages, errors, {'version': '0.1.0', 'rules': list(catalogue.values()),
+                                                 'commands': []}, root, primer=root / 'docs/primer.md')
+            bundle.write(root / 'bundle')
+            index = json.loads((root / 'bundle/index.json').read_text())
+            primer = (root / 'bundle/primer.md').read_text()
+        first = index['pages'][0]
+        self.assertEqual((first['kind'], first['id'], first['area']), ('primer', 'primer', None))
+        self.assertEqual(first['links'], ['a.b', 'one'])
+        self.assertIn('[one](topics/one.md)', primer)
+        self.assertIn('[the rule](errors/a.b.md)', primer)
+        self.assertIn('type Shown', primer)
+        self.assertNotIn('Support', primer)
+        self.assertIn('```\n\nThe end.', primer)
+
+    def problems(self, text):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'primer.md'
+            path.write_text(text)
+            page = docs.Primer(path, {})
+            page.collect_blocks()
+            page.check_primer()
+            return ' '.join(page.problems)
+
+    def test_its_size_is_checked_without_its_hidden_blocks(self):
+        filler = ' '.join(['word'] * 3000) + '\n'
+        self.assertEqual(self.problems(PRIMER + filler), '')
+        self.assertIn('outside 3,000 to 5,000', self.problems(PRIMER))
+        self.assertIn('outside 3,000 to 5,000', self.problems(PRIMER + filler * 2))
+
+    def test_every_example_compiles_and_it_declares_no_topic(self):
+        filler = ' '.join(['word'] * 3000) + '\n'
+        found = self.problems(PRIMER.replace('check project=p\n', 'fragment\n') + filler
+                              + '\n## Later\n<!-- topic: later -->\n')
+        self.assertIn('every example in the primer is compiled', found)
+        self.assertIn("the primer's topic ID is `primer`", found)
+
+
 class Structure(unittest.TestCase):
     def problems(self, **pages):
         with tempfile.TemporaryDirectory() as tmp:

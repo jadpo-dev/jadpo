@@ -30,8 +30,11 @@ the compiler doesn't check yet. A block that is neither fails the check.
   python3 tools/language_docs.py --check --export-corpus  # also write build/spec-corpus/
   python3 tools/language_docs.py --bundle <dir>  # build the docs bundle (docs/documentation.md)
 
-The blocks of the area pages, their design notes (docs/language/notes/) and
-the error pages (docs/errors/) are all checked this way. Every rule in the
+The blocks of the area pages, their design notes (docs/language/notes/),
+the error pages (docs/errors/) and the primer (docs/primer.md) are all
+checked this way. The primer, the page an agent reads first, holds no
+`fragment` and no topic ID, and is PRIMER_TOKENS long as the bundle gives
+it, its words times 1.3. Every rule in the
 compiler's catalogue (`jadpo help --json`) has a page, docs/errors/<rule>.md,
 and no page names a rule the catalogue doesn't have. A rule's page needs a
 `check` block failing with it, unless only a command raises the rule (area
@@ -69,6 +72,9 @@ ERRORS = ROOT / 'docs/errors'
 # Each area's design notes: what a person changing the language reads.
 NOTES = DOCS / 'notes'
 PRIMER = ROOT / 'docs/primer.md'
+# The primer's length in tokens, estimated as its words times 1.3, as the
+# bundle gives it (docs/documentation.md, "Where the content lives").
+PRIMER_TOKENS = (3000, 5000)
 # A topic's ID, on the line after its heading.
 TOPIC = re.compile(r'^<!-- topic: (\S*) -->$')
 TOPIC_ID = re.compile(r'^[a-z0-9]+(?:-[a-z0-9]+)*$')
@@ -566,6 +572,31 @@ class Notes(Page):
     checked as the area page's are."""
 
 
+class Primer(Page):
+    """docs/primer.md: the page an agent reads before writing an app
+    (docs/documentation.md). Its examples all compile, and its topic ID is
+    `primer`, so it declares none."""
+
+    def check(self, bless=False):
+        super().check(bless)
+        self.check_primer()
+
+    def check_primer(self):
+        for block in self.blocks:
+            if block['attrs'].get('fragment'):
+                self.problems.append(f'the fragment at line {block["line"] + self.offset + 1}: every example '
+                                     'in the primer is compiled, so make it a check block')
+        for i, line, fenced in body_lines(self.body.split('\n')):
+            if not fenced and TOPIC.match(line):
+                self.problems.append(f'line {i + self.offset + 1}: the primer\'s topic ID is `primer`, '
+                                     'so it declares none')
+        tokens = primer_tokens(self.body)
+        low, high = PRIMER_TOKENS
+        if not low <= tokens <= high:
+            self.problems.append(f'the primer is about {tokens} tokens (its words times 1.3), '
+                                 f'outside {low:,} to {high:,}')
+
+
 def body_lines(lines):
     """(index, line, inside a fence) for each line, fences as the block
     collector reads them: a line starting ``` opens one and the next closes
@@ -704,6 +735,29 @@ def check_help_anchors(root=ROOT):
 
 def words(text):
     return len(text.split())
+
+
+def without_hidden(text):
+    """Markdown with its `hidden` ```jadpo blocks left out, and the blank
+    line before each, as the bundle gives a page."""
+    lines, out, i = text.split('\n'), [], 0
+    while i < len(lines):
+        match = FENCE.match(lines[i])
+        if match and match.group(1) == 'jadpo' and parse_attrs(match.group(2)).get('hidden'):
+            i += 1
+            while not lines[i].startswith('```'):
+                i += 1
+            if out and not out[-1].strip():
+                out.pop()
+        else:
+            out.append(lines[i])
+        i += 1
+    return re.sub(r'\n{3,}', '\n\n', '\n'.join(out))
+
+
+def primer_tokens(text):
+    """The primer's size as the bundle gives it: its words times 1.3."""
+    return round(words(without_hidden(text)) * 1.3)
 
 
 def plain(text):
@@ -890,7 +944,8 @@ class Bundle:
         built = []
         if self.primer is not None and self.primer.exists():
             linked = set()
-            text = map_links(self.primer.read_text(), lambda t: self.link(self.primer, t, '', linked))
+            text = map_links(without_hidden(self.primer.read_text()),
+                             lambda t: self.link(self.primer, t, '', linked))
             built.append(('primer', 'primer', 'primer.md', 'Primer', None, text, linked))
         for page in self.pages:
             topics = page.topics()
@@ -967,7 +1022,8 @@ def check_structure(pages, errors, catalogue, commands=(), root=ROOT):
     for rule, entry in sorted(catalogue.items()):
         if rule not in pages_by_rule:
             problems.append(f'{rule} (area {entry.get("area")}) has no page: add docs/errors/{rule}.md')
-    bundle = Bundle(pages, errors, {'rules': list(catalogue.values()), 'commands': list(commands)}, root)
+    bundle = Bundle(pages, errors, {'rules': list(catalogue.values()), 'commands': list(commands)}, root,
+                    primer=root / 'docs/primer.md')
     for kind, page_id, _, _, _, text, _ in bundle.build():
         if kind == 'topic' and words(text) > TOPIC_WORDS:
             problems.append(f'topic "{page_id}" is {words(text)} words, over {TOPIC_WORDS}: split it')
@@ -1445,6 +1501,22 @@ def main():
     for problem in check_structure(pages, errors, catalogue, help_data.get('commands', [])):
         failed = True
         print(f'  FAIL {problem}')
+    primer = Primer(PRIMER, catalogue) if PRIMER.exists() else None
+    if primer is None:
+        failed = True
+        print(f'  FAIL {PRIMER.relative_to(ROOT)} is missing: it is the page an agent reads first')
+    else:
+        if compile_examples:
+            primer.check(bless=args.bless)
+            if args.bless and primer.bless():
+                print('docs/primer.md: blessed output block(s)')
+        else:
+            primer.collect_blocks()
+            primer.check_primer()
+        print(f'docs/primer.md: {len(primer.blocks)} examples, about {primer_tokens(primer.body):,} tokens')
+        for problem in primer.problems:
+            failed = True
+            print(f'  FAIL docs/primer.md: {problem}')
     if compile_examples:
         # The homepage example in README.md is compiled like a page's examples.
         readme = Readme(ROOT / 'README.md', catalogue)
@@ -1455,7 +1527,7 @@ def main():
         for problem in readme.problems:
             failed = True
             print(f'  FAIL README.md: {problem}')
-        everything = pages + list(notes.values()) + errors + [readme]
+        everything = pages + list(notes.values()) + errors + [readme] + ([primer] if primer else [])
         corpus = [(page, entry) for page in everything for entry in page.corpus]
         print(f'{len(corpus)} spec project(s) with tests ran under jadpo test')
         skipped = [f'{page.path.name} {name}' for page in everything for name in page.skipped]
