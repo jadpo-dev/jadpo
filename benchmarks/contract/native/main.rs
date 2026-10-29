@@ -303,8 +303,8 @@ fn main() {
     if variables.get("GOLDEN_EXECUTOR").map(String::as_str) == Some("interpreted") {
         let project = variables.get("GOLDEN_PROJECT").expect("GOLDEN_PROJECT");
         let loaded = jadpo_db::load(std::path::Path::new(project));
-        let prepared = jadpo_interp::Prepared::load(&loaded.db, loaded.project)
-            .expect("application checks");
+        let prepared =
+            jadpo_interp::Prepared::load(&loaded.db, loaded.project).expect("application checks");
         // Settings are read as a deployable reads them, before anything
         // is served: every problem logged, then a nonzero exit.
         let values = match prepared.config(&variables, mode, &random) {
