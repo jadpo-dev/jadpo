@@ -135,21 +135,11 @@ class CommitTypes(unittest.TestCase):
         self.assertEqual(self.check('feature: a thing'),
                          ['The title `feature: a thing` isn\'t a Conventional Commit'])
 
-    def test_a_title_stronger_than_its_commits_fails(self):
+    def test_the_branch_commits_are_not_compared_with_the_title(self):
         self.repo.commit('docs: a word')
-        self.assertEqual(self.check('fix: a word'),
-                         ['The title and the branch\'s commits make different releases'])
-
-    def test_a_title_weaker_than_its_commits_fails(self):
+        self.assertEqual(self.check('fix: a word'), [])
         self.repo.commit('feat: a thing')
-        self.repo.commit('docs: its page')
-        self.assertEqual(self.check('docs: a thing'),
-                         ['The title and the branch\'s commits make different releases'])
-
-    def test_a_breaking_title_needs_a_breaking_commit(self):
-        self.change_the_output('feat: say unknown')
-        self.assertEqual(self.check('feat!: say unknown'),
-                         ['The title and the branch\'s commits make different releases'])
+        self.assertEqual(self.check('docs: a thing'), [])
 
     def test_a_breaking_change_footer_is_breaking(self):
         self.change_the_output('feat: say unknown\n\nBREAKING CHANGE: the message changed')
@@ -158,16 +148,6 @@ class CommitTypes(unittest.TestCase):
     def test_a_scope_is_allowed(self):
         self.repo.commit('fix(cli): a word')
         self.assertEqual(self.check('fix(cli): a word'), [])
-
-    def test_merge_commits_are_not_read(self):
-        self.repo.commit('fix: a word')
-        self.repo.git('checkout', '-q', 'main')
-        self.repo.write('other.txt', 'x')
-        self.repo.commit('feat: on main')
-        self.repo.git('checkout', '-q', 'topic')
-        self.repo.git('merge', '-q', '--no-edit', 'main')
-        self.base = self.repo.git('rev-parse', 'main')
-        self.assertEqual(self.check('fix: a word'), [])
 
     def test_the_release_pull_request_passes(self):
         self.repo.commit('chore(main): release 0.2.0')

@@ -5,9 +5,8 @@
 release-please sets each release's version from the Conventional Commit
 types it reads: `fix` a patch, `feat` a minor, and `feat!` (or a
 `BREAKING CHANGE:` footer) a breaking change, which raises the minor number
-until 1.0. Pull requests merge with a merge commit, so the commits
-release-please reads are the branch's own; the pull request's title says
-which one of those the change is. Three things fail:
+until 1.0. Pull requests merge with squash, so the commit release-please
+reads is the pull request's title. Two things fail:
 
 - a title that isn't a Conventional Commit;
 - a change to the language's behaviour under a title other than `feat` or
@@ -15,16 +14,12 @@ which one of those the change is. Three things fail:
   for the same source (a `jadpo check` block's `expect=` or the output block
   after it, on any page under docs/ or in README.md), or when a rule enters
   or leaves the compiler's catalogue (`jadpo help --json`, declared in
-  crates/jadpo-diag/src/lib.rs);
-- a title whose release (none, patch, minor or breaking) isn't the
-  strongest of the branch's commits, since that is the one release-please
-  makes.
+  crates/jadpo-diag/src/lib.rs).
 
   python3 tools/commit_type.py --base <sha> --head <sha> --title "<title>"
   python3 tools/commit_type.py --catalogue   # the parse agrees with jadpo help --json
 
-The first compares the merge base of `base` and `head` with `head`, and
-reads the commits in `base..head` that aren't merges.
+The first compares the merge base of `base` and `head` with `head`.
 """
 
 import argparse
@@ -49,7 +44,6 @@ TYPES = {
     'build': 'none', 'chore': 'none', 'ci': 'none', 'docs': 'none', 'refactor': 'none',
     'style': 'none', 'test': 'none',
 }
-LEVELS = ['none', 'patch', 'minor', 'breaking']
 SHOWN = 5
 
 
@@ -180,19 +174,6 @@ def level(message):
     return TYPES[match.group('type')]
 
 
-def commits(base, head):
-    """The branch's own commits, without merges: (sha, message)."""
-    out = git('log', '--format=%H%x00%P%x00%B%x1e', f'{base}..{head}')
-    found = []
-    for entry in out.split('\x1e'):
-        if not entry.strip():
-            continue
-        sha, parents, message = entry.strip('\n').split('\x00', 2)
-        if len(parents.split()) < 2:
-            found.append((sha, message))
-    return found
-
-
 def problems(base, head, title):
     title_level = level(title)
     if title_level is None:
@@ -207,22 +188,7 @@ def problems(base, head, title):
         found.append(('The language changes under a type that says it doesn\'t',
                       f'The title says `{TITLE.match(title).group("type")}`, but {shown}.',
                       'Retitle the pull request `feat: ...`, or `feat!: ...` if an app that checked before no '
-                      'longer does, and give a branch commit the same type'))
-    branch = commits(base, head)
-    levels = [(level(message), sha) for sha, message in branch]
-    strongest = max((lv for lv, _ in levels if lv), key=LEVELS.index, default='none')
-    if branch and strongest != title_level:
-        if LEVELS.index(strongest) > LEVELS.index(title_level):
-            by = [sha[:8] for lv, sha in levels if lv == strongest]
-            reason = (f'The title makes {describe(title_level)}, but release-please reads the branch\'s '
-                      f'commits, and {", ".join(by[:SHOWN])} make{"s" if len(by) == 1 else ""} '
-                      f'{describe(strongest)}.')
-            next_step = 'Retitle the pull request with the type of its strongest commit, or reword that commit'
-        else:
-            reason = (f'The title makes {describe(title_level)}, but release-please reads the branch\'s '
-                      f'commits, and the strongest of them makes {describe(strongest)}.')
-            next_step = 'Give a branch commit the title\'s type, so the release does what the title says'
-        found.append(('The title and the branch\'s commits make different releases', reason, next_step))
+                      'longer does, '))
     return found
 
 

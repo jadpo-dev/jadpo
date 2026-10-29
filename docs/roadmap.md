@@ -45,8 +45,9 @@ Saying **"continue the roadmap"** starts this routine; it runs unattended.
    Every chunk keeps the examples in `examples/` passing; each phase ends
    with an examples chunk that brings them up to date with everything the
    phase built (Richard, 2026-10-15).
-4. Open a pull request from a branch named `chunk-<number>`, merge it when CI
-   passes, and tick it here in the same pull request. A ticked chunk is
+4. Open a pull request from a branch named `chunk-<number>`, titled with the
+   Conventional Commit for the whole chunk, squash-merge it when CI
+   passes (Richard, 2026-10-29: the title is the commit on `main`), and tick it here in the same pull request. A ticked chunk is
    one line naming the sections where what it built is written
    ([compiler-runtime](compiler-runtime.md) and the area pages, which
    hold every fact, decision and measurement worth keeping); the full text
@@ -356,8 +357,9 @@ D1 first: the site starts once D1 has merged (Richard, 2026-10-28).
 
 ## How we work
 
-- Branch from `main` for each chunk; commit and push often; merge through a
-  pull request. Never put a worktree under `/private/tmp`.
+- Branch from `main` for each chunk; commit and push often; squash-merge through a
+  pull request, its title the Conventional Commit for the whole change
+  (Richard, 2026-10-29). Never put a worktree under `/private/tmp`.
 - `tools/verify.py` output and the tests are the evidence. No evidence
   packets, per-step reviews, timing logs or plan documents.
 - One independent review per phase, not per chunk, by two reviewers:

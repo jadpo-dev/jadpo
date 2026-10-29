@@ -50,4 +50,6 @@ python3 tools/language_docs.py
 ## Changes
 
 Branch from `main`, keep one roadmap chunk per pull request, and merge when CI
-passes.
+passes. Pull requests merge with squash: the pull request's title becomes the
+one commit on `main`, so make it a Conventional Commit for the whole change
+(`fix: ...`, `feat: ...`).
