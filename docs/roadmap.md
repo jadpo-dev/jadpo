@@ -306,30 +306,11 @@ compiled.
 
 - [x] **10.3a A unique rule within a tenant**: [area 9](language/09-policy.md), "A unique rule holds within its tenant".
 - [x] **10.3b Founding only a new tenant**: [area 9](language/09-policy.md), "Founding a tenant".
-- [ ] **10.3c One record of what each invocation did** `opus · high`,
-  before item 4: observation comes through three narrow channels
-  (`serve::Observer`'s answered and ticked, dev's `Host::call_log`,
-  testing's `Ctx::steps_reached`), none of which sees queries, writes or
-  action steps, so timelines, spans, `watch` and access records would each
-  add a `Ctx` field of their own. Done when `Ctx` keeps one list of spans
-  per invocation (kind, callable and site, start and end on
-  `monotonic_ms`, rows, outcome), appended in `store::store`, the action
-  boundary and `effects::call`, and handed to `Observer::answered` through
-  `Answered`; and a route test gives the same spans interpreted, native
-  and on workerd.
+- [x] **10.3c One record of what each invocation did**: [compiler/runtime](compiler-runtime.md) §2.6, "What an invocation did".
 - [x] **10.3d A key as a value**: [compiler-runtime](compiler-runtime.md) §2.5, "A key as a value"; area 19, "Hashing and cryptography".
 - [x] **10.3e Loading a project from files in memory**: compiler/runtime §2.2, "Loading".
 - [x] **10.3f Where a connection's credential comes from**: compiler/runtime §2.6, "Where a connection's credential comes from"; [area 11](language/11-integrations.md), "How provider calls are made".
-- [ ] **10.3g The graph's nodes for areas 8, 10, 11 and 12**
-  `opus · xhigh`, before item 6: connections, packages, operations,
-  capability mappings, hosts, lock entries, generated routes, principals,
-  sign-in methods and providers, OAuth scopes, settings, locale sets,
-  rate limits and caches are still `Reserved`, and schedules and
-  subscribers only `Declared` (`jadpo-graph`'s `kind.rs`), so the approval
-  report would have nothing to classify a package or sign-in change by.
-  Done when each is a `Built` node with its edges (`calls` from a
-  callable to the operation it calls), the graph's diff classifies their
-  changes, and items 3 and 4 add their own kinds as `Built`.
+- [x] **10.3g The graph's nodes for areas 8, 10, 11 and 12**: compiler/runtime §2.3, "Outside, access and services" and "Diff"; area 18, "The manifest" and "What is built".
 - [ ] **10.3h The runtime's own SQL beyond PostgreSQL** `opus · high`,
   **needs a maintainer** for D1's transaction model first: about 145 runtime
   statements rely on `RETURNING`, `ON CONFLICT`, `::uuid`, `unnest` and

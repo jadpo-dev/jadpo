@@ -217,3 +217,171 @@ fn a_diff_matches_by_key_so_a_registered_rename_reads_as_renamed() {
     assert_eq!(changed.edges[0].added, [Key::new(Kind::Domain, "billing")]);
     assert!(diff(&after, &after).is_empty());
 }
+
+fn host(connection: &str, word: &str, address: &str, service: Option<&str>) -> Node {
+    let name = format!("{connection}.{word}");
+    let mut host = node(Kind::Host, &name);
+    host.digest = Some(Digest::of([address, service.unwrap_or_default()]));
+    host.parent = Some(Key::new(Kind::Connection, connection));
+    host.detail = Detail::Host {
+        address: Some(address.to_string()),
+        setting: None,
+        service: service.map(str::to_string),
+        environment: None,
+        reached_for: "SwiftCouriers.v1".to_string(),
+    };
+    host
+}
+
+fn connection(name: &str, credential: &str) -> Node {
+    let mut connection = node(Kind::Connection, name);
+    connection.digest = Some(Digest::of([name, credential]));
+    connection.detail = Detail::Connection {
+        capability: "package".to_string(),
+        package: Some("SwiftCouriers.v1".to_string()),
+        domains: vec!["desk".to_string()],
+        credential: Some(credential.to_string()),
+    };
+    connection
+}
+
+fn locked(package: &str, source: &str) -> Node {
+    let mut entry = node(Kind::LockEntry, package);
+    entry.digest = Some(Digest::of([package, source]));
+    entry.detail = Detail::LockEntry {
+        version: Some("1.0.0".to_string()),
+        source: source.to_string(),
+        location: Some("github.com/acme/couriers".to_string()),
+        tag: None,
+        commit: None,
+        digest: Some("sha256:00".to_string()),
+    };
+    entry
+}
+
+/// What area 18 says needs a person in a package or sign-in change
+/// (chunk 10.3g): a used operation removed, changed or failing in a new
+/// way, a host or credential scheme changed, a service's image, a package
+/// from git, and any new way of signing in or kind of caller.
+#[test]
+fn a_diff_says_which_package_and_sign_in_changes_need_a_person() {
+    let action = Key::new(Kind::Action, "book_pickup");
+    let used = Key::new(Kind::Operation, "SwiftCouriers.pickups.create");
+    let unused = Key::new(Kind::Operation, "SwiftCouriers.pickups.cancel");
+    let changed = Key::new(Kind::Operation, "SwiftCouriers.tariffs.get");
+    let failing = Key::new(Kind::Operation, "SwiftCouriers.tariffs.list");
+    let slot_taken = Key::new(Kind::Type, "SwiftCouriers.SlotTaken");
+
+    let mut before = Builder::new();
+    before.node(node(Kind::Action, "book_pickup"));
+    before.node(node(Kind::Type, "SwiftCouriers.SlotTaken"));
+    for key in [&used, &unused, &changed, &failing] {
+        before.node(node(Kind::Operation, key.name()));
+    }
+    for key in [&used, &changed, &failing] {
+        before.edge(action.clone(), EdgeKind::Calls, key.clone());
+    }
+    before.node(connection("couriers", "bearer"));
+    before.node(host("couriers", "live", "https://api.swift.example", None));
+    before.node(host("runner", "service", "", Some("swift:1")));
+    before.node(locked("Tables.v1", "registry"));
+    before.node(node(Kind::Principal, "user"));
+    before.node(node(Kind::AuthenticationMethod, "browser_session"));
+    let before = before.build();
+
+    let mut after = Builder::new();
+    after.node(node(Kind::Action, "book_pickup"));
+    after.node(node(Kind::Type, "SwiftCouriers.SlotTaken"));
+    let mut retyped = node(Kind::Operation, changed.name());
+    retyped.detail = Detail::Operation {
+        method: "GET".to_string(),
+        path: "/v2/tariffs".to_string(),
+        input: None,
+        output: jadpo_graph::TypeRef::Builtin(jadpo_std::Builtin::Unit),
+        changes: false,
+        idempotent: false,
+    };
+    after.node(retyped);
+    after.node(node(Kind::Operation, failing.name()));
+    for key in [&changed, &failing] {
+        after.edge(action.clone(), EdgeKind::Calls, key.clone());
+    }
+    after.edge(failing.clone(), EdgeKind::Raises, slot_taken);
+    after.node(connection("couriers", "basic"));
+    after.node(host(
+        "couriers",
+        "live",
+        "https://api.eu.swift.example",
+        None,
+    ));
+    after.node(host(
+        "couriers",
+        "sandbox",
+        "https://sandbox.swift.example",
+        None,
+    ));
+    after.node(host("runner", "service", "", Some("swift:2")));
+    after.node(connection("rates", "bearer"));
+    after.node(host("rates", "live", "https://rates.example", None));
+    after.node(locked("Tables.v1", "git"));
+    after.node(locked("Couriers.v1", "git"));
+    after.node(locked("Postcodes.v2", "registry"));
+    after.node(node(Kind::Principal, "user"));
+    after.node(node(Kind::Principal, "service"));
+    after.node(node(Kind::AuthenticationMethod, "browser_session"));
+    after.node(node(Kind::AuthenticationMethod, "api_token"));
+    after.node(node(Kind::SignInProvider, "passkey"));
+    let after = after.build();
+
+    let changes = diff(&before, &after);
+    let needs = |key: &str| -> Vec<String> {
+        changes
+            .get(key)
+            .map(|change| change.needs.clone())
+            .unwrap_or_default()
+    };
+    assert_eq!(
+        needs("operation SwiftCouriers.pickups.create"),
+        ["PackageChange.operation_removed"]
+    );
+    assert!(needs("operation SwiftCouriers.pickups.cancel").is_empty());
+    assert_eq!(
+        needs("operation SwiftCouriers.tariffs.get"),
+        ["PackageChange.operation_changed"]
+    );
+    assert_eq!(
+        needs("operation SwiftCouriers.tariffs.list"),
+        ["PackageChange.failure_added"]
+    );
+    assert_eq!(
+        needs("connection couriers"),
+        ["PackageChange.credential_changed"]
+    );
+    assert_eq!(needs("host couriers.live"), ["PackageChange.host_changed"]);
+    assert_eq!(
+        needs("host couriers.sandbox"),
+        ["PackageChange.host_changed"]
+    );
+    assert_eq!(
+        needs("host runner.service"),
+        ["PackageChange.service_image"]
+    );
+    // A new connection and its hosts appear without needing a person.
+    assert!(needs("connection rates").is_empty());
+    assert!(needs("host rates.live").is_empty());
+    assert_eq!(needs("lock_entry Tables.v1"), ["PackageChange.git_source"]);
+    assert_eq!(
+        needs("lock_entry Couriers.v1"),
+        ["PackageChange.git_source"]
+    );
+    assert!(needs("lock_entry Postcodes.v2").is_empty());
+    assert_eq!(needs("principal service"), ["PolicyChange.principal_added"]);
+    assert_eq!(
+        needs("authentication_method api_token"),
+        ["PolicyChange.sign_in_method_added"]
+    );
+    assert_eq!(
+        needs("sign_in_provider passkey"),
+        ["PolicyChange.sign_in_added"]
+    );
+}

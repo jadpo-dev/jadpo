@@ -784,6 +784,75 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
     }
 }
 
+/// What each of area 7's route tests did is in its record as one span
+/// for each action, read and write, in the order each started (chunk
+/// 10.3c): the spans the differential runs above hold compiled code to,
+/// natively and inside workerd, line for line.
+#[test]
+fn a_route_tests_spans_are_in_its_record() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let files = examples::projects()
+        .into_iter()
+        .find(|(name, _)| name == "docs/language/07-http.md todos")
+        .map(|(_, files)| files)
+        .expect("area 7's todos");
+    let folder = corpus_project(&files, "spans-todos").expect("it checks");
+    let ran = jadpo_test::run(jadpo_test::Options {
+        cwd: folder,
+        target: Some(".".into()),
+        seed: Some(1),
+        record: true,
+        ..jadpo_test::Options::default()
+    });
+    let jadpo_test::Ran::Done(run) = ran else {
+        panic!("it runs: {ran:?}")
+    };
+    let mut spans: Vec<(String, Vec<String>)> = run
+        .results
+        .iter()
+        .map(|result| {
+            let record: Vec<String> = result
+                .record
+                .as_ref()
+                .expect("a record")
+                .lines()
+                .iter()
+                .filter(|line| line.starts_with("span "))
+                .cloned()
+                .collect();
+            (result.test.name.clone(), record)
+        })
+        .collect();
+    spans.sort();
+    let action =
+        "span action domains/planning/actions/create_todo.jadpo:9  action create_todo | value";
+    let write = "span write domains/planning/actions/create_todo.jadpo:10  action create_todo | rows 1 | value";
+    assert_eq!(
+        spans,
+        [
+            (
+                "a todo is created".to_string(),
+                vec![action.to_string(), write.to_string()],
+            ),
+            (
+                "a todo is read back by its id".to_string(),
+                vec![
+                    action.to_string(),
+                    write.to_string(),
+                    "span read entry | rows 1 | value".to_string(),
+                ],
+            ),
+            (
+                "a todo that isn't there is not found".to_string(),
+                vec!["span read entry | failed todo_not_found".to_string()],
+            ),
+        ],
+        "{spans:#?}"
+    );
+}
+
 /// Area 7's `todos` and teaching example 23, the repair café: each
 /// project's route tests run on its compiled program inside workerd,
 /// built for wasm32 with the `testing` feature behind a test Worker that

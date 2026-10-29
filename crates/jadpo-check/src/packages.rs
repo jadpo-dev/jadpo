@@ -268,7 +268,7 @@ pub fn links_refused(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
 
 /// The lock's lines, when the project has one that reads; one that
 /// doesn't is the records' to report.
-fn lock(db: &dyn Db, project: Project) -> Option<(String, Vec<Locked>)> {
+pub(crate) fn lock(db: &dyn Db, project: Project) -> Option<(String, Vec<Locked>)> {
     let record = project
         .records(db)
         .iter()

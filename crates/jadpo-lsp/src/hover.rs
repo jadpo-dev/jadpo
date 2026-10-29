@@ -240,6 +240,120 @@ fn declaration(graph: &Graph, id: NodeId) -> String {
             lines.join("\n")
         }
         Detail::Api { prefix } => format!("API {} at {prefix}", node.name),
+        Detail::Connection {
+            capability,
+            package,
+            domains,
+            ..
+        } => {
+            let what = package.as_ref().map_or_else(
+                || capability.clone(),
+                |package| format!("package: {package}"),
+            );
+            if domains.is_empty() {
+                format!("connection {}  // {what}", node.name)
+            } else {
+                format!(
+                    "connection {}  // {what}, domains: [{}]",
+                    node.name,
+                    domains.join(", ")
+                )
+            }
+        }
+        Detail::Package {
+            version,
+            package_kind,
+            ..
+        } => format!("package {}.{version}  // {package_kind}", short(&node.name)),
+        Detail::Operation {
+            method,
+            path,
+            input,
+            output,
+            ..
+        } => {
+            let mut lines = vec![format!("{}  // {method} {path}", node.name)];
+            if let Some(input) = input {
+                lines.push(format!("input: {}", input.render(&name)));
+            }
+            lines.push(format!("output: {}", output.render(&name)));
+            lines.join("\n")
+        }
+        Detail::CapabilityMapping { capability } => {
+            format!("provide {capability}  // {}", node.name)
+        }
+        Detail::Host {
+            address,
+            setting,
+            service,
+            reached_for,
+            ..
+        } => {
+            let at = address
+                .clone()
+                .or_else(|| setting.as_ref().map(|setting| format!("config.{setting}")))
+                .or_else(|| service.as_ref().map(|image| format!("service {image}")))
+                .unwrap_or_default();
+            format!("host {}: {at}  // for {reached_for}", node.name)
+        }
+        Detail::LockEntry {
+            version, source, ..
+        } => match version {
+            Some(version) => format!("package {} version {version} {source}", node.name),
+            None => format!("package {} {source}", node.name),
+        },
+        Detail::GeneratedRoute {
+            generated,
+            authentication,
+            ..
+        } => format!(
+            "{}  // generated {generated}, authentication {authentication}",
+            node.name
+        ),
+        Detail::Principal {
+            entity, subject, ..
+        } => format!("{}: {{ subject: {}.{subject} }}", node.name, name(entity)),
+        Detail::AuthenticationMethod { cookie, .. } => match cookie {
+            Some(cookie) => format!("{}: {{ cookie: \"{cookie}\" }}", node.name),
+            None => format!("{}: {{}}", node.name),
+        },
+        Detail::SignInProvider { path, .. } => {
+            format!("sign_in: {{ {}: {{ path: {path} }} }}", node.name)
+        }
+        Detail::ConfigField { ty, secret, .. } => {
+            let secret = if *secret { "  // secret" } else { "" };
+            format!("config.{}: {}{secret}", node.name, ty.render(&name))
+        }
+        Detail::LocaleSet {
+            default, supported, ..
+        } => format!(
+            "locales {{ default: Locale.{default} supported: [{}] }}",
+            supported
+                .iter()
+                .map(|locale| format!("Locale.{locale}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        Detail::RateLimit {
+            requests,
+            window_ms,
+        } => format!(
+            "rate limit {}: {requests} requests a {}s",
+            node.name,
+            window_ms / 1000
+        ),
+        Detail::Schedule { every_ms } => {
+            format!("schedule {}  // every {}s", node.name, every_ms / 1000)
+        }
+        Detail::Subscriber {
+            attempts,
+            within_ms,
+            ..
+        } => format!(
+            "subscriber {}  // {attempts} attempts within {}h",
+            node.name,
+            within_ms / 3_600_000
+        ),
         Detail::None => match node.kind {
             Kind::Entity => {
                 let fields = fields_of(graph, id, true);

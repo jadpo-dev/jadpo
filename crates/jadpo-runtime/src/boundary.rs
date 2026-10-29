@@ -355,6 +355,14 @@ pub trait ActionBody<'p> {
         crate::Frame::ENTRY
     }
 
+    /// The program's action it runs, by its callable's number, which its
+    /// span names (chunk 10.3c); `None` for a body the runtime runs as an
+    /// action of its own (a store operation alone, a route's guarantees),
+    /// which keeps no span.
+    fn callable(&self) -> Option<u32> {
+        None
+    }
+
     /// The store its events are kept in when it began no transaction: the
     /// one it writes, or the one `events: { store: }` names, as its plan
     /// says (area 12, chunk 6.1b).
@@ -439,6 +447,35 @@ enum Ended {
 /// ([`Ctx::hold`]), a boundary of its own leaves a succeeding body's
 /// transaction and outbox open for [`commit_held`] instead.
 pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
+    // Its span, from the start of its first run to the end of its last
+    // (chunk 10.3c).
+    let Some(callable) = body.callable() else {
+        return bounded(ctx, body).await;
+    };
+    let frame = crate::Frame {
+        callable,
+        site: crate::Frame::ENTRY,
+    };
+    let begun = ctx.span_begin(crate::spans::Kind::Action, Some(frame));
+    let outcome = bounded(ctx, body).await;
+    ctx.span_end(begun, None, ended(&outcome));
+    outcome
+}
+
+/// How `outcome` ends a span.
+pub(crate) fn ended(outcome: &Outcome) -> crate::spans::Ended {
+    use crate::spans::Ended;
+    match outcome {
+        Outcome::Value(_) => Ended::Value,
+        Outcome::Failed(failure) => Ended::failed(failure),
+        Outcome::Fault(fault) => Ended::fault(fault),
+        // A test's own assertion, from a body a test runs as an action.
+        Outcome::Assertion(_) => Ended::Fault("assertion"),
+    }
+}
+
+/// [`action`], its span kept by the caller.
+async fn bounded<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
     if ctx.in_action() {
         return if body.caught() {
             caught(ctx, body).await

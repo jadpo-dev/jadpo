@@ -640,6 +640,49 @@ graph gives a query a `reads` edge to its entity, an `includes` edge to
 each entity it includes and a `raises` edge to its `missing:` failure; a
 body calling `Entity.get` gets a `reads` edge too.
 
+**Outside, access and services** (areas 8, 10, 11 and 12). A package's
+declarations are its files' parts: a `package` node for its index, keyed
+by the name its declarations are written through (`package SwiftCouriers`,
+`package Postcodes.v2` while two versions are held), with its version
+folder, whether it is a library or provider and whether it is installed;
+a `resource` and an `operation` for each of a provider's resources and
+operations (`operation SwiftCouriers.pickups.create`, under its resource,
+with its method, path, input and output, `raises` edges to its failures);
+and a `capability_mapping` for each `provide <capability>`, which its
+package `provides` and which `calls` each operation a `call:` in it names.
+A body's call through a connection `calls` the operation and `uses` the
+connection, as a package's own action calls its own operations; a body
+`uses` each setting it reads and `emits` each event type it emits. A
+schedule `runs` its action and a subscriber `runs` its action and
+`subscribes` to its event, each with its every or retry, and a package's
+own subscriber is keyed with its package's name as its model is; an
+entity's built-in purge schedule is placed at its `purge:` and `writes`
+the entity. What a declaration existing once holds is three queries of
+its own (`graph::areas`): `outside_nodes`, a `connection` for each entry of
+`connections:` and the implied `main` while something is stored there
+(what its driver serves, its package, domains and credential scheme, and
+`uses` edges to its package and the settings it reads), a `host` for each
+row of the network report (one list, `connections::hosts`, so the report
+and the graph never disagree), keyed by its connection and, where a
+setting chooses one, the environment (`host couriers.live`), so a changed
+address reads as a change, not a new host, and a `lock_entry` for each line
+of `jadpo.lock` under its package; `access_nodes`, a `principal` for each
+kind of caller (using its entity and subject field), an
+`authentication_method` for each sign-in method (using the settings it
+reads), a `sign_in_provider` for each way `sign_in:` checks a person that
+is built (`magic_link`, `passkey`), and a `generated_route` for each route
+the runtime answers itself, keyed by its method and path and placed under
+what generates it, from the one list the API record also reads
+(`routes::generated`), each connection's webhook whether or not the app
+declares the `webhooks` API, and health beside any API; and
+`service_nodes`, a `config_field` for each setting, the `locale_set
+application`, and, beside any API, `rate_limit address` and `rate_limit
+caller`, using the connection they are counted in. `cache` and
+`oauth_scope` stay reserved: nothing the language builds declares one yet
+(`caches:` comes with Redis entities, area 5; scope declarations with OAuth
+grants and tokens for other applications, areas 8 and 11), and they are
+built with those (decided in chunk 10.3g).
+
 Each site says whether it can pause (§2.5): an effect (a
 store read or write, `emit`, an integration call, `clock.now`, a new
 identity) or a call to an action, query or fixture, which the runtime
@@ -669,10 +712,22 @@ schema in `jadpo help --json`.
 **Diff.** One operation: match nodes by key, compare digests, then let each
 kind classify its change into the decided kinds (`ApiChange`, `DataChange`,
 `PolicyChange`, `DomainChange`, `PackageChange`, `ThresholdChange`), other
-behaviour, and newly reachable nodes. The before side is read from the
-base commit through `git cat-file --batch` into an in-memory file set
-(`jadpo_db::FileSet`, loaded by `load_files`, §2.2, "Loading"), checked
-by the same compiler and cached in `build/before/<commit>/`.
+behaviour, and newly reachable nodes. Built so far: `DomainChange.created`
+and `.renamed`; `PackageChange.operation_removed`, `.operation_changed`
+and `.failure_added` for an operation something other than a test calls,
+`.host_changed` for a host's address changed or one added to a connection
+the app already had, `.service_image` for a service's image new or
+changed, `.credential_changed` for a connection's credential scheme, and
+`.git_source` for a package locked from git; `PolicyChange.principal_added`,
+`.principal_changed`, `.sign_in_method_added` and `.sign_in_added`. A new
+connection and its hosts need no one (area 18, "Package upgrades"). Every
+git package needs a person, since telling the app's own company's
+repository from a third party's needs a setting the pages don't decide;
+this is the conservative reading of area 11's "Publisher trust". The
+before side is read from the base commit through `git cat-file --batch`
+into an in-memory file set (`jadpo_db::FileSet`, loaded by `load_files`,
+§2.2, "Loading"), checked by the same compiler and cached in
+`build/before/<commit>/`.
 
 **Packages.** A package's index is always parsed, a resource file only when
 the app calls into it. A checked package subgraph is cached on disk by
@@ -1716,7 +1771,8 @@ runs one
 [language test project](https://raw.githubusercontent.com/gleam-lang/gleam/main/test/language/Makefile)
 on every target. Per test it compares outcome, failure code and internal
 fields, assertion values, the effect sequence (SQL and row counts, events,
-provider calls), the paths each body took and the final database diff;
+provider calls), the spans of what it did (§2.6, "What an invocation
+did"), the paths each body took and the final database diff;
 any difference fails the gate and prints both sides. Fuzzed function
 bodies are compared too, as Cranelift compares its own generated
 functions against its interpreter (below, "Fuzzed bodies").
@@ -2193,6 +2249,39 @@ ended through `Host::stopping`; it first waits as long
 for its connections to give the answers they owe (§2.5). `stop_signals`
 turns SIGTERM and SIGINT into that stop, a second ending the process at
 once; `jadpo dev` stops on them.
+
+**What an invocation did** (area 16, "Telemetry"). `Ctx` keeps one
+list of spans for the invocation it runs (`jadpo_runtime::spans`), in
+the order each started: a span for each action, read, write and outside
+call, with its kind (`Action`, `Read`, `Write`, `Call` with its
+connection and operation), where it is as a frame of the program
+(`callable` and `site`: an action at its declaration, anything else at
+its own site in the callable on top; none for what the runtime does on
+its own behalf, as a route's query), its start and end on
+`Host::monotonic_ms` (`None` on a host without one), the records a read
+gave or a write wrote, and how it ended (`Ended`: a value, a failure's
+code, a fault's classification, or `Open` for work its invocation
+abandoned, as a route past its deadline does). Each kind is appended in
+one place, so neither executor adds any: an action in `action` at the
+boundary, from its first run to its last (`ActionBody::callable`, which
+only a program's own action gives, so a store operation's boundary of
+its own or the request guarantees' keep none), a read or a write in
+`store`, and an outside call in `outside::send`, the one seam
+`effects::call` and every provider, model and file call goes through,
+its retries inside it; an executor's call site sets its frame's site
+first (`calls`). Past `MAX_SPANS` (10,000) an invocation counts the
+spans it doesn't keep (`Spans::dropped`), so long background work holds
+a bounded list. `serve_request` hands a request's spans on its
+`Response`, and `Serving` gives them to its `Observer` through
+`Answered::spans`; a test's run adds them to its record
+(`record::Entry::Span`, without their times), so the differential run
+holds both executors, natively and inside workerd, to the same spans.
+They carry places and codes, never values. Timelines, telemetry's
+spans, `watch` and access records read them rather than keeping lists
+of their own; the development call log (`Host::call_log`) and a
+record's steps (`Ctx::steps_reached`, `Response::steps`) stay for what
+a span leaves out, a call's request and answer and a step's place in
+its record.
 
 **The request guarantees,** in the same component. A body
 over `BODY_LIMIT` (1 MB) is 413 before routing; the native host stops

@@ -426,6 +426,10 @@ impl<'p> ActionBody<'p> for Action<'_> {
         self.at
     }
 
+    fn callable(&self) -> Option<u32> {
+        Some(self.callee)
+    }
+
     /// The store its plan keeps its events in (area 12, chunk 6.1b).
     fn outbox(&self) -> Option<&str> {
         self.program

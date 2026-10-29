@@ -311,6 +311,43 @@ impl Sent {
 pub(crate) async fn send(
     ctx: &mut Ctx<'_>,
     call: &Call,
+    sending: Sending<'_>,
+) -> Result<Sent, Unanswered> {
+    // Its span (chunk 10.3c), at the site the frame on top is at.
+    let kind = crate::spans::Kind::Call {
+        connection: call.connection.clone(),
+        operation: call.operation.clone(),
+    };
+    let frame = ctx.span_frame_here();
+    let begun = ctx.span_begin(kind, frame);
+    let sent = sent(ctx, call, sending).await;
+    let ended = match &sent {
+        Ok(Sent {
+            answer: Streamed::Whole(answer),
+            ..
+        }) => match crate::effects::answered(call.repeat, answer.clone()) {
+            Ok(_) => crate::spans::Ended::Value,
+            Err(Unanswered::Failed(code)) => crate::spans::Ended::Failed(code),
+            Err(Unanswered::Failure(failure)) => crate::spans::Ended::failed(&failure),
+            Err(Unanswered::Fault(kind)) => crate::spans::Ended::Fault(kind.classification()),
+        },
+        // Its answer has started to come.
+        Ok(Sent {
+            answer: Streamed::Coming(_),
+            ..
+        }) => crate::spans::Ended::Value,
+        Err(Unanswered::Failed(code)) => crate::spans::Ended::Failed(code.clone()),
+        Err(Unanswered::Failure(failure)) => crate::spans::Ended::failed(failure),
+        Err(Unanswered::Fault(kind)) => crate::spans::Ended::Fault(kind.classification()),
+    };
+    ctx.span_end(begun, None, ended);
+    sent
+}
+
+/// [`send`], its span kept by the caller.
+async fn sent(
+    ctx: &mut Ctx<'_>,
+    call: &Call,
     mut sending: Sending<'_>,
 ) -> Result<Sent, Unanswered> {
     let host = ctx.host();
