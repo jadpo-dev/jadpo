@@ -1,24 +1,23 @@
-//! The passkey ceremonies on `webauthn-rs` (area 8, "Passkeys"; chunk
-//! 5.5z): the native host's [`Passkeys`] capability.
+//! The reference the runtime's passkey ceremonies are held to (area 8,
+//! "Passkeys"): Kanidm's `webauthn-rs` 0.5.5, unmodified, behind the same
+//! [`Passkeys`] seam, a dev-dependency only, since it verifies with
+//! OpenSSL, which no deployable links. `tests/passkeys.rs` runs every
+//! ceremony on both and requires the same answers.
 //!
 //! Every ceremony is `webauthn-rs`'s passkey one: user verification
 //! required, no attestation, the algorithms it calls secure (ES256 and
 //! RS256), the relying party the configured origin's host, and only that
 //! origin accepted (no subdomains, no other port). Two things are added
-//! for discoverable sign-in: registration asks for a resident key
-//! (`residentKey: "required"`), so every passkey can sign in without an
-//! address first, and signing in uses `webauthn-rs`'s discoverable
-//! ceremony (`conditional-ui`). The counter is `webauthn-rs`'s strict
-//! check: when either count is above zero, one that didn't go up is
-//! refused as a possible copy.
+//! for discoverable sign-in, as the runtime adds them: registration asks
+//! for a resident key (`residentKey: "required"`), and signing in uses
+//! `webauthn-rs`'s discoverable ceremony (`conditional-ui`).
 //!
 //! A stored `WebAuthnCredential` is loaded part by part into
-//! `webauthn-rs`'s `Credential` (area 19, chosen in chunk 5.5r3): what it
-//! doesn't hold is the same for every passkey registered here. Its
-//! `extensions` are left as none: `webauthn-rs` 0.5.5 reads a stored
-//! credential's key, counter, user verification, registration policy and
-//! backup flags when checking an answer, never its extensions (chunk
-//! 5.5z's finding).
+//! `webauthn-rs`'s `Credential` (area 19): what it doesn't hold is the
+//! same for every passkey registered here. Its `extensions` are left as
+//! none: `webauthn-rs` 0.5.5 reads a stored credential's key, counter,
+//! user verification, registration policy and backup flags when checking
+//! an answer, never its extensions.
 
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -35,11 +34,11 @@ use webauthn_rs_core::proto::{
     UserVerificationPolicy,
 };
 
-/// `webauthn-rs`, for any origin the runtime names.
+/// `webauthn-rs`, for any origin a test names.
 #[derive(Debug, Default, Clone, Copy)]
-pub struct WebauthnPasskeys;
+pub struct Reference;
 
-impl WebauthnPasskeys {
+impl Reference {
     /// The relying party for `origin`: its host the ID, it the only origin
     /// accepted.
     fn site(origin: &str, timeout_ms: u32) -> Result<Webauthn, PasskeyError> {
@@ -60,7 +59,7 @@ impl WebauthnPasskeys {
     }
 }
 
-impl Passkeys for WebauthnPasskeys {
+impl Passkeys for Reference {
     fn start_registration(
         &self,
         origin: &str,
@@ -215,8 +214,7 @@ fn parts(credential: &Credential) -> Result<PasskeyParts, PasskeyError> {
 }
 
 /// A kept passkey as `webauthn-rs` checks one: what isn't kept is the
-/// same for every passkey registered here (area 19, chosen in chunk
-/// 5.5r3).
+/// same for every passkey registered here (area 19).
 fn load(stored: &PasskeyParts) -> Result<Credential, PasskeyError> {
     let key: Cbor =
         serde_cbor_2::from_slice(&stored.public_key).map_err(|_| PasskeyError::Misconfigured)?;
@@ -268,69 +266,18 @@ fn cose_bytes(key: &COSEKey) -> Result<Vec<u8>, PasskeyError> {
     serde_cbor_2::to_vec(&Cbor::Map(map)).map_err(|_| PasskeyError::Misconfigured)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_cose_key_goes_to_cbor_and_back() {
-        // `webauthn-rs`'s own ES256 test vector, as area 19's example keeps it.
-        let cbor = jadpo_std_base64(
-            "pQECAyYgASFYIGXtpaEld8K66ClDf+M4cBoQqqN14btbXeEI3kOcCFUdIlggHlLtdXARY/f55A3fnzQbPcm6hgr34Mp8p+nuzQCE0Zw=",
-        );
-        let value: Cbor = serde_cbor_2::from_slice(&cbor).unwrap();
-        let key = COSEKey::try_from(&value).unwrap();
-        let again = cose_bytes(&key).unwrap();
-        let reread: Cbor = serde_cbor_2::from_slice(&again).unwrap();
-        assert_eq!(COSEKey::try_from(&reread).unwrap(), key);
-    }
-
-    #[test]
-    fn the_relying_party_is_the_origins_host() {
-        assert!(WebauthnPasskeys::site("https://notes.example", 300_000).is_ok());
-        assert!(WebauthnPasskeys::site("not a url", 300_000).is_err());
-        let (options, _) = WebauthnPasskeys
-            .start_sign_in("https://notes.example", 120_000)
-            .unwrap();
-        let options: serde_json::Value = serde_json::from_str(&options).unwrap();
-        assert_eq!(options["publicKey"]["rpId"], "notes.example");
-        assert_eq!(options["publicKey"]["userVerification"], "required");
-        assert_eq!(options["publicKey"]["timeout"], 120_000);
-        let (options, _) = WebauthnPasskeys
-            .start_registration(
-                "https://notes.example",
-                120_000,
-                [7; 16],
-                "ada@example.com",
-                &[vec![1, 2, 3]],
-            )
-            .unwrap();
-        let options: serde_json::Value = serde_json::from_str(&options).unwrap();
-        let key = &options["publicKey"];
-        assert_eq!(key["authenticatorSelection"]["residentKey"], "required");
-        assert_eq!(
-            key["authenticatorSelection"]["userVerification"],
-            "required"
-        );
-        assert_eq!(key["attestation"], "none");
-        assert_eq!(key["rp"]["id"], "notes.example");
-        assert_eq!(key["excludeCredentials"][0]["id"], "AQID");
-    }
-
-    fn jadpo_std_base64(text: &str) -> Vec<u8> {
-        const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-        let mut out = Vec::new();
-        let mut bits = 0u32;
-        let mut count = 0;
-        for byte in text.bytes().filter(|b| *b != b'=') {
-            let value = ALPHABET.iter().position(|a| *a == byte).unwrap() as u32;
-            bits = (bits << 6) | value;
-            count += 6;
-            if count >= 8 {
-                count -= 8;
-                out.push((bits >> count) as u8);
-            }
-        }
-        out
-    }
+/// The reference keeps a key as `webauthn-rs` reads it: its own ES256
+/// test vector, as area 19's example keeps it, read, written and read
+/// again is the same key.
+#[test]
+fn a_cose_key_goes_to_cbor_and_back() {
+    let cbor = jadpo_value::encoding::from_base64url(
+        "pQECAyYgASFYIGXtpaEld8K66ClDf-M4cBoQqqN14btbXeEI3kOcCFUdIlggHlLtdXARY_f55A3fnzQbPcm6hgr34Mp8p-nuzQCE0Zw",
+    )
+    .unwrap();
+    let value: Cbor = serde_cbor_2::from_slice(&cbor).unwrap();
+    let key = COSEKey::try_from(&value).unwrap();
+    let again = cose_bytes(&key).unwrap();
+    let reread: Cbor = serde_cbor_2::from_slice(&again).unwrap();
+    assert_eq!(COSEKey::try_from(&reread).unwrap(), key);
 }

@@ -9,5 +9,4 @@
 mod authority;
 mod bed;
 mod connections;
-mod passkeys;
 mod workerd;

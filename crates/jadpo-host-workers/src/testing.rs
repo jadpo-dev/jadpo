@@ -23,9 +23,10 @@
 //!
 //! The program is made once per isolate, with the settings a test run
 //! reads (`test:` values, defaults, and throwaway secrets from Web Crypto),
-//! as a Workers deployable reads its own (`Target::Workers`). A test's
-//! software authenticator (`test_passkeys`) is the native host's, over
-//! OpenSSL, so a test Worker has none.
+//! as a Workers deployable reads its own (`Target::Workers`). Its passkey
+//! ceremonies and the software authenticator `test_passkeys` drives them
+//! with are the runtime's, as natively, so a route test that makes
+//! passkeys runs here too.
 
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
@@ -36,6 +37,7 @@ use jadpo_runtime::config::{self, Mode};
 use jadpo_runtime::crashes::{Boundary, Reached};
 use jadpo_runtime::http::address::Target;
 use jadpo_runtime::record::{Entry, Record, Recorded};
+use jadpo_runtime::test_authenticator::SoftwareAuthenticators;
 use jadpo_runtime::test_run::{self, Caught, Once};
 use jadpo_runtime::{Database, Executor, Host, LocalFuture, MemoryHost, Outcome, StoreError};
 use serde_json::{Value, json};
@@ -463,14 +465,18 @@ impl Database for Unready {
 }
 
 /// A test's host on Workers: a copy of each store's database, reached over
-/// `connect()`; every file in memory and every email caught; Workers'
-/// passkey ceremonies; no randomness, since a test runs under its seed,
-/// and no timer, so nothing runs out of time.
+/// `connect()`; every file in memory and every email caught; the passkey
+/// ceremonies, their challenges from Web Crypto, and the test's software
+/// authenticators; no randomness, since a test runs under its seed, and
+/// no timer, so nothing runs out of time.
 struct TestHost {
     stores: BTreeMap<String, Store>,
     /// Whether the test used a store, whose rows its record then holds.
     used: Cell<bool>,
     caught: Caught,
+    /// The authenticators `test_passkeys.register` made, each holding one
+    /// passkey.
+    authenticators: SoftwareAuthenticators,
 }
 
 impl TestHost {
@@ -486,6 +492,7 @@ impl TestHost {
                 .collect(),
             used: Cell::new(false),
             caught: Caught::of(executor.plan()),
+            authenticators: SoftwareAuthenticators::default(),
         }
     }
 
@@ -506,6 +513,12 @@ impl TestHost {
 impl Host for TestHost {
     fn passkeys(&self) -> Option<&dyn jadpo_runtime::Passkeys> {
         Some(&PASSKEYS)
+    }
+
+    /// The authenticators `test_passkeys` makes, as `jadpo test`'s host
+    /// has them.
+    fn test_authenticators(&self) -> Option<&dyn jadpo_runtime::TestAuthenticators> {
+        Some(&self.authenticators)
     }
 
     fn database(&self, store: &str) -> Option<&dyn Database> {

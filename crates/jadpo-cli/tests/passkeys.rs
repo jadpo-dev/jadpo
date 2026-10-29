@@ -1,9 +1,9 @@
 //! Passkeys against live PostgreSQL (area 8, "Passkeys"; chunk 5.5z): the
 //! runtime answers the generated routes as a deployable does
-//! (`http::serve_request`) on the native host, whose ceremonies are
-//! `webauthn-rs`'s, with a clock the test moves and a software
-//! authenticator (`jadpo_host_native::test_authenticator`) standing in for
-//! the browser and the device:
+//! (`http::serve_request`) on the native host, with the runtime's own
+//! ceremonies, a clock the test moves and a software authenticator
+//! (`jadpo_runtime::test_authenticator`) standing in for the browser and
+//! the device:
 //!
 //! - a person registers a passkey, then signs in with it;
 //! - a replayed answer, one from another site, one whose challenge has
@@ -25,11 +25,11 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use jadpo_host_native::test_authenticator::TestAuthenticator;
 use jadpo_host_native::{NativeHost, Postgres, Runtime};
 use jadpo_interp::{Prepared, Program};
 use jadpo_runtime::capability::{Capability, Fake};
 use jadpo_runtime::http::{Request, Response, Worker, serve_request};
+use jadpo_runtime::test_authenticator::TestAuthenticator;
 use jadpo_runtime::{Database, Host, LocalFuture};
 
 /// The native host, with a wall clock the test sets and the `email`
