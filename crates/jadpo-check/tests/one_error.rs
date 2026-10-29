@@ -57,7 +57,7 @@ fn the_example_checks_cleanly_as_it_is() {
     assert_eq!(found, Vec::<String>::new());
 }
 
-/// Richard's repro: every literal passed as `Member.email`, the conflict
+/// The reported repro: every literal passed as `Member.email`, the conflict
 /// arm naming its unique rule and the query reading by it used to report
 /// errors of their own, 19 in all.
 #[test]

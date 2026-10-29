@@ -20,7 +20,12 @@ tools/fixtures/workers/.install.lock
 
 # The performance spike's builds, database and results (benchmarks/README.md).
 benchmarks/harness/work/
+# Agent-change runs' results; the pull request carries their summary (benchmarks/agent-changes/README.md).
+benchmarks/agent-changes/results/
 benchmarks/load/target/
 
 # Golden contract adapter builds and local fixtures.
 benchmarks/contract/work/
+
+# Any cargo target, wherever a harness builds one.
+target/
