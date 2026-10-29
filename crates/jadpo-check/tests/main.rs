@@ -50,6 +50,7 @@ mod geo_shapes;
 mod geodesics;
 mod geospatial;
 mod graph;
+mod graph_nodes;
 mod habits;
 mod identity;
 mod imports;

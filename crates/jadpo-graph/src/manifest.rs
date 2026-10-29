@@ -7,10 +7,8 @@
 //! since chunk 8.1o2: `source`, the commit and whether the tree was
 //! modified, and `deployables`, each one's target and build id (areas 14
 //! and 18). Fields a later area fills are not written until it does:
-//! routes, schedules,
-//! subscribers and their runs (7, 12), connections and hosts (11), policy
-//! (9), personal data (15), thresholds (16) and the control flow path
-//! numbers decode against (16, 18).
+//! personal data (15), thresholds (16) and the control flow path numbers
+//! decode against (16, 18).
 
 use std::collections::BTreeMap;
 
@@ -307,7 +305,7 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             out.set_some("serverOnly", *server_only);
             if !*server_only {
                 out.set(
-                    "grants",
+                    "who",
                     Value::Object(
                         grants
                             .iter()
@@ -330,6 +328,154 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             out.set("who", who.iter().map(Value::from).collect::<Vec<_>>());
         }
         Detail::Prompt { version } => out.set("version", version.as_str()),
+        Detail::Connection {
+            capability,
+            package,
+            domains,
+            credential,
+        } => {
+            out.set("capability", capability.as_str());
+            out.set_some("package", package.as_deref());
+            out.set_some(
+                "domains",
+                domains.iter().map(Value::from).collect::<Vec<_>>(),
+            );
+            out.set_some("credential", credential.as_deref());
+        }
+        Detail::Package {
+            version,
+            package_kind,
+            installed,
+        } => {
+            out.set("version", version.as_str());
+            out.set("packageKind", package_kind.as_str());
+            out.set_some("installed", *installed);
+        }
+        Detail::Operation {
+            method,
+            path,
+            input,
+            output,
+            changes,
+            idempotent,
+        } => {
+            out.set("method", method.as_str());
+            out.set("path", path.as_str());
+            out.set_some("input", input.as_ref().map(|ty| ty.render(name)));
+            out.set("output", output.render(name));
+            out.set_some("changes", *changes);
+            out.set_some("idempotent", *idempotent);
+        }
+        Detail::CapabilityMapping { capability } => out.set("capability", capability.as_str()),
+        Detail::Host {
+            address,
+            setting,
+            service,
+            environment,
+            reached_for,
+        } => {
+            out.set_some("address", address.as_deref());
+            out.set_some("setting", setting.as_deref());
+            out.set_some("service", service.as_deref());
+            if let Some((setting, is)) = environment {
+                let mut when = Value::object();
+                when.set("setting", setting.as_str());
+                when.set("is", is.as_str());
+                out.set("environment", when);
+            }
+            out.set("reachedFor", reached_for.as_str());
+        }
+        Detail::LockEntry {
+            version,
+            source,
+            location,
+            tag,
+            commit,
+            digest,
+        } => {
+            out.set_some("version", version.as_deref());
+            out.set("source", source.as_str());
+            out.set_some("location", location.as_deref());
+            out.set_some("tag", tag.as_deref());
+            out.set_some("commit", commit.as_deref());
+            out.set_some("packageDigest", digest.as_deref());
+        }
+        Detail::GeneratedRoute {
+            api,
+            generated,
+            authentication,
+        } => {
+            out.set_some("api", api.as_deref());
+            out.set("generated", generated.as_str());
+            out.set("authentication", authentication.as_str());
+        }
+        Detail::Principal {
+            entity,
+            subject,
+            active,
+        } => {
+            out.set("entity", entity.as_str());
+            out.set("subject", subject.as_str());
+            out.set_some("active", active.as_deref());
+        }
+        Detail::AuthenticationMethod { built, cookie } => {
+            out.set("built", *built);
+            out.set_some("cookie", cookie.as_deref());
+        }
+        Detail::SignInProvider {
+            path,
+            generates_routes,
+        } => {
+            out.set("path", path.as_str());
+            out.set("generatesRoutes", *generates_routes);
+        }
+        Detail::ConfigField {
+            ty,
+            secret,
+            variable,
+            default,
+        } => {
+            out.set("type", ty.render(name));
+            out.set_some("secret", *secret);
+            out.set("variable", variable.as_str());
+            out.set_some("default", default.as_deref());
+        }
+        Detail::LocaleSet {
+            default,
+            supported,
+            in_progress,
+        } => {
+            out.set("default", default.as_str());
+            out.set(
+                "supported",
+                supported.iter().map(Value::from).collect::<Vec<_>>(),
+            );
+            out.set_some(
+                "inProgress",
+                in_progress.iter().map(Value::from).collect::<Vec<_>>(),
+            );
+        }
+        Detail::RateLimit {
+            requests,
+            window_ms,
+        } => {
+            out.set("requests", *requests);
+            out.set("window", *window_ms);
+        }
+        Detail::Schedule { every_ms } => {
+            out.set("every", i64::try_from(*every_ms).unwrap_or(i64::MAX));
+        }
+        Detail::Subscriber {
+            attempts,
+            within_ms,
+            tenant_field,
+        } => {
+            let mut retry = Value::object();
+            retry.set("attempts", *attempts);
+            retry.set("within", i64::try_from(*within_ms).unwrap_or(i64::MAX));
+            out.set("retry", retry);
+            out.set_some("tenantField", tenant_field.as_deref());
+        }
     }
 }
 
@@ -352,7 +498,10 @@ const NODE_FIELDS: &[(&str, &str)] = &[
     ),
     ("domain", "The domain that owns it"),
     ("parent", "The id of what it belongs to"),
-    ("public", "Visible to other domains"),
+    (
+        "public",
+        "Visible to other domains; a provider package's resource a connection calls",
+    ),
     ("doc", "Its /// description"),
     ("base", "A type's base, or the type it refines"),
     ("rules", "Rules on a type or field, by name"),
@@ -361,9 +510,12 @@ const NODE_FIELDS: &[(&str, &str)] = &[
         "order",
         "A field's or variant's place among those beside it, from 0, as declared; copied fields sit at the line that copied them",
     ),
-    ("type", "A field's declared type"),
+    ("type", "A field's or a setting's declared type"),
     ("optional", "An input field the sender may leave out"),
-    ("default", "An input field's default, as written"),
+    (
+        "default",
+        "An input field's default, as written; a setting's, in a variable's spelling; a locale set's default locale",
+    ),
     ("header", "The request header an input field is read from"),
     (
         "column",
@@ -421,10 +573,10 @@ const NODE_FIELDS: &[(&str, &str)] = &[
         "A transition whose `when:` can refuse a visible record, a conflict its callers map",
     ),
     ("sets", "The fields a lifecycle transition sets"),
-    ("api", "The API a route belongs to"),
+    ("api", "The API a route or a generated route belongs to"),
     ("status", "A route's success status"),
-    ("input", "A route's input type"),
-    ("output", "A route's output type"),
+    ("input", "A route's or an operation's input type"),
+    ("output", "A route's or an operation's output type"),
     ("deadline", "A route's deadline, in milliseconds"),
     ("prefix", "The path an API's routes start with"),
     (
@@ -453,7 +605,95 @@ const NODE_FIELDS: &[(&str, &str)] = &[
     ),
     (
         "version",
-        "A prompt's name and the first 8 hex characters of a SHA-256 over its two files, as every call's trace carries it",
+        "A prompt's name and the first 8 hex characters of a SHA-256 over its two files, as every call's trace carries it; a package's version folder; a lock entry's version",
+    ),
+    (
+        "capability",
+        "What a connection's driver serves (package for a provider package), or the capability a mapping fills",
+    ),
+    (
+        "package",
+        "The provider package a connection names, with its version",
+    ),
+    ("domains", "The domains whose actions may call a connection"),
+    (
+        "credential",
+        "The credential scheme a connection's package sends",
+    ),
+    ("packageKind", "A package's kind: library or provider"),
+    (
+        "installed",
+        "A package installed in packages/, rather than the app's own",
+    ),
+    ("method", "The HTTP method an operation is sent with"),
+    (
+        "path",
+        "An operation's path as written, placeholders in braces; where a sign-in way's routes go",
+    ),
+    ("changes", "An operation that changes something"),
+    ("idempotent", "An operation that may be sent again"),
+    ("address", "A host's address, as written"),
+    ("setting", "The setting a host's address is read from"),
+    ("service", "The image of the service Jadpo runs as a host"),
+    (
+        "environment",
+        "The setting and value that choose a host: its setting and what it `is`",
+    ),
+    (
+        "reachedFor",
+        "What a host is reached for: a package, or a capability",
+    ),
+    (
+        "source",
+        "Where a locked package came from: registry, git, path or link",
+    ),
+    ("location", "A locked package's git repository or folder"),
+    ("tag", "A git package's tag"),
+    ("commit", "A git package's tag's commit"),
+    ("packageDigest", "A locked package's digest"),
+    (
+        "generated",
+        "What generates a route the runtime answers: health, openapi, exchange, passkey, magic_link or webhook",
+    ),
+    (
+        "authentication",
+        "Who may call a generated route: none, caller, service, user or signature",
+    ),
+    ("entity", "The id of the entity a principal's records are"),
+    ("subject", "The field that identifies a principal"),
+    (
+        "active",
+        "When a principal's record counts as active, as written",
+    ),
+    ("built", "A sign-in method this compiler builds"),
+    ("cookie", "A browser session's cookie"),
+    (
+        "generatesRoutes",
+        "A sign-in way whose routes the runtime generates",
+    ),
+    ("secret", "A secret setting"),
+    (
+        "variable",
+        "The environment variable a setting is read from",
+    ),
+    ("supported", "The locales a locale set supports, in order"),
+    (
+        "inProgress",
+        "The supported locales whose translations are not finished",
+    ),
+    (
+        "requests",
+        "How many requests a rate limit lets through in its window",
+    ),
+    ("window", "A rate limit's window, in milliseconds"),
+    ("every", "How often a schedule runs, in milliseconds"),
+    (
+        "retry",
+        "How many times a subscriber's delivery is tried (`attempts`) and how long after its event it is given up (`within`, in milliseconds)",
+    ),
+    (
+        "tenantField",
+        "The event's field holding the tenant's id a subscriber is limited to",
     ),
 ];
 

@@ -140,40 +140,40 @@ kinds! {
     Api: "api", Triggers, Built, 7;
     RouteGroup: "route_group", Triggers, Built, 7;
     Route: "route", Triggers, Built, 7;
-    Schedule: "schedule", Triggers, Declared, 12;
-    Subscriber: "subscriber", Triggers, Declared, 12;
-    GeneratedRoute: "generated_route", Triggers, Reserved, 8;
+    Schedule: "schedule", Triggers, Built, 12;
+    Subscriber: "subscriber", Triggers, Built, 12;
+    GeneratedRoute: "generated_route", Triggers, Built, 8;
 
-    Principal: "principal", Access, Reserved, 8;
-    AuthenticationMethod: "authentication_method", Access, Reserved, 8;
-    SignInProvider: "sign_in_provider", Access, Reserved, 8;
+    Principal: "principal", Access, Built, 8;
+    AuthenticationMethod: "authentication_method", Access, Built, 8;
+    SignInProvider: "sign_in_provider", Access, Built, 8;
     Grant: "grant", Access, Built, 9;
     FieldRestriction: "field_restriction", Access, Built, 9;
     Tenancy: "tenancy", Access, Built, 9;
     ActionException: "action_exception", Access, Built, 9;
     OauthScope: "oauth_scope", Access, Reserved, 8;
 
-    Connection: "connection", Outside, Reserved, 11;
-    Package: "package", Outside, Reserved, 11;
-    Resource: "resource", Outside, Reserved, 11;
-    Operation: "operation", Outside, Reserved, 11;
-    CapabilityMapping: "capability_mapping", Outside, Reserved, 11;
-    Host: "host", Outside, Reserved, 11;
+    Connection: "connection", Outside, Built, 11;
+    Package: "package", Outside, Built, 11;
+    Resource: "resource", Outside, Built, 11;
+    Operation: "operation", Outside, Built, 11;
+    CapabilityMapping: "capability_mapping", Outside, Built, 11;
+    Host: "host", Outside, Built, 11;
 
-    ConfigField: "config_field", Services, Reserved, 10;
-    LocaleSet: "locale_set", Services, Reserved, 10;
+    ConfigField: "config_field", Services, Built, 10;
+    LocaleSet: "locale_set", Services, Built, 10;
     TranslationKey: "translation_key", Services, Built, 10;
     Prompt: "prompt", Services, Built, 21;
     EmailTemplate: "email_template", Services, Reserved, 16;
     Flag: "flag", Services, Reserved, 16;
-    RateLimit: "rate_limit", Services, Reserved, 7;
+    RateLimit: "rate_limit", Services, Built, 7;
     Threshold: "threshold", Services, Reserved, 16;
 
     ApiRecord: "api_record", Records, Reserved, 7;
     MigrationSnapshot: "migration_snapshot", Records, Built, 5;
     RegistryEntry: "registry_entry", Records, Reserved, 18;
     Acceptance: "acceptance", Records, Reserved, 18;
-    LockEntry: "lock_entry", Records, Reserved, 11;
+    LockEntry: "lock_entry", Records, Built, 11;
 }
 
 impl Kind {
@@ -233,12 +233,12 @@ macro_rules! edges {
 }
 
 edges! {
-    Calls: "calls", Built, "A callable calls a function, action, query, fixture or library function; a test sends a request through a route";
+    Calls: "calls", Built, "A callable calls a function, action, query, fixture, library function or a provider package's operation; a capability mapping calls the operation it maps onto; a test sends a request through a route";
     Reads: "reads", Built, "A query or an entity's `get` reads an entity";
-    Writes: "writes", Built, "An action or fixture creates, updates or deletes an entity's records";
-    Emits: "emits", Reserved, "Emits an event";
-    Subscribes: "subscribes", Reserved, "A subscriber listens for an event";
-    Runs: "runs", Built, "A trigger runs an action or query";
+    Writes: "writes", Built, "An action or fixture creates, updates or deletes an entity's records; a purge schedule deletes them";
+    Emits: "emits", Built, "A callable emits an event";
+    Subscribes: "subscribes", Built, "A subscriber listens for an event";
+    Runs: "runs", Built, "A trigger (a route, schedule or subscriber) runs an action or query";
     Raises: "raises", Built, "A failure can leave the callable";
     Maps: "maps", Reserved, "One failure becomes another";
     References: "references", Built, "An entity refers to another";
@@ -246,8 +246,8 @@ edges! {
     Grants: "grants", Built, "A grant or field restriction grants an effect on its entity or field; a listed action's line lets its callers in";
     Scopes: "scopes", Built, "A tenancy limits an entity's records to its tenant";
     Invalidates: "invalidates", Reserved, "A write invalidates a cache";
-    Uses: "uses", Built, "Names a type, entity or failure in its signature, fields or body, or reads a constant";
-    Provides: "provides", Reserved, "A package provides a capability";
+    Uses: "uses", Built, "Names a type, entity, field or failure in its signature, fields or body, reads a constant or a setting, or goes through a connection; a connection uses its package";
+    Provides: "provides", Built, "A package provides a capability through its capability mapping";
     Reaches: "reaches", Reserved, "A deployable reaches a node";
     Covers: "covers", Reserved, "A test covers a node";
 }

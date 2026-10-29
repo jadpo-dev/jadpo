@@ -212,12 +212,20 @@ async fn embedded(
             let Some(json) = crate::ai::mapped_input(&embed.input, &given, settings) else {
                 return refused(ctx);
             };
+            // Resolved from its connection's source before the request
+            // is made (chunk 10.3f).
+            let credential = match crate::provider::credential_of(&providers, embed.called) {
+                Ok(credential) => credential,
+                Err(crate::provider::Unready::Misconfigured) => return refused(ctx),
+                Err(crate::provider::Unready::Fault(kind)) => return Done::Fault(kind),
+            };
             match crate::ai::package_request(
                 ctx,
                 &providers,
                 embed.called,
                 &json,
                 settings,
+                credential.as_ref(),
                 None,
                 OPERATION,
             ) {

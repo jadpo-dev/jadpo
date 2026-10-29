@@ -2045,6 +2045,14 @@ fn an_output_never_carries_a_field_not_every_caller_may_read() {
         budget["grants"],
         serde_json::json!(["field Project.budget"])
     );
+    // The field's own lists sit beside the edge, not under its name.
+    assert_eq!(
+        budget["who"],
+        serde_json::json!({
+            "read": ["CompanyRole.editor"],
+            "update": ["CompanyRole.editor"]
+        })
+    );
     let tenancy = node("tenancy Project");
     assert_eq!(tenancy["via"], "company_id");
     assert_eq!(tenancy["scopes"], serde_json::json!(["entity Project"]));

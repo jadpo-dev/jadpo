@@ -4,15 +4,20 @@
 //! what each node carries and its edges are compared. Each change says
 //! which of the decided kinds a person must accept (area 18's table).
 //!
-//! Areas 1 to 4 decide one such kind, `DomainChange` (a domain created or
-//! renamed). `ApiChange`, `DataChange`, `PolicyChange`, `PackageChange`
-//! and `ThresholdChange` are classified by their areas as they are built,
-//! and "newly reachable" needs deployables (area 14).
+//! Areas 1 to 4 decide `DomainChange` (a domain created or renamed).
+//! Areas 8 and 11 (chunk 10.3g) decide the package and sign-in changes
+//! area 18 lists: `PackageChange` for a used operation removed, changed or
+//! failing in a new way, a host or a connection's credential scheme
+//! changed, a service's image new or changed, and a package locked from
+//! git; `PolicyChange` for a new kind of caller, a principal changed, and
+//! a new sign-in method or way of signing in. `ApiChange`, `DataChange`,
+//! policy's grants and `ThresholdChange` are classified by their areas as
+//! they are built, and "newly reachable" needs deployables (area 14).
 
 use std::collections::BTreeSet;
 
 use crate::json::Value;
-use crate::{EdgeKind, Graph, Key, Kind, NodeId};
+use crate::{Detail, EdgeKind, Graph, Key, Kind, Node, NodeId};
 
 /// One edge kind's targets gained and lost by a node.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -168,7 +173,7 @@ pub fn diff(before: &Graph, after: &Graph) -> Diff {
                 key: node.key.clone(),
                 kind: node.kind,
                 what: What::Removed,
-                needs: Vec::new(),
+                needs: removed_needs(before, id),
             });
         }
     }
@@ -178,10 +183,7 @@ pub fn diff(before: &Graph, after: &Graph) -> Diff {
             continue;
         }
         let Some(old_id) = before.find(&node.key) else {
-            let needs = match node.kind {
-                Kind::Domain => vec!["DomainChange.created".to_string()],
-                _ => Vec::new(),
-            };
+            let needs = added_needs(before, node);
             changes.push(Change {
                 key: node.key.clone(),
                 kind: node.kind,
@@ -211,12 +213,7 @@ pub fn diff(before: &Graph, after: &Graph) -> Diff {
             }
         }
         if changed.any() {
-            let needs = match node.kind {
-                Kind::Domain if changed.renamed.is_some() => {
-                    vec!["DomainChange.renamed".to_string()]
-                }
-                _ => Vec::new(),
-            };
+            let needs = changed_needs(after, id, old, node, &changed);
             changes.push(Change {
                 key: node.key.clone(),
                 kind: node.kind,
@@ -227,4 +224,110 @@ pub fn diff(before: &Graph, after: &Graph) -> Diff {
     }
     changes.sort_by(|a, b| a.key.cmp(&b.key));
     Diff { changes }
+}
+
+fn need(kind: &str) -> Vec<String> {
+    vec![kind.to_string()]
+}
+
+/// Whether anything but a test calls `id`: an operation the app uses
+/// (area 18, "Package upgrades").
+fn called(graph: &Graph, id: NodeId) -> bool {
+    graph
+        .incoming(id, EdgeKind::Calls)
+        .any(|caller| graph.node(caller).kind != Kind::Test)
+}
+
+/// A lock entry from git: a package not from the registry, whose publisher
+/// nothing verifies (area 11, "Publisher trust"). Telling the app's own
+/// company's repository from a third party's needs a setting the pages
+/// don't decide, so every git package needs a person until they do.
+fn from_git(node: &Node) -> bool {
+    matches!(&node.detail, Detail::LockEntry { source, .. } if source == "git")
+}
+
+fn service(node: &Node) -> Option<&str> {
+    match &node.detail {
+        Detail::Host { service, .. } => service.as_deref(),
+        _ => None,
+    }
+}
+
+/// What a node added on the `after` side needs.
+fn added_needs(before: &Graph, node: &Node) -> Vec<String> {
+    match node.kind {
+        Kind::Domain => need("DomainChange.created"),
+        Kind::LockEntry if from_git(node) => need("PackageChange.git_source"),
+        Kind::Host if service(node).is_some() => need("PackageChange.service_image"),
+        // A new connection's hosts appear without a person; a host added
+        // to a connection the app already had is its host changed.
+        Kind::Host
+            if node
+                .parent
+                .as_ref()
+                .is_some_and(|connection| before.find(connection).is_some()) =>
+        {
+            need("PackageChange.host_changed")
+        }
+        Kind::Principal => need("PolicyChange.principal_added"),
+        Kind::AuthenticationMethod => need("PolicyChange.sign_in_method_added"),
+        Kind::SignInProvider => need("PolicyChange.sign_in_added"),
+        _ => Vec::new(),
+    }
+}
+
+/// What a node gone from the `before` side needs: an operation the app
+/// called (area 18, "Package upgrades").
+fn removed_needs(before: &Graph, id: NodeId) -> Vec<String> {
+    match before.node(id).kind {
+        Kind::Operation if called(before, id) => need("PackageChange.operation_removed"),
+        _ => Vec::new(),
+    }
+}
+
+/// What a node on both sides that differs needs.
+fn changed_needs(
+    after: &Graph,
+    id: NodeId,
+    old: &Node,
+    node: &Node,
+    changed: &Changed,
+) -> Vec<String> {
+    match node.kind {
+        Kind::Domain if changed.renamed.is_some() => need("DomainChange.renamed"),
+        Kind::Operation if called(after, id) => {
+            let mut out = Vec::new();
+            if changed.detail {
+                out.push("PackageChange.operation_changed".to_string());
+            }
+            if changed
+                .edges
+                .iter()
+                .any(|edge| edge.kind == EdgeKind::Raises && !edge.added.is_empty())
+            {
+                out.push("PackageChange.failure_added".to_string());
+            }
+            out
+        }
+        Kind::Host
+            if changed.detail && service(node).is_some() && service(old) != service(node) =>
+        {
+            need("PackageChange.service_image")
+        }
+        Kind::Host if changed.detail => need("PackageChange.host_changed"),
+        Kind::Connection => match (&old.detail, &node.detail) {
+            (
+                Detail::Connection {
+                    credential: was, ..
+                },
+                Detail::Connection {
+                    credential: now, ..
+                },
+            ) if was != now => need("PackageChange.credential_changed"),
+            _ => Vec::new(),
+        },
+        Kind::LockEntry if from_git(node) && changed.detail => need("PackageChange.git_source"),
+        Kind::Principal if changed.detail => need("PolicyChange.principal_changed"),
+        _ => Vec::new(),
+    }
 }

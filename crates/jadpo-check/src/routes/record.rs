@@ -26,6 +26,7 @@ use jadpo_db::record::{self as format, Entry};
 use jadpo_db::{Db, Project};
 use jadpo_graph::{Base, Detail, Key, Kind, Section};
 
+use super::generated::Generating;
 use super::wire::Wire;
 use super::{GroupModel, RouteModel, Segment, groups, routes_clean};
 use crate::graph::{declaration_key, type_ref};
@@ -79,19 +80,11 @@ pub fn record_texts(db: &dyn Db, project: Project) -> BTreeMap<String, String> {
         locales: crate::locales::locales(db, project).plan.as_ref(),
     };
     let apis = super::api_table(db, project);
-    let identity = crate::identity::identity(db, project);
-    // The passkey and magic-link routes belong to the first API that
-    // accepts browser sessions (area 8), routes of its own or not.
-    let passkey_api = super::served::sign_in_api(db, project);
-    if let Some(api) = &passkey_api {
+    // What the runtime answers itself in each API: the APIs with none of
+    // their own routes but sign-in's or the webhooks get a record too.
+    let mut generating = super::generated::generating(db, project);
+    for api in generating.keys() {
         by_api.entry(api.clone()).or_default();
-    }
-    // Each connection's webhook, in the `webhooks` API the app declares
-    // (chunk 7.7).
-    if !crate::webhooks::declared_in(db, project, crate::webhooks::DEFAULT_PREFIX).is_empty() {
-        by_api
-            .entry(crate::webhooks::DEFAULT_PREFIX.to_string())
-            .or_default();
     }
     by_api
         .into_iter()
@@ -99,33 +92,20 @@ pub fn record_texts(db: &dyn Db, project: Project) -> BTreeMap<String, String> {
             // How clients sign in: switching a bearer-only API to cookies
             // changes what a browser's requests carry (area 8).
             let methods = super::apis::accepted_methods(db, project, &api);
-            // The exchange the runtime answers where services sign in.
-            let mut generated = Vec::new();
-            if identity.exchanges()
-                && methods.contains(&jadpo_std::AuthenticationMethod::ServiceKey)
-            {
-                generated.push(exchange_entry());
-            }
-            if let Some(passkey) = identity.passkeys()
-                && passkey_api.as_deref() == Some(api.as_str())
-            {
-                generated.extend(passkey_entries(&passkey.path));
-            }
-            if let Some(magic) = identity.magic_link_routes()
-                && passkey_api.as_deref() == Some(api.as_str())
-            {
-                generated.extend(magic_link_entries(
-                    &magic.path,
-                    identity.built(jadpo_std::AuthenticationMethod::ApiToken),
-                ));
-            }
-            // Its own OpenAPI document (area 7, "OpenAPI").
-            if let Some(served) = super::served::served_by(db, project, &api) {
-                generated.push(openapi_entry(&served));
-            }
-            for webhook in crate::webhooks::declared_in(db, project, &api) {
-                generated.push(webhook_entry(&webhook));
-            }
+            let generated: Vec<Generated> = generating
+                .remove(&api)
+                .unwrap_or_default()
+                .iter()
+                .flat_map(|what| match what {
+                    Generating::Exchange => vec![exchange_entry()],
+                    Generating::Passkey(path) => passkey_entries(path),
+                    Generating::MagicLink { path, api_tokens } => {
+                        magic_link_entries(path, *api_tokens)
+                    }
+                    Generating::OpenApi(served) => vec![openapi_entry(served)],
+                    Generating::Webhook(webhook) => vec![webhook_entry(webhook)],
+                })
+                .collect();
             let mut head = Entry::new(format!("api {api}"));
             let mut names: Vec<&str> = methods.iter().map(|method| method.name()).collect();
             names.sort_unstable();

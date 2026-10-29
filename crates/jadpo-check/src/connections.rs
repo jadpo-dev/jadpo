@@ -1930,26 +1930,39 @@ pub struct Report {
     pub json: Value,
 }
 
-/// One row: a host one connection reaches.
-struct Row {
-    connection: String,
+/// One host one connection reaches: a row of the report, and a `host`
+/// node of the graph (chunk 10.3g).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Row {
+    pub connection: String,
     /// The host as the report shows it.
-    host: String,
+    pub host: String,
     /// The same, as JSON gives it: an address, or the setting it is read
     /// from, or the service's image.
-    address: Option<String>,
-    setting: Option<String>,
-    image: Option<String>,
+    pub address: Option<String>,
+    pub setting: Option<String>,
+    pub image: Option<String>,
     /// When it is reached: `None` always, or the environment's setting
     /// and value.
-    when: Option<(String, &'static str)>,
+    pub when: Option<(String, &'static str)>,
     /// What it is reached for: a package, or a capability.
-    reached_for: String,
-    domains: Vec<String>,
+    pub reached_for: String,
+    pub domains: Vec<String>,
 }
 
 /// The report, once the connections read cleanly.
 pub fn report(db: &dyn Db, project: Project) -> Report {
+    let rows = hosts(db, project, true);
+    let databases = crate::databases::database_connections(db, project);
+    let identity = crate::identity::identity(db, project);
+    report_of(&rows, databases, identity)
+}
+
+/// Every host the app can reach, by connection and host; with `domains`,
+/// the domains that use each, which reading the emails and the actions
+/// that ask a model takes, so the graph, which names no domains on a host,
+/// leaves it out.
+pub fn hosts(db: &dyn Db, project: Project, domains: bool) -> Vec<Row> {
     let mut rows: Vec<Row> = Vec::new();
     for connection in &package_connections(db, project).connections {
         let package = format!("`{}`", connection.package);
@@ -2026,7 +2039,9 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
     }
     // Each SMTP server, which email is reached for (area 16; chunk 7.3),
     // by the domains whose emails go through it, the one `email:` names.
-    let sending: Vec<String> = {
+    let sending: Vec<String> = if !domains {
+        Vec::new()
+    } else {
         let mut domains: Vec<String> = crate::emails::analysis(db, project)
             .emails
             .iter()
@@ -2068,7 +2083,11 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
     }
     // The model `ai:` names (area 21; chunk 5.5v3), by the domains whose
     // actions ask it.
-    let asking = crate::ai::asking_domains(db, project);
+    let asking: Vec<String> = if domains {
+        crate::ai::asking_domains(db, project).clone()
+    } else {
+        Vec::new()
+    };
     let named = crate::ai::settings(db, project).connection.clone();
     for model in &crate::ai::model_connections(db, project).list {
         let (host, address, setting) = match &model.url {
@@ -2107,6 +2126,14 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
         });
     }
     rows.sort_by(|a, b| (&a.connection, &a.host).cmp(&(&b.connection, &b.host)));
+    rows
+}
+
+fn report_of(
+    rows: &[Row],
+    databases: &crate::databases::DatabaseConnections,
+    identity: &crate::identity::Identity,
+) -> Report {
     let mut markdown = String::from(
         "# Network\n\n\
          Every host the app can reach, and the connection that reaches it. Jadpo code reaches \
@@ -2119,7 +2146,7 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
         markdown.push_str("The app reaches no host.\n");
     } else {
         markdown.push_str("| Connection | Host | When | For | Domains |\n|---|---|---|---|---|\n");
-        for row in &rows {
+        for row in rows {
             let when = match &row.when {
                 Some((setting, word)) => format!("`config.{setting}` is `{word}`"),
                 None => "always".to_string(),
@@ -2140,7 +2167,7 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
         }
     }
     let mut hosts = Vec::new();
-    for row in &rows {
+    for row in rows {
         let mut entry = Value::object();
         entry.set("connection", row.connection.as_str());
         if let Some(address) = &row.address {

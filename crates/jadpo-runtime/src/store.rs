@@ -14,7 +14,7 @@
 //! repeatable read: a read loads what it reads, and its includes need the
 //! first statement's snapshot.
 
-use jadpo_std::read::{MissingPlan, MissingValue, ReadPlan};
+use jadpo_std::read::{Cardinality, MissingPlan, MissingValue, ReadPlan};
 use jadpo_std::types::FailurePlan;
 use jadpo_std::write::{Raises, WritePlan};
 use jadpo_value::Value;
@@ -58,6 +58,59 @@ pub enum Stored {
 /// raised from; `json` the codecs a JSON-held column is written and read
 /// with, as `json.read` is given them (chunk 5.5w2b).
 pub async fn store(
+    ctx: &mut Ctx<'_>,
+    op: StoreOp<'_>,
+    failures: &[FailurePlan],
+    json: JsonCodecs<'_>,
+    args: &[Value],
+    site: u32,
+) -> Stored {
+    // Its span (chunk 10.3c), at its site in the frame on top.
+    let kind = match op {
+        StoreOp::Read(_) => crate::spans::Kind::Read,
+        StoreOp::Write(_) => crate::spans::Kind::Write,
+    };
+    let frame = ctx.span_frame(site);
+    let begun = ctx.span_begin(kind, frame);
+    let stored = stored(ctx, op, failures, json, args, site).await;
+    let (rows, ended) = match &stored {
+        Stored::Value(value) => (Some(rows(op, value)), crate::spans::Ended::Value),
+        Stored::Failed(failure) => (None, crate::spans::Ended::failed(failure)),
+        Stored::Conflict { cause, .. } => (None, crate::spans::Ended::failed(cause)),
+        Stored::Fault(fault) => (None, crate::spans::Ended::fault(fault)),
+    };
+    ctx.span_end(begun, rows, ended);
+    stored
+}
+
+/// How many records `op` gave or wrote, as it gave `value`.
+fn rows(op: StoreOp<'_>, value: &Value) -> u64 {
+    let count = |list: &Value| match list {
+        Value::List(items) => items.len() as u64,
+        _ => 0,
+    };
+    match op {
+        // A write gives the record it wrote, `Unit` for a delete.
+        StoreOp::Write(_) => 1,
+        StoreOp::Read(plan) => match plan.cardinality {
+            Cardinality::One => 1,
+            Cardinality::Optional => u64::from(*value != Value::None),
+            // A map layer's features, as one collection.
+            Cardinality::List if plan.layer => match value {
+                Value::Record(record) => record.fields.first().map_or(0, |(_, list)| count(list)),
+                _ => 0,
+            },
+            Cardinality::List => count(value),
+            Cardinality::Page => match value {
+                Value::Record(record) => record.get("items").map_or(0, count),
+                _ => 0,
+            },
+        },
+    }
+}
+
+/// [`store`], its span kept by the caller.
+async fn stored(
     ctx: &mut Ctx<'_>,
     op: StoreOp<'_>,
     failures: &[FailurePlan],

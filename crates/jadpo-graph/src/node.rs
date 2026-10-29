@@ -317,6 +317,121 @@ pub enum Detail {
     /// characters of a SHA-256 over its two files, `answer_question@3fa9c2d1`,
     /// which every call's trace span and log line carry.
     Prompt { version: String },
+    /// A connection in `application { connections: }` (area 11): the
+    /// capability its driver serves (`database`, `email`, `files`, ...),
+    /// or `package` for a provider package, which it names with its
+    /// version (`SwiftCouriers.v1`); the domains whose actions may call
+    /// it; and the credential scheme its package sends, `bearer`.
+    Connection {
+        capability: String,
+        package: Option<String>,
+        domains: Vec<String>,
+        credential: Option<String>,
+    },
+    /// A package the project holds (area 11), keyed by the name its
+    /// declarations are written through: its version folder (`v1`),
+    /// whether it is a `library` or `provider` package, and whether it is
+    /// installed in `packages/` rather than the app's own.
+    Package {
+        version: String,
+        package_kind: String,
+        installed: bool,
+    },
+    /// A provider package's operation (area 11, "How provider calls are
+    /// made"): how it is sent, its path as written with its placeholders,
+    /// what it takes and gives, and whether it changes anything and may be
+    /// sent again.
+    Operation {
+        method: String,
+        path: String,
+        input: Option<TypeRef>,
+        output: TypeRef,
+        changes: bool,
+        idempotent: bool,
+    },
+    /// A provider package's `provide <capability>` (area 11,
+    /// "Capabilities"): the capability it fills.
+    CapabilityMapping { capability: String },
+    /// A host the app can reach (area 11, the network report): its address
+    /// as written, or the setting it is read from, or the image of the
+    /// service Jadpo runs; the setting and value that choose it, when one
+    /// does (`couriers_environment`, `live`); and what it is reached for.
+    Host {
+        address: Option<String>,
+        setting: Option<String>,
+        service: Option<String>,
+        environment: Option<(String, String)>,
+        reached_for: String,
+    },
+    /// A line of `jadpo.lock` (area 18, "The lock"): the package's version,
+    /// where it came from (`registry`, `git`, `path` or `link`), the
+    /// repository or folder, a git package's tag and commit, and its
+    /// digest.
+    LockEntry {
+        version: Option<String>,
+        source: String,
+        location: Option<String>,
+        tag: Option<String>,
+        commit: Option<String>,
+        digest: Option<String>,
+    },
+    /// A route the runtime answers itself (areas 7, 8 and 11): the API it
+    /// is in (`None` for health, which is outside every API), what
+    /// generates it (`health`, `openapi`, `exchange`, `passkey`,
+    /// `magic_link`, `webhook`), and who may call it (`none`, `caller`,
+    /// `service`, `user`, `signature`).
+    GeneratedRoute {
+        api: Option<String>,
+        generated: String,
+        authentication: String,
+    },
+    /// A kind of caller `principal { }` declares (area 8): the entity that
+    /// holds it, the field that identifies it, and when its record counts
+    /// as active, as written.
+    Principal {
+        entity: Key,
+        subject: String,
+        active: Option<String>,
+    },
+    /// A sign-in method `authentication { }` declares (area 8): whether
+    /// the compiler builds it, and a browser session's cookie.
+    AuthenticationMethod { built: bool, cookie: Option<String> },
+    /// A way `sign_in:` checks a person (area 8, "Checking the person"):
+    /// where its routes go, and whether the runtime generates them.
+    SignInProvider {
+        path: String,
+        generates_routes: bool,
+    },
+    /// A setting in `config { }` (area 10): its type, whether it is
+    /// secret, the variable it is read from, and its `default:` in a
+    /// variable's spelling.
+    ConfigField {
+        ty: TypeRef,
+        secret: bool,
+        variable: String,
+        default: Option<String>,
+    },
+    /// The application's `locales { }` (area 10): its default, the locales
+    /// it supports in the order listed, and those whose translations are
+    /// in progress, each as `Locale`'s variant (`en_gb`).
+    LocaleSet {
+        default: String,
+        supported: Vec<String>,
+        in_progress: Vec<String>,
+    },
+    /// A rate limit every route is counted against (area 16, "Rate
+    /// limits"): how many requests it lets through in its window.
+    RateLimit { requests: u32, window_ms: u32 },
+    /// A schedule (area 12): how often it runs, in milliseconds.
+    Schedule { every_ms: u64 },
+    /// A subscriber (area 12): how often a delivery is tried and how long
+    /// after its event it is given up, and the event's field naming its
+    /// tenant, when the application has one.
+    Subscriber {
+        attempts: u32,
+        within_ms: u64,
+        tenant_field: Option<String>,
+    },
 }
 
 /// What an input field's `default:` fills in when the field is left out

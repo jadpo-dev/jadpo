@@ -86,6 +86,15 @@ pub enum Entry {
     },
     /// How the invocation ended ([`outcome`]).
     Outcome(String),
+    /// One span of what it did ([`spans`]; chunk 10.3c): its kind, where
+    /// it is, how many records it gave or wrote, and how it ended. Never
+    /// its times, which no seed decides.
+    Span {
+        kind: String,
+        place: String,
+        rows: Option<u64>,
+        ended: String,
+    },
     /// The paths one body's region took ([`paths`]): where it is, and
     /// each path number with how many times it was taken.
     Paths {
@@ -297,6 +306,15 @@ impl Entry {
                 one_line(answer)
             ),
             Entry::Outcome(outcome) => format!("outcome {outcome}"),
+            Entry::Span {
+                kind,
+                place,
+                rows,
+                ended,
+            } => match rows {
+                Some(rows) => format!("span {kind} {place} | rows {rows} | {ended}"),
+                None => format!("span {kind} {place} | {ended}"),
+            },
             Entry::Paths { place, taken } => {
                 let taken: Vec<String> = taken
                     .iter()
@@ -416,6 +434,22 @@ pub fn outcome(outcome: &Outcome, places: &Places) -> String {
             )
         }
     }
+}
+
+/// What a run did ([`crate::spans`]; chunk 10.3c), one entry per span in
+/// the order each started: `span write create_todo.jadpo:9  action
+/// create_todo | rows 1 | value`, where it is placed as a failure's site
+/// is, `entry` for one the runtime made on its own behalf.
+pub fn spans(spans: &crate::spans::Spans, places: &Places) -> Vec<Entry> {
+    spans
+        .iter()
+        .map(|span| Entry::Span {
+            kind: span.kind.word(),
+            place: site(span.frame(), places),
+            rows: span.rows,
+            ended: span.ended.word(),
+        })
+        .collect()
 }
 
 /// The paths a run's bodies took ([`crate::paths`]; chunk 9.3), one entry
