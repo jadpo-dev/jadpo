@@ -570,3 +570,43 @@ fn an_installed_package_is_never_formatted() {
     assert_eq!(read(&root, "packages/counts/v1/types/count.jadpo"), messy);
     assert_eq!(read(&root, COUNT), TIDY_COUNT);
 }
+
+/// A move whose new file would carry another declaration's name too
+/// (`ListBooks` to `types/list_books.jadpo`, beside query `list_books`)
+/// is refused: `--layout` leaves it, and says which to rename first.
+#[test]
+fn fmt_layout_refuses_a_move_onto_a_name_its_file_folds_to() {
+    let root = folder("layout-folded");
+    write(&root, "app.jadpo", "application {}\n");
+    write(
+        &root,
+        "domains/shop/queries/list_books.jadpo",
+        "/// A page request.\ntype ListBooks = Input {\n    page_size: PageSize {\n        default: 25\n    }\n}\n\n/// Books.\nquery list_books(filter: ListBooks) -> List<Book> {\n    from: Book\n    limit: 25\n}\n",
+    );
+    write(
+        &root,
+        "domains/shop/queries/catalogue.jadpo",
+        "use shop/queries { ListBooks }\n\n/// Everyone's view.\nquery catalogue(filter: ListBooks) -> List<Book> {\n    from: Book\n    limit: 25\n}\n",
+    );
+    write(
+        &root,
+        "domains/shop/entities/book.jadpo",
+        "/// A book.\nentity Book {\n    id: Uuid\n    title: Text\n\n    policy: {\n        read: [Access.public]\n    }\n}\n",
+    );
+    let output = jadpo(&root, &["fmt", "--layout"]);
+    assert_eq!(output.code, 1, "{}", output.stdout);
+    assert!(
+        !root.join("domains/shop/types/list_books.jadpo").exists(),
+        "the move isn't made"
+    );
+    assert!(
+        output.stdout.contains("next: Rename `ListBooks` first"),
+        "{}",
+        output.stdout
+    );
+    assert!(
+        output.stdout.contains("1 move refused"),
+        "{}",
+        output.stdout
+    );
+}

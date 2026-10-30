@@ -59,6 +59,11 @@ enum Role {
     Call,
     /// The name before a dot: `menu.price_item(...)`, `money.round(...)`.
     Qualifier,
+    /// A bare name listed under root `policy { actions: { } }`, which
+    /// names an action as `domain.action` (area 9): the listing is
+    /// `policy.binding_invalid`'s to report, and the import that brought
+    /// the name in counts as used, so it isn't a second report.
+    PolicyAction,
 }
 
 /// The first place a file writes a name that may come from elsewhere.
@@ -272,6 +277,12 @@ fn member_key_use(node: &SyntaxNode) -> Option<(String, Role, u32, u32)> {
         .children()
         .filter(|child| child.kind() == NAME)
         .collect();
+    if let [only] = names.as_slice()
+        && listed_action(node)
+    {
+        let (name, start, end) = named(only)?;
+        return Some((name, Role::PolicyAction, start, end));
+    }
     if names.len() < 2 {
         return None;
     }
@@ -282,6 +293,36 @@ fn member_key_use(node: &SyntaxNode) -> Option<(String, Role, u32, u32)> {
         Role::Qualifier
     };
     Some((name, role, start, end))
+}
+
+/// Whether `key` is a line's key under `policy { actions: { } }`.
+fn listed_action(key: &SyntaxNode) -> bool {
+    let actions = key
+        .parent()
+        .filter(|member| member.kind() == MEMBER)
+        .and_then(|member| member.parent())
+        .filter(|list| list.kind() == MEMBER_LIST)
+        .and_then(|list| list.parent())
+        .filter(|member| member.kind() == MEMBER);
+    let Some(actions) = actions else {
+        return false;
+    };
+    let named_actions = actions
+        .children()
+        .find(|child| child.kind() == MEMBER_KEY)
+        .is_some_and(|key| key.text() == "actions");
+    named_actions
+        && actions
+            .parent()
+            .and_then(|list| list.parent())
+            .is_some_and(|decl| {
+                decl.kind() == SINGLETON_DECL
+                    && decl
+                        .children_with_tokens()
+                        .filter_map(|element| element.into_token())
+                        .find(|token| !token.kind().is_trivia())
+                        .is_some_and(|token| token.text() == "policy")
+            })
 }
 
 /// The folder a `use` line names to bring `symbol` in: `<domain>/<folder>`,
@@ -703,6 +744,7 @@ impl Here<'_> {
                 })?;
                 Some(Need::Name(Box::new(symbol.clone())))
             }
+            Role::PolicyAction => None,
             Role::Qualifier => {
                 if self.std.reserved(name) {
                     return None;
@@ -734,6 +776,12 @@ impl Here<'_> {
                 Need::Connection(name) => Some(name.as_str()),
                 Need::Domain(_) | Need::Package(_) => None,
             })
+            .chain(
+                written
+                    .iter()
+                    .filter(|w| w.role == Role::PolicyAction)
+                    .map(|w| w.name.as_str()),
+            )
             .collect();
         let used_domains: BTreeSet<&str> = needs
             .iter()
@@ -761,6 +809,7 @@ impl Here<'_> {
             Role::Call => {
                 self.table.declared(&w.name).is_empty() && self.std.namespace_of(&w.name).is_none()
             }
+            Role::PolicyAction => self.table.declared(&w.name).is_empty(),
             Role::Qualifier => {
                 w.called
                     && !self.std.reserved(&w.name)

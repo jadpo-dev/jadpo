@@ -489,6 +489,9 @@ pub(crate) fn at_decl(p: &Parser<'_>) -> bool {
     let prefix = habits::decl_prefix_len(p);
     let public = usize::from(p.nth(prefix) == PUBLIC_KW);
     let n = prefix + public;
+    if keyword_qualifier(p, n) {
+        return false;
+    }
     match p.nth(n) {
         kind if DECLARATION_KEYWORDS.contains(&kind) => true,
         IDENT => {
@@ -1148,6 +1151,38 @@ fn reserved_word(p: &mut Parser<'_>) {
     p.push_error(error);
 }
 
+/// Whether the token `n` ahead is a reserved word written straight
+/// before `.` and a name, as a domain or library named with one is
+/// written (`library.borrow`). No declaration or statement starts that
+/// way, so it is read as the name it was meant to be.
+pub(crate) fn keyword_qualifier(p: &Parser<'_>, n: usize) -> bool {
+    p.nth(n).is_keyword()
+        && p.nth(n + 1) == DOT
+        && p.nth_adjacent(n + 1)
+        && (p.nth(n + 2) == IDENT || p.nth(n + 2).is_keyword())
+        && p.nth_adjacent(n + 2)
+}
+
+/// `library.borrow`: the reserved word, reported, read as a name. The
+/// tree is the one the renamed word would give, so the rest of the
+/// project is still checked, and the checker leaves the error out when a domain's
+/// folder is the word, since that folder is where it is reported.
+fn reserved_qualifier(p: &mut Parser<'_>) {
+    let word = p.current_text().to_string();
+    let error = p
+        .error_here(
+            &rule::SYNTAX_EXPECTED_NAME,
+            format!("`{word}` is a reserved word"),
+        )
+        .label("can't be a name")
+        .reason(format!(
+            "Control-flow and declaration words are reserved, so they can't name anything, a domain or library included; `{word}.` is read as one here."
+        ))
+        .next(format!("Rename what `{word}` names, and write its new name here"))
+        .read_as_name();
+    p.push_error(error);
+}
+
 fn name_ref(p: &mut Parser<'_>) -> bool {
     match p.current() {
         IDENT => {
@@ -1371,6 +1406,7 @@ fn member_list(p: &mut Parser<'_>, context: Members) -> CompletedMarker {
     if !p.enter() {
         return m.complete(p, MEMBER_LIST);
     }
+    let errors = p.error_count();
     p.with_newlines(false, |p| {
         p.with_records(true, |p| {
             while !p.at(R_BRACE) && !p.at_eof() {
@@ -1385,6 +1421,7 @@ fn member_list(p: &mut Parser<'_>, context: Members) -> CompletedMarker {
             }
         })
     });
+    p.stop_at_first_name_error(errors);
     p.leave();
     close_brace(p, open);
     m.complete(p, MEMBER_LIST)
@@ -1428,6 +1465,16 @@ fn member_key_len(p: &Parser<'_>) -> Option<usize> {
     (p.nth(i) == COLON).then_some(i)
 }
 
+/// [`member_key_len`] for a key whose first word is reserved:
+/// `library.borrow:`.
+fn keyword_key_len(p: &Parser<'_>) -> Option<usize> {
+    let mut i = 1;
+    while p.nth(i) == DOT && (p.nth(i + 1) == IDENT || p.nth(i + 1).is_keyword()) {
+        i += 2;
+    }
+    (i > 1 && p.nth(i) == COLON).then_some(i)
+}
+
 fn member_item(p: &mut Parser<'_>, context: Members) {
     match p.current() {
         DECLINE_KW if p.nth(1) != COLON => declined(p, |p| {
@@ -1438,6 +1485,10 @@ fn member_item(p: &mut Parser<'_>, context: Members) {
             }
         }),
         DOT3 => elision(p),
+        kind if kind.is_keyword() && keyword_qualifier(p, 0) && keyword_key_len(p).is_some() => {
+            reserved_qualifier(p);
+            member(p, context);
+        }
         _ if at_decl(p) && !(p.current().is_keyword() && p.nth(1) == COLON) => decl(p),
         _ if at_route_entry(p) => route_entry(p),
         IDENT if context == Members::Declaration && at_rule_member(p) => rule_member(p),
@@ -1813,6 +1864,7 @@ fn block(p: &mut Parser<'_>) -> CompletedMarker {
     if !p.enter() {
         return m.complete(p, BLOCK);
     }
+    let errors = p.error_count();
     p.with_newlines(false, |p| {
         p.with_records(true, |p| {
             while !p.at(R_BRACE) && !p.at_eof() {
@@ -1827,6 +1879,7 @@ fn block(p: &mut Parser<'_>) -> CompletedMarker {
             }
         })
     });
+    p.stop_at_first_name_error(errors);
     p.leave();
     close_brace(p, open);
     m.complete(p, BLOCK)
@@ -1838,6 +1891,7 @@ fn block_item(p: &mut Parser<'_>) {
         return;
     }
     match p.current() {
+        kind if kind.is_keyword() && keyword_qualifier(p, 0) => expr_stmt(p),
         VAR_KW => var_stmt(p),
         DECLINE_KW if p.nth(1) != COLON => {
             let error = p
@@ -2364,6 +2418,7 @@ fn expr_stmt(p: &mut Parser<'_>) {
 
 fn can_start_expr(p: &Parser<'_>) -> bool {
     EXPRESSION_KEYWORDS.contains(&p.current())
+        || keyword_qualifier(p, 0)
         || matches!(
             p.current(),
             IDENT
@@ -2448,6 +2503,11 @@ fn expr_bp_inner(p: &mut Parser<'_>, min: u8) -> Option<CompletedMarker> {
 
 fn unary(p: &mut Parser<'_>) -> Option<CompletedMarker> {
     match p.current() {
+        kind if kind.is_keyword() && keyword_qualifier(p, 0) => {
+            let start = p.range().0;
+            let done = primary(p)?;
+            Some(postfix(p, done, Some(start)))
+        }
         NOT_KW | MINUS => {
             let m = p.start();
             p.bump_any();
@@ -2521,6 +2581,11 @@ fn unary(p: &mut Parser<'_>) -> Option<CompletedMarker> {
 fn primary(p: &mut Parser<'_>) -> Option<CompletedMarker> {
     let m = p.start();
     let kind = match p.current() {
+        kind if kind.is_keyword() && keyword_qualifier(p, 0) => {
+            reserved_qualifier(p);
+            p.bump_remap(IDENT);
+            NAME_REF
+        }
         INT_NUMBER | DECIMAL_NUMBER | UNIT_NUMBER | STRING | TRUE_KW | FALSE_KW | NONE_KW => {
             p.bump_any();
             LITERAL
