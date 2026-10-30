@@ -1047,7 +1047,8 @@ and its delivery record alone says it went.
   rendered fails the test, and a test reads what it sent so far as a
   `List<SentEmail>`, each with its `to`, `from`, `subject`, `html` and
   `text` (`none` without that template), every link in it (`links`) and
-  its attachments' file names (`attachments`). Only a test reads it
+  its attachments' file names (`attachments`), and the sign-in email's
+  token and code (`sign_in_token`, `sign_in_code`). Only a test reads it
   (`email.sent_context`), and the mail is caught whole whichever
   connection `email:` names, a mail package's included. `jadpo dev`
   catches it the same way, in the dev inbox; nothing leaves
@@ -1837,7 +1838,11 @@ The store rate limits are counted in on Workers:
   so far, in the order it was sent; `SentEmail` holds `to`, `from`,
   `subject`, `html` and `text` (`Text?`), `links` (each `href` in the
   HTML and each `http://` or `https://` address in the text, once each,
-  in order) and `attachments` (their file names). A local named `email`
+  in order), `attachments` (their file names), and `sign_in_token`
+  (`SignInToken?`) and `sign_in_code` (`SignInCode?`), the sign-in
+  email's link token and code, which a route test posts to the
+  confirmation ([In development and tests](08-identity.md#in-development-and-tests)),
+  `none` on every other email. A local named `email`
   is read before the namespace, since an address is often called that.
   A test that reaches no store reads an empty list.
 - **One fake for every connection that fills `email`.** A test's host

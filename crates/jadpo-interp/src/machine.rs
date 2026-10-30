@@ -1963,14 +1963,7 @@ impl<'p> Machine<'p> {
                 idempotency_key,
                 caller,
             } => {
-                let Some(index) = self
-                    .program
-                    .plan()
-                    .routes()
-                    .routes
-                    .iter()
-                    .position(|plan| plan.key == route.as_str())
-                else {
+                let Some(index) = self.program.plan().routes().position_of(route.as_str()) else {
                     return Err(self.defect(ctx, "a request to a route with no plan", id));
                 };
                 let parts: Vec<SiteId> = params

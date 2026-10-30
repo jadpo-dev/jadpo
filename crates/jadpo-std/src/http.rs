@@ -582,7 +582,8 @@ pub fn published_by(name: &str) -> &'static str {
 /// The fields, in order, of the built-in objects a test, fixture or seed
 /// may build to call an action directly (chunk 7.3b4): `FirstSignIn`,
 /// which `on_first_sign_in:`'s action is given, and the sign-in events,
-/// which a subscriber's action is given. Only the runtime makes them
+/// which a subscriber's action is given; and the inputs a route test
+/// sends the generated magic-link routes. Only the runtime makes them
 /// anywhere else.
 pub fn test_built_fields(name: &str) -> Option<&'static [&'static str]> {
     match name {
@@ -591,8 +592,24 @@ pub fn test_built_fields(name: &str) -> Option<&'static [&'static str]> {
         SIGN_IN_REFUSED => Some(&["method", "reason", "user_id"]),
         SIGN_IN_CODES_DISABLED => Some(&["user_id", "until"]),
         PASSKEY_ADDED | PASSKEY_REMOVED => Some(&["user_id", "passkey_id"]),
+        // What a route test sends the generated magic-link routes (area 8,
+        // "In development and tests").
+        MAGIC_LINK_ASK => Some(&["address", "return_to", "locale"]),
+        MAGIC_LINK_CONFIRMATION => Some(&["token", "address", "code"]),
+        MAGIC_LINK_CODE => Some(&["address", "code"]),
         _ => None,
     }
+}
+
+/// Whether `name` is the input of a generated magic-link route, which a
+/// route test builds to call it (area 8, "In development and tests"):
+/// its fields that may be `none` may be left out, as a request's body
+/// may leave them out.
+pub fn magic_link_input(name: &str) -> bool {
+    matches!(
+        name,
+        MAGIC_LINK_ASK | MAGIC_LINK_CONFIRMATION | MAGIC_LINK_CODE
+    )
 }
 
 /// The built-in sign-in event whose identity key is `key`.
@@ -1325,6 +1342,18 @@ pub struct RouteTable {
 }
 
 impl RouteTable {
+    /// The number of the route a test's request names by `key`: a route
+    /// of the app's own by its key, `route POST /todos`, or a generated
+    /// one by its graph node's, `generated_route POST /auth/magic-link`,
+    /// which the table keeps as `route POST /auth/magic-link`.
+    pub fn position_of(&self, key: &str) -> Option<usize> {
+        let wanted = match key.strip_prefix("generated_route ") {
+            Some(label) => format!("route {label}"),
+            None => key.to_string(),
+        };
+        self.routes.iter().position(|plan| plan.key == wanted)
+    }
+
     pub fn codec(&self, id: CodecId) -> Option<&Codec> {
         self.codecs.get(id.0 as usize)
     }
