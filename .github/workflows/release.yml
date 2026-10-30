@@ -27,8 +27,8 @@ name: Release
 # installed by .github/install-dist.sh against pinned SHA-256s instead of
 # dist's `curl | sh` installer, and the attestation of the global
 # artifacts (the installers), which dist attests only per platform, and
-# `--provenance` on the npm publish. Each publish job reads with its own
-# token and writes with a secret (HOMEBREW_TAP_TOKEN, NPM_TOKEN).
+# npm trusted publishing (no token) in place of dist's NPM_TOKEN. The
+# Homebrew job writes with a secret, HOMEBREW_TAP_TOKEN.
 permissions:
   "contents": "read"
 
@@ -372,8 +372,10 @@ jobs:
       - plan
       - host
     runs-on: "ubuntu-22.04"
-    # id-token lets `npm publish --provenance` sign where the package was
-    # built; the publish itself uses NPM_TOKEN.
+    # Trusted publishing: npmjs.com trusts this workflow (jadpo-dev/jadpo,
+    # release.yml) through the OIDC token `id-token` mints, so there is no
+    # npm token, and npm adds provenance itself. It needs a GitHub-hosted
+    # runner and npm 11.5.1 or newer.
     permissions:
       "contents": "read"
       "id-token": "write"
@@ -390,16 +392,19 @@ jobs:
           merge-multiple: true
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '20.x'
+          node-version: '24.x'
           registry-url: 'https://registry.npmjs.org'
-      # `--provenance` is not in dist's generated job.
+      - name: Check npm supports trusted publishing
+        run: |
+          v="$(npm --version)"
+          echo "npm $v"
+          [ "$(printf '%s\n' 11.5.1 "$v" | sort -V | head -n 1)" = 11.5.1 ]
+      # dist's generated job publishes with NPM_TOKEN instead.
       - run: |
           for release in $(echo "$PLAN" | jq --compact-output '.releases[] | select([.artifacts[] | endswith("-npm-package.tar.gz")] | any)'); do
             pkg=$(echo "$release" | jq '.artifacts[] | select(endswith("-npm-package.tar.gz"))' --raw-output)
-            npm publish --access public --provenance "./npm/${pkg}"
+            npm publish --access public "./npm/${pkg}"
           done
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   announce:
     needs:
