@@ -88,6 +88,7 @@ Why [Standard library](../19-standard-library.md) is the way it is: the decision
 | A chat message is sensitive personal data | `ChatMessage` is personal data whatever field holds it, in area 15's sensitive `health` category, the most protective that fits free text |
 | `TokenUsage` keeps no total | Its `input`, `output` and optional `cached`; the total is `input + output`, worked out where needed, and a `total` member is refused |
 | Generated scopes narrow `OAuthScope` | Area 9's enum of an application's declared scopes narrows the standard `OAuthScope` to them, a closed subset, rather than reusing the name |
+| A key's `key_ops` | Read and held as `Set<Text>`, not refused: RFC 7517 §4.3 allows it and WebCrypto always writes it. A key whose `key_ops` leaves out `"verify"` checks no signature (Richard, 2026-10-30) |
 
 ## The opening topics to SQL forms
 

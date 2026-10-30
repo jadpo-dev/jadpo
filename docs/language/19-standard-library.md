@@ -6706,10 +6706,17 @@ Members a `Jwk` doesn't hold are ignored, as RFC 7517 §4 requires
 (Microsoft's key set sends `issuer` and `cloud_instance_name`, and
 Microsoft's and Auth0's send `x5t`). It is the one standard object that
 ignores them. But a private key's or a shared secret's members (`d`, `p`,
-`q`, `dp`, `dq`, `qi`, `oth`, `k`), and `key_ops`, which limits a key in
-a way a `Jwk` doesn't hold, make JSON not a `Jwk`. So a key set read from
-outside can't put a secret in a program. A key set whose keys don't all
-read is `mismatch` as a whole, as any list is.
+`q`, `dp`, `dq`, `qi`, `oth`, `k`) make JSON not a `Jwk`. So a key set
+read from outside can't put a secret in a program. A key set whose keys
+don't all read is `mismatch` as a whole, as any list is.
+
+`key_ops` (RFC 7517 §4.3), which WebCrypto's `exportKey("jwk")` always
+writes, is held as `key_ops: Set<Text>`, or `none` when the JSON leaves it
+out. A key whose `key_ops` leaves out `"verify"` can't check a signature:
+`crypto.verify_jwt` doesn't try it, as with a key for another algorithm.
+
+Not built yet: reading `key_ops`. Until it is built, `key_ops` makes JSON
+not a `Jwk`.
 
 A `Jwk`'s `x5c` is carried, and held to the key. It is the certificates'
 DER in standard Base64, as RFC 7517 §4.7 sends them, read with
