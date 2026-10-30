@@ -1,6 +1,14 @@
 //! External JWT authentication (area 8). A verified provider subject is
 //! resolved against current application authority on every request; no
 //! provider profile or permission claim becomes an application identity.
+//!
+//! In tests and `jadpo dev` a local issuer
+//! ([`super::local_issuer::LocalIssuer`]) stands in for the configured
+//! issuer (area 8, "External tokens in tests and `jadpo dev`"; chunk A3):
+//! its key is made for the run, its tokens carry the configured issuer and
+//! audience, and nothing is fetched. Only a host that holds one
+//! ([`crate::Host::local_issuer`]) accepts its tokens, and a deployable's
+//! host never does.
 
 use super::identity::{
     AUTHENTICATION_MISCONFIGURED, AUTHENTICATION_UNAVAILABLE, INVALID_CREDENTIALS,
@@ -44,6 +52,16 @@ impl std::fmt::Debug for Settings {
 }
 
 impl Settings {
+    /// The configured issuer, exactly as its setting holds it.
+    pub fn issuer(&self) -> &str {
+        &self.issuer
+    }
+
+    /// The configured audience.
+    pub fn audience(&self) -> &str {
+        &self.audience
+    }
+
     pub(crate) fn read(
         plan: &jadpo_std::http::ExternalTokenPlan,
         values: &crate::config::ConfigValues,
@@ -59,6 +77,19 @@ impl Settings {
             state: Rc::default(),
         })
     }
+}
+
+/// The subject `subject` is sent as in a token, as a provider sends it:
+/// its JSON text through the subject field's codec, unquoted.
+pub(crate) fn subject_text(
+    json: &crate::JsonCodecs<'_>,
+    external: &jadpo_std::http::ExternalTokenPlan,
+    subject: &Value,
+) -> Option<String> {
+    let codec = json.codec_of(external.subject_type)?;
+    let mut written = String::new();
+    json.codecs.write(codec, subject, &mut written);
+    Some(super::json_text(&written)).filter(|text| !text.is_empty() && text != "null")
 }
 
 /// The configured issuer's discovery address: preserve the issuer value
@@ -100,6 +131,13 @@ impl Settings {
         }
         if discovery(&self.issuer).is_none() || self.audience.is_empty() {
             return Err(AUTHENTICATION_MISCONFIGURED);
+        }
+        // A test's or `jadpo dev`'s host: its local issuer in the
+        // configured one's place, and nothing fetched.
+        #[cfg(feature = "testing")]
+        if let Some(local) = host.local_issuer() {
+            return check_subject(token, local.keys(), &self.issuer, &self.audience, now)
+                .map_err(|_| INVALID_CREDENTIALS);
         }
         let time = || host.now_ms().unwrap_or(now);
         let mut fresh = false;
@@ -217,11 +255,33 @@ impl Settings {
             .and_then(serde_json::Value::as_array)
             .filter(|keys| !keys.is_empty() && keys.len() <= MOST_KEYS)
             .ok_or(AUTHENTICATION_MISCONFIGURED)?;
-        // OIDC publishes encryption keys too. They never become a Jwk:
-        // skip only explicitly non-signing keys, and validate every signing key.
+        // OIDC publishes encryption keys too, and a key's `key_ops` may
+        // leave out `verify`. Neither checks a signature, so both are
+        // skipped; every other key is validated. A private key's or a
+        // shared secret's members refuse the whole set, whatever the key.
         let mut signing = Vec::new();
         for key in keys {
-            if key.get("use").and_then(serde_json::Value::as_str) == Some("enc") {
+            let members = key.as_object().ok_or(AUTHENTICATION_MISCONFIGURED)?;
+            if members
+                .keys()
+                .any(|name| jadpo_std::standard::jwk::REFUSED_MEMBERS.contains(&name.as_str()))
+            {
+                return Err(AUTHENTICATION_MISCONFIGURED);
+            }
+            let operations = match members.get("key_ops") {
+                None => None,
+                Some(serde_json::Value::Array(items)) => Some(
+                    items
+                        .iter()
+                        .map(serde_json::Value::as_str)
+                        .collect::<Option<Vec<_>>>()
+                        .ok_or(AUTHENTICATION_MISCONFIGURED)?,
+                ),
+                Some(_) => return Err(AUTHENTICATION_MISCONFIGURED),
+            };
+            if members.get("use").and_then(serde_json::Value::as_str) == Some("enc")
+                || !jadpo_std::standard::jwk::verifies(operations)
+            {
                 continue;
             }
             signing.push(jadpo_value::jwt::read_jwk(key).ok_or(AUTHENTICATION_MISCONFIGURED)?);
@@ -261,7 +321,7 @@ fn verified_subject(
     check_subject(token, keys, issuer, audience, now).ok()
 }
 
-fn check_subject(
+pub(crate) fn check_subject(
     token: &str,
     keys: &[Value],
     issuer: &str,
@@ -285,6 +345,7 @@ fn check_subject(
 
 #[cfg(test)]
 mod tests {
+    use super::super::local_issuer::{LOCAL_TOKEN_SECONDS, LocalIssuer};
     use super::*;
     use jadpo_value::crypto::{KeyRing, public_key, sign};
     use jadpo_value::encoding::to_base64url;
@@ -640,6 +701,124 @@ mod tests {
         assert_eq!(settings.state.borrow().generation, generation);
         assert!(!settings.state.borrow().keys.is_empty());
         assert_eq!(settings.state.borrow().busy_until, 0);
+    }
+
+    #[test]
+    fn keys_whose_key_ops_leave_out_verify_are_skipped_and_secrets_still_refuse_the_set() {
+        let host = Provider::new();
+        let good = token(HEADER, &claims().to_string());
+        {
+            let mut keys = host.keys.borrow_mut();
+            let keys = keys["keys"].as_array_mut().expect("keys");
+            // As WebCrypto writes the provider's key, and a key for
+            // signing only, which is never tried.
+            keys[0]["key_ops"] = serde_json::json!(["verify"]);
+            keys[0]["ext"] = true.into();
+            keys.push(serde_json::json!({"kty":"EC","crv":"P-256","x":"not-a-point","y":"unused","key_ops":["sign"]}));
+        }
+        assert!(run(&settings(), &host, &good).is_ok());
+        host.keys.borrow_mut()["keys"][0]["key_ops"] = serde_json::json!(["sign"]);
+        assert_eq!(
+            run(&settings(), &host, &good),
+            Err(AUTHENTICATION_MISCONFIGURED),
+            "no key left to check with"
+        );
+        // A secret's members refuse the set, even on a key that is skipped.
+        let host = Provider::new();
+        host.keys.borrow_mut()["keys"]
+            .as_array_mut()
+            .expect("keys")
+            .push(serde_json::json!({"kty":"OKP","crv":"Ed25519","x":"unused","d":"private","use":"enc"}));
+        assert_eq!(
+            run(&settings(), &host, &good),
+            Err(AUTHENTICATION_MISCONFIGURED)
+        );
+    }
+
+    /// A host holding a local issuer, as a test's and `jadpo dev`'s do,
+    /// whose provider is offline.
+    struct Local {
+        provider: Provider,
+        issuer: LocalIssuer,
+    }
+    impl crate::Host for Local {
+        fn database(&self, _: &str) -> Option<&dyn crate::Database> {
+            None
+        }
+        fn random(&self, _: &mut [u8]) -> bool {
+            false
+        }
+        fn outbound(&self) -> Option<&dyn crate::Outbound> {
+            Some(&self.provider)
+        }
+        fn now_ms(&self) -> Option<i64> {
+            Some(NOW)
+        }
+        fn local_issuer(&self) -> Option<&LocalIssuer> {
+            Some(&self.issuer)
+        }
+    }
+
+    fn local_issuer() -> LocalIssuer {
+        LocalIssuer::new(&|bytes: &mut [u8]| {
+            bytes.fill(7);
+            true
+        })
+        .expect("a local issuer")
+    }
+
+    #[test]
+    fn a_local_issuer_signs_in_with_the_configured_issuer_and_audience_and_fetches_nothing() {
+        let issuer = local_issuer();
+        let local = Local {
+            provider: Provider::new(),
+            issuer: LocalIssuer::from_seed(issuer.seed()).expect("read back"),
+        };
+        local.provider.offline.set(true);
+        let settings = settings();
+        let local_token = issuer
+            .token(ISSUER, AUDIENCE, "provisioned-subject", NOW)
+            .expect("a token");
+        assert_eq!(
+            crate::block_on(settings.subject(&local, &local_token, NOW))
+                .expect("completes")
+                .as_deref(),
+            Ok("provisioned-subject")
+        );
+        assert!(local.provider.calls.borrow().is_empty(), "nothing fetched");
+        // The configured issuer's and audience's, and an hour long.
+        for denied in [
+            issuer.token("https://other.example/", AUDIENCE, "s", NOW),
+            issuer.token(ISSUER, "another-app", "s", NOW),
+            issuer.token(
+                ISSUER,
+                AUDIENCE,
+                "s",
+                NOW - (LOCAL_TOKEN_SECONDS + 60) * 1000,
+            ),
+            Some(token(HEADER, &claims().to_string())),
+        ] {
+            let denied = denied.expect("a token");
+            assert_eq!(
+                crate::block_on(settings.subject(&local, &denied, NOW)).expect("completes"),
+                Err(INVALID_CREDENTIALS)
+            );
+        }
+    }
+
+    #[test]
+    fn a_host_without_a_local_issuer_never_accepts_its_tokens() {
+        // A deployable's host: the provider's keys alone.
+        let host = Provider::new();
+        let token = local_issuer()
+            .token(ISSUER, AUDIENCE, "provisioned-subject", NOW)
+            .expect("a token");
+        assert_eq!(run(&settings(), &host, &token), Err(INVALID_CREDENTIALS));
+        assert_eq!(
+            host.calls.borrow().len(),
+            2,
+            "the provider's keys were read"
+        );
     }
 
     #[test]

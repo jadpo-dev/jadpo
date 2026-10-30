@@ -379,8 +379,24 @@ pub static COMMANDS: &[Command] = &[
                       errors, the last good version keeps serving. Each request is one line, with its \
                       request id. The database is the one --url names, or else a disposable \
                       PostgreSQL started for the session; pending migrations are applied as they \
-                      appear. With --no-run it only checks on every save and writes build/.",
-        arguments: &[],
+                      appear. With --no-run it only checks on every save and writes build/. An app \
+                      that signs in with external_token gets a local issuer in place of the \
+                      configured one, and `jadpo dev token <user-id>`, beside a running session, \
+                      prints a bearer token from it for that user.",
+        arguments: &[
+            Argument {
+                name: "action",
+                description: "token, to print a bearer token for a user, or nothing to serve",
+                required: false,
+                values: Values::Fixed(crate::dev_token::ACTIONS),
+            },
+            Argument {
+                name: "user-id",
+                description: "The user's id, for token",
+                required: false,
+                values: Values::Id,
+            },
+        ],
         flags: &[
             Flag {
                 name: "--port",
@@ -425,6 +441,10 @@ pub static COMMANDS: &[Command] = &[
             Example {
                 description: "Print each request as a line of data for tools",
                 command: "jadpo dev --json",
+            },
+            Example {
+                description: "Call the running app as a user, with a token from its local issuer",
+                command: "curl -H \"Authorization: Bearer $(jadpo dev token <user-id>)\" localhost:3000/me",
             },
         ],
         arguments_rule: &rule::CLI_DEV_ARGUMENTS,

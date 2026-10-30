@@ -6684,8 +6684,8 @@ secret value ([Secret values](#secret-values)), never shown.
 
 **`Jwk`** holds one public key and never a secret. Its parts are `kty`,
 `crv`, `x`, `y`, `n`, `e`, `kid` (1 to 256 printable ASCII characters),
-`alg`, `use_` (`sig`, sent as RFC 7517's `use`) and `x5c`, each but
-`kty` optional. Three rules across them hold a key to its kind:
+`alg`, `use_` (`sig`, sent as RFC 7517's `use`), `key_ops` and `x5c`,
+each but `kty` optional. Three rules across them hold a key to its kind:
 `parts_of_its_kty` (its kind's parts and no other's),
 `algorithm_of_its_kty` (an `alg`, where given, is its kind's) and
 `a_usable_key`.
@@ -6714,9 +6714,8 @@ don't all read is `mismatch` as a whole, as any list is.
 writes, is held as `key_ops: Set<Text>`, or `none` when the JSON leaves it
 out. A key whose `key_ops` leaves out `"verify"` can't check a signature:
 `crypto.verify_jwt` doesn't try it, as with a key for another algorithm.
-
-Not built yet: reading `key_ops`. Until it is built, `key_ops` makes JSON
-not a `Jwk`.
+Each operation is 1 to 64 printable ASCII characters, and one named twice
+makes JSON not a `Jwk`, as RFC 7517 §4.3 forbids.
 
 A `Jwk`'s `x5c` is carried, and held to the key. It is the certificates'
 DER in standard Base64, as RFC 7517 §4.7 sends them, read with

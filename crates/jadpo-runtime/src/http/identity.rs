@@ -1233,17 +1233,22 @@ pub(crate) fn refusal(table: &RouteTable, refused: &Refused, request_id: &str) -
 /// statement of its own and sent as a client sends it. A user signs in with a
 /// browser session, its CSRF token and an `Origin` naming the server (the
 /// configured origin when `origin:` gives one), when the route's API
-/// accepts browser sessions, and otherwise with an API token; a service
-/// with a key, as `Service.issue_key` issues one. Each is sent as a
-/// client first sends it, without a signed part, so its first request
-/// reads the record as a sign-in's does.
+/// accepts browser sessions; else, when it accepts external tokens, with
+/// a token for the user's subject from the test's local issuer (area 8,
+/// "External tokens in tests and `jadpo dev`"), which the request's
+/// checks hold to the user's record as a provider's token is; and
+/// otherwise with an API token; a service with a key, as
+/// `Service.issue_key` issues one. Each is sent as a client first sends
+/// it, without a signed part, so its first request reads the record as a
+/// sign-in's does.
 pub async fn test_credentials(
     ctx: &mut Ctx<'_>,
-    table: &RouteTable,
+    app: &super::App<'_>,
     settings: &AuthSettings,
     route: u32,
     caller: &Value,
 ) -> Result<Vec<(String, String)>, Box<Fault>> {
+    let table = app.table;
     let site = 0;
     let Some(plan) = &table.identity else {
         return Err(defect(
@@ -1286,6 +1291,15 @@ pub async fn test_credentials(
     let ends =
         |lifetime: i64| SqlValue::Timestamp(now.saturating_add(lifetime).saturating_mul(1000));
     let started = SqlValue::Timestamp(now.saturating_mul(1000));
+    // An API that takes external tokens and not browser sessions: a token
+    // from the local issuer, and nothing kept.
+    if kind == PrincipalKind::User
+        && !accepts(AuthenticationMethod::BrowserSession)
+        && accepts(AuthenticationMethod::ExternalToken)
+        && let Some(external) = &plan.external_token
+    {
+        return external_test_token(ctx, app, settings, external, caller);
+    }
     let session = plan.cookie.clone().zip(plan.csrf_cookie()).filter(|_| {
         kind == PrincipalKind::User
             && (accepts(AuthenticationMethod::BrowserSession) || !plan.api_tokens)
@@ -1369,6 +1383,60 @@ pub async fn test_credentials(
         return Err(unavailable(ctx));
     }
     Ok(headers)
+}
+
+/// The `Authorization` header a route test's request signs `caller` in
+/// with on an API that takes external tokens: a token for the subject its
+/// record holds, written as a provider sends it, from the test host's
+/// local issuer with the configured issuer and audience.
+fn external_test_token(
+    ctx: &mut Ctx<'_>,
+    app: &super::App<'_>,
+    settings: &AuthSettings,
+    external: &jadpo_std::http::ExternalTokenPlan,
+    caller: &Value,
+) -> Result<Vec<(String, String)>, Box<Fault>> {
+    let site = 0;
+    let Some(configured) = settings.external() else {
+        return Err(defect(
+            ctx,
+            "a request signed in with an external token, with no issuer or audience set",
+            site,
+        ));
+    };
+    let subject = match caller {
+        Value::Record(record) => record.get("subject").cloned(),
+        _ => None,
+    };
+    let subject = subject
+        .and_then(|subject| super::external_token::subject_text(&app.json, external, &subject));
+    let Some(subject) = subject else {
+        return Err(defect(ctx, "a caller whose subject isn't one", site));
+    };
+    #[cfg(feature = "testing")]
+    let token = {
+        let now = ctx.now();
+        ctx.host().local_issuer().and_then(|issuer| {
+            issuer.token(configured.issuer(), configured.audience(), &subject, now)
+        })
+    };
+    // A deployable holds no local issuer, so signs no test in this way.
+    #[cfg(not(feature = "testing"))]
+    let token: Option<String> = {
+        let _ = (configured, &subject);
+        None
+    };
+    let Some(token) = token else {
+        return Err(defect(
+            ctx,
+            "a request signed in with an external token outside a test: only a test's host has a local issuer",
+            site,
+        ));
+    };
+    Ok(vec![(
+        "authorization".to_string(),
+        format!("Bearer {token}"),
+    )])
 }
 
 /// The server a route test's requests are sent to.

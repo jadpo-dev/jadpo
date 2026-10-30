@@ -91,6 +91,9 @@ impl Planner<'_> {
                     subject_type: self
                         .json_number(TypeRef::Field(self.types.graph().node(id).key.clone()))?,
                     subject_sql: jadpo_check::data::sql_type(subject)?.param(),
+                    subject_of: self.access(&mut Lookup, entity, Reach::Read).map(|wheres| {
+                        statements::address_of(&entity.table, &subject.born, &wheres)
+                    }),
                 })
             }),
             user: user.and_then(|variant| self.principal(variant, sessions)),

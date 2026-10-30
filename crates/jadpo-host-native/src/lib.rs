@@ -285,6 +285,11 @@ pub struct NativeHost {
     background: Rc<tracked::Tracked>,
     /// What the runtime fetches on its own account (chunk 7.7b).
     outbound: fetch::Outward,
+    /// `jadpo dev`'s local issuer, in the configured external-token
+    /// issuer's place (area 8, "External tokens in tests and `jadpo dev`";
+    /// chunk A3). Only with `testing`: a deployable has none.
+    #[cfg(feature = "testing")]
+    local_issuer: Option<jadpo_runtime::http::local_issuer::LocalIssuer>,
 }
 
 /// Which connections are stores of files: what a host gives the disk
@@ -372,6 +377,17 @@ impl NativeHost {
         self
     }
 
+    /// Accepts `issuer`'s tokens in place of the configured external-token
+    /// issuer's, fetching nothing from it: `jadpo dev`'s, and only its.
+    #[cfg(feature = "testing")]
+    pub fn with_local_issuer(
+        mut self,
+        issuer: jadpo_runtime::http::local_issuer::LocalIssuer,
+    ) -> NativeHost {
+        self.local_issuer = Some(issuer);
+        self
+    }
+
     /// The work it was given to run after the response being answered,
     /// for whoever sends that response to run once it has been handed
     /// back: the HTTP worker, as a task on its thread. Each is counted as
@@ -430,6 +446,11 @@ impl Host for NativeHost {
     /// The runtime's ceremonies ([`PASSKEYS`]).
     fn passkeys(&self) -> Option<&dyn jadpo_runtime::Passkeys> {
         Some(&PASSKEYS)
+    }
+
+    #[cfg(feature = "testing")]
+    fn local_issuer(&self) -> Option<&jadpo_runtime::http::local_issuer::LocalIssuer> {
+        self.local_issuer.as_ref()
     }
 
     /// A store given in its place, else the one the factory built.

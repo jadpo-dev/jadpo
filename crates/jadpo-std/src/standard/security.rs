@@ -884,15 +884,21 @@ pub const X5C_PATTERN: &str =
 /// (chosen in chunk 5.5r).
 pub const KEY_ID_PATTERN: &str = r"[\x21-\x7E]{1,256}";
 
+/// What each of a `Jwk`'s `key_ops` holds: an operation RFC 7517 §4.3
+/// names (`verify`, `sign`, `encrypt`) or another, 1 to 64 printable ASCII
+/// characters (chosen in chunk A3).
+pub const KEY_OP_PATTERN: &str = r"[\x21-\x7E]{1,64}";
+
 /// `Jwk`'s parts, in order: RFC 7517's members for a public key of one of
 /// three kinds (chunk 5.5r4), an `OKP` Ed25519 key's `crv` and `x` (RFC
 /// 8037 §2), an `RSA` key's `n` and `e` and an `EC` P-256 key's `crv`, `x`
 /// and `y` (RFC 7518 §6), which its rules across its parts hold it to
 /// ([`super::jwk::RULES`]); and the members a key set sends with any:
-/// `kid`, `alg`, `use_`, sent as `use`, which is a reserved word, and
-/// `x5c`, its certificates. No part holds a private key or a shared
+/// `kid`, `alg`, `use_`, sent as `use`, which is a reserved word,
+/// `key_ops`, the operations it may be used for (RFC 7517 §4.3; chunk A3),
+/// and `x5c`, its certificates. No part holds a private key or a shared
 /// secret, and JSON naming one isn't a `Jwk` ([`super::jwk::REFUSED_MEMBERS`]).
-pub const JWK_FIELDS: [(&str, Part); 10] = [
+pub const JWK_FIELDS: [(&str, Part); 11] = [
     ("kty", Part::Matching("OKP|RSA|EC")),
     ("crv", Part::Optional(&Part::Matching("Ed25519|P-256"))),
     ("x", Part::Optional(&Part::Matching(KEY_32_PATTERN))),
@@ -902,6 +908,10 @@ pub const JWK_FIELDS: [(&str, Part); 10] = [
     ("kid", Part::Optional(&Part::Matching(KEY_ID_PATTERN))),
     ("alg", Part::Optional(&Part::Matching("EdDSA|RS256|ES256"))),
     ("use_", Part::Optional(&Part::Matching("sig"))),
+    (
+        "key_ops",
+        Part::Optional(&Part::Set(&Part::Matching(KEY_OP_PATTERN))),
+    ),
     (
         "x5c",
         Part::Optional(&Part::List(&Part::Matching(X5C_PATTERN))),
@@ -914,7 +924,9 @@ pub const JWK_ENTRY: StandardType = StandardType {
     name: JWK,
     holds: Holds::Object(&JWK_FIELDS),
     text: None,
-    json: Json::Members(&["kty", "crv", "x", "y", "n", "e", "kid", "alg", "use", "x5c"]),
+    json: Json::Members(&[
+        "kty", "crv", "x", "y", "n", "e", "kid", "alg", "use", "key_ops", "x5c",
+    ]),
     storage: Storage::Columns {
         parts: &[
             ("kty", "text"),
@@ -926,6 +938,7 @@ pub const JWK_ENTRY: StandardType = StandardType {
             ("kid", "text"),
             ("alg", "text"),
             ("use", "text"),
+            ("key_ops", "text[]"),
             ("x5c", "text[]"),
         ],
         fixed: &[],
@@ -939,7 +952,8 @@ pub const JWK_ENTRY: StandardType = StandardType {
     shape: None,
     examples: Examples {
         // RFC 8037 §A.2's public key, with a key id and the optional
-        // members, and RFC 8032's second test key alone; RFC 7517 §A.1's
+        // members, and RFC 8032's second test key alone, then as WebCrypto
+        // exports it, with `key_ops` and `ext`; RFC 7517 §A.1's
         // P-256 and RSA keys, the first for signing; RFC 7515 §A.3's P-256
         // key and §A.2's RSA key, as Google's key set sends one.
         valid: &[
@@ -949,6 +963,10 @@ pub const JWK_ENTRY: StandardType = StandardType {
             ),
             (
                 r#"{"kty":"OKP","crv":"Ed25519","x":"PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw"}"#,
+                "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
+            ),
+            (
+                r#"{"crv":"Ed25519","ext":true,"key_ops":["verify"],"kty":"OKP","x":"PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw"}"#,
                 "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
             ),
             (
@@ -976,7 +994,8 @@ pub const JWK_ENTRY: StandardType = StandardType {
             // RSA key with the EC key's algorithm, an EC key with an RSA
             // key's part, an Ed25519 key with another curve, a P-256 key
             // without its y, another algorithm, an encryption key, a key
-            // one character short, and not an object.
+            // one character short, an operation named twice, and not an
+            // object.
             r#"{"kty":"OKP","crv":"Ed25519","d":"nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"}"#,
             r#"{"kty":"oct","alg":"A128KW","k":"GawgguFyGrWKav7AX4VKUg"}"#,
             r#"{"kty":"EC","crv":"P-256","x":"MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4","y":"4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM","use":"enc","kid":"1"}"#,
@@ -989,6 +1008,7 @@ pub const JWK_ENTRY: StandardType = StandardType {
             r#"{"kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo","alg":"HS256"}"#,
             r#"{"kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo","use":"enc"}"#,
             r#"{"kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHUR"}"#,
+            r#"{"kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo","key_ops":["verify","verify"]}"#,
             r#""11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo""#,
         ],
         of: None,

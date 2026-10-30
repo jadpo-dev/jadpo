@@ -189,6 +189,9 @@ pub enum Part {
     Optional(&'static Part),
     /// A list of the part: an address's lines.
     List(&'static Part),
+    /// A set of the part, each item once: a key's `key_ops` (RFC 7517
+    /// §4.3), stored as a list is.
+    Set(&'static Part),
 }
 
 impl Part {
@@ -201,7 +204,7 @@ impl Part {
             Part::Float => Some(Builtin::Decimal),
             Part::Bounded { of, .. } => Some(of),
             Part::Line | Part::Matching(_) | Part::Paragraph => Some(Builtin::Text),
-            Part::Standard(_) | Part::Optional(_) | Part::List(_) => None,
+            Part::Standard(_) | Part::Optional(_) | Part::List(_) | Part::Set(_) => None,
         }
     }
 
@@ -255,7 +258,7 @@ impl Part {
                 pattern: Some(events::PARAGRAPH_PATTERN.to_string()),
                 ..crate::Rules::default()
             },
-            Part::Optional(inner) | Part::List(inner) => inner.rules(),
+            Part::Optional(inner) | Part::List(inner) | Part::Set(inner) => inner.rules(),
             Part::Of(_) | Part::Standard(_) | Part::Float => crate::Rules::default(),
         }
     }

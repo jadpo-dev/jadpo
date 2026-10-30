@@ -383,12 +383,7 @@ time.
   fields to a role on the same entity as a customer catalogue, a route
   test shows a removed role refused on the next request, and a listed
   action calling an admin-only helper is `policy.call_ungranted`.
-- [ ] **A3 External tokens in tests and `jadpo dev`** `opus · high`: area 8,
-  "External tokens in tests and `jadpo dev`"; area 19, `key_ops`; area 14,
-  `jadpo dev`'s external tokens, designed with the design skills first.
-  Done when a route test signs in a staff user `as:` on an
-  external-token API, and a key set with WebCrypto's `key_ops` checks a
-  token.
+- [x] **A3 External tokens in tests and `jadpo dev`**: area 8, "External tokens in tests and `jadpo dev`"; area 13, `as:`; area 14, `jadpo dev`'s "External tokens"; area 19, `Jwk`'s `key_ops`.
 - [ ] **A4 Batches run to the end in tests** `opus · high`: area 13,
   "Batches", which is specified and was on no chunk. Done when the
   seed-library example's test of a withdrawn packet passes through its
