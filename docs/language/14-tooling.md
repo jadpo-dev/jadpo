@@ -345,6 +345,7 @@ language.
 | Command | Does |
 |---|---|
 | `jadpo migrate new <purpose>` / `apply` / `status` | Writes, runs and lists migrations |
+| `jadpo seed <name>` | Fills the development database from a seed |
 | `jadpo config move <constant>` | Makes a constant a setting |
 | `jadpo config set <field>` / `check` | Sets or checks your local settings in `.env.local` |
 | `jadpo translations missing` / `unused` / `update` / `accept` | Shows and records the state of each language's wording |
@@ -362,6 +363,28 @@ environment and then `.env.local`.
 A missing purpose will be asked for at a prompt, as the [CLI design
 language](../cli-design-language.md) draws it, once prompts are built.
 Until then the command names a purpose to use.
+
+### `jadpo seed`
+
+`jadpo seed <name>` runs `database/seeds/<name>.jadpo`
+([Seeds](05-data.md#seeds)) against the development database. Each
+store's database is the one `--url` names, for a project with one store,
+else the address its connection's setting gives, else the one a running
+`jadpo dev` started. Pending migrations are applied first.
+
+```text
+$ jadpo seed first_staff
+✓ Applied 1 migration to `main`
+
+✓ Seeded `first_staff` in 154 ms
+    main  localhost:5432/library_dev
+```
+
+The address is shown without its credentials. A seed that stops shows
+where, as a test's failure does: the failure or fault, its code, the
+calls that led there, and that what its earlier calls committed stays
+(`seed.failed`). A database that isn't on this machine is refused before
+anything runs (`seed.production_refused`).
 
 ### `jadpo config move`
 
@@ -434,9 +457,6 @@ as XLIFF 2.0 or JSON. Each takes `--json`.
 
 Library packages' text is exchanged under each package's folder name, and
 written back as the app's, in the root file.
-
-Not built yet: `jadpo seed <name>`, which runs a seed and refuses
-production ([Seeds](05-data.md#seeds)).
 
 ## Commands for records, findings and review
 <!-- topic: commands-for-records-findings-and-review -->
@@ -2722,6 +2742,7 @@ its command is built.
 | `cli.schema_rename_arguments` | `schema` | Schema rename command has invalid arguments |
 | `cli.schema_snapshot_arguments` | `schema` | Schema snapshot command requires an output path |
 | `cli.schema_sql_arguments` | `schema` | Schema SQL command has invalid arguments |
+| `cli.seed_arguments` | `seed` | Seed command has invalid arguments |
 | `cli.signal_handler_failed` | any command | Shutdown handler could not be installed |
 | `cli.suggest_arguments` | `suggest` | Suggest command has invalid arguments |
 | `cli.test_arguments` | `test` | Test command has invalid arguments |
@@ -2837,6 +2858,9 @@ its command is built.
 | `schedules.no_tick` | `schedules run`, `deliveries retry` | No tick picked up the run asked for |
 | `schedules.run_failed` | `schedules run`, `deliveries retry` | Schedule's run failed |
 | `schedules.unavailable` | `schedules`, `why` | Schedules' database couldn't be read |
+| `seed.failed` | `seed` | Seed ended with a failure or a fault |
+| `seed.production_refused` | `seed` | Seed refused a database that isn't on this machine |
+| `seed.unavailable` | `seed` | Seed's database couldn't be reached |
 | `suggest.record_invalid` | `suggest` | Suggestions record can't be read |
 | `suggest.share_failed` | `suggest share` | Jadpo HQ couldn't be reached or refused what was shared |
 | `test.failed` | `test` | Test run failed |
@@ -2891,7 +2915,7 @@ Each row says what is built and what is specified but not built yet.
 | Commands | Built: each command [The `jadpo` command](#the-jadpo-command) and the topics after it describe, apart from those in their "Not built yet" notes. |
 | Language server | Built: diagnostics; hover, with a query's SQL and a route's full path; go to definition, from a `use` line too; find references; completion; formatting as `jadpo fmt`; quick fixes from each error's edit, promotion among them; and the code actions under [Editor support](#editor-support). Not built yet: rename, which waits for `jadpo rename`. |
 | VS Code extension | Built: starts `jadpo lsp`, formats on save, highlights, a status item naming the `jadpo` running, "Open Generated File", and packaging and publishing on each release, switched off until the Marketplace and Open VSX are set up. |
-| Agent tools | Partly built: the catalogues and the similar-helper check, a declinable error, are built; `migrate` is built; `impact`, `domain`, `rename` and `seed` are not built yet, nor are the agent skill and generated CI. |
+| Agent tools | Partly built: the catalogues and the similar-helper check, a declinable error, are built; `migrate` is built; `impact`, `domain` and `rename` are not built yet, nor are the agent skill and generated CI. |
 | Suggestions | Built: `jadpo suggest` with its six signal kinds and taught signals, the catalogue, accepted findings, `ignore`, `found`, `share`, `suggestions { }` and the committed taught record, `share` against a fake of Jadpo HQ (HQ itself comes later). |
 | Review and sign-off | Not built yet: `jadpo approval`, which comes with [Records and manifest](18-records-and-manifest.md). |
 | Build-only errors | Built: `jadpo build` for the one deployable an app that declares none has and for declared deployables, with their `toolchain.target_*` errors; its `settings` line, and a Worker's `secrets: { required: [ ] }`, name every setting a deployable reads, its connections' included. |

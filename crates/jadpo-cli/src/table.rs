@@ -611,6 +611,52 @@ pub static COMMANDS: &[Command] = &[
         run: commands::migrate,
     },
     Command {
+        name: "seed",
+        synonyms: &[],
+        group: "Data",
+        summary: "Fill the development database from a seed",
+        description: "Run a seed, `database/seeds/<name>.jadpo`, against the development database \
+                      (area 5): its calls go through the app's own actions, so validation, \
+                      lifecycles and policy apply, and a call that passes a caller runs as them. \
+                      The database is the one --url names, else the address its connection's \
+                      setting gives, else the one a running `jadpo dev` started. It must be on this \
+                      machine: a database anywhere else may be production, and is refused before \
+                      anything runs. Pending migrations are applied first. Mail lands in the dev \
+                      inbox and provider calls are faked, as under `jadpo dev`. A failure stops \
+                      the seed, and what its earlier calls committed stays.",
+        arguments: &[Argument {
+            name: "name",
+            description: "The seed's file name in database/seeds/, without .jadpo",
+            required: false,
+            values: Values::Fixed(&[]),
+        }],
+        flags: &[Flag {
+            name: "--url",
+            value: Some("url"),
+            description: "The PostgreSQL database to seed, on this machine",
+            values: &[],
+        }],
+        examples: &[
+            Example {
+                description: "Give the development database its first staff",
+                command: "jadpo seed first_staff",
+            },
+            Example {
+                description: "Seed a database named directly",
+                command: "jadpo seed local_demo --url postgresql://localhost/library_dev",
+            },
+        ],
+        arguments_rule: &rule::CLI_SEED_ARGUMENTS,
+        raises: &[
+            &rule::SEED_FAILED,
+            &rule::SEED_PRODUCTION_REFUSED,
+            &rule::SEED_UNAVAILABLE,
+            &rule::MIGRATION_APPLY_FAILED,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::seed,
+    },
+    Command {
         name: "sql",
         synonyms: &[],
         group: "Data",

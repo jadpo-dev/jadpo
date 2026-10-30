@@ -50,6 +50,7 @@ mod run;
 mod runs;
 mod runtime_source;
 mod schedules;
+mod seed;
 mod share;
 mod spam;
 mod sql;

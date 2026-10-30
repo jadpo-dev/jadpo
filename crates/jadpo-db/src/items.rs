@@ -197,9 +197,26 @@ pub fn item_tree(db: &dyn Db, file: File) -> ItemTree {
     let Some(source) = ast::SourceFile::cast(parse(db, file).syntax()) else {
         return ItemTree::default();
     };
-    ItemTree {
-        items: items_of(&source),
+    let mut items = items_of(&source);
+    // `seed { }` is named by its file (area 5, "Seeds").
+    for item in &mut items {
+        if item.kind == ItemKind::Seed && item.name.is_empty() {
+            item.name = file_stem(file.path(db));
+        }
     }
+    ItemTree { items }
+}
+
+/// A seed's name: the one it is written with, or for `seed { }` its file
+/// name without `.jadpo` (area 5, "Seeds").
+pub fn seed_name(decl: &ast::SeedDecl, path: &str) -> String {
+    name_of(decl.name()).unwrap_or_else(|| file_stem(path))
+}
+
+/// `database/seeds/first_staff.jadpo`'s `first_staff`.
+fn file_stem(path: &str) -> String {
+    let file = path.rsplit('/').next().unwrap_or(path);
+    file.strip_suffix(".jadpo").unwrap_or(file).to_string()
 }
 
 /// A file's declarations, in source order: what [`item_tree`] holds, for a
@@ -412,7 +429,14 @@ fn lower(decl: &Decl, index: u32) -> Option<Item> {
             let name = decl.string_token()?.text().trim_matches('"').to_string();
             item(ItemKind::Test, name, false, index)
         }
-        Decl::SeedDecl(decl) => item(ItemKind::Seed, name_of(decl.name())?, false, index),
+        // `seed { }` has no name of its own; [`item_tree`] gives it its
+        // file's.
+        Decl::SeedDecl(decl) => item(
+            ItemKind::Seed,
+            name_of(decl.name()).unwrap_or_default(),
+            false,
+            index,
+        ),
         Decl::PackageDecl(decl) => item(
             ItemKind::Package,
             written(decl.path()?.syntax()),
