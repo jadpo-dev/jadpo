@@ -219,8 +219,8 @@ why the site serves the bundle.
   `dist-workspace.toml` names them, with a tap repository and tokens; the
   extension is published only when the repository variable
   `JADPO_VSCODE_PUBLISH` is `on`, with the Marketplace publisher `jadpo`
-  and its `VSCE_PAT` secret, and the Open VSX namespace `jadpo` and its
-  `OVSX_PAT` secret.
+  and its `VSCE_PAT` secret, and the Open VSX namespace `jadpo` with a
+  trusted publisher for `vscode-extension.yml`, which needs no secret.
 
 ## Installing
 
