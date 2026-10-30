@@ -11438,7 +11438,7 @@ as every `Decimal` is.
 - An **`EastingNorthing`** is a position on a national grid: an `easting`
   and a `northing`, `Decimal`s held as written, and its `Crs`. It is shown
   with labels, `easting 530,000, northing 180,000 (EPSG:27700)`. It isn't
-  converted to WGS84 ([Left out, and why](20-geospatial.md#left-out-and-why)).
+  converted to WGS84 ([What geospatial leaves out, and what to use instead](20-geospatial.md#what-geospatial-leaves-out-and-what-to-use-instead)).
 
 ### Shown, stored and matched
 
@@ -11499,7 +11499,7 @@ describes the types themselves.
   `{"role": "user", "content": "..."}`. A message's name, a tool call's
   id, and content parts (images, tool calls and results as blocks) aren't
   part of it, and a member for any of them is refused;
-  [AI](21-ai.md#left-out-and-why) leaves tool calling and content parts
+  [AI](21-ai.md#what-ai-leaves-out-and-what-to-use-instead) leaves tool calling and content parts
   out. It is stored as a `text` column each, and shown after its role:
   `user: Which soups are vegan?`.
 - **A message is personal data, `health`,** whatever field holds it

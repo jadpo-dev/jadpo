@@ -986,6 +986,22 @@ def summary_of(markdown, fallback):
     return sentence
 
 
+# The agent skill (docs/documentation.md, "The agent skill"): where it is
+# written, and where the bundle holds it.
+SKILL = Path('docs/agent-skill/SKILL.md')
+SKILL_IN_BUNDLE = Path('skills/jadpo/SKILL.md')
+
+# What `--json` gives, as every command page says it
+# (docs/cli-design-language.md, "Plain and `--json`").
+JSON_OUTPUT = (
+    '`jadpo {name} --json` writes one JSON document to standard output instead of text, '
+    'with the same exit code. The document has `schemaVersion`, `command` (`"{name}"`), '
+    '`ok`, `data` (what the command produced, `null` when it failed) and `diagnostics` '
+    '(each error with its `rule`, `reason`, `next` and `help`). '
+    'A command that needs a terminal refuses `--json` and names the flags that do the same job.'
+)
+
+
 class Bundle:
     """The built docs (docs/documentation.md, "The bundle"): the primer,
     a page per topic, per rule and per command, and index.json. Pages link
@@ -999,6 +1015,7 @@ class Bundle:
                          if page.topics() and page.topics()[0]['id']}
         self.catalogue = {r['id']: r for r in help_data.get('rules', [])}
         self.commands = help_data.get('commands', [])
+        self.global_flags = help_data.get('flags', [])
         self.version = help_data.get('version')
         self.primer = primer
         self.problems = []
@@ -1109,6 +1126,17 @@ class Bundle:
         head = f'# `{page.rule}`\n\n{entry["summary"]}.\n\n{"; ".join(facts)}.\n'
         return head + (f'\n{body}\n' if body else '')
 
+    def every_command_markdown(self, command):
+        """The section every command page ends its flags with: the flags
+        `jadpo help --json` lists for every command, and what `--json` gives,
+        in the same words on each page."""
+        out = ['## On every command', '']
+        for flag in self.global_flags:
+            value = f' <{flag["value"]}>' if flag.get('value') else ''
+            out.append(f'- `{flag["name"]}{value}`: {flag.get("description", "")}')
+        out += ['', JSON_OUTPUT.format(name=command['name']), '']
+        return out
+
     def command_markdown(self, command, linked):
         name = command['name']
         out = [f'# `jadpo {name}`', '', f'{command["summary"]}.', '']
@@ -1129,6 +1157,7 @@ class Bundle:
                 value = f' <{flag["value"]}>' if flag.get('value') else ''
                 out.append(f'- `{flag["name"]}{value}`: {flag.get("description", "")}')
             out.append('')
+        out += self.every_command_markdown(command)
         if command.get('examples'):
             out += ['## Examples', '', '```text']
             for example in command['examples']:
@@ -1218,7 +1247,31 @@ class Bundle:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(text)
         (out / 'index.json').write_text(json.dumps(self.index(built), indent=2, ensure_ascii=False) + '\n')
+        # The agent skill goes in byte for byte, outside the index.
+        skill = self.root / SKILL
+        if skill.exists():
+            (out / SKILL_IN_BUNDLE).parent.mkdir(parents=True, exist_ok=True)
+            (out / SKILL_IN_BUNDLE).write_bytes(skill.read_bytes())
         return built
+
+
+def check_skill(root=ROOT):
+    """Problems with the agent skill (docs/documentation.md, "The agent
+    skill"): it exists, and its front matter has a `name` that is its
+    folder in the bundle and a one-line `description`."""
+    path = root / SKILL
+    if not path.exists():
+        return [f'{SKILL} is missing: it is the skill the site publishes for coding agents']
+    text = path.read_text()
+    if not text.startswith('---\n') or '\n---\n' not in text[4:]:
+        return [f'{SKILL} has no front matter with a name and a description']
+    meta, _ = parse_front_matter(text)
+    problems = []
+    if meta.get('name') != SKILL_IN_BUNDLE.parent.name:
+        problems.append(f'{SKILL} front matter name is "{meta.get("name")}", not "{SKILL_IN_BUNDLE.parent.name}"')
+    if not meta.get('description') or len(meta['description']) > 1024:
+        problems.append(f'{SKILL} front matter needs a description of 1 to 1,024 characters')
+    return problems
 
 
 def check_structure(pages, errors, catalogue, commands=(), root=ROOT, learn=()):
@@ -1739,6 +1792,9 @@ def main():
         covered = sum(1 for page in errors if page.rule in page.covered_rules())
         print(f'{len(errors)} error page(s) for {len(catalogue)} rules; {covered} with a checked example')
     for problem in check_structure(pages, errors, catalogue, help_data.get('commands', []), learn=learn):
+        failed = True
+        print(f'  FAIL {problem}')
+    for problem in check_skill():
         failed = True
         print(f'  FAIL {problem}')
     primer = Primer(PRIMER, catalogue) if PRIMER.exists() else None

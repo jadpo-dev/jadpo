@@ -304,6 +304,8 @@ D1 first: the site starts once D1 has merged.
   wording, each fix with its code and what it changes, and the related
   topics. The errors the Learn path, the examples and `(human)` fixes
   hit come first.
+  D13 also rewrites each rule's summary in the compiler's catalogue to the
+  guide, starting with "API serve_openapi is not true or false".
 - [ ] **D14 The toolchain launcher** `opus · high`, before 0.2.0: write
   the failing tests first. The installed `jadpo` runs the release line
   `app.jadpo` names, as [Which jadpo runs](language/14-tooling.md#which-jadpo-runs)

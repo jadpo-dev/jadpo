@@ -352,7 +352,7 @@ so a line's edge between them is just its two ends.
 
 ### Operations Jadpo doesn't have
 
-`buffer` isn't an operation ([Left out, and why](#left-out-and-why)).
+`buffer` isn't an operation ([What geospatial leaves out, and what to use instead](#what-geospatial-leaves-out-and-what-to-use-instead)).
 Neither is the distance between a point and a line or polygon. It comes
 when one of the standard library's
 [scenario applications](19-standard-library.md#scenario-applications)
@@ -1881,7 +1881,7 @@ test "a pasted patch is read longitude first" {
   GeoJSON, longitude first, so a pair or a text read here goes back out
   through it or `geo.to_wkt`.
 
-## Left out, and why
+## What geospatial leaves out, and what to use instead
 <!-- topic: geospatial-left-out -->
 
 Some geospatial work is left out of the language. Each row says why, and

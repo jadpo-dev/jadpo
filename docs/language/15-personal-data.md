@@ -167,7 +167,7 @@ and the compiler refuses an erasure it can't complete.
 A marked field is one with a `personal:` setting, which says it holds
 personal data ([Marking personal fields](#marking-personal-fields)). A
 nullable field is one whose type ends in `?`, so it can hold no value
-([Absent values](02-values-and-types.md#absent-values)).
+([Values that may be missing](02-values-and-types.md#values-that-may-be-missing)).
 
 ### Deleting the person's records: `Erasure.deleted`
 
