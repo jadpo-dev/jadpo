@@ -159,7 +159,10 @@ fn toolchain_lists_and_removes_the_kept_releases_with_this_jadpo() {
         .filter(|line| line.starts_with("  0.0."))
         .collect();
     assert_eq!(rows.len(), 2, "{stdout}");
-    assert!(rows[0].starts_with("  0.0.4 ") && rows[0].ends_with(" bytes"), "{stdout}");
+    assert!(
+        rows[0].starts_with("  0.0.4 ") && rows[0].ends_with(" bytes"),
+        "{stdout}"
+    );
     assert!(rows[1].starts_with("  0.0.2 "), "{stdout}");
     assert!(stdout.contains("  version"), "{stdout}");
     assert!(stdout.contains("2 releases kept"), "{stdout}");
