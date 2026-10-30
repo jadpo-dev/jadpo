@@ -12,7 +12,7 @@ the full rules.
 
 | | Page | After it you can | It introduces | Needs |
 |---|---|---|---|---|
-| 1 | [What Jadpo is, and setting up](01-setting-up.md) | build `jadpo` and run it on an example | what Jadpo is for; the `jadpo` command; `check` and `test`; how an error reads | none |
+| 1 | [What Jadpo is, and setting up](01-setting-up.md) | build `jadpo` and start a project with `jadpo new` | what Jadpo is for; the `jadpo` command; `new`, `check` and `test`; how an error reads | none |
 | 2 | [A project and your first route](02-first-route.md) | run an app that answers `POST /todos` and call it with `curl` | a project and `app.jadpo`; domains; `use` lines; input and output types; actions; routes; a first permission rule; the API record; `jadpo dev`; the error body | 1 |
 | 3 | [Types](03-types.md) | give a todo's title rules, and see bad values refused while compiling and at the door | named types and their rules; standard types; enums; `?`, `none` and defaults; functions | 2 |
 | 4 | [Storing todos](04-storing.md) | keep every todo in PostgreSQL | entities (a table with types); `id`; generated fields; policy on an entity; `pick:`; `Todo.create`; `var`; migrations; `jadpo sql` | 3 |

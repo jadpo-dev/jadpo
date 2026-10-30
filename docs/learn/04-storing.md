@@ -240,7 +240,7 @@ the next `jadpo migrate new` compares against it.
 Run `jadpo api update` for the record too, and `jadpo check` passes:
 
 ```text
-checked: 8 files
+checked: 9 files
 ```
 
 ## Run it

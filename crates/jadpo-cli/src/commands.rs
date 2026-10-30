@@ -20,6 +20,7 @@ pub use crate::fix::fix;
 pub use crate::fmt::fmt;
 use crate::help::{self, VERSION};
 pub use crate::migrate::migrate;
+pub use crate::new::new;
 pub use crate::package::package;
 pub use crate::records::records;
 pub use crate::routes::routes;

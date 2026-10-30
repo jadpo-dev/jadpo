@@ -277,13 +277,10 @@ translation de_de.order_shipped from 3f9a1c0e2b7d wording 77b2e1d4c8a9 accepted
 translation fr_fr.order_shipped from 3f9a1c0e2b7d wording a01c9e44f3b8
 ```
 
-Not built yet: a record language for editors (a TextMate grammar,
-`source.jadpo-record`, in `editors/vscode`, and `jadpo lsp` serving a
-record's errors, outline, file links and folding), and the lines `jadpo
-new` writes into `.gitattributes`. `linguist-generated=false` keeps every
-record's diff expanded in a pull request, since records are committed so
-that their diff is read; `merge=union` is git's own driver, needing no
-set-up:
+`jadpo new` writes these lines into a new project's `.gitattributes`.
+`linguist-generated=false` keeps every record's diff expanded in a pull
+request, since records are committed so that their diff is read;
+`merge=union` is git's own driver, needing no set-up:
 
 ```text
 *.jadpo_record                       text eol=lf linguist-generated=false
@@ -291,6 +288,10 @@ jadpo.lock                           text eol=lf linguist-generated=false merge=
 database/identities.jadpo_record     merge=union
 **/translations/sources.jadpo_record merge=union
 ```
+
+Not built yet: a record language for editors (a TextMate grammar,
+`source.jadpo-record`, in `editors/vscode`, and `jadpo lsp` serving a
+record's errors, outline, file links and folding).
 
 ## The manifest
 <!-- topic: the-manifest -->
@@ -639,7 +640,7 @@ that the path number cannot be decoded.
 | Migrations | Built: `jadpo migrate new` writes each folder, and `jadpo check` fails while the entities and the latest snapshot disagree. Each folder is a `migration_snapshot` node in the manifest. |
 | Stable identity | Built: a key is the kind and the born name, a function or type declared in a domain carries its domain, and a test's key is the file it sits beside and its sentence. The registry is read once `jadpo rename` writes it (area 14). |
 | API record | Partly built: `jadpo api update` writes `api/<api>.jadpo_record` for each API with routes, and `jadpo check` fails with `record.out_of_date` while one disagrees with the routes, naming what changed. Not built yet: breaking-change classification and acceptances. |
-| `.jadpo_record` files | Partly built: every record in the record format, the API record without `version:`, the registry as `database/identities.jadpo_record`, the header check, `record.out_of_date`, `record.edited` and `record.format_newer`, `jadpo records` and `jadpo records update`. Not built yet: telling a careful hand edit of a view from a stale one, which needs the base build that comes with `jadpo approval`; the editor grammar and `jadpo lsp` serving records; `.gitattributes` from `jadpo new`. |
+| `.jadpo_record` files | Partly built: every record in the record format, the API record without `version:`, the registry as `database/identities.jadpo_record`, the header check, `record.out_of_date`, `record.edited` and `record.format_newer`, `jadpo records` and `jadpo records update`, and the `.gitattributes` lines `jadpo new` writes. Not built yet: telling a careful hand edit of a view from a stale one, which needs the base build that comes with `jadpo approval`; the editor grammar and `jadpo lsp` serving records. |
 | Event records | Built: one view per domain with events, `domains/<domain>/events/events.jadpo_record`, written by `jadpo records update` and checked as the API record is; what area 12's "The event record" records. Acceptances come with the API record's. |
 | Lock and package surfaces | Built. The lock is a ledger read and checked like the others, and `jadpo check` holds each installed package to its line and digest (area 11 gives the digest), and its `jadpo version` pin to the line `app.jadpo` names; `jadpo toolchain pin` and `unpin` write the pin, and the package commands and `jadpo records update` keep it. `jadpo package add`, `update`, `remove`, `link` and `unlink` write it, each line through the ledger's writer, sorted; `git` lines record the repository as written, the tag and the tag's commit, `path` lines a folder relative to the root, and a `link` line replaces the package's line while the replaced one waits in `.jadpo/links` (git-ignored, in the lock's own format) for `unlink`. Two versions of one package are locked side by side, each on its own line, and `update` names the version while two are held. A package surface is `record surface 1`, a view written by `jadpo package check` in a package's own repository, verified at install against its package's code, and read by `jadpo package show`; installed, a surface is held by its package's digest rather than regenerated, so `jadpo records` doesn't list it, and an own integration's is written to `build/providers/` (area 11). `jadpo package update` prints this area's review of the surface's changes, each entry marked `used by the app` and `needs a person`; the acceptance it calls for comes with `jadpo approval`. |
 | Build stamp | Built for native and Workers deployables: `jadpo build` writes the build id (`b_` and twelve hex digits of a SHA-256 over the deployable's program digest, the compiler, the target and `jadpo.lock`), the commit, whether the tree was modified, the compiler, the deployable and the target into the binary or module as a constant, and every event it logs carries them (area 14, "A native deployable" and "A Workers deployable"). `jadpo check` writes the manifest's `source` (`commit`, left out when git doesn't track the project, and `modified`) and `deployables`, each deployable's target and build id, which digests a declared deployable's declaration too, so two deployables of one app never share one (area 14, "Declared deployables"); a project with errors has none. |

@@ -40,6 +40,7 @@ your project: it finds the project by looking upwards for `app.jadpo`.
 
 | Command | What it does |
 |---|---|
+| `jadpo new <name>` | Starts a project in a new folder, with a starter route and its test |
 | `jadpo check` | Checks the whole project. It's quick, because it builds nothing |
 | `jadpo fmt` | Formats your files, and adds, removes and sorts their `use` lines |
 | `jadpo test` | Runs the tests. Tests that use the database need PostgreSQL installed |
@@ -558,8 +559,8 @@ failure tool_not_found
 
 ## Signing in and permissions
 
-`app.jadpo` holds the `application`, whose `jadpo:` is the earliest Jadpo
-version the app needs, and the `principal`: who a signed-in caller can be.
+`app.jadpo` holds the `application`, whose `jadpo:` is the Jadpo release
+line the app is written for, and the `principal`: who a signed-in caller can be.
 A user is found by a unique field of an entity. `authentication.jadpo`
 lists the ways to sign in.
 
@@ -786,8 +787,7 @@ Read only what a task needs.
 ## Not built yet
 
 A feature that isn't built is the error `toolchain.not_built_yet` where
-you use it. Not built yet, among others: `jadpo new`, so you write
-`app.jadpo` by hand; seeds and `jadpo seed`; `jadpo rename`; entities and
+you use it. Not built yet, among others: seeds and `jadpo seed`; `jadpo rename`; entities and
 caches in Redis; failure logging; sign-in with OAuth providers, and OAuth
 grants; token scopes; most of personal data, and of the debugging and
 review tools; data builders and `assert emitted` in tests; flags, audit,

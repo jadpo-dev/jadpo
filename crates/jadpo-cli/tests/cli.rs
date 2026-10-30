@@ -89,6 +89,7 @@ Production
   runs          Check runs before a deploy    unfinished
 
 Set up
+  new           Start a project
   config        Check and set local settings  check, move, set
   completions   Turn on Tab completion        zsh, bash, fish
   toolchain     Manage Jadpo releases         list, remove, pin, unpin
@@ -165,6 +166,7 @@ Production
   runs          Check runs before a deploy    unfinished
 
 Set up
+  new           Start a project
   config        Check and set local settings  check · move · set
   completions   Turn on Tab completion        zsh · bash · fish
   toolchain     Manage Jadpo releases         list · remove · pin · unpin
@@ -335,6 +337,7 @@ fn help_json_is_the_whole_command_reference() {
             "schedules",
             "deliveries",
             "runs",
+            "new",
             "config",
             "completions",
             "toolchain",
@@ -497,12 +500,12 @@ fn an_unknown_command_with_nothing_near_points_at_help() {
 
 #[test]
 fn commands_that_are_not_built_yet_are_unknown() {
-    let output = jadpo(&["new"]);
+    let output = jadpo(&["rename"]);
     assert_eq!(output.code, 2);
     assert!(
         output
             .stderr
-            .starts_with("error: `new` isn't a jadpo command"),
+            .starts_with("error: `rename` isn't a jadpo command"),
         "{}",
         output.stderr
     );
@@ -740,6 +743,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "schedules\tWatch and control schedules",
             "deliveries\tRetry, dismiss or cancel deliveries",
             "runs\tCheck runs before a deploy",
+            "new\tStart a project",
             "config\tCheck and set local settings",
             "completions\tTurn on Tab completion",
             "toolchain\tManage Jadpo releases",

@@ -294,7 +294,8 @@ archive dist built for its own target and the `.sha256` beside it from
 `github.com` over HTTPS, refuses an archive whose SHA-256 differs, and
 verifies the archive's GitHub artifact attestation with Sigstore's
 verifier before it runs anything in it. `JADPO_TOOLCHAIN=local` makes it
-run every command itself.
+run every command itself. A first install starts a project with `jadpo new <name>`,
+which writes the installed `jadpo`'s own line into the new `app.jadpo`.
 
 The archives are `.tar.gz`, and `.zip` on Windows (`unix-archive` in
 `dist-workspace.toml`), which `jadpo` unpacks with the gzip reader it

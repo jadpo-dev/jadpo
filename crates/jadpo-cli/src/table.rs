@@ -1707,6 +1707,47 @@ pub static COMMANDS: &[Command] = &[
         run: commands::translations,
     },
     Command {
+        name: "new",
+        synonyms: &[],
+        group: "Set up",
+        summary: "Start a project",
+        description: "Write a new project into a folder that doesn't exist yet or is empty: \
+                      app.jadpo on this jadpo's release line, config.jadpo, the domains/, \
+                      database/ and tests/ folders, and one small domain, hello, with a route, \
+                      the action it runs, its line in policy.jadpo, its API record and a route \
+                      test. It passes `jadpo check`, `jadpo fmt --check` and `jadpo test` as \
+                      written. Beside them: an AGENTS.md saying what Jadpo is and where its docs \
+                      are, a .gitignore keeping build/ out of git, and a .gitattributes keeping \
+                      record diffs readable. A folder that holds anything is refused, and nothing \
+                      in it is changed.",
+        arguments: &[Argument {
+            name: "name",
+            description: "The project's folder, made if it doesn't exist",
+            required: true,
+            values: Values::Path,
+        }],
+        flags: &[],
+        examples: &[
+            Example {
+                description: "Start a project in a new folder",
+                command: "jadpo new todo-app",
+            },
+            Example {
+                description: "Start one in the empty folder you're in",
+                command: "jadpo new .",
+            },
+        ],
+        arguments_rule: &rule::CLI_NEW_ARGUMENTS,
+        raises: &[
+            &rule::TOOLCHAIN_SCAFFOLD_DESTINATION_EXISTS,
+            &rule::TOOLCHAIN_SCAFFOLD_DESTINATION_NOT_EMPTY,
+            &rule::TOOLCHAIN_SCAFFOLD_NAME_INVALID,
+            &rule::TOOLCHAIN_SCAFFOLD_READ_FAILED,
+            &rule::TOOLCHAIN_SCAFFOLD_WRITE_FAILED,
+        ],
+        run: commands::new,
+    },
+    Command {
         name: "config",
         synonyms: &[],
         group: "Set up",

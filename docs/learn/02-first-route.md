@@ -6,53 +6,80 @@ and get it answering its first HTTP request. By the end you'll send it a
 todo with `curl` and get one back. It won't store anything yet: that
 comes on page 4.
 
-## Start the project
+## Look at what `jadpo new` wrote
 
 A Jadpo project is a folder with a file called `app.jadpo` at its top.
 That file describes the application as a whole, and `jadpo` finds your
-project by looking for it. Make the folder outside the `jadpo` folder
-you built from, for instance in your home folder:
+project by looking for it. On the previous page, `jadpo new todo-app`
+made this folder:
 
-```sh
-cd ~
-mkdir todo-app
-cd todo-app
+```text
+todo-app/
+  app.jadpo
+  config.jadpo
+  policy.jadpo
+  api/main.jadpo_record
+  domains/hello/
+  database/
+  tests/
+  AGENTS.md
+  .gitignore
+  .gitattributes
 ```
 
 Each code block on these pages starts with the path of the file it goes
-in, relative to `todo-app/`. Create the file at that path, and copy the
-block into it.
+in, relative to `todo-app/`. Create the file at that path, or replace
+the one that is there, and copy the block into it.
 
-`app.jadpo`:
+`app.jadpo` (written by `jadpo new`):
 
 ```jadpo check project=learn-todo-02 file=app.jadpo
 application {
     jadpo: "0.1"
 }
+
+suggestions {
+    project_token: "e305757434158f902ea271ba8a8b9379"
+}
 ```
 
 `application { }` holds the settings for the whole app. For now it has
-one: the version of Jadpo the app is written for. `"0.1"` means any
-`jadpo` from 0.1.0 on, which is the version you built. A block like this
-holds one setting per line, with no commas.
+one: the release of Jadpo the app is written for. `"0.1"` means any
+0.1 release, the one you built. A block like this holds one setting per
+line, with no commas. `suggestions { }` holds a random token, different
+in your project, that is all Jadpo's makers learn about your project if
+you ever share [suggestions](../language/14-tooling.md#suggestions) with
+them.
 
-`jadpo` writes reports into a `build/` folder inside the project. Keep
-it out of git:
+`config.jadpo` (written by `jadpo new`):
 
-`.gitignore`:
+```jadpo check project=learn-todo-02 file=config.jadpo
+// The settings the app reads from its environment, one field each.
 
-```text
-build/
+config {}
 ```
 
-Now check the project:
+It holds the app's settings, and has none yet; page 9 adds the first.
+`.gitignore` keeps the `build/` folder, where `jadpo` writes its
+reports, out of git, and `.gitattributes` keeps the files Jadpo
+generates readable in a diff. `AGENTS.md` tells a coding agent what
+Jadpo is and where its docs are.
+
+## Clear out the starter
+
+The rest is a starter. `domains/hello/` holds one route, the action it
+runs and its test. `policy.jadpo` says who may run that action, and
+`api/main.jadpo_record` records the route. This page has you write each
+of those for the todo app, and seeing why the compiler asks for each
+one is the point, so delete the starter:
 
 ```sh
+rm -r domains/hello api policy.jadpo
 jadpo check
 ```
 
 ```text
-checked: 1 file
+checked: 2 files
 ```
 
 ## Organise code into domains
@@ -202,7 +229,7 @@ error: `POST /todos` runs `add_todo`, which nobody may call
   rule: policy.effect_ungranted
   help: https://jadpo.dev/docs/errors/policy.effect_ungranted
 
-check failed: 2 errors, 5 files
+check failed: 2 errors, 6 files
 ```
 
 Take the second error first.
@@ -308,8 +335,8 @@ jadpo fmt
 ```
 
 ```text
-checked: 6 files
-formatted: 6 unchanged
+checked: 7 files
+formatted: 7 unchanged
 ```
 
 `jadpo fmt` lays every file out the one way Jadpo formats code, and adds

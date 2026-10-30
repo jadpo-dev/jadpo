@@ -34,6 +34,7 @@ mod install;
 pub mod launcher;
 mod local;
 mod migrate;
+mod new;
 mod package;
 mod package_cache;
 mod package_conform;
