@@ -239,8 +239,10 @@ request goes through the runtime's HTTP component exactly as a client's
 would, and carries your app's own `Origin`, as a browser's does.
 
 `as:` signs someone in for the request, through the application's real
-authentication: a browser session, an API token or, for
-`Principal.service(service)`, a service key
+authentication: a browser session, an API token, an external token from
+the test run's local issuer
+([External tokens in tests](08-identity.md#external-tokens-in-tests-and-jadpo-dev))
+or, for `Principal.service(service)`, a service key
 ([Signing in, end to end](08-identity.md#signing-in-end-to-end)). Leave
 it out and the request is sent with no one signed in.
 

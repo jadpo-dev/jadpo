@@ -205,6 +205,12 @@ database or set a password. Pending migrations are applied as they appear.
 While it runs, the address of each database it started is in
 `build/dev/stores.json`, for `jadpo schedules` and `jadpo why`.
 
+**External tokens.** An app that signs in with `external_token` gets a
+local issuer in place of the configured one, and `jadpo dev token
+<user-id>` prints a bearer token for that user from it
+([External tokens in tests and `jadpo dev`](08-identity.md#external-tokens-in-tests-and-jadpo-dev)).
+Not built yet.
+
 **Background work.** Each schedule run and each skipped tick (a paused
 schedule's, once) gets a line with its trace's id, its outcome, what it
 emitted or its failure, and its time. Each alert gets a line when it

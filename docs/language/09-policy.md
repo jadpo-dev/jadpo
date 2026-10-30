@@ -1467,8 +1467,10 @@ policy {
 ```
 
 `Todo.owner_id` means the current owner of the todo the action changes.
-For that action, the listed people replace the entity grants on what it
-reaches. [Field restrictions](#field-restrictions) and
+For that action, the listed people replace the entity grants on the
+creates, updates, deletes and transitions in its own body. Its reads, and
+the actions it calls, keep their own entities' grants, with the same
+caller. [Field restrictions](#field-restrictions) and
 [tenancy](#tenancy) still apply.
 
 Calling an integration, an outside service such as a payment provider,
@@ -1483,6 +1485,36 @@ report, it lets nobody in. The action is then checked as it starts against
 the line's other entries: anyone signed in, or a role held across the
 whole application. With none left, it refuses every caller, so its route
 is `policy.effect_ungranted`.
+
+### A call the listing doesn't cover
+
+Because a called action keeps its own grants, a listed action can call
+one that refuses some of the people its line lets in. Say
+`lending.borrow_book` is listed for `Access.authenticated` and calls
+`lend_book`, whose `Book` update only `StaffRole.admin` holds. A customer
+would get 403 from `lend_book`. `jadpo check` reports this at the call as
+`policy.call_ungranted`, naming the people the line lets in that the
+called action refuses. Fix it by making the write in the listed action's
+own body, or by listing the called action for exactly those people.
+Listing it for everyone widens it on every path that reaches it. It is
+an error you can decline, for a call that only some callers are meant to
+pass.
+
+### Listing a query
+
+A query is listed under `actions:` like an action, when it needs fewer
+people than its entity's `read:`. Each listed query's line may only hold
+entries that depend on no record: `Access.authenticated`, or a role held
+across the whole application. Anything else is `policy.binding_invalid`.
+The line is checked as the query starts, on every request, so removing
+someone's role takes effect on their next request. Its records are still
+filtered by the entity's `read:`, and its output fields are proved
+against the line's people, not everyone the entity's `read:` lets in. So
+one entity can give staff a query with stock and sale fields restricted
+to `StaffRole.admin`, beside a catalogue query for every signed-in
+customer.
+
+Not built yet: listed queries and `policy.call_ungranted`.
 
 ## Field restrictions
 <!-- topic: field-restrictions -->
@@ -2204,12 +2236,13 @@ needs `read`.
 ## What is built
 <!-- topic: policy-built -->
 
-Everything on this page is built except the two features below. Each is
+Everything on this page is built except the features below. Each is
 `toolchain.not_built_yet` where you write it.
 
 | Feature | Status |
 |---|---|
 | Grants, user fields, membership roles, `Access.authenticated`, `Access.public` and `Access.system`, tenancy, `actions:`, field restrictions, the permissions report, and the refusals under "When policy says no" | Built. |
+| Listed queries ([Listing a query](#listing-a-query)) and `policy.call_ungranted` ([A call the listing doesn't cover](#a-call-the-listing-doesnt-cover)) | Not built yet. Put role-restricted fields in an entity of their own, whose `read:` names the role. |
 | `scopes:`, with the tokens issued to other applications (`oauth_token`, `external_token`) | Not built yet. Browser sessions and service keys work without them. |
 | An acceptance for a change that widens access, and the approval review that shows the report's changes ([Review and sign-off](14-tooling.md#review-and-sign-off), [Acceptances](18-records-and-manifest.md#acceptances)) | Not built yet. Review policy changes in the permissions report's diff instead. |
 

@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-10-23. This page is the only list of outstanding work: the
+**Updated:** 2026-10-30. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record language decisions on the [area pages](language/README.md)
 and process rules in [AGENTS.md](../AGENTS.md), not here. A finished chunk
@@ -353,6 +353,90 @@ Before 0.1.0 is published (D3).
   The entry is in the maintainer's name, so the maintainer saves the
   answers (a prefilled link per part).
 
+## What an outside agent's first app found
+
+An outside agent (Codex) built a library API from the docs alone: books,
+loans, sales and ISBNs, then magic-link customers, Google staff, two staff
+roles and due-date emails. The plain app took 7 diagnostics; the sign-in
+work took 119 and 879 lines of Python around the app. These chunks remove
+the causes, in order. Each turns the agent's failing shape into a test
+first. They are taken before any other unticked chunk on this page
+(Richard, 2026-10-30); chunks touching different crates run at the same
+time.
+
+- [ ] **A0 Every unbuilt protection refused where it is written**
+  `opus · high`: each area's "What is built" rule, that a feature not
+  built yet is `toolchain.not_built_yet` where it is written, applied to
+  what is accepted today and then does nothing. Area 15's field settings
+  (`personal:`'s minimisation and erasure checks, `retention:`, `erase:`)
+  are skipped silently (`crates/jadpo-check/src/types/decl.rs`,
+  `LATER_FIELD_SETTINGS`), so an app believes data expires that never
+  does; an entity's `audit:` and `retention:` (`data.unknown_section`), a
+  route's `bot_check:` (`route.item_unknown`) and `person: true`
+  (`type.not_a_type`) read as wrong syntax; a rerun's one-second bound
+  (area 6) isn't held. Each becomes `toolchain.not_built_yet`, or is
+  built where it is small. Area 15's opening and area 9's "can't ship
+  without a person's approval" say in the same paragraph what isn't
+  built yet. Found by an audit of every unbuilt row for protections that
+  are silently absent (2026-10-30).
+- [ ] **A1 Diagnostics that point at the cause** `opus · high`: a domain
+  or library folder named with a reserved word (`domains/library`) is
+  refused at the folder, before any qualified use cascades
+  (`crates/jadpo-check/src/naming.rs`; area 1, "Reserved words");
+  `jadpo fmt --layout` refuses a promotion whose new file folds onto an
+  existing name, and `layout.promotion_required` says which to rename
+  first; `some(...)` called like a function gets its own message and an
+  edit; a bare action name in `policy.jadpo` that matches an import says
+  to write `domain.action`, with an edit, and its import isn't also
+  `import.unused`; parser recovery stops at the first `expected_name` in
+  a block; `jadpo help <rule>` prints the rule's page from `docs/errors/`
+  offline. Done when the agent's runs 28 and 29 (a keyword domain, bare
+  policy names, a colliding promotion) each give one diagnostic per cause.
+- [ ] **A2 Listed queries and calls a listing doesn't cover** `opus · xhigh`:
+  area 9, "Listing a query" and "A call the listing doesn't cover", with
+  their decisions in the area's notes. Done when a staff query restricts
+  fields to a role on the same entity as a customer catalogue, a route
+  test shows a removed role refused on the next request, and a listed
+  action calling an admin-only helper is `policy.call_ungranted`.
+- [ ] **A3 External tokens in tests and `jadpo dev`** `opus · high`: area 8,
+  "External tokens in tests and `jadpo dev`"; area 19, `key_ops`; area 14,
+  `jadpo dev`'s external tokens, designed with the design skills first.
+  Done when a route test signs in a staff user `as:` on an
+  external-token API, and a key set with WebCrypto's `key_ops` checks a
+  token.
+- [ ] **A4 Batches run to the end in tests** `opus · high`: area 13,
+  "Batches", which is specified and was on no chunk. Done when the
+  seed-library example's test of a withdrawn packet passes through its
+  batch, with no page action called by hand.
+- [ ] **A5 `jadpo seed`** `opus · high`: area 5, seeds, which are specified
+  and were on no chunk; the way to give a dev database its first staff
+  user without SQL.
+- [ ] **A6 Guidance an agent reads first** `opus · high` after A1 to A5:
+  the `AGENTS.md` that `jadpo new` writes gains a workflow (one concern at
+  a time, `jadpo check` after each file, read one topic not a whole page,
+  declare a feature and check it before designing around it) and a table
+  of what is built, generated from each area's "What is built"; `llms.txt`
+  lists every example, with the closest one per feature; a new teaching
+  example, a lending desk, has magic-link customers, staff on external
+  tokens with two roles, a listed staff query, staff from a seed, a
+  reminder schedule over a batch, and route tests for each, with no code
+  outside Jadpo. Before 10.2's measured runs, since it changes what they
+  measure.
+- [ ] **A8 Acceptances for policy and API changes** `opus · xhigh` after A2:
+  area 18, "Acceptances", for the `PolicyChange` and `ApiChange` kinds:
+  `jadpo check` fails on any widening of who can do what (a route made
+  public included), an API break and an event record's break until an
+  added acceptance lists it with a reason; `jadpo acceptance new`; CODEOWNERS on `acceptances/`
+  and `api/`. An outside agent made a route public on request and nothing
+  stopped it (Richard, 2026-10-30). The other kinds and the approval
+  report stay in "After the first build", item 6.
+- [ ] **A7 Sign-in providers** `opus · xhigh`: area 8, `sign_in:`'s
+  `providers:` (Google first, then Microsoft, through `Driver.oidc`) and
+  `on_first_sign_in:` for provider and external-token sign-in. Moved here
+  from "After the first build", item 8 (Richard, 2026-10-30). Done when
+  the lending desk example signs staff in with Google through Jadpo
+  alone, tested with the local issuer.
+
 ## After the first build, in order
 
 1. Units and money in plain numbers: a named type built on `Int` or
@@ -385,8 +469,7 @@ Before 0.1.0 is published (D3).
    `jadpo services`); the `documents` capability; OAuth grants per owner;
    search, `bot_check` and `scanning` capabilities; the disk driver;
    telemetry's `telemetry:` section, custom metrics and the local
-   `jadpo traces`, `metrics` and `logs`; `jadpo watch`; Google and other
-   sign-in providers; publishing packages (`jadpo package new`, `check`,
+   `jadpo traces`, `metrics` and `logs`; `jadpo watch`; publishing packages (`jadpo package new`, `check`,
    `publish`, git-tag versions, publisher trust); packages from other Jadpo
    apps and the cross-app break check; choosing a provider when deploying,
    when an app other people run needs it.

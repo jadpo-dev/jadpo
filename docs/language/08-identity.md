@@ -577,8 +577,26 @@ Each running instance of the app keeps one cache of the provider's keys:
   refresh counts even when the request that started it is cancelled.
 
 The route's own time limit also cancels discovery and key requests.
-Encryption keys in the set are ignored, and signing keys must meet the
-standard library's strict `Jwk` rules.
+Encryption keys in the set are ignored, and so are keys whose `key_ops`
+leaves out `verify`, as keys that can't check a signature. The signing
+keys must meet the standard library's strict `Jwk` rules. A key with a
+private key's or a shared secret's members still refuses the whole set
+as `authentication_misconfigured`.
+
+### External tokens in tests and `jadpo dev`
+
+Tests and `jadpo dev` never fetch from the configured issuer. Each runs a
+local issuer in its place, with a key made for that run, and accepts its
+tokens with the configured `issuer:` and `audience:`. In a route test,
+`as: Principal.user(staff)` sends a token from it for that user's
+subject, so the request goes through the same checks as a real token:
+the user must exist, be `active:` and be shown by the lifecycle. In
+`jadpo dev`, `jadpo dev token <user-id>` prints a bearer token for that
+user's subject, for running a frontend or `curl` against the app without
+the provider. Neither key is ever accepted by a deployable.
+
+Not built yet: the local issuer in tests and `jadpo dev`, and skipping
+keys whose `key_ops` leaves out `verify`.
 
 Not built yet: with `external_token`, a principal `subject:` field made
 of several columns, or of a structured value, is
