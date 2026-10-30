@@ -388,16 +388,17 @@ fn names_in<'t>(text: &str, types: &BTreeMap<&'t str, &'t Entry>) -> Vec<&'t str
         .collect()
 }
 
-/// The types clients send (`sent`) and read (`read`) in an API record:
-/// what its routes take and answer with, its failures' client fields, and
-/// every type those name in turn.
-fn directions<'t>(
-    entries: &'t [Entry],
-) -> (
+/// A record's type entries by name, and the names clients send and read.
+type Directions<'t> = (
     BTreeMap<&'t str, &'t Entry>,
     BTreeSet<&'t str>,
     BTreeSet<&'t str>,
-) {
+);
+
+/// The types clients send (`sent`) and read (`read`) in an API record:
+/// what its routes take and answer with, its failures' client fields, and
+/// every type those name in turn.
+fn directions(entries: &[Entry]) -> Directions<'_> {
     let types: BTreeMap<&str, &Entry> = entries
         .iter()
         .filter_map(|entry| type_name(&entry.heading).map(|name| (name, entry)))
@@ -631,13 +632,16 @@ pub fn events(domain: &str, path: &str, before: &str, after: Option<&str>, out: 
 
 // --- who can do what --------------------------------------------------------
 
+/// Callers by effect: `read` → `Access.public`, `StaffRole.admin`.
+type Lists = BTreeMap<String, BTreeSet<String>>;
+
 #[derive(Default)]
 struct Access {
     tenant: Option<String>,
     /// Each entity's callers by effect, and `tenant <via>` or `shared`.
-    entities: BTreeMap<String, (BTreeMap<String, BTreeSet<String>>, Option<String>)>,
+    entities: BTreeMap<String, (Lists, Option<String>)>,
     /// Each field row: `server_only`, and its own lists by effect.
-    fields: BTreeMap<String, (bool, BTreeMap<String, BTreeSet<String>>)>,
+    fields: BTreeMap<String, (bool, Lists)>,
     actions: BTreeMap<String, BTreeSet<String>>,
     queries: BTreeMap<String, BTreeSet<String>>,
     declines: BTreeSet<(String, String)>,

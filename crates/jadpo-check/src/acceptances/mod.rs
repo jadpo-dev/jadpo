@@ -193,7 +193,7 @@ pub fn problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         for entry in &acceptance.entries {
             listed.insert((&entry.subject, &entry.change));
             if !wanted.contains(&(entry.subject.as_str(), entry.change.as_str())) {
-                out.push(unmatched(entry, &needs));
+                out.push(unmatched(entry, needs));
             }
         }
     }

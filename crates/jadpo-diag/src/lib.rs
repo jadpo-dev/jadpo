@@ -1702,7 +1702,7 @@ mod tests {
             .map(|rule| rule.id)
             .collect();
         assert_eq!(security, ["policy.call_ungranted"]);
-        assert!(rule::POLICY_CALL_UNGRANTED.declinable);
+        const { assert!(rule::POLICY_CALL_UNGRANTED.declinable) };
         let diagnostic = Diagnostic::new(&rule::POLICY_CALL_UNGRANTED, "A call refuses")
             .next("List the called action for them");
         assert_eq!(
