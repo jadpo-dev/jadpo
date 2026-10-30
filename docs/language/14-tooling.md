@@ -206,6 +206,39 @@ type Count = Int {
 }
 ```
 
+## Which jadpo runs
+<!-- topic: which-jadpo-runs -->
+
+A project is written for one release line of Jadpo, and while Jadpo is at
+0.x a minor release may break an app. So the `jadpo` you type must be the
+line the project names, whatever else is installed.
+
+The `jadpo` you install (Homebrew, the npm package `@jadpo/jadpo`, or the
+shell or PowerShell installer) is a thin launcher. Inside a project it
+reads the line from `application { jadpo: "0.1" }` in `app.jadpo`
+([The root](01-project-layout-and-modules.md#the-root)) and runs that
+toolchain: the newest 0.1.x it has or can fetch. If `jadpo.lock` records
+an exact patch, it runs that one, so a build can be reproduced.
+
+The first time a line is needed, the launcher fetches that toolchain into
+a per-user cache. Before it runs a toolchain it checks the download
+against the release's SHA-256 and its GitHub artifact attestation, and it
+refuses one that fails either. `jadpo toolchain list` shows what the cache
+holds and `jadpo toolchain remove <version>` deletes one.
+
+Outside a project there is no line to read. `jadpo new`, `jadpo --version`,
+`jadpo help` and the toolchain commands run with the launcher's own
+version. `jadpo new` writes that version's line into the new `app.jadpo`.
+
+A plain `jadpo` binary, installed without the launcher, runs only its own
+line. Given a project on a different line it stops with an error that
+names the line to install: `toolchain.version_newer` when the project's
+line is later, `toolchain.version_older` when it is earlier. It never
+compiles the project anyway.
+
+The VS Code extension runs `jadpo lsp` from the project's folder, so
+through the launcher it gets the project's version with no configuration.
+
 ## Editor support
 <!-- topic: editor-support -->
 
@@ -1622,6 +1655,7 @@ Each row says what is built and what is specified but not built yet.
 | Command help | Built: every command has `--help` with examples, `jadpo help [command]` explains one, and `jadpo help --json` describes them all. |
 | Project path | Built: every command finds the project by walking up to `app.jadpo`, so a path is optional; run from outside the project, printed paths start with the project as typed. |
 | Scaffold | Not built yet: `jadpo new` is `cli.unknown_command`. The version an app declares is checked: `application { jadpo: "0.1" }`, with `toolchain.version_newer` and `toolchain.version_invalid` (area 1, "The root"). |
+| Which jadpo runs | Not built yet: the launcher, its toolchain cache and verification, `jadpo toolchain list` and `remove`, and `toolchain.version_older`. 0.1.0 ships as a plain binary that runs only its own line; the launcher is built before 0.2.0 (roadmap chunk D14). |
 | Formatter | Built: one member per line, one blank line between declarations, and `fmt --check` counts the files it read; it keeps `use` lines at the top, sorted, fixes imports inside a project, `--layout` makes promotion moves, and it writes each file's declarations before their use, the primary declaration last. |
 | Error messages | Built: one error per mistake in area 14's field order, `impact` only when it says something, edits on the next step where one exists, and help links to each error's page on the site. |
 | JSON output | Built: every command takes `--json` and prints one envelope (`schemaVersion` 2) with project-relative paths and `data.root`, line and column beside byte offsets, and camelCase keys; `jadpo test --json` is described in area 13 and under `testReport` in `jadpo help --json`. |
