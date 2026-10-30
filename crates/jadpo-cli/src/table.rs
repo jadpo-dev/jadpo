@@ -1713,7 +1713,7 @@ pub static COMMANDS: &[Command] = &[
         summary: "Start a project",
         description: "Write a new project into a folder that doesn't exist yet or is empty: \
                       app.jadpo on this jadpo's release line, config.jadpo, the domains/, \
-                      database/ and tests/ folders, and one small domain, hello, with a route, \
+                      database/ and tests/ folders, and one small domain with a route, \
                       the action it runs, its line in policy.jadpo, its API record and a route \
                       test. It passes `jadpo check`, `jadpo fmt --check` and `jadpo test` as \
                       written. Beside them: an AGENTS.md saying what Jadpo is and where its docs \
@@ -1730,7 +1730,7 @@ pub static COMMANDS: &[Command] = &[
         examples: &[
             Example {
                 description: "Start a project in a new folder",
-                command: "jadpo new todo-app",
+                command: "jadpo new my-app",
             },
             Example {
                 description: "Start one in the empty folder you're in",

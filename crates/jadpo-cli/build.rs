@@ -84,6 +84,42 @@ fn main() {
         miniz_oxide::deflate::compress_to_vec(&packed, 6),
     )
     .expect("the packed runtime");
+    scaffold(&manifest.join("scaffold"), &out);
+}
+
+/// What `jadpo new` writes (`src/new.rs`): each file of `scaffold/` as the
+/// project path it is written to and its text, in `scaffold.rs`. A
+/// template is named after its path with `.tmpl` added, so no tool reads
+/// one as a project's source; `gitignore` and `gitattributes` at the top
+/// are the project's dot files, which inside this repository would apply
+/// to it.
+fn scaffold(folder: &Path, out: &Path) {
+    println!("cargo::rerun-if-changed={}", folder.display());
+    let mut templates = Vec::new();
+    walk(folder, &mut templates);
+    templates.sort();
+    let mut code = String::from("pub const SCAFFOLD: &[(&str, &str)] = &[\n");
+    for template in templates {
+        println!("cargo::rerun-if-changed={}", template.display());
+        let inside = template
+            .strip_prefix(folder)
+            .expect("inside the scaffold")
+            .to_string_lossy()
+            .replace('\\', "/");
+        let Some(path) = inside.strip_suffix(".tmpl") else {
+            panic!("scaffold/{inside} is a template, so its name ends in `.tmpl`");
+        };
+        let path = match path {
+            "gitignore" | "gitattributes" => format!(".{path}"),
+            other => other.to_string(),
+        };
+        code.push_str(&format!(
+            "    ({path:?}, include_str!({:?})),\n",
+            template.display().to_string()
+        ));
+    }
+    code.push_str("];\n");
+    std::fs::write(out.join("scaffold.rs"), code).expect("the scaffold's list");
 }
 
 /// Every file under `folder`, in no particular order.

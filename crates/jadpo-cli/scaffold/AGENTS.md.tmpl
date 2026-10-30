@@ -1,0 +1,22 @@
+# {name}
+
+{name} is a Jadpo app. Jadpo is a programming language for web backends,
+written mainly by coding agents and reviewed by people. One compiler checks
+the whole app: its types, stored data, routes, sign-in, and who may see and
+change what.
+
+## Working on it
+
+- The app is written for Jadpo {line}: `app.jadpo` says `jadpo: "{line}"`.
+  `jadpo --version`, run in this folder, gives the exact release.
+- Read the primer once before you write Jadpo:
+  https://jadpo.dev/docs/primer.md. For anything else, pick topics by title
+  from https://jadpo.dev/docs/index.json and read only their `.md`. The
+  same paths under `https://jadpo.dev/v/<version>/` are the docs of one
+  release.
+- Every error names its rule, and its page is
+  `https://jadpo.dev/docs/errors/<rule.id>.md`. An error's `next:` ending
+  `(human)` is a decision for the person you work with: stop and ask them.
+- Run `jadpo check` after every change, `jadpo fmt` after editing a file and
+  `jadpo test` before you finish. After changing a route, run
+  `jadpo api update` and commit `api/` with the code.

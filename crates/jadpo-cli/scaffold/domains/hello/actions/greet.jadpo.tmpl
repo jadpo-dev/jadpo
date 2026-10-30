@@ -1,0 +1,9 @@
+use hello/types { Greeting, Visitor }
+
+/// Greets a visitor by name.
+action greet(input: Visitor) -> Greeting {
+    return Greeting {
+        message: "Hello"
+        name: input.name
+    }
+}

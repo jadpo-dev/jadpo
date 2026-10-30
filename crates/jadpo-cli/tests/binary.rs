@@ -128,6 +128,7 @@ fn bash_completes_commands_and_values() {
             "schedules",
             "deliveries",
             "runs",
+            "new",
             "config",
             "completions",
             "toolchain",

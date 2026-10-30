@@ -22,148 +22,13 @@ use jadpo_term::{Block, Json, Outcome, Screen};
 
 use crate::run::{Call, Reply};
 
-/// The route the starter domain answers, as the screen and `--json` name it.
-const ROUTE: &str = "POST /hello";
-
-/// The project's files, in the order they are written, each with its
-/// text; `{line}`, `{name}` and `{suggestions}` are filled in.
-const FILES: &[(&str, &str)] = &[
-    (".gitattributes", GITATTRIBUTES),
-    (".gitignore", "build/\n"),
-    ("AGENTS.md", AGENTS),
-    ("app.jadpo", APP),
-    ("config.jadpo", CONFIG),
-    ("policy.jadpo", POLICY),
-    ("domains/hello/types/visitor.jadpo", VISITOR),
-    ("domains/hello/types/greeting.jadpo", GREETING),
-    ("domains/hello/actions/greet.jadpo", GREET),
-    ("domains/hello/routes/hello.jadpo", ROUTES),
-    ("domains/hello/routes/hello.test.jadpo", ROUTES_TEST),
-];
+// The project's files: `SCAFFOLD`, each project path with its text, from
+// `scaffold/` (build.rs). `{line}`, `{name}` and `{suggestions}` are
+// filled in as it is written.
+include!(concat!(env!("OUT_DIR"), "/scaffold.rs"));
 
 /// The fixed root's folders that start empty.
 const EMPTY_FOLDERS: &[&str] = &["database", "tests"];
-
-/// Area 18's lines: each record's diff stays expanded in a pull request,
-/// and the records two branches both add to merge with git's own union
-/// driver.
-const GITATTRIBUTES: &str = "\
-*.jadpo_record                       text eol=lf linguist-generated=false
-jadpo.lock                           text eol=lf linguist-generated=false merge=union
-database/identities.jadpo_record     merge=union
-**/translations/sources.jadpo_record merge=union
-";
-
-const AGENTS: &str = "\
-# {name}
-
-{name} is a Jadpo app. Jadpo is a programming language for web backends,
-written mainly by coding agents and reviewed by people. One compiler checks
-the whole app: its types, stored data, routes, sign-in, and who may see and
-change what.
-
-## Working on it
-
-- The app is written for Jadpo {line}: `app.jadpo` says `jadpo: \"{line}\"`.
-  `jadpo --version`, run in this folder, gives the exact release.
-- Read the primer once before you write Jadpo:
-  https://jadpo.dev/docs/primer.md. For anything else, pick topics by title
-  from https://jadpo.dev/docs/index.json and read only their `.md`. The
-  same paths under `https://jadpo.dev/v/<version>/` are the docs of one
-  release.
-- Every error names its rule, and its page is
-  `https://jadpo.dev/docs/errors/<rule.id>.md`. An error's `next:` ending
-  `(human)` is a decision for the person you work with: stop and ask them.
-- Run `jadpo check` after every change, `jadpo fmt` after editing a file and
-  `jadpo test` before you finish. After changing a route, run
-  `jadpo api update` and commit `api/` with the code.
-";
-
-const APP: &str = "\
-application {
-    jadpo: \"{line}\"
-}
-{suggestions}";
-
-const CONFIG: &str = "\
-// The settings the app reads from its environment, one field each.
-
-config {}
-";
-
-const POLICY: &str = "\
-use hello
-
-policy {
-    actions: {
-        hello.greet: [Access.public]
-    }
-}
-";
-
-const VISITOR: &str = "\
-/// Who `POST /hello` greets.
-type Visitor = Input {
-    name: Text
-}
-";
-
-const GREETING: &str = "\
-/// What `POST /hello` sends back.
-type Greeting = Output {
-    message: Text
-    name: Text
-}
-";
-
-const GREET: &str = "\
-use hello/types { Greeting, Visitor }
-
-/// Greets a visitor by name.
-action greet(input: Visitor) -> Greeting {
-    return Greeting {
-        message: \"Hello\"
-        name: input.name
-    }
-}
-";
-
-const ROUTES: &str = "\
-use hello/types { Greeting, Visitor }
-use hello/actions { greet }
-
-/// A first route, to start from.
-routes Hello {
-    prefix: /hello
-
-    /// Greets whoever calls it, signed in or not.
-    POST / {
-        authentication: RouteAuthentication.none
-        input: Visitor
-        output: Greeting
-        run: greet(input)
-    }
-}
-";
-
-const ROUTES_TEST: &str = "\
-use hello/types { Greeting, Visitor }
-
-test \"greets the visitor by name\" {
-    var response: Response = request {
-        method: HttpMethod.post
-        path: \"/hello\"
-        input: Visitor {
-            name: \"Ann\"
-        }
-    }
-    assert response.status == 200
-    assert response.output == Greeting {
-        message: \"Hello\"
-        name: \"Ann\"
-    }
-}
-";
 
 pub fn new(call: &Call) -> Reply {
     let typed = match call.arguments.as_slice() {
@@ -183,14 +48,14 @@ pub fn new(call: &Call) -> Reply {
     };
     let cwd = call.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
     let destination = cwd.join(typed);
-    let Some(name) = project_name(typed, &destination) else {
+    let Some(name) = folder_name(typed, &destination) else {
         return Reply::failed(
             Diagnostic::new(
                 &rule::TOOLCHAIN_SCAFFOLD_NAME_INVALID,
                 format!("`{typed}` doesn't name a folder for the project"),
             )
             .reason("`jadpo new` makes the project in the folder its argument names, and names the project after that folder, so the argument ends in a folder's name.")
-            .next("Give the project's name, for example `jadpo new todo-app`"),
+            .next("Give the project's name, for example `jadpo new my-app`"),
         );
     };
     if let Err(diagnostic) = inspect(typed, &destination) {
@@ -206,7 +71,7 @@ pub fn new(call: &Call) -> Reply {
         root: destination.clone(),
     };
     match write_project(&destination, &name, &line, &mut written) {
-        Ok(()) => done(typed, &destination, &line, &written),
+        Ok(routes) => done(typed, &destination, &line, &routes, &written),
         Err((path, error)) => {
             written.undo();
             Reply::failed(
@@ -229,22 +94,19 @@ pub fn new(call: &Call) -> Reply {
 fn arguments(message: String, reason: String) -> Diagnostic {
     Diagnostic::new(&rule::CLI_NEW_ARGUMENTS, message)
         .reason(reason)
-        .next("Run `jadpo new <name>`, for example `jadpo new todo-app`")
+        .next("Run `jadpo new <name>`, for example `jadpo new my-app`")
 }
 
 /// The project's name: the last folder of the destination as typed, or,
 /// for `.`, the name of the folder it runs in.
-fn project_name(typed: &str, destination: &Path) -> Option<String> {
-    match Path::new(typed).components().next_back()? {
-        Component::Normal(name) => name.to_str().map(str::to_string),
-        Component::CurDir => destination
-            .canonicalize()
-            .ok()?
-            .file_name()?
-            .to_str()
-            .map(str::to_string),
-        _ => None,
-    }
+fn folder_name(typed: &str, destination: &Path) -> Option<String> {
+    let path = Path::new(typed);
+    let named = if path.components().next_back()? == Component::CurDir {
+        destination.canonicalize().ok()?.file_name()?.to_os_string()
+    } else {
+        path.file_name()?.to_os_string()
+    };
+    named.to_str().map(str::to_string)
 }
 
 /// Whether the destination can take a project: it doesn't exist yet, or
@@ -345,7 +207,7 @@ fn write_project(
     name: &str,
     line: &str,
     written: &mut Written,
-) -> Result<(), (String, std::io::Error)> {
+) -> Result<Vec<String>, (String, std::io::Error)> {
     // A token is written whenever `share` first needs one, so a machine
     // whose generator fails still gets a project, without it.
     let suggestions = crate::share::new_token()
@@ -354,7 +216,7 @@ fn write_project(
     written
         .folder(root)
         .map_err(|error| (root.display().to_string(), error))?;
-    for (path, template) in FILES {
+    for (path, template) in SCAFFOLD {
         let text = template
             .replace("{name}", name)
             .replace("{line}", line)
@@ -370,16 +232,36 @@ fn write_project(
     }
     // The API record, as `jadpo api update` writes it from these routes.
     let loaded = jadpo_db::load(root);
+    let mut routes = Vec::new();
     for (api, text) in record::record_texts(&loaded.db, loaded.project) {
         let path = record::path(api);
         written
             .file(&path, text)
             .map_err(|error| (path.clone(), error))?;
+        routes.extend(own_routes(text));
     }
-    Ok(())
+    Ok(routes)
 }
 
-fn done(typed: &str, root: &Path, line: &str, written: &Written) -> Reply {
+/// The routes a record lists that the project declares: each entry
+/// headed by a method and a path, less those Jadpo generates.
+fn own_routes(record: &str) -> Vec<String> {
+    const METHODS: [&str; 5] = ["GET ", "POST ", "PUT ", "PATCH ", "DELETE "];
+    let lines: Vec<&str> = record.lines().collect();
+    lines
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| METHODS.iter().any(|method| line.starts_with(method)))
+        .filter(|(i, _)| {
+            !lines
+                .get(i + 1)
+                .is_some_and(|next| next.trim_start().starts_with("generated "))
+        })
+        .map(|(_, line)| line.to_string())
+        .collect()
+}
+
+fn done(typed: &str, root: &Path, line: &str, routes: &[String], written: &Written) -> Reply {
     let mut files = written.files.clone();
     files.sort();
     let mut screen = Screen::new();
@@ -388,7 +270,10 @@ fn done(typed: &str, root: &Path, line: &str, written: &Written) -> Reply {
         text: format!("Created {typed}"),
         rows: vec![
             ("jadpo".to_string(), line.to_string()),
-            ("route".to_string(), ROUTE.to_string()),
+            (
+                if routes.len() == 1 { "route" } else { "routes" }.to_string(),
+                routes.join(", "),
+            ),
             ("files".to_string(), format!("{} written", files.len())),
         ],
     });
@@ -415,7 +300,10 @@ fn done(typed: &str, root: &Path, line: &str, written: &Written) -> Reply {
                 ),
             ),
             ("jadpo", Json::from(line)),
-            ("routes", Json::array([Json::from(ROUTE)])),
+            (
+                "routes",
+                Json::array(routes.iter().map(|route| Json::from(route.as_str()))),
+            ),
             (
                 "files",
                 Json::array(files.iter().map(|file| Json::from(file.as_str()))),
