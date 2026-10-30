@@ -2,6 +2,7 @@ use std::io::Write;
 use std::process::ExitCode;
 
 use jadpo_cli::Session;
+use jadpo_cli::launcher::Launch;
 use jadpo_term::Environment;
 
 fn main() -> ExitCode {
@@ -10,6 +11,19 @@ fn main() -> ExitCode {
         .map(|arg| arg.to_string_lossy().into_owned())
         .collect();
     let env = Environment::from_process();
+    // The release the project names runs the command, when it isn't this
+    // one (area 14, "Which jadpo runs").
+    match jadpo_cli::launcher::launch(&args, &env) {
+        Launch::Here => {}
+        Launch::Run { binary, version } => {
+            return jadpo_cli::launcher::hand_over(&binary, &version);
+        }
+        Launch::Refused(output) => {
+            let _ = std::io::stdout().write_all(output.stdout.as_bytes());
+            let _ = std::io::stderr().write_all(output.stderr.as_bytes());
+            return ExitCode::from(output.code);
+        }
+    }
     let spinner = jadpo_cli::spinner(&args, &env);
     let output = jadpo_cli::run(&args, &env);
     spinner.finish();

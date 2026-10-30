@@ -172,6 +172,8 @@ rules! {
         "Suggest command has invalid arguments";
     CLI_TEST_ARGUMENTS: "cli.test_arguments", area 14, Error, Agent,
         "Test command has invalid arguments";
+    CLI_TOOLCHAIN_ARGUMENTS: "cli.toolchain_arguments", area 14, Error, Agent,
+        "Toolchain command has invalid arguments";
     CLI_TRANSLATIONS_ARGUMENTS: "cli.translations_arguments", area 14, Error, Agent,
         "Translations command has invalid arguments";
     CLI_UNKNOWN_COMMAND: "cli.unknown_command", area 14, Error, Agent,
@@ -1093,7 +1095,9 @@ rules! {
     TOOLCHAIN_VERSION_INVALID: "toolchain.version_invalid", area 1, Error, Agent,
         "Application's `jadpo:` is not a major and minor version as text";
     TOOLCHAIN_VERSION_NEWER: "toolchain.version_newer", area 1, Error, Human,
-        "Project needs a newer Jadpo";
+        "Project is on a later Jadpo line";
+    TOOLCHAIN_VERSION_OLDER: "toolchain.version_older", area 1, Error, Human,
+        "Project is on an earlier Jadpo line";
     TRANSLATION_EXCHANGE_FILE_INVALID: "translation.exchange_file_invalid", area 14, Error, Human,
         "Translation exchange file can't be read or written";
     TRANSLATION_EXCHANGE_UNIT_UNKNOWN: "translation.exchange_unit_unknown", area 14, Error, Agent,

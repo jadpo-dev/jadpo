@@ -14,6 +14,10 @@
 //! commit), `path` or `link`; a link is a live folder, so it has no
 //! version or digest of its own, and production builds and CI refuse it.
 //! Packages come in chunk 7.1; this is the format they are locked in.
+//!
+//! The lock may also pin the exact Jadpo release the project runs with,
+//! one `jadpo version 0.1.2` line before the packages, which `jadpo
+//! toolchain pin` writes (area 14, "Which jadpo runs"; roadmap chunk D14).
 
 use crate::record::{self, Entry};
 
@@ -147,13 +151,51 @@ fn hex(bytes: &[u8]) -> String {
 
 /// The lock's text for `packages`: sorted by name and major version.
 pub fn write_lock(packages: &[Locked]) -> String {
+    write_pinned_lock(None, packages)
+}
+
+/// The lock's text pinning Jadpo `jadpo` (`0.1.2`), when it is given,
+/// before `packages`.
+pub fn write_pinned_lock(jadpo: Option<&str>, packages: &[Locked]) -> String {
     let mut sorted: Vec<&Locked> = packages.iter().collect();
     sorted.sort_by_key(|locked| locked.order());
-    let entries: Vec<Entry> = sorted
+    let entries: Vec<Entry> = jadpo
+        .map(|version| Entry::new(format!("{JADPO} version {version}")))
         .into_iter()
-        .map(|locked| Entry::new(locked.line()))
+        .chain(sorted.into_iter().map(|locked| Entry::new(locked.line())))
         .collect();
     record::write(&record::LOCK, FROM, &entries)
+}
+
+/// The word a pin's line starts with.
+const JADPO: &str = "jadpo";
+
+/// The Jadpo release the lock pins (`0.1.2`), with the line it is written
+/// on (from 0), when its text has a pin that reads; a lock that doesn't
+/// read is [`parse_lock`]'s to report.
+pub fn locked_jadpo(text: &str) -> Option<(String, usize)> {
+    text.lines().enumerate().skip(2).find_map(|(at, line)| {
+        let version = pin(line)?.ok()?;
+        Some((version.to_string(), at))
+    })
+}
+
+/// A pin's version, or why the pin doesn't read; `None` for a line that
+/// isn't a pin.
+fn pin(line: &str) -> Option<Result<&str, String>> {
+    let rest = line.strip_prefix(JADPO)?.strip_prefix(' ')?;
+    Some(match rest.split(' ').collect::<Vec<_>>().as_slice() {
+        ["version", version] if is_release(version) => Ok(version),
+        ["version", version] => Err(format!(
+            "`{version}` isn't a Jadpo release, such as `0.1.2`"
+        )),
+        _ => Err("a pin is `jadpo version <release>`".into()),
+    })
+}
+
+/// A release's version: three numbers and no pre-release.
+fn is_release(text: &str) -> bool {
+    !text.contains('-') && is_version(text)
 }
 
 /// The lock's packages, or the line that can't be read (from 0) and why:
@@ -165,8 +207,24 @@ pub fn parse_lock(text: &str) -> Result<Vec<Locked>, (usize, String)> {
         .map_err(|problem| (problem.line(), problem.describe(&record::LOCK)))?;
     record::read(&text, &record::LOCK)?;
     let mut out: Vec<(usize, Locked)> = Vec::new();
+    let mut pinned: Option<usize> = None;
     for (at, line) in text.lines().enumerate().skip(2) {
         if line.is_empty() {
+            continue;
+        }
+        if let Some(read) = pin(line) {
+            read.map_err(|why| (at, why))?;
+            if let Some(first) = pinned {
+                return Err((
+                    at,
+                    format!(
+                        "Jadpo is pinned on lines {} and {}: two pins, as a merge of two branches can leave",
+                        first + 1,
+                        at + 1
+                    ),
+                ));
+            }
+            pinned = Some(at);
             continue;
         }
         let locked = parse_line(line).map_err(|why| (at, why))?;
@@ -292,6 +350,36 @@ fn is_version(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pin_comes_first_and_reads_back() {
+        let text = write_pinned_lock(Some("0.1.2"), &packages());
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines[3], "jadpo version 0.1.2", "{text}");
+        assert_eq!(locked_jadpo(&text), Some(("0.1.2".to_string(), 3)));
+        assert_eq!(parse_lock(&text).expect("reads").len(), packages().len());
+        assert_eq!(locked_jadpo(&write_lock(&packages())), None);
+    }
+
+    #[test]
+    fn a_pin_is_one_release() {
+        let base = write_pinned_lock(Some("0.1.2"), &[]);
+        let bad = base.replace("0.1.2", "0.1");
+        assert!(
+            parse_lock(&bad)
+                .expect_err("not a release")
+                .1
+                .contains("`0.1`")
+        );
+        let twice = format!("{base}jadpo version 0.1.3\n");
+        assert!(
+            parse_lock(&twice)
+                .expect_err("two pins")
+                .1
+                .contains("two pins")
+        );
+        assert_eq!(locked_jadpo(&bad), None);
+    }
 
     fn digest(c: char) -> String {
         format!("sha256:{}", c.to_string().repeat(64))

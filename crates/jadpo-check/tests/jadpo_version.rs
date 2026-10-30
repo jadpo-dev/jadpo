@@ -1,7 +1,9 @@
-//! The Jadpo version an application needs (area 1, "The root"; area 14,
-//! "Scaffold"; roadmap chunk D3): `application { jadpo: "0.1" }`, the
-//! earliest version as its major and minor numbers, and a project needing a
-//! newer Jadpo refused with that error alone.
+//! The Jadpo release line an application is written for (area 1, "The
+//! root"; area 14, "Which jadpo runs"; roadmap chunks D3 and D14):
+//! `application { jadpo: "0.1" }`, the line as its major and minor
+//! numbers, and a project on another line refused with that error alone:
+//! `toolchain.version_newer` for a later line, `toolchain.version_older`
+//! for an earlier one.
 
 use jadpo_db::Layout;
 
@@ -24,12 +26,9 @@ fn project(app_text: &str, other: &[(&str, &str)]) -> Vec<String> {
 }
 
 #[test]
-fn this_version_and_older_ones_check() {
-    let current = this_version();
-    for version in [current.as_str(), "0.0"] {
-        let text = app(&format!("    jadpo: \"{version}\"\n"));
-        assert_eq!(project(&text, &[]), Vec::<String>::new(), "{version}");
-    }
+fn this_line_checks() {
+    let text = app(&format!("    jadpo: \"{}\"\n", this_version()));
+    assert_eq!(project(&text, &[]), Vec::<String>::new());
 }
 
 #[test]
@@ -38,20 +37,89 @@ fn leaving_it_out_checks_nothing() {
 }
 
 #[test]
-fn a_newer_major_or_minor_version_is_refused() {
-    let (major, minor) = this_version()
-        .split_once('.')
-        .map(|(a, b)| (a.parse::<u64>().unwrap(), b.parse::<u64>().unwrap()))
-        .unwrap();
+fn a_later_major_or_minor_line_is_refused() {
+    let (major, minor) = numbers();
     for version in [format!("{}.0", major + 1), format!("{major}.{}", minor + 1)] {
         let text = app(&format!("    jadpo: \"{version}\"\n"));
         assert_eq!(
             project(&text, &[]),
             vec![format!(
-                "app.jadpo toolchain.version_newer: This project needs Jadpo {version} or later"
+                "app.jadpo toolchain.version_newer: This project needs Jadpo {version}"
             )],
         );
     }
+}
+
+#[test]
+fn an_earlier_line_is_refused_too() {
+    // A line, not a minimum: a 0.x minor release may break an app, so a
+    // later jadpo doesn't compile it silently.
+    let (major, minor) = numbers();
+    let mut earlier = vec!["0.0".to_string()];
+    if minor > 0 {
+        earlier.push(format!("{major}.{}", minor - 1));
+    }
+    for version in earlier {
+        if version == this_version() {
+            continue;
+        }
+        let text = app(&format!("    jadpo: \"{version}\"\n"));
+        assert_eq!(
+            project(&text, &[]),
+            vec![format!(
+                "app.jadpo toolchain.version_older: This project needs Jadpo {version}"
+            )],
+            "{version}",
+        );
+    }
+}
+
+#[test]
+fn a_project_on_an_earlier_line_reports_nothing_else() {
+    let text = app("    jadpo: \"0.0\"\n    revocation_delay: soon\n");
+    assert_eq!(
+        project(&text, &[]),
+        vec!["app.jadpo toolchain.version_older: This project needs Jadpo 0.0"],
+    );
+}
+
+#[test]
+fn a_lock_pin_on_another_line_is_out_of_date() {
+    let text = app(&format!("    jadpo: \"{}\"\n", this_version()));
+    let with_lock = |lock: &str| {
+        let db = jadpo_db::Database::default();
+        let project = support::project_with_records(
+            &db,
+            Layout::Project,
+            &[("app.jadpo", text.as_str())],
+            &[("jadpo.lock", lock)],
+        );
+        jadpo_check::check(&db, project)
+            .iter()
+            .map(|d| {
+                let path = d.primary.as_ref().map_or("", |l| l.span.path.as_str());
+                format!("{path} {}: {}", d.rule.id, d.message)
+            })
+            .collect::<Vec<String>>()
+    };
+    let on_line = jadpo_db::write_pinned_lock(Some(&format!("{}.7", this_version())), &[]);
+    assert_eq!(with_lock(&on_line), Vec::<String>::new());
+    let off_line = jadpo_db::write_pinned_lock(Some("99.0.1"), &[]);
+    assert_eq!(
+        with_lock(&off_line),
+        vec![format!(
+            "jadpo.lock record.out_of_date: `jadpo.lock` pins Jadpo 99.0.1, which isn't on line {}",
+            this_version()
+        )],
+    );
+}
+
+/// This Jadpo's major and minor numbers.
+fn numbers() -> (u64, u64) {
+    this_version()
+        .split_once('.')
+        .map(|(a, b)| (a.parse::<u64>().unwrap(), b.parse::<u64>().unwrap()))
+        .unwrap()
 }
 
 #[test]
@@ -74,7 +142,7 @@ fn a_project_needing_a_newer_jadpo_reports_nothing_else() {
     );
     assert_eq!(
         found,
-        vec!["app.jadpo toolchain.version_newer: This project needs Jadpo 99.0 or later"],
+        vec!["app.jadpo toolchain.version_newer: This project needs Jadpo 99.0"],
     );
 }
 
@@ -86,7 +154,7 @@ fn a_loose_file_is_held_to_it_too() {
     );
     assert_eq!(
         found,
-        vec!["main.jadpo toolchain.version_newer: This project needs Jadpo 99.0 or later"],
+        vec!["main.jadpo toolchain.version_newer: This project needs Jadpo 99.0"],
     );
 }
 

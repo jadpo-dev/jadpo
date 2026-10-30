@@ -55,6 +55,16 @@ miniz_oxide.workspace = true
 # which only the `jadpo` tool links: no deployable does.
 getrandom.workspace = true
 openssl.workspace = true
+# The toolchain launcher (area 14, "Which jadpo runs"; roadmap chunk D14):
+# a release's GitHub artifact attestation checked before it runs, with
+# RustCrypto's curves and hashes behind Sigstore's verifier.
+sigstore-verify.workspace = true
+sigstore-trust-root.workspace = true
+sigstore-crypto.workspace = true
+sigstore-types.workspace = true
+p256.workspace = true
+p384.workspace = true
+ed25519-dalek.workspace = true
 
 # The runtime's source this `jadpo` carries, packed by build.rs (chunk
 # 9.2c): deflated and named by its digest, with crates already in the lock.
