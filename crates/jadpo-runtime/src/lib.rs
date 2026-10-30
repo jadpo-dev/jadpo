@@ -13,7 +13,8 @@
 //!   transaction opened at the first store operation, at the
 //!   [`Isolation`] the body's plan names (chunk 3.7), the body (an
 //!   [`ActionBody`] either executor supplies) rerun on a concurrent change
-//!   within [`RERUN_ATTEMPTS`], the commit, then the events delivered.
+//!   within [`RERUN_ATTEMPTS`] and [`RERUN_WINDOW_MS`], the commit, then
+//!   the events delivered.
 //! - [`Host`] and the capability traits ([`Database`], [`Transaction`]),
 //!   with [`MemoryHost`], which holds no store, until the drivers come.
 //! - [`Env`]: what one invocation runs under: its seed and clock.
@@ -166,7 +167,8 @@ pub mod webhooks;
 mod write;
 
 pub use boundary::{
-    ActionBody, RERUN_ATTEMPTS, action, commit_held, misconfigured, outcome_unknown, unavailable,
+    ActionBody, RERUN_ATTEMPTS, RERUN_WINDOW_MS, action, commit_held, misconfigured,
+    outcome_unknown, unavailable,
 };
 pub use ctx::{
     Binding, CallKey, Caller, Capabilities, Ctx, EmitRefused, Held, SessionEffect, SignInRefused,
