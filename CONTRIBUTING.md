@@ -53,6 +53,10 @@ To render the language specification as web pages into
 python3 tools/docs/language_docs.py
 ```
 
+## Reporting a bug
+
+Use the [bug form](https://github.com/jadpo-dev/jadpo/issues/new?template=bug.yml): the version, what you ran, the smallest project that shows it, the full output and what you expected. A security problem goes to the private route in [SECURITY.md](SECURITY.md).
+
 ## Changes
 
 Branch from `main`, keep one roadmap chunk per pull request, and merge when CI

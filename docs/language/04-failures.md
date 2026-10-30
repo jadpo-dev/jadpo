@@ -638,6 +638,29 @@ Division by zero can't happen, because a divisor's type must exclude zero
 construction that fails at run time never reaches the client as a fault
 either, because it needs an `attempt`.
 
+### A bug in Jadpo
+
+A defect the checker should have ruled out is a bug in Jadpo, not in your
+app. The client gets the same `500 internal_fault` as for any defect, and
+nothing about Jadpo, the version or the cause is in the response. The
+operator's `operation.failed` line adds `bug_in_jadpo: true` and `report`,
+the address of the issue form, beside the build's version, the
+`request_id` and the `.jadpo` frames. It never holds a request body, a
+header or a setting value. A fault that is your own code's, such as an
+overflow, has `bug_in_jadpo: false` and `report: null`.
+
+The `jadpo` command and `jadpo dev` and `jadpo test` are not deployed
+apps, so a panic in the compiler or the interpreter there prints an
+internal error, in the [CLI design language](../cli-design-language.md)'s
+shape, instead: `failed  internal error in Jadpo`, the command, the
+version and platform, the place in Jadpo's source, and the issue form's
+link. It never prints the panic message or your arguments. The same crash
+is written to `~/.cache/jadpo/crashes/<timestamp>.txt` (under
+`XDG_CACHE_HOME` when set) with the version, the platform, the arguments
+(`jadpo config` keeps only its subcommand), the panic message and a
+backtrace. That file can quote your project, so read it before you attach
+it to a report. Jadpo sends nothing anywhere, and keeps the newest 20.
+
 ## Concealing records
 <!-- topic: concealing-records -->
 

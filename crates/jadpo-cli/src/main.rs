@@ -10,6 +10,7 @@ fn main() -> ExitCode {
         .map(|arg| arg.to_string_lossy().into_owned())
         .collect();
     let env = Environment::from_process();
+    jadpo_cli::crash::install(args.clone(), Environment::from_process());
     let spinner = jadpo_cli::spinner(&args, &env);
     let output = jadpo_cli::run(&args, &env);
     spinner.finish();

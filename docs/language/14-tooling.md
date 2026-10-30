@@ -411,6 +411,32 @@ The rules:
 - JSON gives line and column as well as byte offsets, and uses one naming
   style for its keys.
 
+### When Jadpo itself fails
+
+A panic in `jadpo`, including the interpreter under `jadpo dev` and `jadpo
+test`, is a bug in Jadpo, not in your code. It prints one block on stderr
+in the shape of a failure, with the command, the version and platform, the
+place in Jadpo's own source, the crash file and the issue form's link:
+
+```text
+failed: internal error in Jadpo
+  reason  This is a bug in Jadpo, not in your code.
+  ran     jadpo check
+  version jadpo 0.1.0 · aarch64-macos
+  in      crates/jadpo-check/src/lib.rs:12
+  file    /Users/ada/.cache/jadpo/crashes/2026-10-30T14-02-31Z.txt
+→ https://github.com/jadpo-dev/jadpo/issues/new?template=bug.yml&title=…
+  report it, and attach the file once you have read it
+```
+
+The block names only the command word, never an argument, and never the
+panic message. The crash file holds those, so it can quote your project:
+read it before you attach it. It is written under `$XDG_CACHE_HOME/jadpo/
+crashes/`, else `~/.cache/jadpo/crashes/`, and the newest 20 are kept.
+Nothing is sent. A deployed app's panic-free runtime reports a bug of
+Jadpo's as `operation.failed` with `bug_in_jadpo: true` and `report` (area
+4, "A bug in Jadpo"), and the client sees only `500 internal_fault`.
+
 ## The `build/` folder
 <!-- topic: the-build-folder -->
 
@@ -1059,8 +1085,10 @@ them is built as [Declared deployables](#declared-deployables) says.
   with its outcome, `deliveries`, `received`, `polled`, `deleted`,
   `alerts`, `problems`, each store it couldn't work in, `unbuilt` and
   `ms`), `operation.failed` for a fault
-  behind a 500 with its classification, route, `request_id` and `.jadpo`
-  frames (areas 4 and 17), and `runtime.stopped`. The rest of a
+  behind a 500 with its classification, route, `request_id`, `.jadpo`
+  frames (areas 4 and 17), and `bug_in_jadpo` with the issue form's
+  address in `report` when the fault is a bug in Jadpo, and
+  `runtime.stopped`. The rest of a
   deployable's log comes with area 16's telemetry.
 
 ```text
