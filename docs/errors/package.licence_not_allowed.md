@@ -30,7 +30,7 @@ error: Package `Postcodes.v2` is proprietary but wasn't installed from git
   reason: Only a package installed from git, a company's private package, may be `Licence.proprietary`; the registry and other sources carry packages others may use.
   next: Install the package from its git repository, or publish it under one of the open licences (human)
   rule: package.licence_not_allowed
-  help: docs/errors/package.licence_not_allowed.md
+  help: https://jadpo.dev/docs/errors/package.licence_not_allowed
 
 check failed: 1 error, 2 files
 ```

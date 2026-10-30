@@ -130,7 +130,7 @@ error: `POST /price-sheets` runs `file_prices`, which makes 2 changing calls, bu
   reason: Several changing calls are each recorded under their action's key, so a retry carries on from the last answer instead of sending them again; a route keeps its key across a retry only when its API requires the client's `Idempotency-Key`.
   next: Require the key with `idempotency: Idempotency.required` on API `main`, or answer `202` and make the calls in a subscriber (human)
   rule: step.context
-  help: docs/errors/step.context.md
+  help: https://jadpo.dev/docs/errors/step.context
 
 check failed: 1 error, 8 files
 ```

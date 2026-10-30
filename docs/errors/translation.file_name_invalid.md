@@ -45,7 +45,7 @@ error: `domains/shipping/translations/pt-BR.jadpo` isn't named for a locale
   reason: A language file is named for the locale it words, the tag in lower case with `_` for `-`: `en_gb.jadpo` is `Locale.en_gb`. Did you mean `pt_br`?
   next: Rename the file to `domains/shipping/translations/pt_br.jadpo` (agent)
   rule: translation.file_name_invalid
-  help: docs/errors/translation.file_name_invalid.md
+  help: https://jadpo.dev/docs/errors/translation.file_name_invalid
 
 check failed: 1 error, 5 files
 ```

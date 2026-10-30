@@ -198,7 +198,7 @@ error: A test can't call `Shelf.update`
   reason: Only actions write records (area 6), so a test changes data through the action that does it, which is what it proves; a fixture, a test-only action, builds the data a test starts from. A test may still read, with `Shelf.get` and queries.
   next: Call the action that writes `Shelf`, or move the write into a fixture (agent)
   rule: semantic.not_callable
-  help: docs/errors/semantic.not_callable.md
+  help: https://jadpo.dev/docs/errors/semantic.not_callable
 
 check failed: 1 error, 4 files
 ```
@@ -630,7 +630,7 @@ error: An action can't run schedule `tidy_up`
   reason: Only a test runs a schedule by hand, with `.run()`, to prove what one run does; in the application the tick runs it when it is due, and an operator runs it now with `jadpo schedules run`.
   next: Call the action `tidy_up` runs, or move this into the schedule's test (agent)
   rule: semantic.not_callable
-  help: docs/errors/semantic.not_callable.md
+  help: https://jadpo.dev/docs/errors/semantic.not_callable
 
 check failed: 1 error, 4 files
 ```

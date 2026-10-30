@@ -46,7 +46,7 @@ error: The success arm is written twice
   reason: A call succeeds one way, so one `success(...)` arm takes its value; this one would never run.
   next: Remove this arm, or merge its body into the first (agent)
   rule: failure.outcome_success_duplicate
-  help: docs/errors/failure.outcome_success_duplicate.md
+  help: https://jadpo.dev/docs/errors/failure.outcome_success_duplicate
 
 check failed: 1 error, 2 files
 ```

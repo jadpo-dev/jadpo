@@ -42,7 +42,7 @@ error: `order_shipped` is written twice in `domains/shipping/translations/fr_fr.
   reason: A member words one message, enum or email, once; the second would be dropped or the first, whichever a reader of the file believed.
   next: Remove one `order_shipped` (agent)
   rule: translation.member_duplicate
-  help: docs/errors/translation.member_duplicate.md
+  help: https://jadpo.dev/docs/errors/translation.member_duplicate
 
 check failed: 1 error, 4 files
 ```

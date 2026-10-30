@@ -28,7 +28,7 @@ error: Translations need the application's locales
   reason: Each language file is for one of the locales the application supports, and each supported locale words every message. None is declared, so there is nothing to check the wording against.
   next: Declare them in `app.jadpo`, for instance `locales { default: Locale.en_gb supported: [Locale.en_gb] }` (agent)
   rule: translation.locales_required
-  help: docs/errors/translation.locales_required.md
+  help: https://jadpo.dev/docs/errors/translation.locales_required
 
 check failed: 1 error, 3 files
 ```

@@ -190,7 +190,7 @@ error: `api/main.jadpo_record` is missing
   reason: Each API with routes has a committed record of its routes, fields and failure codes, so every change to API `main` shows as a diff of one file.
   next: Run `jadpo api update`, and commit the record with the code (agent)
   rule: record.out_of_date
-  help: docs/errors/record.out_of_date.md
+  help: https://jadpo.dev/docs/errors/record.out_of_date
 
 error: `POST /todos` runs `add_todo`, which nobody may call
  --> domains/todos/routes/todos.jadpo:9:5
@@ -200,7 +200,7 @@ error: `POST /todos` runs `add_todo`, which nobody may call
   reason: An action takes its permission from the entities it reaches, and `add_todo` reaches none, so it is refused to everyone unless root `policy { }` lists who may call it under `actions:`.
   next: List `todos.add_todo: [...]` under `actions:` in `policy.jadpo` (human)
   rule: policy.effect_ungranted
-  help: docs/errors/policy.effect_ungranted.md
+  help: https://jadpo.dev/docs/errors/policy.effect_ungranted
 
 check failed: 2 errors, 5 files
 ```

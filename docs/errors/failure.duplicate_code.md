@@ -28,7 +28,7 @@ error: The code `customer_not_found` is already used by `CustomerNotFound`
   reason: `CustomerNotFound` has the code `customer_not_found` too. A client relies on a code always meaning the same failure, with the same status, message and fields, so every code belongs to one failure.
   next: Give one of them a code of its own, or use one failure for both (human)
   rule: failure.duplicate_code
-  help: docs/errors/failure.duplicate_code.md
+  help: https://jadpo.dev/docs/errors/failure.duplicate_code
 
 check failed: 1 error, 1 file
 ```

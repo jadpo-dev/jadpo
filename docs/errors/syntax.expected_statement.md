@@ -24,7 +24,7 @@ error: Jadpo has no `while` loop
   reason: The only loop is `for item in items`, which always ends after its list; stop early with `return`.
   next: Loop over a list with `for`, or narrow it first with `list.filter` (agent)
   rule: syntax.expected_statement
-  help: docs/errors/syntax.expected_statement.md
+  help: https://jadpo.dev/docs/errors/syntax.expected_statement
 
 check failed: 1 error, 1 file
 ```

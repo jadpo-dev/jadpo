@@ -25,7 +25,7 @@ error: `zone:` is given twice
   reason: Each named argument is given once.
   next: Remove one of the `zone:` arguments (agent)
   rule: syntax.named_argument_duplicate
-  help: docs/errors/syntax.named_argument_duplicate.md
+  help: https://jadpo.dev/docs/errors/syntax.named_argument_duplicate
 
 check failed: 1 error, 1 file
 ```

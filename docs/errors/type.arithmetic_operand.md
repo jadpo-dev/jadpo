@@ -25,7 +25,7 @@ error: `Stock` and `Quantity` can't be added
   reason: `+` and `-` need the same named type on both sides, or a literal, because `Stock` and `Quantity` are different units; `*` and `%` may mix types.
   next: Use two values of the same type (agent)
   rule: type.arithmetic_operand
-  help: docs/errors/type.arithmetic_operand.md
+  help: https://jadpo.dev/docs/errors/type.arithmetic_operand
 
 check failed: 1 error, 1 file
 ```

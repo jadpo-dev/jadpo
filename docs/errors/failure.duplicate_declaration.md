@@ -22,7 +22,7 @@ error: `Refused` is listed twice after `fails`
   reason: `fails` lists each failure that can leave once.
   next: Remove the second `Refused` (agent)
   rule: failure.duplicate_declaration
-  help: docs/errors/failure.duplicate_declaration.md
+  help: https://jadpo.dev/docs/errors/failure.duplicate_declaration
 
 check failed: 1 error, 1 file
 ```

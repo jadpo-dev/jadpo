@@ -22,7 +22,7 @@ error: Jadpo writes `type GridCell = Object`, not `struct GridCell`
   reason: `struct` declares a record in Rust, Go, Swift and C#, `interface` an object's shape in TypeScript, and `enum` a list of cases in most languages; every Jadpo type is `type Name = Base { ... }`, with `Object` or `Enum` as the base.
   next: Write `type GridCell = Object` (agent)
   rule: syntax.type_keyword
-  help: docs/errors/syntax.type_keyword.md
+  help: https://jadpo.dev/docs/errors/syntax.type_keyword
 
 check failed: 1 error, 1 file
 ```

@@ -24,7 +24,7 @@ error: A package can't hold email templates
   reason: Email templates, partials and layouts are the app's own, in `emails/` of the domain that sends them; a package sends no email itself.
   next: Move the email into a domain's `emails/` folder in the app, and remove it from the package (agent)
   rule: package.emails_folder
-  help: docs/errors/package.emails_folder.md
+  help: https://jadpo.dev/docs/errors/package.emails_folder
 
 check failed: 1 error, 3 files
 ```

@@ -30,7 +30,7 @@ error: `name` is given twice
   reason: Each field of `Product` is given once, so there is never a question of which value counts.
   next: Remove one `name` (agent)
   rule: type.duplicate_field
-  help: docs/errors/type.duplicate_field.md
+  help: https://jadpo.dev/docs/errors/type.duplicate_field
 
 check failed: 1 error, 1 file
 ```

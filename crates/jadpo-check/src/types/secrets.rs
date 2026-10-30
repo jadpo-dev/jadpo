@@ -322,8 +322,7 @@ pub(crate) fn stored(entity: &str, name: &str, secret: &str, span: Span) -> Diag
             "{} `{secret}` is never stored as itself: it will be stored sealed with an encrypted field's key, once keys held as data and encrypted fields are built (area 19, \"Language gaps\"); until then this compiler can't keep `{entity}.{name}`.",
             capital(indefinite(secret))
         ))
-        .next(format!("Keep `{entity}.{name}` out of storage for now"))
-        .help_at("19-standard-library.html#secret-values");
+        .next(format!("Keep `{entity}.{name}` out of storage for now"));
     }
     let next = match secret {
         security::PASSWORD => format!(

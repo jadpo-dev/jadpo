@@ -34,7 +34,7 @@ error: `cookie:` isn't a cookie's name
   reason: A browser session's cookie is named in text: 1 to 64 letters, digits, `_` and `-`, starting with a letter, such as `"session"`.
   next: Write the cookie's name in quotes, such as `cookie: "session"` (agent)
   rule: semantic.auth_setting_invalid
-  help: docs/errors/semantic.auth_setting_invalid.md
+  help: https://jadpo.dev/docs/errors/semantic.auth_setting_invalid
 
 check failed: 1 error, 1 file
 ```

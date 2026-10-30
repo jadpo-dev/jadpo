@@ -54,7 +54,7 @@ error: A template only reads its fields, translates and formats
   reason: Templates are strict: they read their email's fields, call translations and `text.format`, compare values in `{{ if }}` and walk lists with `{{ for }}`, so what an email says is decided where it is emitted, and a reviewer reads its words in one place.
   next: Call only `translations.<domain>.<message>(...)` and `text.format(...)`; work anything else out where the email is emitted, and give it to the email as a field (agent)
   rule: email.template_not_allowed
-  help: docs/errors/email.template_not_allowed.md
+  help: https://jadpo.dev/docs/errors/email.template_not_allowed
 
 check failed: 1 error, 3 files
 ```

@@ -7,7 +7,7 @@ use jadpo_diag::{Decider, Diagnostic, Label};
 use crate::detect::{Mode, Style};
 use crate::palette::{Symbol, Token};
 use crate::screen::{
-    Line, VALUE_COLUMN, decider, field, headline, paint, raw, strong, visible, width,
+    Line, VALUE_COLUMN, decider, field, headline, link, paint, raw, strong, visible, width,
 };
 use crate::sources::{Position, Sources, line_text, shown_path};
 
@@ -127,7 +127,7 @@ impl DiagnosticView {
             lines.extend(field("impact", vec![raw(impact.as_str())], style));
         }
         lines.extend(field("rule", vec![raw(self.rule.as_str())], style));
-        lines.extend(field("help", vec![raw(self.help.as_str())], style));
+        lines.extend(field("help", vec![link(self.help.as_str())], style));
         lines
     }
 

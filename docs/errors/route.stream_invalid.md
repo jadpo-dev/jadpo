@@ -140,7 +140,7 @@ error: `POST /help_desk` streams a model's answer with `SuccessStatus.created`
   reason: A route whose action returns an `AiStream` sends the model's answer as server-sent events as it is written, answering 200 once its first piece has come; it has no other success to report, and nothing to wait for with `settle:`.
   next: Remove `status:`; a stream answers 200 (agent)
   rule: route.stream_invalid
-  help: docs/errors/route.stream_invalid.md
+  help: https://jadpo.dev/docs/errors/route.stream_invalid
 
 check failed: 1 error, 9 files
 ```

@@ -113,7 +113,7 @@ error: `thank` sends `ChoreThanked` to a `Household` it never reached
   reason: `ChoreThanked`'s subscribers run as the system within the `Household` its `household_id` names, so that id must come from a `Household`, or a record of one, that `thank` read or wrote under its caller's policy; one the caller passes could name a `Household` they don't belong to.
   next: Name the `Household` of a record `thank` reads or writes, or read it first with `attempt Household.get(household_id)` (agent)
   rule: policy.event_tenant_unproved
-  help: docs/errors/policy.event_tenant_unproved.md
+  help: https://jadpo.dev/docs/errors/policy.event_tenant_unproved
 
 check failed: 1 error, 1 file
 ```
@@ -341,7 +341,7 @@ error: `sweep_house` starts a batch in a `Household` it never reached
   reason: A batch's run works as the system within the `Household` its saved values of type `Household.id` name, so each must come from a `Household`, or a record of one, that `sweep_house` read or wrote under its caller's policy; one the caller passes could name a `Household` they don't belong to.
   next: Name the `Household` of a record `sweep_house` reads or writes, or read it first with `attempt Household.get(household_id)` (agent)
   rule: policy.event_tenant_unproved
-  help: docs/errors/policy.event_tenant_unproved.md
+  help: https://jadpo.dev/docs/errors/policy.event_tenant_unproved
 
 check failed: 1 error, 1 file
 ```

@@ -70,7 +70,7 @@ error: Header `x-request-tag` is read twice
   reason: Header names are compared without case, so two fields reading one header would always hold the same value.
   next: Remove one of the fields (agent)
   rule: route.header_duplicate
-  help: docs/errors/route.header_duplicate.md
+  help: https://jadpo.dev/docs/errors/route.header_duplicate
 
 check failed: 1 error, 1 file
 ```

@@ -20,7 +20,7 @@ error: `Todo.keeper` holds a whole `User`
   reason: An entity value is a snapshot, never stored inside another record; a field refers to a record by its identity, `User.id`, which the database keeps as a foreign key.
   next: Store `User.id` instead (agent)
   rule: data.entity_in_field
-  help: docs/errors/data.entity_in_field.md
+  help: https://jadpo.dev/docs/errors/data.entity_in_field
 
 check failed: 1 error, 1 file
 ```

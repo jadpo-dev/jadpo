@@ -23,7 +23,7 @@ error: `Listing.subtitle` already permits `none`
   reason: `Listing.subtitle` takes `none` from its declared type; a second `?` adds nothing.
   next: Remove the extra `?` (agent)
   rule: type.redundant_nullability
-  help: docs/errors/type.redundant_nullability.md
+  help: https://jadpo.dev/docs/errors/type.redundant_nullability
 
 check failed: 1 error, 1 file
 ```

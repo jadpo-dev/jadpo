@@ -28,7 +28,7 @@ error: `SnoozeDays` is used beyond this file
   reason: A type used by one file lives in it; once another file uses it, it moves to a file of its own in `domains/planning/types/`. `domains/planning/actions/postpone_all.jadpo` uses it too.
   next: Move `SnoozeDays` to `domains/planning/types/snooze_days.jadpo`, or run `jadpo fmt --layout`, which moves it and updates the imports (agent)
   rule: layout.promotion_required
-  help: docs/errors/layout.promotion_required.md
+  help: https://jadpo.dev/docs/errors/layout.promotion_required
 
 check failed: 1 error, 3 files
 ```
@@ -61,7 +61,7 @@ error: `DiscountCode` is used beyond this file
   reason: A declaration another file uses has a file of its own named after it, so its `use` line says where it is; `DiscountCode` is in `basket.jadpo`, named after another declaration, and moves to `domains/sales/types/`. `domains/sales/actions/apply_code.jadpo` uses it too.
   next: Move `DiscountCode` to `domains/sales/types/discount_code.jadpo`, or run `jadpo fmt --layout`, which moves it and updates the imports (agent)
   rule: layout.promotion_required
-  help: docs/errors/layout.promotion_required.md
+  help: https://jadpo.dev/docs/errors/layout.promotion_required
 
 check failed: 1 error, 3 files
 ```

@@ -584,7 +584,7 @@ error: `SESSION_SIGNING_KEY` isn't set
   reason: `session_signing_key` is required: it has no `default:`, so the app can't start without a value for it.
   next: Run `jadpo config set session_signing_key` to store it in `.env.local`, or set `SESSION_SIGNING_KEY` in the environment (human)
   rule: configuration.value_missing
-  help: docs/language/14-tooling.html#command-errors
+  help: https://jadpo.dev/docs/errors/configuration.value_missing
 
 config incomplete: 1 problem, 3 settings
 
@@ -754,7 +754,7 @@ error: `GREETING` isn't set
   reason: `greeting` is required: it has no `default:`, so the app can't start without a value for it.
   next: Run `jadpo config set greeting` to store it in `.env.local`, or set `GREETING` in the environment (human)
   rule: configuration.value_missing
-  help: docs/language/14-tooling.html#command-errors
+  help: https://jadpo.dev/docs/errors/configuration.value_missing
 
 not running this version: 1 error, waiting for a save that fixes them
 ```
@@ -2905,7 +2905,7 @@ error: `Locale.fr_fr` is supported but package `Postcodes` has no wording in it 
   reason: Package `Postcodes` ships no `Locale.fr_fr` wording of `postcode_hint`, and the application supports `Locale.fr_fr`, so the application words it in its root file, under the package's folder name. A locale that isn't finished yet is listed in `in_progress:`, and falls back to the default until it is.
   next: Add `translations/fr_fr.jadpo` wording `postcode_hint` under `postcodes: { }` (agent)
   rule: translation.file_missing
-  help: docs/errors/translation.file_missing.md
+  help: https://jadpo.dev/docs/errors/translation.file_missing
 
 check failed: 1 error, 4 files
 ```
@@ -3117,7 +3117,7 @@ error: `postcodes` words package `Postcodes`, which is held in two versions
   reason: While two versions of a package are held side by side, the application words each under its folder name and version, as its names carry the version: `postcodes_v2: { }` for `Postcodes.v2` and `postcodes_v3: { }` for `Postcodes.v3`. This group was written while one version was held, so it words the earlier one unless it says otherwise.
   next: Rename the group to `postcodes_v2`, or to the other version's key if it words that one (agent)
   rule: translation.group_unknown
-  help: docs/errors/translation.group_unknown.md
+  help: https://jadpo.dev/docs/errors/translation.group_unknown
 
 check failed: 1 error, 9 files
 ```
@@ -3732,7 +3732,7 @@ marking personal fields, erasure and export, is in
 | Feature | Status |
 |---|---|
 | Time literals and the built-in `Zone`, `Weekday` and `Locale` enums | Built, with `clock.now` outside an action reported as `type.clock_context`. |
-| Settings | Built: settings, secrets, signing keys, connection addresses, `jadpo config`, the check before the app starts, a test's own values, and the trusted proxies a client's address is read through. |
+| Settings | Built: settings, secrets, signing keys, connection addresses, `jadpo config`, the check before the app starts, a test's own values, and the trusted proxies a client's address is read through. The check before the app starts covers every setting a deployable reads, its connections' included, among them the mail server's for the sign-in email. |
 | Time | Built: `ZonedTime`, durations, arithmetic and comparison, the `temporal` library over the IANA database bundled into every target, time values on the wire, in OpenAPI and in queries, and a test's `clock:` and `clock.advance(...)` ([Controlling time](13-testing.md#controlling-time)). |
 | Formatting | Built: `TimeFormat`, declared and built in, `ComponentStyle` and `PresentationText`, with the checks on formatting. |
 | Locales | Built: `locales { }` with its errors, `locale:` checked against it, a `Locale` on the wire or in a setting limited to the supported ones, and the text formatting gives, over CLDR data compiled into every target; `locale.from_accept_language(header)`. |

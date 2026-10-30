@@ -26,7 +26,7 @@ error: A constant can't read `config.max_login_attempts`
   reason: A constant is worked out while compiling, from literals, enum values, other constants, constructions, objects, lists and operators; a call, `config` and `clock` give values only while the app runs.
   next: Read `config.max_login_attempts` where the value is used: a setting is chosen per deployment, and a value is a constant or a setting, never both (agent)
   rule: constant.value_not_fixed
-  help: docs/errors/constant.value_not_fixed.md
+  help: https://jadpo.dev/docs/errors/constant.value_not_fixed
 
 check failed: 1 error, 1 file
 ```

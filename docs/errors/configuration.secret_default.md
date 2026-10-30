@@ -22,7 +22,7 @@ error: `api_key` is secret, and has a `default:` in source
   reason: A secret's value comes only from the deployment's environment, so a forgotten production secret stops the app instead of falling back to a value written in source; `jadpo test` generates its own for a test run, so it needs no `default:` either.
   next: Remove `default:` from `api_key` (agent)
   rule: configuration.secret_default
-  help: docs/errors/configuration.secret_default.md
+  help: https://jadpo.dev/docs/errors/configuration.secret_default
 
 check failed: 1 error, 1 file
 ```

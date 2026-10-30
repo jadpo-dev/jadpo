@@ -19,7 +19,7 @@ error: `and` needs `Bool` values, and `score` is a `Score`
   reason: `and` and `or` work on `Bool` values and types built on `Bool`; Jadpo has no truthiness.
   next: Compare `score` to get a `Bool` (agent)
   rule: type.logical_operand
-  help: docs/errors/type.logical_operand.md
+  help: https://jadpo.dev/docs/errors/type.logical_operand
 
 check failed: 1 error, 1 file
 ```

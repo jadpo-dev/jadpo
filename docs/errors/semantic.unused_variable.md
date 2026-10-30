@@ -20,7 +20,7 @@ error: `needed` is never used
   reason: A value nobody reads is never bound to a name, so a reader never wonders what it was for.
   next: Use `needed`, or remove its `var` line (agent)
   rule: semantic.unused_variable
-  help: docs/errors/semantic.unused_variable.md
+  help: https://jadpo.dev/docs/errors/semantic.unused_variable
 
 check failed: 1 error, 1 file
 ```

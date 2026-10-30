@@ -46,7 +46,7 @@ error: `none` can't match a call's outcome
   reason: A `match` on `lookup(...)` has a `success(name)` arm for its value and an arm for each failure it can give; to look at the value's own cases, match on the success value.
   next: Remove this arm, or match on the success value inside `success(...)` (agent)
   rule: failure.outcome_pattern_invalid
-  help: docs/errors/failure.outcome_pattern_invalid.md
+  help: https://jadpo.dev/docs/errors/failure.outcome_pattern_invalid
 
 check failed: 1 error, 2 files
 ```

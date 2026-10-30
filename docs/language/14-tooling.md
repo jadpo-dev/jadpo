@@ -1123,7 +1123,7 @@ error: `titel` isn't defined in this scope
   reason: Jadpo could not find this name. Did you mean `title`?
   next: Use `title` instead of `titel` (agent)
   rule: type.unknown_value
-  help: docs/language/03-logic.html#type-unknown-value
+  help: https://jadpo.dev/docs/errors/type.unknown_value
 ```
 
 `(human)` at the end of an error's `next:` line tells your coding agent to
@@ -1135,8 +1135,9 @@ make the fix itself.
 - The two impact lines appear only when they say something.
 - An obvious repair carries its edit, so the editor and agents can apply
   it.
-- The help link opens the error's own entry in these pages, each with an
-  example of the rule.
+- The help link is the address of the error's own page on the site,
+  `https://jadpo.dev/docs/errors/<rule>`, which has an example of the
+  rule.
 - JSON gives line and column as well as byte offsets, and uses one naming
   style for its keys.
 
@@ -2042,8 +2043,10 @@ the APIs it serves, the webhooks' replies, the actions its schedules and
 subscribers run and the batch runs it carries on, through every callable
 they call, to the connections they use: a store of files, a provider's
 operation, a package's action, `ai:`'s model. With them come its polls,
-the webhooks it receives, the queues `receiving:` reads and `email:`'s
-connection.
+the webhooks it receives and the queues `receiving:` reads. Where it runs
+subscribers, it also reaches `email:`'s connection, through which the
+app's emails and the sign-in email are delivered, unless
+`magic_link: { send: }` names an action that sends the sign-in email.
 
 It also reaches what Jadpo runs by name: the action `on_first_sign_in:`
 names, where it serves an API; the action `magic_link: { send: }` names,
@@ -2634,7 +2637,7 @@ Each row says what is built and what is specified but not built yet.
 | Scaffold | Not built yet: `jadpo new` is `cli.unknown_command`. The version an app declares is checked: `application { jadpo: "0.1" }`, with `toolchain.version_newer` and `toolchain.version_invalid` ([The root](01-project-layout-and-modules.md#the-root)). |
 | Which jadpo runs | Not built yet: the launcher, its toolchain cache and verification, `jadpo toolchain list` and `remove`, and `toolchain.version_older`. 0.1.0 ships as a plain binary that runs only its own line; the launcher is built before 0.2.0 (roadmap chunk D14). |
 | Formatter | Built: one member per line, one blank line between declarations, and `fmt --check` counts the files it read; it keeps `use` lines at the top, sorted, fixes imports inside a project, `--layout` makes promotion moves, and it writes each file's declarations before their use, the primary declaration last. |
-| Error messages | Built: one error per mistake, in the field order [Error messages](#error-messages) gives, `impact` only when it says something, edits on the next step where one exists, and help links to the language pages. |
+| Error messages | Built: one error per mistake, in the field order [Error messages](#error-messages) gives, `impact` only when it says something, edits on the next step where one exists, and help links to each error's page on the site. |
 | JSON output | Built: every command takes `--json` and prints one envelope (`schemaVersion` 2) with project-relative paths and `data.root`, line and column beside byte offsets, and camelCase keys; `jadpo test --json` is described in [Testing](13-testing.md) and under `testReport` in `jadpo help --json`. |
 | `build/` | Built: `jadpo check` writes `build/manifest.json` and the catalogues in `build/catalogue/`; `jadpo test` keeps its last run in `build/test/`. Not built yet: the reports, OpenAPI and the monitoring rules in `build/`. |
 | Commands | Built: each command [The `jadpo` command](#the-jadpo-command) and the topics after it describe, apart from those in their "Not built yet" notes. |
@@ -2643,7 +2646,7 @@ Each row says what is built and what is specified but not built yet.
 | Agent tools | Partly built: the catalogues and the similar-helper check, a declinable error, are built; `migrate` is built; `impact`, `domain`, `rename` and `seed` are not built yet, nor are the agent skill and generated CI. |
 | Suggestions | Built: `jadpo suggest` with its six signal kinds and taught signals, the catalogue, accepted findings, `ignore`, `found`, `share`, `suggestions { }` and the committed taught record, `share` against a fake of Jadpo HQ (HQ itself comes later). |
 | Review and sign-off | Not built yet: `jadpo approval`, which comes with [Records and manifest](18-records-and-manifest.md). |
-| Build-only errors | Built: `jadpo build` for the one deployable an app that declares none has and for declared deployables, with their `toolchain.target_*` errors. |
+| Build-only errors | Built: `jadpo build` for the one deployable an app that declares none has and for declared deployables, with their `toolchain.target_*` errors; its `settings` line, and a Worker's `secrets: { required: [ ] }`, name every setting a deployable reads, its connections' included. |
 
 ## Errors
 

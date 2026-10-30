@@ -38,7 +38,7 @@ error: `DeliveryState` has no variant `snet`
   reason: `DeliveryState`'s variants are `pending`, `sent` and `failed`. Did you mean `sent`?
   next: Use `DeliveryState.sent` (agent)
   rule: type.match_unknown_variant
-  help: docs/errors/type.match_unknown_variant.md
+  help: https://jadpo.dev/docs/errors/type.match_unknown_variant
 
 check failed: 1 error, 2 files
 ```

@@ -39,7 +39,7 @@ error: `closest_articles` returns its nearest records a page at a time
   reason: A page continues after a cursor, and a cursor over distances isn't stable: as records are added and change, the next page could skip a record or show one again. A nearest-neighbour query returns one list, of at most 100.
   next: Return `List<Nearest<HelpArticle>>` with `limit:` in place of `page:` (agent)
   rule: query.nearest_page
-  help: docs/errors/query.nearest_page.md
+  help: https://jadpo.dev/docs/errors/query.nearest_page
 
 check failed: 1 error, 1 file
 ```

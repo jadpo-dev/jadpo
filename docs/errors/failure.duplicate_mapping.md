@@ -30,7 +30,7 @@ error: `max:` is mapped twice
   reason: Each condition is mapped once, so there is never a question of which failure the caller gets.
   next: Remove one `max:` (agent)
   rule: failure.duplicate_mapping
-  help: docs/errors/failure.duplicate_mapping.md
+  help: https://jadpo.dev/docs/errors/failure.duplicate_mapping
 
 check failed: 1 error, 1 file
 ```

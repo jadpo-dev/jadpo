@@ -25,7 +25,7 @@ error: Jadpo writes `todo -> todo.title`, not `todo => todo.title`
   reason: `x => e` is an arrow function in JavaScript, TypeScript and C#, `lambda x: e` in Python and `|x| e` in Rust; a Jadpo inline function is `item -> expression`.
   next: Write `todo -> todo.title` (agent)
   rule: syntax.inline_function_arrow
-  help: docs/errors/syntax.inline_function_arrow.md
+  help: https://jadpo.dev/docs/errors/syntax.inline_function_arrow
 
 check failed: 1 error, 1 file
 ```

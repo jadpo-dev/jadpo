@@ -57,7 +57,7 @@ error: `current_principal.service` isn't a kind of caller
   reason: `principal { }` declares no `service:`, so no service ever signs in; it declares `user`.
   next: Write `current_principal.user` instead of `current_principal.service` (agent)
   rule: type.auth_principal_variant_unknown
-  help: docs/errors/type.auth_principal_variant_unknown.md
+  help: https://jadpo.dev/docs/errors/type.auth_principal_variant_unknown
 
 check failed: 1 error, 1 file
 ```

@@ -70,7 +70,7 @@ error: `button` has no field `link`
   reason: A partial is a `type Name = EmailPartial { ... }` in `shared/emails/` or the domain's own `emails/`, its `.html` and `.txt` beside it; a template includes it as `{{ include name(field: value, ...) }}`, giving each of its fields once by name, and its locale goes with it.
   next: Remove `link:` (agent)
   rule: email.partial_invalid
-  help: docs/errors/email.partial_invalid.md
+  help: https://jadpo.dev/docs/errors/email.partial_invalid
 
 check failed: 1 error, 4 files
 ```

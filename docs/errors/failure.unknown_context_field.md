@@ -27,7 +27,7 @@ error: `Missing` has no field `search`
   reason: `Missing`'s fields are `lookup`. A failure carries only the fields its `client` and `internal` blocks declare.
   next: Remove `search`, or declare it in `Missing`'s `client` or `internal` block (agent)
   rule: failure.unknown_context_field
-  help: docs/errors/failure.unknown_context_field.md
+  help: https://jadpo.dev/docs/errors/failure.unknown_context_field
 
 check failed: 1 error, 1 file
 ```

@@ -36,7 +36,7 @@ error: `Member.last_token` keeps an API token
   reason: An API token is shown once, in the output of the action that issues it, and the runtime keeps only its verifier, so a copy of the database signs no one in.
   next: Remove `last_token`, and give the token in the output of the action that issues it (agent)
   rule: type.auth_credential_stored
-  help: docs/errors/type.auth_credential_stored.md
+  help: https://jadpo.dev/docs/errors/type.auth_credential_stored
 
 check failed: 1 error, 1 file
 ```

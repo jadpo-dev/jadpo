@@ -45,7 +45,7 @@ error: Migration `20261020T1401_add_stars` doesn't hold its decisions yet
   reason: Its decisions are all written in `changes.jadpo`, but `database/migrations/20261020T1401_add_stars/postgres.sql` was written before them, so it doesn't carry them out.
   next: Run `jadpo migrate new` to finish it (agent)
   rule: migration.unfinished
-  help: docs/errors/migration.unfinished.md
+  help: https://jadpo.dev/docs/errors/migration.unfinished
 
 check failed: 1 error, 4 files
 ```

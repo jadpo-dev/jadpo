@@ -21,7 +21,7 @@ error: Jadpo writes `none`, not `null`
   reason: `null` is a missing value in JavaScript, Java, C# and Kotlin; Jadpo writes it `none`.
   next: Use `none` instead of `null` (agent)
   rule: type.foreign_value
-  help: docs/errors/type.foreign_value.md
+  help: https://jadpo.dev/docs/errors/type.foreign_value
 
 check failed: 1 error, 1 file
 ```

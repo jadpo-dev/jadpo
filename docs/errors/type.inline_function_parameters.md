@@ -27,7 +27,7 @@ error: `map.filter`'s `keep` takes two parameters, not one
   reason: `map.filter` gives its function each entry's key and its value, so it is written `(key, value) -> ...`, with a name for each.
   next: Write `(key, value) -> ...`, naming both (agent)
   rule: type.inline_function_parameters
-  help: docs/errors/type.inline_function_parameters.md
+  help: https://jadpo.dev/docs/errors/type.inline_function_parameters
 
 check failed: 1 error, 1 file
 ```

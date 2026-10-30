@@ -1526,7 +1526,7 @@ error: `passkey:` needs the browser session's `origin:`
   reason: A passkey works only on the site it was made for: every answer from a device is checked against the origin `browser_session:`'s `origin:` reads from configuration (area 10), never one the request names.
   next: Add `origin: config.<name>` to `browser_session:`, reading a `Url` setting (agent)
   rule: semantic.auth_setting_required
-  help: docs/errors/semantic.auth_setting_required.md
+  help: https://jadpo.dev/docs/errors/semantic.auth_setting_required
 
 check failed: 1 error, 1 file
 ```
@@ -1571,7 +1571,7 @@ error: `passkey:` needs `magic_link:` beside it
   reason: A person who loses every device holding a passkey signs in with a magic link or its code and adds a new one; with no `magic_link:` in the same `sign_in:`, nothing gets them back in.
   next: Add `magic_link: { link: "<path>" }` to `sign_in:`, beside `passkey:` (agent)
   rule: semantic.auth_setting_required
-  help: docs/errors/semantic.auth_setting_required.md
+  help: https://jadpo.dev/docs/errors/semantic.auth_setting_required
 
 check failed: 1 error, 1 file
 ```

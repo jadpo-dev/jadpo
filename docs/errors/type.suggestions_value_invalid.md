@@ -17,7 +17,7 @@ error: `project_token: "acme-shop"` isn't a value `project_token` takes
   reason: A project token is 32 random hex digits, tied to nothing, so Jadpo HQ can tell one project from another without knowing which it is.
   next: Remove `project_token:`; `jadpo suggest share` writes a new one (agent)
   rule: type.suggestions_value_invalid
-  help: docs/errors/type.suggestions_value_invalid.md
+  help: https://jadpo.dev/docs/errors/type.suggestions_value_invalid
 
 check failed: 1 error, 1 file
 ```

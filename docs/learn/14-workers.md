@@ -99,7 +99,7 @@ jadpo build
   serves: main
   runs: subscribers
   commit: none
-  settings: DATABASE_URL, MAIL_FROM, MAX_DUE_AHEAD, SITE
+  settings: DATABASE_URL, MAIL_FROM, MAX_DUE_AHEAD, SITE, SMTP_HOST, SMTP_PASSWORD, SMTP_USERNAME
 
 alert: `DATABASE_URL` has no Hyperdrive id: create one with caching off and build with it in `JADPO_HYPERDRIVE_DATABASE_URL`
 alert: Built from files git doesn't track: no commit explains its events
@@ -111,12 +111,14 @@ next: jadpo migrate apply  it starts only once its database has every migration
 
 `build/target/web/` now holds the Worker: the WebAssembly module, the
 JavaScript that loads it, and `wrangler.json`, Wrangler's description of
-the Worker. It names the Worker after your project's folder, and lists
-the two limits Jadpo counts, numbered from your `namespace:`:
+the Worker. It names the Worker after your project's folder, names
+`SMTP_PASSWORD` as a secret the Worker needs, since it has no default,
+and lists the two limits Jadpo counts, numbered from your `namespace:`:
 
 ```text
   "name": "todo-app-web",
   ...
+  "secrets": { "required": ["SMTP_PASSWORD"] },
   "hyperdrive": [{ "binding": "DATABASE_URL" }],
   ...
   "ratelimits": [
@@ -203,5 +205,3 @@ and [Rate limits on Workers](../language/16-built-in-services.md#rate-limits-on-
 - The limits Jadpo writes for Cloudflare's rate-limiting binding haven't
   yet been checked against Cloudflare's network, only against its local
   runtime.
-- `wrangler.json` doesn't yet list `SMTP_PASSWORD` as a secret the
-  Worker needs, so Wrangler won't remind you to set it. Set it as above.

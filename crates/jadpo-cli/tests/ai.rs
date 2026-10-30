@@ -108,7 +108,7 @@ fn show_names_a_prompt_the_project_has() {
   reason: No prompt is called `answer_questoin`; the closest is `answer_question`.
   next: Run `jadpo ai show answer_question` (agent)
   rule: cli.ai_arguments
-  help: docs/errors/cli.ai_arguments.md
+  help: https://jadpo.dev/docs/errors/cli.ai_arguments
 "
     );
     let none = jadpo(&root, &["ai", "show"]);

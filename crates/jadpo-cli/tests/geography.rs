@@ -417,7 +417,7 @@ fn a_role_that_can_t_create_postgis_is_refused_before_anything_runs() {
     assert_eq!(refused.code, 1, "{}{}", refused.stdout, refused.stderr);
     assert_eq!(
         refused.stderr,
-        "error: `main` has no `postgis` extension, and its role can't create it\n  reason: `postgis` is PostGIS, which keeps the project's geometries in `geography` columns; there is no fallback, since a geometry kept any other way would be measured and compared differently. The project's migrations create it, and its database server offers it, but the role applying migrations isn't allowed to create it, so nothing was applied. PostGIS isn't a trusted extension: a superuser, or the provider's own admin role, creates it.\n  next: Have a role allowed to create it run `CREATE EXTENSION postgis` once in this database, then run the command again (human)\n  rule: migration.extension_missing\n  help: docs/errors/migration.extension_missing.md\n"
+        "error: `main` has no `postgis` extension, and its role can't create it\n  reason: `postgis` is PostGIS, which keeps the project's geometries in `geography` columns; there is no fallback, since a geometry kept any other way would be measured and compared differently. The project's migrations create it, and its database server offers it, but the role applying migrations isn't allowed to create it, so nothing was applied. PostGIS isn't a trusted extension: a superuser, or the provider's own admin role, creates it.\n  next: Have a role allowed to create it run `CREATE EXTENSION postgis` once in this database, then run the command again (human)\n  rule: migration.extension_missing\n  help: https://jadpo.dev/docs/errors/migration.extension_missing\n"
     );
     let tables = rows(
         &url,

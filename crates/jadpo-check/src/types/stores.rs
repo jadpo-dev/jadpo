@@ -224,8 +224,7 @@ pub fn file_run_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagn
                 ))
                 .next(format!(
                     "Have `{written}`'s `each:` action write the records it reads, for now"
-                ))
-                .help_at("12-jobs-and-events.html#how-a-run-is-kept"),
+                )),
             );
         }
     }
@@ -620,8 +619,7 @@ pub fn batch_store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Di
                 .reason(reason)
                 .next(format!(
                     "Start the runs with `batches.each` over queries of one store, or do without `{written}` for now"
-                ))
-                .help_at("12-jobs-and-events.html#how-a-run-is-kept"),
+                )),
             );
         }
     }
@@ -686,8 +684,7 @@ fn second_store_read(
                 ))
                 .next(format!(
                     "Read `{entity}` before `{name}` runs, and pass in what it needs, for now"
-                ))
-                .help_at("06-reads-and-writes.html#one-store-per-action"),
+                )),
             );
         }
     }

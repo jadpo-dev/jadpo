@@ -28,7 +28,7 @@ error: `magic_link_email` is a message of a feature this application has off
   reason: `magic_link_email` is part of Jadpo's magic links text, which Jadpo writes when the application signs users in with magic links. This application doesn't, so wording it changes nothing and would hide a mistake.
   next: Remove `magic_link_email` from `translations/en_gb.jadpo`, or switch the feature on (agent)
   rule: translation.feature_off
-  help: docs/errors/translation.feature_off.md
+  help: https://jadpo.dev/docs/errors/translation.feature_off
 
 check failed: 1 error, 2 files
 ```

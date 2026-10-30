@@ -43,7 +43,7 @@ error: `CREATE` isn't a method a route is written with
   reason: Routes are written with `GET`, `POST`, `PUT`, `PATCH` or `DELETE`.
   next: Use `POST` instead of `CREATE` (agent)
   rule: syntax.expected_http_method
-  help: docs/errors/syntax.expected_http_method.md
+  help: https://jadpo.dev/docs/errors/syntax.expected_http_method
 
 check failed: 1 error, 1 file
 ```

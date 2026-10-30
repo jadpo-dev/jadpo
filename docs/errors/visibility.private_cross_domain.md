@@ -34,7 +34,7 @@ error: `reserve_stock` is private to domain `inventory`
   reason: Another domain may use only what a domain marks `public`; `reserve_stock` is an action in `domains/inventory/actions/reserve_stock.jadpo`.
   next: Mark `reserve_stock` `public` if `inventory` should offer it to other domains (human)
   rule: visibility.private_cross_domain
-  help: docs/errors/visibility.private_cross_domain.md
+  help: https://jadpo.dev/docs/errors/visibility.private_cross_domain
 
 check failed: 1 error, 4 files
 ```
@@ -82,7 +82,7 @@ error: `two_open_todos` is private to domain `planning`
   reason: Another domain may use only what a domain marks `public`; `two_open_todos` is a fixture in `domains/planning/fixtures/two_open_todos.jadpo`.
   next: Mark `two_open_todos` `public` if `planning` should offer it to other domains' tests (human)
   rule: visibility.private_cross_domain
-  help: docs/errors/visibility.private_cross_domain.md
+  help: https://jadpo.dev/docs/errors/visibility.private_cross_domain
 
 check failed: 1 error, 5 files
 ```

@@ -8,5 +8,5 @@ error: The app still uses `Postcodes.v2`
   reason: `domains/intake/actions/read_postcode.jadpo` brings it in with `use packages/postcodes`, so removing it would leave that file unable to compile.
   next: Take `use packages/postcodes` and what it brings in out of the app's code, then run `jadpo package remove postcodes` again (agent)
   rule: install.in_use
-  help: docs/language/14-tooling.html#command-errors
+  help: https://jadpo.dev/docs/errors/install.in_use
 ```

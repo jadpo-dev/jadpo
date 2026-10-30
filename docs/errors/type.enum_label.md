@@ -20,7 +20,7 @@ error: `TicketStatus.open` is given a label
   reason: Enums have no display labels: a variant is a name, or a name with a block of its fields. Wording for readers lives in the domain's translations, which give each value of `TicketStatus` its wording in every locale.
   next: Write `open` alone, and give its wording in the domain's translations: `ticket_status: { open: "Open" }` (agent)
   rule: type.enum_label
-  help: docs/errors/type.enum_label.md
+  help: https://jadpo.dev/docs/errors/type.enum_label
 
 check failed: 1 error, 1 file
 ```

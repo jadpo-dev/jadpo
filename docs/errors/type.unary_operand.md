@@ -19,7 +19,7 @@ error: `not` needs a `Bool`, and `phrase` is a `Phrase`
   reason: `not` works on `Bool` values and types built on `Bool`; Jadpo has no truthiness.
   next: Compare `phrase` to get a `Bool` (agent)
   rule: type.unary_operand
-  help: docs/errors/type.unary_operand.md
+  help: https://jadpo.dev/docs/errors/type.unary_operand
 
 check failed: 1 error, 1 file
 ```

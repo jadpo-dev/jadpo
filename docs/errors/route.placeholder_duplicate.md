@@ -51,7 +51,7 @@ error: Placeholder `memo_id` appears twice
   reason: Each placeholder reaches what the route runs by its name, so a path names each once, its group's prefix included.
   next: Rename one `memo_id` (agent)
   rule: route.placeholder_duplicate
-  help: docs/errors/route.placeholder_duplicate.md
+  help: https://jadpo.dev/docs/errors/route.placeholder_duplicate
 
 check failed: 1 error, 1 file
 ```

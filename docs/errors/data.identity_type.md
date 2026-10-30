@@ -15,7 +15,7 @@ error: `Note.id` must be a required `Uuid`
   reason: An entity's `id` is a `Uuid`, or a named type built on one; links between entities are references to it.
   next: Write `id: Uuid` (agent)
   rule: data.identity_type
-  help: docs/errors/data.identity_type.md
+  help: https://jadpo.dev/docs/errors/data.identity_type
 
 check failed: 1 error, 1 file
 ```

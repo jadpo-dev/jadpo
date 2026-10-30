@@ -19,7 +19,7 @@ error: `ProductName` has no fields
   reason: `name` is a `ProductName`, built on `Text`; only objects, inputs, outputs, events, failures and entities have fields.
   next: Use `name` itself (agent)
   rule: type.field_on_non_record
-  help: docs/errors/type.field_on_non_record.md
+  help: https://jadpo.dev/docs/errors/type.field_on_non_record
 
 check failed: 1 error, 1 file
 ```

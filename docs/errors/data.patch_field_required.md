@@ -30,7 +30,7 @@ error: `ItemChanges.name` isn't optional, so a patch can't leave it out
   reason: A patch changes only the fields a request supplied, so each field of its input is optional: one left out keeps its value. A required `name` would have to be sent every time.
   next: Make `name` optional in `ItemChanges` (`optional: true`, or `optional: all`), or set it with `set:` (agent)
   rule: data.patch_field_required
-  help: docs/errors/data.patch_field_required.md
+  help: https://jadpo.dev/docs/errors/data.patch_field_required
 
 check failed: 1 error, 1 file
 ```

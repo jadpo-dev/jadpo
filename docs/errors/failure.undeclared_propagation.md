@@ -21,7 +21,7 @@ error: `RegistrationClosed` can leave `register`, but its `fails` list doesn't s
   reason: `fails` lists exactly the failures that can leave an action, so every caller knows what it must handle.
   next: Add `RegistrationClosed` to `register`'s `fails` list (agent)
   rule: failure.undeclared_propagation
-  help: docs/errors/failure.undeclared_propagation.md
+  help: https://jadpo.dev/docs/errors/failure.undeclared_propagation
 
 check failed: 1 error, 1 file
 ```

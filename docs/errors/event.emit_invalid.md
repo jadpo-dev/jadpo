@@ -30,7 +30,7 @@ error: A function can't emit `NoteSeen`
   reason: An event is kept in the same transaction as an action's writes and handed to its subscribers once it commits, so only actions emit; a function emits by calling an action.
   next: Move the `emit` into the action this code calls, or make this an action (agent)
   rule: event.emit_invalid
-  help: docs/errors/event.emit_invalid.md
+  help: https://jadpo.dev/docs/errors/event.emit_invalid
 
 check failed: 1 error, 1 file
 ```

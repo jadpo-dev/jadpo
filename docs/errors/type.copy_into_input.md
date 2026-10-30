@@ -26,7 +26,7 @@ error: `CreateTodo` is an `Input` and can't use `include`
   reason: `include` would also accept every field added to the source type later, so a request could set fields nobody chose to expose.
   next: Name the fields this input accepts with `pick: [...]` (human)
   rule: type.copy_into_input
-  help: docs/errors/type.copy_into_input.md
+  help: https://jadpo.dev/docs/errors/type.copy_into_input
 
 check failed: 1 error, 2 files
 ```

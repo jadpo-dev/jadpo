@@ -19,7 +19,7 @@ error: A function can't call `Customer.get`
   reason: A function is pure: it computes its result from its arguments alone, so reading and writing entities belongs in an action.
   next: Make the caller an action, or pass the data in as an argument (agent)
   rule: effect.function_persistence
-  help: docs/errors/effect.function_persistence.md
+  help: https://jadpo.dev/docs/errors/effect.function_persistence
 
 check failed: 1 error, 1 file
 ```
