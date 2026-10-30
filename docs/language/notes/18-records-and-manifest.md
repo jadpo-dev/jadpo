@@ -30,6 +30,18 @@ Why [Records and manifest](../18-records-and-manifest.md) is the way it is: the 
 - **Compiler design** (`docs/compiler-runtime.md` §1.1 and §9): the
   manifest is the graph's export. Not shipping maps publicly matches §9.
 
+## How records are built
+
+- **One mechanism for every kind.** A kind is a word, a format number, a
+  shape (view or ledger), its header's command and its closed lists of
+  headings and facts; a view's writer gives entries and the differ
+  compares entries by heading. Event shapes are a view kind beside the
+  API record, package surfaces another, and the lock's writer uses the
+  ledger.
+- **One index of records.** The table at the top of the area page stays
+  the single index of every kind of record; `jadpo records` lists a
+  project's own.
+
 ## Carried to later areas
 
 | Item | Area |

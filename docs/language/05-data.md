@@ -753,7 +753,7 @@ it:
   ([Indexes](20-geospatial.md#indexes) under Geospatial).
 - `kind: IndexKind.hnsw` makes pgvector's HNSW index on one vector field,
   with `m:` and `ef_construction:` for tuning
-  ([The index](21-ai.md#the-index) under AI).
+  ([The vector index](21-ai.md#the-vector-index) under AI).
 
 Full-text and JSON indexes are kinds too.
 
