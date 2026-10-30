@@ -91,10 +91,10 @@ TOPIC_ID = re.compile(r'^[a-z0-9]+(?:-[a-z0-9]+)*$')
 # The most words a topic holds, as the bundle gives it.
 TOPIC_WORDS = 3000
 # Where a bundle page's link to a file outside the bundle goes.
-REPO_URL = 'https://github.com/richardwillars/jadpo/blob/main/'
-RAW_URLS = ('https://raw.githubusercontent.com/richardwillars/jadpo/main/',
-            'https://github.com/richardwillars/jadpo/blob/main/',
-            'https://github.com/richardwillars/jadpo/tree/main/')
+REPO_URL = 'https://github.com/jadpo-dev/jadpo/blob/main/'
+RAW_URLS = ('https://raw.githubusercontent.com/jadpo-dev/jadpo/main/',
+            'https://github.com/jadpo-dev/jadpo/blob/main/',
+            'https://github.com/jadpo-dev/jadpo/tree/main/')
 # What the page of a rule with no example says.
 NO_EXAMPLE = 'No example yet.'
 JADPO = ROOT / 'target/debug/jadpo'
@@ -706,7 +706,7 @@ BUILD_STATUS = re.compile(r"\b(?:not built yet|isn't built|aren't built|not yet 
                           re.IGNORECASE)
 SPEC_WORDS = re.compile(r'^Decided\.|\bcarried to\b')
 NOT_BUILT = '## Not built yet'
-REPOSITORY_URL = re.compile(r'^https://github\.com/richardwillars/jadpo/(?:blob|tree)/')
+REPOSITORY_URL = re.compile(r'^https://github\.com/jadpo-dev/jadpo/(?:blob|tree)/')
 
 
 def user_page_problems(page, root=ROOT):
@@ -1733,16 +1733,19 @@ def main():
             failed = True
             print(f'  FAIL docs/primer.md: {problem}')
     if compile_examples:
-        # The homepage example in README.md is compiled like a page's examples.
-        readme = Readme(ROOT / 'README.md', catalogue)
-        readme.check(bless=args.bless)
-        if args.bless and readme.bless():
-            print('README.md: blessed output block(s)')
-        print(f'README.md: {len([b for b in readme.blocks if b["attrs"]["file"].endswith(".jadpo")])} checked file(s)')
-        for problem in readme.problems:
-            failed = True
-            print(f'  FAIL README.md: {problem}')
-        everything = pages + list(notes.values()) + errors + [readme] + ([primer] if primer else [])
+        # The README's error example and the home page's shop example
+        # (docs/shop-example.md) are compiled like a page's examples.
+        readmes = [Readme(ROOT / name, catalogue) for name in ('README.md', 'docs/shop-example.md')]
+        for readme in readmes:
+            name = readme.path.relative_to(ROOT)
+            readme.check(bless=args.bless)
+            if args.bless and readme.bless():
+                print(f'{name}: blessed output block(s)')
+            print(f'{name}: {len([b for b in readme.blocks if b["attrs"]["file"].endswith(".jadpo")])} checked file(s)')
+            for problem in readme.problems:
+                failed = True
+                print(f'  FAIL {name}: {problem}')
+        everything = pages + list(notes.values()) + errors + readmes + ([primer] if primer else [])
         corpus = [(page, entry) for page in everything for entry in page.corpus]
         print(f'{len(corpus)} spec project(s) with tests ran under jadpo test')
         skipped = [f'{page.path.name} {name}' for page in everything for name in page.skipped]

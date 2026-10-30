@@ -178,6 +178,21 @@ then the site keeps its own task list.
 working from a checkout; some agents cannot fetch from GitHub, which is
 why the site serves the bundle.
 
+### An assistant that cannot fetch the site
+
+In the Gemini web app on a computer, use **Add file, More uploads, Import
+code** and enter `https://github.com/richardwillars/jadpo`. Google's
+[GitHub import documentation](https://support.google.com/gemini/answer/16176929?hl=en)
+says the GitHub app cannot read a repository merely from a URL in the
+prompt. An import takes one repository per chat, up to 5,000 files and
+100 MB, and is a snapshot that does not sync later changes.
+
+The Gemini API's [URL context tool](https://ai.google.dev/gemini-api/docs/url-context)
+fetches the public URLs you supply but does not follow their nested links.
+Supply the individual pages the task needs and check that they were
+retrieved. If neither works, attach the primer and the pages the task
+needs, or use a local clone with a file-reading coding agent.
+
 ## Versions and releases
 
 - One version for the language, compiler and runtime, in semantic
@@ -201,8 +216,8 @@ why the site serves the bundle.
   changelog file.
 - The release then gets the docs bundle as `docs-bundle.tar.gz`, and
   dist's workflow (`.github/workflows/release.yml`) builds the installers,
-  attaches them and publishes the release. The site publishes
-  `/v/X.Y.Z/`.
+  attaches them, publishes the release, then the Homebrew formula and the
+  npm package. The site publishes `/v/X.Y.Z/`.
 - The VS Code extension (`editors/vscode`) is packaged at the release's
   version and attached to the release, then published to the VS Code
   Marketplace and Open VSX once the release is out
@@ -211,16 +226,22 @@ why the site serves the bundle.
 - An app declares the version it needs in `app.jadpo`, as
   `application { jadpo: "0.1" }`, and the compiler refuses an app needing a
   newer one (area 1, "The root").
-- Switched off until a maintainer sets them up: release-please runs only when
-  the repository variable `JADPO_RELEASES` is `on`, with a
-  `RELEASE_PLEASE_TOKEN` secret, so its pull requests run CI; the
-  Homebrew formula and the npm package are built and attached to each
-  release but published nowhere until `publish-jobs` in
-  `dist-workspace.toml` names them, with a tap repository and tokens; the
-  extension is published only when the repository variable
-  `JADPO_VSCODE_PUBLISH` is `on`, with the Marketplace publisher `jadpo`
-  and its `VSCE_PAT` secret, and the Open VSX namespace `jadpo` and its
-  `OVSX_PAT` secret.
+- Releases need these, set by a maintainer; each part is off until its
+  switch is set:
+  - release-please runs only when the repository variable `JADPO_RELEASES`
+    is `on`, with a `RELEASE_PLEASE_TOKEN` secret, so its pull requests run
+    CI.
+  - dist's workflow publishes the Homebrew formula (`jadpo.rb`) to the
+    `jadpo-dev/homebrew-tap` repository with a `HOMEBREW_TAP_TOKEN`
+    secret that can write to it (users run `brew install jadpo-dev/tap/jadpo`),
+    and the npm package `@jadpo/jadpo` to npmjs.com
+    through trusted publishing (OIDC), which needs no token: npmjs.com is
+    configured to trust `jadpo-dev/jadpo`'s `release.yml` for the package.
+    Both run after the release is published and skip prereleases.
+  - The extension is published only when the repository variable
+    `JADPO_VSCODE_PUBLISH` is `on`, with the Marketplace publisher `jadpo`
+    and its `VSCE_PAT` secret, and the Open VSX namespace `jadpo` with a
+    trusted publisher for `vscode-extension.yml`, which needs no secret.
 
 ## Installing
 
@@ -230,16 +251,20 @@ dist (`dist-workspace.toml`, its version pinned there) with OpenSSL
 compiled in, so nobody installs Rust to check, test or run an app. Beside
 them: a shell installer (`jadpo-cli-installer.sh`, for `curl | sh`), a
 PowerShell one (`jadpo-cli-installer.ps1`), a Homebrew formula
-(`jadpo.rb`) and an npm package (`jadpo`, for `npx jadpo`). `jadpo build`
+(`jadpo.rb`) and an npm package (`@jadpo/jadpo`, for `npx @jadpo/jadpo`). `jadpo build`
 fetches its own pinned Rust toolchain into its cache on first use.
+
+The installed `jadpo` is meant to be a launcher that runs the release line
+`app.jadpo` names, fetched into a per-user cache and verified first; it is
+not built yet, and 0.1.0 is a plain binary (area 14, "Which jadpo runs").
 
 Each archive has a SHA-256 beside it, and each of those files, like the
 VS Code extension's `.vsix`, has a GitHub artifact attestation saying
-which workflow run in `richardwillars/jadpo` built it, from which commit.
+which workflow run in `jadpo-dev/jadpo` built it, from which commit.
 Check one before running it, with the GitHub CLI:
 
 ```sh
-gh attestation verify jadpo-cli-aarch64-apple-darwin.tar.xz --repo richardwillars/jadpo
+gh attestation verify jadpo-cli-aarch64-apple-darwin.tar.xz --repo jadpo-dev/jadpo
 ```
 
 ## Not decided yet

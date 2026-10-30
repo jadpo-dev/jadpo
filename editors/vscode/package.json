@@ -8,7 +8,7 @@
   "private": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/richardwillars/jadpo.git",
+    "url": "https://github.com/jadpo-dev/jadpo.git",
     "directory": "editors/vscode"
   },
   "engines": {
@@ -126,8 +126,8 @@
     "jadpo",
     "language server"
   ],
-  "homepage": "https://github.com/richardwillars/jadpo/tree/main/editors/vscode",
+  "homepage": "https://github.com/jadpo-dev/jadpo/tree/main/editors/vscode",
   "bugs": {
-    "url": "https://github.com/richardwillars/jadpo/issues"
+    "url": "https://github.com/jadpo-dev/jadpo/issues"
   }
 }

@@ -52,19 +52,19 @@ language server does everything else.
 
 ## Install Jadpo first
 
-The extension needs the `jadpo` command. Each [release](https://github.com/richardwillars/jadpo/releases)
+The extension needs the `jadpo` command. Each [release](https://github.com/jadpo-dev/jadpo/releases)
 comes with installers:
 
 - **macOS and Linux**:
 
-      curl --proto '=https' --tlsv1.2 -LsSf https://github.com/richardwillars/jadpo/releases/latest/download/jadpo-cli-installer.sh | sh
+      curl --proto '=https' --tlsv1.2 -LsSf https://github.com/jadpo-dev/jadpo/releases/latest/download/jadpo-cli-installer.sh | sh
 
 - **Windows**, in PowerShell:
 
-      powershell -ExecutionPolicy Bypass -c "irm https://github.com/richardwillars/jadpo/releases/latest/download/jadpo-cli-installer.ps1 | iex"
+      powershell -ExecutionPolicy Bypass -c "irm https://github.com/jadpo-dev/jadpo/releases/latest/download/jadpo-cli-installer.ps1 | iex"
 
-- **npm**: `npm install -g jadpo`.
-- **Homebrew**: each release comes with a formula, `jadpo.rb`.
+- **npm**: `npm install -g @jadpo/jadpo`.
+- **Homebrew**: `brew install jadpo-dev/tap/jadpo`.
 
 The shell and PowerShell installers put `jadpo` in Cargo's folder,
 `~/.cargo/bin` (on Windows, `%USERPROFILE%\.cargo\bin`), and add it to your
@@ -73,8 +73,10 @@ the new `PATH`. Then open the folder that holds your project's `app.jadpo`.
 
 ## How it finds `jadpo`
 
-By default it runs the `jadpo` it finds on your `PATH`. To use another one,
-set `jadpo.server.path` to its path.
+It runs the `jadpo` it finds on your `PATH`, from your project's folder, so
+the `jadpo` launcher gives it the version your project names. You need no
+setting. People working on the compiler can set `jadpo.server.path` to the
+path of their own build.
 
 The status bar shows which `jadpo` is running whenever a `.jadpo` file is
 open: `jadpo 0.1.0`, with the binary's path when you point at it. Click it
@@ -92,7 +94,7 @@ command does.
 
 | Setting | Default | |
 |---|---|---|
-| `jadpo.server.path` | `jadpo` | The binary that runs `jadpo lsp`. A bare name is looked up on `PATH`; a path is used as it is. `${workspaceFolder}` is the first folder open, and a leading `~` is your home folder. Changing it restarts the server. |
+| `jadpo.server.path` | empty | An override for people working on the compiler: the binary that runs `jadpo lsp`, instead of the `jadpo` on `PATH`. A bare name is looked up on `PATH`; a path is used as it is. `${workspaceFolder}` is the first folder open, and a leading `~` is your home folder. Changing it restarts the server. |
 | `jadpo.trace.server` | `off` | `messages` or `verbose` logs the messages between VS Code and the server in the Jadpo log. |
 
 ## Commands
