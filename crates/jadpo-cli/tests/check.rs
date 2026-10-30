@@ -101,7 +101,7 @@ fn problems_print_in_the_error_shape_then_the_summary() {
   reason: Nothing in this project called `dobule` can be called. Did you mean `double`?
   next: Use `double` instead of `dobule` (agent)
   rule: semantic.unknown_callee
-  help: docs/errors/semantic.unknown_callee.md
+  help: https://jadpo.dev/docs/errors/semantic.unknown_callee
 
 check failed: 1 error, 3 files
 "
@@ -127,7 +127,7 @@ fn a_terminal_gets_the_rich_form() {
             `double`?
   next      Use `double` instead of `dobule` (agent)
   rule      semantic.unknown_callee
-  help      docs/errors/semantic.unknown_callee.md
+  help      https://jadpo.dev/docs/errors/semantic.unknown_callee
 
 ✗ check failed  1 error · 3 files
 "
@@ -191,7 +191,7 @@ fn without_a_project_or_a_path_it_says_where_it_looked() {
   reason: Jadpo looks for `app.jadpo` in this folder and every folder above it, and found none.
   next: Run `jadpo check` inside a project, or give a file or folder: `jadpo check <path>` (agent)
   rule: toolchain.project_not_found
-  help: docs/errors/toolchain.project_not_found.md
+  help: https://jadpo.dev/docs/errors/toolchain.project_not_found
 "
     );
     assert_eq!(output.code, 1);
@@ -226,7 +226,7 @@ fn layout_problems_name_the_file_without_a_frame() {
   reason: A domain holds only `entities/`, `types/`, `failures/`, `actions/`, `queries/`, `libraries/`, `routes/`, `schedules/`, `events/`, `subscribers/`, `emails/`, `translations/`, `prompts/` and `fixtures/`, each named after what its files declare.
   next: Move the file to `domains/planning/types/day.jadpo` (agent)
   rule: layout.unknown_location
-  help: docs/errors/layout.unknown_location.md
+  help: https://jadpo.dev/docs/errors/layout.unknown_location
 
 check failed: 1 error, 4 files
 "

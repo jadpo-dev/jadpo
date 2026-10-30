@@ -49,7 +49,7 @@ fn plain_diagnostic_matches_area_14() {
   reason: Jadpo could not find this name. Did you mean `title`?
   next: Use `title` instead of `titel` (agent)
   rule: cli.unknown_command
-  help: docs/errors/cli.unknown_command.md
+  help: https://jadpo.dev/docs/errors/cli.unknown_command
 "
     );
 }
@@ -68,7 +68,7 @@ fn rich_diagnostic_matches_the_design_language() {
   reason    Jadpo could not find this name. Did you mean `title`?
   next      Use `title` instead of `titel` (agent)
   rule      cli.unknown_command
-  help      docs/errors/cli.unknown_command.md
+  help      https://jadpo.dev/docs/errors/cli.unknown_command
 "
     );
 }
@@ -116,6 +116,29 @@ fn names_in_use_follow_next_in_two_columns() {
     );
 }
 
+/// The help line is a link (CLI design language, "Type"): its address
+/// printed in full and underlined where text has a look, and plain text
+/// in plain output.
+#[test]
+fn the_help_line_is_the_error_pages_address_underlined() {
+    let screen = Screen::new().with(Block::diagnostic(&unknown_value(), &sources()));
+    let styled = screen.render(&Style {
+        bold: true,
+        ..rich()
+    });
+    assert!(
+        styled.contains(
+            "help      \x1b[4mhttps://jadpo.dev/docs/errors/cli.unknown_command\x1b[0m\n"
+        ),
+        "{styled}"
+    );
+    let plain = screen.render(&Style::new(Mode::Plain));
+    assert!(
+        plain.ends_with("  help: https://jadpo.dev/docs/errors/cli.unknown_command\n"),
+        "{plain}"
+    );
+}
+
 #[test]
 fn ascii_symbols_replace_unicode_ones() {
     let style = Style {
@@ -143,7 +166,7 @@ fn a_diagnostic_without_a_place_has_no_location_or_frame() {
   reason: Jadpo has no command with this name. Did you mean `help`?
   next: Use `jadpo help` instead of `jadpo hlep` (agent)
   rule: cli.unknown_command
-  help: docs/errors/cli.unknown_command.md
+  help: https://jadpo.dev/docs/errors/cli.unknown_command
 "
     );
 }
@@ -432,7 +455,7 @@ fn inline_code_in_a_value_wraps_whole() {
   next      Run it inside a project, or give a file or folder:
             `jadpo check <path>` (agent)
   rule      toolchain.project_not_found
-  help      docs/errors/toolchain.project_not_found.md
+  help      https://jadpo.dev/docs/errors/toolchain.project_not_found
 "
     );
     let long = Diagnostic::new(&rule::TOOLCHAIN_PROJECT_NOT_FOUND, "No project here")
