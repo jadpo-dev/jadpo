@@ -10,6 +10,7 @@ The public project home is https://github.com/jadpo-dev/jadpo. Links below track
 
 - [Primer](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/primer.md): Read this first before writing an app: layout, syntax, the constructs nearly every app uses, what is built and where to look next; 3,000 to 5,000 tokens, every example compiled.
 - [Learn Jadpo](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/learn/README.md): A todo app with sign-in, built a page at a time from an empty folder to a deployed server, for a newcomer; every page's project compiled and tested.
+- [Agent skill](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/agent-skill/SKILL.md): The skill for a coding agent that writes Jadpo apps: read the primer, find pages, run `jadpo check --json` and `jadpo test --json`, and report a Jadpo bug through the user.
 - [Project README](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/README.md): Purpose, a compiler error example, status and how to build from source.
 - [Language map](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/README.md): Task-based reading paths and all 21 specification areas.
 - [Examples](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/README.md): 28 complete teaching projects with comments and tests.
