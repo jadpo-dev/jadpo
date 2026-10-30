@@ -392,6 +392,53 @@ nothing away:
 {"error":{"code":"sign_in_code_invalid","message":"The sign-in code isn't right.","request_id":"req_7220617b396b5a73"}}
 ```
 
+## Test it
+
+A route test signs someone in the same way: it asks for an email, reads
+it, and sends the link's token back. A test that crosses the app like
+this goes in the project's `tests/` folder:
+
+`tests/sign_in.test.jadpo`:
+
+```jadpo check project=learn-todo-11 file=tests/sign_in.test.jadpo
+test "an emailed link signs Ann in" {
+    var asked: Response = request {
+        method: HttpMethod.post
+        path: "/auth/magic-link"
+        input: MagicLinkAsk {
+            address: "ann@example.com"
+        }
+    }
+    assert asked.status == 202
+    match list.first(email.sent) {
+        none -> {
+            assert list.count(email.sent) == 1
+        }
+        some(sent) -> {
+            var confirmed: Response = request {
+                method: HttpMethod.post
+                path: "/auth/magic-link/confirm"
+                input: MagicLinkConfirmation {
+                    token: sent.sign_in_token
+                }
+            }
+            assert confirmed.status == 200
+        }
+    }
+}
+```
+
+- `MagicLinkAsk` and `MagicLinkConfirmation` are what the two routes
+  read, as the API record names them. Only a test builds them.
+- `email.sent` lists the emails the test has sent. `list.first` gives
+  the first, or `none` if there isn't one, which the `match` handles.
+- `sent.sign_in_token` is the link's token, and `sent.sign_in_code` the
+  code, so a test doesn't read them out of the email's text.
+- Every request a test sends carries your site's `origin`, as a
+  browser's does, so the confirm route takes it.
+
+`jadpo test` runs it with the tests from page 10.
+
 ## What you have
 
 Sign-in by email, with a link or a code, a session cookie, and users
@@ -408,6 +455,3 @@ and [The dev inbox](../language/16-built-in-services.md#the-dev-inbox-and-the-he
   so `sign_in:` takes magic links and passkeys only. Passkeys, signing in
   with a fingerprint or face, are one line, `passkey: {}`, beside
   `magic_link:`; the reference covers them.
-- A route test can't yet call the two sign-in routes Jadpo adds, so a
-  test can't follow the emailed link through `request { }`. Sign tests in
-  with `as:`, as page 10 does.

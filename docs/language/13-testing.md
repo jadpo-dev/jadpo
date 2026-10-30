@@ -209,7 +209,10 @@ test "a due date in the past is rejected" {
 `as:` signs in through the application's real authentication, a browser session, an API token or, for `Principal.service(service)`, a service key, as area 8's end-to-end examples show. The route below lets anyone call it, so this test signs no one in; `add_memo` reaches no entity, so root `policy { }` says who may call it (area 9). The
 request names its route by `method:` and its path as `jadpo routes` prints
 it, each placeholder given in `params:` (`path: "/todos/{todo_id}"` with
-`params: { todo_id: todo.id }`), and `input:` is the route's `Input`. It
+`params: { todo_id: todo.id }`), and `input:` is the route's `Input`; a
+generated magic-link route takes the built-in input the API record names
+([In development and tests](08-identity.md#in-development-and-tests)).
+Every request carries the app's own `Origin`, as a browser's does. It
 goes through the runtime's HTTP component exactly as a client's would, and
 gives a `Response`: `status`, the failure's `code` (`none` on success) and
 the route's `output` (`none` unless it succeeded). A route that streams a
