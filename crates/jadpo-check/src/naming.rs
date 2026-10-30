@@ -574,7 +574,67 @@ fn generic(name: &str, what: &str, span: Span) -> Diagnostic {
     ))
 }
 
-/// Naming problems of the domains themselves, read from folder names.
+/// The first file of `domain`, in path order: where a problem with the
+/// domain's folder name is reported.
+fn first_file<'db>(db: &'db dyn Db, project: Project, domain: &str) -> Option<&'db String> {
+    project
+        .files(db)
+        .iter()
+        .filter(|file| {
+            jadpo_db::location(db, project, **file).ownership
+                == Ownership::Domain(domain.to_string())
+        })
+        .map(|file| file.path(db))
+        .min()
+}
+
+/// Whether `word` is a reserved word (area 1, "Reserved words").
+pub fn is_reserved_word(word: &str) -> bool {
+    jadpo_syntax::SyntaxKind::from_keyword(word).is_some()
+        || jadpo_syntax::RESERVED_NAMES.contains(&word)
+}
+
+/// The domains whose folder is named with a reserved word, each with its
+/// `syntax.expected_name` at the folder (area 1, "Reserved words"). They
+/// are found from folder names alone, so they are reported whatever else
+/// is wrong, and the reserved word's uses (`library.borrow`) are left
+/// unreported: the folder is the cause.
+#[salsa::tracked(returns(ref))]
+pub fn reserved_word_domains(db: &dyn Db, project: Project) -> Vec<(String, Diagnostic)> {
+    if project.layout(db) == Layout::Loose {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for domain in &symbols(db, project).domains {
+        if !is_reserved_word(domain) {
+            continue;
+        }
+        let Some(first) = first_file(db, project, domain) else {
+            continue;
+        };
+        out.push((
+            domain.clone(),
+            Diagnostic::new(
+                &rule::SYNTAX_EXPECTED_NAME,
+                format!("`{domain}` is a reserved word and can't name a domain"),
+            )
+            .at(file_span(first), "")
+            .reason(format!(
+                "A domain's folder name is its name, written before each call into it, and a reserved word can't be a name: `{domain}.` would read as the word, not the domain."
+            ))
+            .next_for(
+                format!(
+                    "Rename the folder `domains/{domain}/` after the business area it covers, and write the new name wherever `{domain}.` names the domain"
+                ),
+                Decider::Human,
+            ),
+        ));
+    }
+    out
+}
+
+/// Naming problems of the domains themselves, read from folder names. A
+/// reserved word is [`reserved_word_domains`]'s.
 #[salsa::tracked(returns(ref))]
 pub fn domain_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     if project.layout(db) == Layout::Loose {
@@ -583,16 +643,10 @@ pub fn domain_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     let names = StdNames::get();
     let mut out = Vec::new();
     for domain in &symbols(db, project).domains {
-        let Some(first) = project
-            .files(db)
-            .iter()
-            .filter(|file| {
-                jadpo_db::location(db, project, **file).ownership
-                    == Ownership::Domain(domain.clone())
-            })
-            .map(|file| file.path(db))
-            .min()
-        else {
+        if is_reserved_word(domain) {
+            continue;
+        }
+        let Some(first) = first_file(db, project, domain) else {
             continue;
         };
         let span = file_span(first);

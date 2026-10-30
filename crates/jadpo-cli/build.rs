@@ -85,6 +85,38 @@ fn main() {
     )
     .expect("the packed runtime");
     scaffold(&manifest.join("scaffold"), &out);
+    error_pages(&root.join("docs").join("errors"), &out);
+}
+
+/// Every rule's page, `docs/errors/<rule>.md`, for `jadpo help <rule>`
+/// offline (`src/help.rs`): each rule's id and page, deflated as one
+/// `errors.deflate`, the id and the page each a length then its bytes.
+fn error_pages(folder: &Path, out: &Path) {
+    println!("cargo::rerun-if-changed={}", folder.display());
+    let mut pages = Vec::new();
+    walk(folder, &mut pages);
+    pages.sort();
+    let mut packed = Vec::new();
+    for page in pages {
+        let Some(id) = page
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.strip_suffix(".md"))
+        else {
+            continue;
+        };
+        println!("cargo::rerun-if-changed={}", page.display());
+        let text = std::fs::read(&page).expect("an error page");
+        packed.extend_from_slice(&(id.len() as u32).to_le_bytes());
+        packed.extend_from_slice(id.as_bytes());
+        packed.extend_from_slice(&(text.len() as u32).to_le_bytes());
+        packed.extend_from_slice(&text);
+    }
+    std::fs::write(
+        out.join("errors.deflate"),
+        miniz_oxide::deflate::compress_to_vec(&packed, 9),
+    )
+    .expect("the packed error pages");
 }
 
 /// What `jadpo new` writes (`src/new.rs`): each file of `scaffold/` as the

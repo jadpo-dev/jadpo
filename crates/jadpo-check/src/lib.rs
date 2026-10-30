@@ -119,13 +119,27 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         return out;
     }
     let files = project.files(db);
+    // A domain folder named with a reserved word is reported at the
+    // folder, and the word's uses as the domain's name are left out: they
+    // are that one mistake again (area 1, "Reserved words").
+    let reserved = naming::reserved_word_domains(db, project);
     let syntax: Vec<Diagnostic> = files
         .iter()
         .flat_map(|file| {
             let path = file.path(db);
+            let text = file.text(db);
             parse(db, *file)
                 .errors()
                 .iter()
+                .filter(|error| {
+                    error.rule.id != rule::SYNTAX_EXPECTED_NAME.id
+                        || !reserved.iter().any(|(domain, _)| {
+                            text.get(error.start as usize..error.end as usize) == Some(domain)
+                                && text
+                                    .get(error.end as usize..)
+                                    .is_some_and(|rest| rest.starts_with('.'))
+                        })
+                })
                 .map(|error| error.to_diagnostic(path))
                 .collect::<Vec<_>>()
         })
@@ -350,6 +364,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         });
         out.extend(syntax);
     }
+    out.extend(reserved.iter().map(|(_, problem)| problem.clone()));
     sort(&mut out);
     out
 }

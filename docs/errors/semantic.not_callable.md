@@ -75,3 +75,30 @@ error: An action can't call fixture `two_open_todos`
 
 check failed: 1 error, 5 files
 ```
+
+`some` is only a `match` pattern. A value that may be missing takes the
+value itself, and the edit writes it:
+
+```jadpo check project=e-some-called expect=semantic.not_callable
+type Title = Text {
+    max_length: 40
+}
+
+function chosen(title: Title) -> Title? {
+    return some(title)
+}
+```
+
+```text output
+error: `some` is a match pattern and can't be called
+ --> main.jadpo:6:12
+  |
+6 |     return some(title)
+  |            ^^^^ not callable
+  reason: A value that may be missing takes the value itself, as in `return title`, or `none`; `some(name)` only matches a present value in a `match`.
+  next: Write `title` instead of `some(title)` (agent)
+  rule: semantic.not_callable
+  help: https://jadpo.dev/docs/errors/semantic.not_callable
+
+check failed: 1 error, 1 file
+```
