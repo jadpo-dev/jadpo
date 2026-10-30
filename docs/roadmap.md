@@ -380,12 +380,7 @@ time.
   built yet. Found by an audit of every unbuilt row for protections that
   are silently absent (2026-10-30).
 - [x] **A1 Diagnostics that point at the cause**: area 1, "Reserved words" and "How a promotion happens"; area 2, "Values that may be missing"; area 9, "Actions"; area 14, "Commands for debugging, editors and help".
-- [ ] **A2 Listed queries and calls a listing doesn't cover** `opus · xhigh`:
-  area 9, "Listing a query" and "A call the listing doesn't cover", with
-  their decisions in the area's notes. Done when a staff query restricts
-  fields to a role on the same entity as a customer catalogue, a route
-  test shows a removed role refused on the next request, and a listed
-  action calling an admin-only helper is `policy.call_ungranted`.
+- [x] **A2 Listed queries and calls a listing doesn't cover**: area 9, "Listing a query", "A call the listing doesn't cover" and "The permissions report"; area 1, "Which rules can be declined".
 - [ ] **A3 External tokens in tests and `jadpo dev`** `opus · high`: area 8,
   "External tokens in tests and `jadpo dev`"; area 19, `key_ops`; area 14,
   `jadpo dev`'s external tokens, designed with the design skills first.
@@ -422,7 +417,9 @@ time.
   `access.jadpo_record` and `network.jadpo_record` give them a before
   side. An outside agent made a route public on request and nothing
   stopped it (Richard, 2026-10-30). The kinds whose features aren't built
-  yet are named on the items below that build them.
+  yet are named on the items below that build them. The rule catalogue
+  (`crates/jadpo-diag`) has no mark for a security rule yet: A8 adds it,
+  starting with `policy.call_ungranted`, declinable since A2.
 - [ ] **A7 Sign-in providers** `opus · xhigh`: area 8, `sign_in:`'s
   `providers:` (Google first, then Microsoft, through `Driver.oidc`) and
   `on_first_sign_in:` for provider and external-token sign-in. Moved here

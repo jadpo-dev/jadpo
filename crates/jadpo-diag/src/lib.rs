@@ -619,6 +619,8 @@ rules! {
         "Wire name outside a provider package, or one the type already uses";
     POLICY_BINDING_INVALID: "policy.binding_invalid", area 9, Error, Agent,
         "Policy names something that can't say who";
+    POLICY_CALL_UNGRANTED: "policy.call_ungranted", area 9, Declinable, Human,
+        "Listed action calls one that refuses some of the people its line lets in";
     POLICY_DECLARATION_DUPLICATE: "policy.declaration_duplicate", area 9, Error, Agent,
         "Policy is declared twice";
     POLICY_EFFECT_DUPLICATE: "policy.effect_duplicate", area 9, Error, Agent,
@@ -1643,6 +1645,7 @@ mod tests {
                 "email.health_problem",
                 "library.similar_exists",
                 "package.standard_candidate",
+                "policy.call_ungranted",
                 "query.nearest_exact",
                 "rate_limits.counted_in_memory",
                 "step.late_failure",

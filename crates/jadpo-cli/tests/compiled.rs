@@ -683,6 +683,7 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         "docs/language/08-identity.md passkeys",
         "docs/language/09-policy.md policy-end-to-end",
         "docs/language/09-policy.md tenant-references",
+        "docs/language/09-policy.md listed-query",
         "docs/language/10-configuration-and-time.md deliveries",
         "docs/language/13-testing.md events-in-tests",
         "docs/language/10-configuration-and-time.md translation-messages",

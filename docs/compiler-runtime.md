@@ -2544,7 +2544,9 @@ without policy (`unpoliced`), which a test's call without a caller runs
 one (a read of one record selects its grant instead). A
 write's `PolicyRefusal` says what writing no row means, a listed
 action's record-free line becomes a `Gate` checked as it starts
-(`jadpo_runtime::admit`, by the action boundary), and the identity plan's `GatedStatements` limit
+(`jadpo_runtime::admit`, by the action boundary), a listed query's line
+the `gate` of its `ReadPlan`, which the store admits before the
+statement runs, wherever the read comes from, and the identity plan's `GatedStatements` limit
 listing, issuing and revoking credentials by the holder's grants. The
 runtime raises `not_permitted` (`jadpo_runtime::not_permitted`) and marks
 a concealed not-found failure `concealed_by: policy`; the interpreter sets
@@ -2567,7 +2569,12 @@ insensitive per local, with a summary per action of what its result carries
 and which parameters reach an output it builds) and checks every `Output`
 and failure `client:` field it builds and every create's user fields
 (`policy.role_field_create_forbidden`); `policy::reach` refuses a route
-whose action always sets a field nobody may change. The plan adds each
+whose action always sets a field nobody may change; and `policy::calls`
+holds each person a listed action's line names to every write, field
+grant and listed line of each action it calls, through what that one
+calls (`policy.call_ungranted`). A listed query's line joins its records'
+`read:` in the proof (`Prover::lined`), as a role and the tenant
+together. The plan adds each
 restricted field's grants to the statement that changes it
 (`Planner::field_policy`, beside `granted`, whose tenancy is
 `in_tenant`), and an update's `PolicyRefusal::Probe` asks again under the

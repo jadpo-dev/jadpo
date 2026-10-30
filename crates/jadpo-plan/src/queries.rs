@@ -535,6 +535,7 @@ impl Planner<'_> {
             .iter()
             .position(|(_, ty)| crate::holds_caller_ty(ty))
             .and_then(|at| u32::try_from(at).ok());
+        let gate = self.query_gate(&query.name);
         Some(QueryPlan {
             key: query.key.clone(),
             name: query.name.clone(),
@@ -548,6 +549,7 @@ impl Planner<'_> {
                 missing,
                 recheck,
                 layer: query.geometry.is_some(),
+                gate,
             },
         })
     }
@@ -1037,6 +1039,7 @@ impl Planner<'_> {
             missing: not_found,
             recheck: None,
             layer: false,
+            gate: None,
         };
         Some(EntityPlan {
             key,

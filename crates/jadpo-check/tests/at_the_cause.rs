@@ -161,7 +161,10 @@ fn an_unknown_bare_action_in_policy_is_still_no_action() {
         .iter()
         .map(|d| format!("{}: {}", d.rule.id, d.message))
         .collect();
-    assert_eq!(shown, ["policy.binding_invalid: `borow` isn't an action"]);
+    assert_eq!(
+        shown,
+        ["policy.binding_invalid: `borow` isn't an action or a query"]
+    );
 }
 
 #[test]

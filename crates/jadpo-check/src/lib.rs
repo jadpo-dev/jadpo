@@ -244,6 +244,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             );
             out.extend(policy::policy_problems(db, project, file).iter().cloned());
             out.extend(
+                policy::calls::ungranted_call_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
+            out.extend(
                 policy::outputs::query_policy_problems(db, project, file)
                     .iter()
                     .cloned(),
