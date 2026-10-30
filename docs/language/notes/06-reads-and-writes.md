@@ -20,6 +20,10 @@ Why [Reads and writes](../06-reads-and-writes.md) is the way it is: the decision
   something other than one record (`ProjectBoardView`).
 - **`Page<T>` is a standard generic type,** like `List<T>`; area 3 rules
   out generics only in your own code.
+- **Row versions as other tools use them.** The check that a record loaded
+  before an outside call is unchanged compares PostgreSQL's row version,
+  `xmin`, which Entity Framework's PostgreSQL provider uses the same way
+  for optimistic concurrency.
 
 ## Carried to later areas
 

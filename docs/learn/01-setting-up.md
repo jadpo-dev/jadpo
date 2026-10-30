@@ -52,7 +52,7 @@ installed through [rustup](https://rustup.rs). The repository pins the
 version of Rust it needs, and rustup fetches it on the first build.
 
 ```sh
-git clone https://github.com/richardwillars/jadpo.git
+git clone https://github.com/jadpo-dev/jadpo.git
 cd jadpo
 cargo build --release --locked -p jadpo-cli
 ```
@@ -122,9 +122,10 @@ doesn't run until you fix it. Every error has the same parts:
 
 - where the problem is, with the line of code;
 - `reason:`, why it's a problem;
-- `next:`, what to do about it, and who should do it. `(agent)` means a
-  coding agent can make the fix. `(human)` means a person has to decide,
-  so an agent stops and asks;
+- `next:`, what to do about it. `(human)` at the end of an error's
+  `next:` line tells your coding agent to stop and ask you which fix you
+  want, because the choice is yours to make (who can see data, what a
+  setting holds). `(agent)` means your agent can make the fix itself;
 - `rule:`, the error's name, and `help:`, where its page is.
 
 Every error has a page on this site: `https://jadpo.dev/docs/errors/`
@@ -146,6 +147,6 @@ Next: [A project and your first route](02-first-route.md).
 ## Not built yet
 
 There is no installer yet, so you build from source as above. Prebuilt
-downloads, Homebrew and `npx jadpo` come with the first release, and so
+downloads, Homebrew (`brew install jadpo-dev/tap/jadpo`) and `npx @jadpo/jadpo` come with the first release, and so
 does `jadpo new`, which will start a project for you. Until then you
 make the few files of a new project by hand, which the next page does.

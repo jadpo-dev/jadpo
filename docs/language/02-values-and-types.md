@@ -8,43 +8,47 @@ checked-with: this checkout's jadpo on every gate run
 # Values and types
 <!-- topic: values-and-types -->
 
-What kinds of value a Jadpo program works with, how you give a value a domain
-meaning, and when one type can stand in for another.
+What kinds of value a Jadpo program works with, how you give a value a
+meaning in your business, and when one type can stand in for another.
 
-The rule behind all of it: **representation is not meaning**. An email address
-and a username are both text underneath, and an order ID and a customer ID are
-both UUIDs, but Jadpo treats them as different types. A value only becomes a
-type by being validated against it, and the compiler never converts between
-types silently.
+The idea behind all of it: **how a value is stored is not what it means**. An
+email address and a username are both text underneath, and an order ID and a
+customer ID are both UUIDs, but Jadpo treats them as different types. A value
+becomes a type only by being checked against that type's rules, and the
+compiler never converts between types without being asked.
 
 ## Built-in types
 <!-- topic: built-in-types -->
 
-Jadpo ships its types with the language: nothing is declared to use them, and
-their names can't be reused. There are the six representation types, the
-standard types (the vocabulary two packages would otherwise each invent), and
-a few types the language's own features need.
+Jadpo comes with its types built in. You use them without declaring or
+importing anything, and you can't reuse their names for your own types. There
+are three groups: the six representation types, the standard types, and a few
+types the language's own features need.
 
 ### Representation types
 
-The raw material for your own types.
+The representation types say how a value is held: as a number, as text, as
+bytes. They are the raw material you build your own types from.
 
 | Type | What it holds |
 |---|---|
 | `Bool` | `true` or `false` |
 | `Int` | An exact 64-bit integer |
-| `Decimal` | An exact decimal with a required `scale` (question 8) |
+| `Decimal` | An exact decimal with a required `scale`, the number of decimal places it keeps |
 | `Text` | Unicode text |
 | `Bytes` | A sequence of bytes |
 | `Uuid` | A universally unique identifier |
 
-There is no `Float`: arithmetic on `Decimal` is exact, and its maths belongs to
-the `decimal` namespace (area 19). Text from outside is normalised to NFC as
-it is decoded at a boundary, before its rules are checked.
+There is no `Float`. Arithmetic on `Decimal` is exact, and its other
+operations are under `decimal.` ([Numbers](19-standard-library.md#numbers)).
 
-Any UUID version is accepted by default and normalised to lowercase, and new
-identities are version 7. A named type can pin a version, which governs both
-what it accepts and what it generates (question 13):
+Text that arrives from outside, such as a request body, is put into Unicode's
+NFC form as it is read, before its rules are checked. NFC writes each
+character one way, so the same text always compares equal.
+
+By default a `Uuid` accepts any UUID version and is kept in lowercase. The IDs
+Jadpo generates for new records are version 7. A named type can fix the
+version, which decides both what it accepts and what it generates:
 
 ```jadpo check project=q13-uuid-versions
 entity Order {
@@ -58,14 +62,18 @@ type PartnerRef = Uuid {
 
 ### Standard types
 
-The standard types are the standard library's vocabulary: one definition each
-of a postal address, an amount of money, a length, a point on the earth. Each
-has one construction that validates, one JSON shape and one storage shape, and
-fields are named, never positional (`Point { latitude: ... longitude: ... }`).
-They are global names in one flat set, like `Int`; only their operations live
-in namespaces (`money.`, `units.`, `temporal.`). There are 253 of them.
-[Area 19](19-standard-library.md#the-standard-types) lists every one and every
-operation; the groups and their headline types are:
+The standard types are one shared definition each of the things most apps
+need: a postal address, an amount of money, a length, a point on the earth.
+Without them, every app and every package would invent its own. Each has one
+way to build it that checks its rules, one JSON shape and one storage shape.
+Its fields are named, never positional:
+`Point { latitude: ... longitude: ... }`.
+
+Their names are global, like `Int`, so you never import one. Their
+operations are grouped under a prefix such as `money.`, `units.` or
+`temporal.`. There are 253 standard types, and
+[The standard types](19-standard-library.md#the-standard-types) lists every
+one and every operation. The groups and their best-known types are:
 
 | Group | Headline types | Namespaces |
 |---|---|---|
@@ -78,12 +86,12 @@ operation; the groups and their headline types are:
 | Text and documents | `Markdown`, `Html`, `RichText`, `LocalisedText` | `markup`, `text` |
 | Media | `Colour`, `ImageDimensions`, `AspectRatio`, `FrameRate`, `VideoCodec`, `Timecode`, `ContentRating` | `colour`, `media` |
 | Security and secrets | `Password`, `PasswordHash`, `Hash`, `Hmac`, `Jwt`, `PublicKey`, `Certificate`, `ApiKey`, `SecretText`, `EncryptedValue` | `crypto`, `hash`, `random` |
-| Geospatial | `Point`, `Latitude`, `Polygon`, `Geometry`, `BoundingBox`, `Geohash` | `geo` (area 20) |
-| AI | `TokenCount`, `TokenUsage`, `ChatMessage`, `ChatRole`, `Vector`, `Embedding` | `ai` (area 21) |
+| Geospatial | `Point`, `Latitude`, `Polygon`, `Geometry`, `BoundingBox`, `Geohash` | `geo` ([Geospatial](20-geospatial.md)) |
+| AI | `TokenCount`, `TokenUsage`, `ChatMessage`, `ChatRole`, `Vector`, `Embedding` | `ai` ([AI](21-ai.md)) |
 | Codes and identifiers | `Sku`, `Ean13`, `Isbn`, `Barcode`, `TrackingNumber`, `Vin`, `VatNumber`, `NhsNumber`, `Icd10Code`, `IataAirport`, `FlightNumber`, `Orcid` | none beyond the contract below |
 
-Every standard type, by group ("(enum)" marks a closed list held as a
-built-in enum):
+Every standard type, by group. "(enum)" marks a fixed list of values,
+held as a built-in [enum](#enums):
 
 | Group | Types |
 |---|---|
@@ -106,12 +114,13 @@ built-in enum):
 | Other with a published standard (10) | `UnNumber`, `Orcid`, `CefrLevel` (enum), `Mpan`, `Mprn`, `EpcRating` (enum), `Tenure` (enum), `LawfulBasis` (enum), `Jurisdiction`, `ModelId` |
 | AI (4) | `TokenCount`, `TokenUsage`, `ChatMessage`, `ChatRole` (enum) |
 
-The money group has a few rules of its own, because money is where mistakes
-cost most. `Money` holds a whole number of a currency's minor units (pence,
-cents) and its `Currency`, never a decimal of pounds. A type built on it takes
-`currency:`, `rounding:` and `min:`/`max:` in minor units, and the `money.`
-operations (`money.from_minor`, `money.minor`, `money.sum`, `money.allocate`)
-build and work out amounts. A named type for an amount in pounds is:
+The money types have a few rules of their own, because money is where
+mistakes cost most. `Money` holds a whole number of a currency's minor units,
+such as pence or cents, and its `Currency`. It never holds a decimal number of
+pounds. A type built on `Money` takes `currency:`, `rounding:`, and `min:` and
+`max:` in minor units. The `money.` operations (`money.from_minor`,
+`money.minor`, `money.sum`, `money.allocate`) build amounts and work them out.
+A named type for an amount in pounds:
 
 ```jadpo check project=money-type
 type Sterling = Money {
@@ -122,8 +131,8 @@ type Sterling = Money {
 ```
 
 An amount in another currency doesn't compile where a `Sterling` is wanted.
-Use `Int` for counts and sizes and `Money` for amounts of money; area 19's
-"Money and payments" has the rest.
+Use `Int` for counts and sizes, and `Money` for amounts of money.
+[Money and payments](19-standard-library.md#money-and-payments) has the rest.
 
 #### What every standard type does
 
@@ -146,17 +155,24 @@ of them:
   where order means something (quantities of one kind, `Money` of one
   currency, times, `SemanticVersion`, `Percentage`).
 
-A type that copies a standard type under another name is the declinable error
-`type.standard_exists`: a `Booking` with only a start and an end, each an
-`Instant`, is an `InstantRange`. A declaration named like a standard type
-is `type.standard_clash`. Both are in area 19.
+A type that copies a standard type under another name is the error
+`type.standard_exists`. For example, a `Booking` with only a start and an
+end, each an `Instant`, is an `InstantRange`. When the copy is deliberate,
+you can [decline the error](01-project-layout-and-modules.md#declining-a-judgement-call)
+with a reason. A declaration with the same name
+as a standard type is `type.standard_clash`. Both are explained under
+[The standard types](19-standard-library.md#the-standard-types) and
+[A release that adds a standard type](19-standard-library.md#a-release-that-adds-a-standard-type).
 
 ### What the standard types do
 
-Standard types carry their own arithmetic, units and rules, so the
-expressions you'd write on paper check as strictly as a call. A length sum
-mixes units freely, and the result is a `Length`; `m` means minutes, and
-inches are written `inch`:
+Standard types come with their own arithmetic, units and rules, so you
+write a sum as you would on paper and it is checked as strictly as a call.
+Which operators work on which types is set by the
+[standard operator table](19-standard-library.md#the-standard-operator-table).
+
+A sum of lengths can mix units, and the result is a `Length`. Inches are
+written `inch`, because `m` means minutes:
 
 ```jadpo check project=std-length
 type Shelf = Length {}
@@ -173,7 +189,7 @@ test "units mix within a kind" {
 }
 ```
 
-Leave out the unit's meaning and the compiler says so. Here `1m` is a
+Mix up a unit and the compiler says so. Here `1m` is one minute, a
 `Duration`, which can't be added to a `Length`:
 
 ```jadpo check project=std-length-minutes expect=type.arithmetic_operand
@@ -199,10 +215,12 @@ error: A duration and a quantity can't be added: a `Duration` and a `Length` are
 check failed: 1 error, 1 file
 ```
 
-Money is whole minor units in one currency, so the table is strict. A rate
-scales it (`price * 120%` adds 20% VAT), and `money.split` shares an
-amount out with no penny lost: £10.00 three ways is £3.34, £3.33 and £3.33.
-`price / 3` is refused with that fix (`type.money_split`, area 19):
+Money is a whole number of minor units in one currency, so the operator
+table allows less on it. A percentage scales it: `price * 120%` adds 20% VAT.
+To share an amount out, use `money.split`, which loses no penny: £10.00 three
+ways is £3.34, £3.33 and £3.33. Dividing, as in `price / 3`, is refused with
+`type.money_split`, which suggests `money.split`
+([Money operations](19-standard-library.md#money-operations)):
 
 ```jadpo check project=std-money
 type CakePrice = Money {
@@ -235,7 +253,8 @@ test "VAT and sharing lose nothing" {
 }
 ```
 
-`price + 20%` could mean two things, so it is refused; write `price * 120%`:
+`price + 20%` could mean two things, so it is refused. Write `price * 120%`
+instead:
 
 ```jadpo check project=std-money-percent expect=type.arithmetic_operand
 type CakePrice = Money {
@@ -262,7 +281,8 @@ error: `CakePrice` and a percentage can't be added: it could mean two things
 check failed: 1 error, 1 file
 ```
 
-Adding two amounts whose types fix different currencies is a compile error:
+Adding two amounts whose types are in different currencies is a compile
+error:
 
 ```jadpo check project=std-money-currency expect=type.arithmetic_operand
 type CakePrice = Money {
@@ -293,9 +313,10 @@ error: `CakePrice` and `EuroPrice` can't be added: they're in different currenci
 check failed: 1 error, 1 file
 ```
 
-A `CalendarDate` plus a one-month `CalendarPeriod` clamps to the month's last
-day, `Instant - Instant` gives a `Duration`, and subtracting two temperatures
-gives a `TemperatureDifference`:
+Dates, times and temperatures work the same way. A `CalendarDate` plus a
+one-month `CalendarPeriod` stops at the last day of the month when the day
+doesn't exist there. `Instant - Instant` gives a `Duration`. Subtracting one
+temperature from another gives a `TemperatureDifference`:
 
 ```jadpo check project=std-time
 type DeliveryDay = CalendarDate {}
@@ -331,29 +352,34 @@ test "calendar and clock arithmetic" {
 
 ### Other built-in types
 
+These types belong to features of the language. Each row links the page
+that covers the feature.
+
 | Kind | Types | Notes |
 |---|---|---|
 | Containers | `List<T>`, `Set<T>`, `Map<K, V>` | Described below. |
-| Translation | `PluralCount`, `TextDirection`, `TranslationReview` | `PluralCount` is a whole number that picks a message's plural form, used directly as a `Message` field; `TextDirection` is a locale's direction, `.left_to_right` or `.right_to_left`, which `locale.direction(value)` gives; `TranslationReview` is `.none` or `.required`, the `review:` of `translations:` in `application { }` (area 10). |
-| Files | `File`, `FileUpload`, `UploadSlot`, `FileContents` | A stored file (its key, name, size and type) as an entity field; the token of a finished upload in an `Input`; the signed address, or addresses for each part, an upload goes to; and what `store.read` returns, a file's bytes for passing on (to a provider, a PDF service, an email), which the format helpers do not accept (area 16). |
-| Batches | `BatchRun`, `BatchProgress`, `RowProblem`, `ImportSummary`, `ExportSummary`, `CsvFormat` | A batch run, as the batch helpers return it and as an entity field can store it; its progress from `batches.status`; one bad row or failed item, without its value; what `finished:` receives after reading (or `batches.each`) and after writing, the latter holding the stored `File`; and who a CSV is written for, `CsvFormat.spreadsheet` or `.standard` (area 12). |
-| Services | `SearchText`, `OAuthGrant`, `AnyObject` | What people type into a search box (area 16); a connection's credential held for each owner record, `OAuthGrant { owner: ... }`, written only in a connection's `credential:` and never readable by code (area 11); and, only as a package operation's input field, any of the app's object types, sent in its JSON form (Postmark's template variables, Stripe's metadata). |
-| Bases | `Object`, `Enum`, `Input`, `Output` | Used only after `=` in a `type` declaration. Areas add their own bases the same way: `Failure` (area 4), `Event` (area 12), `EmailMessage` (area 16), `Document`, a template rendered to HTML or PDF (area 16), and `Message`, a translated message whose fields are its placeholders (area 10). |
+| Translation | `PluralCount`, `TextDirection`, `TranslationReview` | `PluralCount` is a whole number that picks a message's plural form, used directly as a `Message` field; `TextDirection` is a locale's direction, `.left_to_right` or `.right_to_left`, which `locale.direction(value)` gives; `TranslationReview` is `.none` or `.required`, the `review:` of `translations:` in `application { }` ([What the compiler checks of translations](10-configuration-and-time.md#what-the-compiler-checks-of-translations)). |
+| Files | `File`, `FileUpload`, `UploadSlot`, `FileContents` | A stored file (its key, name, size and type) as an entity field; the token of a finished upload in an `Input`; the signed address, or addresses for each part, an upload goes to; and what `store.read` returns, a file's bytes for passing on (to a provider, a PDF service, an email), which the format helpers do not accept ([Files](16-built-in-services.md#files)). |
+| Batches | `BatchRun`, `BatchProgress`, `RowProblem`, `ImportSummary`, `ExportSummary`, `CsvFormat` | A batch run, as the batch helpers return it and as an entity field can store it; its progress from `batches.status`; one bad row or failed item, without its value; what `finished:` receives after reading (or `batches.each`) and after writing, the latter holding the stored `File`; and who a CSV is written for, `CsvFormat.spreadsheet` or `.standard` ([Batches](12-jobs-and-events.md#batches-work-over-many-items)). |
+| Services | `SearchText`, `OAuthGrant`, `AnyObject` | What people type into a search box ([Search](16-built-in-services.md#search)); a connection's credential held for each owner record, `OAuthGrant { owner: ... }`, written only in a connection's `credential:` and never readable by code ([Acting for each user: OAuth grants](11-integrations.md#acting-for-each-user-oauth-grants)); and, only as a package operation's input field, any of the app's object types, sent in its JSON form (Postmark's template variables, Stripe's metadata). |
+| Bases | `Object`, `Enum`, `Input`, `Output` | Used only after `=` in a `type` declaration. Other features add bases the same way: `Failure` ([Failures](04-failures.md)), `Event` ([Declaring an event](12-jobs-and-events.md#declaring-an-event)), `EmailMessage` ([Email](16-built-in-services.md#email)), `Document`, a template rendered to HTML or PDF ([Documents](16-built-in-services.md#documents)), and `Message`, a translated message whose fields are its placeholders ([Translations as messages](10-configuration-and-time.md#translations-as-messages)). |
 | Decoding | `DecodeProblem` | `field: Text`, a field's path with list positions as numbers, and `rule: Text`; never the value. It is what a failure mapped from `json.read`'s `mismatch` receives in its `problem` field, and only the runtime builds one. |
 | Nothing | `Unit` | What an action returns when it returns nothing. |
 
-The batch types' fields (area 12):
+The batch types' fields, as [Batches](12-jobs-and-events.md#batches-work-over-many-items)
+uses them:
 
 | Type | Fields |
 |---|---|
 | `BatchRun` | `id: Uuid`; storable in an entity field, so an app can keep the run on its own import record |
 | `BatchProgress` | `items_done: Int`, `estimated_total: Int?` (from the file's size or the query's count), `problems: Int` (so far), `state: BatchState` (`.running`, `.finished`, `.failed`, `.cancelled`) |
-| `RowProblem` | `row: Int` (as a spreadsheet numbers it), `column: Text`, `rule: Text` (the rule's code, as area 7's problems give it); never the value |
+| `RowProblem` | `row: Int` (as a spreadsheet numbers it), `column: Text`, `rule: Text` (the rule's code, as a refused request's problems give it, [HTTP](07-http.md)); never the value |
 | `ImportSummary` | `items: Int`, `items_with_problems: Int`, `problems: List<RowProblem>` |
 | `ExportSummary` | The same three fields, and `file: File`, the file written |
 
-Literals are `true` and `false`, whole numbers (`25`, `-3`), decimals (`1.25`),
-strings (`"Hello"`, with `\"`, `\\`, `\n`, `\r` and `\t` escapes) and `none`.
+The literals, values written straight into code, are `true` and `false`,
+whole numbers (`25`, `-3`), decimals (`1.25`), strings (`"Hello"`, with
+`\"`, `\\`, `\n`, `\r` and `\t` escapes) and `none`.
 
 ## Named types
 <!-- topic: named-types -->
@@ -379,12 +405,15 @@ type ProductName = Text {
 type OrderId = Uuid {}
 ```
 
-`OrderId` has no rules, but it is still its own type: an `OrderId` cannot be
+`OrderId` has no rules, but it is still its own type: an `OrderId` can't be
 passed where another UUID-based type is expected. Every `type` declaration
-creates a new type; there are no aliases.
+creates a new type. There are no aliases, names that are just another way of
+writing an existing type.
 
-A named type can build on another named type, adding rules. The narrower type
-can be used wherever its parent is expected, but not the other way round.
+A named type can build on another named type and add rules. The new type
+keeps every rule of the one it builds on, so it can be used wherever that
+type is expected. The other way round needs a construction, which checks the
+extra rules.
 
 ```jadpo check project=refine
 type ProductName = Text {
@@ -409,26 +438,33 @@ function catalogue_name(name: ShortProductName) -> ProductName {
 | `min_length`, `max_length` | `Text`, `Bytes`, `List<T>`, `Set<T>`, `Map<K, V>` | whole number | Inclusive bounds; text counts Unicode characters, collections count items |
 | `pattern` | `Text` | string | A regular expression the text must match |
 | `format` | `Text` | `email` | The text must be an email address |
-| `dimensions` | a type built on `Vector` | whole number, 1 to 16,000 | Exactly that many items (area 19) |
-| `distance` | a type built on `Vector` | a `VectorDistance`: `cosine` (the default), `euclidean` or `inner_product` | How its vectors are compared: `ai.distance` and its index follow it (area 21) |
+| `dimensions` | a type built on `Vector` | whole number, 1 to 16,000 | Exactly that many items ([AI types](19-standard-library.md#ai-types)) |
+| `distance` | a type built on `Vector` | a `VectorDistance`: `cosine` (the default), `euclidean` or `inner_product` | How its vectors are compared: `ai.distance` and its index follow it ([Storing a vector](21-ai.md#storing-a-vector)) |
 
 Each constraint is written `name: value`, one per line. There are no other
 constraints and no custom validation functions.
 
-A refinement can only add to the rules of the type it builds on, so a
-`max` below an inherited `min` (or the other way round, for lengths and
-durations too) is `type.constraint_contradiction`, and so is a `Decimal`
-refinement whose `scale` differs from the one it inherits, since the scale
-decides how the value is stored and sent. So is a currency other than the
-one it inherits, a `Money` type's `currency:` or a rate type's `from:` and
-`to:` (area 19), and a vector type's `dimensions:` other than the one it
-inherits or outside its lengths. A bound looser than the one it inherits (`max_length: 50` on a type with
-`max_length: 40`) is `type.constraint_loosened`. The same settings rules
-hold for the fields of every type with fields, entities and events included;
-the settings later areas add to an entity's or event's fields (`generated`,
-`on_delete`, `unique`, `immutable`, `role`, `personal`, `erase`,
-`retention`) are left to those areas. A number literal with more digits than
-an exact number holds (38) is `type.invalid_literal`.
+A refinement, a type that builds on another, can only add to the rules it
+inherits. These are errors:
+
+- `type.constraint_contradiction`: a `max` below an inherited `min`, or the
+  other way round, and the same for lengths and durations. It is also a
+  `Decimal` refinement whose `scale` differs from the one it inherits, since
+  the scale decides how the value is stored and sent; a currency other than
+  the one it inherits, in a `Money` type's `currency:` or a rate type's
+  `from:` and `to:`; and a vector type's `dimensions:` other than the one it
+  inherits or outside its lengths.
+- `type.constraint_loosened`: a bound looser than the one it inherits, such
+  as `max_length: 50` on a type with `max_length: 40`.
+
+The same rules hold for the settings on the fields of every type with
+fields, entities and events included. The settings that only an entity's or
+an event's fields take (`generated`, `on_delete`, `unique`, `immutable`,
+`role`, `personal`, `erase`, `retention`) are described with those
+features, starting at [Data](05-data.md).
+
+An exact number holds at most 38 digits, and a number literal with more is
+`type.invalid_literal`.
 
 ## Creating values
 <!-- topic: creating-values -->
@@ -458,16 +494,19 @@ function free() -> ItemPrice {
 ```
 
 When the value is a literal, the compiler checks it while compiling:
-`Quantity(0)` is a compile error (see `type.invalid_literal` below). When the
-value is computed, the check runs when the program runs.
+`Quantity(0)` is a compile error,
+[`type.invalid_literal`](../errors/type.invalid_literal.md). When the value is
+computed, the check runs when the program runs.
 
-A constructor accepts a value with the same representation as the type: `Int`
-or any `Int`-based type for `Quantity`, a decimal literal such as `0.0` (not
-`0`) for a `Decimal`-based type. This is also how you deliberately convert
-between two named types: the value is re-checked against the target's rules.
-A value that may be `none` builds nothing: `Quantity(maybe)` with
-`maybe: Count?` is `type.constructor_input`, and `match` handles the
-absent case first.
+A constructor accepts a value with the same representation as the type:
+`Int` or any `Int`-based type for `Quantity`, and a decimal literal such as
+`0.0`, not `0`, for a `Decimal`-based type. This is also how you convert
+between two named types on purpose: the value is checked again against the
+target's rules.
+
+A value that may be `none` builds nothing. `Quantity(maybe)` with
+`maybe: Count?` is `type.constructor_input`: handle the absent case first,
+with `match` ([Absent values](#absent-values)).
 
 ```jadpo check project=convert
 type Stock = Int {
@@ -488,17 +527,20 @@ Arithmetic works on the representation, so `per_pack * packs` is a plain `Int`
 and has to be turned back into `Stock`. A plain `Int` can never be returned
 where `Stock` is expected.
 
-Here `per_pack` and `packs` are never below zero and `Stock` has no
-maximum, so the declared ranges prove `Stock(per_pack * packs)` always
-follows its rules, and it cannot fail.
+Here `Stock(per_pack * packs)` can't fail. `per_pack` and `packs` are never
+below zero and `Stock` has no maximum, so the ranges their types declare
+prove the product always follows `Stock`'s rules. These declared ranges are
+one of the two kinds of proof the compiler reads; the other is the
+conditions around a construction ([Conditions as proof](#conditions-as-proof)).
 
 ### Construction failures by rule
 
-When neither the declared ranges nor the conditions around it (below)
-prove a computed value follows the target's rules, building it can fail. The statement starts with `attempt`, and a
-block after the call maps each rule that can break to the failure the
-caller gets, one arm per line: the same block form writes and integration
-calls use (area 4).
+Building a value from a computed one can fail when nothing proves it
+follows the target's rules: neither the declared ranges nor the conditions
+around it. Then the statement starts with `attempt`, and a block after the
+call maps each rule that can break to the failure the caller gets, one arm
+per line. Writes and calls to outside services use the same block
+([Failures](04-failures.md)).
 
 ```jadpo check project=by-rule file=types.jadpo hidden
 type Count = Int {}
@@ -537,25 +579,26 @@ function from_count(n: Count) fails OrderEmpty, OrderTooLarge -> CakeCount {
 - **The keys are rules.** Each key names a rule of the type, or of a type it
   builds on, that neither the declared ranges nor a condition proves holds: `min`, `max`,
   `min_length`, `max_length`, `pattern`, `format`, `version`, a `Money`
-  type's `currency` (area 19), or, for an object literal, a rule the
-  object's type names ("Rules across fields"). Each such
-  rule needs exactly one arm.
+  type's `currency`, or, for an object literal, a rule the object's type
+  names ([Rules across fields](#rules-across-fields)). Each such rule needs
+  exactly one arm.
 - **`invalid:` is the catch-all.** It covers every rule that can break and
   has no arm of its own, so `{ invalid: OrderTooLarge }` alone covers them
-  all. It covers only a construction's rules: a write's conditions
-  (`missing:`, `conflict:`, area 6) and an integration call's (area 11)
+  all. It covers only a construction's rules. A write's conditions
+  (`missing:` and `conflict:`, [Reads and writes](06-reads-and-writes.md))
+  and a call to an outside service's ([Calling](11-integrations.md#calling))
   each still need their own arm, and `invalid:` on them is an error.
 - **Every arm can run.** An arm for a rule that can't break, an `invalid:`
   left covering nothing, a key that isn't one of the type's rules and a
-  key given twice are errors (area 4).
+  key given twice are errors ([Failures](04-failures.md)).
 - **What the compiler can't reason about can always break.** A `pattern`
-  other than the value's own always counts as able to break. `scale` never
-  does: it rounds the value as it is kept.
-- **A validated built-in type's check is `format`.** A type built on
-  `Email`, `Url` or `IpAddress` checks its text, and when the value isn't
-  already built on the same type, that check is the `format` rule and can
-  break. An `Email` already is an address, and so is
-  text whose own type has `format: TextFormat.email`, the same check.
+  other than the one the value already has always counts as able to break.
+  `scale` never does: it rounds the value as it is kept.
+- **A built-in type's own check is `format`.** A type built on `Email`,
+  `Url` or `IpAddress` checks its text. When the value isn't already built
+  on the same type, that check is the `format` rule and can break. An
+  `Email` already is an address, and so is text whose own type has
+  `format: TextFormat.email`, which is the same check.
 - **Every failure is `invalid_value`.** At runtime the failure records the
   rule that broke, such as `max: 12`, or the built-in type whose check
   refused the text, such as `Email`, for the log, never the value.
@@ -595,8 +638,9 @@ function work_address(address: Email) fails NotWork -> WorkEmail {
 
 ### Conditions as proof
 
-An `if` condition counts as proof. After a check that leaves when the value
-is out of range, the construction it guards is plain:
+An `if` condition counts as proof. After a check that leaves the function
+when the value is out of range, the construction after it is plain: it takes
+no `attempt`.
 
 ```jadpo check project=conditions file=types.jadpo hidden
 type Count = Int {}
@@ -663,14 +707,15 @@ What counts as proof, exactly:
   after `if (a or b) { reject ... }` neither does; `not` turns a condition
   round. Where only one of two may hold, as inside `if (a or b)`, a bound
   survives only when both give one, widened to cover both. The right side
-  of `and` is read knowing its left side holds, and of `or` knowing its
-  left side doesn't, so `n >= 1 and is_small(CakeCount(n))` is plain too.
-- **Where it holds.** Inside the branch where the condition holds. An
+  of `and` is read knowing its left side holds, and the right side of `or`
+  knowing its left side doesn't, so `n >= 1 and is_small(CakeCount(n))` is
+  plain too.
+- **Where it holds.** A condition holds inside the branch it guards. An
   `else if` and the `else` know every earlier condition is false. After the
-  `if`, what holds at the end of every branch that can reach the next
-  line: a branch ending in `return`, `reject`, or a `match` whose every arm
-  leaves, never does, and with no `else`, the way past the chain knows
-  every condition is false.
+  `if`, what is known is what holds at the end of every branch that can
+  reach the next line. A branch ending in `return` or `reject`, or in a
+  `match` whose every arm leaves, never reaches it. With no `else`, the way
+  past the chain knows every condition is false.
 - **What ends a bound.** Assigning a `var mut` ends every bound that
   mentions it. A `for` loop ends the bounds of every `var mut` it assigns,
   before it and after it, since a later pass sees what an earlier one
@@ -682,10 +727,11 @@ What counts as proof, exactly:
   pattern, an `assert`, or a call to your own function.
 - **It proves every construction.** `Type(value)`, `Owner.field(value)`
   and an object literal's field (`type.field_unproved`) all read it. A
-  divisor still needs a type that excludes zero (area 3, question 7),
+  divisor still needs a type that excludes zero ([Logic](03-logic.md)),
   which a condition can prove by building that type first.
 - **A fixed `scale` rounds first.** A type with a fixed `scale` keeps a
-  value rounded half to even, so its bounds are compared after rounding: a
+  value rounded half to even (a half goes to the even digit, so 0.125 is
+  kept as 0.12), and its bounds are compared after rounding: a
   value of at most 10.004 fits `max: 10.00` with `scale: 2`, and one of at
   most 10.07 doesn't fit `max: 10.07` with `scale: 1`, since 10.07 is kept
   as 10.1. A constant's construction rounds the same way, as the runtime
@@ -694,13 +740,17 @@ What counts as proof, exactly:
   keeps is still refused where it is written, and a computed constant kept
   past 38 digits is `type.invalid_literal`, as arithmetic past them is.
 
-Changing a range or a condition flips call sites, and each one says so
-where it is written (area 4, question 6): a construction that can now fail
-needs `attempt` and an arm for each rule that can break
-(`failure.attempt_required`, `failure.rule_unmapped`), and one that no
-longer can takes none (`failure.attempt_infallible`,
-`failure.rule_cannot_break`, `failure.invalid_covers_nothing`). When a
-condition is what proves it, the error points at the comparison:
+When you change a range or a condition, constructions elsewhere can start
+or stop being able to fail, and the compiler reports each one where it is
+written:
+
+- A construction that can now fail needs `attempt` and an arm for each rule
+  that can break (`failure.attempt_required`, `failure.rule_unmapped`).
+- One that no longer can takes no `attempt` and no arm for that rule
+  (`failure.attempt_infallible`, `failure.rule_cannot_break`,
+  `failure.invalid_covers_nothing`).
+
+When a condition is what proves it, the error points at the comparison:
 
 ```jadpo check project=e-condition-proves expect=failure.attempt_infallible
 type CakeCount = Int {
@@ -786,9 +836,10 @@ check failed: 1 error, 1 file
 ## Signatures use named types
 <!-- topic: signatures-use-named-types -->
 
-Functions, actions and queries cannot take or return a built-in representation
-type directly. `Text`, `Int`, `Bool`, `Uuid`, the time types and their nullable
-forms all have to be wrapped in a named type that says what they mean.
+A function, action or query can't take or return a built-in representation
+type directly. `Text`, `Int`, `Bool`, `Uuid`, the time types, and the forms
+of them that may be `none`, are each wrapped in a named type that says what
+the value means.
 
 ```jadpo check project=signature
 type CustomerNote = Text {
@@ -803,16 +854,16 @@ function edited(before: CustomerNote, after: CustomerNote) -> NoteWasEdited {
 ```
 
 `Email`, `Url`, `IpAddress`, objects, enums, field types and `Unit` are
-allowed. Inside a body, locals can still hold built-in types.
+allowed. Inside a body, local variables can still hold built-in types.
 
 ## One form for every type
 <!-- topic: one-form-for-every-type -->
 
-Every type is declared the same way, `type Name = Base { ... }` (questions
-10, 18 and 19). The base says what the type is built from, and the block
-holds the details: rules for a number or text, fields for an object,
-variants for an enum. `entity` stays separate because an entity is
-more than a type (storage, actions, queries and policy).
+Every type is declared the same way, `type Name = Base { ... }`. The base
+says what the type is built from, and the block holds the details: rules for
+a number or text, fields for an object, variants for an enum. An `entity` is
+declared on its own, because it is more than a type: it is stored, and it has
+actions, queries and policy ([Data](05-data.md)).
 
 ```jadpo check project=one-form file=names.jadpo hidden
 type ReceiptId = Uuid {}
@@ -1105,34 +1156,40 @@ test "a booking that ends before it starts is refused" {
   the same wherever its type is read. It is a `Bool`
   (`type.rule_not_condition`). A field that may be `none` is read with
   `match`, as anywhere else.
-- **Checked whenever a value is made,** once every field has its value, in
-  an object, a list's item or a map's entry, at its path: an object
-  literal, a construction, `json.read`, a request's body or query string,
-  the output a route test reads, `text.parse` of a standard type's text,
-  and a value read from the store, where a broken rule is a defect, since
-  Jadpo writes none (area 5). The field rules run first, then each rule in
-  the order written, and the first one broken is the one reported, so a
-  report never depends on more than one rule. A setting never holds an
-  object, so never one with rules (`configuration.type_unsupported`).
-- **A query's result type has none** (`query.result_rule`, area 6): a read
-  has no `attempt` to map a broken rule, so the type is refused rather
-  than each row checked as it is read.
+- **Checked whenever a value is made,** once every field has its value,
+  whether the object stands alone, as a list's item or as a map's entry. A
+  value is made by an object literal, a construction, `json.read`, a
+  request's body or query string, the output a route test reads,
+  `text.parse` of a standard type's text, and a read from the store. Jadpo
+  never stores a value that breaks a rule, so one read back from the store
+  is a defect ([Data](05-data.md)).
+- **One rule is reported.** The field rules run first, then each rule in the
+  order written, and the first one broken is the one reported, so a report
+  never depends on more than one rule.
+- **A setting never holds an object,** so never one with rules
+  (`configuration.type_unsupported`).
+- **A query's result type has none** (`query.result_rule`,
+  [Reads and writes](06-reads-and-writes.md)). A read has no `attempt` to
+  map a broken rule, so the type is refused rather than each row checked as
+  it is read.
 - **An object literal can break one.** Building a type with rules is a
-  construction, mapped as `Type(value)` is ("Construction failures by
-  rule"): each rule neither the declared ranges nor a condition proves
-  needs an arm keyed by its name, or `invalid:` covers it. A literal whose
-  values are all literals is worked out while compiling, so a booking
-  written backwards is `type.invalid_literal`. A literal is checked or
-  refused, never kept unchecked: text where a standard object type with
-  rules across its parts goes is `type.invalid_literal`, since the checker
-  can't read its text, and any other literal a standard object can't be is
-  `type.mismatch` (area 19).
+  construction, mapped as `Type(value)` is
+  ([Construction failures by rule](#construction-failures-by-rule)). Each
+  rule that neither the declared ranges nor a condition proves needs an arm
+  keyed by its name, or `invalid:` covers it.
+- **A literal is checked while compiling, or refused.** One whose values
+  are all literals is worked out while compiling, so a booking written
+  backwards is `type.invalid_literal`. A literal is never kept unchecked:
+  text where a standard object type with rules across its parts goes is
+  `type.invalid_literal`, since the compiler can't read its text, and any
+  other literal a standard object can't be is `type.mismatch`
+  ([Rules across a type's parts](19-standard-library.md#rules-across-a-types-parts)).
 - **Proof reads the values given.** A rule is read with each field
   replaced by the value given for it, so `ends > starts`, built with
   `starts: begin` and `ends: finish`, is proved after `if (finish <= begin)
   { reject ... }` leaves, or inside `if (finish > begin)`. A comparison
   proves itself between any two values written the same way, instants and
-  dates as well as numbers ("Conditions as proof"); numbers are proved by
+  dates as well as numbers ([Conditions as proof](#conditions-as-proof)); numbers are proved by
   their declared ranges too, and `and`, `or` and `not` combine as they do
   in a condition. A rule that calls a standard operation or uses `match`
   is never proved this way, so a literal that may break it is always
@@ -1140,22 +1197,24 @@ test "a booking that ends before it starts is refused" {
 - **Every failure is `invalid_value`.** The report names the rule
   (`ends_after_start`), never the values. JSON that breaks one, in a
   request or `json.read`, is a problem at the object's path, empty for the
-  whole input, whose rule is the rule's name (area 19, "Data formats").
-- **OpenAPI says them in words.** It can't express most rules, so each
-  object's schema description lists its rules as written (area 7).
+  whole input, whose rule is the rule's name
+  ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines)).
+- **OpenAPI says them in words.** OpenAPI can't express most rules, so each
+  object's schema description lists its rules as written ([HTTP](07-http.md)).
 - **A rule belongs to the type that writes it.** `include` and `pick` copy
   fields, never rules: a type built from `Booking` writes the rule again if
   it holds there too. Only an `Object`, `Input` or `Output` has rules
   (`type.rule_outside_object`); events, failures, messages, enums and
   refinements have none. A rule on an entity, which the database would
   check and a write would map, is not designed yet.
-- **The standard object types have rules too** (area 19): an
-  `InstantRange`'s `start_not_after_end`, a `PostalAddress`'s
-  `postal_code_of_country`, each named, proved, attempted and reported as
-  a rule written here is. Area 19 lists them.
+- **The standard object types have rules too:** an `InstantRange`'s
+  `start_not_after_end`, a `PostalAddress`'s `postal_code_of_country`. Each
+  is named, proved, attempted and reported as a rule written here is.
+  [Rules across a type's parts](19-standard-library.md#rules-across-a-types-parts)
+  lists them.
 
-Numbers are proved by their ranges as a field's rules are, and a field
-that may be `none` is matched:
+In a rule, numbers are proved by their declared ranges as a field's rules
+are, and a field that may be `none` is read with `match`:
 
 ```jadpo check project=across-fields-input file=types.jadpo hidden
 type StayDate = CalendarDate {}
@@ -1252,10 +1311,11 @@ check failed: 1 error, 1 file
 
 Most object types in a real application are slices of an entity or of another
 object: a create input, a patch input where every field is optional, a public
-view, a list summary, a v2 response that adds a field. Instead of writing each
-field out (`title: Todo.title`), a type's body can copy fields from other
-types. The body keeps its ordinary `Output { }` form; four kinds of line build
-it, **read from top to bottom**, each changing the result of the lines above:
+view, a list summary, a v2 response that adds a field. Instead of writing
+each field out (`title: Todo.title`), a type's body can copy fields from
+other types. The body keeps its ordinary `Output { }` form. Four kinds of
+line build it. They are **read from top to bottom**, and each changes the
+result of the lines above it:
 
 | Line | Does |
 |---|---|
@@ -1353,8 +1413,9 @@ Rules:
   fields are not visible in the declaration, so a clash there would change a
   type unseen when a source type gains a field.
 - **No `include` on an `Input`.** Taking every field of `User` would accept
-  any field added to `User` later (the mass-assignment bug). Inputs `pick` or
-  write their fields. Generated fields such as `id` and `created_at` can never
+  any field added to `User` later, so a client could set a field it was
+  never meant to (the mass-assignment bug). Inputs `pick` or write their
+  fields. Generated fields such as `id` and `created_at` can never
   appear in an `Input`.
 - **`optional`** makes the listed fields, or `all`, optional, only on an
   `Input`.
@@ -1363,23 +1424,26 @@ Rules:
 - **No type includes itself.** An `include` that leads back to its own type,
   directly or through another, is `type.copy_cycle`.
 - **Every built type has a name;** there are no inline types in signatures.
-  Hover, and `jadpo inspect TodoDetail` (not built yet), show the final
-  fields and where each came from (`title ← Todo.title`,
-  `lines ← written, replaces Order.lines`).
+  Hover in your editor shows the final fields and where each came from
+  (`title ← Todo.title`, `lines ← written, replaces Order.lines`).
 - **Outputs may `include`.** A field added to `Todo` later reaches
-  `TodoDetail`, and the committed API record (area 7) shows the addition in
-  review; fields policy hides from clients stay hidden at runtime (area 9).
+  `TodoDetail`, and the committed API record shows the addition in review
+  ([HTTP](07-http.md)). Fields that policy hides from clients stay hidden
+  when the app runs ([Field restrictions](09-policy.md#field-restrictions)).
 - `include`, `pick`, `omit` and `optional` are reserved and cannot be field
   names.
 
 ## Absent values
 <!-- topic: absent-values -->
 
-There is no `null` or `undefined`. A type followed by `?` may hold `none`, and
-reading it means handling both cases, usually with `match` (area 3). `null`,
-`nil`, `undefined` and `None` are each `type.foreign_value`, and `??` and
-`?.` are `syntax.null_coalescing` and `syntax.optional_chaining`, whose edits
-write the `match`.
+There is no `null` or `undefined`. A type followed by `?` may hold `none`,
+and reading it means handling both cases, usually with
+[`match`](03-logic.md).
+
+Writing another language's form is an error with an edit that writes the
+Jadpo form: `null`, `nil`, `undefined` and `None` are each
+`type.foreign_value`, and `??` and `?.` are `syntax.null_coalescing` and
+`syntax.optional_chaining`, whose edits write the `match`.
 
 ```jadpo check project=absent file=names.jadpo hidden
 type ProductName = Text {
@@ -1402,9 +1466,9 @@ function headline(listing: Listing) -> ProductName {
 }
 ```
 
-A nullable field is still required: a `Listing` must say `subtitle: none`
-explicitly. Being allowed to leave a field out is a separate idea that belongs
-to inputs:
+A field that may be `none` must still be given: a `Listing` must say
+`subtitle: none` explicitly. Being allowed to leave a field out is a separate
+idea, and only an `Input` has it:
 
 ```jadpo check project=input-settings file=names.jadpo hidden
 type ProductName = Text {
@@ -1431,15 +1495,16 @@ type RenameProduct = Input {
 }
 ```
 
-- `optional: true` lets the request leave the field out; reading it gives
+- `optional: true` lets the request leave the field out. Reading it gives
   `T?`, and a field left out reads as `none`. Only an update's `patch:` tells
-  "left out" from "sent as `none`" (area 6).
+  "left out" apart from "sent as `none`"
+  ([Reads and writes](06-reads-and-writes.md)).
 - `default: 25` fills in a value when the request leaves the field out,
   checked against the field's rules while compiling.
-- `default: none` fills in `none` for a nullable field.
+- `default: none` fills in `none` for a field that may be `none`.
 
-A value can widen through `?`: a `Customer.email?` can be used where an
-`Email?` is expected.
+A value that may be `none` widens as the value itself does: a
+`Customer.email?` can be used where an `Email?` is expected.
 
 ## Enums
 <!-- topic: enums -->
@@ -1505,15 +1570,17 @@ function label(outcome: PaymentOutcome) -> OutcomeLabel {
 The only way to read a variant's fields is to `match` on it. Payload fields
 have field types too, written `PaymentOutcome.declined.reason`.
 
-An enum cannot be created from text: `TicketStatus("open")` is an error. Text
-from outside becomes a variant only by being decoded at a boundary. On the
-wire a plain variant is its name as a string (`"open"`), and a variant with
-fields is an object with a `tag` naming the variant plus its fields. Enums have
-no methods or display labels. Wording for people comes from translations: a
-domain's language files may give each value of an enum a wording, which a
-template then writes out (area 10, "Enums with wording"). A variant is a
-name, or a name with a block of its fields; one given a label,
-`open: "Open"`, is `type.enum_label`.
+An enum can't be created from text: `TicketStatus("open")` is an error.
+Text from outside, such as a request body, becomes a variant only as it is
+read and checked on the way in. In JSON a plain variant is its name as a
+string (`"open"`), and a variant with fields is an object with a `tag`
+naming the variant, plus its fields.
+
+Enums have no methods or display labels. A variant is a name, or a name with
+a block of its fields; one given a label, `open: "Open"`, is
+`type.enum_label`. Wording for people comes from translations: a domain's
+language files can give each value of an enum a wording, which a template
+then writes out ([Enums with wording](10-configuration-and-time.md#enums-with-wording)).
 
 ## Collections
 <!-- topic: collections -->
@@ -1547,56 +1614,64 @@ type Basket = Output {
 ```
 
 A collection keeps its element type: a `List<Customer.email>` is not a
-`List<Email>`, and nothing converts one collection into another:
+`List<Email>`. Nothing converts one collection into another:
 `List<Tag>(names)` is `type.constructor_input`, since only a named type is
-built from a value. A named collection type is one,
-so it is built from a collection of its items, as the next section shows.
+built from a value. A named collection type is a named type, so it can be
+built from a collection of its items ([Named collection construction](#named-collection-construction)).
 
-Lists can be built and walked: a list literal is written in square
-brackets, its items taking the list's element type (`["urgent", "home"]`),
-`for` walks a list (area 3, Loops), and `list.count`,
-`list.contains`, `list.map` and `list.filter` take one
-(question 4). A list literal written where a set is expected is a
-set (question 5). `for` walks a set too, in the canonical order ("Set
-order"), and a map through its keys, `for key in map.keys(prices)`; the
-`set.` and `map.` operations search and rebuild them (area 19). `[]`
-written where a map is expected is an empty map, to which `map.with` adds
-entries; a map literal with entries is not designed yet.
+How you build and walk them:
 
-At a boundary a `Set<T>` is a JSON array and a `Map<K, V>` a JSON object
-(question 5):
+- **A list literal** is written in square brackets, its items taking the
+  list's element type: `["urgent", "home"]`. Written where a set is
+  expected, it is a set.
+- **`for` walks a list** ([Logic](03-logic.md)). It walks a set too, in the
+  set order below, and a map through its keys:
+  `for key in map.keys(prices)`.
+- **Operations.** `list.count`, `list.contains`, `list.map` and
+  `list.filter` take a list. The `set.` and `map.` operations search and
+  rebuild sets and maps ([Sets](19-standard-library.md#sets),
+  [Maps](19-standard-library.md#maps)).
+- **An empty map** is `[]` written where a map is expected, and `map.with`
+  adds entries to it.
+
+In JSON, a `Set<T>` is an array and a `Map<K, V>` an object:
 
 ```text
 { "tags": ["urgent", "home"], "weights": { "urgent": 3, "home": 1 } }
 ```
 
-An array that repeats a value is refused where a set is expected. A map in
-an `Input` or `Output`, however nested, is keyed by a type built on `Text`
-or `Uuid`, because JSON object keys are text (`type.map_key_boundary`); a
-standard named collection such as `LocalisedText` is sent as its entry
-says. A set literal that repeats a value is `type.invalid_literal`. A list
-written where a named set type is expected (`type Tags = Set<TagName> {}`)
-is a set, so `[b, a]` equals `[a, b]`; and since equal computed items
-collapse, a set literal's `min_length` counts only its distinct literals,
-or one value when it has any items, so `[a, b]` into a set type with
-`min_length: 2` is `type.invalid_literal`.
+- An array that repeats a value is refused where a set is expected.
+- A map in an `Input` or `Output`, however deeply nested, is keyed by a type
+  built on `Text` or `Uuid`, because JSON object keys are text
+  (`type.map_key_boundary`). A standard named collection such as
+  `LocalisedText` is sent as its own entry in the standard library says.
 
-A set has no order code can use: no index and no first item; where order
-matters, sort it or use a `List`. Everything that shows a set (JSON,
-reports, `for`) uses one canonical order, the same in interpreted and
+Sets have rules of their own:
+
+- A set literal that repeats a value is `type.invalid_literal`.
+- A list written where a named set type is expected
+  (`type Tags = Set<TagName> {}`) is a set, so `[b, a]` equals `[a, b]`.
+- Equal computed items collapse into one, so the compiler can't count them
+  ahead of time. A set literal's `min_length` counts only its distinct
+  literals, or one value when it has any items: `[a, b]` into a set type
+  with `min_length: 2` is `type.invalid_literal`.
+
+**Set order.** A set has no order your code can use: no index and no first
+item. Where order matters, sort it or use a `List`. Everything that shows a
+set (JSON, reports, `for`) uses one fixed order, the same in interpreted and
 compiled code: by value, numbers numerically, text by Unicode code point,
-enum variants in declaration order, objects and tagged unions field by
-field in declared order. This is the "Set order" the rules below refer to.
+enum variants in declaration order, and objects and tagged unions field by
+field in declared order.
 
 ### Named collection construction
 
 A named list, set or map type is built from a collection whose items are
 already its item type. It is an ordinary construction, `Type(value)`, that
-checks only the collection's own rules: the `min_length` and `max_length`
-of the type and of the types it builds on. When one can break, the
-construction takes `attempt` and an arm for each, or `invalid:` for all
-of them, and the declared lengths and the conditions around it prove it
-as they prove any construction, so a proven one is plain.
+checks only the collection's own rules: the `min_length` and `max_length` of
+the type and of the types it builds on. When one of them can break, the
+construction takes `attempt` and an arm for each, or `invalid:` for all of
+them. The declared lengths and the conditions around it prove it as they
+prove any construction, and a proven one is plain.
 
 ```jadpo check project=named-collections file=types.jadpo hidden
 type GuestName = Text {
@@ -1647,13 +1722,13 @@ function signed_in(guests: Guests) -> GuestBook {
 
 - **The items already are the item type.** Building the collection never
   converts its items: a `Text` becomes a `GuestName` where it is built,
-  each with its own arms. Collections stay invariant, so a list of a
-  narrower name type doesn't fit either.
+  each with its own arms. A collection type never stands in for another,
+  so a list of a type built on `GuestName` doesn't fit either.
 - **A list from a list, a map from a map.** A map's keys and values must
   both already be its own. A list is never built from a set, since a set
   has no order a list could keep.
 - **A set from a set or a list.** A list's repeats collapse, and the set
-  keeps the canonical order ("Set order"). It holds at most as many items
+  keeps the set order ([Collections](#collections)). It holds at most as many items
   as the list, so the list's length proves the set's `max_length`, and at
   least one when the list has any, so the list proves a `min_length` of 1
   and no more: two of its items might be equal.
@@ -1750,6 +1825,12 @@ check failed: 1 error, 1 file
 ## When one type can stand in for another
 <!-- topic: when-one-type-can-stand-in-for-another -->
 
+A value can be used where its own type is expected, and where a type it
+widens to is expected. Widening means stepping from a type to the more
+general one it was declared from. Going the other way always goes through a
+constructor. With `Customer` and `Supplier` entities that each have an
+`email: Email` field:
+
 | You have | Where `Customer.email` is expected | Where `Email` is expected | Where `Text` is expected |
 |---|---|---|---|
 | `Customer.email` | yes | yes, it widens | no |
@@ -1763,13 +1844,14 @@ check failed: 1 error, 1 file
   goes through a constructor, which re-checks the rules.
 - **Same shape is not same type.** Two objects with identical fields are still
   different types.
-- **Nothing unwraps.** A named type never becomes its built-in representation
-  except through arithmetic and comparison operators.
+- **Nothing unwraps.** A named type never becomes its built-in
+  representation, except where arithmetic and comparison operators work on
+  it.
 
 `Customer.id` and `Supplier.id` stay distinct even when both are version 4
 UUIDs. A function that genuinely accepts either takes an enum whose
-variants carry each one, which keeps the choice explicit; your own code has
-no generics or unions (area 3, [Generic code](03-logic.md#generic-code)).
+variants carry each one, which keeps the choice explicit. Your own code has
+no generics or unions ([Generic code](03-logic.md#generic-code)).
 
 ## Values never change
 <!-- topic: values-never-change -->
@@ -1812,12 +1894,13 @@ function restock(product: Product, stock: Stock) -> Product {
 | Everything else on this page | Built. |
 | A map literal with entries | Not built yet: it is not designed yet. |
 | `FileUpload`, `UploadSlot`, `SearchText`, `OAuthGrant`, `AnyObject` and the `Document` base | Not built yet: each comes with the features that use it. |
+| `jadpo inspect`, showing a built type's final fields and where each came from | Not built yet. Hover shows them. |
 | `BatchRun`, `BatchProgress`, `RowProblem`, `ImportSummary`, `ExportSummary`, `File` and `FileContents` | Partly built: only the runtime builds one. A program reads the batch types' fields, and an entity field keeps a `BatchRun` or a `File` as its JSON; a program can't read a `File`'s or a `FileContents`'s parts yet. |
 
 ## Errors
 
-Every error this area can produce, with an example that triggers it and the
-compiler's actual output.
+Every error this page's rules produce. Each page has an example that
+triggers it and the compiler's actual output.
 
 - [`type.mismatch`](../errors/type.mismatch.md)
 - [`type.sibling_mismatch`](../errors/type.sibling_mismatch.md)
@@ -1865,14 +1948,17 @@ compiler's actual output.
 - [`syntax.type_parent_required`](../errors/syntax.type_parent_required.md)
 - [`syntax.type_block_required`](../errors/syntax.type_block_required.md)
 - [`syntax.variable_type_required`](../errors/syntax.variable_type_required.md)
+
 ### Habits from other languages
 
-People and agents write constructs from other languages out of habit. Each has an error of its own that names
-the habit and the Jadpo form, with an edit, and parsing carries on as if the
-Jadpo form had been written, so a line gives one error. When the Jadpo
-form only renames or drops words, the rest of the project is checked too.
-The catalogue is `jadpo_syntax::habits`; [area 3](03-logic.md#habits-from-other-languages)
-explains how a line shows one error at a time.
+People and agents write constructs from other languages out of habit. Each
+has an error of its own that names the habit and the Jadpo form, with an
+edit. Parsing carries on as if the Jadpo form had been written, so a line
+gives one error. When the Jadpo form only renames or drops words, the rest
+of the project is checked too. The list of habits is
+`jadpo_syntax::habits`, and
+[Habits from other languages](03-logic.md#habits-from-other-languages) on
+the Logic page explains how a line shows one error at a time.
 
 - [`syntax.string_quotes`](../errors/syntax.string_quotes.md)
 - [`syntax.type_keyword`](../errors/syntax.type_keyword.md)

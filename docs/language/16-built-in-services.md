@@ -42,8 +42,8 @@ than depending on a third-party service (the rule area 8 applied to OAuth).
 | Field encryption | Yes | Encrypted fields kept out of logs, indexes and filters | Area 15 |
 | Realtime, admin screens, payments, CMS, analytics, quotas, media transformations | No, or later | The compiler gains little, or the feature is not a backend's | Not built in; media services (Cloudinary, Uploadcare) are ordinary packages |
 
-## Capabilities on this page
-<!-- topic: capabilities-on-this-page -->
+## Capabilities the built-in services use
+<!-- topic: built-in-service-capabilities (was capabilities-on-this-page) -->
 
 What a capability is, and how a connection fills one, is area 11's
 "Capabilities". The whole job of each that this page's services use:
@@ -1892,7 +1892,7 @@ The store rate limits are counted in on Workers:
   `https://api.resend.com`.
 
 ## Levels 4 and 5 of the magic-link email
-<!-- topic: levels-4-and-5-of-the-magic-link-email -->
+<!-- topic: custom-magic-link-email (was levels-4-and-5-of-the-magic-link-email) -->
 
 Area 8 has the checks ("The app's own sign-in email and sending").
 
@@ -1920,7 +1920,7 @@ Area 8 has the checks ("The app's own sign-in email and sending").
   17).
 
 ## Jadpo's own magic-link email
-<!-- topic: jadpo-s-own-magic-link-email -->
+<!-- topic: default-magic-link-email (was jadpo-s-own-magic-link-email) -->
 
 - **Written by the runtime.** Jadpo's email has no templates: the
   runtime writes its HTML and text from Jadpo's seven messages, each
@@ -2012,7 +2012,7 @@ Area 8 has the checks ("The app's own sign-in email and sending").
 ## The seam every outside call goes through
 <!-- topic: the-seam-every-outside-call-goes-through -->
 
-How "Capabilities on this page", "Sends without an idempotency key" and
+How "Capabilities the built-in services use", "Sends without an idempotency key" and
 area 6's "Outside calls hold no transaction" are carried out:
 
 - **One way out.** Every call that leaves the process, a capability's or
