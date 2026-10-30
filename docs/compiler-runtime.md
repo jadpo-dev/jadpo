@@ -1447,14 +1447,10 @@ then on that compiled program (`jadpo_test::run_with` runs tests on any
 executor), in one process and on one PostgreSQL server, and compares the
 two runs (`jadpo_test::differential`), printing how many it compared and
 how many passed, or the first line that differs with both sides; a
-project with no tests compares none, its program still made. Each batch
-run a test started is run to its end once the test has
-ended, at the test's clock with counted random bytes
-(`jadpo_test::Options::batches`, `test_run::AtClock`), its pages,
-its `each:` and `finished:` calls and an export's rows kept in the test's
-record, so compiled code's runs are compared too; `jadpo test` leaves a
-run as it started until batches in tests (area 13, "Provider calls and
-capabilities in tests") are built. Its files
+project with no tests compares none, its program still made. The batch
+runs a test's steps start run between them, their pages, their
+`each:` and `finished:` calls and an export's rows kept in the test's
+record, so compiled code's runs are compared too. Its files
 are written only when they change, a module of a project no longer
 given is removed, and the folder is kept
 (`target/jadpo-compiled/corpus/` in the gate), so the runtime crates and
@@ -1768,7 +1764,17 @@ step the executor calls `jadpo_runtime::test_steps::after_step`, which
 draws each delivery due in the outbox at the test's clock from all those
 due, delivers it as the runner does, and ends the test with the failure
 of one that failed for good, `Ctx::undelivered` naming it for the
-report's `test.subscriber_failed` (area 13, "Caches and events").
+report's `test.subscriber_failed` (area 13, "Caches and events"). A batch
+run the step, a delivery or an item starts is drawn among the
+deliveries, a batch at a time (`batches::run_a_batch`): each by a fresh
+runner, which claims the run, reads its saved values again and gives its
+lease back after the one batch, as after a restart, at the test's clock
+and with random bytes counted on from the last batch
+(`test_run::AtClock`), until the run ends; a test's host gives two items
+a batch, a query's page cut to that (area 13, "Batches"). A run whose
+batch couldn't commit keeps its lease, and a step that moves the clock
+picks up the runs whose leases have lapsed, as the tick does
+(`batches::waiting`).
 
 **Differential test.** Every test runs interpreted and compiled, as Gleam
 runs one
@@ -4550,7 +4556,8 @@ for CSV, TSV and JSON Lines; `Codecs::read_cells` and `read_value`), and
 only then opens the page's transaction, holds the run to the same place
 under its lock, and commits the items' writes, the problems and the next
 place (byte, row and line) together. `Host::rows_per_batch` says how many
-rows a batch holds: 100, two on `jadpo test`'s host.
+rows a batch holds: 100, two on `jadpo test`'s host, which cuts a query's
+page to two items as well.
 
 **An export's run** (area 12, "How an export's run is
 kept"; area 16). A file helper's write is

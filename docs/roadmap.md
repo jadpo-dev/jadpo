@@ -399,10 +399,7 @@ time.
   test shows a removed role refused on the next request, and a listed
   action calling an admin-only helper is `policy.call_ungranted`.
 - [x] **A3 External tokens in tests and `jadpo dev`**: area 8, "External tokens in tests and `jadpo dev`"; area 13, `as:`; area 14, `jadpo dev`'s "External tokens"; area 19, `Jwk`'s `key_ops`.
-- [ ] **A4 Batches run to the end in tests** `opus · high`: area 13,
-  "Batches", which is specified and was on no chunk. Done when the
-  seed-library example's test of a withdrawn packet passes through its
-  batch, with no page action called by hand.
+- [x] **A4 Batches run to the end in tests**: area 13, "Batches" and "What is built"; compiler/runtime §2.5; `examples/24-seed-library/README.md`.
 - [ ] **A5 `jadpo seed`** `opus · high`: area 5, seeds, which are specified
   and were on no chunk; the way to give a dev database its first staff
   user without SQL.

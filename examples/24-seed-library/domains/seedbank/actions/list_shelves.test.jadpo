@@ -1,8 +1,9 @@
-// A run starts after its action commits, on the runtime's runner, which
-// a test's host keeps none of, so the list is not written yet.
+// An export's run writes every page before the test's next line, two
+// packets a batch with a restart between batches, and `finished:` keeps
+// the written file.
 
-use seedbank/entities { ShelfList }
-use seedbank/actions { open_list }
+use seedbank/entities { SeedPacket, ShelfList }
+use seedbank/actions { add_packet, open_list }
 
 test "a shelf list starts writing once" {
     var fresh_list: ShelfList = open_list()
@@ -11,4 +12,16 @@ test "a shelf list starts writing once" {
     assert started.list_walk != none
     assert restarted.list_walk == started.list_walk
     assert started.printout == none
+}
+
+test "a shelf list lists every packet on the shelves" {
+    var crimson: SeedPacket = add_packet("Crimson Flowered broad bean", 2024, "2024-09-14", false)
+    var cherokee: SeedPacket = add_packet("Cherokee Trail of Tears bean", 2022, "2022-09-14", false)
+    var lent: SeedPacket = add_packet("Boston Pickling cucumber", 2024, "2024-09-14", true)
+    assert lent.on_loan != crimson.on_loan
+    assert cherokee.withdrawn == false
+    var started: ShelfList = attempt list_shelves(open_list().id)
+    var written: ShelfList = attempt ShelfList.get(started.id)
+    assert written.packets_listed == 3
+    assert written.printout != none
 }

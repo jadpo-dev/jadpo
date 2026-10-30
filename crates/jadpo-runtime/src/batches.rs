@@ -47,6 +47,7 @@ use std::rc::Rc;
 
 use jadpo_std::BatchState;
 use jadpo_std::batch::{BatchArg, BatchFrom, BatchPlan, BatchTenant};
+use jadpo_std::read::Size;
 use jadpo_std::types::FailurePlan;
 use jadpo_value::Value;
 
@@ -599,15 +600,34 @@ pub async fn run_within(
     start: &BatchStart,
 ) -> (Ran, Vec<Deferred>) {
     let mut left = Vec::new();
-    let ran = run_inner(executor, host, budget, start, &mut left).await;
+    let ran = run_inner(executor, host, budget, start, None, &mut left).await;
     (ran, left)
 }
 
+/// One batch of the run `start` names, as a runner that stops after it
+/// would: what a test does between its steps (area 13, "Batches"), so
+/// each batch is claimed afresh, its saved values read again and a file
+/// opened again, as after a restart. A run with more to do is handed on
+/// ([`Ran::HandedOn`], the run among what is left for after).
+pub async fn run_a_batch(
+    executor: &dyn Executor,
+    host: &dyn Host,
+    budget: &Budget<'_>,
+    start: &BatchStart,
+) -> (Ran, Vec<Deferred>) {
+    let mut left = Vec::new();
+    let ran = run_inner(executor, host, budget, start, Some(1), &mut left).await;
+    (ran, left)
+}
+
+/// [`run_within`], handing the run on after `most_pages` batches when
+/// given.
 async fn run_inner(
     executor: &dyn Executor,
     host: &dyn Host,
     budget: &Budget<'_>,
     start: &BatchStart,
+    most_pages: Option<u32>,
     left: &mut Vec<Deferred>,
 ) -> Ran {
     let Some(batches) = executor.plan().batches() else {
@@ -720,6 +740,9 @@ async fn run_inner(
             Ok(Step::Next) => {
                 pages += 1;
                 attempts = 0;
+                if most_pages.is_some_and(|most| pages >= most) {
+                    return handed_on(database, budget, start, &lease, pages, left).await;
+                }
             }
             Ok(Step::Changed) if attempts + 1 < BATCH_ATTEMPTS => attempts += 1,
             Ok(Step::Changed) => {
@@ -1138,6 +1161,27 @@ async fn read_page(
             *arg = with_at(arg, path, cursor);
         }
     }
+    // A batch holds at most as many items as its host's batches do: a
+    // query's whole page anywhere but a test's host, whose batches hold
+    // two (area 13, "Batches").
+    let most = i64::from(open.ctx().host().rows_per_batch().max(1));
+    let smaller = query.page.as_ref().and_then(|page| {
+        let size = match &page.size {
+            Size::Fixed(n) => i64::try_from(*n).unwrap_or(i64::MAX),
+            Size::From(source) => match crate::read::value_at(source, &args) {
+                Some(Value::Int(n)) => n,
+                _ => return None,
+            },
+        };
+        (size > most).then(|| {
+            let mut smaller = query.clone();
+            if let Some(page) = &mut smaller.page {
+                page.size = Size::Fixed(most.unsigned_abs());
+            }
+            smaller
+        })
+    });
+    let query = smaller.as_ref().unwrap_or(query);
     let read = crate::store(
         open.ctx(),
         StoreOp::Read(query),
