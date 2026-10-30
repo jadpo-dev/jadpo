@@ -221,7 +221,11 @@ impl Claims {
         };
         match object.get("enc") {
             None => Claims::members(&object),
-            Some(encoding) if encoding.as_u64() == Some(u64::from(ENCODING)) => {
+            Some(encoding)
+                if encoding
+                    .as_u64()
+                    .is_some_and(jadpo_std::standard::reads_encoding) =>
+            {
                 Claims::members(&object)
             }
             Some(_) => None,
@@ -433,7 +437,7 @@ mod tests {
         };
         let json = claims.to_json().unwrap();
         let written: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert_eq!(written["enc"], 1, "{json}");
+        assert_eq!(written["enc"], ENCODING, "{json}");
         // As chunk 5.1b wrote it, with no `enc`.
         let before = format!(
             r#"{{"c":"{csrf}","e":1792504800000,"m":"browser_session","p":"{principal}","r":"{row}","s":"tann","v":"{verifier}"}}"#,
@@ -443,10 +447,13 @@ mod tests {
             verifier = "ab".repeat(32),
         );
         assert_eq!(Claims::from_json(&before), Some(claims.clone()));
-        let later = json.replace("\"enc\":1", "\"enc\":2");
+        let ours = format!("\"enc\":{ENCODING}");
+        let earlier = json.replace(&ours, "\"enc\":1");
+        assert_eq!(Claims::from_json(&earlier), Some(claims.clone()));
+        let later = json.replace(&ours, &format!("\"enc\":{}", ENCODING + 1));
         assert_ne!(later, json);
         assert_eq!(Claims::from_json(&later), None);
-        let unreadable = json.replace("\"enc\":1", "\"enc\":\"1\"");
+        let unreadable = json.replace(&ours, &format!("\"enc\":\"{ENCODING}\""));
         assert_eq!(Claims::from_json(&unreadable), None);
     }
 

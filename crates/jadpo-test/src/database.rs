@@ -897,6 +897,10 @@ pub struct TestHost<'d> {
     /// The record its stores keep each statement in, when the run keeps
     /// one (chunk 8.1c).
     record: Option<std::rc::Rc<jadpo_runtime::record::Record>>,
+    /// The local issuer in the configured external-token issuer's place
+    /// (area 8, "External tokens in tests and `jadpo dev`"), its key made
+    /// for the test the first time it is asked for.
+    issuer: std::cell::OnceCell<Option<jadpo_runtime::http::local_issuer::LocalIssuer>>,
 }
 
 enum Held {
@@ -957,6 +961,7 @@ impl<'d> TestHost<'d> {
             caught: jadpo_runtime::test_run::Caught::default(),
             authenticators: jadpo_runtime::test_authenticator::SoftwareAuthenticators::default(),
             record: None,
+            issuer: std::cell::OnceCell::new(),
         }
     }
 
@@ -1044,6 +1049,18 @@ impl jadpo_runtime::Host for TestHost<'_> {
     /// The authenticators `test_passkeys` makes (chunk 5.5z2).
     fn test_authenticators(&self) -> Option<&dyn jadpo_runtime::TestAuthenticators> {
         Some(&self.authenticators)
+    }
+
+    /// The test's local issuer, its key from the machine's randomness: a
+    /// token holds no seed's draw, and a record holds no token.
+    fn local_issuer(&self) -> Option<&jadpo_runtime::http::local_issuer::LocalIssuer> {
+        self.issuer
+            .get_or_init(|| {
+                jadpo_runtime::http::local_issuer::LocalIssuer::new(&|bytes: &mut [u8]| {
+                    jadpo_host_native::NativeHost::new().random(bytes)
+                })
+            })
+            .as_ref()
     }
 
     fn database(&self, store: &str) -> Option<&dyn jadpo_runtime::Database> {

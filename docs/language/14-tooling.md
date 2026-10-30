@@ -209,7 +209,17 @@ While it runs, the address of each database it started is in
 local issuer in place of the configured one, and `jadpo dev token
 <user-id>` prints a bearer token for that user from it
 ([External tokens in tests and `jadpo dev`](08-identity.md#external-tokens-in-tests-and-jadpo-dev)).
-Not built yet.
+The ready screen says so on its `tokens` line. The token is printed alone,
+so it goes straight into a header, and signs in for an hour:
+
+```sh
+curl -H "Authorization: Bearer $(jadpo dev token <user-id>)" localhost:3000/staff/me
+```
+
+With `--json` it gives the token, its `subject` and `expiresAt`. It needs
+a running `jadpo dev` in the project, whose key it signs with: the key is
+made for the session, kept in `build/dev/issuer.json`, readable only by
+you, while it runs, and removed when it stops.
 
 **Background work.** Each schedule run and each skipped tick (a paused
 schedule's, once) gets a line with its trace's id, its outcome, what it

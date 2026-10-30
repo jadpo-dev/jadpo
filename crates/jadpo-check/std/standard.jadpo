@@ -557,8 +557,10 @@ public type JsonPointer = Text {}
 /// bits; or `EC`, a P-256 key, `crv` `P-256`, `x` and `y`, a point on the
 /// curve; each in unpadded Base64url, used with one algorithm, `EdDSA`,
 /// `RS256` or `ES256`, with an optional key id and certificates (`x5c`,
-/// each standard Base64 DER); `use_` is sent as `use`. Never a private key
-/// or a shared secret; members it doesn't hold are ignored.
+/// each standard Base64 DER); `use_` is sent as `use`, and `key_ops` holds
+/// the operations it may be used for, a key without `verify` checking no
+/// token. Never a private key or a shared secret; members it doesn't hold
+/// are ignored.
 public type Jwk = Object {
     kty: Text
     crv: Text?
@@ -569,6 +571,7 @@ public type Jwk = Object {
     kid: Text?
     alg: Text?
     use_: Text?
+    key_ops: Set<Text>?
     x5c: List<Text>?
 }
 

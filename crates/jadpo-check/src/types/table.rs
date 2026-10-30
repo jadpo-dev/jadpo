@@ -1482,6 +1482,7 @@ fn part_ty(part: jadpo_std::Part) -> Ty {
         jadpo_std::Part::Standard(other) => Ty::Opaque(other.to_string(), Vec::new()),
         jadpo_std::Part::Optional(inner) => part_ty(*inner).nullable(),
         jadpo_std::Part::List(inner) => Ty::List(Box::new(part_ty(*inner))),
+        jadpo_std::Part::Set(inner) => Ty::Set(Box::new(part_ty(*inner))),
     }
 }
 

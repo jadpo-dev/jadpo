@@ -477,6 +477,10 @@ struct TestHost {
     /// The authenticators `test_passkeys.register` made, each holding one
     /// passkey.
     authenticators: SoftwareAuthenticators,
+    /// The local issuer in the configured external-token issuer's place,
+    /// its key from Web Crypto the first time it is asked for, as
+    /// natively.
+    issuer: std::cell::OnceCell<Option<jadpo_runtime::http::local_issuer::LocalIssuer>>,
 }
 
 impl TestHost {
@@ -493,6 +497,7 @@ impl TestHost {
             used: Cell::new(false),
             caught: Caught::of(executor.plan()),
             authenticators: SoftwareAuthenticators::default(),
+            issuer: std::cell::OnceCell::new(),
         }
     }
 
@@ -519,6 +524,12 @@ impl Host for TestHost {
     /// has them.
     fn test_authenticators(&self) -> Option<&dyn jadpo_runtime::TestAuthenticators> {
         Some(&self.authenticators)
+    }
+
+    fn local_issuer(&self) -> Option<&jadpo_runtime::http::local_issuer::LocalIssuer> {
+        self.issuer
+            .get_or_init(|| jadpo_runtime::http::local_issuer::LocalIssuer::new(&web_crypto_random))
+            .as_ref()
     }
 
     fn database(&self, store: &str) -> Option<&dyn Database> {

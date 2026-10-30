@@ -55,6 +55,9 @@ fn written(part: jadpo_std::Part) -> jadpo_check::types::TypeRef {
         jadpo_std::Part::List(inner) => {
             TypeRef::Path(vec!["List".to_string()], vec![written(*inner)])
         }
+        jadpo_std::Part::Set(inner) => {
+            TypeRef::Path(vec!["Set".to_string()], vec![written(*inner)])
+        }
         jadpo_std::Part::Standard(other) => TypeRef::Path(vec![other.to_string()], Vec::new()),
         part => TypeRef::Path(
             vec![part.builtin().map_or("", Builtin::name).to_string()],

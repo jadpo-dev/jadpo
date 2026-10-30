@@ -801,7 +801,7 @@ fn a_person_registers_a_passkey_and_signs_in_with_it() {
     let encoding = live.rows("SELECT \"encoding\"::text FROM \"jadpo_passkeys\"");
     assert_eq!(
         encoding[0][0],
-        jadpo_runtime::SqlValue::Text("1".to_string())
+        jadpo_runtime::SqlValue::Text(jadpo_std::standard::ENCODING.to_string())
     );
 
     // Signing in in another browser starts a session there.
@@ -871,14 +871,23 @@ fn a_passkey_kept_before_encodings_were_recorded_still_signs_in() {
     assert_eq!(
         after[0],
         [
-            jadpo_runtime::SqlValue::Text("1".to_string()),
+            jadpo_runtime::SqlValue::Text(jadpo_std::standard::ENCODING.to_string()),
             jadpo_runtime::SqlValue::Text("1".to_string()),
             jadpo_runtime::SqlValue::Text("number".to_string()),
             jadpo_runtime::SqlValue::Text("Old phone".to_string()),
         ]
     );
+    // One 0.1.0 wrote in encoding 1, before `Jwk` held `key_ops` (chunk
+    // A3), reads as it did.
+    live.rows("UPDATE \"jadpo_passkeys\" SET \"encoding\" = 1");
+    live.at(START + 2 * MINUTE);
+    let (_, signed) = live.sign_in(&mut phone);
+    assert_eq!(signed.status, 204, "{}", text(&signed));
     // An encoding a later release writes is never guessed at.
-    live.rows("UPDATE \"jadpo_passkeys\" SET \"encoding\" = 2");
+    live.rows(&format!(
+        "UPDATE \"jadpo_passkeys\" SET \"encoding\" = {}",
+        jadpo_std::standard::ENCODING + 1
+    ));
     refused(&live.sign_in(&mut phone).1, 401, "passkey_rejected");
 }
 

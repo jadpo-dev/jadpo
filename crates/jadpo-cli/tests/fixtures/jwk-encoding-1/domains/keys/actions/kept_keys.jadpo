@@ -1,0 +1,7 @@
+use keys/entities { PartnerKey }
+use keys/queries { partner_keys }
+
+/// Every partner's key, as an action reads it.
+action kept_keys() -> List<PartnerKey> {
+    return partner_keys()
+}

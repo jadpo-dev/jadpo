@@ -748,6 +748,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "writes a provider call's own time in `jadpo dev`'s call log, never an app's value (chunk 7.2d)",
     ),
     (
+        "crates/jadpo-cli/src/dev_token.rs",
+        "writes when a `jadpo dev token` expires, the token's own time, never an app's value (chunk A3)",
+    ),
+    (
         "crates/jadpo-cli/src/dev_inbox.rs",
         "writes when `jadpo dev`'s inbox caught a mail, its own time, never an app's value (chunk 7.3c2)",
     ),

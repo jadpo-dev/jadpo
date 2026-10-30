@@ -397,15 +397,17 @@ fn part_values(value: &Value, part: jadpo_std::Part) -> Option<Vec<Value>> {
             ])
         }
         (Part::Optional(inner), value) => part_values(value, *inner),
-        (Part::List(inner), Value::List(items)) => Some(vec![Value::list(
-            items
-                .iter()
-                .map(|item| match part_values(item, *inner)?.as_slice() {
-                    [one] => Some(one.clone()),
-                    _ => None,
-                })
-                .collect::<Option<Vec<Value>>>()?,
-        )]),
+        (Part::List(inner), Value::List(items)) | (Part::Set(inner), Value::Set(items)) => {
+            Some(vec![Value::list(
+                items
+                    .iter()
+                    .map(|item| match part_values(item, *inner)?.as_slice() {
+                        [one] => Some(one.clone()),
+                        _ => None,
+                    })
+                    .collect::<Option<Vec<Value>>>()?,
+            )])
+        }
         (_, Value::Money(_) | Value::Zoned(_)) => to_parts(value),
         // A standard enum, as its code.
         (_, Value::Variant(variant)) if variant.fields.is_empty() => {
@@ -611,15 +613,20 @@ fn take_part(part: jadpo_std::Part, parts: &[Value]) -> Result<(Value, &[Value])
             (builtin, [value]) => as_builtin(builtin, value)?,
             _ => return Err(Fault::Shape),
         },
-        Part::List(inner) => match one()? {
-            Value::List(items) => Value::list(
-                items
+        Part::List(inner) | Part::Set(inner) => match one()? {
+            Value::List(items) | Value::Set(items) => {
+                let items = items
                     .iter()
                     .map(|item| {
                         take_part(*inner, std::slice::from_ref(item)).map(|(value, _)| value)
                     })
-                    .collect::<Result<Vec<Value>, Fault>>()?,
-            ),
+                    .collect::<Result<Vec<Value>, Fault>>()?;
+                if matches!(part, Part::Set(_)) {
+                    Value::set(items)
+                } else {
+                    Value::list(items)
+                }
+            }
             _ => return Err(Fault::Shape),
         },
         Part::Standard(name) => {
