@@ -364,6 +364,21 @@ first. They are taken before any other unticked chunk on this page
 (Richard, 2026-10-30); chunks touching different crates run at the same
 time.
 
+- [ ] **A0 Every unbuilt protection refused where it is written**
+  `opus · high`: area 1, "A feature not built yet is
+  `toolchain.not_built_yet` where it is written", applied to what is
+  accepted today and then does nothing. Area 15's field settings
+  (`personal:`'s minimisation and erasure checks, `retention:`, `erase:`)
+  are skipped silently (`crates/jadpo-check/src/types/decl.rs`,
+  `LATER_FIELD_SETTINGS`), so an app believes data expires that never
+  does; an entity's `audit:` and `retention:` (`data.unknown_section`), a
+  route's `bot_check:` (`route.item_unknown`) and `person: true`
+  (`type.not_a_type`) read as wrong syntax; a rerun's one-second bound
+  (area 6) isn't held. Each becomes `toolchain.not_built_yet`, or is
+  built where it is small. Area 15's opening and area 9's "can't ship
+  without a person's approval" say in the same paragraph what isn't
+  built yet. Found by an audit of every unbuilt row for protections that
+  are silently absent (2026-10-30).
 - [ ] **A1 Diagnostics that point at the cause** `opus · high`: a domain
   or library folder named with a reserved word (`domains/library`) is
   refused at the folder, before any qualified use cascades
@@ -410,8 +425,8 @@ time.
 - [ ] **A8 Acceptances for policy and API changes** `opus · xhigh` after A2:
   area 18, "Acceptances", for the `PolicyChange` and `ApiChange` kinds:
   `jadpo check` fails on any widening of who can do what (a route made
-  public included) and on an API break until an added acceptance lists
-  it with a reason; `jadpo acceptance new`; CODEOWNERS on `acceptances/`
+  public included), an API break and an event record's break until an
+  added acceptance lists it with a reason; `jadpo acceptance new`; CODEOWNERS on `acceptances/`
   and `api/`. An outside agent made a route public on request and nothing
   stopped it (Richard, 2026-10-30). The other kinds and the approval
   report stay in "After the first build", item 6.
