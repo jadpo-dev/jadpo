@@ -23,7 +23,7 @@
 use jadpo_db::{Db, Project};
 use jadpo_std::http::PrincipalKind;
 
-use super::{Effect, Grant, Policies};
+use super::{Effect, Grant, LineGate, Policies};
 use crate::data::Entities;
 use crate::lookups::Lookup;
 use crate::types::{Def, TypeView};
@@ -75,6 +75,31 @@ impl Reached {
             }
         }
         self
+    }
+}
+
+/// What a listed action's or query's line checks as it starts (area 9,
+/// "Actions" and "Listing a query": anyone signed in, or roles held across
+/// the whole application): every caller passed one of its entries. A line
+/// that lets nobody in proves anything of its callers, since there are
+/// none.
+pub fn gate_way(gate: &LineGate) -> Option<Way> {
+    match gate {
+        LineGate::Signed => Some(vec![vec![Fact::Grant(Grant::Signed)]]),
+        LineGate::Roles(roles) => Some(
+            roles
+                .iter()
+                .map(|(membership, role)| {
+                    vec![Fact::Grant(Grant::Role {
+                        membership: membership.clone(),
+                        role: role.clone(),
+                        via: None,
+                    })]
+                })
+                .collect(),
+        ),
+        LineGate::Nobody => Some(Vec::new()),
+        LineGate::Anyone | LineGate::Statements => None,
     }
 }
 
@@ -180,6 +205,45 @@ impl<'a> Prover<'a> {
         Reached::by(self.way(entity, &self.grants(entity, Effect::Read)))
     }
 
+    /// What the line listing the query called `query` checks as it starts
+    /// (area 9, "Listing a query"), when it is listed.
+    pub fn query_line(&self, query: &str) -> Option<Way> {
+        self.policies
+            .root()
+            .query_gate(query, self.policies.memberships())
+            .and_then(|gate| gate_way(&gate))
+    }
+
+    /// `reached`, by a caller who passed `line` too: the line first, so a
+    /// reason's counterexample names who it lets in, then what is known
+    /// of a caller who passed both together (a role across the whole
+    /// application and a membership in the record's tenant), then each
+    /// way on its own.
+    pub fn lined(line: Option<&Way>, reached: Reached) -> Reached {
+        let Some(line) = line else {
+            return reached;
+        };
+        let mut out = Reached::by(line.clone());
+        for way in &reached.ways {
+            let both: Way = way
+                .iter()
+                .flat_map(|facts| {
+                    line.iter().map(move |own| {
+                        let mut joined = facts.clone();
+                        for fact in own {
+                            if !joined.contains(fact) {
+                                joined.push(fact.clone());
+                            }
+                        }
+                        joined
+                    })
+                })
+                .collect();
+            out = out.and(Reached::by(both));
+        }
+        out.and(reached)
+    }
+
     /// Whether `facts` show the caller passes `target` on the record.
     fn proves(&self, facts: &Facts, target: &Grant) -> bool {
         match target {
@@ -266,6 +330,12 @@ impl<'a> Prover<'a> {
             Fact::Member(membership) => tenancy.via == "id" && tenants.contains(membership),
             _ => false,
         })
+    }
+
+    /// Whether `facts` show the caller passes `grants` on a record of
+    /// `entity`, within its tenant: a write's check.
+    pub fn passes(&self, entity: &str, facts: &Facts, grants: &[Grant]) -> bool {
+        self.proves_on(entity, facts, grants) && self.tenant(entity, facts)
     }
 
     /// Whether `facts` let the caller read a record of `entity`.

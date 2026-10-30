@@ -1244,8 +1244,15 @@ enum Keys {
 
 fn facts(db: &dyn Db, project: Project, lookup: &Lookup<'_>, route: &RouteModel) -> Facts {
     if route.run.query || route.run.generated.is_some() {
+        // A listed query refuses a caller its line doesn't let in (area
+        // 9, "Listing a query").
+        let listed = route.run.query
+            && route.run.generated.is_none()
+            && crate::policy::root_policy(db, project)
+                .query(&route.run.name)
+                .is_some();
         return Facts {
-            refuses: false,
+            refuses: listed,
             store: true,
             keys: Keys::Nothing,
         };

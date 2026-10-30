@@ -1520,7 +1520,347 @@ one entity can give staff a query with stock and sale fields restricted
 to `StaffRole.admin`, beside a catalogue query for every signed-in
 customer.
 
-Not built yet: listed queries and `policy.call_ungranted`.
+A route anyone may call can't run a listed query, since its line never
+names `Access.public` (`policy.public_grant_missing`). A schedule,
+subscriber or batch never passes one either: the system is let in only
+by a line naming `Access.system`, which a query's can't.
+
+Here every signed-in customer reads a book, and only a bookseller where
+it is shelved:
+
+```jadpo check project=listed-query file=app.jadpo hidden
+use shop/entities { Member }
+
+application {}
+
+principal {
+    user: {
+        subject: Member.handle
+    }
+}
+```
+
+```jadpo check project=listed-query file=authentication.jadpo hidden
+authentication {
+    browser_session: {
+        cookie: "shop_session"
+    }
+}
+```
+
+```jadpo check project=listed-query file=policy.jadpo
+use shop/types { StaffRole }
+use shop
+
+policy {
+    actions: {
+        shop.stock: [StaffRole.bookseller]
+    }
+}
+```
+
+```jadpo check project=listed-query file=domains/shop/types/handle.jadpo hidden
+type Handle = Text {
+    min_length: 3
+    max_length: 40
+}
+```
+
+```jadpo check project=listed-query file=domains/shop/types/title.jadpo hidden
+type Title = Text {
+    min_length: 1
+    max_length: 80
+}
+```
+
+```jadpo check project=listed-query file=domains/shop/types/staff_role.jadpo hidden
+/// What a member of staff may do, in the whole shop.
+type StaffRole = Enum {
+    bookseller
+}
+```
+
+```jadpo check project=listed-query file=domains/shop/types/catalogue_book.jadpo hidden
+use shop/entities { Book }
+
+/// A book as every signed-in customer sees it.
+type CatalogueBook = Output {
+    pick: [Book.id, Book.title]
+}
+```
+
+```jadpo check project=listed-query file=domains/shop/types/stock_book.jadpo hidden
+use shop/entities { Book }
+
+/// A book as staff see it, with where it is shelved.
+type StockBook = Output {
+    pick: [Book.id, Book.title, Book.shelf_note]
+}
+```
+
+```jadpo check project=listed-query file=domains/shop/failures/handle_taken.jadpo hidden
+type HandleTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That handle is taken."
+}
+```
+
+```jadpo check project=listed-query file=domains/shop/entities/member.jadpo hidden
+use shop/types { Handle }
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        read: [id]
+    }
+}
+```
+
+```jadpo check project=listed-query file=domains/shop/entities/staff.jadpo hidden
+use shop/entities { Member }
+use shop/types { StaffRole }
+
+/// A member's role on the staff, held across the whole shop.
+entity Staff {
+    id: Uuid
+    member_id: Member.id {
+        on_delete: OnDelete.cascade
+    }
+    role: StaffRole
+
+    membership: {
+        scope: MembershipScope.application
+        member: member_id
+        role: role
+    }
+
+    policy: {
+        read: [member_id]
+    }
+}
+```
+
+```jadpo check project=listed-query file=domains/shop/entities/book.jadpo
+use shop/types { StaffRole, Title }
+
+/// A book every signed-in customer may read, with where it is shelved,
+/// which only a bookseller may.
+entity Book {
+    id: Uuid
+    title: Title
+    shelf_note: Title {
+        policy: {
+            read: [StaffRole.bookseller]
+        }
+    }
+
+    policy: {
+        create: [StaffRole.bookseller]
+        read: [Access.authenticated]
+    }
+}
+```
+
+```jadpo check project=listed-query file=domains/shop/actions/register.jadpo hidden
+use shop/entities { Member }
+use shop/types { Handle }
+use shop/failures { HandleTaken }
+
+action register(handle: Handle) fails HandleTaken -> Member {
+    return attempt Member.create {
+        set: {
+            handle: handle
+        }
+        conflict: {
+            Member.handle: HandleTaken
+        }
+    }
+}
+```
+
+```jadpo check project=listed-query file=domains/shop/actions/appoint.jadpo hidden
+use shop/entities { Member, MemberNotFound, Staff }
+use shop/types { StaffRole }
+
+action appoint(member_id: Member.id) fails MemberNotFound -> Staff {
+    return attempt Staff.create {
+        set: {
+            member_id: member_id
+            role: StaffRole.bookseller
+        }
+    }
+}
+```
+
+```jadpo check project=listed-query file=domains/shop/actions/stand_down.jadpo hidden
+use shop/entities { Staff, StaffNotFound }
+
+action stand_down(staff_id: Staff.id) fails StaffNotFound -> Unit {
+    attempt Staff.delete(staff_id)
+}
+```
+
+```jadpo check project=listed-query file=domains/shop/actions/add_book.jadpo hidden
+use shop/entities { Book }
+use shop/types { Title }
+
+action add_book(title: Title, shelf_note: Title) -> Book {
+    return Book.create {
+        set: {
+            title: title
+            shelf_note: shelf_note
+        }
+    }
+}
+```
+
+```jadpo check project=listed-query file=domains/shop/queries/browse.jadpo hidden
+use shop/entities { Book }
+use shop/types { CatalogueBook }
+
+/// Every book, for any signed-in customer.
+query browse() -> List<CatalogueBook> {
+    from: Book
+    order: [Book.title asc]
+    limit: 50
+}
+```
+
+Unlisted, `stock` would be `policy.output_field_unproved`, since
+anyone signed in may call it and not all of them may read `shelf_note`.
+Listed, it is proved against `StaffRole.bookseller` alone:
+
+```jadpo check project=listed-query file=domains/shop/queries/stock.jadpo
+use shop/entities { Book }
+use shop/types { StockBook }
+
+/// Every book with where it is shelved, for staff.
+query stock() -> List<StockBook> {
+    from: Book
+    order: [Book.title asc]
+    limit: 50
+}
+```
+
+```jadpo check project=listed-query file=domains/shop/routes/books.jadpo migrate=initial hidden
+use shop/types { CatalogueBook, StockBook }
+use shop/queries { browse, stock }
+
+/// The shop's books.
+routes Books {
+    prefix: /books
+
+    /// The catalogue.
+    GET / {
+        output: List<CatalogueBook>
+        run: browse()
+    }
+
+    /// The stock, for staff.
+    GET /stock {
+        output: List<StockBook>
+        run: stock()
+    }
+}
+```
+
+```jadpo check project=listed-query file=api/main.jadpo_record hidden
+// Generated by Jadpo from the routes of API main; update it with `jadpo api update`, never by hand.
+record api 1
+
+api main
+    authentication browser_session
+
+GET /books
+    output List<CatalogueBook>
+    status 200
+
+GET /books/stock
+    output List<StockBook>
+    status 200
+
+GET /openapi.json
+    generated openapi
+    status 200
+
+output CatalogueBook
+    id: Uuid
+    title: Text { min_length: 1, max_length: 80 }
+
+output StockBook
+    id: Uuid
+    shelf_note: Text { min_length: 1, max_length: 80 }
+    title: Text { min_length: 1, max_length: 80 }
+```
+
+A customer is refused the stock with 403 `not_permitted`, and a member
+of staff whose role is removed is refused on their next request:
+
+```jadpo check project=listed-query file=domains/shop/routes/books.test.jadpo
+use shop/entities { Book, Member, Staff }
+use shop/types { CatalogueBook, StockBook }
+use shop/actions { add_book, appoint, register, stand_down }
+
+test "staff see where a book is shelved, and customers only the catalogue" {
+    var ann: Member = attempt register("ann")
+    var cyd: Member = attempt register("cyd")
+    var staff: Staff = attempt appoint(ann.id)
+    assert staff.member_id == ann.id
+    var dune: Book = add_book("Dune", "Back room")
+    var stock: Response = request {
+        method: HttpMethod.get
+        path: "/books/stock"
+        as: Principal.user(ann)
+    }
+    var shelved: StockBook = StockBook {
+        id: dune.id
+        title: "Dune"
+        shelf_note: "Back room"
+    }
+    assert stock.output == [shelved]
+    var refused: Response = request {
+        method: HttpMethod.get
+        path: "/books/stock"
+        as: Principal.user(cyd)
+    }
+    assert refused.status == 403
+    assert refused.code == "not_permitted"
+    var browsed: Response = request {
+        method: HttpMethod.get
+        path: "/books"
+        as: Principal.user(cyd)
+    }
+    var on_shelf: CatalogueBook = CatalogueBook {
+        id: dune.id
+        title: "Dune"
+    }
+    assert browsed.output == [on_shelf]
+}
+
+test "a role removed is refused on the next request" {
+    var ann: Member = attempt register("ann")
+    var staff: Staff = attempt appoint(ann.id)
+    var dune: Book = add_book("Dune", "Back room")
+    var before: Response = request {
+        method: HttpMethod.get
+        path: "/books/stock"
+        as: Principal.user(ann)
+    }
+    assert before.status == 200
+    attempt stand_down(staff.id)
+    var after: Response = request {
+        method: HttpMethod.get
+        path: "/books/stock"
+        as: Principal.user(ann)
+    }
+    assert after.status == 403
+    assert dune.title == "Dune"
+}
+```
 
 ## Field restrictions
 <!-- topic: field-restrictions -->
@@ -1652,7 +1992,8 @@ covered by log redaction in [Personal data](15-personal-data.md).
 Policy is written beside each entity, so nobody has to keep a central
 copy. To see the whole app at once, read the report `jadpo check` writes:
 `build/report/permissions.md`, with a `.json` twin. It says who can do
-what to every entity and field, and which actions are listed separately.
+what to every entity and field, and which actions and queries are listed
+separately.
 Each list is shown as written, and an effect nobody is granted says so.
 
 Here is part of the report for [Policy, end to end](#policy-end-to-end):
@@ -2250,8 +2591,7 @@ Everything on this page is built except the features below. Each is
 
 | Feature | Status |
 |---|---|
-| Grants, user fields, membership roles, `Access.authenticated`, `Access.public` and `Access.system`, tenancy, `actions:`, field restrictions, the permissions report, and the refusals under "When policy says no" | Built. |
-| Listed queries ([Listing a query](#listing-a-query)) and `policy.call_ungranted` ([A call the listing doesn't cover](#a-call-the-listing-doesnt-cover)) | Not built yet. Put role-restricted fields in an entity of their own, whose `read:` names the role. |
+| Grants, user fields, membership roles, `Access.authenticated`, `Access.public` and `Access.system`, tenancy, `actions:` with listed queries and `policy.call_ungranted`, field restrictions, the permissions report, and the refusals under "When policy says no" | Built. |
 | `scopes:`, with the tokens issued to other applications (`oauth_token`, `external_token`) | Not built yet. Browser sessions and service keys work without them. |
 | An acceptance for a change that widens access, and the approval review that shows the report's changes ([Review and sign-off](14-tooling.md#review-and-sign-off), [Acceptances](18-records-and-manifest.md#acceptances)) | Not built yet. Review policy changes in the permissions report's diff instead. |
 
@@ -2278,6 +2618,7 @@ beside the entities they name; a project keeps them in `app.jadpo` and
 ### Grants
 
 - [`policy.effect_ungranted`](../errors/policy.effect_ungranted.md)
+- [`policy.call_ungranted`](../errors/policy.call_ungranted.md)
 - [`policy.effect_unknown`](../errors/policy.effect_unknown.md)
 - [`policy.effect_duplicate`](../errors/policy.effect_duplicate.md)
 - [`policy.subject_duplicate`](../errors/policy.subject_duplicate.md)

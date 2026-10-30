@@ -223,6 +223,16 @@ async fn read_one(
             *arg = super::with_at(arg, path, cursor);
         }
     }
+    // A listed query's line, as a read through the store checks it (area
+    // 9, "Listing a query"): it never lets the system in.
+    if let Some(gate) = &query.gate
+        && let crate::Stored::Failed(failure) = crate::admit(open.ctx(), gate, Frame::ENTRY).await
+    {
+        return Err(Unread::Refused(format!(
+            "its query's line under `actions:` refused it (`{}`)",
+            failure.code
+        )));
+    }
     let read = crate::read::read_as(
         open.ctx(),
         &one,

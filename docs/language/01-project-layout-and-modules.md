@@ -215,6 +215,7 @@ deliberate".
 |---|---|---|
 | [`library.similar_exists`](../errors/library.similar_exists.md) | Project layout and modules | A library function already does the same |
 | [`constant.similar_exists`](../errors/constant.similar_exists.md) | [Logic](03-logic.md) | Another constant of the same type holds the same value |
+| [`policy.call_ungranted`](../errors/policy.call_ungranted.md) | [Policy](09-policy.md) | A listed action calls one that refuses some of the people its line lets in |
 | `translation.field_unused` | [Configuration and time](10-configuration-and-time.md) | No wording in a language uses one of a message's fields |
 | `package.standard_candidate` | [Integrations](11-integrations.md) | A provider field looks like a standard type the package doesn't use |
 | [`type.batch_order_updatable`](../errors/type.batch_order_updatable.md) | [Jobs and events](12-jobs-and-events.md) | A batch walks a query ordered by a field an update can change |
@@ -228,8 +229,9 @@ deliberate".
 
 Each of these can be right as written. Two helpers can differ on purpose,
 two constants can share a value by coincidence (a VAT rate and a fee), a
-shape can match a standard type by chance, and code that reads old records
-names a withdrawn code on purpose.
+listed action can call a helper only some of its callers are meant to
+pass, a shape can match a standard type by chance, and code that reads
+old records names a withdrawn code on purpose.
 
 Plain mistakes are never declinable. That includes retries of a call to an
 outside service that outlast a route's deadline
