@@ -360,7 +360,9 @@ loans, sales and ISBNs, then magic-link customers, Google staff, two staff
 roles and due-date emails. The plain app took 7 diagnostics; the sign-in
 work took 119 and 879 lines of Python around the app. These chunks remove
 the causes, in order. Each turns the agent's failing shape into a test
-first.
+first. They are taken before any other unticked chunk on this page
+(Richard, 2026-10-30); chunks touching different crates run at the same
+time.
 
 - [ ] **A1 Diagnostics that point at the cause** `opus · high`: a domain
   or library folder named with a reserved word (`domains/library`) is
