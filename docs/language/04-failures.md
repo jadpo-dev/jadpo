@@ -652,7 +652,7 @@ overflow, has `bug_in_jadpo: false` and `report: null`.
 The `jadpo` command and `jadpo dev` and `jadpo test` are not deployed
 apps, so a panic in the compiler or the interpreter there prints an
 internal error, in the [CLI design language](../cli-design-language.md)'s
-shape, instead: `failed  internal error in Jadpo`, the command, the
+shape, instead: `failed  This is a bug in Jadpo, not in your code`, the command, the
 version and platform, the place in Jadpo's source, and the issue form's
 link. It never prints the panic message or your arguments. The same crash
 is written to `~/.cache/jadpo/crashes/<timestamp>.txt` (under

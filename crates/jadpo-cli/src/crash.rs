@@ -68,19 +68,14 @@ impl Crash {
     /// The issue form with the title, version and command filled in.
     pub fn report_link(&self) -> String {
         format!(
-            "{ISSUE_FORM}&title={}&version={}&ran={}",
+            "{ISSUE_FORM}&title={}&version={}",
             encode(&format!("Internal error in {}", self.ran())),
             encode(&format!("{VERSION} {}", Crash::platform())),
-            encode(&self.ran()),
         )
     }
 
     pub fn screen(&self) -> Screen {
         let mut fields = vec![
-            (
-                "reason".to_string(),
-                "This is a bug in Jadpo, not in your code.".to_string(),
-            ),
             ("ran".to_string(), self.ran()),
             (
                 "version".to_string(),
@@ -90,22 +85,23 @@ impl Crash {
         if let Some(location) = &self.location {
             fields.push(("in".to_string(), location.clone()));
         }
+        // The next steps, in order, each with its path or link whole on a
+        // line of its own so it copies without a break.
+        let mut steps = Vec::new();
         if let Some(file) = &self.file {
-            fields.push(("file".to_string(), file.clone()));
+            steps.push("1. Read the crash file. It can quote your project.".to_string());
+            steps.push(format!("   {file}"));
+            steps.push("2. Report it with this link, attaching the file.".to_string());
+        } else {
+            steps.push("Report it with this link.".to_string());
         }
+        steps.push(format!("   {}", self.report_link()));
         Screen::new()
             .with(Block::Failed {
-                subject: "internal error in Jadpo".to_string(),
+                subject: "This is a bug in Jadpo, not in your code".to_string(),
                 fields,
             })
-            .with(Block::hint(
-                self.report_link(),
-                if self.file.is_some() {
-                    "report it, and attach the file once you have read it"
-                } else {
-                    "report it"
-                },
-            ))
+            .with(Block::section("What to do next", steps))
     }
 
     pub fn render(&self, env: &Environment, choice: ColorChoice) -> String {
@@ -277,8 +273,10 @@ mod tests {
             own_location("/home/me/jadpo/crates/jadpo-check/src/lib.rs", 12),
         );
         let text = crash.render(&plain(), ColorChoice::Never);
-        assert!(text.contains("internal error in Jadpo"), "{text}");
-        assert!(text.contains("This is a bug in Jadpo, not in your code."));
+        assert!(
+            text.contains("This is a bug in Jadpo, not in your code"),
+            "{text}"
+        );
         assert!(text.contains(&format!("jadpo {VERSION}")));
         assert!(text.contains("crates/jadpo-check/src/lib.rs:12"));
         assert!(text.contains(&format!(
@@ -315,7 +313,7 @@ mod tests {
             .with_terminals(true, true, true)
             .with_var("TERM", "xterm-256color");
         let rich = crash.render(&env, ColorChoice::Always);
-        assert!(rich.contains("internal error in Jadpo"));
+        assert!(rich.contains("This is a bug in Jadpo, not in your code"));
     }
 
     #[test]
@@ -345,8 +343,20 @@ mod tests {
         crash.file = Some(path.display().to_string());
         let screen = crash.render(&env, ColorChoice::Never);
         assert!(screen.contains("2026-10-30T14-02-31Z.txt"), "{screen}");
+        assert!(screen.contains("1. Read the crash file"), "{screen}");
         assert!(
-            screen.contains("attach the file once you have read it"),
+            screen.contains("2. Report it with this link, attaching the file."),
+            "{screen}"
+        );
+        // The path and the link each sit whole on a line of their own.
+        assert!(
+            screen
+                .lines()
+                .any(|l| l.trim() == path.display().to_string()),
+            "{screen}"
+        );
+        assert!(
+            screen.lines().any(|l| l.trim() == crash.report_link()),
             "{screen}"
         );
         assert!(!screen.contains("secret_name"));
@@ -369,7 +379,7 @@ mod tests {
             let text = crash.render(&plain(), ColorChoice::Never);
             assert!(text.contains(&format!("jadpo {command}")), "{text}");
             assert!(
-                text.contains("This is a bug in Jadpo, not in your code."),
+                text.contains("This is a bug in Jadpo, not in your code"),
                 "{text}"
             );
         }

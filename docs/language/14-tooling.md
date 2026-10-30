@@ -415,18 +415,21 @@ The rules:
 
 A panic in `jadpo`, including the interpreter under `jadpo dev` and `jadpo
 test`, is a bug in Jadpo, not in your code. It prints one block on stderr
-in the shape of a failure, with the command, the version and platform, the
-place in Jadpo's own source, the crash file and the issue form's link:
+in the shape of a failure. Its headline says whose fault it is, and it
+lists the command, the version and platform and the place in Jadpo's own
+source, then two steps, each path or link whole on its own line:
 
 ```text
-failed: internal error in Jadpo
-  reason  This is a bug in Jadpo, not in your code.
-  ran     jadpo check
-  version jadpo 0.1.0 · aarch64-macos
-  in      crates/jadpo-check/src/lib.rs:12
-  file    /Users/ada/.cache/jadpo/crashes/2026-10-30T14-02-31Z.txt
-→ https://github.com/jadpo-dev/jadpo/issues/new?template=bug.yml&title=…
-  report it, and attach the file once you have read it
+✗ failed  This is a bug in Jadpo, not in your code
+  ran       jadpo check
+  version   jadpo 0.1.0 · aarch64-macos
+  in        crates/jadpo-check/src/lib.rs:12
+
+What to do next
+  1. Read the crash file. It can quote your project.
+     /Users/ada/.cache/jadpo/crashes/2026-10-30T14-02-31Z.txt
+  2. Report it with this link, attaching the file.
+     https://github.com/jadpo-dev/jadpo/issues/new?template=bug.yml&title=Internal%20error%20in%20jadpo%20check&version=0.1.0%20aarch64-macos
 ```
 
 The block names only the command word, never an argument, and never the
