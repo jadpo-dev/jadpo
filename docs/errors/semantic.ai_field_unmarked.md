@@ -90,7 +90,7 @@ error: `Patient.notes` is stored in `Patient.handover_remark`, which isn't marke
   reason: `Patient.notes` is marked `personal: PersonalData.health`, a sensitive category. Whatever reads `Patient.handover_remark` later, a prompt among them, sends what it holds, so a field that stores a marked value keeps its marks: each category it is, in `personal:` or its type, and `to_models: false`.
   next: Give `handover_remark` `personal: PersonalData.health`, or leave `Patient.notes` out of it (agent)
   rule: semantic.ai_field_unmarked
-  help: docs/errors/semantic.ai_field_unmarked.md
+  help: https://jadpo.dev/docs/errors/semantic.ai_field_unmarked
 
 check failed: 1 error, 5 files
 ```
@@ -235,7 +235,7 @@ error: `Patient.notes` is stored in `Patient.handover_remark`, which isn't marke
   reason: `Patient.notes` is marked `personal: PersonalData.health`, a sensitive category. Whatever reads `Patient.handover_remark` later, a prompt among them, sends what it holds, so a field that stores a marked value keeps its marks: each category it is, in `personal:` or its type, and `to_models: false`.
   next: Give `handover_remark` `personal: PersonalData.health`, or leave `Patient.notes` out of it (agent)
   rule: semantic.ai_field_unmarked
-  help: docs/errors/semantic.ai_field_unmarked.md
+  help: https://jadpo.dev/docs/errors/semantic.ai_field_unmarked
 
 check failed: 1 error, 8 files
 ```

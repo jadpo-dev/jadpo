@@ -25,7 +25,7 @@ error: `child` can fail, and nothing handles it
   reason: A call that can fail says so where it is made: `attempt` passes its failures on to the caller's `fails` list, and `match` handles each one.
   next: Start the statement with `attempt`, or `match` on `child(...)` and handle `Refused` (agent)
   rule: failure.attempt_required
-  help: docs/errors/failure.attempt_required.md
+  help: https://jadpo.dev/docs/errors/failure.attempt_required
 
 check failed: 1 error, 1 file
 ```

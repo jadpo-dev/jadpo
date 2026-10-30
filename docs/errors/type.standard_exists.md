@@ -22,7 +22,7 @@ error: `Booking` is the standard `InstantRange` under another name
   reason: `Booking` has only a start (`starts_at`) and an end (`ends_at`), each built on `Instant`, which is the standard `InstantRange`. Declarations of one shape under different names disagree on names and meaning, and every package and application has to convert between them; the standard type has one construction, one wire shape and one storage shape.
   next: Run `jadpo fix Booking swap` to use `InstantRange` where `Booking` is used, then convert at the edge where data arrives in another shape, or write `decline type.standard_exists: "<why>"` above it if this is deliberate (agent)
   rule: type.standard_exists
-  help: docs/errors/type.standard_exists.md
+  help: https://jadpo.dev/docs/errors/type.standard_exists
 
 check failed: 1 error, 1 file
 ```
@@ -47,7 +47,7 @@ error: `VanPosition` is the standard `Point` under another name
   reason: `VanPosition` has only a latitude (`lat`) and a longitude (`lng`), each built on `Decimal` or `Int`, which is the standard `Point`. Declarations of one shape under different names disagree on names and meaning, and every package and application has to convert between them; the standard type has one construction, one wire shape and one storage shape.
   next: Run `jadpo fix VanPosition swap` to use `Point` where `VanPosition` is used, then convert at the edge where data arrives in another shape, or write `decline type.standard_exists: "<why>"` above it if this is deliberate (agent)
   rule: type.standard_exists
-  help: docs/errors/type.standard_exists.md
+  help: https://jadpo.dev/docs/errors/type.standard_exists
 
 check failed: 1 error, 1 file
 ```
@@ -71,7 +71,7 @@ error: `VanRound` is the standard `LineString` or `Polygon` under another name
   reason: `VanRound` has only a list of points (`coordinates`), each a `Point`, which is the standard `LineString` or `Polygon`. Declarations of one shape under different names disagree on names and meaning, and every package and application has to convert between them; the standard type has one construction, one wire shape and one storage shape.
   next: Run `jadpo fix VanRound swap` to use `LineString` where `VanRound` is used, or use `Polygon` if that is what it means, then convert at the edge where data arrives in another shape, or write `decline type.standard_exists: "<why>"` above it if this is deliberate (agent)
   rule: type.standard_exists
-  help: docs/errors/type.standard_exists.md
+  help: https://jadpo.dev/docs/errors/type.standard_exists
 
 check failed: 1 error, 1 file
 ```

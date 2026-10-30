@@ -19,7 +19,7 @@ error: `key` isn't a call, so it has no outcome to match
   reason: `success(...)` and failure arms match the outcome of a call that can fail; a value is matched by its own cases, such as an enum's variants.
   next: Match `key`'s cases, or match on the call that can fail (agent)
   rule: failure.outcome_subject_required
-  help: docs/errors/failure.outcome_subject_required.md
+  help: https://jadpo.dev/docs/errors/failure.outcome_subject_required
 
 check failed: 1 error, 1 file
 ```

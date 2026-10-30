@@ -54,7 +54,7 @@ error: `Delivery.delivered_at` may be an `Instant` sent as seconds
   reason: `delivered_at` is a whole number named like a time, which providers usually send as seconds since 1970. A package's public types use the standard types, so an app reads an `Instant` rather than a number to convert, and the package decodes it at the edge.
   next: Check the provider's documentation, then make it `delivered_at: Instant { wire: Wire.unix_seconds }`, or `Wire.unix_milliseconds` for milliseconds, or write `decline package.standard_candidate: "<why>"` above it if this is deliberate (agent)
   rule: package.standard_candidate
-  help: docs/errors/package.standard_candidate.md
+  help: https://jadpo.dev/docs/errors/package.standard_candidate
 
 check failed: 1 error, 4 files
 ```

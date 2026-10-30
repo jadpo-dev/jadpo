@@ -32,7 +32,7 @@ error: `Product.update` by `id` could store a value that breaks `max: 1000`
   reason: The database works out a value from `Product`'s stored fields when it writes, so nothing checks it before it is stored: the declared ranges must prove it follows its type's rules.
   next: Load the record and build the value with `attempt` before `Product.update`, or loosen the type's rules (human)
   rule: data.stored_value_unproven
-  help: docs/errors/data.stored_value_unproven.md
+  help: https://jadpo.dev/docs/errors/data.stored_value_unproven
 
 check failed: 1 error, 1 file
 ```

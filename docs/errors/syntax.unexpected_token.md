@@ -20,7 +20,7 @@ error: This parameter list isn't closed
   reason: The parameters end with `)`, before `fails`, `->` or the body.
   next: Add `)` after `Count` (agent)
   rule: syntax.unexpected_token
-  help: docs/errors/syntax.unexpected_token.md
+  help: https://jadpo.dev/docs/errors/syntax.unexpected_token
 
 check failed: 1 error, 1 file
 ```

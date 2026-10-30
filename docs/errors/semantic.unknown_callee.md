@@ -19,7 +19,7 @@ error: `lookup` isn't a function, action or query
   reason: Nothing in this project called `lookup` can be called.
   next: Declare `lookup`, or call an existing function (agent)
   rule: semantic.unknown_callee
-  help: docs/errors/semantic.unknown_callee.md
+  help: https://jadpo.dev/docs/errors/semantic.unknown_callee
 
 check failed: 1 error, 1 file
 ```

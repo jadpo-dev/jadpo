@@ -28,7 +28,7 @@ error: `PaymentOutcome.declined` has no field `note`
   reason: `PaymentOutcome.declined`'s fields are `reason`.
   next: Remove `note`, or declare it on `PaymentOutcome.declined` (agent)
   rule: type.unknown_variant_field
-  help: docs/errors/type.unknown_variant_field.md
+  help: https://jadpo.dev/docs/errors/type.unknown_variant_field
 
 check failed: 1 error, 1 file
 ```

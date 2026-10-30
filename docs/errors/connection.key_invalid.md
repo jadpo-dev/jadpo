@@ -68,7 +68,7 @@ error: `couriers` gives `host:`, but `AcmeCouriers.v1` has fixed hosts
   reason: Where an API is comes from exactly one place: `AcmeCouriers.v1`'s `hosts:` give its live and sandbox addresses, and `environment:` chooses between them.
   next: Remove `host:` (agent)
   rule: connection.key_invalid
-  help: docs/errors/connection.key_invalid.md
+  help: https://jadpo.dev/docs/errors/connection.key_invalid
 
 check failed: 1 error, 6 files
 ```

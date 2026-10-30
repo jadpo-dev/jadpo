@@ -26,7 +26,7 @@ error: `TimeFormat.date_longest` isn't a time format
   reason: `text.format`'s `format:` is written out: a built-in format, `TimeFormat.` followed by `date_`, `time_` or `date_time_` and `full`, `long`, `medium` or `short`, or the name of a format declared as `type Name = TimeFormat { ... }`.
   next: Write a built-in format such as `TimeFormat.date_long`, or declare one with `type Name = TimeFormat { ... }` (agent)
   rule: type.temporal_format_invalid
-  help: docs/errors/type.temporal_format_invalid.md
+  help: https://jadpo.dev/docs/errors/type.temporal_format_invalid
 
 check failed: 1 error, 1 file
 ```

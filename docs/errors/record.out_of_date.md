@@ -67,7 +67,7 @@ error: `api/main.jadpo_record` is missing
   reason: Each API with routes has a committed record of its routes, fields and failure codes, so every change to API `main` shows as a diff of one file.
   next: Run `jadpo api update`, and commit the record with the code (agent)
   rule: record.out_of_date
-  help: docs/errors/record.out_of_date.md
+  help: https://jadpo.dev/docs/errors/record.out_of_date
 
 check failed: 1 error, 6 files
 ```

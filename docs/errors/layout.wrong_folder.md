@@ -17,7 +17,7 @@ error: Action `complete_todo` is in `types/`
   reason: `types/` holds types shared by several files in the domain; every action has its own file in `actions/`.
   next: Move `complete_todo` to `domains/planning/actions/complete_todo.jadpo` (agent)
   rule: layout.wrong_folder
-  help: docs/errors/layout.wrong_folder.md
+  help: https://jadpo.dev/docs/errors/layout.wrong_folder
 
 check failed: 1 error, 2 files
 ```

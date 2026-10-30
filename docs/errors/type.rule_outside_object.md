@@ -20,7 +20,7 @@ error: Only an `Object`, `Input` or `Output` names rules across its fields
   reason: `Nights`, built on `Int`, can't hold a rule: a rule relates the fields of one object, so it is written in the block of an `Object`, `Input` or `Output`, and checked whenever a value of it is made.
   next: Move the rule into the object type whose fields it reads, or remove it (agent)
   rule: type.rule_outside_object
-  help: docs/errors/type.rule_outside_object.md
+  help: https://jadpo.dev/docs/errors/type.rule_outside_object
 
 check failed: 1 error, 1 file
 ```

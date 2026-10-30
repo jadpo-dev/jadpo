@@ -32,7 +32,7 @@ error: Provider package `AcmeCouriers.v1` carries translations
   reason: A provider package shows no text of its own: its failures are always mapped to the app's own, which the app words. Only a library package carries translations, for its own messages and failures.
   next: Remove the package's `translations/`, and word what users see in the app's own failures (agent)
   rule: package.provider_translations
-  help: docs/errors/package.provider_translations.md
+  help: https://jadpo.dev/docs/errors/package.provider_translations
 
 check failed: 1 error, 4 files
 ```

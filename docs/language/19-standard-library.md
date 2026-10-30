@@ -430,7 +430,7 @@ error: `"2026-12-27/2027-01-03"` can't be checked as a `DateRange` while compili
   reason: A `DateRange` has rules across its parts, which every literal is checked against while compiling; text written where one goes is its canonical text, which isn't read until the program runs, so its rules can't be checked.
   next: Write it out as `DateRange { ... }`, or read the text with `text.parse(..., as: DateRange)` and `attempt` (agent)
   rule: type.invalid_literal
-  help: docs/errors/type.invalid_literal.md
+  help: https://jadpo.dev/docs/errors/type.invalid_literal
 
 check failed: 1 error, 1 file
 ```
@@ -784,7 +784,7 @@ error: `GeoPoint` is the standard `Point` under another name
   reason: `GeoPoint` has only a latitude (`lat`) and a longitude (`lng`), which is the standard `Point`. Packages that each declare their own disagree on order and on names, and an app has to convert between them.
   next: Use `Point` in the package's public types, converting at the edge with `geo.from_lat_lng` or `geo.from_lng_lat` where the provider sends a pair, or write `decline type.standard_exists: "<why>"` above it if this is deliberate (agent)
   rule: type.standard_exists
-  help: docs/language/19-standard-library.html#type-standard-exists
+  help: https://jadpo.dev/docs/errors/type.standard_exists
 ```
 
 The error stops `check` and the build until one of two things is done:
@@ -2783,7 +2783,7 @@ error: `rate` converts from EUR, and `cake` is in GBP
   reason: `money.convert` applies a rate to an amount in the rate's `from` currency. `cake` is in GBP and `rate` converts from EUR, as their types, how they were made or a condition around the call fix, so the rate is the wrong way round or for another currency.
   next: Pass a rate from GBP, or an amount in EUR (agent)
   rule: type.mismatch
-  help: docs/errors/type.mismatch.md
+  help: https://jadpo.dev/docs/errors/type.mismatch
 
 check failed: 1 error, 1 file
 ```
@@ -2931,7 +2931,7 @@ error: `rate` converts from EUR, and `cake` is in GBP
   reason: `money.convert` applies a rate to an amount in the rate's `from` currency. `cake` is in GBP and `rate` converts from EUR, as their types, how they were made or a condition around the call fix, so the rate is the wrong way round or for another currency.
   next: Pass a rate from GBP, or an amount in EUR (agent)
   rule: type.mismatch
-  help: docs/errors/type.mismatch.md
+  help: https://jadpo.dev/docs/errors/type.mismatch
 
 check failed: 1 error, 1 file
 ```
@@ -2965,7 +2965,7 @@ error: `currency: Currency.eur` is different from `CakePrice`'s `currency: Curre
   reason: `CakePrice` fixes the currency at GBP, and a type built on another only narrows it, so it repeats that currency or leaves it out; with another one no value could follow both, and the type could never be built.
   next: Remove `currency:`, so the type keeps `CakePrice`'s GBP (agent)
   rule: type.constraint_contradiction
-  help: docs/errors/type.constraint_contradiction.md
+  help: https://jadpo.dev/docs/errors/type.constraint_contradiction
 
 check failed: 1 error, 1 file
 ```
@@ -3359,7 +3359,7 @@ error: `120%` isn't a valid `Discount.percentage_off.percentage`
   reason: `Discount.percentage_off.percentage` declares `max: 100%`, and the value is above 100%. A literal is checked against every rule while compiling.
   next: Use a value that `Discount.percentage_off.percentage` allows (agent)
   rule: type.invalid_literal
-  help: docs/errors/type.invalid_literal.md
+  help: https://jadpo.dev/docs/errors/type.invalid_literal
 
 check failed: 1 error, 1 file
 ```
@@ -3574,7 +3574,7 @@ error: `"08-99-99"` isn't a valid `BankAccount.uk.sort_code`
   reason: The value isn't a valid `UkSortCode`: its pattern and check digits accept only `UkSortCode`'s canonical text, and a literal is checked while compiling.
   next: Write a valid `UkSortCode` in its canonical text (agent)
   rule: type.invalid_literal
-  help: docs/errors/type.invalid_literal.md
+  help: https://jadpo.dev/docs/errors/type.invalid_literal
 
 check failed: 1 error, 1 file
 ```
@@ -5196,7 +5196,7 @@ error: `text` is a standard-library namespace
   reason: Standard-library namespaces can't name a declaration, domain, library or variable, so `text.` always means the standard library.
   next: Choose another name than `text` (agent)
   rule: semantic.standard_namespace_reserved
-  help: docs/errors/semantic.standard_namespace_reserved.md
+  help: https://jadpo.dev/docs/errors/semantic.standard_namespace_reserved
 
 check failed: 1 error, 1 file
 ```
@@ -5791,7 +5791,7 @@ error: `config.notes_key` is a key
   reason: An `EncryptionKey` is opaque: code never reads, prints, stores, compares or passes on a key, so the one place it goes is a `crypto` call's `key:`, which the compiler owns.
   next: Give `config.notes_key` only as a `crypto` call's `key:`, written `key: config.notes_key` (agent)
   rule: configuration.secret_flow
-  help: docs/errors/configuration.secret_flow.md
+  help: https://jadpo.dev/docs/errors/configuration.secret_flow
 
 check failed: 1 error, 1 file
 ```
@@ -6207,7 +6207,7 @@ error: `Member.chosen_password` keeps a `Password`
   reason: A `Password` is never stored as itself, so a copy of the database holds none. A password is hashed with `crypto.hash_password` and checked with `crypto.verify_password`.
   next: Store `crypto.hash_password(...)` of it in a `PasswordHash` field in `chosen_password`'s place (agent)
   rule: type.secret_exposed
-  help: docs/errors/type.secret_exposed.md
+  help: https://jadpo.dev/docs/errors/type.secret_exposed
 
 check failed: 1 error, 1 file
 ```
@@ -6594,7 +6594,7 @@ error: `Certificate` isn't built from its parts
   reason: A `Certificate`'s subject, issuer, serial number, validity and fingerprint are read from the DER its issuer signed, so code reads them and never sets them.
   next: Read the `Certificate` from its PEM with `text.parse(..., as: Certificate)`, or from JSON with `json.read` (agent)
   rule: type.constructor_input
-  help: docs/errors/type.constructor_input.md
+  help: https://jadpo.dev/docs/errors/type.constructor_input
 
 check failed: 1 error, 1 file
 ```
@@ -8859,7 +8859,7 @@ error: This `PassportNumber` breaks its rule `number_of_country`
   reason: A `PassportNumber`'s `number` is in the form its `country`'s passport office writes. A literal is checked while compiling.
   next: Write a number in the country's form, or change `country` (agent)
   rule: type.invalid_literal
-  help: docs/errors/type.invalid_literal.md
+  help: https://jadpo.dev/docs/errors/type.invalid_literal
 
 check failed: 1 error, 1 file
 ```
@@ -9795,7 +9795,7 @@ error: This `BloodPressure` breaks its rule `diastolic_below_systolic`
   reason: A `BloodPressure`'s `diastolic`, the pressure between beats, is below its `systolic`, the pressure as the heart beats (LOINC 85354-9). A literal is checked while compiling.
   next: Write a `diastolic` below the `systolic`, or swap the two (agent)
   rule: type.invalid_literal
-  help: docs/errors/type.invalid_literal.md
+  help: https://jadpo.dev/docs/errors/type.invalid_literal
 
 check failed: 1 error, 1 file
 ```

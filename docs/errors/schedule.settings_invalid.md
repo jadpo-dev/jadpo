@@ -19,7 +19,7 @@ error: `store: archive` isn't a database
   reason: A schedule's next due time and its lease are kept in a database; this application's databases are `main`.
   next: Name a database connection (agent)
   rule: schedule.settings_invalid
-  help: docs/errors/schedule.settings_invalid.md
+  help: https://jadpo.dev/docs/errors/schedule.settings_invalid
 
 check failed: 1 error, 1 file
 ```
@@ -43,7 +43,7 @@ error: `ScheduleTrigger.cron` isn't a schedule trigger
   reason: A native deployable ticks on the server's own timer, `ScheduleTrigger.native`, or when another scheduler runs its `tick` command, `ScheduleTrigger.external`; a Worker always ticks on Cloudflare's cron.
   next: Use `ScheduleTrigger.external` instead (agent)
   rule: schedule.settings_invalid
-  help: docs/errors/schedule.settings_invalid.md
+  help: https://jadpo.dev/docs/errors/schedule.settings_invalid
 
 check failed: 1 error, 1 file
 ```

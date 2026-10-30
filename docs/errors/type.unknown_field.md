@@ -26,7 +26,7 @@ error: `Product` has no field `title`
   reason: `Product`'s fields are `name`.
   next: Remove `title`, or declare it on `Product` (agent)
   rule: type.unknown_field
-  help: docs/errors/type.unknown_field.md
+  help: https://jadpo.dev/docs/errors/type.unknown_field
 
 check failed: 1 error, 1 file
 ```

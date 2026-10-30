@@ -79,7 +79,7 @@ error: `ArticleMeaning` has 768 dimensions, and the model makes 1,536
   reason: Each embedding the model makes has the 1,536 numbers `ai:`'s `embedding_dimensions:` says, and `ArticleMeaning` holds vectors of 768, so a column of it would hold two kinds of vector.
   next: Give `ArticleMeaning` `dimensions: 1536`, or set `embedding_dimensions: 768` in `ai:` if the model makes vectors that long (agent)
   rule: semantic.ai_dimensions_mismatch
-  help: docs/errors/semantic.ai_dimensions_mismatch.md
+  help: https://jadpo.dev/docs/errors/semantic.ai_dimensions_mismatch
 
 check failed: 1 error, 5 files
 ```

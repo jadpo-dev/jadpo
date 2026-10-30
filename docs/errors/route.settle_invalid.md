@@ -48,7 +48,7 @@ error: `answer: add_memo` is an action
   reason: `settle:` holds `answer:`, a named query given `result` (what the action returns) or fields read through it, and `within:`, how long the route waits for the work its action set off, a duration shorter than the route's `deadline:`.
   next: Answer with a named query, which reads how far the work has got (agent)
   rule: route.settle_invalid
-  help: docs/errors/route.settle_invalid.md
+  help: https://jadpo.dev/docs/errors/route.settle_invalid
 
 check failed: 1 error, 1 file
 ```

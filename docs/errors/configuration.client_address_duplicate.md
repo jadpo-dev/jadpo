@@ -24,7 +24,7 @@ error: `client_address:` is declared twice
   reason: The client's address is read one way for the whole application, so every request is counted by the same rule.
   next: Keep one `client_address:` and remove the other (agent)
   rule: configuration.client_address_duplicate
-  help: docs/errors/configuration.client_address_duplicate.md
+  help: https://jadpo.dev/docs/errors/configuration.client_address_duplicate
 
 check failed: 1 error, 1 file
 ```

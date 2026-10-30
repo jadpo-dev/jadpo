@@ -18,7 +18,7 @@ error: `Note.created_on` can't be generated
   reason: A generated field is a required `Instant` set from the operation's clock, on create or on every change; code never assigns it.
   next: Type `created_on` as `Instant`, or remove `generated:` (agent)
   rule: data.generated_type
-  help: docs/errors/data.generated_type.md
+  help: https://jadpo.dev/docs/errors/data.generated_type
 
 check failed: 1 error, 1 file
 ```

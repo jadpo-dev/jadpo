@@ -735,3 +735,77 @@ fn a_pruned_role_with_only_schedule_state_still_ticks_without_keeping_the_runner
             .ticks()
     );
 }
+
+/// Signing in by email with Jadpo's own email and nothing else to send,
+/// as the Learn path's todo app does: the mail server's settings are
+/// kept wherever the deliveries run, so a deployable that sends the
+/// sign-in email refuses to start without them, and one that only
+/// serves the routes doesn't read them.
+#[test]
+fn the_sign_in_emails_connection_and_its_settings_are_kept_where_deliveries_run() {
+    let db = Database::default();
+    let app = |deployables: &str| {
+        format!(
+            "use todos/entities {{ User }}\n\napplication {{\n    display_name: \"Todos\"\n    connections: {{\n        mail: {{\n            driver: Driver.smtp\n            host: config.smtp_host\n            credential: {{\n                username: config.smtp_username\n                password: config.smtp_password\n            }}\n        }}\n    }}\n    email: {{\n        connection: mail\n        from: config.mail_from\n    }}{deployables}\n}}\n\nprincipal {{\n    user: {{\n        subject: User.email\n    }}\n}}\n"
+        )
+    };
+    let files = |deployables: &str| -> Vec<(String, String)> {
+        [
+            ("app.jadpo", app(deployables)),
+            ("config.jadpo", "config {\n    mail_from: Email {\n        default: \"todos@example.com\"\n    }\n    site: Url {\n        default: \"http://localhost:3000\"\n    }\n    smtp_host: Hostname {\n        default: \"localhost\"\n    }\n    smtp_password: Text {\n        secret: true\n    }\n    smtp_username: Text {\n        default: \"todos\"\n    }\n}\n".to_string()),
+            ("authentication.jadpo", "authentication {\n    browser_session: {\n        cookie: \"todo_session\"\n        origin: config.site\n    }\n    sign_in: {\n        magic_link: {\n            link: \"/sign-in\"\n        }\n    }\n}\n".to_string()),
+            ("domains/todos/entities/user.jadpo", "entity User {\n    id: Uuid\n    email: Email {\n        unique: true\n    }\n\n    policy: {\n        read: [id]\n    }\n}\n".to_string()),
+        ]
+        .into_iter()
+        .map(|(path, text)| (path.to_string(), text))
+        .collect()
+    };
+    let mail = |plan: &Plan| -> Vec<String> {
+        plan.runtime()
+            .connections
+            .iter()
+            .filter(|connection| connection.name == "mail")
+            .map(|connection| connection.name.clone())
+            .collect()
+    };
+
+    let whole = checked(&db, &files(""));
+    let app = planned(&db, whole, "app");
+    assert_eq!(mail(&app), ["mail"]);
+    let settings = settings_of(&app);
+    for name in [
+        "smtp_host",
+        "smtp_password",
+        "smtp_username",
+        "mail_from",
+        "site",
+    ] {
+        assert!(
+            settings.iter().any(|kept| kept == name),
+            "{name} in {settings:?}"
+        );
+    }
+
+    let split = checked(
+        &db,
+        &files(
+            "\n    deployables: {\n        web: {\n            serves: [main]\n        }\n        mailer: {\n            runs: [Trigger.subscribers]\n        }\n    }",
+        ),
+    );
+    let mailer = planned(&db, split, "mailer");
+    assert_eq!(mail(&mailer), ["mail"]);
+    let settings = settings_of(&mailer);
+    for name in ["smtp_host", "smtp_password", "smtp_username"] {
+        assert!(
+            settings.iter().any(|kept| kept == name),
+            "{name} in {settings:?}"
+        );
+    }
+    let web = planned(&db, split, "web");
+    assert_eq!(mail(&web), Vec::<String>::new());
+    assert!(
+        !settings_of(&web)
+            .iter()
+            .any(|kept| kept.starts_with("smtp_"))
+    );
+}

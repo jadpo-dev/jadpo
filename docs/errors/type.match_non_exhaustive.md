@@ -37,7 +37,7 @@ error: This `match` doesn't cover `DeliveryState.failed`
   reason: A `match` on an enum lists every variant, so a variant added later is caught at every `match` that has to consider it; `_` isn't allowed on `DeliveryState`.
   next: Add an arm for `DeliveryState.failed` (agent)
   rule: type.match_non_exhaustive
-  help: docs/errors/type.match_non_exhaustive.md
+  help: https://jadpo.dev/docs/errors/type.match_non_exhaustive
 
 check failed: 1 error, 2 files
 ```

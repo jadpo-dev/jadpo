@@ -182,7 +182,7 @@ error: The entities have changed since the latest migration
   reason: `jadpo check` compares the database schema the entities ask for with the latest migration's snapshot (`database/migrations/20261029T1000_initial/snapshot.json`): new index for query `list_todos`.
   next: Run `jadpo migrate new index_list_todos` (agent)
   rule: migration.out_of_date
-  help: docs/errors/migration.out_of_date.md
+  help: https://jadpo.dev/docs/errors/migration.out_of_date
 ```
 
 You didn't change the entity, but the compiler saw that `list_todos`

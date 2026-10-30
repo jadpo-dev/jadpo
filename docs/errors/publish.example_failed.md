@@ -13,5 +13,5 @@ error: Example of `uk.tidy` failed
   reason: Run as a test of the package, it expected "SW1A1AA" and got "SW1A 1AA". An example runs as a test, so a description always shows what the code does.
   next: Correct the example, or the code if the example says what it should do (agent)
   rule: publish.example_failed
-  help: docs/language/14-tooling.html#command-errors
+  help: https://jadpo.dev/docs/errors/publish.example_failed
 ```

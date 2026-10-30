@@ -46,7 +46,7 @@ error: `GET /articles/{article_id}` lets anyone call it, but not everyone may re
   reason: A route with `authentication: RouteAuthentication.none` has no caller, so everything it reaches needs `Access.public`; `Article`'s `read:` doesn't name `Access.public`. Either alone is not enough.
   next: Add `Access.public` to `Article`'s `read:`, or remove `authentication: RouteAuthentication.none` from the route (human)
   rule: policy.public_grant_missing
-  help: docs/errors/policy.public_grant_missing.md
+  help: https://jadpo.dev/docs/errors/policy.public_grant_missing
 
 check failed: 1 error, 1 file
 ```

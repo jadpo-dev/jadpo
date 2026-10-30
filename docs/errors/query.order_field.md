@@ -28,7 +28,7 @@ error: Records can't be sorted by `Book.available`
   reason: A query sorts by numbers, times, dates, durations, quantities, percentages, text and identities, which the database and Jadpo order the same way; `Book.available` is `Bool`.
   next: Sort by another field (agent)
   rule: query.order_field
-  help: docs/errors/query.order_field.md
+  help: https://jadpo.dev/docs/errors/query.order_field
 
 check failed: 1 error, 1 file
 ```

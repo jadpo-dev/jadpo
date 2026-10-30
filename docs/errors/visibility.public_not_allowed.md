@@ -23,7 +23,7 @@ error: A route group can't be `public`
   reason: A route group is a trigger: nothing calls it, so there is nothing to offer another domain; who reaches a route is decided by the route and its policy.
   next: Remove `public` (agent)
   rule: visibility.public_not_allowed
-  help: docs/errors/visibility.public_not_allowed.md
+  help: https://jadpo.dev/docs/errors/visibility.public_not_allowed
 
 check failed: 1 error, 2 files
 ```

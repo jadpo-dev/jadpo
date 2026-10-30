@@ -10,7 +10,7 @@ error: `Couriers.v1`'s recipes have no sample app to compile in
   reason: Each recipe is compiled before it is published, copied into the one domain of the app in the package's `sample/` folder as `jadpo package recipe` copies it into an app's, so a recipe that no longer fits the package is caught there; this package has no `sample/app.jadpo`.
   next: Write a small app in `sample/`, its `app.jadpo` connecting to `Couriers.v1` and one domain under `sample/domains/` that the connection lists (agent)
   rule: publish.sample_missing
-  help: docs/language/14-tooling.html#command-errors
+  help: https://jadpo.dev/docs/errors/publish.sample_missing
 ```
 
 A recipe that doesn't compile there is shown at its own path,

@@ -21,7 +21,7 @@ error: `OrderId` can't be built from `ProductName`
   reason: `OrderId` is built on `Uuid` and `ProductName` is built on `Text`; a constructor converts only between types with the same representation, re-checking the rules.
   next: Pass a value built on `Uuid` (agent)
   rule: type.constructor_input
-  help: docs/errors/type.constructor_input.md
+  help: https://jadpo.dev/docs/errors/type.constructor_input
 
 check failed: 1 error, 1 file
 ```

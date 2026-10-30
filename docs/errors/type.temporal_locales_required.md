@@ -43,7 +43,7 @@ error: `text.format` needs the application's locales
   reason: Text for a person is written in one of the locales the application supports. None is declared, so there is nothing to check `locale:` against, and nothing for a request with no usable `Accept-Language` to fall back to.
   next: Declare them in `app.jadpo`, for instance `locales { default: Locale.en_gb supported: [Locale.en_gb] }` (agent)
   rule: type.temporal_locales_required
-  help: docs/errors/type.temporal_locales_required.md
+  help: https://jadpo.dev/docs/errors/type.temporal_locales_required
 
 check failed: 1 error, 4 files
 ```
@@ -80,7 +80,7 @@ error: `locale.from_accept_language` needs the application's locales
   reason: `locale.from_accept_language` chooses among the locales the application supports and falls back to its `default:`. None is declared, so there is nothing to choose among and nothing to fall back to.
   next: Declare them in `app.jadpo`, for instance `locales { default: Locale.en_gb supported: [Locale.en_gb] }` (agent)
   rule: type.temporal_locales_required
-  help: docs/errors/type.temporal_locales_required.md
+  help: https://jadpo.dev/docs/errors/type.temporal_locales_required
 
 check failed: 1 error, 3 files
 ```
@@ -118,7 +118,7 @@ error: `list.sort_by` needs the application's locales
   reason: `locale:` orders text by the alphabet of one of the locales the application supports, and a deployable carries only those locales' collation. None is declared, so there is no alphabet to sort by.
   next: Declare them in `app.jadpo`, for instance `locales { default: Locale.en_gb supported: [Locale.en_gb] }` (agent)
   rule: type.temporal_locales_required
-  help: docs/errors/type.temporal_locales_required.md
+  help: https://jadpo.dev/docs/errors/type.temporal_locales_required
 
 check failed: 1 error, 3 files
 ```

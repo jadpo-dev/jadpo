@@ -24,7 +24,7 @@ error: `status`'s type is written as a value, `TicketStatus.open`
   reason: A field's type says which values it may hold, such as `TicketStatus`; `TicketStatus.open` is one of those values, given where a value is built.
   next: Write `TicketStatus` (agent)
   rule: type.not_a_type
-  help: docs/errors/type.not_a_type.md
+  help: https://jadpo.dev/docs/errors/type.not_a_type
 
 check failed: 1 error, 1 file
 ```

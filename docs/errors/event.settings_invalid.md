@@ -19,7 +19,7 @@ error: `store: archive` isn't a database
   reason: An event is kept in a database's outbox until its subscribers have it; this application's databases are `main`.
   next: Name a database connection (agent)
   rule: event.settings_invalid
-  help: docs/errors/event.settings_invalid.md
+  help: https://jadpo.dev/docs/errors/event.settings_invalid
 
 check failed: 1 error, 1 file
 ```

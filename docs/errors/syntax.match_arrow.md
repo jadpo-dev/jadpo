@@ -27,7 +27,7 @@ error: Jadpo writes `->`, not `=>`
   reason: `=>` ends a match arm's pattern in Rust, Scala, C# and PHP; a Jadpo arm uses `->`, the same arrow as a result type.
   next: Use `->` instead of `=>` (agent)
   rule: syntax.match_arrow
-  help: docs/errors/syntax.match_arrow.md
+  help: https://jadpo.dev/docs/errors/syntax.match_arrow
 
 check failed: 1 error, 1 file
 ```

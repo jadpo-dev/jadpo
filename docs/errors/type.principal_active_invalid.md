@@ -30,7 +30,7 @@ error: `Member.suspended` isn't a condition `active:` can use
   reason: `active:` is a condition on `Member`'s own fields, such as `Member.<field> == <value>`; a field alone says nothing to compare it with.
   next: Compare a field of `Member` with a value (agent)
   rule: type.principal_active_invalid
-  help: docs/errors/type.principal_active_invalid.md
+  help: https://jadpo.dev/docs/errors/type.principal_active_invalid
 
 check failed: 1 error, 1 file
 ```

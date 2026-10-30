@@ -45,7 +45,7 @@ error: `StaffMembership`'s membership has no `member:`
   reason: A membership says where a role is held (`scope:`), who holds it (`member:`) and which field holds it (`role:`); `member:` is who holds it: a reference to the user entity.
   next: Add `member:` to the membership (agent)
   rule: policy.membership_member_required
-  help: docs/errors/policy.membership_member_required.md
+  help: https://jadpo.dev/docs/errors/policy.membership_member_required
 
 check failed: 1 error, 1 file
 ```

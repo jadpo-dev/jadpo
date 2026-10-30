@@ -32,7 +32,7 @@ error: `limit:` is given twice
   reason: A query has one `limit:`; only `where:` and `where_present:` lines stack, each one more condition.
   next: Remove one `limit:` (agent)
   rule: query.repeated_section
-  help: docs/errors/query.repeated_section.md
+  help: https://jadpo.dev/docs/errors/query.repeated_section
 
 check failed: 1 error, 1 file
 ```

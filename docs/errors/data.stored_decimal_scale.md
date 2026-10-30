@@ -31,7 +31,7 @@ error: `Wallet.update` adds a decimal with more places than `Wallet.balance` kee
   reason: The database works `Wallet.balance` out in one step, and keeps it at `scale: 2`; `0.005` has 3, and PostgreSQL would round the result half away from zero where Jadpo rounds half to even, so the stored value could differ from Jadpo's.
   next: Give the value at most 2 decimal places, or a type with `scale: 2` or fewer (agent)
   rule: data.stored_decimal_scale
-  help: docs/errors/data.stored_decimal_scale.md
+  help: https://jadpo.dev/docs/errors/data.stored_decimal_scale
 
 check failed: 1 error, 1 file
 ```

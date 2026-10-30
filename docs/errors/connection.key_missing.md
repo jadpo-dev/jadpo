@@ -64,7 +64,7 @@ error: `couriers` doesn't give `domains:`
   reason: A connection lists the domains whose actions may call it, so a new caller is a one-line change a reviewer sees; other domains go through those domains' public actions.
   next: Add `domains: [<domain>]`, listing the domains that call `couriers` (agent)
   rule: connection.key_missing
-  help: docs/errors/connection.key_missing.md
+  help: https://jadpo.dev/docs/errors/connection.key_missing
 
 check failed: 1 error, 6 files
 ```

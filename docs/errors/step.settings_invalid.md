@@ -28,7 +28,7 @@ error: `encryption_key:` reads `step_encryption_key`, which isn't a `SigningKey`
   reason: A record's answers are encrypted with a `SigningKey` setting: secret, at least 32 characters, and replaced by moving the old value to the variable with `_PREVIOUS` after its name (area 10), as grants' `encryption_key:` is.
   next: Declare `step_encryption_key: SigningKey` in `config.jadpo` (agent)
   rule: step.settings_invalid
-  help: docs/errors/step.settings_invalid.md
+  help: https://jadpo.dev/docs/errors/step.settings_invalid
 
 check failed: 1 error, 2 files
 ```

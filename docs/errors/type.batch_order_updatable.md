@@ -77,7 +77,7 @@ error: `batches.each` walks `items_by_code` in an order an update can change
   reason: A run walks live records a page at a time, each page after the record the one before ended on, so a record whose `Item.code` changes mid-run can move behind that place and be missed, or ahead of it and be met twice. An order no update changes meets every record once: `id`, or a time generated as the record is created, then `id`.
   next: Order `items_by_code` by `Item.id`, or by a field marked `immutable: true` or generated with `Generated.on_create` and then `Item.id`, or write `decline type.batch_order_updatable: "<why>"` above it if this is deliberate (agent)
   rule: type.batch_order_updatable
-  help: docs/errors/type.batch_order_updatable.md
+  help: https://jadpo.dev/docs/errors/type.batch_order_updatable
 
 check failed: 1 error, 2 files
 ```

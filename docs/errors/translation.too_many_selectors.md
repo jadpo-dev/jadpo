@@ -39,7 +39,7 @@ error: `Combo` has two fields that choose its wording, `formality` and `count`
   reason: An enum field gives one wording for each of its values, and a `PluralCount` field one for each plural form of the language. Both at once would need a wording for every pairing of a value and a form, which a translator would have to fill in.
   next: Split `Combo` into two messages, one for each choice, and call both (agent)
   rule: translation.too_many_selectors
-  help: docs/errors/translation.too_many_selectors.md
+  help: https://jadpo.dev/docs/errors/translation.too_many_selectors
 
 check failed: 1 error, 3 files
 ```

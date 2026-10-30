@@ -18,7 +18,7 @@ error: `password` isn't a way to sign in
   reason: A caller signs in with one of the language's methods: `browser_session`, `api_token`, `external_token`, `service_key` and `oauth_token`. Each decides where its credential travels and how it is checked.
   next: Remove `password:` (agent)
   rule: semantic.auth_method_unknown
-  help: docs/errors/semantic.auth_method_unknown.md
+  help: https://jadpo.dev/docs/errors/semantic.auth_method_unknown
 
 check failed: 1 error, 1 file
 ```

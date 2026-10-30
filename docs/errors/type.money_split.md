@@ -26,7 +26,7 @@ error: `BillTotal` is divided by a count
   reason: Dividing money by a count is sharing it out, and rounding each share loses minor units: £10.00 / 3 is £3.33, three times £9.99. `money.split` hands every minor unit to some share, and `/` takes only a `Decimal` rate, as `/ 1.20` takes a 20% tax off; `3` is a whole number.
   next: Share it with `money.split(total, 3)`, which gives a list of shares adding up to the total, or `money.allocate` for unequal shares; halve an amount with `* 0.5` (agent)
   rule: type.money_split
-  help: docs/errors/type.money_split.md
+  help: https://jadpo.dev/docs/errors/type.money_split
 
 check failed: 1 error, 1 file
 ```
@@ -58,7 +58,7 @@ error: `CakePrice` and `EuroPrice` can't be added: they're in different currenci
   reason: `CakePrice` is in GBP and `EuroPrice` in EUR, as their types or the calls that made them fix; amounts are added only in one currency.
   next: Use two amounts in the same currency (agent)
   rule: type.arithmetic_operand
-  help: docs/errors/type.arithmetic_operand.md
+  help: https://jadpo.dev/docs/errors/type.arithmetic_operand
 
 check failed: 1 error, 1 file
 ```

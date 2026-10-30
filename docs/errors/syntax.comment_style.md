@@ -18,7 +18,7 @@ error: Jadpo writes comments with `//`, not `#`
   reason: `#` starts a comment in Python, Ruby, shell scripts and YAML; a Jadpo comment starts with `//`, or `///` to document a declaration.
   next: Use `//` instead of `#` (agent)
   rule: syntax.comment_style
-  help: docs/errors/syntax.comment_style.md
+  help: https://jadpo.dev/docs/errors/syntax.comment_style
 
 check failed: 1 error, 1 file
 ```

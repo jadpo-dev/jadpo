@@ -39,7 +39,7 @@ error: `owner_id` is listed twice
   reason: A grant list means "any of these", so naming someone twice adds nothing and hides which line was meant.
   next: Remove the second `owner_id` (agent)
   rule: policy.subject_duplicate
-  help: docs/errors/policy.subject_duplicate.md
+  help: https://jadpo.dev/docs/errors/policy.subject_duplicate
 
 check failed: 1 error, 1 file
 ```

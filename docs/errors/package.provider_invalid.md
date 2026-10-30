@@ -30,7 +30,7 @@ error: `provider` has no key `host:`
   reason: `provider { }` has one fixed set of keys: `protocol:`, `hosts:`, `runs:`, `credential:`, `oauth:`, `idempotency:`, `error_code:`, `webhooks:`, `polls:`, `erasure:`, `max_concurrent:`, `settings:`, `imported:`, `description:`, `aws:`, `credential_header:` and `headers:`. Did you mean `hosts:`?
   next: Use `hosts:` instead of `host:` (agent)
   rule: package.provider_invalid
-  help: docs/errors/package.provider_invalid.md
+  help: https://jadpo.dev/docs/errors/package.provider_invalid
 
 check failed: 1 error, 3 files
 ```
@@ -82,7 +82,7 @@ error: `Delivry` in `reviewed:` isn't one of the package's types
   reason: `imported:` gives the description the package was imported from, `file:` and `digest:`, and `reviewed:`, the package's types the agent has gone through against the provider's documentation, each named once. The package declares no type `Delivry` in its `types/`.
   next: Use `Delivery` instead of `Delivry` (agent)
   rule: package.provider_invalid
-  help: docs/errors/package.provider_invalid.md
+  help: https://jadpo.dev/docs/errors/package.provider_invalid
 
 check failed: 1 error, 4 files
 ```

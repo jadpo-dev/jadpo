@@ -26,7 +26,7 @@ error: `store: main` can't count rate limits
   reason: Rate limits are counted in one store the servers or a Worker's instances share: a Redis connection (`Driver.redis`), or on Workers Cloudflare's rate-limiting binding (`Driver.cloudflare_rate_limits`). `rate_limits: { store: <connection> }` names it. `main` is a PostgreSQL database.
   next: Name a connection with `driver: Driver.redis` or `driver: Driver.cloudflare_rate_limits` (agent)
   rule: rate_limits.store_invalid
-  help: docs/errors/rate_limits.store_invalid.md
+  help: https://jadpo.dev/docs/errors/rate_limits.store_invalid
 
 check failed: 1 error, 1 file
 ```

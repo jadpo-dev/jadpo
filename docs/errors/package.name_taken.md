@@ -24,7 +24,7 @@ error: Package `Couriers`'s name is already taken
   reason: A package's name joins the names of the app's domains and libraries, which are unique among themselves, and two packages never share a name in code, so `Couriers.` means one thing; it is already domain `couriers`.
   next: Rename one of them (human)
   rule: package.name_taken
-  help: docs/errors/package.name_taken.md
+  help: https://jadpo.dev/docs/errors/package.name_taken
 
 check failed: 1 error, 3 files
 ```

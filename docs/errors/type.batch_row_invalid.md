@@ -115,7 +115,7 @@ error: `csv.read` can't read its rows as `OrderRow`
   reason: A CSV row holds one value a cell, and `OrderRow.lines` holds a list; a JSON Lines row holds lists and objects, each line one JSON value.
   next: Read the file with `json_lines.read`, or give `lines` a type one cell holds (agent)
   rule: type.batch_row_invalid
-  help: docs/errors/type.batch_row_invalid.md
+  help: https://jadpo.dev/docs/errors/type.batch_row_invalid
 
 check failed: 1 error, 9 files
 ```

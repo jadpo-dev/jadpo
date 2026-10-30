@@ -205,7 +205,7 @@ error: A connection with `driver: Driver.postgres` takes no `sslmode:`
   reason: A connection to a PostgreSQL database gives `url:`, a `PostgresUrl` setting, and may give `authority:`, a `Certificate` setting its server's certificate is checked against, or `tls: false` for a server elsewhere that offers no TLS.
   next: Remove `sslmode:` (agent)
   rule: connection.key_invalid
-  help: docs/errors/connection.key_invalid.md
+  help: https://jadpo.dev/docs/errors/connection.key_invalid
 
 check failed: 1 error, 2 files
 ```
@@ -240,7 +240,7 @@ error: `main`'s `authority:` must be a `Certificate` setting
   reason: `authority:` is the authority its server's certificate is checked against, as PEM: a `Certificate` setting, `config.<name>`, read from each deployment's environment.
   next: Declare `database_authority: Certificate` in `config.jadpo` (agent)
   rule: connection.value_invalid
-  help: docs/errors/connection.value_invalid.md
+  help: https://jadpo.dev/docs/errors/connection.value_invalid
 
 check failed: 1 error, 2 files
 ```
@@ -275,7 +275,7 @@ error: `main`'s `tls:` is written only as `false`
   reason: A database connection uses TLS unless it says `tls: false`, for a server elsewhere that offers none; it is decided in `app.jadpo`, where a review sees it, never by a setting.
   next: Remove `tls: true` (agent)
   rule: connection.value_invalid
-  help: docs/errors/connection.value_invalid.md
+  help: https://jadpo.dev/docs/errors/connection.value_invalid
 
 check failed: 1 error, 2 files
 ```
@@ -312,7 +312,7 @@ error: `main` names an authority and goes without TLS
   reason: `authority:` is what the server's certificate is checked against, and a connection with `tls: false` never asks for one.
   next: Remove `authority:`, or `tls: false` (human)
   rule: connection.key_invalid
-  help: docs/errors/connection.key_invalid.md
+  help: https://jadpo.dev/docs/errors/connection.key_invalid
 
 check failed: 1 error, 2 files
 ```

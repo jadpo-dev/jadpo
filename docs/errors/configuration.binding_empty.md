@@ -17,7 +17,7 @@ error: `binding:` names no variable
   reason: `binding:` names the environment variable a setting is read from; an empty name reads nothing.
   next: Name the variable, or leave `binding:` out to read the setting's name in capitals (agent)
   rule: configuration.binding_empty
-  help: docs/errors/configuration.binding_empty.md
+  help: https://jadpo.dev/docs/errors/configuration.binding_empty
 
 check failed: 1 error, 1 file
 ```

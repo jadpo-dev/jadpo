@@ -42,7 +42,7 @@ error: `POST /memos` doesn't say what it runs
   reason: A route runs one named action, or a named query for a `GET`, with `run:`; the logic lives there, not in the route.
   next: Add `run: <action>(...)` (agent)
   rule: route.run_required
-  help: docs/errors/route.run_required.md
+  help: https://jadpo.dev/docs/errors/route.run_required
 
 check failed: 1 error, 1 file
 ```

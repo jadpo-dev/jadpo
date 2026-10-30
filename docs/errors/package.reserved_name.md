@@ -21,7 +21,7 @@ error: `Stripe` is a reserved provider name
   reason: Jadpo reserves the names of the providers it curates packages for, so `Stripe` in code always means the official package. The app's own integration takes a name of its own.
   next: Rename the folder `shared/providers/stripe/v1` to a name of the app's own, such as `stripe_api`, and the index with it (agent)
   rule: package.reserved_name
-  help: docs/errors/package.reserved_name.md
+  help: https://jadpo.dev/docs/errors/package.reserved_name
 
 check failed: 1 error, 2 files
 ```

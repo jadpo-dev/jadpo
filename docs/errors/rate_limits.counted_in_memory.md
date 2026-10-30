@@ -40,7 +40,7 @@ error: `edge` would count its rate limits in each instance's memory on Workers
   reason: `cache` is a Redis connection, and Redis's driver comes with caches; until then each of a Worker's instances counts the rate limits in its own memory, which its other instances don't share, so a client whose requests reach several of them gets more than each limit.
   next: Count them in Cloudflare's rate-limiting binding: declare a connection with `driver: Driver.cloudflare_rate_limits` and a `namespace:`, and name it in `rate_limits: { store: }`, or write `decline rate_limits.counted_in_memory: "<why>"` above it if this is deliberate (agent)
   rule: rate_limits.counted_in_memory
-  help: docs/errors/rate_limits.counted_in_memory.md
+  help: https://jadpo.dev/docs/errors/rate_limits.counted_in_memory
 
 check failed: 1 error, 1 file
 ```

@@ -25,7 +25,7 @@ error: `ListView` includes its own fields
   reason: `TodoView` leads back to `ListView` through its own `include`, so its fields would be copied from themselves and the type could never be written out.
   next: Remove `TodoView` from `include`, or write the fields it needs (agent)
   rule: type.copy_cycle
-  help: docs/errors/type.copy_cycle.md
+  help: https://jadpo.dev/docs/errors/type.copy_cycle
 
 check failed: 1 error, 1 file
 ```

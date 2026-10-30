@@ -43,7 +43,7 @@ error: `POST /memos/{memo_id}` reads placeholder `memo_id` and never passes it o
   reason: Everything a route reads from a request reaches what it runs by name; a value read and ignored is a URL or a field that does nothing.
   next: Pass `memo_id` to `add_memo`, or remove it from the route (agent)
   rule: route.binding_unused
-  help: docs/errors/route.binding_unused.md
+  help: https://jadpo.dev/docs/errors/route.binding_unused
 
 check failed: 1 error, 1 file
 ```

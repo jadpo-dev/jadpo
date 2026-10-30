@@ -38,7 +38,7 @@ error: A test can't call `sessions.end`
   reason: `sessions.end` ends the session of the request a route answers, so only an action calls it.
   next: Call `sessions.end` in the action a sign-in or sign-out route runs (agent)
   rule: type.auth_sessions_context
-  help: docs/errors/type.auth_sessions_context.md
+  help: https://jadpo.dev/docs/errors/type.auth_sessions_context
 
 check failed: 1 error, 1 file
 ```

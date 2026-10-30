@@ -25,7 +25,7 @@ error: A package's index can't hold `requires:`
   reason: Packages have no dependencies: a package that needs another's code carries a copy, so installing one is one folder and one line in the lock.
   next: Remove `requires:`, and copy what the package needs into it (agent)
   rule: package.index_invalid
-  help: docs/errors/package.index_invalid.md
+  help: https://jadpo.dev/docs/errors/package.index_invalid
 
 check failed: 1 error, 2 files
 ```
