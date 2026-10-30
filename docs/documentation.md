@@ -186,8 +186,8 @@ why the site serves the bundle.
   changelog file.
 - The release then gets the docs bundle as `docs-bundle.tar.gz`, and
   dist's workflow (`.github/workflows/release.yml`) builds the installers,
-  attaches them and publishes the release. The site publishes
-  `/v/X.Y.Z/`.
+  attaches them, publishes the release, then the Homebrew formula and the
+  npm package. The site publishes `/v/X.Y.Z/`.
 - The VS Code extension (`editors/vscode`) is packaged at the release's
   version and attached to the release, then published to the VS Code
   Marketplace and Open VSX once the release is out
@@ -196,16 +196,20 @@ why the site serves the bundle.
 - An app declares the version it needs in `app.jadpo`, as
   `application { jadpo: "0.1" }`, and the compiler refuses an app needing a
   newer one (area 1, "The root").
-- Switched off until a maintainer sets them up: release-please runs only when
-  the repository variable `JADPO_RELEASES` is `on`, with a
-  `RELEASE_PLEASE_TOKEN` secret, so its pull requests run CI; the
-  Homebrew formula and the npm package are built and attached to each
-  release but published nowhere until `publish-jobs` in
-  `dist-workspace.toml` names them, with a tap repository and tokens; the
-  extension is published only when the repository variable
-  `JADPO_VSCODE_PUBLISH` is `on`, with the Marketplace publisher `jadpo`
-  and its `VSCE_PAT` secret, and the Open VSX namespace `jadpo` and its
-  `OVSX_PAT` secret.
+- Releases need these, set by a maintainer; each part is off until its
+  switch is set:
+  - release-please runs only when the repository variable `JADPO_RELEASES`
+    is `on`, with a `RELEASE_PLEASE_TOKEN` secret, so its pull requests run
+    CI.
+  - dist's workflow publishes the Homebrew formula (`jadpo.rb`) to the
+    `richardwillars/homebrew-tap` repository with a `HOMEBREW_TAP_TOKEN`
+    secret that can write to it, and the npm package `jadpo` to npmjs.com
+    with an `NPM_TOKEN` secret that can publish it, with provenance. Both
+    run after the release is published and skip prereleases.
+  - The extension is published only when the repository variable
+    `JADPO_VSCODE_PUBLISH` is `on`, with the Marketplace publisher `jadpo`
+    and its `VSCE_PAT` secret, and the Open VSX namespace `jadpo` and its
+    `OVSX_PAT` secret.
 
 ## Installing
 
