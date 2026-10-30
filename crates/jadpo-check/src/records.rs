@@ -690,7 +690,10 @@ fn rewrite(kind: &Kind, text: &str) -> Option<Result<String, (usize, String)>> {
         "identities" => {
             jadpo_db::parse_identities(text).map(|lines| jadpo_db::write_identities(&lines))
         }
-        "lock" => jadpo_db::parse_lock(text).map(|packages| jadpo_db::write_lock(&packages)),
+        "lock" => jadpo_db::parse_lock(text).map(|packages| {
+            let pinned = jadpo_db::locked_jadpo(text).map(|(version, _)| version);
+            jadpo_db::write_pinned_lock(pinned.as_deref(), &packages)
+        }),
         "ignored_suggestions" => ignored::parse(text).map(|entries| ignored::render(&entries)),
         "taught_suggestions" => taught::parse(text).map(|entries| taught::render(&entries)),
         "translations" => match crate::translations::sources::parse(text) {

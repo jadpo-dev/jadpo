@@ -81,9 +81,9 @@
       "properties": {
         "jadpo.server.path": {
           "type": "string",
-          "default": "jadpo",
+          "default": "",
           "scope": "machine-overridable",
-          "markdownDescription": "The `jadpo` binary that runs `jadpo lsp`. A bare name (the default, `jadpo`) is looked up on `PATH`. To use a build from a checkout of the Jadpo repository, give its path, for example `${workspaceFolder}/target/release/jadpo` (`${workspaceFolder}` is the first folder open in the window; a leading `~` is your home folder)."
+          "markdownDescription": "An override for people working on the compiler: the `jadpo` binary that runs `jadpo lsp`. Left empty, the `jadpo` on `PATH` runs it from the project's folder, and runs the Jadpo release the project names. A bare name is looked up on `PATH`. To use a build from a checkout of the Jadpo repository, give its path, for example `${workspaceFolder}/target/release/jadpo` (`${workspaceFolder}` is the first folder open in the window; a leading `~` is your home folder)."
         },
         "jadpo.trace.server": {
           "type": "string",
