@@ -201,7 +201,7 @@ why the site serves the bundle.
   `RELEASE_PLEASE_TOKEN` secret, so its pull requests run CI; the
   Homebrew formula and the npm package are built and attached to each
   release but published nowhere until `publish-jobs` in
-  `dist-workspace.toml` names them, with a tap repository and tokens; the
+  `dist-workspace.toml` names them, with the tap repository `jadpo-dev/homebrew-tap` (users then run `brew install jadpo-dev/tap/jadpo`) and tokens; the
   extension is published only when the repository variable
   `JADPO_VSCODE_PUBLISH` is `on`, with the Marketplace publisher `jadpo`
   and its `VSCE_PAT` secret, and the Open VSX namespace `jadpo` and its
@@ -220,11 +220,11 @@ fetches its own pinned Rust toolchain into its cache on first use.
 
 Each archive has a SHA-256 beside it, and each of those files, like the
 VS Code extension's `.vsix`, has a GitHub artifact attestation saying
-which workflow run in `richardwillars/jadpo` built it, from which commit.
+which workflow run in `jadpo-dev/jadpo` built it, from which commit.
 Check one before running it, with the GitHub CLI:
 
 ```sh
-gh attestation verify jadpo-cli-aarch64-apple-darwin.tar.xz --repo richardwillars/jadpo
+gh attestation verify jadpo-cli-aarch64-apple-darwin.tar.xz --repo jadpo-dev/jadpo
 ```
 
 ## Not decided yet
