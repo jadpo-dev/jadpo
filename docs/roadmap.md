@@ -308,6 +308,14 @@ D1 first: the site starts once D1 has merged.
   should print the error's page on the site; the bundle keeps each code
   fence's attributes (`check project=… file=…`), which the site has to
   hide.
+- [ ] **D13 Error pages that explain** `opus · high`: every page in
+  `docs/errors/` rewritten to the format in [docs/writing.md](writing.md),
+  "How an error page reads". Each says what happened in one plain
+  sentence, why Jadpo refuses it, the example and its output, what the
+  next step's `(human)` or `(agent)` marker means in the standard
+  wording, each fix with its code and what it changes, and the related
+  topics. The errors the Learn path, the examples and `(human)` fixes
+  hit come first.
 
 ## Phase 10 — Golden todo
 
