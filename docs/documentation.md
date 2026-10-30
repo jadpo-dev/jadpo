@@ -233,6 +233,10 @@ PowerShell one (`jadpo-cli-installer.ps1`), a Homebrew formula
 (`jadpo.rb`) and an npm package (`jadpo`, for `npx jadpo`). `jadpo build`
 fetches its own pinned Rust toolchain into its cache on first use.
 
+The installed `jadpo` is meant to be a launcher that runs the release line
+`app.jadpo` names, fetched into a per-user cache and verified first; it is
+not built yet, and 0.1.0 is a plain binary (area 14, "Which jadpo runs").
+
 Each archive has a SHA-256 beside it, and each of those files, like the
 VS Code extension's `.vsix`, has a GitHub artifact attestation saying
 which workflow run in `richardwillars/jadpo` built it, from which commit.
