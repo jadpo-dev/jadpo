@@ -173,3 +173,68 @@ Carried from other areas, and the choices the topic sections leave open:
 | The `trigger:` adapter | `trigger:` (question 16) takes `ScheduleTrigger.native`, the default, or `ScheduleTrigger.external`, and changes only a native deployable, a Worker ticking on its cron whichever is written, so an app with a server and a Worker can write either; `<deployable> tick` (and `serve`, the same as no command; anything else ends with code 2, `command_unknown`) doesn't wait for a database it can't reach, ending with code 1 (`store_unreachable`), since the scheduler's next run is the next try and the ticks missed become one run; it logs `runtime.ticked` (each run by its schedule's name, deliveries, what it received and polled, rows deleted, alerts, each store it couldn't work in) and ends with code 1 only when a store couldn't be worked in, a failed run being recorded, alerted and retried at its next due time as a server's is; the first SIGTERM drains it as a server drains its background work; `tick` runs whatever is written, the lease deciding; nothing refuses an `every:` under a minute with `external`, since a scheduler can run `tick` each second: `jadpo build` says how often to run it, and the ticks-stopped alert says when it runs less often |
 | Queue messages the store refuses | A message whose event the store refuses as a statement, as it would every time it was sent (a value it can't take, such as a text holding `\u0000`, which `jsonb` can't hold), is parked `unreadable` and acknowledged, so the queue doesn't send it again until its retention deletes it. A store that can't be reached, a conflict, a concurrent change or a fault the driver can't classify still leaves it on the queue, to be kept when it is sent again |
 | A delivery's answer closes its breaker | A delivery attempt whose call through a connection its provider answered closes the connection's breaker and releases what it holds, whatever the breaker's state when the delivery was claimed, as "When a provider keeps failing" says of a delivery already running when the breaker opened. It is one conditional statement after each attempt that called the provider, changing nothing while the breaker is closed with no failures in a run |
+
+## Moved from the area page
+
+When [Jobs and events](../12-jobs-and-events.md) was rewritten to the
+[writing guide](../../writing.md), its references to the decisions
+above by number, its comparisons with other frameworks and its pointers
+into this page moved here. Nothing in this list changed a rule.
+
+- **A schedule's `run:` takes no arguments**, calling an action of its
+  own domain (decision 1).
+- **`trigger:`**, what ticks a native deployable, is decision 16. A
+  Worker's `every:` under a minute is area 14's
+  `deployable.target_unsupported`.
+- **The purge schedule** is the decision table's "a built-in hourly
+  schedule per entity".
+- **One event per item** in a schedule that covers many items, so each
+  item is handled and retried by its own action and one bad item never
+  blocks or undoes the rest, is decision 11. The example's
+  `overdue_todos` is a query in `queries/` returning at most 500 todos not
+  yet queued; a list query declares no failures.
+- **The file and export runs** take the most conservative reading of
+  "Batches" and of area 19's "Data formats" wherever those leave a
+  choice.
+- **Every action a run reaches, by its own line.** Why a listed action's
+  line under `actions:` decides its own body's writes wherever it is
+  called from is in [area 9's design notes](09-policy.md), "Lines of the
+  actions background work calls".
+- **An event is `public` when another domain subscribes to it**
+  (decision 3), and is written in the same form as a failure (area 4).
+- **`emit` is a statement written like `reject`** (decision 4). Saving
+  the event in the action's transaction and delivering it after the
+  commit is the transactional outbox pattern, which Laravel
+  (`afterCommit`), Oban (insert inside the transaction) and Rails 8
+  (`enqueue_after_transaction_commit`) also use. An action that emits
+  and writes no store is `event.store_required` even when it reads one,
+  because the decision says "writes".
+- **`event` inside a subscriber's `run:`** is decision 5. **Subscribers
+  run as the system**, not as the user who caused the event (decision 8;
+  `Access.system` is area 9's).
+- **Long-running coordination needs no workflow language** (area 1).
+  Temporal and Inngest offer a different model, code that pauses between
+  steps. The example's `record_payment` sets `paid_at` on the order and,
+  if stock is already reserved, sets its status to ready and emits
+  `OrderReady`.
+- **A rerun replays what already happened** rather than sending it again
+  (decision 11). An unkeyed changing call that went out is parked rather
+  than sent again blindly, as area 16's "Parked, never sent again
+  blindly" says. **No order is promised between events** (decision 6).
+  A change to an event type that would break an API record needs area
+  18's acceptance.
+- **The late-failure warning holds for single calls too**, as area 11's
+  question 26 decided. The choices behind the warning and the deadline
+  sum, the record, and development and the metric are in the table
+  above: "The late-failure warning and the deadline sum", "The record"
+  and "Development and the metric". The fragment's `subscribe` makes its
+  Stripe calls as steps 1, 2 and 3, and its writes after the last call.
+- **Retries go by failure kind** (decision 7, area 4's kinds). The
+  circuit breaker is decision 18; a connection's own `retry:` is area
+  11's question 8.
+- **Every schedule run opens as one trace** (decision 17). Schedules fail
+  quietly in most frameworks: a job that stops running produces no error
+  at all, which is why every part of a schedule's life is recorded and
+  checked.
+- **The limits are recommendations** to confirm with measured runs
+  (decision 12).
