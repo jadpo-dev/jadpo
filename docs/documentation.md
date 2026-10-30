@@ -182,6 +182,21 @@ then the site keeps its own task list.
 working from a checkout; some agents cannot fetch from GitHub, which is
 why the site serves the bundle.
 
+### An assistant that cannot fetch the site
+
+In the Gemini web app on a computer, use **Add file, More uploads, Import
+code** and enter `https://github.com/richardwillars/jadpo`. Google's
+[GitHub import documentation](https://support.google.com/gemini/answer/16176929?hl=en)
+says the GitHub app cannot read a repository merely from a URL in the
+prompt. An import takes one repository per chat, up to 5,000 files and
+100 MB, and is a snapshot that does not sync later changes.
+
+The Gemini API's [URL context tool](https://ai.google.dev/gemini-api/docs/url-context)
+fetches the public URLs you supply but does not follow their nested links.
+Supply the individual pages the task needs and check that they were
+retrieved. If neither works, attach the primer and the pages the task
+needs, or use a local clone with a file-reading coding agent.
+
 ## Versions and releases
 
 - One version for the language, compiler and runtime, in semantic
