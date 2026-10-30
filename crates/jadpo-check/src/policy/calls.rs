@@ -44,9 +44,11 @@ enum Guard {
         field: Option<String>,
         grants: Vec<Grant>,
     },
-    /// The line of a listed action or query, `written`, checked as it
-    /// starts; `system` when it names `Access.system`.
+    /// The line of a listed action, or of a listed query the action `by`
+    /// runs, `written`, checked as it starts; `system` when it names
+    /// `Access.system`.
     Line {
+        by: String,
         written: String,
         query: bool,
         gate: LineGate,
@@ -70,6 +72,7 @@ fn guards(db: &dyn Db, project: Project, access: &Policies<'_>, callee: &str) ->
             )
         {
             out.push(Guard::Line {
+                by: action.clone(),
                 written: line.written.clone(),
                 query: false,
                 gate,
@@ -117,6 +120,7 @@ fn guards(db: &dyn Db, project: Project, access: &Policies<'_>, callee: &str) ->
                         && let Some(gate) = root.query_gate(query, access.memberships())
                     {
                         out.push(Guard::Line {
+                            by: action.clone(),
                             written: line.written.clone(),
                             query: true,
                             gate,
@@ -258,37 +262,46 @@ fn refusal(prover: &Prover<'_>, callee: &str, guard: &Guard) -> String {
             }
         }
         Guard::Line {
+            by,
             written,
             query,
             gate,
             system,
         } => {
-            let what = if *query { "the query" } else { "the action" };
-            let who = match gate {
-                LineGate::Signed => "anyone signed in".to_string(),
-                LineGate::Roles(roles) => crate::and_list(
-                    &roles
-                        .iter()
-                        .map(|(membership, role)| {
-                            let grant = Grant::Role {
-                                membership: membership.clone(),
-                                role: role.clone(),
-                                via: None,
-                            };
-                            prover.described(&grant)
-                        })
-                        .collect::<Vec<_>>(),
-                ),
-                LineGate::Anyone | LineGate::Statements | LineGate::Nobody => "nobody".to_string(),
-            };
-            let who = if *system && *gate != LineGate::Signed {
-                format!("{who} and schedules and subscribers")
+            let doer = if by == callee {
+                format!("`{callee}`")
             } else {
-                who
+                format!("`{by}`, which `{callee}` calls,")
             };
-            format!(
-                "`{callee}` runs {what} `{written}`, whose line under `actions:` lets in only {who}"
-            )
+            let mut who: Vec<String> = match gate {
+                LineGate::Signed => vec!["anyone signed in".to_string()],
+                LineGate::Roles(roles) => roles
+                    .iter()
+                    .map(|(membership, role)| {
+                        prover.described(&Grant::Role {
+                            membership: membership.clone(),
+                            role: role.clone(),
+                            via: None,
+                        })
+                    })
+                    .collect(),
+                LineGate::Anyone | LineGate::Statements | LineGate::Nobody => Vec::new(),
+            };
+            if *system {
+                who.push("schedules and subscribers".to_string());
+            }
+            let who = if who.is_empty() {
+                "nobody a request signs in as".to_string()
+            } else {
+                format!("only {}", crate::and_list(&who))
+            };
+            if *query {
+                format!(
+                    "{doer} runs the query `{written}`, whose line under `actions:` lets in {who}"
+                )
+            } else {
+                format!("{doer} is listed under `actions:` for {who}")
+            }
         }
     }
 }
