@@ -1014,6 +1014,13 @@ fn a_run_is_read_by_its_encoding_and_one_it_cannot_read_ends_failed() {
         assert_eq!(ran, Ran::Finished);
         assert_eq!(kept(&host, &kept_before).await.0, "finished");
 
+        // One 0.1.0 wrote in encoding 1, before `Jwk` held `key_ops`
+        // (chunk A3), reads as it did.
+        let (kept_in_1, work) = start("\"encoding\" = 1").await;
+        let (ran, _) = jadpo_runtime::batches::run(program, &host, &work).await;
+        assert_eq!(ran, Ran::Finished);
+        assert_eq!(kept(&host, &kept_in_1).await.0, "finished");
+
         let next = jadpo_std::standard::ENCODING + 1;
         let (later, work) = start(Box::leak(format!("\"encoding\" = {next}").into_boxed_str())).await;
         let (ran, _) = jadpo_runtime::batches::run(program, &host, &work).await;

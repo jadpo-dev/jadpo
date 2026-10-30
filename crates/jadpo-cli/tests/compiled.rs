@@ -667,6 +667,17 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         "each kind of choice's paths".into(),
         corpus_project(&paths, "compiled-paths").expect("it checks"),
     ));
+    // A `Jwk` kept without `key_ops`, as a row from before encoding 2
+    // reads after its migration (chunk A3; `jwk_upgrade`), kept and read
+    // back: the fixture's sources, migrated afresh.
+    let key_ops: Vec<(String, String)> = crate::jwk_upgrade::files(&crate::jwk_upgrade::fixture())
+        .into_iter()
+        .filter(|(path, _)| !path.starts_with("database/"))
+        .collect();
+    projects.push((
+        "a key kept without key_ops".into(),
+        corpus_project(&key_ops, "compiled-jwk-key-ops").expect("it checks"),
+    ));
     let fuzzed = fuzzed_projects();
     projects.extend(fuzzed.iter().cloned());
     let (done, skipped) = compared(&projects, "corpus");
@@ -689,6 +700,7 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         "docs/language/12-jobs-and-events.md several-steps",
         "docs/language/13-testing.md fakes-in-tests",
         "docs/language/21-ai.md ai-embed",
+        "a key kept without key_ops",
         "examples 11-cake-shop",
         "examples 12-recipe-book",
         "examples 15-parcel-tracker",

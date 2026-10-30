@@ -768,10 +768,12 @@ fn a_payload_is_read_by_its_encoding_and_a_later_one_is_parked() {
                 .await
                 .0,
         );
-        // Two chores, their work dropped as a crash would: one event kept
-        // before encodings were recorded, one a later release wrote.
+        // Three chores, their work dropped as a crash would: one event
+        // kept before encodings were recorded, one 0.1.0 wrote in encoding
+        // 1, before `Jwk` held `key_ops` (chunk A3), and one a later
+        // release wrote.
         let later = (jadpo_std::standard::ENCODING + 1).to_string();
-        for (title, encoding) in [("sweep", "NULL"), ("mop", later.as_str())] {
+        for (title, encoding) in [("sweep", "NULL"), ("dust", "1"), ("mop", later.as_str())] {
             let (added, dropped) = call(
                 &program,
                 &host,
@@ -807,6 +809,7 @@ fn a_payload_is_read_by_its_encoding_and_a_later_one_is_parked() {
         assert_eq!(
             parked,
             [
+                vec![Some("1".to_string()), Some("succeeded".to_string()), None, None],
                 vec![
                     Some(later.clone()),
                     Some("failed".to_string()),

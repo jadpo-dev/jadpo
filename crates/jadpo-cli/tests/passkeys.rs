@@ -877,6 +877,12 @@ fn a_passkey_kept_before_encodings_were_recorded_still_signs_in() {
             jadpo_runtime::SqlValue::Text("Old phone".to_string()),
         ]
     );
+    // One 0.1.0 wrote in encoding 1, before `Jwk` held `key_ops` (chunk
+    // A3), reads as it did.
+    live.rows("UPDATE \"jadpo_passkeys\" SET \"encoding\" = 1");
+    live.at(START + 2 * MINUTE);
+    let (_, signed) = live.sign_in(&mut phone);
+    assert_eq!(signed.status, 204, "{}", text(&signed));
     // An encoding a later release writes is never guessed at.
     live.rows(&format!(
         "UPDATE \"jadpo_passkeys\" SET \"encoding\" = {}",

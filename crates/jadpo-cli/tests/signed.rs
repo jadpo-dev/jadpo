@@ -840,6 +840,15 @@ fn a_part_signed_before_encodings_were_recorded_still_signs_in() {
     assert_eq!(json(&old)["who"], "eve");
     assert_eq!(cookie(&old, "notes_session"), None, "nothing to renew");
 
+    // One 0.1.0 signed in encoding 1, before `Jwk` held `key_ops` (chunk
+    // A3): it signs in as it did, with no read.
+    fields.insert("enc".into(), 1.into());
+    let earlier = serde_json::Value::Object(fields.clone()).to_string();
+    eve.session = format!("{secret}.{}", key.sign(&earlier));
+    let (old, trips) = live.send(&eve.post("/echo"));
+    assert_eq!((old.status, trips), (200, 0), "{}", json(&old));
+    assert_eq!(json(&old)["who"], "eve");
+
     // An encoding a later release writes: the record is read, and the
     // part renewed in this release's.
     fields.insert("enc".into(), (jadpo_std::standard::ENCODING + 1).into());
