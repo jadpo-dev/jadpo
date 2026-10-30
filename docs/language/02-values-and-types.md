@@ -1443,7 +1443,10 @@ and reading it means handling both cases, usually with
 Writing another language's form is an error with an edit that writes the
 Jadpo form: `null`, `nil`, `undefined` and `None` are each
 `type.foreign_value`, and `??` and `?.` are `syntax.null_coalescing` and
-`syntax.optional_chaining`, whose edits write the `match`.
+`syntax.optional_chaining`, whose edits write the `match`. A value that may
+be missing takes the value itself, so `some(title)` written to make one is
+`semantic.not_callable`, whose edit writes `title`: `some(name)` is only a
+`match` pattern.
 
 ```jadpo check project=absent file=names.jadpo hidden
 type ProductName = Text {

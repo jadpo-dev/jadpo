@@ -874,6 +874,7 @@ Not built yet:
 | `jadpo why <schedule>` | Says why a schedule didn't run, or how its last run went |
 | `jadpo lsp` | Runs the language server for editors |
 | `jadpo help [command]` | Help for one command; `--help` works everywhere |
+| `jadpo help <rule>` | A rule's page, offline, by the id on an error's `rule:` line |
 | `jadpo completions <shell>` | Prints the Tab-completion script for zsh, bash or fish |
 | `jadpo version` | Prints the version |
 | `jadpo toolchain` | Lists, removes and pins the Jadpo releases kept for projects |
@@ -892,6 +893,15 @@ runs with into `jadpo.lock`. Each takes `--json`
 `jadpo help [command]` explains one command, every command takes `--help`
 with examples, and `jadpo help --json` gives the rule catalogue and the
 schemas of the manifest and of `jadpo test --json`.
+
+`jadpo help <rule>`, with the id an error's `rule:` line gives
+(`jadpo help import.unused`), prints the rule's page offline, the page its
+`help:` link opens: the rule, its area, whether it is declinable and who
+decides, then the page's prose and each example in order, under the file
+it is in, and what `jadpo check` printed for it. The supporting files the
+site hides are left out. `--json` gives the rule's facts and the page's
+Markdown. A word with a `.` that is no rule is `cli.unknown_command`,
+naming the nearest rule.
 
 Not built yet: the debugging commands of [Debugging and
 review](17-debugging-and-review.md), which are proposed there:
@@ -2904,7 +2914,7 @@ Each row says what is built and what is specified but not built yet.
 
 | Feature | Status |
 |---|---|
-| Command help | Built: every command has `--help` with examples, `jadpo help [command]` explains one, and `jadpo help --json` describes them all. |
+| Command help | Built: every command has `--help` with examples, `jadpo help [command]` explains one, `jadpo help <rule>` prints a rule's page offline, and `jadpo help --json` describes them all. |
 | Project path | Built: every command finds the project by walking up to `app.jadpo`, so a path is optional; run from outside the project, printed paths start with the project as typed. |
 | Scaffold | Built: `jadpo new <name>` writes the fixed root on this `jadpo`'s release line with its project token, the `hello` domain (one route, its action, its policy line, its API record and a route test), `AGENTS.md`, `.gitignore` and `.gitattributes`, passing `check`, `fmt --check` and `test` as written, and refuses a folder that holds anything, with `--json`. The line an app declares is checked: `application { jadpo: "0.1" }`, with `toolchain.version_newer`, `toolchain.version_older` and `toolchain.version_invalid` ([The root](01-project-layout-and-modules.md#the-root)). |
 | Which jadpo runs | Built in 0.1.0: every `jadpo` runs the release a project's line or `jadpo.lock` pin names, kept in the cache or fetched from GitHub's releases, its archive checked against its published SHA-256 and its GitHub artifact attestation (Sigstore's verifier, with the public-good trusted root carried in the binary) before it runs, and refuses with `toolchain.version_newer` or `toolchain.version_older` when it can't; `jadpo toolchain` lists, removes, pins and unpins, and `JADPO_TOOLCHAIN=local` runs everything with the `jadpo` started. The trusted root is the one this release was built with: no TUF refresh. |

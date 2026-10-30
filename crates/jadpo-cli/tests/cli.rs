@@ -812,3 +812,56 @@ fn tab_completes_argument_values() {
     assert!(complete(&["version", ""]).is_empty());
     assert!(complete(&["completions", "zsh", ""]).is_empty());
 }
+
+#[test]
+fn help_with_a_rule_prints_its_page_offline() {
+    let output = jadpo(&["help", "import.unused"]);
+    assert_eq!(output.code, 0, "{}", output.stderr);
+    assert!(
+        output
+            .stdout
+            .starts_with("import.unused, area 1, an agent can fix it\nImported name the file does not use.\n\ndomains/bakery/actions/stock_loaf.jadpo\n  use shared/types { Percent, Stock }\n"),
+        "the rule, its facts and summary, then the page's example: {}",
+        output.stdout
+    );
+    assert!(
+        output
+            .stdout
+            .contains("\nOutput\n  error: `Percent` is imported but not used\n"),
+        "then what `jadpo check` printed: {}",
+        output.stdout
+    );
+    assert!(
+        !output.stdout.contains("shared/types/percent.jadpo"),
+        "the files the site hides are left out: {}",
+        output.stdout
+    );
+    let document = json(&jadpo(&["help", "import.unused", "--json"]));
+    assert_eq!(document["data"]["id"], "import.unused");
+    assert!(
+        document["data"]["page"]
+            .as_str()
+            .is_some_and(|page| page.starts_with("# `import.unused`")),
+        "{document}"
+    );
+}
+
+#[test]
+fn help_with_a_misspelt_rule_names_the_nearest() {
+    let output = jadpo(&["help", "impot.unused"]);
+    assert_eq!(output.code, 2);
+    assert!(
+        output
+            .stderr
+            .contains("error: `impot.unused` isn't a jadpo command or rule"),
+        "{}",
+        output.stderr
+    );
+    assert!(
+        output
+            .stderr
+            .contains("next: Use `import.unused` instead of `impot.unused`"),
+        "{}",
+        output.stderr
+    );
+}

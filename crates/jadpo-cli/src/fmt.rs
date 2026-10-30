@@ -51,6 +51,7 @@ pub fn fmt(call: &Call) -> Reply {
     let check = call.flag("--check");
     let cwd = call.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
     let mut moves = Vec::new();
+    let mut refused = Vec::new();
     if call.flag("--layout") {
         let start = cwd.join(call.arguments.first().map_or(".", String::as_str));
         let Some(root) = jadpo_db::find_root(&start) else {
@@ -60,6 +61,7 @@ pub fn fmt(call: &Call) -> Reply {
             moves = pending_moves(&root);
         } else {
             make_moves(&root);
+            refused = refused_moves(&root);
         }
     }
     let (root, files) = match call.arguments.first() {
@@ -103,8 +105,10 @@ pub fn fmt(call: &Call) -> Reply {
         results.push((shown, status));
     }
     let moved = moves.len();
+    let left = refused.len();
     diagnostics.extend(moves);
-    report(check, results, moved, diagnostics, sources)
+    diagnostics.extend(refused);
+    report(check, results, (moved, left), diagnostics, sources)
 }
 
 /// The moves the compiler asks for (`layout.promotion_required`) that
@@ -119,6 +123,24 @@ fn pending_moves(root: &Path) -> Vec<Diagnostic> {
                     .next
                     .as_ref()
                     .is_some_and(|next| !next.edits.is_empty())
+        })
+        .collect()
+}
+
+/// The moves `layout.promotion_required` asks for that carry no edit, so
+/// `--layout` leaves them: one whose new file would carry another
+/// declaration's name, which is renamed first, and a helper that moves
+/// into a library, which changes its calls.
+fn refused_moves(root: &Path) -> Vec<Diagnostic> {
+    let loaded = jadpo_db::load(root);
+    jadpo_check::check(&loaded.db, loaded.project)
+        .into_iter()
+        .filter(|problem| {
+            problem.rule.id == rule::LAYOUT_PROMOTION_REQUIRED.id
+                && problem
+                    .next
+                    .as_ref()
+                    .is_none_or(|next| next.edits.is_empty())
         })
         .collect()
 }
@@ -401,7 +423,7 @@ fn count(n: usize, what: &str) -> String {
 fn report(
     check: bool,
     results: Vec<(String, Status)>,
-    moves: usize,
+    (moves, refused): (usize, usize),
     diagnostics: Vec<Diagnostic>,
     sources: BTreeMap<String, String>,
 ) -> Reply {
@@ -422,6 +444,11 @@ fn report(
         0 => {}
         1 => facts.push(Fact::problem("1 move to make")),
         n => facts.push(Fact::problem(format!("{n} moves to make"))),
+    }
+    match refused {
+        0 => {}
+        1 => facts.push(Fact::problem("1 move refused")),
+        n => facts.push(Fact::problem(format!("{n} moves refused"))),
     }
     let failed = !facts.is_empty();
     let changed = tally(Status::Formatted);

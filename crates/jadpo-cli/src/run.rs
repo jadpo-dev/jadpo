@@ -572,9 +572,10 @@ fn dispatch(parsed: Parsed, env: &Environment) -> (Option<&'static str>, Reply) 
     if parsed.help {
         // `jadpo help <command> --help` explains the command it names.
         let target = match (command.name, parsed.arguments.first()) {
-            ("help", Some(word)) => match table::find(word) {
-                Some(target) => target,
-                None => return (Some("help"), Reply::failed(unknown_command(word))),
+            ("help", Some(word)) => match (table::find(word), jadpo_diag::find(word)) {
+                (Some(target), _) => target,
+                (None, Some(rule)) => return (Some("help"), help::rule(rule)),
+                (None, None) => return (Some("help"), Reply::failed(unknown_topic(word))),
             },
             _ => command,
         };
@@ -637,6 +638,29 @@ pub fn unknown_command(word: &str) -> Diagnostic {
         None => diagnostic
             .reason("Jadpo has no command with this name.")
             .next("Run `jadpo help` to see every command"),
+    }
+}
+
+/// What `jadpo help <word>` explains: a command, or a rule by its id
+/// (`import.unused`), whose page it prints. A word with a `.` is taken
+/// for a rule.
+pub fn unknown_topic(word: &str) -> Diagnostic {
+    if !word.contains('.') {
+        return unknown_command(word);
+    }
+    let diagnostic = Diagnostic::new(
+        &rule::CLI_UNKNOWN_COMMAND,
+        format!("`{word}` isn't a jadpo command or rule"),
+    );
+    match nearest(word, jadpo_diag::CATALOGUE.iter().map(|rule| rule.id)) {
+        Some(near) => diagnostic
+            .reason(format!(
+                "`jadpo help` explains a command, or a rule by the id on an error's `rule:` line. Did you mean `{near}`?"
+            ))
+            .next(format!("Use `{near}` instead of `{word}`")),
+        None => diagnostic
+            .reason("`jadpo help` explains a command, or a rule by the id on an error's `rule:` line.")
+            .next("Copy the id from the error's `rule:` line"),
     }
 }
 

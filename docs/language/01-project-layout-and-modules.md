@@ -87,6 +87,14 @@ using one as a name is `syntax.expected_name`. They are `action`, `and`,
 `public`, `query`, `reject`, `resource`, `return`, `routes`, `schedule`,
 `seed`, `subscriber`, `test`, `true`, `type`, `use` and `var`.
 
+A domain is named by its folder, so a folder named with a reserved word,
+`domains/library/`, is `syntax.expected_name` once, at the folder. Where
+the domain is used, `library.borrow(...)` or `library.borrow:` in root
+`policy.jadpo`, the word is read as the domain's name and nothing more is
+reported. A block whose names are wrong reports its first
+`syntax.expected_name`: a later line in it is most often the same mistake,
+reported once the first is fixed.
+
 A setting the language defines may still use a reserved word as its key,
 such as `package: Stripe.v2024_06_20` in a connection or `test:` in
 configuration.
@@ -687,6 +695,14 @@ moving to `shared/types/` add that line, so `jadpo fmt --layout` writes it.
 A failure raised by a second domain gets no edit, so moving it by hand
 writes no line. A library keeps its name in `shared/`, so its functions'
 keys need none.
+
+A move whose new file would carry another declaration's name too gets no
+edit either: `ListBooks`, beside query `list_books` in
+`queries/list_books.jadpo` and used by another query, would move to
+`types/list_books.jadpo`, which is `naming.folded_collision` with the
+query. `layout.promotion_required` then says to rename the moving
+declaration first, and `jadpo fmt --layout` refuses the move, reporting it,
+until the names differ.
 
 ### Helpers that depend on a domain
 

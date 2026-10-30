@@ -1977,11 +1977,12 @@ pub static COMMANDS: &[Command] = &[
         synonyms: &[],
         group: "Help",
         summary: "Show commands, flags and examples",
-        description: "Show every command grouped by job, or one command's arguments, flags and examples. \
+        description: "Show every command grouped by job, or one command's arguments, flags and examples, \
+                      or a rule's page by the id on an error's rule: line, offline. \
                       With --json, print the whole command reference and the rule catalogue as data.",
         arguments: &[Argument {
             name: "command",
-            description: "The command to explain",
+            description: "The command or rule to explain",
             required: false,
             values: Values::Commands,
         }],
@@ -1994,6 +1995,10 @@ pub static COMMANDS: &[Command] = &[
             Example {
                 description: "Show one command's arguments, flags and examples",
                 command: "jadpo help completions",
+            },
+            Example {
+                description: "Read a rule's page, from an error's rule: line",
+                command: "jadpo help import.unused",
             },
             Example {
                 description: "Print the command reference and rule catalogue for tools",
