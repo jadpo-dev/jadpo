@@ -15,7 +15,7 @@ pr-run-mode = "plan"
 # release.yml is kept by hand from what dist generates (see its header).
 allow-dirty = ["ci"]
 # Homebrew formula to the tap, npm package `jadpo` to npmjs.com.
-tap = "richardwillars/homebrew-tap"
+tap = "jadpo-dev/homebrew-tap"
 publish-jobs = ["homebrew", "npm"]
 # Each archive gets a GitHub artifact attestation as it is built.
 github-attestations = true

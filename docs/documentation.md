@@ -202,7 +202,7 @@ why the site serves the bundle.
     is `on`, with a `RELEASE_PLEASE_TOKEN` secret, so its pull requests run
     CI.
   - dist's workflow publishes the Homebrew formula (`jadpo.rb`) to the
-    `richardwillars/homebrew-tap` repository with a `HOMEBREW_TAP_TOKEN`
+    `jadpo-dev/homebrew-tap` repository with a `HOMEBREW_TAP_TOKEN`
     secret that can write to it, and the npm package `jadpo` to npmjs.com
     with an `NPM_TOKEN` secret that can publish it, with provenance. Both
     run after the release is published and skip prereleases.
