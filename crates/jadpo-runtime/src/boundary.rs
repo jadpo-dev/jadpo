@@ -25,8 +25,8 @@ use jadpo_std::write::RowCheck;
 
 use crate::ctx::{Binding, Capabilities, EmitRefused, Held, SessionEffect};
 use crate::{
-    Ctx, Event, Failure, Isolation, LocalFuture, Outcome, SqlType, SqlValue, StoreError, Stored,
-    Transaction,
+    Ctx, Event, Failure, Host, Isolation, LocalFuture, Outcome, SqlType, SqlValue, StoreError,
+    Stored, Transaction,
 };
 
 /// A row by its entity's table and its `id`.
@@ -319,9 +319,31 @@ impl Boundary {
 
 /// How many times a body runs before a concurrent change gives up with
 /// `unavailable` (area 6: "after three attempts within a second, the
-/// existing retry budget"). The second's bound comes with the host's
-/// clock.
+/// retry budget"); [`RERUN_WINDOW_MS`] is the second.
 pub const RERUN_ATTEMPTS: u32 = 3;
+
+/// How long after its first attempt began an action may still be run
+/// again after a concurrent change, on the host's monotonic clock (area
+/// 6): the second of "three attempts within a second".
+pub const RERUN_WINDOW_MS: u64 = 1_000;
+
+/// When an action's first attempt begins, on the host's monotonic clock,
+/// for [`may_rerun`]; `None` on a host with no clock, as a test's.
+pub(crate) fn rerun_began(ctx: &Ctx<'_>) -> Option<u64> {
+    ctx.host().monotonic_ms()
+}
+
+/// Whether a concurrent change found after `attempt` attempts runs the
+/// action again: fewer than [`RERUN_ATTEMPTS`], and less than
+/// [`RERUN_WINDOW_MS`] since the first began. A host with no clock holds
+/// only the count.
+pub(crate) fn may_rerun(ctx: &Ctx<'_>, attempt: u32, began: Option<u64>) -> bool {
+    attempt < RERUN_ATTEMPTS
+        && match (began, ctx.host().monotonic_ms()) {
+            (Some(began), Some(now)) => now.saturating_sub(began) < RERUN_WINDOW_MS,
+            _ => true,
+        }
+}
 
 /// An action's body, as an executor runs it; the boundary may run it more
 /// than once, each time from the start.
@@ -521,6 +543,7 @@ async fn own<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
     // Where its calls start in the invocation's log: an unkeyed change
     // among them that went out is never sent again (chunk 7.9a).
     let mark = ctx.capabilities().calls().len();
+    let began = rerun_began(ctx);
     loop {
         ctx.set_steps(steps);
         crate::steps::rewind(ctx);
@@ -586,7 +609,7 @@ async fn own<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
                     ..outcome_unknown()
                 }));
             }
-            Ended::Changed if attempt < RERUN_ATTEMPTS => attempt += 1,
+            Ended::Changed if may_rerun(ctx, attempt, began) => attempt += 1,
             Ended::Changed | Ended::Unavailable => {
                 return Outcome::Failed(Box::new(Failure {
                     frames: ctx.frames(),
@@ -921,6 +944,10 @@ mod tests {
         changes: RefCell<u32>,
         version: RefCell<String>,
         savepoints: std::cell::Cell<bool>,
+        /// The host's monotonic clock, when it has one, moved on by
+        /// `tick` at every begin.
+        clock: std::cell::Cell<Option<u64>>,
+        tick: std::cell::Cell<u64>,
     }
 
     const ROW: [u8; 16] = [7; 16];
@@ -1037,6 +1064,9 @@ mod tests {
                     other => format!("begin {}", other.word()),
                 };
                 log.lines.borrow_mut().push(line);
+                if let Some(now) = log.clock.get() {
+                    log.clock.set(Some(now + log.tick.get()));
+                }
                 Ok(Box::new(Tx(log)) as Box<dyn Transaction>)
             })
         }
@@ -1069,6 +1099,10 @@ mod tests {
 
         fn random(&self, _bytes: &mut [u8]) -> bool {
             false
+        }
+
+        fn monotonic_ms(&self) -> Option<u64> {
+            self.log.clock.get()
         }
     }
 
@@ -1634,5 +1668,28 @@ mod tests {
             (failure.code.as_str(), failure.status),
             ("unavailable", Some(503))
         );
+    }
+
+    #[test]
+    fn reruns_stop_once_a_second_has_passed_since_the_first_attempt() {
+        // Each attempt takes 600ms on the host's clock: the second begins
+        // within the second, the third wouldn't, so the action fails
+        // `unavailable` after two runs though the count allows three.
+        let host = Recorded::new(RERUN_ATTEMPTS);
+        host.log.clock.set(Some(5_000));
+        host.log.tick.set(600);
+        let mut body = Write::new(true, ok);
+        let Outcome::Failed(failure) = run(&host, &mut body) else {
+            panic!("unavailable");
+        };
+        assert_eq!(body.runs, 2);
+        assert_eq!(failure.code.as_str(), "unavailable");
+        // Quick attempts still have all three.
+        let host = Recorded::new(2);
+        host.log.clock.set(Some(5_000));
+        host.log.tick.set(10);
+        let mut body = Write::new(true, ok);
+        assert_eq!(run(&host, &mut body), ok());
+        assert_eq!(body.runs, 3);
     }
 }

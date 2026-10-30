@@ -54,6 +54,25 @@ pub const SECTIONS: [&str; 7] = [
     "membership",
 ];
 
+/// An entity section an area page decides and this compiler doesn't
+/// build: how it is written, and why it is refused.
+fn unbuilt_section(word: &str) -> (&'static str, &'static str) {
+    match word {
+        "audit" => (
+            "audit:",
+            "An entity's history of changes is area 16's audit trail, which isn't built yet: accepted, no change would be recorded.",
+        ),
+        "retention" => (
+            "retention:",
+            "Deleting a record when its time is up comes with area 15's retention, which isn't built yet: accepted, the record would be kept for ever. A lifecycle's `purge:` (area 5) is built.",
+        ),
+        _ => (
+            "person: true",
+            "An entity that represents a person is area 15's data subject, and erasure and export, which find the person's records from it, aren't built yet.",
+        ),
+    }
+}
+
 /// The store an entity lives in when its file names none (area 5, "Stores").
 pub const MAIN: &str = "main";
 
@@ -809,6 +828,21 @@ impl Reader<'_> {
                     .reason("A record cache keeps copies in a Redis store (area 5), and this compiler builds no Redis driver yet, so an entity using it couldn't run.")
                     .next("Leave `caches:` out for now"),
                 ),
+                // Decided on their area pages, not built: refused where
+                // they are written rather than read as a misspelling, and
+                // never accepted to do nothing.
+                "audit" | "retention" | "person" => {
+                    let (written, why) = unbuilt_section(&word);
+                    self.out.push(
+                        Diagnostic::new(
+                            &rule::TOOLCHAIN_NOT_BUILT_YET,
+                            format!("An entity's `{written}` isn't built yet"),
+                        )
+                        .at(key_span, "decided, not built")
+                        .reason(why)
+                        .next(format!("Leave `{word}:` out for now")),
+                    );
+                }
                 _ => match member.value() {
                     Some(value) if crate::types::looks_like_type(&value) => {
                         if let Some(field) = self.field(path, &name, &word, &key_span, &value) {
