@@ -23,12 +23,19 @@ yet is listed in [What is built](#what-is-built).
 ## Named queries
 <!-- topic: named-queries -->
 
-Every read is a named query. A query is one read: which entity, which
-records, in what order, and how many. Each query lives in a file of its
-own in its domain's `queries/` folder
-([Files and names](01-project-layout-and-modules.md#files-and-names)), and
-you call it by name, as you call an action. This one gives an owner's
-todos a page at a time, newest first:
+Every read of stored records is a named query. An entity is a kind of
+stored record, like a table with types ([Entities](05-data.md#entities-and-the-id)).
+A query is one read of an entity: which records, in what order, and how
+many. Each query lives in a file of its own in its domain's `queries/`
+folder ([Files and names](01-project-layout-and-modules.md#files-and-names)).
+You call it by name, as you call an action, the function that changes
+records ([Functions and actions](03-logic.md#functions-and-actions)).
+
+This query gives an owner's todos a page at a time, newest first. Its
+`filter` parameter is a `ListTodos`, an `Input` type a route fills from the
+request: an optional `status`, an optional `due_before`, a `page_size`
+that defaults to 25 and an optional `after`, the cursor the previous page
+returned:
 
 ```jadpo check project=named file=planning.jadpo hidden
 type UserName = Text {
@@ -120,55 +127,64 @@ query todos_for_owner(owner_id: User.id, filter: ListTodos) -> Page<TodoView> {
 ```
 
 `from:` names the entity, `where:` the records it keeps, `order:` their
-order and `page:` how many come back at once. `where_present:` narrows
-the records only when the request gives a status. [Filters](#filters) and
-[Order and pages](#order-and-pages), below, cover each section.
+order and `page:` how many come back at once and where the page starts.
+`where_present:` applies its condition only when the value on the right
+is there: when the request leaves out `status`, every status comes back.
+The [Filters](#filters) and [Order and pages](#order-and-pages) topics
+cover each section in full.
 
 ### How many records come back
 
 The result type says how many records come back, so there is no separate
-word for it. A query for exactly one record names, in `missing:`, the
-failure it gives when no record matches:
+word for it. A query for exactly one record also needs `missing:`, which
+names the failure it gives when no record matches
+([`missing:`](04-failures.md#a-read-that-finds-nothing-missing)):
 
 | Result type | Returns | Needs |
 |---|---|---|
 | `TodoView` | exactly one record | a `where:` on a unique field, and `missing:` |
 | `TodoView?` | zero or one | a `where:` on a unique field |
-| `List<TodoView>` | up to a fixed number | `order:` and `limit:` |
+| `List<TodoView>` | up to the number `limit:` sets | `order:` and `limit:` |
 | `Page<TodoView>` | one page and a cursor for the next | `order:` and `page:` |
-| `FeatureCollection<Point, TodoPin>` | a map layer of up to a fixed number, each record a feature ([A query giving a map layer](#a-query-giving-a-map-layer)) | `geometry:`, `order:` and `limit:` |
+| `FeatureCollection<Point, TodoPin>` | a map layer of up to the number `limit:` sets, each record a point on the map ([A query giving a map layer](#a-query-giving-a-map-layer)) | `geometry:`, `order:` and `limit:` |
 
-In an app shared by several tenants, whose records are kept apart
-([Tenancy](09-policy.md#tenancy)), a unique key on a tenant's records
-holds the tenancy reference too. So a query for one record tests the
-tenancy reference beside the unique field, unless it tests a reference to
-another of the tenant's records
-([A unique rule holds within its tenant](09-policy.md#a-unique-rule-holds-within-its-tenant)).
+Some apps are shared by several tenants, such as companies, whose records
+are kept apart ([Tenancy](09-policy.md#tenancy)). There a `unique:` rule
+holds within each tenant: two companies can each have a project called
+Launch ([A unique rule holds within its tenant](09-policy.md#a-unique-rule-holds-within-its-tenant)).
+So a unique field alone doesn't pick one record. A query for one record
+compares the record's tenancy reference in its `where:` as well as the
+unique field, unless it compares a reference to another record of the
+same tenant, which already picks the tenant.
 
 ### What a result holds
 
-A result's element type is the entity, or a type built from its fields,
-such as `type TodoView = Output { pick: [Todo.id, Todo.title] }`
+A result's element type is the entity, or a type built from its fields.
+`type TodoView = Output { pick: [Todo.id, Todo.title] }` is a type for
+output that picks two of `Todo`'s fields
 ([Building a type from other types](02-values-and-types.md#building-a-type-from-other-types)).
 The compiler reads only the fields that type needs.
 
-That type can't have a rule across its fields
-([Rules across fields](02-values-and-types.md#rules-across-fields)),
-whether or not the fields' declared ranges would prove the rule. Nor can
-any other type that holds a query's records: a `Nearest<T>`'s item, a map
-layer's properties, an aggregate's rows, or the records an include
-brings. Such a type is
+That type can't have a rule across its fields, such as "`ends_at` is
+after `starts_at`" ([Rules across fields](02-values-and-types.md#rules-across-fields)).
+This holds even when each field's own limits would make the rule always
+true. The same goes for every other type that holds a query's records,
+including a `Nearest<T>`'s item ([Nearest first](#nearest-first)), a map layer's properties,
+an aggregate's rows and the related records a query brings with it. A
+result type with such a rule is the error
 [`query.result_rule`](../errors/query.result_rule.md).
 
 The reason is that Jadpo checks a rule whenever a value is made, and a
-broken rule is a failure that an `attempt` maps. A read has no `attempt`
-around it, and the database can't check the rule as it reads, so a stored
-record that broke the rule could only be a defect. Instead, read into a
-type with the same fields and no rule. Then build the type with the rule
-from it in code, where an `attempt` maps the failure.
+broken rule is a failure your code handles with `attempt`
+([Passing a failure on](04-failures.md#passing-a-failure-on-attempt)). A
+read has no `attempt` around it, and the database can't check the rule as
+it reads. So a stored record that broke the rule could only be a
+[defect](04-failures.md#defects), a bug rather than a failure the caller
+handles. Instead, read into a type with the same fields and no rule, then
+build the type with the rule from it in code, inside an `attempt`.
 
-Records the entity's [lifecycle](05-data.md#lifecycle) hides are left
-out of every query.
+Records the entity's [lifecycle](05-data.md#lifecycle) hides, such as
+soft-deleted todos, are left out of every query.
 
 A query writes nothing and calls no actions
 ([Functions and actions](03-logic.md#functions-and-actions)). Call it by
@@ -178,12 +194,12 @@ is `public`.
 
 ### The statement it sends
 
-`jadpo sql todos_for_owner` prints the SQL statement the query sends: one
-`SELECT` of the result's columns and the order's, the conditions,
-`ORDER BY`, and a `LIMIT` one more than the page's size, so the runtime
-knows whether a next page exists. The statement selects only the columns
-the result type needs, plus the `order:` fields a page cursor needs and
-any field a policy condition checks outside the database.
+`jadpo sql todos_for_owner` prints the SQL statement the query sends. It
+is one `SELECT` with the query's conditions, an `ORDER BY`, and a `LIMIT`
+one more than the page's size, so the runtime knows whether a next page
+exists. It selects only the columns the result type needs, plus the
+`order:` fields a page cursor needs and any field a
+[policy](09-policy.md) condition checks outside the database.
 
 The statement's text is fixed when the project is compiled. A
 `where_present:` condition and the cursor are written

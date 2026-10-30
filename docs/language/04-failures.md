@@ -34,10 +34,13 @@ declare:
 ## Declaring a failure
 <!-- topic: declaring-a-failure -->
 
-A failure is declared as a type, like any other, on the base `Failure`:
-`type TodoNotFound = Failure { ... }`. As `Input` brings optional fields,
-`Failure` brings four settings: `kind`, `message`, `client` and
-`internal`.
+A failure is a way an action or query can fail that its caller is
+expected to handle, such as a todo that doesn't exist. You declare it as a
+type whose base is `Failure`, written `type TodoNotFound = Failure { ... }`.
+The base gives the type its settings: `kind`, `message`, `client`,
+`internal` and, rarely, `code`. Here are two failures, with the `Todo` and
+`Product` entities (stored records) and the `Quantity` type they refer to
+declared elsewhere:
 
 ```jadpo check project=declaring file=types.jadpo hidden
 type Quantity = Int {
@@ -77,11 +80,16 @@ type QuantityUnavailable = Failure {
 }
 ```
 
+The `///` line above `TodoNotFound` is a documentation comment. It is
+optional, and becomes the failure's description in generated documentation
+and OpenAPI. A field typed `Todo.id` has the type of `Todo`'s `id` field.
+
 ### `kind:`, which sets the status
 
-`kind:` names one of the [kinds](#kinds). The kind sets the HTTP status
-and how background work treats the failure. A failure never states a
-status itself.
+`kind:` names one of the [kinds](#kinds), the categories a failure falls
+into, such as `not_found` or `conflict`. The kind sets the HTTP status a
+client gets, and how background work, such as a
+[job or an event subscriber](12-jobs-and-events.md), treats the failure. A failure never states a status itself.
 
 ### The code clients see
 
@@ -93,32 +101,42 @@ rename the failure.
 ### `message:`
 
 `message:` is fixed text that is safe to show anyone. It can't include
-values. Leave it out and the kind's generic message is used.
+values. Leave it out and the client gets the generic message Jadpo keeps
+for the failure's kind.
 
 ### `client:` and `internal:` fields
 
-A failure's fields, its context, go in two blocks:
+A failure can carry values that say what went wrong, such as which
+product ran out. These are its fields, and they go in one of two blocks:
 
-- `client: { }` holds the fields sent to the caller, in the response's
-  `details`.
-- `internal: { }` holds the fields that never leave the server.
+- `client: { }` holds the fields sent to the caller.
+- `internal: { }` holds the fields that never leave the server. They are
+  for your logs and traces.
 
-A field name can't be in both. Fields exist only inside these two blocks,
-so leaving `client` out means the caller gets only the code, the message
-and the request id.
+A field name can't be in both. A failure has no fields outside these two
+blocks. The caller gets a JSON body with `code`, `message`, `request_id`
+and, when the failure has `client` fields, those fields under `details`
+([How failures reach the client](07-http.md#how-failures-reach-the-client)).
+Leave `client` out and the body has only the code, the message and the
+request id.
 
-Context fields are ordinary fields. A `T?` type, which may hold no
+These fields are ordinary fields. A `T?` type, which may hold no
 value, is allowed. `optional` and `default` are not, because only `Input`
 types may have them ([One form for every type](02-values-and-types.md#one-form-for-every-type)).
 
 ### Where the file goes
 
-Each failure has its own file in its domain's `failures/` folder, such
-as `domains/planning/failures/todo_not_found.jadpo`. A domain is one
-business area of the app, a folder under `domains/`
-([Project layout](01-project-layout-and-modules.md#project-layout)). Once
-two or more domains raise the same failure, its file moves to
-`shared/failures/`. Mark it `public` when another domain handles it.
+An app's code is split into domains: one business area each, such as
+`planning`, in a folder under `domains/`
+([Project layout](01-project-layout-and-modules.md#project-layout)). Each
+failure has its own file in its domain's `failures/` folder, such as
+`domains/planning/failures/todo_not_found.jadpo`.
+
+When the actions of two or more domains can fail with the same failure,
+you put its file in `shared/failures/` instead. When code in another
+domain handles the failure, for example in a
+[`match`](#handling-a-failure-in-match), write `public` before the
+declaration: `public type QuantityUnavailable = Failure { ... }`.
 
 ## Kinds
 <!-- topic: kinds -->

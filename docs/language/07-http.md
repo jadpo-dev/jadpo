@@ -26,24 +26,35 @@ routes Todos {
 }
 ```
 
-This route answers `POST /todos`. It reads a `CreateTodo` from the JSON
-body, runs the action `create_todo` for the signed-in user
-(`current_principal.user`, see
-[Who is calling](08-identity.md#who-is-calling-current_principal)), and
-answers 201 with a `TodoView`.
+This route answers `POST /todos`. Jadpo reads a `CreateTodo` from the
+JSON body and checks it, and `run:` gets it as `input`. `run:` calls the
+action `create_todo` for the signed-in user (`current_principal.user`, see
+[Who is calling](08-identity.md#who-is-calling-current_principal)). The
+action returns a `TodoView`, which must be the route's `output:`, and
+`status: SuccessStatus.created` makes the route answer 201 Created rather
+than 200.
 
-A route is a thin door. It holds no logic: the work lives in
-[actions and queries](03-logic.md#functions-and-actions), and the status of
-a failure comes from the failure's kind, never from the route
-([Failures](04-failures.md)). Every route needs a signed-in caller unless
-it says otherwise
+A route holds no logic of its own. The work lives in
+[actions and queries](03-logic.md#functions-and-actions). When the action
+fails, the HTTP status comes from the failure's kind, a category such as
+`not_found` (404), never from the route ([Kinds](04-failures.md#kinds)).
+
+Every route needs a signed-in caller unless an `authentication:` line in
+the route says otherwise
 ([Routes: signed in by default](08-identity.md#routes-signed-in-by-default)).
 
-This page covers how routes are grouped and matched, the input a route
-reads, what it answers and how long it may run. It also covers what Jadpo
-writes for you: health checks, generated routes, an OpenAPI document for
-each API, and a record of each API that shows every change to it as a
-diff.
+The topics of this page cover:
+
+- how routes are grouped and matched: [Route groups](#route-groups) and
+  [Paths and placeholders](#paths-and-placeholders);
+- what a route reads and answers: [One input](#one-input) and
+  [Output and status](#output-and-status);
+- how long it may run: [Time limits](#time-limits);
+- what Jadpo writes for you: [Health](#health) checks,
+  [Generated routes](#generated-routes), an [OpenAPI](#openapi) document
+  for each API, and [The public API record](#the-public-api-record), a
+  file in your project that lists each API's routes and fields, so every
+  change to the API shows as a diff of that file.
 
 ## Route groups
 <!-- topic: route-groups -->
