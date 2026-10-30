@@ -39,7 +39,7 @@ error: `nearest` compares `HelpArticle.body_meaning` with a `QuestionMeaning`
   reason: A vector type stands for the model that made its vectors and how they are compared, so `nearest` measures from a vector of the field's own type; a `QuestionMeaning` may come from another model, and its distance from an `ArticleMeaning` would mean nothing.
   next: Pass an `ArticleMeaning`, made by the same model (agent)
   rule: query.nearest_type
-  help: docs/errors/query.nearest_type.md
+  help: https://jadpo.dev/docs/errors/query.nearest_type
 
 check failed: 1 error, 1 file
 ```

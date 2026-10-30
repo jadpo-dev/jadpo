@@ -143,7 +143,7 @@ error: `slot_takn` isn't an answer `couriers.bookings.create` gives
   reason: A scripted answer is a value of `AcmeCouriers.Booking`, one of `couriers.bookings.create`'s failures by its code (`slot_taken`), or a condition: `unavailable`, `lost`, `in_use` or `misconfigured`.
   next: Use `slot_taken` instead of `slot_takn` (agent)
   rule: semantic.fake_invalid
-  help: docs/errors/semantic.fake_invalid.md
+  help: https://jadpo.dev/docs/errors/semantic.fake_invalid
 
 check failed: 1 error, 13 files
 ```

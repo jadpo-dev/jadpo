@@ -19,7 +19,7 @@ error: `ProductName` isn't built with `{ ... }`
   reason: Braces build objects and variants with fields; `ProductName`, built on `Text`, takes one value in brackets.
   next: Write `ProductName(...)` with one value (agent)
   rule: type.not_record
-  help: docs/errors/type.not_record.md
+  help: https://jadpo.dev/docs/errors/type.not_record
 
 check failed: 1 error, 1 file
 ```

@@ -26,7 +26,7 @@ error: `StaffProfile.hashed_password` holds a password's hash
   reason: A `PasswordHash` is stored and checked with `crypto.verify_password`, and never leaves the server. A client never needs a password's hash, and anyone who gets one can guess passwords against it offline, at their own pace.
   next: Remove `hashed_password`, and send what the client needs instead, such as whether a password is set (agent)
   rule: type.password_hash_exposed
-  help: docs/errors/type.password_hash_exposed.md
+  help: https://jadpo.dev/docs/errors/type.password_hash_exposed
 
 check failed: 1 error, 1 file
 ```

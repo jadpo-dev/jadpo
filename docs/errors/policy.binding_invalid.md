@@ -39,7 +39,7 @@ error: `owner_id` doesn't point at a caller
   reason: A field names who may do this when it points at the caller: a reference to `User`, the principal's user entity (area 8), typed `User.id`. `Note.owner_id` isn't.
   next: Name a reference to the user, a membership role, or `Access` (agent)
   rule: policy.binding_invalid
-  help: docs/errors/policy.binding_invalid.md
+  help: https://jadpo.dev/docs/errors/policy.binding_invalid
 
 check failed: 1 error, 1 file
 ```

@@ -36,7 +36,7 @@ error: `principal { }` is declared twice
   reason: The caller is declared once, in `app.jadpo`: one `user:` and at most one `service:`, so every route reads the same caller.
   next: Move what this `principal` holds into the first, and remove it (agent)
   rule: semantic.multiple_principals
-  help: docs/errors/semantic.multiple_principals.md
+  help: https://jadpo.dev/docs/errors/semantic.multiple_principals
 
 check failed: 1 error, 1 file
 ```

@@ -147,7 +147,7 @@ error: `""` isn't a valid `TodoView.title`
   reason: `TodoTitle` declares `min_length: 1`, and the value has 0 characters. A literal is checked against every rule while compiling.
   next: Use a value that `TodoView.title` allows (agent)
   rule: type.invalid_literal
-  help: docs/errors/type.invalid_literal.md
+  help: https://jadpo.dev/docs/errors/type.invalid_literal
 
 check failed: 1 error, 8 files
 ```
@@ -165,7 +165,7 @@ error: `TodoStatus` has no variant `finished`
   reason: `TodoStatus`'s variants are `open` and `done`.
   next: Use one of `TodoStatus`'s variants (agent)
   rule: type.unknown_enum_variant
-  help: docs/errors/type.unknown_enum_variant.md
+  help: https://jadpo.dev/docs/errors/type.unknown_enum_variant
 
 check failed: 1 error, 8 files
 ```
@@ -194,7 +194,7 @@ error: `api/main.jadpo_record` is out of date
   reason: The record is a promise to API `main`'s clients, and the routes now say otherwise: changed `input NewTodo`, added `enum TodoStatus` and changed `output TodoView`.
   next: Run `jadpo api update`, and commit the record with the code (agent)
   rule: record.out_of_date
-  help: docs/errors/record.out_of_date.md
+  help: https://jadpo.dev/docs/errors/record.out_of_date
 ```
 
 Run `jadpo api update`. If your project is in git, `git diff api/` shows

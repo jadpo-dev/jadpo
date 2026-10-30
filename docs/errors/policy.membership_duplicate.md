@@ -56,7 +56,7 @@ error: `StaffMembership` declares `membership:` twice
   reason: A membership entity stores one role, held in one place by one member, so it says so once.
   next: Remove one `membership:`, or keep the second role in an entity of its own (agent)
   rule: policy.membership_duplicate
-  help: docs/errors/policy.membership_duplicate.md
+  help: https://jadpo.dev/docs/errors/policy.membership_duplicate
 
 check failed: 1 error, 1 file
 ```

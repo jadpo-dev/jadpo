@@ -28,7 +28,7 @@ error: A transition can't be called `update`
   reason: `Todo.update` is already an operation every entity has, so a transition can't take its name; `delete` is the one a transition may take over.
   next: Name the transition after the change it makes, such as `archive` (agent)
   rule: data.lifecycle_transition_name
-  help: docs/errors/data.lifecycle_transition_name.md
+  help: https://jadpo.dev/docs/errors/data.lifecycle_transition_name
 
 check failed: 1 error, 1 file
 ```

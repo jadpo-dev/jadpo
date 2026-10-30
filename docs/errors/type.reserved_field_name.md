@@ -17,7 +17,7 @@ error: `optional` can't be a field's name
   reason: `include`, `pick`, `omit` and `optional` are lines that build a type's fields, so no field may take their names.
   next: Rename the field (agent)
   rule: type.reserved_field_name
-  help: docs/errors/type.reserved_field_name.md
+  help: https://jadpo.dev/docs/errors/type.reserved_field_name
 
 check failed: 1 error, 1 file
 ```

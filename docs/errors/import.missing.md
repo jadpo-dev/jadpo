@@ -29,7 +29,7 @@ error: `Stock` isn't imported
   reason: Every name a file uses that it doesn't declare comes in on a `use` line, so a reader sees where it lives; `Stock` is a type in `shared/types/stock.jadpo`.
   next: Add `use shared/types { Stock }`, or run `jadpo fmt`, which adds every missing import (agent)
   rule: import.missing
-  help: docs/errors/import.missing.md
+  help: https://jadpo.dev/docs/errors/import.missing
 
 check failed: 1 error, 3 files
 ```

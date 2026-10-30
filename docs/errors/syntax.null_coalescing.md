@@ -26,7 +26,7 @@ error: Jadpo reads a value that may be `none` with `match`, not `??`
   reason: `??` gives a default for a missing value in JavaScript, TypeScript, C# and Swift, and `?:` in Kotlin; Jadpo reads a value that may be `none` with a `match` that handles both cases.
   next: Write `match listing.subtitle` with the arms `some(subtitle) -> subtitle` and `none -> listing.name` (agent)
   rule: syntax.null_coalescing
-  help: docs/errors/syntax.null_coalescing.md
+  help: https://jadpo.dev/docs/errors/syntax.null_coalescing
 
 check failed: 1 error, 1 file
 ```

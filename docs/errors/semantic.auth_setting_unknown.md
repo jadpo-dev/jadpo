@@ -37,7 +37,7 @@ error: `same_site` isn't a `browser_session` setting
   reason: A browser session takes `cookie:`, its cookie's name, and `origin:`; the language sets the cookie's flags, its lifetime and the CSRF check.
   next: Remove `same_site:` (agent)
   rule: semantic.auth_setting_unknown
-  help: docs/errors/semantic.auth_setting_unknown.md
+  help: https://jadpo.dev/docs/errors/semantic.auth_setting_unknown
 
 check failed: 1 error, 1 file
 ```

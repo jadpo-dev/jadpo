@@ -47,7 +47,7 @@ error: Model `default` must be a `ModelId` setting
   reason: Each model is a `ModelId` setting, its provider and name as Hugging Face writes a repository, `openai/gpt-4.1-mini`, so a model is never anything else.
   next: Declare `drafting_model: ModelId` in `config.jadpo` (agent)
   rule: ai.settings_invalid
-  help: docs/errors/ai.settings_invalid.md
+  help: https://jadpo.dev/docs/errors/ai.settings_invalid
 
 check failed: 1 error, 2 files
 ```

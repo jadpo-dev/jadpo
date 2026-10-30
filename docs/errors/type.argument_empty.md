@@ -34,7 +34,7 @@ error: `spacer` may be empty
   reason: `text.split`'s `separator` is never empty, which is proved while compiling: a literal isn't `""` and a value's type has a `min_length` of at least 1; `Divider` allows empty text.
   next: Pass a value whose type has `min_length: 1`, building it where empty text is handled (agent)
   rule: type.argument_empty
-  help: docs/errors/type.argument_empty.md
+  help: https://jadpo.dev/docs/errors/type.argument_empty
 
 check failed: 1 error, 1 file
 ```

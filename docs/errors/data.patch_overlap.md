@@ -37,7 +37,7 @@ error: `nickname` is set by the patch and by `when_supplied:`
   reason: `ItemChanges` supplies `nickname` already, so a value here would compete with the request's.
   next: Remove `nickname` from `when_supplied:`, or from `ItemChanges` (agent)
   rule: data.patch_overlap
-  help: docs/errors/data.patch_overlap.md
+  help: https://jadpo.dev/docs/errors/data.patch_overlap
 
 check failed: 1 error, 1 file
 ```

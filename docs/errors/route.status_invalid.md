@@ -44,7 +44,7 @@ error: `201` isn't a success status
   reason: `status:` takes `SuccessStatus.ok`, `.created`, `.accepted` or `.no_content`; failure statuses come from the kinds of the failures the route can produce, never from the route.
   next: Write `SuccessStatus.created` (agent)
   rule: route.status_invalid
-  help: docs/errors/route.status_invalid.md
+  help: https://jadpo.dev/docs/errors/route.status_invalid
 
 check failed: 1 error, 1 file
 ```

@@ -9,7 +9,7 @@ error: This project declares nothing
   reason: Its one `.jadpo` file holds no declarations, only comments or nothing at all.
   next: Add a declaration, such as a `type`, `function` or `action` (agent)
   rule: toolchain.empty_project
-  help: docs/errors/toolchain.empty_project.md
+  help: https://jadpo.dev/docs/errors/toolchain.empty_project
 
 check failed: 1 error, 1 file
 ```

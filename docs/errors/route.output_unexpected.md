@@ -44,7 +44,7 @@ error: `POST /memos` answers with no content
   reason: `SuccessStatus.no_content` answers 204 with no body, so the route has no `output:` and what it runs returns `Unit`.
   next: Remove `output:`, or choose another status (agent)
   rule: route.output_unexpected
-  help: docs/errors/route.output_unexpected.md
+  help: https://jadpo.dev/docs/errors/route.output_unexpected
 
 check failed: 1 error, 1 file
 ```

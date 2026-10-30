@@ -49,7 +49,7 @@ error: The backfill for `Todo.rank` can fail
   reason: A backfill gives every `Todo` record already stored a value, and a record whose value failed would have none, so nothing in a backfill may fail.
   next: Work the value out with operations that can't fail, such as `integer.min` and `integer.max` to keep a number in its range (agent)
   rule: migration.backfill_can_fail
-  help: docs/errors/migration.backfill_can_fail.md
+  help: https://jadpo.dev/docs/errors/migration.backfill_can_fail
 
 check failed: 1 error, 4 files
 ```

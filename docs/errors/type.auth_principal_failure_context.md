@@ -35,7 +35,7 @@ error: `MemoLocked.caller` holds a caller
   reason: A failure is logged and its client fields reach the client, while a caller value holds who signed in, so a failure carries the caller's `id` instead.
   next: Type `caller` with the entity's id, such as `User.id` (agent)
   rule: type.auth_principal_failure_context
-  help: docs/errors/type.auth_principal_failure_context.md
+  help: https://jadpo.dev/docs/errors/type.auth_principal_failure_context
 
 check failed: 1 error, 1 file
 ```

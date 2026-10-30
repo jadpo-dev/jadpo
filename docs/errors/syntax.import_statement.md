@@ -19,7 +19,7 @@ error: Jadpo writes `use`, not `import`
   reason: `import … from` brings names into a JavaScript or TypeScript file, `from … import` into a Python module and `import a.b.C` into a Java or Kotlin file; a Jadpo file brings names in from a folder with `use <folder> { Names }`, and `jadpo fmt` writes those lines for you.
   next: Write `use shared/types { Count }` (agent)
   rule: syntax.import_statement
-  help: docs/errors/syntax.import_statement.md
+  help: https://jadpo.dev/docs/errors/syntax.import_statement
 
 check failed: 1 error, 1 file
 ```

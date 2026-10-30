@@ -19,7 +19,7 @@ error: `Int` can't be used where `Stock` is required
   reason: Arithmetic works on the representation, so this is a plain `Int`; only `Stock(...)` makes it a `Stock`, checking its rules.
   next: Convert it with `Stock(a + b)` (agent)
   rule: type.mismatch
-  help: docs/errors/type.mismatch.md
+  help: https://jadpo.dev/docs/errors/type.mismatch
 
 check failed: 1 error, 1 file
 ```

@@ -270,7 +270,7 @@ error: `constant` doesn't start a statement
   reason: A constant lives at the top of a file or in a library; inside a body a value that never changes is a `var`.
   next: Use `var` instead of `constant` (agent)
   rule: syntax.expected_statement
-  help: docs/errors/syntax.expected_statement.md
+  help: https://jadpo.dev/docs/errors/syntax.expected_statement
 
 check failed: 1 error, 1 file
 ```
@@ -292,7 +292,7 @@ error: A constant can't be `mut`
   reason: A constant never changes, so it has no mutable form; a value that changes is a `var mut` inside a body.
   next: Remove `mut` (agent)
   rule: syntax.expected_name
-  help: docs/errors/syntax.expected_name.md
+  help: https://jadpo.dev/docs/errors/syntax.expected_name
 
 check failed: 1 error, 1 file
 ```
@@ -314,7 +314,7 @@ error: Jadpo writes `constant`, not `const`
   reason: `const` declares a value that never changes in JavaScript, TypeScript, Rust, Go and C#; at the top of a Jadpo file a fixed value is `constant name: Type = value`.
   next: Use `constant` instead of `const` (agent)
   rule: syntax.variable_keyword
-  help: docs/errors/syntax.variable_keyword.md
+  help: https://jadpo.dev/docs/errors/syntax.variable_keyword
 
 check failed: 1 error, 1 file
 ```
@@ -332,7 +332,7 @@ error: This constant uses `Int` directly
   reason: A constant's type is named as a signature's is, so its value says what it means and carries its rules; `Int` says neither.
   next: Declare a named type built on `Int` and use it here (agent)
   rule: type.primitive_signature
-  help: docs/errors/type.primitive_signature.md
+  help: https://jadpo.dev/docs/errors/type.primitive_signature
 
 check failed: 1 error, 1 file
 ```
@@ -928,7 +928,7 @@ error: `Map<Loaf, Stock>` can't be looped over
   reason: `for` loops over a `List` or a `Set`; a map is walked through its keys, a `Set<Loaf>`, and each key's value read with `map.get`.
   next: Loop over `map.keys(stock)` (agent)
   rule: type.mismatch
-  help: docs/errors/type.mismatch.md
+  help: https://jadpo.dev/docs/errors/type.mismatch
 
 check failed: 1 error, 1 file
 ```

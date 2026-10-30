@@ -24,7 +24,7 @@ error: `Missing` is missing `lookup`
   reason: A failure is raised with every field its `client` and `internal` blocks declare, so the client and the log always get them.
   next: Give its fields in a block: `Missing { lookup: ... }` (agent)
   rule: failure.missing_context_field
-  help: docs/errors/failure.missing_context_field.md
+  help: https://jadpo.dev/docs/errors/failure.missing_context_field
 
 check failed: 1 error, 1 file
 ```

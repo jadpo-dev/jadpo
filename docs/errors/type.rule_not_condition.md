@@ -23,7 +23,7 @@ error: The rule `spread` isn't a condition
   reason: A rule holds for a value or it doesn't, so its condition is a `Bool`: a comparison such as `high > low`, or several joined with `and`, `or` and `not`.
   next: Write `spread` as a comparison of `PriceBand`'s fields (agent)
   rule: type.rule_not_condition
-  help: docs/errors/type.rule_not_condition.md
+  help: https://jadpo.dev/docs/errors/type.rule_not_condition
 
 check failed: 1 error, 1 file
 ```

@@ -31,7 +31,7 @@ error: A match arm names a case's data in brackets
   reason: An arm binds a case's data to one name, `PaymentOutcome.paid(paid)`, and reads its fields from it, as in `paid.field`.
   next: Write `PaymentOutcome.paid(paid)` (agent)
   rule: syntax.match_pattern
-  help: docs/errors/syntax.match_pattern.md
+  help: https://jadpo.dev/docs/errors/syntax.match_pattern
 
 check failed: 1 error, 1 file
 ```

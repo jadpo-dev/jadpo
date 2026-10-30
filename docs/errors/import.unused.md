@@ -40,7 +40,7 @@ error: `Percent` is imported but not used
   reason: A `use` line lists only the names its file uses, so each says where it comes from; nothing here uses `Percent`.
   next: Remove `Percent` from this line (agent)
   rule: import.unused
-  help: docs/errors/import.unused.md
+  help: https://jadpo.dev/docs/errors/import.unused
 
 check failed: 1 error, 5 files
 ```

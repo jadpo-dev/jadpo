@@ -19,7 +19,7 @@ error: `"fr-FR"` isn't written as a locale
   reason: A locale is a name in `Locale`, written `Locale.<tag>` with the tag in lower case and `_` for `-`: `Locale.en_gb` is en-GB. Closed choices are names, not text, so a misspelt one is caught while compiling.
   next: Write `Locale.fr_fr` instead (agent)
   rule: type.locale_invalid
-  help: docs/errors/type.locale_invalid.md
+  help: https://jadpo.dev/docs/errors/type.locale_invalid
 
 check failed: 1 error, 1 file
 ```

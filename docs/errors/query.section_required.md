@@ -28,7 +28,7 @@ error: `books_titled` returns `List<Book>` but has no `limit:`
   reason: Every list is bounded: `limit:` is a number, or a value whose type has a `max:`.
   next: Add `limit: <number>`, or return `Page<T>` to read it a page at a time (agent)
   rule: query.section_required
-  help: docs/errors/query.section_required.md
+  help: https://jadpo.dev/docs/errors/query.section_required
 
 check failed: 1 error, 1 file
 ```

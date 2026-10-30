@@ -15,7 +15,7 @@ error: `ItemPrice` needs a `scale`
   reason: A `Decimal` is exact with a fixed number of decimal places, its `scale`, which sets how it is stored and sent.
   next: Add `scale:` with the number of decimal places, such as `scale: 2` (agent)
   rule: type.decimal_scale_required
-  help: docs/errors/type.decimal_scale_required.md
+  help: https://jadpo.dev/docs/errors/type.decimal_scale_required
 
 check failed: 1 error, 1 file
 ```

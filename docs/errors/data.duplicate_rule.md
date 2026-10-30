@@ -26,7 +26,7 @@ error: The unique rule `handle_tenant` repeats `tenant_handle`
   reason: Both cover the same fields, in whatever order, so they are one rule; a write's conflict names one of them (area 6).
   next: Remove `handle_tenant` (agent)
   rule: data.duplicate_rule
-  help: docs/errors/data.duplicate_rule.md
+  help: https://jadpo.dev/docs/errors/data.duplicate_rule
 
 check failed: 1 error, 1 file
 ```

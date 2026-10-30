@@ -36,7 +36,7 @@ error: `Book.title` isn't a reference to or from `Book`
   reason: An include follows a reference: one of `Book`'s own gives the record it points at, and another entity's reference to `Book` gives the records that point here. No reference leads to or from `Book`.
   next: Add a reference field, or read the records with a query of their own (agent)
   rule: query.include_unknown
-  help: docs/errors/query.include_unknown.md
+  help: https://jadpo.dev/docs/errors/query.include_unknown
 
 check failed: 1 error, 1 file
 ```

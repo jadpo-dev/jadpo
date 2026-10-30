@@ -69,7 +69,7 @@ error: A function can't call `batches.status`
   reason: `batches.status` reads a run the runtime keeps in the store an action writes, so only an action calls it.
   next: Call `batches.status` in an action (agent)
   rule: type.batch_context
-  help: docs/errors/type.batch_context.md
+  help: https://jadpo.dev/docs/errors/type.batch_context
 
 check failed: 1 error, 2 files
 ```

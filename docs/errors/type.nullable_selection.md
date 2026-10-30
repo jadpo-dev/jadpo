@@ -23,7 +23,7 @@ error: `product` may be `none`, so `name` can't be read yet
   reason: `product` is `Product?`; a field is read once `match` has found a value.
   next: Match on `product` and read `name` inside `some(...)` (agent)
   rule: type.nullable_selection
-  help: docs/errors/type.nullable_selection.md
+  help: https://jadpo.dev/docs/errors/type.nullable_selection
 
 check failed: 1 error, 1 file
 ```

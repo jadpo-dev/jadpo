@@ -46,7 +46,7 @@ error: A subscriber passes its event, not `Reminder`
   reason: A subscriber's `run:` passes `event` or fields read through it, as written; the action works out anything else itself.
   next: Pass `event` or a field of it, and move the rest into the action (agent)
   rule: subscriber.argument_invalid
-  help: docs/errors/subscriber.argument_invalid.md
+  help: https://jadpo.dev/docs/errors/subscriber.argument_invalid
 
 check failed: 1 error, 1 file
 ```

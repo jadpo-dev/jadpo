@@ -45,7 +45,7 @@ error: `parcels` in `domains/shipping/translations/fr_fr.jadpo` has no wording f
   reason: `Locale.fr_fr` needs a wording for each plural form CLDR gives it, so a count in any of them has words to show.
   next: Add a wording for `many` to `parcels`, each able to write `{count}` (agent)
   rule: translation.variant_missing
-  help: docs/errors/translation.variant_missing.md
+  help: https://jadpo.dev/docs/errors/translation.variant_missing
 
 check failed: 1 error, 4 files
 ```

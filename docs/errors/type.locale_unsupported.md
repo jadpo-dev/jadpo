@@ -27,7 +27,7 @@ error: `Locale.fr_fr` isn't a locale this application supports
   reason: `text.format` writes text in the locales listed in `locales { supported: }`, in `app.jadpo`; `Locale.fr_fr` is not one of them, and the server never guesses a language.
   next: Add `Locale.fr_fr` to `supported:` in `app.jadpo`, or use a locale that is listed (agent)
   rule: type.locale_unsupported
-  help: docs/errors/type.locale_unsupported.md
+  help: https://jadpo.dev/docs/errors/type.locale_unsupported
 
 check failed: 1 error, 1 file
 ```

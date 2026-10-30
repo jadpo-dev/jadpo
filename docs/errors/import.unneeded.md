@@ -43,7 +43,7 @@ error: `loaf_stock` is declared in this test's subject
   reason: A test file sees everything its subject declares without importing it, and `loaf_stock` is in `stock_item.jadpo`.
   next: Remove this line (agent)
   rule: import.unneeded
-  help: docs/errors/import.unneeded.md
+  help: https://jadpo.dev/docs/errors/import.unneeded
 
 check failed: 1 error, 4 files
 ```

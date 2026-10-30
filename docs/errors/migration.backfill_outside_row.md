@@ -43,7 +43,7 @@ error: The backfill for `Draft.starred` can't read `Note.starred`
   reason: A backfill works each `Draft` record's value out from that record's own fields, constants and pure functions, so it gives the same value whenever and wherever the migration runs.
   next: Work the value out from `Draft`'s own fields, or a constant (agent)
   rule: migration.backfill_outside_row
-  help: docs/errors/migration.backfill_outside_row.md
+  help: https://jadpo.dev/docs/errors/migration.backfill_outside_row
 
 check failed: 1 error, 4 files
 ```
@@ -112,7 +112,7 @@ error: The backfill for `Draft.label` can't read `config.draft_label`
   reason: A backfill gives each `Draft` record the value its own fields give, whenever and wherever the migration runs, and `draft_labels.default_label` reads `config.draft_label`, which each deployment sets for itself.
   next: Work the value out without `config.draft_label`: from `Draft`'s own fields, or a constant (agent)
   rule: migration.backfill_outside_row
-  help: docs/errors/migration.backfill_outside_row.md
+  help: https://jadpo.dev/docs/errors/migration.backfill_outside_row
 
 check failed: 1 error, 6 files
 ```
@@ -164,7 +164,7 @@ error: The backfill for `Draft.subheading` can't read `Draft.title`
   reason: `Draft.title` is added by this same migration, so no `Draft` record already stored has a value for it while the backfill runs.
   next: Work the value out from the fields `Draft` had before this migration, or a constant (agent)
   rule: migration.backfill_outside_row
-  help: docs/errors/migration.backfill_outside_row.md
+  help: https://jadpo.dev/docs/errors/migration.backfill_outside_row
 
 check failed: 1 error, 4 files
 ```

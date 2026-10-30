@@ -15,7 +15,7 @@ error: This string isn't closed
   reason: A string starts and ends with `"` on the same line.
   next: Add `"` where the string ends (agent)
   rule: syntax.unterminated_string
-  help: docs/errors/syntax.unterminated_string.md
+  help: https://jadpo.dev/docs/errors/syntax.unterminated_string
 
 check failed: 1 error, 1 file
 ```

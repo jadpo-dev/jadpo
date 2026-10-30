@@ -22,7 +22,7 @@ error: `helpers/` isn't a folder a domain has
   reason: A domain holds only `entities/`, `types/`, `failures/`, `actions/`, `queries/`, `libraries/`, `routes/`, `schedules/`, `events/`, `subscribers/`, `emails/`, `translations/`, `prompts/` and `fixtures/`, each named after what its files declare.
   next: Move the file to `domains/planning/libraries/due_dates.jadpo` (agent)
   rule: layout.unknown_location
-  help: docs/errors/layout.unknown_location.md
+  help: https://jadpo.dev/docs/errors/layout.unknown_location
 
 check failed: 1 error, 2 files
 ```

@@ -31,7 +31,7 @@ error: `Counter.hits` is a stored value, read only by an update by `id`
   reason: `Counter.hits` is the value stored in the database when an update by `id` runs, which only that update's `set:` reads; elsewhere a record's field is read from the record loaded earlier.
   next: Read it from a loaded record, `counter.hits`, or use it in `Counter.update(counter_id) { set: { ... } }` (agent)
   rule: data.stored_value_outside_update
-  help: docs/errors/data.stored_value_outside_update.md
+  help: https://jadpo.dev/docs/errors/data.stored_value_outside_update
 
 check failed: 1 error, 1 file
 ```

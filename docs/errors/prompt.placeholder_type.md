@@ -25,7 +25,7 @@ error: `DescribePhoto.photo` is `Bytes`, which a prompt can't send
   reason: A prompt is text. Images, audio and files are sent by a provider package's own operations, not in a prompt.
   next: Remove `photo`, or send what it holds as text (agent)
   rule: prompt.placeholder_type
-  help: docs/errors/prompt.placeholder_type.md
+  help: https://jadpo.dev/docs/errors/prompt.placeholder_type
 
 check failed: 1 error, 2 files
 ```

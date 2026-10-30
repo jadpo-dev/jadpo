@@ -70,7 +70,7 @@ error: `batches.each` can't save `page`
   reason: What `each:` captures is worked out when the run starts and saved with it, as its type's JSON, so the run can resume after a crash or a deploy; `page` is `ItemPage`, an `Input`, the shape a request arrives in, where a record keeps an `Object`.
   next: Pass something an entity field could hold instead, such as the `id` that finds `page` (agent)
   rule: type.batch_capture_not_storable
-  help: docs/errors/type.batch_capture_not_storable.md
+  help: https://jadpo.dev/docs/errors/type.batch_capture_not_storable
 
 check failed: 1 error, 2 files
 ```

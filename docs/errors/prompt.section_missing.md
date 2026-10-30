@@ -31,7 +31,7 @@ error: `answer_question.prompt` has no `# Request`
   reason: A prompt's file is its two sections, each once: `# Instructions`, the fixed text sent as the system message, then `# Request`, what is asked each time. Every line is in one of them, so a reviewer reads exactly what a model is sent.
   next: Add `# Request` and what is asked each time after the instructions (agent)
   rule: prompt.section_missing
-  help: docs/errors/prompt.section_missing.md
+  help: https://jadpo.dev/docs/errors/prompt.section_missing
 
 check failed: 1 error, 2 files
 ```
