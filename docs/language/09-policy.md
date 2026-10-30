@@ -1803,7 +1803,7 @@ of staff whose role is removed is refused on their next request:
 ```jadpo check project=listed-query file=domains/shop/routes/books.test.jadpo
 use shop/entities { Book, Member, Staff }
 use shop/types { CatalogueBook, StockBook }
-use shop/actions { add_book, appoint, stand_down, register }
+use shop/actions { add_book, appoint, register, stand_down }
 
 test "staff see where a book is shelved, and customers only the catalogue" {
     var ann: Member = attempt register("ann")
