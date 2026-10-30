@@ -399,7 +399,7 @@ explain the design, walk through real code and help you run a first example.
 A local clone gives it access to the full specification and tests.
 
 ```text
-Help me explore Jadpo: https://github.com/richardwillars/jadpo
+Help me explore Jadpo: https://github.com/jadpo-dev/jadpo
 Use a local clone, or clone it into a new directory. Read README.md, then
 docs/language/README.md and the current decisions and status notes in
 areas 1–4. Explain why Jadpo exists, what it can build, how its
@@ -504,7 +504,7 @@ repository's `rust-toolchain.toml` pins the Rust toolchain and components.
 The first example needs no database or AI-provider credentials.
 
 ```sh
-git clone https://github.com/richardwillars/jadpo.git
+git clone https://github.com/jadpo-dev/jadpo.git
 cd jadpo
 cargo build --release --locked -p jadpo-cli
 target/release/jadpo check examples/01-first-project
@@ -607,8 +607,8 @@ For work on the compiler itself, also read [AGENTS.md](AGENTS.md),
 ### Giving an assistant direct links
 
 For assistants with web-fetch tools, start with the
-[plain-text README](https://raw.githubusercontent.com/richardwillars/jadpo/main/README.md)
-and [plain-text specification index](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/README.md).
+[plain-text README](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/README.md)
+and [plain-text specification index](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/README.md).
 The [llms.txt reading index](llms.txt) supplies absolute, direct links to
 every area. It is a navigation aid: assistants may need each relevant URL
 provided explicitly, and file access depends on their tools and GitHub's
@@ -617,7 +617,7 @@ access controls. A link does not guarantee that its contents were read.
 ### Gemini repository import
 
 In the Gemini web app on a computer, use **Add file → More uploads → Import
-code**, then enter `https://github.com/richardwillars/jadpo`. Google's
+code**, then enter `https://github.com/jadpo-dev/jadpo`. Google's
 [GitHub import documentation](https://support.google.com/gemini/answer/16176929?hl=en)
 says that the GitHub app cannot read a repository merely from a URL in the
 prompt. It supports one repository per chat, up to 5,000 files and 100 MB;
@@ -634,11 +634,11 @@ a file-reading coding agent.
 
 Jadpo is maintained by [Richard Willars](https://github.com/richardwillars).
 The public home for the project is currently
-[this GitHub repository](https://github.com/richardwillars/jadpo).
+[this GitHub repository](https://github.com/jadpo-dev/jadpo).
 
 - [Contributing](CONTRIBUTING.md): setup, the verification gate and working rules.
 - [Roadmap](docs/roadmap.md): the only tracker for planned implementation work.
-- [Issues](https://github.com/richardwillars/jadpo/issues): report bugs or ask questions.
+- [Issues](https://github.com/jadpo-dev/jadpo/issues): report bugs or ask questions.
   Include the source, compiler output and expected behaviour where possible.
 - [Documentation index](docs/README.md): architecture, design rationale and decisions.
 

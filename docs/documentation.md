@@ -218,7 +218,8 @@ why the site serves the bundle.
     CI.
   - dist's workflow publishes the Homebrew formula (`jadpo.rb`) to the
     `jadpo-dev/homebrew-tap` repository with a `HOMEBREW_TAP_TOKEN`
-    secret that can write to it, and the npm package `@jadpo/jadpo` to npmjs.com
+    secret that can write to it (users run `brew install jadpo-dev/tap/jadpo`),
+    and the npm package `@jadpo/jadpo` to npmjs.com
     through trusted publishing (OIDC), which needs no token: npmjs.com is
     configured to trust `jadpo-dev/jadpo`'s `release.yml` for the package.
     Both run after the release is published and skip prereleases.
