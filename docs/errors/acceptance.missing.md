@@ -15,7 +15,7 @@ error: removing an output field can break clients: main.TodoSummary.priority, ma
 31 | output TodoSummary
    | ^^^^^^^^^^^^^^^^^^ ApiChange.output_field_removed
   reason: Clients that read it find it gone. So a person accepts it: no acceptance this change adds lists these as `ApiChange.output_field_removed`.
-  next: A person accepts it: `jadpo acceptance new <purpose>` drafts the acceptance for them (human)
+  next: A person accepts it: `jadpo acceptance new <purpose>` writes the draft for them (human)
   rule: acceptance.missing
   help: https://jadpo.dev/docs/errors/acceptance.missing
 ```

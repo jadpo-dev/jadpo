@@ -19,7 +19,7 @@ error: `acceptances/20261030T1400_remove_todo_priority.jadpo` has no reason
   |
 1 | acceptance {
   | ^^^^^^^^^^ no `///` reason above
-  reason: An acceptance records a person's decision, so it says why on a `///` line above `acceptance`; an agent drafts the file and stops there.
+  reason: An acceptance records a person's decision, so it says why on a `///` line above `acceptance`; an agent writes the draft and stops there.
   next: A person writes why these changes are accepted on a `///` line above `acceptance` (human)
   rule: acceptance.no_reason
   help: https://jadpo.dev/docs/errors/acceptance.no_reason

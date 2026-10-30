@@ -809,7 +809,7 @@ $ jadpo check
 error: removing an output field can break clients: main.TodoSummary.priority, main.TodoView.priority
  --> api/main.jadpo_record:31:1
   …
-  next: A person accepts it: `jadpo acceptance new <purpose>` drafts the acceptance for them (human)
+  next: A person accepts it: `jadpo acceptance new <purpose>` writes the draft for them (human)
 
 $ jadpo acceptance new remove_todo_priority
 ✓ Wrote acceptances/20261020T1400_remove_todo_priority.jadpo

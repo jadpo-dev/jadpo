@@ -258,7 +258,7 @@ pub static COMMANDS: &[Command] = &[
         flags: &[Flag {
             name: "--before",
             value: Some("ref"),
-            description: "The branch or commit to compare with, instead of the default branch at its merge base",
+            description: "The branch or commit to compare with",
             values: &[],
         }],
         examples: &[
@@ -1077,12 +1077,12 @@ pub static COMMANDS: &[Command] = &[
         flags: &[Flag {
             name: "--before",
             value: Some("ref"),
-            description: "The branch or commit to compare with, instead of the default branch at its merge base",
+            description: "The branch or commit to compare with",
             values: &[],
         }],
         examples: &[Example {
-            description: "Draft the acceptance of a removed API field",
-            command: "jadpo acceptance new remove_todo_priority",
+            description: "Draft the acceptance of an API break",
+            command: "jadpo acceptance new accept_the_api_break",
         }],
         arguments_rule: &rule::CLI_ACCEPTANCE_ARGUMENTS,
         raises: &[

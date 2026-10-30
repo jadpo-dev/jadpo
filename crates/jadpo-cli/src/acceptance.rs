@@ -43,15 +43,15 @@ pub fn acceptance(call: &Call) -> Reply {
         Some(other) => {
             return Reply::failed(arguments(
                 format!("`{other}` isn't something `jadpo acceptance` does"),
-                "`jadpo acceptance new <purpose>` drafts an acceptance of every change waiting for a person.",
+                "`jadpo acceptance new <purpose>` writes a draft acceptance of every change waiting for a person.",
                 "Run `jadpo acceptance new <purpose>`".to_string(),
             ));
         }
         None => {
             return Reply::failed(arguments(
                 "`jadpo acceptance` needs `new <purpose>`".to_string(),
-                "`jadpo acceptance new <purpose>` drafts an acceptance of every change waiting for a person.",
-                "Run `jadpo acceptance new <purpose>`, such as `jadpo acceptance new open_book_list`".to_string(),
+                "`jadpo acceptance new <purpose>` writes a draft acceptance of every change waiting for a person.",
+                "Run `jadpo acceptance new <purpose>`, such as `jadpo acceptance new open_the_route`".to_string(),
             ));
         }
     }
@@ -59,7 +59,7 @@ pub fn acceptance(call: &Call) -> Reply {
         return Reply::failed(arguments(
             "`jadpo acceptance new` needs a purpose".to_string(),
             "An acceptance's file is named after the decision it records, so `acceptances/` reads as a list of decisions.",
-            "Add one, such as `jadpo acceptance new open_book_list`".to_string(),
+            "Add one, such as `jadpo acceptance new open_the_route`".to_string(),
         ));
     };
     if let Some(extra) = call.arguments.get(2) {
@@ -72,7 +72,7 @@ pub fn acceptance(call: &Call) -> Reply {
     if !crate::migrate::valid_purpose(purpose) {
         return Reply::failed(arguments(
             format!("`{purpose}` isn't a purpose a file can be named after"),
-            "A purpose is lower_snake_case words, such as `open_book_list`.",
+            "A purpose is lower_snake_case words, such as `open_the_route`.",
             format!("Write it as `{}`", crate::migrate::snake(purpose)),
         ));
     }

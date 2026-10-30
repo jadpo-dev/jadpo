@@ -234,7 +234,7 @@ fn read(db: &dyn Db, file: File) -> Acceptance {
                 "This isn't a change an acceptance can list",
                 "expected `subject: Kind.change`",
                 &format!(
-                    "Each entry names what changed and how, as the compiler's message gives it, such as `main.TodoView.priority: ApiChange.output_field_removed`; the kinds are {}.",
+                    "Each entry names what changed and how, as the compiler's message gives it, such as `<api>.<Type>.<field>: ApiChange.output_field_removed`; the kinds are {}.",
                     crate::and_list(&KINDS.iter().map(|k| format!("`{k}`")).collect::<Vec<_>>())
                 ),
                 "Copy the entry from `jadpo check`'s message, or run `jadpo acceptance new <purpose>`",

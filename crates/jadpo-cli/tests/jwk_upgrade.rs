@@ -67,6 +67,7 @@ fn project(dir: &tempdir::Dir) -> PathBuf {
 fn a_project_from_encoding_1_is_told_to_migrate_and_writes_the_key_ops_column() {
     let dir = tempdir::Dir::new("jwk-upgrade-check");
     let root = project(&dir);
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check", "--json"]);
     assert_eq!(checked.code, 1, "{}{}", checked.stdout, checked.stderr);
     assert!(
@@ -95,6 +96,7 @@ fn a_project_from_encoding_1_is_told_to_migrate_and_writes_the_key_ops_column() 
         statements,
         ["ALTER TABLE \"partner_key\" ADD COLUMN \"key_key_ops\" text[];"]
     );
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
 }
