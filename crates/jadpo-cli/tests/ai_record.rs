@@ -99,7 +99,7 @@ fn desk(name: &str) -> PathBuf {
         write(&root, &format!("domains/support/{path}"), text);
     }
     // The counts of what its calls use are kept in `main` (chunk 5.5v5).
-    for args in [&["migrate", "new", "initial"][..], &["api", "update"]] {
+    for args in [&["migrate", "new", "initial"][..], &["records", "update"]] {
         let done = jadpo(&root, args);
         assert_eq!(done.code, 0, "{args:?}: {}{}", done.stdout, done.stderr);
     }

@@ -235,6 +235,7 @@ fn a_row_edited_outside_jadpo_to_break_a_fields_rule_is_a_defect_on_every_read()
         return;
     }
     let root = workshop("reads");
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));

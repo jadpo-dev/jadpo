@@ -315,6 +315,7 @@ fn every_standard_object_and_choice_is_stored_and_read_back() {
     let root = project("all");
     let migrated = jadpo(&root, &["migrate", "new", "initial"]);
     assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     let sql = fs::read_dir(root.join("database/migrations"))

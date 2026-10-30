@@ -261,7 +261,7 @@ impl Live {
             std::fs::write(path, text).expect("write");
         }
         jadpo(&root, &["migrate", "new", "initial"]);
-        jadpo(&root, &["api", "update"]);
+        jadpo(&root, &["records", "update"]);
         jadpo(&root, &["check"]);
         let loaded = jadpo_db::load(&root);
         let prepared = Prepared::load(&loaded.db, loaded.project).expect("checks");

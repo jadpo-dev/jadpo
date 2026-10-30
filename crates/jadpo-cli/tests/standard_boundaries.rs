@@ -464,8 +464,9 @@ fn meets(
 #[test]
 fn every_standard_type_crosses_every_built_boundary() {
     let root = project();
-    let recorded = jadpo(&root, &["api", "update"]);
+    let recorded = jadpo(&root, &["records", "update"]);
     assert_eq!(recorded.code, 0, "{}{}", recorded.stdout, recorded.stderr);
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     let tested = jadpo(&root, &["test", "--seed", "1"]);
@@ -585,6 +586,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
     (
         "crates/jadpo-std/src/",
         "the standard library's tables: each type's entry, storage and operations, which the contract reads",
+    ),
+    (
+        "crates/jadpo-check/src/acceptances/compare.rs",
+        "compares a rule's bound in two versions of a record, a duration read by the contract's own reader (chunk A8)",
     ),
     (
         "crates/jadpo-check/src/config.rs",
@@ -786,6 +791,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
     (
         "crates/jadpo-cli/src/migrate.rs",
         "shows when a migration was applied, by the contract's own writer",
+    ),
+    (
+        "crates/jadpo-cli/src/acceptance.rs",
+        "names an acceptance's file by the minute, as a migration's folder is, by the contract's own writer (chunk A8)",
     ),
 ];
 

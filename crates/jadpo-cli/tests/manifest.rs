@@ -306,7 +306,7 @@ const DESK: &[(&str, &str)] = &[
 /// Each deployable's build id, by name, as `jadpo check` writes it after
 /// `jadpo api update`, which keeps the APIs' records up to date.
 fn build_ids(root: &Path) -> std::collections::BTreeMap<String, Option<String>> {
-    jadpo(root, &["api", "update"]);
+    jadpo(root, &["records", "update"]);
     let output = jadpo(root, &["check"]);
     let manifest: serde_json::Value =
         serde_json::from_str(&read(root, "build/manifest.json")).expect("JSON");

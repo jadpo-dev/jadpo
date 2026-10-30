@@ -504,7 +504,7 @@ fn newsroom() -> PathBuf {
             fs::write(&path, text).expect("written");
         }
     }
-    jadpo(&root, &["api", "update"]);
+    jadpo(&root, &["records", "update"]);
     if !root.join("database/migrations").exists() {
         jadpo(&root, &["migrate", "new", "initial"]);
     }

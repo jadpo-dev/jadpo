@@ -250,7 +250,11 @@ fn load(name: &str) -> Option<Loaded> {
     for (path, text) in FILES {
         write(&root, path, text);
     }
-    for args in [&["migrate", "new", "initial"][..], &["check"]] {
+    for args in [
+        &["migrate", "new", "initial"][..],
+        &["records", "update"],
+        &["check"],
+    ] {
         let out = jadpo(&root, args);
         assert_eq!(out.code, 0, "{args:?}: {}{}", out.stdout, out.stderr);
     }
@@ -675,6 +679,7 @@ fn check_with(name: &str, changes: &[(&str, Option<&str>)]) -> Vec<String> {
             write(&root, path, text);
         }
     }
+    jadpo(&root, &["records", "update"]);
     let out = jadpo(&root, &["check", "--json"]);
     let report: serde_json::Value = serde_json::from_str(&out.stdout)
         .unwrap_or_else(|_| panic!("JSON: {}{}", out.stdout, out.stderr));
@@ -984,6 +989,7 @@ fn a_declared_webhooks_api_lists_each_webhook_and_keeps_its_paths() {
         "domains/billing/routes/hooks.jadpo",
         "use billing/actions { ping }\n\n/// A hand-written hook.\nroutes Hooks {\n    prefix: /hooks\n    api: webhooks\n\n    /// Pings.\n    POST /payments {\n        authentication: RouteAuthentication.none\n        status: SuccessStatus.no_content\n        run: ping()\n    }\n}\n",
     );
+    jadpo(&root, &["records", "update"]);
     let out = jadpo(&root, &["check"]);
     assert_eq!(out.code, 1, "{}", out.stdout);
     assert!(

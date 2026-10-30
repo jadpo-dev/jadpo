@@ -494,7 +494,10 @@ pub(super) fn project(name: &str) -> PathBuf {
         std::fs::create_dir_all(path.parent().expect("parent")).expect("folders");
         std::fs::write(path, source).expect("source");
     }
-    for args in [&["migrate", "new", "initial"][..], &["api", "update"][..]] {
+    for args in [
+        &["migrate", "new", "initial"][..],
+        &["records", "update"][..],
+    ] {
         let output = super::http::jadpo(&root, args);
         assert_eq!(output.code, 0, "{}{}", output.stdout, output.stderr);
     }

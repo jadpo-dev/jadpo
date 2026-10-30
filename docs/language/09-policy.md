@@ -2029,13 +2029,9 @@ index. So neither needs an index or a migration of its own.
 <!-- topic: protecting-policy -->
 
 An agent can edit policy, but the change can't ship without a person's
-approval, wherever it is written. The compiler compares the whole
-application before and after, because access also widens when an output
-gains a field, a route becomes public or an action starts touching another
-entity. That approval isn't built yet: today a change that widens access
-ships without one, so review the permissions report's diff
-(`build/report/permissions.md`) before you deploy
-([What is built](#what-is-built)).
+approval, wherever it is written. The compiler compares the application
+before and after, because access widens wherever policy is written and
+also when a route becomes public.
 
 Each widening needs an acceptance: a file in `acceptances/` in which a
 person accepts that change
@@ -2064,7 +2060,9 @@ compares the change with the default branch at its merge base through
 
 Narrowing needs no one: a caller removed, a restriction added, a query
 newly listed, a new route even one anyone may call, a new entity that
-belongs to the tenant.
+belongs to the tenant. Access also widens when an output gains a field or
+an action starts touching another entity; `jadpo approval`, not built
+yet, shows those paths ([What is built](#what-is-built)).
 
 Schedules and subscribers act as the system
 ([Background work](#background-work)), and what `Access.system` is granted

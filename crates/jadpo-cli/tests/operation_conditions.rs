@@ -175,6 +175,7 @@ fn project(name: &str) -> PathBuf {
 #[test]
 fn each_operation_derives_the_index_on_its_expression() {
     let root = project("indexes");
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     let folder = fs::read_dir(root.join("database/migrations"))

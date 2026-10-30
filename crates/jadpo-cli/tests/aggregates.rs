@@ -277,6 +277,7 @@ fn usage_per_month_and_counts_by_status_are_one_statement_each_and_what_code_giv
         return;
     }
     let root = project("live");
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
