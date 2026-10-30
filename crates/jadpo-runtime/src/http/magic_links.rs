@@ -1691,6 +1691,9 @@ pub(crate) fn read_payload(payload: &str) -> Result<Value, String> {
 pub(crate) struct Minted {
     pub address: String,
     pub link: String,
+    /// The link's token, which only a host that catches mail is handed
+    /// beside the message, for a route test to post.
+    pub token: String,
     pub code: String,
     /// When the link and the code stop working, in milliseconds.
     pub expires_at: i64,
@@ -1751,6 +1754,7 @@ pub(crate) async fn mint(
     Ok(Some(Minted {
         address: address.to_string(),
         link: format!("{origin}{}?token={token}", plan.link),
+        token,
         code,
         expires_at,
     }))

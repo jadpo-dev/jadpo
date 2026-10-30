@@ -78,6 +78,10 @@ pub struct MailSent {
     pub email: String,
     /// Its trace's id, 32 hex digits, when the work had one.
     pub trace: Option<String>,
+    /// The sign-in email's token and code, handed only to a host that
+    /// catches the mail, for `email.sent` (area 8, "In development and
+    /// tests").
+    pub sign_in: Option<crate::email::SignInSent>,
 }
 
 /// The idempotency key a provider call goes under, and its package's code
@@ -520,13 +524,33 @@ impl Capability for Fake {
         true
     }
 
-    /// Each message a `send` gave it.
+    /// Each message a `send` gave it, the sign-in email's with its token
+    /// and its code beside its parts.
     fn caught(&self) -> Vec<Value> {
         self.sent
             .borrow()
             .iter()
             .filter(|call| call.operation == jadpo_std::email::SEND)
-            .map(|call| call.input.clone())
+            .map(|call| {
+                match (
+                    &call.input,
+                    call.mail.as_ref().and_then(|mail| mail.sign_in.as_ref()),
+                ) {
+                    (Value::Record(record), Some(sign_in)) => {
+                        let mut fields = record.fields.clone();
+                        fields.push((
+                            Rc::from(jadpo_std::email::SIGN_IN_TOKEN),
+                            Value::text(&sign_in.token),
+                        ));
+                        fields.push((
+                            Rc::from(jadpo_std::email::SIGN_IN_CODE),
+                            Value::text(&sign_in.code),
+                        ));
+                        Value::record(&record.ty, fields)
+                    }
+                    (input, _) => input.clone(),
+                }
+            })
             .collect()
     }
 }

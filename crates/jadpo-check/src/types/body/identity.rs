@@ -93,6 +93,28 @@ pub(crate) fn sign_in_object_fields(
             ("user_id", user_id(identity).nullable()),
             ("until", Ty::Prim(Prim::Instant)),
         ]),
+        // What a route test sends the generated magic-link routes, and
+        // what the confirmation and the redemption answer (area 8, "In
+        // development and tests"), as the API record names them.
+        jadpo_std::http::MAGIC_LINK_ASK => Some(vec![
+            ("address", Ty::Prim(Prim::Email)),
+            ("return_to", Ty::Prim(Prim::Text).nullable()),
+            (
+                "locale",
+                Ty::Named(jadpo_std::LOCALE.to_string()).nullable(),
+            ),
+        ]),
+        jadpo_std::http::MAGIC_LINK_CONFIRMATION => Some(vec![
+            ("token", Ty::Prim(Prim::SignInToken).nullable()),
+            ("address", Ty::Prim(Prim::Email).nullable()),
+            ("code", Ty::Prim(Prim::SignInCode).nullable()),
+        ]),
+        jadpo_std::http::MAGIC_LINK_CODE => Some(vec![
+            ("address", Ty::Prim(Prim::Email)),
+            ("code", Ty::Prim(Prim::SignInCode)),
+        ]),
+        jadpo_std::http::MAGIC_LINK_CONFIRMED => Some(vec![("return_to", Ty::Prim(Prim::Text))]),
+        jadpo_std::http::MAGIC_LINK_TOKEN => Some(vec![("token", Ty::Prim(Prim::ApiToken))]),
         // A passkey's own events (chunk 5.5z2).
         jadpo_std::http::PASSKEY_ADDED | jadpo_std::http::PASSKEY_REMOVED => Some(vec![
             ("user_id", user_id(identity)),

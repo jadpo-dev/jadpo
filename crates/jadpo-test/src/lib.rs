@@ -647,10 +647,11 @@ pub fn discover(graph: &Graph) -> Vec<Test> {
                     Kind::Action | Kind::Query | Kind::Fixture
                 )
             }) || graph.outgoing(id, EdgeKind::Reads).next().is_some();
-            // A request through a route makes it a route test (area 13).
-            let routes = graph
-                .outgoing(id, EdgeKind::Calls)
-                .any(|callee| graph.node(callee).kind == Kind::Route);
+            // A request through a route makes it a route test (area 13), a
+            // route the runtime generates included (area 8).
+            let routes = graph.outgoing(id, EdgeKind::Calls).any(|callee| {
+                matches!(graph.node(callee).kind, Kind::Route | Kind::GeneratedRoute)
+            });
             // Running a schedule makes it a schedule test, whatever set up
             // its data (chunk 6.2c).
             let schedules = graph
