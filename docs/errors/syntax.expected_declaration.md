@@ -13,7 +13,7 @@ error: `Count` doesn't start a declaration
   reason: A file holds declarations, such as `type`, `function`, `action`, `query` and `entity`, each starting a line.
   next: Start the declaration with `type`: `type Count = ...` (agent)
   rule: syntax.expected_declaration
-  help: docs/errors/syntax.expected_declaration.md
+  help: https://jadpo.dev/docs/errors/syntax.expected_declaration
 
 check failed: 1 error, 1 file
 ```
@@ -39,7 +39,7 @@ error: `var` doesn't start a declaration
   reason: `var` names a value inside a body; at the top of a file a fixed value is a `constant`.
   next: Write `constant vat_rate: VatRate = 0.2000` (agent)
   rule: syntax.expected_declaration
-  help: docs/errors/syntax.expected_declaration.md
+  help: https://jadpo.dev/docs/errors/syntax.expected_declaration
 
 check failed: 1 error, 1 file
 ```

@@ -17,7 +17,7 @@ error: `format` needs a colon before its value
   reason: Every member inside braces is `name: value`, with a colon even when the value is a block.
   next: Write `format: TextFormat.email` (agent)
   rule: syntax.colon_required
-  help: docs/errors/syntax.colon_required.md
+  help: https://jadpo.dev/docs/errors/syntax.colon_required
 
 check failed: 1 error, 1 file
 ```

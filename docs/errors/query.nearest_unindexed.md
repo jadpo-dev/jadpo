@@ -28,7 +28,7 @@ error: `DraftReply.reply_meaning` has no fixed length, so no index can order it 
   reason: A nearest-neighbour query reads an HNSW index, which pgvector builds only on a vector column of fixed length, and `DraftReply.reply_meaning` is a `Vector`, kept without one.
   next: Give `DraftReply.reply_meaning` a type built on `Vector` with the model's `dimensions:` (agent)
   rule: query.nearest_unindexed
-  help: docs/errors/query.nearest_unindexed.md
+  help: https://jadpo.dev/docs/errors/query.nearest_unindexed
 
 check failed: 1 error, 1 file
 ```

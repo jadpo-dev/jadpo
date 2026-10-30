@@ -46,7 +46,7 @@ error: `run: send_reminder` isn't a call
   reason: `run:` calls one action of the subscriber's own domain, passing the event or its fields; all the logic lives in the action.
   next: Write `run: <action>(event)` (agent)
   rule: subscriber.run_invalid
-  help: docs/errors/subscriber.run_invalid.md
+  help: https://jadpo.dev/docs/errors/subscriber.run_invalid
 
 check failed: 1 error, 1 file
 ```

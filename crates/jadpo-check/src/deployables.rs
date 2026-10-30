@@ -883,7 +883,13 @@ fn reach(
         for queue in &crate::receiving::receiving(db, project).queues {
             connection(&mut out, &queue.connection, Via::Receiving);
         }
-        if !crate::emails::analysis(db, project).emails.is_empty()
+        // A delivery sends the app's emails and the sign-in email, Jadpo's
+        // own included, through `email:`'s connection, unless `send:`
+        // names an action that sends it.
+        let signs_in_by_email = crate::identity::identity(db, project)
+            .magic_links()
+            .is_some_and(|magic| magic.send.is_none());
+        if (signs_in_by_email || !crate::emails::analysis(db, project).emails.is_empty())
             && let Some(email) = crate::emails::written_connection(db, project)
         {
             connection(&mut out, &email, Via::Email);

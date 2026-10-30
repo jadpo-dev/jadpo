@@ -681,7 +681,6 @@ fn not_built_flag(planned: &table::Planned) -> Diagnostic {
         "Leave out `{}`; `jadpo {} --help` lists what is built",
         planned.name, planned.command
     ))
-    .help_at(planned.anchor)
 }
 
 /// A flag that takes one value, given more than once: which one was meant

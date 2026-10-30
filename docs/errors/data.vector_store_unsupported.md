@@ -49,7 +49,7 @@ error: `OpenQuestion.question_meaning` is a vector, which `drafts` can't store
   reason: A vector is kept in a column of pgvector, an extension of PostgreSQL, and `drafts` is a Redis connection. There is no fallback, since a search held anywhere else would behave differently from the one that was tested.
   next: Remove `store: drafts` to keep `OpenQuestion` in `main`, a PostgreSQL store (agent)
   rule: data.vector_store_unsupported
-  help: docs/errors/data.vector_store_unsupported.md
+  help: https://jadpo.dev/docs/errors/data.vector_store_unsupported
 
 check failed: 1 error, 3 files
 ```

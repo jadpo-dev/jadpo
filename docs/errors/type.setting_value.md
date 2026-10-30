@@ -17,7 +17,7 @@ error: `format` takes a `TextFormat` value, such as `TextFormat.email`
   reason: `format` is a constraint, and its value must be a `TextFormat` value, such as `TextFormat.email`.
   next: Write `TextFormat.email` (agent)
   rule: type.setting_value
-  help: docs/errors/type.setting_value.md
+  help: https://jadpo.dev/docs/errors/type.setting_value
 
 check failed: 1 error, 1 file
 ```

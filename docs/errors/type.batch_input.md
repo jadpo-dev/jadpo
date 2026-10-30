@@ -77,7 +77,7 @@ error: `StopSweep.shelf_run` holds a `BatchRun`, which no request carries
   reason: Only the runtime builds a `BatchRun`: a run comes from `batches.each`, or from a field the caller may read where the application kept it, and `batches.status` and `batches.cancel` find it by its `id` alone. A request that named one could read or stop any run.
   next: Take the `id` of the record that keeps the run, and read the `BatchRun` from its field (agent)
   rule: type.batch_input
-  help: docs/errors/type.batch_input.md
+  help: https://jadpo.dev/docs/errors/type.batch_input
 
 check failed: 1 error, 2 files
 ```

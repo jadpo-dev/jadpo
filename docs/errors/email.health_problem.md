@@ -66,7 +66,7 @@ error: `WelcomeEmail` has a link that isn't absolute HTTPS
   reason: `welcome_email.html` links to `http://notes.example/start`; filters distrust plain `http://`, and the reader's click goes unencrypted.
   next: Link to a full `https://` address, or write `decline email.health_problem: "<why>"` above it if this is deliberate (agent)
   rule: email.health_problem
-  help: docs/errors/email.health_problem.md
+  help: https://jadpo.dev/docs/errors/email.health_problem
 
 check failed: 1 error, 3 files
 ```

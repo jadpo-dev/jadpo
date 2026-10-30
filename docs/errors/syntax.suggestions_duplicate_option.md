@@ -20,7 +20,7 @@ error: `share:` is given twice
   reason: `suggestions` says each of `project_token:` and `share:` once.
   next: Keep one `share:` and remove the other (agent)
   rule: syntax.suggestions_duplicate_option
-  help: docs/errors/syntax.suggestions_duplicate_option.md
+  help: https://jadpo.dev/docs/errors/syntax.suggestions_duplicate_option
 
 check failed: 1 error, 1 file
 ```

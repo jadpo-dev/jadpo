@@ -94,7 +94,7 @@ fn check_reports_each_unformatted_file_and_changes_nothing() {
   reason: `jadpo fmt` lays this file out differently from here on.
   next: Run `jadpo fmt` to format it (agent)
   rule: format.changes_required
-  help: docs/errors/format.changes_required.md
+  help: https://jadpo.dev/docs/errors/format.changes_required
 
 fmt failed: 1 not formatted, 1 formatted
 "
@@ -152,7 +152,7 @@ fn a_file_with_syntax_errors_is_reported_and_left_alone() {
   reason: Jadpo source is names, literals, brackets and operators such as `+` and `==`; this character has no meaning.
   next: Remove `$` (agent)
   rule: syntax.unexpected_character
-  help: docs/errors/syntax.unexpected_character.md
+  help: https://jadpo.dev/docs/errors/syntax.unexpected_character
 
 fmt failed: 1 with syntax errors, 1 changed, 1 unchanged
 "
@@ -175,7 +175,7 @@ fn outside_a_project_fmt_says_so() {
   reason: Jadpo looks for `app.jadpo` in this folder and every folder above it, and found none.
   next: Run `jadpo fmt` inside a project, or give a file or folder: `jadpo fmt <path>` (agent)
   rule: toolchain.project_not_found
-  help: docs/errors/toolchain.project_not_found.md
+  help: https://jadpo.dev/docs/errors/toolchain.project_not_found
 "
     );
 }
@@ -255,7 +255,7 @@ fn a_path_that_is_not_there_or_not_jadpo_is_a_usage_error() {
   reason: There is no file or folder at this path.
   next: Give the path of a `.jadpo` file or a folder (agent)
   rule: cli.fmt_arguments
-  help: docs/errors/cli.fmt_arguments.md
+  help: https://jadpo.dev/docs/errors/cli.fmt_arguments
 "
     );
     write(&root, "notes.md", "notes\n");

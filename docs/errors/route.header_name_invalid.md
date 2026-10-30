@@ -64,7 +64,7 @@ error: `Request Tag` isn't a header name
   reason: A header name is letters, digits and `-` (HTTP allows a few more symbols), with no spaces: `X-Request-Tag`.
   next: Write the header's name without spaces (agent)
   rule: route.header_name_invalid
-  help: docs/errors/route.header_name_invalid.md
+  help: https://jadpo.dev/docs/errors/route.header_name_invalid
 
 check failed: 1 error, 1 file
 ```

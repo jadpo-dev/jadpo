@@ -18,7 +18,7 @@ error: `max_length: 3` is below `min_length: 10`
   reason: No value could follow both rules, so the type could never be built.
   next: Correct `min_length` or `max_length` (agent)
   rule: type.constraint_contradiction
-  help: docs/errors/type.constraint_contradiction.md
+  help: https://jadpo.dev/docs/errors/type.constraint_contradiction
 
 check failed: 1 error, 1 file
 ```

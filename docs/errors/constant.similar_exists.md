@@ -39,7 +39,7 @@ error: A constant with this value exists: `stocking.holdback_rate`
   reason: `standard_holdback` is a `HoldbackRate` holding `0.2000`, as `stocking.holdback_rate` in `main.jadpo` is.
   next: Read `stocking.holdback_rate` instead, and remove `standard_holdback`, or write `decline constant.similar_exists: "<why>"` above it if this is deliberate (agent)
   rule: constant.similar_exists
-  help: docs/errors/constant.similar_exists.md
+  help: https://jadpo.dev/docs/errors/constant.similar_exists
 
 check failed: 1 error, 1 file
 ```

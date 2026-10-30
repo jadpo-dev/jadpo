@@ -46,7 +46,7 @@ error: `email.sent` is read outside a test
   reason: `email.sent` lists the emails a test sent, which `jadpo test` catches in place of sending them; outside a test an email goes out once its action commits, and nothing keeps it to read.
   next: Read `email.sent` in a test, after the action that sends the email (agent)
   rule: email.sent_context
-  help: docs/errors/email.sent_context.md
+  help: https://jadpo.dev/docs/errors/email.sent_context
 
 check failed: 1 error, 2 files
 ```

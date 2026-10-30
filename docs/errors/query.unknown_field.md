@@ -29,7 +29,7 @@ error: `Book` has no field `titel`
   reason: `Book`'s fields are `id`, `title`, `subtitle` and `available`. Did you mean `title`?
   next: Use `title` instead of `titel` (agent)
   rule: query.unknown_field
-  help: docs/errors/query.unknown_field.md
+  help: https://jadpo.dev/docs/errors/query.unknown_field
 
 check failed: 1 error, 1 file
 ```

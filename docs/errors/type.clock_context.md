@@ -17,7 +17,7 @@ error: A function can't read `clock.now`
   reason: A function is pure: it gives the same result for the same arguments, so the time it needs arrives as a parameter; only actions read the clock.
   next: Pass the time in as a parameter, read in the action that calls this (agent)
   rule: type.clock_context
-  help: docs/errors/type.clock_context.md
+  help: https://jadpo.dev/docs/errors/type.clock_context
 
 check failed: 1 error, 1 file
 ```

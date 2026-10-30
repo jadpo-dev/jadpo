@@ -19,7 +19,7 @@ error: Function `orderTotal` isn't written in lower_snake_case
   reason: Types, entities and route groups are written in UpperCamelCase; functions, actions, queries, fields, variables and the rest in lower_snake_case.
   next: Rename `orderTotal` to `order_total`, here and where it's used (agent)
   rule: semantic.name_case
-  help: docs/errors/semantic.name_case.md
+  help: https://jadpo.dev/docs/errors/semantic.name_case
 
 check failed: 1 error, 1 file
 ```

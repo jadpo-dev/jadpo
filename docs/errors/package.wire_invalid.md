@@ -53,7 +53,7 @@ error: `Wire.unix_seconds` sends an `Instant`, and `collected_on` is a `Text`
   reason: `Wire.unix_seconds` is how a provider sends an `Instant`; a field of another type is sent as the contract writes it, in another encoding, or by the package's own `decode:` and `encode:` functions.
   next: Name the encoding the provider sends a `Text` in, or remove `wire:` (agent)
   rule: package.wire_invalid
-  help: docs/errors/package.wire_invalid.md
+  help: https://jadpo.dev/docs/errors/package.wire_invalid
 
 check failed: 1 error, 4 files
 ```

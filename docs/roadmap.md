@@ -298,16 +298,15 @@ D1 first: the site starts once D1 has merged.
   handle failures, write tests, deploy to Workers, deploy natively), each
   compiled by the gate and linking the reference. They replace the site's
   own `src/data/tasks.json`.
-- [ ] **D12 What the Learn path found** `opus · high`, before 0.1.0: each
-  with a failing test first. A required secret that isn't set doesn't
-  stop a native program starting; `jadpo build`'s `settings:` line and
-  `wrangler.json`'s required secrets leave out the SMTP connection's
-  settings; a route test can't call the generated `/auth/magic-link`
-  routes, which area 8, "In development and tests", says it can; a
-  diagnostic's `help:` line prints a source path a reader can't open, and
-  should print the error's page on the site; the bundle keeps each code
-  fence's attributes (`check project=… file=…`), which the site has to
-  hide.
+- [ ] **D12 What the Learn path found** `opus · high`, before 0.1.0, with
+  a failing test first: a route test can't call the generated
+  `/auth/magic-link` routes, which area 8, "In development and tests",
+  says it can. Waits: a maintainer's choice of the inputs a test builds
+  for them and how it reads the link's token and the code from
+  `email.sent`. Built: a deployable's settings and its required
+  secrets, [area 14](language/14-tooling.md), "What is built"; `help:`
+  lines and the bundle's code fences, [documentation](documentation.md),
+  "Where the content lives" and "The bundle".
 - [ ] **D13 Error pages that explain** `opus · high`: every page in
   `docs/errors/` rewritten to the format in [docs/writing.md](writing.md),
   "How an error page reads". Each says what happened in one plain
@@ -316,6 +315,18 @@ D1 first: the site starts once D1 has merged.
   wording, each fix with its code and what it changes, and the related
   topics. The errors the Learn path, the examples and `(human)` fixes
   hit come first.
+- [ ] **D14 The toolchain launcher** `opus · high`, before 0.2.0: write
+  the failing tests first. The installed `jadpo` runs the release line
+  `app.jadpo` names, as [Which jadpo runs](language/14-tooling.md#which-jadpo-runs)
+  says: it fetches the toolchain into a per-user cache, checks its SHA-256
+  and attestation, runs the newest release of the line (or the patch
+  `jadpo.lock` records), and runs `new`, `--version`, `help` and
+  `toolchain list` and `remove` with its own version outside a project.
+  A plain binary refuses a project on another line, and a newer one meeting
+  an older line gives `toolchain.version_older`, naming the line to
+  install. The VS Code extension needs no `jadpo.server.path`. Done when
+  all of that is built and tested, including the error for a project on
+  another line.
 
 ## Phase 10 — Golden todo
 

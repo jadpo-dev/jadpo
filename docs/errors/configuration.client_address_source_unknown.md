@@ -20,7 +20,7 @@ error: `ClientAddressSource.forward_for` isn't a source of the client's address
   reason: `ClientAddressSource` has no value called `forward_for`; the four are `connection`, `forwarded_for`, `forwarded`, `cloudflare`. Did you mean `forwarded_for`?
   next: Use `ClientAddressSource.forwarded_for` instead (agent)
   rule: configuration.client_address_source_unknown
-  help: docs/errors/configuration.client_address_source_unknown.md
+  help: https://jadpo.dev/docs/errors/configuration.client_address_source_unknown
 
 check failed: 1 error, 1 file
 ```

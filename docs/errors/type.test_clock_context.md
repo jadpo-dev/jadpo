@@ -20,7 +20,7 @@ error: An action can't move the clock
   reason: Only a test moves its clock: elsewhere the time is the operation's `clock.now`, fixed while it runs, and a later request or schedule run reads a later one.
   next: Move the clock in a test with `clock.advance(...)`, or remove this line (agent)
   rule: type.test_clock_context
-  help: docs/errors/type.test_clock_context.md
+  help: https://jadpo.dev/docs/errors/type.test_clock_context
 
 check failed: 1 error, 1 file
 ```

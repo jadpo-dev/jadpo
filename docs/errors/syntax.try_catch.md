@@ -33,7 +33,7 @@ error: Jadpo writes `attempt`, not `try`
   reason: `try` marks a call that can fail in Swift; Jadpo writes `attempt`, which passes the call's failures on to the caller.
   next: Use `attempt` instead of `try` (agent)
   rule: syntax.try_catch
-  help: docs/errors/syntax.try_catch.md
+  help: https://jadpo.dev/docs/errors/syntax.try_catch
 
 check failed: 1 error, 1 file
 ```

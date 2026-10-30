@@ -57,7 +57,7 @@ error: `Postcodes` is held in two versions, so a name through it says which
   reason: The project holds `Postcodes.v2` and `Postcodes.v3` side by side while callers move across, so a name written through the package carries its version, and each use says which one it means.
   next: Write `Postcodes.v2.UkPostcode` or `Postcodes.v3.UkPostcode` (agent)
   rule: package.version_needed
-  help: docs/errors/package.version_needed.md
+  help: https://jadpo.dev/docs/errors/package.version_needed
 
 check failed: 1 error, 6 files
 ```

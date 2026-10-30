@@ -8,15 +8,12 @@ checked-with: this checkout's jadpo on every gate run
 # Policy
 <!-- topic: policy -->
 
-Who may do what to which records: grants on entities and fields, tenancy,
-actions that need their own permission, the generated permissions report, and
-what a caller sees when policy says no.
+Policy says who may do what to which stored records. Each entity, a kind
+of stored record such as a todo, lists who may create, read, change and
+delete its records. The compiler applies those lists to every read and
+write your code makes, so you never write a permission check yourself.
 
-> Not built yet: `scopes:`, and acceptances for a change that widens
-> access. "What is built" below lists each.
-
-**Each entity lists, for each thing you can do to it, who may do it, and the
-compiler applies that list to every read and write.**
+This todo may be created, read, changed and deleted only by its owner:
 
 ```jadpo fragment
 // domains/todos/entities/todo.jadpo
@@ -36,56 +33,94 @@ entity Todo {
 }
 ```
 
-"Who" is always one of four things:
+`owner_id` is a reference to a `User`, so the person it points to is the
+one let in. A caller no list names is refused, and a todo they may not
+read behaves as if it didn't exist ([When policy says no](#when-policy-says-no)).
 
-| Who | Written | Means |
+Each entry in a list names who it lets in, in one of four ways:
+
+| Who | Written | Lets in |
 |---|---|---|
-| A user field on the record | `owner_id` | the user that field points to |
-| A membership role | `CompanyRole.editor` | a user with that role in the record's company |
-| Everyone | `Access.authenticated`, `Access.public` | anyone signed in; anyone at all |
-| Background work | `Access.system` | schedules and subscribers, limited to the tenant their event came from |
+| [A user field on the record](#a-user-field-on-the-record) | `owner_id` | the user that field points to |
+| [A membership role](#a-membership-role) | `CompanyRole.editor` | a user with that role in the record's company |
+| [Anyone signed in, or anyone](#anyone-signed-in-or-anyone) | `Access.authenticated`, `Access.public` | anyone signed in; anyone at all |
+| [Background work](#background-work) | `Access.system` | schedules and subscribers, limited to the tenant their event came from |
+
+When your app is shared by many customer companies, [Tenancy](#tenancy)
+keeps each company's records to its own members, whatever the lists say.
 
 ## Grants
 <!-- topic: grants -->
 
-An entity's `policy:` has up to four lists: `create`, `read`, `update` and
-`delete`. Each names who may do that; anyone in the list is enough, and
-anything not listed is refused. So "who can delete a project?" is one line.
+A grant says who may do one thing to an entity's records. An entity's
+`policy:` holds up to four lists of them, one for each thing: `create`,
+`read`, `update` and `delete`. Anyone a list names is enough to let a
+caller in, and anything not listed is refused. So "who can delete a
+project?" is one line in the project's file. In the `Todo` at the top of
+[Policy](#policy), `delete: [owner_id]` lets the todo's owner delete it,
+and nobody else.
 
-A lifecycle transition is an update, with one exception from area 6:
-`Todo.delete(todo)` needs `delete` whether it removes the record or runs the
-lifecycle's `delete` transition, so a soft delete is still a delete.
+Policy is always on. From the first line of code, every create, read,
+update or delete your code can reach needs a grant.
 
-Nobody writes which grant an action needs. The compiler sees what each query
-and action reads and writes: every action that updates a `Todo` needs
-`update` on it, so ten actions that edit todos share one line of policy. An
-action that reaches several entities needs a grant on each, and a call to
-another domain's action is checked against that action's entities with the
-same caller.
+### Which grant an action needs
 
-Policy is always on (question 2): from the first line of code, every
-reachable create, read, update or delete needs a grant.
+You never write which grant an action needs. The compiler sees what each
+query and action reads and writes. Every action that updates a `Todo`
+needs `update` on it, so ten actions that edit todos share one line of
+policy. An action that reaches several entities needs a grant on each.
+When an action calls another domain's action, the called action is
+checked against its own entities, with the same caller.
+
+### Transitions and deletes
+
+A lifecycle transition, a named change of a record's state such as
+archiving it ([Lifecycle](05-data.md#lifecycle)), is an update. The one
+exception is deleting: `Todo.delete(todo)` needs `delete`, whether it
+removes the record or runs the lifecycle's `delete` transition
+([The operations every entity gets](06-reads-and-writes.md#the-operations-every-entity-gets)).
+So a soft delete, which keeps the record but hides it, still needs
+`delete`.
 
 ## A user field on the record
 <!-- topic: a-user-field-on-the-record -->
 
-Naming a reference to the user entity, such as `owner_id`, grants the user it
-points to. Creating checks the new record, so `create: [owner_id]` means a
-caller can only create a todo they own; a request naming someone else is
-refused.
+Use a user field when a record belongs to one person, such as a todo and
+its owner. A user field is a reference to the user entity, the entity your
+app's [principal](08-identity.md#the-principal) names for the people who
+sign in. Naming it in a list, such as `read: [owner_id]`, lets in the user
+it points to. A reference to the principal's service entity lets in that
+service in the same way.
 
-A user field named anywhere in a policy cannot be changed by an ordinary
-update, so it needs no `immutable:`. Handing a record to someone else is a
-named action listed in root `policy.jadpo` (see Actions).
+On the user entity itself, `id` names the caller's own record:
+`read: [id]` lets each person read only their own.
+
+### On a create
+
+A create is checked against the new record. So `create: [owner_id]` means
+a caller can create a todo only if they are its owner. A request that
+names someone else as the owner is refused.
+
+### The field can't be changed by an update
+
+A user field that any list names can't be changed by an ordinary update,
+since changing it would hand the record to someone else. You don't mark it
+`immutable:` for that. To hand a record to someone else, write a named
+action and list it in root `policy.jadpo`, as [Actions](#actions) shows.
 
 ## A membership role
 <!-- topic: a-membership-role -->
 
-A role exists only where it is stored: in a membership entity, whose
-`membership:` section says which record the role is held in (`scope`), who
-holds it (`member`) and which field holds the role. The role enum lives
-beside it in the same domain, and other domains use it by its full name. There
-is no global roles file.
+Use a role when people get access by belonging to something, such as the
+editors of a company. A role is stored in a record of its own: a
+membership entity, whose `membership:` section names three of its fields:
+
+- `scope`: the record the role is held in, such as the company;
+- `member`: who holds it, a reference to the user entity;
+- `role`: the field that holds the role, typed with an enum.
+
+The role enum lives beside the membership in the same domain, and other
+domains use it by its full name. There is no global roles file.
 
 ```jadpo fragment
 // domains/accounts/types/company_role.jadpo
@@ -121,8 +156,14 @@ entity CompanyMembership {
 }
 ```
 
-A role applies to another entity through its reference to the scope, the
-same reference tenancy uses:
+Here only a company's owners may add, change or remove members. Each
+member may also read their own membership, and delete it to leave.
+
+### Using a role on other records
+
+A role applies to another entity through that entity's reference to the
+scope, the same reference [tenancy](#tenancy) uses. A `Project` with a
+`company_id` takes its grants from the roles held in its company:
 
 ```jadpo fragment
 // domains/projects/entities/project.jadpo
@@ -142,21 +183,24 @@ entity Project {
 }
 ```
 
-- There is no hierarchy: an owner who may also edit is listed under both.
-- Only current memberships count. One the lifecycle hides grants nothing, and
-  removing one takes effect on the next request.
-- A role held across the whole application, such as staff, uses
-  `scope: MembershipScope.application`.
-- If an entity has two references to the scope, each grant names the one it
-  means: `TeamRole.lead(from_team_id)` (question 5).
+### How roles combine
+
+- Roles have no ranking. A role lets in only where a list names it, so an
+  owner who may also edit is listed under both.
+- Only current memberships count. A membership its lifecycle hides grants
+  nothing, and removing one takes effect on the next request.
+- A role held across the whole application, such as staff, has a
+  membership with `scope: MembershipScope.application`.
+- An entity can have two references to the scope, such as a handover with
+  a `from_team_id` and a `to_team_id`. Then each grant names the reference
+  it means: `TeamRole.lead(from_team_id)` is the lead of the from-team.
 
 ## Anyone signed in, or anyone
 <!-- topic: anyone-signed-in-or-anyone -->
 
-`Access.authenticated` is anyone signed in, and `Access.public` is anyone at
-all. A public read also needs a route that says
-`authentication: RouteAuthentication.none` (area 8); either alone is not
-enough. There is no administrator who bypasses policy.
+Use these for records that everyone signed in, or the whole world, may
+see, such as published articles. `Access.authenticated` lets in anyone who
+is signed in. `Access.public` lets in anyone at all, signed in or not.
 
 ```jadpo fragment
 entity Article {
@@ -170,90 +214,159 @@ entity Article {
 }
 ```
 
+Anyone may read an article. Only the company's editors may create or
+change one, and only its owners may delete one.
+
+A public read also needs a route that skips sign-in, one that says
+`authentication: RouteAuthentication.none`
+([Routes: signed in by default](08-identity.md#routes-signed-in-by-default)).
+Either alone isn't enough: the route lets in callers who aren't signed in,
+and the grant lets them read the record.
+
+There is no administrator who bypasses policy.
+
 ## Background work
 <!-- topic: background-work -->
 
-Schedules and subscribers act as the system caller (area 12, question 8),
-which gets exactly what `Access.system` grants. The system is nobody
-signed in and holds no membership, so a user field, a role and
-`Access.authenticated` never let it in; a grant list, a field's own list
-or an `actions:` line lets it in only by naming `Access.system`. An
-entity grants background work explicitly: a schedule, a subscriber or a
-batch that reaches a statement only `Access.public` grants is a compile
-error, as `policy.effect_ungranted` refuses a route, so the runtime, where
-such a statement tests no caller and runs for the system as for everyone,
-never has to tell the two apart.
+Schedules and event subscribers are the work your app does without a
+request ([Jobs and events](12-jobs-and-events.md)). They run as the system
+caller, which gets exactly what `Access.system` grants. To let them read or
+change an entity's records, name `Access.system` in its lists, such as
+`update: [owner_id, Access.system]`.
 
-On a tenant's records, a grant naming `Access.system` lets a schedule's
-run, which no tenant's event starts, in every tenant; a subscriber within
-the tenant its event's field of the tenant's `id` type names; and a
-batch's run within the tenant its saved values of that type name. A
-subscriber or a batch whose value names no tenant (none, `none`, or
-values naming different tenants) reaches no tenant's records, only those
-every tenant shares: "no tenant" means every tenant for a schedule, which
-names none by design, and none for work that names its tenant by a value
-(area 12, "Background work and tenants"). The system never moves a record to
-another tenant, which needs a membership there, and founds no tenant's
-first membership. A listed action's line naming `Access.system` lets the
-system in beside whoever else it names; a line naming only `Access.system`
-still lets in no request. No request is ever the system: only the
-runtime's runner makes the system caller, and every request, and every
-call a test makes with a caller or without one, runs as someone else.
+The system is nobody signed in, and it holds no membership. So:
 
-The runtime runs three of the application's actions as the system inside
-a request too: the magic-link `send:` action,
-delivered as a subscriber of `jadpo.MagicLinkEmail` with its delivery's
-tenant, which is none; a webhook's reply action; and `on_first_sign_in:`'s.
-Each reaches no tenant's records, only those every tenant shares, since
-no tenant's event starts it and "no tenant" means every tenant only for
-a schedule; and each is let in only by `Access.system`, so a grant or a
-line under `actions:` naming `Access.public` and not `Access.system` that
-one reaches is `policy.system_grant_missing`, where the action is named.
+- a user field, a role and `Access.authenticated` never let it in;
+- a grant list, a field's own list or an `actions:` line lets it in only
+  by naming `Access.system`.
 
-Which tenant a subscriber or a batch's run works in is named by a value:
-the event's field of the tenant's `id` type, or what the run saves of it.
-A caller could pass the id of a tenant they don't belong to, so that value
+### `Access.public` doesn't let background work in
+
+An entity grants background work explicitly. A schedule, a subscriber or
+a batch that reaches a statement only `Access.public` grants is a compile
+error, `policy.system_grant_missing`, in the same way that
+`policy.effect_ungranted` refuses such a route.
+
+### Which tenant background work reaches
+
+On a tenant's records ([Tenancy](#tenancy)), a grant naming `Access.system`
+lets in:
+
+- a schedule's run in every tenant, since no tenant's event starts it;
+- a subscriber within the tenant its event names, in the event's field
+  of the tenant's `id` type;
+- a batch's run within the tenant its saved values of that type name.
+
+A subscriber or a batch whose value names no tenant reaches no tenant's
+records, only those every tenant shares. A value names no tenant when
+there is none, when it is `none`, or when its values name different
+tenants. So "no tenant" means every tenant for a schedule, which names
+none by design, and none for work that names its tenant by a value. [Jobs
+and events](12-jobs-and-events.md) covers this under "Background work and
+tenants".
+
+The system never moves a record to another tenant, which needs a
+membership there, and never founds a tenant's first membership.
+
+### The system and `actions:` lines
+
+A line under `actions:` that names `Access.system` lets the system in
+beside whoever else the line names. A line naming only `Access.system`
+still lets in no request.
+
+No request is ever the system. Only the runtime's runner makes the system
+caller. Every request, and every call a test makes, with a caller or
+without one, runs as someone else.
+
+### Actions the system runs inside a request
+
+The runtime runs three of your app's actions as the system, even inside a
+request:
+
+- the magic-link `send:` action ([Magic links](08-identity.md#magic-links)),
+  delivered as a subscriber of `jadpo.MagicLinkEmail` with its delivery's
+  tenant, which is none;
+- a webhook's reply action
+  ([Webhooks that need a reply](11-integrations.md#webhooks-that-need-a-reply));
+- the `on_first_sign_in:` action, which [Identity](08-identity.md) runs
+  for a person the app hasn't seen before.
+
+None of them reaches a tenant's records, only those every tenant shares,
+since no tenant's event starts them and "no tenant" means every tenant
+only for a schedule. Each is let in only by `Access.system`. So when one
+of them reaches a grant, or a line under `actions:`, that names
+`Access.public` and not `Access.system`, that is
+`policy.system_grant_missing`, reported where the action is named.
+
+### Proving which tenant work is for
+
+A subscriber or a batch's run works in the tenant a value names: the
+event's field of the tenant's `id` type, or what the run saves of it. A
+caller could pass the id of a tenant they don't belong to. So that value
 must come from a record of that tenant the action read or wrote under its
-caller's policy; otherwise it is `policy.event_tenant_unproved` at the
-value. Reading the tenant first,
-`attempt Household.get(household_id)`, or naming the tenant of a record
-the action changes, proves it. In full, a value proves its tenant when it
-is:
+caller's policy. Otherwise it is `policy.event_tenant_unproved`, reported
+at the value.
 
-- the tenant's own `id`, or the tenancy reference of a record of it, that
-  the action, or an action or query it calls, read, created or changed;
-- the same of a record the action is handed whole, which counts as read:
-  a route passes placeholders, `input` and the caller, and a subscriber
-  its event's fields, so only a body that read a record, with the same
-  caller, or a run limited to its tenant, can hand one to an action
-  (example 25's `invoice_round(rent_round: RentRound)` names its run's
-  society from `rent_round.society_id`);
-- or what a create that runs whenever the action does set a record's
-  tenancy reference from, since the create needs the caller's membership
-  there and the action fails with it. A create inside an `if`, a `match`,
-  a loop or after a `return` that may leave first proves nothing.
+The usual fix is to read the tenant first,
+`attempt Household.get(household_id)`, or to name the tenant of a record
+the action changes. In full, a value proves its tenant when it is one of
+these:
 
-Anything else, a parameter holding an id among them, is refused; what
-decided the value is no part of it. It is checked in the action whose
-`emit` or `batches.each` it is, never at its callers: an action that emits
-from a parameter is refused even when every action calling it passes a
-proved id, since a route may call it too, so pass it the record instead.
-One rule holds for every action, so a subscriber's action passing its
-event's tenant on, to another `emit` or a batch, reads a record of it
-first, as area 12's "Declaring an event" advises for anything more than
-ids.
+- the tenant's own `id`, or the tenancy reference of one of the tenant's
+  records, that the action, or an action or query it calls, read, created
+  or changed. The tenancy reference is the field that ties a record to
+  its tenant, such as `company_id`.
+- the same, of a record the action is handed whole, which counts as read.
+  A route passes path placeholders, `input` and the caller, and a
+  subscriber passes its event's fields. So only a body that read a record
+  with the same caller, or a run limited to its tenant, can hand one to an
+  action. For example, a batch's action
+  `invoice_round(rent_round: RentRound)` names its run's society from
+  `rent_round.society_id`.
+- the value a create sets a record's tenancy reference from, when the
+  create runs whenever the action does. The create needs the caller's
+  membership in that tenant, and the action fails with it. A create
+  inside an `if`, a `match` or a loop, or after a `return` that may leave
+  first, proves nothing.
 
-What a batch's run stores, from its items, what it saved and its summary,
-is proved as a call's arguments are, by the tenant it is limited to, and
-what `batches.status` gives is held to what decides every batch's failures
-(area 12, "What a run reaches under policy").
+Anything else is refused, including a parameter that holds an id. Only
+where the value came from counts, not what decided it.
+
+The check runs in the action whose `emit` or `batches.each` uses the
+value, never at its callers. An action that emits from a parameter is
+refused even when every action calling it passes a proved id, since a
+route may call it too. Pass it the record instead. The same rule holds
+for every action, so a subscriber's action that passes its event's tenant
+on, to another `emit` or a batch, reads a record of that tenant first, as
+[Declaring an event](12-jobs-and-events.md#declaring-an-event) advises
+for anything more than ids.
+
+What a batch's run stores, from its items, what it saved and its
+summary, is proved as a call's arguments are, by the tenant the run is
+limited to. What `batches.status` gives is held to what decides every
+batch's failures. [Jobs and events](12-jobs-and-events.md) covers this
+under "What a run reaches under policy".
 
 ## Tenancy
 <!-- topic: tenancy -->
 
-Most business applications are shared by many customer companies, and the
-worst bug they can have is one company seeing another's data. Root
-`policy.jadpo` names the tenant once (question 3):
+Use tenancy when your app is shared by many customer companies, so that
+one company never sees another's data. Each customer is a tenant: one
+record of an entity you choose, such as `Company`.
+
+People belong to a company through a membership. A membership is a
+stored record, such as a `CompanyMembership`, that says which user holds
+which role in which company. Its entity has a `membership:` section naming
+those three fields: `scope`, the company; `member`, the user; and `role`,
+such as `CompanyRole.owner` ([A membership role](#a-membership-role)
+shows one in full). Grants then name roles: an entry such as
+`CompanyRole.viewer` in a record's `read:` list lets in the users who hold
+that role in the record's company.
+
+### Naming the tenant
+
+The project's root `policy.jadpo`, the policy file at the top of the
+project beside `app.jadpo`, names the tenant entity once:
 
 ```jadpo fragment
 // policy.jadpo
@@ -262,28 +375,62 @@ policy {
 }
 ```
 
-Every entity must then have one reference to `Company` (a task carries its
-own `company_id`, not only its project's), and every grant on it,
-`Access.authenticated` included, applies only within companies where the
-caller has a membership. An entity shared by every tenant, such as a list of
-countries or `User` itself, says `tenant: Tenancy.shared` in its `policy:`.
-A new entity is tenant-scoped unless someone accepts otherwise.
+This file holds the rules for the whole app: the tenant, and the
+[actions](#actions) that need a permission of their own. Each entity's own
+`policy:` section still lists who may create, read, change and delete its
+records. Naming a tenant adds these rules to every entity:
+
+- Every entity needs one reference to `Company`, its tenancy reference,
+  such as `company_id`. A task carries its own `company_id`, not only its
+  project's.
+- Every grant on a tenant's records applies only within companies where
+  the caller has a membership. A grant is an entry in one of an entity's
+  lists, such as `read: [CompanyRole.viewer]` ([Grants](#grants)). This
+  holds for `Access.authenticated`, which lets in anyone signed in, too:
+  on a tenant's records it lets in anyone signed in who belongs to the
+  record's company.
+- An entity every tenant shares, such as a list of countries or `User`
+  itself, says `tenant: Tenancy.shared` in its `policy:`. Its records
+  belong to no company, and its grants apply as they would without
+  tenancy.
+
+A request has no current tenant of its own, and the signed-in caller
+carries no company. Each record's tenant is the company its tenancy
+reference names, and a caller who belongs to several companies is let in
+to each one's records by their membership there. A route says which
+company it works in through its input, such as a `company_id` in its path
+or body, and policy checks the caller's membership in the company of
+each record the route reads or changes.
+
+An entity with two references to `Company` names, in its `policy:`, the
+one that decides where it belongs, such as `tenant: source_company_id`.
+
+An entity you add belongs to a tenant unless a person accepts otherwise,
+as every change that widens access needs
+([Protecting policy](#protecting-policy)).
 
 A company's first membership founds it, in the action that creates the
-company ("Founding a tenant" below). Every other membership is created by
-someone who belongs already, as the membership's own `create:` says, so
-nobody makes themselves a member, or an owner, of someone else's company.
+company ([Founding a tenant](#founding-a-tenant)). Every other membership
+is created by someone who belongs already, as the membership's own
+`create:` says. So nobody makes themselves a member, or an owner, of
+someone else's company.
 
 ### References stay inside the tenant
 
 A reference from one of a tenant's records to another always points at a
 record of the same tenant: a chore of Northwind's names one of Northwind's
 projects, never Contoso's. Every create and update that sets such a
-reference checks it in its own statement, with or without policy, and one
-that points into another tenant is refused with 403 `not_permitted`; a
-record that isn't there is still the code's own not-found failure. So whoever may read a chore
-holds their role in the project's company too, and a query of chores may
-include each chore's project:
+reference checks it as part of that same write, whether or not the
+caller's grants would allow it. One that points into another tenant is
+refused with 403 `not_permitted`. A reference to a record that doesn't
+exist at all still gets that entity's own not-found failure, such as
+`ProjectNotFound`.
+
+Because a chore and its project are always in the same company, anyone
+who may read a chore has their role in the project's company too. So a
+query of chores may include each chore's project without showing anyone
+another company's data. Here a chore belongs to a company and to one of
+its projects:
 
 ```jadpo check project=tenant-references file=app.jadpo hidden
 use work/entities { Member }
@@ -672,8 +819,9 @@ failure project_not_found
     status 404
 ```
 
-Ann owns both companies, so only the reference refuses her; Bob, a viewer
-of Northwind, sees its chores with their projects:
+In the first test, Ann owns both companies, so only the check on the
+project reference refuses her. In the second, Bob, a viewer of Northwind,
+sees its chores with their projects:
 
 ```jadpo check project=tenant-references file=domains/work/routes/chores.test.jadpo
 use work/entities { Company, CompanyMembership, Member }
@@ -732,26 +880,25 @@ test "a viewer sees each chore with its project" {
 }
 ```
 
-A reference to the tenant itself is the record's tenancy, or, beside the
-one an entity names with `tenant:`, another tenant on purpose, so it isn't
-checked. A write that moves a record to another tenant, which only an
-action listed under `actions:` may, checks every reference it keeps, and
-that no record of the old tenant refers to it, and needs in the new
-tenant what a create of the record as moved would: the entity's own
-`create:` and the caller's own membership there. A membership moved in
-from another company holds no role its mover couldn't give there, so a
-viewer can't move in an owner's membership they hold elsewhere.
+A reference straight to `Company` isn't checked this way. Either it is
+the record's tenancy reference, which is what puts the record in its
+company, or the entity has two references to `Company`, and the one its
+`tenant:` doesn't name points at another company on purpose.
 
 ### A unique rule holds within its tenant
 
-A `unique:` rule on a tenant's records holds within each tenant: the
-compiler adds the record's tenancy reference to the rule's key, as a
-reference already stays inside its tenant. Northwind and Contoso may each
-have a project called Launch, and a second Launch in Northwind is
-Northwind's own `conflict:`, so a conflict never tells one company what
-another stores. A rule that names the tenancy reference already keeps its
-fields. An entity every tenant shares, and the tenant itself, keep one key
-across the application, so two members never share a handle.
+A `unique:` rule on a tenant's records holds within each tenant. Northwind
+and Contoso may each have a project called Launch, but a second Launch in
+Northwind is the failure the create maps it to under `conflict:`, here
+`ProjectNameTaken`. So a conflict never tells one company what another
+stores.
+
+The compiler does this by adding the record's tenancy reference to the
+rule's key, the set of fields that must be unique together, so `name`
+becomes unique per `company_id`. A rule that already includes the tenancy
+reference is left as it is. An entity every tenant shares, and the tenant
+entity itself, keep one key across the whole application. Here `Member` is
+shared, so two members can never have the same `handle`.
 
 ```jadpo check project=tenant-keys file=app.jadpo hidden
 use work/entities { Member }
@@ -1009,26 +1156,41 @@ test "two companies may each have a project called Launch, but not two in one" {
 }
 ```
 
-Since the key holds the tenancy, a query for one record (area 6) tests
-the tenancy reference with `==` beside the rule's fields, unless it tests a
-reference to another of the tenant's records, which names the tenant
-already; a principal's subject is on an entity every tenant shares (area
-8). `jadpo migrate new` drops a key that didn't hold the tenancy and makes
-it again with the tenancy column, `UNIQUE ("name", "company_id")`, with no
-decision to write, since every set of rows the old key allowed the new one
-allows too.
+Since the key holds the tenancy reference, a query that finds one record
+by a unique rule
+([How many records come back](06-reads-and-writes.md#how-many-records-come-back))
+must test the tenancy reference with `==` beside the rule's fields, such
+as `Project.company_id == company_id`. It needn't when it tests a
+reference to another of the tenant's records, since that record already
+names the tenant.
+
+The field a person signs in by, their subject, such as an email address,
+is on an entity every tenant shares, so it is unique across the app
+([The principal](08-identity.md#the-principal)).
+
+When you add tenancy to an existing app, `jadpo migrate new` drops each
+unique key that didn't hold the tenancy reference and makes it again with
+the tenancy column, `UNIQUE ("name", "company_id")`. The migration needs
+no decision from you, since every set of rows the old key allowed, the new
+one allows too.
 
 ### Founding a tenant
 
-A membership founds its tenant only in the action that creates the
-tenant's record: its scope is the `id` of the record that action's create
-gave back, its member is the caller, and nobody belongs to the tenant yet.
-Any other new membership needs someone who belongs already, even one
-naming its caller as its member, as `create: [CompanyRole.owner,
-member_id]` here lets an owner seat anyone and a caller only themselves.
-So a stranger can't seat themselves in a company whose members have all
-left, which is 403 `not_permitted`, while founding a new company still
-seats its founder:
+A new company has no members, so nobody holds a role that could let
+them create its first membership. That first membership founds the
+company, and it is allowed in one place only: the action that creates the
+company's record. There, the membership's scope is the `id` that the
+company's create gave back, its member is the caller, and nobody belongs
+to the company yet.
+
+Any other new membership needs someone who belongs already, even one that
+names its own caller as the member. In a grant list, a user field such as
+`member_id` lets in the user it points to. So
+`create: [CompanyRole.owner, member_id]` lets an owner add anyone, and
+anyone else only themselves, and only in a company they already belong
+to. A stranger can't add themselves to a company whose members have all
+left: that is 403 `not_permitted`. Founding a new company still makes its
+founder a member:
 
 ```jadpo check project=tenant-keys file=domains/work/entities/company_membership.jadpo
 use work/entities { Company, Member }
@@ -1263,17 +1425,34 @@ test "nobody seats themselves in a company everyone has left" {
 }
 ```
 
+### Moving a record to another tenant
+
+Moving a record to another company is rare, and it needs an action of its
+own. Only an action listed under `actions:` in root `policy.jadpo` may do
+it ([Actions](#actions) shows the list). The write checks every reference
+the record keeps, and that no record of the old company refers to it. In
+the new company, it needs what creating the moved record there would: the
+entity's own `create:` and the caller's own membership there.
+
+A membership moved in from another company holds no role its mover
+couldn't give there. So a viewer can't move in an owner's membership they
+hold elsewhere.
+
 ## Actions
 <!-- topic: actions -->
 
-An action takes its permission from the entities it touches. Root
-`policy.jadpo` lists the few that cannot, under `actions:` (question 4):
+Most actions need no permission of their own: an action takes its
+permission from the entities it touches. Root `policy.jadpo` lists the few
+that can't, under `actions:`:
 
 - an action that touches no entity, such as an operator's health report,
   which is otherwise refused;
 - an action that needs different people from its entity's grants, such as
   handing a todo to someone else, or creating a company together with its
   first owner's membership.
+
+Each line names an action by its domain and name, and lists who may run
+it, with the same kinds of entry as a grant:
 
 ```jadpo fragment
 // policy.jadpo
@@ -1287,25 +1466,33 @@ policy {
 }
 ```
 
-`Todo.owner_id` means the current owner of the todo the action changes. For
-that action, the listed people replace the entity grants on what it reaches; field restrictions and tenancy still apply. Calling an integration
-needs nothing extra: permission to run the action covers it (question 9).
+`Todo.owner_id` means the current owner of the todo the action changes.
+For that action, the listed people replace the entity grants on what it
+reaches. [Field restrictions](#field-restrictions) and
+[tenancy](#tenancy) still apply.
+
+Calling an integration, an outside service such as a payment provider,
+needs nothing extra: permission to run the action covers it.
+
+### Lines that depend on a record
 
 A user field such as `Todo.owner_id`, or a role held in a record such as
 `CompanyRole.owner`, is checked on the records the action itself creates,
 changes or deletes. On an action that changes none of them, such as a
-report, it lets nobody in: the action is checked as it starts against the
-line's other entries, anyone signed in or a role held across the whole
-application, and with none left it refuses every caller, so its route is
-`policy.effect_ungranted`.
+report, it lets nobody in. The action is then checked as it starts against
+the line's other entries: anyone signed in, or a role held across the
+whole application. With none left, it refuses every caller, so its route
+is `policy.effect_ungranted`.
 
 ## Field restrictions
 <!-- topic: field-restrictions -->
 
-A field follows its entity's grants unless its block narrows them, in the
-same shape. A field can only take away: it cannot grant anyone more than the
-entity does (`policy.field_widens_entity`). A field no client may read or
-write says so by name.
+A field follows its entity's grants unless it says otherwise. Use a
+field's own `policy:` when some of a record's fields are more sensitive
+than the rest, such as a project's budget. It has the same shape as the
+entity's, and it can only take away: a field can't grant anyone more than
+its entity does (`policy.field_widens_entity`). A field no client may
+read or write says so by name.
 
 ```jadpo fragment
 entity Project {
@@ -1322,90 +1509,115 @@ entity Project {
 }
 ```
 
-- **Writes.** If a request changes a field the caller may not change, the
-  whole write is refused; nothing is dropped silently. A caller who may
-  change the record but not the field gets 403 `not_permitted`; a create
-  that leaves an optional field `none` sets nothing, so the field's policy
-  never refuses it.
-- **Outputs.** An output type has one shape for everyone. If anyone allowed
-  to call a query cannot read one of its output fields, the query does not
-  compile (`policy.output_field_unproved`); the fix is a second query with a
-  narrower output. The same holds for the record a query includes through
-  a reference: everyone who may read the record must be able to read what
-  it refers to. A webhook's reply (area 11) goes back to whoever sent the
-  webhook, so it is an output to `Access.public`: every field it carries,
-  or that decided it, is one anyone at all may read, though its action
-  runs as the system. Since the system finds every
-  record its grants name, a reply that counts or tests for records shows
-  whether they are there, so they must be records anyone at all may
-  read; and a failure is answered to the sender too, so what decides
-  whether the action fails (a condition, a `get` or a change by `id`
-  finding nothing, a `conflict:`) and a failure's client fields are held
-  to the same proof.
+Here viewers may read a project, but only editors may read or change its
+`budget`. A field's `policy:` narrows `create`, `read` and `update`. It
+has no `delete`, since a field is deleted with its record.
+
+### A field no request may touch: `FieldAccess.server_only`
+
+`FieldAccess.server_only`, as on `import_reference` above, lets no request
+read or write the field. A test's or a seed's call without a caller runs
+without policy, so it may. [Jobs and events](12-jobs-and-events.md) says
+how schedules and subscribers write one.
+
+### Writes
+
+If a request changes a field the caller may not change, the whole write
+is refused; nothing is dropped silently. A caller who may change the
+record but not the field gets 403 `not_permitted`. A create that leaves an
+optional field `none` sets nothing, so the field's policy never refuses
+it.
+
+### Outputs
+
+An output type has one shape for everyone. If anyone allowed to call a
+query can't read one of its output fields, the query doesn't compile
+(`policy.output_field_unproved`). The fix is a second query with a
+narrower output. The same holds for a record a query includes through a
+reference: everyone who may read the record must be able to read what it
+refers to.
+
+Who may read a value is proved from the grants alone, not from the data.
+Two records that each refer to a company may refer to different
+companies, so a role held in one says nothing about the other.
+
+### Webhook replies
+
+A webhook's reply
+([Webhooks that need a reply](11-integrations.md#webhooks-that-need-a-reply))
+goes back to whoever sent the webhook, so it is an output to
+`Access.public`. Every field it carries, or that decided it, must be one
+anyone at all may read, though its action runs as the system.
+
+The system finds every record its grants name. So a reply that counts or
+tests for records shows whether they are there, and they must be records
+anyone at all may read. A failure is answered to the sender too. So what
+decides whether the action fails (a condition, a `get` or a change by
+`id` finding nothing, a `conflict:`) and a failure's client fields are
+held to the same proof.
+
+### What else shows a field
+
+A field's value can reach a caller in other ways than an output, and the
+compiler checks each like an output:
+
 - **Conditions and orders.** Which records pass a condition, and the order
-  they come in, show the fields they test, so a query, `get`, include or
+  they come in, show the fields they test. So a query, `get`, include or
   write may filter or order on a field only when everyone who may run it
-  may read that field; otherwise `policy.output_field_unproved` names the
-  condition or order. A
-  transition's `when:` is a write's condition: refusing a record shows what
-  it tests. A lifecycle's `visible:` is a condition on every read of its
-  entity, so it tests only fields everyone the entity's `read:` lets in
-  may read.
+  may read that field. Otherwise `policy.output_field_unproved` names the
+  condition or order. A transition's `when:` is a write's condition:
+  refusing a record shows what it tests. A lifecycle's `visible:` is a
+  condition on every read of its entity, so it tests only fields everyone
+  the entity's `read:` lets in may read.
 - **Copies.** Passing a value through a variable, another type, a
-  function or the record a write stores it in does not escape the field's
-  rules; the compiler tracks where it came from. A migration's computed
-  backfill (area 5) is a copy too: each field it reads is one everyone who
-  may read the field it fills may read.
+  function or the record a write stores it in doesn't escape the field's
+  rules, because the compiler tracks where it came from. A migration's
+  [computed backfill](05-data.md#computed-backfills) is a copy too: each
+  field it reads must be one everyone who may read the field it fills may
+  read.
 - **What decides a value.** A value made under an `if`, a `match` or a
-  loop, or kept by a filter, shows what they test, so it carries their
-  fields' rules too, as does a count of what a filter kept, a failure
-  raised on such a condition, and what comes after a `return` or `reject`
-  it may have taken.
-- **Finding records.** Which record a `get`, a query or a write finds shows
-  the value it found it by, and an include shows the reference it follows,
-  so each is proved like an output.
+  loop, or kept by a filter, shows what they test. So it carries their
+  fields' rules too. So do a count of what a filter kept, a failure raised
+  on such a condition, and what comes after a `return` or `reject` it may
+  have taken.
+- **Finding records.** Which record a `get`, a query or a write finds
+  shows the value it found it by, and an include shows the reference it
+  follows. So each is proved like an output.
 - **What a write gives back.** The record an update returns is proved
-  against its `read:` as well as its fields', since a caller may change a
-  record they may not read; what its `set:` gave a field, and a created
-  record's values, are the caller's own.
+  against its entity's `read:` as well as its fields', since a caller may
+  change a record they may not read. What its `set:` gave a field, and a
+  created record's values, are the caller's own.
 - **What a write stores.** A value stored in a field is read later, from
-  any request, by everyone who may read that field, so a create or update
+  any request, by everyone who may read that field. So a create or update
   stores a value in a field only when every one of them may read it,
-  proved as an output is; otherwise `policy.output_field_unproved` names
-  the value in the write. A
-  copy between fields the same callers read stays allowed: within a
-  record, into a record that refers to the one it came from, or into one
-  of the same tenant. Who reads a field is known only of the record it is
-  stored in, so a copy into any other record proves only what holds of
-  anyone signed in. A patch, `when_supplied:`, a counter and a transition
-  store values too, and so does an action a value is passed to; what
-  decided a value is stored with it, and since an action is
-  all-or-nothing, so is whatever a `reject` in it tests.
-- **Server only.** `FieldAccess.server_only` lets no request read or write
-  the field. A test's or a seed's call without a caller runs without policy,
-  so it may; area 12 says how schedules and subscribers write one.
+  proved as an output is. Otherwise `policy.output_field_unproved` names
+  the value in the write. A copy between fields the same callers read
+  stays allowed: within a record, into a record that refers to the one it
+  came from, or into one of the same tenant. Who reads a field is known
+  only of the record it is stored in, so a copy into any other record
+  proves only what holds of anyone signed in. A patch, `when_supplied:`, a
+  counter and a transition store values too, and so does an action a
+  value is passed to. What decided a value is stored with it. Since an
+  action is all-or-nothing, so is whatever a `reject` in it tests.
 
-A field's `policy:` narrows `create`, `read` and `update`; it is deleted
-with its record. Who may read a value is proved from the grants alone, not
-from the data, because two records that each refer to a company may refer
-to different companies: a role held in one says nothing about the other.
+### Events
 
-A restricted field read only in an event isn't an output: an event's
-subscribers (area 12) are server work, so `emit` stores nothing a caller
-reads; what a subscriber stores from an event is checked where it stores
-it (area 12, "Subscribers"). Area 15's log redaction covers what a log
-holds.
+A restricted field read only in an event isn't an output. An event's
+subscribers are server work, so `emit` stores nothing a caller reads.
+What a subscriber stores from an event is checked where it stores it
+([Subscribers](12-jobs-and-events.md#subscribers)). What a log holds is
+covered by log redaction in [Personal data](15-personal-data.md).
 
 ## The permissions report
 <!-- topic: the-permissions-report -->
 
-Policy is written beside each entity, so nobody has to keep a central copy.
-`jadpo check` writes the global view, `build/report/permissions.md` with a
-`.json` twin: who can do what to every entity and field, and which actions
-are listed separately. Each list is shown as written, and an effect nobody
-is granted says so.
+Policy is written beside each entity, so nobody has to keep a central
+copy. To see the whole app at once, read the report `jadpo check` writes:
+`build/report/permissions.md`, with a `.json` twin. It says who can do
+what to every entity and field, and which actions are listed separately.
+Each list is shown as written, and an effect nobody is granted says so.
 
-Part of the report for the end-to-end example below:
+Here is part of the report for [Policy, end to end](#policy-end-to-end):
 
 | `work.Project` | create | read | update | delete |
 |---|---|---|---|---|
@@ -1414,7 +1626,7 @@ Part of the report for the end-to-end example below:
 Belongs to a `Company` through `company_id`. Only an action listed under `actions:` changes `company_id`.
 
 A field that narrows its entity's grants gets a row of its own beside "the
-record". For the `Project` under "Field restrictions":
+record". For the `Project` under [Field restrictions](#field-restrictions):
 
 | `work.Project` | create | read | update | delete |
 |---|---|---|---|---|
@@ -1422,64 +1634,82 @@ record". For the `Project` under "Field restrictions":
 | `budget` | as the record | `CompanyRole.editor` | `CompanyRole.editor` | as the record |
 | `import_reference` | server only | server only | server only | as the record |
 
-Changes to this matrix appear in the approval review in plain terms
-("viewers can now read `budget`").
+When a change alters this table, the approval review shows it in plain
+terms, such as "viewers can now read `budget`"
+([Review and sign-off](14-tooling.md#review-and-sign-off)).
 
-Policy adds no index of its own: every field a condition filters on is a
+Policy adds no index of its own. Every field a condition filters on is a
 reference (a user field, a role's or the tenant's reference, a
-membership's scope and member), and each already has its own index (area
-5). Keeping a reference inside the tenant finds the record it points at by
-`id`, its primary key, and a move to another tenant finds the records
-referring to it by their reference, which has its index, so it needs no
-index or migration of its own.
+membership's scope and member), and each already has its own
+[index](05-data.md#indexes). Keeping a reference inside the tenant finds
+the record it points at by `id`, its primary key. A move to another tenant
+finds the records referring to it by their reference, which has its
+index. So neither needs an index or a migration of its own.
 
 ## Protecting policy
 <!-- topic: protecting-policy -->
 
-Decided in area 1: an agent can edit policy, but the change cannot ship
-without a person's approval, wherever it is written. The compiler compares
-the whole application before and after, because access also widens when an
-output gains a field, a route becomes public or an action starts touching
-another entity. Each widening needs an acceptance file in `acceptances/`, the
-form area 7 decided for breaking API changes and database drops.
+An agent can edit policy, but the change can't ship without a person's
+approval, wherever it is written. The compiler compares the whole
+application before and after, because access also widens when an output
+gains a field, a route becomes public or an action starts touching another
+entity.
 
-Schedules and subscribers act as the system ("Background work"), and what
-`Access.system` is granted shows in the permissions report. The compiler's own purge of
-soft-deleted records (area 5) is the only operation outside policy.
+Each widening needs an acceptance: a file in `acceptances/` in which a
+person accepts that change
+([Acceptances](18-records-and-manifest.md#acceptances)). Breaking API
+changes and database drops are accepted the same way.
+
+Schedules and subscribers act as the system
+([Background work](#background-work)), and what `Access.system` is granted
+shows in the permissions report. The compiler's own purge of soft-deleted
+records ([The purge schedule](12-jobs-and-events.md#the-purge-schedule)) is
+the only operation outside policy.
+
+Acceptances for a change that widens access aren't built yet
+([What is built](#what-is-built)).
 
 ## When policy says no
 <!-- topic: when-policy-says-no -->
 
-The compiler adds policy to the SQL `WHERE` of every query and write (area
-6), and indexes every field a policy condition filters on; `jadpo sql`
-shows the policy each statement carries.
+Your code never handles a policy refusal itself. The compiler adds policy
+to the SQL `WHERE` of every query and write, and indexes every field a
+policy condition filters on. `jadpo sql` shows the policy each statement
+carries. What a refused caller sees depends on what they asked for:
 
 | Situation | The client sees |
 |---|---|
-| Not signed in, on a route that needs it | 401 `unauthenticated` (area 8) |
+| Not signed in, on a route that needs it | 401 `unauthenticated` ([Routes: signed in by default](08-identity.md#routes-signed-in-by-default)) |
 | A record the caller may not see, read or changed by id | the code's own `not_found` failure, as if it did not exist |
 | A list | only the records the caller may see, filtered before paging |
 | A create, or an action they may not call | 403 `not_permitted` |
 
-A hidden record reports the same `not_found` failure the code already maps,
-and the log records that policy concealed it (area 4). `not_permitted` is
-raised by the runtime and never listed in `fails` (question 7); the generated
-API description lists the 403 wherever it can happen. Writes are checked in
-the same statement as the change, so a membership removed a moment earlier
-cannot slip through.
+A hidden record reports the same `not_found` failure the code already
+maps, so a caller can't tell it from one that doesn't exist. The log
+records that policy concealed it
+([Concealing records](04-failures.md#concealing-records)).
 
-A token issued to another application (area 8) carries scopes, and scopes
-only narrow: the token may do what both the person's grants and its scopes
-allow (question 6).
+`not_permitted` is raised by the runtime and never listed in `fails`. The
+generated API description lists the 403 wherever it can happen.
+
+Writes are checked in the same statement as the change, so a membership
+removed a moment earlier can't slip through.
+
+A token issued to another application ([Identity](08-identity.md))
+carries scopes, which say what that application may do. Scopes only
+narrow: the token may do what both the person's grants and its scopes
+allow.
 
 ### Policy, end to end
 
-A whole application whose customers are companies: members sign up, found
-a company, and give each other roles in it, and a company's projects are
-seen and changed only by its members. The principal, its one sign-in
-method and root `policy.jadpo`, which names the tenant and the one action
-that needs other people than its entities' grants: founding a company,
-since a company with no members yet has no owner to grant anything:
+A whole application whose customers are companies. Members sign up, found
+a company and give each other roles in it, and a company's projects are
+seen and changed only by its members.
+
+First, the principal, its one sign-in method, and root `policy.jadpo`.
+The policy names the tenant, and the one action that needs other people
+than its entities' grants: founding a company, since a company with no
+members yet has no owner to grant anything:
 
 ```jadpo check project=policy-end-to-end file=app.jadpo
 use work/entities { Member }
@@ -1559,9 +1789,9 @@ type HandleTaken = Failure {
 }
 ```
 
-A member may read only their own record, and anyone may sign up; members
+A member may read only their own record, and anyone may sign up. Members
 are shared by every company. The membership says where its role is held,
-who holds it and which field holds it, and a company's records follow the
+who holds it and which field holds it. A company's records follow the
 roles held in it:
 
 ```jadpo check project=policy-end-to-end file=domains/work/entities/member.jadpo
@@ -1648,8 +1878,8 @@ entity Project {
 
 Founding a company is the listed action: anyone signed in may call it,
 and it makes its founder the owner. Adding a member is an ordinary create
-of a membership, so only the company's owners may; the code says nothing
-about who may do either:
+of a membership, so only the company's owners may do it. The code says
+nothing about who may do either:
 
 ```jadpo check project=policy-end-to-end file=domains/work/actions/register.jadpo hidden
 use work/entities { Member }
@@ -1860,7 +2090,7 @@ failure project_not_found
 
 A route test signs in as each member, so what it checks is exactly what a
 browser would see. The test sets up its data by calling actions without a
-caller, which runs them without policy; `found_company` takes its founder,
+caller, which runs them without policy. `found_company` takes its founder,
 so it runs as the founder and its grants apply:
 
 ```jadpo check project=policy-end-to-end file=domains/work/routes/projects.test.jadpo
@@ -1962,23 +2192,26 @@ test "someone outside a company can't start a project in it" {
 ## Caches and personal data
 <!-- topic: caches-and-personal-data -->
 
-Decided in area 5: a record cache applies policy on every read, a
-query-result cache is keyed by the tenant and every input policy used, and
-policy itself always reads the database.
+A [cache](05-data.md#caches) never lets a caller around policy. A record
+cache applies policy on every read. A query-result cache is keyed by the
+tenant and every input policy used. Policy itself always reads the
+database.
 
-Area 15 owns personal data. Policy supplies its permissions: erasing a
-person's data needs `delete` on their record and exporting it needs `read`.
+[Personal data](15-personal-data.md) takes its permissions from policy:
+erasing a person's data needs `delete` on their record, and exporting it
+needs `read`.
 
 ## What is built
 <!-- topic: policy-built -->
 
-Each feature not built yet is `toolchain.not_built_yet` where it is written.
+Everything on this page is built except the two features below. Each is
+`toolchain.not_built_yet` where you write it.
 
 | Feature | Status |
 |---|---|
-| Everything else on this page | Built. |
-| `scopes:`, with the tokens issued to other applications (`oauth_token`, `external_token`) | Not built yet. |
-| An acceptance for a change that widens access, and the approval review that shows the report's changes | Not built yet (areas 14 and 18). |
+| Grants, user fields, membership roles, `Access.authenticated`, `Access.public` and `Access.system`, tenancy, `actions:`, field restrictions, the permissions report, and the refusals under "When policy says no" | Built. |
+| `scopes:`, with the tokens issued to other applications (`oauth_token`, `external_token`) | Not built yet. Browser sessions and service keys work without them. |
+| An acceptance for a change that widens access, and the approval review that shows the report's changes ([Review and sign-off](14-tooling.md#review-and-sign-off), [Acceptances](18-records-and-manifest.md#acceptances)) | Not built yet. Review policy changes in the permissions report's diff instead. |
 
 ## Errors
 

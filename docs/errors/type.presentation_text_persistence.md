@@ -16,7 +16,7 @@ error: `Receipt.issued_label` would store text formatted for a person
   reason: `Receipt.issued_label` holds `PresentationText`: text in one reader's language and zone, which another reader, a change of locale or a correction to the zone database would show differently, and which can't be read back as a time. A record keeps the value itself and formats it when it is shown.
   next: Store the `Instant`, `CalendarDate` or `ZonedTime` instead, and format `Receipt.issued_label` in the output that shows it (agent)
   rule: type.presentation_text_persistence
-  help: docs/errors/type.presentation_text_persistence.md
+  help: https://jadpo.dev/docs/errors/type.presentation_text_persistence
 
 check failed: 1 error, 1 file
 ```

@@ -20,7 +20,7 @@ error: `Uuid` is the name of a standard type
   reason: Jadpo 0.1.0 added the standard type `Uuid`, and the application's own type can't share its name, or `Uuid` would mean two things. An upgrade never changes what code means silently, so `check` stops here until this type is swapped for the standard type or renamed.
   next: Run `jadpo fix Uuid swap` to use the standard `Uuid` in its place, or `jadpo fix Uuid rename <NewName>` to keep this one under a name of its own (agent)
   rule: type.standard_clash
-  help: docs/errors/type.standard_clash.md
+  help: https://jadpo.dev/docs/errors/type.standard_clash
 
 check failed: 1 error, 1 file
 ```

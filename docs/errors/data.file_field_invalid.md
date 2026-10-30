@@ -41,7 +41,7 @@ error: `PriceSheet.sheet`'s `store:` isn't a store of files
   reason: A `File` field's `store:` names a connection that provides `files`; `main` is a connection that keeps no files, and `app.jadpo` declares `sheets`.
   next: Write `store: sheets` (agent)
   rule: data.file_field_invalid
-  help: docs/errors/data.file_field_invalid.md
+  help: https://jadpo.dev/docs/errors/data.file_field_invalid
 
 check failed: 1 error, 2 files
 ```

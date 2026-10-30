@@ -19,7 +19,7 @@ error: `OutOfStock` is a failure and can't be called
   reason: A failure is raised with `reject OutOfStock`, with its fields in a block when it has any.
   next: Write `OutOfStock` without `()` (agent)
   rule: semantic.not_callable
-  help: docs/errors/semantic.not_callable.md
+  help: https://jadpo.dev/docs/errors/semantic.not_callable
 
 check failed: 1 error, 1 file
 ```
@@ -71,7 +71,7 @@ error: An action can't call fixture `two_open_todos`
   reason: A fixture builds test data: only tests, other fixtures and seeds call it, and it is never compiled into a deployable.
   next: Call the actions `two_open_todos` calls, or move this call into a test, fixture or seed (agent)
   rule: semantic.not_callable
-  help: docs/errors/semantic.not_callable.md
+  help: https://jadpo.dev/docs/errors/semantic.not_callable
 
 check failed: 1 error, 5 files
 ```

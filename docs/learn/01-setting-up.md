@@ -52,7 +52,7 @@ installed through [rustup](https://rustup.rs). The repository pins the
 version of Rust it needs, and rustup fetches it on the first build.
 
 ```sh
-git clone https://github.com/richardwillars/jadpo.git
+git clone https://github.com/jadpo-dev/jadpo.git
 cd jadpo
 cargo build --release --locked -p jadpo-cli
 ```
@@ -126,14 +126,13 @@ doesn't run until you fix it. Every error has the same parts:
   `next:` line tells your coding agent to stop and ask you which fix you
   want, because the choice is yours to make (who can see data, what a
   setting holds). `(agent)` means your agent can make the fix itself;
-- `rule:`, the error's name, and `help:`, where its page is.
+- `rule:`, the error's name, and `help:`, the address of its page.
 
 Every error has a page on this site: `https://jadpo.dev/docs/errors/`
 followed by the rule, such as
-`https://jadpo.dev/docs/errors/record.out_of_date`. The `help:` line
-gives the page's place in Jadpo's own source instead, which you can't
-open from your project, so use the site. You'll meet real errors on the
-next page, and fix them.
+`https://jadpo.dev/docs/errors/record.out_of_date`, which the `help:`
+line prints for you to open. You'll meet real errors on the next page,
+and fix them.
 
 ## Using it with a coding agent
 
@@ -147,6 +146,6 @@ Next: [A project and your first route](02-first-route.md).
 ## Not built yet
 
 There is no installer yet, so you build from source as above. Prebuilt
-downloads, Homebrew and `npx jadpo` come with the first release, and so
+downloads, Homebrew (`brew install jadpo-dev/tap/jadpo`) and `npx @jadpo/jadpo` come with the first release, and so
 does `jadpo new`, which will start a project for you. Until then you
 make the few files of a new project by hand, which the next page does.

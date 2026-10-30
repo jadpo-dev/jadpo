@@ -19,7 +19,7 @@ error: This project needs Jadpo 99.0 or later
   reason: `jadpo:` is the earliest Jadpo version the project needs. This Jadpo is older, so it stops here rather than misread what a later version added.
   next: Upgrade Jadpo to 99.0 or later (`jadpo version` shows this one), then run the command again (human)
   rule: toolchain.version_newer
-  help: docs/errors/toolchain.version_newer.md
+  help: https://jadpo.dev/docs/errors/toolchain.version_newer
 
 check failed: 1 error, 1 file
 ```

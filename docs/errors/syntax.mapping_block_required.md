@@ -28,7 +28,7 @@ error: An `attempt`'s mappings go in a block after the call
   reason: An `attempt` maps its failures in a block, one per line, the same form writes and integration calls use; a construction's keys are the rules that can break, with `invalid:` covering the rest.
   next: Move `invalid: QuantityTooLarge` into a block after the call: `{ invalid: QuantityTooLarge }` (agent)
   rule: syntax.mapping_block_required
-  help: docs/errors/syntax.mapping_block_required.md
+  help: https://jadpo.dev/docs/errors/syntax.mapping_block_required
 
 check failed: 1 error, 1 file
 ```

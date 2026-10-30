@@ -147,3 +147,42 @@ Why [Policy](../09-policy.md) is the way it is: the decisions behind it, how it 
 | The tenant background work names | The tenant id an event or a batch run names must come from a record of that tenant the action read or wrote under its caller's policy, proved from where the value came from; otherwise `policy.event_tenant_unproved`, so a caller can't aim system work at a tenant they don't belong to |
 | Whether a record is there, for a webhook's reply | A webhook's reply action finds every record its grants name, so what a condition, a loop or a count over records decides shows whether they are there: a reply decided by it, or a failure raised on it, needs records anyone at all may read (`Access.public` in the entity's `read:`), a record the action created being its own. Its failure goes back to whoever sent the webhook as its reply does, so what decides whether it fails (what decided a `reject` or an `attempt`, a `get` or an update or delete by `id` finding nothing, a write's `conflict:` arms) and a failure's client fields are proved as the reply is (`policy.output_field_unproved`). A route's caller still learns nothing from whether a record is there, since it is given only those it may read. A failure's client fields declared in a domain are proved for every caller too |
 | The system inside a request, and a webhook's reply | The magic-link `send:` action runs with its delivery's tenant, as a subscriber's does, which for `jadpo.MagicLinkEmail` is none; a webhook's reply action and `on_first_sign_in:`'s run with no tenant, never every tenant; each reaches only records every tenant shares, and what only `Access.public` lets it in to is `policy.system_grant_missing` at where it is named, as for background work. A webhook's reply is an output to `Access.public`: each field it carries, or that decided it, is one anyone at all may read, a record the action created holding what it set (`policy.output_field_unproved`), proved in the checker where routes' outputs are |
+
+## Moved from the area page
+
+When [Policy](../09-policy.md) was rewritten to the
+[writing guide](../../writing.md), its references to the questions above
+and to other areas by number, and the reasons it gave for its rules,
+moved here. Nothing in this list changed a rule.
+
+- **Policy is always on** is question 2's decision.
+- **Tenancy is named once**, in root `policy.jadpo`, by question 3. The
+  page said why tenancy matters this much: most business applications are
+  shared by many customer companies, and the worst bug they can have is one
+  company seeing another's data.
+- **A grant naming one of two references to the scope**,
+  `TeamRole.lead(from_team_id)`, is question 5's.
+- **Actions listed under `actions:`** are question 4's answer, and
+  calling an integration needing no grant of its own is question 9's.
+- **`not_permitted` is never listed in `fails`** by question 7, and
+  scopes only narrowing a token is question 6.
+- **Transitions are updates, with deletes the exception**: the exception
+  is area 6's, under "The operations every entity gets".
+- **The system caller** that schedules and subscribers act as is area
+  12's question 8.
+- **Why `Access.public` doesn't let background work in.** A statement
+  only `Access.public` grants tests no caller, so at run time it would run
+  for the system as for everyone. Making it a compile error for a
+  schedule, a subscriber or a batch means the runtime never has to tell
+  the two apart.
+- **The tenant a batch names from a record it is handed** is shown by
+  example 25: `invoice_round(rent_round: RentRound)` names its run's
+  society from `rent_round.society_id`.
+- **Protecting policy** was decided in area 1, and the acceptance file is
+  the form area 7 decided for breaking API changes and database drops
+  (question 10).
+- **Caches** applying policy follow area 5's decision.
+- **Personal data** is area 15's (question 11); policy supplies its
+  permissions.
+- **What is built** named areas 14 and 18 for the acceptance and the
+  approval review that are not built yet.

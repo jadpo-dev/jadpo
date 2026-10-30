@@ -31,7 +31,7 @@ error: `average` needs `scale:` and `rounding:`
   reason: An average rarely comes out exact, so it says how many places it keeps and how the last one is rounded, both written out: `average(Book.<field>, scale: 2, rounding: Rounding.half_even)`.
   next: Add `scale:` and `rounding:` (agent)
   rule: query.aggregate_argument
-  help: docs/errors/query.aggregate_argument.md
+  help: https://jadpo.dev/docs/errors/query.aggregate_argument
 
 check failed: 1 error, 1 file
 ```

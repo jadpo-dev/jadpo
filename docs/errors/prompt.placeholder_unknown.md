@@ -34,7 +34,7 @@ error: `{questoin}` isn't a field of `AnswerQuestion`
   reason: A prompt's placeholders are its type's fields, written `{field}`, as a translation's are. `AnswerQuestion` has no field `questoin`; its text may write `{question}` and `{reader_locale}`.
   next: Write `{question}`, or add the field to `AnswerQuestion` (agent)
   rule: prompt.placeholder_unknown
-  help: docs/errors/prompt.placeholder_unknown.md
+  help: https://jadpo.dev/docs/errors/prompt.placeholder_unknown
 
 check failed: 1 error, 2 files
 ```

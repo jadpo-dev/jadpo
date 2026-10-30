@@ -34,7 +34,7 @@ error: `{question}` is free text in the instructions of `AnswerQuestion`
   reason: `question` is free text, which can carry instructions of its own. Free text is only ever sent as data, under `# Request`, inside a block tagged `<question>` that it can't close, so it can't pass itself off as the application's instructions. A closed value (an enum, a number, a date, a `Locale`) may be written in the instructions.
   next: Move `{question}` under `# Request` (agent)
   rule: prompt.free_text_in_instructions
-  help: docs/errors/prompt.free_text_in_instructions.md
+  help: https://jadpo.dev/docs/errors/prompt.free_text_in_instructions
 
 check failed: 1 error, 2 files
 ```

@@ -29,7 +29,7 @@ error: `lookup` is given twice
   reason: Each field of `Missing` is given once, so the log and the client never have to guess which value counts.
   next: Remove one `lookup` (agent)
   rule: failure.duplicate_context_field
-  help: docs/errors/failure.duplicate_context_field.md
+  help: https://jadpo.dev/docs/errors/failure.duplicate_context_field
 
 check failed: 1 error, 1 file
 ```

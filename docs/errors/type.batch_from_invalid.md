@@ -70,7 +70,7 @@ error: `batches.each`'s `from:` isn't a call of a named query giving a `Page`
   reason: A run walks `from:` a page at a time, after the action that starts it commits: it calls a named query that gives a `Page<T>`, and each item is a `T`; the query's arguments are worked out now and saved with the run.
   next: Write `batches.each(from: <query>(...), ...)`, with a query whose result is `Page<T>` (agent)
   rule: type.batch_from_invalid
-  help: docs/errors/type.batch_from_invalid.md
+  help: https://jadpo.dev/docs/errors/type.batch_from_invalid
 
 check failed: 1 error, 2 files
 ```

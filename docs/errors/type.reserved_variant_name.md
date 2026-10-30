@@ -21,7 +21,7 @@ error: `all` can't be a variant of `Newsletter`
   reason: `Newsletter.all` lists every variant of `Newsletter`, so no variant takes the name `all`.
   next: Rename the variant (agent)
   rule: type.reserved_variant_name
-  help: docs/errors/type.reserved_variant_name.md
+  help: https://jadpo.dev/docs/errors/type.reserved_variant_name
 
 check failed: 1 error, 1 file
 ```

@@ -33,7 +33,7 @@ error: `Customer.mail` names no unique rule or reference
   reason: A `conflict:` arm is keyed by the rule the store refuses, written `Entity.name`: a field with `unique: true`, a rule named in `unique:`, a `restricted` reference that refuses a delete, or a lifecycle transition whose `when:` can refuse it. `Customer.create` can break `Customer.email`. Did you mean `Customer.email`?
   next: Use `Customer.email` instead of `Customer.mail` (agent)
   rule: data.conflict_unknown
-  help: docs/errors/data.conflict_unknown.md
+  help: https://jadpo.dev/docs/errors/data.conflict_unknown
 
 check failed: 1 error, 1 file
 ```

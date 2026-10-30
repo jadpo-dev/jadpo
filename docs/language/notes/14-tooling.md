@@ -87,9 +87,69 @@ what other areas carried here and where this page answers it.
 | Find references | Each identifier of the name's spelling is resolved by the same lookup as go to definition and kept when it reaches the same node, rather than read from the graph's call and use edges, which hold no places; a parameter or variable is looked for in its own body |
 | The extension's own screens | A language status item, not a status bar item of its own, naming the `jadpo` running and its version, an error severity when none is found or it didn't start; one notification per failure with the single next step as its button, none on success; "Open Generated File" is a quick pick of `build/`'s readable files by folder with a refresh button that runs `jadpo check`, since the files are as that last wrote them |
 | Publishing the extension | `.github/workflows/vscode-extension.yml`, dispatched by release-please after dist's workflow, packages at the tag's version (MAJOR.MINOR.PATCH, as the Marketplace takes) and attaches the `.vsix`; publishing to the Marketplace and Open VSX waits for dist's run for the tag and the release out of draft, so the extension never asks for a `jadpo` that can't be installed, and is off until `JADPO_VSCODE_PUBLISH` is `on` |
+| Which `jadpo` runs | The installed `jadpo` is a thin launcher, as rustup and Go's toolchain switching are. In a project it reads the release line from `app.jadpo` and runs that toolchain, fetched once into a per-user cache and checked against the release's SHA-256 and GitHub artifact attestation before it runs; outside a project `new`, `--version`, `help` and the toolchain commands run with the launcher's own version. The line, not a minimum, is the compatibility unit, since a 0.x minor release may break apps; a plain binary refuses a project on another line with an error naming the line to install, and `toolchain.version_older` is the new rule for a newer binary meeting an older line. VS Code runs `jadpo lsp` from the project folder, so it needs no configuration, and `jadpo.server.path` stays only as a compiler developer's override. 0.1.0 ships as a plain binary; the launcher is built before 0.2.0, when two versions first exist |
 | Editor completion | Completion for everything as you type, generated from the declarations and data the compiler uses, never a list kept for the editor: names in scope, fields, operations with signature, failures and docs, variants with CLDR names, units after a number narrowed to the type required, named arguments, type names, declinable rules, settings, messages and keywords; snippets for calls with required arguments; no AI suggestions in the server |
 | Suggestions | `jadpo suggest` hints where code could use a standard type or operation and never edits; it formats, then matches signals held as data on the standard types' entries (shape, conversion constants, name hints, format literals, validation patterns) and a loop table for operations through canonical graph fragments, numbers its findings and ends with the agent's instruction; `ignore` writes the canonical hash, signal and reason to the committed `ignored_suggestions.jadpo_record`; `found` teaches a miss; a vanished finding is accepted; everything to share waits in `.jadpo/suggest_pending` for `share` |
 | Sharing with Jadpo HQ | Sharing is on unless `suggestions { share: false }` or `JADPO_SUGGEST_SHARE=off` turns it off; `share` sends the pending hashes with their kinds and a committed random project token at once, shows the snippets HQ asks for (those seen from enough distinct projects) as the exact payload, and sends them only with `--approve` after a person said yes; unattended runs send only hashes; the pending file is wiped after; taught patterns are kept in the committed `taught_suggestions.jadpo_record`; the protocol (HTTPS and JSON under `/v1/`) and HQ's agent are written on this page so the real HQ implements them unchanged |
 | Watching saves | `jadpo dev` and `jadpo test --watch` look at the files every few tens of milliseconds and take a burst of changes once they have been quiet for 50 ms. A file that had text and is empty at that point is an editor's save in place, truncated and not yet written, and the burst waits for its text, however far apart the two writes are, up to 2 seconds; a file still empty then is a save. Waiting instead for every changed file's content to stay the same across a longer settle would cover only a gap shorter than the settle and slow every save, while an empty file is the one half-written state that checks cleanly; a partly written file fails to check and keeps the last good version serving |
 | Settings in name order | The formatter sorts `config { }` fields by name, the one exception to fields keeping their written order, so parallel workspaces adding settings rarely clash (area 10) |
 | `build/` kept out of git | `jadpo dev`, whose inbox and call log are kept in `build/`, adds `build/` to the project's `.gitignore` each time it starts and finds it not ignored there (as `build`, `build/`, `/build` or `/build/`), making the file when there is none and keeping what it held; `jadpo new` writes it too. `jadpo check` leaves `.gitignore` alone, since what it writes is derived and holds no prompts or mail |
+
+## Moved from the area page
+
+When [Tooling](../14-tooling.md) was rewritten to the [writing
+guide](../../writing.md), its references to other areas by number, and
+the details of how the tools themselves are built, moved here. Nothing in
+this list changed a rule.
+
+- **The page's scope.** Its commands and outputs apply the decisions of
+  areas 1 to 14. The tools for agents come from areas 1, 4 and 5.
+- **Where each command was specified.** `jadpo impact` and the `jadpo
+  domain` commands in area 1; `jadpo seed` in area 5; `jadpo test
+  --interactive` in area 13; `jadpo package new`, `jadpo services` and
+  `jadpo dev grants add` in area 11; `jadpo files copy` and `jadpo search
+  reindex` in area 16; `jadpo trace`, `why`, `call`, `console` and
+  `incident` are proposed in area 17. `jadpo package update` prints area
+  18's review of the surface the app uses, and `jadpo package add` reads
+  the registry in area 11's fixed order.
+- **Editor rename** waits for `jadpo rename` and the identity registry it
+  writes (areas 5 and 18).
+- **The acceptance form** that a breaking API change, a database drop,
+  weaker policy and a new or renamed domain share was designed in area 7.
+  Jadpo builds no signing or user accounts of its own, since review already
+  happens on the git host.
+- **Runtime events.** Area 4 decided what `runtime.unhandled_fault`,
+  `runtime.outcome_unknown` and `runtime.startup_failed` log. Area 8 asks
+  that a protected route with no authentication set up is reported by
+  `jadpo check`, as the `toolchain.target_*` errors are.
+- **The unreachable `type.job_delivery_*` errors** go with the delivery
+  descriptor if area 12's question 2 is accepted.
+- **Query SQL is never written into source as a comment**, because it
+  would go stale, add noise to diffs and invite edits.
+- **The editor's code.** Formatting in the editor runs `jadpo fmt`'s code
+  through `jadpo_check::formatting`. Completion is built in
+  `jadpo_check::completion`, through the checker's analysis of the text as
+  it is typed, and the server's `textDocument/completion`; a test offers
+  every operation each stub declares after its namespace, with no
+  operation named in the completion code. The units completion offers are
+  `jadpo-std`'s table.
+- **The VS Code extension** lives in `editors/vscode`, with its install,
+  settings and commands in `editors/vscode/README.md`. Its highlighting
+  grammar is written by hand, and `tools/checks/editor_grammar.py`, part of
+  `tools/verify.py`, fails when it leaves out or adds a word the lexer
+  reserves. `.github/workflows/vscode-extension.yml` packages and publishes
+  it, switched off until the repository variable `JADPO_VSCODE_PUBLISH` is
+  `on`.
+- **The suggestions' text hash** never depends on the canonicaliser's
+  version.
+- **How a deployable starts and serves.** A native binary and a Worker
+  both read their settings through the runtime's `config::load` and build
+  each connection's driver through the factory. Each native worker serves
+  and ticks through the runtime's `Serving` on its own `NativeHost`. A
+  Worker and a native binary start, compare their stores and log through
+  the same code, `jadpo_runtime::deployable`.
+- **The pinned Workers tools.** The workerd the Workers host is tested at,
+  which sets the Wrangler file's `compatibility_date`, and the Wrangler
+  whose `deploy --dry-run` accepts the file, are pinned in
+  `tools/fixtures/workers/`. The Rust toolchain is fetched from Rust's dist
+  server.

@@ -223,7 +223,7 @@ class Bundle(unittest.TestCase):
         self.assertTrue(shown.startswith('# Shown\n\nSee '), shown)
         self.assertIn('[two\'s part](twos-part.md#the-part)', shown)
         self.assertIn('[the rule](../errors/a.b.md)', shown)
-        self.assertIn('[the notes](https://github.com/richardwillars/jadpo/blob/main/docs/language/notes/01-one.md)', shown)
+        self.assertIn('[the notes](https://github.com/jadpo-dev/jadpo/blob/main/docs/language/notes/01-one.md)', shown)
         self.assertIn('[later](shown.md#later)', shown)
         self.assertIn('`[not a link](nowhere.md)`', shown)
         self.assertIn('## Later', shown)
@@ -236,6 +236,17 @@ class Bundle(unittest.TestCase):
         self.assertTrue(error.startswith('# `a.b`\n\nA is b.\n\nArea 1, [One](../topics/one.md); declinable'), error)
         self.assertIn('[Shown](../topics/shown.md)', error)
         self.assertIn('- [`a.b`](../errors/a.b.md): A is b', files['commands/jadpo-check.md'])
+
+    def test_a_code_fence_keeps_only_its_language(self):
+        one = AREA_ONE.replace('### Later', '```text output\nchecked\n```\n\n````markdown\n```jadpo check project=q\n```\n````\n\n### Later')
+        _, files, _ = self.build(one=one)
+        shown = files['topics/shown.md']
+        self.assertIn('```jadpo\ntype Shown = Int\n```', shown)
+        self.assertIn('```text\nchecked\n```', shown)
+        # What a fence holds is left as it is, a fence written inside it too.
+        self.assertIn('````markdown\n```jadpo check project=q\n```\n````', shown)
+        self.assertNotIn('project=p', shown)
+        self.assertNotIn('text output', shown)
 
 
 PRIMER = """# Primer
@@ -307,6 +318,15 @@ class Structure(unittest.TestCase):
 
     def test_a_tree_in_shape_has_one_problem_the_missing_page(self):
         self.assertEqual(self.problems(), ['c.d (area 2) has no page: add docs/errors/c.d.md'])
+
+    def test_a_help_line_is_a_rules_page_on_the_site(self):
+        shown = '```text\nerror: no\n  rule: a.b\n  help: {}\n```\n'
+        good = AREA_TWO + shown.format('https://jadpo.dev/docs/errors/a.b')
+        self.assertEqual(self.problems(two=good), ['c.d (area 2) has no page: add docs/errors/c.d.md'])
+        found = ' '.join(self.problems(two=AREA_TWO + shown.format('docs/errors/a.b.md')))
+        self.assertIn('help line names docs/errors/a.b.md, not a rule\'s page on the site', found)
+        found = ' '.join(self.problems(two=AREA_TWO + shown.format('https://jadpo.dev/docs/errors/x.y')))
+        self.assertIn('help line names https://jadpo.dev/docs/errors/x.y, a rule the catalogue doesn\'t have', found)
 
     def test_a_topic_needs_an_id(self):
         problems = self.problems(two=AREA_TWO.replace("<!-- topic: twos-part -->\n", ''))
@@ -478,7 +498,7 @@ class Learn(unittest.TestCase):
             '# A page\n<!-- topic: a-page -->\n\nAs area 8 says, and question 11.\n\n'
             'This is not built yet.\n\nDecided. It was carried to area 9.\n\n'
             '[examples](../../examples/README.md) and '
-            '[code](https://github.com/richardwillars/jadpo/blob/main/README.md).\n\n'
+            '[code](https://github.com/jadpo-dev/jadpo/blob/main/README.md).\n\n'
             '```jadpo fragment\nx\n```\n\n## Not built yet\n\nNone.\n\n## After\n\nMore.\n')
         for expected in ('"area 8"', '"question 11"', 'build status', 'spec vocabulary',
                          'links a file in this repository', 'fragment', '`## Not built yet` is the last section'):
@@ -498,8 +518,8 @@ class Links(unittest.TestCase):
             (root / 'docs').mkdir()
             (root / 'docs/a.md').write_text('# A\n')
             (root / 'llms.txt').write_text(
-                '- [A](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/a.md)\n'
-                '- [B](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/b.md)\n'
+                '- [A](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/a.md)\n'
+                '- [B](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/b.md)\n'
                 '- [Elsewhere](https://example.com/c.md)\n')
             problems = docs.check_links([root / 'llms.txt'], root)
             self.assertEqual(len(problems), 1)

@@ -35,7 +35,7 @@ error: An action can't make a caller
   reason: A caller only comes from signing in; tests, fixtures and seeds make one from a record with `Principal.user(...)`, and application code takes it as a parameter a route passes.
   next: Take a `Principal.user` parameter, which the route passes as `current_principal.user` (agent)
   rule: type.auth_principal_construction
-  help: docs/errors/type.auth_principal_construction.md
+  help: https://jadpo.dev/docs/errors/type.auth_principal_construction
 
 check failed: 1 error, 1 file
 ```

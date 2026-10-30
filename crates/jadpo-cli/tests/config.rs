@@ -139,13 +139,13 @@ error: `GREETING` isn't set
   reason: `greeting` is required: it has no `default:`, so the app can't start without a value for it.
   next: Run `jadpo config set greeting` to store it in `.env.local`, or set `GREETING` in the environment (human)
   rule: configuration.value_missing
-  help: docs/errors/configuration.value_missing.md
+  help: https://jadpo.dev/docs/errors/configuration.value_missing
 
 error: `SESSION_SIGNING_KEY` isn't set
   reason: `session_signing_key` is required: it has no `default:`, so the app can't start without a value for it.
   next: Run `jadpo config set session_signing_key` to store it in `.env.local`, or set `SESSION_SIGNING_KEY` in the environment (human)
   rule: configuration.value_missing
-  help: docs/errors/configuration.value_missing.md
+  help: https://jadpo.dev/docs/errors/configuration.value_missing
 
 config incomplete: 2 problems, 4 settings
 
@@ -953,7 +953,7 @@ fn move_refuses_a_name_a_setting_has_and_changes_nothing() {
   reason: `config { }` declares `max_login_attempts` already, so `security.max_login_attempts` can't become `config.max_login_attempts` without two settings of one name.
   next: Rename the constant or the setting `max_login_attempts`, then run `jadpo config move` again (agent)
   rule: configuration.move_name_taken
-  help: docs/errors/configuration.move_name_taken.md
+  help: https://jadpo.dev/docs/errors/configuration.move_name_taken
 
 config move refused: nothing changed
 "

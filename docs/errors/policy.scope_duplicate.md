@@ -49,7 +49,7 @@ error: `scope:` is given twice
   reason: A membership says once where its role is held, who holds it and which field holds it, so there is never a question of which counts.
   next: Remove one `scope:` (agent)
   rule: policy.scope_duplicate
-  help: docs/errors/policy.scope_duplicate.md
+  help: https://jadpo.dev/docs/errors/policy.scope_duplicate
 
 check failed: 1 error, 1 file
 ```

@@ -29,7 +29,7 @@ error: `config.greeting` has no value in tests
   reason: The test "the greeting is read" reaches this read. A test reads each setting's `test:` value, or its `default:`, and `greeting` has neither; only a secret is made up for a run, and `greeting` isn't one.
   next: Give `greeting` a `test:` value, or a `default:`, in `config.jadpo` (agent)
   rule: configuration.test_value_missing
-  help: docs/errors/configuration.test_value_missing.md
+  help: https://jadpo.dev/docs/errors/configuration.test_value_missing
 
 check failed: 1 error, 1 file
 ```

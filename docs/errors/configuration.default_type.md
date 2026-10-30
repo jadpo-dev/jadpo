@@ -17,7 +17,7 @@ error: `"many"` can't be the default of `page_size`
   reason: `page_size` is `Int`, and this is a different kind of value; the default must be a literal of the setting's own type.
   next: Write a `Int` value after `default:` (agent)
   rule: configuration.default_type
-  help: docs/errors/configuration.default_type.md
+  help: https://jadpo.dev/docs/errors/configuration.default_type
 
 check failed: 1 error, 1 file
 ```

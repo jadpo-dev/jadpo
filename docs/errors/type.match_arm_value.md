@@ -41,7 +41,7 @@ error: This arm gives no value
   reason: A `match` used as a value gives one from every arm: an expression, `reject` or `propagate`; this block can reach its end without leaving.
   next: Write the arm's value after `->`, or end the block with `return` or `reject` (agent)
   rule: type.match_arm_value
-  help: docs/errors/type.match_arm_value.md
+  help: https://jadpo.dev/docs/errors/type.match_arm_value
 
 check failed: 1 error, 2 files
 ```

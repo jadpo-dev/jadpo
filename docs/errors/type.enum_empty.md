@@ -13,7 +13,7 @@ error: `TicketStatus` has no variants
   reason: An enum is a closed list of named alternatives, so it needs at least one for a value to be.
   next: Add the enum's variants, one name per line (agent)
   rule: type.enum_empty
-  help: docs/errors/type.enum_empty.md
+  help: https://jadpo.dev/docs/errors/type.enum_empty
 
 check failed: 1 error, 1 file
 ```

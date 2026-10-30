@@ -19,7 +19,7 @@ error: `List` takes one type argument, as in `List<Tag>`
   reason: `List` holds values of the type in `< >`, so it needs exactly 1.
   next: Write `List` with one type argument, as in `List<Tag>` (agent)
   rule: type.type_argument_count
-  help: docs/errors/type.type_argument_count.md
+  help: https://jadpo.dev/docs/errors/type.type_argument_count
 
 check failed: 1 error, 1 file
 ```

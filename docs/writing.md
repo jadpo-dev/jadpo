@@ -166,8 +166,8 @@ the reader can read.
 
 A user page links pages of the docs, by topic, never a path in this
 repository (`examples/...`), which a reader in their own project can't
-open. Where the compiler prints such a path, as in an error's `help:`
-line, say what to open instead: `https://jadpo.dev/docs/errors/<rule>`.
+open. An error's `help:` line is its page's address on the site,
+`https://jadpo.dev/docs/errors/<rule>`, which a reader opens as it is.
 
 ## Kinds of user page
 

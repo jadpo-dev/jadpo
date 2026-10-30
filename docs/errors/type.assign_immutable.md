@@ -21,7 +21,7 @@ error: `fixed` can't be changed
   reason: `var` names a value that never changes; only a `var mut` can be pointed at a new value.
   next: Declare it `var mut fixed` (agent)
   rule: type.assign_immutable
-  help: docs/errors/type.assign_immutable.md
+  help: https://jadpo.dev/docs/errors/type.assign_immutable
 
 check failed: 1 error, 1 file
 ```

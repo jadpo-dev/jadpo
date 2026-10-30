@@ -29,7 +29,7 @@ error: `Customer.create` can break `Customer.email`, and nothing maps it
   reason: A write is refused when it would give two records the same values a unique rule covers; it needs an arm in `conflict:` naming the `conflict` failure the caller gets, since there is no catch-all.
   next: Add `conflict: { Customer.email: SomeFailure }` to the block (agent)
   rule: data.conflict_unmapped
-  help: docs/errors/data.conflict_unmapped.md
+  help: https://jadpo.dev/docs/errors/data.conflict_unmapped
 
 check failed: 1 error, 1 file
 ```

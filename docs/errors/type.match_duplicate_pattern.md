@@ -41,7 +41,7 @@ error: `DeliveryState.pending` is matched twice
   reason: Each case is matched once; the first arm takes every value this one would, so this arm never runs.
   next: Remove this arm, or merge its body into the first (agent)
   rule: type.match_duplicate_pattern
-  help: docs/errors/type.match_duplicate_pattern.md
+  help: https://jadpo.dev/docs/errors/type.match_duplicate_pattern
 
 check failed: 1 error, 2 files
 ```

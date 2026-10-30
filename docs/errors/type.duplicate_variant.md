@@ -19,7 +19,7 @@ error: `TicketStatus.open` is declared twice
   reason: Each variant of an enum has its own name, so a value and a `match` arm name exactly one.
   next: Remove one `open`, or rename it (agent)
   rule: type.duplicate_variant
-  help: docs/errors/type.duplicate_variant.md
+  help: https://jadpo.dev/docs/errors/type.duplicate_variant
 
 check failed: 1 error, 1 file
 ```

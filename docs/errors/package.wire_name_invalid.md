@@ -39,7 +39,7 @@ error: `wire_name` is for a provider package's fields
   reason: `wire_name:` gives a field's spelling on a provider's wire, where it differs from its Jadpo name, so only a provider package's types say it; the app's own types are sent as its contract writes them.
   next: Remove `wire_name:` (agent)
   rule: package.wire_name_invalid
-  help: docs/errors/package.wire_name_invalid.md
+  help: https://jadpo.dev/docs/errors/package.wire_name_invalid
 
 check failed: 1 error, 3 files
 ```
@@ -91,7 +91,7 @@ error: Webhook event `PaymentRefunded` doesn't give `wire_name:`
   reason: `AcmePay.v1` declares `webhooks:`, so each event it declares gives the type its provider names it by, `wire_name:`, which the runtime matches a webhook's event type against.
   next: Add `wire_name:` with the provider's name for the event, such as `wire_name: "payment.succeeded"` (agent)
   rule: package.wire_name_invalid
-  help: docs/errors/package.wire_name_invalid.md
+  help: https://jadpo.dev/docs/errors/package.wire_name_invalid
 
 check failed: 1 error, 4 files
 ```

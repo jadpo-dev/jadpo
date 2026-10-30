@@ -13,7 +13,7 @@ error: `Postcodes.v2` is linked to `../postcodes`
   reason: A link compiles the app against a checkout on one machine, so CI (the `CI` variable is set) and production builds refuse it, and a link never ships.
   next: Run `jadpo package unlink postcodes`, then commit `jadpo.lock` (agent)
   rule: install.link_refused
-  help: docs/language/14-tooling.html#command-errors
+  help: https://jadpo.dev/docs/errors/install.link_refused
 
 check failed: 1 error, 7 files
 ```

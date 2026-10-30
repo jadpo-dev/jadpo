@@ -21,7 +21,7 @@ error: `"openai/gpt-4.1-mini"` writes a model in code
   reason: A model is a setting, so moving to a newer one is a configuration change reviewed like any other: a `ModelId` setting gives it a `default:`, `ai: { models: }` names it, and a call asks it with `model:`.
   next: Declare a `ModelId` setting with this `default:` in `config.jadpo`, name it in `ai: { models: }`, and ask it with `model:` (agent)
   rule: semantic.ai_model_literal
-  help: docs/errors/semantic.ai_model_literal.md
+  help: https://jadpo.dev/docs/errors/semantic.ai_model_literal
 
 check failed: 1 error, 1 file
 ```

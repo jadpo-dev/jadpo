@@ -27,7 +27,7 @@ error: `ShelfLength` needs a unit, and `90` is a bare number
   reason: A `Length` is always made with its unit, so a number alone could be any length: a number without its unit is the mistake the type exists to prevent.
   next: Write its unit after the number, such as `90metre`, or make it with `units.of(90, LengthUnit.metre)` in any of `LengthUnit`'s units (agent)
   rule: type.unit_required
-  help: docs/errors/type.unit_required.md
+  help: https://jadpo.dev/docs/errors/type.unit_required
 
 check failed: 1 error, 1 file
 ```
@@ -55,7 +55,7 @@ error: `ShelfLoad` and `ShelfLength` can't be added: a `Mass` and a `Length` are
   reason: `+` works within one kind of quantity, in any of its units; a `Mass` and a `Length` are different kinds, so the sum means nothing.
   next: Use values of one kind, or a product or quotient the table defines (agent)
   rule: type.arithmetic_operand
-  help: docs/errors/type.arithmetic_operand.md
+  help: https://jadpo.dev/docs/errors/type.arithmetic_operand
 
 check failed: 1 error, 1 file
 ```

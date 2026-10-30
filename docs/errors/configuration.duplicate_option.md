@@ -20,7 +20,7 @@ error: `binding:` is given twice on `mail_sender`
   reason: A setting says each of `secret:`, `default:`, `binding:` and `test:` once, so there is one answer to read.
   next: Remove one `binding:` (agent)
   rule: configuration.duplicate_option
-  help: docs/errors/configuration.duplicate_option.md
+  help: https://jadpo.dev/docs/errors/configuration.duplicate_option
 
 check failed: 1 error, 1 file
 ```

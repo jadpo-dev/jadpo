@@ -23,7 +23,7 @@ error: `suggestions { }` is declared twice
   reason: A project has one token and one answer to whether it shares, in one `suggestions { }` in `app.jadpo`.
   next: Move what this `suggestions` holds into the first, and remove it (agent)
   rule: semantic.multiple_suggestions
-  help: docs/errors/semantic.multiple_suggestions.md
+  help: https://jadpo.dev/docs/errors/semantic.multiple_suggestions
 
 check failed: 1 error, 1 file
 ```

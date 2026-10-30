@@ -49,7 +49,7 @@ error: `attempts: 500` can't be how often it is tried
   reason: `retry:` holds `attempts:`, how many times a delivery is tried, from 1 to 100 (10 by default), and `within:`, a duration up to 30 days after the event was emitted (24 hours by default).
   next: Write `retry: { attempts: 20  within: 3d }`, or leave `retry:` out for the default (agent)
   rule: subscriber.retry_invalid
-  help: docs/errors/subscriber.retry_invalid.md
+  help: https://jadpo.dev/docs/errors/subscriber.retry_invalid
 
 check failed: 1 error, 1 file
 ```

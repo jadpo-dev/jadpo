@@ -210,7 +210,7 @@ error: `MAX_DUE_AHEAD` isn't a valid value for `max_due_ahead`
   reason: `max_due_ahead` of type `Duration` reads `MAX_DUE_AHEAD`, and the value there breaks `format`. The value isn't shown, so it can't leak into a log.
   next: Run `jadpo config set max_due_ahead` to store a valid one, or fix `MAX_DUE_AHEAD` in the environment (human)
   rule: configuration.value_invalid
-  help: docs/errors/configuration.value_invalid.md
+  help: https://jadpo.dev/docs/errors/configuration.value_invalid
 
 not running this version: 1 error, waiting for a save that fixes them
 ```

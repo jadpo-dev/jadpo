@@ -30,7 +30,7 @@ error: `Draft` isn't an entity, so it has no `create`
   reason: Only an entity is stored, so only an entity has `create`, `update` and `delete`; `Draft` is an input, a value built with `Draft { ... }`.
   next: Write the entity this value is stored as, or build the value with `Draft { ... }` (agent)
   rule: data.write_not_entity
-  help: docs/errors/data.write_not_entity.md
+  help: https://jadpo.dev/docs/errors/data.write_not_entity
 
 check failed: 1 error, 1 file
 ```

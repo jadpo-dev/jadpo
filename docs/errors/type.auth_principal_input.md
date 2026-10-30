@@ -32,7 +32,7 @@ error: `ActAs.caller` holds a caller
   reason: A caller comes only from signing in, never from what a request sends, so a route takes it as `current_principal` and passes it on.
   next: Remove `caller`, and pass `current_principal` to what the route runs (agent)
   rule: type.auth_principal_input
-  help: docs/errors/type.auth_principal_input.md
+  help: https://jadpo.dev/docs/errors/type.auth_principal_input
 
 check failed: 1 error, 1 file
 ```
