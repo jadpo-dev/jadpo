@@ -280,18 +280,7 @@ D1 first: the site starts once D1 has merged.
 - [ ] **D8 The VS Code extension, finished and published**: area 14, "Editor support" and "What is built"; `editors/vscode/README.md`; `.github/workflows/vscode-extension.yml`.
   Waits: the editor's rename, which comes with `jadpo rename` and the identity registry (after the first build, items 6 and 7).
 - [x] **D9 Docs for newcomers**: [writing guide](writing.md); the [Learn path](learn/README.md); the [primer](primer.md); [documentation](documentation.md), "The bundle".
-- [ ] **D10 Area pages to the writing guide** `opus · high`: the area pages'
-  author-facing sections rewritten to [docs/writing.md](writing.md),
-  mechanically where possible. References to an area or a question by
-  number become topic links, or move to the design notes; build status
-  moves to each page's "What is built"; the example comes first where a
-  topic has one; garbled sentences are fixed (the cold read named
-  `/docs/http` and `/docs/named-queries`). Topic IDs that read like slugs
-  of their titles (`jadpo-why-why-the-language-decided-something`,
-  `jadpo-s-own-magic-link-email`, `levels-4-and-5-of-the-magic-link-email`,
-  `capabilities-on-this-page`, `a-release-that-adds-a-standard-type`) get
-  names a reader would search for, the old ID still reaching the new
-  page.
+- [x] **D10 Area pages to the writing guide**: the area pages in [docs/language](language/README.md), each topic to the [writing guide](writing.md), "How a reference topic reads", and the rationale in each area's design notes.
 - [ ] **D11 Task guides** `opus · high`: how-to pages in the bundle, a
   page kind of their own beside `learn`, for the commonest jobs (add
   sign-in, store and change a record, query records, call an outside API,

@@ -85,9 +85,8 @@ docs check (`tools/docs/language_docs.py`) fails on a topic with no ID, an ID
 or old ID that isn't kebab case or is used twice, an ID line anywhere else,
 and a topic over 3,000 words as the bundle gives it, which is split. It
 also fails an area page that names an area or a question by number, as
-in "(area 8)", "area 8's" or "question 2", outside code: on areas 1 to
-`NUMBERED_FAILS_THROUGH` in that file, and it warns on the rest until the
-D10 rewrite reaches them.
+in "(area 8)", "area 8's" or "question 2", outside code. The design notes
+are exempt, since that is where question numbers belong.
 
 ## The bundle
 

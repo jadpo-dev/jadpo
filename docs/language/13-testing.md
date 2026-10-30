@@ -656,7 +656,7 @@ file runs it alone. A recording that doesn't decode is
 Each recording of a prompt's answer,
 `prompts/recordings/<prompt>/<name>.json`, is a test of the same kind,
 named `<prompt>'s <name> recording decodes`. It is read through each type
-the prompt is asked for as ([Tests](21-ai.md#tests)). A recording made
+the prompt is asked for as ([Testing AI calls](21-ai.md#testing-ai-calls)). A recording made
 from an older version of its prompt passes, with an alert on the report.
 
 ## Test settings
@@ -1210,7 +1210,7 @@ These parts of fakes aren't built yet:
 - The capabilities' fakes, apart from `email.sent` and the `ai`
   capability's: its fake, `fakes: { ai.<prompt>: }`,
   `ai.<prompt>.requests`, `recorded("<name>")`, the fake's embeddings and
-  `fakes: { ai.embed: }` ([Tests](21-ai.md#tests)).
+  `fakes: { ai.embed: }` ([Testing AI calls](21-ai.md#testing-ai-calls)).
 - `fixture_file`, and telling the file store to fail from a test. The
   in-memory store itself is built.
 - Running batches to the end: a test sees a run as it starts, and a
