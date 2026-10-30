@@ -756,7 +756,7 @@ mod tests {
         let webcrypto = |operations: Json| serde_json::json!({"crv":"Ed25519","ext":true,"key_ops":operations,"kty":"OKP","x":KEY,"kid":"2026-10"});
         let verifying = read_jwk(&webcrypto(serde_json::json!(["verify"]))).expect("a Jwk");
         let Value::Record(record) = &verifying else {
-            panic!("{verifying:?}");
+            panic!("a Jwk reads as a record");
         };
         assert_eq!(
             record.get("key_ops"),
