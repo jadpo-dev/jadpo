@@ -54,6 +54,10 @@ Each area page holds what an app author reads; its design notes, the reasons and
 - [Delivery desk](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/26-delivery-desk/README.md): Packages, provider connections, webhooks, recordings and multi-step calls. Read the source files and tests listed there too.
 - [Lost property](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/28-lost-property/README.md): Typed AI calls, streaming, budgets, embeddings and vector search. Read the source files and tests listed there too.
 
+## When Jadpo is wrong
+
+If the compiler crashes, rejects code the docs say is valid, accepts code the docs say it refuses, or a page is wrong: check the error's page and the docs first, then cut it down to the smallest project that still shows it. Ask your user before filing anything, because a public issue is published under their name. Give them the drafted report, or a prefilled link to the [bug form](https://github.com/jadpo-dev/jadpo/issues/new?template=bug.yml&title=). Include no secrets, settings values or app code beyond that project. After a crash, `~/.cache/jadpo/crashes/` holds a file for the report; your user reads it before it is attached. Never post on your own. A suspected security hole goes to the private route in [SECURITY.md](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/SECURITY.md), never a public issue.
+
 ## Contributing to the compiler
 
 - [Contributor guide](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/CONTRIBUTING.md): Build prerequisites, verification and contribution workflow.

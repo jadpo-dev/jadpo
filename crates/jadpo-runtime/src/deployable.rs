@@ -187,6 +187,18 @@ impl Observer for Logged {
                         .header("x-request-id")
                         .map_or(Value::Null, Value::from),
                 ),
+                // A defect is a bug in Jadpo, not in the app: the line says
+                // so and where to report it, with the build stamp's
+                // `compiler` as the version. Never a request value.
+                ("bug_in_jadpo", fault.kind.is_jadpo_bug().into()),
+                (
+                    "report",
+                    if fault.kind.is_jadpo_bug() {
+                        crate::fault::BUG_REPORT_URL.into()
+                    } else {
+                        Value::Null
+                    },
+                ),
                 (
                     "stack",
                     Value::Array(
@@ -909,6 +921,71 @@ mod tests {
                 .map(|line| serde_json::from_str(&line).expect("JSON"))
                 .collect()
         })
+    }
+
+    /// A defect is a bug in Jadpo: the operator's line says so, with the
+    /// version, the request's id and the issue form, while the client's
+    /// answer is the same `500 internal_fault` and holds none of it.
+    #[test]
+    fn a_defect_is_logged_as_a_bug_in_jadpo_and_never_sent() {
+        logged();
+        let mut response =
+            crate::http::runtime_failure(crate::http::INTERNAL_FAULT, "req_0b1e", None);
+        response
+            .headers
+            .push(("x-request-id".into(), "req_0b1e".into()));
+        response.fault = Some(Box::new(crate::Fault {
+            kind: crate::FaultKind::Defect(
+                "a value of a kind the checker would have refused".into(),
+            ),
+            frames: Vec::new(),
+        }));
+        let request = crate::http::Request {
+            method: "POST".into(),
+            path: "/todos".into(),
+            headers: vec![("authorization".into(), "Bearer sk_live_secret".into())],
+            body: b"{\"title\":\"secret body\"}".to_vec(),
+            ..crate::http::Request::default()
+        };
+        let program = Sweeping {
+            places: Places::new(),
+            schedules: SchedulesPlan::default(),
+        };
+        let spans = crate::spans::Spans::default();
+        Logged::new(Log::new(STAMP, kept), &[] as &[Unbuilt]).answered(&crate::serve::Answered {
+            request: &request,
+            response: &response,
+            program: &program,
+            ms: 3,
+            spans: &spans,
+        });
+        let lines = logged();
+        let [line] = lines.as_slice() else {
+            panic!("{lines:?}")
+        };
+        assert_eq!(line["event"], "operation.failed", "{line}");
+        assert_eq!(line["compiler"], "0.1.0", "{line}");
+        assert_eq!(line["request_id"], "req_0b1e", "{line}");
+        assert_eq!(line["bug_in_jadpo"], true, "{line}");
+        assert_eq!(line["report"], crate::BUG_REPORT_URL, "{line}");
+        let text = line.to_string();
+        for leaked in ["secret", "Bearer", "authorization", "/todos"] {
+            assert!(!text.contains(leaked), "{leaked} in {text}");
+        }
+        let body = String::from_utf8(response.body.clone()).unwrap();
+        assert_eq!(response.status, 500);
+        assert!(body.contains("internal_fault"), "{body}");
+        for hidden in ["bug", "Jadpo", "github", "checker", "Defect"] {
+            assert!(!body.contains(hidden), "{hidden} in {body}");
+        }
+    }
+
+    /// A fault that is the app's own, an overflow, is not called a bug.
+    #[test]
+    fn an_app_fault_is_not_called_a_bug_in_jadpo() {
+        assert!(!crate::FaultKind::IntOverflow.is_jadpo_bug());
+        assert!(!crate::FaultKind::RecursionLimit.is_jadpo_bug());
+        assert!(crate::FaultKind::Defect(String::new()).is_jadpo_bug());
     }
 
     /// Each tick is logged as `runtime.ticked` by what serves on either

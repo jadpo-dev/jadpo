@@ -14,6 +14,25 @@ compiler error names a rule; its page is `docs/errors/<rule.id>.md`.
 `examples/` holds the teaching projects. Nothing below applies unless you
 are changing Jadpo itself.
 
+### When Jadpo is wrong
+
+Report a bug when the compiler crashes, rejects code the docs say is
+valid, accepts code the docs say it refuses, or a docs page is wrong.
+
+1. Cut it down to the smallest project that still shows it.
+2. Read the error's page and the docs for the feature first. Most
+   surprises are in them.
+3. Ask your user before you file anything. A public issue is published
+   under their name. Give them the drafted report, or a prefilled link:
+   `https://github.com/jadpo-dev/jadpo/issues/new?template=bug.yml&title=<title>`.
+4. Never include secrets, settings values or app code beyond the minimal
+   project. If Jadpo crashed, it wrote a file under
+   `~/.cache/jadpo/crashes/`; read it, and attach it only when your user
+   agrees.
+5. Never post on your own.
+6. A suspected security hole goes to the private route in
+   [SECURITY.md](SECURITY.md), never to a public issue.
+
 ## Changing Jadpo
 
 ### Where things are

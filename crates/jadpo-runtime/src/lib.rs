@@ -175,7 +175,7 @@ pub use ctx::{
 pub use env::{Clock, Env};
 pub use executor::{Executor, Stalled, YieldNow, block_on, yield_now};
 pub use failure::Failure;
-pub use fault::{Fault, FaultKind};
+pub use fault::{BUG_REPORT_URL, Fault, FaultKind};
 pub use host::{
     Database, Event, Host, LocalFuture, MemoryHost, NoStore, Outbound, PasskeyAnswer, PasskeyError,
     PasskeyParts, Passkeys, RELEASE_SAVEPOINT, ROLLBACK_TO_SAVEPOINT, Row, SAVEPOINT, SqlType,
