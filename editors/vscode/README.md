@@ -73,8 +73,10 @@ the new `PATH`. Then open the folder that holds your project's `app.jadpo`.
 
 ## How it finds `jadpo`
 
-By default it runs the `jadpo` it finds on your `PATH`. To use another one,
-set `jadpo.server.path` to its path.
+It runs the `jadpo` it finds on your `PATH`, from your project's folder, so
+the `jadpo` launcher gives it the version your project names. You need no
+setting. People working on the compiler can set `jadpo.server.path` to the
+path of their own build.
 
 The status bar shows which `jadpo` is running whenever a `.jadpo` file is
 open: `jadpo 0.1.0`, with the binary's path when you point at it. Click it
@@ -92,7 +94,7 @@ command does.
 
 | Setting | Default | |
 |---|---|---|
-| `jadpo.server.path` | `jadpo` | The binary that runs `jadpo lsp`. A bare name is looked up on `PATH`; a path is used as it is. `${workspaceFolder}` is the first folder open, and a leading `~` is your home folder. Changing it restarts the server. |
+| `jadpo.server.path` | empty | An override for people working on the compiler: the binary that runs `jadpo lsp`, instead of the `jadpo` on `PATH`. A bare name is looked up on `PATH`; a path is used as it is. `${workspaceFolder}` is the first folder open, and a leading `~` is your home folder. Changing it restarts the server. |
 | `jadpo.trace.server` | `off` | `messages` or `verbose` logs the messages between VS Code and the server in the Jadpo log. |
 
 ## Commands
