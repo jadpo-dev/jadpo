@@ -384,6 +384,11 @@ time.
   reminder schedule over a batch, and route tests for each, with no code
   outside Jadpo. Before 10.2's measured runs, since it changes what they
   measure.
+- [ ] **A9 Unknown sections of `application { }`** `opus · high`: an
+  unknown or misspelt section of the root `application { }` is accepted
+  silently today, so a setting meant to protect the app can be dropped
+  without a word. One list of every area's sections, and a rule refusing
+  any other, as entities' and routes' unknown sections are. Found by A0.
 - [x] **A8 Acceptances for what exists today**: area 18, "Comparing two builds" and "Acceptances"; area 9, "Protecting policy"; area 14, "`jadpo acceptance new`" and "Review and sign-off"; area 1, "Writing a decline".
 - [ ] **A7 Sign-in providers** `opus · xhigh`: area 8, `sign_in:`'s
   `providers:` (Google first, then Microsoft, through `Driver.oidc`) and
