@@ -1804,7 +1804,9 @@ recognise a repeat. So a rerun repeats the call harmlessly
   `clock.now` ([Several outside calls](#several-outside-calls), below).
 
 After three attempts within a second, the retry budget, the request fails
-`unavailable` and the client may try again.
+`unavailable` and the client may try again: a concurrent change found
+three attempts in, or a second after the first attempt began, isn't run
+again. A test's host has no clock, so there only the three holds.
 
 To catch a client that edits a stale copy across two requests, use HTTP's
 `If-Match` ([HTTP](07-http.md)).
@@ -2385,7 +2387,6 @@ var owners: List<OwnerView> = identity.users_by_ids(owner_ids)
 | Everything else on this page | Built. |
 | Reading another store outside an action's transaction | Not built yet: it is `toolchain.not_built_yet` ("One store per action"). |
 | Caches and entities in Redis | Not built yet: there is no Redis driver ("Where a read comes from", "Entities in Redis"). |
-| A rerun's time bound | Not built yet: the runtime counts attempts only, so of "three attempts within a second" only the three is enforced ("All-or-nothing actions and concurrent changes"). |
 | Comparing money, ranges and fields kept as JSON in a query | Not built yet: a field of money or a range, or one kept whole as its JSON (an object, a list, a set, a map or an enum with data), isn't compared in a query, its operations included (`toolchain.not_built_yet`), though `list.count` of a list would otherwise have a form ("Operations in conditions"). |
 
 ## Errors
