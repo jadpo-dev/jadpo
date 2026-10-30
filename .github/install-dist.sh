@@ -30,10 +30,12 @@ archive="$work/cargo-dist-$target.$ext"
 curl --proto '=https' --tlsv1.2 -fsSL -o "$archive" \
   "https://github.com/axodotdev/cargo-dist/releases/download/v$version/cargo-dist-$target.$ext"
 
+# Hashed from standard input: Git Bash's sha256sum escapes a Windows path
+# and puts a backslash before the hash.
 if command -v sha256sum > /dev/null 2>&1; then
-  actual="$(sha256sum "$archive" | cut -d' ' -f1)"
+  actual="$(sha256sum < "$archive" | cut -d' ' -f1)"
 else
-  actual="$(shasum -a 256 "$archive" | cut -d' ' -f1)"
+  actual="$(shasum -a 256 < "$archive" | cut -d' ' -f1)"
 fi
 if [ "$actual" != "$sha" ]; then
   echo "::error::dist $version for $target has SHA-256 $actual, not the pinned $sha."
