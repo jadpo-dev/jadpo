@@ -442,6 +442,7 @@ mod tests {
         let sent = MailSent {
             email: "accounts.WelcomeEmail".to_string(),
             trace: Some("0af7651916cd43dd8448eb211c80319c".to_string()),
+            sign_in: None,
         };
         let first = keep(
             &root,

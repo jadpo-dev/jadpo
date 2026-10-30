@@ -271,7 +271,17 @@ impl Types {
         // `FirstSignIn` or a sign-in event a test builds (chunk 7.3b4),
         // checked as each field's type where it is built.
         if let Some(fields) = jadpo_std::http::test_built_fields(key.name()) {
-            return Some(self.generic_shape(key.name(), fields));
+            let id = self.generic_shape(key.name(), fields);
+            // A magic-link route's input leaves out what may be `none`, as
+            // a request's body may; the checker requires the rest.
+            if jadpo_std::http::magic_link_input(key.name())
+                && let Some(shape) = self.shapes.get_mut(id.0 as usize)
+            {
+                for field in &mut shape.fields {
+                    field.absent = Some(Constant::None);
+                }
+            }
+            return Some(id);
         }
         let entry = jadpo_std::standard_type(key.name())?;
         match entry.holds {

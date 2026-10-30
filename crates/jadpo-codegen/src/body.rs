@@ -725,13 +725,7 @@ impl Emitter<'_> {
                 idempotency_key,
                 caller,
             } => {
-                let Some(index) = self
-                    .plan
-                    .routes()
-                    .routes
-                    .iter()
-                    .position(|plan| plan.key == route.as_str())
-                else {
+                let Some(index) = self.plan.routes().position_of(route.as_str()) else {
                     let defect = self.defect("a request to a route with no plan", id);
                     return quote!({ #defect });
                 };

@@ -170,8 +170,10 @@ impl Body<'_> {
         // The one route it names, by label, so the test depends on that
         // route alone; only a mistake reads them all, to list the paths.
         let label = format!("{} {path}", method.word());
-        let found = crate::routes::route_at(self.db, self.project, Name::new(self.db, label));
-        let Some(route) = found.clone() else {
+        let found = crate::routes::route_at(self.db, self.project, Name::new(self.db, label))
+            .clone()
+            .or_else(|| generated_magic_link(self.db, self.project, method, &path));
+        let Some(route) = found else {
             let groups = crate::routes::groups(self.db, self.project);
             let paths: Vec<String> = groups
                 .routes()
@@ -236,7 +238,15 @@ impl Body<'_> {
             }
         }
         match (&route.input, input) {
-            (Some(ty), Some(value)) => self.check(&value, &Ty::Named(ty.clone())),
+            (Some(ty), Some(value)) => {
+                // A generated magic-link route's input is built in.
+                let expected = if jadpo_std::http::magic_link_input(ty) {
+                    Ty::Opaque(ty.clone(), Vec::new())
+                } else {
+                    Ty::Named(ty.clone())
+                };
+                self.check(&value, &expected)
+            }
             (Some(ty), None) => {
                 ok = false;
                 self.request_problem(
@@ -360,6 +370,53 @@ impl Body<'_> {
             }
         }
     }
+}
+
+/// The magic-link route the runtime generates at `method` and `path`
+/// (area 8, "Magic links"), which a route test calls as it calls one of
+/// the app's own (area 8, "In development and tests"): named by its graph
+/// node, taking the built-in input the API record names
+/// (`MagicLinkAsk`, `MagicLinkConfirmation`, `MagicLinkCode`) and
+/// answering `MagicLinkConfirmed` or `MagicLinkToken`. Anyone may call
+/// each, so none signs in with `as:`.
+fn generated_magic_link(
+    db: &dyn jadpo_db::Db,
+    project: jadpo_db::Project,
+    method: HttpMethod,
+    path: &str,
+) -> Option<crate::routes::RouteShape> {
+    use jadpo_std::http::MagicLinkStep;
+    let generated = crate::routes::generated::generating(db, project);
+    let (path_segments, api_tokens) = generated.values().flatten().find_map(|what| match what {
+        crate::routes::generated::Generating::MagicLink { path, api_tokens } => {
+            Some((path.clone(), *api_tokens))
+        }
+        _ => None,
+    })?;
+    let step = MagicLinkStep::ALL.into_iter().find(|step| {
+        (*step != MagicLinkStep::Redeem || api_tokens)
+            && step.method() == method
+            && format!("/{}", step.segments(&path_segments).join("/")) == path
+    })?;
+    let label = format!("{} {path}", method.word());
+    Some(crate::routes::RouteShape {
+        key: crate::graph::registry(db, project).key(
+            jadpo_graph::Kind::GeneratedRoute,
+            &label,
+            None,
+        ),
+        method,
+        segments: step
+            .segments(&path_segments)
+            .into_iter()
+            .map(Segment::Fixed)
+            .collect(),
+        input: Some(step.input().to_string()),
+        output: step
+            .output()
+            .map(|output| Ty::Opaque(output.to_string(), Vec::new())),
+        needs_caller: false,
+    })
 }
 
 /// A route test's response's fields (`status`, `code`, `output`), with

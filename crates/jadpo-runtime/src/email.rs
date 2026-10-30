@@ -30,19 +30,29 @@ use jadpo_value::Value;
 use crate::files::{Done, read_whole};
 use crate::{Ctx, Executor, FaultKind, Frame, Outcome};
 
-/// The message `value`, an email emitted as `email`, is sent as: or the
-/// outcome its delivery is settled with when it can't be rendered.
+/// The link's token and the code a sign-in email carries, which only a
+/// host that catches mail in place of sending it is handed beside the
+/// message, for `email.sent` (area 8, "In development and tests").
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SignInSent {
+    pub token: String,
+    pub code: String,
+}
+
+/// The message `value`, an email emitted as `email`, is sent as, with the
+/// sign-in email's token and code: or the outcome its delivery is settled
+/// with when it can't be rendered.
 pub async fn message(
     executor: &dyn Executor,
     ctx: &mut Ctx<'_>,
     emails: &EmailsPlan,
     email: &EmailPlan,
     value: &Value,
-) -> Result<Value, Outcome> {
+) -> Result<(Value, Option<SignInSent>), Outcome> {
     if let Some(BuiltinEmail::MagicLink(plan)) = &email.builtin {
         return magic_link(executor, ctx, emails, plan, value).await;
     }
-    rendered(executor, ctx, emails, email, value).await
+    Ok((rendered(executor, ctx, emails, email, value).await?, None))
 }
 
 /// The message an email of the application's is sent as, rendered from
@@ -178,7 +188,7 @@ async fn magic_link(
     emails: &EmailsPlan,
     plan: &MagicLinkEmailPlan,
     value: &Value,
-) -> Result<Value, Outcome> {
+) -> Result<(Value, Option<SignInSent>), Outcome> {
     let minted = match crate::http::magic_links::mint(ctx, plan, value).await {
         Ok(Some(minted)) => minted,
         Ok(None) => return Err(Outcome::Value(Value::Unit)),
@@ -222,7 +232,14 @@ async fn magic_link(
             })
             .collect();
         let value = Value::record(&own.name, filled);
-        return rendered(executor, ctx, emails, own, &value).await;
+        let sent = SignInSent {
+            token: minted.token.clone(),
+            code: minted.code.clone(),
+        };
+        return Ok((
+            rendered(executor, ctx, emails, own, &value).await?,
+            Some(sent),
+        ));
     }
     // Each line in the email's locale, given its fields and the
     // application's name.
@@ -308,7 +325,7 @@ async fn magic_link(
         ),
     };
     let from = sender(ctx, emails)?;
-    Ok(Value::record(
+    let message = Value::record(
         MESSAGE,
         MESSAGE_FIELDS
             .iter()
@@ -322,6 +339,13 @@ async fn magic_link(
             ])
             .map(|(name, value)| (Rc::from(*name), value))
             .collect(),
+    );
+    Ok((
+        message,
+        Some(SignInSent {
+            token: minted.token,
+            code: minted.code,
+        }),
     ))
 }
 
@@ -580,7 +604,8 @@ fn plain_json(value: &Value) -> serde_json::Value {
 
 /// A message a test's email connection caught, as `email.sent` lists it
 /// (chunk 7.3c): a `SentEmail` of its address, sender, subject, HTML and
-/// text, every link in it, and its attachments' file names.
+/// text, every link in it, its attachments' file names and, for the
+/// sign-in email, its link's token and its code.
 pub fn sent_email(message: &Value) -> Value {
     let field = |name: &str| match message {
         Value::Record(record) => record.get(name).cloned().unwrap_or(Value::None),
@@ -635,6 +660,8 @@ pub fn sent_email(message: &Value) -> Value {
                         .into(),
                 ),
                 Value::List(attachments.into()),
+                field(jadpo_std::email::SIGN_IN_TOKEN),
+                field(jadpo_std::email::SIGN_IN_CODE),
             ])
             .map(|(name, value)| (Rc::from(*name), value))
             .collect(),

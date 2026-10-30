@@ -1491,3 +1491,85 @@ fn the_apps_own_sending_runs_as_the_system() {
     );
     assert!(!has(&found, "policy.system_grant_missing"), "{found:?}");
 }
+
+/// A route test asking for a link, reading the email and posting its
+/// token, its code or both (area 8, "In development and tests").
+const ROUTE_TEST: &str = r#"test "a link signs Ada in" {
+    var asked: Response = request {
+        method: HttpMethod.post
+        path: "/auth/magic-link"
+        input: MagicLinkAsk {
+            address: "ada@notes.example"
+            return_to: "/notes"
+        }
+    }
+    assert asked.status == 202
+    match list.first(email.sent) {
+        none -> {
+            assert list.count(email.sent) == 1
+        }
+        some(sent) -> {
+            var confirmed: Response = request {
+                method: HttpMethod.post
+                path: "/auth/magic-link/confirm"
+                input: MagicLinkConfirmation {
+                    token: sent.sign_in_token
+                }
+            }
+            assert confirmed.status == 200
+            match confirmed.output {
+                none -> {
+                    assert confirmed.output != none
+                }
+                some(output) -> {
+                    assert output.return_to == "/notes"
+                }
+            }
+            var by_code: Response = request {
+                method: HttpMethod.post
+                path: "/auth/magic-link/confirm"
+                input: MagicLinkConfirmation {
+                    address: "ada@notes.example"
+                    code: sent.sign_in_code
+                }
+            }
+            assert by_code.status == 401
+        }
+    }
+}
+"#;
+
+/// A route test calls the generated magic-link routes as it calls the
+/// app's own (area 8, "In development and tests"): their inputs are
+/// built-in types only a test, a fixture or a seed builds, each field
+/// that may be `none` left out at will, and `email.sent` gives the
+/// sign-in email's token and code. The redemption is there only with API
+/// tokens.
+#[test]
+fn a_route_test_calls_the_generated_magic_link_routes() {
+    assert_eq!(with(SENDS, LINK, "", ROUTE_TEST), Vec::<String>::new());
+
+    let outside = with(
+        SENDS,
+        LINK,
+        "",
+        "action ask() -> Unit {\n    var ask: MagicLinkAsk = MagicLinkAsk {\n        address: \"ada@notes.example\"\n    }\n}\n",
+    );
+    assert!(
+        has(&outside, "`MagicLinkAsk` isn't built with `{ ... }`"),
+        "{outside:#?}"
+    );
+
+    let redeem = "test \"a code is traded\" {\n    var traded: Response = request {\n        method: HttpMethod.post\n        path: \"/auth/magic-link/redeem\"\n        input: MagicLinkCode {\n            address: \"ada@notes.example\"\n        }\n    }\n    assert traded.status == 200\n}\n";
+    let without_tokens = with(SENDS, LINK, "", redeem);
+    assert!(
+        has(
+            &without_tokens,
+            "No route answers `POST /auth/magic-link/redeem`"
+        ),
+        "{without_tokens:#?}"
+    );
+    let missing = with(SENDS, LINK, "    api_token: {}", redeem);
+    assert!(has(&missing, "`code`"), "{missing:#?}");
+    assert!(!has(&missing, "No route answers"), "{missing:#?}");
+}
