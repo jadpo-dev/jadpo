@@ -99,7 +99,10 @@ pub fn seed(call: &Call) -> Reply {
             ("seed", Json::from(name.as_str())),
             ("outcome", Json::from(outcome)),
             ("stores", Json::array(stores.clone())),
-            ("migrationsApplied", Json::from(migrated.len() as i64)),
+            (
+                "migrationsApplied",
+                Json::from(migrated.iter().map(|(_, count)| *count as i64).sum::<i64>()),
+            ),
             ("ms", Json::from(ms)),
         ])
     };
@@ -156,8 +159,8 @@ pub fn seed(call: &Call) -> Reply {
     }
 }
 
-/// The seeds in `database/seeds/`, by file name, sorted: for Tab
-/// completion and for saying which there are.
+/// The seeds in `database/seeds/`, by file name, sorted: what a name
+/// may be, and what an unknown one is told.
 pub(crate) fn names(root: &Path) -> Vec<String> {
     let mut out: Vec<String> = std::fs::read_dir(root.join(FOLDER))
         .into_iter()

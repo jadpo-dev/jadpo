@@ -66,6 +66,7 @@ Build and check
 
 Data
   migrate       Write and apply migrations    new, apply, status
+  seed          Fill the development database from a seed
   sql           Show the SQL a query or action sends
 
 Look things up
@@ -143,6 +144,7 @@ Build and check
 
 Data
   migrate       Write and apply migrations    new · apply · status
+  seed          Fill the development database from a seed
   sql           Show the SQL a query or action sends
 
 Look things up
@@ -322,6 +324,7 @@ fn help_json_is_the_whole_command_reference() {
             "fmt",
             "package",
             "migrate",
+            "seed",
             "sql",
             "routes",
             "ai",
@@ -728,6 +731,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "fmt\tFormat source files",
             "package\tShow, check, import and install packages",
             "migrate\tWrite and apply migrations",
+            "seed\tFill the development database from a seed",
             "sql\tShow the SQL a query or action sends",
             "routes\tList every route",
             "ai\tShow prompts, record, usage",

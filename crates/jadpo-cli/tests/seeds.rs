@@ -343,6 +343,7 @@ fn policy_applies_to_a_seeds_call_with_a_caller() {
     let diagnostic = &document["diagnostics"][0];
     assert_eq!(diagnostic["rule"], "seed.failed", "{document}");
     assert_eq!(document["data"]["outcome"], "failed", "{document}");
+    assert_eq!(document["data"]["migrationsApplied"], 1, "{document}");
     // What it committed before the refusal stays: Cal was registered, and
     // never appointed.
     assert_eq!(

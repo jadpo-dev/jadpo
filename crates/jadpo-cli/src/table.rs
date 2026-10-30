@@ -633,13 +633,13 @@ pub static COMMANDS: &[Command] = &[
         flags: &[Flag {
             name: "--url",
             value: Some("url"),
-            description: "The PostgreSQL database to seed, on this machine",
+            description: "The database to seed, on this machine",
             values: &[],
         }],
         examples: &[
             Example {
-                description: "Give the development database its first staff",
-                command: "jadpo seed first_staff",
+                description: "Give the development database its first users",
+                command: "jadpo seed first_users",
             },
             Example {
                 description: "Seed a database named directly",
