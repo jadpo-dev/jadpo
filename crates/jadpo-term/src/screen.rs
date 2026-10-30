@@ -298,6 +298,10 @@ pub enum Block {
         heading: String,
         rows: Vec<Row>,
     },
+    /// Paragraphs of prose at column 0, each wrapped to the screen's
+    /// width, with a blank line between them: a page read in the terminal
+    /// (`jadpo help <rule>`).
+    Prose(Vec<String>),
     /// A bold heading and lines at column 2, never cut.
     Section {
         heading: String,
@@ -454,6 +458,10 @@ impl Block {
             heading: heading.into(),
             rows,
         }
+    }
+
+    pub fn prose<S: Into<String>>(paragraphs: impl IntoIterator<Item = S>) -> Block {
+        Block::Prose(paragraphs.into_iter().map(Into::into).collect())
     }
 
     pub fn section<S: Into<String>>(
@@ -655,6 +663,20 @@ fn block_lines(block: &Block, grid: &Grid, style: &Style) -> Vec<Line> {
             let mut lines = vec![vec![bold(heading.as_str())]];
             for row in rows {
                 lines.push(list_row(row, grid, style));
+            }
+            lines
+        }
+        Block::Prose(paragraphs) => {
+            let mut lines = Vec::new();
+            for (i, paragraph) in paragraphs.iter().enumerate() {
+                if i > 0 {
+                    lines.push(Vec::new());
+                }
+                lines.extend(
+                    wrap(paragraph, style.width)
+                        .into_iter()
+                        .map(|line| vec![raw(line)]),
+                );
             }
             lines
         }

@@ -24,7 +24,7 @@ pub use crate::new::new;
 pub use crate::package::package;
 pub use crate::records::records;
 pub use crate::routes::routes;
-use crate::run::{Call, Reply, Session, both, either, quoted, unknown_command};
+use crate::run::{Call, Reply, Session, both, either, quoted, unknown_topic};
 pub use crate::runs::runs;
 pub use crate::schedules::{schedules, why};
 pub use crate::sql::sql;
@@ -37,9 +37,10 @@ pub use crate::translations::translations;
 pub fn help(call: &Call) -> Reply {
     match call.arguments.first() {
         None => help::reference(),
-        Some(word) => match table::find(word) {
-            Some(command) => help::command(command),
-            None => Reply::failed(unknown_command(word)),
+        Some(word) => match (table::find(word), jadpo_diag::find(word)) {
+            (Some(command), _) => help::command(command),
+            (None, Some(rule)) => help::rule(rule),
+            (None, None) => Reply::failed(unknown_topic(word)),
         },
     }
 }

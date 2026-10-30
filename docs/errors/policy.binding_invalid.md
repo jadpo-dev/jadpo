@@ -43,3 +43,40 @@ error: `owner_id` doesn't point at a caller
 
 check failed: 1 error, 1 file
 ```
+
+Under `actions:`, an action in a project with domains is named through its
+domain, as a call from another domain names it. A bare name that is one
+domain's action gets the edit that writes its domain, and the `use` line
+that brought it in isn't also reported:
+
+```jadpo check project=e-binding-bare-action file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-binding-bare-action file=domains/lending/actions/borrow.jadpo hidden
+action borrow() -> Unit {}
+```
+
+```jadpo check project=e-binding-bare-action file=policy.jadpo expect=policy.binding_invalid
+use lending/actions { borrow }
+
+policy {
+    actions: {
+        borrow: [Access.public]
+    }
+}
+```
+
+```text output
+error: `borrow` belongs to domain `lending`
+ --> policy.jadpo:5:9
+  |
+5 |         borrow: [Access.public]
+  |         ^^^^^^ needs its domain
+  reason: Root `policy { }` names each action through its domain, `domain.action`, as a call from outside the domain does; a bare name is for a single-file project.
+  next: Write `lending.borrow`; `jadpo fmt` then imports `lending` in place of `borrow` (agent)
+  rule: policy.binding_invalid
+  help: https://jadpo.dev/docs/errors/policy.binding_invalid
+
+check failed: 1 error, 3 files
+```

@@ -379,19 +379,7 @@ time.
   without a person's approval" say in the same paragraph what isn't
   built yet. Found by an audit of every unbuilt row for protections that
   are silently absent (2026-10-30).
-- [ ] **A1 Diagnostics that point at the cause** `opus · high`: a domain
-  or library folder named with a reserved word (`domains/library`) is
-  refused at the folder, before any qualified use cascades
-  (`crates/jadpo-check/src/naming.rs`; area 1, "Reserved words");
-  `jadpo fmt --layout` refuses a promotion whose new file folds onto an
-  existing name, and `layout.promotion_required` says which to rename
-  first; `some(...)` called like a function gets its own message and an
-  edit; a bare action name in `policy.jadpo` that matches an import says
-  to write `domain.action`, with an edit, and its import isn't also
-  `import.unused`; parser recovery stops at the first `expected_name` in
-  a block; `jadpo help <rule>` prints the rule's page from `docs/errors/`
-  offline. Done when the agent's runs 28 and 29 (a keyword domain, bare
-  policy names, a colliding promotion) each give one diagnostic per cause.
+- [x] **A1 Diagnostics that point at the cause**: area 1, "Reserved words" and "How a promotion happens"; area 2, "Values that may be missing"; area 9, "Actions"; area 14, "Commands for debugging, editors and help".
 - [ ] **A2 Listed queries and calls a listing doesn't cover** `opus · xhigh`:
   area 9, "Listing a query" and "A call the listing doesn't cover", with
   their decisions in the area's notes. Done when a staff query restricts

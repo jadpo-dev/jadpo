@@ -71,3 +71,42 @@ use sales/types { Basket, DiscountCode }
 
 action apply_code(basket: Basket, code: DiscountCode) -> Unit {}
 ```
+
+A move whose new file would carry another declaration's name too is left
+for you: `ListBooks`'s own file would be `list_books.jadpo`, action
+`list_books`'s name, which is `naming.folded_collision`. The error says to
+rename the type first, and `jadpo fmt --layout` refuses the move until then:
+
+```jadpo check project=e-promotion-folded file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-promotion-folded file=domains/shop/actions/browse_books.jadpo
+use shop/actions { ListBooks }
+
+action browse_books(filter: ListBooks) -> Unit {}
+```
+
+```jadpo check project=e-promotion-folded file=domains/shop/actions/list_books.jadpo expect=layout.promotion_required
+type ListBooks = Input {
+    page_size: PageSize {
+        default: 25
+    }
+}
+
+action list_books(filter: ListBooks) -> Unit {}
+```
+
+```text output
+error: `ListBooks` is used beyond this file
+ --> domains/shop/actions/list_books.jadpo:1:6
+  |
+1 | type ListBooks = Input {
+  |      ^^^^^^^^^ used by another file
+  reason: A type used by one file lives in it; once another file uses it, it moves to a file of its own in `domains/shop/types/`. `domains/shop/actions/browse_books.jadpo` uses it too. Its own file would be `list_books.jadpo`, the file name of `list_books`, an action in `domains/shop/actions/list_books.jadpo`.
+  next: Rename `ListBooks` first, so its file name differs from `list_books`'s, then move it to `domains/shop/types/` (agent)
+  rule: layout.promotion_required
+  help: https://jadpo.dev/docs/errors/layout.promotion_required
+
+check failed: 1 error, 3 files
+```

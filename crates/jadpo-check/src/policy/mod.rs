@@ -1068,6 +1068,13 @@ pub fn root_read(db: &dyn Db, project: Project) -> Arc<RootRead> {
             let span = node_span(&path, key.syntax());
             let names: Vec<String> = key.names().filter_map(|n| tree::name_text(&n)).collect();
             let action = action_named(&lookup, &names);
+            if action.is_none()
+                && let [bare] = names.as_slice()
+                && let Some(problem) = bare_action(&lookup, bare, &span)
+            {
+                out.problems.push(problem);
+                continue;
+            }
             let Some(action) = action else {
                 out.problems.push(binding(
                     span,
@@ -1235,6 +1242,53 @@ fn root_unknown(path: &str, node: &jadpo_syntax::SyntaxNode, word: &str) -> Diag
         None => problem.next(format!(
             "Remove `{word}`, or write it in the entity's `policy:`"
         )),
+    }
+}
+
+/// `borrow:` under `actions:` in a project with domains, where an action
+/// is `domain.action`: says so, with the edit when one domain has it.
+fn bare_action(lookup: &Lookup<'_>, action: &str, span: &Span) -> Option<Diagnostic> {
+    let domains: Vec<String> = lookup
+        .declared(action)
+        .iter()
+        .filter(|s| s.kind == ItemKind::Action)
+        .filter_map(|s| s.ownership.domain().map(str::to_string))
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let reason = "Root `policy { }` names each action through its domain, `domain.action`, as a call from outside the domain does; a bare name is for a single-file project.";
+    match domains.as_slice() {
+        [] => None,
+        [domain] => Some(
+            Diagnostic::new(
+                &rule::POLICY_BINDING_INVALID,
+                format!("`{action}` belongs to domain `{domain}`"),
+            )
+            .at(span.clone(), "needs its domain")
+            .reason(reason)
+            .next(format!(
+                "Write `{domain}.{action}`; `jadpo fmt` then imports `{domain}` in place of `{action}`"
+            ))
+            .edit(
+                Span::new(span.path.clone(), span.start, span.start),
+                format!("{domain}."),
+            ),
+        ),
+        several => {
+            let written: Vec<String> = several
+                .iter()
+                .map(|domain| format!("`{domain}.{action}`"))
+                .collect();
+            Some(
+                Diagnostic::new(
+                    &rule::POLICY_BINDING_INVALID,
+                    format!("`{action}` is an action in {} domains", several.len()),
+                )
+                .at(span.clone(), "needs its domain")
+                .reason(reason)
+                .next(format!("Write {}", crate::or_list(&written))),
+            )
+        }
     }
 }
 
