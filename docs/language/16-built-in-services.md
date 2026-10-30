@@ -2845,10 +2845,10 @@ The errors this page describes are built with the feature they belong to.
 | The capability seam | Built: the seam every capability's calls go through, with a delivery that hands its event to a capability, parked as `outcome_unknown` when a send without a key may have acted ([The seam every outside call goes through](#the-seam-every-outside-call-goes-through)). |
 | Files | Partly built. Built: the `files` capability's first part on that seam: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [Files: `put`, `read` and the disk driver in development](#files-put-read-and-the-disk-driver-in-development)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([Files: an export's pieces](#files-an-exports-pieces)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). Not built yet: upload slots, multipart ones included, downloads, deleting and erasing a file's bytes, the S3 driver, a deployable's disk driver at its `path:` and `free_space_floor:`, the error for a disk driver's root inside the project, checking a stored file against its field's `max_size:`, `types:` and `store:` as it is written, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them. |
 | Flags | Not built yet. |
-| Audit | Not built yet. |
+| Audit | Not built yet: an entity's `audit:` is `toolchain.not_built_yet` where it is written. |
 | Search | Not built yet. |
 | Documents | Not built yet. |
-| Bot protection | Not built yet. |
+| Bot protection | Not built yet: the application's `bot_check:` and a route's are `toolchain.not_built_yet` where they are written. |
 | Outgoing webhooks | Not built yet. |
 | The `telemetry:` section | Not built yet, nor telemetry in the developer console. |
 | Path IDs | Not built yet for requests. Each body's ways are numbered, and the differential run compares the paths each test's bodies took, but no request carries a `path` or a `path_key`. |

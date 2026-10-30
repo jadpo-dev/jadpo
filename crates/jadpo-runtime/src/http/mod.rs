@@ -1175,6 +1175,7 @@ async fn run_with_caller(
     let earlier = ctx.deferred().len();
     let mut deadline = deadline;
     let mut attempt = 1;
+    let began = crate::boundary::rerun_began(ctx);
     // Its client sends it again under its key after a crash `jadpo test`
     // made at a step (chunk 7.5d): claimed again.
     let mut again = false;
@@ -1403,7 +1404,8 @@ async fn run_with_caller(
             // Otherwise the whole action runs again, as the boundary
             // reruns one (area 6), within the same budget and deadline.
             Err(crate::StoreError::ConcurrentChange)
-                if attempt < crate::RERUN_ATTEMPTS && matches!(route.run, Run::Action(_)) =>
+                if crate::boundary::may_rerun(ctx, attempt, began)
+                    && matches!(route.run, Run::Action(_)) =>
             {
                 attempt += 1;
                 continue;
