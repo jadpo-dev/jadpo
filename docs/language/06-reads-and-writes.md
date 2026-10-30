@@ -1601,7 +1601,7 @@ action reschedule_todo(todo_id: Todo.id, due_at: DueAt) fails TodoNotFound, DueD
 
 A patch takes an `Input` whose fields are optional and match the
 entity's. A field the request left out keeps its value, and one sent as
-`none` is cleared ([Absent values](02-values-and-types.md#absent-values)).
+`none` is cleared ([Values that may be missing](02-values-and-types.md#values-that-may-be-missing)).
 `when_supplied:` sets further fields when a given field was supplied: here
 a new `due_at` also clears `reminder_sent_at`. A patch with no fields
 changes nothing and succeeds, as a JSON Merge Patch does, so there is no

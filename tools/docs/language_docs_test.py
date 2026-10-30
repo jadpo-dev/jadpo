@@ -237,6 +237,35 @@ class Bundle(unittest.TestCase):
         self.assertIn('[Shown](../topics/shown.md)', error)
         self.assertIn('- [`a.b`](../errors/a.b.md): A is b', files['commands/jadpo-check.md'])
 
+    def test_every_command_page_says_what_json_gives(self):
+        commands = [dict(COMMANDS[0]), dict(COMMANDS[0], name='fmt', usage='jadpo fmt')]
+        flags = [{'name': '--json', 'description': 'Print data for tools instead of text'},
+                 {'name': '--color', 'value': 'when', 'description': 'Choose when to use colour'}]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalogue, pages, errors = tree(root)
+            docs.Bundle(pages, errors, {'rules': list(catalogue.values()), 'commands': commands,
+                                        'flags': flags}, root).write(root / 'bundle')
+            for name in ('check', 'fmt'):
+                page = (root / f'bundle/commands/jadpo-{name}.md').read_text()
+                self.assertIn('## On every command\n\n- `--json`: Print data for tools instead of text\n'
+                              '- `--color <when>`: Choose when to use colour\n', page)
+                self.assertIn(f'`jadpo {name} --json` writes one JSON document to standard output', page)
+
+    def test_the_agent_skill_goes_in_byte_for_byte(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalogue, pages, errors = tree(root)
+            (root / docs.SKILL).parent.mkdir(parents=True)
+            (root / docs.SKILL).write_bytes(b'---\nname: jadpo\ndescription: x\n---\n\n# Skill  \n')
+            docs.Bundle(pages, errors, {'rules': list(catalogue.values()), 'commands': []}, root).write(root / 'bundle')
+            self.assertEqual((root / 'bundle' / docs.SKILL_IN_BUNDLE).read_bytes(), (root / docs.SKILL).read_bytes())
+            self.assertEqual(docs.check_skill(root), [])
+            (root / docs.SKILL).write_text('---\nname: other\n---\n')
+            self.assertEqual(len(docs.check_skill(root)), 2)
+            (root / docs.SKILL).unlink()
+            self.assertIn('is missing', docs.check_skill(root)[0])
+
     def test_a_code_fence_keeps_only_its_language(self):
         one = AREA_ONE.replace('### Later', '```text output\nchecked\n```\n\n````markdown\n```jadpo check project=q\n```\n````\n\n### Later')
         _, files, _ = self.build(one=one)

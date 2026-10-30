@@ -506,7 +506,7 @@ target's rules.
 
 A value that may be `none` builds nothing. `Quantity(maybe)` with
 `maybe: Count?` is `type.constructor_input`: handle the absent case first,
-with `match` ([Absent values](#absent-values)).
+with `match` ([Values that may be missing](#values-that-may-be-missing)).
 
 ```jadpo check project=convert
 type Stock = Int {
@@ -1433,7 +1433,7 @@ Rules:
 - `include`, `pick`, `omit` and `optional` are reserved and cannot be field
   names.
 
-## Absent values
+## Values that may be missing
 <!-- topic: absent-values -->
 
 There is no `null` or `undefined`. A type followed by `?` may hold `none`,

@@ -315,6 +315,8 @@ D1 first: the site starts once D1 has merged.
   wording, each fix with its code and what it changes, and the related
   topics. The errors the Learn path, the examples and `(human)` fixes
   hit come first.
+  D13 also rewrites each rule's summary in the compiler's catalogue to the
+  guide, starting with "API serve_openapi is not true or false".
 - [x] **D14 The toolchain launcher**, in 0.1.0: [tooling](language/14-tooling.md), "Which jadpo runs"; `crates/jadpo-cli/src/launcher.rs`, `releases.rs`, `attestation.rs`, `toolchains.rs`.
 
 ## Phase 10 — Golden todo
