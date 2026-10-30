@@ -144,7 +144,9 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .collect::<Vec<_>>()
         })
         .collect();
-    let checkable = files.iter().all(|file| parse(db, *file).checkable());
+    let checkable = files
+        .iter()
+        .all(|file| parse(db, *file).checkable_reading_names());
     let mut out = Vec::new();
     if syntax.is_empty() || checkable {
         if files

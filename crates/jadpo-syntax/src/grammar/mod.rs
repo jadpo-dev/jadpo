@@ -1164,8 +1164,8 @@ pub(crate) fn keyword_qualifier(p: &Parser<'_>, n: usize) -> bool {
 }
 
 /// `library.borrow`: the reserved word, reported, read as a name. The
-/// tree is the one the renamed word gives, so the rest of the project is
-/// still checked, and the checker leaves the error out when a domain's
+/// tree is the one the renamed word would give, so the rest of the
+/// project is still checked, and the checker leaves the error out when a domain's
 /// folder is the word, since that folder is where it is reported.
 fn reserved_qualifier(p: &mut Parser<'_>) {
     let word = p.current_text().to_string();
@@ -1179,7 +1179,7 @@ fn reserved_qualifier(p: &mut Parser<'_>) {
             "Control-flow and declaration words are reserved, so they can't name anything, a domain or library included; `{word}.` is read as one here."
         ))
         .next(format!("Rename what `{word}` names, and write its new name here"))
-        .clean_recovery();
+        .read_as_name();
     p.push_error(error);
 }
 

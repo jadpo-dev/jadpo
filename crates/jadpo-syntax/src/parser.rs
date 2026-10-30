@@ -421,7 +421,7 @@ impl<'a> Parser<'a> {
         }
         if !self.error_starts.insert(error.start) {
             // A clean habit left unreported still reads as its Jadpo form.
-            self.suppressed |= !error.clean;
+            self.suppressed |= !(error.clean || error.reads_as_name);
             return;
         }
         self.errors.push(error);
@@ -444,7 +444,7 @@ impl<'a> Parser<'a> {
         for error in dropped {
             self.error_starts.remove(&error.start);
             // A clean habit left unreported still reads as its Jadpo form.
-            self.suppressed |= !error.clean;
+            self.suppressed |= !(error.clean || error.reads_as_name);
         }
     }
 

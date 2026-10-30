@@ -569,12 +569,18 @@ fn a_reserved_word_before_a_dot_is_read_as_a_name() {
     assert_eq!(error.rule.id, "syntax.expected_name");
     assert_eq!(error.message, "`library` is a reserved word");
     assert_eq!(covered, "library");
-    assert!(parse_file(text).checkable(), "the tree reads the name");
+    assert!(
+        parse_file(text).checkable_reading_names(),
+        "the tree reads the name"
+    );
     let call = "function f() -> Unit {\n    library.borrow()\n}\n";
     let (error, covered) = one_error(call);
     assert_eq!(error.rule.id, "syntax.expected_name");
     assert_eq!(covered, "library");
-    assert!(parse_file(call).checkable(), "the tree reads the name");
+    assert!(
+        parse_file(call).checkable_reading_names(),
+        "the tree reads the name"
+    );
 }
 
 #[test]
