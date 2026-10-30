@@ -33,6 +33,7 @@ When the installed `jadpo` couldn't fetch the release, its reason starts
 with why, and its next step fits: run again once github.com can be
 reached; name a published line; set `XDG_CACHE_HOME` when there is no
 cache folder; or, for a download that failed its SHA-256 or attestation
-check, run again to fetch it afresh, and report it if it fails the same
-way. A project moving to a later
+check, run again to fetch it afresh, then install the newest `jadpo`,
+whose trusted root may be newer, if it fails the same way. When GitHub's
+API refuses for its hourly limit, it says so and to run again in an hour. A project moving to a later
 line changes `jadpo:` once its code is brought up to that line.

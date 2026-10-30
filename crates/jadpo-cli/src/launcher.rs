@@ -726,3 +726,175 @@ mod tests {
         assert_eq!(words(&args), ["toolchain", "list"]);
     }
 }
+
+/// What a released `jadpo` relies on, pinned (area 14, "What a release
+/// must keep, for older launchers"): every launcher ever installed goes on
+/// fetching later releases this way, so changing any of it breaks every
+/// installed `jadpo`.
+#[cfg(test)]
+mod contract {
+    use super::*;
+    use crate::releases::tests::{Attested, Served};
+
+    const BREAKS: &str = "a released jadpo relies on this; changing it breaks every installed jadpo (docs/language/14-tooling.md, \"What a release must keep, for older launchers\")";
+
+    const DIST: &str = include_str!("../../../dist-workspace.toml");
+    const RELEASE_PLEASE: &str = include_str!("../../../.github/workflows/release-please.yml");
+    const RELEASE_CONFIG: &str = include_str!("../../../release-please-config.json");
+
+    /// The targets dist builds, from `dist-workspace.toml`.
+    fn targets() -> Vec<String> {
+        let line = DIST
+            .lines()
+            .find(|line| line.starts_with("targets = ["))
+            .expect("dist-workspace.toml names its targets");
+        line.split('"')
+            .skip(1)
+            .step_by(2)
+            .map(str::to_string)
+            .collect()
+    }
+
+    #[test]
+    fn each_targets_archive_has_the_name_launchers_fetch() {
+        assert!(DIST.contains("\nunix-archive = \".tar.gz\"\n"), "{BREAKS}");
+        assert!(!DIST.contains("windows-archive"), "{BREAKS}");
+        assert!(DIST.contains("\ngithub-attestations = true\n"), "{BREAKS}");
+        let targets = targets();
+        assert!(targets.len() >= 5, "{BREAKS}");
+        for target in &targets {
+            let extension = if target.contains("windows") {
+                "zip"
+            } else {
+                "tar.gz"
+            };
+            assert_eq!(
+                releases::archive_name(target),
+                format!("jadpo-cli-{target}.{extension}"),
+                "{BREAKS}"
+            );
+            let binary = if target.contains("windows") {
+                "jadpo.exe"
+            } else {
+                "jadpo"
+            };
+            assert!(
+                releases::member_is(&format!("jadpo-cli-{target}/{binary}"), binary),
+                "{BREAKS}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_places_a_release_is_fetched_from_keep_their_shape() {
+        let release = Release(0, 2, 3);
+        assert_eq!(
+            releases::download_url(release, "jadpo-cli-x86_64-unknown-linux-gnu.tar.gz"),
+            "https://github.com/jadpo-dev/jadpo/releases/download/v0.2.3/jadpo-cli-x86_64-unknown-linux-gnu.tar.gz",
+            "{BREAKS}"
+        );
+        assert_eq!(
+            releases::list_url(1),
+            "https://api.github.com/repos/jadpo-dev/jadpo/releases?per_page=100&page=1",
+            "{BREAKS}"
+        );
+        assert_eq!(
+            releases::published_digest(
+                format!("{}  jadpo-cli-x.tar.gz\n", "a".repeat(64)).as_bytes()
+            ),
+            Some("a".repeat(64)),
+            "{BREAKS}"
+        );
+        // Tags are `v<version>`, and release.yml runs at the tag.
+        assert!(
+            RELEASE_CONFIG.contains("\"include-v-in-tag\": true"),
+            "{BREAKS}"
+        );
+        assert!(
+            RELEASE_PLEASE.contains(
+                "gh workflow run release.yml --repo \"$GITHUB_REPOSITORY\" --ref \"$TAG\""
+            ),
+            "{BREAKS}"
+        );
+        assert_eq!(
+            attestation::workflow(releases::REPOSITORY, "0.2.3"),
+            "https://github.com/jadpo-dev/jadpo/.github/workflows/release.yml@refs/tags/v0.2.3",
+            "{BREAKS}"
+        );
+    }
+
+    #[test]
+    fn the_line_the_pin_the_handshake_and_the_cache_keep_their_form() {
+        assert_eq!(LAUNCHED, "JADPO_TOOLCHAIN_LAUNCHED", "{BREAKS}");
+        assert_eq!(FORCE, "JADPO_TOOLCHAIN", "{BREAKS}");
+        let declared = jadpo_version::declared("application {\n    jadpo: \"0.2\"\n}\n")
+            .expect("the line is read");
+        assert_eq!(declared.line(), Some((0, 2)), "{BREAKS}");
+        let lock = jadpo_db::write_pinned_lock(Some("0.2.3"), &[]);
+        assert!(lock.contains("\njadpo version 0.2.3\n"), "{BREAKS}");
+        assert_eq!(
+            jadpo_db::locked_jadpo(&lock).map(|(version, _)| version),
+            Some("0.2.3".to_string()),
+            "{BREAKS}"
+        );
+        let home = Path::new("/cache");
+        assert_eq!(
+            Cache::new(home, "aarch64-apple-darwin").binary(Release(0, 2, 3)),
+            home.join("jadpo/releases/0.2.3/jadpo"),
+            "{BREAKS}"
+        );
+    }
+
+    #[test]
+    fn a_command_this_jadpo_doesnt_know_is_handed_over_before_it_is_read() {
+        // A later release may add commands and flags; inside a project on
+        // its line, they reach it untouched.
+        let dir = crate::releases::tests::tempdir::Dir::new();
+        let project = dir.path().join("shop");
+        std::fs::create_dir_all(&project).expect("a project");
+        let running = Release::running();
+        let later = Release(running.0, running.1 + 1, 0);
+        std::fs::write(
+            project.join("app.jadpo"),
+            format!(
+                "application {{\n    jadpo: \"{}.{}\"\n}}\n",
+                later.0, later.1
+            ),
+        )
+        .expect("app.jadpo");
+        let cache = Cache::new(&dir.path().join("cache"), "aarch64-apple-darwin");
+        let binary = cache.binary(later);
+        std::fs::create_dir_all(binary.parent().expect("a folder")).expect("kept");
+        std::fs::write(&binary, "#!jadpo").expect("kept");
+        let env = Environment::empty().with_cwd(&project).with_var(
+            "XDG_CACHE_HOME",
+            &dir.path().join("cache").display().to_string(),
+        );
+        let args: Vec<String> = ["deploy", "--to", "staging", "--brand-new-flag"]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect();
+        assert!(crate::table::find("deploy").is_none());
+        assert_eq!(
+            launch_with(
+                &args,
+                &env,
+                &Served::default(),
+                &Attested(None),
+                "aarch64-apple-darwin"
+            ),
+            Launch::Run {
+                binary,
+                version: later.to_string()
+            },
+            "{BREAKS}"
+        );
+    }
+
+    #[test]
+    fn githubs_rate_limit_is_said_as_that() {
+        let (kind, why) = releases::unfetched("`api.github.com` answered 403.".to_string());
+        assert_eq!(kind, Unfetched::Limited);
+        assert!(why.contains("60 requests an hour"), "{why}");
+    }
+}

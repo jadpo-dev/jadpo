@@ -41,6 +41,17 @@ pub(crate) type Failure = (Unfetched, String);
 /// A failure to fetch `url`: a release that isn't published when GitHub
 /// has no such file, else GitHub not reached.
 pub(crate) fn unfetched(why: String) -> Failure {
+    if why.contains("`api.github.com` answered 403")
+        || why.contains("`api.github.com` answered 429")
+    {
+        // GitHub's API answers 403 or 429 once an address has used its 60
+        // requests an hour without signing in: said as that, never as
+        // GitHub being unreachable or the release missing.
+        return (
+            Unfetched::Limited,
+            "GitHub's API refused it, since this address has used its 60 requests an hour without signing in.".to_string(),
+        );
+    }
     let kind = if why.contains("(404)") {
         Unfetched::Unreleased
     } else {
@@ -167,8 +178,24 @@ fn binary_name(target: &str) -> &'static str {
 }
 
 /// Where release `release`'s file `name` is downloaded from.
-fn download_url(release: Release, name: &str) -> String {
+pub(crate) fn download_url(release: Release, name: &str) -> String {
     format!("https://github.com/{REPOSITORY}/releases/download/v{release}/{name}")
+}
+
+/// The SHA-256 a release's `<archive>.sha256` publishes: the first word,
+/// 64 hex digits, as `sha256sum` writes it (`<hex>  <archive>`).
+pub(crate) fn published_digest(text: &[u8]) -> Option<String> {
+    let word = String::from_utf8_lossy(text)
+        .split_whitespace()
+        .next()?
+        .to_ascii_lowercase();
+    (word.len() == 64 && word.bytes().all(|b| b.is_ascii_hexdigit())).then_some(word)
+}
+
+/// Page `page` of GitHub's list of this repository's releases, 100 a
+/// page, newest first; read without signing in.
+pub(crate) fn list_url(page: usize) -> String {
+    format!("https://api.github.com/repos/{REPOSITORY}/releases?per_page=100&page={page}")
 }
 
 /// The newest published release of `line`, or `None` when none is.
@@ -176,11 +203,8 @@ pub(crate) fn newest(network: &dyn Network, line: (u64, u64)) -> Result<Option<R
     let unreadable = |why: &str| (Unfetched::Unreachable, why.to_string());
     let mut best: Option<Release> = None;
     for page in 1..=PAGES {
-        let url =
-            format!("https://api.github.com/repos/{REPOSITORY}/releases?per_page=100&page={page}");
-        let body = network
-            .get(&url, LONGEST_LIST)
-            .map_err(|why| (Unfetched::Unreachable, why))?;
+        let url = list_url(page);
+        let body = network.get(&url, LONGEST_LIST).map_err(unfetched)?;
         let list: serde_json::Value = serde_json::from_slice(&body)
             .map_err(|_| unreadable("GitHub's list of releases isn't JSON."))?;
         let releases = list
@@ -293,16 +317,11 @@ impl Cache {
         let published = network
             .get(&download_url(release, &format!("{name}.sha256")), 4096)
             .map_err(unfetched)?;
-        let expected = String::from_utf8_lossy(&published)
-            .split_whitespace()
-            .next()
-            .unwrap_or_default()
-            .to_ascii_lowercase();
-        if expected.len() != 64 || !expected.bytes().all(|b| b.is_ascii_hexdigit()) {
+        let Some(expected) = published_digest(&published) else {
             return Err(unverified(format!(
                 "its `{name}.sha256` doesn't hold a SHA-256."
             )));
-        }
+        };
         let archive = network
             .get_reporting(
                 &download_url(release, &name),
@@ -369,7 +388,7 @@ impl Cache {
 
 /// Whether an archive's entry `name` is the binary `wanted`: at its top or
 /// in the one folder dist puts the files in.
-fn member_is(name: &str, wanted: &str) -> bool {
+pub(crate) fn member_is(name: &str, wanted: &str) -> bool {
     let parts: Vec<&str> = name
         .split('/')
         .filter(|part| !part.is_empty() && *part != ".")
@@ -562,10 +581,9 @@ pub(crate) mod tests {
             })
             .chain([r#"{"tag_name":"v9.9.9","draft":true,"prerelease":false}"#.to_string()])
             .collect();
-        served.files.insert(
-            format!("https://api.github.com/repos/{REPOSITORY}/releases?per_page=100&page=1"),
-            format!("[{}]", entries.join(",")).into_bytes(),
-        );
+        served
+            .files
+            .insert(list_url(1), format!("[{}]", entries.join(",")).into_bytes());
     }
 
     const TARGET: &str = "aarch64-apple-darwin";

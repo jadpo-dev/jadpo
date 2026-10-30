@@ -287,6 +287,66 @@ line than `jadpo:` names is out of date, `record.out_of_date`, until
 The VS Code extension runs `jadpo lsp` from the project's folder, so it
 gets the project's release with no configuration.
 
+### What a release must keep, for older launchers
+
+Every `jadpo` ever installed goes on running the releases later projects
+name, so it fetches them by what it was built knowing. These are a
+contract with every installed `jadpo`, and changing any of them is a
+breaking change to all of them. A test pins each
+(`crates/jadpo-cli/src/launcher.rs`, `contract`), so a change fails the
+gate pointing here.
+
+- **The line.** `application { jadpo: "X.Y" }` in `app.jadpo`, the
+  `jadpo:` member of the `application` singleton with its value a string
+  of two numbers, read on its own without the rest of the project
+  (`jadpo_check::jadpo_version::declared`). Any `app.jadpo` a later
+  release accepts must still put the line there in that form.
+- **The pin.** A `jadpo version X.Y.Z` line in `jadpo.lock`, a release
+  with no pre-release, read without the rest of the lock.
+- **Where releases are.** GitHub Releases of `jadpo-dev/jadpo`, tagged
+  `vX.Y.Z`, each archive at
+  `https://github.com/jadpo-dev/jadpo/releases/download/vX.Y.Z/jadpo-cli-<target>.tar.gz`,
+  `.zip` for `x86_64-pc-windows-msvc`, for each target `dist-workspace.toml`
+  names; a target dropped from it can never run a later release.
+- **The SHA-256 and the archive.** `<archive>.sha256` beside it, its first
+  word the archive's SHA-256 in hex (`sha256sum`'s form); inside the
+  archive, `jadpo` (`jadpo.exe` on Windows) at its top or in its one
+  folder, `jadpo-cli-<target>/`. Nothing else in the archive is used.
+- **The attestation.** A GitHub artifact attestation of the archive's
+  digest on Sigstore's public-good instance, whose certificate GitHub
+  Actions issued to
+  `https://github.com/jadpo-dev/jadpo/.github/workflows/release.yml@refs/tags/vX.Y.Z`:
+  the repository, the workflow's path and its run at the tag
+  (release-please starts it with `--ref "$TAG"`). Renaming the
+  repository or the workflow, or running it on a branch, makes every
+  installed `jadpo` refuse the release.
+- **Finding a line's newest release.** GitHub's API without signing in,
+  `https://api.github.com/repos/jadpo-dev/jadpo/releases?per_page=100`,
+  pages of 100 up to ten, reading each release's `tag_name`, `draft` and
+  `prerelease`; and `/attestations/sha256:<digest>` for the attestation,
+  its `attestations[].bundle`. GitHub allows 60 such requests an hour from
+  one address. A fetch takes two or three, and a kept release none, so the
+  limit is met only on a shared address such as CI's. When it is met, the
+  error says GitHub's API refused it for that limit and to run the command
+  again in an hour; nothing is fetched or kept.
+- **The handshake.** A release a `jadpo` starts gets
+  `JADPO_TOOLCHAIN_LAUNCHED` set to its own version and runs the command
+  itself when that is its version, so it never hands the command on
+  again; `JADPO_TOOLCHAIN=local` runs everything with the `jadpo` started.
+  The command line reaches the release whole, before any of it is read,
+  so a command or flag a later release adds works through any launcher.
+- **The cache.** `jadpo/releases/<X.Y.Z>/jadpo` in the user's cache
+  folder, written whole by a rename under `.<X.Y.Z>.lock`; a folder there
+  is a release that was checked.
+- **The trusted root.** Each `jadpo` checks attestations against the
+  Sigstore trusted root it was built with, without refreshing it. After
+  Sigstore rotates a key that signs GitHub's attestations, older launchers
+  refuse releases signed with the new key: the error says Jadpo X couldn't
+  be fetched to run it because its archive's attestation doesn't verify,
+  and to run again, then to install the newest `jadpo`, whose trusted
+  root may be newer, if it fails the same way. Installing a `jadpo` built
+  after the rotation is the fix, and its release notes say so.
+
 ## Editor support
 <!-- topic: editor-support -->
 

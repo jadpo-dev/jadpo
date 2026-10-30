@@ -91,6 +91,9 @@ pub enum Unfetched {
     Unreachable,
     /// No such release, or no release of the line, is published.
     Unreleased,
+    /// GitHub's API refused the request: its limit of 60 requests an hour
+    /// from one address without signing in is used up.
+    Limited,
     /// The download failed its SHA-256 or attestation check.
     Unverified,
     /// There is no cache folder to keep it in.
@@ -138,6 +141,9 @@ pub fn refusal(
         Some(Unfetched::Unreachable) => {
             "Run the command again once this machine can reach github.com".to_string()
         }
+        Some(Unfetched::Limited) => {
+            "Run the command again in an hour, when GitHub's limit has reset; nothing was fetched".to_string()
+        }
         Some(Unfetched::Unreleased) if pinned => {
             "Run `jadpo toolchain unpin`, or pin a published release".to_string()
         }
@@ -145,7 +151,7 @@ pub fn refusal(
             "Name a published line in `jadpo:`; https://github.com/jadpo-dev/jadpo/releases lists them".to_string()
         }
         Some(Unfetched::Unverified) => {
-            "Run the command again to fetch it afresh; if it fails the same way, don't use that release and report it at https://github.com/jadpo-dev/jadpo/security/policy".to_string()
+            "Run the command again to fetch it afresh; if it fails the same way, install the newest jadpo, whose trusted root may be newer, and if that fails too, report it at https://github.com/jadpo-dev/jadpo/security/policy".to_string()
         }
         Some(Unfetched::Uncached) => {
             "Set `XDG_CACHE_HOME` to a folder jadpo may keep releases in, then run the command again".to_string()

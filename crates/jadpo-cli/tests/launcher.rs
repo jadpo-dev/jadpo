@@ -192,3 +192,23 @@ fn toolchain_pin_writes_the_running_release_into_the_lock() {
     assert!(output.status.success(), "{}", text(&output.stderr));
     assert!(!fixture.project().join("jadpo.lock").exists());
 }
+
+#[test]
+fn a_command_this_jadpo_doesnt_know_reaches_the_projects_release_untouched() {
+    // What a later release adds (commands, flags) is never read here first
+    // (area 14, "What a release must keep, for older launchers").
+    let fixture = Fixture::new("unknown", "0.0");
+    fixture.keep("0.0.4");
+    let output = fixture.jadpo(
+        &fixture.project(),
+        &["deploy", "--to", "staging", "--brand-new-flag"],
+        &[],
+    );
+    assert!(
+        text(&output.stdout)
+            .starts_with("jadpo 0.0.4 ran: deploy --to staging --brand-new-flag in "),
+        "{}{}",
+        text(&output.stdout),
+        text(&output.stderr)
+    );
+}
