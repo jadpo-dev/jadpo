@@ -21,7 +21,7 @@ test "a shelf list lists every packet on the shelves" {
     assert lent.on_loan != crimson.on_loan
     assert cherokee.withdrawn == false
     var started: ShelfList = attempt list_shelves(open_list().id)
-    var written: ShelfList = attempt ShelfList.get(started.id)
-    assert written.packets_listed == 3
-    assert written.printout != none
+    var printed_list: ShelfList = attempt ShelfList.get(started.id)
+    assert printed_list.packets_listed == 3
+    assert printed_list.printout != none
 }

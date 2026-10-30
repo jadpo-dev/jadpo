@@ -23,9 +23,9 @@ test "a round charges its own society's plots alone" {
     var charged: RentRound = attempt RentRound.get(started.id)
     assert charged.invoiced == 3
     assert charged.unlet == 1
-    var finished: Bool = match started.invoices {
+    var round_done: Bool = match started.invoices {
         some(invoices) -> round_progress(invoices).state == BatchState.finished
         none -> false
     }
-    assert finished
+    assert round_done
 }
