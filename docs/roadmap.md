@@ -365,9 +365,9 @@ first. They are taken before any other unticked chunk on this page
 time.
 
 - [ ] **A0 Every unbuilt protection refused where it is written**
-  `opus · high`: area 1, "A feature not built yet is
-  `toolchain.not_built_yet` where it is written", applied to what is
-  accepted today and then does nothing. Area 15's field settings
+  `opus · high`: each area's "What is built" rule, that a feature not
+  built yet is `toolchain.not_built_yet` where it is written, applied to
+  what is accepted today and then does nothing. Area 15's field settings
   (`personal:`'s minimisation and erasure checks, `retention:`, `erase:`)
   are skipped silently (`crates/jadpo-check/src/types/decl.rs`,
   `LATER_FIELD_SETTINGS`), so an app believes data expires that never
