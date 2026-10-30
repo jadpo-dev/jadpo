@@ -60,7 +60,7 @@ pub fn launch(args: &[String], env: &Environment) -> Launch {
         args,
         env,
         &releases::Https,
-        &attestation::Sigstore,
+        &attestation::Sigstore::JADPO,
         crate::toolchain::HOST,
     )
 }

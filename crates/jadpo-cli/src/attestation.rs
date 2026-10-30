@@ -44,21 +44,31 @@ pub(crate) trait Attest {
     fn check(&self, network: &dyn Network, version: &str, digest: &str) -> Result<(), String>;
 }
 
-/// The attestation GitHub holds, verified with Sigstore's verifier.
-pub(crate) struct Sigstore;
+/// The attestation GitHub holds for a release of `repository`
+/// (`jadpo-dev/jadpo`), verified with Sigstore's verifier.
+pub(crate) struct Sigstore {
+    pub(crate) repository: &'static str,
+}
+
+impl Sigstore {
+    /// Jadpo's own releases'.
+    pub(crate) const JADPO: Sigstore = Sigstore {
+        repository: releases::REPOSITORY,
+    };
+}
 
 impl Attest for Sigstore {
     fn check(&self, network: &dyn Network, version: &str, digest: &str) -> Result<(), String> {
         let url = format!(
             "https://api.github.com/repos/{}/attestations/sha256:{digest}",
-            releases::REPOSITORY
+            self.repository
         );
         let answer = network.get(&url, LONGEST)?;
         let bundles = bundles(&answer)?;
         if bundles.is_empty() {
             return Err("GitHub holds no attestation for its archive.".to_string());
         }
-        let identity = workflow(version);
+        let identity = workflow(self.repository, version);
         let mut last = String::new();
         for bundle in &bundles {
             match verify(bundle, digest, &identity) {
@@ -70,13 +80,11 @@ impl Attest for Sigstore {
     }
 }
 
-/// The certificate identity release `version`'s archives are signed with:
-/// `release.yml` at the release's tag.
-pub(crate) fn workflow(version: &str) -> String {
-    format!(
-        "https://github.com/{}/.github/workflows/release.yml@refs/tags/v{version}",
-        releases::REPOSITORY
-    )
+/// The certificate identity `repository`'s release `version`'s archives
+/// are signed with: its `release.yml` at the release's tag, which
+/// release-please starts it on.
+pub(crate) fn workflow(repository: &str, version: &str) -> String {
+    format!("https://github.com/{repository}/.github/workflows/release.yml@refs/tags/v{version}")
 }
 
 /// The bundles in GitHub's answer for a digest, as JSON.
@@ -293,6 +301,61 @@ mod tests {
     const DIGEST: &str = "54303491a8418fbed24344b513546182c29b43bf282ceb433af65e2299f9271f";
     const SIGNER: &str = "https://github.com/prefix-dev/sigstore-example/.github/workflows/action.yaml@refs/heads/main";
 
+    /// GitHub's real answer for the archive of dist 0.33.1 for
+    /// aarch64-apple-darwin, whose SHA-256 `.github/install-dist.sh` pins:
+    /// two attestations, GitHub's own release attestation and the SLSA
+    /// provenance dist's `release.yml` made at the tag, as Jadpo's own
+    /// release workflow makes for each archive.
+    const DIST: &str =
+        include_str!("../tests/fixtures/attestation/dist-0.33.1-aarch64-apple-darwin.json");
+    const DIST_DIGEST: &str = "b8bf041a38e9e54ecf41eee2574ca6644043796620bb0ee8340e9c0acbaaae8f";
+
+    /// GitHub serving `answer` for `repository`'s attestations of `digest`.
+    struct Answers(String, Vec<u8>);
+
+    impl Network for Answers {
+        fn get(&self, url: &str, _: usize) -> Result<Vec<u8>, String> {
+            if url == self.0 {
+                Ok(self.1.clone())
+            } else {
+                Err(format!("No connection for `{url}`."))
+            }
+        }
+    }
+
+    fn dist() -> Answers {
+        Answers(
+            format!(
+                "https://api.github.com/repos/axodotdev/cargo-dist/attestations/sha256:{DIST_DIGEST}"
+            ),
+            DIST.as_bytes().to_vec(),
+        )
+    }
+
+    #[test]
+    fn a_real_release_archives_attestation_verifies_for_its_tag() {
+        let dist_releases = Sigstore {
+            repository: "axodotdev/cargo-dist",
+        };
+        dist_releases
+            .check(&dist(), "0.33.1", DIST_DIGEST)
+            .expect("verifies");
+        // Another tag's workflow didn't build it.
+        let refused = dist_releases
+            .check(&dist(), "0.33.0", DIST_DIGEST)
+            .expect_err("another tag");
+        assert!(
+            refused.starts_with("its archive's attestation doesn't verify"),
+            "{refused}"
+        );
+        // Nor did Jadpo's.
+        assert!(
+            Sigstore::JADPO
+                .check(&dist(), "0.33.1", DIST_DIGEST)
+                .is_err()
+        );
+    }
+
     #[test]
     fn a_real_attestation_verifies_for_its_digest_and_signer() {
         verify(BUNDLE, DIGEST, SIGNER).expect("verifies");
@@ -302,7 +365,7 @@ mod tests {
     fn another_digest_or_signer_is_refused() {
         let other = DIGEST.replace('5', "6");
         assert!(verify(BUNDLE, &other, SIGNER).is_err());
-        let ours = workflow("0.1.0");
+        let ours = workflow(releases::REPOSITORY, "0.1.0");
         assert_eq!(
             ours,
             "https://github.com/jadpo-dev/jadpo/.github/workflows/release.yml@refs/tags/v0.1.0"
