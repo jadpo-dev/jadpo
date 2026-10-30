@@ -15,6 +15,34 @@ Why [HTTP](../07-http.md) is the way it is: the decisions behind it, how it fits
 - **The default API is `main`**, like the default store, and not `public`,
   which already means "visible to other domains".
 
+## Why some rules are the way they are
+
+Moved here from the area page when it was rewritten to the writing guide.
+
+- **A route entry, not a named route.** A route is an entry
+  `GET /path { }` inside its group, keyed by method and path, which is how
+  HTTP, OpenAPI, logs and every framework name a route; it is the colon
+  rule's one exception (area 3). A named form
+  (`route get_todo { method: ... path: ... }`) would add a third name to
+  keep in step with the action and the URL. Routes are never `public`
+  (area 1); who may call one is authentication's and policy's job (areas 8
+  and 9).
+- **A new version is another API.** Stripe's dated versions with response
+  rewriting suit a large public API and are not worth their cost here.
+- **`Idempotency-Key`** is the header of the IETF draft Stripe's design
+  became.
+- **Field paths are dotted.** A problem names its field as
+  `lines.2.quantity`, the names the OpenAPI schema uses; JSON Pointer's
+  `/lines/2/quantity` reads worse beside a form field.
+- **The rate-limit headers** follow the IETF draft
+  `draft-ietf-httpapi-ratelimit-headers`; its current version is still to
+  check.
+- **The public API record** catches a breaking change at review, not by a
+  client in production, as Kotlin's API validator and Microsoft's API
+  Extractor catch one.
+- **Streaming** is server-sent events because area 21 chose them over
+  WebSockets.
+
 ## Carried to later areas
 
 | Item | Area |

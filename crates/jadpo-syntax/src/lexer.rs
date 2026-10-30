@@ -517,10 +517,12 @@ impl Lexer<'_> {
                 _
             ))
         );
-        // `use` is a word like any other to the lexer, but a line that ends
-        // after it has no path: `use; shared/types` can't be split there.
+        // `use` and the other declaration words the lexer reads as names
+        // need what follows on their line: `use; shared/types` and
+        // `package; Postcodes.v3 {` can't be split there.
         let ends_line = ends_line
-            && !matches!(self.last, Some((IDENT, from, to)) if &self.text[from..to] == "use");
+            && !matches!(self.last, Some((IDENT, from, to))
+                if crate::grammar::RESERVED_NAMES.contains(&&self.text[from..to]));
         self.pos += 1;
         self.push(SKIPPED, start);
         let after = self.rest_of_line(self.pos);

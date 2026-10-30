@@ -122,9 +122,10 @@ doesn't run until you fix it. Every error has the same parts:
 
 - where the problem is, with the line of code;
 - `reason:`, why it's a problem;
-- `next:`, what to do about it, and who should do it. `(agent)` means a
-  coding agent can make the fix. `(human)` means a person has to decide,
-  so an agent stops and asks;
+- `next:`, what to do about it. `(human)` at the end of an error's
+  `next:` line tells your coding agent to stop and ask you which fix you
+  want, because the choice is yours to make (who can see data, what a
+  setting holds). `(agent)` means your agent can make the fix itself;
 - `rule:`, the error's name, and `help:`, where its page is.
 
 Every error has a page on this site: `https://jadpo.dev/docs/errors/`
