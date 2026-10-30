@@ -825,6 +825,10 @@ def main() -> int:
         '--fuzz-seed', type=int, metavar='SEED',
         help='the seed the fuzzed bodies are made from (default: 1; JADPO_FUZZ_SEED)')
     args = parser.parse_args()
+    # Every `jadpo` the gate runs is this checkout's build, run as it is: it
+    # never hands a project on another line to a fetched release, so the
+    # gate never reaches the network for one (area 14, "Which jadpo runs").
+    os.environ['JADPO_TOOLCHAIN'] = 'local'
     # The fuzzed bodies' run (docs/compiler-runtime.md §2.7, "The
     # differential run"): its steps read how many bodies and their seed.
     if args.fuzz is not None:

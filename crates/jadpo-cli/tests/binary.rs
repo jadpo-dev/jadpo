@@ -130,6 +130,7 @@ fn bash_completes_commands_and_values() {
             "runs",
             "config",
             "completions",
+            "toolchain",
             "lsp",
             "help",
             "version"

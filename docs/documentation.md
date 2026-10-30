@@ -49,6 +49,7 @@ area page lists it under `## Errors`.
 | Commands | generated from `jadpo help --json` |
 | Standard types | generated from the compiler's contract data (roadmap, after the first build, item 2) |
 | Teaching projects | `examples/` |
+| The agent skill: how a coding agent writes Jadpo apps | `docs/agent-skill/SKILL.md` |
 
 ## Topic IDs
 
@@ -102,6 +103,7 @@ bundle/
   topics/<id>.md               one per topic ID
   errors/<rule.id>.md          one per catalogue rule, example or not
   commands/jadpo-<command>.md  generated from jadpo help --json
+  skills/jadpo/SKILL.md        the agent skill, outside index.json
 ```
 
 `index.json` is `{ "version": "<jadpo's version>", "pages": [...] }`, in
@@ -129,7 +131,8 @@ shows the fence as it is, and its relative links are by ID (`passkeys.md`,
 a link to anything else, design notes included, names the file on GitHub's
 `main`. An error page leads with its rule's summary, area and who usually
 decides the next step; a command's page is its usage, arguments, flags,
-examples and errors. The primer is `docs/primer.md` with its hidden blocks
+examples, the flags every command takes and what `--json` gives (the
+same on each page), and errors. The primer is `docs/primer.md` with its hidden blocks
 left out; the docs check compiles its every example, refuses a `fragment`
 in it and keeps it to 3,000 to 5,000 tokens, its words times 1.3. A
 Learn page shows only the files it adds or changes; the docs check
@@ -154,6 +157,7 @@ Release.
 | `/docs/<old-id>`, `.md` | A permanent redirect to the topic whose `aliases` hold it |
 | `/docs/errors/<rule.id>`, `.md` | An error's page; reached from a compiler error, not listed in navigation |
 | `/docs/index.json` | The bundle's index |
+| `/.well-known/agent-skills/jadpo/SKILL.md`, `/.well-known/agent-skills/index.json` | The agent skill, and the index that lists it |
 | `/v/<version>/…` | The same paths for one release; immutable, cached for good |
 | `/…` without `/v/` | The latest release; short cache, `ETag` from the page's hash |
 
@@ -163,6 +167,27 @@ newcomer is sent to the Learn path first; the area pages are the
 reference, in the areas' order. Task guides will come from the bundle
 too, as a page kind of their own ([roadmap](roadmap.md), D11); until
 then the site keeps its own task list.
+
+## The agent skill
+
+`docs/agent-skill/SKILL.md` is a skill in the standard `SKILL.md` format,
+for a coding agent that writes Jadpo apps (it does not cover changing
+Jadpo). Its front matter has a `name`, `jadpo`, and a one-line
+`description`; its body tells the agent to read the primer first, find
+pages through `index.json` or `llms.txt`, run `jadpo check --json` and
+`jadpo test --json`, read the error document and what `(agent)` and
+`(human)` mean, and report a bug in Jadpo through the user, as "Using
+Jadpo" in `AGENTS.md` says. It is versioned with the language: a release's
+bundle holds the skill of that release. Its links are full URLs, because
+the bundle's text is served as it is.
+
+The bundle holds it at `skills/jadpo/SKILL.md`, a byte-for-byte copy and
+no entry in `index.json`. The site serves that file as it is (the
+`ETag` from its hash) at `/.well-known/agent-skills/jadpo/SKILL.md`, and
+builds `/.well-known/agent-skills/index.json` from the front matter: for
+each skill its `name`, `description`, `type` (`skill-md`), `url` and
+`digest` (`sha256:` and the hex digest of the file). `/v/<version>/…`
+serves the release's own copy. The site's `llms.txt` links the skill.
 
 ## How an agent uses it
 
@@ -227,9 +252,10 @@ needs, or use a local clone with a file-reading coding agent.
   Marketplace and Open VSX once the release is out
   (`.github/workflows/vscode-extension.yml`); release-please keeps its
   `package.json` version in step.
-- An app declares the version it needs in `app.jadpo`, as
-  `application { jadpo: "0.1" }`, and the compiler refuses an app needing a
-  newer one (area 1, "The root").
+- An app declares the release line it is written for in `app.jadpo`, as
+  `application { jadpo: "0.1" }`; the installed `jadpo` runs that line's
+  release, and a `jadpo` that can't refuses an app on another line (area
+  1, "The root"; area 14, "Which jadpo runs").
 - Releases need these, set by a maintainer; each part is off until its
   switch is set:
   - release-please runs only when the repository variable `JADPO_RELEASES`
@@ -258,17 +284,27 @@ PowerShell one (`jadpo-cli-installer.ps1`), a Homebrew formula
 (`jadpo.rb`) and an npm package (`@jadpo/jadpo`, for `npx @jadpo/jadpo`). `jadpo build`
 fetches its own pinned Rust toolchain into its cache on first use.
 
-The installed `jadpo` is meant to be a launcher that runs the release line
-`app.jadpo` names, fetched into a per-user cache and verified first; it is
-not built yet, and 0.1.0 is a plain binary (area 14, "Which jadpo runs").
+Every installed `jadpo` runs the release line a project's `app.jadpo`
+names, from 0.1.0 on, so one install serves projects on different lines
+(area 14, "Which jadpo runs"). In a project on another line, or one whose
+`jadpo.lock` pins another release, it runs that release instead: one it
+keeps in `jadpo/releases/` in the user's cache folder, or the newest of
+the line on this repository's Releases, fetched once. It fetches the
+archive dist built for its own target and the `.sha256` beside it from
+`github.com` over HTTPS, refuses an archive whose SHA-256 differs, and
+verifies the archive's GitHub artifact attestation with Sigstore's
+verifier before it runs anything in it. `JADPO_TOOLCHAIN=local` makes it
+run every command itself.
 
-Each archive has a SHA-256 beside it, and each of those files, like the
-VS Code extension's `.vsix`, has a GitHub artifact attestation saying
-which workflow run in `jadpo-dev/jadpo` built it, from which commit.
-Check one before running it, with the GitHub CLI:
+The archives are `.tar.gz`, and `.zip` on Windows (`unix-archive` in
+`dist-workspace.toml`), which `jadpo` unpacks with the gzip reader it
+already has. Each has a SHA-256 beside it, and each of those files, like
+the VS Code extension's `.vsix`, has a GitHub artifact attestation saying
+which workflow run in `jadpo-dev/jadpo` built it, from which commit. Check
+one by hand with the GitHub CLI:
 
 ```sh
-gh attestation verify jadpo-cli-aarch64-apple-darwin.tar.xz --repo jadpo-dev/jadpo
+gh attestation verify jadpo-cli-aarch64-apple-darwin.tar.gz --repo jadpo-dev/jadpo
 ```
 
 ## Not decided yet

@@ -55,6 +55,20 @@ miniz_oxide.workspace = true
 # which only the `jadpo` tool links: no deployable does.
 getrandom.workspace = true
 openssl.workspace = true
+# HTTPS for fetching (`download`): the native host's rustls configuration
+# and Mozilla's roots, since the built-in OpenSSL of a release finds no CA
+# bundle on the machine it runs on.
+rustls.workspace = true
+# The toolchain launcher (area 14, "Which jadpo runs"; roadmap chunk D14):
+# a release's GitHub artifact attestation checked before it runs, with
+# RustCrypto's curves and hashes behind Sigstore's verifier.
+sigstore-verify.workspace = true
+sigstore-trust-root.workspace = true
+sigstore-crypto.workspace = true
+sigstore-types.workspace = true
+p256.workspace = true
+p384.workspace = true
+ed25519-dalek.workspace = true
 
 # The runtime's source this `jadpo` carries, packed by build.rs (chunk
 # 9.2c): deflated and named by its digest, with crates already in the lock.
@@ -65,7 +79,6 @@ sha2.workspace = true
 [dev-dependencies]
 # Local OIDC provider TLS fixtures, using the native host's test authority.
 rcgen.workspace = true
-rustls.workspace = true
 # A test's server on this machine standing in for AWS's SNS host.
 jadpo-host-native = { workspace = true, features = ["test-outbound"] }
 regex.workspace = true

@@ -571,3 +571,12 @@ shares
 # Rust's own word for a package, which `jadpo build` counts and fetches
 # (chunk 9.2c); programming vocabulary.
 crates
+# The toolchain launcher (area 14, "Which jadpo runs"; roadmap chunk D14):
+# launching a release, handing a command over to it, the projects and pins
+# it reads, GitHub (`git_hub`) and its releases' `tag_name`
+launch
+hand_over
+pins
+projects
+hub
+tag_name

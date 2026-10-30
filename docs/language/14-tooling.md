@@ -782,12 +782,18 @@ Not built yet:
 | `jadpo help [command]` | Help for one command; `--help` works everywhere |
 | `jadpo completions <shell>` | Prints the Tab-completion script for zsh, bash or fish |
 | `jadpo version` | Prints the version |
+| `jadpo toolchain` | Lists, removes and pins the Jadpo releases kept for projects |
 
 `jadpo why <schedule>` ends with the schedule's `.jadpo` place, and takes
 `--json` ([Watching schedules](12-jobs-and-events.md#watching-schedules)).
 Another name is `cli.why_arguments`.
 
 `jadpo lsp` is what your editor runs ([Editor support](#editor-support)).
+
+`jadpo toolchain` lists the releases kept for projects, `remove
+<version>` deletes one, and `pin` and `unpin` write the release a project
+runs with into `jadpo.lock`. Each takes `--json`
+([Which jadpo runs](#which-jadpo-runs)).
 
 `jadpo help [command]` explains one command, every command takes `--help`
 with examples, and `jadpo help --json` gives the rule catalogue and the
@@ -913,35 +919,169 @@ library changes its calls, so that stays a change you make by hand.
 ## Which jadpo runs
 <!-- topic: which-jadpo-runs -->
 
-A project is written for one release line of Jadpo, and while Jadpo is at
-0.x a minor release may break an app. So the `jadpo` you type must be the
-line the project names, whatever else is installed.
+A project is written for one release line of Jadpo, such as 0.1, and
+while Jadpo is at 0.x a minor release may break an app. So the `jadpo`
+that runs a command is the one the project names, whatever you have
+installed. You don't do anything for that.
 
 The `jadpo` you install (Homebrew, the npm package `@jadpo/jadpo`, or the
-shell or PowerShell installer) is a thin launcher. Inside a project it
-reads the line from `application { jadpo: "0.1" }` in `app.jadpo`
-([The root](01-project-layout-and-modules.md#the-root)) and runs that
-toolchain: the newest 0.1.x it has or can fetch. If `jadpo.lock` records
-an exact patch, it runs that one, so a build can be reproduced.
+shell or PowerShell installer) is a whole `jadpo` that can also start
+another release, as the `go` command does. Before a command runs, it
+finds the project: the folder you run it from, walked up to `app.jadpo`,
+or else the first argument that names a file or folder in a project. It
+reads the line from `application { jadpo: "0.1" }`
+([The root](01-project-layout-and-modules.md#the-root)).
 
-The first time a line is needed, the launcher fetches that toolchain into
-a per-user cache. Before it runs a toolchain it checks the download
-against the release's SHA-256 and its GitHub artifact attestation, and it
-refuses one that fails either. `jadpo toolchain list` shows what the cache
-holds and `jadpo toolchain remove <version>` deletes one.
+When the project is on the installed `jadpo`'s own line, or names no
+line, the installed `jadpo` runs the command. Otherwise it runs the
+release the project needs, in the same folder and with the same
+arguments, and exits as that release does. It picks:
 
-Outside a project there is no line to read. `jadpo new`, `jadpo --version`,
-`jadpo help` and the toolchain commands run with the launcher's own
-version. `jadpo new` writes that version's line into the new `app.jadpo`.
+1. the release `jadpo.lock` pins, if there is one (see "Pin a release"
+   below);
+2. else the newest release of the line it already keeps;
+3. else the newest release of the line published on GitHub, which it
+   fetches once.
 
-A plain `jadpo` binary, installed without the launcher, runs only its own
-line. Given a project on a different line it stops with an error that
-names the line to install: `toolchain.version_newer` when the project's
-line is later, `toolchain.version_older` when it is earlier. It never
-compiles the project anyway.
+A project on the installed `jadpo`'s own line runs with that `jadpo`, so
+a newer patch of the line is used once you install it, or pin it.
 
-The VS Code extension runs `jadpo lsp` from the project's folder, so
-through the launcher it gets the project's version with no configuration.
+Outside a project there is no line to read, so `jadpo new`,
+`jadpo --version`, `jadpo help` and every other command run with the
+installed version. The VS Code extension runs `jadpo lsp` from the
+project's folder, so it gets the project's release with no setting.
+
+### Fetching a release
+
+A release comes from `github.com/jadpo-dev/jadpo`'s releases, and is kept
+in `jadpo/releases/<version>/` in your cache folder: `$XDG_CACHE_HOME`,
+else `~/.cache`, else `%LOCALAPPDATA%` on Windows. Nothing is written
+anywhere else, and two commands that need the same release at once fetch
+it once.
+
+Nothing in a download runs until it passes two checks. Its SHA-256 has to
+be the one the release publishes beside it. Its GitHub artifact
+attestation has to verify too: that is a signed record, kept by GitHub
+and Sigstore's public log, saying this repository's `release.yml` built
+that archive at the release's tag. `jadpo` checks it with Sigstore's own
+verifier against the trusted root it carries. A download that fails
+either check is refused, and nothing is kept.
+
+While it fetches, stderr shows a live line, `Fetching Jadpo 0.2.3 for
+aarch64-apple-darwin`, with a bar once the archive's size is known, or
+that line once where stderr doesn't animate. Then it says what it got,
+and the command's own output follows:
+
+```text
+✓ Fetched Jadpo 0.2.3 (24.1 MB) and checked its SHA-256 and attestation in 2.3 s
+```
+
+Under `--json`, nothing is written but the command's own document.
+
+### The releases kept
+
+| Command | Does |
+|---|---|
+| `jadpo toolchain` (or `list`) | Lists the releases kept, newest first, with each one's size |
+| `jadpo toolchain remove <version>` | Deletes a kept release |
+
+Both take `--json`, and both always run with the `jadpo` you installed,
+since they look after its cache. A release you remove is fetched again
+the next time a project needs it.
+
+### Pin a release
+
+Pin the exact release a project runs with when its builds must be
+reproducible:
+
+| Command | Does |
+|---|---|
+| `jadpo toolchain pin` | Writes the release the project runs with into `jadpo.lock` |
+| `jadpo toolchain unpin` | Takes the pin out again |
+
+The pin is the lock's first line, `jadpo version 0.1.2`
+([What is committed](18-records-and-manifest.md#what-is-committed-and-why)).
+`pin` runs as the project's release, so that is the release it writes.
+Commit the lock with the code. A pin on another line than `jadpo:` names
+is out of date, `record.out_of_date`, until `jadpo toolchain pin` writes
+it again.
+
+### Run your own build on every project
+
+People working on the compiler set `JADPO_TOOLCHAIN=local`, so the
+`jadpo` they start runs every command itself, whatever line the project
+names. A project on another line is then refused by `jadpo check`, with
+the errors below.
+
+### When the release can't be run
+
+When `jadpo` can't run the release a project needs, because it is offline
+with nothing kept, the line has no release yet, or a download fails its
+checks, it stops. It never compiles the project itself. The error names
+the release to install, says why it couldn't be fetched, and gives the
+next step for that cause. It is `toolchain.version_newer` when the
+project needs a later release than this one, and
+`toolchain.version_older` when it needs an earlier one.
+
+### What a release must keep, for older launchers
+
+Every `jadpo` ever installed goes on running the releases later projects
+name, so it fetches them by what it was built knowing. These are a
+contract with every installed `jadpo`, and changing any of them is a
+breaking change to all of them. A test pins each
+(`crates/jadpo-cli/src/launcher.rs`, `contract`), so a change fails the
+gate pointing here.
+
+- **The line.** `application { jadpo: "X.Y" }` in `app.jadpo`, the
+  `jadpo:` member of the `application` singleton with its value a string
+  of two numbers, read on its own without the rest of the project
+  (`jadpo_check::jadpo_version::declared`). Any `app.jadpo` a later
+  release accepts must still put the line there in that form.
+- **The pin.** A `jadpo version X.Y.Z` line in `jadpo.lock`, a release
+  with no pre-release, read without the rest of the lock.
+- **Where releases are.** GitHub Releases of `jadpo-dev/jadpo`, tagged
+  `vX.Y.Z`, each archive at
+  `https://github.com/jadpo-dev/jadpo/releases/download/vX.Y.Z/jadpo-cli-<target>.tar.gz`,
+  `.zip` for `x86_64-pc-windows-msvc`, for each target `dist-workspace.toml`
+  names; a target dropped from it can never run a later release.
+- **The SHA-256 and the archive.** `<archive>.sha256` beside it, its first
+  word the archive's SHA-256 in hex (`sha256sum`'s form); inside the
+  archive, `jadpo` (`jadpo.exe` on Windows) at its top or in its one
+  folder, `jadpo-cli-<target>/`. Nothing else in the archive is used.
+- **The attestation.** A GitHub artifact attestation of the archive's
+  digest on Sigstore's public-good instance, whose certificate GitHub
+  Actions issued to
+  `https://github.com/jadpo-dev/jadpo/.github/workflows/release.yml@refs/tags/vX.Y.Z`:
+  the repository, the workflow's path and its run at the tag
+  (release-please starts it with `--ref "$TAG"`). Renaming the
+  repository or the workflow, or running it on a branch, makes every
+  installed `jadpo` refuse the release.
+- **Finding a line's newest release.** GitHub's API without signing in,
+  `https://api.github.com/repos/jadpo-dev/jadpo/releases?per_page=100`,
+  pages of 100 up to ten, reading each release's `tag_name`, `draft` and
+  `prerelease`; and `/attestations/sha256:<digest>` for the attestation,
+  its `attestations[].bundle`. GitHub allows 60 such requests an hour from
+  one address. A fetch takes two or three, and a kept release none, so the
+  limit is met only on a shared address such as CI's. When it is met, the
+  error says GitHub's API refused it for that limit and to run the command
+  again in an hour; nothing is fetched or kept.
+- **The handshake.** A release a `jadpo` starts gets
+  `JADPO_TOOLCHAIN_LAUNCHED` set to its own version and runs the command
+  itself when that is its version, so it never hands the command on
+  again; `JADPO_TOOLCHAIN=local` runs everything with the `jadpo` started.
+  The command line reaches the release whole, before any of it is read,
+  so a command or flag a later release adds works through any launcher.
+- **The cache.** `jadpo/releases/<X.Y.Z>/jadpo` in the user's cache
+  folder, written whole by a rename under `.<X.Y.Z>.lock`; a folder there
+  is a release that was checked.
+- **The trusted root.** Each `jadpo` checks attestations against the
+  Sigstore trusted root it was built with, without refreshing it. After
+  Sigstore rotates a key that signs GitHub's attestations, older launchers
+  refuse releases signed with the new key: the error says Jadpo X couldn't
+  be fetched to run it because its archive's attestation doesn't verify,
+  and to run again, then to install the newest `jadpo`, whose trusted
+  root may be newer, if it fails the same way. Installing a `jadpo` built
+  after the rotation is the fix, and its release notes say so.
 
 ## Editor support
 <!-- topic: editor-support -->
@@ -2510,6 +2650,7 @@ its command is built.
 | `cli.signal_handler_failed` | any command | Shutdown handler could not be installed |
 | `cli.suggest_arguments` | `suggest` | Suggest command has invalid arguments |
 | `cli.test_arguments` | `test` | Test command has invalid arguments |
+| `cli.toolchain_arguments` | `toolchain` | Toolchain command has invalid arguments |
 | `cli.unknown_command` | any command | Unknown Jadpo command |
 | `cli.unknown_schema_command` | `schema` | Unknown schema subcommand |
 | `cli.watch_arguments` | `watch` | Watch command has invalid arguments |
@@ -2666,8 +2807,8 @@ Each row says what is built and what is specified but not built yet.
 |---|---|
 | Command help | Built: every command has `--help` with examples, `jadpo help [command]` explains one, and `jadpo help --json` describes them all. |
 | Project path | Built: every command finds the project by walking up to `app.jadpo`, so a path is optional; run from outside the project, printed paths start with the project as typed. |
-| Scaffold | Not built yet: `jadpo new` is `cli.unknown_command`. The version an app declares is checked: `application { jadpo: "0.1" }`, with `toolchain.version_newer` and `toolchain.version_invalid` ([The root](01-project-layout-and-modules.md#the-root)). |
-| Which jadpo runs | Not built yet: the launcher, its toolchain cache and verification, `jadpo toolchain list` and `remove`, and `toolchain.version_older`. 0.1.0 ships as a plain binary that runs only its own line; the launcher is built before 0.2.0 (roadmap chunk D14). |
+| Scaffold | Not built yet: `jadpo new` is `cli.unknown_command`. The line an app declares is checked: `application { jadpo: "0.1" }`, with `toolchain.version_newer`, `toolchain.version_older` and `toolchain.version_invalid` ([The root](01-project-layout-and-modules.md#the-root)). |
+| Which jadpo runs | Built in 0.1.0: every `jadpo` runs the release a project's line or `jadpo.lock` pin names, kept in the cache or fetched from GitHub's releases, its archive checked against its published SHA-256 and its GitHub artifact attestation (Sigstore's verifier, with the public-good trusted root carried in the binary) before it runs, and refuses with `toolchain.version_newer` or `toolchain.version_older` when it can't; `jadpo toolchain` lists, removes, pins and unpins, and `JADPO_TOOLCHAIN=local` runs everything with the `jadpo` started. The trusted root is the one this release was built with: no TUF refresh. |
 | Formatter | Built: one member per line, one blank line between declarations, and `fmt --check` counts the files it read; it keeps `use` lines at the top, sorted, fixes imports inside a project, `--layout` makes promotion moves, and it writes each file's declarations before their use, the primary declaration last. |
 | Error messages | Built: one error per mistake, in the field order [Error messages](#error-messages) gives, `impact` only when it says something, edits on the next step where one exists, and help links to each error's page on the site. |
 | JSON output | Built: every command takes `--json` and prints one envelope (`schemaVersion` 2) with project-relative paths and `data.root`, line and column beside byte offsets, and camelCase keys; `jadpo test --json` is described in [Testing](13-testing.md) and under `testReport` in `jadpo help --json`. |
