@@ -1816,7 +1816,7 @@ pub static COMMANDS: &[Command] = &[
         name: "toolchain",
         synonyms: &[],
         group: "Set up",
-        summary: "List, remove and pin Jadpo releases",
+        summary: "Manage Jadpo releases",
         description: "The jadpo you install runs the Jadpo release line a project's app.jadpo names \
                       (`jadpo: \"0.1\"`): its newest release, or the one jadpo.lock pins, fetched \
                       once into your cache folder and checked against its SHA-256 and GitHub \
