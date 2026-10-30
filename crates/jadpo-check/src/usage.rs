@@ -806,9 +806,28 @@ fn promoted(
         Move::Shared => format!("shared/types/{file_name}.jadpo"),
         Move::OwnFile(folder) => format!("{folder}/{file_name}.jadpo"),
     };
+    let onto = folds_onto(db, project, path, item, &to);
     let problem = promote(path, source, item, to, user, &target);
     if matches!(item.kind, ItemKind::Function | ItemKind::Constant) {
         return problem;
+    }
+    // Its own file would carry another declaration's name too, which is
+    // `naming.folded_collision` (area 1, "Files"): it is renamed first,
+    // so the move offers no edit and `jadpo fmt --layout` doesn't make it.
+    if let Some(other) = onto {
+        let folder = target.rsplit_once('/').map_or("", |(folder, _)| folder);
+        let said = problem.reason.clone().unwrap_or_default();
+        return problem
+            .reason(format!(
+                "{said} Its own file would be `{file_name}.jadpo`, the file name of `{}`, {} in `{}`.",
+                other.name,
+                other.kind.with_a(),
+                other.path
+            ))
+            .next(format!(
+                "Rename `{name}` first, so its file name differs from `{}`'s, then move it to `{folder}/`",
+                other.name
+            ));
     }
     let Some(decl) = tree::decl_at(source, item.index) else {
         return problem;
@@ -837,6 +856,36 @@ fn promoted(
     edits
         .into_iter()
         .fold(problem, |problem, (span, text)| problem.edit(span, text))
+}
+
+/// The declaration, other than `item`, whose name folds to the file name
+/// `item` would have once moved (`list_books` for `ListBooks`), among the
+/// names it would then have to differ from.
+fn folds_onto(
+    db: &dyn Db,
+    project: Project,
+    path: &str,
+    item: &Item,
+    to: &Move,
+) -> Option<jadpo_db::Symbol> {
+    let lookup = Lookup::new(db, project);
+    let mine = lookup
+        .declared(&item.name)
+        .iter()
+        .find(|symbol| symbol.path == path && symbol.index == item.index)?;
+    // In `shared/` a name is unique across the project.
+    let scope = match to {
+        Move::Shared => None,
+        Move::Domain(_) | Move::OwnFile(_) => mine.scope.clone(),
+    };
+    lookup
+        .same_file_name(&to_snake(&item.name))
+        .iter()
+        .filter(|symbol| symbol.name != item.name)
+        .filter(|symbol| symbol.kind != ItemKind::Constant)
+        .filter(|symbol| symbol.ownership.package().is_none())
+        .find(|symbol| scope.is_none() || symbol.scope.is_none() || symbol.scope == scope)
+        .cloned()
 }
 
 /// The edit that adds `"<now>": "<born name of identity>"` to the identity

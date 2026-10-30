@@ -80,6 +80,18 @@ impl Parse {
     pub fn checkable(&self) -> bool {
         !self.suppressed && self.errors.iter().all(|error| error.clean)
     }
+
+    /// [`Parse::checkable`], also when an error is a reserved word read
+    /// as the name it stands for (`library.borrow`): the tree is whole,
+    /// and the checker reports the domain whose folder the word names
+    /// instead.
+    pub fn checkable_reading_names(&self) -> bool {
+        !self.suppressed
+            && self
+                .errors
+                .iter()
+                .all(|error| error.clean || error.reads_as_name)
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -138,7 +150,7 @@ fn parse(text: &str, entry: Entry) -> Parse {
         let first = line != Some(at);
         line = Some(at);
         // A clean habit left unreported still reads as its Jadpo form.
-        suppressed |= !first && !error.clean;
+        suppressed |= !first && !(error.clean || error.reads_as_name);
         first
     });
     Parse {

@@ -112,7 +112,7 @@ fn project(name: &str) -> PathBuf {
     let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("operation-conditions-{name}"));
     let _ = fs::remove_dir_all(&root);
     write(&root, "app.jadpo", "application {}\n");
-    let domain = |path: &str, text: &str| write(&root, &format!("domains/library/{path}"), text);
+    let domain = |path: &str, text: &str| write(&root, &format!("domains/catalogue/{path}"), text);
     for (file, text) in [
         (
             "book_title",
@@ -132,14 +132,14 @@ fn project(name: &str) -> PathBuf {
         ),
         (
             "book_card",
-            "use library/entities { Book }\n\n/// A book in a list.\ntype BookCard = Output {\n    pick: [Book.id, Book.title]\n}\n",
+            "use catalogue/entities { Book }\n\n/// A book in a list.\ntype BookCard = Output {\n    pick: [Book.id, Book.title]\n}\n",
         ),
     ] {
         domain(&format!("types/{file}.jadpo"), text);
     }
     domain(
         "entities/book.jadpo",
-        "use library/types { BookPrice, BookTitle, PageCount }\n\n/// A book in the catalogue.\nentity Book {\n    id: Uuid\n    title: BookTitle\n    subtitle: BookTitle?\n    pages: PageCount\n    price: BookPrice\n    published_on: CalendarDate\n\n    policy: {\n        read: [Access.public]\n    }\n}\n",
+        "use catalogue/types { BookPrice, BookTitle, PageCount }\n\n/// A book in the catalogue.\nentity Book {\n    id: Uuid\n    title: BookTitle\n    subtitle: BookTitle?\n    pages: PageCount\n    price: BookPrice\n    published_on: CalendarDate\n\n    policy: {\n        read: [Access.public]\n    }\n}\n",
     );
     for (name, params, condition, _) in QUERIES {
         let args: Vec<&str> = params
@@ -150,13 +150,13 @@ fn project(name: &str) -> PathBuf {
         domain(
             &format!("queries/{name}.jadpo"),
             &format!(
-                "use library/entities {{ Book }}\nuse library/types {{ BookCard }}\n\n/// Books found by an operation of a field.\nquery {name}({params}) -> List<BookCard> {{\n    from: Book\n    {condition}\n    order: [Book.id asc]\n    limit: 5000\n}}\n"
+                "use catalogue/entities {{ Book }}\nuse catalogue/types {{ BookCard }}\n\n/// Books found by an operation of a field.\nquery {name}({params}) -> List<BookCard> {{\n    from: Book\n    {condition}\n    order: [Book.id asc]\n    limit: 5000\n}}\n"
             ),
         );
         domain(
             &format!("actions/find_{name}.jadpo"),
             &format!(
-                "use library/entities {{ Book }}\nuse library/queries {{ {name} }}\nuse library/types {{ BookCard }}\n\n/// What the query finds.\naction find_{name}({params}) -> List<BookCard> {{\n    return {name}({})\n}}\n",
+                "use catalogue/entities {{ Book }}\nuse catalogue/queries {{ {name} }}\nuse catalogue/types {{ BookCard }}\n\n/// What the query finds.\naction find_{name}({params}) -> List<BookCard> {{\n    return {name}({})\n}}\n",
                 args.join(", ")
             ),
         );

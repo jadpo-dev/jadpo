@@ -421,10 +421,31 @@ impl<'a> Parser<'a> {
         }
         if !self.error_starts.insert(error.start) {
             // A clean habit left unreported still reads as its Jadpo form.
-            self.suppressed |= !error.clean;
+            self.suppressed |= !(error.clean || error.reads_as_name);
             return;
         }
         self.errors.push(error);
+    }
+
+    /// Keeps the errors found since the first `n` up to the first
+    /// `syntax.expected_name` among them, and forgets the rest: a block
+    /// whose names are wrong reports its first, and what follows in it is
+    /// most often the same mistake again or a knock-on of it.
+    pub(crate) fn stop_at_first_name_error(&mut self, n: usize) {
+        let Some(first) = self
+            .errors
+            .iter()
+            .skip(n)
+            .position(|error| error.rule.id == jadpo_diag::rule::SYNTAX_EXPECTED_NAME.id)
+        else {
+            return;
+        };
+        let dropped: Vec<SyntaxError> = self.errors.drain(n + first + 1..).collect();
+        for error in dropped {
+            self.error_starts.remove(&error.start);
+            // A clean habit left unreported still reads as its Jadpo form.
+            self.suppressed |= !(error.clean || error.reads_as_name);
+        }
     }
 
     /// Records `error` in place of the errors already found from `start`

@@ -557,3 +557,41 @@ fn decline_is_a_reserved_word() {
     assert_eq!(error.rule.id, "syntax.expected_name");
     assert_eq!(covered, "decline");
 }
+
+#[test]
+fn a_reserved_word_before_a_dot_is_read_as_a_name() {
+    // A domain folder named `library` makes `library.borrow` a reserved
+    // word used as a name: one error at the word, and the tree reads it as
+    // the name, so the blocks around it close where they're written.
+    let text =
+        "policy {\n    actions: {\n        library.borrow: [Access.authenticated]\n    }\n}\n";
+    let (error, covered) = one_error(text);
+    assert_eq!(error.rule.id, "syntax.expected_name");
+    assert_eq!(error.message, "`library` is a reserved word");
+    assert_eq!(covered, "library");
+    assert!(
+        parse_file(text).checkable_reading_names(),
+        "the tree reads the name"
+    );
+    let call = "function f() -> Unit {\n    library.borrow()\n}\n";
+    let (error, covered) = one_error(call);
+    assert_eq!(error.rule.id, "syntax.expected_name");
+    assert_eq!(covered, "library");
+    assert!(
+        parse_file(call).checkable_reading_names(),
+        "the tree reads the name"
+    );
+}
+
+#[test]
+fn a_block_stops_at_its_first_expected_name() {
+    // Each line of the block repeats the mistake; the block reports it once.
+    let (error, covered) = one_error(
+        "policy {\n    actions: {\n        library.borrow: [Access.authenticated]\n        library.lend: [Access.authenticated]\n        library.renew: [Access.authenticated]\n    }\n}\n",
+    );
+    assert_eq!(error.rule.id, "syntax.expected_name");
+    assert_eq!(covered, "library");
+    let (error, covered) = one_error("type Pair = Object {\n    : Int\n    : Text\n    : Int\n}\n");
+    assert_eq!(error.rule.id, "syntax.expected_name");
+    assert_eq!(covered, ":");
+}

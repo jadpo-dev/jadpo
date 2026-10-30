@@ -49,6 +49,12 @@ pub struct SyntaxError {
     /// habit from another language whose Jadpo form only renames or drops
     /// tokens.
     pub clean: bool,
+    /// Whether the tree reads the reserved word here as the name it
+    /// stands for (`library.borrow`, a domain named `library`): the rest
+    /// of the project can still be checked, but only a rename, which is
+    /// a person's choice, fixes it, so there is no edit and it isn't
+    /// `clean`.
+    pub reads_as_name: bool,
 }
 
 impl SyntaxError {
@@ -69,6 +75,7 @@ impl SyntaxError {
             next: String::new(),
             edits: Vec::new(),
             clean: false,
+            reads_as_name: false,
         }
     }
 
@@ -91,6 +98,13 @@ impl SyntaxError {
     /// Marks the tree as the one the Jadpo form gives (the `clean` field).
     pub fn clean_recovery(mut self) -> SyntaxError {
         self.clean = true;
+        self
+    }
+
+    /// Marks the tree as reading the reserved word as a name (the
+    /// `reads_as_name` field).
+    pub fn read_as_name(mut self) -> SyntaxError {
+        self.reads_as_name = true;
         self
     }
 
