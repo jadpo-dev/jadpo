@@ -8,7 +8,7 @@ rules for people and agents alike.
 
 ## Setup and checks
 
-Clone [richardwillars/jadpo](https://github.com/richardwillars/jadpo). The
+Clone [jadpo-dev/jadpo](https://github.com/jadpo-dev/jadpo). The
 repository holds the language specification, the plan, the compiler (a Rust
 workspace under `crates/`) and the teaching examples. `rustup` installs the
 pinned toolchain from `rust-toolchain.toml`. To build `jadpo`:

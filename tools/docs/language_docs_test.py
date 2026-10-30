@@ -223,7 +223,7 @@ class Bundle(unittest.TestCase):
         self.assertTrue(shown.startswith('# Shown\n\nSee '), shown)
         self.assertIn('[two\'s part](twos-part.md#the-part)', shown)
         self.assertIn('[the rule](../errors/a.b.md)', shown)
-        self.assertIn('[the notes](https://github.com/richardwillars/jadpo/blob/main/docs/language/notes/01-one.md)', shown)
+        self.assertIn('[the notes](https://github.com/jadpo-dev/jadpo/blob/main/docs/language/notes/01-one.md)', shown)
         self.assertIn('[later](shown.md#later)', shown)
         self.assertIn('`[not a link](nowhere.md)`', shown)
         self.assertIn('## Later', shown)
@@ -478,7 +478,7 @@ class Learn(unittest.TestCase):
             '# A page\n<!-- topic: a-page -->\n\nAs area 8 says, and question 11.\n\n'
             'This is not built yet.\n\nDecided. It was carried to area 9.\n\n'
             '[examples](../../examples/README.md) and '
-            '[code](https://github.com/richardwillars/jadpo/blob/main/README.md).\n\n'
+            '[code](https://github.com/jadpo-dev/jadpo/blob/main/README.md).\n\n'
             '```jadpo fragment\nx\n```\n\n## Not built yet\n\nNone.\n\n## After\n\nMore.\n')
         for expected in ('"area 8"', '"question 11"', 'build status', 'spec vocabulary',
                          'links a file in this repository', 'fragment', '`## Not built yet` is the last section'):
@@ -498,8 +498,8 @@ class Links(unittest.TestCase):
             (root / 'docs').mkdir()
             (root / 'docs/a.md').write_text('# A\n')
             (root / 'llms.txt').write_text(
-                '- [A](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/a.md)\n'
-                '- [B](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/b.md)\n'
+                '- [A](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/a.md)\n'
+                '- [B](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/b.md)\n'
                 '- [Elsewhere](https://example.com/c.md)\n')
             problems = docs.check_links([root / 'llms.txt'], root)
             self.assertEqual(len(problems), 1)
