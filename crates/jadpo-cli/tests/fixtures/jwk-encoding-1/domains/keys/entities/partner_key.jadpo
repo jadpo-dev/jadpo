@@ -1,0 +1,9 @@
+entity PartnerKey {
+    id: Uuid
+    key: Jwk
+
+    policy: {
+        create: [Access.system]
+        read: [Access.public]
+    }
+}

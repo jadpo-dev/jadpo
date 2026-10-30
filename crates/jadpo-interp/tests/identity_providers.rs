@@ -133,16 +133,45 @@ fn a_key_set_holding_a_secret_or_a_key_nothing_checks_with_is_unreadable() {
     let program = main(SOURCE);
     let private = google().replace(r#""kty":"RSA""#, r#""kty":"RSA","d":"AQAB""#);
     let shared = r#"{"keys":[{"kty":"oct","k":"GawgguFyGrWKav7AX4VKUg"}]}"#;
-    let restricted = google().replace(r#""kty":"RSA""#, r#""kty":"RSA","key_ops":["verify"]"#);
+    let repeated = google().replace(
+        r#""kty":"RSA""#,
+        r#""kty":"RSA","key_ops":["verify","verify"]"#,
+    );
     let off_curve = google().replace(EC_Y, &format!("{}4", &EC_Y[..42]));
     let confused = google().replace(r#""alg":"RS256""#, r#""alg":"ES256""#);
-    for published in [private, shared.to_string(), restricted, off_curve, confused] {
+    for published in [private, shared.to_string(), repeated, off_curve, confused] {
         assert_eq!(
             failed(&program, "claims", RSA_GOOD, &published),
             "KeySetUnreadable",
             "{published}"
         );
     }
+}
+
+/// WebCrypto's shape (`exportKey("jwk")`): `key_ops` and `ext` on every
+/// key, no `use`, and the key id the application gives it.
+fn webcrypto(operations: &str) -> String {
+    format!(
+        r#"{{"keys":[{{"crv":"P-256","ext":true,"key_ops":{operations},"kty":"EC","x":"{EC_X}","y":"{EC_Y}","kid":"ec-1"}}]}}"#
+    )
+}
+
+#[test]
+fn a_key_set_with_webcrypto_s_key_ops_checks_a_token() {
+    let program = main(SOURCE);
+    for operations in [r#"["verify"]"#, r#"["sign","verify"]"#] {
+        let Outcome::Value(Value::Record(claims)) =
+            called(&program, "claims", EC_GOOD, &webcrypto(operations), NOW)
+        else {
+            panic!("{operations}");
+        };
+        assert_eq!(claims.get("sub"), Some(&Value::text("member-42")));
+    }
+    // A key for signing only is read, and checks no token.
+    assert_eq!(
+        failed(&program, "claims", EC_GOOD, &webcrypto(r#"["sign"]"#)),
+        "TokenRefused"
+    );
 }
 
 #[test]

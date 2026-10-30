@@ -787,6 +787,13 @@ fn part_schema(part: jadpo_std::Part) -> Value {
             out.set("items", part_schema(*inner));
             out
         }
+        jadpo_std::Part::Set(inner) => {
+            let mut out = Value::object();
+            out.set("type", "array");
+            out.set("items", part_schema(*inner));
+            out.set("uniqueItems", true);
+            out
+        }
         jadpo_std::Part::Standard(other) => match jadpo_std::standard_type(other) {
             Some(entry) if entry.codes().is_some() => {
                 let mut out = Value::object();

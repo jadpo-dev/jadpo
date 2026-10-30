@@ -48,6 +48,8 @@ mod guarantees;
 mod health;
 pub mod idempotency;
 pub mod identity;
+#[cfg(feature = "testing")]
+pub mod local_issuer;
 pub mod magic_links;
 pub(crate) mod passkeys;
 pub(crate) mod sign_in_events;
@@ -1961,8 +1963,7 @@ pub async fn test_request(
     }
     let started = ctx.started();
     if let Some(caller) = caller {
-        let headers =
-            identity::test_credentials(ctx, app.table, started.auth(), route, caller).await?;
+        let headers = identity::test_credentials(ctx, app, started.auth(), route, caller).await?;
         request.headers.extend(headers);
     }
     // The app's own site, as a browser's request from it says, so a route

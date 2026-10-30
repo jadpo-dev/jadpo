@@ -921,13 +921,13 @@ impl JsonCodecs<'_> {
 
 /// Whether this release reads what was kept in encoding `kept`, as an
 /// outbox row or a batch run records it (area 19, "Changing a standard
-/// type's encoding"; chunk 6.8): this release's, or none, kept before
-/// encodings were recorded, whose forms are encoding 1's. A later
-/// release's is never guessed at.
+/// type's encoding"; chunk 6.8): this release's or an earlier one's, or
+/// none, kept before encodings were recorded, whose forms are encoding
+/// 1's. A later release's is never guessed at.
 pub(crate) fn kept_encoding(kept: &SqlValue) -> Result<(), String> {
     match kept {
         SqlValue::Null(_) => Ok(()),
-        SqlValue::Int2(n) if u32::try_from(*n).ok() == Some(jadpo_std::standard::ENCODING) => {
+        SqlValue::Int2(n) if u64::try_from(*n).is_ok_and(jadpo_std::standard::reads_encoding) => {
             Ok(())
         }
         SqlValue::Int2(n) => Err(format!(
@@ -1577,9 +1577,18 @@ mod tests {
         assert_eq!(kept_encoding(&encoding_value()), Ok(()));
         assert_eq!(kept_encoding(&SqlValue::Null(SqlType::Int2)), Ok(()));
         assert_eq!(
-            kept_encoding(&SqlValue::Int2(2)),
-            Err("written in encoding 2, which this release doesn't read".into())
+            kept_encoding(&SqlValue::Int2(1)),
+            Ok(()),
+            "an earlier one's"
         );
+        let later = i16::try_from(jadpo_std::standard::ENCODING + 1).expect("an encoding");
+        assert_eq!(
+            kept_encoding(&SqlValue::Int2(later)),
+            Err(format!(
+                "written in encoding {later}, which this release doesn't read"
+            ))
+        );
+        assert!(kept_encoding(&SqlValue::Int2(0)).is_err());
         assert!(kept_encoding(&SqlValue::Text("1".into())).is_err());
     }
 

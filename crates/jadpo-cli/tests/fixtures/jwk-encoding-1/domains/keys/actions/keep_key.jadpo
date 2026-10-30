@@ -1,0 +1,10 @@
+use keys/entities { PartnerKey }
+
+/// Keeps a partner's public key.
+action keep_key(key: Jwk) -> PartnerKey {
+    return PartnerKey.create {
+        set: {
+            key: key
+        }
+    }
+}
