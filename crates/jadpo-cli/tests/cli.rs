@@ -91,6 +91,7 @@ Production
 Set up
   config        Check and set local settings  check, move, set
   completions   Turn on Tab completion        zsh, bash, fish
+  toolchain     Manage Jadpo releases         list, remove, pin, unpin
   lsp           Run the language server for editors
 
 Help
@@ -166,6 +167,7 @@ Production
 Set up
   config        Check and set local settings  check · move · set
   completions   Turn on Tab completion        zsh · bash · fish
+  toolchain     Manage Jadpo releases         list · remove · pin · unpin
   lsp           Run the language server for editors
 
 Help
@@ -335,6 +337,7 @@ fn help_json_is_the_whole_command_reference() {
             "runs",
             "config",
             "completions",
+            "toolchain",
             "lsp",
             "help",
             "version"
@@ -739,6 +742,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "runs\tCheck runs before a deploy",
             "config\tCheck and set local settings",
             "completions\tTurn on Tab completion",
+            "toolchain\tManage Jadpo releases",
             "lsp\tRun the language server for editors",
             "help\tShow commands, flags and examples",
             "version\tPrint the version",

@@ -286,6 +286,21 @@ serde_cbor_2 = { version = "=0.13.0", default-features = false, features = ["std
 # (jadpo-cli), and the keys and signatures of answers a device shouldn't
 # give in the passkey tests, beside `webauthn-rs`. No deployable links it.
 openssl = { version = "=0.10.81", default-features = false }
+# The GitHub artifact attestation a release's archive carries, checked
+# before the toolchain launcher runs a `jadpo` it fetched (area 14, "Which
+# jadpo runs"; jadpo-cli only): the Sigstore project's own Rust verifier,
+# Apache-2.0 and pure Rust, which checks the bundle's certificate against
+# Fulcio, its transparency-log entry, its DSSE signature and that the
+# statement names the archive's digest, against the public-good trusted
+# root it carries. No default features: no TUF client, HTTP client or
+# Tokio, and no `aws-lc-rs`; its cryptography is the RustCrypto crates
+# above through a provider of jadpo-cli's own, with `p384` for Fulcio's
+# P-384 certificates, from the same release as `p256`.
+sigstore-verify = { version = "=0.15.1", default-features = false }
+sigstore-trust-root = { version = "=0.15.1", default-features = false }
+sigstore-crypto = { version = "=0.15.1", default-features = false }
+sigstore-types = { version = "=0.15.1", default-features = false }
+p384 = { version = "=0.14.0", default-features = false, features = ["ecdsa"] }
 # TLS for the native host (jadpo-host-native only; chunk 8.1b): the one
 # stack every connection a deployable makes is secured with, rustls, so no
 # OpenSSL on the request path. `ring` is its cryptography: built with only

@@ -1809,6 +1809,58 @@ pub static COMMANDS: &[Command] = &[
         run: commands::completions,
     },
     Command {
+        name: "toolchain",
+        synonyms: &[],
+        group: "Set up",
+        summary: "Manage Jadpo releases",
+        description: "The jadpo you install runs the Jadpo release line a project's app.jadpo names \
+                      (`jadpo: \"0.1\"`): its newest release, or the one jadpo.lock pins, fetched \
+                      once into your cache folder and checked against its SHA-256 and GitHub \
+                      artifact attestation before it runs. `jadpo toolchain` lists the releases \
+                      kept and `remove` deletes one; both always run with the jadpo you installed. \
+                      `pin` writes the release a project runs with into jadpo.lock, so every run \
+                      and build of it uses that release, and `unpin` takes it out. Set \
+                      JADPO_TOOLCHAIN=local to run every command with the jadpo you started.",
+        arguments: &[
+            Argument {
+                name: "action",
+                description: "What to do: remove, pin or unpin, or nothing to list them",
+                required: false,
+                values: Values::Fixed(crate::toolchains::ACTIONS),
+            },
+            Argument {
+                name: "version",
+                description: "The release to remove",
+                required: false,
+                values: Values::Fixed(&[]),
+            },
+        ],
+        flags: &[],
+        examples: &[
+            Example {
+                description: "See the Jadpo releases kept for your projects",
+                command: "jadpo toolchain",
+            },
+            Example {
+                description: "Pin the release this project runs with",
+                command: "jadpo toolchain pin",
+            },
+            Example {
+                description: "Delete a release no project needs",
+                command: "jadpo toolchain remove 0.1.2",
+            },
+        ],
+        arguments_rule: &rule::CLI_TOOLCHAIN_ARGUMENTS,
+        raises: &[
+            &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+            &rule::TOOLCHAIN_VERSION_NEWER,
+            &rule::TOOLCHAIN_VERSION_OLDER,
+            &rule::RECORD_EDITED,
+        ],
+        run: crate::toolchains::toolchain,
+    },
+    Command {
         name: "lsp",
         synonyms: &[],
         group: "Set up",

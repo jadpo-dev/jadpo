@@ -32,7 +32,7 @@ function workspaceFolder() {
 }
 
 function serverSetting() {
-  return vscode.workspace.getConfiguration("jadpo").get("server.path", "jadpo");
+  return vscode.workspace.getConfiguration("jadpo").get("server.path", "");
 }
 
 /** The status item for a state of the server. */

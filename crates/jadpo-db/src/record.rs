@@ -168,7 +168,8 @@ pub const LOCK: Kind = Kind {
     shape: Shape::History,
     update: "`jadpo package add`, `update` or `remove`",
     command: "jadpo package update",
-    headings: &["package"],
+    // `jadpo version 0.1.2`, the release `jadpo toolchain pin` pins.
+    headings: &["jadpo", "package"],
     facts: &[],
     older: &[],
 };

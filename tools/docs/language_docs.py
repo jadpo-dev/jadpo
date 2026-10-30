@@ -166,6 +166,9 @@ def jadpo(args, cwd=None, env=None):
     extra = env or {}
     env = {k: v for k, v in os.environ.items() if k not in ('FORCE_COLOR', 'CLICOLOR_FORCE', 'COLUMNS')}
     env['JADPO_PLAIN'] = '1'
+    # This checkout's own build checks every example, whatever line it
+    # names, and never fetches a release (area 14, "Which jadpo runs").
+    env['JADPO_TOOLCHAIN'] = 'local'
     env.update(extra)
     result = subprocess.run([str(JADPO), *args], cwd=cwd, capture_output=True, text=True, env=env)
     return result.returncode, result.stdout + result.stderr

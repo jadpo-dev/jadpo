@@ -76,8 +76,14 @@ fn read_lock(root: &Path) -> Result<Vec<Locked>, Reply> {
     })
 }
 
+/// Writes the lock's `lines`, keeping the Jadpo release it pins.
 fn write_lock(root: &Path, lines: &[Locked], command: &str) -> Result<(), Reply> {
-    std::fs::write(root.join(jadpo_db::LOCK), jadpo_db::write_lock(lines))
+    let path = root.join(jadpo_db::LOCK);
+    let pinned = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|text| jadpo_db::locked_jadpo(&text))
+        .map(|(version, _)| version);
+    std::fs::write(&path, jadpo_db::write_pinned_lock(pinned.as_deref(), lines))
         .map_err(|error| write_failed(command, jadpo_db::LOCK, &error.to_string()))
 }
 
