@@ -1015,6 +1015,29 @@ pub struct ExternalTokenPlan {
     /// for a user the lifecycle doesn't show.
     #[serde(default)]
     pub subject_of: Option<String>,
+    /// What decides a first sign-in, when `on_first_sign_in:` is declared
+    /// (area 8, "A person the app has not seen"; chunk A7).
+    #[serde(default)]
+    pub first_sign_in: Option<FirstSignInPlan>,
+}
+
+/// How an external token's subject no user has is decided and found
+/// again (area 8, "A person the app has not seen"; chunk A7): the action
+/// `on_first_sign_in:` names, and the statements that read the user it
+/// gave, each giving the user's `id`, whether its `active:` holds and its
+/// `subject:` field.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FirstSignInPlan {
+    /// The action, by callable number; `None` where a deployable keeps
+    /// none.
+    pub action: Option<u32>,
+    /// The user a token signs in, in one read: the one whose subject field
+    /// is `$1` (the subject as the field's type, `NULL` when it isn't
+    /// one), else the one `jadpo_sign_in_links` links way in `$3` and
+    /// subject `$4` (as the token sent it) to; `$2` the time now.
+    pub lookup: String,
+    /// The user the action gave, by `$1` its `id`, `$2` the time now.
+    pub by_id: String,
 }
 
 /// Listing, issuing and revoking credentials, limited to holders whose

@@ -50,6 +50,7 @@ mod dev_tokens;
 mod driver_factory;
 mod emails;
 mod events;
+mod external_first_sign_in;
 mod external_tokens;
 mod field_rules_on_read;
 mod file_exports;

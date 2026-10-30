@@ -2390,12 +2390,31 @@ unsupported algorithms and malformed/duplicate JSON before provider I/O; known-i
 refreshing valid cached keys. Outer HTTP deadlines drop native fetches
 and abort Workers fetches through an `AbortController` drop guard.
 Generated API/OpenAPI metadata, redacted failure wording and the network
-inventory expose the method's runtime-owned egress. The external
-first-sign-in hook and multi-column/structured subject fields remain
-compile-time `toolchain.not_built_yet` gates;
-without it an unknown subject is 403 `sign_in_refused`. Scope declarations
-are not built yet; area 9 says an external method narrows only when it
-declares the scopes it reads. Provider login is not built yet.
+inventory expose the method's runtime-owned egress. Multi-column and
+structured subject fields remain compile-time `toolchain.not_built_yet`
+gates. Without `on_first_sign_in:` an unknown subject is 403
+`sign_in_refused`. Scope declarations are not built yet; area 9 says an
+external method narrows only when it declares the scopes it reads.
+Provider login is not built yet.
+
+**First sign-in by external token** (area 8, "A person the app has not
+seen"; chunk A7). With `on_first_sign_in:` and `external_token:`, the
+schema adds `jadpo_sign_in_links` (`jadpo_std::system::SIGN_IN_LINKS`,
+keyed by way in and subject) beside the users, and the plan gives
+`ExternalTokenPlan::first_sign_in`: the action's callable number and one
+statement (`jadpo_sql::identity::linked_user`) reading the user by the
+subject field, else through its link, so a linked user costs one
+authority read as a provisioned one does; a subject that isn't the
+field's type is looked up through links only. On a miss,
+`http::sign_in_links::external` begins a read-committed transaction,
+takes `pg_advisory_xact_lock` keyed by BLAKE3 of the way in and subject,
+reads again, then runs the action as the system with no tenant, as magic
+links do, giving it the subject alone. It reads the user the action gave
+under the lifecycle, keeps the link with `SignedIn` and commits; requests
+that arrive together wait on the lock and sign in through that link, so
+the action runs once per subject. A refusal is `sign_in_refused`,
+logged with the failure and published as `SignInRefused`; an action's
+fault is a 500 whose fault the host logs.
 
 **Signed sessions** (area 8). The identity reads
 `revocation_delay:`, each method's `signing_key:` (a `SigningKey`
