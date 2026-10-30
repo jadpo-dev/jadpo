@@ -25,8 +25,11 @@ name: Release
 # dist generates this file, from dist-workspace.toml; it is kept by hand
 # (`allow-dirty = ["ci"]`) for the actions pinned to commits, dist
 # installed by .github/install-dist.sh against pinned SHA-256s instead of
-# dist's `curl | sh` installer, and the attestation of the global
-# artifacts (the installers), which dist attests only per platform.
+# dist's `curl | sh` installer, the attestation of the global artifacts
+# (the installers), which dist attests only per platform, and without
+# dist's step that installs Rust in a build container by rustup's
+# unchecked `curl | sh`: no target here builds in a container, and one
+# that did would fail for want of cargo rather than run that script.
 permissions:
   "contents": "read"
 
@@ -141,13 +144,6 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
-      - name: Install Rust non-interactively if not already installed
-        if: ${{ matrix.container }}
-        run: |
-          if ! command -v cargo > /dev/null 2>&1; then
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-            echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-          fi
       # In place of dist's `matrix.install_dist.run`, its `curl | sh`.
       - name: Install dist
         shell: bash
