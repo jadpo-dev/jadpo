@@ -407,6 +407,14 @@ time.
   reminder schedule over a batch, and route tests for each, with no code
   outside Jadpo. Before 10.2's measured runs, since it changes what they
   measure.
+- [ ] **A8 Acceptances for policy and API changes** `opus · xhigh` after A2:
+  area 18, "Acceptances", for the `PolicyChange` and `ApiChange` kinds:
+  `jadpo check` fails on any widening of who can do what (a route made
+  public included) and on an API break until an added acceptance lists
+  it with a reason; `jadpo acceptance new`; CODEOWNERS on `acceptances/`
+  and `api/`. An outside agent made a route public on request and nothing
+  stopped it (Richard, 2026-10-30). The other kinds and the approval
+  report stay in "After the first build", item 6.
 - [ ] **A7 Sign-in providers** `opus · xhigh`: area 8, `sign_in:`'s
   `providers:` (Google first, then Microsoft, through `Driver.oidc`) and
   `on_first_sign_in:` for provider and external-token sign-in. Moved here
