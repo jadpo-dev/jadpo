@@ -8,24 +8,36 @@ checked-with: this checkout's jadpo on every gate run
 # Failures
 <!-- topic: failures -->
 
-How a Jadpo program says that something went wrong: declaring failures, the
-kinds that decide how each one reaches a client, listing, raising, passing on
-and mapping failures, the faults the runtime raises by itself, and what is
-logged.
+Your code says what went wrong, by name, and Jadpo decides how each
+failure reaches whoever called: the HTTP status, the response body and
+what is logged. Code never throws, never picks an HTTP status and never
+builds an error response.
 
-The rule behind all of it: **application code says
-what failed; the compiler and runtime decide how that fact is shown at each
-boundary.** Code never throws, never picks an HTTP status and never builds an
-error response.
+Three kinds of thing can go wrong, and only the first is yours to
+declare:
+
+- A **domain failure** is an outcome your app expects, such as a todo
+  that doesn't exist. You declare it and say where it can happen.
+- A **fault** is a problem outside your code: the database is down, a
+  provider timed out, or a write may or may not have been saved. The
+  runtime raises it.
+- A **defect** is a bug: a number overflowed, the recursion limit was
+  reached, or the compiler got something wrong. The runtime raises it
+  too.
 
 | | Declared by | Listed in `fails` | The client sees | The log gets |
 |---|---|---|---|---|
-| **Domain failure**: an expected outcome such as `TodoNotFound` | you, as `type X = Failure` | yes | its code, message and client fields | its code, where it was raised, the path it travelled and its internal fields |
-| **Fault**: the database is down, a provider timed out, a write may or may not have committed | the runtime | no (question 5) | a fixed code for that fault | the cause chain |
-| **Defect**: overflow, the recursion limit, a compiler bug | the runtime | no | `internal_fault` | the cause and stack |
+| **Domain failure**, such as `TodoNotFound` | you, as `type X = Failure` | yes | its code, message and client fields | its code, where it was raised, the path it travelled and its internal fields |
+| **Fault**, such as the database being down | the runtime | no | a fixed code for that fault | the cause chain |
+| **Defect**, such as an overflow | the runtime | no | `internal_fault` | the cause and stack |
 
 ## Declaring a failure
 <!-- topic: declaring-a-failure -->
+
+A failure is declared as a type, like any other, on the base `Failure`:
+`type TodoNotFound = Failure { ... }`. As `Input` brings optional fields,
+`Failure` brings four settings: `kind`, `message`, `client` and
+`internal`.
 
 ```jadpo check project=declaring file=types.jadpo hidden
 type Quantity = Int {
@@ -65,47 +77,70 @@ type QuantityUnavailable = Failure {
 }
 ```
 
-- `kind:` names one of the kinds below. The kind sets the HTTP status and how
-  background work treats the failure; a failure never states a status itself.
-- The public code is the name in lower_snake_case: `TodoNotFound` is
-  `todo_not_found` (question 1). Write `code: "todo_missing"` only to keep a
-  code clients already use after renaming the failure.
-- `message:` is fixed, safe text. It cannot include values, and when it is
-  left out the kind's generic message is used.
-- `client: { }` holds fields sent to the caller in the response's `details`
-  (question 2); `internal: { }` holds fields that never leave the server. A
-  field name cannot be in both. Fields exist only inside these two blocks, so
-  leaving `client` out means the caller gets only the code, message and
-  request id.
-- Context fields are ordinary fields: `T?` is allowed, `optional` and
-  `default` are not (area 2 limits them to `Input`).
-- Each failure has its own file in its domain's `failures/` folder
-  (`domains/planning/failures/todo_not_found.jadpo`), or in
-  `shared/failures/` once two or more domains raise it (question 15). It is
-  marked `public` when another domain handles it.
+### `kind:`, which sets the status
 
-A failure is written like every other type,
-`type TodoNotFound = Failure { ... }`, so code reads the same everywhere
-(question 13). `Failure` as a base brings `kind`, `message`, `client` and `internal`, as
-`Input` brings optional fields.
+`kind:` names one of the [kinds](#kinds). The kind sets the HTTP status
+and how background work treats the failure. A failure never states a
+status itself.
+
+### The code clients see
+
+A failure's public code is its name in lower_snake_case: `TodoNotFound`
+is `todo_not_found`. Clients rely on it, so it stays the same. Write
+`code: "todo_missing"` only to keep a code clients already use after you
+rename the failure.
+
+### `message:`
+
+`message:` is fixed text that is safe to show anyone. It can't include
+values. Leave it out and the kind's generic message is used.
+
+### `client:` and `internal:` fields
+
+A failure's fields, its context, go in two blocks:
+
+- `client: { }` holds the fields sent to the caller, in the response's
+  `details`.
+- `internal: { }` holds the fields that never leave the server.
+
+A field name can't be in both. Fields exist only inside these two blocks,
+so leaving `client` out means the caller gets only the code, the message
+and the request id.
+
+Context fields are ordinary fields. A `T?` type, which may hold no
+value, is allowed. `optional` and `default` are not, because only `Input`
+types may have them ([One form for every type](02-values-and-types.md#one-form-for-every-type)).
+
+### Where the file goes
+
+Each failure has its own file in its domain's `failures/` folder, such
+as `domains/planning/failures/todo_not_found.jadpo`. A domain is one
+business area of the app, a folder under `domains/`
+([Project layout](01-project-layout-and-modules.md#project-layout)). Once
+two or more domains raise the same failure, its file moves to
+`shared/failures/`. Mark it `public` when another domain handles it.
 
 ## Kinds
 <!-- topic: kinds -->
 
-A kind is a `FailureKind` option, written `FailureKind.not_found` (area 2,
-question 17). Declaring a kind only the runtime raises is
-`failure.kind_runtime_only` (question 3).
+Every failure has a kind, which decides the HTTP status a client gets and
+what the failure means. A kind is a `FailureKind` value, written
+`FailureKind.not_found` ([Enums](02-values-and-types.md#enums)).
+
+You can declare seven of the kinds. The runtime raises the other eight
+itself, and declaring one of those is the error
+`failure.kind_runtime_only`.
 
 | Kind | HTTP | Meaning | Raised by |
 |---|---:|---|---|
 | `invalid_request` | 400 | The request could not be read (bad JSON, wrong shape) | runtime |
 | `invalid_value` | 422 | A well-formed value breaks a rule | you; the runtime for request input |
-| `unauthenticated` | 401 | No valid identity | runtime (area 8) |
-| `not_permitted` | 403 | The caller is known but may not do this | you; policy (area 9) |
-| `not_visible` | 404 | Hidden from this caller | policy only (question 10) |
+| `unauthenticated` | 401 | No valid identity | runtime ([Identity](08-identity.md)) |
+| `not_permitted` | 403 | The caller is known but may not do this | you; [policy](09-policy.md) |
+| `not_visible` | 404 | Hidden from this caller | policy only ([Concealing records](#concealing-records)) |
 | `not_found` | 404 | The record does not exist | you |
 | `conflict` | 409 | The current state conflicts with the request | you |
-| `precondition_failed` | 412 | An HTTP precondition such as `If-Match` failed | runtime (area 7) |
+| `precondition_failed` | 412 | An HTTP precondition such as `If-Match` failed | runtime ([HTTP](07-http.md)) |
 | `rejected` | 422 | A business rule refused the operation | you |
 | `rate_limited` | 429 | Wait before retrying | you; runtime |
 | `unavailable` | 503 | A dependency is temporarily unavailable | you; runtime |
@@ -113,6 +148,10 @@ question 17). Declaring a kind only the runtime raises is
 | `outcome_unknown` | 500 | The change may or may not have happened, so retrying blindly is unsafe | runtime |
 | `misconfigured` | 500 | Deployment configuration is wrong | runtime |
 | `internal_fault` | 500 | A defect | runtime |
+
+Here `CheckoutUnavailable` is fine, because a checkout that is briefly
+unavailable is a business outcome callers handle. `Broken` is refused,
+because only the runtime raises `internal_fault`:
 
 ```jadpo check project=kinds expect=failure.kind_runtime_only
 type CheckoutUnavailable = Failure {
@@ -140,15 +179,15 @@ check failed: 1 error, 1 file
 ```
 
 `invalid_value` and `rejected` both use 422, and 400 is kept for requests
-that cannot be read at all. An application cannot add a kind or choose a
-status; a missing kind is a language change.
+that can't be read at all. An application can't add a kind or choose a
+status. If no kind fits, that is a change to the language, not to your
+app.
 
 ## What the client sees
 <!-- topic: what-the-client-sees -->
 
-Every failure reaches an HTTP client in one envelope. The failure's client
-fields appear under `details`; internal fields, stacks, SQL, provider text and
-source locations never appear.
+Every failure reaches an HTTP client in the same envelope. The failure's
+client fields appear under `details`:
 
 ```json
 {
@@ -163,13 +202,12 @@ source locations never appear.
 }
 ```
 
-The generated OpenAPI lists every failure a route can reach, under its
-status. `build/compatibility/public-failure-codes.json` records each public
-code with its status, message and client fields; changing any of them is a
-breaking change.
+Internal fields, stacks, SQL, provider text and source locations never
+appear.
 
-Request input that breaks a rule is reported with the field and the rule it
-broke, never the value (question 4):
+Request input that breaks a rule is reported with the field and the rule
+it broke, never the value
+([How failures reach the client](07-http.md#how-failures-reach-the-client)):
 
 ```json
 {
@@ -187,8 +225,16 @@ broke, never the value (question 4):
 }
 ```
 
+The generated OpenAPI lists every failure a route can reach, under its
+status. `build/compatibility/public-failure-codes.json` records each
+public code with its status, message and client fields. Changing any of
+them is a breaking change.
+
 ## Saying what can fail: `fails`
 <!-- topic: saying-what-can-fail-fails -->
+
+A function or action lists the failures it can end with after `fails`, in
+its signature:
 
 ```jadpo fragment
 function check_title(title: TodoTitle) fails TitleBlank -> TodoTitle {
@@ -205,16 +251,23 @@ action rename(todo_id: Todo.id, title: TodoTitle) fails TodoNotFound, TitleBlank
 }
 ```
 
-`fails` lists exactly the failures that can leave the callable: everything a
-`reject` or an `attempt` in its body can produce, less what a `match` handles.
-A missing one is `failure.undeclared_propagation`, one that can never happen
-is `failure.stale_declaration`, and a repeat is
-`failure.duplicate_declaration`. Functions and actions follow the same rule.
-`fails` comes before `->` (area 3), and faults are never listed
-(question 5).
+`fails` comes before the result type's `->`
+([Signatures and settings](03-logic.md#signatures-and-settings)). It
+lists exactly the failures that can leave the callable: everything a
+`reject` or an `attempt` in its body can produce, less what a `match`
+handles. Functions and actions follow the same rule.
+
+- A failure that can leave but isn't listed is
+  `failure.undeclared_propagation`.
+- One that is listed but can never happen is `failure.stale_declaration`.
+- One listed twice is `failure.duplicate_declaration`.
+
+[Faults](#faults) are never listed.
 
 ## Raising a failure: `reject`
 <!-- topic: raising-a-failure-reject -->
+
+`reject` ends the callable with a declared failure:
 
 ```jadpo fragment
 action reserve(product: Product, requested: Quantity) fails QuantityUnavailable -> Reservation {
@@ -229,18 +282,29 @@ action reserve(product: Product, requested: Quantity) fails QuantityUnavailable 
 }
 ```
 
-`reject` names a declared failure and supplies every client and internal
-field in one block; a failure with no fields is rejected by name alone. A
-missing, unknown or repeated field is an error. There is no `reject "text"`
-and no `throw` (area 3). `reject` can also be a `match` arm (area 3). Secret
-configuration cannot be put in a failure's fields (`configuration.secret_flow`,
-area 10), and nor can the signed-in principal (area 8).
+The block after the failure's name gives every client and internal field
+at once. A failure with no fields is rejected by its name alone. A
+missing, unknown or repeated field is an error.
+
+There is no `reject "text"` and no `throw`: every failure has a declared
+type. `reject` can also be the result of a `match` arm
+([Match](03-logic.md#match)).
+
+Two things can never go in a failure's fields: a secret setting
+(`configuration.secret_flow`, see [Secrets](10-configuration-and-time.md#secrets)),
+and the signed-in caller
+([Who is calling](08-identity.md#who-is-calling-current_principal)).
 
 ## Passing a failure on: `attempt`
 <!-- topic: passing-a-failure-on-attempt -->
 
-`attempt` starts a statement, only on a call that can fail, and passes
-every failure of that call on to the caller's `fails` list (area 3).
+`attempt` passes every failure of a call on to your caller, so each one
+must be in your own `fails` list. It starts a statement, and it works
+only on a call that can fail ([Attempt](03-logic.md#attempt)).
+
+Here `reorder` reads an order, which can fail with `OrderNotFound`, and
+reserves stock for it in another domain, which can fail with
+`QuantityUnavailable`. It lists both:
 
 ```jadpo check project=reorder file=app.jadpo hidden
 application {}
@@ -295,13 +359,21 @@ action reorder(order_id: Order.id) fails OrderNotFound, QuantityUnavailable -> R
 }
 ```
 
-A runtime construction can fail, and its `attempt` maps
-each rule that can break in a block after the call,
-`attempt Type(value) { max: SomeFailure }`, with `invalid:` covering every
-rule without an arm of its own (area 2, "Construction failures by rule").
-When the declared ranges, or the conditions it sits under (area 2,
-"Conditions as proof"), prove a construction cannot break any of the
-target's rules, it is not fallible, so it takes no `attempt` (question 6):
+### Building a value at run time
+
+Building a named type from a value known only at run time, such as
+`Quantity(packs * 2)`, can break the type's rules. Its `attempt` maps each
+rule that can break to a failure, in a block after the call:
+`attempt Type(value) { max: SomeFailure }`. `invalid:` covers every rule
+without an arm of its own
+([Construction failures by rule](02-values-and-types.md#construction-failures-by-rule)).
+
+### When a value can't break its type
+
+When the declared ranges prove a construction can't break any of the
+target type's rules, it can't fail, so it takes no `attempt`. The `if`
+conditions it sits under count as proof too
+([Conditions as proof](02-values-and-types.md#conditions-as-proof)).
 
 ```jadpo check project=proven file=types.jadpo hidden
 type Stock = Int {
@@ -332,46 +404,19 @@ function doubled(packs: Quantity) fails QuantityTooLarge -> Quantity {
 }
 ```
 
+In `stock_needed`, both values are at least 0 and `Stock` has no maximum,
+so the result is always a valid `Stock`. In `doubled`, `packs * 2` is at
+least 2 but can pass 1000, `Quantity`'s maximum, so it needs `attempt`
+and an arm for `max`.
+
 ## Turning one failure into another
 <!-- topic: turning-one-failure-into-another -->
 
-A failure can come from a condition the compiler knows about (a read that
-finds nothing, a unique rule a write breaks, a construction) or from another
-call. Every mapping is written `condition: Failure` in the operation's block
-(question 7), and the failure's kind must fit the condition:
-
-```jadpo fragment
-// a read that finds nothing: queries/todo_by_id.jadpo (area 6)
-query todo_by_id(todo_id: Todo.id) fails TodoNotFound -> TodoView {
-    from: Todo
-    where: Todo.id == todo_id
-    missing: TodoNotFound {
-        todo_id: todo_id
-    }
-}
-
-// a runtime construction, keyed by the rule that can break (area 2)
-var quantity: Quantity = attempt Quantity(count) {
-    max: QuantityTooLarge
-    invalid: QuantityOutOfRange
-}
-
-// a write that breaks a unique rule (area 6)
-var account: Account = attempt Account.create {
-    set: {
-        ...
-    }
-    conflict: {
-        Account.handle: HandleTaken
-    }
-}
-
-// a failure from a call (area 3)
-var receipt: Receipt = match payments.charge(order) {
-    success(receipt) -> receipt
-    CardDeclined -> reject PaymentDeclined
-}
-```
+A failure can come from something the compiler knows can go wrong, such
+as a read that finds nothing, a write that breaks a unique rule or a
+construction, or from another call. You turn it into your own failure
+with `condition: Failure` in the operation's block. The failure's kind
+must fit the condition:
 
 | Condition | Required kind |
 |---|---|
@@ -380,17 +425,79 @@ var receipt: Receipt = match payments.charge(order) {
 | `empty:` (a patch that changes nothing) | `invalid_value` |
 | A construction's rule keys, such as `max:`, and `invalid:` covering the rest | `invalid_value` |
 
-`invalid:` is the catch-all only for a construction's rules. A read's,
-a write's or an integration call's conditions each need their own arm, and
-`invalid:` in their block is an error (`failure.invalid_outside_construction`).
+### A read that finds nothing: `missing:`
 
-A failure mapped from `json.read`'s `mismatch` that declares
-`problem: DecodeProblem` receives the first problem in that field, so the
-arm gives every other field and never `problem`; nothing else fills one
-(area 19).
+A query names the failure for a record that isn't there
+([Named queries](06-reads-and-writes.md#named-queries)):
 
-The failure that was mapped is kept as the internal cause of the new one, so
-the log shows both (question 8):
+```jadpo fragment
+query todo_by_id(todo_id: Todo.id) fails TodoNotFound -> TodoView {
+    from: Todo
+    where: Todo.id == todo_id
+    missing: TodoNotFound {
+        todo_id: todo_id
+    }
+}
+```
+
+### A value built at run time: rule keys and `invalid:`
+
+A construction is keyed by the rule that can break
+([Construction failures by rule](02-values-and-types.md#construction-failures-by-rule)):
+
+```jadpo fragment
+var quantity: Quantity = attempt Quantity(count) {
+    max: QuantityTooLarge
+    invalid: QuantityOutOfRange
+}
+```
+
+`invalid:` is the catch-all only for a construction's rules. A read's, a
+write's or an integration call's conditions each need their own arm, and
+`invalid:` in their block is the error
+`failure.invalid_outside_construction`.
+
+### A write that breaks a unique rule: `conflict:`
+
+A write names a failure for each unique field it could clash on
+([When a write is refused](06-reads-and-writes.md#when-a-write-is-refused)):
+
+```jadpo fragment
+var account: Account = attempt Account.create {
+    set: {
+        ...
+    }
+    conflict: {
+        Account.handle: HandleTaken
+    }
+}
+```
+
+### A failure from a call: `match`
+
+A `match` on the call gives each of its failures an arm
+([Handling a failure in `match`](#handling-a-failure-in-match)):
+
+```jadpo fragment
+var receipt: Receipt = match payments.charge(order) {
+    success(receipt) -> receipt
+    CardDeclined -> reject PaymentDeclined
+}
+```
+
+### Decoding JSON
+
+`json.read` fails with `mismatch` when the JSON doesn't fit the type
+([`json`](19-standard-library.md#json)). When the failure you map
+`mismatch` to declares the field `problem: DecodeProblem`, Jadpo fills it
+with the first problem found. So the arm gives every other field of the
+failure, and never `problem`. No other mapping fills a `DecodeProblem`
+field.
+
+### The original failure is kept
+
+The failure that was mapped is kept as the internal cause of the new one,
+so the log shows both:
 
 ```text
 PaymentDeclined rejected at domains/checkout/actions/pay.jadpo:14
@@ -401,12 +508,8 @@ PaymentDeclined rejected at domains/checkout/actions/pay.jadpo:14
 ## Handling a failure in `match`
 <!-- topic: handling-a-failure-in-match -->
 
-One `match` handles a call's outcome (area 3). Every failure the
-call can produce needs an arm, with no `_`; an arm recovers with a value,
-maps with `reject` or passes the failure on with `propagate`. The arms
-handle only the call itself: a failure that leaves while its arguments are
-worked out leaves the callable around the `match`, as it would anywhere
-else.
+A `match` on a call handles its outcome: one arm for success, and one for
+each failure the call can produce ([Match](03-logic.md#match)):
 
 ```jadpo check project=outcome file=lookup.jadpo hidden
 type LookupCode = Text {}
@@ -446,29 +549,24 @@ function lookup_or_default(key: LookupCode) fails LookupRejected -> LookupResult
 }
 ```
 
-Its errors (`failure.outcome_*`) are in area 3.
+Every failure needs an arm, and there is no `_` for the rest. An arm can
+recover with a value, as `LookupMissing` does here, map to another
+failure with `reject`, or pass the failure on with `propagate`.
+
+The arms handle only the call itself. A failure that leaves while the
+call's arguments are worked out leaves the callable around the `match`, as
+it would anywhere else.
+
+The `match` errors, the `failure.outcome_*` rules, are listed on
+[Logic](03-logic.md#errors).
 
 ## Faults
 <!-- topic: faults -->
 
-Faults are raised by the runtime, never declared, listed in `fails`, rejected
-or matched (questions 3 and 5). They go straight to the boundary, which
-answers with a fixed code and logs the cause. Code that must react to a
-dependency problem gets a domain failure from where the problem arises: an
-integration maps provider conditions to declared failures (area 11).
-
-```jadpo fragment
-// an integration's mapping (syntax settled in area 11)
-failures: {
-    provider.invalid_recipient: ReminderRejected
-    provider.rate_limited: ReminderDelayed
-}
-
-// the action lists domain failures only, never `unavailable` or `outcome_unknown`
-action send_reminder(todo: Todo) fails ReminderRejected, ReminderDelayed -> Receipt {
-    return attempt mail.send_reminder(todo)
-}
-```
+A fault is raised by the runtime when something outside your code goes
+wrong. Faults are never declared, listed in `fails`, rejected or matched.
+A fault goes straight to the edge of the app, where the client gets a
+fixed code and the cause is logged:
 
 | Condition | The client sees |
 |---|---|
@@ -479,11 +577,33 @@ action send_reminder(todo: Todo) fails ReminderRejected, ReminderDelayed -> Rece
 | A write may have committed | 500 `outcome_unknown` |
 | `Int` overflow, the recursion limit, any defect | 500 `internal_fault` |
 
-Runtime faults that come from code are defects (question 9): `Int` overflow
-and the recursion limit (area 3) end the operation with `internal_fault`,
-roll back its writes, and log which one happened. Division by zero cannot
-happen, because area 3 made the divisor's type exclude zero; a failed runtime
-construction cannot reach the boundary, because it needs `attempt`.
+### Reacting to a provider's problem
+
+Code that must react to a dependency's problem gets a domain failure from
+the place the problem arises. An integration maps the provider's
+conditions to failures you declare ([Calling](11-integrations.md#calling)):
+
+```jadpo fragment
+failures: {
+    provider.invalid_recipient: ReminderRejected
+    provider.rate_limited: ReminderDelayed
+}
+```
+
+The action then lists only those domain failures, never `unavailable` or
+`outcome_unknown`:
+
+```jadpo fragment
+action send_reminder(todo: Todo) fails ReminderRejected, ReminderDelayed -> Receipt {
+    return attempt mail.send_reminder(todo)
+}
+```
+
+### Defects
+
+A runtime fault that comes from your code is a defect. `Int` overflow and
+the recursion limit ([Recursion](03-logic.md#recursion)) end the operation
+with `internal_fault`, undo its writes, and log which one happened:
 
 ```json
 {
@@ -495,29 +615,36 @@ construction cannot reach the boundary, because it needs `attempt`.
 }
 ```
 
+Division by zero can't happen, because a divisor's type must exclude zero
+([Expressions and operators](03-logic.md#expressions-and-operators)). A
+construction that fails at run time never reaches the client as a fault
+either, because it needs an `attempt`.
+
 ## Concealing records
 <!-- topic: concealing-records -->
 
-When policy hides a record from a caller, saying "forbidden" would reveal that
-it exists. A hidden record fails with the same `not_found` failure the code
-already maps, so the client cannot tell hidden from absent; the log records
-that policy concealed it (question 10).
+When [policy](09-policy.md) hides a record from a caller, saying
+"forbidden" would reveal that it exists. So a hidden record fails with the
+same `not_found` failure your code already maps, and the client can't
+tell hidden from absent.
+
+Say policy lets only a todo's owner read it. Then this read of someone
+else's todo fails with `TodoNotFound`, exactly like a todo that doesn't
+exist:
 
 ```jadpo fragment
-// policy (area 9) limits every read of Todo to its owner
 var todo: Todo = attempt Todo.get(todo_id)
-// someone else's todo fails with TodoNotFound, exactly like a missing one;
-// the log adds `concealed_by: policy`
 ```
+
+The log adds `concealed_by: policy`, so you can still tell the two apart
+([When policy says no](09-policy.md#when-policy-says-no)).
 
 ## Logging
 <!-- topic: logging -->
 
-Every failure and fault writes one structured event. A domain failure's event
-holds its code, kind, where it was raised, the path it travelled and its
-internal fields; text-based internal values are logged as a keyed hash so
-equal values still match up (question 11). No stack is captured for a domain
-failure.
+Every failure and fault writes one structured event. A domain failure's
+event holds its code, kind, where it was raised, the path it travelled and
+its internal fields. No stack is captured for a domain failure.
 
 ```json
 {
@@ -534,41 +661,54 @@ failure.
 }
 ```
 
+Internal values made of text, which can hold names or email addresses,
+are logged as a keyed hash, so equal values still match up across events.
+
+Logging isn't built yet ([What is built](#what-is-built)).
+
 ## Messages and languages
 <!-- topic: messages-and-languages -->
 
 A failure's `message` is fixed English for developers and logs. Clients
-show text by `code`, which is stable (question 12):
+show text by `code`, which is stable:
 
 ```json
 { "error": { "code": "todo_not_found", "message": "Todo not found.", "request_id": "req_0b1e…" } }
 ```
 
-The text for people is written in the app, keyed by the failure's code in
-its domain's language files (area 10, Translations), with the failure's
-`client: { }` fields as placeholders; `kind:` and `message:` are not
-translated. The wording is never written on the failure type, so all text
-for people follows one rule. Every failure that can reach a response (the compiler knows
-each route's failures) has wording in every supported locale; one that
-never leaves the server needs none. Client fields that are dates or
-numbers are sent as values (an `Instant` stays an instant on the wire) and
-the client formats them for its own language before filling the
-placeholder. The compiler writes, beside each API's OpenAPI document, one
-file per locale named `<api>.failures.<locale>.json`, mapping each code to
-its wording in the same `{field}` syntax and saying which placeholders need
-formatting and how (date, time or number), for client apps to show:
+The text people see is written in the app, keyed by the failure's code,
+in its domain's language files
+([Translations as messages](10-configuration-and-time.md#translations-as-messages)).
+The failure's `client: { }` fields are its placeholders. `kind:` and
+`message:` aren't translated, and the wording is never written on the
+failure type, so all text for people follows one rule.
+
+In `domains/planning/translations/fr_fr.jadpo`:
 
 ```text
-// domains/planning/translations/fr_fr.jadpo
 translations {
     todo_not_found: "Tâche introuvable."
 }
 ```
 
+Every failure that can reach a response has wording in every supported
+locale. The compiler knows each route's failures, so it checks this. A
+failure that never leaves the server needs none.
+
+Client fields that are dates or numbers are sent as values: an `Instant`
+stays an instant on the wire. The client formats them for its own
+language before filling the placeholder.
+
+Beside each API's OpenAPI document, the compiler writes one file per
+locale, `<api>.failures.<locale>.json`, for client apps to show. It maps
+each code to its wording, in the same `{field}` syntax, and says which
+placeholders need formatting and how: as a date, a time or a number
+([Failures for client apps](10-configuration-and-time.md#failures-for-client-apps)).
+
 A library package's failure is worded by the package, and the app can
-reword it in its root language files; to show it under a different code,
-not just different words, map it to the app's own failure at the call with
-`attempt` (area 10).
+reword it in its root language files. To show it under a different code,
+not just in different words, map it to the app's own failure at the call
+with `attempt`.
 
 ## What is built
 <!-- topic: failures-built -->
@@ -580,7 +720,7 @@ not just different words, map it to the app's own failure at the call with
 | Mapping | Built: a construction's rule arms and `invalid:`, proof that a construction cannot break, a query's `missing:` and writes' `conflict:` and `empty:`, each with its kind check. |
 | Faults from code | Built: `Int` and `Decimal` overflow and the recursion limit are faults at their site, and a failure keeps the path it travelled and the failure it was mapped from. |
 | What the client sees | Built: the envelope, the validation details and the OpenAPI responses. |
-| Concealing records | Built: a record policy hides reports the code's own not-found failure, and its log says `concealed_by: policy` (area 9). |
+| Concealing records | Built: a record [policy](09-policy.md) hides reports the code's own not-found failure, and its log says `concealed_by: policy`. |
 | Logging | Not built yet. |
 
 ## Errors
