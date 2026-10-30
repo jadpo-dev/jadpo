@@ -417,8 +417,10 @@ class Page:
 
     def prepare(self, tmp, name, blocks):
         """Anything a project needs after its files are written and before
-        it is checked; problems found doing it. Only a Learn page has any."""
-        return []
+        it is checked; problems found doing it. A reader keeps the records
+        with `jadpo records update` (area 18), so a project's check makes
+        them too ([`keep_records`])."""
+        return keep_records(tmp, blocks)
 
     def bless(self):
         """Writes each check block's real output after it."""
@@ -619,14 +621,35 @@ class Primer(Page):
                                  f'outside {low:,} to {high:,}')
 
 
+def keep_records(tmp, blocks):
+    """`jadpo records update` in the project at `tmp`, as a reader runs it,
+    then each record a block shows written back over what it wrote, so a
+    shown record is checked as shown. A project whose blocks show a
+    record's own error (`record.*`) keeps only the records that hold who can
+    do what and the outside hosts, so the record it is about stays as the
+    page has it."""
+    root = Path(tmp)
+    before = {p for p in root.rglob('*.jadpo_record')}
+    jadpo(['records', 'update'], cwd=tmp)
+    if any(b['attrs'].get('expect', '').startswith('record.') for b in blocks):
+        for path in set(root.rglob('*.jadpo_record')) - before:
+            if path.name not in ('access.jadpo_record', 'network.jadpo_record'):
+                path.unlink()
+    for block in blocks:
+        if block['attrs']['file'].endswith('.jadpo_record'):
+            (root / block['attrs']['file']).write_text(block['source'])
+    return []
+
+
 class LearnPage(Page):
     """docs/learn/: the Learn path, one app built a page at a time
     (docs/documentation.md). A page shows only the files it adds or
     changes; its project is the one the pages before it built, less the
     files its front matter `removes:`, with its own on top. A reader makes
-    the migrations and the API record with commands, so a page's check
-    makes them too: `jadpo migrate new initial` and, unless the page shows
-    the record, `jadpo api update`. A record is never inherited, since an
+    the migrations and the records with commands, so a page's check
+    makes them too: `jadpo migrate new initial` and `jadpo records update`,
+    with any record the page shows written back over it. A record is never
+    inherited, since an
     earlier page's is out of date once the routes change. Each page is
     one topic, its `#` heading."""
 
@@ -661,14 +684,10 @@ class LearnPage(Page):
 
     def prepare(self, tmp, name, blocks):
         problems = []
-        steps = [(['migrate', 'new', 'initial'], {'SOURCE_DATE_EPOCH': str(MIGRATION_EPOCH)})]
-        if not any(b['attrs']['file'].endswith('.jadpo_record') for b in blocks):
-            steps.append((['api', 'update'], None))
-        for args, env in steps:
-            code, said = jadpo(args, cwd=tmp, env=env)
-            if code:
-                problems.append(f'{name}: jadpo {" ".join(args)} failed:\n{said}')
-        return problems
+        code, said = jadpo(['migrate', 'new', 'initial'], cwd=tmp, env={'SOURCE_DATE_EPOCH': str(MIGRATION_EPOCH)})
+        if code:
+            problems.append(f'{name}: jadpo migrate new initial failed:\n{said}')
+        return problems + keep_records(tmp, blocks)
 
     def area(self):
         return 0

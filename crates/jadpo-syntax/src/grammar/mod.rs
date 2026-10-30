@@ -1511,6 +1511,7 @@ fn member_item(p: &mut Parser<'_>, context: Members) {
             reserved_word(p);
             member(p, context);
         }
+        STRING if p.nth(1) == COLON && !p.nth_on_new_line(1) => member(p, context),
         COLON => {
             let error = p
                 .error_here(&rule::SYNTAX_EXPECTED_NAME, "This member has no name")
@@ -1604,6 +1605,14 @@ fn elision(p: &mut Parser<'_>) {
 
 fn member_key(p: &mut Parser<'_>) {
     let k = p.start();
+    // A quoted subject in an acceptance's `changes:` (area 18,
+    // "Acceptances"): a route or another subject that isn't a dotted
+    // name. Anywhere else the checker refuses it as a syntax error.
+    if p.at(STRING) {
+        p.bump(STRING);
+        k.complete(p, MEMBER_KEY);
+        return;
+    }
     let n = p.start();
     p.bump_remap(IDENT);
     n.complete(p, NAME);

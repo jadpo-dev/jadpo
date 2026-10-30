@@ -6,6 +6,7 @@ use jadpo_term::Json;
 
 use crate::completion;
 
+pub use crate::acceptance::acceptance;
 pub use crate::ai::ai;
 pub use crate::api::api;
 pub use crate::build::build;

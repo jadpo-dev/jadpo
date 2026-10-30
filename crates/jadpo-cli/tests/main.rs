@@ -9,6 +9,7 @@ mod support;
 mod syntax_examples;
 
 mod accept_language;
+mod acceptances;
 mod across;
 mod aggregates;
 mod ai;

@@ -724,14 +724,33 @@ the app already had, `.service_image` for a service's image new or
 changed, `.credential_changed` for a connection's credential scheme, and
 `.git_source` for a package locked from git; `PolicyChange.principal_added`,
 `.principal_changed`, `.sign_in_method_added` and `.sign_in_added`. A new
-connection and its hosts need no one (area 18, "Package upgrades"). Every
-git package needs a person, since telling the app's own company's
-repository from a third party's needs a setting the pages don't decide;
-this is the conservative reading of area 11's "Publisher trust". The
-before side is read from the base commit through `git cat-file --batch`
-into an in-memory file set (`jadpo_db::FileSet`, loaded by `load_files`,
-§2.2, "Loading"), checked by the same compiler and cached in
-`build/before/<commit>/`.
+connection's hosts are `NetworkChange.host_added` (area 18, 2026-10-30),
+which the record comparison below gives. Every git package needs a
+person, since telling the app's own company's repository from a third
+party's needs a setting the pages don't decide; this is the conservative
+reading of area 11's "Publisher trust". The graph diff runs in tests
+until `jadpo approval` builds the base commit, read through `git cat-file
+--batch` into an in-memory file set (`jadpo_db::FileSet`, loaded by
+`load_files`, §2.2, "Loading"), checked by the same compiler and cached
+in `build/before/<commit>/`.
+
+**Acceptances** (chunk A8, area 18) don't build the base. `jadpo check`
+reads the before side from git (`jadpo-cli`'s `before`): the default
+branch from the remote at its merge base, the previous commit on the
+default branch itself, or `--before`; `git ls-tree` lists the project's
+domains and `git cat-file --batch` reads its records and `acceptances/`
+there, into the project's `before` input (`jadpo_db::Before`). A project
+git ignores, such as a test's under `target/`, isn't looked for.
+`jadpo_check::acceptances` then compares those records with the ones
+today's source writes, entry by entry: the API and event records for
+`ApiChange` (each type's fields as sent, read or both, by what reaches
+them from a route's input, output or failures), `access.jadpo_record`
+for `PolicyChange`, `network.jadpo_record` for `NetworkChange`,
+`jadpo.lock` for `PackageChange.git_source`, the domain folders for
+`DomainChange.created`. Each acceptance a change adds is matched against
+that list; one the before side has is history, compared byte for byte.
+The acceptance rules don't stop `jadpo test` or `jadpo dev`, as records
+out of date don't.
 
 **Packages.** A package's index is always parsed, a resource file only when
 the app calls into it. A checked package subgraph is cached on disk by

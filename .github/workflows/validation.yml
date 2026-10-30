@@ -38,6 +38,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The whole history: `jadpo check` compares a change with the
+          # default branch at its merge base to judge acceptances (area 18).
+          fetch-depth: 0
       # Everything rust-toolchain.toml lists, which rustup would add anyway.
       - name: Install the pinned Rust toolchain
         run: |
@@ -72,6 +75,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The whole history: `jadpo check` compares a change with the
+          # default branch at its merge base to judge acceptances (area 18).
+          fetch-depth: 0
       # PostgreSQL 16 with pgvector and PostGIS, built from
       # tools/fixtures/postgres/Dockerfile (chunk 5.5v1), with durability off, as the
       # disposable servers local runs start have it (docs/compiler-runtime.md
@@ -128,6 +134,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The whole history: `jadpo check` compares a change with the
+          # default branch at its merge base to judge acceptances (area 18).
+          fetch-depth: 0
       # PostgreSQL 16 with pgvector and PostGIS, built from
       # tools/fixtures/postgres/Dockerfile (chunk 5.5v1), with durability off, as the
       # disposable servers local runs start have it (docs/compiler-runtime.md
@@ -197,6 +206,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The whole history: `jadpo check` compares a change with the
+          # default branch at its merge base to judge acceptances (area 18).
+          fetch-depth: 0
       # PostgreSQL 16 with pgvector and PostGIS, as the `tests` job has it:
       # the corpus's projects with vectors and geometries need both, and
       # teaching example 22 pgvector 0.8 or later.
@@ -252,6 +264,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The whole history: `jadpo check` compares a change with the
+          # default branch at its merge base to judge acceptances (area 18).
+          fetch-depth: 0
       # PostgreSQL 16 with pgvector and PostGIS, as the `tests` job has it,
       # built and started in the background while the toolchain installs.
       - name: Start PostgreSQL

@@ -1821,8 +1821,16 @@ with no events, are all put right by `jadpo records update`. A hand edit
 Jadpo couldn't have written is `record.edited`. While an event file has
 errors, the record isn't compared.
 
-Classifying a change as breaking, and accepting one, aren't built yet.
-They come with the API record's [acceptances](18-records-and-manifest.md#acceptances).
+Events waiting in the outbox are read with the new shape, and subscribers
+read what an event carries, so an event is both sent and read. A change
+that breaks either needs a person's
+[acceptance](18-records-and-manifest.md#acceptances), as the API
+record's breaks do: an event removed (`planning.TodoCompleted:
+ApiChange.event_removed`), a field removed or retyped
+(`ApiChange.output_field_removed`, `.output_field_retyped`), a required
+field added (`.input_field_required`) or a rule tightened
+(`.rule_tightened`), each named `<domain>.<Event>.<field>` (Richard,
+2026-10-30).
 
 ## Emitting an event
 <!-- topic: emitting-an-event -->
@@ -3458,7 +3466,6 @@ These limits may change once they have been measured on real runs.
 | Sending the metrics and the alerts' log events to a monitoring tool | Not built yet: waits for [telemetry](16-built-in-services.md). |
 | The console's timeline | Not built yet ([Debugging and review](17-debugging-and-review.md)). |
 | Jitter and `Retry-After` between a delivery's attempts | Not built yet: the next attempt waits only its backoff ([Retries and giving up](#retries-and-giving-up)). |
-| Classifying a change to an event record as breaking, and accepting it | Not built yet: comes with [acceptances](18-records-and-manifest.md#acceptances). |
 | Splitting a page type allowing more than 1,000 items into batches; `batches.status` and `batches.cancel` with runs in no store or several; a file's run with several databases and none written | Not built yet ([How a run is kept](#how-a-run-is-kept), [How a file's run is kept](#how-a-files-run-is-kept)). |
 | `cli.signal_handler_failed` | Not built yet ([Running background work](#running-background-work)). |
 

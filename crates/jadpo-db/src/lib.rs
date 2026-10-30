@@ -206,6 +206,72 @@ pub struct Project {
     #[default]
     #[returns(ref)]
     pub checked: BTreeSet<String>,
+    /// The before side a change is compared with (area 18, "Comparing two
+    /// builds"): what `jadpo check` reads from git, so acceptances can be
+    /// judged (chunk A8). Not read for a program run, the editor or a
+    /// test's project, which judge none.
+    #[default]
+    #[returns(ref)]
+    pub before: Before,
+}
+
+/// The before side of a change (area 18, "Comparing two builds" and
+/// "Acceptances"): the committed files at the base commit that
+/// acceptances are judged against, or why there are none.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Before {
+    /// Not looked for: nothing is compared and no acceptance is judged.
+    #[default]
+    NotRead,
+    /// Looked for and there is none, for the reason given ("not a git
+    /// repository"): nothing is compared or judged, and `jadpo check`
+    /// says so in one line.
+    Nothing(String),
+    /// The base commit isn't in this clone, such as a depth-1 checkout in
+    /// CI: an error naming `git fetch`.
+    Missing { base: String },
+    /// The base commit's records and acceptances.
+    At(BeforeSide),
+}
+
+/// The committed files at the base commit that a change is compared with.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct BeforeSide {
+    /// How the base was found, for messages: `origin/main at 1a2b3c4`.
+    pub described: String,
+    /// The base commit's short hash, for a command that restores a file
+    /// from it.
+    pub commit: String,
+    /// The project's records and acceptance files there, by
+    /// project-relative path: `api/`, the event records, `access` and
+    /// `network`, `jadpo.lock`, the identity registry and `acceptances/`.
+    pub files: BTreeMap<String, String>,
+    /// The project's domains there, by folder name.
+    pub domains: BTreeSet<String>,
+}
+
+impl BeforeSide {
+    /// The text of `path` on the before side, CRLF read as LF.
+    pub fn text(&self, path: &str) -> Option<&str> {
+        self.files.get(path).map(String::as_str)
+    }
+}
+
+/// Whether a project-relative path is one the before side holds (chunk
+/// A8): a record, the lock, or a file in `acceptances/`.
+pub fn compared_on_the_before_side(path: &str) -> bool {
+    path.starts_with("acceptances/")
+        || record::kind_of(path).is_some_and(|(kind, _)| {
+            [
+                record::API.word,
+                record::EVENTS.word,
+                record::ACCESS.word,
+                record::NETWORK.word,
+                record::LOCK.word,
+                record::IDENTITIES.word,
+            ]
+            .contains(&kind.word)
+        })
 }
 
 /// The database every compiler query runs against.

@@ -205,9 +205,13 @@ the finding stays declined meanwhile, so you see one error, not two.
 An agent or a person may decline. A rule the compiler's catalogue marks
 as a security rule, such as `policy.call_ungranted`, also needs an
 [acceptance](18-records-and-manifest.md#acceptances) to decline, since
-an agent can write a reason itself. Not built yet. Every declinable error's `next:` line
-ends with ", or write `decline <rule>: "<why>"` above it if this is
-deliberate".
+an agent can write a reason itself: a new decline of one is
+`PolicyChange.<rule name>_declined` on the declaration it sits above
+(`lending.borrow: PolicyChange.call_ungranted_declined`), and
+`access.jadpo_record` keeps every such decline. `jadpo help --json` gives
+each rule's `security`. Every declinable error's `next:` line ends with
+", or write `decline <rule>: "<why>"` above it if this is deliberate",
+and a security rule's with ", which a person then accepts".
 
 ### Which rules can be declined
 
@@ -361,6 +365,7 @@ can have:
 
 ```text
 app.jadpo  config.jadpo  authentication.jadpo  policy.jadpo  flags.jadpo  jadpo.lock
+access.jadpo_record  network.jadpo_record   who can do what, and the outside hosts
 shared/
   types/          stock.jadpo  country_code.jadpo  address.jadpo
   libraries/      rounding.jadpo
@@ -404,9 +409,11 @@ build/
 
 - The root holds only these entries: `app.jadpo`, `config.jadpo`,
   `authentication.jadpo`, `policy.jadpo`, `flags.jadpo`, `jadpo.lock`,
+  `access.jadpo_record`, `network.jadpo_record`,
   `ignored_suggestions.jadpo_record`, `taught_suggestions.jadpo_record`,
   `domains/`, `shared/`, `packages/`, `database/`, `api/`,
-  `acceptances/`, `translations/`, `tests/` and `build/`.
+  `acceptances/`, `translations/`, `tests/` and `build/`, beside the
+  files git and its host read, such as `CODEOWNERS`.
 - `jadpo suggest ignore` writes the suggestions a team ignores, and
   `jadpo suggest found` the patterns it taught
   ([Suggestions](14-tooling.md#suggestions)).
@@ -495,9 +502,13 @@ to be revisited if a folder in a real application passes about 60 files.
 | `documents/` | Document types and their templates, one document per name (`invoice_document.jadpo`, `invoice_document.html`), rendered to HTML or PDF by the `documents` capability | [Documents](16-built-in-services.md#documents) |
 | `fixtures/` | Test data shared by several test files in the domain | |
 
-Not built yet: `jadpo domain rename`, `split` and `merge`; and the
-`documents` capability, so until it is, a file in `documents/` is
-`layout.unknown_location`.
+A domain created is a boundary other code is shaped around, so it needs
+a person's [acceptance](18-records-and-manifest.md#acceptances),
+`billing: DomainChange.created`, in the change that adds its folder.
+
+Not built yet: `jadpo domain rename`, `split` and `merge`, so a domain
+renamed by hand shows as one created; and the `documents` capability, so
+until it is, a file in `documents/` is `layout.unknown_location`.
 
 ## Files and names
 <!-- topic: files-and-names -->
@@ -1084,7 +1095,7 @@ The compiler builds the decided layout, with each rule's real output under
 
 | Feature | Status |
 |---|---|
-| Root, domains and their folders | Built: a file where the layout has no place for it is `layout.unknown_location`, and a declaration in the wrong folder `layout.wrong_folder`; a folder or file with no `app.jadpo` above it is checked as loose files. Not built yet: `jadpo domain rename`, `split` and `merge`; the `documents` capability, so a file in `documents/` is `layout.unknown_location` until it is. |
+| Root, domains and their folders | Built: a file where the layout has no place for it is `layout.unknown_location`, and a declaration in the wrong folder `layout.wrong_folder`; a folder or file with no `app.jadpo` above it is checked as loose files. A domain created needs an [acceptance](18-records-and-manifest.md#acceptances). Not built yet: `jadpo domain rename`, `split` and `merge`; the `documents` capability, so a file in `documents/` is `layout.unknown_location` until it is. |
 | Files and names | Built: one primary declaration per file, named after it; names unique project-wide; the round-trip and folded-collision rules, with the exception for a type folding to its callable's name. |
 | Names per domain | Partly built: private functions and types unique only within their domain, each domain's code reading its own; their identity keys carrying the domain, with promotion to `shared/` writing a registry line; `semantic.duplicate_declaration` saying copy or clash and listing the names in use with the same words. `jadpo rename` is not built yet ([Commands for looking into and changing code](14-tooling.md#commands-for-looking-into-and-changing-code)). |
 | Order independence | Built: declaration and file order never matter. |
@@ -1092,7 +1103,7 @@ The compiler builds the decided layout, with each rule's real output under
 | Reserved words | Built: a reserved word can't name anything. |
 | Comments | Built: `//` and `///` documentation comments. |
 | Similar helpers | Built: `library.similar_exists`, a declinable error. Not built yet: `jadpo impact`. |
-| Declinable errors | Partly built: no warning severity; the `decline <rule>: "<reason>"` line with `decline.unused`, `decline.not_declinable` and `decline.no_reason`; `jadpo declines list` and `clear`; the editor's "Decline with a reason" and "Remove decline". Not built yet: `jadpo approval` ([Records and manifest](18-records-and-manifest.md)) and the date rule for expired [feature flags](16-built-in-services.md#feature-flags). |
+| Declinable errors | Partly built: no warning severity; the `decline <rule>: "<reason>"` line with `decline.unused`, `decline.not_declinable` and `decline.no_reason`; the catalogue's security rules, whose decline needs an [acceptance](18-records-and-manifest.md#acceptances); `jadpo declines list` and `clear`; the editor's "Decline with a reason" and "Remove decline". Not built yet: `jadpo approval` ([Records and manifest](18-records-and-manifest.md)) and the date rule for expired [feature flags](16-built-in-services.md#feature-flags). |
 | Constants | Built: `constant` as a reserved word and a declaration placed and shared as helper functions are, a private one unique within its domain, `constant.similar_exists`, and a top-level `var` pointed at `constant` ([Constants](03-logic.md#constants)). |
 | Imports | Built: `use <folder> { Names }` and `use <domain>`, with `import.missing`, `import.unknown`, `import.unused`, `import.unneeded` and `import.duplicate`; `jadpo fmt` adds, removes and sorts imports, `jadpo fmt --layout` makes promotion moves, and go to definition works from every use of a name, a `use` line's included. |
 | A file holds only what its primary declaration uses | Built: `layout.unused_declaration` for a supporting declaration the primary declaration doesn't use, directly or through one another. |

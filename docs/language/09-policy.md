@@ -2037,16 +2037,37 @@ entity.
 Each widening needs an acceptance: a file in `acceptances/` in which a
 person accepts that change
 ([Acceptances](18-records-and-manifest.md#acceptances)). Breaking API
-changes and database drops are accepted the same way.
+changes and database drops are accepted the same way. `jadpo check`
+compares the change with the default branch at its merge base through
+`access.jadpo_record`, who can do what, which it keeps at the root beside
+`api/`, and the API record. These need a person (Richard, 2026-10-30):
+
+- a caller added to any grant list, an entity's or a field's
+  (`library.Book.read: PolicyChange.widened`);
+- a field's own row, or its `FieldAccess.server_only`, removed
+  (`PolicyChange.restriction_removed`);
+- tenancy loosened: an entity that belonged to the tenant now shared by
+  every tenant, or the app's tenant gone (`PolicyChange.tenancy_loosened`),
+  or a new entity shared by every tenant
+  (`PolicyChange.shared_entity_added`);
+- an action's line under `actions:` added or removed, since a listing
+  replaces its entities' grants (`PolicyChange.listing_added`,
+  `.listing_removed`), and a caller added to an action's line;
+- a listed query's line removed, or a caller added to it;
+- a route that needed a signed-in caller made open to anyone
+  (`"main GET /books": PolicyChange.route_public`);
+- a decline of `policy.call_ungranted`, a security rule
+  (`PolicyChange.call_ungranted_declined`).
+
+Narrowing needs no one: a caller removed, a restriction added, a query
+newly listed, a new route even one anyone may call, a new entity that
+belongs to the tenant.
 
 Schedules and subscribers act as the system
 ([Background work](#background-work)), and what `Access.system` is granted
 shows in the permissions report. The compiler's own purge of soft-deleted
 records ([The purge schedule](12-jobs-and-events.md#the-purge-schedule)) is
 the only operation outside policy.
-
-Acceptances for a change that widens access aren't built yet
-([What is built](#what-is-built)).
 
 ## When policy says no
 <!-- topic: when-policy-says-no -->
@@ -2590,7 +2611,8 @@ Everything on this page is built except the features below. Each is
 |---|---|
 | Grants, user fields, membership roles, `Access.authenticated`, `Access.public` and `Access.system`, tenancy, `actions:` with listed queries and `policy.call_ungranted`, field restrictions, the permissions report, and the refusals under "When policy says no" | Built. |
 | `scopes:`, with the tokens issued to other applications (`oauth_token`, `external_token`) | Not built yet. Browser sessions and service keys work without them. |
-| An acceptance for a change that widens access, and the approval review that shows the report's changes ([Review and sign-off](14-tooling.md#review-and-sign-off), [Acceptances](18-records-and-manifest.md#acceptances)) | Not built yet. Review policy changes in the permissions report's diff instead. |
+| An acceptance for a change that widens access, with `access.jadpo_record` ([Acceptances](18-records-and-manifest.md#acceptances)) | Built. |
+| The approval review that shows the report's changes in plain terms ([Review and sign-off](14-tooling.md#review-and-sign-off)) | Not built yet. Review policy changes in the diff of `access.jadpo_record` instead. |
 
 ## Errors
 
