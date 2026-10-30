@@ -760,7 +760,7 @@ def user_page_problems(page, root=ROOT):
 # reads either (docs/writing.md, "How a reference topic reads"). This fails
 # on areas 1 to this one, whose pages follow the guide, and warns on the
 # rest; once every page does, it is the last area and the rule fails on all.
-NUMBERED_FAILS_THROUGH = 7
+NUMBERED_FAILS_THROUGH = 14
 
 
 def numbered_references(page):

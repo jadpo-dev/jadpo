@@ -61,3 +61,43 @@ Why [Testing](../13-testing.md) is the way it is: the decisions behind it, how i
 | Writing a route test's key | A test writes the key it sends as `idempotency_key:` in `request { }`, text, as `as:` stands for the credential: the request has no headers of its own, and an `Input`'s `header:` field is the action's, which the runtime's key never reaches. The runtime checks it as it checks a client's. A `GET` reads no key, so a request to one that gives `idempotency_key:` is `semantic.request_invalid`. A fresh key is a new identity from the test's seed, so a run is the same every time; a route whose `Input` itself reads an `Idempotency-Key` header sends that one |
 | An omitted field in a route test | A route test's `input:` leaves an optional field it doesn't write out of the body it sends, as a client would, so a `patch:` keeps that field rather than clearing it; a field written as `none` is sent as `null`. A request's body goes with `Content-Type: application/json` |
 | The test clock | A test without `clock:` starts at 2000-01-01T00:00:00Z; `clock:` is an instant written out (`type.setting_value` otherwise). `clock.advance(duration)` moves the clock on for the calls after it, never one already running; it is `type.test_clock_context` anywhere but a test, a fixture and a seed included, and a negative duration is the fault `clock_backward` |
+
+## Moved from the area page
+
+When [Testing](../13-testing.md) was rewritten to the
+[writing guide](../../writing.md), its reasons, its comparisons with
+other tools and its references to other areas by number moved here or
+became links by title. Nothing in this list changed a rule.
+
+- **Why tests are placed as they are.** A test beside its subject reaches
+  its whole domain and a scenario in root `tests/` sees only public
+  declarations and routes, so unit tests stay close to their code and
+  scenarios can't depend on internals. Placement and the kinds of test
+  come from area 1, Imports included.
+- **Why the second kind is "action", not "integration".** `integration`
+  is the keyword for third-party APIs (area 11).
+- **Why fixtures call actions.** Rows written straight into tables, as
+  Rails' YAML fixtures and Django's JSON fixtures are, would skip
+  validation and policy and drift from the code. Seeds work the same way
+  (area 5), and a seed refuses to run in production (area 5).
+- **Why there are no snapshot assertions.** Agents update snapshots
+  without reading them, and a failing test quietly becomes a passing one.
+- **The assertion broken into parts** shows every sub-expression's value,
+  as pytest and power-assert do.
+- **Why each test's actions commit for real.** Rolling back one
+  transaction per test would be faster, but breaks after-commit work
+  (events) and concurrent-change checks. PGlite needs no install, but runs
+  one connection at a time.
+- **References by number the page now makes by title:** the request's
+  shape and streaming (area 7); signing in with `as:` and the caller
+  (area 8); root `policy { }`, policy proved by calls with a caller
+  (area 9); only actions write records (area 6); recordings (area 11) and
+  prompt recordings (area 21, "Recorded answers"); how a schedule runs,
+  the tick, subscribers, retries, batches and several changing calls
+  (area 12); concealed records and the failure standard (area 4);
+  configuration and `configuration.test_value_missing` (area 10); the
+  `random` namespace (area 19); `email.sent` and the capability fakes
+  (area 16); the trace and `jadpo calls script` (area 17); `--affected`
+  and `test.no_tests` (area 14); the database engine and caches
+  (area 5, area 6); `attempt` (area 3); stable identity of a test
+  (area 18).
