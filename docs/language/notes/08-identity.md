@@ -171,3 +171,42 @@ Why [Identity](../08-identity.md) is the way it is: the decisions behind it, how
 | Passkey recovery, events and route tests | `passkey:` with no `magic_link:` written in the same `sign_in:` is `semantic.auth_setting_required`, reported only once the browser session's origin is there, so a project missing both hears about the origin first. The device lists a passkey under the user's `magic_link:` `address:` field, read by the user's `id` as the request reads the record; a user without one is listed under the subject. A passkey's sign-in publishes `SignedIn` (`method: passkey`, `first_time: false`) committed with the session, and `SignInRefused` for `passkey_challenge_expired`, `passkey_rejected` and `user_disabled` in a transaction of its own, its reason on the request's log line; `user_id` is given when the answer named a registered passkey, never for an unreadable answer, a challenge that expired or a passkey removed or never registered. A malformed body, a missing `Origin` and an unavailable store publish nothing, as for magic links. `PasskeyAdded` and `PasskeyRemoved` carry `user_id` and `passkey_id` (the routes' `id`, never the credential ID), commit with the passkey they report, and need `passkey:` for a subscriber (`subscriber.event_invalid`); they are kept under `jadpo.<Name>` only when a subscriber listens, as the sign-in events are. `test_passkeys.register(user, name)` and `.sign_in(passkey)` are checked in tests only (`semantic.request_invalid` elsewhere, as `request` is; `semantic.auth_setting_required` with no `passkey:`), `name` any value built on `Text`; each `TestPasskey` is a software authenticator of its own (ES256, discoverable, verifying, no attestation) that only a test's host has, natively and in a test Worker under workerd (no deployable does), opaque to code. `register` signs in as `as:` does and sends the application's own `Origin`; `sign_in` starts from a browser with no cookies. A refusal on the way to a passkey ends the test as a fault naming the route and its code. A test calling only `test_passkeys` counts as the kind its other calls make it (an action test when a fixture makes its user), since the generated routes are not graph nodes |
 | The system's sign-in actions and tenants | The magic-link `send:` action runs with its delivery's tenant, as a subscriber's does, which for `jadpo.MagicLinkEmail` is none, and `on_first_sign_in:`'s action with no tenant: each reaches only records every tenant shares, never every tenant's, as area 9 says of the system inside a request. Each is let in only by `Access.system`: what only `Access.public` lets it in to is `policy.system_grant_missing`, at its `send:` or `on_first_sign_in:` |
 | Route tests through the magic-link routes | A route test calls the generated routes with `request { }`. Their inputs are built-in `Input` types named as the API record names them, `MagicLinkAsk`, `MagicLinkConfirmation` and `MagicLinkCode`, which only a test, a fixture or a seed builds, a field that may be `none` left out at will; the confirmation answers `MagicLinkConfirmed` and the redemption `MagicLinkToken`. A test's request carries the app's own `Origin`. `SentEmail` gives the sign-in email's token and code as `sign_in_token: SignInToken?` and `sign_in_code: SignInCode?`, so a test never parses them out of the text and the token stays typed |
+
+## Moved from the area page
+
+When [Identity](../08-identity.md) was rewritten to the
+[writing guide](../../writing.md), its references to the questions above,
+its comparisons with other frameworks and the reasons it gave moved here.
+Nothing in this list changed a rule.
+
+- **Where a credential travels** is decided by the method, from a fixed
+  list (question 1).
+- **The principal's fields are built in**: `id`, `subject` and
+  `strength`; a role, tenant or email is read from the entity
+  (question 2).
+- **`service:` is optional**, since most applications only have users
+  (question 3).
+- **`revocation_delay:` is the only revocation setting**, and leaving it
+  out gives the strict behaviour (question 4).
+- **`current_principal` exists only in routes that need a caller**
+  (question 5).
+- **`user_disabled` and `service_disabled` are built in**, never declared
+  (question 6).
+- **Jadpo stores service keys**, with generated `issue_key`, `keys` and
+  `revoke_key`; the application declares only `Service` (question 7).
+- **A listing of tokens or keys goes through policy** like any query's
+  (question 8, with area 9).
+- **An action starts and ends a session** with `sessions.start` and
+  `sessions.end`, and the compiler sets and clears the cookie and CSRF
+  token (question 9). Rails (`start_new_session_for`,
+  `terminate_session`) and Phoenix (`log_in_user`) generate the same two
+  calls.
+- **API tokens are issued by an action and shown once**, like Laravel
+  Sanctum's `createToken`.
+- **Sign-in providers** are connections in `app.jadpo` (question 11, and
+  area 11's "No presets"), and `on_first_sign_in:` links an existing user
+  by address only when the address is verified (question 11).
+- **Acting as an OAuth provider** is separate from both signing in and
+  OAuth grants (question 13).
+- **Passkeys are the language's, as magic links are**, because the
+  ceremonies are where hand-written sign-in goes wrong.
