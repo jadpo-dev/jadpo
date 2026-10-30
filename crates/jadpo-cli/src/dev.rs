@@ -1240,7 +1240,7 @@ fn watch_only(
 pub(crate) struct Ready {
     pub(crate) prepared: Arc<Prepared>,
     /// Each store's migrations.
-    steps: BTreeMap<String, Vec<jadpo_std::Migration>>,
+    pub(crate) steps: BTreeMap<String, Vec<jadpo_std::Migration>>,
     /// The stores its entities live in.
     pub(crate) stores: Vec<String>,
     routes: usize,
