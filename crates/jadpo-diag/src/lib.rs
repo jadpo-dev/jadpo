@@ -155,6 +155,8 @@ rules! {
         "Language-server command has invalid arguments";
     CLI_MIGRATE_ARGUMENTS: "cli.migrate_arguments", area 14, Error, Agent,
         "Migrate command has invalid arguments";
+    CLI_NEW_ARGUMENTS: "cli.new_arguments", area 14, Error, Agent,
+        "New command has invalid arguments";
     CLI_PACKAGE_ARGUMENTS: "cli.package_arguments", area 14, Error, Agent,
         "Package command has invalid arguments";
     CLI_PACKAGE_NOT_OPENAPI: "cli.package_not_openapi", area 14, Error, Agent,
@@ -1095,6 +1097,16 @@ rules! {
         "Operation is declared but not built yet";
     TOOLCHAIN_PROJECT_NOT_FOUND: "toolchain.project_not_found", area 14, Error, Agent,
         "Project could not be found";
+    TOOLCHAIN_SCAFFOLD_DESTINATION_EXISTS: "toolchain.scaffold_destination_exists", area 14, Error, Human,
+        "Scaffold destination is an existing file";
+    TOOLCHAIN_SCAFFOLD_DESTINATION_NOT_EMPTY: "toolchain.scaffold_destination_not_empty", area 14, Error, Human,
+        "Scaffold destination directory is not empty";
+    TOOLCHAIN_SCAFFOLD_NAME_INVALID: "toolchain.scaffold_name_invalid", area 14, Error, Agent,
+        "Project destination has no valid name";
+    TOOLCHAIN_SCAFFOLD_READ_FAILED: "toolchain.scaffold_read_failed", area 14, Error, Human,
+        "Scaffold destination could not be inspected";
+    TOOLCHAIN_SCAFFOLD_WRITE_FAILED: "toolchain.scaffold_write_failed", area 14, Error, Human,
+        "Project scaffold file could not be written";
     TOOLCHAIN_SOURCE_READ_FAILED: "toolchain.source_read_failed", area 14, Error, Human,
         "Jadpo source file could not be read";
     TOOLCHAIN_VERSION_INVALID: "toolchain.version_invalid", area 1, Error, Agent,

@@ -85,17 +85,37 @@ test the app, Jadpo starts a throwaway database of its own. It finds
 PostgreSQL's programs (`initdb`, `pg_ctl` and `postgres`) on your `PATH`,
 or where the usual installers put them.
 
-## Check that it works
+## Start a project
 
-The repository has teaching projects in `examples/`. Go back to the
-`jadpo` folder, and ask `jadpo` to check the first one:
+`jadpo new` starts a project, which is the todo app the rest of these
+pages build. Make it outside the `jadpo` folder you built from, for
+instance in your home folder:
 
 ```sh
-jadpo check examples/01-first-project
+cd ~
+jadpo new todo-app
 ```
 
 ```text
-checked: 6 files in 0.5 s
+Created todo-app
+    jadpo  0.1
+    route  POST /hello
+    files  12 written
+
+next: cd todo-app && jadpo dev  serves it on http://localhost:3000
+```
+
+It made a folder, `todo-app`, holding a small starter app: one route, an
+HTTP endpoint that answers `POST /hello`, with a test. Go into the
+folder, and ask `jadpo` to check the project:
+
+```sh
+cd todo-app
+jadpo check
+```
+
+```text
+checked: 8 files in 0.7 s
 ```
 
 `jadpo check` reads the whole project and reports every problem it
@@ -105,15 +125,16 @@ such as a description of your API, into a `build/` folder inside the
 project, which you don't commit. Then run the project's tests:
 
 ```sh
-jadpo test examples/01-first-project
+jadpo test
 ```
 
 ```text
-tested: 3 passed, 3 action tests
+tested: 1 passed, 1 route test
 ```
 
-The tests ran three of the project's actions, the pieces of an app that
-do its work. You write your first action on the next page.
+The test sent the starter route a request and checked its answer. On
+the next page you look at what `jadpo new` wrote, and replace the
+starter with the todo app's first route.
 
 ## When something is wrong
 
@@ -146,9 +167,7 @@ Next: [A project and your first route](02-first-route.md).
 ## Not built yet
 
 There is no installer yet, so you build from source as above. Prebuilt
-downloads, Homebrew (`brew install jadpo-dev/tap/jadpo`) and `npx @jadpo/jadpo` come with the first release, and so
-does `jadpo new`, which will start a project for you. Each project names
+downloads, Homebrew (`brew install jadpo-dev/tap/jadpo`) and `npx @jadpo/jadpo` come with the first release. Each project names
 the Jadpo release line it is written for, and whichever `jadpo` you run
 fetches and runs that release for it, so projects on different releases
-work side by side. Until then you
-make the few files of a new project by hand, which the next page does.
+work side by side.

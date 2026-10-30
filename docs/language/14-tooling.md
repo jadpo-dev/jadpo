@@ -36,11 +36,82 @@ The commands you use every day:
 
 | Command | Does |
 |---|---|
+| `jadpo new <name>` | Starts a project |
 | `jadpo check` | Checks everything and writes the derived files in `build/` |
 | `jadpo fmt` | Formats your code |
 | `jadpo test` | Runs your tests |
 | `jadpo build [<deployable>]` | Builds the programs you deploy, into `build/target/` |
 | `jadpo dev` | Runs the app locally, rebuilding it on every save |
+
+### `jadpo new`
+
+`jadpo new <name>` starts a project in a folder that doesn't exist yet or
+is empty, and the project passes `jadpo check`, `jadpo fmt --check` and
+`jadpo test` as soon as it is written. It writes the fixed root
+([The root](01-project-layout-and-modules.md#the-root)) and one small
+domain, `hello`:
+
+```text
+todo-app/
+  app.jadpo        application { jadpo: "0.1" } and the project token
+  config.jadpo     config {}, with no settings yet
+  policy.jadpo     who may run greet: Access.public
+  api/
+    main.jadpo_record    as jadpo api update writes it
+  domains/
+    hello/
+      types/       visitor.jadpo  greeting.jadpo
+      actions/     greet.jadpo
+      routes/      hello.jadpo  hello.test.jadpo
+  database/        empty
+  tests/           empty
+  AGENTS.md  .gitignore  .gitattributes
+```
+
+- `app.jadpo` names the release line of the `jadpo` that ran `new`, so
+  `jadpo new` from 0.1.x writes `jadpo: "0.1"`
+  ([Which jadpo runs](#which-jadpo-runs)). It also holds the project's
+  `suggestions { project_token: }`, 32 random hex digits from the
+  operating system's generator ([Sharing with Jadpo
+  HQ](#sharing-with-jadpo-hq)); when the generator fails it leaves the
+  block out, and `share` writes it later.
+- The `hello` domain is one route, `POST /hello`, with
+  `authentication: RouteAuthentication.none`. It takes a `Visitor` and
+  runs `greet`, which returns a `Greeting`. Because `greet` reaches no
+  entity, root policy grants it with `hello.greet: [Access.public]`. The
+  route's test, beside it, posts a visitor and checks the status and the
+  greeting. The API record is written by the code `jadpo api update`
+  runs, from these routes.
+- `AGENTS.md` says what Jadpo is, the release line `app.jadpo` names,
+  where the docs are (the primer, the index and the error pages on the
+  site, as [How an agent uses it](../documentation.md) describes), and
+  which commands to run after a change. `.gitignore` holds `build/`, and
+  `.gitattributes` holds the lines that keep records readable in a diff
+  ([Records and manifest](18-records-and-manifest.md)). There are no
+  hidden folders.
+
+The project is named after the folder: the last part of `<name>`, or the
+folder it runs in for `jadpo new .`. A folder that holds anything, hidden
+files included, is refused with `toolchain.scaffold_destination_not_empty`
+and left as it was; a file of that name is
+`toolchain.scaffold_destination_exists`, and a `<name>` that ends in no
+folder's name, such as `..`, is `toolchain.scaffold_name_invalid`. If a
+write fails partway, `jadpo new` removes what it wrote and reports
+`toolchain.scaffold_write_failed`.
+
+The screen is one status line, then the command to run next:
+
+```text
+Created todo-app
+    jadpo  0.1
+    route  POST /hello
+    files  12 written
+
+next: cd todo-app && jadpo dev  serves it on http://localhost:3000
+```
+
+With `--json`, `data` holds the `path` as typed, the `root`, the `jadpo`
+line, the `routes` and the `files` it wrote.
 
 ### `jadpo check`
 
@@ -157,9 +228,6 @@ work](12-jobs-and-events.md#running-background-work)).
 
 Not built yet:
 
-- `jadpo new <name>`, which creates a project that passes `check`,
-  `fmt --check` and `test`. Today it is `cli.unknown_command`, so write
-  `app.jadpo` by hand.
 - `jadpo test --affected`, which runs the tests a change reaches,
   measured against the merge-base with `main`.
 - `jadpo test --interactive`, a keyboard view of every test: search,
@@ -1897,8 +1965,8 @@ to decide on, and never builds one.
 
 Not built yet: Jadpo HQ itself, which comes later, with the registry.
 Sharing is built against a local fake of HQ that speaks the protocol
-above. `jadpo new` will write the project token; until it does, `share`
-writes it.
+above. `jadpo new` writes the project token; for a project without one,
+`share` writes it.
 
 ## Review and sign-off
 <!-- topic: review-and-sign-off -->
@@ -2631,6 +2699,7 @@ its command is built.
 | `cli.incident_read_failed` | `incident` | Runtime event file could not be read |
 | `cli.incident_revision_mismatch` | `incident` | Runtime event and local source revisions differ |
 | `cli.lsp_arguments` | `lsp` | Language-server command has invalid arguments |
+| `cli.new_arguments` | `new` | New command has invalid arguments |
 | `cli.package_arguments` | `package` | Package command has invalid arguments |
 | `cli.package_not_openapi` | `package import` | Description to import is not an OpenAPI 3 document |
 | `cli.package_unreadable` | `package import` | Description to import could not be read as JSON |
@@ -2807,7 +2876,7 @@ Each row says what is built and what is specified but not built yet.
 |---|---|
 | Command help | Built: every command has `--help` with examples, `jadpo help [command]` explains one, and `jadpo help --json` describes them all. |
 | Project path | Built: every command finds the project by walking up to `app.jadpo`, so a path is optional; run from outside the project, printed paths start with the project as typed. |
-| Scaffold | Not built yet: `jadpo new` is `cli.unknown_command`. The line an app declares is checked: `application { jadpo: "0.1" }`, with `toolchain.version_newer`, `toolchain.version_older` and `toolchain.version_invalid` ([The root](01-project-layout-and-modules.md#the-root)). |
+| Scaffold | Built: `jadpo new <name>` writes the fixed root on this `jadpo`'s release line with its project token, the `hello` domain (one route, its action, its policy line, its API record and a route test), `AGENTS.md`, `.gitignore` and `.gitattributes`, passing `check`, `fmt --check` and `test` as written, and refuses a folder that holds anything, with `--json`. The line an app declares is checked: `application { jadpo: "0.1" }`, with `toolchain.version_newer`, `toolchain.version_older` and `toolchain.version_invalid` ([The root](01-project-layout-and-modules.md#the-root)). |
 | Which jadpo runs | Built in 0.1.0: every `jadpo` runs the release a project's line or `jadpo.lock` pin names, kept in the cache or fetched from GitHub's releases, its archive checked against its published SHA-256 and its GitHub artifact attestation (Sigstore's verifier, with the public-good trusted root carried in the binary) before it runs, and refuses with `toolchain.version_newer` or `toolchain.version_older` when it can't; `jadpo toolchain` lists, removes, pins and unpins, and `JADPO_TOOLCHAIN=local` runs everything with the `jadpo` started. The trusted root is the one this release was built with: no TUF refresh. |
 | Formatter | Built: one member per line, one blank line between declarations, and `fmt --check` counts the files it read; it keeps `use` lines at the top, sorted, fixes imports inside a project, `--layout` makes promotion moves, and it writes each file's declarations before their use, the primary declaration last. |
 | Error messages | Built: one error per mistake, in the field order [Error messages](#error-messages) gives, `impact` only when it says something, edits on the next step where one exists, and help links to each error's page on the site. |

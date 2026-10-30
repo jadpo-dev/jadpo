@@ -10,7 +10,8 @@ Page 11 then adds the settings sign-in needs.
 ## Declare it once
 
 Every setting is a field of the one `config { }` block, in
-`config.jadpo` next to `app.jadpo`:
+`config.jadpo` next to `app.jadpo`. `jadpo new` wrote it with no
+fields; replace the whole file:
 
 `config.jadpo`:
 

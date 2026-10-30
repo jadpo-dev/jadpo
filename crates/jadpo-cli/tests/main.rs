@@ -69,6 +69,7 @@ mod lsp;
 mod magic_links;
 mod manifest;
 mod migrate;
+mod new;
 mod operation_conditions;
 mod outside_calls;
 mod package_actions;

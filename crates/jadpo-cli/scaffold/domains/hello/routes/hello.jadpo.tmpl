@@ -1,0 +1,15 @@
+use hello/types { Greeting, Visitor }
+use hello/actions { greet }
+
+/// A first route, to start from.
+routes Hello {
+    prefix: /hello
+
+    /// Greets whoever calls it, signed in or not.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: Visitor
+        output: Greeting
+        run: greet(input)
+    }
+}

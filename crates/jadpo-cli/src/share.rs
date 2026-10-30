@@ -279,7 +279,7 @@ fn pending(root: &Path) -> Vec<Entry> {
 }
 
 /// A new token: 32 hex digits from the operating system's generator.
-fn new_token() -> Option<String> {
+pub(crate) fn new_token() -> Option<String> {
     let mut bytes = [0u8; settings::TOKEN_DIGITS / 2];
     getrandom::fill(&mut bytes).ok()?;
     Some(bytes.iter().map(|b| format!("{b:02x}")).collect())

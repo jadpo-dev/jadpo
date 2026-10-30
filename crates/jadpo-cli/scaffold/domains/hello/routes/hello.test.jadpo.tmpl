@@ -1,0 +1,16 @@
+use hello/types { Greeting, Visitor }
+
+test "greets the visitor by name" {
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/hello"
+        input: Visitor {
+            name: "Ann"
+        }
+    }
+    assert response.status == 200
+    assert response.output == Greeting {
+        message: "Hello"
+        name: "Ann"
+    }
+}

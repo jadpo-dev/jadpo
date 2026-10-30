@@ -149,7 +149,7 @@ error: `""` isn't a valid `TodoView.title`
   rule: type.invalid_literal
   help: https://jadpo.dev/docs/errors/type.invalid_literal
 
-check failed: 1 error, 8 files
+check failed: 1 error, 9 files
 ```
 
 A value written in the code is checked against the type's rules before
@@ -167,7 +167,7 @@ error: `TodoStatus` has no variant `finished`
   rule: type.unknown_enum_variant
   help: https://jadpo.dev/docs/errors/type.unknown_enum_variant
 
-check failed: 1 error, 8 files
+check failed: 1 error, 9 files
 ```
 
 The error calls `open` and `done` variants: that is Jadpo's word for the
@@ -218,7 +218,7 @@ what changed, which is what a reviewer sees:
 +    title: Text { min_length: 1, max_length: 200 }
 ```
 
-`jadpo check` now says `checked: 8 files`.
+`jadpo check` now says `checked: 9 files`.
 
 ## Refused at the door
 
