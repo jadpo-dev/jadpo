@@ -21,15 +21,18 @@ error: This project needs Jadpo 0.0
   |
 2 |     jadpo: "0.0"
   |            ^^^^^ earlier than this jadpo
-  reason: `jadpo:` names the Jadpo release line the project is written for, and this jadpo is on a later one (`jadpo --version` shows it). While Jadpo is at 0.x a minor release may break an app, so it doesn't compile the project.
-  next: Install Jadpo 0.0 from https://github.com/jadpo-dev/jadpo/releases, then run the command again (human)
+  reason: `jadpo:` names the release line the project is written for, 0.0, which is earlier than this jadpo's (`jadpo --version` shows it). A 0.x minor release may break an app, so this jadpo doesn't compile the project itself.
+  next: Run it with Jadpo 0.0, which the installed `jadpo` fetches unless `JADPO_TOOLCHAIN` is `local` (human)
   rule: toolchain.version_older
   help: docs/errors/toolchain.version_older.md
 
 check failed: 1 error, 1 file
 ```
 
-When the launcher couldn't fetch the release, the reason ends with why:
-offline, no release of the line published yet, or a download that didn't
-match its published SHA-256 or attestation. A project moving to a later
+When the installed `jadpo` couldn't fetch the release, its reason starts
+with why, and its next step fits: run again once github.com can be
+reached; name a published line; set `XDG_CACHE_HOME` when there is no
+cache folder; or, for a download that failed its SHA-256 or attestation
+check, run again to fetch it afresh, and report it if it fails the same
+way. A project moving to a later
 line changes `jadpo:` once its code is brought up to that line.

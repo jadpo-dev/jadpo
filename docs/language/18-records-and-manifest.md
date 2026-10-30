@@ -255,7 +255,8 @@ git's hunk header names the entry the change is in.
   of date, and its command rewrites it. A ledger is read in every format
   Jadpo has written for it, forever, since it holds history, and is
   rewritten in the newest. A record in a newer format than this Jadpo
-  writes is `record.format_newer`: Jadpo never guesses.
+  writes is `record.format_newer`: Jadpo never guesses. The lock's format 1 already holds the
+  `jadpo version` pin: no lock had shipped before it was added.
 
 The identity registry's lines are the kind, the born name, `->` and the
 name now. A field, variant or rule follows what it belongs to, so its line

@@ -33,7 +33,7 @@ use jadpo_diag::Span;
 use jadpo_term::{Block, Environment, Screen, Stream, Style, envelope};
 
 use crate::attestation::{self, Attest};
-use crate::releases::{self, Cache, Network, Release};
+use crate::releases::{self, Cache, Network, Release, Unfetched};
 use crate::run::{Output, presentation};
 
 /// The variable that makes this `jadpo` run every command itself, when it
@@ -156,7 +156,7 @@ pub(crate) fn launch_with(
         None if line == running.line() => return Launch::Here,
         None => Wanted::Line(line),
     };
-    let refuse = |why: &str| {
+    let refuse = |(kind, why): (Unfetched, String)| {
         let (text, later, at, sources) = match (wanted, pin, &lock) {
             (Wanted::Pinned(release), Some((_, at)), Some(lock)) => {
                 let offset: usize = lock.split_inclusive('\n').take(at).map(str::len).sum();
@@ -180,15 +180,16 @@ pub(crate) fn launch_with(
             later,
             matches!(wanted, Wanted::Pinned(_)),
             Some(at),
-            Some(why),
+            Some((kind, &why)),
         );
         let sources = BTreeMap::from([(sources.0.to_string(), sources.1)]);
         Launch::Refused(refused(args, env, &words, &diagnostic, &sources))
     };
     let Some(home) = crate::package_cache::home(env) else {
-        return refuse(
-            "there is no cache folder to keep it in, since none of `XDG_CACHE_HOME`, `HOME` and `LOCALAPPDATA` is set.",
-        );
+        return refuse((
+            Unfetched::Uncached,
+            "there is no cache folder to keep it in, since none of `XDG_CACHE_HOME`, `HOME` and `LOCALAPPDATA` is set.".to_string(),
+        ));
     };
     let cache = Cache::new(&std::path::absolute(&home).unwrap_or(home), target);
     let release = match wanted {
@@ -198,45 +199,99 @@ pub(crate) fn launch_with(
             None => match releases::newest(network, line) {
                 Ok(Some(release)) => release,
                 Ok(None) => {
-                    return refuse(&format!(
-                        "no release of line {}.{} is published.",
-                        line.0, line.1
+                    return refuse((
+                        Unfetched::Unreleased,
+                        format!("no release of line {}.{} is published.", line.0, line.1),
                     ));
                 }
-                Err(why) => return refuse(&why),
+                Err(failure) => return refuse(failure),
             },
         },
     };
     let (json, choice) = presentation(args);
-    let style = Style::detect(env, json, choice, Stream::Stderr);
-    let spinner = std::cell::RefCell::new(None);
-    let installed = cache.install(release, network, attest, &|release| {
-        *spinner.borrow_mut() = Some(jadpo_term::Spinner::start(
-            &style,
-            &format!("Fetching Jadpo {release} for {target}"),
-        ));
-    });
-    let fetched = spinner.borrow_mut().take();
-    if let Some(spinner) = fetched {
-        spinner.finish();
-        if installed.is_ok() && !json {
-            let line = Screen::new()
-                .with(Block::Status {
-                    outcome: jadpo_term::Outcome::Success,
-                    text: format!("Fetched Jadpo {release}, its SHA-256 and attestation checked"),
-                    rows: Vec::new(),
-                })
-                .render(&style);
-            use std::io::Write;
-            let _ = std::io::stderr().write_all(line.as_bytes());
-        }
-    }
+    let report = Fetching {
+        style: Style::detect(env, json, choice, Stream::Stderr),
+        json,
+        target: target.to_string(),
+        spinner: std::cell::RefCell::new(None),
+        bytes: std::cell::Cell::new(0),
+        started: std::time::Instant::now(),
+    };
+    let installed = cache.install(release, network, attest, &report);
+    report.finish(release, installed.is_ok());
     match installed {
         Ok(binary) => Launch::Run {
             binary,
             version: release.to_string(),
         },
-        Err(why) => refuse(&why),
+        Err(failure) => refuse(failure),
+    }
+}
+
+/// How a fetch shows on stderr (the CLI design language): a live line with
+/// a bar once the archive's size is known, where stderr animates, else one
+/// line when it starts; then the status line of what was fetched and
+/// checked, with its size and time. Nothing under `--json`.
+struct Fetching {
+    style: Style,
+    json: bool,
+    target: String,
+    spinner: std::cell::RefCell<Option<jadpo_term::Spinner>>,
+    bytes: std::cell::Cell<u64>,
+    started: std::time::Instant,
+}
+
+impl Fetching {
+    fn write(&self, text: &str) {
+        use std::io::Write;
+        let _ = std::io::stderr().write_all(text.as_bytes());
+    }
+
+    /// Ends the live line and, when the fetch got the release, says so.
+    fn finish(&self, release: Release, got: bool) {
+        let Some(spinner) = self.spinner.borrow_mut().take() else {
+            return;
+        };
+        spinner.finish();
+        if !got || self.json {
+            return;
+        }
+        let size = crate::build::size(self.bytes.get() as usize);
+        let seconds = self.started.elapsed().as_secs_f64();
+        let time = if seconds >= 0.1 {
+            format!(" in {seconds:.1} s")
+        } else {
+            String::new()
+        };
+        let line = Screen::new()
+            .with(Block::Status {
+                outcome: jadpo_term::Outcome::Success,
+                text: format!(
+                    "Fetched Jadpo {release} ({size}) and checked its SHA-256 and attestation{time}"
+                ),
+                rows: Vec::new(),
+            })
+            .render(&self.style);
+        self.write(&line);
+    }
+}
+
+impl releases::Report for Fetching {
+    fn fetching(&self, release: Release) {
+        let words = format!("Fetching Jadpo {release} for {}", self.target);
+        if !self.json && !self.style.animate {
+            self.write(&format!("{words}\n"));
+        }
+        *self.spinner.borrow_mut() = Some(jadpo_term::Spinner::start(&self.style, &words));
+    }
+
+    fn progress(&self, done: u64, total: Option<u64>) {
+        self.bytes.set(done);
+        if let (Some(spinner), Some(total)) = (self.spinner.borrow().as_ref(), total)
+            && let Ok(mut far) = spinner.progress().lock()
+        {
+            *far = Some((done, total));
+        }
     }
 }
 
@@ -507,13 +562,11 @@ mod tests {
         );
         assert!(text.contains(" --> app.jadpo:2:12\n"), "{text}");
         assert!(
-            text.contains("It couldn't fetch Jadpo 0.0 to run it instead: No connection"),
+            text.contains("reason: Jadpo 0.0 couldn't be fetched to run it: No connection"),
             "{text}"
         );
         assert!(
-            text.contains(
-                "next: Install Jadpo 0.0 from https://github.com/jadpo-dev/jadpo/releases"
-            ),
+            text.contains("next: Run the command again once this machine can reach github.com"),
             "{text}"
         );
         assert!(text.contains("rule: toolchain.version_older"), "{text}");

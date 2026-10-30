@@ -1113,7 +1113,7 @@ fn calls(caps: &[(String, u32)]) -> String {
 
 /// `bytes` for people, in decimal units as Cloudflare states its limits:
 /// `912 bytes`, `412 KB`, `4.1 MB`.
-fn size(bytes: usize) -> String {
+pub(crate) fn size(bytes: usize) -> String {
     match bytes {
         0..1_000 => format!("{bytes} bytes"),
         1_000..999_500 => format!("{} KB", (bytes + 500) / 1_000),

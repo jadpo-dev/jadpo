@@ -32,11 +32,40 @@ const LONGEST_LIST: usize = 16 << 20;
 /// How many pages of the release list are read, 100 releases each.
 const PAGES: usize = 10;
 
+pub(crate) use jadpo_check::jadpo_version::Unfetched;
+
+/// Why a release couldn't be had: what kind of failure, and the failure as
+/// a sentence.
+pub(crate) type Failure = (Unfetched, String);
+
+/// A failure to fetch `url`: a release that isn't published when GitHub
+/// has no such file, else GitHub not reached.
+pub(crate) fn unfetched(why: String) -> Failure {
+    let kind = if why.contains("(404)") {
+        Unfetched::Unreleased
+    } else {
+        Unfetched::Unreachable
+    };
+    (kind, why)
+}
+
 /// Where releases are fetched from.
 pub(crate) trait Network {
     /// All of `url`, refusing more than `most` bytes; why not, as a
     /// sentence, when it can't be fetched.
     fn get(&self, url: &str, most: usize) -> Result<Vec<u8>, String>;
+
+    /// [`Network::get`], telling `progress` how many bytes have come of
+    /// how many, when that is known.
+    fn get_reporting(
+        &self,
+        url: &str,
+        most: usize,
+        progress: &dyn Fn(u64, Option<u64>),
+    ) -> Result<Vec<u8>, String> {
+        let _ = progress;
+        self.get(url, most)
+    }
 }
 
 /// GitHub, over HTTPS.
@@ -46,6 +75,40 @@ impl Network for Https {
     fn get(&self, url: &str, most: usize) -> Result<Vec<u8>, String> {
         download::get_all(url, most)
     }
+
+    fn get_reporting(
+        &self,
+        url: &str,
+        most: usize,
+        progress: &dyn Fn(u64, Option<u64>),
+    ) -> Result<Vec<u8>, String> {
+        let mut body = Vec::new();
+        let total = std::cell::Cell::new(None);
+        download::get(
+            url,
+            &mut |started| {
+                total.set(started.length);
+                progress(0, started.length);
+            },
+            &mut |piece| {
+                if body.len() + piece.len() > most {
+                    return Err(std::io::Error::other("the answer is too long"));
+                }
+                body.extend_from_slice(piece);
+                progress(body.len() as u64, total.get());
+                Ok(())
+            },
+        )?;
+        Ok(body)
+    }
+}
+
+/// How a fetch is reported as it goes.
+pub(crate) trait Report {
+    /// Fetching `release` starts.
+    fn fetching(&self, release: Release);
+    /// Its archive's bytes so far, of how many when that is known.
+    fn progress(&self, done: u64, total: Option<u64>);
 }
 
 /// A release's version: its major, minor and patch numbers.
@@ -109,17 +172,20 @@ fn download_url(release: Release, name: &str) -> String {
 }
 
 /// The newest published release of `line`, or `None` when none is.
-pub(crate) fn newest(network: &dyn Network, line: (u64, u64)) -> Result<Option<Release>, String> {
+pub(crate) fn newest(network: &dyn Network, line: (u64, u64)) -> Result<Option<Release>, Failure> {
+    let unreadable = |why: &str| (Unfetched::Unreachable, why.to_string());
     let mut best: Option<Release> = None;
     for page in 1..=PAGES {
         let url =
             format!("https://api.github.com/repos/{REPOSITORY}/releases?per_page=100&page={page}");
-        let body = network.get(&url, LONGEST_LIST)?;
+        let body = network
+            .get(&url, LONGEST_LIST)
+            .map_err(|why| (Unfetched::Unreachable, why))?;
         let list: serde_json::Value = serde_json::from_slice(&body)
-            .map_err(|_| "GitHub's list of releases isn't JSON.".to_string())?;
+            .map_err(|_| unreadable("GitHub's list of releases isn't JSON."))?;
         let releases = list
             .as_array()
-            .ok_or_else(|| "GitHub's list of releases isn't a list.".to_string())?;
+            .ok_or_else(|| unreadable("GitHub's list of releases isn't a list."))?;
         for release in releases {
             let flagged = |key: &str| release.get(key).and_then(serde_json::Value::as_bool);
             if flagged("draft") != Some(false) || flagged("prerelease") != Some(false) {
@@ -206,48 +272,67 @@ impl Cache {
 
     /// `release`'s `jadpo`, fetched from `network` when it isn't kept yet:
     /// its archive checked against the SHA-256 the release publishes and
-    /// against `attest` before the binary is taken out. `fetching` is told
-    /// when a fetch starts.
+    /// against `attest` before the binary is taken out. `report` is told
+    /// how a fetch goes.
     pub(crate) fn install(
         &self,
         release: Release,
         network: &dyn Network,
         attest: &dyn Attest,
-        fetching: &dyn Fn(Release),
-    ) -> Result<PathBuf, String> {
-        let lock = self.lock(release)?;
+        report: &dyn Report,
+    ) -> Result<PathBuf, Failure> {
+        let unwritable = |why: String| (Unfetched::Uncached, why);
+        let unverified = |why: String| (Unfetched::Unverified, why);
+        let lock = self.lock(release).map_err(unwritable)?;
         let binary = self.binary(release);
         if binary.is_file() {
             return Ok(binary);
         }
-        fetching(release);
+        report.fetching(release);
         let name = archive_name(&self.target);
-        let published = network.get(&download_url(release, &format!("{name}.sha256")), 4096)?;
+        let published = network
+            .get(&download_url(release, &format!("{name}.sha256")), 4096)
+            .map_err(unfetched)?;
         let expected = String::from_utf8_lossy(&published)
             .split_whitespace()
             .next()
             .unwrap_or_default()
             .to_ascii_lowercase();
         if expected.len() != 64 || !expected.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Err(format!("its `{name}.sha256` doesn't hold a SHA-256."));
+            return Err(unverified(format!(
+                "its `{name}.sha256` doesn't hold a SHA-256."
+            )));
         }
-        let archive = network.get(&download_url(release, &name), LONGEST_ARCHIVE)?;
+        let archive = network
+            .get_reporting(
+                &download_url(release, &name),
+                LONGEST_ARCHIVE,
+                &|done, total| report.progress(done, total),
+            )
+            .map_err(unfetched)?;
+        report.progress(archive.len() as u64, Some(archive.len() as u64));
         let digest = sha256(&archive);
         if digest != expected {
-            return Err(format!(
+            return Err(unverified(format!(
                 "its download's SHA-256 is {digest}, not the {expected} the release publishes, so nothing in it was run."
-            ));
+            )));
         }
         attest.check(network, &release.to_string(), &digest)?;
         let wanted = binary_name(&self.target);
         let accepts = |entry: &str| member_is(entry, wanted);
         let bytes = if windows(&self.target) {
-            zip_member(&archive, &accepts)?
+            zip_member(&archive, &accepts)
         } else {
-            crate::toolchain::tar_gz_member(archive.as_slice(), &accepts)?
+            crate::toolchain::tar_gz_member(archive.as_slice(), &accepts)
         }
-        .ok_or_else(|| format!("its archive holds no `{wanted}`."))?;
-        let io = |error: std::io::Error| format!("`{}`: {error}.", self.folder.display());
+        .map_err(|why| unverified(format!("its archive doesn't unpack: {why}.")))?
+        .ok_or_else(|| unverified(format!("its archive holds no `{wanted}`.")))?;
+        let io = |error: std::io::Error| {
+            (
+                Unfetched::Uncached,
+                format!("`{}`: {error}.", self.folder.display()),
+            )
+        };
         let staging = self
             .folder
             .join(format!(".{release}-{}", std::process::id()));
@@ -415,12 +500,23 @@ pub(crate) mod tests {
     pub(crate) struct Attested(pub(crate) Option<&'static str>);
 
     impl Attest for Attested {
-        fn check(&self, _: &dyn Network, _: &str, _: &str) -> Result<(), String> {
+        fn check(&self, _: &dyn Network, _: &str, _: &str) -> Result<(), Failure> {
             match self.0 {
                 None => Ok(()),
-                Some(why) => Err(why.to_string()),
+                Some(why) => Err((Unfetched::Unverified, why.to_string())),
             }
         }
+    }
+
+    /// A report that keeps the releases it was told were fetched.
+    #[derive(Default)]
+    pub(crate) struct Told(pub(crate) Mutex<Vec<Release>>);
+
+    impl Report for Told {
+        fn fetching(&self, release: Release) {
+            self.0.lock().expect("told").push(release);
+        }
+        fn progress(&self, _: u64, _: Option<u64>) {}
     }
 
     /// The archive dist builds for `target`, holding `binary` as its
@@ -501,7 +597,10 @@ pub(crate) mod tests {
         assert_eq!(newest(&served, (0, 2)), Ok(Some(Release(0, 2, 10))));
         assert_eq!(newest(&served, (0, 4)), Ok(None));
         assert_eq!(newest(&served, (9, 9)), Ok(None), "a draft isn't published");
-        assert!(newest(&Served::default(), (0, 2)).is_err());
+        assert_eq!(
+            newest(&Served::default(), (0, 2)).map_err(|(kind, _)| kind),
+            Err(Unfetched::Unreachable)
+        );
     }
 
     #[test]
@@ -509,15 +608,13 @@ pub(crate) mod tests {
         let (_dir, cache) = cache();
         let mut served = Served::default();
         serve(&mut served, "0.2.3", TARGET, b"#!jadpo 0.2.3", None);
-        let told = Mutex::new(Vec::new());
+        let told = Told::default();
         let binary = cache
-            .install(Release(0, 2, 3), &served, &Attested(None), &|release| {
-                told.lock().expect("told").push(release)
-            })
+            .install(Release(0, 2, 3), &served, &Attested(None), &told)
             .expect("installs");
         assert_eq!(binary, cache.folder.join("0.2.3/jadpo"));
         assert_eq!(std::fs::read(&binary).expect("kept"), b"#!jadpo 0.2.3");
-        assert_eq!(*told.lock().expect("told"), [Release(0, 2, 3)]);
+        assert_eq!(*told.0.lock().expect("told"), [Release(0, 2, 3)]);
         assert_eq!(cache.held(), [Release(0, 2, 3)]);
         assert_eq!(cache.newest_of((0, 2)), Some(Release(0, 2, 3)));
         // Kept, it is never fetched again.
@@ -527,7 +624,7 @@ pub(crate) mod tests {
                 Release(0, 2, 3),
                 &Served::default(),
                 &Attested(Some("no")),
-                &|_| {},
+                &Told::default(),
             )
             .expect("kept");
         assert_eq!(served.asked.lock().expect("asked").len(), asked);
@@ -556,9 +653,10 @@ pub(crate) mod tests {
             b"#!evil",
             Some(&"0".repeat(64)),
         );
-        let refused = cache
-            .install(Release(0, 2, 3), &served, &Attested(None), &|_| {})
+        let (kind, refused) = cache
+            .install(Release(0, 2, 3), &served, &Attested(None), &Told::default())
             .expect_err("refused");
+        assert_eq!(kind, Unfetched::Unverified);
         assert!(refused.contains("SHA-256"), "{refused}");
         assert!(refused.contains("nothing in it was run"), "{refused}");
         assert_eq!(cache.held(), []);
@@ -575,10 +673,13 @@ pub(crate) mod tests {
                 Release(0, 2, 3),
                 &served,
                 &Attested(Some("not attested.")),
-                &|_| {},
+                &Told::default(),
             )
             .expect_err("refused");
-        assert_eq!(refused, "not attested.");
+        assert_eq!(
+            refused,
+            (Unfetched::Unverified, "not attested.".to_string())
+        );
         assert_eq!(cache.held(), []);
     }
 
@@ -592,7 +693,12 @@ pub(crate) mod tests {
             .map(|_| {
                 let (cache, served) = (cache.clone(), std::sync::Arc::clone(&served));
                 std::thread::spawn(move || {
-                    cache.install(Release(0, 2, 3), served.as_ref(), &Attested(None), &|_| {})
+                    cache.install(
+                        Release(0, 2, 3),
+                        served.as_ref(),
+                        &Attested(None),
+                        &Told::default(),
+                    )
                 })
             })
             .collect();

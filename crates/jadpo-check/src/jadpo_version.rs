@@ -84,42 +84,76 @@ pub fn declared(text: &str) -> Option<Declared> {
     })
 }
 
+/// Why the launcher couldn't run the release a project needs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Unfetched {
+    /// GitHub couldn't be reached, or didn't answer.
+    Unreachable,
+    /// No such release, or no release of the line, is published.
+    Unreleased,
+    /// The download failed its SHA-256 or attestation check.
+    Unverified,
+    /// There is no cache folder to keep it in.
+    Uncached,
+}
+
 /// The refusal of a project that needs another release than this `jadpo`,
 /// `wanted`: its line (`"0.2"`), or the exact release `jadpo.lock` pins
 /// (`"0.1.2"`) when `pinned`. `later` says whether it is later than this
 /// one, `at` points at what asks for it, and `fetch` is why the launcher
-/// couldn't run it instead, when it tried.
+/// couldn't run it instead, when it tried: what kind of failure, and the
+/// failure in words, a sentence.
 pub fn refusal(
     wanted: &str,
     later: bool,
     pinned: bool,
     at: Option<Span>,
-    fetch: Option<&str>,
+    fetch: Option<(Unfetched, &str)>,
 ) -> Diagnostic {
     let (rule, label) = if later {
         (&rule::TOOLCHAIN_VERSION_NEWER, "later than this jadpo")
     } else {
         (&rule::TOOLCHAIN_VERSION_OLDER, "earlier than this jadpo")
     };
-    let mut reason = if pinned {
+    // What failed comes first; why it had to be that release after.
+    let failed =
+        fetch.map(|(_, why)| format!("Jadpo {wanted} couldn't be fetched to run it: {why} "));
+    let why = if pinned {
         format!(
             "`jadpo.lock` pins Jadpo {wanted}, so every run of this project uses that release, and this jadpo is another (`jadpo --version` shows it)."
         )
     } else if later {
-        "`jadpo:` names the Jadpo release line the project is written for, and this jadpo is on an earlier one (`jadpo --version` shows it), so it stops here rather than misread what a later version added.".to_string()
+        format!(
+            "`jadpo:` names the release line the project is written for, {wanted}, which is later than this jadpo's (`jadpo --version` shows it), so it stops here rather than misread what a later version added."
+        )
     } else {
-        "`jadpo:` names the Jadpo release line the project is written for, and this jadpo is on a later one (`jadpo --version` shows it). While Jadpo is at 0.x a minor release may break an app, so it doesn't compile the project.".to_string()
+        format!(
+            "`jadpo:` names the release line the project is written for, {wanted}, which is earlier than this jadpo's (`jadpo --version` shows it). A 0.x minor release may break an app, so this jadpo doesn't compile the project itself."
+        )
     };
-    if let Some(fetch) = fetch {
-        reason.push_str(&format!(
-            " It couldn't fetch Jadpo {wanted} to run it instead: {fetch}"
-        ));
-    }
+    let next = match fetch.map(|(kind, _)| kind) {
+        None => format!(
+            "Run it with Jadpo {wanted}, which the installed `jadpo` fetches unless `JADPO_TOOLCHAIN` is `local`"
+        ),
+        Some(Unfetched::Unreachable) => {
+            "Run the command again once this machine can reach github.com".to_string()
+        }
+        Some(Unfetched::Unreleased) if pinned => {
+            "Run `jadpo toolchain unpin`, or pin a published release".to_string()
+        }
+        Some(Unfetched::Unreleased) => {
+            "Name a published line in `jadpo:`; https://github.com/jadpo-dev/jadpo/releases lists them".to_string()
+        }
+        Some(Unfetched::Unverified) => {
+            "Run the command again to fetch it afresh; if it fails the same way, don't use that release and report it at https://github.com/jadpo-dev/jadpo/security/policy".to_string()
+        }
+        Some(Unfetched::Uncached) => {
+            "Set `XDG_CACHE_HOME` to a folder jadpo may keep releases in, then run the command again".to_string()
+        }
+    };
     let diagnostic = Diagnostic::new(rule, format!("This project needs Jadpo {wanted}"))
-        .reason(reason)
-        .next(format!(
-            "Install Jadpo {wanted} from https://github.com/jadpo-dev/jadpo/releases, then run the command again"
-        ));
+        .reason(format!("{}{why}", failed.unwrap_or_default()))
+        .next(next);
     match at {
         Some(span) => diagnostic.at(span, label),
         None => diagnostic,

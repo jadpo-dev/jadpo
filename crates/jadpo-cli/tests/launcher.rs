@@ -143,14 +143,25 @@ fn toolchain_lists_and_removes_the_kept_releases_with_this_jadpo() {
     let output = fixture.jadpo(&fixture.project(), &["toolchain", "--json"], &[]);
     assert!(output.status.success(), "{}", text(&output.stderr));
     let document: serde_json::Value = serde_json::from_slice(&output.stdout).expect("JSON");
-    assert_eq!(
-        document["data"]["releases"],
-        serde_json::json!(["0.0.4", "0.0.2"])
-    );
+    let versions: Vec<&str> = document["data"]["releases"]
+        .as_array()
+        .expect("a list")
+        .iter()
+        .map(|release| release["version"].as_str().expect("a version"))
+        .collect();
+    assert_eq!(versions, ["0.0.4", "0.0.2"]);
     assert_eq!(document["data"]["running"], env!("CARGO_PKG_VERSION"));
     let output = fixture.jadpo(&fixture.project(), &["toolchain", "list"], &[]);
     let stdout = text(&output.stdout);
-    assert!(stdout.contains("  0.0.4\n  0.0.2\n"), "{stdout}");
+    // Each fake release is a script of a few bytes.
+    let rows: Vec<&str> = stdout
+        .lines()
+        .filter(|line| line.starts_with("  0.0."))
+        .collect();
+    assert_eq!(rows.len(), 2, "{stdout}");
+    assert!(rows[0].starts_with("  0.0.4 ") && rows[0].ends_with(" bytes"), "{stdout}");
+    assert!(rows[1].starts_with("  0.0.2 "), "{stdout}");
+    assert!(stdout.contains("  version"), "{stdout}");
     assert!(stdout.contains("2 releases kept"), "{stdout}");
     let output = fixture.jadpo(&fixture.project(), &["toolchain", "remove", "0.0.4"], &[]);
     assert!(output.status.success(), "{}", text(&output.stderr));

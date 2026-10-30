@@ -28,7 +28,7 @@ use sigstore_trust_root::{SIGSTORE_PRODUCTION_TRUSTED_ROOT, TrustedRoot};
 use sigstore_types::{Artifact, Bundle, HashAlgorithm, Sha256Hash};
 use sigstore_verify::{IdentityMatcher, VerificationPolicy};
 
-use crate::releases::{self, Network};
+use crate::releases::{self, Failure, Network, Unfetched};
 
 /// The issuer of every GitHub Actions workflow's certificates.
 const ACTIONS: &str = "https://token.actions.githubusercontent.com";
@@ -41,7 +41,7 @@ pub(crate) trait Attest {
     /// Whether `digest`, the SHA-256 in hex of release `version`'s archive,
     /// is attested as built by this repository's release workflow at that
     /// version's tag: why not, when it isn't.
-    fn check(&self, network: &dyn Network, version: &str, digest: &str) -> Result<(), String>;
+    fn check(&self, network: &dyn Network, version: &str, digest: &str) -> Result<(), Failure>;
 }
 
 /// The attestation GitHub holds for a release of `repository`
@@ -58,15 +58,18 @@ impl Sigstore {
 }
 
 impl Attest for Sigstore {
-    fn check(&self, network: &dyn Network, version: &str, digest: &str) -> Result<(), String> {
+    fn check(&self, network: &dyn Network, version: &str, digest: &str) -> Result<(), Failure> {
         let url = format!(
             "https://api.github.com/repos/{}/attestations/sha256:{digest}",
             self.repository
         );
-        let answer = network.get(&url, LONGEST)?;
-        let bundles = bundles(&answer)?;
+        let unverified = |why: String| (Unfetched::Unverified, why);
+        let answer = network.get(&url, LONGEST).map_err(releases::unfetched)?;
+        let bundles = bundles(&answer).map_err(|why| (Unfetched::Unreachable, why))?;
         if bundles.is_empty() {
-            return Err("GitHub holds no attestation for its archive.".to_string());
+            return Err(unverified(
+                "GitHub holds no attestation for its archive.".to_string(),
+            ));
         }
         let identity = workflow(self.repository, version);
         let mut last = String::new();
@@ -76,7 +79,9 @@ impl Attest for Sigstore {
                 Err(why) => last = why,
             }
         }
-        Err(format!("its archive's attestation doesn't verify: {last}"))
+        Err(unverified(format!(
+            "its archive's attestation doesn't verify: {last}."
+        )))
     }
 }
 
@@ -345,8 +350,11 @@ mod tests {
             .check(&dist(), "0.33.0", DIST_DIGEST)
             .expect_err("another tag");
         assert!(
-            refused.starts_with("its archive's attestation doesn't verify"),
-            "{refused}"
+            refused.0 == Unfetched::Unverified
+                && refused
+                    .1
+                    .starts_with("its archive's attestation doesn't verify"),
+            "{refused:?}"
         );
         // Nor did Jadpo's.
         assert!(

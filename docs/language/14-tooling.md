@@ -243,6 +243,16 @@ verifier against the public-good trusted root this `jadpo` carries,
 saying that this repository's `release.yml` built that archive at the
 release's tag. A download that fails either is refused and nothing is
 kept. Two commands that need the same release at once fetch it once.
+While it fetches, stderr shows a live line, `Fetching Jadpo 0.2.3 for
+aarch64-apple-darwin`, with a bar once the archive's size is known (a
+plain line where stderr doesn't animate), then the result:
+
+```text
+✓ Fetched Jadpo 0.2.3 (24.1 MB) and checked its SHA-256 and attestation in 2.3 s
+```
+
+and the command's own output follows; under `--json` nothing but the
+command's document is written.
 
 | Command | Does |
 |---|---|
@@ -250,6 +260,10 @@ kept. Two commands that need the same release at once fetch it once.
 | `jadpo toolchain remove <version>` | Deletes a kept release |
 | `jadpo toolchain pin` | Writes the release the project runs with into `jadpo.lock`, as its `jadpo version 0.1.2` line ([What is committed](18-records-and-manifest.md#what-is-committed-and-why)) |
 | `jadpo toolchain unpin` | Takes the pin out again |
+
+The pin is the lock's first line, and the lock keeps its format,
+`record lock 1`, which held the pin from the start. `jadpo toolchain` lists
+each kept release with its size, newest first.
 
 `list` and `remove` look after the cache, so they always run with the
 `jadpo` you installed. So does every command outside a project: there is

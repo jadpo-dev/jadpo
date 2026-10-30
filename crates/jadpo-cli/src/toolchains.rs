@@ -93,10 +93,22 @@ fn list(call: &Call) -> Reply {
     if let Some(folder) = &folder {
         screen.push(Block::fields(vec![("cache", folder.clone())]));
     }
+    let sizes: Vec<u64> = held
+        .iter()
+        .map(|release| {
+            cache
+                .as_ref()
+                .and_then(|cache| std::fs::metadata(cache.binary(*release)).ok())
+                .map_or(0, |meta| meta.len())
+        })
+        .collect();
     if !held.is_empty() {
-        let mut table = Table::new(["version"]);
-        for release in &held {
-            table = table.row(vec![Cell::text(release.to_string())]);
+        let mut table = Table::new(["version", "size"]).right(1);
+        for (release, size) in held.iter().zip(&sizes) {
+            table = table.row(vec![
+                Cell::text(release.to_string()),
+                Cell::muted(crate::build::size(*size as usize)),
+            ]);
         }
         screen.push(Block::Table(table));
     }
@@ -109,7 +121,10 @@ fn list(call: &Call) -> Reply {
         Block::summary(
             Outcome::Success,
             headline,
-            [Fact::plain(format!("this jadpo is {VERSION}"))],
+            held.is_empty()
+                .then(|| Fact::plain("one is kept when a project needs another release"))
+                .into_iter()
+                .chain([Fact::plain(format!("this jadpo is {VERSION}"))]),
         )
         .with_plain_headline("toolchain list"),
     );
@@ -118,7 +133,15 @@ fn list(call: &Call) -> Reply {
         ("cache", folder.map_or(Json::Null, Json::from)),
         (
             "releases",
-            Json::array(held.iter().map(|release| release.to_string())),
+            Json::array(held.iter().zip(&sizes).map(|(release, size)| {
+                Json::object([
+                    ("version", Json::from(release.to_string())),
+                    (
+                        "bytes",
+                        Json::from(i64::try_from(*size).unwrap_or(i64::MAX)),
+                    ),
+                ])
+            })),
         ),
     ]);
     Reply::screen(screen, data)
@@ -144,7 +167,7 @@ fn remove(call: &Call, version: &str) -> Reply {
         ),
         Ok(false) => Reply::failed(arguments(
             format!("Jadpo {release} isn't kept"),
-            "Only a release a project needed is kept, and this one isn't.",
+            "The cache holds only the releases projects needed, and this isn't one of them.",
             "Run `jadpo toolchain list` to see the releases kept",
         )),
         Err(why) => Reply::failed(
@@ -239,12 +262,19 @@ fn pin(call: &Call, pinning: bool) -> Reply {
         (false, true) => format!("`{}` pins no release", jadpo_db::LOCK),
         (false, false) => format!("Took the pin out of `{}`", jadpo_db::LOCK),
     };
+    let mut screen = Screen::new().with(Block::Status {
+        outcome: Outcome::Success,
+        text,
+        rows: Vec::new(),
+    });
+    if !unchanged {
+        screen.push(Block::hint(
+            "git diff jadpo.lock",
+            "shows the change, to commit with the code",
+        ));
+    }
     Reply::screen(
-        Screen::new().with(Block::Status {
-            outcome: Outcome::Success,
-            text,
-            rows: Vec::new(),
-        }),
+        screen,
         Json::object([(
             "pinned",
             if pinning {
