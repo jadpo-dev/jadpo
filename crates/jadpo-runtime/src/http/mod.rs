@@ -1957,11 +1957,21 @@ pub async fn test_request(
             request.headers.push(("Idempotency-Key".to_string(), key));
         }
     }
+    let started = ctx.started();
     if let Some(caller) = caller {
-        let started = ctx.started();
         let headers =
             identity::test_credentials(ctx, app.table, started.auth(), route, caller).await?;
         request.headers.extend(headers);
+    }
+    // The app's own site, as a browser's request from it says, so a route
+    // that checks `Origin`, a generated confirmation's among them, takes it
+    // (area 8, "In development and tests").
+    if request.header("origin").is_none()
+        && let Some(origin) = started.auth().origin()
+    {
+        request
+            .headers
+            .push(("origin".to_string(), origin.to_string()));
     }
     Ok(Some(request))
 }
@@ -2033,8 +2043,51 @@ fn written_request(app: &App<'_>, route: u32, args: &[Value]) -> Option<Request>
                 .headers
                 .push(("content-type".to_string(), "application/json".to_string()));
         }
+    } else if matches!(plan.run, Run::MagicLink(_)) {
+        // A generated magic-link route's built-in input (area 8, "In
+        // development and tests"): its fields as the body names them, a
+        // locale by its name and each left `none` out.
+        let value = values.next().cloned().unwrap_or(Value::None);
+        let mut object = serde_json::Map::new();
+        if let Value::Record(record) = &value {
+            for (name, field) in &record.fields {
+                let json = match field {
+                    Value::Text(text) => serde_json::Value::from(&**text),
+                    Value::Variant(variant) => serde_json::Value::from(&*variant.name),
+                    _ => continue,
+                };
+                object.insert(name.to_string(), json);
+            }
+        }
+        request.body = serde_json::Value::Object(object).to_string().into_bytes();
+        request
+            .headers
+            .push(("content-type".to_string(), "application/json".to_string()));
     }
     Some(request)
+}
+
+/// What a generated magic-link route answers a route test with, read back
+/// from its body as the built-in type the API record names: the
+/// confirmation's `MagicLinkConfirmed` and the redemption's
+/// `MagicLinkToken`, each one text field.
+fn magic_link_output(step: jadpo_std::http::MagicLinkStep, body: &[u8]) -> Value {
+    let (ty, field) = match step {
+        jadpo_std::http::MagicLinkStep::Confirm => {
+            (jadpo_std::http::MAGIC_LINK_CONFIRMED, "return_to")
+        }
+        jadpo_std::http::MagicLinkStep::Redeem => (jadpo_std::http::MAGIC_LINK_TOKEN, "token"),
+        jadpo_std::http::MagicLinkStep::Request => return Value::None,
+    };
+    match serde_json::from_slice::<serde_json::Value>(body)
+        .ok()
+        .as_ref()
+        .and_then(|json| json.get(field))
+        .and_then(serde_json::Value::as_str)
+    {
+        Some(text) => Value::record(ty, vec![(field.into(), Value::text(text))]),
+        None => Value::None,
+    }
 }
 
 /// A JSON value as text: a string's contents, anything else as written.
@@ -2095,8 +2148,11 @@ pub fn response_value(
             ],
         );
     }
-    let output = match plan.and_then(|plan| plan.output) {
-        Some(codec) if (200..300).contains(&response.status) => {
+    let output = match plan.map(|plan| (plan.output, &plan.run)) {
+        Some((None, Run::MagicLink(step))) if (200..300).contains(&response.status) => {
+            magic_link_output(*step, &response.body)
+        }
+        Some((Some(codec), _)) if (200..300).contains(&response.status) => {
             jadpo_value::json::parse(&response.body)
                 .and_then(|(json, numbers)| {
                     app.codecs.read(

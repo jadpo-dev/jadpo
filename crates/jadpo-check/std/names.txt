@@ -15,7 +15,10 @@
 # `SignInRefused`, `SignInCodesDisabled`, `PasskeyAdded` and
 # `PasskeyRemoved` are the events sign-in publishes, which only the
 # runtime emits (area 8, "Events"), and `TestPasskey` the device
-# `test_passkeys.register` gives a route test.
+# `test_passkeys.register` gives a route test. `MagicLinkAsk`,
+# `MagicLinkConfirmation` and `MagicLinkCode` are what a route test sends
+# the generated magic-link routes, and `MagicLinkConfirmed` and
+# `MagicLinkToken` what they answer (area 8, "In development and tests").
 # `SentEmail` is one email a test sent, as `email.sent` lists it (area
 # 16, "Email"; chunk 7.3c), its fields in `jadpo-std`'s `email`.
 # `MagicLinkEmail` is what the application's own sign-in email picks its
@@ -31,7 +34,8 @@ Page Nearest
 File FileContents Principal Response Access AiStream
 IssuedToken IssuedKey DecodeProblem FirstSignIn MagicLinkEmail MagicLinkRequest
 MagicLinkRedeemed SignedIn SignInRefused SignInCodesDisabled PasskeyAdded
-PasskeyRemoved TestPasskey SentEmail
+PasskeyRemoved TestPasskey SentEmail MagicLinkAsk MagicLinkConfirmation
+MagicLinkCode MagicLinkConfirmed MagicLinkToken
 BatchRun BatchProgress RowProblem ImportSummary ExportSummary
 Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol
 FieldAccess OnDelete Generated FieldChange

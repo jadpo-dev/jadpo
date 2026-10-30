@@ -232,9 +232,11 @@ test "a due date in the past is rejected" {
 The request names its route by `method:` and by its path as
 `jadpo routes` prints it. Each placeholder in the path gets its value in
 `params:`, as in `path: "/todos/{todo_id}"` with
-`params: { todo_id: todo.id }`. `input:` is the route's `Input`. The
+`params: { todo_id: todo.id }`. `input:` is the route's `Input`. A
+generated magic-link route takes the built-in input the API record names
+([Magic links in tests](08-identity.md#magic-links-in-tests)). The
 request goes through the runtime's HTTP component exactly as a client's
-would.
+would, and carries your app's own `Origin`, as a browser's does.
 
 `as:` signs someone in for the request, through the application's real
 authentication: a browser session, an API token or, for

@@ -638,6 +638,23 @@ Division by zero can't happen, because a divisor's type must exclude zero
 construction that fails at run time never reaches the client as a fault
 either, because it needs an `attempt`.
 
+### A bug in Jadpo
+
+A defect the checker should have ruled out is a bug in Jadpo, not in your
+app. The client gets the same `500 internal_fault` as for any defect, and
+nothing about Jadpo, the version or the cause is in the response. The
+operator's `operation.failed` line adds `bug_in_jadpo: true` and `report`,
+the address of the issue form, beside the build's version, the
+`request_id` and the `.jadpo` frames. It never holds a request body, a
+header or a setting value. A fault that is your own code's, such as an
+overflow, has `bug_in_jadpo: false` and `report: null`.
+
+The `jadpo` command, `jadpo dev` and `jadpo test` aren't deployed apps. A
+panic in them prints a screen that says it is a bug in Jadpo and writes a
+crash file for you to read and attach to a report ([When Jadpo itself
+fails](14-tooling.md#when-jadpo-itself-fails)). Jadpo sends nothing
+anywhere.
+
 ## Concealing records
 <!-- topic: concealing-records -->
 

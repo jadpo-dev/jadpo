@@ -1349,6 +1349,36 @@ make the fix itself.
 - JSON gives line and column as well as byte offsets, and uses one naming
   style for its keys.
 
+### When Jadpo itself fails
+
+Sometimes the fault is Jadpo's. If `jadpo` panics, including inside the
+interpreter that `jadpo dev` and `jadpo test` run, it says so first, so
+you don't hunt for a mistake in your own code. This is the screen:
+
+```text
+✗ failed  This is a bug in Jadpo, not in your code
+  ran       jadpo check
+  version   jadpo 0.1.0 · aarch64-macos
+  in        crates/jadpo-check/src/lib.rs:12
+
+What to do next
+  1. Read the crash file. It can quote your project.
+     /Users/ada/.cache/jadpo/crashes/2026-10-30T14-02-31Z.txt
+  2. Report it with this link, attaching the file.
+     https://github.com/jadpo-dev/jadpo/issues/new?template=bug.yml&title=Internal%20error%20in%20jadpo%20check&version=0.1.0%20aarch64-macos
+```
+
+The screen names only the command word, never an argument, and never the
+panic message. The crash file holds those, so it can quote your project:
+read it before you attach it. Jadpo writes it under `$XDG_CACHE_HOME/jadpo/
+crashes/`, or `~/.cache/jadpo/crashes/`, and keeps the newest 20. It holds
+the version, the platform, the arguments (`jadpo config` keeps only its
+subcommand), the panic message and a backtrace. Jadpo sends nothing
+anywhere.
+
+A deployed app is different: the client sees only `500 internal_fault`, and
+the log says more ([What it logs](#what-it-logs); [Failures](04-failures.md#a-bug-in-jadpo)).
+
 ## The `build/` folder
 <!-- topic: the-build-folder -->
 
@@ -2143,7 +2173,9 @@ with the stamp's fields (`build`, `commit`, `modified`, `compiler`,
   `problems`, each store it couldn't work in, `unbuilt` and `ms`;
 - `operation.failed`, for a fault behind a 500, with its classification,
   route, `request_id` and `.jadpo` frames ([Failures](04-failures.md),
-  [Debugging and review](17-debugging-and-review.md));
+  [Debugging and review](17-debugging-and-review.md)). When the fault is a
+  bug in Jadpo, `bug_in_jadpo` is `true` and `report` holds the issue
+  form's address; otherwise they are `false` and `null`;
 - `runtime.stopped`.
 
 The rest of a deployable's log comes with telemetry ([Built-in

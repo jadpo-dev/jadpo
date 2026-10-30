@@ -26,8 +26,11 @@ pub const SENT_EMAIL: &str = "SentEmail";
 
 /// What a `SentEmail` holds, in order: the address it went to, the one it
 /// is from, its subject, its HTML and its text (each `none` without that
-/// template), every link in it, and each attachment's file name.
-pub const SENT_EMAIL_FIELDS: [&str; 7] = [
+/// template), every link in it, each attachment's file name, and, for the
+/// sign-in email, the link's token and the code it carries (`none` for
+/// any other), which a route test posts to the confirmation (area 8, "In
+/// development and tests").
+pub const SENT_EMAIL_FIELDS: [&str; 9] = [
     "to",
     "from",
     "subject",
@@ -35,7 +38,15 @@ pub const SENT_EMAIL_FIELDS: [&str; 7] = [
     "text",
     "links",
     "attachments",
+    "sign_in_token",
+    "sign_in_code",
 ];
+
+/// The fields a caught sign-in email's message carries beside its parts,
+/// only where the host catches the mail in place of sending it: the
+/// link's token and the code, read back as `SentEmail`'s.
+pub const SIGN_IN_TOKEN: &str = "sign_in_token";
+pub const SIGN_IN_CODE: &str = "sign_in_code";
 
 /// The fields of the message the runtime sends a driver, in order:
 /// `from`, `to`, `subject`, `html` (`none` without an `.html` template),

@@ -783,6 +783,18 @@ Read only what a task needs.
   providers, background work and AI. Each passes its tests.
 - **The rules.** Where anything disagrees with the reference, the
   reference wins.
+- **A bug in Jadpo.** If the compiler crashes, rejects code these docs say
+  is valid, accepts code they say it refuses, or a page is wrong, read the
+  error's page first. Then cut the problem down to the smallest project
+  that shows it and ask your user before filing anything: an issue is
+  published under their name. Give them a drafted report, or a link to the
+  [issue form](https://github.com/jadpo-dev/jadpo/issues/new?template=bug.yml)
+  with `title=` filled in. Put no secrets, settings values or other app
+  code in it. After a crash, `~/.cache/jadpo/crashes/` holds a file for the
+  report; your user reads it before it is attached. Never post on your own.
+  A suspected security hole goes to the private route in
+  the repository's `SECURITY.md` (GitHub's "Report a vulnerability"
+  under Security), never to a public issue.
 
 ## Not built yet
 

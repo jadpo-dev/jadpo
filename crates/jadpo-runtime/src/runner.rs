@@ -751,7 +751,7 @@ async fn attempt(
             };
             match rendered {
                 Err(outcome) => Ok(outcome),
-                Ok(message) => {
+                Ok((message, sign_in)) => {
                     let marked = database
                         .query_once(outbox::MARK_SENDING, &[id.clone(), counted.clone()])
                         .await;
@@ -807,6 +807,9 @@ async fn attempt(
                                         .unwrap_or_default()
                                         .to_string()
                                 }),
+                                // Only a host that catches the mail is
+                                // handed the sign-in email's token and code.
+                                sign_in: sign_in.filter(|_| caught),
                             }));
                             send(ctx, call, budget, within).await
                         }

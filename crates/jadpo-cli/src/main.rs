@@ -11,6 +11,10 @@ fn main() -> ExitCode {
         .map(|arg| arg.to_string_lossy().into_owned())
         .collect();
     let env = Environment::from_process();
+    // First, so a panic in the launcher is caught too. A release handed
+    // over to replaces this process (Unix) or runs as a child that prints
+    // its own screen, so only one screen is ever printed.
+    jadpo_cli::crash::install(args.clone(), Environment::from_process());
     // The release the project names runs the command, when it isn't this
     // one (area 14, "Which jadpo runs").
     match jadpo_cli::launcher::launch(&args, &env) {

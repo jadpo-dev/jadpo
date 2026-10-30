@@ -298,15 +298,7 @@ D1 first: the site starts once D1 has merged.
   handle failures, write tests, deploy to Workers, deploy natively), each
   compiled by the gate and linking the reference. They replace the site's
   own `src/data/tasks.json`.
-- [ ] **D12 What the Learn path found** `opus · high`, before 0.1.0, with
-  a failing test first: a route test can't call the generated
-  `/auth/magic-link` routes, which area 8, "In development and tests",
-  says it can. Waits: a maintainer's choice of the inputs a test builds
-  for them and how it reads the link's token and the code from
-  `email.sent`. Built: a deployable's settings and its required
-  secrets, [area 14](language/14-tooling.md), "What is built"; `help:`
-  lines and the bundle's code fences, [documentation](documentation.md),
-  "Where the content lives" and "The bundle".
+- [x] **D12 What the Learn path found**: [area 8](language/08-identity.md), "In development and tests"; [area 14](language/14-tooling.md), "What is built"; [documentation](documentation.md), "Where the content lives" and "The bundle".
 - [ ] **D13 Error pages that explain** `opus · high`: every page in
   `docs/errors/` rewritten to the format in [docs/writing.md](writing.md),
   "How an error page reads". Each says what happened in one plain
