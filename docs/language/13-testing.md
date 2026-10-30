@@ -1039,9 +1039,11 @@ test "an unscripted call answers with the generated default" {
 
 ### Values a fake answers with
 
-A scripted value is written as the provider would send it, its
-`wire_name:` spellings and `output_at:` envelope included. It is read back
-through the operation's real decoding, as a real answer is.
+A test scripts a value of the operation's output type, as Jadpo code
+sees it. The fake then encodes it as the provider would send it, with the
+package's `wire_name:` spellings and `output_at:` envelope, and reads it
+back through the operation's real decoding, as a real answer is. So a
+scripted answer exercises the package's encoders and decoders too.
 
 So is a generated default. It is a value of the output type that keeps
 the type's rules:
@@ -1071,9 +1073,10 @@ unless the test scripts it:
 fake's `lost` answers as a call that may have acted, and its `in_use` as
 `unavailable`. Each keeps keys as the next section says.
 
-A scripted answer is the clean output type or one of the operation's
-provider failures, never the wire shape; the package's own tests cover its
-decoding. `jadpo calls script` sets the same answers by hand in
+A scripted answer is a value of the clean output type or one of the
+operation's provider failures. The test never writes the wire shape: the
+fake encodes the value and decodes it, as "Values a fake answers with"
+says. `jadpo calls script` sets the same answers by hand in
 `jadpo dev` ([Debugging and review](17-debugging-and-review.md)).
 
 #### Several changing calls
