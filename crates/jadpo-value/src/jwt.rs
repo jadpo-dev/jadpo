@@ -769,7 +769,7 @@ mod tests {
             Some("clinic"),
             NOW,
         );
-        assert!(ok.is_ok(), "{ok:?}");
+        assert!(ok.is_ok(), "the WebCrypto key checks the token");
         // A key for signing only is read, and never tried.
         let signing = read_jwk(&webcrypto(serde_json::json!(["sign"]))).expect("a Jwk");
         assert!(!checks_signatures(&signing));
