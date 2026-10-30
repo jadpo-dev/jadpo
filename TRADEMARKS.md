@@ -16,6 +16,6 @@ that it is Jadpo or that the Jadpo project endorses it. It may say that it is
 based on Jadpo.
 
 Ask first, by opening an issue at
-[richardwillars/jadpo](https://github.com/richardwillars/jadpo), before using
+[jadpo-dev/jadpo](https://github.com/jadpo-dev/jadpo), before using
 the name in the name of a product, service, company or domain, or selling
 anything under it.

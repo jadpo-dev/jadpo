@@ -80,7 +80,7 @@ The [roadmap](docs/roadmap.md) is the list of what remains, and
 You need Git and Rust through `rustup`; the repository pins the toolchain.
 
 ```sh
-git clone https://github.com/richardwillars/jadpo.git && cd jadpo
+git clone https://github.com/jadpo-dev/jadpo.git && cd jadpo
 cargo build --release --locked -p jadpo-cli
 target/release/jadpo test examples/01-first-project
 ```
@@ -92,7 +92,7 @@ databases, authentication, integrations and AI.
 
 - [CONTRIBUTING.md](CONTRIBUTING.md): setup, the verification gate and working rules.
 - [SECURITY.md](SECURITY.md): how to report a vulnerability.
-- [Issues](https://github.com/richardwillars/jadpo/issues) for bugs and questions.
+- [Issues](https://github.com/jadpo-dev/jadpo/issues) for bugs and questions.
 
 Code is [Apache 2.0](LICENSE); documentation is [CC BY 4.0](docs/LICENSE.md).
 See [TRADEMARKS.md](TRADEMARKS.md) for use of the Jadpo name.

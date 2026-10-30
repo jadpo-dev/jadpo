@@ -207,13 +207,23 @@ class Bundle(unittest.TestCase):
         self.assertEqual(by_id['a.b']['summary'], 'A is b')
         self.assertEqual(by_id['jadpo-check']['links'], ['a.b'])
 
+    def test_a_renamed_topic_keeps_its_old_ids(self):
+        index, files, _ = self.build(two=AREA_TWO.replace('<!-- topic: twos-part -->',
+                                                          '<!-- topic: the-part (was twos-part, two-part) -->'))
+        by_id = {e['id']: e for e in index['pages']}
+        self.assertEqual(by_id['the-part']['aliases'], ['twos-part', 'two-part'])
+        self.assertNotIn('aliases', by_id['two'])
+        self.assertNotIn('twos-part', by_id)
+        self.assertIn('topics/the-part.md', files)
+        self.assertNotIn('topic:', files['topics/the-part.md'])
+
     def test_a_topic_is_a_page_of_its_own(self):
         _, files, _ = self.build()
         shown = files['topics/shown.md']
         self.assertTrue(shown.startswith('# Shown\n\nSee '), shown)
         self.assertIn('[two\'s part](twos-part.md#the-part)', shown)
         self.assertIn('[the rule](../errors/a.b.md)', shown)
-        self.assertIn('[the notes](https://github.com/richardwillars/jadpo/blob/main/docs/language/notes/01-one.md)', shown)
+        self.assertIn('[the notes](https://github.com/jadpo-dev/jadpo/blob/main/docs/language/notes/01-one.md)', shown)
         self.assertIn('[later](shown.md#later)', shown)
         self.assertIn('`[not a link](nowhere.md)`', shown)
         self.assertIn('## Later', shown)
@@ -307,6 +317,21 @@ class Structure(unittest.TestCase):
                                                                                          '<!-- topic: Two -->')))
         self.assertIn('topic ID "shown" is used by 01-one.md "Shown", 02-two.md "Two\'s part"', found)
         self.assertIn('topic ID "Two" is not lowercase kebab case', found)
+
+    def test_an_old_id_is_kebab_case_and_used_once(self):
+        found = ' '.join(self.problems(two=AREA_TWO.replace('<!-- topic: twos-part -->',
+                                                            '<!-- topic: the-part (was shown, Old) -->')))
+        self.assertIn('topic ID "Old" is not lowercase kebab case', found)
+        found = ' '.join(self.problems(two=AREA_TWO.replace('<!-- topic: twos-part -->',
+                                                            '<!-- topic: the-part (was shown) -->')))
+        self.assertIn('topic ID "shown" is used by 01-one.md "Shown", 02-two.md "Two\'s part" (its old ID)', found)
+
+    def test_an_area_page_names_no_area_or_question_by_number(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, pages, _ = tree(Path(tmp), two=AREA_TWO + '\nAs area 9\'s policy says (question 2), and '
+                                                          '`area 3` in code.\n\n```text\narea 4\n```\n')
+        self.assertEqual(docs.numbered_references(pages[0]), [])
+        self.assertEqual([text for _, text in docs.numbered_references(pages[1])], ['area 9', 'question 2'])
 
     def test_an_id_stands_after_a_heading(self):
         found = ' '.join(self.problems(two=AREA_TWO + '\n<!-- topic: stray -->\n'))
@@ -453,7 +478,7 @@ class Learn(unittest.TestCase):
             '# A page\n<!-- topic: a-page -->\n\nAs area 8 says, and question 11.\n\n'
             'This is not built yet.\n\nDecided. It was carried to area 9.\n\n'
             '[examples](../../examples/README.md) and '
-            '[code](https://github.com/richardwillars/jadpo/blob/main/README.md).\n\n'
+            '[code](https://github.com/jadpo-dev/jadpo/blob/main/README.md).\n\n'
             '```jadpo fragment\nx\n```\n\n## Not built yet\n\nNone.\n\n## After\n\nMore.\n')
         for expected in ('"area 8"', '"question 11"', 'build status', 'spec vocabulary',
                          'links a file in this repository', 'fragment', '`## Not built yet` is the last section'):
@@ -473,8 +498,8 @@ class Links(unittest.TestCase):
             (root / 'docs').mkdir()
             (root / 'docs/a.md').write_text('# A\n')
             (root / 'llms.txt').write_text(
-                '- [A](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/a.md)\n'
-                '- [B](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/b.md)\n'
+                '- [A](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/a.md)\n'
+                '- [B](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/b.md)\n'
                 '- [Elsewhere](https://example.com/c.md)\n')
             problems = docs.check_links([root / 'llms.txt'], root)
             self.assertEqual(len(problems), 1)
