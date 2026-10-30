@@ -602,10 +602,18 @@ acceptance {
 | Installing a third party's package from git rather than the registry (an unverified publisher) | `PackageChange` | [Integrations](11-integrations.md) |
 | A connection that receives personal data but can't erase it, with the reason the data stays | `ErasureNotPossible` | [Integrations](11-integrations.md), [Erasure](15-personal-data.md#erasure) |
 | A threshold raised or removed | `ThresholdChange` | [Monitoring thresholds](16-built-in-services.md#monitoring-thresholds) |
+| Declining an error the compiler's catalogue marks as a security rule, such as `policy.call_ungranted` | `PolicyChange` | [Writing a decline](01-project-layout-and-modules.md#writing-a-decline) |
+| A new outside host the app can send data to: a provider's host, a connection's `host:`, an `outbound:` grant or an email relay | `NetworkChange` | [Integrations](11-integrations.md) |
 
 Changes that only add need no acceptance: a new route, a new optional
 input field, a new output field, tightened policy. The diff still shows
 them.
+
+Two records give these checks a before side, and put what changed in
+front of the reviewer: `access.jadpo_record`, who can do what, from the
+permissions report, and `network.jadpo_record`, every outside host the app
+can reach. `jadpo check` keeps them at the root beside `api/`, as it
+keeps the API record. Not built yet.
 
 Acceptances aren't built yet ([What is built](#what-is-built)).
 
