@@ -51,7 +51,7 @@ error: This `match` doesn't handle `LookupRefused`
   reason: `lookup(...)` can fail with `LookupMissing` and `LookupRefused`, and a `match` on its outcome has an arm for every one: a value, `reject` or `propagate`.
   next: Add an arm for `LookupRefused` (agent)
   rule: failure.outcome_missing_arm
-  help: docs/errors/failure.outcome_missing_arm.md
+  help: https://jadpo.dev/docs/errors/failure.outcome_missing_arm
 
 check failed: 1 error, 1 file
 ```
