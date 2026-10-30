@@ -408,14 +408,19 @@ time.
   reminder schedule over a batch, and route tests for each, with no code
   outside Jadpo. Before 10.2's measured runs, since it changes what they
   measure.
-- [ ] **A8 Acceptances for policy and API changes** `opus · xhigh` after A2:
-  area 18, "Acceptances", for the `PolicyChange` and `ApiChange` kinds:
-  `jadpo check` fails on any widening of who can do what (a route made
-  public included), an API break and an event record's break until an
-  added acceptance lists it with a reason; `jadpo acceptance new`; CODEOWNERS on `acceptances/`
-  and `api/`. An outside agent made a route public on request and nothing
-  stopped it (Richard, 2026-10-30). The other kinds and the approval
-  report stay in "After the first build", item 6.
+- [ ] **A8 Acceptances for what exists today** `opus · xhigh` after A2:
+  area 18, "Acceptances": `jadpo acceptance new`, matching and the
+  `///` reason, CODEOWNERS on `acceptances/` and `api/`, and the kinds
+  whose features are built: any widening of who can do what (a route
+  made public included) and declining a security rule (`PolicyChange`);
+  an API break and an event record's break (`ApiChange`); a domain
+  created or renamed (`DomainChange`); a new outside host
+  (`NetworkChange`); a sign-in setting loosened past its limit (area 8);
+  a third party's package installed from git (`PackageChange`).
+  `access.jadpo_record` and `network.jadpo_record` give them a before
+  side. An outside agent made a route public on request and nothing
+  stopped it (Richard, 2026-10-30). The kinds whose features aren't built
+  yet are named on the items below that build them.
 - [ ] **A7 Sign-in providers** `opus · xhigh`: area 8, `sign_in:`'s
   `providers:` (Google first, then Microsoft, through `Driver.oidc`) and
   `on_first_sign_in:` for provider and external-token sign-in. Moved here
@@ -440,13 +445,18 @@ time.
    19's prose stays as the explanation.
 3. Personal data (area 15), with encrypted fields and keys held as data
    (area 19, "Encrypted fields" and "Language gaps this page depends on") and `crypto.verify_totp`, which waits on
-   them.
+   them; and the `ErasureNotPossible` acceptance for a connection that
+   receives personal data and can't erase it.
 4. Remaining built-in services (area 16): flags, files, audit, search,
-   telemetry thresholds.
+   telemetry thresholds, with the `ThresholdChange` acceptance for a
+   threshold raised or removed.
 5. Debugging and review (area 17): `why`, timelines, `test new --from`,
    `call`.
-6. Records and acceptances (area 18): the approval report, acceptance
-   matching, package upgrade plans.
+6. Records and acceptances (area 18): the approval report, with
+   unaccepted wording (area 10) in it; package upgrade plans, with the
+   `PackageChange` acceptance for a risky upgrade; and `jadpo migrate
+   new`'s removals (an entity removed, one moved to another store, a
+   retired column dropped), with the `DataChange` acceptance.
 7. Tooling completeness (area 14): interactive tests, `rename` (refusing a
    name already in use, 2026-10-16), `impact`,
    full completion.
@@ -456,7 +466,9 @@ time.
    search, `bot_check` and `scanning` capabilities; the disk driver;
    telemetry's `telemetry:` section, custom metrics and the local
    `jadpo traces`, `metrics` and `logs`; `jadpo watch`; publishing packages (`jadpo package new`, `check`,
-   `publish`, git-tag versions, publisher trust); packages from other Jadpo
+   `publish`, git-tag versions, publisher trust); a service's new or
+   changed container image and its `outbound:` grants, each with a
+   `PackageChange` acceptance; packages from other Jadpo
    apps and the cross-app break check; choosing a provider when deploying,
    when an app other people run needs it.
 9. Product work: the developer console and MCP, the graph review UI
