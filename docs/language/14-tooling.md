@@ -919,82 +919,109 @@ library changes its calls, so that stays a change you make by hand.
 ## Which jadpo runs
 <!-- topic: which-jadpo-runs -->
 
-A project is written for one release line of Jadpo, and while Jadpo is at
-0.x a minor release may break an app. So the `jadpo` you type must be the
-line the project names, whatever else is installed.
+A project is written for one release line of Jadpo, such as 0.1, and
+while Jadpo is at 0.x a minor release may break an app. So the `jadpo`
+that runs a command is the one the project names, whatever you have
+installed. You don't do anything for that.
 
-Every `jadpo` you install (Homebrew, the npm package `@jadpo/jadpo`, or the
-shell or PowerShell installer) is a whole `jadpo` that also launches
-others, as the `go` command does. Before a command runs, it reads the
-project the command runs in: the folder you run it from, walked up to
-`app.jadpo`, or else the first argument that names a file or folder in a
-project. It reads the line from `application { jadpo: "0.1" }`
-([The root](01-project-layout-and-modules.md#the-root)) and, if
-`jadpo.lock` pins one, the exact release. When that is its own release,
-or the project names no line, it runs the command itself. Otherwise it
-runs the release the project needs with the same arguments and in the
-same folder, and exits as that does:
+The `jadpo` you install (Homebrew, the npm package `@jadpo/jadpo`, or the
+shell or PowerShell installer) is a whole `jadpo` that can also start
+another release, as the `go` command does. Before a command runs, it
+finds the project: the folder you run it from, walked up to `app.jadpo`,
+or else the first argument that names a file or folder in a project. It
+reads the line from `application { jadpo: "0.1" }`
+([The root](01-project-layout-and-modules.md#the-root)).
 
-- the release `jadpo.lock` pins, so a build can be reproduced;
-- else the newest release of the line it keeps;
-- else the newest release of the line published on GitHub, fetched once.
+When the project is on the installed `jadpo`'s own line, or names no
+line, the installed `jadpo` runs the command. Otherwise it runs the
+release the project needs, in the same folder and with the same
+arguments, and exits as that release does. It picks:
 
-A project on its own line runs with the `jadpo` you installed, so a newer
-patch of that line is used once you install it, or pin it.
+1. the release `jadpo.lock` pins, if there is one (see "Pin a release"
+   below);
+2. else the newest release of the line it already keeps;
+3. else the newest release of the line published on GitHub, which it
+   fetches once.
 
-A release is fetched from `github.com/jadpo-dev/jadpo`'s releases into
-`jadpo/releases/<version>/` in your cache folder (`$XDG_CACHE_HOME`, else
-`~/.cache`, else `%LOCALAPPDATA%` on Windows), and nothing is written
-anywhere else. Before anything in it runs, the archive's SHA-256 has to be
-the one the release publishes beside it, and its GitHub artifact
-attestation has to verify: a Sigstore bundle, checked with Sigstore's own
-verifier against the public-good trusted root this `jadpo` carries,
-saying that this repository's `release.yml` built that archive at the
-release's tag. A download that fails either is refused and nothing is
-kept. Two commands that need the same release at once fetch it once.
+A project on the installed `jadpo`'s own line runs with that `jadpo`, so
+a newer patch of the line is used once you install it, or pin it.
+
+Outside a project there is no line to read, so `jadpo new`,
+`jadpo --version`, `jadpo help` and every other command run with the
+installed version. The VS Code extension runs `jadpo lsp` from the
+project's folder, so it gets the project's release with no setting.
+
+### Fetching a release
+
+A release comes from `github.com/jadpo-dev/jadpo`'s releases, and is kept
+in `jadpo/releases/<version>/` in your cache folder: `$XDG_CACHE_HOME`,
+else `~/.cache`, else `%LOCALAPPDATA%` on Windows. Nothing is written
+anywhere else, and two commands that need the same release at once fetch
+it once.
+
+Nothing in a download runs until it passes two checks. Its SHA-256 has to
+be the one the release publishes beside it. Its GitHub artifact
+attestation has to verify too: that is a signed record, kept by GitHub
+and Sigstore's public log, saying this repository's `release.yml` built
+that archive at the release's tag. `jadpo` checks it with Sigstore's own
+verifier against the trusted root it carries. A download that fails
+either check is refused, and nothing is kept.
+
 While it fetches, stderr shows a live line, `Fetching Jadpo 0.2.3 for
-aarch64-apple-darwin`, with a bar once the archive's size is known (a
-plain line where stderr doesn't animate), then the result:
+aarch64-apple-darwin`, with a bar once the archive's size is known, or
+that line once where stderr doesn't animate. Then it says what it got,
+and the command's own output follows:
 
 ```text
 ✓ Fetched Jadpo 0.2.3 (24.1 MB) and checked its SHA-256 and attestation in 2.3 s
 ```
 
-and the command's own output follows; under `--json` nothing but the
-command's document is written.
+Under `--json`, nothing is written but the command's own document.
+
+### The releases kept
 
 | Command | Does |
 |---|---|
-| `jadpo toolchain` (or `list`) | Lists the releases kept, newest first, with `--json` |
+| `jadpo toolchain` (or `list`) | Lists the releases kept, newest first, with each one's size |
 | `jadpo toolchain remove <version>` | Deletes a kept release |
-| `jadpo toolchain pin` | Writes the release the project runs with into `jadpo.lock`, as its `jadpo version 0.1.2` line ([What is committed](18-records-and-manifest.md#what-is-committed-and-why)) |
+
+Both take `--json`, and both always run with the `jadpo` you installed,
+since they look after its cache. A release you remove is fetched again
+the next time a project needs it.
+
+### Pin a release
+
+Pin the exact release a project runs with when its builds must be
+reproducible:
+
+| Command | Does |
+|---|---|
+| `jadpo toolchain pin` | Writes the release the project runs with into `jadpo.lock` |
 | `jadpo toolchain unpin` | Takes the pin out again |
 
-The pin is the lock's first line, and the lock keeps its format,
-`record lock 1`, which held the pin from the start. `jadpo toolchain` lists
-each kept release with its size, newest first.
+The pin is the lock's first line, `jadpo version 0.1.2`
+([What is committed](18-records-and-manifest.md#what-is-committed-and-why)).
+`pin` runs as the project's release, so that is the release it writes.
+Commit the lock with the code. A pin on another line than `jadpo:` names
+is out of date, `record.out_of_date`, until `jadpo toolchain pin` writes
+it again.
 
-`list` and `remove` look after the cache, so they always run with the
-`jadpo` you installed. So does every command outside a project: there is
-no line to read, so `jadpo new`, `jadpo --version`, `jadpo help` and the
-rest run with the installed version, and `jadpo new` will write that
-version's line into the new `app.jadpo`. `pin` runs as the project's
-release, so that is the one it pins.
+### Run your own build on every project
 
-When the release can't be run (offline with nothing kept, a line with no
-release yet, or a download that fails its checks), `jadpo` stops with an
-error that names the release to install and says why it couldn't fetch
-it: `toolchain.version_newer` when the project needs a later release than
-this one, `toolchain.version_older` when it needs an earlier one. It never
-compiles the project itself. A `jadpo` told to run everything itself, with
-`JADPO_TOOLCHAIN=local`, gives the same errors from `jadpo check` for a
-project on another line; that setting is for people working on the
-compiler, who run their own build on every project. A `pin` on another
-line than `jadpo:` names is out of date, `record.out_of_date`, until
-`jadpo toolchain pin` writes it again.
+People working on the compiler set `JADPO_TOOLCHAIN=local`, so the
+`jadpo` they start runs every command itself, whatever line the project
+names. A project on another line is then refused by `jadpo check`, with
+the errors below.
 
-The VS Code extension runs `jadpo lsp` from the project's folder, so it
-gets the project's release with no configuration.
+### When the release can't be run
+
+When `jadpo` can't run the release a project needs, because it is offline
+with nothing kept, the line has no release yet, or a download fails its
+checks, it stops. It never compiles the project itself. The error names
+the release to install, says why it couldn't be fetched, and gives the
+next step for that cause. It is `toolchain.version_newer` when the
+project needs a later release than this one, and
+`toolchain.version_older` when it needs an earlier one.
 
 ### What a release must keep, for older launchers
 
