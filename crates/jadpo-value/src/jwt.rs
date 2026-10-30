@@ -67,7 +67,8 @@ pub fn strict_document(bytes: &[u8]) -> Option<Json> {
 
 /// A provider's public JWK, through the standard type's ordinary field
 /// and cross-field rules. Unknown public metadata is ignored; private
-/// material and unsupported key operations are always refused.
+/// material is always refused, and `key_ops` is held as a set, each
+/// operation once (RFC 7517 §4.3).
 pub fn read_jwk(json: &Json) -> Option<Value> {
     let members = json.as_object()?;
     if members
@@ -82,13 +83,25 @@ pub fn read_jwk(json: &Json) -> Option<Value> {
             let wire = if *name == "use_" { "use" } else { name };
             match members.get(wire) {
                 None | Some(Json::Null) => Some(Value::None),
-                Some(Json::String(text)) if *name != "x5c" => Some(Value::text(text)),
+                Some(Json::String(text)) if !matches!(*name, "x5c" | "key_ops") => {
+                    Some(Value::text(text))
+                }
                 Some(Json::Array(items)) if *name == "x5c" => {
                     let items = items
                         .iter()
                         .map(|item| item.as_str().map(Value::text))
                         .collect::<Option<Vec<_>>>()?;
                     Some(Value::list(items))
+                }
+                Some(Json::Array(items)) if *name == "key_ops" => {
+                    let items = items
+                        .iter()
+                        .map(|item| item.as_str().map(Value::text))
+                        .collect::<Option<Vec<_>>>()?;
+                    let count = items.len();
+                    let set = Value::set(items);
+                    // Each operation once (RFC 7517 §4.3's MUST).
+                    (set.items().map_or(0, <[Value]>::len) == count).then_some(set)
                 }
                 _ => None,
             }
@@ -112,7 +125,9 @@ fn jwk_part(part: jadpo_std::standard::Part, value: &Value) -> bool {
     match (part, value) {
         (Part::Optional(_), Value::None) => true,
         (Part::Optional(inner), value) => jwk_part(*inner, value),
-        (Part::List(inner), Value::List(items)) => items.iter().all(|item| jwk_part(*inner, item)),
+        (Part::List(inner), Value::List(items)) | (Part::Set(inner), Value::Set(items)) => {
+            items.iter().all(|item| jwk_part(*inner, item))
+        }
         (Part::Matching(_), Value::Text(_)) => {
             crate::validate::Validator::new(part.builtin(), vec![part.rules()])
                 .check(value)
@@ -302,6 +317,25 @@ fn key_of(value: &Value) -> Option<Key<'_>> {
         algorithm,
         public,
     })
+}
+
+/// Whether a `Jwk` value checks signatures: it has no `key_ops`, or they
+/// name `verify` (area 19; chunk A3). One that doesn't is held, and never
+/// tried, as a key for another algorithm isn't.
+pub fn checks_signatures(value: &Value) -> bool {
+    let Value::Record(record) = value else {
+        return false;
+    };
+    match record.get("key_ops") {
+        None | Some(Value::None) => true,
+        Some(Value::Set(operations) | Value::List(operations)) => {
+            jwk::verifies(Some(operations.iter().filter_map(|op| match op {
+                Value::Text(text) => Some(&**text),
+                _ => None,
+            })))
+        }
+        Some(_) => false,
+    }
 }
 
 /// Whether `signature` is `key`'s signature of `signed`, with the key's
@@ -530,6 +564,7 @@ fn verified(
     // with find none.
     let signed_by_a_key = keys
         .iter()
+        .filter(|key| checks_signatures(key))
         .filter_map(key_of)
         .filter(|key| kid.is_none_or(|kid| key.kid == Some(kid)))
         .filter(|key| key.algorithm == algorithm)
@@ -712,6 +747,47 @@ mod tests {
         json.as_object_mut().expect("object").remove("d");
         json["alg"] = Json::String("HS256".into());
         assert!(read_jwk(&json).is_none());
+    }
+
+    #[test]
+    fn a_key_s_key_ops_are_held_and_one_without_verify_checks_nothing() {
+        // As WebCrypto's `exportKey("jwk")` writes a public key, with the
+        // key id an application gives it.
+        let webcrypto = |operations: Json| serde_json::json!({"crv":"Ed25519","ext":true,"key_ops":operations,"kty":"OKP","x":KEY,"kid":"2026-10"});
+        let verifying = read_jwk(&webcrypto(serde_json::json!(["verify"]))).expect("a Jwk");
+        let Value::Record(record) = &verifying else {
+            panic!("a Jwk reads as a record");
+        };
+        assert_eq!(
+            record.get("key_ops"),
+            Some(&Value::set(vec![Value::text("verify")]))
+        );
+        let ok = verify_jwt(
+            GOOD,
+            &[verifying],
+            Some("https://id.example.com"),
+            Some("clinic"),
+            NOW,
+        );
+        assert!(ok.is_ok(), "the WebCrypto key checks the token");
+        // A key for signing only is read, and never tried.
+        let signing = read_jwk(&webcrypto(serde_json::json!(["sign"]))).expect("a Jwk");
+        assert!(!checks_signatures(&signing));
+        assert_eq!(
+            verify_jwt(
+                GOOD,
+                &[signing],
+                Some("https://id.example.com"),
+                Some("clinic"),
+                NOW
+            ),
+            Err(Fault::Broke(RuleKey::InvalidSignature))
+        );
+        assert!(read_jwk(&webcrypto(serde_json::json!(["sign", "verify"]))).is_some());
+        // Each operation once, each text.
+        assert!(read_jwk(&webcrypto(serde_json::json!(["verify", "verify"]))).is_none());
+        assert!(read_jwk(&webcrypto(serde_json::json!([7]))).is_none());
+        assert!(read_jwk(&webcrypto(serde_json::json!("verify"))).is_none());
     }
 
     #[test]

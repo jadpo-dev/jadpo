@@ -53,7 +53,7 @@ pub fn part_columns(part: Part) -> Option<Vec<Laid>> {
             }
             Some(columns)
         }
-        Part::List(inner) => match part_columns(*inner)?.as_slice() {
+        Part::List(inner) | Part::Set(inner) => match part_columns(*inner)?.as_slice() {
             [column] if column.sql_type == "text" || column.sql_type == "char(3)" => one("text[]"),
             _ => None,
         },

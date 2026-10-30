@@ -247,7 +247,8 @@ pub(crate) async fn within_budget(
 /// held open until the body has its value, then committed outside the
 /// race, so work that committed is never taken for work that didn't. A
 /// concurrent change found at that commit runs the body again, as the
-/// boundary would, up to [`crate::RERUN_ATTEMPTS`] times. What `stop`
+/// boundary would, within its budget ([`crate::RERUN_ATTEMPTS`] within
+/// [`crate::RERUN_WINDOW_MS`]). What `stop`
 /// gave when it finished first, or `overran` when the body ended past
 /// `ctx`'s deadline: what the body had begun is dropped, nothing it did
 /// kept, and whoever ran `ctx` runs it again.
@@ -265,6 +266,7 @@ async fn held<S: Copy>(
     let steps = ctx.steps();
     let mark = ctx.capabilities().calls().len();
     let mut attempt = 1;
+    let began = crate::boundary::rerun_began(ctx);
     loop {
         ctx.set_steps(steps);
         ctx.hold();
@@ -291,7 +293,11 @@ async fn held<S: Copy>(
                     ..crate::outcome_unknown()
                 })));
             }
-            Err(StoreError::ConcurrentChange) if attempt < crate::RERUN_ATTEMPTS => attempt += 1,
+            Err(StoreError::ConcurrentChange)
+                if crate::boundary::may_rerun(ctx, attempt, began) =>
+            {
+                attempt += 1;
+            }
             Err(_) => {
                 return Ok(Outcome::Failed(Box::new(crate::Failure {
                     frames: ctx.frames(),

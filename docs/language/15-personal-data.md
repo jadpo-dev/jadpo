@@ -13,7 +13,13 @@ Your app says which data is about a person, and Jadpo does the rest: it
 exports that data when the person asks for a copy, erases it when they ask
 to be forgotten, deletes it when its time is up, and reports where it
 lives. The aim is that requests under GDPR, UK GDPR and CCPA/CPRA work out
-of the box.
+of the box. None of this is built yet. Today `personal:` is read only for
+[the AI page's](21-ai.md#personal-data-sent-to-a-model) check of what
+reaches a model, and nothing exports, erases, expires or reports personal
+data, so an app on this compiler does those itself. `person: true`,
+`erase:` and `retention:` are `toolchain.not_built_yet` where you write
+them, so none can be mistaken for working
+([What is built](#what-is-built)).
 
 The law asks a few things of an app:
 
@@ -30,14 +36,14 @@ CCPA/CPRA gives Californians the same rights to know and to delete. Each of
 these needs the app to know which data is personal and whose it is. That
 is the one fact Jadpo asks you to write down.
 
-| Capability | What you write | What the compiler does |
-|---|---|---|
-| Marking | `personal:` on a field | Hashes it in logs, lists it in the report |
-| The person | `person: true` on an entity | Finds every record that belongs to them |
-| Erasure | `erase:` on references it can't work out | Generates `User.erase(id)` across every store and cache |
-| Export | nothing | Generates `User.export(id)` |
-| Retention | `retention:` on a field or entity | Clears or deletes it when the time is up |
-| Report | nothing | Writes `build/report/personal-data.md` |
+| Capability | What you write | What the compiler does | Built yet |
+|---|---|---|---|
+| Marking | `personal:` on a field | Hashes it in logs, lists it in the report | Only for the AI check; nothing hashes, lists or checks it for this page |
+| The person | `person: true` on an entity | Finds every record that belongs to them | No: `toolchain.not_built_yet` |
+| Erasure | `erase:` on references it can't work out | Generates `User.erase(id)` across every store and cache | No: `toolchain.not_built_yet` |
+| Export | nothing | Generates `User.export(id)` | No |
+| Retention | `retention:` on a field or entity | Clears or deletes it when the time is up | No: `toolchain.not_built_yet` |
+| Report | nothing | Writes `build/report/personal-data.md` | No |
 
 ## Marking personal fields
 <!-- topic: marking-personal-fields -->
@@ -651,5 +657,6 @@ This is not legal advice. A privacy professional reviews the report.
 
 | Feature | Status |
 |---|---|
-| An entity's and an event's `personal: PersonalData.<category>` | Built: it is read and checked against the fourteen categories, for the [AI](21-ai.md) page's check of what reaches a model. |
+| An entity's and an event's `personal: PersonalData.<category>` | Built for the [AI](21-ai.md) page alone: it is read and checked against the fourteen categories for the check of what reaches a model. Not built yet: everything this page says marking does. A marked field nothing reads, and one erasure can't reach, compile without the errors "What the compiler checks" lists; no log, report or access record uses the marking. |
+| `person: true`, `erase:`, and `retention:` on a field or an entity | Not built yet: each is `toolchain.not_built_yet` where it is written, so none is accepted and then ignored. |
 | Everything else on this page | Not built yet: it is on [the roadmap](../roadmap.md). |

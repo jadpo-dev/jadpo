@@ -364,29 +364,10 @@ first. They are taken before any other unticked chunk on this page
 (Richard, 2026-10-30); chunks touching different crates run at the same
 time.
 
-- [ ] **A0 Every unbuilt protection refused where it is written**
-  `opus · high`: each area's "What is built" rule, that a feature not
-  built yet is `toolchain.not_built_yet` where it is written, applied to
-  what is accepted today and then does nothing. Area 15's field settings
-  (`personal:`'s minimisation and erasure checks, `retention:`, `erase:`)
-  are skipped silently (`crates/jadpo-check/src/types/decl.rs`,
-  `LATER_FIELD_SETTINGS`), so an app believes data expires that never
-  does; an entity's `audit:` and `retention:` (`data.unknown_section`), a
-  route's `bot_check:` (`route.item_unknown`) and `person: true`
-  (`type.not_a_type`) read as wrong syntax; a rerun's one-second bound
-  (area 6) isn't held. Each becomes `toolchain.not_built_yet`, or is
-  built where it is small. Area 15's opening and area 9's "can't ship
-  without a person's approval" say in the same paragraph what isn't
-  built yet. Found by an audit of every unbuilt row for protections that
-  are silently absent (2026-10-30).
+- [x] **A0 Every unbuilt protection refused where it is written**: area 15, opening, the capability table and "What is built"; area 9, "Protecting policy"; area 6, "All-or-nothing actions and concurrent changes"; area 16, "What is built".
 - [x] **A1 Diagnostics that point at the cause**: area 1, "Reserved words" and "How a promotion happens"; area 2, "Values that may be missing"; area 9, "Actions"; area 14, "Commands for debugging, editors and help".
 - [x] **A2 Listed queries and calls a listing doesn't cover**: area 9, "Listing a query", "A call the listing doesn't cover" and "The permissions report"; area 1, "Which rules can be declined".
-- [ ] **A3 External tokens in tests and `jadpo dev`** `opus · high`: area 8,
-  "External tokens in tests and `jadpo dev`"; area 19, `key_ops`; area 14,
-  `jadpo dev`'s external tokens, designed with the design skills first.
-  Done when a route test signs in a staff user `as:` on an
-  external-token API, and a key set with WebCrypto's `key_ops` checks a
-  token.
+- [x] **A3 External tokens in tests and `jadpo dev`**: area 8, "External tokens in tests and `jadpo dev`"; area 13, `as:`; area 14, `jadpo dev`'s "External tokens"; area 19, `Jwk`'s `key_ops`.
 - [ ] **A4 Batches run to the end in tests** `opus · high`: area 13,
   "Batches", which is specified and was on no chunk. Done when the
   seed-library example's test of a withdrawn packet passes through its

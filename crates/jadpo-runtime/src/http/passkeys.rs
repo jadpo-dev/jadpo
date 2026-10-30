@@ -42,8 +42,8 @@ use std::rc::Rc;
 
 use jadpo_std::http::{IdentityPlan, PASSKEY_LIMIT, PasskeyPlan, PasskeyStep, SESSION_LIFETIME_MS};
 use jadpo_std::read::SqlType;
-use jadpo_std::standard::ENCODING;
 use jadpo_std::standard::security::WEB_AUTHN_CREDENTIAL;
+use jadpo_std::standard::{ENCODING, reads_encoding};
 use jadpo_std::{SignInMethod, SignInRefusal};
 use jadpo_value::Value;
 use jadpo_value::encoding::from_base64;
@@ -241,7 +241,7 @@ impl Site<'_> {
     fn read_kept(&self, stored: &str, encoding: &SqlValue) -> Option<Credential> {
         match encoding {
             SqlValue::Null(_) => read_unversioned(stored),
-            SqlValue::Int2(n) if u32::try_from(*n).ok() == Some(ENCODING) => {
+            SqlValue::Int2(n) if u64::try_from(*n).is_ok_and(reads_encoding) => {
                 Credential::from_value(&self.json.read(self.passkeys.credential, stored).ok()?)
             }
             _ => None,

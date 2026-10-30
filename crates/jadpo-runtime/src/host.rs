@@ -409,6 +409,15 @@ pub trait Host {
         None
     }
 
+    /// The local issuer that stands in for `external_token`'s configured
+    /// issuer (area 8, "External tokens in tests and `jadpo dev`"; chunk
+    /// A3): only a test's host and `jadpo dev`'s have one, so a
+    /// deployable never accepts its tokens.
+    #[cfg(feature = "testing")]
+    fn local_issuer(&self) -> Option<&crate::http::local_issuer::LocalIssuer> {
+        None
+    }
+
     /// The store named `store` (a connection in `app.jadpo`, area 11), or
     /// `None` when the host has none by that name.
     fn database(&self, store: &str) -> Option<&dyn Database>;
@@ -584,6 +593,11 @@ impl<H: Host + ?Sized> Host for &H {
 
     fn test_authenticators(&self) -> Option<&dyn TestAuthenticators> {
         (**self).test_authenticators()
+    }
+
+    #[cfg(feature = "testing")]
+    fn local_issuer(&self) -> Option<&crate::http::local_issuer::LocalIssuer> {
+        (**self).local_issuer()
     }
 
     fn database(&self, store: &str) -> Option<&dyn Database> {

@@ -406,6 +406,10 @@ impl<H: Host> Host for AtClock<H> {
         self.host.test_authenticators()
     }
 
+    fn local_issuer(&self) -> Option<&crate::http::local_issuer::LocalIssuer> {
+        self.host.local_issuer()
+    }
+
     fn database(&self, store: &str) -> Option<&dyn Database> {
         self.host.database(store)
     }

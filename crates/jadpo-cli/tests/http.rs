@@ -377,6 +377,11 @@ impl Dev {
         }
     }
 
+    /// The database it serves.
+    pub(super) fn url(&self) -> &str {
+        &self.url
+    }
+
     /// What `jadpo dev --json` has written so far.
     pub(super) fn log(&self) -> String {
         self.out.text()

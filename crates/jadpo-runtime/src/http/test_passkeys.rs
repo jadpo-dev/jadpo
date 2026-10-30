@@ -55,8 +55,7 @@ pub async fn register(
     };
     // Signed in as `as:` signs in: a browser session of the user's own.
     let headers =
-        match identity::test_credentials(ctx, app.table, started.auth(), options.index, user).await
-        {
+        match identity::test_credentials(ctx, app, started.auth(), options.index, user).await {
             Ok(headers) => headers,
             Err(fault) => return Stored::Fault(fault),
         };
