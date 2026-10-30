@@ -412,16 +412,16 @@ build/
   ([The package format](11-integrations.md#the-package-format)). It is a
   line, not a minimum: while Jadpo is at 0.x, a minor release may break
   apps, so the line is what must match, and a release that only fixes
-  something stays on its line. The installed `jadpo` launcher runs the
-  newest release of that line it has or can fetch, and `jadpo.lock` may
-  record the exact patch for reproducible builds
-  ([Which jadpo runs](14-tooling.md#which-jadpo-runs)). A `jadpo` that is
-  older than the line refuses the project with `toolchain.version_newer`
-  alone, rather than misread what a later version added. A newer `jadpo`
-  meeting an older line refuses it too, with an error that names the line
-  to install, rather than compile it silently. Anything but a major and
-  minor number is `toolchain.version_invalid`. If the line is left out,
-  nothing is checked.
+  something stays on its line. The installed `jadpo` runs the newest
+  release of that line it keeps or can fetch, and `jadpo.lock` may pin the
+  exact release for reproducible builds
+  ([Which jadpo runs](14-tooling.md#which-jadpo-runs)). A `jadpo` that
+  can't hand the project to that release refuses it with an error alone,
+  naming the release to install: `toolchain.version_newer` when it is on
+  an earlier line, rather than misread what a later version added, and
+  `toolchain.version_older` when it is on a later line, rather than compile
+  the project silently. Anything but a major and minor number is
+  `toolchain.version_invalid`. If the line is left out, nothing is checked.
 - The root `translations/` holds only the app's wording for text it didn't
   write, one `<locale>.jadpo` file each, grouped by owner: `jadpo: { }` for
   Jadpo's own text, a library package's name for its text. An
@@ -438,7 +438,7 @@ build/
   a snippet in these docs, is checked as one implicit domain with the
   layout rules off.
 
-Not built yet: `jadpo new`, which will write the `jadpo:` version line, and the refusal of a newer `jadpo` meeting an older line, `toolchain.version_older` (roadmap chunk D14).
+Not built yet: `jadpo new`, which will write the `jadpo:` version line.
 
 ## Domains
 <!-- topic: domains -->
@@ -1077,7 +1077,7 @@ The compiler builds the decided layout, with each rule's real output under
 | A file holds only what its primary declaration uses | Built: `layout.unused_declaration` for a supporting declaration the primary declaration doesn't use, directly or through one another. |
 | Definition before use | Built: `jadpo fmt` writes each file's declarations before the first one that uses them, and `jadpo fmt --check` fails on a file out of that order. |
 | Referenced assets | Not built yet: `layout.asset_unreferenced` waits for the ways [Integrations](11-integrations.md) and [Built-in services](16-built-in-services.md) refer to files that aren't Jadpo. |
-| Jadpo version | Built: `application { jadpo: "0.1" }`, with `toolchain.version_newer` refusing a project on a later line and `toolchain.version_invalid`. Not built yet: `jadpo new`, which will write the line; `toolchain.version_older`, refusing a project on an earlier line and naming the line to install; the launcher that picks the release ([Which jadpo runs](14-tooling.md#which-jadpo-runs)). |
+| Jadpo version | Built: `application { jadpo: "0.1" }`, with `toolchain.version_newer` refusing a project on a later line, `toolchain.version_older` one on an earlier line, each naming the release to install, and `toolchain.version_invalid`; the installed `jadpo` runs the release the line or `jadpo.lock`'s pin names ([Which jadpo runs](14-tooling.md#which-jadpo-runs)). Not built yet: `jadpo new`, which will write the line. |
 | Packages | Built: the root `packages/` and `jadpo.lock`, `shared/providers/`, packages checked as `shared/` is, `use packages/<name>`, and the reachable-from-public rule (`visibility.public_reaches_private`) in domains and packages; [Integrations](11-integrations.md) records the choices. |
 
 ## Errors
@@ -1089,6 +1089,7 @@ rules off; the layout examples are small projects.
 
 - [`toolchain.empty_project`](../errors/toolchain.empty_project.md)
 - [`toolchain.version_newer`](../errors/toolchain.version_newer.md)
+- [`toolchain.version_older`](../errors/toolchain.version_older.md)
 - [`toolchain.version_invalid`](../errors/toolchain.version_invalid.md)
 - [`semantic.duplicate_declaration`](../errors/semantic.duplicate_declaration.md)
 - [`semantic.name_case`](../errors/semantic.name_case.md)

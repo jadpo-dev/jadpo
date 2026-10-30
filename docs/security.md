@@ -101,6 +101,14 @@ and keeps the input.
   checks (documentation, "Installing"): dist's two build jobs attest what
   they build, and the extension's `attach` job the `.vsix` before
   attaching it. Only those jobs may mint an OIDC token.
+- A `jadpo` that runs another release for a project (area 14, "Which
+  jadpo runs") checks that release's archive before it runs anything in
+  it: its SHA-256 against the `.sha256` the release publishes, fetched
+  from `github.com` over HTTPS, and its attestation with Sigstore's own
+  verifier (`sigstore-verify`) against the public-good trusted root the
+  binary carries, requiring the certificate GitHub Actions issued to
+  `release.yml` at the release's tag in `jadpo-dev/jadpo`. It keeps
+  releases only under `jadpo/releases/` in the user's cache folder.
 - CodeQL scans the Rust, JavaScript and TypeScript, Python and workflow code
   on each pull request to `main`, each push to `main` and weekly
   (`codeql.yml`, no build). The OpenSSF Scorecard runs on each push to

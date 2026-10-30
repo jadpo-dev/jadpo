@@ -73,8 +73,8 @@ the new `PATH`. Then open the folder that holds your project's `app.jadpo`.
 
 ## How it finds `jadpo`
 
-It runs the `jadpo` it finds on your `PATH`, from your project's folder, so
-the `jadpo` launcher gives it the version your project names. You need no
+It runs the `jadpo` it finds on your `PATH`, from your project's folder, and
+that `jadpo` runs the Jadpo release your project names. You need no
 setting. People working on the compiler can set `jadpo.server.path` to the
 path of their own build.
 

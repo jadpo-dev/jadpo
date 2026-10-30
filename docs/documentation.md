@@ -208,9 +208,10 @@ why the site serves the bundle.
   Marketplace and Open VSX once the release is out
   (`.github/workflows/vscode-extension.yml`); release-please keeps its
   `package.json` version in step.
-- An app declares the version it needs in `app.jadpo`, as
-  `application { jadpo: "0.1" }`, and the compiler refuses an app needing a
-  newer one (area 1, "The root").
+- An app declares the release line it is written for in `app.jadpo`, as
+  `application { jadpo: "0.1" }`; the installed `jadpo` runs that line's
+  release, and a `jadpo` that can't refuses an app on another line (area
+  1, "The root"; area 14, "Which jadpo runs").
 - Switched off until a maintainer sets them up: release-please runs only when
   the repository variable `JADPO_RELEASES` is `on`, with a
   `RELEASE_PLEASE_TOKEN` secret, so its pull requests run CI; the
@@ -233,17 +234,27 @@ PowerShell one (`jadpo-cli-installer.ps1`), a Homebrew formula
 (`jadpo.rb`) and an npm package (`jadpo`, for `npx jadpo`). `jadpo build`
 fetches its own pinned Rust toolchain into its cache on first use.
 
-The installed `jadpo` is meant to be a launcher that runs the release line
-`app.jadpo` names, fetched into a per-user cache and verified first; it is
-not built yet, and 0.1.0 is a plain binary (area 14, "Which jadpo runs").
+Every installed `jadpo` runs the release line a project's `app.jadpo`
+names, from 0.1.0 on, so one install serves projects on different lines
+(area 14, "Which jadpo runs"). In a project on another line, or one whose
+`jadpo.lock` pins another release, it runs that release instead: one it
+keeps in `jadpo/releases/` in the user's cache folder, or the newest of
+the line on this repository's Releases, fetched once. It fetches the
+archive dist built for its own target and the `.sha256` beside it from
+`github.com` over HTTPS, refuses an archive whose SHA-256 differs, and
+verifies the archive's GitHub artifact attestation with Sigstore's
+verifier before it runs anything in it. `JADPO_TOOLCHAIN=local` makes it
+run every command itself.
 
-Each archive has a SHA-256 beside it, and each of those files, like the
-VS Code extension's `.vsix`, has a GitHub artifact attestation saying
-which workflow run in `richardwillars/jadpo` built it, from which commit.
-Check one before running it, with the GitHub CLI:
+The archives are `.tar.gz`, and `.zip` on Windows (`unix-archive` in
+`dist-workspace.toml`), which `jadpo` unpacks with the gzip reader it
+already has. Each has a SHA-256 beside it, and each of those files, like
+the VS Code extension's `.vsix`, has a GitHub artifact attestation saying
+which workflow run in `jadpo-dev/jadpo` built it, from which commit. Check
+one by hand with the GitHub CLI:
 
 ```sh
-gh attestation verify jadpo-cli-aarch64-apple-darwin.tar.xz --repo richardwillars/jadpo
+gh attestation verify jadpo-cli-aarch64-apple-darwin.tar.gz --repo jadpo-dev/jadpo
 ```
 
 ## Not decided yet

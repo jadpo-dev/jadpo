@@ -148,5 +148,8 @@ Next: [A project and your first route](02-first-route.md).
 
 There is no installer yet, so you build from source as above. Prebuilt
 downloads, Homebrew and `npx jadpo` come with the first release, and so
-does `jadpo new`, which will start a project for you. Until then you
+does `jadpo new`, which will start a project for you. Each project names
+the Jadpo release line it is written for, and whichever `jadpo` you run
+fetches and runs that release for it, so projects on different releases
+work side by side. Until then you
 make the few files of a new project by hand, which the next page does.

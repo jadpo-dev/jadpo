@@ -316,18 +316,7 @@ D1 first: the site starts once D1 has merged.
   wording, each fix with its code and what it changes, and the related
   topics. The errors the Learn path, the examples and `(human)` fixes
   hit come first.
-- [ ] **D14 The toolchain launcher** `opus · high`, before 0.2.0: write
-  the failing tests first. The installed `jadpo` runs the release line
-  `app.jadpo` names, as [Which jadpo runs](language/14-tooling.md#which-jadpo-runs)
-  says: it fetches the toolchain into a per-user cache, checks its SHA-256
-  and attestation, runs the newest release of the line (or the patch
-  `jadpo.lock` records), and runs `new`, `--version`, `help` and
-  `toolchain list` and `remove` with its own version outside a project.
-  A plain binary refuses a project on another line, and a newer one meeting
-  an older line gives `toolchain.version_older`, naming the line to
-  install. The VS Code extension needs no `jadpo.server.path`. Done when
-  all of that is built and tested, including the error for a project on
-  another line.
+- [x] **D14 The toolchain launcher**, in 0.1.0: [tooling](language/14-tooling.md), "Which jadpo runs"; `crates/jadpo-cli/src/launcher.rs`, `releases.rs`, `attestation.rs`, `toolchains.rs`.
 
 ## Phase 10 — Golden todo
 
