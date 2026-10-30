@@ -952,8 +952,8 @@ pub const JWK_ENTRY: StandardType = StandardType {
     shape: None,
     examples: Examples {
         // RFC 8037 §A.2's public key, with a key id and the optional
-        // members, and RFC 8032's second test key alone, then as WebCrypto
-        // exports it, with `key_ops` and `ext`; RFC 7517 §A.1's
+        // members, and RFC 8032's second test key alone, then with the
+        // `key_ops` WebCrypto writes; RFC 7517 §A.1's
         // P-256 and RSA keys, the first for signing; RFC 7515 §A.3's P-256
         // key and §A.2's RSA key, as Google's key set sends one.
         valid: &[
@@ -966,7 +966,7 @@ pub const JWK_ENTRY: StandardType = StandardType {
                 "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
             ),
             (
-                r#"{"crv":"Ed25519","ext":true,"key_ops":["verify"],"kty":"OKP","x":"PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw"}"#,
+                r#"{"kty":"OKP","crv":"Ed25519","x":"PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw","key_ops":["verify"]}"#,
                 "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
             ),
             (

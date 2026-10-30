@@ -994,7 +994,11 @@ fn a_run_is_read_by_its_encoding_and_one_it_cannot_read_ends_failed() {
                         &[],
                     )
                     .await;
-                assert_eq!(encoding, [vec![SqlValue::Int4(1)]], "this release's encoding");
+                assert_eq!(
+                    encoding,
+                    [vec![SqlValue::Int4(jadpo_std::standard::ENCODING as i32)]],
+                    "this release's encoding"
+                );
                 host.rows(
                     &format!(
                         "UPDATE \"jadpo_batch_runs\" SET {change} WHERE \"state\" = 'running' RETURNING \"id\""
@@ -1010,10 +1014,13 @@ fn a_run_is_read_by_its_encoding_and_one_it_cannot_read_ends_failed() {
         assert_eq!(ran, Ran::Finished);
         assert_eq!(kept(&host, &kept_before).await.0, "finished");
 
-        let (later, work) = start("\"encoding\" = 2").await;
+        let next = jadpo_std::standard::ENCODING + 1;
+        let (later, work) = start(Box::leak(format!("\"encoding\" = {next}").into_boxed_str())).await;
         let (ran, _) = jadpo_runtime::batches::run(program, &host, &work).await;
-        let why = "its saved values were written in encoding 2, which this release doesn't read";
-        assert_eq!(ran, Ran::Failed(why.into()));
+        let why = format!(
+            "its saved values were written in encoding {next}, which this release doesn't read"
+        );
+        assert_eq!(ran, Ran::Failed(why));
         assert_eq!(kept(&host, &later).await.0, "failed");
 
         // As chunk 6.4 named calls, by their place among the action's.

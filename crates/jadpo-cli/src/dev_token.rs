@@ -22,12 +22,6 @@ use crate::run::{Call, Reply};
 /// issuer and audience its tokens carry.
 pub(crate) const DEV_ISSUER: &str = "build/dev/issuer.json";
 
-/// What `jadpo dev` takes before a user's id.
-pub(crate) const ACTIONS: &[crate::table::Value] = &[crate::table::Value {
-    name: "token",
-    description: "Print a bearer token for a user, from the running session's local issuer",
-}];
-
 /// The session's local issuer, its key from this machine's randomness.
 pub(crate) fn new_issuer() -> Option<LocalIssuer> {
     LocalIssuer::new(&|bytes: &mut [u8]| jadpo_host_native::NativeHost::new().random(bytes))

@@ -626,12 +626,12 @@ principal {
 
 ```jadpo check project=staff-tokens file=config.jadpo hidden
 config {
+    audience: Text {
+        test: "lending-desk"
+    }
     issuer: Url {
         default: "https://accounts.google.com"
         test: "https://id.lending.example/"
-    }
-    audience: Text {
-        test: "lending-desk"
     }
 }
 ```
@@ -699,8 +699,8 @@ type NewLibrarian = Input {
 
 ```jadpo check project=staff-tokens file=domains/desk/actions/take_on.jadpo hidden
 use desk/entities { Librarian }
-use desk/failures { SubjectTaken }
 use desk/types { NewLibrarian }
+use desk/failures { SubjectTaken }
 
 /// Takes someone on.
 action take_on(input: NewLibrarian) fails SubjectTaken -> Librarian {
@@ -719,8 +719,8 @@ action take_on(input: NewLibrarian) fails SubjectTaken -> Librarian {
 
 ```jadpo check project=staff-tokens file=domains/desk/queries/me.jadpo hidden
 use desk/entities { Librarian }
-use desk/failures { NotALibrarian }
 use desk/types { LibrarianCard }
+use desk/failures { NotALibrarian }
 
 /// The signed-in member of staff.
 query me(user: Principal.user) fails NotALibrarian -> LibrarianCard {
@@ -731,8 +731,8 @@ query me(user: Principal.user) fails NotALibrarian -> LibrarianCard {
 ```
 
 ```jadpo check project=staff-tokens file=domains/desk/routes/staff.jadpo hidden
-use desk/queries { me }
 use desk/types { LibrarianCard }
+use desk/queries { me }
 
 /// What staff reach with their provider's token.
 routes Staff {
@@ -771,44 +771,48 @@ failure not_a_librarian
 ```
 
 ```jadpo check project=staff-tokens file=domains/desk/routes/staff.test.jadpo
-use desk/actions { take_on }
 use desk/entities { Librarian }
 use desk/types { NewLibrarian }
+use desk/actions { take_on }
 
 test "staff sign in with a token from the local issuer" {
-    var ann: Librarian = attempt take_on(NewLibrarian {
-        subject: "google-ann"
-        name: "Ann"
-        active: true
-    })
-    var mine: Response = request {
+    var ann: Librarian = attempt take_on(
+        NewLibrarian {
+            subject: "google-ann"
+            name: "Ann"
+            active: true
+        }
+    )
+    var own_card: Response = request {
         method: HttpMethod.get
         path: "/staff/me"
         as: Principal.user(ann)
     }
-    assert mine.status == 200
+    assert own_card.status == 200
 }
 
 test "someone no longer active is refused" {
-    var bo: Librarian = attempt take_on(NewLibrarian {
-        subject: "google-bo"
-        name: "Bo"
-        active: false
-    })
-    var mine: Response = request {
+    var bo: Librarian = attempt take_on(
+        NewLibrarian {
+            subject: "google-bo"
+            name: "Bo"
+            active: false
+        }
+    )
+    var own_card: Response = request {
         method: HttpMethod.get
         path: "/staff/me"
         as: Principal.user(bo)
     }
-    assert mine.status == 403
+    assert own_card.status == 403
 }
 
 test "a request with no token is refused" {
-    var mine: Response = request {
+    var own_card: Response = request {
         method: HttpMethod.get
         path: "/staff/me"
     }
-    assert mine.status == 401
+    assert own_card.status == 401
 }
 ```
 

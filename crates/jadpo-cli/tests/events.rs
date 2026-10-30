@@ -770,7 +770,8 @@ fn a_payload_is_read_by_its_encoding_and_a_later_one_is_parked() {
         );
         // Two chores, their work dropped as a crash would: one event kept
         // before encodings were recorded, one a later release wrote.
-        for (title, encoding) in [("sweep", "NULL"), ("mop", "2")] {
+        let later = (jadpo_std::standard::ENCODING + 1).to_string();
+        for (title, encoding) in [("sweep", "NULL"), ("mop", later.as_str())] {
             let (added, dropped) = call(
                 &program,
                 &host,
@@ -783,7 +784,8 @@ fn a_payload_is_read_by_its_encoding_and_a_later_one_is_parked() {
             value(added);
             drop(dropped);
             host.rows(&format!(
-                "UPDATE \"jadpo_outbox\" SET \"encoding\" = {encoding} WHERE \"encoding\" = 1 RETURNING \"id\""
+                "UPDATE \"jadpo_outbox\" SET \"encoding\" = {encoding} WHERE \"encoding\" = {} RETURNING \"id\"",
+                jadpo_std::standard::ENCODING
             ))
             .await;
         }
@@ -806,10 +808,10 @@ fn a_payload_is_read_by_its_encoding_and_a_later_one_is_parked() {
             parked,
             [
                 vec![
-                    Some("2".to_string()),
+                    Some(later.clone()),
                     Some("failed".to_string()),
                     Some("payload_unreadable".to_string()),
-                    Some("written in encoding 2, which this release doesn't read".to_string()),
+                    Some(format!("written in encoding {later}, which this release doesn't read")),
                 ],
                 vec![Some("none".to_string()), Some("succeeded".to_string()), None, None],
             ]

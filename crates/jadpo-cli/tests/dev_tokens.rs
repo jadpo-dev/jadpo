@@ -256,9 +256,9 @@ fn a_token_from_jadpo_dev_signs_a_librarian_in_on_the_staff_api() {
     assert_eq!(printed.stdout, format!("{bearer}\n"), "the token alone");
     assert_eq!(bearer.split('.').count(), 3, "{bearer}");
     let authorization = format!("Bearer {bearer}");
-    let mine = dev.send("GET", "/staff/me", &[("authorization", &authorization)], "");
-    assert_eq!(mine.status, 200, "{mine:?}");
-    assert_eq!(mine.json()["name"], "google-ann");
+    let own_card = dev.send("GET", "/staff/me", &[("authorization", &authorization)], "");
+    assert_eq!(own_card.status, 200, "{own_card:?}");
+    assert_eq!(own_card.json()["name"], "google-ann");
     // `--json`: the token, its subject and when it expires.
     let json = dev_command(&root, &["token", &ann, "--url", dev.url(), "--json"]);
     assert_eq!(json.code, 0, "{}{}", json.stdout, json.stderr);

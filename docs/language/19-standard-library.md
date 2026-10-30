@@ -733,6 +733,7 @@ The encodings each release writes, as its release notes list them:
 | Encoding | Release | What it changed |
 |---|---|---|
 | 1 | 0.1.0 | The first: every standard type's forms as its golden file holds them |
+| 2 | the next | `Jwk` holds `key_ops`, sent as RFC 7517's member and stored in a `text[]` column of its own; encoding 1's `Jwk` reads as `none` there |
 
 - **What a golden file pins.** For each valid example of the type: its
   canonical text (`none` for a type with no single text form, or for a

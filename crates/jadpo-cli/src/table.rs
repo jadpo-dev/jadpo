@@ -388,7 +388,9 @@ pub static COMMANDS: &[Command] = &[
                 name: "action",
                 description: "token, to print a bearer token for a user, or nothing to serve",
                 required: false,
-                values: Values::Fixed(crate::dev_token::ACTIONS),
+                // Not a fixed list, which the command overview would show
+                // beside `dev`'s summary, past the width the others fit in.
+                values: Values::Id,
             },
             Argument {
                 name: "user-id",

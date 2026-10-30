@@ -138,7 +138,7 @@ fn a_token_s_claims_are_read_by_name() {
 fn a_jwk_holds_an_ed25519_public_key_and_no_secret() {
     let key = |kty: &str, crv: &str| {
         format!(
-            "function key() -> Jwk {{\n    return Jwk {{\n        kty: \"{kty}\"\n        crv: \"{crv}\"\n        x: \"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo\"\n        y: none\n        n: none\n        e: none\n        kid: \"2026-10\"\n        alg: none\n        use_: \"sig\"\n        x5c: none\n    }}\n}}\n"
+            "function key() -> Jwk {{\n    return Jwk {{\n        kty: \"{kty}\"\n        crv: \"{crv}\"\n        x: \"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo\"\n        y: none\n        n: none\n        e: none\n        kid: \"2026-10\"\n        alg: none\n        use_: \"sig\"\n        key_ops: none\n        x5c: none\n    }}\n}}\n"
         )
     };
     assert_eq!(check(&key("OKP", "Ed25519")), NONE);
@@ -178,7 +178,7 @@ const SMALL_N: &str = "pb1wVenLotoly3kkTJYZAgVZitibPm2YTBTdYJobj6gVv5md3RjcXfdHd
 fn a_jwk_holds_an_rsa_or_a_p256_key_by_its_rules() {
     let rsa = |n: &str, alg: &str| {
         format!(
-            "function key() -> Jwk {{\n    return Jwk {{\n        kty: \"RSA\"\n        crv: none\n        x: none\n        y: none\n        n: \"{n}\"\n        e: \"AQAB\"\n        kid: \"rsa-1\"\n        alg: {alg}\n        use_: \"sig\"\n        x5c: none\n    }}\n}}\n"
+            "function key() -> Jwk {{\n    return Jwk {{\n        kty: \"RSA\"\n        crv: none\n        x: none\n        y: none\n        n: \"{n}\"\n        e: \"AQAB\"\n        kid: \"rsa-1\"\n        alg: {alg}\n        use_: \"sig\"\n        key_ops: none\n        x5c: none\n    }}\n}}\n"
         )
     };
     assert_eq!(check(&rsa(RSA_N, "\"RS256\"")), NONE);
@@ -188,7 +188,7 @@ fn a_jwk_holds_an_rsa_or_a_p256_key_by_its_rules() {
     assert_ne!(check(&rsa(SMALL_N, "none")), NONE);
     let ec = |y: &str| {
         format!(
-            "function key() -> Jwk {{\n    return Jwk {{\n        kty: \"EC\"\n        crv: \"P-256\"\n        x: \"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU\"\n        y: \"{y}\"\n        n: none\n        e: none\n        kid: none\n        alg: \"ES256\"\n        use_: none\n        x5c: none\n    }}\n}}\n"
+            "function key() -> Jwk {{\n    return Jwk {{\n        kty: \"EC\"\n        crv: \"P-256\"\n        x: \"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU\"\n        y: \"{y}\"\n        n: none\n        e: none\n        kid: none\n        alg: \"ES256\"\n        use_: none\n        key_ops: none\n        x5c: none\n    }}\n}}\n"
         )
     };
     assert_eq!(
