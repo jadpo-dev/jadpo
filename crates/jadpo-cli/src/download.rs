@@ -1,6 +1,10 @@
 //! Fetching a file over HTTP/1.1 for `jadpo build`'s toolchain (roadmap
-//! chunk 9.2c): HTTPS through OpenSSL with the certificate and the host
-//! checked, as `jadpo suggest share` reaches HQ, or plain HTTP to this
+//! chunk 9.2c) and the releases the toolchain launcher runs (chunk D14):
+//! HTTPS through rustls with the certificate and the host checked against
+//! Mozilla's roots compiled in, the configuration a native deployable's
+//! connections use (`jadpo_host_native::tls`), so a released `jadpo`,
+//! whose OpenSSL is built in and finds no CA bundle of the machine's,
+//! trusts the same servers on every machine; or plain HTTP to this
 //! machine only, which is how a test serves its stand-in. An answer is
 //! read by its `Content-Length`, or to the connection's end, a redirect
 //! followed up to five times, and what arrives handed on as it comes, so
@@ -160,13 +164,19 @@ fn once(
     );
     let broke = |error: std::io::Error| format!("The download from {named} broke off: {error}.");
     if url.secure {
-        let connector = openssl::ssl::SslConnector::builder(openssl::ssl::SslMethod::tls_client())
-            .map_err(|error| error.to_string())?
-            .build();
-        let tls = connector
-            .connect(host, stream)
+        let config = jadpo_host_native::tls::config().map_err(|error| error.to_string())?;
+        let name = rustls::pki_types::ServerName::try_from(host.to_string())
+            .map_err(|_| format!("{named} isn't a host name."))?;
+        let connection = rustls::ClientConnection::new(config, name)
             .map_err(|error| format!("No secure connection to {named}: {error}."))?;
-        exchange(tls, &request, &named, started, each).map_err(broke)?
+        let tls = rustls::StreamOwned::new(connection, stream);
+        exchange(tls, &request, &named, started, each).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::InvalidData {
+                format!("No secure connection to {named}: {error}.")
+            } else {
+                broke(error)
+            }
+        })?
     } else {
         exchange(stream, &request, &named, started, each).map_err(broke)?
     }
