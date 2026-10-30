@@ -264,7 +264,7 @@ pub fn callable_key(
             Some(test_key(symbols.registry(), path, &name))
         }
         (Decl::SeedDecl(seed), None) => {
-            let name = seed.name().as_ref().and_then(tree::name_text)?;
+            let name = jadpo_db::seed_name(seed, path);
             Some(symbols.registry().key(Kind::Seed, &name, None))
         }
         (decl, None) => {

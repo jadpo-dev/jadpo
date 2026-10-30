@@ -372,9 +372,7 @@ time.
   "Batches", which is specified and was on no chunk. Done when the
   seed-library example's test of a withdrawn packet passes through its
   batch, with no page action called by hand.
-- [ ] **A5 `jadpo seed`** `opus · high`: area 5, seeds, which are specified
-  and were on no chunk; the way to give a dev database its first staff
-  user without SQL.
+- [x] **A5 `jadpo seed`**: area 5, "Seeds"; area 14, "`jadpo seed`" and "Command errors".
 - [ ] **A6 Guidance an agent reads first** `opus · high` after A1 to A5:
   the `AGENTS.md` that `jadpo new` writes gains a workflow (one concern at
   a time, `jadpo check` after each file, read one topic not a whole page,
