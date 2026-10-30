@@ -1069,6 +1069,17 @@ impl Reader<'_> {
     /// An item a route or group doesn't take, with the one it probably
     /// means.
     fn unknown_word(&mut self, span: Span, written: &str, known: &[&str], what: &str) {
+        // Decided (area 16, "Bot protection"), not built: refused as such
+        // rather than as a misspelling.
+        if written == "bot_check" && what == "route" {
+            self.out.push(
+                Diagnostic::new(&rule::TOOLCHAIN_NOT_BUILT_YET, "A route's `bot_check:` isn't built yet")
+                    .at(span, "decided, not built")
+                    .reason("Checking a challenge token before a route runs is area 16's bot protection, which isn't built yet: accepted, every request would get through.")
+                    .next("Leave `bot_check:` out for now"),
+            );
+            return;
+        }
         let renamed = match written {
             "success" => Some((
                 "status",

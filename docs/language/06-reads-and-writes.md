@@ -358,14 +358,14 @@ operation that gives a `Bool` is the condition on its own.
 application {}
 ```
 
-```jadpo check project=operation-conditions file=domains/library/types/book_title.jadpo hidden
+```jadpo check project=operation-conditions file=domains/catalogue/types/book_title.jadpo hidden
 /// A book's title, as printed on its cover.
 type BookTitle = Text {
     max_length: 200
 }
 ```
 
-```jadpo check project=operation-conditions file=domains/library/types/publication_year.jadpo hidden
+```jadpo check project=operation-conditions file=domains/catalogue/types/publication_year.jadpo hidden
 /// A year a book can have been first published in.
 type PublicationYear = Int {
     min: 1450
@@ -373,13 +373,13 @@ type PublicationYear = Int {
 }
 ```
 
-```jadpo check project=operation-conditions file=domains/library/types/publication_day.jadpo hidden
+```jadpo check project=operation-conditions file=domains/catalogue/types/publication_day.jadpo hidden
 /// The day a book was first published.
 type PublicationDay = CalendarDate {}
 ```
 
-```jadpo check project=operation-conditions file=domains/library/entities/book.jadpo
-use library/types { BookTitle, PublicationDay }
+```jadpo check project=operation-conditions file=domains/catalogue/entities/book.jadpo
+use catalogue/types { BookTitle, PublicationDay }
 
 /// A book in the catalogue.
 entity Book {
@@ -389,8 +389,8 @@ entity Book {
 }
 ```
 
-```jadpo check project=operation-conditions file=domains/library/types/book_card.jadpo hidden
-use library/entities { Book }
+```jadpo check project=operation-conditions file=domains/catalogue/types/book_card.jadpo hidden
+use catalogue/entities { Book }
 
 /// A book in a list.
 type BookCard = Output {
@@ -398,9 +398,9 @@ type BookCard = Output {
 }
 ```
 
-```jadpo check project=operation-conditions file=domains/library/actions/add_book.jadpo hidden
-use library/entities { Book }
-use library/types { BookTitle, PublicationDay }
+```jadpo check project=operation-conditions file=domains/catalogue/actions/add_book.jadpo hidden
+use catalogue/entities { Book }
+use catalogue/types { BookTitle, PublicationDay }
 
 /// Adds a book to the catalogue.
 action add_book(title: BookTitle, published_on: PublicationDay) -> Book {
@@ -413,9 +413,9 @@ action add_book(title: BookTitle, published_on: PublicationDay) -> Book {
 }
 ```
 
-```jadpo check project=operation-conditions file=domains/library/queries/spine_titles.jadpo
-use library/entities { Book }
-use library/types { BookCard }
+```jadpo check project=operation-conditions file=domains/catalogue/queries/spine_titles.jadpo
+use catalogue/entities { Book }
+use catalogue/types { BookCard }
 
 /// The books whose title fits on a spine label.
 query spine_titles() -> List<BookCard> {
@@ -426,9 +426,9 @@ query spine_titles() -> List<BookCard> {
 }
 ```
 
-```jadpo check project=operation-conditions file=domains/library/queries/published_in.jadpo migrate=initial
-use library/entities { Book }
-use library/types { BookCard, PublicationYear }
+```jadpo check project=operation-conditions file=domains/catalogue/queries/published_in.jadpo migrate=initial
+use catalogue/entities { Book }
+use catalogue/types { BookCard, PublicationYear }
 
 /// The books first published in a year.
 query published_in(year_published: PublicationYear) -> List<BookCard> {
@@ -443,11 +443,11 @@ This test runs on PostgreSQL and shows the database agreeing with code: a
 title is counted in code points, as `text.length` counts it, however many
 bytes it takes, and a year ends where `temporal.year` says it does:
 
-```jadpo check project=operation-conditions file=domains/library/queries/spine_titles.test.jadpo
-use library/entities { Book }
-use library/types { BookCard, BookTitle }
-use library/actions { add_book }
-use library/queries { published_in }
+```jadpo check project=operation-conditions file=domains/catalogue/queries/spine_titles.test.jadpo
+use catalogue/entities { Book }
+use catalogue/types { BookCard, BookTitle }
+use catalogue/actions { add_book }
+use catalogue/queries { published_in }
 
 test "a query keeps the books its operation keeps in code" {
     var dune: Book = add_book(BookTitle("Dune"), "1965-08-01")
@@ -1804,7 +1804,9 @@ recognise a repeat. So a rerun repeats the call harmlessly
   `clock.now` ([Several outside calls](#several-outside-calls), below).
 
 After three attempts within a second, the retry budget, the request fails
-`unavailable` and the client may try again.
+`unavailable` and the client may try again: a concurrent change found
+three attempts in, or a second after the first attempt began, isn't run
+again. A test's host has no clock, so there only the three holds.
 
 To catch a client that edits a stale copy across two requests, use HTTP's
 `If-Match` ([HTTP](07-http.md)).
@@ -2385,7 +2387,6 @@ var owners: List<OwnerView> = identity.users_by_ids(owner_ids)
 | Everything else on this page | Built. |
 | Reading another store outside an action's transaction | Not built yet: it is `toolchain.not_built_yet` ("One store per action"). |
 | Caches and entities in Redis | Not built yet: there is no Redis driver ("Where a read comes from", "Entities in Redis"). |
-| A rerun's time bound | Not built yet: the runtime counts attempts only, so of "three attempts within a second" only the three is enforced ("All-or-nothing actions and concurrent changes"). |
 | Comparing money, ranges and fields kept as JSON in a query | Not built yet: a field of money or a range, or one kept whole as its JSON (an object, a list, a set, a map or an enum with data), isn't compared in a query, its operations included (`toolchain.not_built_yet`), though `list.count` of a list would otherwise have a form ("Operations in conditions"). |
 
 ## Errors

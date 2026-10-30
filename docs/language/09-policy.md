@@ -1466,6 +1466,12 @@ policy {
 }
 ```
 
+The domain is part of the name, as in a call from another domain. A bare
+name that is one domain's action, `transfer_todo:`, is
+`policy.binding_invalid` with the edit that writes `todos.transfer_todo:`,
+and the `use` line that brought the bare name in isn't also reported
+unused; `jadpo fmt` then writes `use todos` in its place.
+
 `Todo.owner_id` means the current owner of the todo the action changes.
 For that action, the listed people replace the entity grants on the
 creates, updates, deletes and transitions in its own body. Its reads, and
@@ -1685,7 +1691,10 @@ An agent can edit policy, but the change can't ship without a person's
 approval, wherever it is written. The compiler compares the whole
 application before and after, because access also widens when an output
 gains a field, a route becomes public or an action starts touching another
-entity.
+entity. That approval isn't built yet: today a change that widens access
+ships without one, so review the permissions report's diff
+(`build/report/permissions.md`) before you deploy
+([What is built](#what-is-built)).
 
 Each widening needs an acceptance: a file in `acceptances/` in which a
 person accepts that change

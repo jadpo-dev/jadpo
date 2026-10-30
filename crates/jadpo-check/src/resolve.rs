@@ -851,6 +851,10 @@ impl Names<'_> {
             );
             return;
         }
+        if text == "some" {
+            out.push(some_called(self.path, call, span));
+            return;
+        }
         let candidates: Vec<String> = self
             .table
             .all()
@@ -2001,6 +2005,36 @@ fn no_member(message: &str, member: &str, near: Option<&str>, span: Span) -> Dia
             .next(format!("Use `{near}` instead of `{member}`"))
             .edit(span, near),
         None => problem.next("Call something it declares"),
+    }
+}
+
+/// `some(value)` written to make an optional (area 2, "Values that may be
+/// missing"): a `T?` takes the value itself, and `some(name)` is only a
+/// `match` pattern. The edit writes the value alone when there is one.
+fn some_called(path: &str, call: &ast::CallExpr, span: Span) -> Diagnostic {
+    let args: Vec<ast::Arg> = call
+        .arg_list()
+        .map(|list| list.args().collect())
+        .unwrap_or_default();
+    let value = match args.as_slice() {
+        [only] if only.name().is_none() => only
+            .expr()
+            .map(|expr| expr.syntax().text().to_string().trim().to_string()),
+        _ => None,
+    };
+    let problem = not_callable(
+        "some",
+        "a match pattern",
+        "A value that may be missing takes the value itself, as in `return title`, or `none`; `some(name)` only matches a present value in a `match`.",
+        match &value {
+            Some(value) => format!("Write `{value}` instead of `some({value})`"),
+            None => "Write the value itself instead of `some(...)`".to_string(),
+        },
+        span,
+    );
+    match value {
+        Some(value) => problem.edit(node_span(path, call.syntax()), value),
+        None => problem,
     }
 }
 

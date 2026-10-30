@@ -364,34 +364,8 @@ first. They are taken before any other unticked chunk on this page
 (Richard, 2026-10-30); chunks touching different crates run at the same
 time.
 
-- [ ] **A0 Every unbuilt protection refused where it is written**
-  `opus · high`: each area's "What is built" rule, that a feature not
-  built yet is `toolchain.not_built_yet` where it is written, applied to
-  what is accepted today and then does nothing. Area 15's field settings
-  (`personal:`'s minimisation and erasure checks, `retention:`, `erase:`)
-  are skipped silently (`crates/jadpo-check/src/types/decl.rs`,
-  `LATER_FIELD_SETTINGS`), so an app believes data expires that never
-  does; an entity's `audit:` and `retention:` (`data.unknown_section`), a
-  route's `bot_check:` (`route.item_unknown`) and `person: true`
-  (`type.not_a_type`) read as wrong syntax; a rerun's one-second bound
-  (area 6) isn't held. Each becomes `toolchain.not_built_yet`, or is
-  built where it is small. Area 15's opening and area 9's "can't ship
-  without a person's approval" say in the same paragraph what isn't
-  built yet. Found by an audit of every unbuilt row for protections that
-  are silently absent (2026-10-30).
-- [ ] **A1 Diagnostics that point at the cause** `opus · high`: a domain
-  or library folder named with a reserved word (`domains/library`) is
-  refused at the folder, before any qualified use cascades
-  (`crates/jadpo-check/src/naming.rs`; area 1, "Reserved words");
-  `jadpo fmt --layout` refuses a promotion whose new file folds onto an
-  existing name, and `layout.promotion_required` says which to rename
-  first; `some(...)` called like a function gets its own message and an
-  edit; a bare action name in `policy.jadpo` that matches an import says
-  to write `domain.action`, with an edit, and its import isn't also
-  `import.unused`; parser recovery stops at the first `expected_name` in
-  a block; `jadpo help <rule>` prints the rule's page from `docs/errors/`
-  offline. Done when the agent's runs 28 and 29 (a keyword domain, bare
-  policy names, a colliding promotion) each give one diagnostic per cause.
+- [x] **A0 Every unbuilt protection refused where it is written**: area 15, opening, the capability table and "What is built"; area 9, "Protecting policy"; area 6, "All-or-nothing actions and concurrent changes"; area 16, "What is built".
+- [x] **A1 Diagnostics that point at the cause**: area 1, "Reserved words" and "How a promotion happens"; area 2, "Values that may be missing"; area 9, "Actions"; area 14, "Commands for debugging, editors and help".
 - [ ] **A2 Listed queries and calls a listing doesn't cover** `opus · xhigh`:
   area 9, "Listing a query" and "A call the listing doesn't cover", with
   their decisions in the area's notes. Done when a staff query restricts
