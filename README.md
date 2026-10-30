@@ -8,56 +8,39 @@ questions: what can this app do, who can do it, and what can it reach?
 
 ## What the compiler catches
 
-An action lists the failures it can cause, and anything that calls it must
-handle each one or pass it on. This `match` forgets one:
+You ask your agent to show partners their details, and it sends back their
+API key too. In Jadpo that doesn't compile:
 
-```jadpo check project=readme-error file=main.jadpo expect=failure.outcome_missing_arm
-type LookupKey = Text {}
-
-type LookupResult = Text {}
-
-type LookupMissing = Failure {
-    kind: FailureKind.not_found
+```jadpo check project=readme-error file=main.jadpo expect=type.secret_exposed
+type PartnerName = Text {
+    max_length: 100
 }
 
-type LookupRefused = Failure {
-    kind: FailureKind.rejected
-}
-
-function lookup(key: LookupKey) fails LookupMissing, LookupRefused -> LookupResult {
-    if (key == "missing") {
-        reject LookupMissing
-    }
-    if (key == "refused") {
-        reject LookupRefused
-    }
-    return "found"
-}
-
-function describe(key: LookupKey) -> LookupResult {
-    return match lookup(key) {
-        success(value) -> value
-        LookupMissing -> "missing"
-    }
+/// What the partners page shows of a partner.
+type PartnerProfile = Output {
+    name: PartnerName
+    partner_key: ApiKey
 }
 ```
 
 ```text output
-error: This `match` doesn't handle `LookupRefused`
- --> main.jadpo:24:12
-   |
-24 |     return match lookup(key) {
-   |            ^^^^^^^^^^^^^^^^^ failures not handled
-  reason: `lookup(...)` can fail with `LookupMissing` and `LookupRefused`, and a `match` on its outcome has an arm for every one: a value, `reject` or `propagate`.
-  next: Add an arm for `LookupRefused` (agent)
-  rule: failure.outcome_missing_arm
-  help: https://jadpo.dev/docs/errors/failure.outcome_missing_arm
+error: `PartnerProfile.partner_key` holds an `ApiKey`
+ --> main.jadpo:8:18
+  |
+8 |     partner_key: ApiKey
+  |                  ^^^^^^ sent to a client
+  reason: An `ApiKey` is a secret value: it is never sent, logged, stored or shown. A response is written out, logged by proxies and kept by browsers, and a client never needs a secret back.
+  next: Remove `partner_key`, and send what the client needs instead, such as whether one is set (agent)
+  rule: type.secret_exposed
+  help: https://jadpo.dev/docs/errors/type.secret_exposed
 
 check failed: 1 error, 1 file
 ```
 
-This is the compiler's real output, checked by the gate. It names the
-fix, and who should make it: the agent.
+This is the compiler's real output, checked on every change. It names the
+fix and who should make it: `(agent)` means your coding agent can fix it
+itself. A leaking field, a route that skips sign-in, a record fetched
+without checking who may see it: each is a compile error like this one.
 
 ## Learn more
 
