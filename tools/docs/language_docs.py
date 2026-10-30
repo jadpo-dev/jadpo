@@ -887,23 +887,26 @@ def check_links(files, root=ROOT):
     return problems
 
 
-HELP_ANCHOR = re.compile(r'"(\d\d-[a-z0-9-]+)\.html#([a-z0-9-]+)"')
+ERROR_PAGES = 'https://jadpo.dev/docs/errors/'
+HELP_LINE = re.compile(r'^\s*help(?::\s+|\s{2,})(\S+)\s*$|"help"\s*:\s*"([^"]*)"')
 
 
-def check_help_anchors(root=ROOT):
-    """Every area-page section the compiler's source names for a `help`
-    line, `"NN-page.html#anchor"`, is a heading of that page as the site
-    renders it."""
-    slugs, problems = {}, []
-    for path in sorted(root.glob('crates/*/src/**/*.rs')):
+def check_help_lines(files, catalogue, root=ROOT):
+    """Every `help` line the docs show, in an error's output or its JSON,
+    is a rule's page on the site, `https://jadpo.dev/docs/errors/<rule>`,
+    of a rule the catalogue has, as the compiler prints it."""
+    problems = []
+    for path in files:
         for number, line in enumerate(path.read_text().split('\n'), 1):
-            for stem, anchor in HELP_ANCHOR.findall(line):
-                page = root / 'docs/language' / f'{stem}.md'
-                if page not in slugs:
-                    slugs[page] = {slug(t) for _, _, t, _ in headings_of(page.read_text())} if page.exists() else set()
-                if anchor not in slugs[page]:
-                    problems.append(f'{path.relative_to(root)}:{number}: help names {stem}.html#{anchor}, '
-                                    'which is no heading of that page')
+            match = HELP_LINE.search(line)
+            if not match:
+                continue
+            target = match.group(1) or match.group(2)
+            where = f'{path.relative_to(root)}:{number}'
+            if not target.startswith(ERROR_PAGES):
+                problems.append(f'{where}: help line names {target}, not a rule\'s page on the site ({ERROR_PAGES}<rule>)')
+            elif target[len(ERROR_PAGES):] not in catalogue:
+                problems.append(f'{where}: help line names {target}, a rule the catalogue doesn\'t have')
     return problems
 
 
@@ -929,6 +932,24 @@ def without_hidden(text):
             out.append(lines[i])
         i += 1
     return re.sub(r'\n{3,}', '\n\n', '\n'.join(out))
+
+
+def bare_fences(text):
+    """Markdown with each code fence's opening line kept to its language
+    (`jadpo`, `text`), as the bundle gives a page: the attributes after it
+    (`check project=... file=...`, `fragment`, `output`) are for the docs
+    check, never for a reader. What a fence holds is left as it is."""
+    out, fence = [], None
+    for line in text.split('\n'):
+        match = re.match(r'^(`{3,})(.*)$', line)
+        if fence is None and match:
+            fence = match.group(1)
+            words = match.group(2).split()
+            line = fence + (words[0] if words else '')
+        elif fence is not None and match and match.group(1).startswith(fence) and not match.group(2).strip():
+            fence = None
+        out.append(line)
+    return '\n'.join(out)
 
 
 def primer_tokens(text):
@@ -1158,7 +1179,10 @@ class Bundle:
             command_id = 'jadpo-' + re.sub(r'[^a-z0-9]+', '-', command['name'])
             built.append(('command', command_id, f'commands/{command_id}.md', f'jadpo {command["name"]}',
                           COMMAND_AREA, self.command_markdown(command, linked), linked))
-        return built
+        # Every page's fences keep only their language (docs/documentation.md,
+        # "The bundle").
+        return [(kind, page_id, path, title, area, bare_fences(text), linked)
+                for kind, page_id, path, title, area, text, linked in built]
 
     def index(self, built):
         areas = {area: title for kind, page_id, _, title, area, _, _ in built
@@ -1226,8 +1250,9 @@ def check_structure(pages, errors, catalogue, commands=(), root=ROOT, learn=()):
         if kind in ('topic', 'learn') and words(text) > TOPIC_WORDS:
             problems.append(f'topic "{page_id}" is {words(text)} words, over {TOPIC_WORDS}: split it')
     problems += bundle.problems
-    problems += check_links(markdown_files(root), root)
-    problems += check_help_anchors(root)
+    files = markdown_files(root)
+    problems += check_links(files, root)
+    problems += check_help_lines(files, catalogue, root)
     return problems
 
 

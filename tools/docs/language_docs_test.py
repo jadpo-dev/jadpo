@@ -237,6 +237,17 @@ class Bundle(unittest.TestCase):
         self.assertIn('[Shown](../topics/shown.md)', error)
         self.assertIn('- [`a.b`](../errors/a.b.md): A is b', files['commands/jadpo-check.md'])
 
+    def test_a_code_fence_keeps_only_its_language(self):
+        one = AREA_ONE.replace('### Later', '```text output\nchecked\n```\n\n````markdown\n```jadpo check project=q\n```\n````\n\n### Later')
+        _, files, _ = self.build(one=one)
+        shown = files['topics/shown.md']
+        self.assertIn('```jadpo\ntype Shown = Int\n```', shown)
+        self.assertIn('```text\nchecked\n```', shown)
+        # What a fence holds is left as it is, a fence written inside it too.
+        self.assertIn('````markdown\n```jadpo check project=q\n```\n````', shown)
+        self.assertNotIn('project=p', shown)
+        self.assertNotIn('text output', shown)
+
 
 PRIMER = """# Primer
 
@@ -307,6 +318,15 @@ class Structure(unittest.TestCase):
 
     def test_a_tree_in_shape_has_one_problem_the_missing_page(self):
         self.assertEqual(self.problems(), ['c.d (area 2) has no page: add docs/errors/c.d.md'])
+
+    def test_a_help_line_is_a_rules_page_on_the_site(self):
+        shown = '```text\nerror: no\n  rule: a.b\n  help: {}\n```\n'
+        good = AREA_TWO + shown.format('https://jadpo.dev/docs/errors/a.b')
+        self.assertEqual(self.problems(two=good), ['c.d (area 2) has no page: add docs/errors/c.d.md'])
+        found = ' '.join(self.problems(two=AREA_TWO + shown.format('docs/errors/a.b.md')))
+        self.assertIn('help line names docs/errors/a.b.md, not a rule\'s page on the site', found)
+        found = ' '.join(self.problems(two=AREA_TWO + shown.format('https://jadpo.dev/docs/errors/x.y')))
+        self.assertIn('help line names https://jadpo.dev/docs/errors/x.y, a rule the catalogue doesn\'t have', found)
 
     def test_a_topic_needs_an_id(self):
         problems = self.problems(two=AREA_TWO.replace("<!-- topic: twos-part -->\n", ''))

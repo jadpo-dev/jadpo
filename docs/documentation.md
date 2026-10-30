@@ -34,7 +34,8 @@ built" table near its end; its notes hold the Decisions table, how the area
 fits the rest of the language, what it carried to other areas and the
 questions still open. Every compiler rule has its page, one only a command
 raises saying "No example yet." until it has one, and a diagnostic's
-`help:` line names that page (`docs/errors/failure.kind_required.md`); its
+`help:` line is that page's address on the site
+(`https://jadpo.dev/docs/errors/failure.kind_required`); its
 area page lists it under `## Errors`.
 
 | Content | Source |
@@ -120,7 +121,10 @@ pages the reference; each area's "What is built" topic is titled
 
 Pages are plain markdown. A topic's heading is its page's `#`, its hidden
 blocks (`hidden`, the support code its examples compile with) are left
-out, a Learn page's front matter too, and its relative links are by ID (`passkeys.md`,
+out, a Learn page's front matter too, each code fence keeps only its
+language (`jadpo`, `text`), the docs check's attributes after it
+(`check project=… file=…`, `fragment`, `output`) left out, so the site
+shows the fence as it is, and its relative links are by ID (`passkeys.md`,
 `../errors/failure.kind_required.md`), keeping an anchor within the page;
 a link to anything else, design notes included, names the file on GitHub's
 `main`. An error page leads with its rule's summary, area and who usually
