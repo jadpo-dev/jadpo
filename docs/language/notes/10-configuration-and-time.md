@@ -124,3 +124,114 @@ Why [Configuration and time](../10-configuration-and-time.md) is the way it is: 
 | A constant or a setting | A value is a constant (fixed, read `security.max_login_attempts`) or a setting (per deployment, read `config.max_login_attempts`), never both: one source, one way to read it. If a constant could seed a setting, code reading the constant would silently ignore the environment variable (the `DEFAULT_PORT` bug of TypeScript and pydantic code); `default:` on the field already names the default, so a constant is not a literal for `default:` or `test:`. Rule of thumb: if a deployment could ever need a different value it is a setting, otherwise a constant. Tiers: `constant` (fixed in code), `config` (per deployment), `flags { }` (area 16, changes at runtime) |
 | Making a constant a setting | `jadpo config move <constant>`, and the editor's "Make this a setting" running the same code, adds a `config` field of the constant's name and type with its value as `default:` and its `///` description, deletes the constant and rewrites every read to `config.<name>`, so a reviewer sees each place that can now differ per deployment. Offered, never required, so not part of `jadpo fmt --layout`. Refuses, editing nothing, a type a setting can't hold, a name a setting already has, and a constant read in a query, an update by `id`, a backfill or another constant. No command moves a setting back. No constant an environment variable can override (it would hide per-deployment behaviour at the call site, agents would add it everywhere, there would be no single list of variables, and moving a file would rename its variable); no `config { }` per domain; no settings declared beside their use and gathered by the compiler; no values per environment in source (`production:`, `staging:`), since values aren't layered |
 | Fields in name order | `jadpo fmt` sorts `config { }` fields by name, comments moving with each, so parallel workspaces adding settings rarely touch the same lines; nothing gives a field's position meaning (settings are read, bound and reported by name). `jadpo fmt --check` fails on one out of order. The page examples are sorted already |
+
+## Moved from the area page
+
+When [Configuration and time](../10-configuration-and-time.md) was
+rewritten to the [writing guide](../../writing.md), its references to other
+areas by number, the comparisons it used to justify a choice, and the
+details of how the compiler and runtime build each rule moved here. Nothing
+in this list changed a rule.
+
+- **The page's opening note** said the code on the page applies the
+  decisions of areas 1 to 10, and listed what was built; the list is the
+  "What is built" table.
+- **`config { }` and `locales { }` have no name** because area 1 decided
+  unnamed singletons; area 1 also decided there is no `env.jadpo` and no
+  second binding file.
+- **A setting read where a named type goes**: a signature takes named types
+  (area 2), so building one from a plainly typed setting is an ordinary
+  construction.
+- **A renamed variable** is shown in the approval review like any other
+  contract change; that review comes with area 18.
+- **A constant never seeds a setting** to avoid the `DEFAULT_PORT` bug of
+  TypeScript and pydantic code, where a constant seeds a setting and half
+  the code reads the constant. Jadpo has no need for the pattern:
+  `default:` on the field already names the default.
+- **`jadpo config move`** runs the same code as the editor's "Make this a
+  setting", as the editor's rename runs `jadpo rename` (area 14); its
+  refusals are area 14's command errors.
+- **Where a secret may go** is area 11's integration `credential:` and
+  webhook `secret:`, area 8's `signing_key:` and area 19's `crypto` `key:`.
+- **Connection addresses**: area 5 decided that stores take their address
+  from configuration, and area 11 put them in one `connections:` block.
+  TLS on a `PostgresUrl` is area 5's "PostgreSQL over TLS", a `Certificate`
+  area 19's, and `connection.value_invalid` area 11's.
+- **Client addresses**: rate limits (areas 7 and 16, an IPv6 address by its
+  /64 in area 16) and the request timeline (area 17) read the address.
+  Natively the connection's address comes from the host and the rest is the
+  runtime's, so a deployable chooses it as `jadpo dev` does
+  (`jadpo_runtime::http::ClientAddress`); on Workers `ClientAddress::read`
+  refuses a source other than `cloudflare`, and `deployable.target_unsupported`
+  is area 14's.
+- **The check before the app starts** is one function in the runtime,
+  `jadpo_runtime::config::load`, given the plan's settings and a source of
+  variables (a host capability: `Host::variable` natively, the process's
+  environment; a binding on Workers), so the interpreter and compiled code
+  on every platform start the same way. The page said health checks are
+  area 11's; it now links the runtime's health routes on the HTTP page.
+- **Time types**: `LocalTime` and `LocalDateTime` are area 19's; whole
+  milliseconds in PostgreSQL's microsecond column was carried from area 5;
+  named types in signatures were decided in area 2; `clock.advance(...)`
+  outside a test is area 13's. The `Zone` and `Locale` tables live in
+  `jadpo-std` (`src/zones.rs`, which says how each was made).
+- **A duration setting** reads ISO 8601 text because every boundary reads a
+  standard type through its contract (area 19, "Every boundary through the
+  contract").
+- **`clock.now`**: a query's comparison with it is area 6's, a test's
+  clock area 13's, and the `random` namespace area 19's.
+- **Zones**: an unclear local time is mapped the way a construction's broken
+  rule is (area 2); `at:` may be area 19's `LocalTime`; an `InstantRange`
+  parameter is compared as any parameter's fields (area 6). The zone
+  database is jiff's `jiff-tzdb`, release 2026e, and a test holds that every
+  `Zone` variant is in it.
+- **Formatting**: area 19 made `text.format(value, locale:)` the one call for
+  every standard type, so `temporal.format`, a habit, is
+  `semantic.standard_operation_moved`; area 19 also adds the `temporal`
+  operations `occurrences`, `open_at` and `period_between` and the
+  placeholder styles `{price, number, currency}` and `{rate, number,
+  percent}`. The words come from Unicode CLDR 48 through ICU4X (the
+  `icu_datetime`, `icu_calendar`, `icu_time`, `icu_locale` and
+  `icu_experimental` crates, pinned together). A declared format follows
+  CLDR's skeletons; where it differs from `Intl.DateTimeFormat`, the pattern
+  is ICU4X's.
+- **Locales**: `in_progress:` is a declared opt-out because there are no
+  warnings (area 1); case mapping is area 19's "Text"; a deployable's locale
+  data is the entries the supported locales reach as ICU4X looks data up.
+  A header read with `header:` and `optional: true` is area 7's.
+- **Translations**: a message a second domain uses moves under area 1's
+  promotion rule, files are named after their type (area 1), and members
+  are found by area 1's name conversion; `PluralCount` is one of area 2's
+  built-in types. `jadpo-std` holds the plural forms table, checked against
+  ICU4X's data on every build. The wording is read while compiling into
+  `jadpo-std`'s `Template`, carried to the runtime as plan data,
+  `TranslationPlan`, and written by `present::translate`, from the ICU4X 2.3
+  and CLDR 48 data in `jadpo-value`. The email template call is area 16's.
+- **Failures' wording** is never written on the failure type because one
+  rule holds for all text, and Jadpo's and packages' failures could not carry
+  the app's wording in place. The entity's not-found failure is area 6's, an
+  instant on the wire area 7's, and the fixed English `message` area 4's.
+- **Jadpo's messages** are a catalogue, data in `jadpo-std` (`jadpo_text`);
+  the wording of Jadpo's enums the app has on is in the `TranslationPlan`
+  as `jadpo.<key>`. The features that switch them on are area 8's sign-in
+  methods, area 16's built-in emails and, later, area 15's privacy requests.
+  The root folder's `layout.wrong_folder` is `Place::RootTranslations`.
+  The choices for packages' text follow area 11, "Two versions side by side,
+  lazy loading and the package cache".
+- **A package's default locale**, an open question. The publishing bar
+  holds every language a package ships to completeness, which is stricter
+  than "complete wording in its own default locale". A `locale:` key in
+  `package.jadpo` could name the default and let other languages ship
+  part-done, at the cost of the index's two keys. Recommendation: keep it
+  strict until a package needs to ship a language unfinished.
+- **`jadpo fix`** stays the type clashes' (area 14).
+- **Translation checks**: `translation.field_unused` is an error because
+  there are no warnings (area 1); `sources.jadpo_record` is in area 18's
+  record format, and `record.edited` and `record.format_newer` are area
+  18's; unaccepted wording joins the approval report once `jadpo approval`
+  exists (area 17), and the host's code review is the gate (area 18).
+- **Translation commands** take `--json` as every command does (area 14),
+  and the exchange's errors are area 14's command errors.
+- **Retention periods**: `purge: { after: }` is area 5's lifecycle; a purge
+  run is given the period the app started with
+  (`jadpo_runtime::purge_after`); GDPR support is designed in area 15.

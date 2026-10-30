@@ -649,17 +649,11 @@ the address of the issue form, beside the build's version, the
 header or a setting value. A fault that is your own code's, such as an
 overflow, has `bug_in_jadpo: false` and `report: null`.
 
-The `jadpo` command and `jadpo dev` and `jadpo test` are not deployed
-apps, so a panic in the compiler or the interpreter there prints an
-internal error, in the [CLI design language](../cli-design-language.md)'s
-shape, instead: `failed  This is a bug in Jadpo, not in your code`, the command, the
-version and platform, the place in Jadpo's source, and the issue form's
-link. It never prints the panic message or your arguments. The same crash
-is written to `~/.cache/jadpo/crashes/<timestamp>.txt` (under
-`XDG_CACHE_HOME` when set) with the version, the platform, the arguments
-(`jadpo config` keeps only its subcommand), the panic message and a
-backtrace. That file can quote your project, so read it before you attach
-it to a report. Jadpo sends nothing anywhere, and keeps the newest 20.
+The `jadpo` command, `jadpo dev` and `jadpo test` aren't deployed apps. A
+panic in them prints a screen that says it is a bug in Jadpo and writes a
+crash file for you to read and attach to a report ([When Jadpo itself
+fails](14-tooling.md#when-jadpo-itself-fails)). Jadpo sends nothing
+anywhere.
 
 ## Concealing records
 <!-- topic: concealing-records -->
