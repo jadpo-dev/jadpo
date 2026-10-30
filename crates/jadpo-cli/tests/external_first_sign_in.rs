@@ -307,12 +307,10 @@ fn an_external_subject_no_user_has_is_taken_on_once_and_linked() {
     // one takes the newcomer on, and every one is theirs.
     let together: Vec<Request> = (0..4).map(|_| request("bo")).collect();
     let app = program.app();
-    let answered = runtime.block_on(all(
-        together
-            .iter()
-            .map(|request| serve_request(&app, &program, &host, &worker, request))
-            .collect(),
-    ));
+    let answered = runtime.block_on(all(together
+        .iter()
+        .map(|request| serve_request(&app, &program, &host, &worker, request))
+        .collect()));
     for response in &answered {
         assert_eq!(response.status, 200, "{}", shown(response));
     }
@@ -334,8 +332,15 @@ fn an_external_subject_no_user_has_is_taken_on_once_and_linked() {
     // A user the action made but left inactive is linked and disabled,
     // and signs in once they are made active.
     let pending = send("pending");
-    assert_eq!(pending.code.as_deref(), Some("user_disabled"), "{}", shown(&pending));
-    rows("UPDATE \"librarian\" SET \"active\" = true WHERE \"subject\" = 'staff-pending' RETURNING 1");
+    assert_eq!(
+        pending.code.as_deref(),
+        Some("user_disabled"),
+        "{}",
+        shown(&pending)
+    );
+    rows(
+        "UPDATE \"librarian\" SET \"active\" = true WHERE \"subject\" = 'staff-pending' RETURNING 1",
+    );
     let approved = send("pending");
     assert_eq!(approved.status, 200, "{}", shown(&approved));
     assert_eq!(super::deployable::count(&url, "\"librarian\""), 3);

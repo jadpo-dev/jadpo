@@ -2125,12 +2125,12 @@ test "a newcomer's first token takes them on to wait for approval" {
         as: newcomer
     }
     assert first.code == "user_disabled"
-    var again: Response = request {
+    var returning_card: Response = request {
         method: HttpMethod.get
         path: "/staff/me"
         as: newcomer
     }
-    assert again.code == "user_disabled"
+    assert returning_card.code == "user_disabled"
 }
 ```
 
