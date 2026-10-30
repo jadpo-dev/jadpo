@@ -5,7 +5,7 @@ creates, updates, deletes and transitions in its own action's body. An
 action it calls keeps its own grants, with the same caller, so it can
 refuse some of the people the line lets in, who then get 403
 `not_permitted`. Here `borrow` is listed for anyone signed in, but the
-`Book` change is made in `lend`, which only `StaffRole.admin` may make:
+`Book` change is made in `lend`, which only `StaffRole.librarian` may make:
 
 ```jadpo check project=e-call-ungranted expect=policy.call_ungranted
 type Handle = Text {
@@ -13,7 +13,7 @@ type Handle = Text {
 }
 
 type StaffRole = Enum {
-    admin
+    librarian
 }
 
 entity Member {
@@ -59,9 +59,9 @@ entity Book {
     }
 
     policy: {
-        create: [StaffRole.admin]
+        create: [StaffRole.librarian]
         read: [Access.authenticated]
-        update: [StaffRole.admin]
+        update: [StaffRole.librarian]
     }
 }
 
@@ -92,7 +92,7 @@ error: `borrow` calls `lend`, which refuses some of the people `borrow`'s line l
    |
 69 |     return attempt lend(book_id, caller.id)
    |                    ^^^^^^^^^^^^^^^^^^^^^^^^ refuses some callers `Access.authenticated` lets in
-  reason: `borrow`'s line under `actions:` covers only the creates, updates, deletes and transitions in `borrow`'s own body; `lend` keeps its own grants, with the same caller. `lend` changes `Book` records, which only `StaffRole.admin` may, so some callers `Access.authenticated` lets in get 403 `not_permitted` from it.
+  reason: `borrow`'s line under `actions:` covers only the creates, updates, deletes and transitions in `borrow`'s own body; `lend` keeps its own grants, with the same caller. `lend` changes `Book` records, which only `StaffRole.librarian` may, so some callers `Access.authenticated` lets in get 403 `not_permitted` from it.
   next: Make the change in `borrow`'s own body, or list `lend` under `actions:` for exactly the people `borrow`'s line names, or write `decline policy.call_ungranted: "<why>"` above it if this is deliberate (human)
   rule: policy.call_ungranted
   help: https://jadpo.dev/docs/errors/policy.call_ungranted

@@ -1525,8 +1525,8 @@ names `Access.public` (`policy.public_grant_missing`). A schedule,
 subscriber or batch never passes one either: the system is let in only
 by a line naming `Access.system`, which a query's can't.
 
-Here every signed-in customer reads a book, and only an admin where it is
-shelved:
+Here every signed-in customer reads a book, and only a bookseller where
+it is shelved:
 
 ```jadpo check project=listed-query file=app.jadpo hidden
 use shop/entities { Member }
@@ -1554,7 +1554,7 @@ use shop
 
 policy {
     actions: {
-        shop.stock: [StaffRole.admin]
+        shop.stock: [StaffRole.bookseller]
     }
 }
 ```
@@ -1576,7 +1576,7 @@ type Title = Text {
 ```jadpo check project=listed-query file=domains/shop/types/staff_role.jadpo hidden
 /// What a member of staff may do, in the whole shop.
 type StaffRole = Enum {
-    admin
+    bookseller
 }
 ```
 
@@ -1648,18 +1648,18 @@ entity Staff {
 use shop/types { StaffRole, Title }
 
 /// A book every signed-in customer may read, with where it is shelved,
-/// which only an admin may.
+/// which only a bookseller may.
 entity Book {
     id: Uuid
     title: Title
     shelf_note: Title {
         policy: {
-            read: [StaffRole.admin]
+            read: [StaffRole.bookseller]
         }
     }
 
     policy: {
-        create: [StaffRole.admin]
+        create: [StaffRole.bookseller]
         read: [Access.authenticated]
     }
 }
@@ -1690,16 +1690,16 @@ action appoint(member_id: Member.id) fails MemberNotFound -> Staff {
     return attempt Staff.create {
         set: {
             member_id: member_id
-            role: StaffRole.admin
+            role: StaffRole.bookseller
         }
     }
 }
 ```
 
-```jadpo check project=listed-query file=domains/shop/actions/dismiss.jadpo hidden
+```jadpo check project=listed-query file=domains/shop/actions/stand_down.jadpo hidden
 use shop/entities { Staff, StaffNotFound }
 
-action dismiss(staff_id: Staff.id) fails StaffNotFound -> Unit {
+action stand_down(staff_id: Staff.id) fails StaffNotFound -> Unit {
     attempt Staff.delete(staff_id)
 }
 ```
@@ -1718,12 +1718,12 @@ action add_book(title: Title, shelf_note: Title) -> Book {
 }
 ```
 
-```jadpo check project=listed-query file=domains/shop/queries/catalogue.jadpo hidden
+```jadpo check project=listed-query file=domains/shop/queries/browse.jadpo hidden
 use shop/entities { Book }
 use shop/types { CatalogueBook }
 
 /// Every book, for any signed-in customer.
-query catalogue() -> List<CatalogueBook> {
+query browse() -> List<CatalogueBook> {
     from: Book
     order: [Book.title asc]
     limit: 50
@@ -1732,7 +1732,7 @@ query catalogue() -> List<CatalogueBook> {
 
 Unlisted, `stock` would be `policy.output_field_unproved`, since
 anyone signed in may call it and not all of them may read `shelf_note`.
-Listed, it is proved against `StaffRole.admin` alone:
+Listed, it is proved against `StaffRole.bookseller` alone:
 
 ```jadpo check project=listed-query file=domains/shop/queries/stock.jadpo
 use shop/entities { Book }
@@ -1748,7 +1748,7 @@ query stock() -> List<StockBook> {
 
 ```jadpo check project=listed-query file=domains/shop/routes/books.jadpo migrate=initial hidden
 use shop/types { CatalogueBook, StockBook }
-use shop/queries { catalogue, stock }
+use shop/queries { browse, stock }
 
 /// The shop's books.
 routes Books {
@@ -1757,7 +1757,7 @@ routes Books {
     /// The catalogue.
     GET / {
         output: List<CatalogueBook>
-        run: catalogue()
+        run: browse()
     }
 
     /// The stock, for staff.
@@ -1803,7 +1803,7 @@ of staff whose role is removed is refused on their next request:
 ```jadpo check project=listed-query file=domains/shop/routes/books.test.jadpo
 use shop/entities { Book, Member, Staff }
 use shop/types { CatalogueBook, StockBook }
-use shop/actions { add_book, appoint, dismiss, register }
+use shop/actions { add_book, appoint, stand_down, register }
 
 test "staff see where a book is shelved, and customers only the catalogue" {
     var ann: Member = attempt register("ann")
@@ -1829,16 +1829,16 @@ test "staff see where a book is shelved, and customers only the catalogue" {
     }
     assert refused.status == 403
     assert refused.code == "not_permitted"
-    var catalogue: Response = request {
+    var browsed: Response = request {
         method: HttpMethod.get
         path: "/books"
         as: Principal.user(cyd)
     }
-    var listed: CatalogueBook = CatalogueBook {
+    var on_shelf: CatalogueBook = CatalogueBook {
         id: dune.id
         title: "Dune"
     }
-    assert catalogue.output == [listed]
+    assert browsed.output == [on_shelf]
 }
 
 test "a role removed is refused on the next request" {
@@ -1851,7 +1851,7 @@ test "a role removed is refused on the next request" {
         as: Principal.user(ann)
     }
     assert before.status == 200
-    attempt dismiss(staff.id)
+    attempt stand_down(staff.id)
     var after: Response = request {
         method: HttpMethod.get
         path: "/books/stock"
