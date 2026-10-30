@@ -26,7 +26,7 @@ error: `after: 0d` isn't a positive duration
   reason: `after:` is how long a hidden record is kept before purge deletes it, a duration such as `30d` or `12h`, longer than nothing; a hidden record would be deleted the moment it is hidden.
   next: Write a duration, such as `after: 30d` (agent)
   rule: data.lifecycle_purge_after
-  help: docs/errors/data.lifecycle_purge_after.md
+  help: https://jadpo.dev/docs/errors/data.lifecycle_purge_after
 
 check failed: 1 error, 1 file
 ```

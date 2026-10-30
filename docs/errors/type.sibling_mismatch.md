@@ -27,7 +27,7 @@ error: `Order.id` can't be used where `Customer.id` is required
   reason: Both refine `Uuid`, but a field type widens only to its own declared type, so one type's values never stand in for another's.
   next: Pass a `Customer.id` here (agent)
   rule: type.sibling_mismatch
-  help: docs/errors/type.sibling_mismatch.md
+  help: https://jadpo.dev/docs/errors/type.sibling_mismatch
 
 check failed: 1 error, 1 file
 ```

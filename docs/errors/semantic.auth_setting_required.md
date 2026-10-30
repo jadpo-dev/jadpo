@@ -32,7 +32,7 @@ error: `browser_session:` doesn't name its cookie
   reason: A browser session travels in a cookie the application names, so two applications on one domain never share one.
   next: Add `cookie: "<name>"`, such as `cookie: "session"` (agent)
   rule: semantic.auth_setting_required
-  help: docs/errors/semantic.auth_setting_required.md
+  help: https://jadpo.dev/docs/errors/semantic.auth_setting_required
 
 check failed: 1 error, 1 file
 ```

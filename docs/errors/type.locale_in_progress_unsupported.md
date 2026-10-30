@@ -23,7 +23,7 @@ error: `Locale.de_de` is in progress but isn't supported
   reason: `in_progress:` names supported locales whose wording isn't finished: it lets them fall back where wording is missing. A locale that isn't supported isn't written at all.
   next: Add `Locale.de_de` to `supported:`, or remove it from `in_progress:` (agent)
   rule: type.locale_in_progress_unsupported
-  help: docs/errors/type.locale_in_progress_unsupported.md
+  help: https://jadpo.dev/docs/errors/type.locale_in_progress_unsupported
 
 check failed: 1 error, 1 file
 ```

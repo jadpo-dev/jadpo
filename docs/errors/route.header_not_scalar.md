@@ -64,7 +64,7 @@ error: A header can't hold `List<Memo>`
   reason: A header holds one value, so a field read from one is a scalar or an enum without data; lists and objects come in the body.
   next: Move the field to the body, or give it a scalar type (agent)
   rule: route.header_not_scalar
-  help: docs/errors/route.header_not_scalar.md
+  help: https://jadpo.dev/docs/errors/route.header_not_scalar
 
 check failed: 1 error, 1 file
 ```

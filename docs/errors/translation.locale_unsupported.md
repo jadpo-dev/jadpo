@@ -45,7 +45,7 @@ error: `domains/shipping/translations/de_de.jadpo` is for a locale this applicat
   reason: Wording is written for the locales listed in `locales { supported: }`, in `app.jadpo`; a file for another is never used, and the server never guesses a language.
   next: Add `Locale.de_de` to `supported:` in `app.jadpo`, or remove the file (agent)
   rule: translation.locale_unsupported
-  help: docs/errors/translation.locale_unsupported.md
+  help: https://jadpo.dev/docs/errors/translation.locale_unsupported
 
 check failed: 1 error, 5 files
 ```

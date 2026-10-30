@@ -29,7 +29,7 @@ error: `order_by` isn't something a query holds
   reason: A query's block holds `from:`, `geometry:`, `where:`, `where_present:`, `group:`, `aggregate:`, `order:`, `limit:`, `page:`, `include:` and `missing:`. Did you mean `order:`?
   next: Use `order:` (agent)
   rule: query.unknown_section
-  help: docs/errors/query.unknown_section.md
+  help: https://jadpo.dev/docs/errors/query.unknown_section
 
 check failed: 1 error, 1 file
 ```

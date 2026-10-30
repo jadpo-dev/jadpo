@@ -17,7 +17,7 @@ error: `secret:` on `api_key` isn't `true` or `false`
   reason: `secret: true` marks a value that must never leave the server; the setting is either secret or it is not.
   next: Write `secret: true`, or leave `secret:` out (agent)
   rule: configuration.secret_invalid
-  help: docs/errors/configuration.secret_invalid.md
+  help: https://jadpo.dev/docs/errors/configuration.secret_invalid
 
 check failed: 1 error, 1 file
 ```

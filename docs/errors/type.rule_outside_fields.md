@@ -29,7 +29,7 @@ error: A rule can't read `opens_by(starts)`
   reason: A rule reads only `Booking`'s own fields, with literals, variants, operators, `match` and the standard operations that give a result from their arguments alone, so every value of `Booking` follows it wherever it is made, the same in every run.
   next: Write the rule over `Booking`'s fields, or check this where the value is built, before building it (agent)
   rule: type.rule_outside_fields
-  help: docs/errors/type.rule_outside_fields.md
+  help: https://jadpo.dev/docs/errors/type.rule_outside_fields
 
 check failed: 1 error, 1 file
 ```

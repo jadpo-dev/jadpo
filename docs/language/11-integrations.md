@@ -1078,7 +1078,7 @@ the sandbox for each one (see "Tests and fakes").
 >   reason: Reading it found `variant` on `status`: the operation's types and the provider disagree, so a real call would fault. Nothing was recorded.
 >   next: Correct `Booking` against the answer and the provider's documentation, then run it again (agent)
 >   rule: recording.failed
->   help: docs/language/14-tooling.html#command-errors
+>   help: https://jadpo.dev/docs/errors/recording.failed
 > ```
 >
 > Writing an operation's output type from the answer when it has none,
@@ -1708,7 +1708,7 @@ error: Connection `billing` is named like domain `billing`
   reason: Connections share one namespace with domains and libraries, so `billing.<name>` means one thing; it is already the domain `billing`.
   next: Rename the connection, such as `billing_api`, and the calls through it (agent)
   rule: semantic.duplicate_declaration
-  help: docs/errors/semantic.duplicate_declaration.md
+  help: https://jadpo.dev/docs/errors/semantic.duplicate_declaration
 
 check failed: 1 error, 4 files
 ```

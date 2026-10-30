@@ -107,7 +107,7 @@ jadpo build
   binary: build/target/app/app
   build: b_eae4cf8f9e2e
   commit: none
-  settings: DATABASE_URL, MAIL_FROM, MAX_DUE_AHEAD, SITE
+  settings: DATABASE_URL, MAIL_FROM, MAX_DUE_AHEAD, SITE, SMTP_HOST, SMTP_PASSWORD, SMTP_USERNAME
 
 alert: Built from files git doesn't track: no commit explains its events
 
@@ -165,11 +165,8 @@ chmod 600 ~/todo-app.env
 
 Replace each value with your own. Put a value in single quotes if it
 has spaces or symbols in it. These are the settings without a default,
-and the ones whose default is only right for your machine. Today the
-program starts even if the mail server's settings are missing, and
-`settings:` above doesn't list them, but without them no email can be
-sent, so set them. On a real server you'd set the same
-variables wherever your host keeps secrets.
+and the ones whose default is only right for your machine. On a real
+server you'd set the same variables wherever your host keeps secrets.
 
 ## Apply the migrations
 

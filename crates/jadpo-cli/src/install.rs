@@ -663,8 +663,7 @@ pub fn add(call: &Call) -> Reply {
                     .reason(format!(
                         "`{written}` is a Jadpo app, whose package comes from its OpenAPI document with the importer (area 11, \"Packages from other Jadpo apps\")."
                     ))
-                    .next("Add a package's own folder, or a git repository at a release tag, meanwhile")
-                    .help_at("11-integrations.html#packages-from-other-jadpo-apps"),
+                    .next("Add a package's own folder, or a git repository at a release tag, meanwhile"),
                 );
             } else if !written.contains(['/', '\\', '.']) {
                 return Reply::failed(
@@ -675,8 +674,7 @@ pub fn add(call: &Call) -> Reply {
                     .reason(format!(
                         "`{written}` names a package in the registry, which comes after the first build (area 11, \"Where packages come from\")."
                     ))
-                    .next("Add the package from its folder, or from its git repository at a release tag: `<repository>@v<version>`")
-                    .help_at("11-integrations.html#where-packages-come-from"),
+                    .next("Add the package from its folder, or from its git repository at a release tag: `<repository>@v<version>`"),
                 );
             } else {
                 return Reply::failed(arguments(
@@ -911,8 +909,7 @@ pub fn update(call: &Call) -> Reply {
                     "`{}` came from the registry, which comes after the first build.",
                     line.package
                 ))
-                .next("Leave it as it is meanwhile")
-                .help_at("11-integrations.html#where-packages-come-from"),
+                .next("Leave it as it is meanwhile"),
             );
         }
         Source::Path { path, digest, .. } => {

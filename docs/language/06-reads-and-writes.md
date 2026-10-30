@@ -1237,7 +1237,7 @@ error: `BakeryPin.bakery_id` isn't a field of `Bakery`
   reason: A map layer fills its features' properties from `Bakery`'s fields of the same name (`id`, `name` and `spot`); nothing gives `bakery_id`.
   next: Remove `bakery_id` from `BakeryPin`, or name it after a field of `Bakery` (agent)
   rule: query.result_field
-  help: docs/errors/query.result_field.md
+  help: https://jadpo.dev/docs/errors/query.result_field
 
 check failed: 1 error, 1 file
 ```
@@ -1288,7 +1288,7 @@ error: `bakery_map` sends `Bakery.owner_phone`, which not every caller may read
   reason: Anyone `Bakery`'s `read:` lets in may call `bakery_map`, anyone at all among them, and no client may read it, as it is `FieldAccess.server_only` `owner_phone`. An output has one shape for everyone, so a field some callers may not read can't be in it.
   next: Leave `owner_phone` out of `BakeryPin`, the features' properties (agent)
   rule: policy.output_field_unproved
-  help: docs/errors/policy.output_field_unproved.md
+  help: https://jadpo.dev/docs/errors/policy.output_field_unproved
 
 check failed: 1 error, 1 file
 ```
@@ -2300,7 +2300,7 @@ error: Reading a second store in `order_product` isn't built yet
   reason: An action may read another store outside its transaction (area 6), but this compiler runs all of an action's store operations in the one transaction its first begins; `order_product` uses `Order` (store `main`), and here it reads `Product` (store `catalogue`).
   next: Read `Product` before `order_product` runs, and pass in what it needs, for now (agent)
   rule: toolchain.not_built_yet
-  help: docs/language/06-reads-and-writes.html#one-store-per-action
+  help: https://jadpo.dev/docs/errors/toolchain.not_built_yet
 
 check failed: 1 error, 5 files
 ```

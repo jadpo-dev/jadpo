@@ -31,7 +31,7 @@ error: `main` isn't a connection a queue is read through
   reason: A queue in `receiving:` is a connection to a package that provides `receiving`, or one with `driver: Driver.cloudflare_queues`; it gives `id_at:`, where each message's id is in its body, `events:`, the events its messages may be, and `type_at:`, where each message's type is, unless it lists one event.
   next: Add `main` to `connections:` with the `package:` its queue is read through, or `driver: Driver.cloudflare_queues`, or name one that is (agent)
   rule: receiving.invalid
-  help: docs/errors/receiving.invalid.md
+  help: https://jadpo.dev/docs/errors/receiving.invalid
 
 check failed: 1 error, 1 file
 ```

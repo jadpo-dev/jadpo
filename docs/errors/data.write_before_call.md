@@ -91,7 +91,7 @@ error: `PriceSheet.update` writes before the call to `sheets.put`
   reason: No transaction is open while an outside call is out, so an action writes only after its last call; run as written, `sheets.put` would be refused.
   next: Move `PriceSheet.update` after `sheets.put` (agent)
   rule: data.write_before_call
-  help: docs/errors/data.write_before_call.md
+  help: https://jadpo.dev/docs/errors/data.write_before_call
 
 check failed: 1 error, 5 files
 ```

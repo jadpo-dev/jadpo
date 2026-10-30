@@ -18,7 +18,7 @@ error: `Note.title` isn't a reference
   reason: `on_delete:` says what deleting a referenced record does, so it belongs only on a field typed `X.id`.
   next: Remove `on_delete:` (agent)
   rule: data.on_delete_not_reference
-  help: docs/errors/data.on_delete_not_reference.md
+  help: https://jadpo.dev/docs/errors/data.on_delete_not_reference
 
 check failed: 1 error, 1 file
 ```

@@ -129,8 +129,7 @@ pub const COLORS: &[Value] = &[
 
 /// A flag a language page decides that isn't built yet. It is left out
 /// of help and completion, like an unbuilt command, but using it says so
-/// with `toolchain.not_built_yet` and the section that decides it, rather
-/// than calling it unknown.
+/// with `toolchain.not_built_yet`, rather than calling it unknown.
 #[derive(Debug)]
 pub struct Planned {
     pub command: &'static str,
@@ -140,8 +139,6 @@ pub struct Planned {
     pub what: &'static str,
     /// Why it isn't here yet, as a sentence.
     pub reason: &'static str,
-    /// The deciding section, relative to `docs/language/`.
-    pub anchor: &'static str,
 }
 
 pub static PLANNED_FLAGS: &[Planned] = &[Planned {
@@ -149,7 +146,6 @@ pub static PLANNED_FLAGS: &[Planned] = &[Planned {
     name: "--interactive",
     what: "Interactive tests",
     reason: "`--interactive` opens a keyboard view of every test (area 13), which comes with the rest of area 14's tooling.",
-    anchor: "13-testing.html#running-tests",
 }];
 
 /// The planned flag of `command` called `name`.

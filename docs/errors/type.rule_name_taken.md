@@ -23,7 +23,7 @@ error: A rule can't be called `ends` here
   reason: `Booking` has a field `ends`; a rule's name is its own, so `ends:` in an `attempt` or a report can only mean one thing.
   next: Give the rule a name of its own that says what it checks (agent)
   rule: type.rule_name_taken
-  help: docs/errors/type.rule_name_taken.md
+  help: https://jadpo.dev/docs/errors/type.rule_name_taken
 
 check failed: 1 error, 1 file
 ```

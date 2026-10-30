@@ -13,7 +13,7 @@ error: Public type `OutwardCode` has no description
   reason: Every public type, failure, library and library function of a published package has a `///` description: it is what `jadpo package show` and the registry's page say of it, and what an agent reads before it opens the file.
   next: Add a `///` line above `public type OutwardCode` saying what it is for (agent)
   rule: publish.description_missing
-  help: docs/language/14-tooling.html#command-errors
+  help: https://jadpo.dev/docs/errors/publish.description_missing
 
 Publishing bar
   compiles      passed                        no errors

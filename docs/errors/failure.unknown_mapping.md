@@ -29,7 +29,7 @@ error: `Quantity(...)` has no `maximum:` condition to map
   reason: A construction's arms are the rules of its type and the types it builds on; `Quantity(...)`'s are `min` and `max`, and `invalid:` covers any without an arm of its own.
   next: Remove `maximum: ...`, or map one of `min` and `max` instead (agent)
   rule: failure.unknown_mapping
-  help: docs/errors/failure.unknown_mapping.md
+  help: https://jadpo.dev/docs/errors/failure.unknown_mapping
 
 check failed: 1 error, 1 file
 ```

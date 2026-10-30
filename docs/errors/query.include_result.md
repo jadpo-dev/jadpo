@@ -42,7 +42,7 @@ error: `BookCard.author` is `List<Author>`, which the include `author` can't fil
   reason: `author` follows a required reference, so the one record it points at is always there. Its field is `Author`, where `Author` may also be an object type derived from it.
   next: Declare `author: Author` in `BookCard` (agent)
   rule: query.include_result
-  help: docs/errors/query.include_result.md
+  help: https://jadpo.dev/docs/errors/query.include_result
 
 check failed: 1 error, 1 file
 ```

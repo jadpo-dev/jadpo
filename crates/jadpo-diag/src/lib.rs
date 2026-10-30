@@ -55,11 +55,16 @@ pub struct Rule {
     pub summary: &'static str,
 }
 
+/// Where the site serves each rule's error page: the page of
+/// `docs/errors/<id>.md` is this address followed by the rule's ID.
+pub const ERROR_PAGES: &str = "https://jadpo.dev/docs/errors/";
+
 impl Rule {
-    /// The help link printed on the `help` line: the rule's own error page,
-    /// `docs/errors/<id>.md`.
+    /// The help link printed on the `help` line: the address of the
+    /// rule's own error page on the site, which a reader can open
+    /// wherever they are, `https://jadpo.dev/docs/errors/<id>`.
     pub fn help(&self) -> String {
-        format!("docs/errors/{}.md", self.id)
+        format!("{ERROR_PAGES}{}", self.id)
     }
 }
 
@@ -1473,11 +1478,6 @@ pub struct Diagnostic {
     /// file (`semantic.duplicate_declaration`, area 1): printed as the `in
     /// use` field after `next`.
     pub in_use: Vec<(String, String)>,
-    /// A page section that says more than the rule's error page, relative
-    /// to `docs/language/`: for a rule many areas share, such as
-    /// `toolchain.not_built_yet`, the section that decides what isn't
-    /// built.
-    pub help: Option<String>,
 }
 
 impl Diagnostic {
@@ -1491,23 +1491,13 @@ impl Diagnostic {
             next: None,
             impact: None,
             in_use: Vec::new(),
-            help: None,
         }
     }
 
-    /// The help link printed on the `help` line: the section given with
-    /// [`Diagnostic::help_at`], or the rule's error page.
+    /// The help link printed on the `help` line: the rule's error page on
+    /// the site ([`Rule::help`]).
     pub fn help(&self) -> String {
-        match &self.help {
-            Some(anchor) => format!("docs/language/{anchor}"),
-            None => self.rule.help(),
-        }
-    }
-
-    /// Points the help link at `anchor` (`13-testing.html#kinds-of-test`).
-    pub fn help_at(mut self, anchor: impl Into<String>) -> Diagnostic {
-        self.help = Some(anchor.into());
-        self
+        self.rule.help()
     }
 
     pub fn at(mut self, span: Span, label: impl Into<String>) -> Diagnostic {
@@ -1671,6 +1661,9 @@ mod tests {
             diagnostic.next.as_ref().map(|next| next.decides),
             Some(Decider::Agent)
         );
-        assert_eq!(diagnostic.rule.help(), "docs/errors/cli.unknown_command.md");
+        assert_eq!(
+            diagnostic.rule.help(),
+            "https://jadpo.dev/docs/errors/cli.unknown_command"
+        );
     }
 }

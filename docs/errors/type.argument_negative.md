@@ -28,7 +28,7 @@ error: `done` may be negative
   reason: `list.drop_first`'s `n` counts from the start, so it is never negative, which is proved while compiling: a literal isn't below `0` and a value's type has a `min` of at least `0`; `TraysOut` allows values below `0`.
   next: Pass a value whose type has `min: 0`, building it where a negative one is handled; count from the end with `keep_last` or `drop_last` (agent)
   rule: type.argument_negative
-  help: docs/errors/type.argument_negative.md
+  help: https://jadpo.dev/docs/errors/type.argument_negative
 
 check failed: 1 error, 1 file
 ```

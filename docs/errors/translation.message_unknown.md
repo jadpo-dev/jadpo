@@ -57,7 +57,7 @@ error: `translations.shipping.order_shiped` is not a message
   reason: `order_shiped` is not a message or enum `shipping` words. Did you mean `order_shipped`?
   next: Use `translations.shipping.order_shipped` (agent)
   rule: translation.message_unknown
-  help: docs/errors/translation.message_unknown.md
+  help: https://jadpo.dev/docs/errors/translation.message_unknown
 
 check failed: 1 error, 6 files
 ```

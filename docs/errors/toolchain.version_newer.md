@@ -23,7 +23,7 @@ error: This project needs Jadpo 99.0
   reason: `jadpo:` names the release line the project is written for, 99.0, which is later than this jadpo's (`jadpo --version` shows it), so it stops here rather than misread what a later version added.
   next: Run it with Jadpo 99.0, which the installed `jadpo` fetches unless `JADPO_TOOLCHAIN` is `local` (human)
   rule: toolchain.version_newer
-  help: docs/errors/toolchain.version_newer.md
+  help: https://jadpo.dev/docs/errors/toolchain.version_newer
 
 check failed: 1 error, 1 file
 ```

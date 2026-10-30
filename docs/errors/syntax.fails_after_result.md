@@ -27,7 +27,7 @@ error: `fails` goes before `->`
   reason: A signature says what can fail before what it returns: `fails A, B -> Result`.
   next: Move `fails TitleBlank` before `->` (agent)
   rule: syntax.fails_after_result
-  help: docs/errors/syntax.fails_after_result.md
+  help: https://jadpo.dev/docs/errors/syntax.fails_after_result
 
 check failed: 1 error, 1 file
 ```

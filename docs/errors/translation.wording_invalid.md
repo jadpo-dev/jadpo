@@ -39,7 +39,7 @@ error: This wording isn't a plain string with `{field}` placeholders
   reason: A `{` starts a field, `{field}`, and a literal brace is doubled: `{{` writes `{`.
   next: Close the field with `}`, or write `{{` for a literal brace (agent)
   rule: translation.wording_invalid
-  help: docs/errors/translation.wording_invalid.md
+  help: https://jadpo.dev/docs/errors/translation.wording_invalid
 
 check failed: 1 error, 4 files
 ```

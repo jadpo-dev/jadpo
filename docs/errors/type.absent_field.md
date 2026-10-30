@@ -27,7 +27,7 @@ error: `TodoView` has no field `notes` at this point
   reason: `omit` names a field the lines above bring in, so a typo or a field removed since is caught; none of them brings in `notes`.
   next: Remove `Todo.notes` from the list (agent)
   rule: type.absent_field
-  help: docs/errors/type.absent_field.md
+  help: https://jadpo.dev/docs/errors/type.absent_field
 
 check failed: 1 error, 2 files
 ```

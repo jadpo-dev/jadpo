@@ -204,6 +204,28 @@ impl Database {
 /// that runs the built Worker's `scheduled` handler as Cloudflare's cron
 /// trigger does, through a service binding's `scheduled()` (workerd's
 /// `service_binding_extra_handlers`, which needs `--experimental`).
+/// Where the config names the Worker's port and the test cron's, until
+/// workerd is started on the ports picked for it.
+const PORT: &str = "{PORT}";
+const CRON_PORT: &str = "{CRON}";
+
+/// What workerd logs when another process took a port it was given
+/// between the test picking it and workerd binding it.
+const PORT_TAKEN: &str = "Address already in use";
+
+/// How many times workerd is started on fresh ports before a port taken
+/// from under it fails the test.
+const PORT_ATTEMPTS: u32 = 5;
+
+/// Two different ports no listener held a moment ago: both are bound
+/// together, so they can't be the same one.
+fn free_ports() -> (u16, u16) {
+    let first = TcpListener::bind("127.0.0.1:0").expect("a port");
+    let second = TcpListener::bind("127.0.0.1:0").expect("a port");
+    let port = |listener: &TcpListener| listener.local_addr().expect("a port").port();
+    (port(&first), port(&second))
+}
+
 struct Workerd {
     child: Child,
     port: u16,
@@ -347,13 +369,6 @@ impl Workerd {
                 binding["simple"]["period"],
             ));
         }
-        let free = || {
-            TcpListener::bind("127.0.0.1:0")
-                .and_then(|listener| listener.local_addr())
-                .expect("a port")
-                .port()
-        };
-        let (port, cron) = (free(), free());
         let date = wrangler["compatibility_date"].as_str().expect("a date");
         fs::write(dir.join("cron.mjs"), CRON).expect("the cron");
         fs::write(
@@ -368,8 +383,8 @@ impl Workerd {
                  \x20   {}\n\
                  \x20 ],\n\
                  \x20 sockets = [\n\
-                 \x20   (name = \"http\", address = \"127.0.0.1:{port}\", http = (), service = \"kiosk\"),\n\
-                 \x20   (name = \"cron\", address = \"127.0.0.1:{cron}\", http = (), service = \"cron\"),\n\
+                 \x20   (name = \"http\", address = \"127.0.0.1:{{PORT}}\", http = (), service = \"kiosk\"),\n\
+                 \x20   (name = \"cron\", address = \"127.0.0.1:{{CRON}}\", http = (), service = \"cron\"),\n\
                  \x20 ],\n\
                  \x20 extensions = [(modules = [(name = \"jadpo-test:ratelimit\", internal = true, esModule = embed \"ratelimit-binding.mjs\")])],\n\
                  );\n\n\
@@ -436,38 +451,66 @@ impl Workerd {
             );
             configuration.push_str(&format!("\nconst provider :Workerd.Worker = (modules = [(name = \"provider.mjs\", esModule = embed \"provider.mjs\")], compatibilityDate = \"{date}\", globalOutbound = \"machine\");\n"));
         }
-        fs::write(&config_path, configuration).expect("configured fixture");
-        let log = dir.join("workerd.log");
-        let file = fs::File::create(&log).expect("the log");
-        let child = Command::new(workerd())
-            .args(["serve", "--experimental", "config.capnp"])
-            .current_dir(&dir)
-            .stdin(Stdio::null())
-            .stdout(file.try_clone().expect("the log"))
-            .stderr(file)
-            .spawn()
-            .expect("workerd starts");
-        let mut worker = Workerd {
-            child,
-            port,
-            cron,
-            log,
-        };
-        let until = Instant::now() + Duration::from_secs(60);
-        while TcpStream::connect(("127.0.0.1", port)).is_err()
-            || TcpStream::connect(("127.0.0.1", cron)).is_err()
-        {
-            if let Ok(Some(status)) = worker.child.try_wait() {
-                panic!("workerd ended ({status}):\n{}", worker.log());
+        // Two ports no listener holds, found by binding each to port 0 and
+        // letting go, so another test may take one before workerd binds
+        // it. workerd refusing a port that way is the one failure tried
+        // again, on fresh ports, a few times; any other ending fails the
+        // test with workerd's log.
+        for attempt in 1..=PORT_ATTEMPTS {
+            let (port, cron) = free_ports();
+            fs::write(
+                &config_path,
+                configuration
+                    .replace(PORT, &port.to_string())
+                    .replace(CRON_PORT, &cron.to_string()),
+            )
+            .expect("configured fixture");
+            let log = dir.join("workerd.log");
+            let file = fs::File::create(&log).expect("the log");
+            let child = Command::new(workerd())
+                .args(["serve", "--experimental", "config.capnp"])
+                .current_dir(&dir)
+                .stdin(Stdio::null())
+                .stdout(file.try_clone().expect("the log"))
+                .stderr(file)
+                .spawn()
+                .expect("workerd starts");
+            let mut worker = Workerd {
+                child,
+                port,
+                cron,
+                log,
+            };
+            match worker.listening() {
+                Ok(()) => return worker,
+                Err(said) if attempt < PORT_ATTEMPTS && said.contains(PORT_TAKEN) => continue,
+                Err(said) => panic!("{said}"),
             }
-            assert!(
-                Instant::now() < until,
-                "workerd didn't listen within a minute:\n{}",
-                worker.log()
-            );
+        }
+        unreachable!("the last attempt returns or panics")
+    }
+
+    /// Waits for workerd to listen on both its ports: `Err` with what
+    /// went wrong and its log when it ends first or takes over a minute.
+    fn listening(&mut self) -> Result<(), String> {
+        let until = Instant::now() + Duration::from_secs(60);
+        loop {
+            if let Ok(Some(status)) = self.child.try_wait() {
+                return Err(format!("workerd ended ({status}):\n{}", self.log()));
+            }
+            if TcpStream::connect(("127.0.0.1", self.port)).is_ok()
+                && TcpStream::connect(("127.0.0.1", self.cron)).is_ok()
+            {
+                return Ok(());
+            }
+            if Instant::now() >= until {
+                return Err(format!(
+                    "workerd didn't listen within a minute:\n{}",
+                    self.log()
+                ));
+            }
             std::thread::sleep(Duration::from_millis(50));
         }
-        worker
     }
 
     fn log(&self) -> String {

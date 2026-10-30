@@ -64,7 +64,7 @@ error: `find_note` sends `Note.appraisal`, which not every caller may read
   reason: Anyone `Note`'s `read:` lets in may call `find_note`, the user `owner_id` points at among them, and only the user `reviewer_id` points at may read `appraisal`. An output has one shape for everyone, so a field some callers may not read can't be in it.
   next: Return an output without `appraisal` from `find_note` (agent)
   rule: policy.output_field_unproved
-  help: docs/errors/policy.output_field_unproved.md
+  help: https://jadpo.dev/docs/errors/policy.output_field_unproved
 
 check failed: 1 error, 1 file
 ```
@@ -142,7 +142,7 @@ error: `NoteView.appraisal` carries `Note.appraisal`, which not every caller of 
   reason: `show_note` reaches the `Note` it comes from for anyone its grants let in, the user `owner_id` points at among them, and only the user `reviewer_id` points at may read `appraisal`. What a caller is sent has one shape for everyone, and a value passed through a variable or another type keeps its field's rules.
   next: Leave `appraisal` out of `NoteView` (agent)
   rule: policy.output_field_unproved
-  help: docs/errors/policy.output_field_unproved.md
+  help: https://jadpo.dev/docs/errors/policy.output_field_unproved
 
 check failed: 1 error, 1 file
 ```
@@ -213,7 +213,7 @@ error: `praised_notes` filters on `Note.appraisal`, which not every caller may r
   reason: Anyone `Note`'s `read:` lets in may see the records `praised_notes` reads, the user `owner_id` points at among them, and only the user `reviewer_id` points at may read `appraisal`. Which records pass a condition shows each one's `appraisal`, so a query filters and orders only on fields every caller may read.
   next: Remove the condition on `Note.appraisal`, or test a field every caller may read (agent)
   rule: policy.output_field_unproved
-  help: docs/errors/policy.output_field_unproved.md
+  help: https://jadpo.dev/docs/errors/policy.output_field_unproved
 
 check failed: 1 error, 1 file
 ```
@@ -288,7 +288,7 @@ error: `Laurel.praised` carries `Note.appraisal`, which not every caller of `jud
   reason: `judge_note` reaches the `Note` it comes from for anyone its grants let in, the user `owner_id` points at among them, and only the user `reviewer_id` points at may read `appraisal`. Which value is sent shows what decided it, so a value made under an `if`, a `match` or a loop, or kept by a filter, keeps the rules of the fields they test.
   next: Decide `praised` by what every caller of `judge_note` may read (agent)
   rule: policy.output_field_unproved
-  help: docs/errors/policy.output_field_unproved.md
+  help: https://jadpo.dev/docs/errors/policy.output_field_unproved
 
 check failed: 1 error, 1 file
 ```
@@ -367,7 +367,7 @@ error: `pin_note` raises `NotPraised` on a condition that tests `Note.appraisal`
   reason: `pin_note` reaches the `Note` it comes from for anyone its grants let in, the user `owner_id` points at among them, and only the user `reviewer_id` points at may read `appraisal`. Whether `NotPraised` is raised shows what the condition tested, so a failure is raised only on what every caller may read.
   next: Test a field every caller may read, or raise `NotPraised` only where callers who may read `appraisal` reach (agent)
   rule: policy.output_field_unproved
-  help: docs/errors/policy.output_field_unproved.md
+  help: https://jadpo.dev/docs/errors/policy.output_field_unproved
 
 check failed: 1 error, 1 file
 ```
@@ -449,7 +449,7 @@ error: `note_citation` finds a `Citation` by `Note.citation_id`, which not every
   reason: `note_citation` reaches the `Note` it comes from for anyone its grants let in, the user `owner_id` points at among them, and only the user `reviewer_id` points at may read `citation_id`. Whether a `Citation` is found by it, and what it holds, shows what `citation_id` holds, so a value used to find a record keeps its field's rules, as one sent in an output does.
   next: Find it by a value every caller of `note_citation` may read (agent)
   rule: policy.output_field_unproved
-  help: docs/errors/policy.output_field_unproved.md
+  help: https://jadpo.dev/docs/errors/policy.output_field_unproved
 
 check failed: 1 error, 1 file
 ```
@@ -536,7 +536,7 @@ error: `note_with_citation` includes the `Citation` each `Note` refers to throug
   reason: Anyone `Note`'s `read:` lets in may see the records `note_with_citation` reads, the user `owner_id` points at among them, and only the user `reviewer_id` points at may read `citation_id`. Which record an include reads shows the reference it follows, so a query includes only through references every caller may read.
   next: Remove the include, or give `Note.citation_id`'s `read:` everyone who may read a `Note` (agent)
   rule: policy.output_field_unproved
-  help: docs/errors/policy.output_field_unproved.md
+  help: https://jadpo.dev/docs/errors/policy.output_field_unproved
 
 check failed: 1 error, 1 file
 ```
@@ -608,7 +608,7 @@ error: `SummaryView.summary` carries `Note.summary`, which not every caller of `
   reason: `edit_note` reaches the `Note` it comes from for anyone its grants let in, the user `editor_id` points at among them, and only the user `owner_id` points at may read `summary`. What a caller is sent has one shape for everyone, and a value passed through a variable or another type keeps its field's rules.
   next: Leave `summary` out of `SummaryView` (agent)
   rule: policy.output_field_unproved
-  help: docs/errors/policy.output_field_unproved.md
+  help: https://jadpo.dev/docs/errors/policy.output_field_unproved
 
 check failed: 1 error, 1 file
 ```
@@ -677,7 +677,7 @@ error: `publish_appraisal` stores `Note.appraisal` in `Note.summary`, which not 
   reason: Everyone who may read `Note.summary`, the user `owner_id` points at among them, reads what is stored there, from any request, and only the user `reviewer_id` points at may read `appraisal`. A value stored in a field keeps its own field's rules, as one sent in an output does, so it is stored only where everyone who may read it may read the value.
   next: Leave `appraisal` out of `summary`, or store it in a field only those who may read `appraisal` may read (agent)
   rule: policy.output_field_unproved
-  help: docs/errors/policy.output_field_unproved.md
+  help: https://jadpo.dev/docs/errors/policy.output_field_unproved
 
 check failed: 1 error, 1 file
 ```
@@ -848,7 +848,7 @@ error: `post_circulated` passes `Note.appraisal` to `post_bulletin`, which store
   reason: `post_bulletin` stores what it is given here in `Bulletin.blurb`, and everyone who may read `Bulletin.blurb`, anyone signed in among them, reads what is stored there, from any request, and only the user `reviewer_id` points at may read `appraisal`. An event carries what each `emit` of it put there away from the record it came from, so its subscriber stores it only where everyone who may read it may read `appraisal` of any `Note`.
   next: Pass the event's ids and have `post_bulletin` read what it stores, or give `blurb`'s `read:` only those who may read `appraisal` (agent)
   rule: policy.output_field_unproved
-  help: docs/errors/policy.output_field_unproved.md
+  help: https://jadpo.dev/docs/errors/policy.output_field_unproved
 
 check failed: 1 error, 1 file
 ```
@@ -1106,7 +1106,7 @@ error: `answer_call`'s reply shows whether a `PhoneLog` is there, which not ever
   reason: A webhook's reply action answers whoever sent the webhook, with its reply or a failure, so each is an output to `Access.public`, and only schedules and subscribers may read a `PhoneLog`. Which reply is sent shows whether the records it counted or tested are there, since the action runs as the system and finds every one.
   next: Decide the reply without counting or testing for a `PhoneLog` (agent)
   rule: policy.output_field_unproved
-  help: docs/errors/policy.output_field_unproved.md
+  help: https://jadpo.dev/docs/errors/policy.output_field_unproved
 
 check failed: 1 error, 11 files
 ```

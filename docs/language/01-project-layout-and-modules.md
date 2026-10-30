@@ -438,7 +438,7 @@ build/
   a snippet in these docs, is checked as one implicit domain with the
   layout rules off.
 
-Not built yet: `jadpo new`, which will write the `jadpo:` version line.
+Not built yet: `jadpo new`, which will write the `jadpo:` version line, and the refusal of a newer `jadpo` meeting an older line, `toolchain.version_older` (roadmap chunk D14).
 
 ## Domains
 <!-- topic: domains -->

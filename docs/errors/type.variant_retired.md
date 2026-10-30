@@ -29,7 +29,7 @@ error: `Country.yu` is a retired code
   reason: ISO 3166-1 withdrew `YU` (Yugoslavia). `Country.yu` stays so that stored data and old messages still read, but new code doesn't write it.
   next: Use the code that replaced it, or write `decline type.variant_retired: "<why>"` above it if this is deliberate (agent)
   rule: type.variant_retired
-  help: docs/errors/type.variant_retired.md
+  help: https://jadpo.dev/docs/errors/type.variant_retired
 
 check failed: 1 error, 1 file
 ```

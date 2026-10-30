@@ -53,7 +53,7 @@ error: `MemoRecord` isn't an `Output`
   reason: A route returns only an `Output` type (area 2), a `List` or `Page` of one as a query gives them, a `FeatureCollection<G, P>` whose properties `P` hold only what an `Output` may (area 20), or an `AiStream`, a model's answer sent as it is written, so only fields declared for clients are ever sent.
   next: Declare `type <Name> = Output { ... }` with the fields clients see, and return it (agent)
   rule: route.output_not_output
-  help: docs/errors/route.output_not_output.md
+  help: https://jadpo.dev/docs/errors/route.output_not_output
 
 check failed: 1 error, 1 file
 ```

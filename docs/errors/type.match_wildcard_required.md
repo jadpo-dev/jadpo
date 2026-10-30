@@ -36,7 +36,7 @@ error: This `match` needs a `_` arm
   reason: `Label` is built on `Text`, so its values can't all be listed; `_` matches every value the arms above it don't.
   next: Add `_ -> ...` as the last arm (agent)
   rule: type.match_wildcard_required
-  help: docs/errors/type.match_wildcard_required.md
+  help: https://jadpo.dev/docs/errors/type.match_wildcard_required
 
 check failed: 1 error, 2 files
 ```

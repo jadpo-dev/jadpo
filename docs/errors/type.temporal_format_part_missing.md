@@ -25,7 +25,7 @@ error: `TimeFormat.date_time_short` shows a part `LocalTime` doesn't have
   reason: `LocalTime` is a clock time, with no date or zone, so `text.format` can show only the parts it has.
   next: Use a time format such as `TimeFormat.time_short` (agent)
   rule: type.temporal_format_part_missing
-  help: docs/errors/type.temporal_format_part_missing.md
+  help: https://jadpo.dev/docs/errors/type.temporal_format_part_missing
 
 check failed: 1 error, 1 file
 ```

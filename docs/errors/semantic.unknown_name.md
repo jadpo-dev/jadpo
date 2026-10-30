@@ -15,7 +15,7 @@ error: `Missing` isn't declared
   reason: Nothing in this project or the standard library is called `Missing`.
   next: Declare `Missing`, or use an existing name (agent)
   rule: semantic.unknown_name
-  help: docs/errors/semantic.unknown_name.md
+  help: https://jadpo.dev/docs/errors/semantic.unknown_name
 
 check failed: 1 error, 1 file
 ```

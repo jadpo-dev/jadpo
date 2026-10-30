@@ -21,7 +21,7 @@ error: A function can't call action `save`
   reason: A function is pure: it computes its result from its arguments alone, so it calls only functions, library functions and the standard library; an action may read and write data.
   next: Make the caller an action, or call `save` from the action that uses this function (agent)
   rule: effect.function_calls_action
-  help: docs/errors/effect.function_calls_action.md
+  help: https://jadpo.dev/docs/errors/effect.function_calls_action
 
 check failed: 1 error, 1 file
 ```

@@ -55,7 +55,7 @@ error: `Note.update` changes `Note.owner_id`, which an update can't change
   reason: `Note`'s policy reaches the caller or the tenant through `owner_id`, so changing it hands the record to someone else. That is a named action, listed with who may call it under `actions:` in `policy.jadpo`.
   next: Remove `owner_id` from the update, or list `give_note` under `actions:` in `policy.jadpo` (agent)
   rule: type.field_update_forbidden
-  help: docs/errors/type.field_update_forbidden.md
+  help: https://jadpo.dev/docs/errors/type.field_update_forbidden
 
 check failed: 1 error, 1 file
 ```

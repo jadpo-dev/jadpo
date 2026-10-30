@@ -111,7 +111,7 @@ error: A model can't answer as `CakeDesign`
   reason: A model's answer is JSON decoded into `as:`'s type, and `CakeDesign.preview` is bytes, which a model's JSON can't be. A model answers in text.
   next: Ask for a type without `CakeDesign.preview` (agent)
   rule: semantic.ai_output_type
-  help: docs/errors/semantic.ai_output_type.md
+  help: https://jadpo.dev/docs/errors/semantic.ai_output_type
 
 check failed: 1 error, 7 files
 ```

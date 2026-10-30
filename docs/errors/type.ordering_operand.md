@@ -21,7 +21,7 @@ error: `count` may be `none`, so it can't be ordered
   reason: `count` is `Count?`; `<`, `<=`, `>` and `>=` order two values, and `none` has no place in an order.
   next: Match on `count` and compare inside `some(...)` (agent)
   rule: type.ordering_operand
-  help: docs/errors/type.ordering_operand.md
+  help: https://jadpo.dev/docs/errors/type.ordering_operand
 
 check failed: 1 error, 1 file
 ```

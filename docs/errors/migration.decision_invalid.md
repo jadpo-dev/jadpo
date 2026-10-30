@@ -43,7 +43,7 @@ error: The decision about `Note.stars` doesn't fit its change
   reason: This value can't fill `Note.stars`: it is above the field's `max`.
   next: Write `Note.stars: { backfill: <value> }` with a value of its type (agent)
   rule: migration.decision_invalid
-  help: docs/errors/migration.decision_invalid.md
+  help: https://jadpo.dev/docs/errors/migration.decision_invalid
 
 check failed: 1 error, 4 files
 ```

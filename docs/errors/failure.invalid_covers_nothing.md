@@ -32,7 +32,7 @@ error: `invalid:` covers nothing here
   reason: Every rule `Quantity(...)` can break has its own arm (`max`), so `invalid:` could never run.
   next: Remove `invalid: ...` (agent)
   rule: failure.invalid_covers_nothing
-  help: docs/errors/failure.invalid_covers_nothing.md
+  help: https://jadpo.dev/docs/errors/failure.invalid_covers_nothing
 
 check failed: 1 error, 1 file
 ```

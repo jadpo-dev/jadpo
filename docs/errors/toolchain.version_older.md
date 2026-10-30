@@ -24,7 +24,7 @@ error: This project needs Jadpo 0.0
   reason: `jadpo:` names the release line the project is written for, 0.0, which is earlier than this jadpo's (`jadpo --version` shows it). A 0.x minor release may break an app, so this jadpo doesn't compile the project itself.
   next: Run it with Jadpo 0.0, which the installed `jadpo` fetches unless `JADPO_TOOLCHAIN` is `local` (human)
   rule: toolchain.version_older
-  help: docs/errors/toolchain.version_older.md
+  help: https://jadpo.dev/docs/errors/toolchain.version_older
 
 check failed: 1 error, 1 file
 ```

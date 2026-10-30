@@ -26,6 +26,9 @@ pub(crate) struct Piece {
     text: String,
     token: Option<Token>,
     bold: bool,
+    /// A link's address, underlined where text has a look (CLI design
+    /// language, "Type") and always printed in full.
+    underline: bool,
 }
 
 impl Piece {
@@ -34,39 +37,32 @@ impl Piece {
             text: text.into(),
             token,
             bold,
+            underline: false,
         }
     }
 }
 
 pub(crate) fn raw(text: impl Into<String>) -> Piece {
-    Piece {
-        text: text.into(),
-        token: None,
-        bold: false,
-    }
+    Piece::new(text, None, false)
 }
 
 pub(crate) fn bold(text: impl Into<String>) -> Piece {
-    Piece {
-        text: text.into(),
-        token: None,
-        bold: true,
-    }
+    Piece::new(text, None, true)
 }
 
 pub(crate) fn paint(token: Token, text: impl Into<String>) -> Piece {
-    Piece {
-        text: text.into(),
-        token: Some(token),
-        bold: false,
-    }
+    Piece::new(text, Some(token), false)
 }
 
 pub(crate) fn strong(token: Token, text: impl Into<String>) -> Piece {
+    Piece::new(text, Some(token), true)
+}
+
+/// A link: its address, underlined in rich output.
+pub(crate) fn link(address: impl Into<String>) -> Piece {
     Piece {
-        text: text.into(),
-        token: Some(token),
-        bold: true,
+        underline: true,
+        ..Piece::new(address, None, false)
     }
 }
 
@@ -119,6 +115,10 @@ fn render_line(line: &Line, style: &Style) -> String {
         let mut codes = Vec::new();
         if piece.bold && style.bold {
             codes.push("1".to_string());
+        }
+        // Underline, like bold, is a look rich output keeps without colour.
+        if piece.underline && style.bold {
+            codes.push("4".to_string());
         }
         if let (Some(token), Some(depth)) = (piece.token, style.color) {
             codes.push(token.sgr(depth, style.theme));
@@ -1033,8 +1033,7 @@ pub(crate) fn field(label: &str, value: Vec<Piece>, style: &Style) -> Vec<Line> 
             let last = lines.last_mut().expect("a line");
             last.push(Piece {
                 text: word.to_string(),
-                token: piece.token,
-                bold: piece.bold,
+                ..piece.clone()
             });
         }
     }

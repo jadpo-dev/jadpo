@@ -103,7 +103,7 @@ error: `DueDateInPast` can leave `add_todo`, but its `fails` list doesn't say so
   reason: `fails` lists exactly the failures that can leave an action, so every caller knows what it must handle.
   next: Add `DueDateInPast` to `add_todo`'s `fails` list (agent)
   rule: failure.undeclared_propagation
-  help: docs/errors/failure.undeclared_propagation.md
+  help: https://jadpo.dev/docs/errors/failure.undeclared_propagation
 ```
 
 Put it back. You don't change the route: a route can fail with whatever

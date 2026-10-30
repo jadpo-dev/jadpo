@@ -21,7 +21,7 @@ error: `config.mail_sendr` isn't a setting
   reason: `config { }` declares no setting called `mail_sendr`. Did you mean `mail_sender`?
   next: Use `config.mail_sender` instead of `config.mail_sendr` (agent)
   rule: configuration.field_unknown
-  help: docs/language/10-configuration-and-time.html#configuration-field-unknown
+  help: https://jadpo.dev/docs/errors/configuration.field_unknown
 
 check failed: 1 error, 1 file
 ```
@@ -61,7 +61,7 @@ error: `lable` isn't a setting
   reason: `config { }` declares no setting called `lable`, so a test has nothing to change. Did you mean `label`?
   next: Use `label` instead of `lable` (agent)
   rule: configuration.field_unknown
-  help: docs/errors/configuration.field_unknown.md
+  help: https://jadpo.dev/docs/errors/configuration.field_unknown
 
 check failed: 1 error, 1 file
 ```

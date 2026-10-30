@@ -22,7 +22,7 @@ error: `user:` has no `subject:`
   reason: A principal's variant names the unique field that identifies a caller, `subject: <Entity>.<field>`, and may say when a record counts as active, `active: <condition>`.
   next: Add `subject: <Entity>.<field>`, naming a unique field (agent)
   rule: semantic.principal_variant_invalid
-  help: docs/errors/semantic.principal_variant_invalid.md
+  help: https://jadpo.dev/docs/errors/semantic.principal_variant_invalid
 
 check failed: 1 error, 1 file
 ```

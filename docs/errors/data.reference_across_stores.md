@@ -41,7 +41,7 @@ error: `OldTodo.owner_id` refers to a `User` in another store
   reason: A reference is a foreign key, which a database keeps only between its own tables; an action writes one store, and work across stores goes through an event and a subscriber.
   next: Keep `OldTodo` and `User` in one store, or store the id as a plain `Uuid` (human)
   rule: data.reference_across_stores
-  help: docs/errors/data.reference_across_stores.md
+  help: https://jadpo.dev/docs/errors/data.reference_across_stores
 
 check failed: 1 error, 3 files
 ```

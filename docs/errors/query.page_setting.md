@@ -30,7 +30,7 @@ error: `page:` has no `after:`
   reason: A page continues `after:` the cursor the previous page gave in its `next`; on the first call that cursor is absent.
   next: Add `after: ...` to the block (agent)
   rule: query.page_setting
-  help: docs/errors/query.page_setting.md
+  help: https://jadpo.dev/docs/errors/query.page_setting
 
 check failed: 1 error, 1 file
 ```

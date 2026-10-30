@@ -39,7 +39,7 @@ error: `PaymentOutcome.pending` carries no data to name
   reason: `PaymentOutcome.pending` is a plain variant; brackets after a case name the data it carries, and this one carries none.
   next: Write `PaymentOutcome.pending` without brackets (agent)
   rule: type.match_unknown_binding
-  help: docs/errors/type.match_unknown_binding.md
+  help: https://jadpo.dev/docs/errors/type.match_unknown_binding
 
 check failed: 1 error, 2 files
 ```

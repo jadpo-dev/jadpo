@@ -138,8 +138,7 @@ pub fn record(call: &Call) -> Reply {
             .reason("Area 11 decides that `jadpo package record` writes an operation's output type from the answer when it has none, and that comes with mapping imported types to standard types (chunk 7.2e).")
             .next_marked(format!(
                 "Give `{operation}` an `output:` from the provider's documentation, then record it (agent)"
-            ))
-            .help_at("11-integrations.html#provenance-and-confirmation"),
+            )),
         );
     }
     let program = Program::new(std::sync::Arc::clone(&ready.prepared)).with_config(&ready.config);

@@ -27,7 +27,7 @@ error: A query returning `Book?` could match several records
   reason: `Book?` is at most one record, so a `where:` line must test a unique field with `==`: `Book.id`.
   next: Test a unique field with `==`, or return `List<T>` (agent)
   rule: query.not_unique
-  help: docs/errors/query.not_unique.md
+  help: https://jadpo.dev/docs/errors/query.not_unique
 
 check failed: 1 error, 1 file
 ```

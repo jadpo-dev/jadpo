@@ -16,7 +16,7 @@ error: The code `Not Found!` isn't lower_snake_case
   reason: A failure's code is what clients branch on and translate by, so it is lower_snake_case, like a failure's name turned into one.
   next: Write `"not_found"` (agent)
   rule: failure.code_format
-  help: docs/errors/failure.code_format.md
+  help: https://jadpo.dev/docs/errors/failure.code_format
 
 check failed: 1 error, 1 file
 ```

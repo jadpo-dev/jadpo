@@ -199,7 +199,7 @@ error: `POST /notes` waits for follow-on work `kiosk` doesn't run
   reason: `POST /notes` in `main` has `settle:`, so it waits for the subscribers of what its action emits, and a deployable runs them only when its `runs:` lists `Trigger.subscribers`.
   next: Add `Trigger.subscribers` to `kiosk`'s `runs:` (agent)
   rule: deployable.settle_unrun
-  help: docs/errors/deployable.settle_unrun.md
+  help: https://jadpo.dev/docs/errors/deployable.settle_unrun
 
 check failed: 1 error, 11 files
 ```

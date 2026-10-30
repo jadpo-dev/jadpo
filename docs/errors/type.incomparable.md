@@ -25,7 +25,7 @@ error: `Stock` and `Quantity` can't be compared
   reason: `==` compares two values of the same type, after widening; `Stock` and `Quantity` are different types, and neither widens to the other.
   next: Compare two values of the same type (agent)
   rule: type.incomparable
-  help: docs/errors/type.incomparable.md
+  help: https://jadpo.dev/docs/errors/type.incomparable
 
 check failed: 1 error, 1 file
 ```

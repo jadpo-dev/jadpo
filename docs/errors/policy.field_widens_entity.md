@@ -51,7 +51,7 @@ error: `Note.summary` lets `Access.authenticated` read it, which `Note` doesn't
   reason: A field's `policy:` only takes away from its record's grants: it narrows who may read the field, and never lets in anyone `Note`'s `read:` doesn't, which names `owner_id`.
   next: Remove `Access.authenticated` from `summary`'s `read:` (agent)
   rule: policy.field_widens_entity
-  help: docs/errors/policy.field_widens_entity.md
+  help: https://jadpo.dev/docs/errors/policy.field_widens_entity
 
 check failed: 1 error, 1 file
 ```

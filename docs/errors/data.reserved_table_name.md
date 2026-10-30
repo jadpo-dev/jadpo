@@ -15,7 +15,7 @@ error: `JadpoAudit`'s table would be called `jadpo_audit`
   reason: Tables whose names start with `jadpo_` are the runtime's own (the outbox, event deliveries, idempotency keys), so no entity's table may take that prefix.
   next: Rename `JadpoAudit` (agent)
   rule: data.reserved_table_name
-  help: docs/errors/data.reserved_table_name.md
+  help: https://jadpo.dev/docs/errors/data.reserved_table_name
 
 check failed: 1 error, 1 file
 ```

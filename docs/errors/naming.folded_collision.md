@@ -23,7 +23,7 @@ error: `due_date` and `DueDate` share a file name
   reason: Both names become `due_date.jadpo`, so a search for one finds the other; `DueDate` is a type in `due.jadpo`.
   next: Rename one of them so their file names differ (agent)
   rule: naming.folded_collision
-  help: docs/errors/naming.folded_collision.md
+  help: https://jadpo.dev/docs/errors/naming.folded_collision
 
 check failed: 1 error, 2 files
 ```

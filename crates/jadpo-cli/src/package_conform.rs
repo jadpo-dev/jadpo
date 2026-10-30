@@ -250,8 +250,7 @@ fn conformed(call: &Call) -> Reply {
                 .reason("Area 11 gives every capability a conformance suite; `ai`'s is the first built (chunk 5.5v7b), and each other capability's comes with its own work.")
                 .next(format!(
                     "Run `jadpo package conform <package> ai` for a package that fills `ai`; `{package}` is checked by `jadpo package check` meanwhile"
-                ))
-                .help_at("11-integrations.html#capabilities"),
+                )),
             );
         }
         return Reply::failed(doesnt_fill(&package, capability, &fills, &home.name));
@@ -282,8 +281,7 @@ fn conformed(call: &Call) -> Reply {
                 format!("`{package}` has fixed hosts, which the suite can't reach yet"),
             )
             .reason("The suite reaches the provider through its connection's `host:`, and a package with `hosts:` takes none; both first-party packages that fill `ai` take `host:` (area 21, \"The conformance suite\").")
-            .next("Give the package no `hosts:`, so each connection gives `host:`, or leave it to `jadpo package check` meanwhile")
-            .help_at("21-ai.html#the-conformance-suite"),
+            .next("Give the package no `hosts:`, so each connection gives `host:`, or leave it to `jadpo package check` meanwhile"),
         );
     }
 

@@ -23,7 +23,7 @@ error: `database/identities.jadpo_record` was written by a newer Jadpo
   reason: It is in format 2 of the `identities` record, and this Jadpo reads format 1 and older. Reading it anyway could lose what it holds.
   next: Upgrade Jadpo to the version the project uses, then run the command again (human)
   rule: record.format_newer
-  help: docs/errors/record.format_newer.md
+  help: https://jadpo.dev/docs/errors/record.format_newer
 
 check failed: 1 error, 1 file
 ```

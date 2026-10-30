@@ -126,14 +126,13 @@ doesn't run until you fix it. Every error has the same parts:
   `next:` line tells your coding agent to stop and ask you which fix you
   want, because the choice is yours to make (who can see data, what a
   setting holds). `(agent)` means your agent can make the fix itself;
-- `rule:`, the error's name, and `help:`, where its page is.
+- `rule:`, the error's name, and `help:`, the address of its page.
 
 Every error has a page on this site: `https://jadpo.dev/docs/errors/`
 followed by the rule, such as
-`https://jadpo.dev/docs/errors/record.out_of_date`. The `help:` line
-gives the page's place in Jadpo's own source instead, which you can't
-open from your project, so use the site. You'll meet real errors on the
-next page, and fix them.
+`https://jadpo.dev/docs/errors/record.out_of_date`, which the `help:`
+line prints for you to open. You'll meet real errors on the next page,
+and fix them.
 
 ## Using it with a coding agent
 

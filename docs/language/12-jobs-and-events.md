@@ -887,7 +887,7 @@ error: `items` runs as the system, which only `Access.public` lets read `Item`
   reason: A batch runs as the system, which an entity grants background work by naming `Access.system`; `Item`'s `read:` names `Access.public` and not `Access.system`, and anyone at all is never how background work is let in.
   next: Add `Access.system` to `Item`'s `read:`, or reach `Item` from a route instead (human)
   rule: policy.system_grant_missing
-  help: docs/errors/policy.system_grant_missing.md
+  help: https://jadpo.dev/docs/errors/policy.system_grant_missing
 
 check failed: 1 error, 1 file
 ```
@@ -953,7 +953,7 @@ error: `mark_seen` runs as the system, which only `Access.public` lets update `I
   reason: A batch runs as the system, which an entity grants background work by naming `Access.system`; `Item`'s `update:` names `Access.public` and not `Access.system`, and anyone at all is never how background work is let in.
   next: Add `Access.system` to `Item`'s `update:`, or reach `Item` from a route instead (human)
   rule: policy.system_grant_missing
-  help: docs/errors/policy.system_grant_missing.md
+  help: https://jadpo.dev/docs/errors/policy.system_grant_missing
 
 check failed: 1 error, 1 file
 ```
@@ -1125,7 +1125,7 @@ error: `post_all` passes `Diary.confession` to `post_item`, which stores it in `
   reason: `post_item` stores what it is given here in `Board.text`, and everyone who may read `Board.text`, anyone signed in among them, reads what is stored there, from any request, and only the user `owner_id` points at and schedules and subscribers may read `confession`. A value stored in a field keeps its own field's rules, as one sent in an output does, so it is stored only where everyone who may read it may read the value.
   next: Pass `post_item` what everyone who may read `Board.text` may read, or give `text`'s `read:` only those who may read `confession` (agent)
   rule: policy.output_field_unproved
-  help: docs/errors/policy.output_field_unproved.md
+  help: https://jadpo.dev/docs/errors/policy.output_field_unproved
 
 check failed: 1 error, 2 files
 ```
@@ -1243,7 +1243,7 @@ error: `DraftCount.drafts` carries `Diary.confession`, which not every caller of
   reason: `batches.status` finds a run by its `id` alone, so what it gives shows what decides the failures of every batch the application starts, `Diary.confession` among them, to anyone who may call `count_drafts`, and only the user `owner_id` points at and schedules and subscribers may read `confession`.
   next: Let only those who may read `confession` call `count_drafts`, through its line under `actions:`, or decide which items fail by what its callers may read (agent)
   rule: policy.output_field_unproved
-  help: docs/errors/policy.output_field_unproved.md
+  help: https://jadpo.dev/docs/errors/policy.output_field_unproved
 
 check failed: 1 error, 2 files
 ```
@@ -1331,7 +1331,7 @@ error: Placeholder `shelf_run` holds a `BatchRun`, which no request carries
   reason: Only the runtime builds a `BatchRun`: a run comes from `batches.each`, or from a field the caller may read where the application kept it, and `batches.status` and `batches.cancel` find it by its `id` alone. A request that named one could read or stop any run.
   next: Take the `id` of the record that keeps the run, and read the `BatchRun` from its field (agent)
   rule: type.batch_input
-  help: docs/errors/type.batch_input.md
+  help: https://jadpo.dev/docs/errors/type.batch_input
 
 check failed: 1 error, 2 files
 ```

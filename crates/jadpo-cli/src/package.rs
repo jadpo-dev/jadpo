@@ -155,8 +155,7 @@ pub fn package(call: &Call) -> Reply {
             .reason(format!(
                 "Area 11 decides `jadpo package {later}`, and it comes with {comes}."
             ))
-            .next("Run `jadpo package show <name>` or `jadpo package check` meanwhile")
-            .help_at("11-integrations.html#developing-and-publishing-a-package");
+            .next("Run `jadpo package show <name>` or `jadpo package check` meanwhile");
             Reply::failed(diagnostic)
         }
         Some(other) => {

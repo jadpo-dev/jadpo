@@ -70,7 +70,7 @@ error: `InvoiceTransfer` refers to `Company` more than once
   reason: `CompanyRole` is held in a `Company`, and `InvoiceTransfer` has 2 references to `Company` (`source_company_id` and `destination_company_id`), so the grant names the one it means.
   next: Write `CompanyRole.editor(source_company_id)` (agent)
   rule: policy.scope_ambiguous
-  help: docs/errors/policy.scope_ambiguous.md
+  help: https://jadpo.dev/docs/errors/policy.scope_ambiguous
 
 check failed: 1 error, 1 file
 ```

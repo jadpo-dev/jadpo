@@ -33,7 +33,7 @@ error: `POST /health` runs `check_health`, which nobody may call
   reason: An action takes its permission from the entities it reaches, and `check_health` reaches none, so it is refused to everyone unless root `policy { }` lists who may call it under `actions:`.
   next: List `check_health: [...]` under `actions:` in `policy.jadpo` (human)
   rule: policy.effect_ungranted
-  help: docs/errors/policy.effect_ungranted.md
+  help: https://jadpo.dev/docs/errors/policy.effect_ungranted
 
 check failed: 1 error, 1 file
 ```
@@ -108,7 +108,7 @@ error: `POST /tidings` runs `note_tidings`, which nobody may call
   reason: `note_tidings`'s line under `actions:` names `Note.owner_id`, the caller a `Note` the action changes points at, and `note_tidings` changes no such record itself, so no caller passes the line as the action starts and this route could never succeed.
   next: List `Access.authenticated` or a role held across the whole application for `note_tidings` under `actions:` (human)
   rule: policy.effect_ungranted
-  help: docs/errors/policy.effect_ungranted.md
+  help: https://jadpo.dev/docs/errors/policy.effect_ungranted
 
 check failed: 1 error, 1 file
 ```

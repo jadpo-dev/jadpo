@@ -23,7 +23,7 @@ error: `locales { }` is declared twice
   reason: An application lists the locales it supports once, in `app.jadpo`, so formatting and translations all accept the same ones.
   next: Move what this `locales` lists into the first, and remove it (agent)
   rule: semantic.multiple_locale_declarations
-  help: docs/errors/semantic.multiple_locale_declarations.md
+  help: https://jadpo.dev/docs/errors/semantic.multiple_locale_declarations
 
 check failed: 1 error, 1 file
 ```

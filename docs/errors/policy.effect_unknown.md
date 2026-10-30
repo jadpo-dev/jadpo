@@ -41,7 +41,7 @@ error: `publish` isn't something a policy grants
   reason: An entity's `policy:` lists who may `create`, `read`, `update` and `delete` its records, and may say which `tenant:` they belong to. Every action takes its permission from these; one that needs others is listed under `actions:` in `policy.jadpo`.
   next: Remove `publish` (agent)
   rule: policy.effect_unknown
-  help: docs/errors/policy.effect_unknown.md
+  help: https://jadpo.dev/docs/errors/policy.effect_unknown
 
 check failed: 1 error, 1 file
 ```

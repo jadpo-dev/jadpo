@@ -592,7 +592,7 @@ error: This `Polygon` breaks its rule `rings_valid`
   reason: A `Polygon`'s rings are closed with four points or more, never cross or meet themselves or each other, keep each hole inside the outer ring, and have every edge shorter than half the globe, so the polygon is the smaller side its outer ring bounds (area 20, "Polygons are valid when built"). A literal is checked while compiling.
   next: Close each ring and move its points so no edge meets another, with each hole inside the outer ring (agent)
   rule: type.invalid_literal
-  help: docs/errors/type.invalid_literal.md
+  help: https://jadpo.dev/docs/errors/type.invalid_literal
 
 check failed: 1 error, 1 file
 ```
@@ -836,7 +836,7 @@ error: `main` has no `postgis` extension, and its role can't create it
   reason: `postgis` is PostGIS, which keeps the project's geometries in `geography` columns; there is no fallback, since a geometry kept any other way would be measured and compared differently. The project's migrations create it, and its database server offers it, but the role applying migrations isn't allowed to create it, so nothing was applied. PostGIS isn't a trusted extension: a superuser, or the provider's own admin role, creates it.
   next: Have a role allowed to create it run `CREATE EXTENSION postgis` once in this database, then run the command again (human)
   rule: migration.extension_missing
-  help: docs/language/14-tooling.html#command-errors
+  help: https://jadpo.dev/docs/errors/migration.extension_missing
 ```
 
 ## Queries
