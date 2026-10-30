@@ -605,10 +605,10 @@ fn an_event_is_kept_with_its_writes_and_delivered_after_the_response_retried_and
             [
                 SqlValue::Text(event),
                 SqlValue::Text(traceparent),
-                SqlValue::Int4(1),
+                SqlValue::Int4(encoding),
                 SqlValue::Int4(0),
                 SqlValue::Text(household),
-            ] => {
+            ] if i64::from(*encoding) == i64::from(jadpo_std::standard::ENCODING) => {
                 assert!(event.ends_with("ChoreAdded"), "{event}");
                 assert_eq!(traceparent, TRACEPARENT, "the emitting request's trace context");
                 assert_eq!(Value::uuid(household), field(&ash, "id"), "the payload is its JSON");

@@ -828,7 +828,7 @@ fn a_part_signed_before_encodings_were_recorded_still_signs_in() {
     let key = jadpo_runtime::http::signed::SigningKey::new(KEY, None);
     let payload = key.open(signed).expect("signed with the current key");
     let mut claims: serde_json::Value = serde_json::from_str(&payload).expect("JSON");
-    assert_eq!(claims["enc"], 1, "{payload}");
+    assert_eq!(claims["enc"], jadpo_std::standard::ENCODING, "{payload}");
 
     // As chunk 5.1b signed it, with no `enc`.
     let fields = claims.as_object_mut().expect("an object");
@@ -842,7 +842,7 @@ fn a_part_signed_before_encodings_were_recorded_still_signs_in() {
 
     // An encoding a later release writes: the record is read, and the
     // part renewed in this release's.
-    fields.insert("enc".into(), 2.into());
+    fields.insert("enc".into(), (jadpo_std::standard::ENCODING + 1).into());
     let later = serde_json::Value::Object(fields.clone()).to_string();
     eve.session = format!("{secret}.{}", key.sign(&later));
     let (read, trips) = live.send(&eve.post("/echo"));
@@ -851,7 +851,7 @@ fn a_part_signed_before_encodings_were_recorded_still_signs_in() {
     let (_, signed) = again.split_once('.').expect("a signed part");
     let payload = key.open(signed).expect("signed with the current key");
     let claims: serde_json::Value = serde_json::from_str(&payload).expect("JSON");
-    assert_eq!(claims["enc"], 1, "{payload}");
+    assert_eq!(claims["enc"], jadpo_std::standard::ENCODING, "{payload}");
 }
 
 #[test]
