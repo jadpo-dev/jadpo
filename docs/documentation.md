@@ -54,8 +54,16 @@ area page lists it under `## Errors`.
 Every section an app author reads has a topic ID: lowercase kebab case,
 unique across the docs, independent of the area that holds it
 (`translations`, `migrations`, `passkeys`). An ID is declared in the source
-next to its heading, never changes, and is never reused. Moving a section to
-another area, or regrouping the areas, changes no ID and breaks no link.
+next to its heading and is never reused. Moving a section to another area,
+or regrouping the areas, changes no ID and breaks no link. An ID changes
+only when it reads badly, and then the old one stays in the declaration,
+reaching the same page for good:
+
+```markdown
+## Capabilities the built-in services use
+<!-- topic: built-in-service-capabilities (was capabilities-on-this-page) -->
+```
+
 Error pages use the rule ID itself (`data.migration_missing`), commands
 `jadpo-<command>` (`jadpo-check`) and the primer `primer`. A Learn page
 is one topic: its ID stands on the line after its `#` heading
@@ -72,8 +80,12 @@ GitHub doesn't show and which leaves the heading's own anchor alone:
 Each `#` and `##` heading of an area page is a topic, but `## Errors`,
 which only lists the area's error pages; a topic runs to the next. The
 docs check (`tools/docs/language_docs.py`) fails on a topic with no ID, an ID
-that isn't kebab case or is used twice, an ID line anywhere else, and a
-topic over 3,000 words as the bundle gives it, which is split.
+or old ID that isn't kebab case or is used twice, an ID line anywhere else,
+and a topic over 3,000 words as the bundle gives it, which is split. It
+also fails an area page that names an area or a question by number, as
+in "(area 8)", "area 8's" or "question 2", outside code: on areas 1 to
+`NUMBERED_FAILS_THROUGH` in that file, and it warns on the rest until the
+D10 rewrite reaches them.
 
 ## The bundle
 
@@ -99,7 +111,9 @@ the areas' order, errors, commands. Each entry has `id`, `kind`
 command's own), `tokens` (an estimate: a quarter of the page's
 characters), `hash` (`sha256:` and the hex digest of the page's
 markdown), the `area` it comes from (`null` for the primer and the Learn
-path, 14 for a command), and the IDs it `links` to. A page's path follows
+path, 14 for a command), and the IDs it `links` to. A renamed topic's
+entry also has `aliases`, its old IDs; no other entry has the field. A
+page's path follows
 from its kind and ID. `learn` pages are the user layer, and `topic`
 pages the reference; each area's "What is built" topic is titled
 `What is built: <area>`.
@@ -133,6 +147,7 @@ Release.
 | `/docs/primer`, `/docs/primer.md` | The primer, as HTML and as markdown |
 | `/learn`, `/learn/<id>`, `.md` | The Learn path: the outline, then each page, with previous and next in the index's order |
 | `/docs/<id>`, `/docs/<id>.md` | A topic |
+| `/docs/<old-id>`, `.md` | A permanent redirect to the topic whose `aliases` hold it |
 | `/docs/errors/<rule.id>`, `.md` | An error's page; reached from a compiler error, not listed in navigation |
 | `/docs/index.json` | The bundle's index |
 | `/v/<version>/…` | The same paths for one release; immutable, cached for good |
@@ -203,14 +218,14 @@ why the site serves the bundle.
     CI.
   - dist's workflow publishes the Homebrew formula (`jadpo.rb`) to the
     `jadpo-dev/homebrew-tap` repository with a `HOMEBREW_TAP_TOKEN`
-    secret that can write to it, and the npm package `jadpo` to npmjs.com
+    secret that can write to it, and the npm package `@jadpo/jadpo` to npmjs.com
     through trusted publishing (OIDC), which needs no token: npmjs.com is
     configured to trust `jadpo-dev/jadpo`'s `release.yml` for the package.
     Both run after the release is published and skip prereleases.
   - The extension is published only when the repository variable
     `JADPO_VSCODE_PUBLISH` is `on`, with the Marketplace publisher `jadpo`
-    and its `VSCE_PAT` secret, and the Open VSX namespace `jadpo` and its
-    `OVSX_PAT` secret.
+    and its `VSCE_PAT` secret, and the Open VSX namespace `jadpo` with a
+    trusted publisher for `vscode-extension.yml`, which needs no secret.
 
 ## Installing
 
@@ -220,7 +235,7 @@ dist (`dist-workspace.toml`, its version pinned there) with OpenSSL
 compiled in, so nobody installs Rust to check, test or run an app. Beside
 them: a shell installer (`jadpo-cli-installer.sh`, for `curl | sh`), a
 PowerShell one (`jadpo-cli-installer.ps1`), a Homebrew formula
-(`jadpo.rb`) and an npm package (`jadpo`, for `npx jadpo`). `jadpo build`
+(`jadpo.rb`) and an npm package (`@jadpo/jadpo`, for `npx @jadpo/jadpo`). `jadpo build`
 fetches its own pinned Rust toolchain into its cache on first use.
 
 Each archive has a SHA-256 beside it, and each of those files, like the

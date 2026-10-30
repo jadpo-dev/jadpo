@@ -49,7 +49,11 @@ follow the mechanical rules of docs/writing.md (user_page_problems).
 Every section an app author reads, each `#` and `##` heading of an area page
 but `## Errors`, declares its topic ID on the line after it, as
 `<!-- topic: <id> -->`: lowercase kebab case, unique across the docs. A
-topic is at most TOPIC_WORDS words as the bundle gives it. Every relative
+renamed topic keeps its old IDs, `<!-- topic: <id> (was <old-id>) -->`,
+and index.json lists them as its `aliases`. A
+topic is at most TOPIC_WORDS words as the bundle gives it. An area page
+names no area or question by number (numbered_references): on areas 1 to
+NUMBERED_FAILS_THROUGH that fails, on the rest it warns. Every relative
 link in the repository's Markdown and llms.txt resolves, to a file and, for
 Markdown, a heading GitHub gives that anchor; every area-page anchor the
 compiler prints (`help_at`) names a heading of that page.
@@ -80,8 +84,9 @@ LEARN = ROOT / 'docs/learn'
 # The primer's length in tokens, estimated as its words times 1.3, as the
 # bundle gives it (docs/documentation.md, "Where the content lives").
 PRIMER_TOKENS = (3000, 5000)
-# A topic's ID, on the line after its heading.
-TOPIC = re.compile(r'^<!-- topic: (\S*) -->$')
+# A topic's ID, on the line after its heading, and the IDs it had before
+# a rename, which still reach it: `<!-- topic: new-id (was old-id, older-id) -->`.
+TOPIC = re.compile(r'^<!-- topic: (\S*?)(?: \(was ([^)]*)\))? -->$')
 TOPIC_ID = re.compile(r'^[a-z0-9]+(?:-[a-z0-9]+)*$')
 # The most words a topic holds, as the bundle gives it.
 TOPIC_WORDS = 3000
@@ -475,7 +480,8 @@ class Page:
         """The page's topics, in order: each `#` and `##` heading but
         `## Errors`, with the ID on the line after it, up to the next of
         them or `## Errors`. Each is a dict of `id` (None when missing),
-        `title`, `level`, and its `start` and `end` lines in the body."""
+        `aliases` (the IDs it had before a rename), `title`, `level`, and
+        its `start` and `end` lines in the body."""
         lines = self.body.split('\n')
         found = []
         for i, line, fenced in body_lines(lines):
@@ -489,7 +495,8 @@ class Page:
                 found.append(None)
                 continue
             declared = TOPIC.match(lines[i + 1]) if i + 1 < len(lines) else None
-            found.append({'id': declared.group(1) if declared else None, 'title': title,
+            aliases = [a.strip() for a in declared.group(2).split(',')] if declared and declared.group(2) else []
+            found.append({'id': declared.group(1) if declared else None, 'aliases': aliases, 'title': title,
                           'level': len(heading.group(1)), 'start': i, 'end': len(lines)})
         return [t for t in found if t]
 
@@ -504,8 +511,9 @@ class Page:
             if topic['id'] is None:
                 problems.append(f'{where}: "{topic["title"]}" declares no topic ID '
                                 '(add <!-- topic: <id> --> on the line after it)')
-            elif not TOPIC_ID.match(topic['id']):
-                problems.append(f'{where}: topic ID "{topic["id"]}" is not lowercase kebab case')
+            elif not all(TOPIC_ID.match(t) for t in [topic['id'], *topic['aliases']]):
+                bad = next(t for t in [topic['id'], *topic['aliases']] if not TOPIC_ID.match(t))
+                problems.append(f'{where}: topic ID "{bad}" is not lowercase kebab case')
             else:
                 declared.add(topic['start'] + 1)
         for i, line, fenced in body_lines(lines):
@@ -668,8 +676,9 @@ class LearnPage(Page):
             heading = HEADING.match(line) if not fenced else None
             if heading and len(heading.group(1)) == 1:
                 declared = TOPIC.match(lines[i + 1]) if i + 1 < len(lines) else None
-                return [{'id': declared.group(1) if declared else None, 'title': heading.group(2),
-                         'level': 1, 'start': i, 'end': len(lines)}]
+                aliases = [a.strip() for a in declared.group(2).split(',')] if declared and declared.group(2) else []
+                return [{'id': declared.group(1) if declared else None, 'aliases': aliases,
+                         'title': heading.group(2), 'level': 1, 'start': i, 'end': len(lines)}]
         return []
 
 
@@ -742,6 +751,26 @@ def user_page_problems(page, root=ROOT):
             problems.append(f'{where}: {target} links a file in this repository, which a reader can\'t open; '
                             'link a page of the docs')
     return problems
+
+
+# An area page names no area or question by number in what an app author
+# reads either (docs/writing.md, "How a reference topic reads"). This fails
+# on areas 1 to this one, whose pages follow the guide, and warns on the
+# rest; once every page does, it is the last area and the rule fails on all.
+NUMBERED_FAILS_THROUGH = 7
+
+
+def numbered_references(page):
+    """(line, text) for each area or question an area page names by
+    number outside code. Its design notes are left alone: they are where
+    question numbers belong."""
+    found = []
+    for i, line, fenced in body_lines(page.body.split('\n')):
+        if fenced:
+            continue
+        for match in NUMBERED.finditer(re.sub(r'`[^`]*`', '', line)):
+            found.append((i + page.offset + 1, match.group(0)))
+    return found
 
 
 def body_lines(lines):
@@ -952,6 +981,8 @@ class Bundle:
         self.version = help_data.get('version')
         self.primer = primer
         self.problems = []
+        # A renamed topic's ID -> the IDs it had before, which still reach it.
+        self.aliases = {t['id']: t['aliases'] for page in pages for t in page.topics() if t['aliases']}
         # Where each anchor of an area page went: (page, anchor) -> topic ID.
         self.topic_of, self.overview = {}, {}
         for page in pages:
@@ -1134,6 +1165,7 @@ class Bundle:
                  if kind == 'topic' and page_id in self.overview.values()}
         entries = []
         for kind, page_id, _, title, area, text, linked in built:
+            aliases = self.aliases.get(page_id) if kind == 'topic' else None
             fallback = title
             if kind == 'topic' and title.startswith('What is built: '):
                 # Each area's table of what is built leads with the table.
@@ -1146,6 +1178,8 @@ class Bundle:
                 'tokens': (len(text) + 3) // 4,
                 'hash': 'sha256:' + hashlib.sha256(text.encode()).hexdigest(),
                 'area': area, 'links': sorted(linked - {page_id}),
+                # Only a renamed topic has them: its old IDs, which still reach it.
+                **({'aliases': list(aliases)} if aliases else {}),
             })
         return {'version': self.version, 'pages': entries}
 
@@ -1173,6 +1207,8 @@ def check_structure(pages, errors, catalogue, commands=(), root=ROOT, learn=()):
         for topic in page.topics():
             if topic['id']:
                 seen.setdefault(topic['id'], []).append(f'{page.path.name} "{topic["title"]}"')
+            for alias in topic['aliases']:
+                seen.setdefault(alias, []).append(f'{page.path.name} "{topic["title"]}" (its old ID)')
     for command in commands:
         seen.setdefault('jadpo-' + re.sub(r'[^a-z0-9]+', '-', command['name']), []).append(
             f'the command `jadpo {command["name"]}`')
@@ -1652,6 +1688,14 @@ def main():
         for problem in page.problems:
             failed = True
             print(f'  FAIL {problem}')
+        numbered = numbered_references(page)
+        if numbered and page.area() <= NUMBERED_FAILS_THROUGH:
+            failed = True
+            for line, text in numbered:
+                print(f'  FAIL line {line}: "{text}": link the topic by its title, or move it to the design notes')
+        elif numbered:
+            print(f'  WARN {page.path.name}: {len(numbered)} area or question reference(s) by number, the first at line '
+                  f'{numbered[0][0]} ("{numbered[0][1]}"); it fails once NUMBERED_FAILS_THROUGH reaches {page.area()}')
     for page in list(notes.values()) + errors:
         if not compile_examples:
             page.collect_blocks()

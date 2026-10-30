@@ -185,14 +185,76 @@ line, say what to open instead: `https://jadpo.dev/docs/errors/<rule>`.
 Each user page declares its topic ID on the line after its `#` heading,
 as area pages do.
 
-## Area pages
+## How a reference topic reads
 
-Area pages keep every rule, limit and edge case. Where an area page is
-the only source for something, its author-facing topics read like a
-user page: what the thing is for and an example first, then the rules,
-then the edge cases. Other areas are topic links by title, "question N"
-goes to the design notes, and build status is only in the page's "What
-is built" table.
+Area pages keep every rule, limit and edge case. Each `##` topic on them
+is still read on its own, by someone who arrived from search or from a
+compiler error, so its author-facing text reads like a user page. The
+standard is the topic "Routes: signed in by default" on the
+[Identity](language/08-identity.md#routes-signed-in-by-default) page:
+
+- **Say first what happens by default.** "Every route needs a signed-in
+  caller unless it says otherwise. You don't write anything for that."
+  The reader learns what they get for free before any option.
+- **One section per option**, as a `###` heading naming it: when to use
+  it, then the example, then what it does. "Use it for routes people
+  call before they have an account, such as a health check", then the
+  route, then what changes.
+- **Explain every term where it's used, or link it.** A
+  `revocation_delay` gets a sentence saying what it is and what it costs
+  before the topic relies on it.
+- **Explanations go in prose, not in code comments.** A comment beside a
+  line is easy to skip and can't hold a link. Keep comments to a file's
+  path, or a note the code itself needs.
+- **Link by name.** "[Policy](language/09-policy.md) still decides",
+  never "area 9 still decides". "Question N" and design history go to the
+  design notes in `docs/language/notes/`.
+- **Say constraints in plain words.** "A route can narrow its API's list
+  but never add to it" says what a reader can and can't do; "narrow"
+  alone doesn't.
+- **Check every fact against the page.** A rewrite keeps every rule as it
+  is. Where the plain version would change what a rule means, keep the
+  rule's wording.
+- **Build status** is in the page's "What is built" section, or one note
+  at the end of the topic, never in its first lines.
+
+The design notes keep the Decisions table, the open questions and why
+the language is the way it is; nothing is deleted on its way there.
+
+## The `(human)` and `(agent)` markers
+
+Every page that explains an error's `next:` line uses the same words:
+
+> `(human)` at the end of an error's `next:` line tells your coding agent
+> to stop and ask you which fix you want, because the choice is yours to
+> make (who can see data, what a setting holds). `(agent)` means your
+> agent can make the fix itself.
+
+The marker is guidance that agents follow, and nothing enforces it yet.
+The primer says so once; other pages don't repeat it.
+
+## How an error page reads
+
+A page in `docs/errors/` is reached from a compiler error, by someone in
+the middle of a change. It has these parts, in this order:
+
+1. **What happened**, under the rule's heading, in one plain sentence:
+   "A route that anyone may call, with no sign-in, reads or changes a
+   record that only signed-in people are allowed to see."
+2. **`## Why Jadpo refuses it`**: the two things that disagree, or the
+   harm the rule prevents, and why Jadpo won't pick the fix for you when
+   it won't.
+3. **`## What it looks like`**: the smallest example that raises the
+   error, compiled by the gate, and its output.
+4. **What the marker means**: after the output, what the next step's
+   `(human)` or `(agent)` means for this error, in the standard wording
+   above and with what the choice decides here ("the choice decides who
+   can see your data").
+5. **`## How to fix it`**: the question that picks the fix, if there is
+   one, then each fix as "**If …**", its code (only the lines that
+   change), and what it changes once made ("Callers who aren't signed in
+   now get a 401").
+6. **`## Related`**: the topics it touches, linked by title.
 
 ## What the docs check enforces
 

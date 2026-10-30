@@ -43,6 +43,29 @@ Why [Logic](../03-logic.md) is the way it is: the decisions behind it, how it fi
 | Callable settings (question 15) | None: the safe choice is the default, so an action is only its signature and its logic. Every action is all-or-nothing; a write to a loaded entity always checks it was not changed in the meantime; every read is current unless it reads a cache or projection, declared where that cache is (area 6). Who may call an action is policy (area 9). The cases this does not fit have better answers: a large batch that should keep partial progress is a schedule or subscriber handling one item per action; a call to an external provider comes before any write in the action and carries an idempotency key, so a retry repeats it harmlessly (area 11, question 7); a counter that must not conflict is updated by the database in one step, `set: { view_count: Post.view_count + 1 }` (area 6) |
 | Generics and unions (question 16) | None in your own code; the standard library stays generic, and a parameter that accepts several types is an enum whose variants carry them, which keeps every value's type named and identifiers apart, with no type-parameter errors for agents to fight. Revisit only if the order and payment application shows repeated helpers that differ by type alone |
 | Colon rule (language-wide) | Every member inside braces is `name: value`, and a value is one thing or a `{ ... }` block (`paid: { ... }`, `persistence: { ... }`); a variant with no data is just its name; a field's own settings still follow its type (`name: ProductName { optional: true }`); top-level declarations, statements and `match` arms are not members; route entries inside a `routes` group, keyed by method and path, are the one exception (area 7). Terraform's block-versus-attribute split is a known source of confusion |
-| Constants | `constant name: Type = value`, at the top of a file or in a library; see [Constants](../03-logic.md#constants). Not a top-level `var`, functions with no arguments, values attached to their type or a root `constants { }` block ([Rejected](../03-logic.md#rejected)) |
+| Constants | `constant name: Type = value`, at the top of a file or in a library; see [Constants](../03-logic.md#constants). Not a top-level `var`, functions with no arguments, values attached to their type or a root `constants { }` block ([Constant forms not chosen](#constant-forms-not-chosen)) |
 | A constant or a setting | A value is a constant or a setting, never both, so it has one source and one way to read it; a setting's `default:` is a literal and never a constant. See [A constant or a setting](../03-logic.md#a-constant-or-a-setting) and area 10 |
 | Outside calls in loops, checked | `effect.call_in_loop` at the call, not declinable: any outside call (a provider's operation, a store's `put` or `read`), one that only reads included, made in a `for` body directly or by an action or fixture called there, in actions and fixtures; tests and functions make none |
+
+## Constant forms not chosen
+
+Moved from the area page's "Constants" topic, which keeps only the rules.
+
+- **A top-level `var`.** `var` would mean worked out while running in a
+  body and while compiling at the top of a file.
+- **Functions with no arguments.** Queries and updates by `id` refuse
+  calls, and a call looks like a calculation, not a fixed value.
+- **Values attached to their type, `Rate.standard_vat`.** A one-off value
+  would need a type of its own, and one block per type clashes when agents
+  work in parallel.
+- **A root `constants { }` block.** A grab-bag, the one file every change
+  touches, and against domains owning their code.
+
+## Why a setting's default is never a constant
+
+A constant seeding a setting is the familiar `DEFAULT_PORT` bug of
+TypeScript and pydantic code: code reading the constant directly quietly
+ignores the environment. Jadpo has no need for the pattern, because
+`default:` on the setting's field already names the default. The area
+page's [A constant or a setting](../03-logic.md#a-constant-or-a-setting)
+gives the rule and an example.

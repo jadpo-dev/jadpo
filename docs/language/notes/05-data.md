@@ -69,3 +69,46 @@ An entity's `policy:` and `membership:` are area 9's.
 | Table names | A table is named after its entity's born name in singular snake_case (`Todo` is `todo`, `LoanRecord` is `loan_record`), never pluralised: no English inflection rules to get wrong, and the code and the database use the same word |
 | Computed backfills | `backfill:` may be an expression over each row's own stored fields, constants and pure functions, including a field this migration retires; filled in batches, by `UPDATE` where the expression has a SQL form and in Jadpo otherwise, then made required; no freeform SQL. See [Computed backfills](../05-data.md#computed-backfills) |
 | A field's rules on read | A stored value is checked against every rule its field's type has when it is read; a row written around Jadpo that breaks one is a defect naming the rule and never the value; `CHECK` constraints may follow |
+
+## Moved from the area page
+
+When [Data](../05-data.md) was rewritten to the [writing guide](../../writing.md),
+its references to the questions above, and the details of how the
+compiler and runtime build each rule, moved here. Nothing in this list
+changed a rule.
+
+- **Entities in Redis** are for data that is short-lived and harmless to
+  lose (question 15).
+- **An id inside a structured value** is a value, not a reference: a link
+  the database must keep is a field of its own, or a link entity
+  (question 1).
+- **No database unless something needs one** is question 14's decision;
+  its "only once something needs one" half is not built yet.
+- **The check of a stored value on read** runs in the runtime's one read
+  path (`jadpo_runtime::stored_value`), which both executors call; the
+  plan gives each selected column its field's validator (`Select::held`,
+  `Returned::held`).
+- **Structured values** are read with one codec, the route's, with the
+  plan numbering the field's type in its JSON table. Every event type is
+  numbered in that table by the identity key the outbox's `event` column
+  records (`JsonTable::events`), and area 12's "A payload is the
+  contract's JSON" relies on it.
+- **A JSON column's check** needs no decision (`NeededKind::Unreadable`).
+- **A backfill worked out in Jadpo** reads a value held in one column as a
+  query and a write do, through `jadpo_std::read::Column::of_builtin`.
+- **System tables are defined once,** in `jadpo_std::system`, which the
+  checker turns into each store's tables and the runtime's statements are
+  written against; a name no table has is no table, never another. A
+  system table's columns are typed by the store's own types
+  (`jadpo_std::SqlType`), never an engine's text: a column's PostgreSQL
+  type is the one that type is kept in (`SqlType::postgres_column`), so a
+  table added there adds no PostgreSQL, and another engine's driver gives
+  each type its own column. `jadpo_runtime::statements` lists every
+  statement the runtime runs on them, a test fails when one in its source
+  isn't listed, and a live test prepares each on PostgreSQL against the
+  tables a migration makes, so a statement and its table can't drift apart
+  unseen. Statements a plan builds on a system table with an
+  application's own, a session read with its user's record, are the
+  plan's and are tested with it.
+- **Hyperdrive** pools connections by transaction, which is why Jadpo's
+  statements there are unnamed and its leases are rows.
