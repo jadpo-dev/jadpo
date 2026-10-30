@@ -1524,14 +1524,14 @@ test "an emailed link signs a new person in" {
         }
         some(sent) -> {
             assert sent.to == "ada@notes.example"
-            var confirmed: Response = request {
+            var came_back: Response = request {
                 method: HttpMethod.post
                 path: "/auth/magic-link/confirm"
                 input: MagicLinkConfirmation {
                     token: sent.sign_in_token
                 }
             }
-            assert confirmed.status == 200
+            assert came_back.status == 200
         }
     }
 }
@@ -1550,7 +1550,7 @@ test "the emailed code signs a new person in" {
             assert list.count(email.sent) == 1
         }
         some(sent) -> {
-            var confirmed: Response = request {
+            var came_back: Response = request {
                 method: HttpMethod.post
                 path: "/auth/magic-link/confirm"
                 input: MagicLinkConfirmation {
@@ -1558,7 +1558,7 @@ test "the emailed code signs a new person in" {
                     code: sent.sign_in_code
                 }
             }
-            assert confirmed.status == 200
+            assert came_back.status == 200
         }
     }
 }
