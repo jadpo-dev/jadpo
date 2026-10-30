@@ -224,7 +224,7 @@ jadpo test
 ```
 
 ```text
-tested: 8 passed, 3 action tests, 5 route tests in 1.1 s
+tested: 9 passed, 3 action tests, 6 route tests in 1.1 s
 ```
 
 ## The permissions report

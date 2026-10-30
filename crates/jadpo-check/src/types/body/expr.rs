@@ -1490,8 +1490,16 @@ impl Body<'_> {
     /// fixture or seed, every field given, to call `on_first_sign_in:`'s
     /// action or a subscriber's directly (chunk 7.3b4).
     fn sign_in_literal(&mut self, record: &ast::RecordExpr, name: &str, head_span: Span) -> Ty {
+        let input = jadpo_std::http::magic_link_input(name);
         if self.context != super::Context::Test {
-            let (reason, next) = if name == jadpo_std::http::FIRST_SIGN_IN {
+            let (reason, next) = if input {
+                (
+                    format!(
+                        "A `{name}` is what a client sends a generated magic-link route; a route test builds one to send it with `request`, and nothing else does."
+                    ),
+                    "Call the route from a route test, or `magic_links.request`, `.redeem` or `.redeem_code` from an action, and remove this value",
+                )
+            } else if name == jadpo_std::http::FIRST_SIGN_IN {
                 (
                     format!(
                         "Only the runtime builds a `{name}`, from a way in it checked, and gives it to `on_first_sign_in:`'s action; a test builds one to call that action directly."
@@ -1523,9 +1531,14 @@ impl Body<'_> {
             self.walk(|walk| walk.member_values(record.member_list()));
             return Ty::Error;
         };
+        // A route's input may leave out a field that may be `none`, as a
+        // request's body may.
         let fields: Vec<FieldDef> = fields
             .into_iter()
-            .map(|(field, ty)| plain_field(field, ty))
+            .map(|(field, ty)| FieldDef {
+                optional: input && matches!(ty, Ty::Nullable(_)),
+                ..plain_field(field, ty)
+            })
             .collect();
         self.facts.builds.insert(
             node_key(record.syntax()),
@@ -1536,7 +1549,11 @@ impl Body<'_> {
             name,
             &[],
             &fields,
-            Required::All,
+            if input {
+                Required::Input
+            } else {
+                Required::All
+            },
             head_span,
             &[],
         );

@@ -1266,7 +1266,8 @@ email, rendered whole once its action commits, so a template that can't
 be rendered fails the test. A test reads what it has sent so far as
 `email.sent`, a `List<SentEmail>`. Each has its `to`, `from`, `subject`,
 `html` and `text` (`none` without that template), every link in it
-(`links`) and its attachments' file names (`attachments`). Only a test
+(`links`), its attachments' file names (`attachments`), and the sign-in
+email's token and code (`sign_in_token`, `sign_in_code`). Only a test
 can read `email.sent` (`email.sent_context`). The mail is caught whole
 whichever connection `email:` names, a mail package's included.
 
@@ -2279,7 +2280,13 @@ order it was sent. A `SentEmail` holds:
 - `html` and `text`, each a `Text?`;
 - `links`: each `href` in the HTML and each `http://` or `https://`
   address in the text, once each, in order;
-- `attachments`: their file names.
+- `attachments`: their file names;
+- `sign_in_token`, a `SignInToken?`, and `sign_in_code`, a
+  `SignInCode?`: the sign-in email's link token and code, which a route
+  test posts to the confirmation
+  ([In development and tests](08-identity.md#in-development-and-tests)).
+  Both are `none` on every other email. Only a host that catches mail
+  is handed them, beside the message, so no driver ever sees them.
 
 A local variable named `email` is read before the namespace, since an
 address is often called that. A test that reaches no store reads an
