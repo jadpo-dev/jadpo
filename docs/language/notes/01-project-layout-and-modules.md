@@ -50,3 +50,27 @@ Why [Project layout and modules](../01-project-layout-and-modules.md) is the way
 | Constants in the layout | A `constant` is placed and shared as a helper function is (area 3) |
 | Packages in the layout | The root `packages/` holds only installed packages, checked against `jadpo.lock`; the app's own integrations live in `shared/providers/` in the package format; `use packages/…` always names installed code (area 11) |
 | Records | Committed generated files are readable `.jadpo_record` files beside what they describe, each starting with the line that says what wrote it; a hand edit is an error; `jadpo.lock` keeps its name (area 18) |
+
+## Why some rules are the way they are
+
+Reasons that used to sit beside the rules on the area page.
+
+- **Names per domain for private functions and types.** Agents working in
+  parallel workspaces on different domains would otherwise clash on
+  private helper names when their work merges. Imports stay exact: a
+  private name can only be imported inside its own domain, where it is
+  unique, and anything importable across domains is unique across the
+  project, so `import.missing` can still name the exact `use` line.
+- **A domain is not a namespace.** Tables, error codes, OpenAPI schema
+  names, event names and identity keys all need one unique name anyway, so
+  a namespace per domain would only move the prefix into generated names,
+  and `Customer` would mean different things by folder in a diff.
+- **No two capitals in a row.** A name must convert to its file name and
+  back unchanged, so `VatRate`, not `VATRate`; Rust's naming guideline says
+  the same.
+- **The comma-separated `use` list.** It is the one comma-separated `{ }`
+  list in the language, where every other block holds one `name: value`
+  item per line. It is accepted because the names have to appear exactly as
+  the code writes them, so finding a name on the page finds its import.
+- **Reserved words** are question 7 in the Decisions table above, and
+  **declinable errors** question 11.

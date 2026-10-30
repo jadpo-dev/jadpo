@@ -1521,36 +1521,70 @@ POST / {
 ## Routes: signed in by default
 <!-- topic: routes-signed-in-by-default -->
 
-Every route requires a signed-in caller. A route says only when that changes:
+Every route needs a signed-in caller unless it says otherwise. You don't
+write anything for that. A request without a valid session or token is
+refused with a 401 before your code runs.
+
+A route changes this with an `authentication:` line, which takes one of two
+values.
+
+### Open to anyone: `RouteAuthentication.none`
+
+Use it for routes people call before they have an account, such as a health
+check or a sign-up form.
 
 ```jadpo fragment
 GET /health/live {
-    authentication: RouteAuthentication.none     // anyone may call it; no credential is read
+    authentication: RouteAuthentication.none
     output: Health
     run: live()
 }
+```
 
+The route doesn't look for a session or token, so it never knows who is
+calling. The compiler stops anything the route runs from reading the caller
+(`type.auth_public_principal`).
+
+Only the sign-in check is skipped. Input is still validated and limits still
+count. [Policy](09-policy.md) still decides whether the route's action may
+run for someone who isn't signed in. A route can be open to anyone and still
+be refused by policy.
+
+### Check the caller again: `RouteAuthentication.fresh`
+
+Use it where acting for someone who was signed out a moment ago would do
+harm, such as disabling an account, changing permissions, billing or exports.
+
+```jadpo fragment
 DELETE /users/{user_id} {
-    authentication: RouteAuthentication.fresh    // check the caller's record now, even with a revocation delay
+    authentication: RouteAuthentication.fresh
     run: disable_user(user_id, current_principal.user)
 }
 ```
 
-- `authentication: RouteAuthentication.none` skips credential checks entirely. It does not skip
-  input validation, policy or limits, and nothing it reaches may use the
-  caller (`type.auth_public_principal`). Area 9 still decides whether the
-  action may be invoked publicly.
-- `authentication: RouteAuthentication.fresh` is for disabling accounts, changing permissions,
-  billing and exports.
-- Any other value is an error that offers both fixes without guessing which
-  was meant, because one keeps the route protected and the other opens it.
+`fresh` only changes anything if your app sets a `revocation_delay`. By
+default, Jadpo looks up the caller's record on every request, so a session
+you revoke stops working at once. With a delay, for example
+`revocation_delay: 5m`, sessions are trusted for up to five minutes without
+that lookup, so a disabled user may keep working until then (see
+[The application and revocation](#the-application-and-revocation)). A
+`fresh` route always does the lookup, whatever the delay.
 
-An application may have several APIs (area 7: `main`, `admin`,
-`webhooks`), each with a default authentication. An API lists the methods it accepts, and a route
-inside it can only narrow that:
+### Any other value
+
+Anything else is a compile error. The error offers both fixes rather than
+guessing, because one keeps the route protected and the other opens it to
+anyone.
+
+### Apps with more than one API
+
+An app can serve several APIs, for example `main` for its own clients and
+`partners` for other companies' servers, each under its own path prefix
+([APIs](07-http.md)). Each API lists the ways a caller may prove who they
+are, and every route in it accepts those:
 
 ```jadpo fragment
-// app.jadpo (the apis block is area 7's)
+// app.jadpo
 apis: {
     main: {
         prefix: /
@@ -1563,9 +1597,13 @@ apis: {
 }
 ```
 
-With one API, every method is accepted. Provider webhooks have no route to
-authenticate: the runtime generates them from the provider package, checks
-the signature and publishes each as an event (area 11).
+Here a browser session or an API token works on any route under `/`, and
+only a service key works under `/partners`. A route can narrow its API's
+list but never add to it. An app with a single API accepts every method.
+
+Webhooks from a provider such as Stripe aren't routes you write, so there's
+nothing here to set. Jadpo generates them, checks each one's signature and
+passes it to your app as an event ([Integrations](11-integrations.md)).
 
 ## Service credentials
 <!-- topic: service-credentials -->

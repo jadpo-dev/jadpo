@@ -106,6 +106,12 @@ fn clean_edits_converge(text: &str) {
 }
 
 #[test]
+fn a_semicolon_after_a_declaration_word_is_not_split() {
+    check("package; Postcodes.v3 {\n    jadpo: \"1.0\"\n}\n");
+    check("use; shared/types { Pence }\n");
+}
+
+#[test]
 fn mutated_examples_never_break_the_parser() {
     let mut rng = Rng(0x9e37_79b9_7f4a_7c15);
     let examples = examples::all();
