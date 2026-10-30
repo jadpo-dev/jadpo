@@ -339,3 +339,141 @@ Carried from other areas, and the runtime's own limits:
 | Third-party services | From area 8: the language owns a feature rather than relying on a third-party service where it reasonably can |
 | SMTP to this machine | The SMTP driver speaks to a server on this machine (`localhost`, `127.0.0.1`, `::1`) without `STARTTLS`, whether it offers it or not, as PostgreSQL's driver does, since a stock Postfix offers it with a self-signed certificate. A server elsewhere is upgraded and its certificate checked, and port 465 speaks TLS from the start |
 | Addresses the runtime reaches | Plain HTTP's "this machine" is the host read as an address (`127.0.0.0/8`, `::1`) or `localhost`, never a name's first label; the runtime's own fetches judge an IPv4 address inside NAT64's `64:ff9b::/96`, 6to4's `2002::/16` or Teredo's `2001::/32` (its server's and its client's) as itself, and refuse site-local `fec0::/10`, NAT64's local-use `64:ff9b:1::/48` and the rest of `2001::/23` |
+
+## Moved from the area page
+
+When [External services](../11-integrations.md) was rewritten to the
+[writing guide](../../writing.md), its references to the questions above,
+its comparisons with other tools and the details of how some rules are
+kept moved here. Nothing in this list changed a rule.
+
+- **No feature packages**: where agents keep getting a feature wrong, the
+  fix is a worked reference in `examples/`, not a package.
+- **Provider types stay out of stored data and route contracts** (question
+  1), because the next version of the API is a new package.
+- **The golden rule is kept by process.** Every future package feature is
+  designed with how the app writes it, and a proposal that only works
+  inside a package is rejected. The gate checks it: each package example on
+  the area page also compiles placed as the app's own integration in
+  `shared/providers/`.
+- **No `emails/` folder in a package** is consistent with the golden rule,
+  which runs one way: a package doing less than the app is allowed.
+- **The declaration is called `provider`**, matching provider packages and
+  `shared/providers/`.
+- **Names through the package**, `AcmeCouriers.Booking`, are question 16.
+- **A vendor with storage and an API** is a driver connection plus a
+  package, so there is no hybrid case.
+- **No dependencies removes** version resolution, clashes between
+  packages, "required by" tracking and clean-up on removal. It is also the
+  reversible choice: requirements can be added later without breaking
+  anything published, if real packages keep copying something substantial
+  that doesn't belong in the standard library.
+- **The surface's screens** (`jadpo package show`) follow the CLI design
+  language and are designed before they are built.
+- **The surface decides the version** as Elm's package manager does: a
+  breaking change needs a new major version.
+- **Private packages from git, with no private registry**: packages are
+  committed into apps, so a registry's caching adds nothing; Go is the
+  precedent. The lock's source field leaves room for a private registry
+  later.
+- **Descriptions alone are not the publishing bar**, because the compiler
+  can't judge whether one says anything; examples are, because they must
+  run.
+- **Examples in descriptions run as tests** (question 27), and **the
+  changelog's list is written from the surface diff** (question 28).
+- **Where `jadpo package add` looks** follows a fixed order and records the
+  step it used (question 13).
+- **The registry is Jadpo's own**, in line with Identity's rule that the
+  language owns a feature where it reasonably can. The hosted registry is
+  question 15.
+- **Operation provenance** (`source:`) is question 14.
+- **Connections are infrastructure, declared once** in `connections:`
+  (question 20), and name the domains that may call them (question 18).
+  HTTPS only, redirects and proxies refused, is question 9; code never
+  reading the credential is question 10; the default timeout and retries
+  are question 8; two versions side by side is question 3; a connection's
+  name sharing the domains' namespace is question 17.
+- **Calling.** Types coming from the package, the app writing none, is
+  question 1; a package input taking any of the app's object types is a
+  general addition Values and types designs. Mapping failures at the call
+  is question 5, idempotency keys question 6, retries question 8, and the
+  order of calls and writes question 7.
+- **Package subscribers are tested against live PostgreSQL** in
+  `crates/jadpo-cli/tests/package_subscribers.rs`: a signed `invoice.paid`
+  reaches the package's subscriber once and the renewal it emits reaches
+  the app's subscriber through the outbox.
+- **Full package permissions wait**: a package that owns tables or runs
+  its own schedules waits until a real app needs package-owned data;
+  adding grants later breaks nothing.
+- **Package polls are tested against live PostgreSQL** in
+  `crates/jadpo-cli/tests/package_polls.rs`, `max_concurrent: 1` included.
+- **Services and published ports**: whether a network that blocks
+  outbound traffic can publish a port to the machine is checked when
+  services are built. Services come in stages, each useful alone.
+- **Several changing calls.** The warning holding for single calls is
+  question 26, and the deadline sum checking a single call is question 8.
+  The 8-step limit is confirmed by measurement, like Jobs and events'
+  other limits.
+- **No webhook route is written by hand** (question 11): a connection's
+  webhook secret generates `POST /webhooks/<connection>`, and the package
+  declares the events and how they are signed.
+- **The built-in signature schemes** (Stripe, Standard Webhooks, HMAC-SHA256
+  with a named header, basic authentication, Twilio's HMAC-SHA1 and AWS SNS
+  certificates) are question 25's.
+- **Where receiving is proved.** `crates/jadpo-cli/tests/webhooks.rs` shows
+  a webhook event reaching an app's subscriber, and
+  `crates/jadpo-cli/tests/webhook_replies.rs` a reply and its repeat, both
+  against live PostgreSQL. `crates/jadpo-cli/tests/receiving.rs` runs the
+  SQS package, which is in this repository at `packages/amazon_sqs`,
+  against a local fake of SQS's JSON API that checks each signature.
+- **One `connections:` block**, where each connection's use says which
+  capability it serves, is question 20's decision.
+- **`provides/<capability>.jadpo`**, a data-only mapping of each standard
+  operation onto one of the package's, is question 21's.
+- **One fake per capability**, whatever the provider (`email.sent`,
+  `published`), is question 22's.
+- **Nothing leaves the machine in `jadpo dev`**: published events to a log,
+  search to PostgreSQL, the cache in memory (question 23).
+- **Each driver and package says which targets it runs on**, and
+  `jadpo check` refuses a deployable that uses one elsewhere (question 24).
+- **Every written operation that isn't confirmed** must have a case in the
+  contract run (question 12).
+- **A package's examples** in its `///` descriptions, run as tests in the
+  scratch app, are question 27's; its `CHANGELOG.md` is question 28's.
+- **`domains:` is always required** on a connection to a package
+  (question 18).
+- **A connection named like a domain or library** is
+  `semantic.duplicate_declaration` (question 17).
+- **How a version is worked out** compares a package's surface with its
+  newest release's entry by entry, as Elm's `bump` does.
+- **Why the importer writes `wire_name:` per field** rather than a
+  provider-wide naming setting: most APIs other than Stripe's are
+  camelCase, and a provider-wide setting would hide the exceptions.
+- **A package action calls no other action.** The pages let a package
+  action call its operations and its pure functions, and keeping it to one
+  body keeps each way through it one sequence of steps. This can be
+  loosened later without breaking a package.
+- **How the runtime is built for provider calls.** The package driver is
+  `jadpo_drivers::package::JsonHttp`, over the `Fetch` its host gives:
+  natively `jadpo_host_native::fetch::NativeFetch`, hyper's HTTP/1.1
+  client on the worker's thread, with rustls checking certificates. The
+  executor runs a package's decoders at the call's site through
+  `provider::Functions`; the driver tells a timeout apart with
+  `Answer::TimedOut`; the test host's fake is
+  `jadpo_runtime::fakes::ProviderFake`.
+- **How the Cloudflare Queues driver is built.** The Workers host hands
+  each batch to the runtime's seam, `receiving::consume`; the Wrangler
+  consumers are written by `jadpo_std::receiving::wrangler_queues`, and
+  Wrangler's `deploy --dry-run`, pinned in `tools/fixtures/workers/`,
+  accepts them without a warning.
+- **Lazy loading** of an installed package's resources is
+  docs/compiler-runtime.md §2.3; how a process wakes the calls waiting for
+  a `max_concurrent:` slot is §2.6, "Six connections an invocation".
+- **Cross-references the area page dropped.** A queue message whose event
+  the store refuses as a statement is parked `unreadable`; the page used
+  to point at area 12's "Queue messages the store refuses", which is no
+  longer a heading there. `Wire.day_month_year` is the encoding areas 12
+  and 19 name for file rows, here built for providers.
+- **"Errors still to build"** is now the "Mistakes not reported yet"
+  section of the area page's "What is built", and its topic ID,
+  `errors-still-to-build`, an old ID of `external-services-built`.
