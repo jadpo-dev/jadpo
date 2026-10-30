@@ -1,0 +1,59 @@
+name: Bug report
+description: Jadpo crashed, rejected valid code, accepted invalid code, or a docs page is wrong.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue is public and shows under your name. Do not include secrets, settings values or code beyond the smallest project that shows the bug. A suspected security problem goes to the private route in [SECURITY.md](https://github.com/jadpo-dev/jadpo/blob/main/SECURITY.md), not here.
+  - type: input
+    id: version
+    attributes:
+      label: Version and platform
+      description: The output of `jadpo --version`, and your operating system and CPU.
+      placeholder: "0.1.0 aarch64-macos"
+    validations:
+      required: true
+  - type: input
+    id: ran
+    attributes:
+      label: What you ran
+      description: The command.
+      placeholder: "jadpo check"
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Smallest project that shows it
+      description: The files, cut down until removing any more makes the bug go away.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+      description: The full output, including its `rule:` line. If Jadpo wrote a crash file, read it, then attach it.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: Say which docs page says so.
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Did a coding agent write the code or this report?
+      options:
+        - "No"
+        - "Code only"
+        - "Report only"
+        - "Both"
+    validations:
+      required: true

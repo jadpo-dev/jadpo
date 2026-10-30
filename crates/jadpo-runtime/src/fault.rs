@@ -57,7 +57,18 @@ pub enum FaultKind {
     Crashed,
 }
 
+/// The form a bug in Jadpo is reported on. It is public text: no
+/// request, header or setting value is ever put in a link to it.
+pub const BUG_REPORT_URL: &str = "https://github.com/jadpo-dev/jadpo/issues/new?template=bug.yml";
+
 impl FaultKind {
+    /// Whether the fault is a bug in Jadpo rather than in the app: a
+    /// defect the checker should have ruled out. The client still gets
+    /// `500 internal_fault`; only the operator's log says more.
+    pub fn is_jadpo_bug(&self) -> bool {
+        matches!(self, FaultKind::Defect(_))
+    }
+
     /// The classification its log event names (area 4, question 9; area
     /// 17): `int_overflow`, `recursion_limit`, and `internal_fault` for any
     /// other defect.
