@@ -173,6 +173,8 @@ rules! {
         "Runs command has invalid arguments";
     CLI_SCHEDULES_ARGUMENTS: "cli.schedules_arguments", area 14, Error, Agent,
         "Schedules command has invalid arguments";
+    CLI_SEED_ARGUMENTS: "cli.seed_arguments", area 14, Error, Agent,
+        "Seed command has invalid arguments";
     CLI_SQL_ARGUMENTS: "cli.sql_arguments", area 14, Error, Agent,
         "Sql command has invalid arguments";
     CLI_SUGGEST_ARGUMENTS: "cli.suggest_arguments", area 14, Error, Agent,
@@ -837,6 +839,12 @@ rules! {
         "Schedule's run failed";
     SCHEDULES_UNAVAILABLE: "schedules.unavailable", area 14, Error, Human,
         "Schedules' database couldn't be read";
+    SEED_FAILED: "seed.failed", area 14, Error, Agent,
+        "Seed ended with a failure or a fault";
+    SEED_PRODUCTION_REFUSED: "seed.production_refused", area 14, Error, Human,
+        "Seed refused a database that isn't on this machine";
+    SEED_UNAVAILABLE: "seed.unavailable", area 14, Error, Human,
+        "Seed's database couldn't be reached";
     SEMANTIC_AI_BUDGET_MISSING: "semantic.ai_budget_missing", area 21, Error, Agent,
         "Application's `ai:` sets no daily limit";
     SEMANTIC_AI_DIMENSIONS_MISMATCH: "semantic.ai_dimensions_mismatch", area 21, Error, Agent,

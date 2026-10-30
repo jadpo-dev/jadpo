@@ -113,6 +113,7 @@ fn bash_completes_commands_and_values() {
             "fmt",
             "package",
             "migrate",
+            "seed",
             "sql",
             "routes",
             "ai",

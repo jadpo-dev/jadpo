@@ -101,6 +101,7 @@ mod released;
 mod round_trips;
 mod rule_slice;
 mod schedules;
+mod seeds;
 mod served_openapi;
 mod settle;
 mod side_by_side;

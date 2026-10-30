@@ -1845,10 +1845,27 @@ seed {
 }
 ```
 
-`jadpo seed <name>` runs one. It refuses a production database: data
-production needs is a migration backfill.
+A seed is named by its file: `seed { }` in `local_demo.jadpo` is
+`local_demo`. It is checked like a test, and its calls run as a test's do
+([Calls with no caller](13-testing.md#calls-with-no-caller)): one that
+passes a caller runs as them, under policy, and one that passes none runs
+without it, which is how a seed makes the first user who holds a role.
 
-Not built yet: seeds and `jadpo seed`.
+`jadpo seed <name>` runs one
+([`jadpo seed`](14-tooling.md#jadpo-seed)). It refuses a production
+database: data production needs is a migration backfill. A production
+database is any that isn't on this machine: every server the store's
+address names must be a Unix socket, `localhost`, `127.0.0.1` or `::1`,
+the ones [PostgreSQL over TLS](#postgresql-over-tls) also treats as this
+machine. Nothing is run against any store until every store passes
+(`seed.production_refused`).
+
+A seed runs as a request does, at one time read from the clock and with
+the machine's randomness, so each run makes new identities. Each action it
+calls commits on its own, so a seed that stops at a failure or a fault
+keeps what its earlier calls committed (`seed.failed`). Mail lands in the
+dev inbox and provider calls are faked, as under `jadpo dev`, and what its
+actions emit is delivered before the command ends.
 
 ## Where things live
 <!-- topic: where-things-live -->
@@ -1904,7 +1921,7 @@ Each feature not built yet is `toolchain.not_built_yet` where it is used.
 | Entities in Redis and record caches (`caches:`) | Not built yet. Clearing only the cached entries a change affects isn't designed yet. |
 | Index kinds other than geographic and HNSW | Not built yet. |
 | A database implied only when something needs one | Not built yet: it comes with the first feature that can run without one. |
-| Seeds and `jadpo seed` | Not built yet. |
+| Seeds and `jadpo seed` | Built. |
 | `jadpo rename` | Not built yet: it writes the identity registry ([Tooling](14-tooling.md)). |
 
 ## Errors
