@@ -42,7 +42,7 @@ edition = "2024"
 rust-version = "1.99"
 publish = false
 license = "Apache-2.0"
-repository = "https://github.com/richardwillars/jadpo"
+repository = "https://github.com/jadpo-dev/jadpo"
 
 [workspace.dependencies]
 jadpo-diag = { path = "crates/jadpo-diag" }

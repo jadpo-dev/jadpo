@@ -91,10 +91,10 @@ TOPIC_ID = re.compile(r'^[a-z0-9]+(?:-[a-z0-9]+)*$')
 # The most words a topic holds, as the bundle gives it.
 TOPIC_WORDS = 3000
 # Where a bundle page's link to a file outside the bundle goes.
-REPO_URL = 'https://github.com/richardwillars/jadpo/blob/main/'
-RAW_URLS = ('https://raw.githubusercontent.com/richardwillars/jadpo/main/',
-            'https://github.com/richardwillars/jadpo/blob/main/',
-            'https://github.com/richardwillars/jadpo/tree/main/')
+REPO_URL = 'https://github.com/jadpo-dev/jadpo/blob/main/'
+RAW_URLS = ('https://raw.githubusercontent.com/jadpo-dev/jadpo/main/',
+            'https://github.com/jadpo-dev/jadpo/blob/main/',
+            'https://github.com/jadpo-dev/jadpo/tree/main/')
 # What the page of a rule with no example says.
 NO_EXAMPLE = 'No example yet.'
 JADPO = ROOT / 'target/debug/jadpo'
@@ -706,7 +706,7 @@ BUILD_STATUS = re.compile(r"\b(?:not built yet|isn't built|aren't built|not yet 
                           re.IGNORECASE)
 SPEC_WORDS = re.compile(r'^Decided\.|\bcarried to\b')
 NOT_BUILT = '## Not built yet'
-REPOSITORY_URL = re.compile(r'^https://github\.com/richardwillars/jadpo/(?:blob|tree)/')
+REPOSITORY_URL = re.compile(r'^https://github\.com/jadpo-dev/jadpo/(?:blob|tree)/')
 
 
 def user_page_problems(page, root=ROOT):

@@ -52,7 +52,7 @@ installed through [rustup](https://rustup.rs). The repository pins the
 version of Rust it needs, and rustup fetches it on the first build.
 
 ```sh
-git clone https://github.com/richardwillars/jadpo.git
+git clone https://github.com/jadpo-dev/jadpo.git
 cd jadpo
 cargo build --release --locked -p jadpo-cli
 ```
@@ -147,7 +147,7 @@ Next: [A project and your first route](02-first-route.md).
 ## Not built yet
 
 There is no installer yet, so you build from source as above. Prebuilt
-downloads, Homebrew and `npx jadpo` come with the first release, and so
+downloads, Homebrew (`brew install jadpo-dev/tap/jadpo`) and `npx @jadpo/jadpo` come with the first release, and so
 does `jadpo new`, which will start a project for you. Each project names
 the Jadpo release line it is written for, and whichever `jadpo` you run
 fetches and runs that release for it, so projects on different releases

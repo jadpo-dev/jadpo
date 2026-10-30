@@ -52,19 +52,19 @@ language server does everything else.
 
 ## Install Jadpo first
 
-The extension needs the `jadpo` command. Each [release](https://github.com/richardwillars/jadpo/releases)
+The extension needs the `jadpo` command. Each [release](https://github.com/jadpo-dev/jadpo/releases)
 comes with installers:
 
 - **macOS and Linux**:
 
-      curl --proto '=https' --tlsv1.2 -LsSf https://github.com/richardwillars/jadpo/releases/latest/download/jadpo-cli-installer.sh | sh
+      curl --proto '=https' --tlsv1.2 -LsSf https://github.com/jadpo-dev/jadpo/releases/latest/download/jadpo-cli-installer.sh | sh
 
 - **Windows**, in PowerShell:
 
-      powershell -ExecutionPolicy Bypass -c "irm https://github.com/richardwillars/jadpo/releases/latest/download/jadpo-cli-installer.ps1 | iex"
+      powershell -ExecutionPolicy Bypass -c "irm https://github.com/jadpo-dev/jadpo/releases/latest/download/jadpo-cli-installer.ps1 | iex"
 
-- **npm**: `npm install -g jadpo`.
-- **Homebrew**: each release comes with a formula, `jadpo.rb`.
+- **npm**: `npm install -g @jadpo/jadpo`.
+- **Homebrew**: `brew install jadpo-dev/tap/jadpo`.
 
 The shell and PowerShell installers put `jadpo` in Cargo's folder,
 `~/.cargo/bin` (on Windows, `%USERPROFILE%\.cargo\bin`), and add it to your

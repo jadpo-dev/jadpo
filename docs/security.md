@@ -111,7 +111,11 @@ and keeps the input.
   releases only under `jadpo/releases/` in the user's cache folder.
 - CodeQL scans the Rust, JavaScript and TypeScript, Python and workflow code
   on each pull request to `main`, each push to `main` and weekly
-  (`codeql.yml`, no build). The OpenSSF Scorecard runs on each push to
+  (`codeql.yml`, no build), leaving out only the crates' integration
+  tests and `jadpo-value`'s known-answer examples, whose passwords, keys
+  and secrets are test vectors. No release step runs a script fetched
+  unchecked: dist comes from `.github/install-dist.sh`, and no build
+  installs Rust by `curl | sh`. The OpenSSF Scorecard runs on each push to
   `main`, on a branch protection change and weekly (`scorecard.yml`) and
   publishes its result. Both upload to code scanning, so findings are under
   the repository's Security tab, Code scanning; only their jobs write

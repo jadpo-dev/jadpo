@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Please report a vulnerability privately, through GitHub's private
-vulnerability reporting: on [richardwillars/jadpo](https://github.com/richardwillars/jadpo),
+vulnerability reporting: on [jadpo-dev/jadpo](https://github.com/jadpo-dev/jadpo),
 open **Security**, then **Report a vulnerability**. Don't open a public
 issue, pull request or discussion for it.
 

@@ -7,7 +7,7 @@ rust-version.workspace = true
 publish.workspace = true
 license.workspace = true
 repository.workspace = true
-homepage = "https://github.com/richardwillars/jadpo"
+homepage = "https://github.com/jadpo-dev/jadpo"
 # One integration-test binary: tests/main.rs.
 autotests = false
 

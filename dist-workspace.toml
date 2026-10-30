@@ -18,6 +18,9 @@ pr-run-mode = "plan"
 # Dependabot keeps the generated release workflow's actions current;
 # release.yml is kept by hand from what dist generates (see its header).
 allow-dirty = ["ci"]
-publish-jobs = []
+# Homebrew formula to the tap, npm package `@jadpo/jadpo` to npmjs.com.
+npm-scope = "@jadpo"
+tap = "jadpo-dev/homebrew-tap"
+publish-jobs = ["homebrew", "npm"]
 # Each archive gets a GitHub artifact attestation as it is built.
 github-attestations = true
