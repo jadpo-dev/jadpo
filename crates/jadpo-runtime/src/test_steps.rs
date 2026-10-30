@@ -37,12 +37,13 @@
 //!   ([`crate::batches::run_a_batch`]), two items a batch on a test's
 //!   host. An item that fails is the run's problem, and a `finished:`
 //!   that fails leaves the run `failed`, which `batches.status` reads; the
-//!   test goes on. A run whose batch couldn't commit waits, as it would
-//!   for the tick, until the test's clock passes its lease.
+//!   test goes on. A run whose batch couldn't commit gives its lease back
+//!   and waits, as it would for the tick, until the test's clock next
+//!   moves.
 
 use std::collections::BTreeSet;
 
-use crate::batches::BatchStart;
+use crate::batches::{BatchStart, Ran};
 use crate::budget::{Budget, Invocation};
 use crate::outbox::{DIVERGED, Delivery, FAILED};
 use crate::runner::Deferred;
@@ -197,7 +198,7 @@ pub async fn after_step(
             Deferred::Batch(start) => add_run(&mut pool, start),
         }
     }
-    // The tick picks up a run whose lease lapsed as the clock moved.
+    // The tick picks up a run waiting with no lease once the clock moves.
     if advanced {
         let clocked = AtClock::new(host, ctx.now());
         for start in crate::batches::waiting(executor, &clocked, ctx.now()).await {
@@ -298,18 +299,23 @@ pub async fn after_step(
                     .map_or(0, |between| between.drawn);
                 let clocked = AtClock::new(host, ctx.now()).after(drawn);
                 let batch_budget = Budget::start(&clocked, Invocation::AfterResponse);
-                let (_, left) = Box::pin(crate::batches::run_a_batch(
+                let (ran, left) = Box::pin(crate::batches::run_a_batch(
                     executor,
                     &clocked,
                     &batch_budget,
                     &start,
                 ))
                 .await;
+                // One whose batch couldn't commit gives its lease back, so
+                // the test's next `clock.advance` picks it up.
+                if matches!(ran, Ran::Paused(_)) {
+                    crate::batches::give_back(&clocked, &start).await;
+                }
                 if let Some(between) = ctx.background_mut().between_steps_mut() {
                     between.drawn = clocked.drawn();
                 }
                 // A run handed on is among what it left; one that ended,
-                // or that waits for its lease to lapse, isn't.
+                // or that waits for the clock to move, isn't.
                 pool_up(&mut pool, left);
             }
         }

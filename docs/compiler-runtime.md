@@ -1772,9 +1772,9 @@ lease back after the one batch, as after a restart, at the test's clock
 and with random bytes counted on from the last batch
 (`test_run::AtClock`), until the run ends; a test's host gives two items
 a batch, a query's page cut to that (area 13, "Batches"). A run whose
-batch couldn't commit keeps its lease, and a step that moves the clock
-picks up the runs whose leases have lapsed, as the tick does
-(`batches::waiting`).
+batch couldn't commit gives its lease back (`batches::give_back`), and a
+step that moves the clock picks up the runs with no lease, as the tick
+does (`batches::waiting`).
 
 **Differential test.** Every test runs interpreted and compiled, as Gleam
 runs one

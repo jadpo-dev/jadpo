@@ -1374,6 +1374,17 @@ async fn finish(open: Batch<'_, '_>, ended: Result<(), StoreError>, ran: Ran) ->
     }
 }
 
+/// Gives back the lease on the run `start` names, if it is still
+/// running: what a test does with a run whose batch couldn't commit, so
+/// its next `clock.advance` picks it up (area 13, "Batches"), where a
+/// deployable's run waits for its lease to lapse.
+pub(crate) async fn give_back(host: &dyn Host, start: &BatchStart) {
+    let (Some(database), Some(now)) = (host.database(&start.store), now_on(host)) else {
+        return;
+    };
+    crate::lease::release(database, &Leased { id: start.run }, now).await;
+}
+
 /// Ends a run in one statement of its own: a run that can't go on.
 async fn end(host: &dyn Host, start: &BatchStart, state: BatchState, why: Option<&str>) {
     let (Some(database), Some(now)) = (host.database(&start.store), now_on(host)) else {

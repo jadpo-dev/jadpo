@@ -747,10 +747,11 @@ fn a_tests_step_runs_its_batches_to_the_end_two_items_a_batch() {
     });
 }
 
-/// A run in a test whose batch couldn't commit waits, as it would for
-/// the tick, and carries on once the test's clock passes its lease.
+/// A run in a test whose batch couldn't commit gives its lease back and
+/// waits, as it would for the tick, until the test's clock next moves,
+/// however little (area 13, "Batches").
 #[test]
-fn a_tests_run_that_stops_carries_on_once_the_clock_passes_its_lease() {
+fn a_tests_run_that_stops_carries_on_at_the_next_clock_advance() {
     let Some(loaded) = load("in-a-test-paused") else {
         return;
     };
@@ -774,12 +775,11 @@ fn a_tests_run_that_stops_carries_on_once_the_clock_passes_its_lease() {
         let stepped = after_step(program, &mut ctx, false, Frame::ENTRY).await;
         assert!(stepped.is_ok(), "{stepped:?}");
         assert_eq!(kept(&host, &run).await, ("running".to_string(), 2, 0));
-        // Its lease holds until it lapses.
-        assert!(ctx.advance_clock(60_000));
-        let stepped = after_step(program, &mut ctx, true, Frame::ENTRY).await;
+        // A step that doesn't move the clock leaves it waiting.
+        let stepped = after_step(program, &mut ctx, false, Frame::ENTRY).await;
         assert!(stepped.is_ok(), "{stepped:?}");
         assert_eq!(kept(&host, &run).await, ("running".to_string(), 2, 0));
-        assert!(ctx.advance_clock(jadpo_runtime::lease::LONGEST_MS));
+        assert!(ctx.advance_clock(1_000));
         let stepped = after_step(program, &mut ctx, true, Frame::ENTRY).await;
         assert!(stepped.is_ok(), "{stepped:?}");
         assert_eq!(kept(&host, &run).await, ("finished".to_string(), 5, 1));
