@@ -139,6 +139,22 @@ routes Pings {
 }
 
 #[test]
+fn a_field_named_like_an_unbuilt_section_is_a_field() {
+    let found = problems(
+        r#"type Amount = Int {}
+
+entity Ledger {
+    id: Uuid
+    audit: Amount?
+    retention: Amount?
+    person: Amount?
+}
+"#,
+    );
+    assert!(found.is_empty(), "{found:?}");
+}
+
+#[test]
 fn a_misspelt_section_is_still_unknown() {
     let found = problems(
         r#"entity Invoice {

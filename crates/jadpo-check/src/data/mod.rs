@@ -831,7 +831,12 @@ impl Reader<'_> {
                 // Decided on their area pages, not built: refused where
                 // they are written rather than read as a misspelling, and
                 // never accepted to do nothing.
-                "audit" | "retention" | "person" => {
+                // A field may still be named like one (`audit: Amount?`).
+                "audit" | "retention" | "person"
+                    if !member
+                        .value()
+                        .is_some_and(|value| crate::types::looks_like_type(&value)) =>
+                {
                     let (written, why) = unbuilt_section(&word);
                     self.out.push(
                         Diagnostic::new(

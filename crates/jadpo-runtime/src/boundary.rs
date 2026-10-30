@@ -25,8 +25,8 @@ use jadpo_std::write::RowCheck;
 
 use crate::ctx::{Binding, Capabilities, EmitRefused, Held, SessionEffect};
 use crate::{
-    Ctx, Event, Failure, Host, Isolation, LocalFuture, Outcome, SqlType, SqlValue, StoreError,
-    Stored, Transaction,
+    Ctx, Event, Failure, Isolation, LocalFuture, Outcome, SqlType, SqlValue, StoreError, Stored,
+    Transaction,
 };
 
 /// A row by its entity's table and its `id`.
