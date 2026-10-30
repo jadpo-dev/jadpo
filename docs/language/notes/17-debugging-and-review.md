@@ -13,6 +13,45 @@ Build order: mapped stacks, the timeline and `trace`, `why`, `test new
 --from`, `call`, the review report's order, MCP, the console, then the
 review web view. See [the roadmap](../../roadmap.md).
 
+## Why it works this way
+
+- **`.jadpo` lines are always on, not behind a setting.** A language whose
+  generated code nobody reads must name its own lines, as Rust names a
+  panic's.
+- **The runtime maps frames itself** rather than relying on the host,
+  because WebAssembly hosts differ in how much debug information they
+  keep. Mapping in the runtime works the same under any host.
+- **Breakpoints.** Rust's and WebAssembly's debug information don't map
+  generated code back to a source language they didn't compile, so
+  stepping through `.jadpo` isn't offered. The timeline, `jadpo why` and
+  captured tests answer the same questions in a form agents can read too.
+  Stepping is revisited on the Rust and WebAssembly targets.
+- **Models.** The request timeline is Laravel Telescope's request view and
+  Rails' development log with the query's source line, built from the
+  spans area 16 already generates. The developer console takes Encore's
+  local dashboard as its model. The review web view's interdiff between
+  an agent's successive revisions is as Revset does it.
+- **A one-shot `jadpo call` rather than a console.** Rails has
+  `rails console`; Jadpo has a one-shot command, which an agent can
+  script. An interactive console can come later on the same mechanism.
+- **Command line first.** The console and MCP are product work, after the
+  evidence they read exists. Agents that can run commands (Claude Code,
+  Codex, Cursor) use `jadpo` with `--json` and `jadpo help --json`, which
+  is enough for building. Production monitoring, including any hosted
+  service, is later product work and stays with OpenTelemetry tools; the
+  local console comes first.
+- **Production in review.** No other tool has both the meaning of a change
+  and per-path traffic.
+- **Screens.** The screens of `jadpo traces`, `metrics` and `logs` follow
+  the CLI design language and are designed with the design skills before
+  they are built, as `jadpo watch`'s and `jadpo calls`' are.
+- **The contract.** The evidence is the contract: `.jadpo` locations,
+  build and commit identity on every event, the versioned schemas, and the
+  commands `why`, `trace`, `call` and `test new --from`. The console, MCP
+  server, review web view and any breakpoints are product work built on
+  it. A report is not one of area 19's boundaries because it is never read
+  back as data.
+
 ## Consistency with the rest of the language
 
 - **Values never, places always.** Stacks, timelines and `why` answers follow

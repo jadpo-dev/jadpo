@@ -24,6 +24,41 @@ Why [Personal data](../15-personal-data.md) is the way it is: the decisions behi
 - **Options as enum values.** `PersonalData.contact` and `Erasure.deleted`
   follow area 2's `Type.value` rule and its "values, not verbs" naming.
 
+## Why the area page is the way it is
+
+- **A fixed list of categories.** The fourteen `PersonalData.` categories
+  follow GDPR's special categories and the common groups used by privacy
+  tools such as Fides. A bare `personal: true` can't tell health data from
+  an email address, and there are no custom categories, so reports stay
+  comparable and the sensitive-data rules exact.
+- **The marking is the classification.** Hashing every marked field in
+  logs, whatever its type, refines area 4, which logs dates and numbers as
+  values.
+- **Ownership by references, not tags.** The compiler follows every
+  reference to find a person's records, because tagging each owning
+  reference would repeat what references already say.
+- **No crypto-shredding.** There are no per-person encryption keys:
+  deleting a person's key breaks unique lookups, indexes and search on
+  encrypted fields, and no regulator has said key deletion counts as
+  erasure. Backups are handled by the erasure log instead.
+- **Legal holds left to the app.** Holds and restriction while a complaint
+  is open are rare in the apps Jadpo targets, and a built-in one would
+  also have to pause purge and retention.
+- **No purpose or consent in the language.** The compiler can check
+  neither, so purposes and lawful bases belong in the privacy notice, and
+  consent is ordinary application data.
+- **Access records only for sensitive reads.** Reads of ordinary personal
+  data aren't recorded one by one: GDPR asks for accountability and
+  security, not a log of every read, and that would log almost every
+  request.
+- **No region setting.** One the compiler can't verify would give false
+  comfort, so residency is by deployment, and the report names the setting
+  that says where each store is.
+- **Encrypted fields.** The full design of `encrypted: true` belongs to
+  this area and is built with personal data, together with keys held as
+  data (a key per device or person in an encrypted field, usable only as a
+  `crypto` call's `key:`).
+
 ## Carried to later areas
 
 | Item | Area |

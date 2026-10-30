@@ -732,7 +732,7 @@ each `piece` event in order, in place of `output`. Its `code` is the
 `error` event's code when one ended the stream, and `none` after `done`.
 Its status is 200 once the first piece came. The `ai` fake cuts a scripted
 text into pieces of a few words, and `partial("...", <condition>)` scripts
-a stream that stops part-way ([Tests](21-ai.md#tests)):
+a stream that stops part-way ([Testing AI calls](21-ai.md#testing-ai-calls)):
 
 ```jadpo check project=ai-stream file=domains/support/routes/help_desk.test.jadpo
 use support/types { Asked }

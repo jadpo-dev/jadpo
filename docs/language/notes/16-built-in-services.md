@@ -40,6 +40,32 @@ Why [Built-in services](../16-built-in-services.md) is the way it is: the decisi
   `config.jadpo`; the OpenTelemetry variables are read by the runtime under
   their standard names instead, listed in the configuration report.
 
+## Why some choices were made
+
+- **Owning a feature.** Where the language can reasonably own a feature
+  it does, rather than depending on a third-party service: the rule area
+  8 applied to OAuth.
+- **No flag vendor.** A `Driver.ofrep` store, evaluating flags only
+  through OpenFeature's remote evaluation protocol, waits for an app that
+  must use a vendor.
+- **Removing a flag from source.** Uber's Piranha does this for Java and
+  Swift; Jadpo can do it exactly because every read is known.
+- **Per-tenant flags.** Named tenants get a fixed value once area 9
+  decides tenancy for flags.
+- **Multipart uploads.** A single signed `PUT` would be limited to 5 GiB,
+  could not resume, and through Cloudflare's proxy is limited to 100 MB
+  on the Free and Pro plans, so fields over 100 MB get a multipart slot.
+- **Bounces in the capability.** Bounces and complaints return to the
+  `email` capability only when a built-in feature consumes them (Jadpo
+  refusing to send to an address that bounced permanently), and then
+  every email connection must report them.
+- **Two kinds of mail.** Transactional and bulk mail through two
+  connections wait for an app that asks.
+- **The dev inbox.** Phoenix's dev mailbox and Mailpit offer the browser
+  half; the agent commands and the trace link are new.
+- **Resend as the second mail connection.** Resend was chosen over
+  Postmark, whose credential header no `CredentialScheme` sends yet.
+
 ## Carried to later areas
 
 | Item | Area | Status |

@@ -53,7 +53,7 @@ renamed topic keeps its old IDs, `<!-- topic: <id> (was <old-id>) -->`,
 and index.json lists them as its `aliases`. A
 topic is at most TOPIC_WORDS words as the bundle gives it. An area page
 names no area or question by number (numbered_references): on areas 1 to
-NUMBERED_FAILS_THROUGH that fails, on the rest it warns. Every relative
+NUMBERED_FAILS_THROUGH, which is every area, that fails. Every relative
 link in the repository's Markdown and llms.txt resolves, to a file and, for
 Markdown, a heading GitHub gives that anchor; every area-page anchor the
 compiler prints (`help_at`) names a heading of that page.
@@ -758,9 +758,9 @@ def user_page_problems(page, root=ROOT):
 
 # An area page names no area or question by number in what an app author
 # reads either (docs/writing.md, "How a reference topic reads"). This fails
-# on areas 1 to this one, whose pages follow the guide, and warns on the
-# rest; once every page does, it is the last area and the rule fails on all.
-NUMBERED_FAILS_THROUGH = 14
+# on areas 1 to this one, whose pages follow the guide, and warns on any
+# after it. It is the last area, so the rule fails on every area page.
+NUMBERED_FAILS_THROUGH = 21
 
 
 def numbered_references(page):
