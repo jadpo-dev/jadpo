@@ -27,13 +27,14 @@ fn folder(env: &Environment) -> Option<PathBuf> {
     Some(home(env)?.join("jadpo").join("packages"))
 }
 
-/// The user's cache folder, `$XDG_CACHE_HOME`, else `~/.cache`, if the
-/// environment names either; Jadpo keeps its caches in its `jadpo/`.
+/// The user's cache folder, `$XDG_CACHE_HOME`, else `~/.cache`, else
+/// Windows' `%LOCALAPPDATA%`, if the environment names one; Jadpo keeps
+/// its caches in its `jadpo/`.
 pub(crate) fn home(env: &Environment) -> Option<PathBuf> {
-    Some(match env.var("XDG_CACHE_HOME").filter(|v| !v.is_empty()) {
-        Some(cache) => PathBuf::from(cache),
-        None => PathBuf::from(env.var("HOME").filter(|v| !v.is_empty())?).join(".cache"),
-    })
+    let named = |name: &str| env.var(name).filter(|v| !v.is_empty()).map(PathBuf::from);
+    named("XDG_CACHE_HOME")
+        .or_else(|| named("HOME").map(|home| home.join(".cache")))
+        .or_else(|| named("LOCALAPPDATA"))
 }
 
 /// This compiler, as the cache tells compilers apart.

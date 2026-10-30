@@ -435,6 +435,54 @@ fn unpack(archive: impl Read, folder: &Path) -> Result<(), String> {
     }
 }
 
+/// The bytes of the first regular file in a `.tar.gz` whose name `wanted`
+/// accepts, read with the same reader as [`unpack`]: how the toolchain
+/// launcher takes `jadpo` out of a release's archive (area 14, "Which
+/// jadpo runs"). `None` when no entry is accepted.
+pub(crate) fn tar_gz_member(
+    archive: impl Read,
+    wanted: &dyn Fn(&str) -> bool,
+) -> Result<Option<Vec<u8>>, String> {
+    let mut tar = Gunzip::new(archive);
+    let mut header = [0u8; 512];
+    let mut long_name: Option<String> = None;
+    loop {
+        if !full(&mut tar, &mut header).map_err(|error| error.to_string())?
+            || header.iter().all(|byte| *byte == 0)
+        {
+            return Ok(None);
+        }
+        let size = number(&header[124..136]).ok_or("an entry's size isn't a number")?;
+        let kind = header[156];
+        match kind {
+            b'L' => {
+                long_name = Some(text(&read_data(&mut tar, size)?));
+                continue;
+            }
+            b'x' => {
+                let data = read_data(&mut tar, size)?;
+                long_name = pax(&data, "path").or(long_name);
+                continue;
+            }
+            _ => {}
+        }
+        let mut name = text(&header[..100]);
+        if &header[257..263] == b"ustar\0" {
+            let prefix = text(&header[345..500]);
+            if !prefix.is_empty() {
+                name = format!("{prefix}/{name}");
+            }
+        }
+        if let Some(long) = long_name.take() {
+            name = long;
+        }
+        if matches!(kind, b'0' | 0 | b'7') && wanted(&name) {
+            return read_data(&mut tar, size).map(Some);
+        }
+        copy_data(&mut tar, size, &mut std::io::sink())?;
+    }
+}
+
 /// Where the archive's entry `name` goes in `folder`: `None` for what
 /// isn't a component's file, an error for a name that would leave it.
 fn placed(name: &str, folder: &Path) -> Result<Option<PathBuf>, String> {
@@ -601,7 +649,7 @@ impl<R: Read> Read for Gunzip<R> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -693,7 +741,7 @@ mod tests {
     }
 
     /// A GNU tar of `entries`, a long name as a `././@LongLink` entry.
-    fn tar(entries: &[(&str, &[u8], u32)]) -> Vec<u8> {
+    pub(crate) fn tar(entries: &[(&str, &[u8], u32)]) -> Vec<u8> {
         let mut out = Vec::new();
         let header = |out: &mut Vec<u8>, name: &str, size: usize, mode: u32, kind: u8| {
             let mut block = [0u8; 512];
@@ -721,7 +769,7 @@ mod tests {
         out
     }
 
-    fn gzip(data: &[u8]) -> Vec<u8> {
+    pub(crate) fn gzip(data: &[u8]) -> Vec<u8> {
         let mut out = vec![0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 255];
         out.extend(miniz_oxide::deflate::compress_to_vec(data, 1));
         out.extend(jadpo_runtime::rows::gzip::crc32(0, data).to_le_bytes());

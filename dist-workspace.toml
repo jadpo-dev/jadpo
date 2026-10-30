@@ -5,6 +5,10 @@ members = ["cargo:."]
 cargo-dist-version = "0.33.1"
 ci = "github"
 installers = ["shell", "powershell", "homebrew", "npm"]
+# `.tar.gz` rather than dist's `.tar.xz`, so the toolchain launcher
+# unpacks a release with the gzip reader `jadpo` already has (area 14,
+# "Which jadpo runs"); Windows keeps `.zip`.
+unix-archive = ".tar.gz"
 targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 install-path = "CARGO_HOME"
 install-updater = false

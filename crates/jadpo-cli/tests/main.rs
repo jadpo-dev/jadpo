@@ -62,6 +62,7 @@ mod http;
 mod installing;
 mod json_columns;
 mod json_migrations;
+mod launcher;
 mod lifecycle;
 mod locales;
 mod lsp;

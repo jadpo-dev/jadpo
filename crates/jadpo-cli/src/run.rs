@@ -413,7 +413,7 @@ pub(crate) fn say(words: &str) {
 
 /// `--json` and `--color` read before anything else, so even a mistake on
 /// the command line is reported in the form that was asked for.
-fn presentation(args: &[String]) -> (bool, ColorChoice) {
+pub(crate) fn presentation(args: &[String]) -> (bool, ColorChoice) {
     let mut json = false;
     let mut choice = ColorChoice::Auto;
     let mut words = args.iter().take_while(|arg| *arg != "--").peekable();

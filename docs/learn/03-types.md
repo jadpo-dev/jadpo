@@ -270,4 +270,4 @@ after the request ends.
 
 Read more in the reference: [Named types](../language/02-values-and-types.md#named-types),
 [Enums](../language/02-values-and-types.md#enums) and
-[Absent values](../language/02-values-and-types.md#absent-values).
+[Values that may be missing](../language/02-values-and-types.md#values-that-may-be-missing).

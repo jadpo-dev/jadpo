@@ -32,7 +32,10 @@ pub use load::{
     Loaded, PROJECT_FILE, Unreadable, files_under, find_root, links, load, load_files, load_into,
     load_whole, package_files, read, show_in_checkouts, shown_root, watched_files,
 };
-pub use lock::{LOCK, Locked, Source, package_digest, package_folder, parse_lock, write_lock};
+pub use lock::{
+    LOCK, Locked, Source, locked_jadpo, package_digest, package_folder, parse_lock, write_lock,
+    write_pinned_lock,
+};
 pub use places::{
     Folder, Location, Ownership, PACKAGE_INDEX, PACKAGES, PROVIDER_FILE, PROVIDERS, PackageHome,
     Place, RootFile, Stray, is_package_data, is_version_label, locate, name_words, package_at,
