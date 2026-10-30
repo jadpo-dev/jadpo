@@ -824,7 +824,7 @@ release, as the time-zone database does: fixed reference data is
 declared in the release, as these enums, not by applications.
 
 ## A release that adds a standard type
-<!-- topic: a-release-that-adds-a-standard-type -->
+<!-- topic: standard-type-clashes (was a-release-that-adds-a-standard-type) -->
 
 A Jadpo upgrade that adds a
 standard type an application already names for itself never breaks it

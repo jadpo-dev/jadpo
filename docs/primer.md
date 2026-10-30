@@ -84,9 +84,12 @@ check failed: 1 error, 1 file
 Every error has the same parts:
 
 - `reason:` says why the code is wrong.
-- `next:` says what to do, and who does it. `(agent)` means a coding
-  agent can make the fix. `(human)` means stop and ask a person, because
-  the fix needs a decision only they can make.
+- `next:` says what to do. `(human)` at the end of an error's `next:`
+  line tells your coding agent to stop and ask you which fix you want,
+  because the choice is yours to make (who can see data, what a setting
+  holds). `(agent)` means your agent can make the fix itself. The marker
+  is guidance that agents follow: nothing stops an agent that ignores it
+  yet.
 - `rule:` is the error's name. Its page, on the site at
   `https://jadpo.dev/docs/errors/<rule>`, explains it; read it only when
   the reason and the next step aren't enough.

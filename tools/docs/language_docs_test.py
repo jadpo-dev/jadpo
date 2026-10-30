@@ -207,6 +207,16 @@ class Bundle(unittest.TestCase):
         self.assertEqual(by_id['a.b']['summary'], 'A is b')
         self.assertEqual(by_id['jadpo-check']['links'], ['a.b'])
 
+    def test_a_renamed_topic_keeps_its_old_ids(self):
+        index, files, _ = self.build(two=AREA_TWO.replace('<!-- topic: twos-part -->',
+                                                          '<!-- topic: the-part (was twos-part, two-part) -->'))
+        by_id = {e['id']: e for e in index['pages']}
+        self.assertEqual(by_id['the-part']['aliases'], ['twos-part', 'two-part'])
+        self.assertNotIn('aliases', by_id['two'])
+        self.assertNotIn('twos-part', by_id)
+        self.assertIn('topics/the-part.md', files)
+        self.assertNotIn('topic:', files['topics/the-part.md'])
+
     def test_a_topic_is_a_page_of_its_own(self):
         _, files, _ = self.build()
         shown = files['topics/shown.md']
@@ -307,6 +317,21 @@ class Structure(unittest.TestCase):
                                                                                          '<!-- topic: Two -->')))
         self.assertIn('topic ID "shown" is used by 01-one.md "Shown", 02-two.md "Two\'s part"', found)
         self.assertIn('topic ID "Two" is not lowercase kebab case', found)
+
+    def test_an_old_id_is_kebab_case_and_used_once(self):
+        found = ' '.join(self.problems(two=AREA_TWO.replace('<!-- topic: twos-part -->',
+                                                            '<!-- topic: the-part (was shown, Old) -->')))
+        self.assertIn('topic ID "Old" is not lowercase kebab case', found)
+        found = ' '.join(self.problems(two=AREA_TWO.replace('<!-- topic: twos-part -->',
+                                                            '<!-- topic: the-part (was shown) -->')))
+        self.assertIn('topic ID "shown" is used by 01-one.md "Shown", 02-two.md "Two\'s part" (its old ID)', found)
+
+    def test_an_area_page_names_no_area_or_question_by_number(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, pages, _ = tree(Path(tmp), two=AREA_TWO + '\nAs area 9\'s policy says (question 2), and '
+                                                          '`area 3` in code.\n\n```text\narea 4\n```\n')
+        self.assertEqual(docs.numbered_references(pages[0]), [])
+        self.assertEqual([text for _, text in docs.numbered_references(pages[1])], ['area 9', 'question 2'])
 
     def test_an_id_stands_after_a_heading(self):
         found = ' '.join(self.problems(two=AREA_TWO + '\n<!-- topic: stray -->\n'))

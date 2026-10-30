@@ -109,7 +109,7 @@ the same questions in a form both people and agents can read. Stepping is
 revisited on the Rust and WebAssembly targets.
 
 ## `jadpo why`: why the language decided something
-<!-- topic: jadpo-why-why-the-language-decided-something -->
+<!-- topic: explain-a-decision (was jadpo-why-why-the-language-decided-something) -->
 
 Much of what surprises people in Jadpo is a decision the language made for
 them: policy hid a record, a lifecycle filtered it, a subscriber did not
