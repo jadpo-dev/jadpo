@@ -194,7 +194,10 @@ type covers a finding on the type, not one on its field.
 The reason is required. A missing or blank one is `decline.no_reason`, and
 the finding stays declined meanwhile, so you see one error, not two.
 
-An agent or a person may decline. Every declinable error's `next:` line
+An agent or a person may decline. A rule the compiler's catalogue marks
+as a security rule, such as `policy.call_ungranted`, also needs an
+[acceptance](18-records-and-manifest.md#acceptances) to decline, since
+an agent can write a reason itself. Not built yet. Every declinable error's `next:` line
 ends with ", or write `decline <rule>: "<why>"` above it if this is
 deliberate".
 
