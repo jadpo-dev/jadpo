@@ -75,6 +75,20 @@ pub struct DevArgs {
 }
 
 pub fn dev(call: &Call) -> Reply {
+    match call.arguments.first().map(String::as_str) {
+        None => {}
+        Some("token") => return crate::dev_token::token(call),
+        Some(other) => {
+            return Reply::failed(
+                Diagnostic::new(
+                    &rule::CLI_DEV_ARGUMENTS,
+                    format!("`jadpo dev` has no `{other}`"),
+                )
+                .reason("`jadpo dev` serves the app; `jadpo dev token <user-id>` signs a token from its local issuer.")
+                .next("Run `jadpo dev`, or `jadpo dev token <user-id>`"),
+            );
+        }
+    }
     let port = match call.value("--port") {
         None => DEFAULT_PORT,
         Some(written) => match written.parse::<u16>() {
@@ -890,6 +904,15 @@ pub fn serve_to(
     {
         let _ = crate::suggestions::local_folder(&root);
     }
+    // The local issuer in `external_token`'s configured issuer's place
+    // (area 8, "External tokens in tests and `jadpo dev`"): its key made
+    // for this session, which every worker's host holds, and kept for
+    // `jadpo dev token` while the session runs.
+    let issuer = crate::dev_token::new_issuer();
+    if let Some(issuer) = &issuer {
+        crate::dev_token::remember(&root, &first.prepared, &first.config, issuer);
+    }
+    let make_seed: Option<Arc<str>> = issuer.as_ref().map(|issuer| Arc::from(issuer.seed()));
     let make_setup = Arc::clone(&setup);
     let make_log = Arc::clone(&call_log);
     let make_root = root.clone();
@@ -927,6 +950,12 @@ pub fn serve_to(
                 log: crate::dev_calls::DevLog(Arc::clone(&make_log)),
                 shared: Arc::clone(&make_shared),
             }));
+        if let Some(issuer) = make_seed
+            .as_deref()
+            .and_then(jadpo_runtime::http::local_issuer::LocalIssuer::from_seed)
+        {
+            native = native.with_local_issuer(issuer);
+        }
         for (store, url) in &make_shared.urls {
             let security = make_shared.secured.get(store).cloned().unwrap_or_default();
             if let Ok(database) = postgres_secured(url, security) {
@@ -1055,6 +1084,7 @@ pub fn serve_to(
                 inbox.stop();
             }
             forget_stores(&root);
+            crate::dev_token::forget(&root);
             return 0;
         };
         let time = crate::watch::time_now();
@@ -1107,6 +1137,9 @@ pub fn serve_to(
                 }
                 if let Ok(mut slot) = shared.current.lock() {
                     *slot = (Arc::clone(&ready.prepared), Arc::clone(&ready.config));
+                }
+                if let Some(issuer) = &issuer {
+                    crate::dev_token::remember(&root, &ready.prepared, &ready.config, issuer);
                 }
                 let changed = *lock(&setup) != reset;
                 *lock(&setup) = reset;
@@ -1207,7 +1240,7 @@ fn watch_only(
 pub(crate) struct Ready {
     pub(crate) prepared: Arc<Prepared>,
     /// Each store's migrations.
-    steps: BTreeMap<String, Vec<jadpo_std::Migration>>,
+    pub(crate) steps: BTreeMap<String, Vec<jadpo_std::Migration>>,
     /// The stores its entities live in.
     pub(crate) stores: Vec<String>,
     routes: usize,
@@ -1616,6 +1649,14 @@ fn report_ready(
             ("settings", Json::from(ready.config.len())),
             ("providers", providers.map_or(Json::Null, providers_json)),
             ("inbox", inbox.map_or(Json::Null, Json::from)),
+            (
+                "tokens",
+                if url.is_some() && crate::dev_token::takes_external_tokens(&ready.prepared) {
+                    "local".into()
+                } else {
+                    Json::Null
+                },
+            ),
         ]);
         out.json(data, &[], &BTreeMap::new());
         return;
@@ -1646,6 +1687,14 @@ fn report_ready(
         rows.push((
             "inbox".to_string(),
             format!("{inbox} · mail caught, never sent"),
+        ));
+    }
+    // External tokens, from the session's local issuer in the
+    // provider's place.
+    if url.is_some() && crate::dev_token::takes_external_tokens(&ready.prepared) {
+        rows.push((
+            "tokens".to_string(),
+            "local issuer · jadpo dev token <user-id>".to_string(),
         ));
     }
     let text = match url {

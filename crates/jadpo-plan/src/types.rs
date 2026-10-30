@@ -1032,6 +1032,7 @@ pub(crate) fn part_type(host: &str, field: &str, part: jadpo_std::Part) -> TypeR
             TypeRef::Nullable(Box::new(part_type(host, field, *inner)))
         }
         jadpo_std::Part::List(inner) => TypeRef::List(Box::new(part_type(host, field, *inner))),
+        jadpo_std::Part::Set(inner) => TypeRef::Set(Box::new(part_type(host, field, *inner))),
     }
 }
 
@@ -1077,7 +1078,10 @@ fn standard_part(key: &Key) -> Option<(jadpo_std::Builtin, Rules)> {
     };
     let field = field.rsplit('.').next().unwrap_or(field);
     let mut part = fields.iter().find(|(name, _)| *name == field)?.1;
-    while let jadpo_std::Part::Optional(inner) | jadpo_std::Part::List(inner) = part {
+    while let jadpo_std::Part::Optional(inner)
+    | jadpo_std::Part::List(inner)
+    | jadpo_std::Part::Set(inner) = part
+    {
         part = *inner;
     }
     // A point's coordinates are kept as the nearest doubles as the point

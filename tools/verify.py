@@ -174,6 +174,10 @@ POSTGRES = [
     # their guards; then purge through the runtime's entry point, with
     # cascades, restricted references and batches (area 5).
     ('live PostgreSQL: lifecycles and purge', [('jadpo-cli', 'lifecycle')], []),
+    # `jadpo seed`: a seed's users and memberships made through the app's
+    # actions, policy for a call with a caller, a seed that stops, and a
+    # database not on this machine refused (area 5, "Seeds"; chunk A5).
+    ('live PostgreSQL: seeds', [('jadpo-cli', 'seeds')], []),
     # Every standard operation's SQL form gives what the runtime gives
     # on the same inputs (area 19, "SQL forms"; chunk 5.6).
     ('live PostgreSQL: SQL forms', [('jadpo-cli', 'sql_forms')], ['--nocapture']),

@@ -1,0 +1,8 @@
+use keys/entities { PartnerKey }
+
+/// Every partner's key.
+query partner_keys() -> List<PartnerKey> {
+    from: PartnerKey
+    order: [PartnerKey.id asc]
+    limit: 10
+}

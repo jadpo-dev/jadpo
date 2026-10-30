@@ -1383,6 +1383,20 @@ impl Decls<'_> {
             }
             seen.insert(key.clone(), (key_span.clone(), value.clone()));
             if field.is_some_and(|field| field.later)
+                && let Some((what, why)) = unbuilt_field_setting(&key)
+            {
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TOOLCHAIN_NOT_BUILT_YET,
+                        format!("A field's `{key}:` isn't built yet"),
+                    )
+                    .at(key_span, "decided, not built")
+                    .reason(why)
+                    .next(what),
+                );
+                continue;
+            }
+            if field.is_some_and(|field| field.later)
                 && LATER_FIELD_SETTINGS.contains(&key.as_str())
             {
                 // Read for what reaches a model (area 21; chunk 5.5v5b).
@@ -2675,20 +2689,37 @@ struct FieldCtx {
     declared: Ty,
 }
 
+/// An entity's or event's field setting area 15 decides and this
+/// compiler doesn't build: what to do instead, and why it is refused
+/// rather than skipped. Accepted, it would do nothing, and the app would
+/// believe personal data expires or is erased when it never is.
+fn unbuilt_field_setting(key: &str) -> Option<(&'static str, &'static str)> {
+    match key {
+        "retention" => Some((
+            "Leave `retention:` out for now, and clear the value in a schedule of your own if it must expire",
+            "Clearing a field when its time is up comes with area 15's retention, which isn't built yet: accepted, the value would be kept for ever.",
+        )),
+        "erase" => Some((
+            "Leave `erase:` out for now",
+            "What erasing a person does to a reference comes with area 15's erasure, which isn't built yet: accepted, nothing would ever erase it.",
+        )),
+        _ => None,
+    }
+}
+
 /// Settings later areas give an entity's or event's fields: data (area 5),
-/// policy (area 9), personal data (area 15, and area 21's `to_models:`)
-/// and a `File` field's store, size and types (area 16). They are checked
-/// when those areas are built; `personal:` and `to_models:` are read since
-/// chunk 5.5v5b.
-const LATER_FIELD_SETTINGS: [&str; 13] = [
-    "erase",
+/// policy (area 9), area 21's `to_models:` and area 15's `personal:`, and
+/// a `File` field's store, size and types (area 16). They are checked
+/// where those areas are built; `personal:` and `to_models:` are read
+/// since chunk 5.5v5b. Area 15's `retention:` and `erase:` are refused
+/// before this ([`unbuilt_field_setting`]).
+const LATER_FIELD_SETTINGS: [&str; 11] = [
     "generated",
     "immutable",
     "max_size",
     "on_delete",
     "personal",
     "policy",
-    "retention",
     "role",
     "store",
     "to_models",

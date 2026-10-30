@@ -394,8 +394,26 @@ pub static COMMANDS: &[Command] = &[
                       errors, the last good version keeps serving. Each request is one line, with its \
                       request id. The database is the one --url names, or else a disposable \
                       PostgreSQL started for the session; pending migrations are applied as they \
-                      appear. With --no-run it only checks on every save and writes build/.",
-        arguments: &[],
+                      appear. With --no-run it only checks on every save and writes build/. An app \
+                      that signs in with external_token gets a local issuer in place of the \
+                      configured one, and `jadpo dev token <user-id>`, beside a running session, \
+                      prints a bearer token from it for that user.",
+        arguments: &[
+            Argument {
+                name: "action",
+                description: "token, to print a bearer token for a user, or nothing to serve",
+                required: false,
+                // Not a fixed list, which the command overview would show
+                // beside `dev`'s summary, past the width the others fit in.
+                values: Values::Id,
+            },
+            Argument {
+                name: "user-id",
+                description: "The user's id, for token",
+                required: false,
+                values: Values::Id,
+            },
+        ],
         flags: &[
             Flag {
                 name: "--port",
@@ -440,6 +458,10 @@ pub static COMMANDS: &[Command] = &[
             Example {
                 description: "Print each request as a line of data for tools",
                 command: "jadpo dev --json",
+            },
+            Example {
+                description: "Call the running app as a user, with a token from its local issuer",
+                command: "curl -H \"Authorization: Bearer $(jadpo dev token <user-id>)\" localhost:3000/me",
             },
         ],
         arguments_rule: &rule::CLI_DEV_ARGUMENTS,
@@ -624,6 +646,52 @@ pub static COMMANDS: &[Command] = &[
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
         ],
         run: commands::migrate,
+    },
+    Command {
+        name: "seed",
+        synonyms: &[],
+        group: "Data",
+        summary: "Fill the development database from a seed",
+        description: "Run a seed, `database/seeds/<name>.jadpo`, against the development database \
+                      (area 5): its calls go through the app's own actions, so validation, \
+                      lifecycles and policy apply, and a call that passes a caller runs as them. \
+                      The database is the one --url names, else the address its connection's \
+                      setting gives, else the one a running `jadpo dev` started. It must be on this \
+                      machine: a database anywhere else may be production, and is refused before \
+                      anything runs. Pending migrations are applied first. Mail lands in the dev \
+                      inbox and provider calls are faked, as under `jadpo dev`. A failure stops \
+                      the seed, and what its earlier calls committed stays.",
+        arguments: &[Argument {
+            name: "name",
+            description: "The seed's file name in database/seeds/, without .jadpo",
+            required: false,
+            values: Values::Fixed(&[]),
+        }],
+        flags: &[Flag {
+            name: "--url",
+            value: Some("url"),
+            description: "The database to seed, on this machine",
+            values: &[],
+        }],
+        examples: &[
+            Example {
+                description: "Give the development database its first users",
+                command: "jadpo seed first_users",
+            },
+            Example {
+                description: "Seed a database named directly",
+                command: "jadpo seed local_demo --url postgresql://localhost/library_dev",
+            },
+        ],
+        arguments_rule: &rule::CLI_SEED_ARGUMENTS,
+        raises: &[
+            &rule::SEED_FAILED,
+            &rule::SEED_PRODUCTION_REFUSED,
+            &rule::SEED_UNAVAILABLE,
+            &rule::MIGRATION_APPLY_FAILED,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::seed,
     },
     Command {
         name: "sql",

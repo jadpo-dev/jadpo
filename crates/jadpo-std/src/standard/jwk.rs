@@ -45,10 +45,21 @@ pub const RSA_MIN_BITS: usize = 2048;
 pub const RSA_MAX_BITS: usize = 4096;
 
 /// The members of a JWK that hold a private key or a shared secret (RFC
-/// 7518 §6.2.2, §6.3.2 and §6.4.1, RFC 8037 §2), and `key_ops`, which
-/// limits what a key is for in a way a `Jwk` doesn't hold: JSON naming any
-/// of them isn't a `Jwk` (chosen in chunks 5.5r and 5.5r4).
-pub const REFUSED_MEMBERS: &[&str] = &["d", "p", "q", "dp", "dq", "qi", "oth", "k", "key_ops"];
+/// 7518 §6.2.2, §6.3.2 and §6.4.1, RFC 8037 §2): JSON naming any of them
+/// isn't a `Jwk` (chosen in chunks 5.5r and 5.5r4). `key_ops` is held, not
+/// refused (Richard, 2026-10-30; chunk A3).
+pub const REFUSED_MEMBERS: &[&str] = &["d", "p", "q", "dp", "dq", "qi", "oth", "k"];
+
+/// The operation a key's `key_ops` (RFC 7517 §4.3) names when it checks
+/// signatures: a key whose `key_ops` leaves it out checks no token.
+pub const VERIFY: &str = "verify";
+
+/// Whether a key whose `key_ops` holds `operations` checks signatures:
+/// every key without `key_ops` does, and one with it only when it names
+/// [`VERIFY`] (area 19, "Hashing and cryptography"; chunk A3).
+pub fn verifies<'a>(operations: Option<impl IntoIterator<Item = &'a str>>) -> bool {
+    operations.is_none_or(|operations| operations.into_iter().any(|op| op == VERIFY))
+}
 
 /// Whether a member a `Jwk` doesn't hold is ignored when one is read, as
 /// RFC 7517 §4 requires of members an implementation doesn't understand
@@ -448,6 +459,17 @@ mod tests {
         assert!(ignores_member("issuer"));
         assert!(!ignores_member("d"));
         assert!(!ignores_member("k"));
-        assert!(!ignores_member("key_ops"));
+        assert!(ignores_member("key_ops"));
+    }
+
+    #[test]
+    fn a_key_checks_signatures_unless_its_key_ops_leave_out_verify() {
+        assert!(verifies(None::<Vec<&str>>));
+        assert!(verifies(Some(["verify"])));
+        assert!(verifies(Some(["sign", "verify"])));
+        assert!(!verifies(Some(["sign"])));
+        assert!(!verifies(Some(["encrypt", "wrapKey"])));
+        assert!(!verifies(Some(Vec::<&str>::new())));
+        assert!(!verifies(Some(["Verify"])));
     }
 }

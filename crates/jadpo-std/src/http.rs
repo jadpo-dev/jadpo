@@ -1009,6 +1009,12 @@ pub struct ExternalTokenPlan {
     /// Subject field's codec in the program's JSON type table.
     pub subject_type: u32,
     pub subject_sql: crate::SqlType,
+    /// A user's subject by its `id`, which `jadpo dev token` signs a
+    /// local issuer's token for (area 8, "External tokens in tests and
+    /// `jadpo dev`"; chunk A3): `$1` the `id`, `$2` the time now; no row
+    /// for a user the lifecycle doesn't show.
+    #[serde(default)]
+    pub subject_of: Option<String>,
 }
 
 /// Listing, issuing and revoking credentials, limited to holders whose

@@ -36,6 +36,9 @@ ABSENT = {
     'the outcome-and-effect record': path('jadpo_runtime', 'record'),
     'the delivery between a test\'s steps': path('jadpo_runtime', 'test_steps'),
     'the test authenticator': path('jadpo_runtime', 'test_authenticator'),
+    # Tests' and `jadpo dev`'s issuer of external tokens (area 8): a
+    # deployable never accepts its tokens.
+    'the local issuer': path('http', 'local_issuer'),
     # No native deployable links OpenSSL (area 8, "Passkeys"): the passkey
     # ceremonies are the runtime's own, in pure Rust.
     'OpenSSL\'s bindings': path('openssl'),

@@ -663,6 +663,10 @@ impl<H: Host> Host for Faked<H> {
         self.host.test_authenticators()
     }
 
+    fn local_issuer(&self) -> Option<&crate::http::local_issuer::LocalIssuer> {
+        self.host.local_issuer()
+    }
+
     fn outbound(&self) -> Option<&dyn crate::Outbound> {
         self.host.outbound()
     }

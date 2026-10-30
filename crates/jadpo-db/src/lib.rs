@@ -27,7 +27,7 @@ pub use identities::{
     IDENTITIES, LEGACY_IDENTITIES, parse_identities, parse_legacy_identities, write_identities,
 };
 pub use items::{Base, Item, ItemKind, ItemTree, Param, Signature, item_tree};
-pub use items::{items_of, primary};
+pub use items::{items_of, primary, seed_name};
 pub use load::{
     Loaded, PROJECT_FILE, Unreadable, files_under, find_root, links, load, load_files, load_into,
     load_whole, package_files, read, show_in_checkouts, shown_root, watched_files,

@@ -331,7 +331,7 @@ fn a_route_waits_for_its_follow_on_work_then_answers_with_its_query() {
         let mut ctx = host.ctx(&program);
         let signed_in = jadpo_runtime::http::identity::test_credentials(
             &mut ctx,
-            app.table,
+            &app,
             program.started().auth(),
             route,
             &caller,

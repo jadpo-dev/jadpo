@@ -1,0 +1,30 @@
+use keys/entities { PartnerKey }
+use keys/queries { partner_keys }
+
+test "a key without key_ops is kept and read back as none" {
+    var kept: PartnerKey = keep_key(
+        Jwk {
+            kty: "OKP"
+            crv: "Ed25519"
+            x: "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+            y: none
+            n: none
+            e: none
+            kid: "plain"
+            alg: none
+            use_: none
+            key_ops: none
+            x5c: none
+        }
+    )
+    assert kept.key.key_ops == none
+    match list.first(partner_keys()) {
+        none -> {
+            assert list.count(partner_keys()) == 1
+        }
+        some(read) -> {
+            assert read.key.key_ops == none
+            assert read.key.kid == "plain"
+        }
+    }
+}
