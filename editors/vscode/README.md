@@ -63,7 +63,7 @@ comes with installers:
 
       powershell -ExecutionPolicy Bypass -c "irm https://github.com/richardwillars/jadpo/releases/latest/download/jadpo-cli-installer.ps1 | iex"
 
-- **npm**: `npm install -g jadpo`.
+- **npm**: `npm install -g @jadpo/jadpo`.
 - **Homebrew**: each release comes with a formula, `jadpo.rb`.
 
 The shell and PowerShell installers put `jadpo` in Cargo's folder,
