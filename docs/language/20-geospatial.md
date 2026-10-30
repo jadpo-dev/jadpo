@@ -167,7 +167,7 @@ query never needs, so `same_point` exists only in code.
   point at the pole is written with, since every meridian meets there.
 - **A line edge between two opposite points,** which no great circle
   joins, is its two ends.
-- **Not here:** `buffer` (see "Left out"); distance between a point and a
+- **Not here:** `buffer` (see "What geospatial leaves out, and what to use instead"); distance between a point and a
   line or polygon (question 10), a further geodesic algorithm that
   PostGIS works out by finding the closest points on the sphere first,
   which Jadpo would have to reproduce exactly to agree. It comes when a
@@ -1709,7 +1709,7 @@ test "a pasted patch is read longitude first" {
   GeoJSON, longitude first, so a pair or a text read here goes back out
   through it or `geo.to_wkt`.
 
-## Left out, and why
+## What geospatial leaves out, and what to use instead
 <!-- topic: geospatial-left-out -->
 
 | Left out | Why | Instead |

@@ -1,9 +1,8 @@
 # Changing and deleting todos
 <!-- topic: learn-changing -->
 
-A todo list needs to tick things off. On this page you add
-`PATCH /todos/{id}`, which changes a todo's title or marks it done, and
-`DELETE /todos/{id}`.
+This page adds the routes that change a todo: `PATCH /todos/{id}` edits
+its title or marks it done, and `DELETE /todos/{id}` removes it.
 
 ## What a change may hold
 
