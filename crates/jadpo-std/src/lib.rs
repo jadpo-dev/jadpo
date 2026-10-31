@@ -72,6 +72,7 @@ pub mod embed;
 mod enums;
 pub mod files;
 pub mod fixed;
+pub mod flags;
 mod format;
 pub mod geography;
 pub mod http;

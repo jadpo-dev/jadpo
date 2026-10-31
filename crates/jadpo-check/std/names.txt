@@ -73,6 +73,7 @@ ai: generate stream embed embed_all
 [generated]
 clock: now advance
 config:
+flags:
 translations:
 sessions:
 magic_links:

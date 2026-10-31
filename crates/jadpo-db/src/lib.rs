@@ -213,6 +213,14 @@ pub struct Project {
     #[default]
     #[returns(ref)]
     pub before: Before,
+    /// The date a rule triggered by time passing is judged at (area 1,
+    /// "Rules triggered by time passing"), in days since 1970-01-01: today
+    /// for `jadpo check`, the commit's date for `jadpo build`. `None` where
+    /// nothing judges one, as for a program run, the editor or a test's
+    /// project, so no flag is reported expired there.
+    #[default]
+    #[returns(copy)]
+    pub judged_on: Option<i32>,
 }
 
 /// The before side of a change (area 18, "Comparing two builds" and

@@ -485,6 +485,7 @@ const BODY: &[&str] = &[
     "expr field",
     "expr request",
     "expr setting",
+    "expr flag",
     "expr constant",
     "call function",
     "call action",
@@ -831,6 +832,9 @@ fn body_features(
                 }
                 Expr::Config { .. } => {
                     out.insert("expr setting");
+                }
+                Expr::Flag { .. } => {
+                    out.insert("expr flag");
                 }
                 Expr::Call {
                     callee,
@@ -1339,7 +1343,7 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
                     shapes(ty, &mut used);
                 }
             }
-            Detail::ConfigField { ty, .. } => shapes(ty, &mut used),
+            Detail::ConfigField { ty, .. } | Detail::Flag { ty, .. } => shapes(ty, &mut used),
         }
     }
     // Area 10's settings: no graph node holds a setting's type, so a key

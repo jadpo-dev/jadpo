@@ -446,6 +446,17 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             out.set("variable", variable.as_str());
             out.set_some("default", default.as_deref());
         }
+        Detail::Flag {
+            ty,
+            default,
+            owner,
+            expires,
+        } => {
+            out.set("type", ty.render(name));
+            out.set("default", default.as_str());
+            out.set("owner", owner.as_str());
+            out.set("expires", expires.as_str());
+        }
         Detail::LocaleSet {
             default,
             supported,

@@ -617,6 +617,9 @@ impl Body<'_> {
             }
             return self.setting_read(rest, expr);
         }
+        if head == crate::flags::FLAGS {
+            return self.flag_read(rest, expr, span, &written);
+        }
         match members.as_slice() {
             [member] if StdNames::get().generated_member(head, member) => {
                 if head == CLOCK {
@@ -669,6 +672,62 @@ impl Body<'_> {
         }
         if rest.len() == 1 {
             self.facts.settings.insert(node_key(expr.syntax()), name);
+        }
+        ty
+    }
+
+    /// `flags.<name>`: the flag's type. Only an action and a test read one,
+    /// since its value is worked out for the caller while the app runs
+    /// (area 16); a name that is no flag is `flag.unknown`.
+    fn flag_read(
+        &mut self,
+        rest: &[ast::NameRef],
+        expr: &Expr,
+        span: jadpo_diag::Span,
+        written: &str,
+    ) -> Ty {
+        let [first, ..] = rest else {
+            return Ty::Error;
+        };
+        let name = text(first);
+        let found = crate::flags::flag_type(
+            self.db,
+            self.project,
+            crate::lookups::Name::new(self.db, name.clone()),
+        );
+        let Some(ty) = found.clone() else {
+            self.out.push(crate::flags::unknown(
+                self.db,
+                self.project,
+                &name,
+                span,
+                false,
+            ));
+            return Ty::Error;
+        };
+        if self.context.is_pure() {
+            self.out.push(crate::flags::read_context(
+                written,
+                self.context.with_a(),
+                span,
+            ));
+            return Ty::Error;
+        }
+        if rest.len() == 1 {
+            self.facts.flags.insert(node_key(expr.syntax()), name);
+            return ty;
+        }
+        let fields: Vec<ast::FieldExpr> = expr
+            .syntax()
+            .descendants()
+            .filter_map(ast::FieldExpr::cast)
+            .collect();
+        let mut ty = ty;
+        for (field, node) in rest.iter().zip(fields.iter().rev()).skip(1) {
+            if ty.is_error() {
+                break;
+            }
+            ty = self.select(&ty, field, node);
         }
         ty
     }

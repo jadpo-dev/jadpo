@@ -585,6 +585,27 @@ pub fn service_nodes(db: &dyn Db, project: Project) -> Part {
         };
         nodes.push(node);
     }
+    // Each flag `flags { }` declares (area 16), using the enum it holds.
+    for flag in &crate::flags::flags(db, project).flags {
+        let Some(at) = written(db, project, crate::flags::FLAGS, &[&flag.name]) else {
+            continue;
+        };
+        let key = registry.key(Kind::Flag, &flag.name, None);
+        let mut node = node_at(db, project, key.clone(), Kind::Flag, &at);
+        let ty = type_ref(&lookup, &flag.ty);
+        uses(&mut edges, &key, ty.keys().into_iter().cloned());
+        node.detail = Detail::Flag {
+            ty,
+            default: flag
+                .values
+                .get(flag.default as usize)
+                .cloned()
+                .unwrap_or_default(),
+            owner: flag.owner.clone(),
+            expires: flag.expires.clone(),
+        };
+        nodes.push(node);
+    }
     let locales = crate::locales::locales(db, project);
     if let Some(plan) = &locales.plan
         && let Some(at) = declared(db, project, "locales")

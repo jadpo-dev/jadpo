@@ -30,6 +30,7 @@ pub mod emails;
 pub mod events;
 mod failures;
 pub mod fixes;
+pub mod flags;
 pub mod formatting;
 pub mod graph;
 pub mod identity;
@@ -293,6 +294,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             );
         }
         out.extend(config::config_problems(db, project).iter().cloned());
+        out.extend(flags::problems(db, project).iter().cloned());
         out.extend(version.iter().cloned());
         out.extend(config::connection_problems(db, project).iter().cloned());
         out.extend(application::section_problems(db, project).iter().cloned());

@@ -112,6 +112,7 @@ impl Loaded {
             },
             failures: &plan.failures,
             config: Some(&plan.config),
+            flags: Some(&plan.flags),
             routes: Some(&plan.routes),
             trie: Some(&self.routes),
             events: Some(&plan.events),
@@ -147,6 +148,8 @@ pub struct Plan<'a> {
     pub failures: &'a [FailurePlan],
     /// The settings, which [`Started::new`] reads the values of.
     pub config: Option<&'a ConfigPlan>,
+    /// The feature flags, which [`Started`] holds the state of (area 16).
+    pub flags: Option<&'a jadpo_std::flags::FlagsPlan>,
     /// The route table, whose sign-in and `client_address:` settings
     /// [`Started::new`] reads, and whose routes and codecs the HTTP
     /// component answers with ([`Plan::app`]).
@@ -213,6 +216,7 @@ impl Plan<'static> {
         json: JsonCodecs::NONE,
         failures: &[],
         config: None,
+        flags: None,
         routes: None,
         trie: None,
         events: None,
@@ -279,6 +283,17 @@ impl<'a> Plan<'a> {
                 Some((*at, value))
             })
             .collect()
+    }
+
+    /// The values test `callable`'s `flags:` gives, by the flag's number
+    /// and the value's place among its values (area 16; chunk B9).
+    #[cfg(feature = "testing")]
+    pub fn test_flags(self, callable: u32) -> Vec<(u32, u32)> {
+        self.testing()
+            .setups
+            .get(&callable)
+            .map(|setup| setup.flags.clone())
+            .unwrap_or_default()
     }
 
     /// Where test `callable`'s clock starts, in milliseconds since

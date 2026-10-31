@@ -532,6 +532,18 @@ rules! {
         "Rejected failure has no such field";
     FAILURE_UNKNOWN_MAPPING: "failure.unknown_mapping", area 4, Error, Agent,
         "Mapping names a condition the operation does not have";
+    FLAG_DECLARATION_INVALID: "flag.declaration_invalid", area 16, Error, Agent,
+        "A flag in `flags { }` isn't a `Bool` or an enum of plain variants, or its `default:`, `owner:` or `expires:` is missing or isn't valid";
+    FLAG_EXPIRED: "flag.expired", area 16, Error, Human,
+        "A flag's `expires:` date has passed while the flag is still declared";
+    FLAG_READ_CONTEXT: "flag.read_context", area 16, Error, Agent,
+        "A function, a constant or other pure code reads a flag, which only an action, a test or a route's `run:` can";
+    FLAG_STORE_INVALID: "flag.store_invalid", area 16, Error, Agent,
+        "Flags' settings in `app.jadpo` hold something other than a database's `store:`";
+    FLAG_STORE_REQUIRED: "flag.store_required", area 16, Error, Human,
+        "An app declares flags but no database named to keep their state in, because it has several databases or none";
+    FLAG_UNKNOWN: "flag.unknown", area 16, Error, Agent,
+        "Code or a test's `flags:` names a flag that `flags { }` doesn't declare";
     FORMAT_CHANGES_REQUIRED: "format.changes_required", area 14, Error, Agent,
         "Source file is not formatted";
     FORMAT_UNSAFE: "format.unsafe", area 14, Error, Human,
@@ -953,7 +965,7 @@ rules! {
     SEMANTIC_STANDARD_OPERATION_QUALIFICATION: "semantic.standard_operation_qualification", area 1, Error, Agent,
         "Standard-library operation is called without its namespace";
     SEMANTIC_TEST_SETTING_DUPLICATE: "semantic.test_setting_duplicate", area 13, Error, Agent,
-        "A test gives one of its settings, `clock:`, `config:` or `fakes:`, twice";
+        "A test gives one of its settings, `clock:`, `config:`, `fakes:` or `flags:`, twice";
     SEMANTIC_UNKNOWN_CALLEE: "semantic.unknown_callee", area 1, Error, Agent,
         "Called name is not declared";
     SEMANTIC_UNKNOWN_NAME: "semantic.unknown_name", area 1, Error, Agent,
