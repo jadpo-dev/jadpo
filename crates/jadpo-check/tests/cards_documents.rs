@@ -1,4 +1,4 @@
-//! Area 19, "Money, payments, banking" and "Tax and identity numbers"
+//! Area 19, "Money and banking" and "Tax and identity numbers"
 //! (chunk 5.5i2): the card types, with `money.mask` making a masked card
 //! from a card number, and the identity documents, each number checked by
 //! its country's form where a literal writes both, and each stored in a
