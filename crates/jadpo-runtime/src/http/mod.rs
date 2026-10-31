@@ -57,6 +57,8 @@ pub(crate) mod sign_in_events;
 pub(crate) mod sign_in_links;
 pub mod signed;
 pub mod test_passkeys;
+#[cfg(feature = "testing")]
+pub mod test_providers;
 mod trie;
 
 use std::cell::Cell;
@@ -1857,6 +1859,21 @@ pub async fn session(
         (SessionOp::TestPasskeySignIn, _) => {
             test_passkeys::sign_in(&executor.app(), executor, ctx, args, at).await
         }
+        // `test_providers`, which only a route test calls (chunk A7b),
+        // through a provider's routes with the local issuer as the
+        // provider.
+        #[cfg(feature = "testing")]
+        (SessionOp::TestProviderSignIn, _) => {
+            test_providers::sign_in(&executor.app(), executor, ctx, args, at).await
+        }
+        // A deployable holds no local issuer, so signs no test in.
+        #[cfg(not(feature = "testing"))]
+        (SessionOp::TestProviderSignIn, _) => crate::Stored::Fault(ctx.fault(
+            crate::FaultKind::Defect(
+                "`test_providers.sign_in` outside a test: only a test has a local issuer".into(),
+            ),
+            at,
+        )),
         (SessionOp::Start, [user]) => identity::start(ctx, plan, user, at).await,
         (SessionOp::End, []) => identity::end(ctx, plan, at).await,
         (SessionOp::IssueToken, [user]) => identity::issue_token(ctx, plan, user, at).await,

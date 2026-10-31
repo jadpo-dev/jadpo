@@ -105,6 +105,30 @@ pub fn routes(call: &Call) -> Reply {
         }
         lines.sort_by(|a, b| (&a.api, &a.path, &a.method).cmp(&(&b.api, &b.path, &b.method)));
     }
+    // Each sign-in provider's routes, in the same API (area 8,
+    // "Providers"; chunk A7b).
+    if let Some(api) = jadpo_check::routes::served::sign_in_api(db, project) {
+        for provider in &jadpo_check::identity::identity(db, project).providers {
+            for step in jadpo_std::http::ProviderStep::ALL {
+                let path: String = step
+                    .segments(&provider.name)
+                    .iter()
+                    .map(|text| format!("/{text}"))
+                    .collect();
+                lines.push(Line {
+                    api: api.clone(),
+                    method: step.method().word().to_string(),
+                    path,
+                    runs: format!("generated {}", step.label()),
+                    authentication: "none",
+                    file: String::new(),
+                    line: 0,
+                    place: "generated".to_string(),
+                });
+            }
+        }
+        lines.sort_by(|a, b| (&a.api, &a.path, &a.method).cmp(&(&b.api, &b.path, &b.method)));
+    }
     if jadpo_check::identity::identity(db, project).exchanges() {
         for api in &apis.apis {
             let methods = jadpo_check::routes::apis::accepted_methods(db, project, &api.name);

@@ -86,6 +86,7 @@ mod package_translations;
 mod packages;
 mod passkey_tokens;
 mod passkeys;
+mod provider_sign_in;
 mod policy;
 mod provider_calls;
 mod provider_fakes;
