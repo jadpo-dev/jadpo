@@ -501,12 +501,8 @@ After the registry is live, in order:
 1. [x] **F1 Units and money in plain numbers**: area 2, "Units and money
    in plain numbers"; area 14, "Signals"; compiler/runtime, "Teaching
    examples".
-2. The standard type reference, generated: `tools/docs/language_docs.py`
-   renders one entry per standard type (what it is, how to make one, its
-   fields, operations, text, JSON and storage forms, an example) from the
-   compiler's own contract data on every docs build, so the list can't
-   drift from what is built; designed with the design skills first. Area
-   19's prose stays as the explanation.
+2. [x] **F2 The standard type reference, generated**: documentation,
+   "Topic IDs" and "The bundle".
 3. Personal data (area 15), with encrypted fields and keys held as data
    (area 19, "Encrypted fields" and "Language gaps this page depends on")
    and `crypto.verify_totp`: split by size (2026-10-31) into P1 to P12,
