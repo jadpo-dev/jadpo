@@ -54,6 +54,15 @@ pub(crate) async fn write(
     // is sent (area 16, "What a write checks"; chunk B1).
     for check in &plan.files {
         let file = source_value(ctx, &check.source, inputs, site, now)?;
+        // Only the runtime makes a `File`, so anything else is Jadpo's
+        // mistake, refused rather than written unchecked.
+        if !matches!(file, Value::None | Value::Record(_)) {
+            return Err(defect(
+                ctx,
+                "a `File` field given a value that isn't a file",
+                site,
+            ));
+        }
         if let Some((why, next)) = refused_file(check, &file) {
             return Err(Interrupt::Fault(
                 ctx.fault(FaultKind::FileRefused { why, next }, site),
