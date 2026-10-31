@@ -1408,6 +1408,13 @@ pub(crate) fn refusal(table: &RouteTable, refused: &Refused, request_id: &str) -
 /// and strength (area 13, `sign_in:` and `strength:`; chunk A10): by
 /// magic link with one factor unless the request says otherwise, lasting
 /// as one started that way does.
+///
+/// A caller signs in once (chunk A11): the same caller's later requests in
+/// the test, signed in the same way, send the credential its first one
+/// did, as a browser keeps its cookie and a service its key, so a session
+/// that has since ended is refused. An external token is the exception:
+/// no session keeps it, so each request has a fresh one, as a client
+/// refreshes its provider's token.
 pub async fn test_credentials(
     ctx: &mut Ctx<'_>,
     app: &super::App<'_>,
@@ -1444,10 +1451,6 @@ pub async fn test_credentials(
     let Ok(id) = crate::to_sql(&id, SqlType::Uuid) else {
         return Err(defect(ctx, "a caller whose id isn't one", site));
     };
-    let (Some(token), Some(csrf), Some(row)) = (new_token(ctx), new_token(ctx), ctx.new_id())
-    else {
-        return Err(defect(ctx, "a request signed in with no randomness", site));
-    };
     let accepts = |method: AuthenticationMethod| {
         table
             .routes
@@ -1455,10 +1458,6 @@ pub async fn test_credentials(
             .and_then(|route| table.apis.get(route.api as usize))
             .is_some_and(|api| api.methods.contains(&method))
     };
-    let now = ctx.now();
-    let ends =
-        |lifetime: i64| SqlValue::Timestamp(now.saturating_add(lifetime).saturating_mul(1000));
-    let started = SqlValue::Timestamp(now.saturating_mul(1000));
     // An API that takes external tokens and not browser sessions: a token
     // from the local issuer, and nothing kept.
     if kind == PrincipalKind::User
@@ -1468,6 +1467,29 @@ pub async fn test_credentials(
     {
         return external_test_token(ctx, app, settings, external, caller, by.multi_factor);
     }
+    let session = plan.cookie.clone().zip(plan.csrf_cookie()).filter(|_| {
+        kind == PrincipalKind::User
+            && (accepts(AuthenticationMethod::BrowserSession) || !plan.api_tokens)
+    });
+    // The credential this caller's earlier request signed in with, sent
+    // again (chunk A11).
+    let who = SignedInAs {
+        kind,
+        id: id.clone(),
+        browser: session.is_some(),
+        by: (kind == PrincipalKind::User).then(|| by.clone()),
+    };
+    if let Some(headers) = ctx.signed_in(&who) {
+        return Ok(headers);
+    }
+    let (Some(token), Some(csrf), Some(row)) = (new_token(ctx), new_token(ctx), ctx.new_id())
+    else {
+        return Err(defect(ctx, "a request signed in with no randomness", site));
+    };
+    let now = ctx.now();
+    let ends =
+        |lifetime: i64| SqlValue::Timestamp(now.saturating_add(lifetime).saturating_mul(1000));
+    let started = SqlValue::Timestamp(now.saturating_mul(1000));
     // A provider's session lasts as the provider's own sign-in makes it.
     let lifetime = plan
         .providers
@@ -1480,10 +1502,6 @@ pub async fn test_credentials(
         })
         .map_or(SESSION_LIFETIME_MS, |provider| provider.session_ms);
     let [method, strength] = by.params();
-    let session = plan.cookie.clone().zip(plan.csrf_cookie()).filter(|_| {
-        kind == PrincipalKind::User
-            && (accepts(AuthenticationMethod::BrowserSession) || !plan.api_tokens)
-    });
     let (store, statement, params, headers) = match (kind, session) {
         (PrincipalKind::User, Some((cookie, csrf_cookie))) => (
             plan.store.clone(),
@@ -1566,7 +1584,20 @@ pub async fn test_credentials(
     if database.query_once(statement, &params).await.is_err() {
         return Err(unavailable(ctx));
     }
+    ctx.keep_signed_in(who, headers.clone());
     Ok(headers)
+}
+
+/// Who a route test's request signed in, and how (chunk A11): a caller
+/// by kind and id, on a browser session or by token or key, and for a
+/// user, the way in and strength its request gave. A request matching
+/// an earlier one sends that one's credential again.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SignedInAs {
+    kind: PrincipalKind,
+    id: SqlValue,
+    browser: bool,
+    by: Option<SignedInBy>,
 }
 
 /// The `Authorization` header a route test's request signs `caller` in
