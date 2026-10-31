@@ -431,7 +431,19 @@ fn migrate(
                     backfills,
                     &mut |_| std::ops::ControlFlow::Continue(()),
                 ))
-                .map_err(|error| Reply::failed(crate::migrate::migrate_failed(store, error)))?;
+                .map_err(|error| {
+                    Reply::failed(match error {
+                        // Not reached at all: the seed's own error, whose
+                        // next step is the seed again (area 5, "Seeds").
+                        jadpo_runtime::MigrateError::Store(
+                            jadpo_runtime::StoreError::Unavailable,
+                        ) => unavailable(
+                            format!("The database `{store}` can't be reached"),
+                            "Connecting to it failed, so nothing was run.".to_string(),
+                        ),
+                        other => crate::migrate::migrate_failed(store, other),
+                    })
+                })?;
             if !done.is_empty() {
                 out.push((store.clone(), done.len()));
             }

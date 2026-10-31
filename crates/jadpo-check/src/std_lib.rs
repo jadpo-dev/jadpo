@@ -139,6 +139,16 @@ pub struct Operation {
     pub docs: Option<String>,
 }
 
+/// A standard-library operation as its stub declares it: its parameters
+/// and result as written (`TypeRef`'s `Display`), and its description.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StdOperation {
+    pub name: String,
+    pub params: Vec<(String, TypeRef)>,
+    pub result: TypeRef,
+    pub docs: Option<String>,
+}
+
 /// A standard type's stub declaration (area 19): what it is built on, as
 /// written, and an object's fields.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -155,6 +165,9 @@ pub struct StandardStub {
     /// A choice's variants that carry data, each with its fields and
     /// their types, in declared order (chunk 5.5i3).
     pub payloads: Vec<(String, Vec<StubField>)>,
+    /// Its `///` description in the stub: what the type reference says it
+    /// is (docs/documentation.md, "Standard types").
+    pub docs: Option<String>,
 }
 
 /// A field a stub declares, with its type as written.
@@ -307,6 +320,7 @@ impl StdNames {
                         })
                         .collect();
                     if standard {
+                        let docs = crate::graph::text::doc(decl.syntax());
                         self.standard.insert(
                             name,
                             StandardStub {
@@ -314,6 +328,7 @@ impl StdNames {
                                 arguments,
                                 members,
                                 payloads,
+                                docs,
                             },
                         );
                     }
@@ -482,6 +497,29 @@ impl StdNames {
                             })
                             .collect(),
                         result: kind_of(&operation.result),
+                    })
+            })
+            .collect()
+    }
+
+    /// Every operation declared in a stub, as `namespace.operation`, in
+    /// namespace and name order, with its parameters and result as written
+    /// and its description: what the type reference lists.
+    pub fn documented(&self) -> Vec<StdOperation> {
+        self.declared
+            .iter()
+            .flat_map(|(namespace, operations)| {
+                operations
+                    .iter()
+                    .map(move |(name, operation)| StdOperation {
+                        name: format!("{namespace}.{name}"),
+                        params: operation
+                            .params
+                            .iter()
+                            .map(|(param, ty)| (param.clone(), ty.clone()))
+                            .collect(),
+                        result: operation.result.clone(),
+                        docs: operation.docs.clone(),
                     })
             })
             .collect()

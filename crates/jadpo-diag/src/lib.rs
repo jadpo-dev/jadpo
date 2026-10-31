@@ -585,7 +585,7 @@ rules! {
     LIBRARY_SIMILAR_EXISTS: "library.similar_exists", area 1, Declinable, Agent,
         "A library function already does the same";
     MIGRATION_APPLY_FAILED: "migration.apply_failed", area 14, Error, Human,
-        "Migrations could not be applied";
+        "Applying the project's migrations to a database stopped at a step that failed";
     MIGRATION_BACKFILL_CAN_FAIL: "migration.backfill_can_fail", area 5, Error, Agent,
         "Computed backfill can fail";
     MIGRATION_BACKFILL_OUTSIDE_ROW: "migration.backfill_outside_row", area 5, Error, Agent,
@@ -597,15 +597,15 @@ rules! {
     MIGRATION_DECISION_UNKNOWN: "migration.decision_unknown", area 5, Error, Agent,
         "Migration decides about something that is not changing";
     MIGRATION_EXTENSION_MISSING: "migration.extension_missing", area 14, Error, Human,
-        "Database lacks a PostgreSQL extension the project's migrations need";
+        "The project's migrations need a PostgreSQL extension, such as pgvector, that the database server doesn't offer or that the role applying them can't create";
     MIGRATION_EXTENSION_OUTDATED: "migration.extension_outdated", area 14, Error, Human,
-        "Database's PostgreSQL extension is older than the project's queries need";
+        "The database server's PostgreSQL extension, such as pgvector, is older than the project's migrations and queries need";
     MIGRATION_OUT_OF_DATE: "migration.out_of_date", area 5, Error, Agent,
         "The entities ask for a database schema that no migration has written yet, because they are new or have changed since the latest migration";
     MIGRATION_RECORD_INVALID: "migration.record_invalid", area 5, Error, Human,
         "A file in a migration's folder is missing, can't be read, or was changed by hand, so Jadpo can't use the migration";
     MIGRATION_STORE_DIVERGED: "migration.store_diverged", area 14, Error, Human,
-        "Database does not match the project's migrations";
+        "The migrations a database has applied don't match the project's: one has changed since it ran, the project doesn't have one, or one comes out of order";
     MIGRATION_UNFINISHED: "migration.unfinished", area 5, Error, Agent,
         "Latest migration is not finished";
     NAMING_FOLDED_COLLISION: "naming.folded_collision", area 1, Error, Agent,
@@ -885,9 +885,9 @@ rules! {
     SEED_FAILED: "seed.failed", area 14, Error, Agent,
         "Seed ended with a failure or a fault";
     SEED_PRODUCTION_REFUSED: "seed.production_refused", area 14, Error, Human,
-        "Seed refused a database that isn't on this machine";
+        "A seed was run against a database that isn't on this machine, which may be production";
     SEED_UNAVAILABLE: "seed.unavailable", area 14, Error, Human,
-        "Seed's database couldn't be reached";
+        "The database a seed runs against couldn't be reached, so nothing was run";
     SEMANTIC_AI_BUDGET_MISSING: "semantic.ai_budget_missing", area 21, Error, Agent,
         "Application's `ai:` sets no daily limit";
     SEMANTIC_AI_DIMENSIONS_MISMATCH: "semantic.ai_dimensions_mismatch", area 21, Error, Agent,

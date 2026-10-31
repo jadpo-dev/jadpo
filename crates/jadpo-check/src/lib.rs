@@ -84,7 +84,7 @@ pub use usage::{mentions, usage_problems, users};
 use jadpo_db::{Db, Project, item_tree, parse};
 use jadpo_diag::{Diagnostic, rule};
 
-pub use std_lib::{StandardStub, StubSignature};
+pub use std_lib::{StandardStub, StdOperation, StubSignature};
 
 /// Every standard-library operation the stubs declare, with its
 /// parameters' kinds and its result's: each must match its entry in
@@ -92,6 +92,12 @@ pub use std_lib::{StandardStub, StubSignature};
 /// `jadpo-value`.
 pub fn standard_operations() -> Vec<StubSignature> {
     std_lib::StdNames::get().signatures()
+}
+
+/// Every standard-library operation the stubs declare, with its parameters
+/// and result as written and its description, for the type reference.
+pub fn documented_operations() -> Vec<StdOperation> {
+    std_lib::StdNames::get().documented()
 }
 
 /// The standard types' stub declarations (`std/standard.jadpo`), by name,

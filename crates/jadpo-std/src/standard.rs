@@ -29,6 +29,7 @@ pub mod documents;
 pub mod emoji_data;
 pub mod events;
 pub mod geo;
+pub mod groups;
 pub mod health;
 mod identifiers;
 pub mod jwk;
