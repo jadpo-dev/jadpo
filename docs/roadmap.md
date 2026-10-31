@@ -389,14 +389,62 @@ time.
   (Richard, 2026-10-30). Done when the lending desk example signs staff
   in with Google through Jadpo alone, tested with the local issuer.
 
+## Approvals for 0.2.0
+
+Everything a person must approve is found by the compiler and can be
+approved (Richard, 2026-10-31). These chunks are taken after the A chunks
+above and before every other unticked chunk. When V5 has merged, the
+0.2.0 release pull request is merged; no session merges it before then.
+V1 to V4 touch different crates and run at the same time.
+
+Already built: acceptances (`jadpo acceptance new`, matching, the reason,
+history, the CODEOWNERS gate) for API and event breaks, every widening of
+who can do what (routes made public included), security declines,
+sign-in settings past their limit, new domains, new outside hosts and
+packages from git. The kinds that belong to features not built yet come
+with those features: `ThresholdChange` with thresholds, a service's image
+with services, bot checks with bot protection, a domain renamed with
+`jadpo domain rename`.
+
+- [ ] **V1 The approval report** `opus · xhigh`: area 17, "Reviewing a
+  change"; area 18, "Comparing two builds". `jadpo approval --before
+  <ref>` builds the base, and writes Markdown and JSON in `build/review/`
+  in the page's order: each decision in plain words with whether its
+  acceptance exists, the path that makes it true, newly reachable
+  declarations, other behaviour (the API record, schema and migrations,
+  failures, events, integrations, the permissions report's diff, wording
+  not yet accepted) and the source by declaration. The web view stays
+  with the developer console. Screens designed with the design skills
+  first. Split here if it is larger than a session.
+- [ ] **V2 Removing data needs a person** `opus · xhigh`: area 5,
+  "Migrations"; area 18, `DataChange`. `jadpo migrate new`'s removals (an
+  entity removed, one moved to another store, a retired column dropped),
+  each refused by `check` until a `DataChange` acceptance names it.
+- [ ] **V3 Risky package upgrades need a person** `opus · high`: area 18,
+  "Package upgrades". The review compares the operations and declarations
+  the app uses, version ignored; a used operation removed, a used field
+  removed or retyped, a new failure on a used operation, or a host or
+  credential scheme changed needs a `PackageChange` acceptance; `jadpo
+  package update` prints the review.
+- [ ] **V4 Where personal data goes** `opus · xhigh`: area 15's marking
+  checked on entities, events and package types, and the personal-data
+  report's list of every connection and host a marked field reaches,
+  through provider operations; the same data available to `jadpo package
+  check`. Erasure and retention stay where they are.
+- [ ] **V5 Personal data a connection can't erase** `opus · high` after V4:
+  area 15, "Erasure at providers"; area 18, `ErasureNotPossible`. A
+  connection that receives a marked field, whose package declares no
+  `erasure:`, needs an `ErasureNotPossible` acceptance with the reason the
+  data stays; the approval report shows the personal-data report's diff.
+
 ## The public registry
 
 The registry at jadpo.dev ([External services](language/11-integrations.md#the-public-registry)).
-These chunks are taken after the A chunks above and before every other
-unticked chunk (Richard, 2026-10-31). The chunks here build the `jadpo`
+These chunks are taken after the approval chunks above and before every
+other unticked chunk (Richard, 2026-10-31). The chunks here build the `jadpo`
 side; the registry application itself is built in the jadpo.dev
 repository against [the registry protocol](language/11-integrations.md#the-registry-protocol).
-R1, R2 and R4 touch different crates and run at the same time.
+R1 and R4 touch different crates and run at the same time.
 
 Already built and used by the registry application: Workers with
 PostgreSQL through Hyperdrive, the cron and queues; magic links and
@@ -409,13 +457,8 @@ real deploy) and, before outside authors can publish, D3 (releases).
   route can't run until the signed-in person presents one of their own
   passkeys for that request, and a route test does it with
   `test_passkeys.confirm`.
-- [ ] **R2 Where personal data goes** `opus · xhigh`: area 15's marking
-  checked on entities, events and package types, and the personal-data
-  report's list of every connection and host a marked field reaches,
-  through provider operations; the same data available to `jadpo package
-  check`. Erasure and retention stay where they are.
 - [ ] **R3 A release's facts, change record and fingerprints**
-  `opus · xhigh` after R2: area 11, "What a release shows", "The
+  `opus · xhigh` after V4: area 11, "What a release shows", "The
   changelog", "Search" (the fingerprints) and "Yanks, takedowns and
   advisories" (copies). `jadpo package check` prints the facts and the
   change record; the previous release's examples and tests run against
@@ -438,9 +481,6 @@ real deploy) and, before outside authors can publish, D3 (releases).
   no network, and its container image published with each release (D3).
   It runs on Fly.io, reached over HTTPS (Richard, 2026-10-31); **needs a
   maintainer** for the Fly.io account before it is deployed.
-  The 0.2.0 release pull request stays open until R6 has merged, so the
-  registry launches with 0.2.0 (Richard, 2026-10-31); no session merges it
-  before then.
 - [ ] **R7 The registry application** **needs a maintainer** to start the
   jadpo.dev session, after R1, R4 and R6: built against the protocol and
   passing R4's conformance test. Until the S3 driver its archives are kept
@@ -455,8 +495,7 @@ After the registry is live, in order:
 - [ ] **R9 Blast radius in an update** `opus · high`: `jadpo package update
   --plan` follows each change record entry through the app's graph to
   the actions, routes, jobs and stored fields it reaches, with the
-  compile errors and migrations that would follow; with "After the first
-  build", item 6's package upgrade plans.
+  compile errors and migrations that would follow; after V3.
 - Then, each with its own chunk below: signed log heads (keys held as data
   and `crypto.sign`, item 3), the S3 driver for the registry's archives
   (item 4), the search capability (item 8), and Google and GitHub sign-in
@@ -479,18 +518,13 @@ After the registry is live, in order:
    19's prose stays as the explanation.
 3. Personal data (area 15), with encrypted fields and keys held as data
    (area 19, "Encrypted fields" and "Language gaps this page depends on") and `crypto.verify_totp`, which waits on
-   them; and the `ErasureNotPossible` acceptance for a connection that
-   receives personal data and can't erase it.
+   them.
 4. Remaining built-in services (area 16): flags, files, audit, search,
    telemetry thresholds, with the `ThresholdChange` acceptance for a
    threshold raised or removed.
 5. Debugging and review (area 17): `why`, timelines, `test new --from`,
    `call`.
-6. Records and acceptances (area 18): the approval report, with
-   unaccepted wording (area 10) in it; package upgrade plans, with the
-   `PackageChange` acceptance for a risky upgrade; and `jadpo migrate
-   new`'s removals (an entity removed, one moved to another store, a
-   retired column dropped), with the `DataChange` acceptance.
+6. Records and acceptances: moved to "Approvals for 0.2.0" (2026-10-31).
 7. Tooling completeness (area 14): interactive tests, `rename` (refusing a
    name already in use, 2026-10-16), `impact`,
    full completion.
