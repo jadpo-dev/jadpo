@@ -2204,7 +2204,9 @@ aarch64-apple-darwin`, `Fetching the runtime's crates`). Where stderr
 animates, it is on the live line, each archive with a bar; otherwise it is
 a line on stderr; under `--json` it says nothing. The screen's `fetched`
 line, and `--json`'s `fetched`, say what came (`Rust 1.99.0 (146.9 MB)
-and 292 crates`). A fetch that fails is `toolchain.fetch_failed`.
+and 292 crates`). A toolchain that can't be fetched is
+`toolchain.fetch_failed`; crates cargo can't fetch fail the build, with
+cargo's own lines, as `toolchain.build_failed`.
 
 With `CARGO` naming a cargo, that cargo builds instead and nothing is
 fetched. cargo sets `CARGO` for what it runs, and the gate does for this
@@ -2862,7 +2864,7 @@ its command is built.
 | `conform.refused` | `package conform` | Conformance suite can't run against the provider's API |
 | `recording.failed` | `package record`, `ai record` | Sandbox or model gave no answer to record |
 | `recording.refused` | `package record`, `ai record` | Answer can't be recorded through this connection |
-| `configuration.local_changed` | `config` | Local configuration changed during the update |
+| `configuration.local_changed` | `config` | Something else saved `.env.local` while `jadpo config set` was saving a value in it |
 | `configuration.local_invalid_encoding` | `config` | The `.env.local` file holds bytes that aren't UTF-8 text |
 | `configuration.local_read_failed` | `config` | The `.env.local` file is there, but it couldn't be read: it is a folder, or you aren't allowed to read it |
 | `configuration.local_syntax` | `config` | A line of `.env.local` isn't blank, a `#` comment or `NAME=value`, or it sets a variable a line above it already sets |
@@ -2872,12 +2874,12 @@ its command is built.
 | `configuration.move_read_unsupported` | `config move`, the editor | Constant is read where a setting can't be |
 | `configuration.move_type_unsupported` | `config move`, the editor | Constant's type can't be a setting |
 | `configuration.value_invalid` | `config`, `dev` | A setting's value on this machine, from the environment or `.env.local`, doesn't fit the type `config.jadpo` gives it |
-| `configuration.value_missing` | `config`, `dev` | Required local configuration is missing |
+| `configuration.value_missing` | `config`, `dev` | A setting `config.jadpo` declares without a `default:` has no value on this machine, in the environment or `.env.local` |
 | `deliveries.not_found` | `deliveries` | No delivery or schedule run has the id given |
 | `deliveries.unavailable` | `deliveries` | Deliveries' database couldn't be read |
 | `deliveries.wrong_state` | `deliveries` | Delivery or schedule run isn't in a state the action applies to |
 | `format.changes_required` | `fmt` | Source files are not canonically formatted |
-| `format.write_failed` | `fmt` | Formatted source could not be written |
+| `format.write_failed` | `fmt` | A file `jadpo fmt` formatted couldn't be written, usually because it is read-only |
 | `index.accept_check_failed` | `schema index-accept` | Index edit did not pass project checks |
 | `index.accept_identity_count` | `schema index-accept` | Index acceptance changed an unexpected number of schema identities |
 | `index.accept_range_invalid` | `schema index-accept` | Recommended index insertion point is no longer valid |
@@ -2975,8 +2977,8 @@ its command is built.
 | `toolchain.artifact_promote_failed` | `artifacts`, `build` | Staged build artifacts could not be promoted |
 | `toolchain.artifact_stage_failed` | `artifacts`, `build` | Build staging directory could not be created |
 | `toolchain.artifact_write_failed` | `check`, `build` | A file Jadpo writes for you, such as a record, couldn't be written, usually because it or its folder is read-only |
-| `toolchain.build_failed` | `build` | Rust compiler couldn't build the deployable |
-| `toolchain.fetch_failed` | `build` | Rust toolchain or crates couldn't be fetched |
+| `toolchain.build_failed` | `build` | The Rust `jadpo build` wrote for a deployable didn't compile, because the machine lacks something the build runs, such as a C compiler, or because of a mistake in Jadpo |
+| `toolchain.fetch_failed` | `build` | The Rust toolchain `jadpo build` compiles with couldn't be fetched, usually because the download server or the mirror `JADPO_RUST_DIST_SERVER` names can't be reached |
 | `toolchain.project_not_found` | any command | You ran a command that works on a project in a folder with no `app.jadpo`, in it or in any folder above it |
 | `toolchain.project_read_failed` | any command | Project directory could not be read |
 | `toolchain.scaffold_destination_exists` | `new` | You ran `jadpo new` with the name of a file that already exists |
@@ -2990,7 +2992,7 @@ its command is built.
 | `toolchain.target_job_not_implemented` | `build` | Scheduled job `{name}` cannot execute yet |
 | `toolchain.target_liveness_not_local` | `build` | Authored liveness route is not dependency-free |
 | `toolchain.target_store_not_implemented` | `build` | Authority store target adapter is not implemented |
-| `translation.exchange_file_invalid` | `translations export`, `translations import` | Translation exchange file can't be read or written |
+| `translation.exchange_file_invalid` | `translations export`, `translations import` | A file given to `jadpo translations import` isn't XLIFF 2.x or JSON in the shape `export` writes, or can't be read as one |
 | `translation.exchange_unit_unknown` | `translations import` | Translation file holds a unit the project does not have |
 
 Three errors can't be reached at all: `type.job_delivery_selector_invalid`

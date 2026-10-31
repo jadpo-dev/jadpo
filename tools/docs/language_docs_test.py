@@ -855,6 +855,25 @@ class Commands(unittest.TestCase):
                          '```text output\n? Enter X  hidden\ngot abc\n```\n')
         self.assertEqual(page.problems, [])
 
+    def test_root_refuses_blocks_that_take_permissions_away(self):
+        """Root reads and writes past any permission, so a block whose
+        error comes from `chmod` would pass wrongly: it isn't run."""
+        text = ('# `cli.x`\n\n```sh run project=p expect=cli.x\nchmod a-w .\njadpo fail\n```\n\n'
+                '```text output\nerror: no\n  next: Fix it (agent)\n  rule: cli.x\n```\n')
+        saved = docs.os.geteuid
+        try:
+            docs.os.geteuid = lambda: 0
+            page = self.page(text)
+            self.assertEqual(len(page.problems), 1)
+            self.assertIn('as root', page.problems[0])
+            self.assertIn('ordinary user', page.problems[0])
+            # A block without `chmod` still runs as root.
+            page = self.page('# `cli.x`\n\n```sh run project=p\njadpo go\n```\n\n```text output\nok\n```\n')
+            self.assertEqual(page.problems, [])
+        finally:
+            docs.os.geteuid = saved
+        self.assertEqual(self.page(text).problems, [])
+
 
 if __name__ == '__main__':
     unittest.main()
