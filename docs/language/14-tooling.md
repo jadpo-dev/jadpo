@@ -2788,8 +2788,8 @@ its command is built.
 | `acceptance.base_missing` | `check`, `build`, `acceptance new` | Base commit the change is compared with isn't in this clone |
 | `acceptance.edited` | `check`, `build` | Acceptance already on the before side was edited |
 | `acceptance.invalid` | `check`, `build` | Acceptance file isn't written as an acceptance |
-| `acceptance.missing` | `check`, `build` | Change needs a person's acceptance that no added acceptance gives |
-| `acceptance.no_reason` | `check`, `build` | Added acceptance has no reason |
+| `acceptance.missing` | `check`, `build` | A change could break someone else or widen who can do what, and no acceptance this change adds says a person agreed to it |
+| `acceptance.no_reason` | `check`, `build` | An acceptance this change adds has no `///` line above `acceptance` saying why a person accepted the changes it lists |
 | `acceptance.unmatched` | `check`, `build` | Acceptance lists a change this change doesn't make |
 | `ai.usage_unavailable` | `ai usage` | AI usage's database couldn't be read |
 | `cli.acceptance_arguments` | `acceptance` | Acceptance command has invalid arguments |
@@ -2872,10 +2872,10 @@ its command is built.
 | `index.accept_source_write_failed` | `schema index-accept` | Recommended index could not be written to source |
 | `index.recommendation_field_missing` | `schema index-accept` | Recommended field no longer exists |
 | `index.recommendation_unknown` | `schema index-accept` | Index recommendation is not current |
-| `install.fetch_failed` | `package add`, `update` | Package's git repository or tag couldn't be read ([Installing errors](11-integrations.md#installing-errors)) |
+| `install.fetch_failed` | `package add`, `update` | Installing a package couldn't read its git repository, or found no release there at the tag you gave ([Installing errors](11-integrations.md#installing-errors)) |
 | `install.in_use` | `package remove` | Package to remove is still used by the app ([Installing errors](11-integrations.md#installing-errors)) |
 | `install.link_refused` | `check`, `test` in CI | Linked package in a CI or production build ([Installing errors](11-integrations.md#installing-errors)) |
-| `install.surface_mismatch` | `package add`, `update` | Package's committed surface doesn't match its code ([Installing errors](11-integrations.md#installing-errors)) |
+| `install.surface_mismatch` | `package add`, `update` | The package you are installing has code that offers something different from its committed `surface.jadpo_record` ([Installing errors](11-integrations.md#installing-errors)) |
 | `lsp.content_length_missing` | `lsp` | Language-server message has no Content-Length header |
 | `lsp.json_invalid` | `lsp` | Language-server message is not valid JSON |
 | `lsp.json_write_failed` | `lsp` | Language-server response could not be encoded |
@@ -2934,7 +2934,7 @@ its command is built.
 | `migration.sql_sqlite_renamed_table_unsupported` | `schema` | SQLite rebuild cannot target a logically renamed table |
 | `migration.sql_strategy_unsupported` | `schema` | Reviewed migration strategy has no SQL implementation |
 | `migration.sql_type_unsupported` | `schema` | Field type has no migration SQL mapping |
-| `publish.breaking_change` | `package check` | Package's surface breaks its last release within one major version ([Publishing errors](11-integrations.md#publishing-errors)) |
+| `publish.breaking_change` | `package check` | A package's new version changes or removes something its last release offered, within the same major version ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.changelog_missing` | `package check` | Package's changelog doesn't say why its new version is released ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.description_missing` | `package check` | Package's public declaration has no description ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.example_failed` | `package check` | Example in a package's description doesn't compile or doesn't hold ([Publishing errors](11-integrations.md#publishing-errors)) |
@@ -2965,7 +2965,7 @@ its command is built.
 | `toolchain.project_not_found` | any command | Project path does not exist |
 | `toolchain.project_read_failed` | any command | Project directory could not be read |
 | `toolchain.scaffold_destination_exists` | `new` | Scaffold destination is an existing file |
-| `toolchain.scaffold_destination_not_empty` | `new` | Scaffold destination directory is not empty |
+| `toolchain.scaffold_destination_not_empty` | `new` | You ran `jadpo new` on a folder that already has files in it, hidden files included |
 | `toolchain.scaffold_name_invalid` | `new` | Project destination has no valid name |
 | `toolchain.scaffold_read_failed` | `new` | Scaffold destination could not be inspected |
 | `toolchain.scaffold_write_failed` | `new` | Project scaffold file could not be written |

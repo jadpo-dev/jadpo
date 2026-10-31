@@ -1,17 +1,27 @@
 # `route.calls_past_deadline`
 
-> The choices are in area 12's decisions, "The late-failure warning and
-> the deadline sum".
+The outside calls a route makes could, at their slowest, take longer than the route is allowed to run.
 
-Each outside call can wait its `timeout:` on each of its attempts: a
-provider's operation its connection's `timeout:` (3 seconds by default)
-times its `retry: { attempts: }` (3), an `ai` call its own `timeout:`
-times its `attempts:` (area 21). A route's deadline covers every such
-call on the longest way through its action, those of the actions and
-package actions it calls included, so the sum must fit within it. Here
-the courier's lookup can wait 5 seconds three times, past the route's 10:
+## Why Jadpo refuses it
 
-```jadpo check project=e-calls-past-deadline file=app.jadpo hidden
+Every route has a deadline, 10 seconds unless `deadline:` sets another.
+At the deadline the route stops, commits nothing and answers 504. Each
+outside call can wait its `timeout:` on each of its attempts: a
+connection's call 3 seconds three times by default, unless the
+connection's `timeout:` and `retry: { attempts: }` say otherwise. An
+`ai` call counts its own `timeout:` and `attempts:` the same way.
+
+Jadpo adds these up along the longest way through the route's action,
+the actions it calls included. When the sum is longer than the deadline,
+a slow service would leave a call still waiting, or still to be tried
+again, when the route stops. Here the courier's lookup can wait 5 seconds
+three times, 15 seconds, past the route's 10.
+
+## What it looks like
+
+app.jadpo:
+
+```jadpo check project=e-calls-past-deadline file=app.jadpo
 application {
     connections: {
         couriers: {
@@ -139,6 +149,11 @@ input ParcelQuestion
     parcel: Text { max_length: 40 }
 ```
 
+The action makes one call to the courier, and the route runs the action
+with its default deadline of 10 seconds.
+
+domains/shipping/actions/parcel_status.jadpo:
+
 ```jadpo check project=e-calls-past-deadline file=domains/shipping/actions/parcel_status.jadpo
 use app { couriers }
 use shipping/types { ParcelAnswer, ParcelQuestion }
@@ -156,6 +171,8 @@ action parcel_status(enquiry: ParcelQuestion) -> ParcelAnswer {
     }
 }
 ```
+
+domains/shipping/routes/parcels.jadpo:
 
 ```jadpo check project=e-calls-past-deadline file=domains/shipping/routes/parcels.jadpo expect=route.calls_past_deadline
 use shipping/types { ParcelAnswer, ParcelQuestion }
@@ -190,6 +207,603 @@ error: `POST /parcels/status` runs `parcel_status`, whose outside calls can take
 check failed: 1 error, 13 files
 ```
 
-A route that needs longer than 60 seconds can't be given it: it answers
-`202` and makes its calls in a subscriber, which the route waits for with
-`settle:` (area 7).
+`(agent)` at the end of the `next:` line means your coding agent can make
+the fix itself.
+
+## How to fix it
+
+**If the route can wait that long**, give it a longer deadline, up to 60
+seconds. In `domains/shipping/routes/parcels.jadpo`:
+
+```jadpo fragment
+        deadline: 15s
+```
+
+```jadpo check project=e-calls-past-deadline-longer file=domains/shipping/routes/parcels.jadpo hidden
+use shipping/types { ParcelAnswer, ParcelQuestion }
+use shipping/actions { parcel_status }
+
+/// Where customers ask after their parcels.
+routes Parcels {
+    prefix: /parcels
+
+    /// Where a parcel is.
+    POST /status {
+        authentication: RouteAuthentication.none
+        input: ParcelQuestion
+        output: ParcelAnswer
+        status: SuccessStatus.ok
+        deadline: 15s
+        run: parcel_status(input)
+    }
+}
+```
+
+```jadpo check project=e-calls-past-deadline-longer file=app.jadpo hidden
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            credential: config.couriers_api_key
+            environment: config.couriers_environment
+            timeout: 5s
+        }
+    }
+}
+```
+
+```jadpo check project=e-calls-past-deadline-longer file=config.jadpo hidden
+config {
+    couriers_api_key: Text {
+        secret: true
+    }
+    couriers_environment: ProviderEnvironment
+}
+```
+
+```jadpo check project=e-calls-past-deadline-longer file=policy.jadpo hidden
+use shipping
+
+policy {
+    actions: {
+        shipping.parcel_status: [Access.public]
+    }
+}
+```
+
+```jadpo check project=e-calls-past-deadline-longer file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' tracking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e-calls-past-deadline-longer file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' tracking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+    credential: CredentialScheme.bearer
+}
+```
+
+```jadpo check project=e-calls-past-deadline-longer file=shared/providers/acme_couriers/v1/resources/parcels.jadpo hidden
+public resource parcels {
+    get: {
+        method: HttpMethod.get
+        path: "/v1/parcels/{id}"
+        input: ParcelLookup
+        output: Parcel
+        changes: false
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=e-calls-past-deadline-longer file=shared/providers/acme_couriers/v1/types/parcel_lookup.jadpo hidden
+/// Which parcel to look up.
+public type ParcelLookup = Object {
+    id: ParcelRef
+}
+```
+
+```jadpo check project=e-calls-past-deadline-longer file=shared/providers/acme_couriers/v1/types/parcel_ref.jadpo hidden
+/// The courier's reference for a parcel.
+public type ParcelRef = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=e-calls-past-deadline-longer file=shared/providers/acme_couriers/v1/types/parcel.jadpo hidden
+/// A parcel and where it is.
+public type Parcel = Object {
+    id: ParcelRef
+    status: ParcelRef
+}
+```
+
+```jadpo check project=e-calls-past-deadline-longer file=domains/shipping/types/parcel_question.jadpo hidden
+use shared/providers/acme_couriers
+
+/// Which parcel a customer asks after.
+type ParcelQuestion = Input {
+    parcel: AcmeCouriers.ParcelRef
+}
+```
+
+```jadpo check project=e-calls-past-deadline-longer file=domains/shipping/types/parcel_answer.jadpo hidden
+use shared/providers/acme_couriers
+
+/// Where a parcel is.
+type ParcelAnswer = Output {
+    status: AcmeCouriers.ParcelRef
+}
+```
+
+```jadpo check project=e-calls-past-deadline-longer file=api/main.jadpo_record hidden
+// Generated by Jadpo from the routes of API main; update it with `jadpo api update`, never by hand.
+record api 1
+
+GET /openapi.json
+    generated openapi
+    authentication none
+    status 200
+
+POST /parcels/status
+    authentication none
+    input ParcelQuestion (body)
+    output ParcelAnswer
+    status 200
+
+output ParcelAnswer
+    status: Text { max_length: 40 }
+
+input ParcelQuestion
+    parcel: Text { max_length: 40 }
+```
+
+```jadpo check project=e-calls-past-deadline-longer file=domains/shipping/actions/parcel_status.jadpo hidden
+use app { couriers }
+use shipping/types { ParcelAnswer, ParcelQuestion }
+use shared/providers/acme_couriers
+
+/// Where a parcel is, in the courier's words.
+action parcel_status(enquiry: ParcelQuestion) -> ParcelAnswer {
+    var parcel_found: AcmeCouriers.Parcel = couriers.parcels.get(
+        AcmeCouriers.ParcelLookup {
+            id: enquiry.parcel
+        }
+    )
+    return ParcelAnswer {
+        status: parcel_found.status
+    }
+}
+```
+
+```jadpo check project=e-calls-past-deadline-longer file=access.jadpo_record hidden
+// Generated by Jadpo from who can do what; update it with `jadpo records update`, never by hand.
+record access 1
+
+action shipping.parcel_status
+    who Access.public
+```
+
+```jadpo check project=e-calls-past-deadline-longer file=network.jadpo_record hidden
+// Generated by Jadpo from the hosts the app can reach; update it with `jadpo records update`, never by hand.
+record network 1
+
+connection couriers
+    for AcmeCouriers.v1
+    host https://api.acme-couriers.example
+    host https://sandbox.acme-couriers.example
+```
+
+The route may now run for 15 seconds, so the call's three attempts fit.
+A caller may wait that long for an answer.
+
+**If each attempt can be shorter**, lower the connection's `timeout:` in
+`app.jadpo`:
+
+```jadpo fragment
+            timeout: 3s
+```
+
+```jadpo check project=e-calls-past-deadline-timeout file=app.jadpo hidden
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            credential: config.couriers_api_key
+            environment: config.couriers_environment
+            timeout: 3s
+        }
+    }
+}
+```
+
+```jadpo check project=e-calls-past-deadline-timeout file=config.jadpo hidden
+config {
+    couriers_api_key: Text {
+        secret: true
+    }
+    couriers_environment: ProviderEnvironment
+}
+```
+
+```jadpo check project=e-calls-past-deadline-timeout file=policy.jadpo hidden
+use shipping
+
+policy {
+    actions: {
+        shipping.parcel_status: [Access.public]
+    }
+}
+```
+
+```jadpo check project=e-calls-past-deadline-timeout file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' tracking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e-calls-past-deadline-timeout file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' tracking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+    credential: CredentialScheme.bearer
+}
+```
+
+```jadpo check project=e-calls-past-deadline-timeout file=shared/providers/acme_couriers/v1/resources/parcels.jadpo hidden
+public resource parcels {
+    get: {
+        method: HttpMethod.get
+        path: "/v1/parcels/{id}"
+        input: ParcelLookup
+        output: Parcel
+        changes: false
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=e-calls-past-deadline-timeout file=shared/providers/acme_couriers/v1/types/parcel_lookup.jadpo hidden
+/// Which parcel to look up.
+public type ParcelLookup = Object {
+    id: ParcelRef
+}
+```
+
+```jadpo check project=e-calls-past-deadline-timeout file=shared/providers/acme_couriers/v1/types/parcel_ref.jadpo hidden
+/// The courier's reference for a parcel.
+public type ParcelRef = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=e-calls-past-deadline-timeout file=shared/providers/acme_couriers/v1/types/parcel.jadpo hidden
+/// A parcel and where it is.
+public type Parcel = Object {
+    id: ParcelRef
+    status: ParcelRef
+}
+```
+
+```jadpo check project=e-calls-past-deadline-timeout file=domains/shipping/types/parcel_question.jadpo hidden
+use shared/providers/acme_couriers
+
+/// Which parcel a customer asks after.
+type ParcelQuestion = Input {
+    parcel: AcmeCouriers.ParcelRef
+}
+```
+
+```jadpo check project=e-calls-past-deadline-timeout file=domains/shipping/types/parcel_answer.jadpo hidden
+use shared/providers/acme_couriers
+
+/// Where a parcel is.
+type ParcelAnswer = Output {
+    status: AcmeCouriers.ParcelRef
+}
+```
+
+```jadpo check project=e-calls-past-deadline-timeout file=api/main.jadpo_record hidden
+// Generated by Jadpo from the routes of API main; update it with `jadpo api update`, never by hand.
+record api 1
+
+GET /openapi.json
+    generated openapi
+    authentication none
+    status 200
+
+POST /parcels/status
+    authentication none
+    input ParcelQuestion (body)
+    output ParcelAnswer
+    status 200
+
+output ParcelAnswer
+    status: Text { max_length: 40 }
+
+input ParcelQuestion
+    parcel: Text { max_length: 40 }
+```
+
+```jadpo check project=e-calls-past-deadline-timeout file=domains/shipping/actions/parcel_status.jadpo hidden
+use app { couriers }
+use shipping/types { ParcelAnswer, ParcelQuestion }
+use shared/providers/acme_couriers
+
+/// Where a parcel is, in the courier's words.
+action parcel_status(enquiry: ParcelQuestion) -> ParcelAnswer {
+    var parcel_found: AcmeCouriers.Parcel = couriers.parcels.get(
+        AcmeCouriers.ParcelLookup {
+            id: enquiry.parcel
+        }
+    )
+    return ParcelAnswer {
+        status: parcel_found.status
+    }
+}
+```
+
+```jadpo check project=e-calls-past-deadline-timeout file=domains/shipping/routes/parcels.jadpo hidden
+use shipping/types { ParcelAnswer, ParcelQuestion }
+use shipping/actions { parcel_status }
+
+/// Where customers ask after their parcels.
+routes Parcels {
+    prefix: /parcels
+
+    /// Where a parcel is.
+    POST /status {
+        authentication: RouteAuthentication.none
+        input: ParcelQuestion
+        output: ParcelAnswer
+        status: SuccessStatus.ok
+        run: parcel_status(input)
+    }
+}
+```
+
+```jadpo check project=e-calls-past-deadline-timeout file=access.jadpo_record hidden
+// Generated by Jadpo from who can do what; update it with `jadpo records update`, never by hand.
+record access 1
+
+action shipping.parcel_status
+    who Access.public
+```
+
+```jadpo check project=e-calls-past-deadline-timeout file=network.jadpo_record hidden
+// Generated by Jadpo from the hosts the app can reach; update it with `jadpo records update`, never by hand.
+record network 1
+
+connection couriers
+    for AcmeCouriers.v1
+    host https://api.acme-couriers.example
+    host https://sandbox.acme-couriers.example
+```
+
+Three attempts of 3 seconds fit within 10. A call slower than 3 seconds
+now times out and is tried again sooner.
+
+**If fewer attempts will do**, lower the connection's attempts in
+`app.jadpo`:
+
+```jadpo fragment
+            retry: {
+                attempts: 2
+            }
+```
+
+```jadpo check project=e-calls-past-deadline-attempts file=app.jadpo hidden
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            credential: config.couriers_api_key
+            environment: config.couriers_environment
+            timeout: 5s
+            retry: {
+                attempts: 2
+            }
+        }
+    }
+}
+```
+
+```jadpo check project=e-calls-past-deadline-attempts file=config.jadpo hidden
+config {
+    couriers_api_key: Text {
+        secret: true
+    }
+    couriers_environment: ProviderEnvironment
+}
+```
+
+```jadpo check project=e-calls-past-deadline-attempts file=policy.jadpo hidden
+use shipping
+
+policy {
+    actions: {
+        shipping.parcel_status: [Access.public]
+    }
+}
+```
+
+```jadpo check project=e-calls-past-deadline-attempts file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' tracking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e-calls-past-deadline-attempts file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' tracking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+    credential: CredentialScheme.bearer
+}
+```
+
+```jadpo check project=e-calls-past-deadline-attempts file=shared/providers/acme_couriers/v1/resources/parcels.jadpo hidden
+public resource parcels {
+    get: {
+        method: HttpMethod.get
+        path: "/v1/parcels/{id}"
+        input: ParcelLookup
+        output: Parcel
+        changes: false
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=e-calls-past-deadline-attempts file=shared/providers/acme_couriers/v1/types/parcel_lookup.jadpo hidden
+/// Which parcel to look up.
+public type ParcelLookup = Object {
+    id: ParcelRef
+}
+```
+
+```jadpo check project=e-calls-past-deadline-attempts file=shared/providers/acme_couriers/v1/types/parcel_ref.jadpo hidden
+/// The courier's reference for a parcel.
+public type ParcelRef = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=e-calls-past-deadline-attempts file=shared/providers/acme_couriers/v1/types/parcel.jadpo hidden
+/// A parcel and where it is.
+public type Parcel = Object {
+    id: ParcelRef
+    status: ParcelRef
+}
+```
+
+```jadpo check project=e-calls-past-deadline-attempts file=domains/shipping/types/parcel_question.jadpo hidden
+use shared/providers/acme_couriers
+
+/// Which parcel a customer asks after.
+type ParcelQuestion = Input {
+    parcel: AcmeCouriers.ParcelRef
+}
+```
+
+```jadpo check project=e-calls-past-deadline-attempts file=domains/shipping/types/parcel_answer.jadpo hidden
+use shared/providers/acme_couriers
+
+/// Where a parcel is.
+type ParcelAnswer = Output {
+    status: AcmeCouriers.ParcelRef
+}
+```
+
+```jadpo check project=e-calls-past-deadline-attempts file=api/main.jadpo_record hidden
+// Generated by Jadpo from the routes of API main; update it with `jadpo api update`, never by hand.
+record api 1
+
+GET /openapi.json
+    generated openapi
+    authentication none
+    status 200
+
+POST /parcels/status
+    authentication none
+    input ParcelQuestion (body)
+    output ParcelAnswer
+    status 200
+
+output ParcelAnswer
+    status: Text { max_length: 40 }
+
+input ParcelQuestion
+    parcel: Text { max_length: 40 }
+```
+
+```jadpo check project=e-calls-past-deadline-attempts file=domains/shipping/actions/parcel_status.jadpo hidden
+use app { couriers }
+use shipping/types { ParcelAnswer, ParcelQuestion }
+use shared/providers/acme_couriers
+
+/// Where a parcel is, in the courier's words.
+action parcel_status(enquiry: ParcelQuestion) -> ParcelAnswer {
+    var parcel_found: AcmeCouriers.Parcel = couriers.parcels.get(
+        AcmeCouriers.ParcelLookup {
+            id: enquiry.parcel
+        }
+    )
+    return ParcelAnswer {
+        status: parcel_found.status
+    }
+}
+```
+
+```jadpo check project=e-calls-past-deadline-attempts file=domains/shipping/routes/parcels.jadpo hidden
+use shipping/types { ParcelAnswer, ParcelQuestion }
+use shipping/actions { parcel_status }
+
+/// Where customers ask after their parcels.
+routes Parcels {
+    prefix: /parcels
+
+    /// Where a parcel is.
+    POST /status {
+        authentication: RouteAuthentication.none
+        input: ParcelQuestion
+        output: ParcelAnswer
+        status: SuccessStatus.ok
+        run: parcel_status(input)
+    }
+}
+```
+
+```jadpo check project=e-calls-past-deadline-attempts file=access.jadpo_record hidden
+// Generated by Jadpo from who can do what; update it with `jadpo records update`, never by hand.
+record access 1
+
+action shipping.parcel_status
+    who Access.public
+```
+
+```jadpo check project=e-calls-past-deadline-attempts file=network.jadpo_record hidden
+// Generated by Jadpo from the hosts the app can reach; update it with `jadpo records update`, never by hand.
+record network 1
+
+connection couriers
+    for AcmeCouriers.v1
+    host https://api.acme-couriers.example
+    host https://sandbox.acme-couriers.example
+```
+
+Two attempts of 5 seconds fit within 10. A call that fails twice is not
+tried a third time.
+
+Work that needs longer than 60 seconds can't run in a route. The route
+answers `202` and the calls run in a subscriber, code that runs when an
+event is delivered.
+
+## Related
+
+- [Time limits](../language/07-http.md#time-limits)
+- [Time limits and retries](../language/11-integrations.md#time-limits-and-retries)
+- [Retrying a call, and timing out](../language/11-integrations.md#retrying-a-call-and-timing-out)
+- [Subscribers](../language/12-jobs-and-events.md#subscribers)

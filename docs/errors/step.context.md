@@ -1,9 +1,27 @@
 # `step.context`
 
-Several changing calls are made only where a retry can carry on from the
-last answer: a subscriber, or a route whose API requires
-`Idempotency-Key`. A route of an API that doesn't require it gets a new key
-each time its client tries again:
+An action makes several changing calls from somewhere a retry can't carry on where it stopped, such as a route whose API doesn't require `Idempotency-Key`.
+
+## Why Jadpo refuses it
+
+A changing call, such as a store's `put` or a provider operation with
+`changes: true`, takes effect as soon as it is made. When an action
+makes several, Jadpo records each one under the action's key, so a retry
+replays the calls already answered instead of making them again. That
+only works when the retry has the same key as the first try.
+
+A subscriber's delivery keeps its key across retries, and so does a
+route whose API requires the client's `Idempotency-Key`. A route of an
+API that doesn't require it gets a new key each time its client tries
+again, so a retry would make every call a second time. Jadpo won't
+choose between the fixes for you, because each changes what the route's
+clients see.
+
+## What it looks like
+
+domains/bakery/routes/price_sheets.jadpo, in a bakery app whose
+`file_prices` keeps a supplier's price sheet in `sheets`, a folder of
+files, and then a copy for the accountant:
 
 ```jadpo check project=e-step-context file=app.jadpo hidden
 application {
@@ -135,7 +153,329 @@ error: `POST /price-sheets` runs `file_prices`, which makes 2 changing calls, bu
 check failed: 1 error, 8 files
 ```
 
+`(human)` at the end of the `next:` line tells your coding agent to stop
+and ask you which fix you want, because the choice is yours to make: it
+decides whether clients must send `Idempotency-Key` or wait for the work
+in the background.
+
 A schedule's retry is its next run, under a key of its own, and a run
-keeps each item to one changing call, so a schedule and a `batches.each`
-whose action makes several are refused the same way, at the schedule and
-at the run's call.
+keeps each item to one changing call. So a schedule, and a `batches.each`
+whose action makes several changing calls, are refused the same way, at
+the schedule and at the run's call.
+
+## How to fix it
+
+The question is what the route's clients should do.
+
+**If clients can send `Idempotency-Key`**, require it on API `main` in
+`app.jadpo`. This app writes no database yet, and the record of the calls
+needs one ([`step.store_required`](../errors/step.store_required.md)), so the fix
+also connects `main` and names it in `events: { store: }`:
+
+```jadpo fragment
+        main: {
+            driver: Driver.postgres
+            url: config.main_url
+        }
+    apis: {
+        main: {
+            prefix: /
+            idempotency: Idempotency.required
+        }
+    }
+    events: {
+        store: main
+    }
+```
+
+```jadpo check project=e-step-context-fix-1 file=app.jadpo hidden
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.main_url
+        }
+        sheets: {
+            driver: Driver.disk
+            path: "/var/lib/bakery/sheets"
+        }
+    }
+    apis: {
+        main: {
+            prefix: /
+            idempotency: Idempotency.required
+        }
+    }
+    events: {
+        store: main
+    }
+    steps: {
+        encryption_key: config.step_encryption_key
+    }
+}
+```
+
+```jadpo check project=e-step-context-fix-1 file=config.jadpo hidden
+config {
+    main_url: PostgresUrl
+    step_encryption_key: SigningKey
+}
+```
+
+```jadpo check project=e-step-context-fix-1 file=policy.jadpo hidden
+use bakery
+
+policy {
+    actions: {
+        bakery.file_prices: [Access.public]
+    }
+}
+```
+
+```jadpo check project=e-step-context-fix-1 file=domains/bakery/actions/file_prices.jadpo hidden
+use app { sheets }
+use bakery/types { PriceSheetUpload }
+use bakery/failures { SheetNotKept }
+
+/// Keeps a supplier's price sheet, then a copy for the accountant.
+action file_prices(sent_sheet: PriceSheetUpload) fails SheetNotKept -> Unit {
+    var sheet: File = attempt sheets.put(encoding.to_utf8(sent_sheet.sheet_text), FileType.csv) {
+        storage_full: SheetNotKept
+    }
+    var invoice_copy: File = attempt sheets.put(
+        encoding.to_utf8(sent_sheet.sheet_text),
+        FileType.csv
+    ) {
+        storage_full: SheetNotKept
+    }
+    assert sheet != invoice_copy
+}
+```
+
+```jadpo check project=e-step-context-fix-1 file=domains/bakery/failures/sheet_not_kept.jadpo hidden
+/// The sheets store had no room for a sheet.
+type SheetNotKept = Failure {
+    kind: FailureKind.unavailable
+    message: "There was no room to keep the sheet."
+}
+```
+
+```jadpo check project=e-step-context-fix-1 file=domains/bakery/routes/price_sheets.jadpo hidden
+use bakery/types { PriceSheetUpload }
+use bakery/actions { file_prices }
+
+/// Where suppliers send their price sheets.
+routes PriceSheets {
+    prefix: /price-sheets
+
+    /// Keeps a supplier's price sheet.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: PriceSheetUpload
+        status: SuccessStatus.no_content
+        run: file_prices(input)
+    }
+}
+```
+
+```jadpo check project=e-step-context-fix-1 file=domains/bakery/types/price_sheet_upload.jadpo hidden
+use bakery/types { SheetText }
+
+/// A price sheet a supplier uploads.
+type PriceSheetUpload = Input {
+    sheet_text: SheetText
+}
+```
+
+```jadpo check project=e-step-context-fix-1 file=domains/bakery/types/sheet_text.jadpo hidden migrate=initial
+/// A price sheet as a supplier sends it.
+type SheetText = Text {
+    min_length: 1
+    max_length: 100000
+}
+```
+
+A request to `POST /price-sheets` without the header now answers 400
+`invalid_request`, and the API's OpenAPI document lists the header. A
+client that retries with the same key gets the first try's answer, and
+`file_prices`'s calls are replayed rather than made twice.
+
+**If clients shouldn't wait for the work**, have the route answer `202`
+and make the calls in a subscriber. The route runs a new action,
+`receive_prices`, in `domains/bakery/routes/price_sheets.jadpo`:
+
+```jadpo fragment
+        output: SheetReceipt
+        status: SuccessStatus.accepted
+        run: receive_prices(input)
+```
+
+```jadpo check project=e-step-context-fix-2 file=domains/bakery/routes/price_sheets.jadpo hidden
+use bakery/types { PriceSheetUpload, SheetReceipt }
+use bakery/actions { receive_prices }
+
+/// Where suppliers send their price sheets.
+routes PriceSheets {
+    prefix: /price-sheets
+
+    /// Takes a supplier's price sheet and files it in the background.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: PriceSheetUpload
+        output: SheetReceipt
+        status: SuccessStatus.accepted
+        run: receive_prices(input)
+    }
+}
+```
+
+`receive_prices` announces the sheet with an event, `PriceSheetSent`,
+in `domains/bakery/actions/receive_prices.jadpo`:
+
+```jadpo fragment
+action receive_prices(sent_sheet: PriceSheetUpload) -> SheetReceipt {
+    emit PriceSheetSent {
+        sheet_text: sent_sheet.sheet_text
+    }
+```
+
+```jadpo check project=e-step-context-fix-2 file=domains/bakery/actions/receive_prices.jadpo hidden
+use bakery/types { PriceSheetUpload, SheetReceipt }
+use bakery/events { PriceSheetSent }
+
+/// Takes a supplier's price sheet, to be filed in the background.
+action receive_prices(sent_sheet: PriceSheetUpload) -> SheetReceipt {
+    emit PriceSheetSent {
+        sheet_text: sent_sheet.sheet_text
+    }
+    return SheetReceipt {
+        received: true
+    }
+}
+```
+
+A subscriber runs `file_prices` for each one, in
+`domains/bakery/subscribers/file_sent_prices.jadpo`, and `file_prices`
+now takes the event:
+
+```jadpo check project=e-step-context-fix-2 file=domains/bakery/subscribers/file_sent_prices.jadpo
+use bakery/actions { file_prices }
+use bakery/events { PriceSheetSent }
+
+/// Files each price sheet a supplier sends.
+subscriber file_sent_prices {
+    on: PriceSheetSent
+    run: file_prices(event)
+}
+```
+
+```jadpo check project=e-step-context-fix-2 file=app.jadpo hidden
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.main_url
+        }
+        sheets: {
+            driver: Driver.disk
+            path: "/var/lib/bakery/sheets"
+        }
+    }
+    events: {
+        store: main
+    }
+    steps: {
+        encryption_key: config.step_encryption_key
+    }
+}
+```
+
+```jadpo check project=e-step-context-fix-2 file=config.jadpo hidden
+config {
+    main_url: PostgresUrl
+    step_encryption_key: SigningKey
+}
+```
+
+```jadpo check project=e-step-context-fix-2 file=domains/bakery/actions/file_prices.jadpo hidden
+use app { sheets }
+use bakery/failures { SheetNotKept }
+use bakery/events { PriceSheetSent }
+
+/// Keeps a supplier's price sheet, then a copy for the accountant.
+action file_prices(event: PriceSheetSent) fails SheetNotKept -> Unit {
+    var sheet: File = attempt sheets.put(encoding.to_utf8(event.sheet_text), FileType.csv) {
+        storage_full: SheetNotKept
+    }
+    var invoice_copy: File = attempt sheets.put(encoding.to_utf8(event.sheet_text), FileType.csv) {
+        storage_full: SheetNotKept
+    }
+    assert sheet != invoice_copy
+}
+```
+
+```jadpo check project=e-step-context-fix-2 file=domains/bakery/events/price_sheet_sent.jadpo hidden
+use bakery/types { SheetText }
+
+/// A supplier sent a price sheet.
+type PriceSheetSent = Event {
+    sheet_text: SheetText
+}
+```
+
+```jadpo check project=e-step-context-fix-2 file=domains/bakery/failures/sheet_not_kept.jadpo hidden
+/// The sheets store had no room for a sheet.
+type SheetNotKept = Failure {
+    kind: FailureKind.unavailable
+    message: "There was no room to keep the sheet."
+}
+```
+
+```jadpo check project=e-step-context-fix-2 file=domains/bakery/types/price_sheet_upload.jadpo hidden
+use bakery/types { SheetText }
+
+/// A price sheet a supplier uploads.
+type PriceSheetUpload = Input {
+    sheet_text: SheetText
+}
+```
+
+```jadpo check project=e-step-context-fix-2 file=domains/bakery/types/sheet_receipt.jadpo hidden
+/// What a supplier is told once their price sheet is in.
+type SheetReceipt = Output {
+    received: Bool
+}
+```
+
+```jadpo check project=e-step-context-fix-2 file=domains/bakery/types/sheet_text.jadpo hidden
+/// A price sheet as a supplier sends it.
+type SheetText = Text {
+    min_length: 1
+    max_length: 100000
+}
+```
+
+```jadpo check project=e-step-context-fix-2 file=policy.jadpo hidden migrate=initial
+use bakery
+
+policy {
+    actions: {
+        bakery.receive_prices: [Access.public]
+    }
+}
+```
+
+The route now answers `202` with a `SheetReceipt` once the event is
+saved. The two `sheets.put` calls happen in the subscriber's delivery,
+which keeps its key when it is tried again. The event waits in `main`,
+which `events: { store: }` names, since `receive_prices` writes no
+database. An event's JSON is at most 64 KB, so this suits sheets up to
+that size.
+
+## Related
+
+- [What is allowed](../language/12-jobs-and-events.md#what-is-allowed)
+- [Several changing calls in one action](../language/12-jobs-and-events.md#several-changing-calls-in-one-action)
+- [Idempotent writes](../language/07-http.md#idempotent-writes)
+- [Subscribers](../language/12-jobs-and-events.md#subscribers)
+- [Waiting for follow-on work](../language/07-http.md#waiting-for-follow-on-work)

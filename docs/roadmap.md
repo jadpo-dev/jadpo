@@ -283,16 +283,18 @@ D1 first: the site starts once D1 has merged.
 - [x] **D10 Area pages to the writing guide**: the area pages in [docs/language](language/README.md), each topic to the [writing guide](writing.md), "How a reference topic reads", and the rationale in each area's design notes.
 - [x] **D11 Task guides**: [guides](guides/README.md); [documentation](documentation.md), "Topic IDs" and "The bundle"; [writing guide](writing.md), "Kinds of user page"; `tools/docs/language_docs.py`, `GuidePage`.
 - [x] **D12 What the Learn path found**: [area 8](language/08-identity.md), "In development and tests"; [area 14](language/14-tooling.md), "What is built"; [documentation](documentation.md), "Where the content lives" and "The bundle".
-- [ ] **D13 Error pages that explain** `opus · high`: every page in
-  `docs/errors/` rewritten to the format in [docs/writing.md](writing.md),
-  "How an error page reads". Each says what happened in one plain
-  sentence, why Jadpo refuses it, the example and its output, what the
-  next step's `(human)` or `(agent)` marker means in the standard
-  wording, each fix with its code and what it changes, and the related
-  topics. The errors the Learn path, the examples and `(human)` fixes
-  hit come first.
-  D13 also rewrites each rule's summary in the compiler's catalogue to the
-  guide, starting with "API serve_openapi is not true or false".
+- [x] **D13a Error pages people reach first**: [writing guide](writing.md), "How an error page reads" and "What the docs check enforces"; [documentation](documentation.md), "The bundle"; `tools/docs/language_docs.py`, `error_format_problems` and `error_format_scope`; the catalogue summaries in `crates/jadpo-diag`.
+- [ ] **D13b Command errors that explain** `opus · high`: a docs-check
+  block that runs a `jadpo` command in its project and compares what it
+  prints, as `check` blocks do for `jadpo check`. Then every rule only a
+  command raises whose page says "No example yet" gets the format of
+  "How an error page reads" with such an example, those a person decides
+  first (`configuration.local_*`, `cli.config_*`, `toolchain.*`,
+  `deliveries.*`, `schedules.*`), its catalogue summary becomes the page's
+  first sentence, and `error_format_scope` stops leaving them out.
+- [ ] **D13c The rest of the error pages** `opus · high`: every other page
+  in `docs/errors/` to the format, each rule's catalogue summary its
+  page's first sentence; `error_format_scope` then covers every page.
 - [x] **D14 The toolchain launcher**, in 0.1.0: [tooling](language/14-tooling.md), "Which jadpo runs"; `crates/jadpo-cli/src/launcher.rs`, `releases.rs`, `attestation.rs`, `toolchains.rs`.
 
 ## Phase 10 — Golden todo
