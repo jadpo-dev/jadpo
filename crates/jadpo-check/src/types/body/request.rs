@@ -88,11 +88,30 @@ impl Body<'_> {
         // How `as:`'s user signed in (chunk A10): by magic link with one
         // factor unless these say otherwise.
         let mut ways: Vec<(&str, Expr, jadpo_diag::Span)> = Vec::new();
+        // Each item, and each placeholder in `params:`, is given once, so
+        // there is never a question of which counts (area 13).
+        let mut given: Vec<(String, jadpo_diag::Span)> = Vec::new();
+        let mut repeated = false;
         for (key, member) in tree::members(record.member_list()) {
             let Some(item) = tree::name_text(&key) else {
                 continue;
             };
             let key_span = self.span(&key);
+            if ITEMS.contains(&item.as_str()) {
+                if let Some((_, first)) = given.iter().find(|(seen, _)| *seen == item) {
+                    repeated = true;
+                    self.out.push(duplicate(
+                        format!("`{item}:` is given twice"),
+                        key_span,
+                        first.clone(),
+                        "A request gives each of `method:`, `path:`, `params:`, `input:`, `idempotency_key:`, `as:`, `sign_in:` and `strength:` once, so there is never a question of which counts.",
+                        format!("Remove one `{item}:`"),
+                    ));
+                    self.skip_member(&member);
+                    continue;
+                }
+                given.push((item.clone(), key_span.clone()));
+            }
             match item.as_str() {
                 "method" => {
                     let written = member.value().and_then(|value| {
@@ -136,9 +155,25 @@ impl Body<'_> {
                 },
                 "params" => {
                     for (name, param) in tree::members(member.block()) {
-                        if let (Some(text), Some(value)) = (tree::name_text(&name), param.value()) {
-                            params.push((text, value, self.span(&name)));
+                        let (Some(text), Some(value)) = (tree::name_text(&name), param.value())
+                        else {
+                            continue;
+                        };
+                        let name_span = self.span(&name);
+                        if let Some((_, _, first)) = params.iter().find(|(seen, ..)| *seen == text)
+                        {
+                            repeated = true;
+                            self.out.push(duplicate(
+                                format!("`{text}` is given twice in `params:`"),
+                                name_span,
+                                first.clone(),
+                                "A request gives each placeholder's value once, so there is never a question of which counts.",
+                                format!("Remove one `{text}:`"),
+                            ));
+                            self.infer(&value);
+                            continue;
                         }
+                        params.push((text, value, name_span));
                     }
                 }
                 "input" => input = member.value(),
@@ -222,7 +257,7 @@ impl Body<'_> {
             return Ty::Error;
         };
         // Each placeholder is given once, typed by the route.
-        let mut ok = true;
+        let mut ok = !repeated;
         let mut order = Vec::new();
         for segment in &route.segments {
             let Segment::Param { name, ty } = segment else {
@@ -411,11 +446,37 @@ impl Body<'_> {
     /// count as used.
     fn skip_members(&mut self, record: &ast::RecordExpr) {
         for (_, member) in tree::members(record.member_list()) {
-            if let Some(value) = member.value() {
+            self.skip_member(&member);
+        }
+    }
+
+    /// One item already reported, its value or its block's values read so
+    /// their names count as used.
+    fn skip_member(&mut self, member: &ast::Member) {
+        if let Some(value) = member.value() {
+            self.infer(&value);
+        }
+        for (_, inner) in tree::members(member.block()) {
+            if let Some(value) = inner.value() {
                 self.infer(&value);
             }
         }
     }
+}
+
+/// An item or placeholder a request gives a second time.
+fn duplicate(
+    headline: String,
+    again: jadpo_diag::Span,
+    first: jadpo_diag::Span,
+    reason: &str,
+    next: String,
+) -> Diagnostic {
+    Diagnostic::new(&rule::SEMANTIC_REQUEST_ITEM_DUPLICATE, headline)
+        .at(again, "given again")
+        .also(first, "first given here")
+        .reason(reason)
+        .next(next)
 }
 
 /// The magic-link route the runtime generates at `method` and `path`

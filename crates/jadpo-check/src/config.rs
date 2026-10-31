@@ -1518,6 +1518,9 @@ pub fn test_settings<'db>(
         out: Config::default(),
     };
     let mut seen: Vec<(String, Span)> = Vec::new();
+    // Each setting is written once, so a reader sees the one value that
+    // shapes the test (area 13, "Test settings").
+    let mut settings: Vec<(String, Span)> = Vec::new();
     for item in decl.block().iter().flat_map(|block| block.block_items()) {
         let ast::BlockItem::Member(member) = item else {
             continue;
@@ -1525,7 +1528,29 @@ pub fn test_settings<'db>(
         let Some(key) = member.member_key() else {
             continue;
         };
-        if tree::written(key.syntax()) == "clock" {
+        let word = tree::written(key.syntax());
+        if TEST_SETTINGS.contains(&word.as_str()) {
+            let span = node_span(&path, key.syntax());
+            if let Some((_, first)) = settings.iter().find(|(seen, _)| *seen == word) {
+                reader.out.problems.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_TEST_SETTING_DUPLICATE,
+                        format!("`{word}:` is given twice"),
+                    )
+                    .at(span, "given again")
+                    .also(first.clone(), "first given here")
+                    .reason("A test writes each of its settings once, so a reader sees the one value that shapes the result.")
+                    .next(if word == "clock" {
+                        "Remove one `clock:`".to_string()
+                    } else {
+                        format!("Put everything in one `{word}:`")
+                    }),
+                );
+                continue;
+            }
+            settings.push((word.clone(), span));
+        }
+        if word == "clock" {
             if let Some(value) = member.value() {
                 match test_clock(&path, &value) {
                     Ok(start) => out.clock = Some(start),
@@ -1534,7 +1559,7 @@ pub fn test_settings<'db>(
             }
             continue;
         }
-        if tree::written(key.syntax()) != "config" {
+        if word != "config" {
             continue;
         }
         for (name_node, entry) in tree::members(member.block()) {
@@ -1595,6 +1620,10 @@ pub fn test_settings<'db>(
     out.problems = reader.out.problems;
     out
 }
+
+/// The settings a test writes at the top of its body (area 13, "Test
+/// settings").
+const TEST_SETTINGS: [&str; 3] = ["clock", "config", "fakes"];
 
 /// A test's `clock:`: an instant written out, `"2026-01-15T12:00:00Z"`.
 fn test_clock(path: &str, value: &ast::Expr) -> Result<i64, Box<Diagnostic>> {
