@@ -48,6 +48,9 @@ pub enum Feature {
     /// `generate_routes: false` (area 8; chunk 7.3b3): the failure of a
     /// return path `magic_links.request` refuses.
     MagicLinkRoutes,
+    /// Sign-in providers (area 8, "Providers"; chunk A7b): the failure of
+    /// a sign-in through one, and those it shares with magic links.
+    Providers,
 }
 
 impl Feature {
@@ -65,6 +68,7 @@ impl Feature {
             Feature::MagicLink => "Magic links",
             Feature::Passkey => "Passkeys",
             Feature::MagicLinkRoutes => "Magic-link routes",
+            Feature::Providers => "Sign-in providers",
         }
     }
 
@@ -81,6 +85,7 @@ impl Feature {
             Feature::MagicLink => "magic_link",
             Feature::Passkey => "passkey",
             Feature::MagicLinkRoutes => "magic_link_routes",
+            Feature::Providers => "providers",
         }
     }
 
@@ -97,10 +102,11 @@ impl Feature {
             Feature::MagicLink => "the application signs users in with magic links",
             Feature::Passkey => "the application signs users in with passkeys",
             Feature::MagicLinkRoutes => "the application writes its own magic-link routes",
+            Feature::Providers => "the application signs users in through a provider",
         }
     }
 
-    pub const ALL: [Feature; 10] = [
+    pub const ALL: [Feature; 11] = [
         Feature::Requests,
         Feature::SignIn,
         Feature::UserSignIn,
@@ -111,6 +117,7 @@ impl Feature {
         Feature::MagicLink,
         Feature::Passkey,
         Feature::MagicLinkRoutes,
+        Feature::Providers,
     ];
 }
 
@@ -234,11 +241,18 @@ impl Message {
     pub fn enabled(&self, features: &std::collections::BTreeSet<Feature>) -> bool {
         features.contains(&self.feature)
             || (self.key == "sign_in_refused" && features.contains(&Feature::ExternalToken))
+            // A provider's sign-in can be refused by the application, go
+            // back to a path that isn't the site's, or find its provider's
+            // configuration invalid (chunk A7b).
+            || (matches!(
+                self.key,
+                "sign_in_refused" | "sign_in_return_invalid" | "authentication_misconfigured"
+            ) && features.contains(&Feature::Providers))
     }
 }
 
 /// Every message, in the order `jadpo translations builtin` lists a feature's.
-pub static MESSAGES: [Message; 38] = [
+pub static MESSAGES: [Message; 39] = [
     failure(
         "invalid_request",
         Feature::Requests,
@@ -441,6 +455,12 @@ pub static MESSAGES: [Message; 38] = [
         Feature::MagicLink,
         "The sign-in was refused.",
         "We couldn't sign you in.",
+    ),
+    failure(
+        "sign_in_provider_failed",
+        Feature::Providers,
+        "A sign-in through a provider expired, was used, came back to another browser, or the provider refused it.",
+        "We couldn't sign you in with that account. Try again.",
     ),
     failure(
         "sign_in_return_invalid",

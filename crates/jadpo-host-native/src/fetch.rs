@@ -292,6 +292,42 @@ impl jadpo_runtime::Outbound for Outward {
             Ok((head.status.as_u16(), body))
         })
     }
+
+    /// A sign-in provider's token endpoint (area 8, "Providers"; chunk
+    /// A7b): the same guards as a `GET`, sent once, since a code works
+    /// once.
+    fn post_form<'a>(
+        &'a self,
+        url: &'a str,
+        form: &'a str,
+        limit: usize,
+        timeout_ms: u64,
+    ) -> LocalFuture<'a, Result<(u16, Vec<u8>), String>> {
+        Box::pin(async move {
+            let deadline = Instant::now() + wait(timeout_ms);
+            let target = target(url)
+                .filter(|target| target.secure)
+                .ok_or("not HTTPS")?;
+            let request = hyper::Request::post(target.path.as_str())
+                .header(header::HOST, target.authority())
+                .header(header::ACCEPT, "application/json")
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Full::new(hyper::body::Bytes::from(form.as_bytes().to_vec())))
+                .map_err(|error| format!("a request it can't send: {error}"))?;
+            let (answer, lease) = self
+                .client
+                .send(&target, request, false, deadline)
+                .await
+                .map_err(said)?;
+            let (head, body) = answer.into_parts();
+            let body = tokio::time::timeout_at(deadline, whole(body, limit.min(MOST_ANSWER)))
+                .await
+                .map_err(|_| said(FetchError::TimedOut))?
+                .map_err(said)?;
+            lease.give_back(keeps(&head.headers));
+            Ok((head.status.as_u16(), body))
+        })
+    }
 }
 
 /// Which addresses a client connects to.

@@ -295,7 +295,12 @@ pub fn build(call: &Call) -> Reply {
                                 .routes()
                                 .identity
                                 .as_ref()
-                                .is_some_and(|identity| identity.external_token.is_some()),
+                                .is_some_and(|identity| {
+                                    // A sign-in provider's discovery, keys
+                                    // and token endpoint too (chunk A7b).
+                                    identity.external_token.is_some()
+                                        || identity.providers.is_some()
+                                }),
                             required: &required,
                             hyperdrive: &hyperdrive,
                             ticks: plan.schedules().ticks(),
