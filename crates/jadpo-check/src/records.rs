@@ -138,6 +138,24 @@ pub fn standings(db: &dyn Db, project: Project) -> Vec<Standing> {
     let mut out = Vec::new();
     views(db, project, &written, &mut out);
     event_views(db, project, &written, &mut out);
+    root_view(
+        crate::acceptances::access::PATH,
+        &format::ACCESS,
+        crate::acceptances::access::record_text(db, project).as_ref(),
+        &written,
+        "Who can do what is committed, so a change that widens access shows as a diff of one file and an acceptance has a before side.",
+        "The policy now says otherwise",
+        &mut out,
+    );
+    root_view(
+        crate::acceptances::network::PATH,
+        &format::NETWORK,
+        crate::acceptances::network::record_text(db, project).as_ref(),
+        &written,
+        "Every outside host the app can reach is committed, so a new one shows as a diff of one file and an acceptance has a before side.",
+        "The connections now say otherwise",
+        &mut out,
+    );
     for (path, text) in &written {
         if let Some((kind, from)) = format::kind_of(path)
             && kind.shape == Shape::History
@@ -400,6 +418,83 @@ fn event_views(
             fixes: vec![(path.to_string(), Fix::Remove)],
         });
     }
+}
+
+/// A view kept at the root, `access.jadpo_record` or
+/// `network.jadpo_record` (chunk A8): `expected` is `None` while its
+/// source has errors, and `Some(None)` when there is nothing to record.
+fn root_view(
+    path: &str,
+    kind: &'static Kind,
+    expected: Option<&Option<String>>,
+    written: &BTreeMap<&str, &Result<String, String>>,
+    why: &str,
+    now: &str,
+    out: &mut Vec<Standing>,
+) {
+    let standing = |state, problem, fixes| Standing {
+        path: path.to_string(),
+        kind: kind.word,
+        state,
+        problem,
+        fixes,
+    };
+    let file = written.get(path);
+    match (expected, file) {
+        (None, Some(_)) => out.push(standing(State::NotChecked, None, Vec::new())),
+        (None, None) | (Some(None), None) => {}
+        (Some(None), Some(_)) => out.push(standing(
+            State::OutOfDate,
+            Some(
+                Diagnostic::new(
+                    &rule::RECORD_OUT_OF_DATE,
+                    format!("`{path}` records nothing"),
+                )
+                .at(file_span(path), "nothing to record")
+                .reason(format!(
+                    "{why} The app has nothing for it to hold any more."
+                ))
+                .next(format!("Run `{}`, which removes it", kind.command)),
+            ),
+            vec![(path.to_string(), Fix::Remove)],
+        )),
+        (Some(Some(text)), None) => out.push(standing(
+            State::Missing,
+            Some(
+                Diagnostic::new(&rule::RECORD_OUT_OF_DATE, format!("`{path}` is missing"))
+                    .at(file_span(path), "no record")
+                    .reason(why.to_string())
+                    .next(format!(
+                        "Run `{}`, and commit the record with the code",
+                        kind.command
+                    )),
+            ),
+            vec![(path.to_string(), Fix::Write(text.clone()))],
+        )),
+        (Some(Some(text)), Some(Err(error))) => out.push(standing(
+            State::OutOfDate,
+            Some(unreadable(path, error, kind)),
+            vec![(path.to_string(), Fix::Write(text.clone()))],
+        )),
+        (Some(Some(text)), Some(Ok(written))) => {
+            let from = format::kind_of(path)
+                .map(|(_, from)| from)
+                .unwrap_or_default();
+            let (state, problem) = compare(path, written, text, kind, &from, |changes| {
+                format!("{now}: {changes}.")
+            });
+            let fixes = if state == State::UpToDate {
+                Vec::new()
+            } else {
+                vec![(path.to_string(), Fix::Write(text.clone()))]
+            };
+            out.push(standing(state, problem, fixes));
+        }
+    }
+}
+
+fn file_span(path: &str) -> Span {
+    file(path)
 }
 
 /// How a view's file stands against what its writer gives today.

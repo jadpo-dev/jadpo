@@ -213,6 +213,7 @@ fn every_geometry_is_stored_and_read_back_unchanged() {
     let root = project("stored");
     let migrated = jadpo(&root, &["migrate", "new", "initial"]);
     assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     let (sql, _) = migration_sql(&root);

@@ -27,7 +27,7 @@ pub struct Report {
 }
 
 /// `domain.Entity`, or the bare name outside a domain.
-fn qualified(lookup: &Lookup<'_>, name: &str) -> String {
+pub(crate) fn qualified(lookup: &Lookup<'_>, name: &str) -> String {
     match lookup
         .declared(name)
         .iter()

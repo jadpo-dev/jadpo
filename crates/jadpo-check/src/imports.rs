@@ -397,6 +397,10 @@ pub fn import_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnos
             .map(|line| loose(path, file.text(db), line))
             .collect();
     }
+    // An acceptance names what changed, and imports nothing (area 18).
+    if crate::acceptances::files::is_acceptance(path) {
+        return Vec::new();
+    }
     let location = location(db, project, file);
     // A migration's decisions name what changed (`Todo.rank: { ... }`) in
     // a record `jadpo migrate new` writes; they import nothing.

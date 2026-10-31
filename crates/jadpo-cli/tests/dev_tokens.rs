@@ -178,7 +178,7 @@ fn project() -> (tempdir::Dir, PathBuf) {
     }
     for args in [
         &["migrate", "new", "initial"][..],
-        &["api", "update"],
+        &["records", "update"],
         &["check"],
     ] {
         let done = jadpo(&root, args);

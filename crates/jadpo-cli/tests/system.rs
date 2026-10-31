@@ -456,6 +456,7 @@ fn signed_in(person: &Value) -> Value {
 #[test]
 fn the_system_is_let_in_exactly_where_access_system_grants_and_no_caller_is() {
     let root = project("chores");
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     // The permissions report says what background work reaches.

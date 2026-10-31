@@ -215,6 +215,7 @@ fn change(root: &Path, from: &str, to: &str) {
 
 /// Checks the app, and gives the rules of what it reports.
 fn rules(root: &Path) -> Vec<String> {
+    jadpo(root, &["records", "update"]);
     let done = jadpo(root, &["check", "--json"]);
     let document: serde_json::Value = serde_json::from_str(&done.stdout).expect("JSON");
     document["diagnostics"]
@@ -230,6 +231,7 @@ fn rules(root: &Path) -> Vec<String> {
 #[test]
 fn a_connected_app_checks_and_writes_the_network_report() {
     let (_dir, root) = app("connections-report");
+    jadpo(&root, &["records", "update"]);
     let done = jadpo(&root, &["check"]);
     assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
     let report = std::fs::read_to_string(root.join("build/report/network.md")).expect("report");
@@ -357,6 +359,7 @@ fn a_library_package_needs_no_connection() {
         "    connections: {\n",
         "    connections: {\n        postcodes: {\n            package: Postcodes.v2\n            domains: [shipping]\n        }\n",
     );
+    jadpo(&root, &["records", "update"]);
     let done = jadpo(&root, &["check"]);
     assert!(
         done.stdout

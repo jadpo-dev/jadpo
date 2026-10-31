@@ -1066,6 +1066,7 @@ fn a_files_rows_that_call_are_each_a_batch_of_their_own() {
 fn jadpo_check_refuses_a_write_before_a_call() {
     let root = root("refused");
     project(&root, "http://127.0.0.1:9");
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     std::fs::write(
@@ -1073,6 +1074,7 @@ fn jadpo_check_refuses_a_write_before_a_call() {
         LABEL_THEN_BOOK,
     )
     .expect("write");
+    jadpo(&root, &["records", "update"]);
     let refused = jadpo(&root, &["check"]);
     let printed = format!("{}{}", refused.stdout, refused.stderr);
     assert_eq!(refused.code, 1, "{printed}");

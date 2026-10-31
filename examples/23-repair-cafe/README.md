@@ -58,8 +58,8 @@ cd examples/23-repair-cafe && ../../target/release/jadpo build
   <!-- try {"file": "domains/cafe/failures/no_fixer_free.jadpo", "replace": "kind: FailureKind.unavailable", "with": "kind: FailureKind.rejected", "test": ["test.assertion_failed"], "failed": 1} -->
 - In `app.jadpo`, delete `events:`. `jadpo check` reports `event.store_required`: `leave_thanks` writes no store, so its event has no outbox.
   <!-- try {"file": "app.jadpo", "replace": "    events: {\n        store: main\n    }\n", "with": "", "check": ["event.store_required"]} -->
-- In `repair.jadpo`, let `Access.public` change a repair instead of `Access.system`. `jadpo check` reports `policy.system_grant_missing`: a subscriber is nobody's request, so a grant to anyone at all never lets it in.
-  <!-- try {"file": "domains/cafe/entities/repair.jadpo", "replace": "update: [Access.system]", "with": "update: [Access.public]", "check": ["policy.system_grant_missing"]} -->
+- In `repair.jadpo`, let `Access.public` change a repair instead of `Access.system`. `jadpo check` reports `policy.system_grant_missing`: a subscriber is nobody's request, so a grant to anyone at all never lets it in. It also reports `record.out_of_date`: `access.jadpo_record` holds who can do what, and `jadpo records update` writes it again.
+  <!-- try {"file": "domains/cafe/entities/repair.jadpo", "replace": "update: [Access.system]", "with": "update: [Access.public]", "check": ["policy.system_grant_missing", "record.out_of_date"]} -->
 - In `repair_booked.jadpo`, add `symptom: SymptomNote` to the event. `jadpo check` reports `type.missing_field` at the `emit`, and `record.out_of_date`: the event record no longer says what the event carries.
   <!-- try {"file": "domains/cafe/events/repair_booked.jadpo", "replace": "    item: RepairKind\n}", "with": "    item: RepairKind\n    symptom: SymptomNote\n}", "also": [{"replace": "use cafe/types { RepairKind }", "with": "use cafe/types { RepairKind, SymptomNote }"}], "check": ["record.out_of_date", "type.missing_field"]} -->
 - Then read [24-seed-library](../24-seed-library/README.md), where work over many items runs as a batch.

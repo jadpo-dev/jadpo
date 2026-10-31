@@ -53,8 +53,46 @@ pub fn check(call: &Call) -> Reply {
         },
     };
     let started = Instant::now();
-    let checked = checked(call, &target);
+    let checked = match checked_before(call, &target) {
+        Ok(checked) => checked,
+        Err(reply) => return *reply,
+    };
     reported(&cwd, checked, started.elapsed(), "check failed")
+}
+
+/// [`checked`], with the before side read from git first, so acceptances
+/// are judged (area 18, chunk A8): what `jadpo check` and `jadpo build`
+/// run. `--before` names the branch or commit to compare with.
+pub(crate) fn checked_before(call: &Call, target: &std::path::Path) -> Result<Checked, Box<Reply>> {
+    let with = call
+        .values
+        .iter()
+        .find(|(flag, _)| *flag == "--before")
+        .map(|(_, value)| value.as_str());
+    checked_with(call, target, |loaded| {
+        if loaded.project.layout(&loaded.db) != Layout::Project {
+            return Ok(());
+        }
+        let has_acceptances = loaded
+            .project
+            .files(&loaded.db)
+            .iter()
+            .any(|file| jadpo_check::acceptances::files::is_acceptance(file.path(&loaded.db)));
+        match crate::before::read(&loaded.root, with, has_acceptances) {
+            Ok(before) => {
+                loaded.set_before(before);
+                Ok(())
+            }
+            Err(crate::before::UnknownRef(reference)) => Err(Box::new(Reply::failed(
+                Diagnostic::new(
+                    &rule::CLI_CHECK_ARGUMENTS,
+                    format!("`{reference}` isn't a branch or commit"),
+                )
+                .reason("`--before` names the branch or commit the change is compared with, and git knows none by this name.")
+                .next("Name a branch or commit git knows, such as `--before main`"),
+            ))),
+        }
+    })
 }
 
 /// What `jadpo check` shows of `checked`, run from `cwd` in `elapsed`:
@@ -96,6 +134,38 @@ pub(crate) fn reported(
     } else {
         Vec::new()
     };
+    // What the change was compared with (area 18, chunk A8): said only
+    // when there was nothing to compare with, in one line.
+    let before = match (layout, loaded.project.before(db)) {
+        (Layout::Project, jadpo_db::Before::At(side)) => Some(Json::object([(
+            "compared_with",
+            side.described.as_str().into(),
+        )])),
+        (Layout::Project, jadpo_db::Before::Nothing(reason)) => {
+            Some(Json::object([("not_judged", reason.as_str().into())]))
+        }
+        _ => None,
+    };
+    let not_judged = match loaded.project.before(db) {
+        jadpo_db::Before::Nothing(reason) if layout == Layout::Project => {
+            Some(format!("none, so acceptances aren't judged: {reason}"))
+        }
+        jadpo_db::Before::At(side) if layout == Layout::Project => {
+            let introduced = jadpo_check::acceptances::introduced(db, loaded.project);
+            (!introduced.is_empty()).then(|| {
+                let names: Vec<String> =
+                    introduced.iter().map(|path| format!("`{path}`")).collect();
+                format!(
+                    "{} {} new since {}, so the changes in {} aren't judged",
+                    names.join(" and "),
+                    if names.len() == 1 { "is" } else { "are" },
+                    side.described,
+                    if names.len() == 1 { "it" } else { "them" },
+                )
+            })
+        }
+        _ => None,
+    };
     report(
         diagnostics,
         sources,
@@ -103,7 +173,7 @@ pub(crate) fn reported(
         &paths,
         loaded.unreadable.len(),
         (layout, written, reviews, &per_instance),
-        (elapsed, failed),
+        (elapsed, failed, before, not_judged),
     )
 }
 
@@ -145,10 +215,16 @@ pub(crate) struct Checked {
     pub written: Vec<String>,
 }
 
-/// Checks `target` as `jadpo check` does, and writes a project's derived
-/// files in `build/`: what `jadpo build` starts from too.
-pub(crate) fn checked(call: &Call, target: &std::path::Path) -> Checked {
+/// Checks `target` as `jadpo check` does, once `prepare` has set what it
+/// needs, and writes a project's derived files in `build/`: what `jadpo
+/// build` starts from too.
+fn checked_with(
+    call: &Call,
+    target: &std::path::Path,
+    prepare: impl FnOnce(&mut jadpo_db::Loaded) -> Result<(), Box<Reply>>,
+) -> Result<Checked, Box<Reply>> {
     let mut loaded = jadpo_db::load(target);
+    prepare(&mut loaded)?;
     let cache = crate::package_cache::apply(&call.environment, &mut loaded);
     let db = &loaded.db;
     let mut diagnostics: Vec<Diagnostic> = loaded
@@ -211,11 +287,11 @@ pub(crate) fn checked(call: &Call, target: &std::path::Path) -> Checked {
             Err(problem) => diagnostics.push(*problem),
         }
     }
-    Checked {
+    Ok(Checked {
         loaded,
         diagnostics,
         written,
-    }
+    })
 }
 
 fn count(n: usize, one: &str, many: &str) -> String {
@@ -234,7 +310,7 @@ fn report(
         &[jadpo_check::review::ProviderReview],
         &[PerInstance],
     ),
-    (elapsed, failed): (Duration, &str),
+    (elapsed, failed, before, not_judged): (Duration, &str, Option<Json>, Option<String>),
 ) -> Reply {
     let errors = diagnostics.len();
     let mut facts = Vec::new();
@@ -272,8 +348,11 @@ fn report(
             screen.push(per_instance_block(per_instance));
         }
     }
+    if let Some(said) = &not_judged {
+        screen.push(Block::Fields(vec![("before".to_string(), said.clone())]));
+    }
     screen.push(Block::summary(outcome, headline, facts));
-    let data = Json::object([
+    let mut data = Json::object([
         (
             "layout",
             match layout {
@@ -298,6 +377,9 @@ fn report(
             })),
         ),
     ]);
+    if let (Some(before), Json::Object(fields)) = (before, &mut data) {
+        fields.push(("before".to_string(), before));
+    }
     Reply::Report {
         screen,
         data,

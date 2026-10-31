@@ -325,21 +325,18 @@ fn the_link_is_a_page_on_the_applications_own_site() {
     );
 }
 
+/// Past its limit a setting is no mistake: it needs a person's acceptance
+/// in the change that loosens it (area 8, "Settings"; area 18,
+/// "Acceptances"), which `access.jadpo_record` gives a before side.
 #[test]
-fn loosening_past_the_limits_needs_an_acceptance() {
-    for (setting, wanted) in [
-        ("expires_after: 2h", "`expires_after:` `2h` isn't built yet"),
-        ("code_attempts: 11", "`code_attempts:` `11` isn't built yet"),
-        (
-            "failed_codes_per_day: 51",
-            "`failed_codes_per_day:` `51` isn't built yet",
-        ),
+fn loosening_past_the_limits_is_left_to_an_acceptance() {
+    for setting in [
+        "expires_after: 2h",
+        "code_attempts: 11",
+        "failed_codes_per_day: 51",
     ] {
         let found = magic(&format!("            {setting}"));
-        assert!(
-            has(&found, &format!("toolchain.not_built_yet: {wanted}")),
-            "{setting}: {found:?}"
-        );
+        assert_eq!(found, Vec::<String>::new(), "{setting}");
     }
 }
 

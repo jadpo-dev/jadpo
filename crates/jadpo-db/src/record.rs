@@ -104,6 +104,59 @@ pub const EVENTS: Kind = Kind {
 /// The file a domain's event record is kept in, beside its events.
 pub const EVENTS_FILE: &str = "events.jadpo_record";
 
+/// Who can do what, `access.jadpo_record` at the root (areas 9 and 18,
+/// chunk A8): a view of the permissions report, each entity's and field's
+/// grants, the actions and queries listed separately, the security rules
+/// declined and the sign-in settings that have a limit, so a change that
+/// widens access is a diff in the pull request and has a before side.
+pub const ACCESS: Kind = Kind {
+    word: "access",
+    format: 1,
+    shape: Shape::View,
+    update: "`jadpo records update`",
+    command: "jadpo records update",
+    headings: &[
+        "tenant", "entity", "field", "action", "query", "decline", "sign_in",
+    ],
+    facts: &[
+        "create",
+        "read",
+        "update",
+        "delete",
+        "tenant",
+        "shared",
+        "server_only",
+        "who",
+    ],
+    older: &[],
+};
+
+/// The file who can do what is kept in, at the root.
+pub const ACCESS_FILE: &str = "access.jadpo_record";
+
+/// What the access record's header says it is generated from.
+pub const ACCESS_FROM: &str = "who can do what";
+
+/// Every outside host the app can reach, `network.jadpo_record` at the
+/// root (areas 11 and 18, chunk A8): a view of the network report, so a
+/// new host is a diff in the pull request and has a before side.
+pub const NETWORK: Kind = Kind {
+    word: "network",
+    format: 1,
+    shape: Shape::View,
+    update: "`jadpo records update`",
+    command: "jadpo records update",
+    headings: &["connection"],
+    facts: &["for", "host"],
+    older: &[],
+};
+
+/// The file the outside hosts are kept in, at the root.
+pub const NETWORK_FILE: &str = "network.jadpo_record";
+
+/// What the network record's header says it is generated from.
+pub const NETWORK_FROM: &str = "the hosts the app can reach";
+
 /// The identity registry, `database/identities.jadpo_record`.
 pub const IDENTITIES: Kind = Kind {
     word: "identities",
@@ -249,6 +302,8 @@ pub const SURFACE_FROM: &str = "this package's code";
 pub const KINDS: &[&Kind] = &[
     &API,
     &EVENTS,
+    &ACCESS,
+    &NETWORK,
     &SURFACE,
     &IDENTITIES,
     &TRANSLATIONS,
@@ -273,6 +328,8 @@ pub fn kind_of(path: &str) -> Option<(&'static Kind, String)> {
             Some((&EVENTS, format!("the events of domain {domain}")))
         }
         ["database", "identities.jadpo_record"] => Some((&IDENTITIES, "renames and moves".into())),
+        [file] if *file == ACCESS_FILE => Some((&ACCESS, ACCESS_FROM.into())),
+        [file] if *file == NETWORK_FILE => Some((&NETWORK, NETWORK_FROM.into())),
         ["domains", _, "translations", "sources.jadpo_record"]
         | ["shared", "translations", "sources.jadpo_record"]
         | ["translations", "sources.jadpo_record"] => {

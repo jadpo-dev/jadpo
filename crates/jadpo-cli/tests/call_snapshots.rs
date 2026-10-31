@@ -835,7 +835,7 @@ fn the_compiled_version_route_fixture_checks_and_runs() {
     let terminal = jadpo_term::Environment::empty()
         .with_var("SOURCE_DATE_EPOCH", "1792504800")
         .with_cwd(&root);
-    for args in [vec!["migrate", "new", "initial"], vec!["api", "update"]] {
+    for args in [vec!["migrate", "new", "initial"], vec!["records", "update"]] {
         let output = jadpo_cli::run(
             &args.into_iter().map(str::to_string).collect::<Vec<_>>(),
             &terminal,

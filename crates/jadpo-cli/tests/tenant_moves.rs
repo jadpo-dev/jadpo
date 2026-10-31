@@ -427,7 +427,7 @@ fn a_move_needs_what_a_create_in_the_new_tenant_would() {
     }
     let migrated = jadpo(&root, &["migrate", "new", "initial"]);
     assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
-    let recorded = jadpo(&root, &["api", "update"]);
+    let recorded = jadpo(&root, &["records", "update"]);
     assert_eq!(recorded.code, 0, "{}{}", recorded.stdout, recorded.stderr);
     write(&root, "domains/work/routes/moves.test.jadpo", TESTS);
     let tested = jadpo(&root, &["test", "--seed", "1"]);

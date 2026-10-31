@@ -474,6 +474,7 @@ fn purge_waits_as_long_as_a_setting_says() {
         "config.jadpo",
         "config {\n    retention: Duration {\n        default: 30d\n    }\n}\n",
     );
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     let loaded = jadpo_db::load(&root);
