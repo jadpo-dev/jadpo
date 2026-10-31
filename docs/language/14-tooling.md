@@ -2809,7 +2809,6 @@ its command is built.
 | `acceptance.missing` | `check`, `build` | A change could break someone else or widen who can do what, and no acceptance this change adds says a person agreed to it |
 | `acceptance.no_reason` | `check`, `build` | An acceptance this change adds has no `///` line above `acceptance` saying why a person accepted the changes it lists |
 | `acceptance.unmatched` | `check`, `build` | Acceptance lists a change this change doesn't make |
-| `ai.usage_unavailable` | `ai usage` | AI usage's database couldn't be read |
 | `cli.acceptance_arguments` | `acceptance` | Acceptance command has invalid arguments |
 | `cli.ai_arguments` | `ai` | AI command has invalid arguments |
 | `cli.api_arguments` | `api` | Api command has invalid arguments |
@@ -2876,9 +2875,6 @@ its command is built.
 | `configuration.move_type_unsupported` | `config move`, the editor | Constant's type can't be a setting |
 | `configuration.value_invalid` | `config`, `dev` | A setting's value on this machine, from the environment or `.env.local`, doesn't fit the type `config.jadpo` gives it |
 | `configuration.value_missing` | `config`, `dev` | A setting `config.jadpo` declares without a `default:` has no value on this machine, in the environment or `.env.local` |
-| `deliveries.not_found` | `deliveries` | No delivery or schedule run has the id given |
-| `deliveries.unavailable` | `deliveries` | Deliveries' database couldn't be read |
-| `deliveries.wrong_state` | `deliveries` | Delivery or schedule run isn't in a state the action applies to |
 | `format.changes_required` | `fmt` | Source files are not canonically formatted |
 | `format.write_failed` | `fmt` | A file `jadpo fmt` formatted couldn't be written, usually because it is read-only |
 | `index.accept_check_failed` | `schema index-accept` | Index edit did not pass project checks |
@@ -2900,7 +2896,6 @@ its command is built.
 | `lsp.read_failed` | `lsp` | Language-server input could not be read |
 | `lsp.root_missing` | `lsp` | Language server has no workspace root |
 | `lsp.write_failed` | `lsp` | Language-server response could not be written |
-| `migration.apply_failed` | `migrate apply`, `seed`, `dev`, `test` | Applying the project's migrations to a database stopped at a step that failed |
 | `migration.decision_artifact_exists` | `schema` | Migration decision file already exists |
 | `migration.decision_artifact_invalid` | `schema` | Migration decision file is invalid |
 | `migration.decision_artifact_read_failed` | `schema` | Migration decision file could not be read |
@@ -2915,8 +2910,6 @@ its command is built.
 | `migration.decision_strategy_invalid` | `schema` | Migration strategy is not valid for this change |
 | `migration.decision_unexpected` | `schema` | Decision file contains an unrelated schema change |
 | `migration.decision_unresolved` | `schema` | Migration decision still needs a strategy |
-| `migration.extension_missing` | `migrate apply`, `seed`, `dev`, `test` | The project's migrations need a PostgreSQL extension, such as pgvector, that the database server doesn't offer or that the role applying them can't create |
-| `migration.extension_outdated` | `migrate apply`, `seed`, `dev`, `test` | The database server's PostgreSQL extension, such as pgvector, is older than the project's migrations and queries need |
 | `migration.identity_additions_have_removal` | `schema` | Schema additions cannot be registered while identities are missing |
 | `migration.identity_registry_exists` | `schema` | Schema identity registry already exists |
 | `migration.identity_registry_missing` | `schema` | Schema identity registry is missing |
@@ -2955,7 +2948,6 @@ its command is built.
 | `migration.sql_sqlite_renamed_table_unsupported` | `schema` | SQLite rebuild cannot target a logically renamed table |
 | `migration.sql_strategy_unsupported` | `schema` | Reviewed migration strategy has no SQL implementation |
 | `migration.sql_type_unsupported` | `schema` | Field type has no migration SQL mapping |
-| `migration.store_diverged` | `migrate apply`, `seed`, `dev` | The migrations a database has applied don't match the project's: one has changed since it ran, the project doesn't have one, or one comes out of order |
 | `publish.breaking_change` | `package check` | A package's new version changes or removes something its last release offered, within the same major version ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.changelog_missing` | `package check` | Package's changelog doesn't say why its new version is released ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.description_missing` | `package check` | Package's public declaration has no description ([Publishing errors](11-integrations.md#publishing-errors)) |
@@ -2965,14 +2957,6 @@ its command is built.
 | `runtime.outcome_unknown` | the running app | Generated runtime could not confirm whether an effect committed |
 | `runtime.startup_failed` | the running app | Generated runtime failed during startup; a deployable's log event, with every problem that stopped it ([A native deployable](#a-native-deployable)) |
 | `runtime.unhandled_fault` | the running app | Generated runtime contained an unexpected fault |
-| `runs.unavailable` | `runs unfinished` | Unfinished runs' database couldn't be read |
-| `schedules.lease_held` | `schedules run`, `deliveries retry` | Schedule is already running |
-| `schedules.no_tick` | `schedules run`, `deliveries retry` | No tick picked up the run asked for |
-| `schedules.run_failed` | `schedules run`, `deliveries retry` | Schedule's run failed |
-| `schedules.unavailable` | `schedules`, `why` | Schedules' database couldn't be read |
-| `seed.failed` | `seed` | Seed ended with a failure or a fault |
-| `seed.production_refused` | `seed` | A seed was run against a database that isn't on this machine, which may be production |
-| `seed.unavailable` | `seed` | The database a seed runs against couldn't be reached, so nothing was run |
 | `suggest.record_invalid` | `suggest` | Suggestions record can't be read |
 | `suggest.share_failed` | `suggest share` | Jadpo HQ couldn't be reached or refused what was shared |
 | `test.failed` | `test` | Test run failed |
@@ -3008,6 +2992,33 @@ delivery value cannot be authored or exposed). They belong to the
 delivery descriptor that the [Jobs and events design
 notes](notes/12-jobs-and-events.md) leave open, and go with it if it is
 accepted.
+
+## Database command errors
+<!-- topic: database-command-errors -->
+
+These are the errors of the commands that reach a database: applying
+migrations, seeding, and reading or acting on background work. Each
+needs a database the command can reach, so their pages show a run
+against one.
+
+| Rule | Raised by | What it means |
+|---|---|---|
+| `ai.usage_unavailable` | `ai usage` | AI usage's database couldn't be read |
+| `deliveries.not_found` | `deliveries` | No delivery or schedule run has the id given |
+| `deliveries.unavailable` | `deliveries` | Deliveries' database couldn't be read |
+| `deliveries.wrong_state` | `deliveries` | Delivery or schedule run isn't in a state the action applies to |
+| `migration.apply_failed` | `migrate apply`, `seed`, `dev`, `test` | Applying the project's migrations to a database stopped at a step that failed |
+| `migration.extension_missing` | `migrate apply`, `seed`, `dev`, `test` | The project's migrations need a PostgreSQL extension, such as pgvector, that the database server doesn't offer or that the role applying them can't create |
+| `migration.extension_outdated` | `migrate apply`, `seed`, `dev`, `test` | The database server's PostgreSQL extension, such as pgvector, is older than the project's migrations and queries need |
+| `migration.store_diverged` | `migrate apply`, `seed`, `dev` | The migrations a database has applied don't match the project's: one has changed since it ran, the project doesn't have one, or one comes out of order |
+| `runs.unavailable` | `runs unfinished` | Unfinished runs' database couldn't be read |
+| `schedules.lease_held` | `schedules run`, `deliveries retry` | Schedule is already running |
+| `schedules.no_tick` | `schedules run`, `deliveries retry` | No tick picked up the run asked for |
+| `schedules.run_failed` | `schedules run`, `deliveries retry` | Schedule's run failed |
+| `schedules.unavailable` | `schedules`, `why` | Schedules' database couldn't be read |
+| `seed.failed` | `seed` | Seed ended with a failure or a fault |
+| `seed.production_refused` | `seed` | A seed was run against a database that isn't on this machine, which may be production |
+| `seed.unavailable` | `seed` | The database a seed runs against couldn't be reached, so nothing was run |
 
 ## What is built
 <!-- topic: tooling-built -->

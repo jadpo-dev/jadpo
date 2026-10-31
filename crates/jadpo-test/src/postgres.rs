@@ -193,7 +193,7 @@ impl Server {
             Kind::External { url } => {
                 let url = url.trim();
                 let Some(scheme) = url.find("://").map(|at| at + 3) else {
-                    return with_database(url, &database);
+                    return keywords_as_url(url, &database);
                 };
                 let (rest, query) = match url[scheme..].find('?') {
                     Some(at) => (&url[scheme..scheme + at], &url[scheme + at..]),
@@ -304,6 +304,75 @@ fn with_database(url: &str, database: &str) -> String {
         format!("{url}{joiner}dbname={}", encoded(database))
     } else {
         format!("{url} dbname={}", literal(database))
+    }
+}
+
+/// libpq's `host=… port=… user=…` form as a `postgresql://` URL for
+/// `database` (already encoded), a socket folder named in its query: the
+/// form [`Server::url`] gives a disposable server, which `tools/verify.py`
+/// names to every step in `JADPO_TEST_DATABASE_URL`.
+fn keywords_as_url(keywords: &str, database: &str) -> String {
+    let mut found: Vec<(String, String)> = Vec::new();
+    let mut chars = keywords.chars().peekable();
+    loop {
+        while chars.peek().is_some_and(|c| c.is_whitespace()) {
+            chars.next();
+        }
+        let key: String =
+            std::iter::from_fn(|| chars.next_if(|c| *c != '=' && !c.is_whitespace())).collect();
+        if key.is_empty() {
+            break;
+        }
+        while chars.peek().is_some_and(|c| c.is_whitespace() || *c == '=') {
+            chars.next();
+        }
+        let mut value = String::new();
+        if chars.peek() == Some(&'\'') {
+            chars.next();
+            while let Some(c) = chars.next() {
+                match c {
+                    '\\' => value.extend(chars.next()),
+                    '\'' => break,
+                    other => value.push(other),
+                }
+            }
+        } else {
+            value = std::iter::from_fn(|| chars.next_if(|c| !c.is_whitespace())).collect();
+        }
+        found.push((key, value));
+    }
+    let get = |name: &str| {
+        found
+            .iter()
+            .rev()
+            .find(|(key, _)| key == name)
+            .map(|(_, value)| value.as_str())
+    };
+    let user = get("user").map(encoded).unwrap_or_default();
+    let password = get("password")
+        .map(|p| format!(":{}", encoded(p)))
+        .unwrap_or_default();
+    let at = if user.is_empty() {
+        String::new()
+    } else {
+        format!("{user}{password}@")
+    };
+    let port = get("port");
+    match get("host") {
+        Some(host) if host.starts_with('/') => {
+            let port = port.map(|p| format!("&port={p}")).unwrap_or_default();
+            format!(
+                "postgresql://{at}/{database}?host={}{port}",
+                encoded_path(host)
+            )
+        }
+        host => {
+            let port = port.map(|p| format!(":{p}")).unwrap_or_default();
+            format!(
+                "postgresql://{at}{}{port}/{database}",
+                host.unwrap_or("localhost")
+            )
+        }
     }
 }
 
@@ -601,6 +670,33 @@ mod tests {
         assert_eq!(
             with_database("host=/tmp user=me", "it's"),
             "host=/tmp user=me dbname='it\\'s'"
+        );
+    }
+
+    #[test]
+    fn a_database_is_addressed_as_a_postgresql_url() {
+        let external = |url: &str| Server {
+            kind: Kind::External {
+                url: url.to_string(),
+            },
+        };
+        assert_eq!(
+            external("postgresql://jadpo:jadpo@127.0.0.1:5432/postgres").address("docs_a"),
+            "postgresql://jadpo:jadpo@127.0.0.1:5432/docs_a"
+        );
+        assert_eq!(
+            external("postgres://u@db/postgres?sslmode=disable").address("t"),
+            "postgres://u@db/t?sslmode=disable"
+        );
+        // The form a disposable server's admin URL takes.
+        assert_eq!(
+            external("host='/var/folders/x/T/jadpo-pg-1-0' port=5432 user=jadpo dbname='postgres'")
+                .address("docs_b"),
+            "postgresql://jadpo@/docs_b?host=/var/folders/x/T/jadpo-pg-1-0&port=5432"
+        );
+        assert_eq!(
+            external("host=db.internal port=6432 user=app password='it\\'s'").address("c"),
+            "postgresql://app:it%27s@db.internal:6432/c"
         );
     }
 
