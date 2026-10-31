@@ -215,7 +215,42 @@ Numbered as the questions they settled, which other pages cite.
     package is imported from its served OpenAPI. Upgrade plans are area
     18's review of the surface diff. The importers other than OpenAPI come
     each when first needed: Smithy with the first AWS package, then the
-    SDK-types, Postman and HAR importers.
+    SDK-types, Postman and HAR importers. Registry names are scoped by
+    publisher, `@publisher/name`, with the code name unchanged (Richard,
+    2026-10-31): every registry with flat names has fought squatting and
+    typosquats, and a scope tells a reader who stands behind a package.
+    Releases need a releaser's passkey by default, with an opt-in 24-hour
+    automatic release for routine releases, a seven-day wait for a new
+    releaser and successors named in advance (Richard, 2026-10-31).
+    Publishing whenever a tag appears would make a package as safe as the
+    weakest credential with write access to its repository, which is what
+    the 2025 and 2026 npm worms stole; a passkey can't be phished or copied
+    off a disk. The wait for a new releaser answers the xz-utils takeover,
+    where a stranger earned release rights; refusing to hand over a package
+    with no named successor answers event-stream.
+    The rest of the registry was decided the same day (Richard, "I agree
+    with all of the suggestions"), from a review of registry incidents
+    (left-pad, event-stream, ua-parser-js, colors and node-ipc, manifest
+    confusion, xz-utils, Ultralytics, tj-actions, polyfill.io, revival
+    hijacking, boltdb-go, the Shai-Hulud and ChainDrop worms, axios and the
+    2026 crates.io compromise, slopsquatting) and of what developers like
+    and dislike in npm, crates.io, PyPI, Go and JSR. Releases are pulled
+    from a tag, never uploaded, so nothing a publisher sends can disagree
+    with the source. Facts from the graph replace a score, because one
+    number hides what a reviewer needs and invites gaming; there are no
+    ratings for the same reason. The three-day wait is in the client, not
+    the registry, because every hijacked release in that review was found
+    within hours, and an urgent fix must never wait. Search reads text
+    first because people describe a need in words without knowing its
+    types. Copies are tracked because packages copy instead of depending,
+    so a fix would otherwise never reach them. The verifier is the `jadpo`
+    tool in a container, reached as a provider, so the registry is an
+    ordinary Jadpo application.
+    Your own company's git repositories are listed in `packages:`'s
+    `own_sources:` (Richard, 2026-10-31), so they install without
+    `PackageChange.git_source`; adding one is itself a `PolicyChange`,
+    because a list an agent could extend freely would let any repository
+    in.
 16. **Package names** are UpperCamelCase with the package's own version
     label: `Stripe.v2024_06_20`, `AcmeCouriers.v1`, `Postcodes.v2`. Types,
     failures and events are named through the package without the version

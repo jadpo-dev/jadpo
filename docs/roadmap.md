@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-10-30. This page is the only list of outstanding work: the
+**Updated:** 2026-10-31. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record language decisions on the [area pages](language/README.md)
 and process rules in [AGENTS.md](../AGENTS.md), not here. A finished chunk
@@ -258,16 +258,7 @@ D1 first: the site starts once D1 has merged.
   "Where the content lives", "Topic IDs" and "The bundle"; each area's
   "What is built" and Errors; `docs/errors/`; `docs/language/notes/`.
 - [x] **D2 The primer**: [primer](primer.md), and [documentation](documentation.md), "The bundle".
-- [ ] **D3 Releases** `opus · high` after D1: semantic versions from 0.1.0,
-  release-please over the Conventional Commit types, CI failing a
-  language change under a type that says it isn't one, installers (shell,
-  Homebrew, PowerShell, npm) on each Release, the bundle attached; an
-  app's declared version checked (area 14, "Scaffold"). **Needs a maintainer**
-  before 0.1.0 is published.
-  Built, switched off: release-please, the commit-type check, dist's
-  installers and the bundle on each Release, and `application { jadpo: }`
-  ([documentation](documentation.md), "Versions and releases"); waits for
-  a maintainer's token, tap, npm account and look at 0.1.0.
+- [x] **D3 Releases**: [documentation](documentation.md), "Versions and releases" and "Installing"; area 14, "Scaffold" and "Which jadpo runs"; 0.1.0 published 2026-10-30 with its installers, npm package, Homebrew formula, docs bundle and VS Code extension.
 - [ ] **D4 Issues triaged by an agent** `opus · high` after D3: issues
   and feature requests read, answered and turned into pull requests by an
   agent that holds no secrets and cannot merge or release, since issue text
@@ -281,12 +272,7 @@ D1 first: the site starts once D1 has merged.
 - [ ] **D8b Rename in the editor** `opus · high`: area 14, "Editor support". Waits: `jadpo rename` and the identity registry (after the first build, items 6 and 7).
 - [x] **D9 Docs for newcomers**: [writing guide](writing.md); the [Learn path](learn/README.md); the [primer](primer.md); [documentation](documentation.md), "The bundle".
 - [x] **D10 Area pages to the writing guide**: the area pages in [docs/language](language/README.md), each topic to the [writing guide](writing.md), "How a reference topic reads", and the rationale in each area's design notes.
-- [ ] **D11 Task guides** `opus · high`: how-to pages in the bundle, a
-  page kind of their own beside `learn`, for the commonest jobs (add
-  sign-in, store and change a record, query records, call an outside API,
-  handle failures, write tests, deploy to Workers, deploy natively), each
-  compiled by the gate and linking the reference. They replace the site's
-  own `src/data/tasks.json`.
+- [x] **D11 Task guides**: [guides](guides/README.md); [documentation](documentation.md), "Topic IDs" and "The bundle"; [writing guide](writing.md), "Kinds of user page"; `tools/docs/language_docs.py`, `GuidePage`.
 - [x] **D12 What the Learn path found**: [area 8](language/08-identity.md), "In development and tests"; [area 14](language/14-tooling.md), "What is built"; [documentation](documentation.md), "Where the content lives" and "The bundle".
 - [ ] **D13 Error pages that explain** `opus · high`: every page in
   `docs/errors/` rewritten to the format in [docs/writing.md](writing.md),
@@ -375,6 +361,129 @@ time.
   the chunk proposes the declaration and stops for a maintainer's
   decision before building (Richard, 2026-10-31).
 
+## Approvals
+
+Everything a person must approve is found by the compiler and can be
+approved (Richard, 2026-10-31). V2 is taken before A10, so 0.2.0 doesn't
+wait for A10's decision; the rest come after the A chunks above and
+before every other unticked chunk.
+
+**0.2.0 is V2 alone.** When V2 has merged, the 0.2.0 release pull request
+is merged; no session merges it before then. Everything else in this
+section and the registry chunks below make **0.3.0**, released when V6
+and R6 have both merged. V1 and V3 to V5 run at the same time as each
+other and as R1 and R4, where they touch different crates.
+
+Already built: acceptances (`jadpo acceptance new`, matching, the reason,
+history, the CODEOWNERS gate) for API and event breaks, every widening of
+who can do what (routes made public included), security declines,
+sign-in settings past their limit, new domains, new outside hosts and
+packages from git (every one, until V1). The kinds that belong to
+features not built yet come with those features: `ThresholdChange` with
+thresholds, a service's image with services, bot checks with bot
+protection, a domain renamed with `jadpo domain rename`.
+
+- [ ] **V2 The approval report** `opus · xhigh`: area 17, "Reviewing a
+  change"; area 18, "Comparing two builds". `jadpo approval --before
+  <ref>` builds the base, and writes Markdown and JSON in `build/review/`
+  in the page's order: each decision in plain words with whether its
+  acceptance exists, the path that makes it true, newly reachable
+  declarations, other behaviour (the API record, schema and migrations,
+  failures, events, integrations, the permissions report's diff, wording
+  not yet accepted) and the source by declaration. The web view stays
+  with the developer console. Screens designed with the design skills
+  first. Split here if it is larger than a session.
+- [ ] **V1 Your own company's git packages** `opus · high`: area 11,
+  "Installing safely"; area 18, `PolicyChange.own_source_added`.
+  `packages:`'s `own_sources:` in `application { }` (added to area 1's
+  list of sections), its `own_source` lines in `access.jadpo_record`, and
+  `PackageChange.git_source` only for a repository under none of them.
+- [ ] **V3 Removing data needs a person** `opus · xhigh`: area 5,
+  "Migrations"; area 18, `DataChange`. `jadpo migrate new`'s removals (an
+  entity removed, one moved to another store, a retired column dropped),
+  each refused by `check` until a `DataChange` acceptance names it.
+- [ ] **V4 Risky package upgrades need a person** `opus · high`: area 18,
+  "Package upgrades". The review compares the operations and declarations
+  the app uses, version ignored; a used operation removed, a used field
+  removed or retyped, a new failure on a used operation, or a host or
+  credential scheme changed needs a `PackageChange` acceptance; `jadpo
+  package update` prints the review.
+- [ ] **V5 Where personal data goes** `opus · xhigh`: area 15's marking
+  checked on entities, events and package types, and the personal-data
+  report's list of every connection and host a marked field reaches,
+  through provider operations; the same data available to `jadpo package
+  check`. Erasure and retention stay where they are.
+- [ ] **V6 Personal data a connection can't erase** `opus · high` after V5:
+  area 15, "Erasure at providers"; area 18, `ErasureNotPossible`. A
+  connection that receives a marked field, whose package declares no
+  `erasure:`, needs an `ErasureNotPossible` acceptance with the reason the
+  data stays; the approval report shows the personal-data report's diff.
+
+## The public registry
+
+The registry at jadpo.dev ([External services](language/11-integrations.md#the-public-registry)).
+These chunks are taken after V2 and before every other unticked chunk,
+beside the other approval chunks, and R1 to R6 are part of 0.3.0
+(Richard, 2026-10-31). The chunks here build the `jadpo`
+side; the registry application itself is built in the jadpo.dev
+repository against [the registry protocol](language/11-integrations.md#the-registry-protocol).
+R1 and R4 touch different crates and run at the same time.
+
+Already built and used by the registry application: Workers with
+PostgreSQL through Hyperdrive, the cron and queues; magic links and
+passkeys; policy; jobs and events; email; rate limits; provider calls;
+`ai.embed` and `Vector` fields; `hash.sha256`. It also waits for 8.2n (a
+real deploy) and, before outside authors can publish, D3 (releases).
+
+- [ ] **R1 Confirming a request with a passkey** `opus · xhigh`: area 8,
+  "Confirm one request with a passkey" (Richard, 2026-10-31). Done when a
+  route can't run until the signed-in person presents one of their own
+  passkeys for that request, and a route test does it with
+  `test_passkeys.confirm`.
+- [ ] **R3 A release's facts, change record and fingerprints**
+  `opus · xhigh` after V5: area 11, "What a release shows", "The
+  changelog", "Search" (the fingerprints) and "Yanks, takedowns and
+  advisories" (copies). `jadpo package check` prints the facts and the
+  change record; the previous release's examples and tests run against
+  the new code; `jadpo package verify --json`. Screens designed with the
+  design skills first.
+- [ ] **R4 The registry protocol and a local registry** `opus · high`:
+  area 11, "The registry protocol". The protocol's requests and answers
+  as types in one crate, the Merkle log and its proofs, a local registry
+  that tests run against, and the conformance test that checks a served
+  OpenAPI document against the protocol.
+- [ ] **R5 The registry commands** `opus · high` after R3 and R4: area 11,
+  "Installing and updating from the registry", "Developing for the
+  registry"; area 14, the package commands. `add @publisher/name` with the
+  log check and the lock's scoped `registry` line, `update`'s three-day
+  wait, `--to` and urgent releases, `search`, `audit`, `publish` and
+  `--dry-run`, `preview`. Every screen designed with the design skills
+  first.
+- [ ] **R6 The verifier** `opus · high` after R3: area 11, "The verifier".
+  `jadpo package verify --serve`, fetching over git and then verifying with
+  no network, and its container image published with each release (D3).
+  It runs on Fly.io, reached over HTTPS (Richard, 2026-10-31); **needs a
+  maintainer** for the Fly.io account before it is deployed.
+- [ ] **R7 The registry application** **needs a maintainer** to start the
+  jadpo.dev session, after R1, R4 and R6: built against the protocol and
+  passing R4's conformance test. Until the S3 driver its archives are kept
+  in PostgreSQL; until the search capability its word search is its own
+  queries over each package's written account.
+
+After the registry is live, in order:
+
+- [ ] **R8 `jadpo suggest` points at the registry** `opus · high`: a
+  finding when the app's own function fingerprints like a registry
+  package's or a standard function (area 14, "Suggestions").
+- [ ] **R9 Blast radius in an update** `opus · high`: `jadpo package update
+  --plan` follows each change record entry through the app's graph to
+  the actions, routes, jobs and stored fields it reaches, with the
+  compile errors and migrations that would follow; after V4.
+- Then, each with its own chunk below: signed log heads (keys held as data
+  and `crypto.sign`, item 3), the S3 driver for the registry's archives
+  (item 4), the search capability (item 8), and GitHub sign-in for
+  jadpo.dev accounts (`Driver.github`; Google works now, through A7b).
+
 ## After the first build, in order
 
 1. Units and money in plain numbers: a named type built on `Int` or
@@ -392,18 +501,13 @@ time.
    19's prose stays as the explanation.
 3. Personal data (area 15), with encrypted fields and keys held as data
    (area 19, "Encrypted fields" and "Language gaps this page depends on") and `crypto.verify_totp`, which waits on
-   them; and the `ErasureNotPossible` acceptance for a connection that
-   receives personal data and can't erase it.
+   them.
 4. Remaining built-in services (area 16): flags, files, audit, search,
    telemetry thresholds, with the `ThresholdChange` acceptance for a
    threshold raised or removed.
 5. Debugging and review (area 17): `why`, timelines, `test new --from`,
    `call`.
-6. Records and acceptances (area 18): the approval report, with
-   unaccepted wording (area 10) in it; package upgrade plans, with the
-   `PackageChange` acceptance for a risky upgrade; and `jadpo migrate
-   new`'s removals (an entity removed, one moved to another store, a
-   retired column dropped), with the `DataChange` acceptance.
+6. Records and acceptances: moved to "Approvals" (2026-10-31).
 7. Tooling completeness (area 14): interactive tests, `rename` (refusing a
    name already in use, 2026-10-16), `impact`,
    full completion.
@@ -419,7 +523,7 @@ time.
    apps and the cross-app break check; choosing a provider when deploying,
    when an app other people run needs it.
 9. Product work: the developer console and MCP, the graph review UI
-   (Revset-inspired), the public package registry, acting as an OAuth
+   (Revset-inspired), acting as an OAuth
    provider, D1 and row-level security.
 10. A versioned application contract for frontend clients: a public contract
    derived by the compiler, client consumption declarations and generated
