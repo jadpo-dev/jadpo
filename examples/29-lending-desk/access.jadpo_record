@@ -47,6 +47,13 @@ query desk.stock
     who StaffRole.admin
     who StaffRole.front_desk
 
+role desk.StaffRole.admin
+    sign_in SignInMethod.google
+    strength AuthenticationStrength.multi_factor
+
+role desk.StaffRole.front_desk
+    sign_in SignInMethod.google
+
 sign_in magic_link
     code_attempts: 5
     expires_after: 15m

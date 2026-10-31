@@ -2,6 +2,12 @@
 // whose `scope:` is `MembershipScope.application`. A person holds a role
 // while their membership exists, so removing it takes the role away on
 // their next request.
+//
+// `requires:` says each role counts only for someone signed in through
+// Google, and an admin's only with a second factor. Signed in by a link,
+// a member of staff is a customer like any other, so turning their
+// Google account off, or taking them off the desk's Google domain, ends
+// their staff access in one place, within a day.
 
 use desk/entities { Patron }
 use desk/types { StaffRole }
@@ -18,6 +24,15 @@ entity StaffMember {
         scope: MembershipScope.application
         member: patron_id
         role: role
+        requires: {
+            StaffRole.admin: {
+                sign_in: [SignInMethod.google]
+                strength: AuthenticationStrength.multi_factor
+            }
+            StaffRole.front_desk: {
+                sign_in: [SignInMethod.google]
+            }
+        }
     }
 
     policy: {

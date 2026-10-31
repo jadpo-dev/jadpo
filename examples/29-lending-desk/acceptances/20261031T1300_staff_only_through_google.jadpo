@@ -1,0 +1,8 @@
+/// Staff keep their roles only through the desk's Google accounts, an admin's with a second
+/// factor, so switching an account off at Google ends their access (Richard, 2026-10-31).
+acceptance {
+    changes: {
+        desk.StaffRole.admin: PolicyChange.role_requirements_changed
+        desk.StaffRole.front_desk: PolicyChange.role_requirements_changed
+    }
+}

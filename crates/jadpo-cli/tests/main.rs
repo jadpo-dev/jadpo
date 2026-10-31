@@ -112,6 +112,7 @@ mod signed;
 mod sql;
 mod sql_forms;
 mod sql_literals;
+mod staff_providers;
 mod standard_boundaries;
 mod standard_storage;
 mod step_crashes;

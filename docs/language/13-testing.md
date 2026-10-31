@@ -244,7 +244,9 @@ the test run's local issuer
 ([External tokens in tests](08-identity.md#external-tokens-in-tests-and-jadpo-dev))
 or, for `Principal.service(service)`, a service key
 ([Signing in, end to end](08-identity.md#signing-in-end-to-end)). Leave
-it out and the request is sent with no one signed in.
+it out and the request is sent with no one signed in. `sign_in:` and
+`strength:` say how a user signed in
+([Signing in for a route test](#signing-in-for-a-route-test)).
 
 `request` gives a `Response`, which has:
 
@@ -730,6 +732,33 @@ production, and the sign-in checks are tested too. To test signing in
 itself, `test_passkeys` signs in with a passkey and `test_providers`
 through a sign-in provider, with the test run's local issuer as the
 provider ([Providers](08-identity.md#providers)).
+
+A role can count only for someone who signed in a particular way
+([Roles that need a way in](09-policy.md#roles-that-need-a-way-in)), so
+a user's request says how they did, beside `as:`:
+
+```jadpo fragment
+var stock: Response = request {
+    method: HttpMethod.get
+    path: "/staff/stock"
+    as: Principal.user(ann)
+    sign_in: SignInMethod.google
+    strength: AuthenticationStrength.multi_factor
+}
+```
+
+- `sign_in:` is a `SignInMethod`, and `strength:` an
+  `AuthenticationStrength`. The session is kept as one started that way
+  is, a provider's lasting a day where a role's requirement names it,
+  without the round trip to the provider.
+- Without them, `as:` is someone who signed in by magic link with one
+  factor. So a test of an admin's route fails until it says how the
+  admin signed in, as the admin's own request would.
+- Either without `as:` naming a user is `semantic.request_invalid`.
+
+A call with a caller, outside a request, runs as someone signed in by
+magic link with one factor too, so a role that needs a way in is tested
+through a route.
 
 ### Calls with no caller
 
@@ -1814,7 +1843,7 @@ Not built yet: caches, which need the Redis driver.
 | Pure and action tests | Built: `jadpo test` runs `test "…" { }` and `assert` in the interpreter, for tests that call functions and actions. Each test gets its own environment (its seed and clock, its database and fakes), tests run on a thread per core, and the results are reported in the order seed's order. Each action or fixture a test calls commits on its own, through the runtime's action boundary; an action it calls joins its transaction. |
 | Kind of test | Built: the kind comes from what a test calls (an action, query or fixture makes it an action test, a `request` a route test, a schedule's `.run()` a schedule test), and the footer and `--json` count each kind. |
 | Schedule tests | Built: `schedule.run()` in a test runs the schedule once at the test's clock, its action called as the system with no tenant, with its own database like an action test; `--kind schedule` runs only these; anywhere but a test it is `semantic.not_callable`. |
-| Route tests | Built: `request { method: path: params: input: }` sends a request through the runtime's HTTP component and gives a `Response` with `status`, `code` and the route's typed `output`; a route test gets its own database like an action test, and a defect behind a 500 ends it as `test.fault`. `as:` signs in a user through a real browser session or API token, and a service through a real service key. Every request but a `GET` sends a fresh `Idempotency-Key`, or the one `idempotency_key:` gives ([Idempotency keys](#idempotency-keys)). An optional field the `input:` leaves out is left out of the body, so a `patch:` keeps it. A streaming route's `Response` has `pieces` in place of `output`, its events read to the last. |
+| Route tests | Built: `request { method: path: params: input: }` sends a request through the runtime's HTTP component and gives a `Response` with `status`, `code` and the route's typed `output`; a route test gets its own database like an action test, and a defect behind a 500 ends it as `test.fault`. `as:` signs in a user through a real browser session or API token, and a service through a real service key; `sign_in:` and `strength:` record how the user signed in, by magic link with one factor when left out. Every request but a `GET` sends a fresh `Idempotency-Key`, or the one `idempotency_key:` gives ([Idempotency keys](#idempotency-keys)). An optional field the `input:` leaves out is left out of the body, so a `patch:` keeps it. A streaming route's `Response` has `pieces` in place of `output`, its events read to the last. |
 | Assertion messages | Partly built: a failed `assert` reports its file and line, its source with each part's value hung beneath it, expected and actual, a field-by-field diff for records, lists, sets and maps, a stable code and the rerun command with the order seed (see [Errors](#errors)). Not built yet: the trace, fakes, kept database and clock in the report. A statement over several lines shows its first line; `--json` has all of it. |
 | Checking a failure | Built: `assert call(…) fails Failure`; when the call returns or fails differently, the report shows the value, or the other failure with its code, kind, fields and where it was raised. A failure under `attempt` ends the test as `test.unexpected_failure`, and a fault as `test.fault`, each with its `.jadpo` frames. |
 | Events | Built: what each step emits is delivered once it comes back and before the next statement, at the test's clock, until nothing is due, in an order the run's seed shuffles; a retry waits its full backoff until `clock.advance` reaches it, and a delivery that fails for good, or stops as `diverged`, ends the test as `test.subscriber_failed` ("Caches and events"). |

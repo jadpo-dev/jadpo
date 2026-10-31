@@ -1357,6 +1357,8 @@ mod tests {
                 value: Value::Unit,
                 key: "user 1".into(),
                 session: None,
+                sign_in: None,
+                multi_factor: false,
             }));
         };
         assert_eq!(
@@ -1416,6 +1418,8 @@ mod tests {
                 value: Value::Unit,
                 key: "user 1".into(),
                 session: None,
+                sign_in: None,
+                multi_factor: false,
             }));
         };
         let only_system = Gate {

@@ -757,6 +757,8 @@ impl Site<'_> {
                 SqlValue::Null(SqlType::Text),
                 micros(now),
                 micros(now.saturating_add(SESSION_LIFETIME_MS)),
+                SqlValue::Text(SignInMethod::MagicLink.name().to_string()),
+                SqlValue::Null(SqlType::Text),
             ];
             self.start(ctx, &params, &person)
                 .await
@@ -776,6 +778,8 @@ impl Site<'_> {
             SqlValue::Text(verifier(csrf.as_bytes())),
             micros(now),
             micros(now.saturating_add(SESSION_LIFETIME_MS)),
+            SqlValue::Text(SignInMethod::MagicLink.name().to_string()),
+            SqlValue::Null(SqlType::Text),
         ];
         self.start(ctx, &params, &person)
             .await

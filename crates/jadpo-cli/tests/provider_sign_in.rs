@@ -18,14 +18,14 @@ use jadpo_value::crypto::{KeyRing, public_key, sign};
 use jadpo_value::encoding::to_base64url;
 use serde_json::{Value, json};
 
-const ISSUER: &str = "https://accounts.google.com";
-const DISCOVERY: &str = "https://accounts.google.com/.well-known/openid-configuration";
-const AUTHORIZE: &str = "https://accounts.google.com/o/oauth2/v2/auth";
-const TOKEN: &str = "https://oauth2.googleapis.com/token";
-const KEYS: &str = "https://www.googleapis.com/oauth2/v3/certs";
-const CLIENT: &str = "desk.apps.googleusercontent.com";
-const SECRET: &str = "the-client-secret";
-const SITE: &str = "https://desk.example";
+pub(super) const ISSUER: &str = "https://accounts.google.com";
+pub(super) const DISCOVERY: &str = "https://accounts.google.com/.well-known/openid-configuration";
+pub(super) const AUTHORIZE: &str = "https://accounts.google.com/o/oauth2/v2/auth";
+pub(super) const TOKEN: &str = "https://oauth2.googleapis.com/token";
+pub(super) const KEYS: &str = "https://www.googleapis.com/oauth2/v3/certs";
+pub(super) const CLIENT: &str = "desk.apps.googleusercontent.com";
+pub(super) const SECRET: &str = "the-client-secret";
+pub(super) const SITE: &str = "https://desk.example";
 
 const FILES: [(&str, &str); 10] = [
     (
@@ -212,24 +212,24 @@ fn signer() -> KeyRing {
 }
 
 /// What the stand-in Google was asked to sign in, by code.
-struct Grant {
-    nonce: String,
-    challenge: String,
-    account: Value,
+pub(super) struct Grant {
+    pub(super) nonce: String,
+    pub(super) challenge: String,
+    pub(super) account: Value,
 }
 
 /// Google as the runtime reaches it: discovery, its keys and its token
 /// endpoint, each at Google's own address, checking the exchange as
 /// Google does.
 #[derive(Default)]
-struct Google {
-    grants: RefCell<BTreeMap<String, Grant>>,
+pub(super) struct Google {
+    pub(super) grants: RefCell<BTreeMap<String, Grant>>,
     /// The forms the token endpoint was sent.
-    exchanged: RefCell<Vec<BTreeMap<String, String>>>,
+    pub(super) exchanged: RefCell<Vec<BTreeMap<String, String>>>,
     /// The issuer its discovery document names, when not Google's.
-    issuer: RefCell<Option<String>>,
+    pub(super) issuer: RefCell<Option<String>>,
     /// The nonce its ID tokens carry, when not the one asked for.
-    nonce: RefCell<Option<String>>,
+    pub(super) nonce: RefCell<Option<String>>,
 }
 
 impl Google {
@@ -245,7 +245,7 @@ impl Google {
     }
 }
 
-fn form(text: &str) -> BTreeMap<String, String> {
+pub(super) fn form(text: &str) -> BTreeMap<String, String> {
     text.split('&')
         .filter_map(|pair| pair.split_once('='))
         .map(|(key, value)| (decode(key), decode(value)))
@@ -344,9 +344,11 @@ impl Outbound for Google {
     }
 }
 
-struct Native {
-    inner: NativeHost,
-    google: Google,
+pub(super) struct Native {
+    pub(super) inner: NativeHost,
+    pub(super) google: Google,
+    /// How far the clock is moved on, in milliseconds (chunk A10).
+    pub(super) skew: std::cell::Cell<i64>,
 }
 
 impl Host for Native {
@@ -360,7 +362,7 @@ impl Host for Native {
         self.inner.sleep(ms)
     }
     fn now_ms(&self) -> Option<i64> {
-        self.inner.now_ms()
+        self.inner.now_ms().map(|now| now + self.skew.get())
     }
     fn monotonic_ms(&self) -> Option<u64> {
         self.inner.monotonic_ms()
@@ -370,7 +372,7 @@ impl Host for Native {
     }
 }
 
-fn header<'r>(response: &'r Response, name: &str) -> Vec<&'r str> {
+pub(super) fn header<'r>(response: &'r Response, name: &str) -> Vec<&'r str> {
     response
         .headers
         .iter()
@@ -380,7 +382,7 @@ fn header<'r>(response: &'r Response, name: &str) -> Vec<&'r str> {
 }
 
 /// The value `response` sets cookie `name` to.
-fn cookie(response: &Response, name: &str) -> Option<String> {
+pub(super) fn cookie(response: &Response, name: &str) -> Option<String> {
     header(response, "set-cookie")
         .into_iter()
         .find_map(|value| {
@@ -410,6 +412,7 @@ fn a_member_of_staff_signs_in_with_google_through_the_runtime_alone() {
     let host = Native {
         inner: NativeHost::new().with_store("main", store),
         google: Google::default(),
+        skew: std::cell::Cell::new(0),
     };
     let mut variables = BTreeMap::new();
     variables.insert(
@@ -642,6 +645,7 @@ fn a_member_of_staff_signs_in_with_google_through_the_runtime_alone() {
             email: Some("ann@desk.example".into()),
             email_verified: true,
             name: Some("Ann Lee".into()),
+            ..Default::default()
         },
         &asked_fourth["client_id"],
         &asked_fourth["redirect_uri"],
@@ -676,6 +680,7 @@ fn a_provider_whose_discovery_names_another_issuer_is_misconfigured() {
     let host = Native {
         inner: NativeHost::new().with_store("main", store),
         google: Google::default(),
+        skew: std::cell::Cell::new(0),
     };
     // As Microsoft's `common` address publishes a placeholder in its
     // issuer, which no exact comparison matches.

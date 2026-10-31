@@ -1,0 +1,355 @@
+# `policy.requirement_unsatisfiable`
+
+A role's requirement asks for a sign-in that no way in the app can give.
+
+## Why Jadpo refuses it
+
+A role counts only for someone whose sign-in meets its requirement. Here
+`StaffRole.admin` needs a token from another provider
+(`SignInMethod.external_token`), and `authentication { }` declares no
+`external_token:`, so no one could ever sign in that way and no one
+could ever hold the role.
+
+Jadpo won't choose for you: which way in the admins must use, and so
+where their access is ended, is a policy decision.
+
+## What it looks like
+
+main.jadpo:
+
+```jadpo check project=e-requirement-unsatisfiable expect=policy.requirement_unsatisfiable
+application {
+    connections: {
+        google: {
+            driver: Driver.oidc
+            issuer: config.google_issuer
+            client_id: config.google_client_id
+            credential: config.google_client_secret
+        }
+    }
+}
+
+config {
+    google_client_id: Text
+    google_client_secret: Text {
+        secret: true
+    }
+    google_issuer: Url
+    site: Url
+}
+
+type Handle = Text {
+    max_length: 40
+}
+
+entity User {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.system]
+        read: [id]
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+
+type NotStaff = Failure {
+    kind: FailureKind.not_found
+}
+
+action meet(first: FirstSignIn) fails NotStaff -> User.id {
+    reject NotStaff {}
+}
+
+authentication {
+    browser_session: {
+        cookie: "desk_session"
+        origin: config.site
+    }
+    sign_in: {
+        providers: [google]
+    }
+    on_first_sign_in: meet
+}
+
+type StaffRole = Enum {
+    admin
+    front_desk
+}
+
+entity StaffMember {
+    id: Uuid
+    user_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    role: StaffRole
+
+    membership: {
+        scope: MembershipScope.application
+        member: user_id
+        role: role
+        requires: {
+            StaffRole.admin: {
+                sign_in: [SignInMethod.external_token]
+            }
+            StaffRole.front_desk: {
+                sign_in: [SignInMethod.google]
+            }
+        }
+    }
+}
+```
+
+```text output
+error: No one can hold `StaffRole.admin`: nothing the app signs people in with is signed in through `external_token`
+ --> main.jadpo:79:13
+   |
+79 |             StaffRole.admin: {
+   |             ^^^^^^^^^^^^^^^ can never be met
+  reason: A role counts only for someone whose sign-in meets its requirement; the ways in the app declares that a requirement may name are `SignInMethod.google`.
+  next: Name a way in the app declares, or declare the one you mean in `authentication.jadpo` (human)
+  rule: policy.requirement_unsatisfiable
+  help: https://jadpo.dev/docs/errors/policy.requirement_unsatisfiable
+
+check failed: 1 error, 1 file
+```
+
+`(human)` at the end of the `next:` line tells your coding agent to stop
+and ask you which fix you want, because the choice is yours to make: it
+decides how admins must sign in to keep their role.
+
+## How to fix it
+
+The question is which way in the admins really use.
+
+**If admins sign in through Google**, the provider the app declares,
+name it:
+
+```jadpo fragment
+        requires: {
+            StaffRole.admin: {
+                sign_in: [SignInMethod.google]
+            }
+            ...
+        }
+```
+
+```jadpo check project=e-requirement-unsatisfiable-google hidden
+application {
+    connections: {
+        google: {
+            driver: Driver.oidc
+            issuer: config.google_issuer
+            client_id: config.google_client_id
+            credential: config.google_client_secret
+        }
+    }
+}
+
+config {
+    google_client_id: Text
+    google_client_secret: Text {
+        secret: true
+    }
+    google_issuer: Url
+    site: Url
+}
+
+type Handle = Text {
+    max_length: 40
+}
+
+entity User {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.system]
+        read: [id]
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+
+type NotStaff = Failure {
+    kind: FailureKind.not_found
+}
+
+action meet(first: FirstSignIn) fails NotStaff -> User.id {
+    reject NotStaff {}
+}
+
+authentication {
+    browser_session: {
+        cookie: "desk_session"
+        origin: config.site
+    }
+    sign_in: {
+        providers: [google]
+    }
+    on_first_sign_in: meet
+}
+
+type StaffRole = Enum {
+    admin
+    front_desk
+}
+
+entity StaffMember {
+    id: Uuid
+    user_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    role: StaffRole
+
+    membership: {
+        scope: MembershipScope.application
+        member: user_id
+        role: role
+        requires: {
+            StaffRole.admin: {
+                sign_in: [SignInMethod.google]
+            }
+            StaffRole.front_desk: {
+                sign_in: [SignInMethod.google]
+            }
+        }
+    }
+}
+```
+
+The admin role now counts only for someone signed in through Google.
+
+**If admins sign in with another provider's token**, keep the line and
+declare `external_token:` in `authentication { }`, reading its issuer
+and audience from settings:
+
+```jadpo fragment
+authentication {
+    ...
+    external_token: {
+        issuer: config.token_issuer
+        audience: config.token_audience
+    }
+    ...
+}
+```
+
+```jadpo check project=e-requirement-unsatisfiable-token hidden
+application {
+    connections: {
+        google: {
+            driver: Driver.oidc
+            issuer: config.google_issuer
+            client_id: config.google_client_id
+            credential: config.google_client_secret
+        }
+    }
+}
+
+config {
+    google_client_id: Text
+    google_client_secret: Text {
+        secret: true
+    }
+    google_issuer: Url
+    site: Url
+    token_audience: Text
+    token_issuer: Url
+}
+
+type Handle = Text {
+    max_length: 40
+}
+
+entity User {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.system]
+        read: [id]
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+
+type NotStaff = Failure {
+    kind: FailureKind.not_found
+}
+
+action meet(first: FirstSignIn) fails NotStaff -> User.id {
+    reject NotStaff {}
+}
+
+authentication {
+    browser_session: {
+        cookie: "desk_session"
+        origin: config.site
+    }
+    external_token: {
+        issuer: config.token_issuer
+        audience: config.token_audience
+    }
+    sign_in: {
+        providers: [google]
+    }
+    on_first_sign_in: meet
+}
+
+type StaffRole = Enum {
+    admin
+    front_desk
+}
+
+entity StaffMember {
+    id: Uuid
+    user_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    role: StaffRole
+
+    membership: {
+        scope: MembershipScope.application
+        member: user_id
+        role: role
+        requires: {
+            StaffRole.admin: {
+                sign_in: [SignInMethod.external_token]
+            }
+            StaffRole.front_desk: {
+                sign_in: [SignInMethod.google]
+            }
+        }
+    }
+}
+```
+
+The admin role now counts for a request that comes with that provider's
+token for an admin
+([`external_token`](../language/08-identity.md#external_token)).
+
+## Related
+
+- [Roles that need a way in](../language/09-policy.md#roles-that-need-a-way-in)
+- [Ways to sign in](../language/08-identity.md#ways-to-sign-in)
+- [Providers](../language/08-identity.md#providers)

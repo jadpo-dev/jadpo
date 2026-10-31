@@ -47,6 +47,7 @@ fn account(value: &Value) -> Option<Account> {
         email: text("email"),
         email_verified: value.get("emailVerified").and_then(Value::as_bool) == Some(true),
         name: text("name"),
+        ..Default::default()
     })
 }
 
@@ -115,6 +116,7 @@ mod tests {
             email: Some("ann@desk.example".into()),
             email_verified: true,
             name: Some("Ann".into()),
+            ..Default::default()
         };
         accounts.keep("google", &ann);
         accounts.keep(
@@ -124,6 +126,7 @@ mod tests {
                 email: None,
                 email_verified: false,
                 name: None,
+                ..Default::default()
             },
         );
         let renamed = Account {

@@ -118,24 +118,56 @@ impl Planner<'_> {
         // Each role as its column holds it, bound as the storage codec
         // makes it, or written where the statement takes no parameters
         // (chunk 5.5w3b).
+        let role_field = field(model, &membership.role)?;
+        let Ty::Named(ty) = role_field.ty.strip_nullable() else {
+            return None;
+        };
+        let column = role_field.column();
+        let stored = |bind: &mut dyn CallerBind, variant: &str| {
+            let value = jadpo_sql::Value::Variant {
+                ty: ty.clone(),
+                variant: variant.to_string(),
+            };
+            jadpo_sql::value(bind, &value, &column)
+        };
+        // A membership whose roles need a way in counts each only when the
+        // caller's sign-in meets it (chunk A10), in a grant and, for any
+        // role, in its tenant, so a role that doesn't count is no
+        // membership for the request at all.
+        let counts = if membership.restricted() {
+            let wanted: Vec<String> = match &roles {
+                Some(roles) => roles.clone(),
+                None => membership
+                    .requires
+                    .iter()
+                    .flatten()
+                    .map(|(role, _)| role.clone())
+                    .collect(),
+            };
+            let mut counted = Vec::with_capacity(wanted.len());
+            for role in &wanted {
+                let value = stored(bind, role)?;
+                let needs = membership
+                    .requirement(role)
+                    .map(|requirement| self.requirement(bind, requirement));
+                counted.push((value, needs));
+            }
+            Some(Box::new(jadpo_sql::policy::Counts {
+                column: role_field.born.clone(),
+                roles: counted,
+            }))
+        } else {
+            None
+        };
         let roles = match roles {
-            Some(roles) => {
-                let role = field(model, &membership.role)?;
-                let Ty::Named(ty) = role.ty.strip_nullable() else {
-                    return None;
-                };
-                let column = role.column();
+            Some(roles) if counts.is_none() => {
                 let mut bound = Vec::with_capacity(roles.len());
                 for variant in roles {
-                    let value = jadpo_sql::Value::Variant {
-                        ty: ty.clone(),
-                        variant,
-                    };
-                    bound.push(jadpo_sql::value(bind, &value, &column)?);
+                    bound.push(stored(bind, &variant)?);
                 }
-                Some((role.born.clone(), bound))
+                Some((role_field.born.clone(), bound))
             }
-            None => None,
+            _ => None,
         };
         Some(Membership {
             table: model.table.clone(),
@@ -145,7 +177,34 @@ impl Planner<'_> {
             scope,
             roles,
             visible,
+            counts,
         })
+    }
+
+    /// Whether the caller's sign-in meets `requirement` (chunk A10): its
+    /// way in one of those listed, by name, and a second factor when it
+    /// asks for one.
+    fn requirement(
+        &self,
+        bind: &mut dyn CallerBind,
+        requirement: &jadpo_check::policy::requires::Requirement,
+    ) -> String {
+        let ways: Option<(String, Vec<String>)> = requirement.sign_in.as_ref().map(|ways| {
+            let caller = bind.caller(CallerPart::SignInMethod);
+            let listed = ways
+                .iter()
+                .filter_map(|way| bind.stored(jadpo_std::SqlValue::Text(way.clone())))
+                .collect();
+            (caller, listed)
+        });
+        let multi_factor = requirement
+            .multi_factor
+            .then(|| bind.caller(CallerPart::MultiFactor));
+        jadpo_sql::policy::requirement(
+            ways.as_ref()
+                .map(|(caller, listed)| (caller.as_str(), listed.as_slice())),
+            multi_factor.as_deref(),
+        )
     }
 
     /// The condition `grants` add for a statement whose record is `row`:

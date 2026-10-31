@@ -95,6 +95,7 @@ mod receiving;
 mod records_measures;
 mod result_rules;
 mod review;
+mod role_requirements;
 mod routes;
 mod scale;
 mod schedule_checks;

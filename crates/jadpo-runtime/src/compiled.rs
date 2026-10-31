@@ -1172,26 +1172,18 @@ pub async fn schedule(cx: &mut Ctx<'_>, p: &Program, action: u32, at: u32, caugh
 }
 
 /// A route test's request through route `route` (area 13): `args` are
-/// the route's placeholders and input, then, when `keyed`, the
-/// `Idempotency-Key` it sends, then, when `signed`, the caller it signs in
-/// as.
+/// the route's placeholders and input, then, as `given` says (`keyed`,
+/// `signed`, `way`, `strong`), the `Idempotency-Key` it sends, the caller
+/// it signs in as, and how that caller signed in (chunk A10).
 pub async fn request(
     cx: &mut Ctx<'_>,
     p: &Program,
     route: u32,
     args: Vec<Value>,
-    keyed: bool,
-    signed: bool,
+    given: [bool; 4],
 ) -> Ran {
-    let (args, caller) = match (signed, args.split_last()) {
-        (true, Some((caller, rest))) => (rest, Some(caller)),
-        _ => (args.as_slice(), None),
-    };
-    let (args, key) = match (keyed, args.split_last()) {
-        (true, Some((key, rest))) => (rest, Some(key)),
-        _ => (args, None),
-    };
-    crate::http::route_test(&p.app(), p, cx, route, args, key, caller)
+    let sent = crate::http::RequestValues::split(&args, given);
+    crate::http::route_test(&p.app(), p, cx, route, sent)
         .await
         .map_err(Stop::Fault)
 }

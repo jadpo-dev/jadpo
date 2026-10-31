@@ -12,6 +12,11 @@ config {
     google_client_secret: Text {
         secret: true
     }
+    /// The desk's Google Workspace domain: only its accounts sign in
+    /// through Google.
+    google_domain: Text {
+        default: "lending.example"
+    }
     google_issuer: Url {
         default: "https://accounts.google.com"
     }

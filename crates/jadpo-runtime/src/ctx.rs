@@ -107,6 +107,15 @@ pub struct Caller {
     /// The browser session or API token it came with, when it did, by
     /// `id`, which `sessions.end()` ends.
     pub session: Option<[u8; 16]>,
+    /// The `SignInMethod` its session was started through, by name, or
+    /// `external_token` for a provider's token (area 8, "How a session
+    /// started"; chunk A10): `None` for a session `sessions.start` or
+    /// `sessions.issue_token` started, or a service, so a role that needs
+    /// a way in doesn't count for it (area 9).
+    pub sign_in: Option<String>,
+    /// Whether that sign-in proved more than one factor: a passkey, or a
+    /// provider's token whose `amr` names a second factor.
+    pub multi_factor: bool,
 }
 
 /// The system: who a schedule's run and a subscriber's delivery act as
@@ -896,6 +905,17 @@ impl<'p> Ctx<'p> {
                 }
             }
             CallerPart::Signed => SqlValue::Bool(held.is_some()),
+            CallerPart::SignInMethod => {
+                match self.caller.as_ref().and_then(|c| c.sign_in.clone()) {
+                    Some(method) => SqlValue::Text(method),
+                    None => SqlValue::Null(SqlType::Text),
+                }
+            }
+            CallerPart::MultiFactor => SqlValue::Bool(
+                self.caller
+                    .as_ref()
+                    .is_some_and(|caller| caller.multi_factor),
+            ),
             CallerPart::User | CallerPart::Service => {
                 let wanted = if part == CallerPart::User {
                     jadpo_std::http::PrincipalKind::User

@@ -348,6 +348,10 @@ fn said(change: &str, family: &Family) -> (&'static str, &'static str) {
             "loosening sign-in past its limit weakens it",
             "Past its limit, a setting makes guessing or reusing a sign-in link or code easier.",
         ),
+        "PolicyChange.role_requirements_changed" => (
+            "changing how a role must be signed in to needs a person",
+            "Who keeps the role, and where their access is revoked, follows from it, whether it is tighter or looser.",
+        ),
         "NetworkChange.host_added" => (
             "a new outside host the app can send data to needs a person",
             "Data the app holds can now leave for a host it couldn't reach before.",

@@ -638,6 +638,7 @@ acceptance {
 | A column or table dropped, an entity moved to another store | `DataChange` | [Migrations](05-data.md#migrations) |
 | Any widening of who can do what, however it arises | `PolicyChange` | [Policy](09-policy.md) |
 | A sign-in setting loosened past its limit | `PolicyChange` | [Magic links](08-identity.md#settings) |
+| Any change to how a role must be signed in to, tighter or looser, or a role's line added or removed | `PolicyChange` | [Roles that need a way in](09-policy.md#roles-that-need-a-way-in) |
 | A git location added to, or widened in, `packages:`'s `own_sources:` | `PolicyChange` | [Installing safely](11-integrations.md#installing-safely) |
 | A domain created or renamed | `DomainChange` | [Domains](01-project-layout-and-modules.md#domains) |
 | A risky package change ([Package upgrades](#package-upgrades)) | `PackageChange` | [Integrations](11-integrations.md) |
@@ -673,6 +674,7 @@ Each change the compiler reports, and the subject it names:
 | `PolicyChange.listing_removed` | `catalogue.staff_books` | An action's or a query's line under `actions:` is gone |
 | `PolicyChange.call_ungranted_declined` | `lending.borrow` | A new `decline policy.call_ungranted:`, on the declaration it sits above |
 | `PolicyChange.sign_in_loosened` | `magic_link.expires_after` | A setting past its limit and looser than before |
+| `PolicyChange.role_requirements_changed` | `desk.StaffRole.admin` | A role's `requires:` line changed, tighter or looser, or a role's line added or removed |
 | `PolicyChange.own_source_added` | `"github.com/acme/"` | An entry in `packages:`'s `own_sources:` that wasn't there, or one that now covers more |
 | `DomainChange.created` | `billing` | A folder under `domains/` that wasn't there |
 | `NetworkChange.host_added` | `couriers` | A connection reaches a host it didn't, a new connection's included; one entry covers every new host of the connection |

@@ -518,6 +518,120 @@ pub fn reach_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
                 }
                 continue;
             }
+            // A role that needs a way in counts only on an API that can
+            // carry it (chunk A10): one whose every letting-in grant is
+            // such a role can never succeed here.
+            let methods = crate::routes::apis::accepted_methods(db, project, &model.api);
+            let ways = super::requires::Ways::of(db, project);
+            let uncarried = |grants: &[Grant]| -> Option<String> {
+                let mut needs: Vec<String> = Vec::new();
+                for grant in grants {
+                    match grant {
+                        Grant::System => {}
+                        Grant::Role {
+                            membership, role, ..
+                        } => {
+                            let held = access
+                                .memberships()
+                                .iter()
+                                .find(|m| m.entity == *membership)?;
+                            let requirement = held.requirement(role)?;
+                            if ways.carried(requirement, &methods) {
+                                return None;
+                            }
+                            needs.push(format!(
+                                "`{}.{role}` counts only for someone {}",
+                                held.roles,
+                                requirement.describe()
+                            ));
+                        }
+                        _ => return None,
+                    }
+                }
+                (!needs.is_empty()).then(|| crate::and_list(&needs))
+            };
+            let mut carried_problem = None;
+            for reach in reached.iter().filter(|reach| reach.field.is_none()) {
+                if let Some(needs) = uncarried(&reach.grants) {
+                    carried_problem = Some(
+                        Diagnostic::new(
+                            &rule::POLICY_EFFECT_UNGRANTED,
+                            format!(
+                                "`{label}` {}, which no one signed in to API `{}` may do",
+                                doing(reach.effect, &reach.entity),
+                                model.api
+                            ),
+                        )
+                        .at(span.clone(), format!("{} here", reach.effect.word()))
+                        .reason(format!(
+                            "Only roles let anyone {} `{}` here, and {needs}, which a request to API `{}` can't carry: a provider's sign-in comes as a browser session, `external_token`'s as its token, and an API token or a service key carries neither, so this route could never succeed.",
+                            reach.effect.word(),
+                            reach.entity,
+                            model.api
+                        ))
+                        .next(format!(
+                            "Serve the route from an API that accepts the sign-in the role needs, or loosen `{}`'s requirement",
+                            reach.entity
+                        )),
+                    );
+                    break;
+                }
+            }
+            let line_grants: Option<Vec<Grant>> = if route.run.query {
+                access.root().query(&run).map(|line| {
+                    line.who
+                        .iter()
+                        .filter_map(|who| match who {
+                            ActionWho::Role { membership, role } => Some(Grant::Role {
+                                membership: membership.clone(),
+                                role: role.clone(),
+                                via: None,
+                            }),
+                            ActionWho::Signed => Some(Grant::Signed),
+                            ActionWho::Public => Some(Grant::Public),
+                            _ => None,
+                        })
+                        .collect()
+                })
+            } else {
+                match line_gate(db, project, &run) {
+                    Some(LineGate::Roles(roles)) => Some(
+                        roles
+                            .into_iter()
+                            .map(|(membership, role)| Grant::Role {
+                                membership,
+                                role,
+                                via: None,
+                            })
+                            .collect(),
+                    ),
+                    _ => None,
+                }
+            };
+            if carried_problem.is_none()
+                && let Some(grants) = line_grants
+                && let Some(needs) = uncarried(&grants)
+            {
+                carried_problem = Some(
+                    Diagnostic::new(
+                        &rule::POLICY_EFFECT_UNGRANTED,
+                        format!(
+                            "`{label}` runs `{}`, which no one signed in to API `{}` may",
+                            route.run.name, model.api
+                        ),
+                    )
+                    .at(span.clone(), "no one here may")
+                    .reason(format!(
+                        "Its line under `actions:` names only roles, and {needs}, which a request to API `{}` can't carry: a provider's sign-in comes as a browser session, `external_token`'s as its token, and an API token or a service key carries neither, so this route could never succeed.",
+                        model.api
+                    ))
+                    .next("Serve the route from an API that accepts the sign-in the role needs, or loosen the role's requirement"),
+                );
+            }
+            if let Some(problem) = carried_problem {
+                out.push(problem);
+                continue;
+            }
             for reach in &reached {
                 let real = reach.grants.iter().any(|g| !matches!(g, Grant::System));
                 if !real && let Some(field) = &reach.field {

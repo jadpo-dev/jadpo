@@ -117,7 +117,7 @@ pub const ACCESS: Kind = Kind {
     update: "`jadpo records update`",
     command: "jadpo records update",
     headings: &[
-        "tenant", "entity", "field", "action", "query", "decline", "sign_in",
+        "tenant", "entity", "field", "action", "query", "role", "decline", "sign_in",
     ],
     facts: &[
         "create",
@@ -128,6 +128,10 @@ pub const ACCESS: Kind = Kind {
         "shared",
         "server_only",
         "who",
+        // A role's requirement (chunk A10): `sign_in SignInMethod.google`,
+        // `strength AuthenticationStrength.multi_factor`.
+        "sign_in",
+        "strength",
     ],
     older: &[],
 };
