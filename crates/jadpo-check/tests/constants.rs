@@ -13,12 +13,12 @@ fn loose(text: &str) -> Vec<String> {
     problems(Layout::Loose, &[("main.jadpo", text)])
 }
 
-const PENCE: &str = "type Pence = Int {\n    min: 0\n}\n\n";
+const PENCE: &str = "type Coins = Int {\n    min: 0\n}\n\n";
 
 #[test]
 fn a_constant_beside_its_use_checks() {
     let text = format!(
-        "{PENCE}constant free_delivery_from: Pence = 5000\nconstant small_order_fee: Pence = 250\n\nfunction delivery_fee(subtotal: Pence) -> Pence {{\n    if (subtotal >= free_delivery_from) {{\n        return 0\n    }}\n    return small_order_fee\n}}\n"
+        "{PENCE}constant free_delivery_from: Coins = 5000\nconstant small_order_fee: Coins = 250\n\nfunction delivery_fee(subtotal: Coins) -> Coins {{\n    if (subtotal >= free_delivery_from) {{\n        return 0\n    }}\n    return small_order_fee\n}}\n"
     );
     assert_eq!(loose(&text), Vec::<String>::new());
 }
@@ -26,7 +26,7 @@ fn a_constant_beside_its_use_checks() {
 #[test]
 fn a_constant_built_from_others_constructs_without_attempt() {
     let text = format!(
-        "{PENCE}constant fee: Pence = 250\nconstant double_fee: Pence = Pence(fee * 2)\nconstant fees: List<Pence> = [fee, double_fee]\n\nfunction total(subtotal: Pence) -> Pence {{\n    return Pence(subtotal + double_fee)\n}}\n"
+        "{PENCE}constant fee: Coins = 250\nconstant double_fee: Coins = Coins(fee * 2)\nconstant fees: List<Coins> = [fee, double_fee]\n\nfunction total(subtotal: Coins) -> Coins {{\n    return Coins(subtotal + double_fee)\n}}\n"
     );
     assert_eq!(loose(&text), Vec::<String>::new());
 }
@@ -51,7 +51,7 @@ fn a_built_in_type_is_refused_as_in_a_signature() {
 #[test]
 fn a_call_config_and_clock_are_not_fixed() {
     let call = format!(
-        "{PENCE}constant fee: Pence = fee_of(250)\n\nfunction fee_of(amount: Pence) -> Pence {{\n    return amount\n}}\n"
+        "{PENCE}constant fee: Coins = fee_of(250)\n\nfunction fee_of(amount: Coins) -> Coins {{\n    return amount\n}}\n"
     );
     assert_eq!(
         loose(&call),
@@ -66,7 +66,7 @@ fn a_call_config_and_clock_are_not_fixed() {
 
 #[test]
 fn a_constant_that_depends_on_itself_is_refused_once() {
-    let text = format!("{PENCE}constant a: Pence = b\nconstant b: Pence = a\n");
+    let text = format!("{PENCE}constant a: Coins = b\nconstant b: Coins = a\n");
     assert_eq!(
         loose(&text),
         ["main.jadpo constant.cycle: `b` depends on itself"]
@@ -77,20 +77,20 @@ fn a_constant_that_depends_on_itself_is_refused_once() {
 fn constant_in_a_body_const_and_constant_mut_each_give_one_error() {
     assert_eq!(
         loose(&format!(
-            "{PENCE}function fee() -> Pence {{\n    constant x: Pence = 5\n    return x\n}}\n"
+            "{PENCE}function fee() -> Coins {{\n    constant x: Coins = 5\n    return x\n}}\n"
         )),
         ["main.jadpo syntax.expected_statement: `constant` doesn't start a statement"]
     );
     assert_eq!(
-        loose(&format!("{PENCE}const fee: Pence = 5\n")),
+        loose(&format!("{PENCE}const fee: Coins = 5\n")),
         ["main.jadpo syntax.variable_keyword: Jadpo writes `constant`, not `const`"]
     );
     assert_eq!(
-        loose(&format!("{PENCE}constant mut fee: Pence = 5\n")),
+        loose(&format!("{PENCE}constant mut fee: Coins = 5\n")),
         ["main.jadpo syntax.expected_name: A constant can't be `mut`"]
     );
     assert_eq!(
-        loose(&format!("{PENCE}var fee: Pence = 5\n")),
+        loose(&format!("{PENCE}var fee: Coins = 5\n")),
         ["main.jadpo syntax.expected_declaration: `var` doesn't start a declaration"]
     );
 }
@@ -103,7 +103,7 @@ fn constant_is_reserved() {
             &[(
                 "main.jadpo",
                 &format!(
-                    "{PENCE}function f(constant: Pence) -> Pence {{\n    return constant\n}}\n"
+                    "{PENCE}function f(constant: Coins) -> Coins {{\n    return constant\n}}\n"
                 )
             )]
         )
@@ -116,7 +116,7 @@ fn constant_is_reserved() {
 #[test]
 fn two_constants_of_one_type_holding_one_value_is_a_declinable_error() {
     let text = format!(
-        "{PENCE}constant fee: Pence = 250\nconstant charge: Pence = 250\n\nfunction total() -> Pence {{\n    return Pence(fee + charge)\n}}\n"
+        "{PENCE}constant fee: Coins = 250\nconstant charge: Coins = 250\n\nfunction total() -> Coins {{\n    return Coins(fee + charge)\n}}\n"
     );
     assert_eq!(
         loose(&text),
@@ -146,7 +146,7 @@ fn an_update_by_id_may_use_a_constant() {
 #[test]
 fn a_setting_default_never_names_a_constant() {
     let text = format!(
-        "{PENCE}constant largest_page: Pence = 100\n\nconfig {{\n    page_size: Pence {{\n        default: largest_page\n    }}\n}}\n\nfunction page() -> Pence {{\n    return Pence(config.page_size + largest_page)\n}}\n"
+        "{PENCE}constant largest_page: Coins = 100\n\nconfig {{\n    page_size: Coins {{\n        default: largest_page\n    }}\n}}\n\nfunction page() -> Coins {{\n    return Coins(config.page_size + largest_page)\n}}\n"
     );
     assert_eq!(
         loose(&text),
@@ -161,8 +161,8 @@ fn a_setting_default_never_names_a_constant() {
 const SHOP: &[(&str, &str)] = &[
     APP,
     (
-        "shared/types/pence.jadpo",
-        "type Pence = Int {\n    min: 0\n}\n",
+        "shared/types/coins.jadpo",
+        "type Coins = Int {\n    min: 0\n}\n",
     ),
     (
         "domains/shop/types/vat_rate.jadpo",
@@ -174,7 +174,7 @@ const SHOP: &[(&str, &str)] = &[
     ),
     (
         "domains/shop/actions/quote.jadpo",
-        "use shared/types { Pence }\nuse shop/libraries { pricing }\nuse shop/types { VatRate }\n\nconstant free_delivery_from: Pence = 5000\n\naction quote(subtotal: Pence) -> VatRate {\n    if (subtotal >= free_delivery_from) {\n        return pricing.vat_rate\n    }\n    return VatRate(0.0000)\n}\n",
+        "use shared/types { Coins }\nuse shop/libraries { pricing }\nuse shop/types { VatRate }\n\nconstant free_delivery_from: Coins = 5000\n\naction quote(subtotal: Coins) -> VatRate {\n    if (subtotal >= free_delivery_from) {\n        return pricing.vat_rate\n    }\n    return VatRate(0.0000)\n}\n",
     ),
 ];
 
@@ -197,7 +197,7 @@ fn a_constant_a_second_file_reads_moves_into_a_library() {
     assert_eq!(
         shop(&[(
             "domains/shop/actions/other.jadpo",
-            "use shared/types { Pence }\n\naction other(subtotal: Pence) -> Pence {\n    if (subtotal >= free_delivery_from) {\n        return subtotal\n    }\n    return Pence(0)\n}\n",
+            "use shared/types { Coins }\n\naction other(subtotal: Coins) -> Coins {\n    if (subtotal >= free_delivery_from) {\n        return subtotal\n    }\n    return Coins(0)\n}\n",
         )]),
         [
             "domains/shop/actions/quote.jadpo layout.promotion_required: `free_delivery_from` is used beyond this file"
@@ -222,7 +222,7 @@ fn an_unused_constant_is_dead_code() {
 fn a_private_constant_is_unique_only_within_its_domain() {
     let found = shop(&[(
         "domains/billing/actions/invoice.jadpo",
-        "use shared/types { Pence }\n\nconstant free_delivery_from: Pence = 4000\n\naction invoice(subtotal: Pence) -> Pence {\n    if (subtotal >= free_delivery_from) {\n        return subtotal\n    }\n    return Pence(0)\n}\n",
+        "use shared/types { Coins }\n\nconstant free_delivery_from: Coins = 4000\n\naction invoice(subtotal: Coins) -> Coins {\n    if (subtotal >= free_delivery_from) {\n        return subtotal\n    }\n    return Coins(0)\n}\n",
     )]);
     assert_eq!(found, Vec::<String>::new());
 }

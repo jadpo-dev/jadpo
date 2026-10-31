@@ -15,9 +15,9 @@ fn loose(text: &str) -> Vec<String> {
     problems(Layout::Loose, &[("main.jadpo", text)])
 }
 
-const SIMILAR: &str = "type Pence = Int {\n    min: 0\n}\n\nlibrary rounding {\n    /// The amount, capped at a thousand pence.\n    function capped(amount: Pence) -> Pence {\n        if (amount > Pence(1000)) {\n            return Pence(1000)\n        }\n        return amount\n    }\n}\n\n";
+const SIMILAR: &str = "type Coins = Int {\n    min: 0\n}\n\nlibrary rounding {\n    /// The amount, capped at a thousand pence.\n    function capped(amount: Coins) -> Coins {\n        if (amount > Coins(1000)) {\n            return Coins(1000)\n        }\n        return amount\n    }\n}\n\n";
 
-const CAP: &str = "function cap_total(total: Pence) -> Pence {\n    if (total > Pence(1000)) {\n        return Pence(1000)\n    }\n    return total\n}\n";
+const CAP: &str = "function cap_total(total: Coins) -> Coins {\n    if (total > Coins(1000)) {\n        return Coins(1000)\n    }\n    return total\n}\n";
 
 #[test]
 fn a_similar_library_function_is_an_error_until_declined() {
@@ -35,7 +35,7 @@ fn a_similar_library_function_is_an_error_until_declined() {
 
 #[test]
 fn a_similar_constant_is_declined_on_the_constant() {
-    let text = "type Pence = Int {\n    min: 0\n}\n\nconstant fee: Pence = 250\ndecline constant.similar_exists: \"A delivery charge that happens to match the fee\"\nconstant charge: Pence = 250\n\nfunction total() -> Pence {\n    return Pence(fee + charge)\n}\n";
+    let text = "type Coins = Int {\n    min: 0\n}\n\nconstant fee: Coins = 250\ndecline constant.similar_exists: \"A delivery charge that happens to match the fee\"\nconstant charge: Coins = 250\n\nfunction total() -> Coins {\n    return Coins(fee + charge)\n}\n";
     assert_eq!(loose(text), Vec::<String>::new());
 }
 
@@ -44,7 +44,7 @@ fn a_decline_covers_its_rule_on_its_declaration_only() {
     // On another declaration, the finding stays and the decline is unused
     // once nothing else is wrong; here the finding still stands.
     let text = format!(
-        "{SIMILAR}decline library.similar_exists: \"Wrong place\"\nfunction other(total: Pence) -> Pence {{\n    return total\n}}\n\n{CAP}"
+        "{SIMILAR}decline library.similar_exists: \"Wrong place\"\nfunction other(total: Coins) -> Coins {{\n    return total\n}}\n\n{CAP}"
     );
     assert_eq!(
         loose(&text),
@@ -57,7 +57,7 @@ fn a_decline_covers_its_rule_on_its_declaration_only() {
 
 #[test]
 fn a_decline_whose_rule_no_longer_fires_is_unused() {
-    let text = "type Pence = Int {\n    min: 0\n}\n\ndecline library.similar_exists: \"Once a copy\"\nfunction cap_total(total: Pence) -> Pence {\n    return total\n}\n";
+    let text = "type Coins = Int {\n    min: 0\n}\n\ndecline library.similar_exists: \"Once a copy\"\nfunction cap_total(total: Coins) -> Coins {\n    return total\n}\n";
     assert_eq!(
         loose(text),
         [
@@ -68,7 +68,7 @@ fn a_decline_whose_rule_no_longer_fires_is_unused() {
 
 #[test]
 fn an_unused_decline_waits_while_other_errors_stand() {
-    let text = "type Pence = Int {\n    min: 0\n}\n\ndecline library.similar_exists: \"Once a copy\"\nfunction cap_total(total: Pence) -> Pence {\n    return totl\n}\n";
+    let text = "type Coins = Int {\n    min: 0\n}\n\ndecline library.similar_exists: \"Once a copy\"\nfunction cap_total(total: Coins) -> Coins {\n    return totl\n}\n";
     let found = loose(text);
     assert!(
         found
@@ -80,7 +80,7 @@ fn an_unused_decline_waits_while_other_errors_stand() {
 
 #[test]
 fn a_rule_that_cant_be_declined_is_not_declinable() {
-    let text = "type Pence = Int {\n    min: 0\n}\n\ndecline semantic.unknown_name: \"It is fine\"\nfunction f(a: Pence) -> Pence {\n    return a\n}\n";
+    let text = "type Coins = Int {\n    min: 0\n}\n\ndecline semantic.unknown_name: \"It is fine\"\nfunction f(a: Coins) -> Coins {\n    return a\n}\n";
     assert_eq!(
         loose(text),
         ["main.jadpo decline.not_declinable: `semantic.unknown_name` can't be declined"]
@@ -119,14 +119,14 @@ fn a_decline_needs_a_reason() {
 fn a_library_function_is_declined_inside_its_library() {
     // The later of two alike library functions is reported, and declined
     // inside the library.
-    let text = "type Pence = Int {\n    min: 0\n}\n\nlibrary rounding {\n    function capped(amount: Pence) -> Pence {\n        return amount\n    }\n\n    decline library.similar_exists: \"Kept for the old till\"\n    function kept(total: Pence) -> Pence {\n        return total\n    }\n}\n";
+    let text = "type Coins = Int {\n    min: 0\n}\n\nlibrary rounding {\n    function capped(amount: Coins) -> Coins {\n        return amount\n    }\n\n    decline library.similar_exists: \"Kept for the old till\"\n    function kept(total: Coins) -> Coins {\n        return total\n    }\n}\n";
     assert_eq!(loose(text), Vec::<String>::new());
 }
 
 #[test]
 fn the_unused_decline_is_removed_line_and_all_by_its_edit() {
     let db = Database::default();
-    let text = "type Pence = Int {\n    min: 0\n}\n\n/// Caps a total.\ndecline library.similar_exists: \"Once a copy\"\nfunction cap_total(total: Pence) -> Pence {\n    return total\n}\n";
+    let text = "type Coins = Int {\n    min: 0\n}\n\n/// Caps a total.\ndecline library.similar_exists: \"Once a copy\"\nfunction cap_total(total: Coins) -> Coins {\n    return total\n}\n";
     let project = support::project(&db, Layout::Loose, &[("main.jadpo", text)]);
     let found = jadpo_check::check(&db, project);
     let edit = &found[0].next.as_ref().expect("next").edits[0];
@@ -137,7 +137,7 @@ fn the_unused_decline_is_removed_line_and_all_by_its_edit() {
     );
     assert_eq!(
         fixed,
-        "type Pence = Int {\n    min: 0\n}\n\n/// Caps a total.\nfunction cap_total(total: Pence) -> Pence {\n    return total\n}\n"
+        "type Coins = Int {\n    min: 0\n}\n\n/// Caps a total.\nfunction cap_total(total: Coins) -> Coins {\n    return total\n}\n"
     );
 }
 
@@ -180,7 +180,7 @@ fn declines_are_listed_and_cleared_through_one_path() {
 fn declining_a_finding_inserts_the_line_below_its_comments() {
     let db = Database::default();
     let text = format!(
-        "{SIMILAR}/// Caps the total.\npublic function cap_total(total: Pence) -> Pence {{\n    if (total > Pence(1000)) {{\n        return Pence(1000)\n    }}\n    return total\n}}\n"
+        "{SIMILAR}/// Caps the total.\npublic function cap_total(total: Coins) -> Coins {{\n    if (total > Coins(1000)) {{\n        return Coins(1000)\n    }}\n    return total\n}}\n"
     );
     let project = support::project(&db, Layout::Loose, &[("main.jadpo", &text)]);
     let found = jadpo_check::check(&db, project);

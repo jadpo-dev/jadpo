@@ -18,7 +18,7 @@ const TYPES: &str = r#"type Tag = Text {
     max_length: 20
 }
 
-type Grams = Int {
+type Heaps = Int {
     min: 0
     max: 100000
 }
@@ -30,8 +30,8 @@ type Shelf = Text {
 type Label = Object {
     line: Tag
     note: Tag?
-    weight: Grams
-    limit: Grams
+    weight: Heaps
+    limit: Heaps
     price: Money
     contact: Email
     spot: Point
@@ -42,7 +42,7 @@ type Delivery = Enum {
     collect
     courier: {
         company: Tag
-        weight: Grams
+        weight: Heaps
     }
 }
 
@@ -108,12 +108,12 @@ fn every_structured_type_its_json_holds_is_stored() {
         "List<Tag>",
         "List<Label>",
         "Set<Tag>",
-        "Map<Tag, Grams>",
+        "Map<Tag, Heaps>",
         "Map<Uuid, Delivery>",
-        "Map<CalendarDate, List<Grams>>",
+        "Map<CalendarDate, List<Heaps>>",
         "Map<Currency, Money>",
         "Thread",
-        "List<Map<Tag, Set<Grams>>>",
+        "List<Map<Tag, Set<Heaps>>>",
         "Feature<Point, Pin>",
         // A password's hash is kept on the server, inside a stored value as
         // in a column of its own.
@@ -134,8 +134,8 @@ fn a_part_with_no_stored_json_form_is_refused() {
         ("Arrived", "data.field_without_json"),
         ("List<Arrived>", "data.field_without_json"),
         ("LabelInput", "data.field_without_json"),
-        ("Map<Label, Grams>", "data.field_without_json"),
-        ("Map<Delivery, Grams>", "data.field_without_json"),
+        ("Map<Label, Heaps>", "data.field_without_json"),
+        ("Map<Delivery, Heaps>", "data.field_without_json"),
         // Refused inside a stored value as in a column of its own.
         ("Signed", "type.secret_exposed"),
         ("List<Issued>", "type.auth_credential_stored"),

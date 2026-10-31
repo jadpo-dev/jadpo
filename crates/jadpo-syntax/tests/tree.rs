@@ -34,7 +34,7 @@ fn documentation_comments_are_a_declarations_first_children() {
 
 #[test]
 fn a_trailing_comment_sits_beside_the_last_token_on_its_line() {
-    let parse = parse_file("type Pence = Int {\n    min: 0  // never negative\n}\n");
+    let parse = parse_file("type Coins = Int {\n    min: 0  // never negative\n}\n");
     let comment = parse
         .syntax()
         .descendants_with_tokens()
@@ -52,7 +52,7 @@ fn a_trailing_comment_sits_beside_the_last_token_on_its_line() {
 #[test]
 fn a_comment_on_its_own_line_leads_the_next_member() {
     let parse =
-        parse_file("type Pence = Int {\n    min: 0\n    // the largest price\n    max: 100\n}\n");
+        parse_file("type Coins = Int {\n    min: 0\n    // the largest price\n    max: 100\n}\n");
     let comment = parse
         .syntax()
         .descendants_with_tokens()
@@ -114,7 +114,7 @@ fn a_field_access_reads_the_name_after_the_dot() {
 
 #[test]
 fn use_lines_name_a_folder_and_what_they_bring_in() {
-    let source = file("use shared/types { Pence, Percent }\nuse menu\n\ntype A = Int {}\n");
+    let source = file("use shared/types { Coins, Percent }\nuse menu\n\ntype A = Int {}\n");
     let lines: Vec<(String, Vec<String>)> = source
         .use_decls()
         .map(|line| {
@@ -136,7 +136,7 @@ fn use_lines_name_a_folder_and_what_they_bring_in() {
         [
             (
                 "shared/types".to_string(),
-                vec!["Pence".to_string(), "Percent".to_string()]
+                vec!["Coins".to_string(), "Percent".to_string()]
             ),
             ("menu".to_string(), Vec::new()),
         ]
@@ -157,7 +157,7 @@ fn use_is_reserved_where_something_is_named() {
 #[test]
 fn decline_lines_are_the_first_children_of_the_declaration_below() {
     let source = file(
-        "/// Rounds for the till.\ndecline library.similar_exists: \"Rounds to 5p\"\ndecline constant.similar_exists: \"Another reason\"\npublic function till_round(price: Pence) -> Pence {\n    return price\n}\n",
+        "/// Rounds for the till.\ndecline library.similar_exists: \"Rounds to 5p\"\ndecline constant.similar_exists: \"Another reason\"\npublic function till_round(price: Coins) -> Coins {\n    return price\n}\n",
     );
     let decl = source.decls().next().expect("a declaration");
     assert_eq!(decl.syntax().kind(), SyntaxKind::FUNCTION_DECL);

@@ -10,7 +10,7 @@ use crate::support;
 use jadpo_db::{Database, Layout};
 use jadpo_diag::Diagnostic;
 
-const NAMES: &str = "type Title = Text {\n    min_length: 1\n    max_length: 60\n}\n\ntype Caption = Text {\n    max_length: 60\n}\n\ntype Short = Text {\n    max_length: 12\n}\n\ntype Separator = Text {\n    min_length: 1\n    max_length: 3\n}\n\ntype Loose = Text {\n    max_length: 3\n}\n\ntype Words = Text {}\n\ntype TagName = Text {\n    min_length: 1\n    max_length: 20\n}\n\ntype Grams = Int {\n    min: 0\n}\n\ntype Signed = Int {}\n\ntype Found = Bool {}\n\ntype Batch = Object {\n    name: Title\n    grams: Grams\n}\n\n";
+const NAMES: &str = "type Title = Text {\n    min_length: 1\n    max_length: 60\n}\n\ntype Caption = Text {\n    max_length: 60\n}\n\ntype Short = Text {\n    max_length: 12\n}\n\ntype Separator = Text {\n    min_length: 1\n    max_length: 3\n}\n\ntype Loose = Text {\n    max_length: 3\n}\n\ntype Words = Text {}\n\ntype TagName = Text {\n    min_length: 1\n    max_length: 20\n}\n\ntype Heaps = Int {\n    min: 0\n}\n\ntype Signed = Int {}\n\ntype Found = Bool {}\n\ntype Batch = Object {\n    name: Title\n    grams: Heaps\n}\n\n";
 
 fn diagnostics(source: &str) -> Vec<Diagnostic> {
     let db = Database::default();
@@ -33,7 +33,7 @@ const NONE: &[&str] = &[];
 
 #[test]
 fn every_text_operation_checks() {
-    let source = "function words(t: Title, s: Separator, n: Grams, reader: Locale) -> List<Words> {\n    return [Words(text.trim(t)), Words(text.lower(t)), Words(text.upper(t, locale: reader)), Words(text.replace(t, s, \"and\")), Words(text.slice(t, 1, n)), Words(text.keep_first(t, 3)), Words(text.keep_last(t, n)), Words(text.drop_first(t, 1)), Words(text.drop_last(t, n)), Words(text.pad_start(t, 6, fill: \"0\")), Words(text.slug(t)), Words(text.join(text.split(t, s), \"-\"))]\n}\n\nfunction checks(t: Title, s: Separator) -> List<Found> {\n    return [Found(text.contains(t, s)), Found(text.starts_with(t, \"R\")), Found(text.ends_with(t, s))]\n}\n\nfunction size(t: Title) -> Grams {\n    return Grams(text.length(t))\n}\n\nfunction joined(tags: List<TagName>) -> Words {\n    return Words(text.join(tags, \", \"))\n}\n\nfunction ordered(bakings: List<Batch>, reader: Locale) -> List<Batch> {\n    return list.sort_by(bakings, batch -> batch.name, locale: reader)\n}\n";
+    let source = "function words(t: Title, s: Separator, n: Heaps, reader: Locale) -> List<Words> {\n    return [Words(text.trim(t)), Words(text.lower(t)), Words(text.upper(t, locale: reader)), Words(text.replace(t, s, \"and\")), Words(text.slice(t, 1, n)), Words(text.keep_first(t, 3)), Words(text.keep_last(t, n)), Words(text.drop_first(t, 1)), Words(text.drop_last(t, n)), Words(text.pad_start(t, 6, fill: \"0\")), Words(text.slug(t)), Words(text.join(text.split(t, s), \"-\"))]\n}\n\nfunction checks(t: Title, s: Separator) -> List<Found> {\n    return [Found(text.contains(t, s)), Found(text.starts_with(t, \"R\")), Found(text.ends_with(t, s))]\n}\n\nfunction size(t: Title) -> Heaps {\n    return Heaps(text.length(t))\n}\n\nfunction joined(tags: List<TagName>) -> Words {\n    return Words(text.join(tags, \", \"))\n}\n\nfunction ordered(bakings: List<Batch>, reader: Locale) -> List<Batch> {\n    return list.sort_by(bakings, batch -> batch.name, locale: reader)\n}\n";
     assert_eq!(rules(source), NONE);
 }
 
@@ -47,7 +47,7 @@ fn results_are_plain_text_or_what_the_table_says() {
     // `split` gives a list of text; `length` an `Int` never below 0.
     assert_eq!(
         rules(
-            "function f(t: Title, s: Separator) -> Grams {\n    return Grams(list.count(text.split(t, s)))\n}\n"
+            "function f(t: Title, s: Separator) -> Heaps {\n    return Heaps(list.count(text.split(t, s)))\n}\n"
         ),
         NONE
     );
@@ -57,7 +57,7 @@ fn results_are_plain_text_or_what_the_table_says() {
     );
     // Text operations take text.
     assert_eq!(
-        rules("function f(n: Grams) -> Words {\n    return Words(text.trim(n))\n}\n"),
+        rules("function f(n: Heaps) -> Words {\n    return Words(text.trim(n))\n}\n"),
         ["type.mismatch"]
     );
 }
@@ -115,7 +115,7 @@ fn never_empty_text_is_proved() {
     );
     assert_eq!(
         rules(
-            "function f(t: Title) -> Grams {\n    return Grams(list.count(text.split(t, text.trim(t))))\n}\n"
+            "function f(t: Title) -> Heaps {\n    return Heaps(list.count(text.split(t, text.trim(t))))\n}\n"
         ),
         ["type.argument_empty"]
     );
@@ -159,7 +159,7 @@ fn fill_is_one_character_written_out() {
 fn join_takes_a_list_of_any_text() {
     assert_eq!(
         rules(
-            "function f(ns: List<Grams>) -> Words {\n    return Words(text.join(ns, \",\"))\n}\n"
+            "function f(ns: List<Heaps>) -> Words {\n    return Words(text.join(ns, \",\"))\n}\n"
         ),
         ["type.mismatch"]
     );
@@ -190,7 +190,7 @@ fn a_locale_orders_text_keys_only() {
     );
     assert_eq!(
         rules(
-            "function f(t: Title, n: Grams) -> Words {\n    return Words(text.lower(t, locale: n))\n}\n"
+            "function f(t: Title, n: Heaps) -> Words {\n    return Words(text.lower(t, locale: n))\n}\n"
         ),
         ["type.mismatch"]
     );

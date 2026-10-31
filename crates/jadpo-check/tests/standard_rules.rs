@@ -12,7 +12,7 @@ use jadpo_db::Layout;
 
 const NAMES: &str = "type Words = Text {}
 
-type Grams = Int {
+type Heaps = Int {
     min: 0
 }
 
@@ -89,14 +89,14 @@ fn a_range_s_start_is_never_after_its_end() {
         "start_not_after_end",
     );
     broken_literal(
-        "function band() -> Range<Grams> {\n    return Range {\n        start: 800\n        end: 400\n    }\n}\n",
+        "function band() -> Range<Heaps> {\n    return Range {\n        start: 800\n        end: 400\n    }\n}\n",
         "Range",
         "start_not_after_end",
     );
     // An empty range, a one-day stay and an open end keep it.
     assert_eq!(
         rules(
-            "function slot() -> InstantRange {\n    return InstantRange {\n        start: \"2026-10-25T10:00:00Z\"\n        end: \"2026-10-25T10:00:00Z\"\n    }\n}\n\nfunction stay() -> DateRange {\n    return DateRange {\n        start: \"2026-10-25\"\n        end: \"2026-10-25\"\n    }\n}\n\nfunction band() -> Range<Grams> {\n    return Range {\n        start: 800\n        end: none\n    }\n}\n"
+            "function slot() -> InstantRange {\n    return InstantRange {\n        start: \"2026-10-25T10:00:00Z\"\n        end: \"2026-10-25T10:00:00Z\"\n    }\n}\n\nfunction stay() -> DateRange {\n    return DateRange {\n        start: \"2026-10-25\"\n        end: \"2026-10-25\"\n    }\n}\n\nfunction band() -> Range<Heaps> {\n    return Range {\n        start: 800\n        end: none\n    }\n}\n"
         ),
         NONE
     );
@@ -113,8 +113,8 @@ fn a_range_s_start_is_never_after_its_end() {
         &["start_not_after_end"],
     );
     attempted(
-        "start: Grams, end: Grams",
-        "Range<Grams>",
+        "start: Heaps, end: Heaps",
+        "Range<Heaps>",
         "        start: start\n        end: end\n",
         &["start_not_after_end"],
     );
@@ -124,13 +124,13 @@ fn a_range_s_start_is_never_after_its_end() {
 fn a_condition_or_a_range_proves_a_rule_in_order() {
     assert_eq!(
         rules(
-            "function band(start: Grams, end: Grams) fails Refused -> Range<Grams> {\n    if (end < start) {\n        reject Refused\n    }\n    return Range {\n        start: start\n        end: end\n    }\n}\n"
+            "function band(start: Heaps, end: Heaps) fails Refused -> Range<Heaps> {\n    if (end < start) {\n        reject Refused\n    }\n    return Range {\n        start: start\n        end: end\n    }\n}\n"
         ),
         NONE
     );
     assert_eq!(
         rules(
-            "function band(start: Grams, end: Grams) fails Refused -> Range<Grams> {\n    if (end < start) {\n        reject Refused\n    }\n    return attempt Range {\n        start: start\n        end: end\n    } {\n        start_not_after_end: Refused\n    }\n}\n"
+            "function band(start: Heaps, end: Heaps) fails Refused -> Range<Heaps> {\n    if (end < start) {\n        reject Refused\n    }\n    return attempt Range {\n        start: start\n        end: end\n    } {\n        start_not_after_end: Refused\n    }\n}\n"
         ),
         ["failure.attempt_infallible"]
     );
@@ -144,7 +144,7 @@ fn a_condition_or_a_range_proves_a_rule_in_order() {
     // A range with an open end and a value is open whatever the value.
     assert_eq!(
         rules(
-            "function from(start: Grams) -> Range<Grams> {\n    return Range {\n        start: start\n        end: none\n    }\n}\n"
+            "function from(start: Heaps) -> Range<Heaps> {\n    return Range {\n        start: start\n        end: none\n    }\n}\n"
         ),
         NONE
     );

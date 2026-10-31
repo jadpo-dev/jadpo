@@ -1646,6 +1646,7 @@ The entries with signals so far:
 - `Money`: × or ÷ 100 and 1000, the minor units of two- and three-place
   currencies; `price`, `pence`, `cents`, `cost`; `£`, `$`, `€`, `¥`.
 - Every quantity: its units.
+- `Percentage`: `percent`, `percentage`, `pct`.
 - `Duration`: 1000, 60, 3600, 86400; `ms`, `millis`, `seconds`,
   `minutes`, `hours`, `timeout`.
 - `Instant`: 1000; `epoch`, `timestamp`, `unix`.
@@ -1663,7 +1664,11 @@ A snippet gives one finding. Where signals for two types fire on one
 snippet, the type whose words more of its names hold wins, then the first
 in the entries' order. Where a snippet holds a smaller one that fires the
 same way, only the smaller is reported. A type with
-`decline type.standard_exists` gives no `shape` finding.
+`decline type.standard_exists` gives no `shape` finding. A type whose
+whole name is one of a type's units, such as `type Pence = Int {}`, gives
+no `name` finding: it is `type.unit_as_number`, a `jadpo check` error
+([Units and money in plain numbers](02-values-and-types.md#units-and-money-in-plain-numbers)),
+declined or not.
 
 ## Snippets and their canonical form
 <!-- topic: snippets-and-their-canonical-form -->

@@ -504,13 +504,9 @@ After the registry is live, in order:
 
 ## After the first build, in order
 
-1. Units and money in plain numbers: a named type built on `Int` or
-   `Decimal` whose name is a unit, a currency's minor unit or "percent"
-   (`Grams`, `Metres`, `Pence`, `Percent`) is a declinable compile error
-   naming the standard type (`Mass`, `Length`, `Money`, `Percentage`),
-   reusing `jadpo suggest`'s name signal data; and the gate runs
-   `jadpo suggest` over every teaching example, which must come back clean
-   or ignore each finding with a reason.
+1. [x] **F1 Units and money in plain numbers**: area 2, "Units and money
+   in plain numbers"; area 14, "Signals"; compiler/runtime, "Teaching
+   examples".
 2. The standard type reference, generated: `tools/docs/language_docs.py`
    renders one entry per standard type (what it is, how to make one, its
    fields, operations, text, JSON and storage forms, an example) from the

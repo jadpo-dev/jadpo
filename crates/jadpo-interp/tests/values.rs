@@ -5,7 +5,7 @@ use crate::support;
 use jadpo_interp::Value;
 use support::{decimal, failure, int, list, main, program, text, value};
 
-const NAMES: &str = "type ProductName = Text {\n    min_length: 1\n    max_length: 120\n}\n\ntype Pence = Int {\n    min: 0\n}\n";
+const NAMES: &str = "type ProductName = Text {\n    min_length: 1\n    max_length: 120\n}\n\ntype Coins = Int {\n    min: 0\n}\n";
 
 #[test]
 fn a_narrower_type_stands_in_for_its_parent() {
@@ -32,7 +32,7 @@ fn literals_take_the_type_they_go_into() {
 #[test]
 fn constructing_converts_between_named_types() {
     let program = main(
-        "type Pence = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\nfunction line_total(price: Pence, quantity: Quantity) -> Pence {\n    return Pence(price * quantity)\n}\n",
+        "type Coins = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\nfunction line_total(price: Coins, quantity: Quantity) -> Coins {\n    return Coins(price * quantity)\n}\n",
     );
     assert_eq!(
         value(&program, "line_total", vec![int(250), int(3)]),
@@ -61,11 +61,11 @@ fn an_object_is_built_with_every_field() {
         ("names.jadpo", NAMES),
         (
             "main.jadpo",
-            "type PriceTag = Object {\n    amount: Pence\n}\n\ntype CreateProduct = Input {\n    name: ProductName\n    price: Pence\n}\n\ntype ProductView = Output {\n    name: ProductName\n    price: PriceTag\n}\n",
+            "type PriceTag = Object {\n    amount: Coins\n}\n\ntype CreateProduct = Input {\n    name: ProductName\n    price: Coins\n}\n\ntype ProductView = Output {\n    name: ProductName\n    price: PriceTag\n}\n",
         ),
         (
             "view.jadpo",
-            "function view(name: ProductName, price: Pence) -> ProductView {\n    return ProductView {\n        name: name\n        price: PriceTag {\n            amount: price\n        }\n    }\n}\n",
+            "function view(name: ProductName, price: Coins) -> ProductView {\n    return ProductView {\n        name: name\n        price: PriceTag {\n            amount: price\n        }\n    }\n}\n",
         ),
     ]);
     let view = value(&program, "view", vec![text("Lamp"), int(1299)]);
@@ -211,7 +211,7 @@ fn values_never_change_so_a_new_one_is_built() {
         ("names.jadpo", NAMES),
         (
             "main.jadpo",
-            "type Product = Object {\n    name: ProductName\n    price: Pence\n}\n\nfunction reprice(product: Product, price: Pence) -> Product {\n    return Product {\n        name: product.name\n        price: price\n    }\n}\n",
+            "type Product = Object {\n    name: ProductName\n    price: Coins\n}\n\nfunction reprice(product: Product, price: Coins) -> Product {\n    return Product {\n        name: product.name\n        price: price\n    }\n}\n",
         ),
     ]);
     let lamp = program

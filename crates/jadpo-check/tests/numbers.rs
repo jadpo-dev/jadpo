@@ -9,7 +9,7 @@ use crate::support;
 use jadpo_db::{Database, Layout};
 use jadpo_diag::Diagnostic;
 
-const NAMES: &str = "type Grams = Int {\n    min: 0\n}\n\ntype TrayCount = Int {\n    min: 1\n    max: 12\n}\n\ntype Swing = Int {\n    min: -5\n    max: 5\n}\n\ntype Places = Int {\n    min: 0\n    max: 3\n}\n\ntype Kilograms = Decimal {\n    scale: 3\n    min: 0.000\n}\n\ntype Change = Decimal {\n    scale: 2\n}\n\ntype LoafPrice = Decimal {\n    scale: 2\n    min: 0.00\n}\n\n";
+const NAMES: &str = "type Heaps = Int {\n    min: 0\n}\n\ntype TrayCount = Int {\n    min: 1\n    max: 12\n}\n\ntype Swing = Int {\n    min: -5\n    max: 5\n}\n\ntype Places = Int {\n    min: 0\n    max: 3\n}\n\ntype Heaviness = Decimal {\n    scale: 3\n    min: 0.000\n}\n\ntype Change = Decimal {\n    scale: 2\n}\n\ntype LoafPrice = Decimal {\n    scale: 2\n    min: 0.00\n}\n\n";
 
 fn diagnostics(source: &str) -> Vec<Diagnostic> {
     let db = Database::default();
@@ -32,7 +32,7 @@ const NONE: &[&str] = &[];
 
 #[test]
 fn every_number_operation_checks() {
-    let source = "function drift(a: Grams, b: Grams) -> Grams {\n    return Grams(integer.abs(a - b))\n}\n\nfunction trays(a: TrayCount, b: TrayCount) -> List<TrayCount> {\n    return [integer.min(a, b), integer.max(a, b), integer.min(a, 3), integer.max(12, b)]\n}\n\nfunction loaves(flour: Kilograms) -> Grams {\n    return Grams(integer.from_decimal(flour / 0.450, rounding: Rounding.down))\n}\n\nfunction prices(a: LoafPrice, b: LoafPrice) -> List<LoafPrice> {\n    return [decimal.min(a, b), decimal.max(a, 0.50), LoafPrice(decimal.abs(a - b))]\n}\n\nfunction label(weight: Kilograms) -> Kilograms {\n    return Kilograms(decimal.round(weight, scale: 1, rounding: Rounding.half_up))\n}\n\nfunction share(total: LoafPrice, people: TrayCount) -> LoafPrice {\n    return LoafPrice(decimal.divide(total, people, rounding: Rounding.down))\n}\n\nfunction shown(price: LoafPrice, count: TrayCount) -> List<PresentationText> {\n    return [text.format(price, locale: Locale.en_gb), text.format(count, locale: Locale.fr_fr)]\n}\n";
+    let source = "function drift(a: Heaps, b: Heaps) -> Heaps {\n    return Heaps(integer.abs(a - b))\n}\n\nfunction trays(a: TrayCount, b: TrayCount) -> List<TrayCount> {\n    return [integer.min(a, b), integer.max(a, b), integer.min(a, 3), integer.max(12, b)]\n}\n\nfunction loaves(flour: Heaviness) -> Heaps {\n    return Heaps(integer.from_decimal(flour / 0.450, rounding: Rounding.down))\n}\n\nfunction prices(a: LoafPrice, b: LoafPrice) -> List<LoafPrice> {\n    return [decimal.min(a, b), decimal.max(a, 0.50), LoafPrice(decimal.abs(a - b))]\n}\n\nfunction label(weight: Heaviness) -> Heaviness {\n    return Heaviness(decimal.round(weight, scale: 1, rounding: Rounding.half_up))\n}\n\nfunction share(total: LoafPrice, people: TrayCount) -> LoafPrice {\n    return LoafPrice(decimal.divide(total, people, rounding: Rounding.down))\n}\n\nfunction shown(price: LoafPrice, count: TrayCount) -> List<PresentationText> {\n    return [text.format(price, locale: Locale.en_gb), text.format(count, locale: Locale.fr_fr)]\n}\n";
     assert_eq!(rules(source), NONE);
 }
 
@@ -40,13 +40,13 @@ fn every_number_operation_checks() {
 fn min_and_max_take_two_values_of_one_type_and_keep_it() {
     // Two different named types aren't one, as for `+`.
     let found = diagnostics(
-        "function f(a: Grams, b: TrayCount) -> Grams {\n    return integer.min(a, b)\n}\n",
+        "function f(a: Heaps, b: TrayCount) -> Heaps {\n    return integer.min(a, b)\n}\n",
     );
     assert_eq!(found.len(), 1, "{found:?}");
     assert_eq!(found[0].rule.id, "type.mismatch");
     assert_eq!(
         found[0].message,
-        "`Grams` and `TrayCount` can't both be given to `integer.min`"
+        "`Heaps` and `TrayCount` can't both be given to `integer.min`"
     );
     // A literal takes the other value's type, so it must be one.
     assert_eq!(
@@ -56,13 +56,13 @@ fn min_and_max_take_two_values_of_one_type_and_keep_it() {
     // A plain number makes the result plain, as `+` does.
     assert_eq!(
         rules(
-            "function f(a: Grams, b: TrayCount) -> Grams {\n    return integer.max(a, b + 1)\n}\n"
+            "function f(a: Heaps, b: TrayCount) -> Heaps {\n    return integer.max(a, b + 1)\n}\n"
         ),
         ["type.mismatch"]
     );
     assert_eq!(
         rules(
-            "function f(a: Grams, b: TrayCount) -> Grams {\n    return Grams(integer.max(a, b + 1))\n}\n"
+            "function f(a: Heaps, b: TrayCount) -> Heaps {\n    return Heaps(integer.max(a, b + 1))\n}\n"
         ),
         NONE,
         "both at least 0, so the larger is"
@@ -88,12 +88,12 @@ fn bounds_follow_through_min_max_abs_and_rounding() {
     // `min` with 12 is never above 12, `max` with 1 never below 1.
     assert_eq!(
         rules(
-            "function f(a: Grams) -> TrayCount {\n    return TrayCount(integer.max(integer.min(a, 12), 1))\n}\n"
+            "function f(a: Heaps) -> TrayCount {\n    return TrayCount(integer.max(integer.min(a, 12), 1))\n}\n"
         ),
         NONE
     );
     assert_eq!(
-        rules("function f(a: Grams) -> TrayCount {\n    return TrayCount(integer.min(a, 12))\n}\n"),
+        rules("function f(a: Heaps) -> TrayCount {\n    return TrayCount(integer.min(a, 12))\n}\n"),
         ["failure.attempt_required"],
         "0 is below `min: 1`"
     );
@@ -106,7 +106,7 @@ fn bounds_follow_through_min_max_abs_and_rounding() {
     // round to one.
     assert_eq!(
         rules(
-            "function f(a: Change) -> Grams {\n    return Grams(integer.from_decimal(a, rounding: Rounding.up))\n}\n"
+            "function f(a: Change) -> Heaps {\n    return Heaps(integer.from_decimal(a, rounding: Rounding.up))\n}\n"
         ),
         ["failure.attempt_required"]
     );
@@ -122,7 +122,7 @@ fn bounds_follow_through_min_max_abs_and_rounding() {
 fn scale_is_a_whole_number_written_out() {
     let base = |scale: &str| {
         format!(
-            "function f(w: Kilograms, p: Places) -> Kilograms {{\n    return Kilograms(decimal.round(w, scale: {scale}, rounding: Rounding.down))\n}}\n"
+            "function f(w: Heaviness, p: Places) -> Heaviness {{\n    return Heaviness(decimal.round(w, scale: {scale}, rounding: Rounding.down))\n}}\n"
         )
     };
     assert_eq!(rules(&base("0")), NONE);
@@ -140,7 +140,7 @@ fn scale_is_a_whole_number_written_out() {
     // It is given, as `rounding:` is.
     assert_eq!(
         rules(
-            "function f(w: Kilograms) -> Kilograms {\n    return Kilograms(decimal.round(w, rounding: Rounding.down))\n}\n"
+            "function f(w: Heaviness) -> Heaviness {\n    return Heaviness(decimal.round(w, rounding: Rounding.down))\n}\n"
         ),
         ["type.argument_count"]
     );
@@ -151,7 +151,7 @@ fn rounding_has_four_modes() {
     for mode in ["half_even", "half_up", "up", "down"] {
         assert_eq!(
             rules(&format!(
-                "function f(a: Kilograms) -> Grams {{\n    return Grams(integer.from_decimal(a, rounding: Rounding.{mode}))\n}}\n"
+                "function f(a: Heaviness) -> Heaps {{\n    return Heaps(integer.from_decimal(a, rounding: Rounding.{mode}))\n}}\n"
             )),
             NONE,
             "{mode}"
@@ -159,7 +159,7 @@ fn rounding_has_four_modes() {
     }
     assert_eq!(
         rules(
-            "function f(a: Kilograms) -> Grams {\n    return Grams(integer.from_decimal(a, rounding: Rounding.floor))\n}\n"
+            "function f(a: Heaviness) -> Heaps {\n    return Heaps(integer.from_decimal(a, rounding: Rounding.floor))\n}\n"
         ),
         ["type.unknown_enum_variant"]
     );
@@ -168,11 +168,11 @@ fn rounding_has_four_modes() {
 #[test]
 fn text_format_shows_a_number_with_no_time_options() {
     let found = diagnostics(
-        "function f(g: Grams) -> PresentationText {\n    return text.format(g, locale: Locale.en_gb, zone: Zone.utc)\n}\n",
+        "function f(g: Heaps) -> PresentationText {\n    return text.format(g, locale: Locale.en_gb, zone: Zone.utc)\n}\n",
     );
     assert_eq!(found.len(), 1, "{found:?}");
     assert_eq!(found[0].rule.id, "type.temporal_option_unused");
-    assert_eq!(found[0].message, "`zone:` means nothing for a `Grams`");
+    assert_eq!(found[0].message, "`zone:` means nothing for a `Heaps`");
     // A `Bool` still has no format for people.
     assert_eq!(
         rules(

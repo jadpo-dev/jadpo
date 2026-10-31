@@ -12,7 +12,7 @@ use jadpo_term::Environment;
 /// Every kind of thing a test can meet: plain values, a record, a boolean
 /// type, an action with two failures (one with an internal field), and
 /// arithmetic that can overflow.
-const SIZES: &str = "type Count = Int {\n    min: 0\n}\n\ntype Pence = Int {\n    min: 0\n}\n\ntype GridCell = Object {\n    x: Count\n    y: Count\n}\n\ntype Ready = Bool {}\n\ntype TooBig = Failure {\n    kind: FailureKind.rejected\n}\n\ntype TooSmall = Failure {\n    kind: FailureKind.rejected\n    internal: {\n        given: Count\n    }\n}\n\nfunction add(a: Count, b: Count) -> Count {\n    return Count(a + b)\n}\n\nfunction moved(point: GridCell) -> GridCell {\n    return GridCell {\n        x: Count(point.x + 1)\n        y: point.y\n    }\n}\n\nfunction ready(size: Count, limit: Count) -> Ready {\n    return Ready(size > limit)\n}\n\nfunction line_total(price: Pence, quantity: Count) -> Pence {\n    return Pence(price * quantity)\n}\n\naction check_size(n: Count) fails TooBig, TooSmall -> Count {\n    if (n > 10) {\n        reject TooBig\n    }\n    if (n < 2) {\n        reject TooSmall {\n            given: n\n        }\n    }\n    return n\n}\n";
+const SIZES: &str = "type Count = Int {\n    min: 0\n}\n\ntype Coins = Int {\n    min: 0\n}\n\ntype GridCell = Object {\n    x: Count\n    y: Count\n}\n\ntype Ready = Bool {}\n\ntype TooBig = Failure {\n    kind: FailureKind.rejected\n}\n\ntype TooSmall = Failure {\n    kind: FailureKind.rejected\n    internal: {\n        given: Count\n    }\n}\n\nfunction add(a: Count, b: Count) -> Count {\n    return Count(a + b)\n}\n\nfunction moved(point: GridCell) -> GridCell {\n    return GridCell {\n        x: Count(point.x + 1)\n        y: point.y\n    }\n}\n\nfunction ready(size: Count, limit: Count) -> Ready {\n    return Ready(size > limit)\n}\n\nfunction line_total(price: Coins, quantity: Count) -> Coins {\n    return Coins(price * quantity)\n}\n\naction check_size(n: Count) fails TooBig, TooSmall -> Count {\n    if (n > 10) {\n        reject TooBig\n    }\n    if (n < 2) {\n        reject TooSmall {\n            given: n\n        }\n    }\n    return n\n}\n";
 
 const ADDS: &str = "test \"adds\" {\n    assert add(2, 3) == 5\n}\n";
 const ADDS_WRONGLY: &str = "test \"adds wrongly\" {\n    assert add(2, 3) == add(1, 1) + 1\n}\n";
@@ -21,7 +21,7 @@ const READY: &str = "test \"a big size is ready\" {\n    var size: Count = 4\n  
 const RETURNED: &str = "test \"a mid size is too big\" {\n    var size: Count = 3\n    assert check_size(size) fails TooBig\n}\n";
 const INSTEAD: &str = "test \"one is too big\" {\n    assert check_size(1) fails TooBig\n}\n";
 const KEPT: &str = "test \"a big size is kept\" {\n    var size: Count = attempt check_size(12)\n    assert size == 12\n}\n";
-const PRICED: &str = "test \"a large order is priced\" {\n    var price: Pence = 4611686018427387904\n    assert line_total(price, 2) > 0\n}\n";
+const PRICED: &str = "test \"a large order is priced\" {\n    var price: Coins = 4611686018427387904\n    assert line_total(price, 2) > 0\n}\n";
 const ACTS: &str = "test \"a size is checked\" {\n    var size: Count = attempt check_size(5)\n    assert size == 5\n}\n";
 
 /// A fresh folder for one test under cargo's temporary directory.
@@ -341,7 +341,7 @@ FAIL  a large order is priced
   fault: int_overflow in function line_total
   at: sizes.jadpo:43:18
    |
-43 |     return Pence(price * quantity)
+43 |     return Coins(price * quantity)
    |                  ^^^^^^^^^^^^^^^^ out of range
   reason: `price * quantity` gives a whole number outside `Int`'s range, -9223372036854775808 to 9223372036854775807; Jadpo stops rather than wrap around.
   next: Bound the values that feed it with `max`, so the result always fits (agent)

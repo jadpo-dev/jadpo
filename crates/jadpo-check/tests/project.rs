@@ -719,11 +719,11 @@ fn a_file_holds_only_what_its_primary_declaration_uses() {
     assert_eq!(
         with(&[(
             "shared/types/parcel.jadpo",
-            "type Parcel = Object {\n    weight: Grams\n}\n\ntype Grams = Int {\n    min: 0\n}\n\ntype Ounces = Int {}\n"
+            "type Parcel = Object {\n    weight: Heaps\n}\n\ntype Heaps = Int {\n    min: 0\n}\n\ntype Scoops = Int {}\n"
         )]),
         [
             "shared/types/parcel.jadpo layout.unused_declaration: `Parcel` isn't used",
-            "shared/types/parcel.jadpo layout.unused_declaration: `Ounces` isn't used by `Parcel`",
+            "shared/types/parcel.jadpo layout.unused_declaration: `Scoops` isn't used by `Parcel`",
         ]
     );
     // While the primary writes a name that names nothing, perhaps a

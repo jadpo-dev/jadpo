@@ -275,7 +275,7 @@ provider {
             r#"/// An amount to record.
 public type NewPosting = Object {
     reference: Reference
-    pence: Pence
+    pence: Coins
 }
 "#
             .to_string(),
@@ -286,8 +286,8 @@ public type NewPosting = Object {
                 .to_string(),
         ),
         (
-            "shared/providers/ledger/v1/types/pence.jadpo",
-            "/// An amount in pence.\npublic type Pence = Int {\n    min: 0\n    max: 100000000\n}\n"
+            "shared/providers/ledger/v1/types/coins.jadpo",
+            "/// An amount in pence.\npublic type Coins = Int {\n    min: 0\n    max: 100000000\n}\n"
                 .to_string(),
         ),
         (
@@ -396,7 +396,7 @@ action track_parcel(parcel: AcmeCouriers.ParcelId) fails ParcelMissing -> AcmeCo
 use shared/providers/ledger
 
 /// Records an invoice's amount in the ledger.
-action record_invoice(code: Ledger.Reference, pence: Ledger.Pence) -> Ledger.Posting {
+action record_invoice(code: Ledger.Reference, pence: Ledger.Coins) -> Ledger.Posting {
     return ledger.postings.create(Ledger.NewPosting {
         reference: code
         pence: pence

@@ -12,7 +12,7 @@ const SOURCE: &str = r#"type Tag = Text {
     max_length: 20
 }
 
-type Grams = Int {
+type Heaps = Int {
     min: 0
     max: 100000
 }
@@ -20,7 +20,7 @@ type Grams = Int {
 type ParcelSent = Event {
     parcel_id: Uuid
     price: Money
-    weight: Grams
+    weight: Heaps
     tags: List<Tag>
     sent_at: Instant
 }

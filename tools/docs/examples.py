@@ -7,6 +7,9 @@ Each project in examples/ (a folder holding app.jadpo), and the golden todo
 
 - check with no diagnostics at all (`jadpo check --json`);
 - be canonically formatted (`jadpo fmt --check`);
+- a teaching example, come back from `jadpo suggest --json` with no
+  findings, each one it ignores kept in its
+  `ignored_suggestions.jadpo_record` with a reason (roadmap F1);
 - have tests, all passing under `jadpo test --json --seed 1`;
 - have its own README.md, and, a teaching example, appear in
   examples/README.md's reading order;
@@ -125,6 +128,8 @@ def check(project: Path) -> tuple[list[str], str | None]:
         code, out = jadpo(['fmt', '--check', '.'], cwd=copy)
         if code:
             problems.append(f'{name}: not canonically formatted (run jadpo fmt in it)')
+        elif project != GOLDEN_TODO:
+            problems += suggestions(name, copy)
         if SKIP_POSTGRES and needs_postgres(project):
             return problems, None
         code, document = jadpo(['test', '.', '--json', '--seed', TEST_SEED], cwd=copy)
@@ -144,6 +149,28 @@ def check(project: Path) -> tuple[list[str], str | None]:
             if code or failed:
                 problems.append(f'{name}: its tests must pass, but these don\'t: {"; ".join(failed) or f"exit {code}"}')
     return problems, document if not problems else None
+
+
+def suggestions(name: str, copy: Path) -> list[str]:
+    """What `jadpo suggest` still finds in a teaching example's copy: each
+    finding must be taken, or ignored with a reason, which `jadpo suggest
+    ignore` keeps in the example's `ignored_suggestions.jadpo_record`. It
+    runs after `jadpo fmt --check`, so its formatting first changes
+    nothing, and in the copy, so its notes in `.jadpo/` never land."""
+    code, out = jadpo(['suggest', '--json'], cwd=copy)
+    try:
+        document = json.loads(out)
+    except ValueError:
+        return [f'{name}: jadpo suggest --json gave no report']
+    findings = (document.get('data') or {}).get('findings')
+    if code or findings is None:
+        rules = sorted({d.get('rule', '?') for d in document.get('diagnostics', [])})
+        return [f'{name}: jadpo suggest failed: {", ".join(rules) or f"exit {code}"}']
+    return [
+        f'{name}: jadpo suggest finds {f.get("suggestion")} ({f.get("signal")}) at '
+        f'{f.get("path")}:{f.get("line")}; take it, or run `jadpo suggest ignore {f.get("number")} "<why>"` in the example'
+        for f in findings
+    ]
 
 
 TRY = re.compile(r'<!-- try (\{.*?\}) -->', re.DOTALL)

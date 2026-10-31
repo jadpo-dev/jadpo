@@ -59,7 +59,9 @@ pub mod web;
 pub use codes::isbn_from_isbn10;
 pub use contact::{LINE_MAX, LINE_PATTERN};
 pub use places::{ClosedList, closed_list, retired, subdivision_name};
-pub use signals::{LOOP_SIGNALS, LoopShape, LoopSignal, NO_SIGNALS, Signals, Validation};
+pub use signals::{
+    LOOP_SIGNALS, LoopShape, LoopSignal, NO_SIGNALS, SharedUnit, Signals, Validation,
+};
 
 /// What a standard type's values are held as.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2281,7 +2283,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
-        signals: NO_SIGNALS,
+        signals: signals::PERCENTAGE,
     },
     contact::PERSON_NAME,
     contact::PHONE_EXTENSION,
