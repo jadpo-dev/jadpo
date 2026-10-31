@@ -379,7 +379,7 @@ rules! {
     DATA_RETENTION_HELD: "data.retention_held", area 15, Error, Human,
         "An entity's `retention:` would delete records that a `restricted` reference keeps from being deleted";
     DATA_RETENTION_LIFECYCLE_FIELD: "data.retention_lifecycle_field", area 15, Error, Human,
-        "A field's `retention:` would clear a field the entity's lifecycle owns or reads, changing which records are hidden or what stage they are in";
+        "A field's `retention:` would clear a field the entity's lifecycle owns or reads, changing which records are hidden or undoing what a transition set";
     DATA_RETENTION_PERIOD: "data.retention_period", area 15, Error, Agent,
         "A retention's `after:` isn't a `Duration` setting in `config.jadpo`";
     DATA_RETENTION_SINCE: "data.retention_since", area 15, Error, Agent,

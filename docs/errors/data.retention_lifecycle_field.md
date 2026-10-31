@@ -1,6 +1,6 @@
 # `data.retention_lifecycle_field`
 
-A field's `retention:` would clear a field the entity's lifecycle owns or reads, changing which records are hidden or what stage they are in.
+A field's `retention:` would clear a field the entity's lifecycle owns or reads, changing which records are hidden or undoing what a transition set.
 
 ## Why Jadpo refuses it
 

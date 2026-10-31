@@ -479,7 +479,7 @@ or retention could never clear it
 ([`data.retention_field_required`](../errors/data.retention_field_required.md)).
 It can't be a field the entity's [lifecycle](05-data.md#lifecycle) owns
 or reads, such as the `deleted_at` its `visible:` tests, because clearing
-it would show a deleted record again or move it out of its stage
+it would show a deleted record again or undo what a transition set
 ([`data.retention_lifecycle_field`](../errors/data.retention_lifecycle_field.md)).
 
 ### On an entity
@@ -496,7 +496,7 @@ config {
     }
 }
 
-type LineText = Text {
+type InvoiceLineText = Text {
     max_length: 200
 }
 
@@ -518,7 +518,7 @@ entity InvoiceLine {
     invoice_id: Invoice.id {
         on_delete: OnDelete.cascade
     }
-    text: LineText
+    text: InvoiceLineText
 }
 ```
 

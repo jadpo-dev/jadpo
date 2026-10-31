@@ -2752,7 +2752,7 @@ fn unbuilt_field_setting(key: &str, entity: bool) -> Option<(&'static str, &'sta
     match key {
         "retention" if !entity => Some((
             "Leave `retention:` out, and keep a value that must expire in an entity's field with a `retention:` of its own",
-            "Only an entity's fields are cleared when their time is up: an event or an email is delivered as it was written and nothing clears a value inside one, so a `retention:` on its field isn't built yet. Accepted, the value would be kept as long as the event or email is.",
+            "Only an entity's fields are cleared when their time is up: an event or an email is sent as it was written and nothing clears a value inside one, so a `retention:` on its field isn't built yet. Accepted, the value would be kept as long as the event or email is.",
         )),
         "erase" => Some((
             "Leave `erase:` out for now",

@@ -268,8 +268,9 @@ fn since_field(
             )
             .at(span, "not a field")
             .reason(format!(
-                "`since:` names one of `{}`'s `Instant` fields, bare, such as `created_at`: a value or record goes once that time is longer ago than `after:`.",
-                entity.name
+                "`since:` names one of `{}`'s `Instant` fields bare, as a lifecycle names them: a value or record goes once that time is longer ago than `after:`. Its `Instant` fields are {}.",
+                entity.name,
+                instants(lookup, entity)
             ))
             .next("Name an `Instant` field of the record"),
         );
@@ -402,7 +403,7 @@ pub(super) fn field_problems(
             let what = if read.contains(field_name) {
                 "its conditions read it, so clearing it would change which records are hidden or what a transition allows"
             } else {
-                "only its transitions change it, so clearing it would move the record out of the stage they set"
+                "only its transitions change it, so clearing it would undo what one of them set"
             };
             let mut problem = Diagnostic::new(
                 &rule::DATA_RETENTION_LIFECYCLE_FIELD,
@@ -456,7 +457,7 @@ pub fn retention_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diag
         };
         let reach = reach(model, &entity.name);
         let name = &entity.name;
-        let one = format!("{} {}", article(name), words(name));
+        let one = format!("{} {}", indefinite(name), words(name));
         if let Some((holder, field, held)) = reach.holds.first() {
             let through = if held == name {
                 String::new()
@@ -467,7 +468,7 @@ pub fn retention_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diag
                 &rule::DATA_RETENTION_HELD,
                 format!(
                     "`{name}`'s retention can't delete {one} {} `{holder}` holds",
-                    article(holder)
+                    indefinite(holder)
                 ),
             )
             .at(
@@ -541,7 +542,7 @@ fn words(entity: &str) -> String {
 }
 
 /// The article before an entity's name as words or as written.
-fn article(entity: &str) -> &'static str {
+fn indefinite(entity: &str) -> &'static str {
     if entity.starts_with(['A', 'E', 'I', 'O', 'U']) {
         "an"
     } else {
