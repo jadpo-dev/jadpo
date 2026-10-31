@@ -2731,6 +2731,11 @@ pub const SIGN_IN_REQUESTS: &str = jadpo_std::system::SIGN_IN_REQUESTS.table;
 /// app has not seen"; chunk A7).
 pub const SIGN_IN_LINKS: &str = jadpo_std::system::SIGN_IN_LINKS.table;
 
+/// Sign-ins through a provider under way, beside the sessions they start,
+/// when `sign_in: { providers: }` names any (area 8, "Providers"; chunk
+/// A7b).
+pub const PROVIDER_SIGN_INS: &str = jadpo_std::system::PROVIDER_SIGN_INS.table;
+
 /// The physical schema the source asks for: every entity's table in its
 /// store, and the system tables. Fields that can't be stored and entities
 /// in a wrong store are left out; their errors stop the build anyway.
@@ -2881,6 +2886,15 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
         found.tables.insert(
             SIGN_IN_REQUESTS.to_string(),
             columns::system_table(&system::SIGN_IN_REQUESTS),
+        );
+    }
+    if let Some(store) = crate::identity::identity(db, project).sessions_store()
+        && !crate::identity::identity(db, project).providers.is_empty()
+        && let Some(found) = schema.stores.get_mut(store)
+    {
+        found.tables.insert(
+            PROVIDER_SIGN_INS.to_string(),
+            columns::system_table(&system::PROVIDER_SIGN_INS),
         );
     }
     if let Some(store) = crate::identity::identity(db, project).links_store()

@@ -143,6 +143,7 @@ impl Planner<'_> {
                     first_sign_in: None,
                 })
             }),
+            providers: self.providers_plan(&identity),
         })
     }
 
@@ -176,6 +177,38 @@ impl Planner<'_> {
             &statements::active(active.as_deref()),
             &wheres,
         ))
+    }
+
+    /// The sign-in providers (area 8, "Providers"; chunk A7b), each
+    /// `SignInMethod`'s value after the language's own, and how a
+    /// provider account finds its user through its link.
+    fn providers_plan(
+        &self,
+        identity: &jadpo_check::identity::Identity,
+    ) -> Option<jadpo_std::http::ProvidersPlan> {
+        if identity.providers.is_empty() {
+            return None;
+        }
+        let user = identity.variant(PrincipalKind::User)?;
+        let entity = self.model.entity(&user.entity)?;
+        let subject = entity.fields.iter().find(|field| field.name == user.subject)?;
+        let own = jadpo_std::SignInMethod::NAMES.len();
+        Some(jadpo_std::http::ProvidersPlan {
+            providers: identity
+                .providers
+                .iter()
+                .enumerate()
+                .map(|(at, provider)| jadpo_std::http::ProviderPlan {
+                    name: provider.name.clone(),
+                    ordinal: u32::try_from(own + at).unwrap_or(u32::MAX),
+                    issuer: provider.issuer.clone(),
+                    client_id: provider.client_id.clone(),
+                    client_secret: provider.secret.clone(),
+                })
+                .collect(),
+            first_sign_in: self.linked_lookup(user, &subject.born)?,
+            subject_sql: jadpo_check::data::sql_type(subject)?.param(),
+        })
     }
 
     /// How an external token's first sign-in is found again (area 8, "A

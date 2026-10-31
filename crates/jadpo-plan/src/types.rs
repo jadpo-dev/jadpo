@@ -66,6 +66,9 @@ pub struct Types {
     /// types are read from JSON open to members they don't declare (area
     /// 11, chunk 7.2c).
     providers: Vec<String>,
+    /// The sign-in providers `SignInMethod` has a value for after its own,
+    /// in order (area 8, "Providers"; chunk A7b).
+    sign_in_providers: Vec<String>,
 }
 
 impl Types {
@@ -83,11 +86,25 @@ impl Types {
             failures: Vec::new(),
             failure_ids: HashMap::new(),
             providers: Vec::new(),
+            sign_in_providers: Vec::new(),
         }
     }
 
     /// The same, with the provider packages' folders (area 11, chunk
     /// 7.2c).
+    /// `SignInMethod`'s values after the language's own: one for each
+    /// sign-in provider, in order (chunk A7b).
+    pub(crate) fn with_sign_in_providers(mut self, names: Vec<String>) -> Types {
+        self.sign_in_providers = names;
+        self
+    }
+
+    /// The sign-in providers `SignInMethod` has values for, after its
+    /// own.
+    pub(crate) fn sign_in_providers(&self) -> &[String] {
+        &self.sign_in_providers
+    }
+
     pub(crate) fn with_providers(mut self, folders: Vec<String>) -> Types {
         self.providers = folders
             .into_iter()
@@ -959,8 +976,15 @@ impl Types {
                 let (ty, variant) = split(self.name(key));
                 let ordinal = match self.node(key).map(|node| &node.detail) {
                     Some(Detail::Variant { order, .. }) => *order,
-                    // The standard library's enums have no node.
-                    _ => jadpo_std::variant_ordinal(ty, variant)?,
+                    // The standard library's enums have no node; a sign-in
+                    // provider's `SignInMethod` comes after the language's
+                    // own (chunk A7b).
+                    _ => jadpo_std::variant_ordinal(ty, variant).or_else(|| {
+                        (ty == jadpo_std::SignInMethod::NAME)
+                            .then(|| self.sign_in_providers.iter().position(|name| name == variant))
+                            .flatten()
+                            .and_then(|at| u32::try_from(jadpo_std::SignInMethod::NAMES.len() + at).ok())
+                    })?,
                 };
                 Some(ShapePlan {
                     ty: ty.to_string(),

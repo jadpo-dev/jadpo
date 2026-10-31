@@ -52,6 +52,7 @@ pub mod identity;
 pub mod local_issuer;
 pub mod magic_links;
 pub(crate) mod passkeys;
+pub(crate) mod provider_sign_in;
 pub(crate) mod sign_in_events;
 pub(crate) mod sign_in_links;
 pub mod signed;
@@ -208,14 +209,14 @@ pub type Entries = fn(u32) -> Option<&'static Entry>;
 
 /// The failures the runtime answers with itself (area 7, "How failures
 /// reach the client").
-const INVALID_REQUEST: (u16, &str, &str) = (400, "invalid_request", "Request could not be read.");
+pub(crate) const INVALID_REQUEST: (u16, &str, &str) = (400, "invalid_request", "Request could not be read.");
 const INVALID_INPUT: (u16, &str, &str) = (422, "invalid_input", "Request input is invalid.");
 const HEADER_UNREADABLE: (u16, &str, &str) = (
     400,
     "invalid_request",
     "A header's value isn't printable ASCII.",
 );
-const BODY_NOT_JSON: (u16, &str, &str) = (
+pub(crate) const BODY_NOT_JSON: (u16, &str, &str) = (
     400,
     "invalid_request",
     "A request body is JSON, sent with `Content-Type: application/json`.",
@@ -983,6 +984,17 @@ async fn run_route(
                 First::Right(()) => runtime_failure(DEADLINE_EXCEEDED, request_id, None),
             }
         }
+        // The runtime answers each sign-in provider's routes itself (area
+        // 8, "Providers"; chunk A7b), with no idempotency key: a sign-in
+        // is used once.
+        (None, Run::Provider(at, step)) => {
+            let answered =
+                provider_sign_in::answer(app, executor, ctx, request, request_id, *at, *step);
+            match race(answered, &mut deadline).await {
+                First::Left(response) => response,
+                First::Right(()) => runtime_failure(DEADLINE_EXCEEDED, request_id, None),
+            }
+        }
         // The runtime answers the magic-link routes itself (area 8, "Magic
         // links"), with no idempotency key: a link or a code is used once.
         (None, Run::MagicLink(step)) => {
@@ -1258,7 +1270,7 @@ async fn run_with_caller(
                     }
                 }
                 // Answered once signed in, without running anything.
-                Run::Exchange | Run::Passkey(_) | Run::MagicLink(_) | Run::OpenApi(_) => {
+                Run::Exchange | Run::Passkey(_) | Run::MagicLink(_) | Run::Provider(..) | Run::OpenApi(_) => {
                     Outcome::Fault(ctx.fault(
                         crate::FaultKind::Defect("an exchange with no key to trade".into()),
                         Frame::ENTRY,
@@ -2104,7 +2116,7 @@ fn json_text(json: &str) -> String {
 }
 
 /// `text` with everything but unreserved characters percent-encoded.
-fn percent_encode(text: &str) -> String {
+pub(crate) fn percent_encode(text: &str) -> String {
     let mut out = String::new();
     for byte in text.bytes() {
         if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {

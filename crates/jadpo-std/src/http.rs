@@ -551,8 +551,10 @@ pub const PROVIDER_FAILED: &str = "sign_in_provider_failed";
 pub struct ProvidersPlan {
     pub providers: Vec<ProviderPlan>,
     /// The user a provider account signs in, through its link only: the
-    /// lookup is given `$1` as `NULL`, so no subject field matches.
+    /// lookup is given `$1` as `NULL` of `subject_sql`, so no subject
+    /// field matches.
     pub first_sign_in: FirstSignInPlan,
+    pub subject_sql: crate::SqlType,
 }
 
 /// One sign-in provider, a connection on `Driver.oidc`.

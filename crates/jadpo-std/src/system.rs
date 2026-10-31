@@ -544,6 +544,33 @@ pub const SIGN_IN_REQUESTS: SystemTable = SystemTable {
     }],
 };
 
+/// Sign-ins through a provider under way (area 8, "Providers"; chunk
+/// A7b): each found by its `state`'s digest and taken once, bound to the
+/// browser that started it by its cookie's digest, with where to go
+/// next. The PKCE verifier and the nonce are worked out from the cookie,
+/// so nothing in it signs anyone in or can be exchanged.
+pub const PROVIDER_SIGN_INS: SystemTable = SystemTable {
+    table: "jadpo_provider_sign_ins",
+    columns: &[
+        column("id", SqlType::Uuid, false),
+        column("provider", SqlType::Text, false),
+        column("state", SqlType::Text, false),
+        column("binding", SqlType::Text, false),
+        column("return_to", SqlType::Text, false),
+        column("expires_at", SqlType::Timestamp, false),
+    ],
+    primary_key: &["id"],
+    unique: &[SystemUnique {
+        columns: &["state"],
+        rule: "system provider sign-ins",
+    }],
+    foreign_keys: &[],
+    indexes: &[SystemIndex {
+        columns: &["expires_at"],
+        reason: "system provider sign-ins",
+    }],
+};
+
 /// Who a first sign-in linked (area 8, "A person the app has not seen";
 /// chunk A7): each way in and the subject it names, a provider's or an
 /// external token's, to the user `on_first_sign_in:`'s action gave, so
@@ -838,7 +865,7 @@ pub const BATCH_TABLES: [&SystemTable; 3] = [&BATCH_RUNS, &BATCH_PROBLEMS, &BATC
 pub const STEP_TABLES: [&SystemTable; 2] = [&STEP_RECORDS, &STEPS];
 
 /// Every system table.
-pub const ALL: [&SystemTable; 24] = [
+pub const ALL: [&SystemTable; 25] = [
     &OUTBOX,
     &DELIVERIES,
     &CIRCUIT_BREAKERS,
@@ -853,6 +880,7 @@ pub const ALL: [&SystemTable; 24] = [
     &PASSKEY_CHALLENGES,
     &SIGN_IN_REQUESTS,
     &SIGN_IN_LINKS,
+    &PROVIDER_SIGN_INS,
     &BATCH_RUNS,
     &BATCH_PROBLEMS,
     &BATCH_CANCELS,

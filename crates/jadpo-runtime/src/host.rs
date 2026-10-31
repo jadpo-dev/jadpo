@@ -301,6 +301,22 @@ pub trait Outbound {
         limit: usize,
         timeout_ms: u64,
     ) -> LocalFuture<'a, Result<(u16, Vec<u8>), String>>;
+
+    /// `POST`s `form`, `application/x-www-form-urlencoded`, to `url`, an
+    /// HTTPS address the runtime has checked, under the same guards as
+    /// [`Outbound::get`], never repeated: what a sign-in provider's token
+    /// endpoint is sent (area 8, "Providers"; chunk A7b). A host that
+    /// sends none says so.
+    fn post_form<'a>(
+        &'a self,
+        url: &'a str,
+        form: &'a str,
+        limit: usize,
+        timeout_ms: u64,
+    ) -> LocalFuture<'a, Result<(u16, Vec<u8>), String>> {
+        let _ = (url, form, limit, timeout_ms);
+        Box::pin(async { Err("this host posts to no provider".to_string()) })
+    }
 }
 
 /// Whether `ip` is an address on the public internet, what an

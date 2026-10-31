@@ -258,6 +258,18 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::http::passkeys::USED.to_string(),
         ),
         (
+            "http::provider_sign_in::PUT",
+            crate::http::provider_sign_in::PUT.to_string(),
+        ),
+        (
+            "http::provider_sign_in::SWEEP",
+            crate::http::provider_sign_in::SWEEP.to_string(),
+        ),
+        (
+            "http::provider_sign_in::TAKE",
+            crate::http::provider_sign_in::TAKE.to_string(),
+        ),
+        (
             "http::sign_in_links::LINK",
             crate::http::sign_in_links::LINK.to_string(),
         ),
