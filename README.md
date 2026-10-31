@@ -1,5 +1,7 @@
 # Jadpo
 
+[![OpenSSF Baseline](https://www.bestpractices.dev/projects/16073/baseline)](https://www.bestpractices.dev/projects/16073)
+
 Jadpo is an experimental programming language for web backends that a
 coding agent writes and a person reviews. Data, HTTP routes, sign-in,
 permissions, outside services and background work are declared in the
