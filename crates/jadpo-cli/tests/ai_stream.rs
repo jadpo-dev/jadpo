@@ -98,7 +98,7 @@ fn desk(name: &str) -> PathBuf {
         "use support/actions { stream_answer }\nuse support/types { Asked }\n\n/// Customers' questions.\nroutes Answers {\n    prefix: /answers\n\n    /// Streams the assistant's reply as it is written.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: Asked\n        output: AiStream\n        run: stream_answer(input)\n    }\n}\n",
     );
     // The counts of what its calls use are kept in `main` (chunk 5.5v5).
-    for args in [&["migrate", "new", "initial"][..], &["api", "update"]] {
+    for args in [&["migrate", "new", "initial"][..], &["records", "update"]] {
         let done = jadpo(&root, args);
         assert_eq!(done.code, 0, "{args:?}: {}{}", done.stdout, done.stderr);
     }

@@ -276,6 +276,7 @@ fn project(name: &str) -> PathBuf {
 #[test]
 fn each_geo_condition_derives_the_gist_index_it_searches() {
     let root = project("indexes");
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     let folder = fs::read_dir(root.join("database/migrations"))

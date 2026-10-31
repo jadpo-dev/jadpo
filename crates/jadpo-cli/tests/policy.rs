@@ -1037,6 +1037,7 @@ fn the_report_and_jadpo_sql_show_the_policy() {
         write(&root, path, text);
     }
     jadpo(&root, &["migrate", "new", "initial"]);
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}", checked.stdout);
     let report = fs::read_to_string(root.join("build/report/permissions.md")).expect("the report");
@@ -1845,7 +1846,7 @@ fn ledger(name: &str) -> PathBuf {
     }
     let migrated = jadpo(&root, &["migrate", "new", "initial"]);
     assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
-    let recorded = jadpo(&root, &["api", "update"]);
+    let recorded = jadpo(&root, &["records", "update"]);
     assert_eq!(recorded.code, 0, "{}{}", recorded.stdout, recorded.stderr);
     root
 }
@@ -1999,6 +2000,7 @@ fn a_reference_into_another_tenant_is_refused_without_policy_too() {
 #[test]
 fn an_output_never_carries_a_field_not_every_caller_may_read() {
     let root = ledger("ledger-views");
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}", checked.stdout);
     // The report's field rows.
@@ -2081,6 +2083,7 @@ query company_projects(company_id: Company.id) -> List<BudgetView> {
 }
 "#,
     );
+    jadpo(&root, &["records", "update"]);
     let refused = jadpo(&root, &["check"]);
     assert_eq!(refused.code, 1, "{}", refused.stdout);
     assert!(
@@ -2109,6 +2112,7 @@ query company_projects(company_id: Company.id) -> List<ProjectCard> {
 }
 "#,
     );
+    jadpo(&root, &["records", "update"]);
     let refused = jadpo(&root, &["check"]);
     assert_eq!(refused.code, 1, "{}", refused.stdout);
     assert!(
@@ -2723,7 +2727,7 @@ fn guild(name: &str) -> PathBuf {
     }
     let migrated = jadpo(&root, &["migrate", "new", "initial"]);
     assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
-    let recorded = jadpo(&root, &["api", "update"]);
+    let recorded = jadpo(&root, &["records", "update"]);
     assert_eq!(recorded.code, 0, "{}{}", recorded.stdout, recorded.stderr);
     root
 }

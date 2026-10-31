@@ -355,6 +355,13 @@ impl Loaded {
 
     /// The installed package files the package cache holds as checked
     /// with no problem, which a check skips (chunk 7.1c2).
+    /// Sets the before side a change is compared with (chunk A8).
+    pub fn set_before(&mut self, before: crate::Before) {
+        if &before != self.project.before(&self.db) {
+            self.project.set_before(&mut self.db).to(before);
+        }
+    }
+
     pub fn set_checked(&mut self, checked: BTreeSet<String>) {
         if &checked != self.project.checked(&self.db) {
             self.project.set_checked(&mut self.db).to(checked);

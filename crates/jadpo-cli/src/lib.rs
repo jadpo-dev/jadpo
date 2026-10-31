@@ -2,11 +2,13 @@
 //! `jadpo help --json`, Tab completion and suggestions, and writes every
 //! result in the CLI design language through `jadpo-term`.
 
+mod acceptance;
 mod ai;
 mod ai_record;
 mod ai_usage;
 mod api;
 mod attestation;
+mod before;
 mod build;
 mod calls;
 mod check;

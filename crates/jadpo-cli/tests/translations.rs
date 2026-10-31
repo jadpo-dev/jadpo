@@ -150,7 +150,7 @@ fn project() -> (tempdir::Dir, PathBuf) {
     for (path, text) in FILES {
         write(&root, path, text);
     }
-    for args in [&["api", "update"][..], &["check"]] {
+    for args in [&["records", "update"][..], &["check"]] {
         let done = jadpo(&root, args);
         assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
     }
@@ -280,7 +280,7 @@ fn an_in_progress_locale_falls_back_to_its_sibling_and_then_the_default() {
 }
 "#,
     );
-    for args in [&["api", "update"][..], &["check"]] {
+    for args in [&["records", "update"][..], &["check"]] {
         let done = jadpo(&root, args);
         assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
     }

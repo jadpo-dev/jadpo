@@ -87,6 +87,7 @@ fn passes(root: &Path, limits: &str, tests: &str, count: usize) {
         "domains/support/actions/answer_once.test.jadpo",
         &format!("{TEST_HEADER}{tests}"),
     );
+    jadpo(root, &["records", "update"]);
     let checked = jadpo(root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     let tested = jadpo(root, &["test"]);
@@ -191,6 +192,7 @@ fn development_counts_each_caller_and_the_sandbox_and_shows_the_usage() {
         &root,
         "        limits: {\n            per_day: {\n                tokens: 2000000\n            }\n            per_caller_per_day: 1020\n        }\n",
     );
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     let dev = Dev::start_without_database(&root);
@@ -295,6 +297,7 @@ fn a_price_the_app_sets_overrides_its_packages() {
         &root,
         "        limits: {\n            per_day: {\n                tokens: 2000000\n            }\n        }\n        prices: {\n            drafting: {\n                input: config.input_price\n                output: config.ai_daily_spend\n            }\n            default: {\n                input: config.drafting_model\n                output: config.output_price\n            }\n        }\n",
     );
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     let said = format!("{}{}", checked.stdout, checked.stderr);
     assert_eq!(checked.code, 1, "{said}");

@@ -2205,6 +2205,9 @@ impl MemberKey {
     pub fn names(&self) -> AstChildren<Name> {
         support::children(&self.syntax)
     }
+    pub fn string_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, STRING)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

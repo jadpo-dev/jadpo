@@ -386,21 +386,7 @@ time.
   silently today, so a setting meant to protect the app can be dropped
   without a word. One list of every area's sections, and a rule refusing
   any other, as entities' and routes' unknown sections are. Found by A0.
-- [ ] **A8 Acceptances for what exists today** `opus · xhigh` after A2:
-  area 18, "Acceptances": `jadpo acceptance new`, matching and the
-  `///` reason, CODEOWNERS on `acceptances/` and `api/`, and the kinds
-  whose features are built: any widening of who can do what (a route
-  made public included) and declining a security rule (`PolicyChange`);
-  an API break and an event record's break (`ApiChange`); a domain
-  created or renamed (`DomainChange`); a new outside host
-  (`NetworkChange`); a sign-in setting loosened past its limit (area 8);
-  a third party's package installed from git (`PackageChange`).
-  `access.jadpo_record` and `network.jadpo_record` give them a before
-  side. An outside agent made a route public on request and nothing
-  stopped it (Richard, 2026-10-30). The kinds whose features aren't built
-  yet are named on the items below that build them. The rule catalogue
-  (`crates/jadpo-diag`) has no mark for a security rule yet: A8 adds it,
-  starting with `policy.call_ungranted`, declinable since A2.
+- [x] **A8 Acceptances for what exists today**: area 18, "Comparing two builds" and "Acceptances"; area 9, "Protecting policy"; area 14, "`jadpo acceptance new`" and "Review and sign-off"; area 1, "Writing a decline".
 - [x] **A7a `on_first_sign_in:` for external tokens**: area 8, `external_token` and "A person the app has not seen"; area 5, "Tables for sign-in"; compiler/runtime §2.6, "First sign-in by external token".
 - [ ] **A7b Sign-in providers** `opus · xhigh` **needs a maintainer**
   before it starts: the pages don't yet say the generated provider

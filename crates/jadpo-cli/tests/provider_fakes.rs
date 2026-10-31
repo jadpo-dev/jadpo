@@ -240,6 +240,7 @@ fn every_scripted_answer_is_checked_against_the_package() {
             "{HEAD}test \"a taken slot is reported\" {{\n    fakes: {{\n        couriers.bookings.create: [slot_takn, 5]\n        couriers.bookings.cancel: [unavailable]\n    }}\n    assert book(\"N1 9GU\") fails SlotGone\n}}\n"
         ),
     );
+    jadpo(&root, &["records", "update"]);
     let output = jadpo(&root, &["check", ".", "--json"]);
     assert_eq!(output.code, 1);
     let document: serde_json::Value = serde_json::from_str(&output.stdout).expect("JSON");
@@ -257,6 +258,7 @@ fn every_scripted_answer_is_checked_against_the_package() {
             "semantic.fake_invalid"
         ]
     );
+    jadpo(&root, &["records", "update"]);
     let plain = jadpo(&root, &["check", "."]);
     assert!(
         plain

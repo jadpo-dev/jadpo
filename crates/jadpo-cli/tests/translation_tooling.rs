@@ -98,7 +98,7 @@ fn booking(name: &str) -> (tempdir::Dir, std::path::PathBuf) {
 }
 
 fn checked(root: &std::path::Path) -> jadpo_cli::Output {
-    for args in [&["api", "update"][..], &["check"]] {
+    for args in [&["records", "update"][..], &["check"]] {
         let done = jadpo(root, args);
         if done.code != 0 && args[0] == "check" {
             return done;
@@ -448,7 +448,7 @@ next: git diff  shows the acceptance a reviewer approves
 fn a_translation_made_from_wording_that_changed_is_stale_until_it_is_redone() {
     let (_dir, root) = shop("translation-stale");
     assert_eq!(plain(&root, &["translations", "update"]).0, 0);
-    assert_eq!(plain(&root, &["api", "update"]).0, 0);
+    assert_eq!(plain(&root, &["records", "update"]).0, 0);
     // Nothing is stale yet.
     let (code, out) = plain(&root, &["check"]);
     assert_eq!(code, 0, "{out}");
@@ -589,7 +589,7 @@ fn the_pseudo_locale_writes_every_message_accented_and_lengthened() {
 }
 "#,
     );
-    let (code, out) = plain(&root, &["api", "update"]);
+    let (code, out) = plain(&root, &["records", "update"]);
     assert_eq!(code, 0, "{out}");
     let (code, out) = plain(&root, &["check"]);
     assert_eq!(code, 0, "{out}");

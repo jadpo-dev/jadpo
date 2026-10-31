@@ -259,8 +259,10 @@ fn added_needs(before: &Graph, node: &Node) -> Vec<String> {
         Kind::Domain => need("DomainChange.created"),
         Kind::LockEntry if from_git(node) => need("PackageChange.git_source"),
         Kind::Host if service(node).is_some() => need("PackageChange.service_image"),
-        // A new connection's hosts appear without a person; a host added
-        // to a connection the app already had is its host changed.
+        // A host added to a connection the app already had is its host
+        // changed; a new connection's hosts are `NetworkChange.host_added`
+        // (area 18, 2026-10-30), which `jadpo_check::acceptances` reads
+        // from `network.jadpo_record`.
         Kind::Host
             if node
                 .parent

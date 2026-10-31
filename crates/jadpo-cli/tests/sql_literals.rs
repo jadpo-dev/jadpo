@@ -210,6 +210,7 @@ fn project() -> PathBuf {
     fs::write(&changes_path, changes).expect("decisions");
     let finished = jadpo(&root, &["migrate", "new"]);
     assert_eq!(finished.code, 0, "{}{}", finished.stdout, finished.stderr);
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     root
