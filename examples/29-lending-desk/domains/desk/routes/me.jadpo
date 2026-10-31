@@ -1,0 +1,13 @@
+use desk/types { LoanView }
+use desk/queries { my_loans }
+
+/// What a signed-in customer reaches of their own.
+routes Me {
+    prefix: /me
+
+    /// The customer's loans.
+    GET /loans {
+        output: List<LoanView>
+        run: my_loans(current_principal.user)
+    }
+}

@@ -1,0 +1,15 @@
+// Two queries need fewer people than `Book`'s `read:`, which lets in
+// everyone signed in: the stock, for both staff roles, and the
+// donations, for admins alone. Each line is checked as its query starts,
+// so a role taken away is refused on the next request, and each query's
+// fields are proved against its line's people.
+
+use desk/types { StaffRole }
+use desk
+
+policy {
+    actions: {
+        desk.stock: [StaffRole.admin, StaffRole.front_desk]
+        desk.donations: [StaffRole.admin]
+    }
+}

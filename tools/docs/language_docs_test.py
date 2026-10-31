@@ -534,6 +534,90 @@ class Learn(unittest.TestCase):
             self.assertIn(expected, found)
         self.assertEqual(self.user_problems('# A\n<!-- topic: a -->\n\n`area 8` in code is fine.\n'), '')
 
+GUIDE_INDEX = """# Guides
+<!-- topic: guides -->
+
+[Count things](01-count.md).
+"""
+
+GUIDE_ONE = """# Count things
+<!-- topic: guide-count -->
+
+How to count. See [one](../language/01-one.md) and [the path](../learn/README.md).
+
+`app.jadpo`:
+
+```jadpo check project=guide-count file=app.jadpo
+application {}
+```
+"""
+
+GUIDE_TWO = """# Name things
+<!-- topic: guide-name -->
+
+`main.jadpo`:
+
+```jadpo check project=guide-name file=main.jadpo
+type Name = String {}
+```
+"""
+
+
+def guide_tree(root):
+    guides = root / 'docs/guides'
+    guides.mkdir(parents=True)
+    (guides / 'README.md').write_text(GUIDE_INDEX)
+    (guides / '01-count.md').write_text(GUIDE_ONE)
+    (guides / '02-name.md').write_text(GUIDE_TWO)
+    return docs.load_guides({}, root)
+
+
+class Guides(unittest.TestCase):
+    def test_each_guide_is_a_project_of_its_own(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            guides = guide_tree(Path(tmp))
+            for page in guides:
+                page.collect_blocks()
+            index, one, two = guides
+            self.assertEqual(index.blocks, [])
+            self.assertEqual([b['attrs']['file'] for b in one.blocks], ['app.jadpo'])
+            # Nothing carries over from the guide before it.
+            self.assertEqual([b['attrs']['file'] for b in two.blocks], ['main.jadpo'])
+            self.assertEqual([[(t['id'], t['title']) for t in p.topics()] for p in guides],
+                             [[('guides', 'Guides')], [('guide-count', 'Count things')],
+                              [('guide-name', 'Name things')]])
+
+    def test_the_bundle_holds_the_guides_after_the_learn_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalogue, pages, errors = tree(root)
+            learn = learn_tree(root)
+            guides = guide_tree(root)
+            for page in learn + guides:
+                page.collect_blocks()
+            bundle = docs.Bundle(pages, errors, {'version': '0.1.0', 'rules': list(catalogue.values()),
+                                                 'commands': []}, root, learn=learn, guides=guides)
+            bundle.write(root / 'bundle')
+            index = json.loads((root / 'bundle/index.json').read_text())
+            kinds = [e['kind'] for e in index['pages']]
+            guide_entries = [(e['id'], e['area']) for e in index['pages'] if e['kind'] == 'guide']
+            start = (root / 'bundle/guides/guides.md').read_text()
+            one = (root / 'bundle/guides/guide-count.md').read_text()
+        self.assertEqual(guide_entries, [('guides', None), ('guide-count', None), ('guide-name', None)])
+        self.assertEqual(kinds[:6], ['learn'] * 3 + ['guide'] * 3)
+        self.assertIn('[Count things](guide-count.md)', start)
+        self.assertIn('[one](../topics/one.md)', one)
+        self.assertIn('[the path](../learn/learn.md)', one)
+        self.assertNotIn('topic:', one)
+
+    def test_a_guide_may_link_another_guide(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            guides = guide_tree(root)
+            guides[0].collect_blocks()
+            self.assertEqual(docs.user_page_problems(guides[0], root), [])
+
+
 class Links(unittest.TestCase):
     def test_github_anchors(self):
         seen = {}

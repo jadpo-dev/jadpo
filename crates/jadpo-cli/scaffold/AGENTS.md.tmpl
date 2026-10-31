@@ -10,13 +10,103 @@ change what.
 - The app is written for Jadpo {line}: `app.jadpo` says `jadpo: "{line}"`.
   `jadpo --version`, run in this folder, gives the exact release.
 - Read the primer once before you write Jadpo:
-  https://jadpo.dev/docs/primer.md. For anything else, pick topics by title
-  from https://jadpo.dev/docs/index.json and read only their `.md`. The
-  same paths under `https://jadpo.dev/v/<version>/` are the docs of one
-  release.
-- Every error names its rule, and its page is
-  `https://jadpo.dev/docs/errors/<rule.id>.md`. An error's `next:` ending
-  `(human)` is a decision for the person you work with: stop and ask them.
-- Run `jadpo check` after every change, `jadpo fmt` after editing a file and
-  `jadpo test` before you finish. After changing a route, run
-  `jadpo api update` and commit `api/` with the code.
+  https://jadpo.dev/docs/primer.md. The same paths under
+  `https://jadpo.dev/v/<version>/` are the docs of one release.
+- Run `jadpo fmt` after editing a file and `jadpo test` before you finish.
+  After changing a route, run `jadpo api update` and commit `api/` with
+  the code.
+
+## How to work
+
+1. **One concern at a time.** Data, then routes, then sign-in, then who
+   may do what, then background work. Get each one checking and tested
+   before you start the next; a broad rewrite turns a few mistakes into a
+   hundred errors.
+2. **Run `jadpo check` after each file you write**, not after several.
+   Fix the first error first: the ones after it often follow from it.
+3. **Read one topic, not a whole page.** Pick it by its title from
+   https://jadpo.dev/docs/index.json and read only its `.md`. Each
+   `##` section of a language page is one topic.
+4. **Declare a feature and check it before designing around it.** Write
+   the smallest piece of it, such as the one setting or line, and run
+   `jadpo check`. A feature that isn't built yet is
+   `toolchain.not_built_yet` where it is written; the table at the end
+   lists them.
+5. **For an error, run `jadpo help <rule>`**, with the id its `rule:`
+   line gives. It prints the rule's page offline. An error's `next:`
+   ending `(human)` is a decision for the person you work with: stop and
+   ask them.
+6. **Some changes need a person's acceptance:** widening who can do
+   what, breaking the API (a route removed, a field clients read removed
+   or retyped, a required input added) and adding an outside host the
+   app can send data to. When `jadpo check` asks for one, run
+   `jadpo acceptance new <purpose>`, then stop and hand over: the person
+   writes why it is accepted, so never write the reason yourself.
+7. **Start from the closest example** below.
+
+## The closest example for each feature
+
+Each is a complete project in Jadpo's repository, commented throughout,
+with tests that pass. Read the closest one's README and the files it
+names before you write the feature yourself.
+
+| Feature | Example |
+|---|---|
+| Project layout, domains, `use` lines, functions and actions | [01-first-project](https://github.com/jadpo-dev/jadpo/tree/main/examples/01-first-project) |
+| Named types, refinements and conversions | [02-named-types](https://github.com/jadpo-dev/jadpo/tree/main/examples/02-named-types) |
+| Objects, inputs, outputs, enums and tagged unions | [03-objects-and-enums](https://github.com/jadpo-dev/jadpo/tree/main/examples/03-objects-and-enums) |
+| Lists, sets, loops and the `collection` operations | [04-lists-and-loops](https://github.com/jadpo-dev/jadpo/tree/main/examples/04-lists-and-loops) |
+| Failures, `reject` and `attempt` | [06-failures](https://github.com/jadpo-dev/jadpo/tree/main/examples/06-failures) |
+| Tests, fixtures and asserting failures | [07-testing](https://github.com/jadpo-dev/jadpo/tree/main/examples/07-testing) |
+| Several domains, `public` and `shared/` | [08-domains-and-sharing](https://github.com/jadpo-dev/jadpo/tree/main/examples/08-domains-and-sharing) |
+| Entities, migrations, queries and writes | [10-library-loans](https://github.com/jadpo-dev/jadpo/tree/main/examples/10-library-loans) |
+| Routes, API records, browser sessions, API tokens and service keys | [11-cake-shop](https://github.com/jadpo-dev/jadpo/tree/main/examples/11-cake-shop) |
+| Tenancy and membership roles | [12-recipe-book](https://github.com/jadpo-dev/jadpo/tree/main/examples/12-recipe-book) |
+| Settings, secrets and keys | [13-lettings-office](https://github.com/jadpo-dev/jadpo/tree/main/examples/13-lettings-office) |
+| Time, zones and calendars | [14-studio-timetable](https://github.com/jadpo-dev/jadpo/tree/main/examples/14-studio-timetable) |
+| Translations | [15-parcel-tracker](https://github.com/jadpo-dev/jadpo/tree/main/examples/15-parcel-tracker) |
+| Money | [16-market-hall](https://github.com/jadpo-dev/jadpo/tree/main/examples/16-market-hall) |
+| Physical quantities and units | [17-ebike-hire](https://github.com/jadpo-dev/jadpo/tree/main/examples/17-ebike-hire) |
+| Text, Markdown, links and encodings | [18-village-newsletter](https://github.com/jadpo-dev/jadpo/tree/main/examples/18-village-newsletter) |
+| Geometry in code; stored places | [20-fell-race](https://github.com/jadpo-dev/jadpo/tree/main/examples/20-fell-race), [21-veg-box-rounds](https://github.com/jadpo-dev/jadpo/tree/main/examples/21-veg-box-rounds) |
+| Vectors and prompts | [22-plant-helpline](https://github.com/jadpo-dev/jadpo/tree/main/examples/22-plant-helpline) |
+| Events, subscribers and the outbox | [23-repair-cafe](https://github.com/jadpo-dev/jadpo/tree/main/examples/23-repair-cafe) |
+| Batches over many items | [24-seed-library](https://github.com/jadpo-dev/jadpo/tree/main/examples/24-seed-library) |
+| Schedules, and background work with tenants | [25-allotment-rents](https://github.com/jadpo-dev/jadpo/tree/main/examples/25-allotment-rents) |
+| Packages, provider APIs and webhooks | [26-delivery-desk](https://github.com/jadpo-dev/jadpo/tree/main/examples/26-delivery-desk) |
+| Email, magic links and passkeys | [27-guest-house](https://github.com/jadpo-dev/jadpo/tree/main/examples/27-guest-house) |
+| AI: typed model calls, embeddings and streaming | [28-lost-property](https://github.com/jadpo-dev/jadpo/tree/main/examples/28-lost-property) |
+| Sign-in with Google through a provider; customers and staff in one app | [29-lending-desk](https://github.com/jadpo-dev/jadpo/tree/main/examples/29-lending-desk) |
+| Staff roles across the whole app, and a listed query with role-restricted fields | [29-lending-desk](https://github.com/jadpo-dev/jadpo/tree/main/examples/29-lending-desk) |
+| Seeds (`jadpo seed`) | [29-lending-desk](https://github.com/jadpo-dev/jadpo/tree/main/examples/29-lending-desk) |
+| A schedule that starts a batch, tested to the end | [29-lending-desk](https://github.com/jadpo-dev/jadpo/tree/main/examples/29-lending-desk) |
+
+## What isn't built yet
+
+Every area of the language is built but for what this table lists. A
+feature not built yet is `toolchain.not_built_yet` where it is written.
+Each area links to its "What is built" topic, which says more.
+
+| Area | Not built yet, or only partly |
+|---|---|
+| [Project layout and modules](https://jadpo.dev/docs/topics/project-layout-and-modules-built.md) | Names per domain (partly); Declinable errors (partly); Referenced assets |
+| [Values and types](https://jadpo.dev/docs/topics/values-and-types-built.md) | A map literal with entries; `FileUpload`, `UploadSlot`, `SearchText`, `OAuthGrant`, `AnyObject` and the `Document` base; `jadpo inspect`, showing a built type's final fields and where each came from; `BatchRun`, `BatchProgress`, `RowProblem`, `ImportSummary`, `ExportSummary`, `File` and `FileContents` (partly) |
+| [Logic](https://jadpo.dev/docs/topics/logic-built.md) | All of it |
+| [Failures](https://jadpo.dev/docs/topics/failures-built.md) | Logging |
+| [Data](https://jadpo.dev/docs/topics/data-built.md) | D1, and actions on it as reads first and one checked batch of writes; Other schema changes in `jadpo migrate new`; A worked-out backfill for a field that allows less; A backfill in Jadpo that fills a value held in several columns, or reads a field held so or as JSON; Entities in Redis and record caches (`caches:`); Index kinds other than geographic and HNSW; A database implied only when something needs one; `jadpo rename` |
+| [Reads and writes](https://jadpo.dev/docs/topics/reads-and-writes-built.md) | Reading another store outside an action's transaction; Caches and entities in Redis; Comparing money, ranges and fields kept as JSON in a query |
+| [HTTP](https://jadpo.dev/docs/topics/http-built.md) | Failure wording from a build; `x-jadpo-events`; A route's own `rate_limit:` and the Redis store for rate limits; The `Jadpo-Revision` header |
+| [Identity](https://jadpo.dev/docs/topics/identity-built.md) | `Driver.github`, `Driver.apple` and `oauth_provider:`; A route's `confirm: Confirmation.passkey`; Scope declarations and policy's scope restrictions; OAuth grants: `OAuthGrant` credentials, the connecting and disconnecting routes and `on_behalf_of:` |
+| [Policy](https://jadpo.dev/docs/topics/policy-built.md) | `scopes:`, with the tokens issued to other applications (`oauth_token`, `external_token`); The approval review that shows the report's changes in plain terms |
+| [Configuration and time](https://jadpo.dev/docs/topics/configuration-and-time-built.md) | Unaccepted wording in the approval report; Moving a message to `shared/translations/`; Other members of `clock`, `translations`, `sessions` and `oauth` |
+| [External services](https://jadpo.dev/docs/topics/external-services-built.md) | Services (`runs:`); OAuth grants; The public registry: the protocol, the verifier, publishing, facts, search, advisories and compatibility runs; Importers other than OpenAPI; Choosing a provider when deploying; Erasure at providers |
+| [Jobs and events](https://jadpo.dev/docs/topics/jobs-and-events-built.md) | Publishing chosen public events outward; Each step's state in `jadpo watch`, and in `jadpo trace` with the request timelines, and a record's entry in the personal-data report; Sending the metrics and the alerts' log events to a monitoring tool; The console's timeline; Jitter and `Retry-After` between a delivery's attempts; Splitting a page type allowing more than 1,000 items into batches; `batches.status` and `batches.cancel` with runs in no store or several; a file's run with several databases and none written; `cli.signal_handler_failed` |
+| [Testing](https://jadpo.dev/docs/topics/testing-built.md) | Assertion messages (partly); Integration fakes (partly); Watch mode (partly); Data builders, `assert emitted`; Interactive mode; Caches in tests |
+| [Tooling](https://jadpo.dev/docs/topics/tooling-built.md) | Agent tools (partly); Review and sign-off (partly) |
+| [Personal data](https://jadpo.dev/docs/topics/personal-data-built.md) | `person: true`, `erase:`, and `retention:` on a field or an entity; `privacy:` in `application { }`; everything else in the area |
+| [Built-in services](https://jadpo.dev/docs/topics/built-in-services-built.md) | The privacy emails; Files (partly); Flags; Audit; Search; Documents; Bot protection; Outgoing webhooks; The `telemetry:` section; Path IDs; Monitoring thresholds |
+| [Debugging and review](https://jadpo.dev/docs/topics/debugging-and-review-built.md) | Mapped `.jadpo` stacks, `jadpo incident`, the other forms of `why`, timelines, `test new --from`, `call` and the approval report; The developer console, MCP and the review web view; `jadpo traces`, `metrics`, `logs` and `watch`; path coverage, production counts in review, replay and query cost |
+| [Records and manifest](https://jadpo.dev/docs/topics/records-and-manifest-built.md) | Views of it (partly); `.jadpo_record` files (partly); Approval, package upgrade plans, `jadpo incident` |
+| [Standard library](https://jadpo.dev/docs/topics/standard-library-built.md) | Keys held as data, with encrypted fields: `crypto.verify_totp`, HS256 in `crypto.verify_jwt`, per-device signatures, storing a `TotpSecret` or a `SecretText`; A `type.standard_exists` or `type.standard_clash` swap of a type already stored or on the wire, and `jadpo rename`; A query comparing or ordering by an amount of money, a one-step update working one out, a backfill of a new required one, and a condition on a JSON-held field; The UK modulus check in `BankAccount`; Checking `UnLocode`, `IataAirport`, `IcaoAirport`, `IataAirline` and `Icd10Code` against their lists; Policy's scopes narrowing `OAuthScope`; Legacy encodings in the file readers; `jadpo replay`, and a calendar file's writer; What Personal data does with each standard type's personal data category; The rest of geospatial and AI (partly) |
+| [Geospatial](https://jadpo.dev/docs/topics/geospatial-built.md) | Geometries in Redis; A `geo.` condition in an include or an aggregate query; `IndexKind`s other than `geographic` and `hnsw` |
+| [AI](https://jadpo.dev/docs/topics/ai-built.md) | The prompts' entry in the personal-data report, and flagging a sensitive category in the approval report; The `ErasureNotPossible` acceptance for the `ai` connection; Keeping prompts and answers in production (`keep_content:`); A package's `embed:` with a `batch:` below 100; The conformance suite for a capability other than `ai`, or for a package with fixed `hosts:`; a passing run pinned to the package's digest and the registry's listing; running it in scheduled CI |

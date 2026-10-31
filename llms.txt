@@ -10,10 +10,11 @@ The public project home is https://github.com/jadpo-dev/jadpo. Links below track
 
 - [Primer](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/primer.md): Read this first before writing an app: layout, syntax, the constructs nearly every app uses, what is built and where to look next; 3,000 to 5,000 tokens, every example compiled.
 - [Learn Jadpo](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/learn/README.md): A todo app with sign-in, built a page at a time from an empty folder to a deployed server, for a newcomer; every page's project compiled and tested.
+- [Guides](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/guides/README.md): One common job each, start to finish: build an API, store, query, failures, sign-in, outside APIs, background work, tests, sign-off and deploying; every guide's project compiled and tested.
 - [Agent skill](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/agent-skill/SKILL.md): The skill for a coding agent that writes Jadpo apps: read the primer, find pages, run `jadpo check --json` and `jadpo test --json`, and report a Jadpo bug through the user.
 - [Project README](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/README.md): Purpose, a compiler error example, status and how to build from source.
 - [Language map](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/README.md): Task-based reading paths and all 21 specification areas.
-- [Examples](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/README.md): 28 complete teaching projects with comments and tests.
+- [Examples](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/README.md): Every complete teaching project, with comments and tests, and the closest one for each feature.
 - [Vision](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/vision.md): Why Jadpo exists and how responsibility is divided.
 - [Roadmap](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/roadmap.md): The only implementation tracker; separates outstanding work from completion.
 - [Compiler and runtime](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/compiler-runtime.md): The graph, interpreter, compiled targets and verification architecture.
@@ -47,12 +48,70 @@ Each area page holds what an app author reads; its design notes, the reasons and
 
 ## Complete application examples
 
-- [First project](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/01-first-project/README.md): Setup, layout, named types, imports, functions, actions and tests. Read the source files and tests listed there too.
-- [Bakery orders](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/09-bakery-orders/README.md): Business logic, shared types and explicit failure recovery. Read the source files and tests listed there too.
-- [Recipe book](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/12-recipe-book/README.md): Tenancy, roles, ownership, field permissions and the permissions report. Read the source files and tests listed there too.
-- [Repair cafe](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/23-repair-cafe/README.md): Events, subscribers, retries and the outbox. Read the source files and tests listed there too.
-- [Delivery desk](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/26-delivery-desk/README.md): Packages, provider connections, webhooks, recordings and multi-step calls. Read the source files and tests listed there too.
-- [Lost property](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/28-lost-property/README.md): Typed AI calls, streaming, budgets, embeddings and vector search. Read the source files and tests listed there too.
+Every teaching project in examples/, in reading order. Read each README, then the source files and tests it lists.
+
+- [01-first-project](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/01-first-project/README.md): the project root, a domain, named types, `use` lines, a function, actions and tests.
+- [02-named-types](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/02-named-types/README.md): every built-in representation, the rules a type can add, refinements, literals and conversions.
+- [03-objects-and-enums](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/03-objects-and-enums/README.md): objects, inputs and outputs, field types, absent values, enums and tagged unions, and types built from other types.
+- [04-lists-and-loops](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/04-lists-and-loops/README.md): lists and sets, `for`, `var mut`, and the `collection` operations with inline functions.
+- [05-logic](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/05-logic/README.md): operators, `if` chains, every form of `match`, division with rounding, and recursion.
+- [06-failures](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/06-failures/README.md): declaring failures, `fails`, `reject`, `attempt`, checks that can fail, a condition that proves one can't, and handling failures with `match`.
+- [07-testing](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/07-testing/README.md): test kinds, fixtures, and asserting failures.
+- [08-domains-and-sharing](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/08-domains-and-sharing/README.md): several domains, `public`, `shared/`, libraries, `use <domain>`, a public fixture, and a scenario in `tests/`.
+- [09-bakery-orders](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/09-bakery-orders/README.md): a fuller project that puts all of it together.
+- [10-library-loans](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/10-library-loans/README.md): stored records: entities, references, unique rules and indexes, the migrations that keep the database in step with them, the queries that read them, and the writes that change them: updates, patches, deletes, conflicts and a counter.
+- [11-cake-shop](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/11-cake-shop/README.md): HTTP and sign-in: route groups, inputs from the query string, the body and a header, statuses, APIs and their records, deadlines and idempotent writes, browser sessions, API tokens and service keys, the caller passed to actions, simple grants, and route tests that sign in.
+- [12-recipe-book](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/12-recipe-book/README.md): policy for many customers in one application: tenancy, membership roles, actions listed with who may run them, field restrictions, a role across the whole application and the permissions report.
+- [13-lettings-office](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/13-lettings-office/README.md): settings: `config.jadpo`, a setting's types and defaults, the connections' addresses, constants, test values, and the keys a `crypto` call takes without code reading them: sealing, passwords, a shared secret, a private key and another service's tokens.
+- [14-studio-timetable](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/14-studio-timetable/README.md): time: zones, times a rule repeats on, opening hours, ranges of time, a day's, week's, month's and year's bounds, calendar arithmetic and periods, the night the clocks change, and times shown to people.
+- [15-parcel-tracker](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/15-parcel-tracker/README.md): translations: messages, a language file per locale, plural forms, enums with wording, a message two domains share, the reader's language and direction, Jadpo's own text and a language still in progress.
+- [16-market-hall](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/16-market-hall/README.md): money: amounts in minor units, currencies fixed by a type, rounding, prices and deals, percentages, sharing to the penny, rates, cards and amounts shown to people.
+- [17-ebike-hire](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/17-ebike-hire/README.md): physical quantities: types with bounds in units, kinds that combine, units only at the edges, every kind's units by name, exact decimal maths, and quantities a person typed.
+- [18-village-newsletter](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/18-village-newsletter/README.md): text and the web: text operations, Markdown and rich text made safe, text in each language, links, colours, images, networks, tokens, digests and encodings.
+- [19-book-club](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/19-book-club/README.md): lists, sets and maps, numbers, randomness, codes in other code systems, versions, a rule across a type's fields and declining a standard type.
+- [20-fell-race](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/20-fell-race/README.md): geography in code: points, lines and polygons, distances, bearings, lengths and areas on the ellipsoid, inside, across and near, boxes and circles, polygons valid when built, WKT and GeoJSON layers.
+- [21-veg-box-rounds](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/21-veg-box-rounds/README.md): stored places: PostGIS columns, queries nearest first, in a box, a circle or an area, the indexes they need, a map layer from a query, counts and sums by month, and a backfill worked out from each row.
+- [22-plant-helpline](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/22-plant-helpline/README.md): stored vectors, the nearest query and its tuned index, distance in code, and prompts: checked prompt files, rendering, a shared prompt and a conversation.
+- [23-repair-cafe](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/23-repair-cafe/README.md): events: declaring and emitting them, the outbox, subscribers and their retries, events that cause events, the event record, an action that only emits, and routes that answer 202 or wait for the follow-on work with `settle:`.
+- [24-seed-library](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/24-seed-library/README.md): batches: work over many items a page at a time, an action per item, problems, the summary at the end, `key:`, a run's status and cancelling it, and a standard operation in a query's condition.
+- [25-allotment-rents](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/25-allotment-rents/README.md): schedules, and background work in an application with tenants: a schedule reaching every tenant, a subscriber and a batch reaching one.
+- [26-delivery-desk](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/26-delivery-desk/README.md): packages: an installed library package locked by its digest and used through its name, and the app's own integration with a provider's API in the package format, called through a connection; webhooks, a package's subscribers, events and poll, a recipe, recordings, a mail package and a queue filling capabilities, two versions side by side with a package's words, an OpenAPI import mapped to standard types, and several changing calls kept as steps.
+- [27-guest-house](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/27-guest-house/README.md): email and signing in by email: an email as a type, its HTML and text templates checked against its fields, its subject worded like a message, the shared layout and a shared partial, sending by emitting after commit, the SMTP connection, tests that read what they sent, magic-link sign-in with routes and a sign-in email of the app's own, a link's token and a code, Jadpo's own words in another language, sign-in events, and passkeys, recovered through a magic link.
+- [28-lost-property](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/28-lost-property/README.md): AI: a model package and its connection, budgets, embeddings one at a time and many at once, a search by meaning, typed answers from a model, personal data sent to it, a stream sent to a route, the fake every test answers through, and recorded answers.
+- [29-lending-desk](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/29-lending-desk/README.md): customers and staff in one app: customers signing in by magic link, staff with Google through a sign-in provider, two staff roles held across the whole app, a listed staff query beside a customer catalogue, staff taken on by a seed, and a due-date reminder schedule over a batch, each with its route or schedule test.
+
+The closest example for each feature:
+
+| Feature | Example |
+|---|---|
+| Project layout, domains, `use` lines, functions and actions | [01-first-project](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/01-first-project/README.md) |
+| Named types, refinements and conversions | [02-named-types](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/02-named-types/README.md) |
+| Objects, inputs, outputs, enums and tagged unions | [03-objects-and-enums](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/03-objects-and-enums/README.md) |
+| Lists, sets, loops and the `collection` operations | [04-lists-and-loops](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/04-lists-and-loops/README.md) |
+| Failures, `reject` and `attempt` | [06-failures](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/06-failures/README.md) |
+| Tests, fixtures and asserting failures | [07-testing](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/07-testing/README.md) |
+| Several domains, `public` and `shared/` | [08-domains-and-sharing](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/08-domains-and-sharing/README.md) |
+| Entities, migrations, queries and writes | [10-library-loans](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/10-library-loans/README.md) |
+| Routes, API records, browser sessions, API tokens and service keys | [11-cake-shop](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/11-cake-shop/README.md) |
+| Tenancy and membership roles | [12-recipe-book](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/12-recipe-book/README.md) |
+| Settings, secrets and keys | [13-lettings-office](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/13-lettings-office/README.md) |
+| Time, zones and calendars | [14-studio-timetable](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/14-studio-timetable/README.md) |
+| Translations | [15-parcel-tracker](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/15-parcel-tracker/README.md) |
+| Money | [16-market-hall](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/16-market-hall/README.md) |
+| Physical quantities and units | [17-ebike-hire](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/17-ebike-hire/README.md) |
+| Text, Markdown, links and encodings | [18-village-newsletter](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/18-village-newsletter/README.md) |
+| Geometry in code; stored places | [20-fell-race](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/20-fell-race/README.md), [21-veg-box-rounds](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/21-veg-box-rounds/README.md) |
+| Vectors and prompts | [22-plant-helpline](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/22-plant-helpline/README.md) |
+| Events, subscribers and the outbox | [23-repair-cafe](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/23-repair-cafe/README.md) |
+| Batches over many items | [24-seed-library](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/24-seed-library/README.md) |
+| Schedules, and background work with tenants | [25-allotment-rents](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/25-allotment-rents/README.md) |
+| Packages, provider APIs and webhooks | [26-delivery-desk](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/26-delivery-desk/README.md) |
+| Email, magic links and passkeys | [27-guest-house](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/27-guest-house/README.md) |
+| AI: typed model calls, embeddings and streaming | [28-lost-property](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/28-lost-property/README.md) |
+| Sign-in with Google through a provider; customers and staff in one app | [29-lending-desk](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/29-lending-desk/README.md) |
+| Staff roles across the whole app, and a listed query with role-restricted fields | [29-lending-desk](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/29-lending-desk/README.md) |
+| Seeds (`jadpo seed`) | [29-lending-desk](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/29-lending-desk/README.md) |
+| A schedule that starts a batch, tested to the end | [29-lending-desk](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/29-lending-desk/README.md) |
 
 ## When Jadpo is wrong
 

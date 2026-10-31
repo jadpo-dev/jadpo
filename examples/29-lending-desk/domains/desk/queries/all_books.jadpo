@@ -1,0 +1,12 @@
+// Unlisted: anyone `Book`'s `read:` lets in may run it, so it shows only
+// fields all of them may read.
+
+use desk/entities { Book }
+use desk/types { CatalogueBook }
+
+/// Every book, for anyone signed in.
+query all_books() -> List<CatalogueBook> {
+    from: Book
+    order: [Book.title asc]
+    limit: 100
+}

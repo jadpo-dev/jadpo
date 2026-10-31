@@ -1,0 +1,18 @@
+// The action the schedule runs. It does no slow work itself: it starts a
+// batch over every loan due within two days whose borrower hasn't been
+// reminded, which runs after this action commits, a page at a time, each
+// page in its own transaction, and carries on after a restart from the
+// page it had reached. However many loans fall due at once, no run holds
+// them all.
+
+use desk/types { DueTime, LoanPage }
+use desk/actions { remind_borrower }
+use desk/queries { loans_due }
+
+/// Starts reminding every borrower whose book is due within two days.
+action remind_due() -> BatchRun {
+    return batches.each(
+        from: loans_due(DueTime(clock.now + 2d), LoanPage {}),
+        each: loan -> remind_borrower(loan)
+    )
+}

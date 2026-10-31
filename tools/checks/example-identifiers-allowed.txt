@@ -583,3 +583,6 @@ tag_name
 # CSS's `prefers-reduced-motion`, which `jadpo dev`'s account-chooser page
 # honours (chunk A7c).
 reduced
+# `admin`: ordinary vocabulary, the role an app's administrators hold, and the
+# test server's administrative database (chunk A6)
+admin

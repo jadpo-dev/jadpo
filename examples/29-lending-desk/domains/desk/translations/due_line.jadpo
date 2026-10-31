@@ -1,0 +1,7 @@
+use desk/types { BookTitle }
+
+/// What a reminder says is due back, and when.
+type DueLine = Message {
+    title: BookTitle
+    due_on: PresentationText
+}

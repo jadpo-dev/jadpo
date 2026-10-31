@@ -1,0 +1,11 @@
+// The reminder a borrower gets two days before a book is due back. Its
+// subject is `due_soon` in the domain's language file, and its words are
+// `due_soon.html` and `due_soon.txt` beside it.
+
+use desk/types { BookTitle }
+
+/// Sent to a borrower when a book is due back soon.
+type DueSoon = EmailMessage {
+    title: BookTitle
+    due_on: CalendarDate
+}

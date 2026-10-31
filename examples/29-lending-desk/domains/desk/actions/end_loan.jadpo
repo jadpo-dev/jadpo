@@ -1,0 +1,6 @@
+use desk/entities { Loan, LoanNotFound }
+
+/// Ends a loan when its book comes back.
+action end_loan(loan_id: Loan.id) fails LoanNotFound -> Unit {
+    attempt Loan.delete(loan_id)
+}

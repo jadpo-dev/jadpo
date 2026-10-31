@@ -1,0 +1,7 @@
+use desk/actions { remind_due }
+
+/// Looks for loans due soon every hour.
+schedule due_reminders {
+    every: 1h
+    run: remind_due()
+}

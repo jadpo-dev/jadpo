@@ -1,0 +1,14 @@
+// The desk's words in its one language: the reminder's subject,
+// `due_soon`, its lines, and each failure a person can be told.
+
+translations {
+    already_known: "Someone has that address already."
+    book_not_found: "There's no such book."
+    book_on_loan: "That book is out on loan."
+    due_line: "{title} is due back on {due_on}."
+    due_soon: "A book is due back soon"
+    loan_not_found: "There's no such loan."
+    no_such_customer: "No customer has signed in with that address."
+    not_on_the_staff: "You aren't on the staff."
+    return_line: "Bring it to the desk, or ask us to lend it to you relinked."
+}

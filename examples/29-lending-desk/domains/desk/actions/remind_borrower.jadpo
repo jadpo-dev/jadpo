@@ -1,0 +1,25 @@
+// The action the reminder batch calls for each loan, as the system. It
+// reads the borrower's address, which only they and staff otherwise
+// read, to send the email to them alone, and marks the loan so no later
+// run reminds them twice. The email is sent once this loan's page
+// commits.
+
+use desk/entities { Book, BookNotFound, Loan, LoanNotFound, Patron, PatronNotFound }
+use desk/emails { DueSoon }
+
+/// Reminds a borrower their book is due back soon.
+action remind_borrower(loan: Loan) fails BookNotFound, LoanNotFound, PatronNotFound -> Unit {
+    var borrower: Patron = attempt Patron.get(loan.borrower_id)
+    var book: Book = attempt Book.get(loan.book_id)
+    emit DueSoon {
+        to: borrower.email
+        locale: Locale.en_gb
+        title: book.title
+        due_on: temporal.date(temporal.in_zone(loan.due_at, Zone.europe_london))
+    }
+    attempt Loan.update(loan.id) {
+        set: {
+            reminded_at: clock.now
+        }
+    }
+}

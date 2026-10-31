@@ -1,0 +1,67 @@
+// A schedule test runs the schedule once, as the tick would. The batch
+// `remind_due` starts runs to its end before the test's next line, a
+// page at a time with a restart between pages, as it would after a
+// deploy, so the test sees every reminder the whole run sent.
+
+use desk/entities { Loan, Patron }
+use desk/types { Lending, LoanView, NewBook, StockBook }
+use desk/actions { add_book, lend }
+use desk/fixtures { customer_at }
+
+test "a borrower is reminded once, two days before their book is due" {
+    clock: "2026-11-02T10:00:00Z"
+    var cara: Patron = customer_at("cara@reader.example")
+    var dune: StockBook = add_book(
+        NewBook {
+            title: "Dune"
+            author: "Frank Herbert"
+            shelf: "B3"
+            donor: none
+        }
+    )
+    var lent: LoanView = attempt lend(
+        Lending {
+            book_id: dune.id
+            borrower: cara.email
+        }
+    )
+    clock.advance(11d)
+    due_reminders.run()
+    assert list.count(email.sent) == 0
+    clock.advance(1d)
+    due_reminders.run()
+    assert list.count(email.sent) == 1
+    assert list.all(
+        email.sent,
+        sent -> sent.to == "cara@reader.example" and sent.subject == "A book is due back soon"
+    )
+    var reminded: Loan = attempt Loan.get(lent.id)
+    assert reminded.reminded_at == "2026-11-14T10:00:00Z"
+    clock.advance(1h)
+    due_reminders.run()
+    assert list.count(email.sent) == 1
+}
+
+test "every loan due soon is reminded, however many pages they take" {
+    clock: "2026-11-02T10:00:00Z"
+    var cara: Patron = customer_at("cara@reader.example")
+    for title in ["Dune", "Emma", "Ivanhoe", "Kim", "Middlemarch"] {
+        var book: StockBook = add_book(
+            NewBook {
+                title: title
+                author: "Various"
+                shelf: "C1"
+                donor: none
+            }
+        )
+        attempt lend(
+            Lending {
+                book_id: book.id
+                borrower: cara.email
+            }
+        )
+    }
+    clock.advance(12d)
+    due_reminders.run()
+    assert list.count(email.sent) == 5
+}

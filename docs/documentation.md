@@ -42,6 +42,7 @@ area page lists it under `## Errors`.
 |---|---|
 | Primer: layout, syntax essentials, the constructs nearly every app uses, a project to run, where to look next; about 3,000 to 5,000 tokens | `docs/primer.md` |
 | The Learn path: its outline, then one page per step of one app | `docs/learn/README.md`, `docs/learn/NN-*.md` |
+| Guides: their index, then one page per common job, each its own project | `docs/guides/README.md`, `docs/guides/NN-*.md` |
 | How user pages are written | `docs/writing.md` |
 | The language, by topic | the area pages, `docs/language/NN-*.md` |
 | One page per compiler error | `docs/errors/<rule.id>.md` (examples), with the rule's summary from the compiler's catalogue (`jadpo help --json`) |
@@ -69,7 +70,10 @@ reaching the same page for good:
 Error pages use the rule ID itself (`data.migration_missing`), commands
 `jadpo-<command>` (`jadpo-check`) and the primer `primer`. A Learn page
 is one topic: its ID stands on the line after its `#` heading
-(`learn-first-route`), and the outline's is `learn`.
+(`learn-first-route`), and the outline's is `learn`. A guide is one
+topic too, `guide-` and the job (`guide-add-sign-in`), and the guides'
+index is `guides`; the prefix keeps a guide's ID clear of any reference
+topic's.
 
 The declaration is an HTML comment on the line after the heading, which
 GitHub doesn't show and which leaves the heading's own anchor alone:
@@ -99,6 +103,7 @@ bundle/
   index.json                   one entry per page
   primer.md
   learn/<id>.md                the Learn path: the outline, then each page
+  guides/<id>.md               the guides: their index, then each guide
   topics/<id>.md               one per topic ID
   errors/<rule.id>.md          one per catalogue rule, example or not
   commands/jadpo-<command>.md  generated from jadpo help --json
@@ -106,17 +111,18 @@ bundle/
 ```
 
 `index.json` is `{ "version": "<jadpo's version>", "pages": [...] }`, in
-the order above: the primer, the Learn path in reading order, topics in
-the areas' order, errors, commands. Each entry has `id`, `kind`
-(`primer`, `learn`, `topic`, `error`, `command`), `title`, a one-line
+the order above: the primer, the Learn path in reading order, the
+guides in their index's order, topics in the areas' order, errors,
+commands. Each entry has `id`, `kind`
+(`primer`, `learn`, `guide`, `topic`, `error`, `command`), `title`, a one-line
 `summary` (a page's first sentence, a rule's catalogue summary, a
 command's own), `tokens` (an estimate: a quarter of the page's
 characters), `hash` (`sha256:` and the hex digest of the page's
-markdown), the `area` it comes from (`null` for the primer and the Learn
-path, 14 for a command), and the IDs it `links` to. A renamed topic's
+markdown), the `area` it comes from (`null` for the primer, the Learn
+path and the guides, 14 for a command), and the IDs it `links` to. A renamed topic's
 entry also has `aliases`, its old IDs; no other entry has the field. A
 page's path follows
-from its kind and ID. `learn` pages are the user layer, and `topic`
+from its kind and ID. `learn` and `guide` pages are the user layer, and `topic`
 pages the reference; each area's "What is built" topic is titled
 `What is built: <area>`.
 
@@ -137,8 +143,10 @@ in it and keeps it to 3,000 to 5,000 tokens, its words times 1.3. A
 Learn page shows only the files it adds or changes; the docs check
 compiles and tests its project as the pages before it built it, less
 what its front matter `removes:`, making the migrations and the API
-record as the reader's commands do. The primer and the Learn path also
-keep the [writing guide](writing.md)'s mechanical rules.
+record as the reader's commands do. A guide's project is its own blocks
+alone, the `hidden` ones among them, checked and tested the same way.
+The primer, the Learn path and the guides also keep the
+[writing guide](writing.md)'s mechanical rules.
 
 `python3 tools/docs/language_docs.py --bundle <dir>` builds it; the gate builds
 it into `build/docs-bundle/`, and on `main` CI keeps that folder as the
@@ -152,6 +160,7 @@ Release.
 | `/llms.txt` | A short index: what Jadpo is, the primer's URL, how to find a page by ID or by rule, the version |
 | `/docs/primer`, `/docs/primer.md` | The primer, as HTML and as markdown |
 | `/learn`, `/learn/<id>`, `.md` | The Learn path: the outline, then each page, with previous and next in the index's order |
+| `/guides`, `/guides/<id>`, `.md` | The guides: their index, then each guide |
 | `/docs/<id>`, `/docs/<id>.md` | A topic |
 | `/docs/<old-id>`, `.md` | A permanent redirect to the topic whose `aliases` hold it |
 | `/docs/errors/<rule.id>`, `.md` | An error's page; reached from a compiler error, not listed in navigation |
@@ -163,9 +172,8 @@ Release.
 The markdown copy is the bundle's file served as `text/markdown`. There is
 no single file of all the docs: no agent can use a million tokens. A
 newcomer is sent to the Learn path first; the area pages are the
-reference, in the areas' order. Task guides will come from the bundle
-too, as a page kind of their own ([roadmap](roadmap.md), D11); until
-then the site keeps its own task list.
+reference, in the areas' order. The guides come from the bundle too,
+as pages of kind `guide`, so the site keeps no task list of its own.
 
 ## The agent skill
 
@@ -190,9 +198,11 @@ serves the release's own copy. The site's `llms.txt` links the skill.
 
 ## How an agent uses it
 
-1. A project made by `jadpo new` holds a short section in its `AGENTS.md`:
-   what Jadpo is, the version the app declares in `app.jadpo`, and where the
-   docs are. Agents load that file on their own.
+1. A project made by `jadpo new` holds a short `AGENTS.md`: what Jadpo
+   is, the version the app declares in `app.jadpo`, where the docs are, a
+   working method, the closest example for each feature and what isn't
+   built yet ([`jadpo new`](language/14-tooling.md#jadpo-new)). Agents
+   load that file on their own.
 2. The agent reads the primer once per session; it is the same every time,
    so prompt caching keeps it cheap.
 3. For a task it reads `index.json` (or `llms.txt`), picks the topics by

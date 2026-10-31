@@ -1,0 +1,5 @@
+/// The book is out on loan already.
+type BookOnLoan = Failure {
+    kind: FailureKind.conflict
+    message: "That book is out on loan."
+}

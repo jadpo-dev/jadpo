@@ -451,7 +451,8 @@ and [The dev inbox](../language/16-built-in-services.md#the-dev-inbox-and-the-he
 
 ## Not built yet
 
-- Signing in with Google, GitHub or another provider isn't built yet,
-  so `sign_in:` takes magic links and passkeys only. Passkeys, signing in
+- Signing in with GitHub or Apple isn't built yet. Google and other
+  OpenID Connect providers are, as the guide
+  [Add sign-in](../guides/05-add-sign-in.md) shows. Passkeys, signing in
   with a fingerprint or face, are one line, `passkey: {}`, beside
   `magic_link:`; the reference covers them.

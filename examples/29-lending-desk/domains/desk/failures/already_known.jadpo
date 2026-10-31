@@ -1,0 +1,4 @@
+/// Someone has that address already.
+type AlreadyKnown = Failure {
+    kind: FailureKind.conflict
+}

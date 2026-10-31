@@ -119,10 +119,49 @@ README saying what it teaches, how to run it and what to try next.
     many at once, a search by meaning, typed answers from a model,
     personal data sent to it, a stream sent to a route, the fake every
     test answers through, and recorded answers.
+29. [29-lending-desk/](29-lending-desk/README.md): customers and staff
+    in one app: customers signing in by magic link, staff with Google
+    through a sign-in provider, two staff roles held across the whole
+    app, a listed staff query beside a customer catalogue, staff taken
+    on by a seed, and a due-date reminder schedule over a batch, each
+    with its route or schedule test.
 
 The golden todo, the application the contract run and the benchmarks
 use, is not a teaching example: it is in
 [benchmarks/golden-todo/](../benchmarks/golden-todo/README.md).
+
+## The closest example for each feature
+
+| Feature | Example |
+|---|---|
+| Project layout, domains, `use` lines, functions and actions | [01-first-project](01-first-project/README.md) |
+| Named types, refinements and conversions | [02-named-types](02-named-types/README.md) |
+| Objects, inputs, outputs, enums and tagged unions | [03-objects-and-enums](03-objects-and-enums/README.md) |
+| Lists, sets, loops and the `collection` operations | [04-lists-and-loops](04-lists-and-loops/README.md) |
+| Failures, `reject` and `attempt` | [06-failures](06-failures/README.md) |
+| Tests, fixtures and asserting failures | [07-testing](07-testing/README.md) |
+| Several domains, `public` and `shared/` | [08-domains-and-sharing](08-domains-and-sharing/README.md) |
+| Entities, migrations, queries and writes | [10-library-loans](10-library-loans/README.md) |
+| Routes, API records, browser sessions, API tokens and service keys | [11-cake-shop](11-cake-shop/README.md) |
+| Tenancy and membership roles | [12-recipe-book](12-recipe-book/README.md) |
+| Settings, secrets and keys | [13-lettings-office](13-lettings-office/README.md) |
+| Time, zones and calendars | [14-studio-timetable](14-studio-timetable/README.md) |
+| Translations | [15-parcel-tracker](15-parcel-tracker/README.md) |
+| Money | [16-market-hall](16-market-hall/README.md) |
+| Physical quantities and units | [17-ebike-hire](17-ebike-hire/README.md) |
+| Text, Markdown, links and encodings | [18-village-newsletter](18-village-newsletter/README.md) |
+| Geometry in code; stored places | [20-fell-race](20-fell-race/README.md), [21-veg-box-rounds](21-veg-box-rounds/README.md) |
+| Vectors and prompts | [22-plant-helpline](22-plant-helpline/README.md) |
+| Events, subscribers and the outbox | [23-repair-cafe](23-repair-cafe/README.md) |
+| Batches over many items | [24-seed-library](24-seed-library/README.md) |
+| Schedules, and background work with tenants | [25-allotment-rents](25-allotment-rents/README.md) |
+| Packages, provider APIs and webhooks | [26-delivery-desk](26-delivery-desk/README.md) |
+| Email, magic links and passkeys | [27-guest-house](27-guest-house/README.md) |
+| AI: typed model calls, embeddings and streaming | [28-lost-property](28-lost-property/README.md) |
+| Sign-in with Google through a provider; customers and staff in one app | [29-lending-desk](29-lending-desk/README.md) |
+| Staff roles across the whole app, and a listed query with role-restricted fields | [29-lending-desk](29-lending-desk/README.md) |
+| Seeds (`jadpo seed`) | [29-lending-desk](29-lending-desk/README.md) |
+| A schedule that starts a batch, tested to the end | [29-lending-desk](29-lending-desk/README.md) |
 
 ## How the comments work
 

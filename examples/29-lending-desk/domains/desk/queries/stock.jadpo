@@ -1,0 +1,14 @@
+// Listed for both staff roles in `policy.jadpo`, so `shelf` is proved
+// against them alone. Unlisted, it would be
+// `policy.output_field_unproved`: a customer may run it and not read
+// `shelf`.
+
+use desk/entities { Book }
+use desk/types { StockBook }
+
+/// Every book with where it is shelved, for staff.
+query stock() -> List<StockBook> {
+    from: Book
+    order: [Book.shelf asc, Book.title asc]
+    limit: 100
+}

@@ -281,12 +281,7 @@ D1 first: the site starts once D1 has merged.
 - [ ] **D8b Rename in the editor** `opus · high`: area 14, "Editor support". Waits: `jadpo rename` and the identity registry (after the first build, items 6 and 7).
 - [x] **D9 Docs for newcomers**: [writing guide](writing.md); the [Learn path](learn/README.md); the [primer](primer.md); [documentation](documentation.md), "The bundle".
 - [x] **D10 Area pages to the writing guide**: the area pages in [docs/language](language/README.md), each topic to the [writing guide](writing.md), "How a reference topic reads", and the rationale in each area's design notes.
-- [ ] **D11 Task guides** `opus · high`: how-to pages in the bundle, a
-  page kind of their own beside `learn`, for the commonest jobs (add
-  sign-in, store and change a record, query records, call an outside API,
-  handle failures, write tests, deploy to Workers, deploy natively), each
-  compiled by the gate and linking the reference. They replace the site's
-  own `src/data/tasks.json`.
+- [x] **D11 Task guides**: [guides](guides/README.md); [documentation](documentation.md), "Topic IDs" and "The bundle"; [writing guide](writing.md), "Kinds of user page"; `tools/docs/language_docs.py`, `GuidePage`.
 - [x] **D12 What the Learn path found**: [area 8](language/08-identity.md), "In development and tests"; [area 14](language/14-tooling.md), "What is built"; [documentation](documentation.md), "Where the content lives" and "The bundle".
 - [ ] **D13 Error pages that explain** `opus · high`: every page in
   `docs/errors/` rewritten to the format in [docs/writing.md](writing.md),
@@ -360,28 +355,27 @@ time.
 - [x] **A3 External tokens in tests and `jadpo dev`**: area 8, "External tokens in tests and `jadpo dev`"; area 13, `as:`; area 14, `jadpo dev`'s "External tokens"; area 19, `Jwk`'s `key_ops`.
 - [x] **A4 Batches run to the end in tests**: area 13, "Batches" and "What is built"; compiler/runtime §2.5; `examples/24-seed-library/README.md`.
 - [x] **A5 `jadpo seed`**: area 5, "Seeds"; area 14, "`jadpo seed`" and "Command errors".
-- [ ] **A6 Guidance an agent reads first** `opus · high` after A1 to A5:
-  the `AGENTS.md` that `jadpo new` writes gains a workflow (one concern at
-  a time, `jadpo check` after each file, read one topic not a whole page,
-  declare a feature and check it before designing around it) and a table
-  of what is built, generated from each area's "What is built"; `llms.txt`
-  lists every example, with the closest one per feature; a new teaching
-  example, a lending desk, has magic-link customers, staff on external
-  tokens with two roles, a listed staff query, staff from a seed, a
-  reminder schedule over a batch, and route tests for each, with no code
-  outside Jadpo. Before 10.2's measured runs, since it changes what they
-  measure.
+- [x] **A6 Guidance an agent reads first**: area 14, "`jadpo new`"; [documentation](documentation.md), "How an agent uses it"; `tools/docs/agent_guidance.py`; `examples/29-lending-desk/README.md`.
 - [x] **A9 Unknown sections of `application { }`**: area 1, "What `application { }` holds" and "What is built"; the "What is built" of areas 11, 12, 15 and 16.
 - [x] **A8 Acceptances for what exists today**: area 18, "Comparing two builds" and "Acceptances"; area 9, "Protecting policy"; area 14, "`jadpo acceptance new`" and "Review and sign-off"; area 1, "Writing a decline".
 - [x] **A7a `on_first_sign_in:` for external tokens**: area 8, `external_token` and "A person the app has not seen"; area 5, "Tables for sign-in"; compiler/runtime §2.6, "First sign-in by external token".
 - [x] **A7b Sign-in providers**: area 8, "Providers", "What the compiler checks of sign-in" and Failures; areas 7 (generated routes), 11 (sign-in providers), 13 (signing in for a route test) and 14 (`jadpo dev`); compiler/runtime §2.6, "Sign-in providers".
 - [x] **A7c Provider sign-in in `jadpo dev`**: area 8, "Providers", "In `jadpo dev`"; area 14, `jadpo dev`; compiler/runtime §2.6, "Sign-in providers".
 
+- [ ] **A10 Staff only through their provider** `opus · xhigh`: an app
+  can require some people, such as staff holding a role, to sign in only
+  through a named provider, so their access is revoked in one place; today
+  anyone with an address can also sign in by magic link and keep their
+  roles (found building the lending desk). Area 8 doesn't decide how yet:
+  the chunk proposes the declaration and stops for a maintainer's
+  decision before building (Richard, 2026-10-31).
+
 ## Approvals
 
 Everything a person must approve is found by the compiler and can be
-approved (Richard, 2026-10-31). These chunks are taken after the A chunks
-above and before every other unticked chunk.
+approved (Richard, 2026-10-31). V2 is taken before A10, so 0.2.0 doesn't
+wait for A10's decision; the rest come after the A chunks above and
+before every other unticked chunk.
 
 **0.2.0 is V2 alone.** When V2 has merged, the 0.2.0 release pull request
 is merged; no session merges it before then. Everything else in this
