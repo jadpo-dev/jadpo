@@ -667,7 +667,11 @@ mod tests {
     const NOW: i64 = 1_800_000_000_000;
     const ISSUER: &str = "https://accounts.google.com";
     const CLIENT: &str = "desk.apps.googleusercontent.com";
-    const NONCE: &str = "the-nonce";
+
+    /// The nonce a sign-in derives, as `start` and `callback` do.
+    fn nonce() -> String {
+        derived("a browser's binding", "a sign-in's state").1
+    }
 
     fn signer() -> KeyRing {
         KeyRing::from_signing_text("0123456789abcdef0123456789abcdef", None)
@@ -696,7 +700,7 @@ mod tests {
 
     fn claims() -> serde_json::Value {
         serde_json::json!({
-            "iss": ISSUER, "aud": CLIENT, "sub": "1098", "nonce": NONCE,
+            "iss": ISSUER, "aud": CLIENT, "sub": "1098", "nonce": nonce(),
             "exp": NOW / 1000 + 300, "iat": NOW / 1000,
             "email": "ann@desk.example", "email_verified": true, "name": "Ann",
             "role": "administrator", "groups": ["staff-admins"],
@@ -704,7 +708,7 @@ mod tests {
     }
 
     fn checked(claims: serde_json::Value) -> Option<IdClaims> {
-        id_token(&token(claims), &keys(), ISSUER, CLIENT, NONCE, NOW).ok()
+        id_token(&token(claims), &keys(), ISSUER, CLIENT, &nonce(), NOW).ok()
     }
 
     #[test]
@@ -771,7 +775,7 @@ mod tests {
         named["azp"] = CLIENT.into();
         assert!(checked(named).is_some());
         // A token no key signed is refused.
-        assert!(id_token(&token(claims()), &[], ISSUER, CLIENT, NONCE, NOW).is_err());
+        assert!(id_token(&token(claims()), &[], ISSUER, CLIENT, &nonce(), NOW).is_err());
     }
 
     #[test]
