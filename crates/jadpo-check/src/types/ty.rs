@@ -185,6 +185,24 @@ pub enum TypeRef {
     Invalid,
 }
 
+/// A type as a person writes it: `List<Money>`, `Text?`, `Map<Locale, Text>`.
+impl fmt::Display for TypeRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TypeRef::Path(names, args) => {
+                write!(f, "{}", names.join("."))?;
+                if !args.is_empty() {
+                    let args: Vec<String> = args.iter().map(ToString::to_string).collect();
+                    write!(f, "<{}>", args.join(", "))?;
+                }
+                Ok(())
+            }
+            TypeRef::Nullable(inner) => write!(f, "{inner}?"),
+            TypeRef::Invalid => write!(f, "?"),
+        }
+    }
+}
+
 impl TypeRef {
     pub fn from_type(ty: &Type) -> TypeRef {
         match ty {

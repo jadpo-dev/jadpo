@@ -390,7 +390,8 @@ fn from_graph(value: &jadpo_graph::json::Value) -> Json {
     }
 }
 
-/// The whole command reference, the rule catalogue, and the schemas of
+/// The whole command reference, the rule catalogue, the standard types
+/// and operations the type reference is rendered from, and the schemas of
 /// the manifest and of `jadpo test --json`, for agents and for the docs
 /// check.
 pub fn reference_json() -> Json {
@@ -420,6 +421,8 @@ pub fn reference_json() -> Json {
                 ])
             })),
         ),
+        ("types", crate::type_reference::types_json()),
+        ("operations", crate::type_reference::operations_json()),
         ("manifest", from_graph(&jadpo_graph::manifest::schema())),
         ("testReport", jadpo_test::schema()),
     ])
