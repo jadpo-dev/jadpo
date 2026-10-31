@@ -306,6 +306,10 @@ std_enum! {
         /// count route rate limits in on Workers (area 16, "Rate limits";
         /// chunk 8.2m2).
         CloudflareRateLimits: "cloudflare_rate_limits",
+        /// An OpenID Connect provider people sign in with, such as Google
+        /// or Microsoft, named by `sign_in: { providers: }` (area 8,
+        /// "Providers"; chunk A7b).
+        Oidc: "oidc",
     }
 }
 

@@ -684,9 +684,10 @@ avatars: {
 - **Sign-in providers are connections.** Google, Microsoft and other
   OpenID Connect providers are `google: { driver: Driver.oidc  issuer:
   client_id:  credential: }` in `connections:`, named by
-  `sign_in: { providers: [google, github] }`
-  ([Identity](08-identity.md)). GitHub and Apple aren't plain OpenID
-  Connect, so they are the built-in `Driver.github` and `Driver.apple`.
+  `sign_in: { providers: [google, microsoft] }`. Google's and Microsoft's
+  settings are in [Providers](08-identity.md#providers). GitHub and Apple
+  aren't plain OpenID Connect, so they are the built-in `Driver.github`
+  and `Driver.apple`, which aren't built yet.
 
 **Packages have no dependencies**: a package can't require another.
 
@@ -6999,7 +7000,7 @@ package's name, as its types are.
 | Package actions, subscribers, recipes and polls | Built. |
 | Webhooks as events, replies, handshakes, queues through a package and the Cloudflare Queues driver | Built. |
 | Services (`runs:`) | Not built yet. |
-| OAuth grants | Not built yet. |
+| OAuth grants | Not built yet: the application's `grants:` is `toolchain.not_built_yet` where it is written. |
 | Publisher trust for third-party git packages | Built: every package from git needs an [acceptance](18-records-and-manifest.md#acceptances). Not built yet: `packages:`'s `own_sources:`, which lets your own company's repositories in without one. |
 | The public registry: the protocol, the verifier, publishing, facts, search, advisories and compatibility runs | Not built yet. |
 | Importers other than OpenAPI | Not built yet. |

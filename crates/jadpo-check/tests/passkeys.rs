@@ -195,10 +195,11 @@ fn only_the_languages_ways_go_in_sign_in() {
         "        passkey: {}\n        providers: [google]",
         "",
     );
+    // A provider is a connection on `Driver.oidc` (chunk A7b).
     assert!(
         has(
             &found,
-            "toolchain.not_built_yet: `providers:` isn't built yet"
+            "semantic.auth_setting_invalid: `google` isn't a sign-in provider"
         ),
         "{found:?}"
     );

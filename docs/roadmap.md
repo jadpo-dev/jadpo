@@ -371,23 +371,11 @@ time.
   reminder schedule over a batch, and route tests for each, with no code
   outside Jadpo. Before 10.2's measured runs, since it changes what they
   measure.
-- [ ] **A9 Unknown sections of `application { }`** `opus · high`: an
-  unknown or misspelt section of the root `application { }` is accepted
-  silently today, so a setting meant to protect the app can be dropped
-  without a word. One list of every area's sections, and a rule refusing
-  any other, as entities' and routes' unknown sections are. Found by A0.
+- [x] **A9 Unknown sections of `application { }`**: area 1, "What `application { }` holds" and "What is built"; the "What is built" of areas 11, 12, 15 and 16.
 - [x] **A8 Acceptances for what exists today**: area 18, "Comparing two builds" and "Acceptances"; area 9, "Protecting policy"; area 14, "`jadpo acceptance new`" and "Review and sign-off"; area 1, "Writing a decline".
 - [x] **A7a `on_first_sign_in:` for external tokens**: area 8, `external_token` and "A person the app has not seen"; area 5, "Tables for sign-in"; compiler/runtime §2.6, "First sign-in by external token".
-- [ ] **A7b Sign-in providers** `opus · xhigh` **needs a maintainer**
-  before it starts: the pages don't yet say the generated provider
-  routes' requests and answers, how a route test signs in through a
-  provider, how `jadpo dev` does without credentials, how a provider
-  account finds an existing user, or which Microsoft issuers are taken
-  (asked 2026-10-30). Area 8, `sign_in:`'s `providers:` (Google first,
-  then Microsoft, through `Driver.oidc`) and `on_first_sign_in:` for
-  provider sign-in. Moved here from "After the first build", item 8
-  (Richard, 2026-10-30). Done when the lending desk example signs staff
-  in with Google through Jadpo alone, tested with the local issuer.
+- [x] **A7b Sign-in providers**: area 8, "Providers", "What the compiler checks of sign-in" and Failures; areas 7 (generated routes), 11 (sign-in providers), 13 (signing in for a route test) and 14 (`jadpo dev`); compiler/runtime §2.6, "Sign-in providers".
+- [x] **A7c Provider sign-in in `jadpo dev`**: area 8, "Providers", "In `jadpo dev`"; area 14, `jadpo dev`; compiler/runtime §2.6, "Sign-in providers".
 
 ## Approvals
 
@@ -508,8 +496,8 @@ After the registry is live, in order:
   compile errors and migrations that would follow; after V4.
 - Then, each with its own chunk below: signed log heads (keys held as data
   and `crypto.sign`, item 3), the S3 driver for the registry's archives
-  (item 4), the search capability (item 8), and Google and GitHub sign-in
-  for jadpo.dev accounts (A7b, then `Driver.github`).
+  (item 4), the search capability (item 8), and GitHub sign-in for
+  jadpo.dev accounts (`Driver.github`; Google works now, through A7b).
 
 ## After the first build, in order
 

@@ -41,6 +41,8 @@
 //! runner gives a schedule's run or a subscriber's delivery, which
 //! `Access.system` grants.
 
+#[cfg(feature = "testing")]
+pub mod account_chooser;
 pub mod address;
 pub mod external_token;
 #[cfg(test)]
@@ -52,10 +54,13 @@ pub mod identity;
 pub mod local_issuer;
 pub mod magic_links;
 pub(crate) mod passkeys;
+pub(crate) mod provider_sign_in;
 pub(crate) mod sign_in_events;
 pub(crate) mod sign_in_links;
 pub mod signed;
 pub mod test_passkeys;
+#[cfg(feature = "testing")]
+pub mod test_providers;
 mod trie;
 
 use std::cell::Cell;
@@ -208,14 +213,15 @@ pub type Entries = fn(u32) -> Option<&'static Entry>;
 
 /// The failures the runtime answers with itself (area 7, "How failures
 /// reach the client").
-const INVALID_REQUEST: (u16, &str, &str) = (400, "invalid_request", "Request could not be read.");
+pub(crate) const INVALID_REQUEST: (u16, &str, &str) =
+    (400, "invalid_request", "Request could not be read.");
 const INVALID_INPUT: (u16, &str, &str) = (422, "invalid_input", "Request input is invalid.");
 const HEADER_UNREADABLE: (u16, &str, &str) = (
     400,
     "invalid_request",
     "A header's value isn't printable ASCII.",
 );
-const BODY_NOT_JSON: (u16, &str, &str) = (
+pub(crate) const BODY_NOT_JSON: (u16, &str, &str) = (
     400,
     "invalid_request",
     "A request body is JSON, sent with `Content-Type: application/json`.",
@@ -983,6 +989,17 @@ async fn run_route(
                 First::Right(()) => runtime_failure(DEADLINE_EXCEEDED, request_id, None),
             }
         }
+        // The runtime answers each sign-in provider's routes itself (area
+        // 8, "Providers"; chunk A7b), with no idempotency key: a sign-in
+        // is used once.
+        (None, Run::Provider(at, step)) => {
+            let answered =
+                provider_sign_in::answer(app, executor, ctx, request, request_id, *at, *step);
+            match race(answered, &mut deadline).await {
+                First::Left(response) => response,
+                First::Right(()) => runtime_failure(DEADLINE_EXCEEDED, request_id, None),
+            }
+        }
         // The runtime answers the magic-link routes itself (area 8, "Magic
         // links"), with no idempotency key: a link or a code is used once.
         (None, Run::MagicLink(step)) => {
@@ -1258,12 +1275,14 @@ async fn run_with_caller(
                     }
                 }
                 // Answered once signed in, without running anything.
-                Run::Exchange | Run::Passkey(_) | Run::MagicLink(_) | Run::OpenApi(_) => {
-                    Outcome::Fault(ctx.fault(
-                        crate::FaultKind::Defect("an exchange with no key to trade".into()),
-                        Frame::ENTRY,
-                    ))
-                }
+                Run::Exchange
+                | Run::Passkey(_)
+                | Run::MagicLink(_)
+                | Run::Provider(..)
+                | Run::OpenApi(_) => Outcome::Fault(ctx.fault(
+                    crate::FaultKind::Defect("an exchange with no key to trade".into()),
+                    Frame::ENTRY,
+                )),
                 Run::Query(plan) => {
                     match crate::store(
                         ctx,
@@ -1845,6 +1864,21 @@ pub async fn session(
         (SessionOp::TestPasskeySignIn, _) => {
             test_passkeys::sign_in(&executor.app(), executor, ctx, args, at).await
         }
+        // `test_providers`, which only a route test calls (chunk A7b),
+        // through a provider's routes with the local issuer as the
+        // provider.
+        #[cfg(feature = "testing")]
+        (SessionOp::TestProviderSignIn, _) => {
+            test_providers::sign_in(&executor.app(), executor, ctx, args, at).await
+        }
+        // A deployable holds no local issuer, so signs no test in.
+        #[cfg(not(feature = "testing"))]
+        (SessionOp::TestProviderSignIn, _) => crate::Stored::Fault(ctx.fault(
+            crate::FaultKind::Defect(
+                "`test_providers.sign_in` outside a test: only a test has a local issuer".into(),
+            ),
+            at,
+        )),
         (SessionOp::Start, [user]) => identity::start(ctx, plan, user, at).await,
         (SessionOp::End, []) => identity::end(ctx, plan, at).await,
         (SessionOp::IssueToken, [user]) => identity::issue_token(ctx, plan, user, at).await,
@@ -2104,7 +2138,7 @@ fn json_text(json: &str) -> String {
 }
 
 /// `text` with everything but unreserved characters percent-encoded.
-fn percent_encode(text: &str) -> String {
+pub(crate) fn percent_encode(text: &str) -> String {
     let mut out = String::new();
     for byte in text.bytes() {
         if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {

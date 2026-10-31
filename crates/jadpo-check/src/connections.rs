@@ -341,32 +341,6 @@ pub fn connection_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     );
     out.extend(name_clashes(db, project));
     out.extend(sandbox_problems(db, project));
-    out.extend(unbuilt_capabilities(db, project));
-    out
-}
-
-/// A capability section of `application { }` an area page decides and
-/// this compiler doesn't build, refused where it is written rather than
-/// accepted and ignored: area 16's `bot_check:`, which would otherwise
-/// read as bot protection while every request gets through.
-fn unbuilt_capabilities(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
-    let mut out = Vec::new();
-    for found in singletons(db, project, "application") {
-        for (key, _) in tree::members(found.list.clone()) {
-            if name_text(&key).as_deref() != Some("bot_check") {
-                continue;
-            }
-            out.push(
-                Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    "The application's `bot_check:` isn't built yet",
-                )
-                .at(node_span(&found.path, key.syntax()), "decided, not built")
-                .reason("Checking a challenge token before a route or Jadpo's own public endpoints run is area 16's bot protection, which isn't built yet: accepted, every request would get through.")
-                .next("Leave `bot_check:` out for now"),
-            );
-        }
-    }
     out
 }
 
@@ -2160,6 +2134,16 @@ pub fn hosts(db: &dyn Db, project: Project, domains: bool) -> Vec<Row> {
             host: format!("the issuer in `config.{}` and the public HTTPS keys address its verified discovery document names", external.issuer),
             address: None, setting: Some(external.issuer.clone()), image: None,
             when: None, reached_for: "runtime identity discovery and signing keys; public HTTPS, no redirects".into(), domains: Vec::new(),
+        });
+    }
+    // Each sign-in provider's discovery, keys and token endpoint (area 8,
+    // "Providers"; chunk A7b).
+    for provider in &identity.providers {
+        rows.push(Row {
+            connection: provider.name.clone(),
+            host: format!("the issuer in `config.{}` and the public HTTPS keys and token addresses its verified discovery document names", provider.issuer),
+            address: None, setting: Some(provider.issuer.clone()), image: None,
+            when: None, reached_for: "runtime sign-in: discovery, signing keys and the code exchange; public HTTPS, no redirects".into(), domains: Vec::new(),
         });
     }
     rows.sort_by(|a, b| (&a.connection, &a.host).cmp(&(&b.connection, &b.host)));

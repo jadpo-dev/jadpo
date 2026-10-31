@@ -228,6 +228,17 @@ a running `jadpo dev` in the project, whose key it signs with: the key is
 made for the session, kept in `build/dev/issuer.json`, readable only by
 you, while it runs, and removed when it stops.
 
+**Sign-in providers.** An app that signs in through a provider
+([Providers](08-identity.md#providers)) gets the local issuer in each
+provider's place, so none of the provider's settings is needed. Its start
+route sends the browser to the local issuer's account-chooser page, on
+its own port beside the app, which the ready screen gives on its
+`sign-in` line (`signIn` with `--json`). There you choose a test account
+or add one (subject, email, whether it is verified, name) and come back
+signed in, or cancel and come back refused
+([In `jadpo dev`](08-identity.md#in-jadpo-dev)). The accounts are kept in
+`build/dev/accounts.json` for the next session.
+
 **Background work.** Each schedule run and each skipped tick (a paused
 schedule's, once) gets a line with its trace's id, its outcome, what it
 emitted or its failure, and its time. Each alert gets a line when it

@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use jadpo_db::{Db, Project};
 use jadpo_std::AuthenticationMethod;
-use jadpo_std::http::{MagicLinkStep, PasskeyStep};
+use jadpo_std::http::{MagicLinkStep, PasskeyStep, ProviderStep};
 
 use super::served::Served;
 use crate::webhooks::WebhookModel;
@@ -26,6 +26,9 @@ pub enum Generating {
     /// The magic-link routes under `path:` (area 8, "Magic links"), the
     /// redemption with them when API tokens are declared.
     MagicLink { path: Vec<String>, api_tokens: bool },
+    /// A sign-in provider's two routes under `/auth/<name>` (area 8,
+    /// "Providers"; chunk A7b), by its connection's name.
+    Provider(String),
     /// `GET <prefix>/openapi.json` (area 7, "OpenAPI").
     OpenApi(Served),
     /// A connection's webhook (area 11, "Receiving from outside").
@@ -39,8 +42,8 @@ pub struct GeneratedRoute {
     pub method: jadpo_std::HttpMethod,
     /// Its path, a placeholder in braces: `/auth/passkey/{passkey_id}`.
     pub path: String,
-    /// What generates it: `exchange`, `passkey`, `magic_link`, `openapi`
-    /// or `webhook`.
+    /// What generates it: `exchange`, `passkey`, `magic_link`,
+    /// `provider`, `openapi` or `webhook`.
     pub generated: &'static str,
     /// Who may call it: `none`, `caller`, `service`, `user` or `signature`.
     pub authentication: &'static str,
@@ -91,6 +94,15 @@ impl Generating {
                     method: step.method(),
                     path: joined(&step.segments(path)),
                     generated: "magic_link",
+                    authentication: "none",
+                })
+                .collect(),
+            Generating::Provider(name) => ProviderStep::ALL
+                .into_iter()
+                .map(|step| GeneratedRoute {
+                    method: step.method(),
+                    path: joined(&step.segments(name)),
+                    generated: "provider",
                     authentication: "none",
                 })
                 .collect(),
@@ -155,6 +167,11 @@ pub fn generating(db: &dyn Db, project: Project) -> BTreeMap<String, Vec<Generat
                     path: magic.path.clone(),
                     api_tokens: identity.built(AuthenticationMethod::ApiToken),
                 });
+            }
+            if signs_in_here {
+                for provider in &identity.providers {
+                    out.push(Generating::Provider(provider.name.clone()));
+                }
             }
             if let Some(served) = super::served::served_by(db, project, &api) {
                 out.push(Generating::OpenApi(served));

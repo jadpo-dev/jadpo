@@ -513,7 +513,7 @@ impl Site<'_> {
             failure: None,
         });
         let event = SignInEvent::Refused {
-            method: SignInMethod::Passkey,
+            method: SignInMethod::Passkey.into(),
             reason,
             user,
         };
@@ -655,7 +655,7 @@ impl Site<'_> {
         }
         let event = SignInEvent::SignedIn {
             user: *user,
-            method: SignInMethod::Passkey,
+            method: SignInMethod::Passkey.into(),
             first_time: false,
         };
         sign_in_events::commit_with(ctx, self.executor, &self.plan.store, transaction, &[event])

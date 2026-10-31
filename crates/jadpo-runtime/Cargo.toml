@@ -42,6 +42,9 @@ testing = ["jadpo-std/testing", "dep:p256"]
 [dev-dependencies]
 jadpo-runtime = { path = ".", features = ["testing"] }
 stats_alloc.workspace = true
+# The platform's secure random source, the native host's, for the tests
+# that need a binding cookie and a `state` as a sign-in makes them.
+getrandom.workspace = true
 
 # The reference the passkey ceremonies are held to (tests/passkeys.rs):
 # `webauthn-rs`, which verifies with OpenSSL, and OpenSSL for the keys and

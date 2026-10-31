@@ -96,3 +96,24 @@ fn a_comment_alone_in_empty_brackets_formats_safely() {
         "action f(\n    // none yet\n) -> Unit {}\n"
     );
 }
+
+/// Two `use` lines for one folder, which a mutation of an example found:
+/// they sort by the names as the formatter writes them, sorted, so a
+/// second format keeps the order the first wrote.
+#[test]
+fn two_use_lines_for_one_folder_format_safely() {
+    for text in [
+        "use sales/fixtures { familym, Sterling }\nuse sales/fixtures { family_basket }\n",
+        // A trailing comma the formatter drops doesn't move the line.
+        "use sales/types { a, }\nuse sales/types { a_b }\n",
+    ] {
+        assert_eq!(holds(text), Ok(()), "{text}");
+    }
+    assert_eq!(
+        format_file(
+            "use sales/fixtures { familym, Sterling }\nuse sales/fixtures { family_basket }\n"
+        )
+        .expect("formats"),
+        "use sales/fixtures { Sterling, familym }\nuse sales/fixtures { family_basket }\n"
+    );
+}

@@ -1959,6 +1959,7 @@ name = "jadpo-runtime"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "getrandom 0.4.3",
  "jadpo-runtime",
  "jadpo-std",
  "jadpo-value",

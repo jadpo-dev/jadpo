@@ -29,7 +29,7 @@ use jadpo_value::Value;
 
 use super::identity::{AUTHENTICATION_UNAVAILABLE, Refused};
 use super::magic_links::REFUSED;
-use super::sign_in_events::{self, SignInEvent};
+use super::sign_in_events::{self, SignInEvent, Way};
 use crate::ctx::{SignInRefused, System};
 use crate::{Ctx, Executor, Isolation, Outcome, SqlValue};
 
@@ -44,9 +44,9 @@ pub(crate) const LINK: &str = "INSERT INTO \"jadpo_sign_in_links\" (\"method\", 
 /// The advisory lock a first sign-in of `method` and `subject` holds: the
 /// first eight bytes of their BLAKE3 digest, so two subjects share a lock
 /// only by a collision, which makes one wait, never sign in as the other.
-fn lock_key(method: SignInMethod, subject: &str) -> i64 {
+fn lock_key(method: &str, subject: &str) -> i64 {
     let mut hasher = blake3::Hasher::new();
-    hasher.update(method.name().as_bytes());
+    hasher.update(method.as_bytes());
     hasher.update(&[0]);
     hasher.update(subject.as_bytes());
     let digest = hasher.finalize();
@@ -55,39 +55,44 @@ fn lock_key(method: SignInMethod, subject: &str) -> i64 {
     i64::from_be_bytes(bytes)
 }
 
-/// The `FirstSignIn` `on_first_sign_in:`'s action is given for `method`'s
-/// `subject`, with what the way in vouches for and nothing more.
-fn first_sign_in(
-    method: SignInMethod,
-    address: Option<&str>,
-    address_verified: bool,
-    subject: Option<&str>,
-    name: Option<&str>,
-) -> Value {
-    let ordinal = jadpo_std::variant_ordinal(SignInMethod::NAME, method.name()).unwrap_or_default();
-    let text = |value: Option<&str>| value.map_or(Value::None, Value::text);
-    Value::record(
-        FIRST_SIGN_IN,
-        vec![
-            (
-                Rc::from("method"),
-                Value::variant(SignInMethod::NAME, ordinal, method.name(), Vec::new()),
-            ),
-            (Rc::from("address"), text(address)),
-            (Rc::from("address_verified"), Value::Bool(address_verified)),
-            (Rc::from("subject"), text(subject)),
-            (Rc::from("name"), text(name)),
-        ],
-    )
+/// Who a way in vouches for, the first time: its subject, and for a
+/// provider the address, whether it verified it and the name its profile
+/// gives. Nothing else of a token or a provider reaches the action.
+pub(crate) struct Arrival<'a> {
+    pub way: Way,
+    pub subject: &'a str,
+    pub address: Option<&'a str>,
+    pub address_verified: bool,
+    pub name: Option<&'a str>,
 }
 
-/// Refuses a first sign-in the application refused, for `reason`, keeping
-/// the failure it declared for the log and publishing `SignInRefused`.
+impl Arrival<'_> {
+    /// The `FirstSignIn` `on_first_sign_in:`'s action is given.
+    fn value(&self) -> Value {
+        let text = |value: Option<&str>| value.map_or(Value::None, Value::text);
+        Value::record(
+            FIRST_SIGN_IN,
+            vec![
+                (Rc::from("method"), self.way.value()),
+                (Rc::from("address"), text(self.address)),
+                (
+                    Rc::from("address_verified"),
+                    Value::Bool(self.address_verified),
+                ),
+                (Rc::from("subject"), Value::text(self.subject)),
+                (Rc::from("name"), text(self.name)),
+            ],
+        )
+    }
+}
+
+/// Refuses a first sign-in the application refused, keeping the failure
+/// it declared for the log and publishing `SignInRefused`.
 async fn refusing(
     ctx: &mut Ctx<'_>,
     executor: &dyn Executor,
     store: &str,
-    method: SignInMethod,
+    way: &Way,
     failure: Option<String>,
 ) -> Refused {
     ctx.refuse_sign_in(SignInRefused {
@@ -95,7 +100,7 @@ async fn refusing(
         failure,
     });
     let event = SignInEvent::Refused {
-        method,
+        method: way.clone(),
         reason: SignInRefusal::RefusedByApp,
         user: None,
     };
@@ -103,22 +108,25 @@ async fn refusing(
     Refused::new(REFUSED)
 }
 
-/// The user a first sign-in of an external token's `subject` gives, as
-/// `first.lookup` reads one: `params`, that lookup's, read again under the
-/// lock, else `on_first_sign_in:`'s action asked and its user linked.
-/// Its row is the user's `id`, whether its `active:` holds and its
-/// subject field.
-pub(crate) async fn external(
+/// The user a first sign-in of `arrival` gives, as `first.lookup` reads
+/// one: `params`, that lookup's, read again under the lock, else
+/// `on_first_sign_in:`'s action asked and its user linked. Its row is the
+/// user's `id`, whether its `active:` holds and its subject field, and
+/// whether the action gave it just now. With `announce`, the link is kept
+/// with `SignedIn`, as an external token's first use is; a provider's
+/// session start says so itself.
+pub(crate) async fn first(
     ctx: &mut Ctx<'_>,
     executor: &dyn Executor,
     store: &str,
     first: &FirstSignInPlan,
     params: &[SqlValue],
-    subject: &str,
-) -> Result<Vec<SqlValue>, Refused> {
-    let method = SignInMethod::ExternalToken;
+    arrival: &Arrival<'_>,
+    announce: bool,
+) -> Result<(Vec<SqlValue>, bool), Refused> {
+    let way = &arrival.way;
     let Some(action) = first.action else {
-        return Err(refusing(ctx, executor, store, method, None).await);
+        return Err(refusing(ctx, executor, store, way, None).await);
     };
     let unavailable = || Refused::new(AUTHENTICATION_UNAVAILABLE);
     let now = SqlValue::Timestamp(ctx.now().saturating_mul(1000));
@@ -128,7 +136,10 @@ pub(crate) async fn external(
         .await
         .map_err(|_| unavailable())?;
     let locked = transaction
-        .query(LOCK, &[SqlValue::Int8(lock_key(method, subject))])
+        .query(
+            LOCK,
+            &[SqlValue::Int8(lock_key(&way.name, arrival.subject))],
+        )
         .await;
     // Another request may have linked them while this one waited.
     let found = match locked {
@@ -138,7 +149,7 @@ pub(crate) async fn external(
     match found {
         Ok(rows) if !rows.is_empty() => {
             let _ = transaction.rollback().await;
-            return Ok(rows.into_iter().next().unwrap_or_default());
+            return Ok((rows.into_iter().next().unwrap_or_default(), false));
         }
         Ok(_) => {}
         Err(_) => {
@@ -146,7 +157,7 @@ pub(crate) async fn external(
             return Err(unavailable());
         }
     }
-    let given = first_sign_in(method, None, false, Some(subject), None);
+    let given = arrival.value();
     // The application's own action, when one is running, waits with its
     // transaction while this one runs in its own, as the system reaching
     // no tenant's records.
@@ -164,7 +175,7 @@ pub(crate) async fn external(
         }
         Outcome::Failed(failure) => {
             let _ = transaction.rollback().await;
-            return Err(refusing(ctx, executor, store, method, Some(failure.name.clone())).await);
+            return Err(refusing(ctx, executor, store, way, Some(failure.name.clone())).await);
         }
         Outcome::Fault(fault) => {
             let _ = transaction.rollback().await;
@@ -189,7 +200,7 @@ pub(crate) async fn external(
     };
     let Some(row) = row else {
         let _ = transaction.rollback().await;
-        return Err(refusing(ctx, executor, store, method, None).await);
+        return Err(refusing(ctx, executor, store, way, None).await);
     };
     let Some(SqlValue::Uuid(user)) = row.first().cloned() else {
         let _ = transaction.rollback().await;
@@ -199,8 +210,8 @@ pub(crate) async fn external(
         .execute(
             LINK,
             &[
-                SqlValue::Text(method.name().to_string()),
-                SqlValue::Text(subject.to_string()),
+                SqlValue::Text(way.name.clone()),
+                SqlValue::Text(arrival.subject.to_string()),
                 SqlValue::Uuid(user),
                 now,
             ],
@@ -210,15 +221,40 @@ pub(crate) async fn external(
         let _ = transaction.rollback().await;
         return Err(unavailable());
     }
-    let signed_in = SignInEvent::SignedIn {
-        user,
-        method,
-        first_time: true,
+    let events = if announce {
+        vec![SignInEvent::SignedIn {
+            user,
+            method: way.clone(),
+            first_time: true,
+        }]
+    } else {
+        Vec::new()
     };
-    sign_in_events::commit_with(ctx, executor, store, transaction, &[signed_in])
+    sign_in_events::commit_with(ctx, executor, store, transaction, &events)
         .await
         .map_err(|_| unavailable())?;
-    Ok(row)
+    Ok((row, true))
+}
+
+/// [`first`] for an external token's subject (chunk A7).
+pub(crate) async fn external(
+    ctx: &mut Ctx<'_>,
+    executor: &dyn Executor,
+    store: &str,
+    plan: &FirstSignInPlan,
+    params: &[SqlValue],
+    subject: &str,
+) -> Result<Vec<SqlValue>, Refused> {
+    let arrival = Arrival {
+        way: SignInMethod::ExternalToken.into(),
+        subject,
+        address: None,
+        address_verified: false,
+        name: None,
+    };
+    first(ctx, executor, store, plan, params, &arrival, true)
+        .await
+        .map(|(row, _)| row)
 }
 
 #[cfg(test)]
@@ -227,21 +263,22 @@ mod tests {
 
     #[test]
     fn a_lock_is_the_way_in_and_the_subject_together() {
-        let ann = lock_key(SignInMethod::ExternalToken, "ann");
-        assert_eq!(ann, lock_key(SignInMethod::ExternalToken, "ann"));
-        assert_ne!(ann, lock_key(SignInMethod::ExternalToken, "bo"));
-        assert_ne!(ann, lock_key(SignInMethod::MagicLink, "ann"));
+        let ann = lock_key("external_token", "ann");
+        assert_eq!(ann, lock_key("external_token", "ann"));
+        assert_ne!(ann, lock_key("external_token", "bo"));
+        assert_ne!(ann, lock_key("google", "ann"));
     }
 
     #[test]
     fn the_action_is_given_the_subject_and_nothing_a_token_claims() {
-        let Value::Record(given) = first_sign_in(
-            SignInMethod::ExternalToken,
-            None,
-            false,
-            Some("auth0|ann"),
-            None,
-        ) else {
+        let arrival = Arrival {
+            way: SignInMethod::ExternalToken.into(),
+            subject: "auth0|ann",
+            address: None,
+            address_verified: false,
+            name: None,
+        };
+        let Value::Record(given) = arrival.value() else {
             panic!("a record");
         };
         assert_eq!(given.get("subject"), Some(&Value::text("auth0|ann")));

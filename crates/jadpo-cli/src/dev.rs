@@ -817,7 +817,15 @@ pub fn serve_to(
         }
     };
     if args.no_run {
-        report_ready(&mut out, None, &first, Databases::Disposable, None, None);
+        report_ready(
+            &mut out,
+            None,
+            &first,
+            Databases::Disposable,
+            None,
+            None,
+            None,
+        );
         return watch_only(&mut out, &root, &args.cwd, env, &mut poller, stop);
     }
     // Every request is answered under the system clock, so without one
@@ -913,6 +921,20 @@ pub fn serve_to(
         crate::dev_token::remember(&root, &first.prepared, &first.config, issuer);
     }
     let make_seed: Option<Arc<str>> = issuer.as_ref().map(|issuer| Arc::from(issuer.seed()));
+    // The local issuer's account-chooser page, where a sign-in provider's
+    // start route sends the browser in the provider's place (area 8,
+    // "Providers"; chunk A7c): on its own port on this machine, two up
+    // from the app's or one the system chooses. Every local issuer of the
+    // session shares the codes it gives.
+    let codes = jadpo_runtime::http::local_issuer::Codes::default();
+    let page_listener = make_seed.as_ref().and_then(|_| listen_beside(port, 2));
+    let page_url: Option<Arc<str>> = page_listener
+        .as_ref()
+        .and_then(|listener| listener.local_addr().ok())
+        .map(|address| Arc::from(format!("http://localhost:{}", address.port())));
+    let make_codes = codes.clone();
+    let make_page = page_url.clone();
+    let page_seed = make_seed.clone();
     let make_setup = Arc::clone(&setup);
     let make_log = Arc::clone(&call_log);
     let make_root = root.clone();
@@ -954,6 +976,11 @@ pub fn serve_to(
             .as_deref()
             .and_then(jadpo_runtime::http::local_issuer::LocalIssuer::from_seed)
         {
+            let issuer = issuer.with_codes(make_codes.clone());
+            let issuer = match make_page.as_deref() {
+                Some(page) => issuer.with_page(page),
+                None => issuer,
+            };
             native = native.with_local_issuer(issuer);
         }
         for (store, url) in &make_shared.urls {
@@ -1029,6 +1056,16 @@ pub fn serve_to(
     // The inbox's page, on its own port on this machine (chunk 7.3c2):
     // the next one up, or one the system chooses when that is taken.
     let inbox = serve_inbox(&root, port);
+    let sign_in = match (page_listener, &page_seed) {
+        (Some(listener), Some(seed)) => serve_sign_in(
+            listener,
+            &root,
+            Arc::clone(seed),
+            codes,
+            Arc::clone(&shared),
+        ),
+        _ => None,
+    };
     let databases = match (
         args.url.is_some(),
         disposable.is_some(),
@@ -1059,6 +1096,7 @@ pub fn serve_to(
         databases,
         Some(&lock(&setup)),
         inbox_url.as_deref(),
+        sign_in.as_ref().and(page_url.as_deref()),
     );
     let mut current = first;
     // Request lines are written as they come, between looks for saves.
@@ -1082,6 +1120,9 @@ pub fn serve_to(
             server.stop();
             if let Some(inbox) = inbox {
                 inbox.stop();
+            }
+            if let Some(sign_in) = sign_in {
+                sign_in.stop();
             }
             forget_stores(&root);
             crate::dev_token::forget(&root);
@@ -1415,6 +1456,33 @@ fn start_config(
                 .push(field.variable.clone());
         }
     }
+    // A sign-in provider's settings that nothing gives: the local issuer
+    // stands in for the provider and its account-chooser page signs people
+    // in, so the provider is never reached (chunk A7c).
+    let providers = prepared
+        .plan()
+        .routes()
+        .identity
+        .as_ref()
+        .and_then(|identity| identity.providers.as_ref());
+    for provider in providers.iter().flat_map(|providers| &providers.providers) {
+        for name in [
+            &provider.issuer,
+            &provider.client_id,
+            &provider.client_secret,
+        ] {
+            let Some(field) = plan.fields.iter().find(|field| field.name == *name) else {
+                continue;
+            };
+            if field.default.is_some() || layered.variable(&field.variable).is_some() {
+                continue;
+            }
+            placeholders.insert(
+                field.variable.clone(),
+                crate::dev_calls::stand_in(&types(&field.name)),
+            );
+        }
+    }
     // An SMTP connection's settings that nothing gives: the inbox catches
     // every mail, so its server is never reached (chunk 7.3c2).
     for (_, smtp) in jadpo_std::connections::smtp(prepared.plan().connections()) {
@@ -1632,7 +1700,10 @@ fn report_ready(
     databases: Databases,
     providers: Option<&crate::dev_calls::Setup>,
     inbox: Option<&str>,
+    sign_in: Option<&str>,
 ) {
+    // The account-chooser page, once the app signs in through a provider.
+    let sign_in = sign_in.filter(|_| signs_in_through_providers(&ready.prepared));
     if out.json {
         let data = Json::object([
             ("event", "listening".into()),
@@ -1649,6 +1720,7 @@ fn report_ready(
             ("settings", Json::from(ready.config.len())),
             ("providers", providers.map_or(Json::Null, providers_json)),
             ("inbox", inbox.map_or(Json::Null, Json::from)),
+            ("signIn", sign_in.map_or(Json::Null, Json::from)),
             (
                 "tokens",
                 if url.is_some() && crate::dev_token::takes_external_tokens(&ready.prepared) {
@@ -1687,6 +1759,12 @@ fn report_ready(
         rows.push((
             "inbox".to_string(),
             format!("{inbox} · mail caught, never sent"),
+        ));
+    }
+    if let Some(page) = sign_in {
+        rows.push((
+            "sign-in".to_string(),
+            format!("{page} · test accounts in the provider's place"),
         ));
     }
     // External tokens, from the session's local issuer in the
@@ -1735,6 +1813,90 @@ fn serve_inbox(root: &Path, port: u16) -> Option<Server> {
     let make: MakeHandler =
         Arc::new(move |_: &WorkerThread| Box::new(InboxHandler(root.clone())) as Box<dyn Handler>);
     jadpo_host_native::http::serve(listener, 1, make).ok()
+}
+
+/// A listener on this machine `step` ports up from `port`, or on one the
+/// system chooses when that is taken or `port` was the system's choice.
+fn listen_beside(port: u16, step: u16) -> Option<TcpListener> {
+    port.checked_add(step)
+        .filter(|_| port != 0)
+        .and_then(|next| TcpListener::bind(("127.0.0.1", next)).ok())
+        .or_else(|| TcpListener::bind(("127.0.0.1", 0)).ok())
+}
+
+/// Whether the program signs people in through a provider.
+fn signs_in_through_providers(prepared: &Prepared) -> bool {
+    prepared
+        .plan()
+        .routes()
+        .identity
+        .as_ref()
+        .and_then(|identity| identity.providers.as_ref())
+        .is_some_and(|providers| !providers.providers.is_empty())
+}
+
+/// Serves the local issuer's account-chooser page on `listener` (chunk
+/// A7c), its issuer made from the session's key `seed` and giving codes
+/// from `codes`, which the app's workers take them from; `None` when it
+/// can't be served, and sign-in through a provider stops at the start.
+fn serve_sign_in(
+    listener: TcpListener,
+    root: &Path,
+    seed: Arc<str>,
+    codes: jadpo_runtime::http::local_issuer::Codes,
+    shared: Arc<Shared>,
+) -> Option<Server> {
+    let accounts = crate::dev_accounts::KeptAccounts::under(root);
+    let make: MakeHandler = Arc::new(move |_: &WorkerThread| {
+        let issuer = jadpo_runtime::http::local_issuer::LocalIssuer::from_seed(&seed)
+            .map(|issuer| issuer.with_codes(codes.clone()));
+        Box::new(SignInHandler {
+            issuer,
+            accounts: accounts.clone(),
+            current: Current {
+                shared: Arc::clone(&shared),
+                program: RefCell::new(None),
+            },
+        }) as Box<dyn Handler>
+    });
+    jadpo_host_native::http::serve(listener, 1, make).ok()
+}
+
+/// Answers the account-chooser page from the program being served now.
+struct SignInHandler {
+    issuer: Option<jadpo_runtime::http::local_issuer::LocalIssuer>,
+    accounts: crate::dev_accounts::KeptAccounts,
+    current: Current,
+}
+
+impl Handler for SignInHandler {
+    fn handle(
+        &self,
+        request: jadpo_runtime::http::Request,
+    ) -> jadpo_runtime::LocalFuture<'_, jadpo_runtime::http::Response> {
+        use jadpo_runtime::http::account_chooser::{Chooser, registrations};
+        let response = match &self.issuer {
+            Some(issuer) => {
+                let program = self.current.program();
+                let registrations =
+                    registrations(program.started(), program.plan().routes().identity.as_ref());
+                let host = NativeHost::new();
+                Chooser {
+                    issuer,
+                    registrations: &registrations,
+                    accounts: &self.accounts,
+                    random: &|bytes: &mut [u8]| host.random(bytes),
+                    now: host.now_ms().unwrap_or_default(),
+                }
+                .answer(&request)
+            }
+            None => jadpo_runtime::http::Response {
+                status: 503,
+                ..jadpo_runtime::http::Response::default()
+            },
+        };
+        Box::pin(async move { response })
+    }
 }
 
 /// Answers the inbox's page.
