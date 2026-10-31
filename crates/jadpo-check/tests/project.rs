@@ -597,6 +597,50 @@ fn names_follow_their_kind_and_stay_unique() {
     );
 }
 
+/// A generic library's new name is the agent's to choose, from what its
+/// functions do. A domain is a boundary other code is shaped around, and
+/// a new one needs a person's acceptance (area 1, "Domains"), so a
+/// person names it. The catalogue's usual decider is the library's.
+#[test]
+fn a_generic_library_is_the_agents_to_rename_and_a_domain_a_persons() {
+    let db = jadpo_db::Database::default();
+    let mut files = SHOP.to_vec();
+    files.push((
+        "shared/libraries/helpers.jadpo",
+        "use shared/types { Quantity }\n\nlibrary helpers {\n    function same(quantity: Quantity) -> Quantity {\n        return quantity\n    }\n}\n",
+    ));
+    files.push((
+        "domains/utils/actions/tidy.jadpo",
+        "action tidy() -> Unit {}\n",
+    ));
+    let project = support::project(&db, Layout::Project, &files);
+    let mut found: Vec<(String, &str)> = jadpo_check::check(&db, project)
+        .iter()
+        .filter(|d| d.rule.id == "naming.generic_name")
+        .map(|d| {
+            (
+                d.message.clone(),
+                d.next.as_ref().expect("a next step").decides.word(),
+            )
+        })
+        .collect();
+    found.sort();
+    assert_eq!(
+        found,
+        [
+            (
+                "`helpers` is too generic for a library".to_string(),
+                "agent"
+            ),
+            ("`utils` is too generic for a domain".to_string(), "human"),
+        ]
+    );
+    assert_eq!(
+        jadpo_diag::rule::NAMING_GENERIC_NAME.decides,
+        jadpo_diag::Decider::Agent
+    );
+}
+
 #[test]
 fn names_resolve_to_the_right_kind() {
     assert_eq!(

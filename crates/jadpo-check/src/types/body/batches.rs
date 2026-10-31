@@ -707,6 +707,29 @@ impl Body<'_> {
             Ty::Opaque(name, args) if name == "Page" && args.len() == 1 => args.into_iter().next(),
             _ => None,
         };
+        // Area 12 also lets `batches.each`'s `from:` be a provider's list
+        // operation, walked by `page.next`; a run is kept only over a
+        // named query's pages so far.
+        if written == "batches.each"
+            && item.is_some()
+            && matches!(reach, Some(Reach::Provider { .. }))
+        {
+            let at = self.span(from);
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TOOLCHAIN_NOT_BUILT_YET,
+                    format!("`{written}` over a provider's list isn't built yet"),
+                )
+                .at(at, "declared, not built")
+                .reason(format!(
+                    "The language lets `{written}` walk a provider's list operation by `page.next`, but this compiler keeps a run only over the pages of a named query, so this run couldn't keep its place."
+                ))
+                .next(format!(
+                    "Do without `{written}` over a provider's list for now: keep what it lists in an entity, and walk that with a named query giving a `Page`"
+                )),
+            );
+            return Ty::Error;
+        }
         let Some(item) = item.filter(|_| is_query) else {
             let at = self.span(from);
             let label = if is_query {

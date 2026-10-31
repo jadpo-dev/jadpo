@@ -352,6 +352,39 @@ fn several_from_a_schedule_are_refused_at_the_schedule() {
     );
 }
 
+/// Area 12 lets `batches.each` walk a provider's list operation by
+/// `page.next`, which this compiler doesn't run yet: the `from:` is
+/// `toolchain.not_built_yet`, not a refusal of the form.
+#[test]
+fn a_run_over_a_providers_list_is_not_built_yet() {
+    let members = (
+        "shared/providers/acme_pay/v1/resources/members.jadpo",
+        "public resource members {\n    list: {\n        method: HttpMethod.get\n        path: \"/v1/members\"\n        input: PayRequest\n        output: Page<PayReply>\n        changes: false\n        source: PackageSource.written\n    }\n}\n",
+    );
+    let keep = "/// Keeps one member.\naction keep(member: AcmePay.PayReply) -> Unit {\n    assert member.id == member.id\n}\n";
+    let each = "use app { pay }\nuse billing/actions { keep }\nuse shared/providers/acme_pay\n\n/// Keeps each member.\naction keep_each() -> BatchRun {\n    return batches.each(from: pay.members.list(AcmePay.PayRequest {\n        reference: \"all\"\n    }), each: member -> keep(member))\n}\n";
+    let path = "domains/billing/actions/keep_each.jadpo";
+    let found = found(keep, &[members, (path, each)], "toolchain.not_built_yet");
+    assert_eq!(found.len(), 1, "{found:?}");
+    let label = found[0].primary.as_ref().expect("a label");
+    assert!(
+        pointed(each, label).starts_with("pay.members.list("),
+        "{}",
+        pointed(each, label)
+    );
+    assert_eq!(
+        found[0].message,
+        "`batches.each` over a provider's list isn't built yet"
+    );
+    assert_eq!(
+        problems(keep, &[members, (path, each)])
+            .iter()
+            .filter(|problem| !problem.contains(" toolchain.not_built_yet:"))
+            .collect::<Vec<_>>(),
+        Vec::<&String>::new()
+    );
+}
+
 #[test]
 fn several_from_a_runs_item_are_refused_at_the_run() {
     let keep = format!(

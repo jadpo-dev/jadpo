@@ -45,7 +45,7 @@ package Postcodes.v2 version 2.1.0 path ../postcodes digest sha256:0000000000000
 error: Package `Postcodes.v2` differs from what was installed
  --> packages/postcodes/v2/package.jadpo
   reason: An installed package is read-only: `jadpo.lock` locks it with digest `sha256:0000000000000000000000000000000000000000000000000000000000000000`, and its files now give `sha256:fc196456d53ad674b39fbab39eca4883d512f52feb90d687d22c2eeb2c9721e7`, so a file in `packages/postcodes/v2/` was changed, added or removed since it was installed.
-  next: Restore `packages/postcodes/v2/` from version control, or install the package again with `jadpo package add`; change the app's own code instead (human)
+  next: Restore `packages/postcodes/v2/` from version control, or install it again from its source with `jadpo package update postcodes`; change the app's own code instead (human)
   rule: package.digest_mismatch
   help: https://jadpo.dev/docs/errors/package.digest_mismatch
 
@@ -70,17 +70,17 @@ The package is as it was installed again, and its digest matches the lock.
 Anything the change was for belongs in the app's own code, which may call
 the package.
 
-**If the package's source has a newer release you want**, restore the
-folder, then update the package from its source:
+**If the changes are already committed, or you want its newest
+release**, install it again from its source:
 
 ```sh
-git restore packages/postcodes/v2/
 jadpo package update postcodes
 ```
 
-`update` checks the newest release, installs it and shows what changed
-in the package's surface for review. The lock holds the new release's
-digest.
+`update` replaces the folder with the release its source has: the
+newest one, or the one the lock names when there is none newer. When the
+release is newer, it shows what changed in the package's surface for
+review. The lock holds the installed release's digest.
 
 **If the app is to keep its own changed copy**, move it to where the
 app's own integrations live, change each `use packages/postcodes` to
