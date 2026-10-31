@@ -29,7 +29,14 @@ jadpo build
 ```text
 Fetching the runtime's crates
 error: `app` didn't compile
-  reason: cargo couldn't build the Rust Jadpo wrote for it in `build/rust/app/`, which is Jadpo's own mistake or a toolchain it can't run: cargo couldn't build it:\u{a}error: linker `cc` not found\u{a}  |\u{a}  = note: No such file or directory (os error 2)\u{a}\u{a}error: could not compile `proc-macro2` (build script) due to 1 previous error\u{a}error: could not compile `quote` (build script) due to 1 previous error\u{a}error: could not compile `libm` (build script) due to 1 previous error\u{a}error: could not compile `libc` (build script) due to 1 previous error
+  reason: cargo couldn't build the Rust Jadpo wrote for it in `build/rust/app/`, which is Jadpo's own mistake or a toolchain it can't run: cargo couldn't build it:
+          error: linker `cc` not found
+            |
+            = note: No such file or directory (os error 2)
+          error: could not compile `proc-macro2` (build script) due to 1 previous error
+          error: could not compile `quote` (build script) due to 1 previous error
+          error: could not compile `libm` (build script) due to 1 previous error
+          error: could not compile `libc` (build script) due to 1 previous error
   next: Run `jadpo build` again; if it fails the same way, report it with this output (human)
   rule: toolchain.build_failed
   help: https://jadpo.dev/docs/errors/toolchain.build_failed
@@ -40,8 +47,10 @@ and ask you which fix you want, because the choice is yours to make: it
 decides what is installed on your machine, or whether to report the
 failure to Jadpo's maintainers.
 
-cargo's own lines follow `cargo couldn't build it:`, each `\u{a}` the
-end of one of them. They say what went wrong.
+cargo's own lines follow `cargo couldn't build it:`, one under another
+beneath the reason, and say what went wrong. Crates cargo can't
+fetch before the build aren't this error but
+[`toolchain.fetch_failed`](toolchain.fetch_failed.md).
 
 ## How to fix it
 
