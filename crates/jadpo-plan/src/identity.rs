@@ -143,7 +143,7 @@ impl Planner<'_> {
                     first_sign_in: None,
                 })
             }),
-            providers: self.providers_plan(&identity),
+            providers: self.providers_plan(identity),
         })
     }
 

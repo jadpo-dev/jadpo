@@ -58,7 +58,7 @@ fn lock_key(method: &str, subject: &str) -> i64 {
 /// Who a way in vouches for, the first time: its subject, and for a
 /// provider the address, whether it verified it and the name its profile
 /// gives. Nothing else of a token or a provider reaches the action.
-pub(crate) struct Newcomer<'a> {
+pub(crate) struct Arrival<'a> {
     pub way: Way,
     pub subject: &'a str,
     pub address: Option<&'a str>,
@@ -66,7 +66,7 @@ pub(crate) struct Newcomer<'a> {
     pub name: Option<&'a str>,
 }
 
-impl Newcomer<'_> {
+impl Arrival<'_> {
     /// The `FirstSignIn` `on_first_sign_in:`'s action is given.
     fn value(&self) -> Value {
         let text = |value: Option<&str>| value.map_or(Value::None, Value::text);
@@ -108,7 +108,7 @@ async fn refusing(
     Refused::new(REFUSED)
 }
 
-/// The user a first sign-in of `newcomer` gives, as `first.lookup` reads
+/// The user a first sign-in of `arrival` gives, as `first.lookup` reads
 /// one: `params`, that lookup's, read again under the lock, else
 /// `on_first_sign_in:`'s action asked and its user linked. Its row is the
 /// user's `id`, whether its `active:` holds and its subject field, and
@@ -121,10 +121,10 @@ pub(crate) async fn first(
     store: &str,
     first: &FirstSignInPlan,
     params: &[SqlValue],
-    newcomer: &Newcomer<'_>,
+    arrival: &Arrival<'_>,
     announce: bool,
 ) -> Result<(Vec<SqlValue>, bool), Refused> {
-    let way = &newcomer.way;
+    let way = &arrival.way;
     let Some(action) = first.action else {
         return Err(refusing(ctx, executor, store, way, None).await);
     };
@@ -138,7 +138,7 @@ pub(crate) async fn first(
     let locked = transaction
         .query(
             LOCK,
-            &[SqlValue::Int8(lock_key(&way.name, newcomer.subject))],
+            &[SqlValue::Int8(lock_key(&way.name, arrival.subject))],
         )
         .await;
     // Another request may have linked them while this one waited.
@@ -157,7 +157,7 @@ pub(crate) async fn first(
             return Err(unavailable());
         }
     }
-    let given = newcomer.value();
+    let given = arrival.value();
     // The application's own action, when one is running, waits with its
     // transaction while this one runs in its own, as the system reaching
     // no tenant's records.
@@ -211,7 +211,7 @@ pub(crate) async fn first(
             LINK,
             &[
                 SqlValue::Text(way.name.clone()),
-                SqlValue::Text(newcomer.subject.to_string()),
+                SqlValue::Text(arrival.subject.to_string()),
                 SqlValue::Uuid(user),
                 now,
             ],
@@ -245,14 +245,14 @@ pub(crate) async fn external(
     params: &[SqlValue],
     subject: &str,
 ) -> Result<Vec<SqlValue>, Refused> {
-    let newcomer = Newcomer {
+    let arrival = Arrival {
         way: SignInMethod::ExternalToken.into(),
         subject,
         address: None,
         address_verified: false,
         name: None,
     };
-    first(ctx, executor, store, plan, params, &newcomer, true)
+    first(ctx, executor, store, plan, params, &arrival, true)
         .await
         .map(|(row, _)| row)
 }
@@ -271,14 +271,14 @@ mod tests {
 
     #[test]
     fn the_action_is_given_the_subject_and_nothing_a_token_claims() {
-        let newcomer = Newcomer {
+        let arrival = Arrival {
             way: SignInMethod::ExternalToken.into(),
             subject: "auth0|ann",
             address: None,
             address_verified: false,
             name: None,
         };
-        let Value::Record(given) = newcomer.value() else {
+        let Value::Record(given) = arrival.value() else {
             panic!("a record");
         };
         assert_eq!(given.get("subject"), Some(&Value::text("auth0|ann")));

@@ -37,7 +37,7 @@ use super::identity::{
 };
 use super::magic_links::{RETURN_INVALID, site_path};
 use super::sign_in_events::{self, SignInEvent, Way};
-use super::sign_in_links::{self, Newcomer};
+use super::sign_in_links::{self, Arrival};
 use super::signed::ProviderSettings;
 use super::{App, Request, Response, runtime_failure};
 use crate::ctx::SessionEffect;
@@ -415,7 +415,7 @@ impl<'a> Site<'a> {
         let (row, first_time) = match rows.into_iter().next() {
             Some(row) => (row, false),
             None => {
-                let newcomer = Newcomer {
+                let arrival = Arrival {
                     way: self.way(),
                     subject: &claims.subject,
                     address: claims.address.as_deref(),
@@ -428,7 +428,7 @@ impl<'a> Site<'a> {
                     &self.plan.store,
                     first,
                     &params,
-                    &newcomer,
+                    &arrival,
                     false,
                 )
                 .await?

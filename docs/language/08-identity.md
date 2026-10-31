@@ -1055,11 +1055,12 @@ action link_staff(first: FirstSignIn) fails NotOnTheStaff -> Librarian.id {
 ```
 
 ```jadpo check project=google-staff file=domains/desk/routes/staff.test.jadpo
+use desk/entities { Librarian }
 use desk/types { NewLibrarian }
 use desk/actions { take_on }
 
 test "staff sign in with Google under the address they were taken on with" {
-    attempt take_on(
+    var ann: Librarian = attempt take_on(
         NewLibrarian {
             email: "ann@desk.example"
             name: "Ann"
@@ -1076,7 +1077,7 @@ test "staff sign in with Google under the address they were taken on with" {
     )
     assert first.status == 303
     assert first.code == none
-    var again: Response = test_providers.sign_in(
+    var second_sign_in: Response = test_providers.sign_in(
         SignInMethod.google,
         TestAccount {
             subject: "110248495921238986420"
@@ -1085,7 +1086,13 @@ test "staff sign in with Google under the address they were taken on with" {
             name: none
         }
     )
-    assert again.code == none
+    assert second_sign_in.code == none
+    var own_card: Response = request {
+        method: HttpMethod.get
+        path: "/staff/me"
+        as: Principal.user(ann)
+    }
+    assert own_card.status == 200
 }
 
 test "an address Google hasn't verified signs no one in" {

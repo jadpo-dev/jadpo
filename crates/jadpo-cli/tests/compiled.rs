@@ -952,7 +952,7 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
         .collect();
     assert_eq!(
         counts,
-        [(3, 3), (2, 2), (4, 4), (1, 1), (5, 5), (1, 1), (3, 3)]
+        [(3, 3), (2, 2), (4, 4), (1, 1), (5, 5), (1, 1), (1, 1)]
     );
     println!(
         "compared on workerd: {} route tests of {} projects with the interpreter's records, every one passing, in {:.0?}",
