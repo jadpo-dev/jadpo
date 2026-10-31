@@ -81,6 +81,7 @@ fn every_stub_agrees_with_its_data_entry() {
             arguments,
             members,
             payloads,
+            ..
         } = &stubs[entry.name];
         match entry.holds {
             Holds::Builtin(builtin) => {

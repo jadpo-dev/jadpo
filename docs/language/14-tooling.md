@@ -968,8 +968,10 @@ runs with into `jadpo.lock`. Each takes `--json`
 ([Which jadpo runs](#which-jadpo-runs)).
 
 `jadpo help [command]` explains one command, every command takes `--help`
-with examples, and `jadpo help --json` gives the rule catalogue and the
-schemas of the manifest and of `jadpo test --json`.
+with examples, and `jadpo help --json` gives the rule catalogue, every
+standard type's contract under `types` and every standard-library
+operation under `operations`, which the docs' type reference is built
+from, and the schemas of the manifest and of `jadpo test --json`.
 
 `jadpo help <rule>`, with the id an error's `rule:` line gives
 (`jadpo help import.unused`), prints the rule's page offline, the page its

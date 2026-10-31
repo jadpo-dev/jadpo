@@ -48,7 +48,7 @@ area page lists it under `## Errors`.
 | One page per compiler error | `docs/errors/<rule.id>.md` (examples), with the rule's summary from the compiler's catalogue (`jadpo help --json`) |
 | Why the language is the way it is | each area's design notes, `docs/language/notes/NN-*.md`, kept apart from what an app author reads |
 | Commands | generated from `jadpo help --json` |
-| Standard types | generated from the compiler's contract data (roadmap, after the first build, item 2) |
+| Standard types | generated from the compiler's contract data (`jadpo help --json`'s `types` and `operations`) and each type's golden file |
 | Teaching projects | `examples/` |
 | The agent skill: how a coding agent writes Jadpo apps | `docs/agent-skill/SKILL.md` |
 
@@ -73,7 +73,10 @@ is one topic: its ID stands on the line after its `#` heading
 (`learn-first-route`), and the outline's is `learn`. A guide is one
 topic too, `guide-` and the job (`guide-add-sign-in`), and the guides'
 index is `guides`; the prefix keeps a guide's ID clear of any reference
-topic's.
+topic's. A standard type's page is `type-` and its name in kebab case,
+a capital after a lower-case letter or a digit starting a word
+(`type-money`, `type-uk-sort-code`, `type-h3-cell`), and their index is
+`types`. The docs check fails a type's ID that clashes with any other.
 
 The declaration is an HTML comment on the line after the heading, which
 GitHub doesn't show and which leaves the heading's own anchor alone:
@@ -105,6 +108,7 @@ bundle/
   learn/<id>.md                the Learn path: the outline, then each page
   guides/<id>.md               the guides: their index, then each guide
   topics/<id>.md               one per topic ID
+  types/<id>.md                the standard types: their index, then one per type
   errors/<rule.id>.md          one per catalogue rule, example or not
   commands/jadpo-<command>.md  generated from jadpo help --json
   skills/jadpo/SKILL.md        the agent skill, outside index.json
@@ -112,14 +116,16 @@ bundle/
 
 `index.json` is `{ "version": "<jadpo's version>", "pages": [...] }`, in
 the order above: the primer, the Learn path in reading order, the
-guides in their index's order, topics in the areas' order, errors,
-commands. Each entry has `id`, `kind`
-(`primer`, `learn`, `guide`, `topic`, `error`, `command`), `title`, a one-line
+guides in their index's order, topics in the areas' order, the standard
+types' index then each type in its group's order, errors, commands. Each
+entry has `id`, `kind`
+(`primer`, `learn`, `guide`, `topic`, `type`, `error`, `command`), `title`, a one-line
 `summary` (a page's first sentence, a rule's catalogue summary, a
 command's own), `tokens` (an estimate: a quarter of the page's
 characters), `hash` (`sha256:` and the hex digest of the page's
 markdown), the `area` it comes from (`null` for the primer, the Learn
-path and the guides, 14 for a command), and the IDs it `links` to. A renamed topic's
+path and the guides, 14 for a command, and for a standard type the area
+its description cites, 19 for most), and the IDs it `links` to. A renamed topic's
 entry also has `aliases`, its old IDs; no other entry has the field. A
 page's path follows
 from its kind and ID. `learn` and `guide` pages are the user layer, and `topic`
@@ -149,6 +155,31 @@ alone, the `hidden` ones among them, checked and tested the same way.
 The primer, the Learn path and the guides also keep the
 [writing guide](writing.md)'s mechanical rules.
 
+A standard type's page is generated on every docs build, so it lists
+exactly what is built. Its facts come from `jadpo help --json`: each
+type's entry under `types` (its group, its stub's description, what it
+holds, its fields or variants, its rules across parts, whether it has a
+text form, its JSON and storage, the options `text.format` takes,
+whether it is ordered, the release that added it, and its examples), the
+operations that take or give one under `operations`, and the forms its
+examples take from its golden file in
+`crates/jadpo-interp/tests/goldens/standard/`, which the golden test holds
+to the codecs. The page is titled with the type's name and has, in
+order: what it is, its group (linking the index), whether it is ordered,
+any personal data category and the release; `## Make one`, how to build
+one, `text.parse` with text it refuses, the operations that give one and
+its rules; `## Fields` or `## Variants`; `## Text, JSON and storage`,
+each example's text and JSON and the columns it is stored in; `## Shown
+to people`, the options `text.format` takes and each example as `en_gb`
+shows it; and `## Operations`, each with its signature and description,
+then the contract's own. The index lists every type by group, each with
+the first sentence of what it is, and links [the standard
+types](language/19-standard-library.md#the-standard-types) for the
+explanation. The groups are the compiler's
+(`crates/jadpo-std/src/standard/groups.rs`); the docs check fails the
+Standard library page's table of types by group where it lists another
+group, or a type under a group the compiler doesn't give it.
+
 `python3 tools/docs/language_docs.py --bundle <dir>` builds it; the gate builds
 it into `build/docs-bundle/`, and on `main` CI keeps that folder as the
 `docs-bundle` artifact. A release attaches the bundle to its GitHub
@@ -164,6 +195,7 @@ Release.
 | `/guides`, `/guides/<id>`, `.md` | The guides: their index, then each guide |
 | `/docs/<id>`, `/docs/<id>.md` | A topic |
 | `/docs/<old-id>`, `.md` | A permanent redirect to the topic whose `aliases` hold it |
+| `/docs/types`, `/docs/types/<id>`, `.md` | The standard types: their index, then each type |
 | `/docs/errors/<rule.id>`, `.md` | An error's page; reached from a compiler error, not listed in navigation |
 | `/docs/index.json` | The bundle's index |
 | `/.well-known/agent-skills/jadpo/SKILL.md`, `/.well-known/agent-skills/index.json` | The agent skill, and the index that lists it |
