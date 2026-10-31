@@ -215,7 +215,10 @@ Numbered as the questions they settled, which other pages cite.
     package is imported from its served OpenAPI. Upgrade plans are area
     18's review of the surface diff. The importers other than OpenAPI come
     each when first needed: Smithy with the first AWS package, then the
-    SDK-types, Postman and HAR importers.
+    SDK-types, Postman and HAR importers. Registry names are scoped by
+    publisher, `@publisher/name`, with the code name unchanged (Richard,
+    2026-10-31): every registry with flat names has fought squatting and
+    typosquats, and a scope tells a reader who stands behind a package.
 16. **Package names** are UpperCamelCase with the package's own version
     label: `Stripe.v2024_06_20`, `AcmeCouriers.v1`, `Postcodes.v2`. Types,
     failures and events are named through the package without the version

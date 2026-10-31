@@ -888,6 +888,13 @@ held, the app words each under a key that carries the version,
   and standard-library names are unique among themselves, and a package's
   name joins them. Installing a package refuses one whose name the app
   already uses for a domain, a library or any declaration.
+- **Registry names are scoped by publisher**: a package's identity in the
+  registry is `@publisher/name`, such as `@acme/postcodes`, and Jadpo's
+  official packages are `@jadpo/…`. In code a package keeps its own name
+  and version label (`Postcodes.v2`), so two publishers' packages with one
+  code name can't be installed in the same app. `jadpo package add` takes
+  the scoped name, and the lock's `registry` source records it once the
+  registry client is built.
 - Creating an integration checks the registry and warns when the name is
   taken.
 - A package is named in UpperCamelCase with its own version label, such
