@@ -59,7 +59,7 @@ pub use jadpo_std::{Isolation, RuntimePlan};
 pub use constant::Constant;
 pub use deployable::{Keep, Unkept};
 pub use jadpo_std::read::{MissingPlan, MissingValue};
-pub use jadpo_std::write::{PurgePlan, Raises, Refusal};
+pub use jadpo_std::write::{PurgeKind, PurgePlan, Raises, Refusal};
 pub use queries::{EntityPlan, QueryPlan};
 pub use routes::{StandardCodecs, standard_codecs};
 pub use sites::{ArmPattern, ConstId, Decoded, Given, KeySource, Raise, SitePlan};
@@ -728,12 +728,35 @@ impl Plan {
             })
         });
         let model = jadpo_check::data::data_model(db, project);
-        // An entity's purge runs where schedules run.
+        // An entity's purge and retentions run where schedules run.
         let purges: Vec<PurgePlan> = if pruning.is_none_or(|pruning| pruning.runs().schedules) {
+            let identity = jadpo_check::identity::identity(db, project);
+            let schema = jadpo_check::data::schema(db, project);
             model
                 .entities
                 .iter()
-                .filter_map(|entity| purge::plan(model, entity, &setting_number))
+                .flat_map(|entity| {
+                    // Someone who signs in goes with their sign-in state,
+                    // in the tables their store holds (area 15; chunk P2).
+                    let signs_in = identity
+                        .variants
+                        .iter()
+                        .any(|variant| variant.entity == entity.name);
+                    let sign_in: Vec<(&str, &str)> = match &entity.store {
+                        Some(store) if signs_in => purge::SIGN_IN_STATE
+                            .iter()
+                            .filter(|(table, _)| {
+                                schema
+                                    .stores
+                                    .get(store)
+                                    .is_some_and(|found| found.tables.contains_key(*table))
+                            })
+                            .copied()
+                            .collect(),
+                        _ => Vec::new(),
+                    };
+                    purge::plans(model, entity, &setting_number, &sign_in)
+                })
                 .collect()
         } else {
             Vec::new()
@@ -1673,8 +1696,8 @@ impl Plan {
         self.writes.get(id as usize)
     }
 
-    /// Every lifecycle's purge, by entity name (area 5): what the built-in
-    /// purge schedule runs (area 12).
+    /// Every lifecycle's purge and every retention, by entity name (areas
+    /// 5 and 15): what the built-in purge schedule runs (area 12).
     pub fn purges(&self) -> &[PurgePlan] {
         &self.runtime.purges
     }
@@ -1714,7 +1737,20 @@ impl Plan {
         self.runtime
             .purges
             .iter()
-            .find(|plan| plan.entity == entity)
+            .find(|plan| plan.entity == entity && plan.kind == PurgeKind::Hidden)
+    }
+
+    /// The retention of the entity called `entity`, or of its field
+    /// `field`, when it has one (area 15, "Retention").
+    pub fn retention(&self, entity: &str, field: Option<&str>) -> Option<&PurgePlan> {
+        self.runtime.purges.iter().find(|plan| {
+            plan.entity == entity
+                && match (&plan.kind, field) {
+                    (PurgeKind::Retention, None) => true,
+                    (PurgeKind::FieldRetention(found), Some(field)) => found == field,
+                    _ => false,
+                }
+        })
     }
 }
 

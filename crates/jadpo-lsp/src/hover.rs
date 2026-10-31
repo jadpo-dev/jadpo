@@ -196,6 +196,11 @@ fn declaration(graph: &Graph, id: NodeId) -> String {
             node.name,
             through.join(", ")
         ),
+        Detail::Retention { retention, clears } => format!(
+            "{}'s retention  // {} {retention}",
+            node.name,
+            if *clears { "cleared" } else { "deleted" }
+        ),
         Detail::Grant { effect, who } => {
             let entity = node.name.rsplit_once('.').map_or("", |(entity, _)| entity);
             format!("{effect}: [{}]  // `{entity}`'s grant", who.join(", "))

@@ -29,7 +29,9 @@
 //!   their plans in the action's transaction or a boundary of its own, and
 //!   giving the value, the failure its plan names, or the `conflict:` arm
 //!   its site maps a refusal to (chunk 3.12); [`purge`], a lifecycle's
-//!   permanent deletion of hidden records (chunk 3.4), outside any action.
+//!   permanent deletion of hidden records (chunk 3.4), and
+//!   [`purge_all`], an entity's purge schedule's run with its retentions
+//!   (area 15; chunk P2), outside any action.
 //!
 //! - [`http`]: the HTTP component (chunk 4.1): a request routed by the
 //!   route table, its placeholders and input decoded, what the route runs
@@ -197,7 +199,7 @@ pub use outcome::{Assertion, AssertionDetail, Got, Outcome, Part};
 pub use places::{CallablePlace, Frame, Place, Places, Repeated, SitePlace};
 pub use plan::{Loaded, Plan, RuntimePlan};
 pub use policy::{admit, call_as};
-pub use purge::{PURGE_BATCHES, Purged, purge, purge_after};
+pub use purge::{PURGE_BATCHES, Purged, purge, purge_after, purge_all};
 pub use ratelimit::{Allowed, RateLimits};
 pub use read::{
     JsonCodecs, PAGE, cursor, field_value, from_sql, held_to, invalid_cursor, kept_by,

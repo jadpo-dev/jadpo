@@ -594,8 +594,10 @@ A test that runs a schedule is a schedule test, whatever it calls to set
 up its data, a `request` included. `--kind schedule` runs only those.
 
 An entity's built-in purge schedule has no name a test can write, so no
-test runs it. Purge is the compiler's own operation, proven by the
-compiler's live tests rather than each application's
+test runs it, and so none runs the
+[retention](15-personal-data.md#retention) it applies either. Purge and
+retention are the compiler's own operations, proven by the compiler's
+live tests rather than each application's
 ([The purge schedule](12-jobs-and-events.md#the-purge-schedule)).
 
 Only a test runs a schedule by hand. In the application the tick runs it

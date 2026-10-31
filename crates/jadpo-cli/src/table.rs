@@ -1343,7 +1343,7 @@ pub static COMMANDS: &[Command] = &[
         ],
         examples: &[Example {
             description: "See what a deploy would change, before deploying",
-            command: "jadpo runs unfinished --build 3f9a1c2e0b7d4e5f8a6b9c0d1e2f3a4b",
+            command: "jadpo runs unfinished --build b_e20fc10f5474",
         }],
         arguments_rule: &rule::CLI_RUNS_ARGUMENTS,
         raises: &[&rule::RUNS_UNAVAILABLE, &rule::TOOLCHAIN_PROJECT_NOT_FOUND],

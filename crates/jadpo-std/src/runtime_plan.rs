@@ -55,7 +55,9 @@ pub struct RuntimePlan {
     /// The schedules, where their state is kept, and the stores the tick
     /// sweeps (area 12, chunk 6.2).
     pub schedules: SchedulesPlan,
-    /// Each lifecycle's purge, by entity, in entity order (area 5).
+    /// Each lifecycle's purge and each retention, by entity, in entity
+    /// order (areas 5 and 15): an entity's retention, then its purge,
+    /// then its fields' retentions, as its purge schedule runs them.
     pub purges: Vec<PurgePlan>,
     /// Every connection, in name order, with its driver, the settings
     /// that driver is built from and the targets it runs on (area 11;

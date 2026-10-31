@@ -3722,9 +3722,12 @@ How long your app keeps deleted records is an ordinary setting, such as
 ([Lifecycle](05-data.md#lifecycle)). `after:` takes a `Duration` setting that
 isn't secret (`data.lifecycle_purge_after` otherwise). A purge run uses the
 value the app started with, and a period that isn't above zero deletes
-nothing. How retention fits the wider support for personal data, such as
-marking personal fields, erasure and export, is in
-[Personal data](15-personal-data.md).
+nothing. A `retention:` on an entity or a field reads its period the same
+way, and only from a setting: `retention: { after:
+config.signup_ip_retention since: created_at }`
+(`data.retention_period` otherwise). How retention fits the wider support
+for personal data, such as marking personal fields, erasure and export,
+is in [Personal data](15-personal-data.md#retention).
 
 ## What is built
 <!-- topic: configuration-and-time-built -->
