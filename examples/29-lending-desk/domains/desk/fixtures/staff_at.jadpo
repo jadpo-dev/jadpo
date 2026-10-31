@@ -1,0 +1,18 @@
+// A member of staff taken on as the seed takes them on. A route test
+// acts as them with `as:`; the sign-in tests sign them in through Google.
+
+use desk/entities { Patron, StaffMember }
+use desk/types { NewStaff, StaffRole }
+use desk/actions { take_on }
+
+/// A member of staff with a role, by their Google address.
+fixture staff_at(address: Patron.email, role: StaffRole) -> Patron {
+    var taken_on: StaffMember = attempt take_on(
+        NewStaff {
+            email: address
+            name: "Staff member"
+            role: role
+        }
+    )
+    return attempt Patron.get(taken_on.patron_id)
+}

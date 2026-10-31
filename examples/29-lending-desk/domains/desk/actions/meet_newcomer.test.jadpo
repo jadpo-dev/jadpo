@@ -1,0 +1,122 @@
+// Signing in, both ways, through the routes Jadpo writes. A customer
+// asks for a link, reads it from `email.sent` and posts its token, as
+// their browser would. A member of staff signs in with Google through
+// `test_providers.sign_in`, which runs the real provider routes with the
+// test run's local issuer standing in for Google; its `Response` is the
+// callback's, whose `code` is the `error` its redirect names, if any.
+
+use desk/entities { Patron }
+use desk/types { StaffRole }
+use desk/fixtures { customer_at, staff_at }
+
+test "a customer signs in with the link from their email" {
+    var asked: Response = request {
+        method: HttpMethod.post
+        path: "/auth/magic-link"
+        input: MagicLinkAsk {
+            address: "cara@reader.example"
+        }
+    }
+    assert asked.status == 202
+    var sent: List<SentEmail> = email.sent
+    assert list.count(sent) == 1
+    match list.first(sent) {
+        none -> {
+            assert list.count(sent) == 1
+        }
+        some(link_email) -> {
+            assert link_email.to == "cara@reader.example"
+            var came_back: Response = request {
+                method: HttpMethod.post
+                path: "/auth/magic-link/confirm"
+                input: MagicLinkConfirmation {
+                    token: link_email.sign_in_token
+                }
+            }
+            assert came_back.status == 200
+        }
+    }
+}
+
+test "staff sign in with Google under the address they were taken on with" {
+    var ann: Patron = staff_at("ann@lending.example", StaffRole.front_desk)
+    var first: Response = test_providers.sign_in(
+        SignInMethod.google,
+        TestAccount {
+            subject: "110248495921238986420"
+            email: "ann@lending.example"
+            email_verified: true
+            name: "Ann Lee"
+        }
+    )
+    assert first.status == 303
+    assert first.code == none
+    var relinked: Response = test_providers.sign_in(
+        SignInMethod.google,
+        TestAccount {
+            subject: "110248495921238986420"
+            email: none
+            email_verified: false
+            name: none
+        }
+    )
+    assert relinked.code == none
+    var stock: Response = request {
+        method: HttpMethod.get
+        path: "/staff/stock"
+        as: Principal.user(ann)
+    }
+    assert stock.status == 200
+}
+
+test "a Google account no one took on is refused" {
+    var refused: Response = test_providers.sign_in(
+        SignInMethod.google,
+        TestAccount {
+            subject: "2001"
+            email: "stranger@elsewhere.example"
+            email_verified: true
+            name: none
+        }
+    )
+    assert refused.status == 303
+    assert refused.code == "sign_in_refused"
+}
+
+test "an address Google hasn't verified signs no one in" {
+    var bo: Patron = staff_at("bo@lending.example", StaffRole.admin)
+    var refused: Response = test_providers.sign_in(
+        SignInMethod.google,
+        TestAccount {
+            subject: "2002"
+            email: bo.email
+            email_verified: false
+            name: none
+        }
+    )
+    assert refused.code == "sign_in_refused"
+    var second_sign_in: Response = test_providers.sign_in(
+        SignInMethod.google,
+        TestAccount {
+            subject: "2002"
+            email: bo.email
+            email_verified: true
+            name: none
+        }
+    )
+    assert second_sign_in.code == none
+}
+
+test "a customer's address at Google doesn't make them staff" {
+    var cara: Patron = customer_at("cara@reader.example")
+    var refused: Response = test_providers.sign_in(
+        SignInMethod.google,
+        TestAccount {
+            subject: "2003"
+            email: cara.email
+            email_verified: true
+            name: none
+        }
+    )
+    assert refused.code == "sign_in_refused"
+}

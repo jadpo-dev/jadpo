@@ -1,0 +1,53 @@
+// `on_first_sign_in:` names this action, so it decides for every way in,
+// the first time someone signs in whom the desk has no record for. It
+// runs as the system, in its own transaction, and gives the person's
+// `id`; any failure refuses them, and they see only `sign_in_refused`.
+//
+// - A magic link has proved the address is theirs, so anyone with one
+//   becomes a customer. A later link finds them by `Patron.email`.
+// - A Google account is linked to the member of staff taken on under its
+//   address, and only once Google has verified the address, so no one can
+//   claim a member of staff's address at a provider that doesn't check
+//   it. Jadpo keeps the link, so the next Google sign-in skips this. A
+//   Google account whose address is a customer's, or no one's, is
+//   refused: staff are taken on by an admin, never by signing in.
+
+use desk/entities { Patron, StaffMember }
+use desk/failures { AlreadyKnown, NoSuchCustomer, NotOnTheStaff }
+use desk/queries { patron_at, roles_of }
+
+/// Makes a customer of a new address, or links a Google account to the
+/// member of staff with its address.
+action meet_newcomer(
+    first: FirstSignIn
+) fails AlreadyKnown, NoSuchCustomer, NotOnTheStaff -> Patron.id {
+    match first.address {
+        none -> {
+            reject NotOnTheStaff {}
+        }
+        some(address) -> {
+            if (first.method == SignInMethod.magic_link) {
+                var customer: Patron = attempt Patron.create {
+                    set: {
+                        email: address
+                        name: none
+                        active: true
+                    }
+                    conflict: {
+                        Patron.email: AlreadyKnown
+                    }
+                }
+                return customer.id
+            }
+            if (first.method != SignInMethod.google or not first.address_verified) {
+                reject NotOnTheStaff {}
+            }
+            var patron: Patron = attempt patron_at(address)
+            var staff_roles: List<StaffMember> = roles_of(patron.id)
+            if (list.count(staff_roles) == 0) {
+                reject NotOnTheStaff {}
+            }
+            return patron.id
+        }
+    }
+}

@@ -1,0 +1,19 @@
+use desk/entities { Book }
+use desk/types { NewBook, StockBook }
+
+/// Adds a book to the stock.
+action add_book(input: NewBook) -> StockBook {
+    var book: Book = Book.create {
+        set: {
+            title: input.title
+            author: input.author
+            shelf: input.shelf
+            donor: input.donor
+        }
+    }
+    return StockBook {
+        id: book.id
+        title: book.title
+        shelf: book.shelf
+    }
+}

@@ -1,0 +1,12 @@
+// Listed for admins alone: the front desk may read `shelf` but not
+// `donor`, so a line naming them too wouldn't prove `donor`.
+
+use desk/entities { Book }
+use desk/types { DonatedBook }
+
+/// Every book with who gave it, for admins.
+query donations() -> List<DonatedBook> {
+    from: Book
+    order: [Book.title asc]
+    limit: 100
+}

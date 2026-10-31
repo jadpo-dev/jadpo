@@ -1,0 +1,6 @@
+use desk/entities { Loan }
+
+/// A loan as its borrower sees it.
+type LoanView = Output {
+    pick: [Loan.id, Loan.book_id, Loan.due_at]
+}

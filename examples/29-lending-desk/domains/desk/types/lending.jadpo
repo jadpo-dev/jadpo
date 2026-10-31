@@ -1,0 +1,7 @@
+use desk/entities { Book, Patron }
+
+/// A book lent to a customer, by their address.
+type Lending = Input {
+    book_id: Book.id
+    borrower: Patron.email
+}

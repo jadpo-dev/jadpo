@@ -238,3 +238,34 @@ fn only_a_test_signs_in_through_a_test_provider() {
     );
     assert!(has(&found, "type.not_record", "TestAccount"), "{found:?}");
 }
+
+/// A test that signs in only through `test_providers.sign_in` goes
+/// through the provider's generated routes, so it calls them, and is a
+/// route test with a database, not a pure test (chunk A6, found by the
+/// lending desk example).
+#[test]
+fn a_test_signing_in_through_a_provider_calls_its_routes() {
+    let code = format!(
+        "{CODE}\ntest \"a stranger is refused\" {{\n    var answer: Response = test_providers.sign_in(\n        SignInMethod.google,\n        TestAccount {{\n            subject: \"1\"\n            email: \"ann@example.com\"\n            email_verified: true\n            name: none\n        }}\n    )\n    assert answer.code == \"sign_in_refused\"\n}}\n"
+    );
+    let text = source(CONNECTIONS, AUTHENTICATION, &code);
+    let db = jadpo_db::Database::default();
+    let project = support::project(&db, Layout::Loose, &[("main.jadpo", &text)]);
+    let graph = jadpo_check::graph::graph(&db, project);
+    let test = graph
+        .ids()
+        .find(|id| graph.node(*id).kind == jadpo_graph::Kind::Test)
+        .expect("the test");
+    let called: Vec<String> = graph
+        .outgoing(test, jadpo_graph::EdgeKind::Calls)
+        .filter(|callee| graph.node(*callee).kind == jadpo_graph::Kind::GeneratedRoute)
+        .map(|callee| graph.node(callee).name.clone())
+        .collect();
+    assert!(
+        called.iter().any(|name| name == "POST /auth/google/start")
+            && called
+                .iter()
+                .any(|name| name == "GET /auth/google/callback"),
+        "{called:?}"
+    );
+}

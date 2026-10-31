@@ -1,0 +1,5 @@
+/// Who wrote a book.
+type AuthorName = Text {
+    min_length: 1
+    max_length: 120
+}

@@ -661,6 +661,37 @@ impl Part<'_> {
         self.body(&key, item.index, member.map(|member| member.index));
     }
 
+    /// The generated routes a test's `test_providers.sign_in` or
+    /// `test_passkeys` call goes through, so the test calls them and is a
+    /// route test (area 13), even with no `request { }` of its own.
+    fn signs_in_through(&self, body: &jadpo_graph::body::Body) -> Vec<Key> {
+        use crate::routes::generated::Generating;
+        use jadpo_graph::body::Callee;
+        let ops: Vec<jadpo_std::http::SessionOp> = body
+            .calls()
+            .filter_map(|(_, callee)| match callee {
+                Callee::Session(op) => Some(*op),
+                _ => None,
+            })
+            .collect();
+        let providers = ops.contains(&jadpo_std::http::SessionOp::TestProviderSignIn);
+        let passkeys = ops.iter().any(|op| op.test_passkey());
+        if !providers && !passkeys {
+            return Vec::new();
+        }
+        let registry = self.lookup.registry();
+        crate::routes::generated::generating(self.db, self.project)
+            .into_values()
+            .flatten()
+            .filter(|what| {
+                matches!(what, Generating::Provider(_)) && providers
+                    || matches!(what, Generating::Passkey(_)) && passkeys
+            })
+            .flat_map(|what| what.routes())
+            .map(|route| registry.key(Kind::GeneratedRoute, &route.label(), None))
+            .collect()
+    }
+
     /// What a callable's typed body says: the types it uses, what it calls
     /// and the failures that can leave it, as edges, and its sites and
     /// branches, as nodes numbered per build.
@@ -681,6 +712,7 @@ impl Part<'_> {
             .filter(|(_, callee)| callee.is_callable())
             .filter_map(|(_, callee)| callee.key().cloned())
             .chain(body.requests().cloned())
+            .chain(self.signs_in_through(body))
             // A test running a schedule calls the action it runs as well.
             .chain(body.calls().filter_map(|(_, callee)| match callee {
                 jadpo_graph::body::Callee::Schedule { action, .. } => Some(action.clone()),

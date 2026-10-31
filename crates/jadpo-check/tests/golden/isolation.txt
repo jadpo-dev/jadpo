@@ -119,6 +119,17 @@
   action report_loss                 read_committed
   fixture item_on_shelf              read_committed
   fixture umbrella_report            read_committed
+29-lending-desk
+  action add_book                    read_committed
+  action end_loan                    read_committed
+  action lend                        repeatable_read: calls the query `patron_at`
+  action meet_newcomer               repeatable_read: calls the query `patron_at`
+  action remind_borrower             repeatable_read: is handed a record in `loan`
+  action remind_due                  read_committed
+  action stand_down                  read_committed
+  action take_on                     read_committed
+  fixture customer_at                read_committed
+  fixture staff_at                   repeatable_read: reads `Patron` with `get`
 golden-todo
   action add_todo                    read_committed
   action delete_todo                 repeatable_read: reads `Todo` with `get`

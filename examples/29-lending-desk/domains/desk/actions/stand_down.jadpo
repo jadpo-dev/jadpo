@@ -1,0 +1,6 @@
+use desk/entities { StaffMember, StaffMemberNotFound }
+
+/// Takes a member of staff's role away.
+action stand_down(staff_id: StaffMember.id) fails StaffMemberNotFound -> Unit {
+    attempt StaffMember.delete(staff_id)
+}

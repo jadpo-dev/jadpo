@@ -1,0 +1,26 @@
+config {
+    /// Who the desk's emails are from.
+    desk_address: Email {
+        default: "desk@lending.example"
+    }
+    /// The client ID Google gave the desk.
+    google_client_id: Text {
+        test: "lending-desk"
+    }
+    /// The client secret Google gave the desk: given only to the
+    /// connection.
+    google_client_secret: Text {
+        secret: true
+    }
+    google_issuer: Url {
+        default: "https://accounts.google.com"
+    }
+    /// The desk's website, where people sign in.
+    site: Url {
+        default: "https://lending.example"
+    }
+    /// The SMTP server the emails are handed to.
+    smtp_host: Hostname {
+        default: "localhost"
+    }
+}

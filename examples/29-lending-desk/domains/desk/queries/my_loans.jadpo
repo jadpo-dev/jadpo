@@ -1,0 +1,10 @@
+use desk/entities { Loan }
+use desk/types { LoanView }
+
+/// The signed-in customer's loans, soonest due first.
+query my_loans(user: Principal.user) -> List<LoanView> {
+    from: Loan
+    where: Loan.borrower_id == user.id
+    order: [Loan.due_at asc]
+    limit: 50
+}

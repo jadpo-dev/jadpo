@@ -1,0 +1,8 @@
+// The two roles, held across the whole desk. Roles have no ranking: an
+// admin may do what the front desk does only where a list names both.
+
+/// What a member of staff may do.
+type StaffRole = Enum {
+    admin
+    front_desk
+}

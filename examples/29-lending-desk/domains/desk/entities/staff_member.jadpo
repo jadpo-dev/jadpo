@@ -1,0 +1,28 @@
+// A role held across the whole desk, not in one record: a membership
+// whose `scope:` is `MembershipScope.application`. A person holds a role
+// while their membership exists, so removing it takes the role away on
+// their next request.
+
+use desk/entities { Patron }
+use desk/types { StaffRole }
+
+/// A person's role on the staff.
+entity StaffMember {
+    id: Uuid
+    patron_id: Patron.id {
+        on_delete: OnDelete.cascade
+    }
+    role: StaffRole
+
+    membership: {
+        scope: MembershipScope.application
+        member: patron_id
+        role: role
+    }
+
+    policy: {
+        create: [StaffRole.admin]
+        read: [patron_id, Access.system, StaffRole.admin]
+        delete: [StaffRole.admin]
+    }
+}

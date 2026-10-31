@@ -1,0 +1,5 @@
+/// What a person is called, as they gave it.
+type DisplayName = Text {
+    min_length: 1
+    max_length: 80
+}

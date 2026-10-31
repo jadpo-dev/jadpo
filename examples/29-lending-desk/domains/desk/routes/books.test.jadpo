@@ -1,0 +1,39 @@
+// The same books, read by a customer: `all_books` shows only the fields
+// everyone signed in may read, so it needs no line in `policy.jadpo`.
+
+use desk/entities { Patron }
+use desk/types { CatalogueBook, NewBook, StockBook }
+use desk/actions { add_book }
+use desk/fixtures { customer_at }
+
+test "a customer reads the catalogue, without where books are shelved" {
+    var cara: Patron = customer_at("cara@reader.example")
+    var dune: StockBook = add_book(
+        NewBook {
+            title: "Dune"
+            author: "Frank Herbert"
+            shelf: "B3"
+            donor: none
+        }
+    )
+    var browsed: Response = request {
+        method: HttpMethod.get
+        path: "/books"
+        as: Principal.user(cara)
+    }
+    var on_the_shelves: CatalogueBook = CatalogueBook {
+        id: dune.id
+        title: "Dune"
+        author: "Frank Herbert"
+    }
+    assert browsed.output == [on_the_shelves]
+}
+
+test "the catalogue needs someone signed in" {
+    var refused: Response = request {
+        method: HttpMethod.get
+        path: "/books"
+    }
+    assert refused.status == 401
+    assert refused.code == "authentication_required"
+}

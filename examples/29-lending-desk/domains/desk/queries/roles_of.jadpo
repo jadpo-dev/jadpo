@@ -1,0 +1,9 @@
+use desk/entities { Patron, StaffMember }
+
+/// The roles a person holds on the staff.
+query roles_of(patron_id: Patron.id) -> List<StaffMember> {
+    from: StaffMember
+    where: StaffMember.patron_id == patron_id
+    order: [StaffMember.id asc]
+    limit: 10
+}

@@ -1,0 +1,48 @@
+// Staff routes are routes like any other: no route says who may call
+// it. Policy does, from what each one runs: `stock` and `donations` by
+// their lines in `policy.jadpo`, the writes by `Book`'s and `Loan`'s
+// grants.
+
+use desk/entities { Loan }
+use desk/types { DonatedBook, Lending, LoanView, NewBook, StockBook }
+use desk/actions { add_book, end_loan, lend }
+use desk/queries { donations, stock }
+
+/// What the staff reach.
+routes Staff {
+    prefix: /staff
+
+    /// The stock, with where each book is shelved.
+    GET /stock {
+        output: List<StockBook>
+        run: stock()
+    }
+
+    /// Who gave each book, for admins.
+    GET /donations {
+        output: List<DonatedBook>
+        run: donations()
+    }
+
+    /// Adds a book, for admins.
+    POST /books {
+        input: NewBook
+        output: StockBook
+        status: SuccessStatus.created
+        run: add_book(input)
+    }
+
+    /// Lends a book to a customer.
+    POST /loans {
+        input: Lending
+        output: LoanView
+        status: SuccessStatus.created
+        run: lend(input)
+    }
+
+    /// Ends a loan when its book comes back.
+    DELETE /loans/{loan_id: Loan.id} {
+        status: SuccessStatus.no_content
+        run: end_loan(loan_id)
+    }
+}

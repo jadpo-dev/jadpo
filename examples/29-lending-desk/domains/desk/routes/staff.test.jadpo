@@ -1,0 +1,161 @@
+// Route tests act as a member of staff with `as:`, as any signed-in
+// person; how they got signed in is the sign-in tests' business
+// (`actions/meet_newcomer.test.jadpo`). What each role reaches follows
+// from the listed queries' lines and the entities' grants.
+
+use desk/entities { Patron, StaffMember }
+use desk/types { DonatedBook, Lending, NewBook, StaffRole, StockBook }
+use desk/actions { add_book, stand_down }
+use desk/queries { roles_of }
+use desk/fixtures { customer_at, staff_at }
+
+test "the front desk sees where books are shelved, and a customer is refused" {
+    var ann: Patron = staff_at("ann@lending.example", StaffRole.front_desk)
+    var cara: Patron = customer_at("cara@reader.example")
+    var dune: StockBook = add_book(
+        NewBook {
+            title: "Dune"
+            author: "Frank Herbert"
+            shelf: "B3"
+            donor: "Mrs Okafor"
+        }
+    )
+    var stock: Response = request {
+        method: HttpMethod.get
+        path: "/staff/stock"
+        as: Principal.user(ann)
+    }
+    assert stock.output == [dune]
+    var refused: Response = request {
+        method: HttpMethod.get
+        path: "/staff/stock"
+        as: Principal.user(cara)
+    }
+    assert refused.status == 403
+    assert refused.code == "not_permitted"
+}
+
+test "only an admin adds a book and sees who gave it" {
+    var ann: Patron = staff_at("ann@lending.example", StaffRole.front_desk)
+    var bo: Patron = staff_at("bo@lending.example", StaffRole.admin)
+    var stocked: Response = request {
+        method: HttpMethod.post
+        path: "/staff/books"
+        input: NewBook {
+            title: "Dune"
+            author: "Frank Herbert"
+            shelf: "B3"
+            donor: "Mrs Okafor"
+        }
+        as: Principal.user(bo)
+    }
+    assert stocked.status == 201
+    match stocked.output {
+        none -> {
+            assert stocked.status == 201
+        }
+        some(dune) -> {
+            var gifts: Response = request {
+                method: HttpMethod.get
+                path: "/staff/donations"
+                as: Principal.user(bo)
+            }
+            var from_okafor: DonatedBook = DonatedBook {
+                id: dune.id
+                title: "Dune"
+                donor: "Mrs Okafor"
+            }
+            assert gifts.output == [from_okafor]
+        }
+    }
+    var refused: Response = request {
+        method: HttpMethod.get
+        path: "/staff/donations"
+        as: Principal.user(ann)
+    }
+    assert refused.status == 403
+}
+
+test "the front desk can't add a book" {
+    var ann: Patron = staff_at("ann@lending.example", StaffRole.front_desk)
+    var refused: Response = request {
+        method: HttpMethod.post
+        path: "/staff/books"
+        input: NewBook {
+            title: "Dune"
+            author: "Frank Herbert"
+            shelf: "B3"
+            donor: none
+        }
+        as: Principal.user(ann)
+    }
+    assert refused.status == 403
+}
+
+test "the front desk lends a book once, and takes it back" {
+    var ann: Patron = staff_at("ann@lending.example", StaffRole.front_desk)
+    var cara: Patron = customer_at("cara@reader.example")
+    var dune: StockBook = add_book(
+        NewBook {
+            title: "Dune"
+            author: "Frank Herbert"
+            shelf: "B3"
+            donor: none
+        }
+    )
+    var lending: Lending = Lending {
+        book_id: dune.id
+        borrower: cara.email
+    }
+    var lent: Response = request {
+        method: HttpMethod.post
+        path: "/staff/loans"
+        input: lending
+        as: Principal.user(ann)
+    }
+    assert lent.status == 201
+    var relinked: Response = request {
+        method: HttpMethod.post
+        path: "/staff/loans"
+        input: lending
+        as: Principal.user(ann)
+    }
+    assert relinked.status == 409
+    assert relinked.code == "book_on_loan"
+    match lent.output {
+        none -> {
+            assert lent.status == 201
+        }
+        some(loan) -> {
+            var returned: Response = request {
+                method: HttpMethod.delete
+                path: "/staff/loans/{loan_id}"
+                params: {
+                    loan_id: loan.id
+                }
+                as: Principal.user(ann)
+            }
+            assert returned.status == 204
+        }
+    }
+}
+
+test "a role taken away is refused on the next request" {
+    var ann: Patron = staff_at("ann@lending.example", StaffRole.front_desk)
+    var before: Response = request {
+        method: HttpMethod.get
+        path: "/staff/stock"
+        as: Principal.user(ann)
+    }
+    assert before.status == 200
+    var staff_roles: List<StaffMember> = roles_of(ann.id)
+    for role in staff_roles {
+        attempt stand_down(role.id)
+    }
+    var after: Response = request {
+        method: HttpMethod.get
+        path: "/staff/stock"
+        as: Principal.user(ann)
+    }
+    assert after.status == 403
+}

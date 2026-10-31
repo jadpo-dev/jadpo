@@ -1,0 +1,4 @@
+/// The person signing in with Google isn't on the staff.
+type NotOnTheStaff = Failure {
+    kind: FailureKind.not_found
+}

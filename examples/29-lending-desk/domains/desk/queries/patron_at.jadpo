@@ -1,0 +1,9 @@
+use desk/entities { Patron }
+use desk/failures { NoSuchCustomer }
+
+/// The person with an address.
+query patron_at(address: Email) fails NoSuchCustomer -> Patron {
+    from: Patron
+    where: Patron.email == address
+    missing: NoSuchCustomer
+}
