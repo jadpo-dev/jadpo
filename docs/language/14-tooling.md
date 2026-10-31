@@ -741,7 +741,9 @@ in `shared/providers/<name>/<version>/`, merging your corrections.
 ### `jadpo package update` and `remove`
 
 `update` moves a folder's package to what the folder holds, and a git
-package to its newest release of the same major version. It lists each
+package to its newest release of the same major version. An installed
+folder changed by hand (`package.digest_mismatch`) is installed again
+from its source, even when its release is the newest. It lists each
 surface entry added, changed or removed, marked `used by the app` and
 `needs a person`: the review of the surface the app uses that [Records and
 manifest](18-records-and-manifest.md) describes. `remove` is refused while

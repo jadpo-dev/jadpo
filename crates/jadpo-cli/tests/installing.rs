@@ -297,6 +297,71 @@ public type OutwardCode = Text {
     assert_eq!(jadpo(&app, &["check"]).code, 0);
 }
 
+/// An installed package changed by hand is `package.digest_mismatch`,
+/// and the command its next step names installs it again from its
+/// source, from a folder or at its git release, so the error clears.
+#[test]
+fn update_installs_a_changed_package_again_from_its_source() {
+    let (_dir, package, app) = workspace("install-again");
+    write(
+        &package,
+        "CHANGELOG.md",
+        "# Changelog\n\n## 2.0.0\n\n- first release\n\nReads UK postcodes.\n",
+    );
+    release(&package, "v2.0.0");
+    let repository = package.to_string_lossy().into_owned();
+    for source in ["../postcodes".to_string(), format!("{repository}@v2.0.0")] {
+        let _ = std::fs::remove_dir_all(app.join("packages"));
+        let _ = std::fs::remove_file(app.join("jadpo.lock"));
+        let added = jadpo(&app, &["package", "add", &source]);
+        assert_eq!(added.code, 0, "{}{}", added.stdout, added.stderr);
+        let lock = std::fs::read_to_string(app.join("jadpo.lock")).expect("the lock");
+        write(
+            &app,
+            "packages/postcodes/v2/GUIDE.md",
+            "# Postcodes\n\nEdited in the app.\n",
+        );
+        let checked = jadpo(&app, &["check"]);
+        assert_eq!(checked.code, 1, "{}", checked.stdout);
+        let next = checked
+            .stdout
+            .lines()
+            .find(|line| line.trim_start().starts_with("next: "))
+            .expect("a next step")
+            .to_string();
+        assert!(
+            next.contains("`jadpo package update postcodes`"),
+            "{source}: {next}"
+        );
+        assert!(!next.contains("package add"), "{source}: {next}");
+        let again = jadpo(&app, &["package", "update", "postcodes"]);
+        assert_eq!(again.code, 0, "{source}: {}{}", again.stdout, again.stderr);
+        assert!(
+            again
+                .stdout
+                .starts_with("Installed Postcodes.v2 2.0.0 again from its source\n"),
+            "{source}: {}",
+            again.stdout
+        );
+        assert_eq!(
+            std::fs::read_to_string(app.join("jadpo.lock")).expect("the lock"),
+            lock,
+            "{source}"
+        );
+        let checked = jadpo(&app, &["check"]);
+        assert_eq!(checked.code, 0, "{source}: {}", checked.stdout);
+        // Unchanged, it is up to date.
+        let current = jadpo(&app, &["package", "update", "postcodes"]);
+        assert!(
+            current
+                .stdout
+                .starts_with("Postcodes.v2 is up to date: 2.0.0"),
+            "{source}: {}",
+            current.stdout
+        );
+    }
+}
+
 #[test]
 fn remove_refuses_a_package_the_app_uses() {
     let (_dir, _package, app) = workspace("install-remove");

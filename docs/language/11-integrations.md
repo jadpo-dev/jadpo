@@ -5528,7 +5528,10 @@ each refuses.
   describes: each surface entry added, changed or removed, `used by the
   app` when the app's code writes its name through the package
   (`Postcodes.uk.tidy`), and `needs a person` for a changed or removed
-  one the app uses. A linked package is unlinked first.
+  one the app uses. A linked package is unlinked first. An installed
+  folder changed by hand (`package.digest_mismatch`) is installed again
+  from its source, at the release the lock names when there is none
+  newer, so `update` is also how a changed package is put back.
 - **`remove <name>`.** Refused while a file of the app's has `use
   packages/<name>` (`install.in_use`), naming each; otherwise the folder
   and its lock line go, and the lock stays, possibly empty. A linked
@@ -6994,6 +6997,7 @@ package's name, as its types are.
 | Lazy loading, the package cache and two versions side by side | Built. |
 | The OpenAPI importer, and the scoped review of an import's types | Built. |
 | Provider calls, decoding, `wire_parts:` and retries | Built. |
+| Walking a list operation's pages with `batches.each` ([Pages of results](#pages-of-results)) | Not built yet: a provider's list operation as `batches.each`'s `from:` is `toolchain.not_built_yet` where it is written ([Jobs and events](12-jobs-and-events.md#walking-records-or-a-providers-list-batcheseach)). |
 | No transaction open during a call, and several changing calls in one action | Built. |
 | Fakes, recordings and provider calls faked in development | Built. |
 | The `email` capability with SMTP and Resend | Built. |
