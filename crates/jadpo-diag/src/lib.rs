@@ -151,11 +151,11 @@ rules! {
     CLI_COMPLETIONS_ARGUMENTS: "cli.completions_arguments", area 14, Error, Agent,
         "Completions command has invalid arguments";
     CLI_CONFIG_ARGUMENTS: "cli.config_arguments", area 14, Error, Agent,
-        "Config command has invalid arguments";
+        "A `jadpo config` command names no action, an action it doesn't have, or a setting `config.jadpo` doesn't declare";
     CLI_CONFIG_PROMPT_FAILED: "cli.config_prompt_failed", area 14, Error, Human,
-        "Secure configuration prompt failed";
+        "Nothing was typed at the prompt of `jadpo config set`, or the terminal couldn't hide what you type there";
     CLI_CONFIG_TTY_REQUIRED: "cli.config_tty_required", area 14, Error, Human,
-        "Configuration entry requires an interactive terminal";
+        "You ran `jadpo config set` where there is no terminal to type the value at, such as from a coding agent or a script";
     CLI_DECLINES_ARGUMENTS: "cli.declines_arguments", area 14, Error, Agent,
         "Declines command has invalid arguments";
     CLI_DELIVERIES_ARGUMENTS: "cli.deliveries_arguments", area 14, Error, Agent,
@@ -247,15 +247,15 @@ rules! {
     CONFIGURATION_LOCAL_CHANGED: "configuration.local_changed", area 14, Error, Human,
         "Local configuration changed during the update";
     CONFIGURATION_LOCAL_INVALID_ENCODING: "configuration.local_invalid_encoding", area 14, Error, Human,
-        "Local configuration is not UTF-8 text";
+        "The `.env.local` file holds bytes that aren't UTF-8 text";
     CONFIGURATION_LOCAL_READ_FAILED: "configuration.local_read_failed", area 14, Error, Human,
-        "Local configuration could not be read";
+        "The `.env.local` file is there, but it couldn't be read: it is a folder, or you aren't allowed to read it";
     CONFIGURATION_LOCAL_SYNTAX: "configuration.local_syntax", area 14, Error, Human,
-        "Local configuration syntax is invalid";
+        "A line of `.env.local` isn't blank, a `#` comment or `NAME=value`, or it sets a variable a line above it already sets";
     CONFIGURATION_LOCAL_UNSAFE_TARGET: "configuration.local_unsafe_target", area 14, Error, Human,
-        "Local configuration target is unsafe";
+        "The `.env.local` file that `jadpo config set` would save a value in is a link, not an ordinary file";
     CONFIGURATION_LOCAL_WRITE_FAILED: "configuration.local_write_failed", area 14, Error, Human,
-        "Local configuration could not be saved";
+        "Saving a value in `.env.local` failed, usually because the project's folder can't be written";
     CONFIGURATION_MOVE_NAME_TAKEN: "configuration.move_name_taken", area 14, Error, Agent,
         "A setting already has the constant's name";
     CONFIGURATION_MOVE_READ_UNSUPPORTED: "configuration.move_read_unsupported", area 14, Error, Agent,
@@ -1121,7 +1121,7 @@ rules! {
     TEST_UNEXPECTED_FAILURE: "test.unexpected_failure", area 13, Error, Agent,
         "Test ended in a failure it did not expect";
     TOOLCHAIN_ARTIFACT_WRITE_FAILED: "toolchain.artifact_write_failed", area 14, Error, Human,
-        "Generated file could not be written";
+        "A file Jadpo writes for you, such as a record, couldn't be written, usually because it or its folder is read-only";
     TOOLCHAIN_BUILD_FAILED: "toolchain.build_failed", area 14, Error, Human,
         "Rust compiler couldn't build the deployable";
     TOOLCHAIN_EMPTY_PROJECT: "toolchain.empty_project", area 1, Error, Agent,
@@ -1131,19 +1131,19 @@ rules! {
     TOOLCHAIN_NOT_BUILT_YET: "toolchain.not_built_yet", area 3, Error, Agent,
         "Operation is declared but not built yet";
     TOOLCHAIN_PROJECT_NOT_FOUND: "toolchain.project_not_found", area 14, Error, Agent,
-        "Project could not be found";
+        "You ran a command that works on a project in a folder with no `app.jadpo`, in it or in any folder above it";
     TOOLCHAIN_SCAFFOLD_DESTINATION_EXISTS: "toolchain.scaffold_destination_exists", area 14, Error, Human,
-        "Scaffold destination is an existing file";
+        "You ran `jadpo new` with the name of a file that already exists";
     TOOLCHAIN_SCAFFOLD_DESTINATION_NOT_EMPTY: "toolchain.scaffold_destination_not_empty", area 14, Error, Human,
         "You ran `jadpo new` on a folder that already has files in it, hidden files included";
     TOOLCHAIN_SCAFFOLD_NAME_INVALID: "toolchain.scaffold_name_invalid", area 14, Error, Agent,
-        "Project destination has no valid name";
+        "You ran `jadpo new` with a path that doesn't end in a folder's name, such as `..` or `/`";
     TOOLCHAIN_SCAFFOLD_READ_FAILED: "toolchain.scaffold_read_failed", area 14, Error, Human,
-        "Scaffold destination could not be inspected";
+        "You ran `jadpo new` on a path Jadpo can't look into, such as a folder you can't read or a path through a file";
     TOOLCHAIN_SCAFFOLD_WRITE_FAILED: "toolchain.scaffold_write_failed", area 14, Error, Human,
-        "Project scaffold file could not be written";
+        "You ran `jadpo new`, and writing the project's files failed, usually because the folder it goes in can't be written";
     TOOLCHAIN_SOURCE_READ_FAILED: "toolchain.source_read_failed", area 14, Error, Human,
-        "Jadpo source file could not be read";
+        "A `.jadpo` file in the project couldn't be read, because it isn't UTF-8 text or you aren't allowed to read it";
     TOOLCHAIN_VERSION_INVALID: "toolchain.version_invalid", area 1, Error, Agent,
         "Application's `jadpo:` is not a major and minor version as text";
     TOOLCHAIN_VERSION_NEWER: "toolchain.version_newer", area 1, Error, Human,
