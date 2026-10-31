@@ -272,12 +272,7 @@ D1 first: the site starts once D1 has merged.
 - [ ] **D8b Rename in the editor** `opus · high`: area 14, "Editor support". Waits: `jadpo rename` and the identity registry (after the first build, items 6 and 7).
 - [x] **D9 Docs for newcomers**: [writing guide](writing.md); the [Learn path](learn/README.md); the [primer](primer.md); [documentation](documentation.md), "The bundle".
 - [x] **D10 Area pages to the writing guide**: the area pages in [docs/language](language/README.md), each topic to the [writing guide](writing.md), "How a reference topic reads", and the rationale in each area's design notes.
-- [ ] **D11 Task guides** `opus · high`: how-to pages in the bundle, a
-  page kind of their own beside `learn`, for the commonest jobs (add
-  sign-in, store and change a record, query records, call an outside API,
-  handle failures, write tests, deploy to Workers, deploy natively), each
-  compiled by the gate and linking the reference. They replace the site's
-  own `src/data/tasks.json`.
+- [x] **D11 Task guides**: [guides](guides/README.md); [documentation](documentation.md), "Topic IDs" and "The bundle"; [writing guide](writing.md), "Kinds of user page"; `tools/docs/language_docs.py`, `GuidePage`.
 - [x] **D12 What the Learn path found**: [area 8](language/08-identity.md), "In development and tests"; [area 14](language/14-tooling.md), "What is built"; [documentation](documentation.md), "Where the content lives" and "The bundle".
 - [ ] **D13 Error pages that explain** `opus · high`: every page in
   `docs/errors/` rewritten to the format in [docs/writing.md](writing.md),
