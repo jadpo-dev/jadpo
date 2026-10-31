@@ -271,6 +271,12 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             out.set_some("visible", visible.as_deref());
             out.set_some("purge", purge.as_deref());
         }
+        Detail::Person { through } => {
+            out.set(
+                "through",
+                through.iter().map(Value::from).collect::<Vec<_>>(),
+            );
+        }
         Detail::Route {
             api,
             status,
@@ -566,6 +572,10 @@ const NODE_FIELDS: &[(&str, &str)] = &[
     (
         "purge",
         "When a lifecycle deletes hidden records for good: after how long, since which field",
+    ),
+    (
+        "through",
+        "A person entity's references that its records belong to the person through, each `Entity.field`",
     ),
     ("when", "When a lifecycle transition is allowed, as written"),
     (

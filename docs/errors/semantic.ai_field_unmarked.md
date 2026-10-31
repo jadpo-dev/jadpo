@@ -79,6 +79,8 @@ entity Patient {
         read: [Access.authenticated]
         update: [Access.authenticated]
     }
+
+    person: true
 }
 ```
 
@@ -178,6 +180,8 @@ entity Patient {
         read: [Access.authenticated]
         update: [Access.authenticated]
     }
+
+    person: true
 }
 ```
 
@@ -291,6 +295,8 @@ entity Patient {
         read: [Access.authenticated]
         update: [Access.authenticated]
     }
+
+    person: true
 }
 ```
 

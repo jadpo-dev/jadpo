@@ -84,7 +84,7 @@ Why [Personal data](../15-personal-data.md) is the way it is: the decisions behi
 | Logs | Carried from area 4: identifiers, numbers, enums, booleans and times as values; text as a keyed hash; secrets never |
 | Stores | Carried from area 5: an action writes at most one store; stores declared in `app.jadpo` |
 | Marking | `personal: PersonalData.category` from a fixed list of 14, eight sensitive |
-| The person | `person: true` on the entity; ownership found by following references; several person entities allowed |
+| The person | `person: true` on the entity, and only `true`; ownership found by following references, through other people's records too, a chain ending where it comes back to an entity it passed; several person entities allowed |
 | Erasure outcomes | Generated `Person.erase(id)`; outcomes follow `on_delete:`; `erase: Erasure.deleted/.anonymised/.retained` required on restricted references |
 | Kept records | Field-by-field erasure on the person too: retained fields stay until retention ends, the rest is cleared, the person cannot sign in; purge deletes the rest automatically |
 | Backups | An erasure log replayed after restore; no per-person keys |
@@ -96,7 +96,7 @@ Why [Personal data](../15-personal-data.md) is the way it is: the decisions behi
 | Purpose and consent | Not in the language |
 | Report and residency | `build/report/personal-data.md` and `.json`, shown in review when it changes; residency by deployment per region |
 | Data requests | Endpoints only, no pages: `POST /privacy/requests`, `/confirm` and `/cancel` for self-service, the emails linking to the frontend's `link:` and `cancel_link:` paths; signed-in `POST /privacy/export` and `/privacy/erasure` for the person only; staff actions granted in policy; export by expiring link, erasure after a cooling-off period, events at every step; the emails are area 16's built-in emails, each taking `email:` or `send:` |
-| Unreachable personal data | A marked field that belongs to no person is a compile error; every reference into a person's records has an erasure outcome |
+| Unreachable personal data | A marked field that belongs to no person is a compile error (`data.personal_unreachable`, reported once per entity at its first marked field); every reference into a person's records has an erasure outcome. Only `personal:` marks a field for this: a standard type that is personal data whatever holds it is treated as marked in logs, caches and access records (area 19), not here, so a business's own phone number doesn't make it a person |
 | Erasure at providers | The package's `erasure: { call: by: }`, the connection's `erasure: { key: }`; the app erased first in one transaction, then each provider by a generated subscriber after commit, retried until confirmed; the completion email only when all confirm; parked deliveries shown; personal keys only in the outbox until delivered; a connection that cannot erase needs an acceptance stating why; OAuth grants deleted and revoked |
 | Report additions | Erasure per connection, keys waiting in the outbox, multi-step step records and OAuth grants listed in the personal-data report |
 | Coverage and gaps | The report states what the language covers, what is the app's choice and what is not code; breach-notification and transfer support to add |

@@ -1,8 +1,9 @@
 //! Protections the area pages promise that aren't built yet are
 //! `toolchain.not_built_yet` where they are written (each area's "What is
 //! built"), never accepted and then ignored, nor reported as wrong syntax:
-//! area 15's `retention:`, `erase:` and `person: true`, area 16's audit
-//! trail, and the application's and a route's `bot_check:`.
+//! area 15's `retention:` and `erase:`, area 16's audit trail, and the
+//! application's and a route's `bot_check:`. Area 15's `person: true` is
+//! built (chunk P1, [`crate::persons`]).
 
 use jadpo_db::Layout;
 
@@ -75,18 +76,6 @@ fn an_events_retention_is_refused() {
 }
 "#,
         "`retention:`",
-    );
-}
-
-#[test]
-fn a_person_entity_is_not_built_yet_rather_than_not_a_type() {
-    refused_once(
-        r#"entity Member {
-    id: Uuid
-    person: true
-}
-"#,
-        "`person: true`",
     );
 }
 
