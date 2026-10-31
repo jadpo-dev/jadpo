@@ -54,7 +54,17 @@ pub struct Membership {
     /// sign-in that lets it count. In place of `roles`' test, so a role
     /// whose requirement the caller's session doesn't meet is no
     /// membership at all, in a grant or in its tenant.
-    pub counts: Option<(String, Vec<(String, Option<String>)>)>,
+    pub counts: Option<Box<Counts>>,
+}
+
+/// The roles of a membership whose roles need a way in (chunk A10): its
+/// role column, and each role that counts, as SQL, with the condition on
+/// the caller's sign-in that lets it count, `None` for a role that needs
+/// nothing.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Counts {
+    pub column: String,
+    pub roles: Vec<(String, Option<String>)>,
 }
 
 /// Whether a role counts for a caller (chunk A10): `sign_in`, the
@@ -117,8 +127,8 @@ pub fn exists(membership: &Membership) -> String {
     if let Some((column, value)) = &membership.scope {
         tests.push(format!("{alias}.{} = {value}", ident(column)));
     }
-    if let Some((column, roles)) = &membership.counts {
-        tests.push(counted(&alias, column, roles));
+    if let Some(counts) = &membership.counts {
+        tests.push(counted(&alias, &counts.column, &counts.roles));
     } else if let Some((column, roles)) = &membership.roles {
         tests.push(format!(
             "{alias}.{} IN ({})",
@@ -342,10 +352,10 @@ mod tests {
             scope: None,
             roles: None,
             visible: None,
-            counts: Some((
-                "role".into(),
-                vec![("$3".into(), Some(needs)), ("$4".into(), None)],
-            )),
+            counts: Some(Box::new(Counts {
+                column: "role".into(),
+                roles: vec![("$3".into(), Some(needs)), ("$4".into(), None)],
+            })),
         };
         assert_eq!(
             exists(&membership),

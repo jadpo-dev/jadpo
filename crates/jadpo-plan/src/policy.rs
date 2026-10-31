@@ -147,13 +147,15 @@ impl Planner<'_> {
             let mut counted = Vec::with_capacity(wanted.len());
             for role in &wanted {
                 let value = stored(bind, role)?;
-                let needs = match membership.requirement(role) {
-                    Some(requirement) => Some(self.requirement(bind, requirement)),
-                    None => None,
-                };
+                let needs = membership
+                    .requirement(role)
+                    .map(|requirement| self.requirement(bind, requirement));
                 counted.push((value, needs));
             }
-            Some((role_field.born.clone(), counted))
+            Some(Box::new(jadpo_sql::policy::Counts {
+                column: role_field.born.clone(),
+                roles: counted,
+            }))
         } else {
             None
         };

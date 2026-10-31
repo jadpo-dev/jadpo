@@ -881,9 +881,7 @@ mod tests {
             .token(ISSUER, AUDIENCE, "provisioned-subject", NOW)
             .expect("a token");
         assert_eq!(
-            crate::block_on(settings.subject(&local, &local_token, NOW))
-                .expect("completes")
-                .map(|(subject, multi_factor)| (subject, multi_factor)),
+            crate::block_on(settings.subject(&local, &local_token, NOW)).expect("completes"),
             Ok(("provisioned-subject".to_string(), false))
         );
         // A token whose `amr` names a second factor says so (chunk A10).

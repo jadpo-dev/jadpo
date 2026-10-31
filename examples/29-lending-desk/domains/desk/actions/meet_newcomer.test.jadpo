@@ -132,7 +132,7 @@ test "a customer's address at Google doesn't make them staff" {
 
 test "a Google account outside the desk's domain is refused" {
     var ann: Patron = staff_at("ann@lending.example", StaffRole.front_desk)
-    var personal: Response = test_providers.sign_in(
+    var no_domain: Response = test_providers.sign_in(
         SignInMethod.google,
         TestAccount {
             subject: "2004"
@@ -141,8 +141,8 @@ test "a Google account outside the desk's domain is refused" {
             name: none
         }
     )
-    assert personal.code == "sign_in_refused"
-    var elsewhere: Response = test_providers.sign_in(
+    assert no_domain.code == "sign_in_refused"
+    var not_the_desks: Response = test_providers.sign_in(
         SignInMethod.google,
         TestAccount {
             subject: "2005"
@@ -152,5 +152,5 @@ test "a Google account outside the desk's domain is refused" {
             organisation: "elsewhere.example"
         }
     )
-    assert elsewhere.code == "sign_in_refused"
+    assert not_the_desks.code == "sign_in_refused"
 }
