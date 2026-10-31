@@ -1,6 +1,6 @@
 # `type.constraint_loosened`
 
-A type that builds on another sets a looser bound than the one it inherits, such as a larger `max_length`.
+A type that builds on another sets a looser bound than the one it inherits, such as a higher `max_length`.
 
 ## Why Jadpo refuses it
 

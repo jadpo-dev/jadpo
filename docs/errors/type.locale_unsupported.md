@@ -87,7 +87,13 @@ a parameter instead of writing one out:
 
 ```jadpo fragment
 function placed_label(ordered_at: OrderedAt, reader_locale: Locale) -> PresentationText {
+    return text.format(
+        ordered_at,
+        zone: Zone.utc,
         locale: reader_locale,
+        format: TimeFormat.date_long
+    )
+}
 ```
 
 ```jadpo check project=e-locale-unsupported-reader hidden

@@ -66,6 +66,8 @@ function from_count(n: Count) fails QuantityTooSmall, QuantityTooLarge -> Quanti
         min: QuantityTooSmall
         max: QuantityTooLarge
     }
+    ...
+}
 ```
 
 ```jadpo check project=e-rule-unmapped-fix-1 hidden
@@ -104,6 +106,8 @@ function from_count(n: Count) fails QuantityOutOfRange -> Quantity {
     var result: Quantity = attempt Quantity(n) {
         invalid: QuantityOutOfRange
     }
+    ...
+}
 ```
 
 ```jadpo check project=e-rule-unmapped-fix-2 hidden

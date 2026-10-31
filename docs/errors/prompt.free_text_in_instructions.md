@@ -71,7 +71,7 @@ it under `# Request`, where `{question}` already is. Say in the
 instructions what to do with it. In
 `domains/support/prompts/answer_question.prompt`:
 
-```jadpo fragment
+```text
 Answer the customer's question in the language of {reader_locale}.
 ```
 

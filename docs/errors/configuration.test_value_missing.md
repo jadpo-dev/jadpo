@@ -118,38 +118,10 @@ test "the greeting is read" {
 Tests read `"hello"`, and so does every deployment that doesn't set the
 setting.
 
-**If only this test needs a value**, set it in the test's `config:`:
-
-```jadpo fragment
-    config: {
-        greeting: "hello"
-    }
-```
-
-```jadpo check project=e-test-value-missing-own hidden
-type Greeting = Text {
-    max_length: 80
-}
-
-config {
-    greeting: Greeting
-}
-
-function hello() -> Greeting {
-    return config.greeting
-}
-
-test "the greeting is read" {
-    config: {
-        greeting: "hello"
-    }
-    assert hello() == "hello"
-}
-```
-
-The test, and the code it calls, read `"hello"`. Another test that
-reaches `config.greeting` needs its own value, or the setting a `test:`
-value.
+A single test can instead give the value in its own `config:` block
+([Configuration in tests](../language/13-testing.md#configuration-in-tests)).
+Every other test that reaches `config.greeting` then needs one too, so a
+`test:` value is usually the simpler fix.
 
 ## Related
 

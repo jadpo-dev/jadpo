@@ -85,6 +85,8 @@ result type's `->`:
 
 ```jadpo fragment
 action register(note: Note) fails RegistrationClosed -> Note {
+    ...
+}
 ```
 
 ```jadpo check project=e-undeclared-fix-1 hidden

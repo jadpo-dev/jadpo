@@ -312,6 +312,8 @@ answer is taken too:
 ```jadpo fragment
 test "a taken slot is the app's own failure, after a retry" {
         couriers.bookings.create: [unavailable, slot_taken]
+        ...
+}
 ```
 
 ```jadpo check project=e-fake-unused-fix-2 file=domains/shipping/actions/book.test.jadpo hidden

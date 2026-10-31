@@ -113,6 +113,8 @@ first. In `domains/bakery/actions/keep_price_sheet.jadpo`:
         reject ShopClosed
     }
     var sheet: File = attempt sheets.put(encoding.to_utf8(price_list), FileType.csv) {
+        ...
+    }
 ```
 
 ```jadpo check project=e-step-late-failure-fix-1 file=domains/bakery/actions/keep_price_sheet.jadpo hidden
@@ -189,6 +191,11 @@ action, with the reason:
 /// Keeps the week's price sheet for a shop that is trading.
 decline step.late_failure: "A sheet kept for a closed shop does no harm, and nothing reads it"
 action keep_price_sheet(
+    price_list: PriceList,
+    state: ShopState
+) fails SheetNotKept, ShopClosed -> File {
+    ...
+}
 ```
 
 ```jadpo check project=e-step-late-failure-fix-2 file=domains/bakery/actions/keep_price_sheet.jadpo hidden

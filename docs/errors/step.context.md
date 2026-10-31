@@ -337,6 +337,8 @@ action receive_prices(sent_sheet: PriceSheetUpload) -> SheetReceipt {
     emit PriceSheetSent {
         sheet_text: sent_sheet.sheet_text
     }
+    ...
+}
 ```
 
 ```jadpo check project=e-step-context-fix-2 file=domains/bakery/actions/receive_prices.jadpo hidden

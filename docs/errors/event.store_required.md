@@ -54,7 +54,7 @@ decides which database keeps the events of actions that write none.
 **If a database should keep these events**, name it in
 `events: { store: }` in `app.jadpo`. A single file has no `app.jadpo`,
 so here the example is a project, with `glance` in a `notes` domain and
-one database, `main`:
+one database, `main`. In `app.jadpo`:
 
 ```jadpo fragment
     events: {
@@ -98,14 +98,23 @@ type NoteSeen = Event {
 }
 ```
 
-```jadpo check project=e-event-store-required-fix-1 file=domains/notes/actions/glance.jadpo hidden
+```jadpo check project=e-event-store-required-fix-1 file=domains/notes/types/sighting.jadpo hidden
 use notes/types { Note }
+
+/// The note someone looked at.
+type Sighting = Input {
+    note: Note
+}
+```
+
+```jadpo check project=e-event-store-required-fix-1 file=domains/notes/actions/glance.jadpo hidden
+use notes/types { Sighting }
 use notes/events { NoteSeen }
 
 /// Records that someone looked at a note.
-action glance(note: Note) -> Unit {
+action glance(sighting: Sighting) -> Unit {
     emit NoteSeen {
-        note: note
+        note: sighting.note
     }
 }
 ```

@@ -181,6 +181,8 @@ entity Ledger {
     company_id: Company.id {
         on_delete: OnDelete.cascade
     }
+    ...
+}
 ```
 
 ```jadpo check project=e-scope-missing-reference hidden

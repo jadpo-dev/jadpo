@@ -51,6 +51,8 @@ whole number of seconds or more. In `main.jadpo`:
 /// Tidies up once a minute.
 schedule tidy_up {
     every: 1m
+    ...
+}
 ```
 
 ```jadpo check project=e-schedule-every-fix-1 hidden

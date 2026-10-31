@@ -175,9 +175,14 @@ the fix itself.
 prompt is built from the notes alone:
 
 ```jadpo fragment
+    return attempt ai.generate(
         CheckReferral {
             notes: patient.notes
         },
+        as: HandoverSummary
+    ) {
+        ...
+    }
 ```
 
 ```jadpo check project=e-ai-field-refused-fix-1 file=domains/clinic/actions/check_referral_notes.jadpo hidden

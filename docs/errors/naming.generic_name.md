@@ -50,6 +50,8 @@ Here they hold stock back:
 
 ```jadpo fragment
 library holdback {
+    ...
+}
 ```
 
 ```jadpo check project=e-generic-fix-1 hidden

@@ -144,10 +144,6 @@ type PartnerKey = Text {
 config {
     api_key: PartnerKey
 }
-
-function expose_secret() -> PartnerKey {
-    return config.api_key
-}
 ```
 
 Your code may now read, return and log `config.api_key` like any other

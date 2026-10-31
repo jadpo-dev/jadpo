@@ -120,6 +120,8 @@ change ([What the client sees](../language/04-failures.md#what-the-client-sees))
 
 ```jadpo fragment
 type EntryInvalid = Failure {
+    ...
+}
 ```
 
 ```jadpo check project=e-duplicate-code-runtime-fix hidden

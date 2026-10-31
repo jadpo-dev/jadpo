@@ -124,7 +124,10 @@ The function works out the same result, with one name fewer to follow.
 name from its pattern:
 
 ```jadpo fragment
+    return match outcome {
+        PaymentOutcome.pending -> false
         PaymentOutcome.paid -> true
+    }
 ```
 
 ```jadpo check project=e-unused-binding-fix hidden

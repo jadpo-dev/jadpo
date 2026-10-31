@@ -119,6 +119,8 @@ function doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {
     var result: Quantity = attempt Quantity(quantity * 2) {
         max: QuantityTooLarge
     }
+    ...
+}
 ```
 
 ```jadpo check project=e-rule-cannot-break-fix-1 hidden

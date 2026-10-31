@@ -57,6 +57,8 @@ type Portions = Stock {
 }
 
 function split_evenly(total: Stock, portions: Portions) -> Stock {
+    ...
+}
 ```
 
 ```jadpo check project=e-divisor-fix-1 hidden
@@ -87,6 +89,8 @@ function split_evenly(total: Stock, portions: Stock) fails NoPortions -> Stock {
     }
     var divisor: Portions = Portions(portions)
     return Stock(total / divisor)
+    ...
+}
 ```
 
 ```jadpo check project=e-divisor-fix-2 hidden

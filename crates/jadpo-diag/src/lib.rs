@@ -133,7 +133,7 @@ rules! {
     API_PREFIX_REQUIRED: "api.prefix_required", area 7, Error, Agent,
         "Declared API has no prefix";
     API_SERVE_OPENAPI_INVALID: "api.serve_openapi_invalid", area 7, Error, Agent,
-        "API serve_openapi is not true or false";
+        "An API's `serve_openapi:` setting holds something other than `true` or `false`";
     API_SETTING_UNKNOWN: "api.setting_unknown", area 7, Error, Agent,
         "API setting is not one an API takes";
     CLI_ACCEPTANCE_ARGUMENTS: "cli.acceptance_arguments", area 14, Error, Agent,
@@ -1255,7 +1255,7 @@ rules! {
     TYPE_CONSTRAINT_CONTRADICTION: "type.constraint_contradiction", area 2, Error, Agent,
         "Constraints contradict each other";
     TYPE_CONSTRAINT_LOOSENED: "type.constraint_loosened", area 2, Error, Agent,
-        "A type that builds on another sets a looser bound than the one it inherits, such as a larger `max_length`";
+        "A type that builds on another sets a looser bound than the one it inherits, such as a higher `max_length`";
     TYPE_CONSTRAINT_REPEATED: "type.constraint_repeated", area 2, Error, Agent,
         "Constraint is given twice";
     TYPE_CONSTRUCTOR_ARGUMENT_COUNT: "type.constructor_argument_count", area 2, Error, Agent,
@@ -1287,7 +1287,7 @@ rules! {
     TYPE_FIELD_UNPROVED: "type.field_unproved", area 2, Error, Agent,
         "Object field value may break the field's rules";
     TYPE_FIELD_UPDATE_FORBIDDEN: "type.field_update_forbidden", area 9, Error, Agent,
-        "An update changes a field that stays fixed once its record exists, such as an owner field a grant names or a field marked `immutable: true`";
+        "An update changes a field that stays fixed once its record exists, such as a user field a grant names or a field marked `immutable: true`";
     TYPE_FILE_READ_TOO_LARGE: "type.file_read_too_large", area 16, Error, Agent,
         "Code reads a whole file into memory from a file field that can hold more than the 10 MB a whole read allows";
     TYPE_FOREIGN_TYPE: "type.foreign_type", area 2, Error, Agent,

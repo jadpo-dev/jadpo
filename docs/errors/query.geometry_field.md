@@ -102,6 +102,8 @@ as properties.
 query delivery_map() -> FeatureCollection<Polygon, BakeryPin> {
     from: Bakery
     geometry: Bakery.delivery_area
+    ...
+}
 ```
 
 ```jadpo check project=e-geometry-field-fix-2 hidden

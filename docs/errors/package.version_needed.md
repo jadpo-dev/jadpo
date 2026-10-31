@@ -88,6 +88,8 @@ result already does:
 
 ```jadpo fragment
 action keep_postcode(postcode: Postcodes.v3.UkPostcode) -> Postcodes.v3.UkPostcode {
+    ...
+}
 ```
 
 ```jadpo check project=p71c2-needed-v3 file=domains/addresses/actions/keep_postcode.jadpo hidden
@@ -142,6 +144,8 @@ can't be passed for it, because the two are different types.
 
 ```jadpo fragment
 action keep_postcode(postcode: Postcodes.v2.UkPostcode) -> Postcodes.v2.UkPostcode {
+    ...
+}
 ```
 
 ```jadpo check project=p71c2-needed-v2 file=domains/addresses/actions/keep_postcode.jadpo hidden

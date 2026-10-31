@@ -159,6 +159,8 @@ mark the fixture `public`, and the type it returns as well. In
 
 ```jadpo fragment
 public fixture two_open_todos() -> TodoCount {
+    ...
+}
 ```
 
 ```jadpo check project=e-private-fixture-fix-2 file=domains/planning/fixtures/two_open_todos.jadpo hidden

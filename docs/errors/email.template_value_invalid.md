@@ -101,7 +101,7 @@ type WelcomeEmail = EmailMessage {
 Then the template formats the time. In
 `domains/accounts/emails/welcome_email.html`:
 
-```jadpo fragment
+```text
 <p>Welcome, {{ name }}. You joined on {{ text.format(joined_at, zone: zone, format: TimeFormat.date_long) }}.</p>
 ```
 

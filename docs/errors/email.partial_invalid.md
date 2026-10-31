@@ -101,7 +101,7 @@ the fix itself.
 `Button` calls the link `url`, so in
 `domains/accounts/emails/welcome_email.html`:
 
-```jadpo fragment
+```text
 {{ include button(label: name, url: notes_link) }}
 ```
 

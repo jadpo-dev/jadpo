@@ -68,7 +68,7 @@ The question is whether the model should be given the field.
 order reference is free text, so it goes under `# Request`, not in the
 instructions. In `domains/support/prompts/answer_question.prompt`:
 
-```jadpo fragment
+```text
 {order_reference}
 ```
 

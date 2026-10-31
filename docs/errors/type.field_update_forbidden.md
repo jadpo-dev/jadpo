@@ -1,6 +1,6 @@
 # `type.field_update_forbidden`
 
-An update changes a field that stays fixed once its record exists, such as an owner field a grant names or a field marked `immutable: true`.
+An update changes a field that stays fixed once its record exists, such as a user field a grant names or a field marked `immutable: true`.
 
 ## Why Jadpo refuses it
 

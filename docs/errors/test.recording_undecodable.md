@@ -201,7 +201,7 @@ A `match` on `Status` in your code now has to handle `lost` too.
 what the provider sends. In
 `shared/providers/acme_couriers/v1/recordings/bookings.create.json`:
 
-```jadpo fragment
+```json
     "status": "on_hold"
 ```
 

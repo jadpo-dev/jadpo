@@ -285,7 +285,9 @@ choice decides here, as in "…yours to make: it decides who may call
 
 A fix's code is the lines that change, as a `fragment`, followed by a
 `hidden` check block of the fixed file, holding those lines, and hidden
-blocks for the project's other files, so the gate compiles every fix. A
+blocks for the project's other files, so the gate compiles every fix.
+The fragment parses on its own: it keeps the lines that open and close
+what the change is in, and `...` stands for the rest. A
 file of a few lines can instead be shown whole, as a `check` block. A fix
 that is a command shows it as `sh`. What a fix changes is only what the
 area page or a checked example shows; a page never describes behaviour

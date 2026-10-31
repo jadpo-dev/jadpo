@@ -330,6 +330,9 @@ reason:
 
 ```jadpo fragment
 decline policy.call_ungranted: "Only staff borrow through the desk app."
+action borrow(book_id: Book.id, caller: Principal.user) fails BookNotFound, MemberNotFound -> Book {
+    ...
+}
 ```
 
 ```jadpo check project=e-call-ungranted-declined hidden

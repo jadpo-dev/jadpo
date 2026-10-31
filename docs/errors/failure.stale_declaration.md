@@ -50,6 +50,8 @@ left to list, `fails` goes too:
 
 ```jadpo fragment
 action complete(note: Note) -> Note {
+    ...
+}
 ```
 
 ```jadpo check project=e-stale-fix-1 hidden

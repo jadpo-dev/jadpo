@@ -97,7 +97,11 @@ check failed: 1 error, 1 file
 **If a variant is missing**, add an arm for each case the error names:
 
 ```jadpo fragment
+    return match state {
+        DeliveryState.pending -> "Pending"
+        DeliveryState.sent -> "Sent"
         DeliveryState.failed -> "Failed"
+    }
 ```
 
 ```jadpo check project=e-match-exhaustive-fix-1 hidden
@@ -137,7 +141,10 @@ for it too.
 no value:
 
 ```jadpo fragment
+    return match subtitle {
+        some(shown) -> shown
         none -> title
+    }
 ```
 
 ```jadpo check project=e-match-exhaustive-none-fix hidden

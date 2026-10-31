@@ -114,6 +114,8 @@ code can call it.
 
 ```jadpo fragment
 public query shelf() -> List<Book> {
+    ...
+}
 ```
 
 ```jadpo check project=e-other-domain-fix-2 file=domains/catalogue/queries/shelf.jadpo hidden

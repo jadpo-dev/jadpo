@@ -754,7 +754,9 @@ def error_format_problems(page):
         for k, block in enumerate(blocks):
             if not block['attrs'].get('fragment'):
                 continue
-            shown_lines = [line.strip() for line in block['source'].split('\n') if line.strip()]
+            # `...` stands for the lines around the change, which the
+            # fragment shows so it parses on its own.
+            shown_lines = [line.strip() for line in block['source'].split('\n') if line.strip() not in ('', '...')]
             proof = next((b for b in blocks[k + 1:] if b['attrs'].get('check') and b['attrs'].get('hidden')
                           and 'expect' not in b['attrs']), None)
             whole = {line.strip() for line in proof['source'].split('\n')} if proof else set()

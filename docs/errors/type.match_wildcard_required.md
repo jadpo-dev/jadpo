@@ -67,7 +67,10 @@ the fix itself.
 arm, with what to do for them:
 
 ```jadpo fragment
+    return match label {
+        "" -> "unnamed"
         _ -> label
+    }
 ```
 
 ```jadpo check project=e-match-wildcard-fix hidden

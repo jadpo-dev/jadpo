@@ -80,7 +80,7 @@ the fix itself.
 **If the field can be written as it is**, write it out without the call.
 In `domains/accounts/emails/welcome_email.html`:
 
-```jadpo fragment
+```text
 <h1>Welcome, {{ name }}</h1>
 ```
 
@@ -150,7 +150,7 @@ type WelcomeEmail = EmailMessage {
 Then the template writes the field out. In
 `domains/accounts/emails/welcome_email.html`:
 
-```jadpo fragment
+```text
 <h1>WELCOME, {{ heading_name }}</h1>
 ```
 

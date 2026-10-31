@@ -74,6 +74,8 @@ the fix itself.
 ```jadpo fragment
 subscriber send_due {
     on: ReminderDue
+    ...
+}
 ```
 
 ```jadpo check project=e-subscriber-event-fix-1 hidden
