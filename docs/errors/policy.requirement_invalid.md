@@ -97,10 +97,10 @@ entity StaffMember {
 
 ```text output
 error: A role can't require `SignInMethod.magic_link`
- --> main.jadpo:79:42
+ --> main.jadpo:80:27
    |
-79 |             StaffRole.admin: { sign_in: [SignInMethod.magic_link] }
-   |                                          ^^^^^^^^^^^^^^^^^^^^^^^ not a provider
+80 |                 sign_in: [SignInMethod.magic_link]
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^ not a provider
   reason: A requirement names the company's own way in, a sign-in provider or `external_token`, so access ends where the company ends it; a magic link or a passkey proves only an address or a device. Use `strength: AuthenticationStrength.multi_factor` to ask for a second factor.
   next: Name a sign-in provider or `SignInMethod.external_token` (agent)
   rule: policy.requirement_invalid

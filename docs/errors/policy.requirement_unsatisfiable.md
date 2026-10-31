@@ -99,7 +99,7 @@ entity StaffMember {
 error: No one can hold `StaffRole.admin`: nothing the app signs people in with is signed in through `external_token`
  --> main.jadpo:79:13
    |
-79 |             StaffRole.admin: { sign_in: [SignInMethod.external_token] }
+79 |             StaffRole.admin: {
    |             ^^^^^^^^^^^^^^^ can never be met
   reason: A role counts only for someone whose sign-in meets its requirement; the ways in the app declares that a requirement may name are `SignInMethod.google`.
   next: Name a way in the app declares, or declare the one you mean in `authentication.jadpo` (human)
