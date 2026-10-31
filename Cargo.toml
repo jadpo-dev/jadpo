@@ -315,6 +315,14 @@ p384 = { version = "=0.14.0", default-features = false, features = ["ecdsa"] }
 rustls = { version = "=0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
 tokio-rustls = { version = "=0.26.6", default-features = false, features = ["ring", "tls12"] }
 webpki-roots = { version = "=1.0.10", default-features = false }
+# The disk driver's file system calls on Unix (jadpo-host-native only;
+# area 16, "The disk driver"; chunk B2): opening each folder and file
+# relative to the store's root without following links (`openat` with
+# `O_NOFOLLOW`), and the disk's free space for `free_space_floor:`
+# (`fstatvfs`), neither of which the standard library offers and both of
+# which need `unsafe`, which the workspace forbids. Bytecode Alliance,
+# Apache-2.0 or MIT.
+rustix = { version = "=1.1.6", default-features = false, features = ["std", "fs"] }
 # Counts a test binary's allocations (jadpo-runtime's route-allocation test
 # only, chunk 8.1k): the system allocator behind atomic counters, MIT, no
 # dependencies. The workspace forbids `unsafe`, which a global allocator

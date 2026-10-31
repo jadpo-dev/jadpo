@@ -15,7 +15,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use jadpo_host_native::http::{AppHandler, MakeHandler, WorkerThread, serve};
-use jadpo_host_native::{Drivers, supplies};
+use jadpo_host_native::{Drivers, deployable_supplies};
 use jadpo_runtime::http::address::Target;
 use jadpo_runtime::{
     Ctx, Executor, FaultKind, Frame, Loaded, LocalFuture, Outcome, Places, Plan, RuntimePlan,
@@ -68,7 +68,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let make: MakeHandler = Arc::new(move |worker: &WorkerThread| {
         let loaded = Loaded::sharing(Arc::clone(&plan), Arc::clone(&validators));
         let started = Rc::new(Started::new(&loaded.plan(), None, Target::Native));
-        let drivers = Drivers::build(&plan.connections, &started, &supplies());
+        let drivers = Drivers::build(&plan.connections, &started, &deployable_supplies());
         let program: Rc<dyn Executor> = Rc::new(Deployable {
             places: Places::new(),
             loaded,

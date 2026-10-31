@@ -58,6 +58,11 @@ pub struct DeployableStamp {
     /// Its build id, `b_` and twelve hex digits; `None` for a project
     /// with errors, which builds nothing (chunk 8.1o3).
     pub build: Option<String>,
+    /// The stores of files on the server's own disk it reaches
+    /// (`Driver.disk`), in name order, which keep it on one server, since
+    /// a second wouldn't see their files (area 16, "The disk driver";
+    /// chunk B2); written as `one_server` when there are any.
+    pub one_server: Vec<String>,
 }
 
 /// The manifest of `graph`.
@@ -78,6 +83,18 @@ pub fn manifest(graph: &Graph, stamp: &Stamp) -> Value {
             let mut entry = Value::object();
             entry.set("target", deployable.target.as_str());
             entry.set_some("build", deployable.build.as_deref());
+            if !deployable.one_server.is_empty() {
+                entry.set(
+                    "one_server",
+                    Value::Array(
+                        deployable
+                            .one_server
+                            .iter()
+                            .map(|store| Value::from(store.as_str()))
+                            .collect(),
+                    ),
+                );
+            }
             deployables.set(&deployable.name, entry);
         }
         out.set("deployables", deployables);

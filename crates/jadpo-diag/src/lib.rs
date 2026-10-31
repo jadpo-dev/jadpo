@@ -286,6 +286,8 @@ rules! {
         "Package's answers don't conform to its capability";
     CONFORM_REFUSED: "conform.refused", area 14, Error, Human,
         "Conformance suite can't run against the provider's API";
+    CONNECTION_DISK_PATH_INVALID: "connection.disk_path_invalid", area 16, Error, Human,
+        "A disk store's `path:` isn't an absolute folder outside the project";
     CONNECTION_DOMAIN_NOT_LISTED: "connection.domain_not_listed", area 11, Error, Human,
         "An action calls an outside service through a connection whose `domains:` list doesn't include the action's domain";
     CONNECTION_KEY_INVALID: "connection.key_invalid", area 11, Error, Agent,

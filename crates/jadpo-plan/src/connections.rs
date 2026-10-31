@@ -55,12 +55,15 @@ pub(crate) fn table(
                     },
                 },
                 ConnectionKind::Redis => ConnectionDriver::Redis { url: url(name) },
-                ConnectionKind::Files => ConnectionDriver::Disk {
-                    path: files
-                        .iter()
-                        .find(|store| store.name == *name)
-                        .and_then(|store| store.path.clone()),
-                },
+                ConnectionKind::Files => {
+                    let store = files.iter().find(|store| store.name == *name);
+                    ConnectionDriver::Disk {
+                        path: store.and_then(|store| store.path.clone()),
+                        floor: store.map_or(jadpo_std::files::DEFAULT_FREE_SPACE_FLOOR, |store| {
+                            store.floor
+                        }),
+                    }
+                }
                 ConnectionKind::Smtp => {
                     let server = smtp.iter().find(|server| server.name == *name)?;
                     ConnectionDriver::Smtp(SmtpServer {

@@ -543,7 +543,7 @@ fn run(
             &jadpo_host_native::supplies(),
         );
         let file_stores: Vec<String> = jadpo_std::connections::files(prepared.plan().connections())
-            .map(|(name, _)| name.to_string())
+            .map(|(name, _, _)| name.to_string())
             .collect();
         let mut native = jadpo_host_native::NativeHost::new()
             .with_drivers(drivers)
