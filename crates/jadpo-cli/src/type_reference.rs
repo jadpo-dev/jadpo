@@ -7,9 +7,9 @@
 
 use jadpo_check::StdOperation;
 use jadpo_check::types::TypeRef;
+use jadpo_std::Kind;
 use jadpo_std::standard::groups::{GROUPS, group_of};
 use jadpo_std::standard::{Holds, Json as Wire, STANDARD_TYPES, StandardType, Storage, TextForm};
-use jadpo_std::{Builtin, Kind};
 use jadpo_term::Json;
 
 /// Every standard type, in its group's order (area 19, "The standard
@@ -209,7 +209,7 @@ fn mentions(ty: &TypeRef, name: &str) -> bool {
 /// its stub writes a type variable for several types.
 fn fits(entry: &StandardType, kind: &Kind) -> bool {
     match (kind, entry.holds) {
-        (Kind::Quantity, Holds::Builtin(Builtin::Quantity(_))) => true,
+        (Kind::Quantity, _) => entry.quantity().is_some(),
         (Kind::OneOf(builtins), Holds::Builtin(builtin)) => builtins.contains(&builtin),
         (Kind::Range, Holds::Range) => true,
         (Kind::Range, _) => jadpo_std::range_type(entry.name).is_some(),
@@ -447,10 +447,7 @@ mod tests {
             !operations.contains(&"text.format".to_string()),
             "the baseline is said once"
         );
-        assert_eq!(
-            money.get("group"),
-            Some(&Json::from("Money, payments, banking"))
-        );
+        assert_eq!(money.get("group"), Some(&Json::from("Money and banking")));
     }
 
     #[test]

@@ -1,4 +1,4 @@
-//! Payment cards beyond their number (area 19, "Money, payments, banking",
+//! Payment cards beyond their number (area 19, "Money and banking",
 //! chunk 5.5i2): `CardBrand`, the card schemes as a closed list;
 //! `MaskedCardNumber`, what may be kept and shown of a card once its number
 //! is gone, its brand and last four, which `money.mask` makes from a

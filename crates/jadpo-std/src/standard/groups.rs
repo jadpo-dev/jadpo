@@ -63,7 +63,7 @@ pub const GROUPS: &[(&str, &[&str])] = &[
         ],
     ),
     (
-        "Money, payments, banking",
+        "Money and banking",
         &[
             "Money",
             "Currency",

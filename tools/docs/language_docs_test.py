@@ -876,7 +876,7 @@ class Commands(unittest.TestCase):
 
 
 MONEY = {
-    'name': 'Money', 'group': 'Money, payments, banking',
+    'name': 'Money', 'group': 'Money and banking',
     'summary': 'An amount of money (area 19): its minor units and its `Currency`, written `GBP 10.50`.',
     'holds': 'builtin', 'base': 'Money', 'arguments': [], 'fields': [], 'variants': [], 'pattern': None,
     'min': None, 'max': None, 'personal': None, 'text': 'canonical', 'json': 'object', 'storage': 'columns',
@@ -975,7 +975,7 @@ class TypeReference(unittest.TestCase):
         money = files['types/type-money.md']
         self.assertTrue(money.startswith('# `Money`\n\nAn amount of money: its minor units'), money)
         self.assertNotIn('area 19', money)
-        self.assertIn('[Money, payments, banking](types.md#money-payments-banking); ordered; since Jadpo 0.1.0.', money)
+        self.assertIn('[Money and banking](types.md#money-and-banking); ordered; since Jadpo 0.1.0.', money)
         self.assertIn('`text.parse(raw, as: Money)` reads one', money)
         self.assertIn('such as `10.50` or `""`', money)
         self.assertIn('This operation gives one: `money.of`.', money)
@@ -1004,7 +1004,7 @@ class TypeReference(unittest.TestCase):
         index, files, _ = self.build()
         listing = files['types/types.md']
         self.assertTrue(listing.startswith('# Standard types\n\nEvery standard type Jadpo has, 2 in all'), listing)
-        self.assertIn('## Money, payments, banking\n\n| Type | What it is |', listing)
+        self.assertIn('## Money and banking\n\n| Type | What it is |', listing)
         self.assertIn('| [`Money`](type-money.md) | An amount of money: its minor units', listing)
         by_id = {e['id']: e for e in index['pages']}
         self.assertEqual(by_id['types']['links'], ['the-standard-types', 'type-money', 'type-postal-address'])
@@ -1017,7 +1017,7 @@ class TypeReference(unittest.TestCase):
         page = SimpleNamespace(area=lambda: 19, path=Path('19-standard-library.md'), body=(
             '| Group | Types | Extras in |\n|---|---|---|\n'
             '| People and contact (1) | **`PostalAddress`** | |\n'
-            '| Money, payments, banking (1) | **`Money`**, **`Range<T>`** | |\n'))
+            '| Money and banking (1) | **`Money`**, **`Range<T>`** | |\n'))
         self.assertEqual(docs.type_table_problems([page], [ADDRESS, MONEY]), [])
         problems = docs.type_table_problems([page], [MONEY, ADDRESS])
         self.assertEqual(len(problems), 1, problems)
