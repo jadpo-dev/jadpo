@@ -567,8 +567,8 @@ what one leaves. Its run record counts the records it deleted and the
 values it cleared, and it emits no events.
 
 Retention changes the database only. An event that was emitted holding a
-value keeps its copy until the runtime removes the event, a day after
-every subscriber has had it
+value keeps its copy until the runtime removes the event, once every
+subscriber has had it and a day has passed since it was emitted
 ([Events](12-jobs-and-events.md#declaring-an-event)), and a backup keeps
 what it held until it expires on the hosting platform's schedule.
 
