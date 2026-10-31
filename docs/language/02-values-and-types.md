@@ -486,7 +486,10 @@ their units is `type.unit_as_number`, which names the standard type:
 
 A plural matches as its singular. The words are the data `jadpo
 suggest`'s `name` signal reads ([Signals](14-tooling.md#signals)), so the
-two never disagree. A name with more in it, such as `PricePence` or
+two never disagree. A unit that is also a currency's name, `Pounds`, names
+both types: `Mass` for a weight, `Money` for an amount of money. A
+currency's other major units (`Dollars`, `Euros`) are no unit, so they
+are left alone. A name with more in it, such as `PricePence` or
 `WeightGrams`, is left to `jadpo suggest`, which reports it as a `name`
 finding. Build the type on the standard type instead, named for what it
 holds:

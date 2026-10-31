@@ -521,24 +521,41 @@ impl Decls<'_> {
         let Some(builtin) = self.table.base_prim(parent) else {
             return;
         };
-        let Some(standard) = crate::suggest::unit_named(name, builtin) else {
+        let Some(found) = crate::suggest::unit_named(name, builtin) else {
             return;
         };
         let Some(written) = decl.name() else { return };
-        let standard = standard.name;
+        let standard = found.standard.name;
         let held = builtin.name();
+        // A word that is a unit of one type and names another (`Pounds`)
+        // names both, with what each holds.
+        let (types, of, carries, next) = match found.or {
+            Some((other, shared)) => (
+                format!("a `{standard}` or a `{}`", other.name),
+                format!("a unit of `{standard}` and of `{}`", other.name),
+                format!("A `{standard}` or a `{}`", other.name),
+                format!(
+                    "Build it on `{standard}` for {} or `{}` for {}, named for what it holds rather than its unit",
+                    shared.unit_holds, other.name, shared.holds
+                ),
+            ),
+            None => (
+                format!("a `{standard}`"),
+                format!("a unit of `{standard}`"),
+                format!("A `{standard}`"),
+                format!("Build it on `{standard}`, named for what it holds rather than its unit"),
+            ),
+        };
         self.out.push(
             Diagnostic::new(
                 &rule::TYPE_UNIT_AS_NUMBER,
-                format!("`{name}` holds a `{standard}` as a plain number"),
+                format!("`{name}` holds {types} as a plain number"),
             )
             .at(self.span(written.syntax()), "named for a unit")
             .reason(format!(
-                "`{name}` is named for a unit of `{standard}` but is a plain `{held}`, so nothing keeps the unit with the number: a value in another unit passes for one in this one, and it adds to any other number. A `{standard}` carries what the number means, and converts and shows itself by its own rules."
+                "`{name}` is named for {of} but is a plain `{held}`, so nothing keeps the unit with the number: a value in another unit passes for one in this one, and it adds to any other number. {carries} carries what the number means, and converts and shows itself by its own rules."
             ))
-            .next(format!(
-                "Build it on `{standard}`, named for what it holds rather than its unit"
-            )),
+            .next(next),
         );
     }
 

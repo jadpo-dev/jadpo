@@ -129,3 +129,56 @@ fn it_can_be_declined_with_a_reason() {
         ["type.unit_as_number: `Knots` holds a `Speed` as a plain number"]
     );
 }
+
+#[test]
+fn a_unit_that_also_names_money_names_both() {
+    for source in [
+        "type Pounds = Decimal {\n    scale: 2\n}\n",
+        "type Pound = Int {}\n",
+    ] {
+        let found = diagnostics(source);
+        let name = if source.contains("Pounds") {
+            "Pounds"
+        } else {
+            "Pound"
+        };
+        assert_eq!(
+            found
+                .iter()
+                .map(|d| format!("{}: {}", d.rule.id, d.message))
+                .collect::<Vec<_>>(),
+            [format!(
+                "type.unit_as_number: `{name}` holds a `Mass` or a `Money` as a plain number"
+            )],
+            "{source}"
+        );
+        let next = found[0]
+            .next
+            .as_ref()
+            .map(|n| n.text.as_str())
+            .unwrap_or_default();
+        assert!(
+            next.starts_with(
+                "Build it on `Mass` for a weight or `Money` for an amount of money, named for what it holds rather than its unit"
+            ),
+            "{next}"
+        );
+    }
+    // A unit that names nothing else names its one type.
+    assert_eq!(
+        messages("type Ounces = Int {}\n"),
+        ["type.unit_as_number: `Ounces` holds a `Mass` as a plain number"]
+    );
+}
+
+#[test]
+fn every_shared_word_is_another_types_unit() {
+    for entry in jadpo_std::STANDARD_TYPES {
+        for shared in entry.signals.shared_units {
+            let found = jadpo_check::suggest::unit_named(shared.word, jadpo_std::Builtin::Int)
+                .expect(shared.word);
+            assert_ne!(found.standard.name, entry.name, "{}", shared.word);
+            assert_eq!(found.or.map(|(other, _)| other.name), Some(entry.name));
+        }
+    }
+}
