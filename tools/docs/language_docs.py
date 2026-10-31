@@ -74,6 +74,7 @@ compiler prints (`help_at`) names a heading of that page.
 """
 
 import argparse
+import atexit
 import hashlib
 import html
 import json
@@ -84,6 +85,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
@@ -265,6 +267,8 @@ class Page:
         self.corpus = []
         # Projects whose tests weren't run, since they need PostgreSQL.
         self.skipped = []
+        # ```sh run database blocks not run under JADPO_SKIP_POSTGRES.
+        self.skipped_runs = []
 
     def collect_blocks(self):
         lines = self.body.splitlines()
@@ -321,14 +325,25 @@ class Page:
         as a reader's commands make them), print what the output block
         after it holds. With `expect=<rule>` they end failing with that
         rule's diagnostic, and only that one; without it they succeed.
-        As root, a block with a `chmod` line is refused, not run: root
-        ignores the permissions it takes away."""
+        With `database`, `DATABASE_URL` names a new, empty database of its
+        own on the run's PostgreSQL server ([`Databases`]); under
+        JADPO_SKIP_POSTGRES the block is reported as skipped. As root, a
+        block with a `chmod` line is refused, not run: root ignores the
+        permissions it takes away."""
         def run_one(block):
             name = block['attrs']['project']
             if TAKES_PERMISSION.search(block['source']) and os.geteuid() == 0:
                 return [f'{name} (line {block["line"] + self.offset + 1}): its commands take a permission away '
                         'with `chmod`, which root ignores, so as root they would pass wrongly; '
                         'run the docs check as an ordinary user'], 'refused'
+            database = None
+            if block['attrs'].get('database'):
+                if SKIP_POSTGRES:
+                    return [], 'skipped'
+                database = DATABASES.create(name)
+                if database.startswith('error: '):
+                    return [f'{name} (line {block["line"] + self.offset + 1}): no database for its commands: '
+                            f'{database[len("error: "):]}'], 'refused'
             files = [b for b in self.blocks if b['attrs'].get('check') and b['attrs']['project'] == name]
             with tempfile.TemporaryDirectory() as tmp:
                 project, home = Path(tmp) / 'project', Path(tmp) / 'home'
@@ -337,7 +352,7 @@ class Page:
                 problems = write_project(project, name, files)
                 if files:
                     problems += self.prepare(str(project), name, files)
-                ran = run_commands(block, project, home)
+                ran = run_commands(block, project, home, database)
                 # A block may leave folders read-only, as its error needs;
                 # make them writable again so they can be removed.
                 for folder, _, _ in os.walk(tmp):
@@ -353,6 +368,11 @@ class Page:
             expected = expected if isinstance(expected, str) else 'pass'
             if result == 'refused':
                 self.run_results.append({'expected': expected, 'ok': False})
+                continue
+            if result == 'skipped':
+                # Its commands need PostgreSQL, which this run may not start.
+                self.skipped_runs.append(block['attrs']['project'])
+                self.run_results.append({'expected': expected, 'ok': True})
                 continue
             if result is None:
                 self.problems.append(f'{where}: its commands didn\'t finish in {RUN_LIMIT} s')
@@ -706,10 +726,12 @@ class ErrorPage(Page):
             return
         if not self.body.startswith(f'# `{self.rule}`\n'):
             self.problems.append(f'the page starts with its heading, # `{self.rule}`')
-        has_checks = any(b['attrs'].get('check') for b in self.blocks) or bool(self.runs)
+        has_checks = any(b['attrs'].get('check') and 'expect' in b['attrs'] for b in self.blocks) or bool(self.runs)
         # Only a command raises an area-14 rule, so its CLI tests show it;
-        # once its page has a check block or a ```sh run block, one of them
-        # must show the rule.
+        # once its page has a check block that fails or a ```sh run block,
+        # one of them must show the rule. A page whose output is copied
+        # from a run no check can make compiles its project's check blocks
+        # all the same (docs/writing.md, "How an error page reads").
         needs_example = entry.get('area') != COMMAND_AREA or has_checks
         if needs_example and self.rule not in self.covered_rules():
             what = 'a ```sh run block' if entry.get('area') == COMMAND_AREA else 'a check block'
@@ -748,7 +770,7 @@ def error_format_scope(catalogue, root=ROOT):
     guides or a teaching example's README names, and those whose next step
     a person decides. A rule only a command raises, whose page has no
     example yet, waits for a ```sh run block that shows it (roadmap,
-    D13b2b, D13b2c and D13b3); every other page follows once D13c is
+    D13b2b2, D13b2c and D13b3); every other page follows once D13c is
     built."""
     named = set()
     for path in [root / 'docs/primer.md', *sorted((root / 'docs/learn').glob('*.md')),
@@ -919,6 +941,66 @@ class Primer(Page):
                                  f'outside {low:,} to {high:,}')
 
 
+class Databases:
+    """New, empty databases for ```sh run database blocks, on the server
+    JADPO_TEST_DATABASE_URL names or a disposable one: jadpo-test-server
+    (crates/jadpo-test), started the first time a block asks and kept until
+    this process ends. Each line written to it is answered with a new
+    database's `postgresql://` URL, or `error: …`."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.process = None
+        self.failed = None
+
+    def create(self, stem):
+        with self.lock:
+            if self.process is None and self.failed is None:
+                self.start()
+            if self.failed:
+                return f'error: {self.failed}'
+            self.process.stdin.write(f'docs_{stem}\n')
+            self.process.stdin.flush()
+            answer = self.process.stdout.readline().strip()
+            return answer or 'error: jadpo-test-server stopped'
+
+    def start(self):
+        server = server_binary()
+        if server is None:
+            self.failed = 'jadpo-test-server could not be built'
+            return
+        self.process = subprocess.Popen([str(server)], cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                        stderr=subprocess.PIPE, text=True)
+        admin = self.process.stdout.readline()
+        if not admin:
+            self.failed = self.process.stderr.read().strip() or 'jadpo-test-server stopped'
+            self.process = None
+            return
+        atexit.register(self.stop)
+
+    def stop(self):
+        if self.process:
+            self.process.stdin.close()
+            self.process.wait()
+            self.process = None
+
+
+DATABASES = Databases()
+
+
+def server_binary():
+    """jadpo-test-server, built from this checkout: beside the `jadpo`
+    JADPO_BIN names (tools/verify.py builds both), or else one built here."""
+    ensure_jadpo()
+    if not os.environ.get('JADPO_BIN'):
+        code, _ = run(['cargo', 'build', '--quiet', '--locked', '-p', 'jadpo-test', '--bin', 'jadpo-test-server'],
+                      cwd=ROOT)
+        if code:
+            return None
+    server = Path(JADPO).with_name('jadpo-test-server')
+    return server if server.exists() else None
+
+
 def write_project(root, name, blocks):
     """Writes a project's blocks into `root`, in order, making each
     `migrate=` block's migration once the blocks up to it are written;
@@ -938,10 +1020,11 @@ def write_project(root, name, blocks):
     return problems
 
 
-def run_commands(block, project, home):
+def run_commands(block, project, home, database=None):
     """Runs a ```sh run block's commands with `sh -e` in `project`, as a
     reader would: `jadpo` is this checkout's, in plain mode, and HOME is
-    an empty folder of its own, so nothing of the machine's leaks in. A
+    an empty folder of its own, so nothing of the machine's leaks in;
+    `database`, a `postgresql://` URL, is given in DATABASE_URL. A
     `tty` block runs in a terminal and types its `typed=` value, or
     nothing, then Enter, at the first prompt. (exit code, what it printed
     with paths as the reader's), or None when it didn't finish."""
@@ -954,6 +1037,8 @@ def run_commands(block, project, home):
     for name in ('TMPDIR', 'JADPO_TEST_DATABASE_URL'):
         if os.environ.get(name):
             env[name] = os.environ[name]
+    if database:
+        env['DATABASE_URL'] = database
     command = ['sh', '-e', '-c', block['source']]
     attrs = block['attrs']
     if attrs.get('tty'):
@@ -2295,6 +2380,10 @@ def main():
         skipped = [f'{page.path.name} {name}' for page in everything for name in page.skipped]
         if skipped:
             print(f'skipped: jadpo test for {len(skipped)} project(s) with migrations, which need PostgreSQL '
+                  f'(JADPO_SKIP_POSTGRES is set): {", ".join(skipped)}')
+        skipped = [f'{page.path.name} {name}' for page in everything for name in page.skipped_runs]
+        if skipped:
+            print(f'skipped: {len(skipped)} command example(s) that need PostgreSQL '
                   f'(JADPO_SKIP_POSTGRES is set): {", ".join(skipped)}')
         if args.export_corpus:
             export_corpus(corpus)
