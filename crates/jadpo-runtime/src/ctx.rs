@@ -225,6 +225,10 @@ pub struct Ctx<'p> {
     /// The settings a test gives its own values (area 13): each by its
     /// number in the plan.
     settings: Vec<(u32, Value)>,
+    /// The credentials a route test's `as:` signed its callers in with,
+    /// each sent again by the same caller's later requests (area 13,
+    /// "Signing in for a route test"; chunk A11).
+    signed_in: Vec<(crate::http::identity::SignedInAs, Vec<(String, String)>)>,
     /// What the program running in it started with (chunk 7.9e): its
     /// settings' values, keys, credentials, sign-in settings, how a
     /// request's client address is chosen and its purges' periods. `None`
@@ -341,6 +345,7 @@ impl<'p> Ctx<'p> {
             deadline: None,
             inline: 0,
             settings: Vec::new(),
+            signed_in: Vec::new(),
             started: None,
             background: Background::default(),
             capabilities: Capabilities::new(host, env.seed),
@@ -1332,6 +1337,28 @@ impl<'p> Ctx<'p> {
     /// instead of the values the application started with.
     pub fn set_settings(&mut self, settings: Vec<(u32, Value)>) {
         self.settings = settings;
+    }
+
+    /// The headers a route test's earlier request signed `who` in with,
+    /// kept as a browser keeps its cookie (area 13; chunk A11).
+    pub(crate) fn signed_in(
+        &self,
+        who: &crate::http::identity::SignedInAs,
+    ) -> Option<Vec<(String, String)>> {
+        self.signed_in
+            .iter()
+            .find(|(kept, _)| kept == who)
+            .map(|(_, headers)| headers.clone())
+    }
+
+    /// Keeps the headers a route test's request signed `who` in with, for
+    /// that caller's later requests in the same test.
+    pub(crate) fn keep_signed_in(
+        &mut self,
+        who: crate::http::identity::SignedInAs,
+        headers: Vec<(String, String)>,
+    ) {
+        self.signed_in.push((who, headers));
     }
 
     /// The value setting number `at` has in this invocation, read one way

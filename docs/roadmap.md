@@ -378,6 +378,7 @@ time.
 - [x] **A7c Provider sign-in in `jadpo dev`**: area 8, "Providers", "In `jadpo dev`"; area 14, `jadpo dev`; compiler/runtime §2.6, "Sign-in providers".
 
 - [x] **A10 Staff only through their provider**: area 9, "Roles that need a way in" and Decisions; area 8, "How a session started", "How strongly a person signed in", "Company accounts" and Decisions; area 13, "Signing in for a route test"; area 18, "Acceptances" and Decisions; compiler/runtime §2.6, "Roles that need a way in"; `examples/29-lending-desk/README.md`.
+- [x] **A11 Route tests keep their session**: area 13, "Signing in for a route test", "What is built" and Decisions; `examples/29-lending-desk/README.md`.
 
 ## Approvals
 
