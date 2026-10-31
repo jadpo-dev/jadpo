@@ -571,7 +571,12 @@ costs one build per base commit.
   nothing, and `check` names it on the same line. So that an app's first
   outside host is still compared, an app with a `connections:` block keeps
   `network.jadpo_record` even while it reaches no host, with its header
-  alone (2026-10-30). A base commit the clone doesn't hold, as in a
+  alone (2026-10-30); and a before side with no network record whose
+  `app.jadpo` has no `connections:` block reached no outside host, so its
+  record is read as empty and the change that adds the block and a host
+  needs `NetworkChange.host_added`. Only a before side with the block and
+  no record, a project from before the record, is compared with nothing
+  (2026-10-31). A base commit the clone doesn't hold, as in a
   depth-1 checkout, is
   [`acceptance.base_missing`](../errors/acceptance.base_missing.md),
   naming `git fetch` (Richard, 2026-10-30).

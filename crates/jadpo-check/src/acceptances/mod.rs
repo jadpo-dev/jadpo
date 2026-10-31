@@ -40,10 +40,7 @@ pub fn needs(db: &dyn Db, project: Project) -> Vec<Need> {
     if let (Some(was), Some(now)) = (before.text(access::PATH), access::record_text(db, project)) {
         compare::access_needs(access::PATH, was, now.as_deref().unwrap_or(""), &mut out);
     }
-    if let (Some(was), Some(now)) = (
-        before.text(network::PATH),
-        network::record_text(db, project),
-    ) {
+    if let (Some(was), Some(now)) = (network_before(before), network::record_text(db, project)) {
         compare::network(network::PATH, was, now.as_deref().unwrap_or(""), &mut out);
     }
     if let Some(was) = before.text(jadpo_db::LOCK) {
@@ -54,6 +51,52 @@ pub fn needs(db: &dyn Db, project: Project) -> Vec<Need> {
     out.sort();
     out.dedup_by(|a, b| a.subject == b.subject && a.change == b.change);
     out
+}
+
+/// The network record on the before side. A before side with none whose
+/// `app.jadpo` has no `connections:` block reached no outside host, so it
+/// is read as empty and the change that adds the first host is compared as
+/// usual; one with the block and no record is a project from before the
+/// record, compared with nothing (2026-10-31).
+fn network_before(before: &BeforeSide) -> Option<&str> {
+    match before.text(network::PATH) {
+        Some(text) => Some(text),
+        None if !before_connections(before) => Some(""),
+        None => None,
+    }
+}
+
+/// Whether the before side's `application { }` has a `connections:` block;
+/// `true` when its `app.jadpo` can't be read, so nothing is assumed.
+fn before_connections(before: &BeforeSide) -> bool {
+    use jadpo_syntax::ast::{self, AstNode};
+    let Some(text) = before.text(jadpo_db::PROJECT_FILE) else {
+        return true;
+    };
+    let parse = jadpo_syntax::parse_file(text);
+    if parse.has_errors() {
+        return true;
+    }
+    parse
+        .syntax()
+        .children()
+        .filter_map(ast::SingletonDecl::cast)
+        .filter(|decl| {
+            decl.keyword()
+                .is_some_and(|word| word.text() == "application")
+        })
+        .filter_map(|decl| decl.member_list())
+        .flat_map(|list| {
+            list.syntax()
+                .children()
+                .filter_map(ast::Member::cast)
+                .collect::<Vec<_>>()
+        })
+        .any(|member| {
+            member
+                .member_key()
+                .is_some_and(|key| key.syntax().text() == "connections")
+        })
 }
 
 fn written(db: &dyn Db, project: Project, path: &str) -> Option<String> {
@@ -462,12 +505,15 @@ pub fn introduced(db: &dyn Db, project: Project) -> Vec<&'static str> {
     let Before::At(before) = project.before(db) else {
         return Vec::new();
     };
-    [
-        (access::PATH, access::record_text(db, project)),
-        (network::PATH, network::record_text(db, project)),
-    ]
-    .into_iter()
-    .filter(|(path, now)| before.text(path).is_none() && matches!(now, Some(Some(_))))
-    .map(|(path, _)| path)
-    .collect()
+    let access = (before.text(access::PATH).is_none())
+        .then_some((access::PATH, access::record_text(db, project)));
+    let network = network_before(before)
+        .is_none()
+        .then_some((network::PATH, network::record_text(db, project)));
+    [access, network]
+        .into_iter()
+        .flatten()
+        .filter(|(_, now)| matches!(now, Some(Some(_))))
+        .map(|(path, _)| path)
+        .collect()
 }

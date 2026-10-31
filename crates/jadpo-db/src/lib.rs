@@ -258,9 +258,12 @@ impl BeforeSide {
 }
 
 /// Whether a project-relative path is one the before side holds (chunk
-/// A8): a record, the lock, or a file in `acceptances/`.
+/// A8): a record, the lock, a file in `acceptances/`, or `app.jadpo`,
+/// whose `connections:` block says whether a project with no network
+/// record reached any outside host.
 pub fn compared_on_the_before_side(path: &str) -> bool {
-    path.starts_with("acceptances/")
+    path == PROJECT_FILE
+        || path.starts_with("acceptances/")
         || record::kind_of(path).is_some_and(|(kind, _)| {
             [
                 record::API.word,

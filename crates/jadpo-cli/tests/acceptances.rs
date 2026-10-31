@@ -612,3 +612,58 @@ fn an_apps_first_outside_host_needs_a_person() {
         ["acceptance.missing: a new outside host the app can send data to needs a person: main"]
     );
 }
+
+/// A project whose base commit had no `connections:` block reached no
+/// outside host, so it has no network record there; that is read as an
+/// empty one, and the change that adds the block and its first host needs
+/// a person, until an acceptance with a reason lists it.
+#[test]
+fn a_project_with_no_connections_gaining_its_first_host_needs_a_person() {
+    let parent = Path::new(env!("CARGO_TARGET_TMPDIR")).join("acceptances-first-connection");
+    let _ = fs::remove_dir_all(&parent);
+    fs::create_dir_all(&parent).expect("folder");
+    assert_eq!(jadpo(&parent, &["new", "desk"]).code, 0);
+    let root = parent.join("desk");
+    assert!(!root.join("network.jadpo_record").exists());
+    git(&root, &["init", "-q"]);
+    git(&root, &["add", "-A"]);
+    git(&root, &["commit", "-q", "-m", "The desk"]);
+    git(&root, &["checkout", "-q", "-b", "change"]);
+    assert_eq!(problems(&root), Vec::<String>::new());
+    edit(
+        &root,
+        "app.jadpo",
+        "application {\n",
+        "application {\n    connections: {\n        main: {\n            driver: Driver.postgres\n            url: config.database_url\n        }\n    }\n",
+    );
+    write(
+        &root,
+        "config.jadpo",
+        "config {\n    /// The desk's database.\n    database_url: PostgresUrl\n}\n",
+    );
+    assert_eq!(jadpo(&root, &["records", "update"]).code, 0);
+    assert!(root.join("network.jadpo_record").exists());
+    assert_eq!(
+        problems(&root),
+        ["acceptance.missing: a new outside host the app can send data to needs a person: main"]
+    );
+    // Compared, so the change isn't one of those `check` says it can't judge.
+    let checked = jadpo(&root, &["check"]);
+    assert!(!checked.stdout.contains("before:"), "{}", checked.stdout);
+    assert_eq!(
+        jadpo(&root, &["acceptance", "new", "add_a_database"]).code,
+        0
+    );
+    let files = acceptance_files(&root);
+    let text = fs::read_to_string(&files[0]).expect("read");
+    assert_eq!(
+        text,
+        "acceptance {\n    changes: {\n        main: NetworkChange.host_added\n    }\n}\n"
+    );
+    fs::write(
+        &files[0],
+        format!("/// The desk keeps its loans in PostgreSQL from now on.\n{text}"),
+    )
+    .expect("written");
+    assert_eq!(problems(&root), Vec::<String>::new());
+}
