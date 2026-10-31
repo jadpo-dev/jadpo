@@ -1436,6 +1436,8 @@ rules! {
         "Type has the wrong number of type arguments";
     TYPE_UNARY_OPERAND: "type.unary_operand", area 3, Error, Agent,
         "Operator cannot be used with this value";
+    TYPE_UNIT_AS_NUMBER: "type.unit_as_number", area 2, Declinable, Agent,
+        "You declared a type named for a unit, such as `Grams`, `Pence` or `Percent`, on a plain number";
     TYPE_UNIT_REQUIRED: "type.unit_required", area 19, Error, Agent,
         "A plain number is given where a physical quantity, such as a length or a mass, needs its unit";
     TYPE_UNIT_UNKNOWN: "type.unit_unknown", area 19, Error, Agent,

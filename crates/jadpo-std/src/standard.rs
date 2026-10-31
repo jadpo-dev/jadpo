@@ -2281,7 +2281,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
-        signals: NO_SIGNALS,
+        signals: signals::PERCENTAGE,
     },
     contact::PERSON_NAME,
     contact::PHONE_EXTENSION,

@@ -466,6 +466,50 @@ features, starting at [Data](05-data.md).
 An exact number holds at most 38 digits, and a number literal with more is
 `type.invalid_literal`.
 
+### Units and money in plain numbers
+
+A type named for a unit but built on a plain number, such as
+`type Grams = Int {}`, holds a weight that nothing knows is a weight: a
+value in kilograms passes for one in grams, and it adds to a price. The
+standard types keep the unit with the number: `Mass`, `Length` and the
+other [physical quantities](19-standard-library.md#physical-quantities),
+`Duration`, `Money` and `Percentage`. So a type built on `Int` or
+`Decimal`, directly or through another type, whose whole name is one of
+their units is `type.unit_as_number`, which names the standard type:
+
+| The whole name is | It holds |
+|---|---|
+| A quantity's unit, by its name or a code of two letters or more: `Grams`, `Metres`, `NauticalMiles`, `Kg`, `Kwh` | That quantity: `Mass`, `Length`, `Energy` |
+| `Ms`, `Millis`, `Milliseconds`, `Seconds`, `Secs`, `Minutes`, `Mins` or `Hours` | `Duration` |
+| A currency's minor unit: `Pence`, `Penny` or `Cents` | `Money` |
+| `Percent` or `Pct` | `Percentage` |
+
+A plural matches as its singular. The words are the data `jadpo
+suggest`'s `name` signal reads ([Signals](14-tooling.md#signals)), so the
+two never disagree. A name with more in it, such as `PricePence` or
+`WeightGrams`, is left to `jadpo suggest`, which reports it as a `name`
+finding. Build the type on the standard type instead, named for what it
+holds:
+
+```jadpo check project=parcel-weight
+/// What a parcel weighs, up to the courier's limit.
+type ParcelWeight = Mass {
+    max: 30kg
+}
+```
+
+A name can be a unit by chance: `Bars` of chocolate are no pressure. The
+rule is a judgement call, so you can decline it on the type with a reason
+([Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)):
+
+```jadpo check project=chocolate-bars
+/// Chocolate bars on the shelf.
+decline type.unit_as_number: "Chocolate bars on the shelf, not a pressure"
+type Bars = Int {
+    min: 0
+}
+```
+
 ## Creating values
 <!-- topic: creating-values -->
 
@@ -1938,6 +1982,7 @@ triggers it and the compiler's actual output.
 - [`type.constraint_loosened`](../errors/type.constraint_loosened.md)
 - [`type.invalid_pattern`](../errors/type.invalid_pattern.md)
 - [`type.decimal_scale_required`](../errors/type.decimal_scale_required.md)
+- [`type.unit_as_number`](../errors/type.unit_as_number.md)
 - [`type.optional_outside_input`](../errors/type.optional_outside_input.md)
 - [`type.reserved_field_name`](../errors/type.reserved_field_name.md)
 - [`type.base_outside_declaration`](../errors/type.base_outside_declaration.md)

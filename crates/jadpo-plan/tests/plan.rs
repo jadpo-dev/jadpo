@@ -8,7 +8,7 @@ use jadpo_graph::{Key, Kind, Section, TypeRef};
 use jadpo_plan::{Constant, Decoded, Plan};
 use jadpo_std::Builtin;
 
-const SOURCE: &str = r#"type Pence = Decimal {
+const SOURCE: &str = r#"type Coins = Decimal {
     min: 0.00
     scale: 2
 }
@@ -21,7 +21,7 @@ type Size = Enum {
 
 type Line = Object {
     size: Size
-    price: Pence
+    price: Coins
 }
 
 type Order = Input {
@@ -41,22 +41,22 @@ type Ref = Uuid {}
 type TooSmall = Failure {
     kind: FailureKind.invalid_value
     client: {
-        least: Pence
+        least: Coins
     }
     internal: {
-        given: Pence
+        given: Coins
     }
 }
 
-function total(line: Line) -> Pence {
-    return Pence(line.price + 1.00)
+function total(line: Line) -> Coins {
+    return Coins(line.price + 1.00)
 }
 
 function reference() -> Ref {
     return "0192F0C4-3B5E-7C1A-9D2E-4F6A8B0C1D2E"
 }
 
-function check(price: Pence) fails TooSmall -> Pence {
+function check(price: Coins) fails TooSmall -> Coins {
     if (price < 1.00) {
         reject TooSmall {
             least: 1.5
@@ -152,7 +152,7 @@ fn validators_follow_the_chain_most_specific_first() {
     let price = types.validator_plan(&TypeRef::Field(Key::new(Kind::Field, "Line.price")));
     assert_eq!(price.builtin, Some(Builtin::Decimal));
     assert_eq!(price.scale(), Some(2));
-    assert_eq!(price.rules.len(), 2, "the field's own, then `Pence`'s");
+    assert_eq!(price.rules.len(), 2, "the field's own, then `Coins`'s");
 }
 
 #[test]
@@ -187,7 +187,7 @@ fn literals_are_decoded_once_as_their_types_hold_them() {
             mantissa: 150,
             scale: 2
         }),
-        "`least: 1.5` kept at `Pence`'s scale: {constants:?}"
+        "`least: 1.5` kept at `Coins`'s scale: {constants:?}"
     );
 }
 

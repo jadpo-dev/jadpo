@@ -10,20 +10,20 @@ use serde_json::{Value, json};
 
 use crate::support::{ask, at, project, start, uri};
 
-const PENCE: &str = "shared/types/pence.jadpo";
+const PENCE: &str = "shared/types/coins.jadpo";
 const ROUNDING: &str = "shared/libraries/rounding.jadpo";
 const BASKET: &str = "domains/sales/actions/basket_total.jadpo";
 const REFUND: &str = "domains/refunds/actions/refund.jadpo";
 
-const ROUNDING_TEXT: &str = "use shared/types { Pence }\n\nlibrary rounding {\n    /// The amount, never below nothing.\n    function capped(amount: Pence) -> Pence {\n        return amount\n    }\n}\n";
-const BASKET_TEXT: &str = "use shared/libraries { rounding }\nuse shared/types { Pence }\n\naction basket_total(price: Pence) -> Pence {\n    var total: Pence = rounding.capped(price)\n    return rounding.capped(total)\n}\n";
+const ROUNDING_TEXT: &str = "use shared/types { Coins }\n\nlibrary rounding {\n    /// The amount, never below nothing.\n    function capped(amount: Coins) -> Coins {\n        return amount\n    }\n}\n";
+const BASKET_TEXT: &str = "use shared/libraries { rounding }\nuse shared/types { Coins }\n\naction basket_total(price: Coins) -> Coins {\n    var total: Coins = rounding.capped(price)\n    return rounding.capped(total)\n}\n";
 // A private `capped` of its own, which isn't the library's.
-const REFUND_TEXT: &str = "use shared/types { Pence }\n\naction refund(amount: Pence) -> Pence {\n    return capped(amount)\n}\n\nfunction capped(amount: Pence) -> Pence {\n    return amount\n}\n";
+const REFUND_TEXT: &str = "use shared/types { Coins }\n\naction refund(amount: Coins) -> Coins {\n    return capped(amount)\n}\n\nfunction capped(amount: Coins) -> Coins {\n    return amount\n}\n";
 
 fn files() -> Vec<(&'static str, &'static str)> {
     vec![
         ("app.jadpo", "application {}\n"),
-        (PENCE, "type Pence = Int {\n    min: 0\n}\n"),
+        (PENCE, "type Coins = Int {\n    min: 0\n}\n"),
         (ROUNDING, ROUNDING_TEXT),
         (BASKET, BASKET_TEXT),
         (REFUND, REFUND_TEXT),
@@ -69,18 +69,18 @@ fn place(path: &str, text: &str, needle: &str, nth: usize, ahead: usize) -> Stri
 #[test]
 fn a_type_is_found_wherever_it_is_used() {
     let root = project("references-type", &files());
-    let found = references(&root, PENCE, at("type Pence", "Pence", 0, 0), true);
+    let found = references(&root, PENCE, at("type Coins", "Coins", 0, 0), true);
     let mut expected: BTreeSet<String> = BTreeSet::new();
     expected.insert(format!("{PENCE}:0:5"));
     for nth in 0..3 {
-        expected.insert(place(ROUNDING, ROUNDING_TEXT, "Pence", nth, 0));
-        expected.insert(place(REFUND, REFUND_TEXT, "Pence", nth, 0));
+        expected.insert(place(ROUNDING, ROUNDING_TEXT, "Coins", nth, 0));
+        expected.insert(place(REFUND, REFUND_TEXT, "Coins", nth, 0));
     }
     for nth in 3..5 {
-        expected.insert(place(REFUND, REFUND_TEXT, "Pence", nth, 0));
+        expected.insert(place(REFUND, REFUND_TEXT, "Coins", nth, 0));
     }
     for nth in 0..4 {
-        expected.insert(place(BASKET, BASKET_TEXT, "Pence", nth, 0));
+        expected.insert(place(BASKET, BASKET_TEXT, "Coins", nth, 0));
     }
     assert_eq!(found, expected);
 }
@@ -88,9 +88,9 @@ fn a_type_is_found_wherever_it_is_used() {
 #[test]
 fn the_declaration_is_left_out_when_the_editor_asks() {
     let root = project("references-no-declaration", &files());
-    let found = references(&root, BASKET, at(BASKET_TEXT, "Pence", 1, 2), false);
+    let found = references(&root, BASKET, at(BASKET_TEXT, "Coins", 1, 2), false);
     assert!(!found.contains(&format!("{PENCE}:0:5")), "{found:?}");
-    assert!(found.contains(&place(BASKET, BASKET_TEXT, "Pence", 1, 0)));
+    assert!(found.contains(&place(BASKET, BASKET_TEXT, "Coins", 1, 0)));
     assert_eq!(found.len(), 12, "{found:?}");
 }
 

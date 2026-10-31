@@ -4904,8 +4904,11 @@ block; `language_docs.py --export-corpus` writes each project and its
 **Teaching examples** (decision "Examples teach every feature"). Each project in `examples/` (a folder holding `app.jadpo`),
 and the golden todo (`benchmarks/golden-todo/`), is copied to a temporary
 folder by `tools/docs/examples.py`, which fails unless `jadpo check --json`
-reports no diagnostics at all, `jadpo fmt --check` passes, and `jadpo test
---json --seed 1` runs at least one test with every test passing; each
+reports no diagnostics at all, `jadpo fmt --check` passes, `jadpo
+suggest --json` finds nothing in a teaching example (each finding taken,
+or ignored with its reason in the example's
+`ignored_suggestions.jadpo_record`), and `jadpo test --json --seed 1`
+runs at least one test with every test passing; each
 project also needs its own `README.md`, and each teaching example a line in
 `examples/README.md`.
 `--export-corpus` writes each project and its `test.json` to

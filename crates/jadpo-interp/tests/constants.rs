@@ -5,7 +5,7 @@
 
 use crate::support::{decimal, int, list, main, value};
 
-const SOURCE: &str = r#"type Pence = Int {
+const SOURCE: &str = r#"type Coins = Int {
     min: 0
 }
 
@@ -16,7 +16,7 @@ type VatRate = Decimal {
 }
 
 type VatBand = Object {
-    starts: Pence
+    starts: Coins
     rate: VatRate
 }
 
@@ -24,9 +24,9 @@ type VatBands = List<VatBand> {
     min_length: 1
 }
 
-constant free_delivery_from: Pence = 5000
-constant small_order_fee: Pence = 250
-constant double_fee: Pence = Pence(small_order_fee * 2)
+constant free_delivery_from: Coins = 5000
+constant small_order_fee: Coins = 250
+constant double_fee: Coins = Coins(small_order_fee * 2)
 
 library vat {
     constant standard: VatRate = 0.2000
@@ -51,14 +51,14 @@ library vat {
     }
 }
 
-function delivery_fee(subtotal: Pence) -> Pence {
+function delivery_fee(subtotal: Coins) -> Coins {
     if (subtotal >= free_delivery_from) {
         return 0
     }
     return small_order_fee
 }
 
-function doubled() -> Pence {
+function doubled() -> Coins {
     return double_fee
 }
 
@@ -66,7 +66,7 @@ function rate() -> VatRate {
     return vat.latest()
 }
 
-function fees() -> List<Pence> {
+function fees() -> List<Coins> {
     return [small_order_fee, double_fee]
 }
 "#;

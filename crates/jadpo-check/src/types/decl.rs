@@ -438,6 +438,7 @@ impl Decls<'_> {
                 }
                 let subject = self.table.subject(&parent);
                 let own = self.settings(list, subject, None, &parent);
+                self.unit_as_number(decl, &shape.name, &parent);
                 if self.table.base_prim(&parent) == Some(Prim::Decimal)
                     && own.scale.is_none()
                     && !self
@@ -508,6 +509,37 @@ impl Decls<'_> {
                 self.variants(list, &shape.name);
             }
         }
+    }
+
+    /// `type.unit_as_number` (area 2, "Units and money in plain numbers";
+    /// roadmap F1): a type built on `Int` or `Decimal` whose whole name is
+    /// one of a standard type's units, a currency's minor unit or a
+    /// percentage, by `jadpo suggest`'s name data, is that standard type
+    /// held as a plain number. A judgement call: `Bars` of chocolate are
+    /// no pressure.
+    fn unit_as_number(&mut self, decl: &ast::TypeDecl, name: &str, parent: &Ty) {
+        let Some(builtin) = self.table.base_prim(parent) else {
+            return;
+        };
+        let Some(standard) = crate::suggest::unit_named(name, builtin) else {
+            return;
+        };
+        let Some(written) = decl.name() else { return };
+        let standard = standard.name;
+        let held = builtin.name();
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_UNIT_AS_NUMBER,
+                format!("`{name}` holds a `{standard}` as a plain number"),
+            )
+            .at(self.span(written.syntax()), "named for a unit")
+            .reason(format!(
+                "`{name}` is named for a unit of `{standard}` but is a plain `{held}`, so nothing keeps the unit with the number: a value in another unit passes for one in this one, and it adds to any other number. A `{standard}` carries what the number means, and converts and shows itself by its own rules."
+            ))
+            .next(format!(
+                "Build it on `{standard}`, named for what it holds rather than its unit"
+            )),
+        );
     }
 
     /// `type.standard_exists` (area 19, "Packages use the standard

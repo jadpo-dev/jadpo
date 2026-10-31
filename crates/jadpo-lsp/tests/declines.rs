@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 
 const LIBRARY: &str = "shared/libraries/rounding.jadpo";
 
-const ROUNDING: &str = "use shared/types { Pence }\n\nlibrary rounding {\n    function capped(amount: Pence) -> Pence {\n        return amount\n    }\n\n    /// The basket total.\n    function cap_total(total: Pence) -> Pence {\n        return total\n    }\n}\n";
+const ROUNDING: &str = "use shared/types { Coins }\n\nlibrary rounding {\n    function capped(amount: Coins) -> Coins {\n        return amount\n    }\n\n    /// The basket total.\n    function cap_total(total: Coins) -> Coins {\n        return total\n    }\n}\n";
 
 fn project(name: &str, rounding: &str) -> PathBuf {
     let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
@@ -18,13 +18,13 @@ fn project(name: &str, rounding: &str) -> PathBuf {
     for (path, text) in [
         ("app.jadpo", "application {}\n"),
         (
-            "shared/types/pence.jadpo",
-            "type Pence = Int {\n    min: 0\n}\n",
+            "shared/types/coins.jadpo",
+            "type Coins = Int {\n    min: 0\n}\n",
         ),
         (LIBRARY, rounding),
         (
             "domains/sales/actions/basket_total.jadpo",
-            "use shared/types { Pence }\nuse shared/libraries { rounding }\n\naction basket_total(price: Pence) -> Pence {\n    return rounding.cap_total(rounding.capped(price))\n}\n",
+            "use shared/types { Coins }\nuse shared/libraries { rounding }\n\naction basket_total(price: Coins) -> Coins {\n    return rounding.cap_total(rounding.capped(price))\n}\n",
         ),
     ] {
         let path = root.join(path);

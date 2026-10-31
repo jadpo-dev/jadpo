@@ -204,12 +204,12 @@ fn the_editor_finds_the_constant_on_its_declaration_or_a_read() {
     );
 }
 
-const PENCE: &str = "type Pence = Int {\n    min: 0\n}\n\n";
+const PENCE: &str = "type Coins = Int {\n    min: 0\n}\n\n";
 
 #[test]
 fn a_constant_beside_its_use_joins_the_settings_in_name_order() {
     let text = format!(
-        "{PENCE}config {{\n    business_name: Pence {{\n        default: 1\n    }}\n    tax_band: Pence {{\n        default: 2\n    }}\n}}\n\n/// Orders from this many pence travel free.\nconstant free_delivery_from: Pence = 5000\n\nfunction delivery_fee(subtotal: Pence) -> Pence {{\n    if (subtotal >= free_delivery_from) {{\n        return 0\n    }}\n    return Pence(config.business_name + config.tax_band)\n}}\n"
+        "{PENCE}config {{\n    business_name: Coins {{\n        default: 1\n    }}\n    tax_band: Coins {{\n        default: 2\n    }}\n}}\n\n/// Orders from this many pence travel free.\nconstant free_delivery_from: Coins = 5000\n\nfunction delivery_fee(subtotal: Coins) -> Coins {{\n    if (subtotal >= free_delivery_from) {{\n        return 0\n    }}\n    return Coins(config.business_name + config.tax_band)\n}}\n"
     );
     let mut loaded = loaded(Layout::Loose, &[("main.jadpo", &text)]);
     assert_eq!(errors(&loaded), Vec::<String>::new());
@@ -218,7 +218,7 @@ fn a_constant_beside_its_use_joins_the_settings_in_name_order() {
         texts(&loaded).get("main.jadpo").map(String::as_str),
         Some(
             format!(
-                "{PENCE}config {{\n    business_name: Pence {{\n        default: 1\n    }}\n    /// Orders from this many pence travel free.\n    free_delivery_from: Pence {{\n        default: 5000\n    }}\n    tax_band: Pence {{\n        default: 2\n    }}\n}}\n\nfunction delivery_fee(subtotal: Pence) -> Pence {{\n    if (subtotal >= config.free_delivery_from) {{\n        return 0\n    }}\n    return Pence(config.business_name + config.tax_band)\n}}\n"
+                "{PENCE}config {{\n    business_name: Coins {{\n        default: 1\n    }}\n    /// Orders from this many pence travel free.\n    free_delivery_from: Coins {{\n        default: 5000\n    }}\n    tax_band: Coins {{\n        default: 2\n    }}\n}}\n\nfunction delivery_fee(subtotal: Coins) -> Coins {{\n    if (subtotal >= config.free_delivery_from) {{\n        return 0\n    }}\n    return Coins(config.business_name + config.tax_band)\n}}\n"
             )
             .as_str()
         )
@@ -229,7 +229,7 @@ fn a_constant_beside_its_use_joins_the_settings_in_name_order() {
 #[test]
 fn a_worked_out_value_is_written_as_the_compiler_worked_it_out() {
     let text = format!(
-        "{PENCE}constant small_order_fee: Pence = 250\nconstant large_order_fee: Pence = Pence(small_order_fee * 2)\n\nfunction fees() -> Pence {{\n    return Pence(small_order_fee + large_order_fee)\n}}\n"
+        "{PENCE}constant small_order_fee: Coins = 250\nconstant large_order_fee: Coins = Coins(small_order_fee * 2)\n\nfunction fees() -> Coins {{\n    return Coins(small_order_fee + large_order_fee)\n}}\n"
     );
     let mut loaded = loaded(Layout::Loose, &[("main.jadpo", &text)]);
     assert_eq!(errors(&loaded), Vec::<String>::new());
@@ -237,13 +237,13 @@ fn a_worked_out_value_is_written_as_the_compiler_worked_it_out() {
     let texts = texts(&loaded);
     assert_eq!(
         texts.get("config.jadpo").map(String::as_str),
-        Some("config {\n    large_order_fee: Pence {\n        default: 500\n    }\n}\n")
+        Some("config {\n    large_order_fee: Coins {\n        default: 500\n    }\n}\n")
     );
     assert_eq!(
         texts.get("main.jadpo").map(String::as_str),
         Some(
             format!(
-                "{PENCE}constant small_order_fee: Pence = 250\n\nfunction fees() -> Pence {{\n    return Pence(small_order_fee + config.large_order_fee)\n}}\n"
+                "{PENCE}constant small_order_fee: Coins = 250\n\nfunction fees() -> Coins {{\n    return Coins(small_order_fee + config.large_order_fee)\n}}\n"
             )
             .as_str()
         )
@@ -254,7 +254,7 @@ fn a_worked_out_value_is_written_as_the_compiler_worked_it_out() {
 #[test]
 fn a_type_a_setting_cant_hold_is_refused() {
     let text = format!(
-        "{PENCE}constant fees: List<Pence> = [250, 500]\n\nfunction first_fee() -> Pence {{\n    for fee in fees {{\n        return fee\n    }}\n    return 0\n}}\n"
+        "{PENCE}constant fees: List<Coins> = [250, 500]\n\nfunction first_fee() -> Coins {{\n    for fee in fees {{\n        return fee\n    }}\n    return 0\n}}\n"
     );
     let loaded = loaded(Layout::Loose, &[("main.jadpo", &text)]);
     assert_eq!(errors(&loaded), Vec::<String>::new());
@@ -267,7 +267,7 @@ fn a_type_a_setting_cant_hold_is_refused() {
 #[test]
 fn a_name_a_setting_has_is_refused() {
     let text = format!(
-        "{PENCE}config {{\n    page_size: Pence {{\n        default: 20\n    }}\n}}\n\nconstant page_size: Pence = 25\n\nfunction pages() -> Pence {{\n    return Pence(page_size + config.page_size)\n}}\n"
+        "{PENCE}config {{\n    page_size: Coins {{\n        default: 20\n    }}\n}}\n\nconstant page_size: Coins = 25\n\nfunction pages() -> Coins {{\n    return Coins(page_size + config.page_size)\n}}\n"
     );
     let loaded = loaded(Layout::Loose, &[("main.jadpo", &text)]);
     assert_eq!(errors(&loaded), Vec::<String>::new());
@@ -302,7 +302,7 @@ fn a_read_in_an_update_by_id_is_refused() {
 #[test]
 fn a_read_in_another_constants_value_is_refused() {
     let text = format!(
-        "{PENCE}constant small_order_fee: Pence = 250\nconstant large_order_fee: Pence = Pence(small_order_fee * 2)\n\nfunction fees() -> Pence {{\n    return Pence(small_order_fee + large_order_fee)\n}}\n"
+        "{PENCE}constant small_order_fee: Coins = 250\nconstant large_order_fee: Coins = Coins(small_order_fee * 2)\n\nfunction fees() -> Coins {{\n    return Coins(small_order_fee + large_order_fee)\n}}\n"
     );
     let loaded = loaded(Layout::Loose, &[("main.jadpo", &text)]);
     let before = texts(&loaded);
@@ -316,7 +316,7 @@ fn a_read_in_another_constants_value_is_refused() {
 #[test]
 fn every_refusal_is_given_at_once() {
     let text = format!(
-        "{PENCE}config {{\n    fees: Pence {{\n        default: 20\n    }}\n}}\n\nconstant fees: List<Pence> = [250, 500]\ndecline constant.similar_exists: \"The first fees, which may differ\"\nconstant first: List<Pence> = fees\n\nfunction first_fee() -> Pence {{\n    for fee in first {{\n        return Pence(fee + config.fees)\n    }}\n    return 0\n}}\n"
+        "{PENCE}config {{\n    fees: Coins {{\n        default: 20\n    }}\n}}\n\nconstant fees: List<Coins> = [250, 500]\ndecline constant.similar_exists: \"The first fees, which may differ\"\nconstant first: List<Coins> = fees\n\nfunction first_fee() -> Coins {{\n    for fee in first {{\n        return Coins(fee + config.fees)\n    }}\n    return 0\n}}\n"
     );
     let loaded = loaded(Layout::Loose, &[("main.jadpo", &text)]);
     assert_eq!(errors(&loaded), Vec::<String>::new());
@@ -333,7 +333,7 @@ fn every_refusal_is_given_at_once() {
 #[test]
 fn a_default_naming_the_constant_makes_the_constant_that_setting() {
     let text = format!(
-        "{PENCE}constant largest_page: Pence = 100\n\nconfig {{\n    page_size: Pence {{\n        default: largest_page\n    }}\n}}\n\nfunction page() -> Pence {{\n    return Pence(config.page_size + largest_page)\n}}\n"
+        "{PENCE}constant largest_page: Coins = 100\n\nconfig {{\n    page_size: Coins {{\n        default: largest_page\n    }}\n}}\n\nfunction page() -> Coins {{\n    return Coins(config.page_size + largest_page)\n}}\n"
     );
     let mut loaded = loaded(Layout::Loose, &[("main.jadpo", &text)]);
     let problems = jadpo_check::check(&loaded.db, loaded.project);
@@ -356,7 +356,7 @@ fn a_default_naming_the_constant_makes_the_constant_that_setting() {
         texts(&loaded).get("main.jadpo").map(String::as_str),
         Some(
             format!(
-                "{PENCE}config {{\n    page_size: Pence {{\n        default: 100\n    }}\n}}\n\nfunction page() -> Pence {{\n    return Pence(config.page_size + config.page_size)\n}}\n"
+                "{PENCE}config {{\n    page_size: Coins {{\n        default: 100\n    }}\n}}\n\nfunction page() -> Coins {{\n    return Coins(config.page_size + config.page_size)\n}}\n"
             )
             .as_str()
         )
@@ -372,12 +372,12 @@ fn a_move_whose_result_would_not_check_is_undone() {
     let files: &[(&str, &str)] = &[
         APP,
         (
-            "domains/shop/types/pence.jadpo",
-            "type Pence = Int {\n    min: 0\n}\n",
+            "domains/shop/types/coins.jadpo",
+            "type Coins = Int {\n    min: 0\n}\n",
         ),
         (
             "domains/shop/actions/fee.jadpo",
-            "use shop/types { Pence }\n\naction fee() -> Pence {\n    return large_order_fee\n}\n\nconstant small_order_fee: Pence = 250\nconstant large_order_fee: Pence = Pence(small_order_fee * 2)\n",
+            "use shop/types { Coins }\n\naction fee() -> Coins {\n    return large_order_fee\n}\n\nconstant small_order_fee: Coins = 250\nconstant large_order_fee: Coins = Coins(small_order_fee * 2)\n",
         ),
     ];
     let mut loaded = loaded(Layout::Project, files);

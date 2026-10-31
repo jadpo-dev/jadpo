@@ -343,28 +343,28 @@ fn fmt_fixes_and_sorts_imports() {
     write(&root, "app.jadpo", "application {}\n");
     write(
         &root,
-        "shared/types/pence.jadpo",
-        "type Pence = Int {\n    min: 0\n}\n",
+        "shared/types/coins.jadpo",
+        "type Coins = Int {\n    min: 0\n}\n",
     );
     write(
         &root,
-        "shared/types/percent.jadpo",
-        "type Percent = Int {\n    min: 0\n    max: 100\n}\n",
+        "shared/types/portion.jadpo",
+        "type Portion = Int {\n    min: 0\n    max: 100\n}\n",
     );
     write(
         &root,
         "domains/bakery/types/loaf.jadpo",
-        "type Loaf = Object {\n    price: Pence\n}\n",
+        "type Loaf = Object {\n    price: Coins\n}\n",
     );
     write(
         &root,
         "domains/bakery/actions/price_loaf.jadpo",
-        "use shared/types { Percent }\n\naction price_loaf(loaf: Loaf, each: Pence) -> Pence {\n    return each\n}\n",
+        "use shared/types { Portion }\n\naction price_loaf(loaf: Loaf, each: Coins) -> Coins {\n    return each\n}\n",
     );
     write(
         &root,
         "domains/bakery/actions/discount_loaf.jadpo",
-        "use shared/types { Percent }\n\naction discount_loaf(reduction: Percent) -> Unit {}\n",
+        "use shared/types { Portion }\n\naction discount_loaf(reduction: Portion) -> Unit {}\n",
     );
     let checked = jadpo(&root, &["fmt", "--check"]);
     assert_eq!(checked.code, 1, "{}", checked.stdout);
@@ -372,11 +372,11 @@ fn fmt_fixes_and_sorts_imports() {
     assert_eq!(output.code, 0, "{}", output.stdout);
     assert_eq!(
         read(&root, "domains/bakery/actions/price_loaf.jadpo"),
-        "use shared/types { Pence }\nuse bakery/types { Loaf }\n\naction price_loaf(loaf: Loaf, each: Pence) -> Pence {\n    return each\n}\n"
+        "use shared/types { Coins }\nuse bakery/types { Loaf }\n\naction price_loaf(loaf: Loaf, each: Coins) -> Coins {\n    return each\n}\n"
     );
     assert_eq!(
         read(&root, "domains/bakery/types/loaf.jadpo"),
-        "use shared/types { Pence }\n\ntype Loaf = Object {\n    price: Pence\n}\n"
+        "use shared/types { Coins }\n\ntype Loaf = Object {\n    price: Coins\n}\n"
     );
     assert_eq!(jadpo(&root, &["check"]).code, 0);
     assert_eq!(jadpo(&root, &["fmt", "--check"]).code, 0);
