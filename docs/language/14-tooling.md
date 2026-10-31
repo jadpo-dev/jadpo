@@ -3008,19 +3008,19 @@ against one.
 
 | Rule | Raised by | What it means |
 |---|---|---|
-| `ai.usage_unavailable` | `ai usage` | AI usage's database couldn't be read |
-| `deliveries.not_found` | `deliveries` | No delivery or schedule run has the id given |
-| `deliveries.unavailable` | `deliveries` | Deliveries' database couldn't be read |
-| `deliveries.wrong_state` | `deliveries` | Delivery or schedule run isn't in a state the action applies to |
+| `ai.usage_unavailable` | `ai usage` | The app's AI usage couldn't be read from its database, because it can't be reached or has no table for it yet |
+| `deliveries.not_found` | `deliveries` | The id given to `jadpo deliveries` matches no delivery or schedule run in the database |
+| `deliveries.unavailable` | `deliveries` | The app's deliveries couldn't be read from their database, because it can't be reached or has no table for them yet |
+| `deliveries.wrong_state` | `deliveries` | A delivery or schedule run was asked to do something its state rules out, such as cancelling one that has already failed |
 | `migration.apply_failed` | `migrate apply`, `seed`, `dev`, `test` | Applying the project's migrations to a database stopped at a step that failed |
 | `migration.extension_missing` | `migrate apply`, `seed`, `dev`, `test` | The project's migrations need a PostgreSQL extension, such as pgvector, that the database server doesn't offer or that the role applying them can't create |
 | `migration.extension_outdated` | `migrate apply`, `seed`, `dev`, `test` | The database server's PostgreSQL extension, such as pgvector, is older than the project's migrations and queries need |
 | `migration.store_diverged` | `migrate apply`, `seed`, `dev` | The migrations a database has applied don't match the project's: one has changed since it ran, the project doesn't have one, or one comes out of order |
-| `runs.unavailable` | `runs unfinished` | Unfinished runs' database couldn't be read |
-| `schedules.lease_held` | `schedules run`, `deliveries retry` | Schedule is already running |
-| `schedules.no_tick` | `schedules run`, `deliveries retry` | No tick picked up the run asked for |
-| `schedules.run_failed` | `schedules run`, `deliveries retry` | Schedule's run failed |
-| `schedules.unavailable` | `schedules`, `why` | Schedules' database couldn't be read |
+| `runs.unavailable` | `runs unfinished` | The app's unfinished runs couldn't be read from their database, because it can't be reached or has no table for them yet |
+| `schedules.lease_held` | `schedules run`, `deliveries retry` | A schedule was run by hand while another run of it still holds its lease, so it wasn't run again |
+| `schedules.no_tick` | `schedules run`, `deliveries retry` | A schedule was run by hand against a deployment, and no tick of the app picked the run up in time, so nothing ran |
+| `schedules.run_failed` | `schedules run`, `deliveries retry` | A schedule run by hand ended in a failure, or its run on the app never ended |
+| `schedules.unavailable` | `schedules`, `deliveries retry`, `why` | The app's schedules couldn't be read from their database, because it can't be reached or has no table for them yet |
 | `seed.failed` | `seed` | Seed ended with a failure or a fault |
 | `seed.production_refused` | `seed` | A seed was run against a database that isn't on this machine, which may be production |
 | `seed.unavailable` | `seed` | The database a seed runs against couldn't be reached, so nothing was run |
