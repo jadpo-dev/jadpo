@@ -1030,36 +1030,66 @@ fn list_row(row: &Row, grid: &Grid, style: &Style) -> Line {
 
 /// A label in columns 2–9 and its value from column 12, wrapped as prose.
 /// The value's pieces are words joined by single spaces. Plain output keeps
-/// area 14's `label: value` form on one line, so it can be searched.
+/// area 14's `label: value` form on one line, so it can be searched. A
+/// value's own line breaks, as in a tool's lines a reason quotes, start a
+/// line under the value with the line's own indent kept, in both forms;
+/// blank ones are left out, so the error stays one block.
 pub(crate) fn field(label: &str, value: Vec<Piece>, style: &Style) -> Vec<Line> {
     if !rich(style) {
         let text: Vec<&str> = value.iter().map(|piece| piece.text.as_str()).collect();
-        return vec![vec![raw(format!("  {label}: {}", text.join(" ")))]];
+        let text = text.join(" ");
+        let mut quoted = broken(&text);
+        let first = quoted.next().unwrap_or_default();
+        let indent = " ".repeat(4 + width(label));
+        let mut lines = vec![vec![raw(format!("  {label}: {first}"))]];
+        lines.extend(quoted.map(|line| vec![raw(format!("{indent}{line}"))]));
+        return lines;
     }
     let pad = " ".repeat(VALUE_COLUMN.saturating_sub(2 + width(label)).max(2));
     let indent = 2 + width(label) + width(&pad);
     let room = style.width.saturating_sub(indent);
     let mut lines: Vec<Line> = vec![vec![raw("  "), paint(Token::Muted, label), raw(pad)]];
+    // Columns taken after the indent; whether the line has a word yet;
+    // whether one of the value's own line breaks waits for the next word.
     let mut used = 0;
+    let mut fresh = true;
+    let mut broke = false;
     for piece in value {
-        for word in words(&piece.text) {
-            let last = lines.last_mut().expect("a line");
-            if used > 0 && used + 1 + width(word) > room {
-                lines.push(vec![raw(" ".repeat(indent))]);
-                used = 0;
-            } else if used > 0 {
-                last.push(raw(" "));
-                used += 1;
+        for (at, part) in piece.text.split('\n').enumerate() {
+            let part = part.strip_suffix('\r').unwrap_or(part);
+            broke |= at > 0;
+            if part.trim().is_empty() {
+                continue;
             }
-            used += width(word);
-            let last = lines.last_mut().expect("a line");
-            last.push(Piece {
-                text: word.to_string(),
-                ..piece.clone()
-            });
+            if broke {
+                let kept = width(part) - width(part.trim_start());
+                lines.push(vec![raw(" ".repeat(indent + kept))]);
+                (used, fresh, broke) = (kept, true, false);
+            }
+            for word in words(part) {
+                if !fresh && used + 1 + width(word) > room {
+                    lines.push(vec![raw(" ".repeat(indent))]);
+                    used = 0;
+                } else if !fresh {
+                    lines.last_mut().expect("a line").push(raw(" "));
+                    used += 1;
+                }
+                fresh = false;
+                used += width(word);
+                lines.last_mut().expect("a line").push(Piece {
+                    text: word.to_string(),
+                    ..piece.clone()
+                });
+            }
         }
     }
     lines
+}
+
+/// `text`'s lines, without blank ones (each line break, `\r\n` among them,
+/// ends one).
+fn broken(text: &str) -> impl Iterator<Item = &str> {
+    text.lines().filter(|line| !line.trim().is_empty())
 }
 
 /// The headline: symbol and `error` in the failure colour and bold, two
