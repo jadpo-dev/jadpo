@@ -740,7 +740,7 @@ fn record(
 }
 
 /// The value a source names among a read's arguments.
-fn value_at(source: &Source, args: &[Value]) -> Option<Value> {
+pub(crate) fn value_at(source: &Source, args: &[Value]) -> Option<Value> {
     let Source::Arg { index, path } = source else {
         return None;
     };

@@ -1206,6 +1206,10 @@ started them commits, like events. `jadpo test` runs them in batches of
 two items and simulates a restart between every batch, so every import or
 export test also tests resuming. A test asserts on what the app recorded
 and on the summary `finished:` received, and can read `batches.status`.
+A run whose batch couldn't commit, such as one whose item's call a fake
+answers `unavailable`, gives its lease back and waits, as it would for
+the tick, and the test's next `clock.advance`, of any length, carries it
+on.
 
 #### Not built yet
 
@@ -1218,13 +1222,12 @@ These parts of fakes aren't built yet:
   `fakes: { ai.embed: }` ([Testing AI calls](21-ai.md#testing-ai-calls)).
 - `fixture_file`, and telling the file store to fail from a test. The
   in-memory store itself is built.
-- Running batches to the end: a test sees a run as it starts, and a
-  file's run reads two rows a batch on a test's host.
 
 What is built is every call a test reaches answering through its
-package's fake, and a test's `fakes:` scripting an operation's answers in
+package's fake, a test's `fakes:` scripting an operation's answers in
 order, each a value of its output type, one of its failures by its code,
-or a condition. Why fakes work this way is in the
+or a condition, and batch runs going to their end within the test, two
+items a batch with a restart between batches. Why fakes work this way is in the
 [Integrations design notes](notes/11-integrations.md).
 
 ## Shared test data: fixtures
@@ -1801,9 +1804,7 @@ In the second, the delivery fails with `NoChef`, which is worth
 retrying, so it waits 30 seconds. Starting the shift doesn't move the
 clock, and the retry runs once `clock.advance(30s)` reaches it.
 
-Not built yet: caches, which need the Redis driver, and running a batch
-to the end in a test. A batch run a step starts is left as it was started
-([Provider calls and capabilities in tests](#provider-calls-and-capabilities-in-tests)).
+Not built yet: caches, which need the Redis driver.
 
 ## What is built
 <!-- topic: testing-built -->
@@ -1817,9 +1818,10 @@ to the end in a test. A batch run a step starts is left as it was started
 | Assertion messages | Partly built: a failed `assert` reports its file and line, its source with each part's value hung beneath it, expected and actual, a field-by-field diff for records, lists, sets and maps, a stable code and the rerun command with the order seed (see [Errors](#errors)). Not built yet: the trace, fakes, kept database and clock in the report. A statement over several lines shows its first line; `--json` has all of it. |
 | Checking a failure | Built: `assert call(…) fails Failure`; when the call returns or fails differently, the report shows the value, or the other failure with its code, kind, fields and where it was raised. A failure under `attempt` ends the test as `test.unexpected_failure`, and a fault as `test.fault`, each with its `.jadpo` frames. |
 | Events | Built: what each step emits is delivered once it comes back and before the next statement, at the test's clock, until nothing is due, in an order the run's seed shuffles; a retry waits its full backoff until `clock.advance` reaches it, and a delivery that fails for good, or stops as `diverged`, ends the test as `test.subscriber_failed` ("Caches and events"). |
+| Batches | Built: a batch run a step starts, or a delivery or an item starts in turn, runs to its end before the test's next statement, drawn among the deliveries a batch at a time, at the test's clock, two items a batch with a fresh runner claiming each, as after a restart. An item that fails is the run's problem, and a `finished:` that fails leaves the run `failed`, which `batches.status` reads; the test goes on. A run whose batch couldn't commit, such as one whose item's call a fake answers `unavailable`, gives its runner's lease back and waits, as for the tick, until the next `clock.advance`, of any length ("Batches"). |
 | Clock | Built: a test's clock starts at its `clock:`, or at 2000-01-01T00:00:00Z without one, and `clock.advance(...)` moves it on for the calls after it; only a test moves it (`type.test_clock_context`, a fixture and a seed included), and a move backwards is the fault `clock_backward`. |
 | Configuration | Built: `test:` values on fields, defaults, generated secrets and a test's own `config:`; a request sent through a route is not followed for the compile-time check that every setting a test reads has a value, and a read with none then ends the test as a fault naming the setting. |
-| Integration fakes | Partly built: for provider packages, every provider call a test reaches answers through its package's fake, with the operation's generated default unless the test's `fakes:` scripts its answers, each checked against the package (`semantic.fake_invalid`); a script the calls run past is `test.fake_exhausted`, one with answers left `test.fake_unused` ("Fakes for integrations"). Package fakes keep keys, and a test that reaches an action with several changing calls runs again with a crash at each step boundary ("Provider calls and capabilities in tests"). `email.sent` ([Email](16-built-in-services.md#email)): every email a test sends is caught, rendered whole, a mail package's included, and read as a `List<SentEmail>`. Not built yet: `.requests` (built for the `ai` fake, `ai.<prompt>.requests`), the capability fakes but `ai`'s, grants, documents, batches and `fixture_file`. |
+| Integration fakes | Partly built: for provider packages, every provider call a test reaches answers through its package's fake, with the operation's generated default unless the test's `fakes:` scripts its answers, each checked against the package (`semantic.fake_invalid`); a script the calls run past is `test.fake_exhausted`, one with answers left `test.fake_unused` ("Fakes for integrations"). Package fakes keep keys, and a test that reaches an action with several changing calls runs again with a crash at each step boundary ("Provider calls and capabilities in tests"). `email.sent` ([Email](16-built-in-services.md#email)): every email a test sends is caught, rendered whole, a mail package's included, and read as a `List<SentEmail>`. Not built yet: `.requests` (built for the `ai` fake, `ai.<prompt>.requests`), the capability fakes but `ai`'s, grants, documents and `fixture_file`. |
 | Database | Built: `jadpo test` gives each action test in a project with tables its own copy of a template built from the migrations, on the server `JADPO_TEST_DATABASE_URL` names or a disposable one started from the machine's PostgreSQL tools; copies are prepared in the background, and a test gets its copy the first time it uses a store. `--keep-failed` keeps a failed test's database and names it in the report. Tests read and write records through actions, queries and fixtures; a concurrent change, which needs a second connection, is shown by the runtime's own tests. |
 | Caller | Built: `Principal.user(user)` and `Principal.service(service)` in tests, fixtures and seeds; a call passing a caller runs as that caller, one passing none runs without policy. |
 | Placement | Built: a test sits in `<name>.test.jadpo` beside its subject, or in root `tests/`; a test elsewhere is `layout.wrong_folder`, which names the `.test.jadpo` file beside it, and a test file with nothing beside it is `layout.test_without_subject`. |

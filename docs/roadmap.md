@@ -368,10 +368,7 @@ time.
 - [x] **A1 Diagnostics that point at the cause**: area 1, "Reserved words" and "How a promotion happens"; area 2, "Values that may be missing"; area 9, "Actions"; area 14, "Commands for debugging, editors and help".
 - [x] **A2 Listed queries and calls a listing doesn't cover**: area 9, "Listing a query", "A call the listing doesn't cover" and "The permissions report"; area 1, "Which rules can be declined".
 - [x] **A3 External tokens in tests and `jadpo dev`**: area 8, "External tokens in tests and `jadpo dev`"; area 13, `as:`; area 14, `jadpo dev`'s "External tokens"; area 19, `Jwk`'s `key_ops`.
-- [ ] **A4 Batches run to the end in tests** `opus · high`: area 13,
-  "Batches", which is specified and was on no chunk. Done when the
-  seed-library example's test of a withdrawn packet passes through its
-  batch, with no page action called by hand.
+- [x] **A4 Batches run to the end in tests**: area 13, "Batches" and "What is built"; compiler/runtime §2.5; `examples/24-seed-library/README.md`.
 - [x] **A5 `jadpo seed`**: area 5, "Seeds"; area 14, "`jadpo seed`" and "Command errors".
 - [ ] **A6 Guidance an agent reads first** `opus · high` after A1 to A5:
   the `AGENTS.md` that `jadpo new` writes gains a workflow (one concern at
