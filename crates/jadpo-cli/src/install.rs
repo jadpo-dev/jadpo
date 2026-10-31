@@ -890,6 +890,10 @@ pub fn update(call: &Call) -> Reply {
     let folder = jadpo_db::package_folder(&line.package);
     let before = std::fs::read_to_string(root.join(&folder).join(jadpo_db::record::SURFACE_FILE))
         .unwrap_or_default();
+    // An installed copy changed by hand (`package.digest_mismatch`) is
+    // installed again from its source, even at the same release.
+    let intact = digest_of_source(&line.source)
+        .is_none_or(|digest| folder_digest(&root.join(&folder)).as_deref() == Some(digest));
     let (verified, source, _clone) = match &line.source {
         Source::Link { path } => {
             return Reply::failed(arguments(
@@ -918,7 +922,7 @@ pub fn update(call: &Call) -> Reply {
                 Ok(verified) => verified,
                 Err(reply) => return reply,
             };
-            if &verified.digest == digest {
+            if &verified.digest == digest && intact {
                 return up_to_date(&line);
             }
             let source = Source::Path {
@@ -965,21 +969,29 @@ pub fn update(call: &Call) -> Reply {
                     format!("Its tag `{}` can't be read.", newest.tag),
                 );
             };
-            if older && (&newest.tag != tag || &new_commit == commit) {
-                return up_to_date(&line);
-            }
-            if let Err(reply) = checkout(&at, &new_commit, repository) {
+            // No newer release: a changed copy is installed again at the
+            // release the lock names.
+            let (target_tag, target_commit) =
+                if older && (&newest.tag != tag || &new_commit == commit) {
+                    if intact {
+                        return up_to_date(&line);
+                    }
+                    (tag.clone(), commit.clone())
+                } else {
+                    (newest.tag.clone(), new_commit)
+                };
+            if let Err(reply) = checkout(&at, &target_commit, repository) {
                 return reply;
             }
-            let verified = match verify(&at, Some(&newest.tag), repository, "package update") {
+            let verified = match verify(&at, Some(&target_tag), repository, "package update") {
                 Ok(verified) => verified,
                 Err(reply) => return reply,
             };
             let source = Source::Git {
                 version: verified.version.clone(),
                 repository: repository.clone(),
-                tag: newest.tag.clone(),
-                commit: new_commit,
+                tag: target_tag,
+                commit: target_commit,
                 digest: verified.digest.clone(),
             };
             (verified, source, Some(scratch))
@@ -1036,12 +1048,21 @@ pub fn update(call: &Call) -> Reply {
         rows.push((mark, columns));
     }
     let old_version = version_of(&line.source).unwrap_or("").to_string();
+    // The release the lock already names, put back over a changed copy.
+    let again = !intact && digest_of_source(&line.source) == Some(verified.digest.as_str());
     let mut screen = Screen::new().with(Block::Status {
         outcome: Outcome::Success,
-        text: format!(
-            "Updated {} from {old_version} to {}",
-            line.package, verified.version
-        ),
+        text: if again {
+            format!(
+                "Installed {} {} again from its source",
+                line.package, verified.version
+            )
+        } else {
+            format!(
+                "Updated {} from {old_version} to {}",
+                line.package, verified.version
+            )
+        },
         rows: vec![
             ("folder".to_string(), folder.clone()),
             ("source".to_string(), source_words(&source)),
@@ -1078,7 +1099,15 @@ pub fn update(call: &Call) -> Reply {
             }
         )));
     }
-    screen.push(Block::summary(Outcome::Success, "package updated", facts));
+    screen.push(Block::summary(
+        Outcome::Success,
+        if again {
+            "package installed again"
+        } else {
+            "package updated"
+        },
+        facts,
+    ));
     screen.push(Block::hint(
         "jadpo check",
         format!("checks the app against {}", verified.version),
@@ -1103,6 +1132,37 @@ pub fn update(call: &Call) -> Reply {
             ),
         ]),
     )
+}
+
+/// The digest the lock gives a package's source.
+fn digest_of_source(source: &Source) -> Option<&str> {
+    match source {
+        Source::Registry { digest, .. }
+        | Source::Git { digest, .. }
+        | Source::Path { digest, .. } => Some(digest),
+        Source::Link { .. } => None,
+    }
+}
+
+/// The digest of an installed package's folder as it is now, as
+/// `jadpo check` works it out; `None` when it can't be read.
+fn folder_digest(folder: &Path) -> Option<String> {
+    let mut files = Vec::new();
+    for path in jadpo_db::package_files(folder) {
+        let relative = path
+            .strip_prefix(folder)
+            .ok()?
+            .components()
+            .map(|part| part.as_os_str().to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+            .join("/");
+        files.push((relative, std::fs::read(&path).ok()?));
+    }
+    let borrowed: Vec<(&str, &[u8])> = files
+        .iter()
+        .map(|(path, bytes)| (path.as_str(), bytes.as_slice()))
+        .collect();
+    Some(jadpo_db::package_digest(&borrowed))
 }
 
 fn up_to_date(line: &Locked) -> Reply {
