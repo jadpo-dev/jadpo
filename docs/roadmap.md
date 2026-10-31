@@ -277,8 +277,8 @@ D1 first: the site starts once D1 has merged.
 - [x] **D6 Packages, services and integrations explained**: [area 11](language/11-integrations.md), "How packages, connections, capabilities and services fit together".
 - [x] **D7 One place for the golden todo and the benchmarks**: [benchmarks](../benchmarks/README.md);
   `tools/` holds the gate and its `docs/`, `checks/`, `references/` and `fixtures/`.
-- [ ] **D8 The VS Code extension, finished and published**: area 14, "Editor support" and "What is built"; `editors/vscode/README.md`; `.github/workflows/vscode-extension.yml`.
-  Waits: the editor's rename, which comes with `jadpo rename` and the identity registry (after the first build, items 6 and 7).
+- [x] **D8a The VS Code extension, published**: area 14, "Editor support" and "What is built"; `editors/vscode/README.md`; `.github/workflows/vscode-extension.yml`.
+- [ ] **D8b Rename in the editor** `opus · high`: area 14, "Editor support". Waits: `jadpo rename` and the identity registry (after the first build, items 6 and 7).
 - [x] **D9 Docs for newcomers**: [writing guide](writing.md); the [Learn path](learn/README.md); the [primer](primer.md); [documentation](documentation.md), "The bundle".
 - [x] **D10 Area pages to the writing guide**: the area pages in [docs/language](language/README.md), each topic to the [writing guide](writing.md), "How a reference topic reads", and the rationale in each area's design notes.
 - [ ] **D11 Task guides** `opus · high`: how-to pages in the bundle, a
