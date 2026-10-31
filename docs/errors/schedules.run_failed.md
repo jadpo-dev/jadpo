@@ -112,8 +112,8 @@ there, then run the schedule again:
 jadpo schedules run morning_digest
 ```
 
-The run is recorded as succeeded, and the schedule's next run is at its
-own time again.
+The run is recorded as succeeded, and `jadpo schedules` shows it as
+the schedule's last run.
 
 ## Related
 
