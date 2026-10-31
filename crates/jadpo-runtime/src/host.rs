@@ -455,10 +455,11 @@ pub trait Host {
     }
 
     /// How many of a file's rows a file helper's run reads into one batch
-    /// (area 12, "How a run is kept"; chunk 6.4b): a batch's transaction
-    /// commits that many rows' writes and the run's position together. A
-    /// test's host gives fewer, so every import resumes between batches
-    /// (area 13, "Provider calls and capabilities in tests").
+    /// (area 12, "How a run is kept"; chunk 6.4b), and the most items of a
+    /// query's page one batch holds: a batch's transaction commits that
+    /// many items' writes and the run's position together. A test's host
+    /// gives fewer, so every run resumes between batches (area 13,
+    /// "Batches").
     fn rows_per_batch(&self) -> u32 {
         crate::batches::ROWS_PER_BATCH
     }

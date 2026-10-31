@@ -30,9 +30,10 @@ use jadpo_host_native::{Postgres, Runtime, postgres};
 use jadpo_interp::Program;
 use jadpo_runtime::batches::{BatchStart, Ran};
 use jadpo_runtime::runner::{Deferred, run_deferred};
+use jadpo_runtime::test_steps::after_step;
 use jadpo_runtime::{
-    Clock, Ctx, Database, Env, Executor, Host, Isolation, LocalFuture, Outcome, Row, SqlValue,
-    StoreError, Transaction,
+    Clock, Ctx, Database, Env, Executor, Frame, Host, Isolation, LocalFuture, Outcome, Row,
+    SqlValue, StoreError, Transaction,
 };
 use jadpo_term::Environment;
 use jadpo_value::Value;
@@ -293,6 +294,10 @@ struct Store {
     clock: Cell<i64>,
     random: Cell<u64>,
     crash_in: Rc<Cell<Option<u32>>>,
+    /// How many of a file's rows, or a query's items, one batch holds.
+    rows_per_batch: Cell<u32>,
+    /// How many times a runner has claimed a run.
+    claims: Cell<u32>,
 }
 
 impl Host for Store {
@@ -316,9 +321,24 @@ impl Host for Store {
     fn now_ms(&self) -> Option<i64> {
         Some(self.clock.get())
     }
+
+    fn rows_per_batch(&self) -> u32 {
+        self.rows_per_batch.get()
+    }
 }
 
 impl Database for Store {
+    fn query_once<'a>(
+        &'a self,
+        sql: &'a str,
+        params: &'a [SqlValue],
+    ) -> LocalFuture<'a, Result<Vec<Row>, StoreError>> {
+        if sql.starts_with("UPDATE \"jadpo_batch_runs\" SET \"lease_until\" = $2 WHERE") {
+            self.claims.set(self.claims.get() + 1);
+        }
+        self.db.query_once(sql, params)
+    }
+
     fn begin_at(
         &self,
         isolation: Isolation,
@@ -576,6 +596,8 @@ fn host(url: &str) -> Store {
         clock: Cell::new(START),
         random: Cell::new(7),
         crash_in: Rc::new(Cell::new(None)),
+        rows_per_batch: Cell::new(jadpo_runtime::batches::ROWS_PER_BATCH),
+        claims: Cell::new(0),
     }
 }
 
@@ -673,6 +695,97 @@ fn a_run_commits_page_by_page_keeps_problems_and_finishes_once() {
         // A run that finished is never run again.
         let again = jadpo_runtime::batches::run(program, &host, &starts_of(&run)).await;
         assert_eq!(again.0, Ran::NotClaimed);
+    });
+}
+
+/// A test's step that starts a run (area 13, "Batches"): the run goes to
+/// its end before the test's next statement, at the test's clock, two
+/// items a batch whatever its query's page reads, each batch claimed
+/// afresh as after a restart, then `finished:` in a batch of its own.
+#[test]
+fn a_tests_step_runs_its_batches_to_the_end_two_items_a_batch() {
+    let Some(loaded) = load("in-a-test") else {
+        return;
+    };
+    let program = &loaded.program;
+    let host = host(&loaded.url);
+    host.rows_per_batch
+        .set(jadpo_runtime::test_run::ROWS_PER_BATCH);
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        stock(program, &host, 5).await;
+        let check = value(call(program, &host, "new_check", vec![]).await.0);
+        let mut ctx = host.ctx(program);
+        ctx.deliver_between_steps(1);
+        let id = program.plan().find("check_stock").expect("the action");
+        let outcome = program
+            .run(&mut ctx, id, vec![field(&check, "id"), page(25)])
+            .await;
+        let run = field(&value(outcome), "run");
+        assert_eq!(kept(&host, &run).await, ("running".to_string(), 0, 0));
+        host.claims.set(0);
+        let stepped = after_step(program, &mut ctx, false, Frame::ENTRY).await;
+        assert!(stepped.is_ok(), "{stepped:?}");
+        // Pages of two, two and one, then `finished:`, each claimed by a
+        // fresh runner.
+        assert_eq!(host.claims.get(), 4);
+        assert_eq!(kept(&host, &run).await, ("finished".to_string(), 5, 1));
+        let done: Vec<i64> = counts(&host).await.iter().map(|(_, n)| *n).collect();
+        assert_eq!(done, [1, 1, 1, 0, 1]);
+        let rows = host
+            .rows("SELECT \"checked\", \"problems\" FROM \"stock_check\"", &[])
+            .await;
+        assert_eq!(rows, [vec![SqlValue::Int8(5), SqlValue::Int8(1)]]);
+        // At the test's clock, not the host's.
+        let ended = host
+            .rows(
+                "SELECT (\"finished_at\" AT TIME ZONE 'UTC')::text FROM \"jadpo_batch_runs\"",
+                &[],
+            )
+            .await;
+        assert_eq!(ended, [vec![SqlValue::Text("2000-01-01 00:00:00".into())]]);
+        assert!(ctx.take_deferred().is_empty(), "nothing is left to run");
+    });
+}
+
+/// A run in a test whose batch couldn't commit gives its lease back and
+/// waits, as it would for the tick, until the test's clock next moves,
+/// however little (area 13, "Batches").
+#[test]
+fn a_tests_run_that_stops_carries_on_at_the_next_clock_advance() {
+    let Some(loaded) = load("in-a-test-paused") else {
+        return;
+    };
+    let program = &loaded.program;
+    let host = host(&loaded.url);
+    host.rows_per_batch
+        .set(jadpo_runtime::test_run::ROWS_PER_BATCH);
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        stock(program, &host, 5).await;
+        let check = value(call(program, &host, "new_check", vec![]).await.0);
+        let mut ctx = host.ctx(program);
+        ctx.deliver_between_steps(1);
+        let id = program.plan().find("check_stock").expect("the action");
+        let outcome = program
+            .run(&mut ctx, id, vec![field(&check, "id"), page(25)])
+            .await;
+        let run = field(&value(outcome), "run");
+        // The second batch dies before it commits.
+        host.crash_in.set(Some(2));
+        let stepped = after_step(program, &mut ctx, false, Frame::ENTRY).await;
+        assert!(stepped.is_ok(), "{stepped:?}");
+        assert_eq!(kept(&host, &run).await, ("running".to_string(), 2, 0));
+        // A step that doesn't move the clock leaves it waiting.
+        let stepped = after_step(program, &mut ctx, false, Frame::ENTRY).await;
+        assert!(stepped.is_ok(), "{stepped:?}");
+        assert_eq!(kept(&host, &run).await, ("running".to_string(), 2, 0));
+        assert!(ctx.advance_clock(1_000));
+        let stepped = after_step(program, &mut ctx, true, Frame::ENTRY).await;
+        assert!(stepped.is_ok(), "{stepped:?}");
+        assert_eq!(kept(&host, &run).await, ("finished".to_string(), 5, 1));
+        let done: Vec<i64> = counts(&host).await.iter().map(|(_, n)| *n).collect();
+        assert_eq!(done, [1, 1, 1, 0, 1]);
     });
 }
 

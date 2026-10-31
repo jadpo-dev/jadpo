@@ -34,6 +34,7 @@ checked becomes a problem, not a stop.
 11. **Reading a file's rows.** `csv.read` starts a batch over a stored file's rows, each read as an `Input` by its columns (`column:` names one that isn't the field's name), a batch's rows read from the store before its transaction opens; a row that can't be read is a problem by its row and column, never its value. See `domains/seedbank/actions/add_sheet.jadpo`, `domains/seedbank/types/donation_row.jadpo` and [area 19, Data formats](../../docs/language/19-standard-library.md#data-formats-json-csv-tsv-and-json-lines).
 12. **Reading a file whole.** `sheets.read(sheet)` gives a file's bytes as `FileContents`, for passing on; only a field holding 10 MB or less is read whole. See `domains/seedbank/actions/sheet_bytes.jadpo`.
 13. **Writing a file's rows.** `csv.write` walks a query's pages into a stored file, each item's row an `Output` that `each:` builds, each page read in a transaction of its own and its rows put in the store only once that transaction has closed; `format: CsvFormat.spreadsheet` writes for a spreadsheet, and `finished:` gets an `ExportSummary` holding the file. See `domains/seedbank/actions/list_shelves.jadpo`, `domains/seedbank/types/shelf_line.jadpo` and [area 12, How an export's run is kept](../../docs/language/12-jobs-and-events.md#how-an-exports-run-is-kept).
+14. **Testing a batch.** A run a test's step starts goes to its end before the test's next line, two items a batch with a restart between batches, so a test reads what the whole run did and what `finished:` kept, and `batches.status` says it finished. See `domains/seedbank/actions/start_check.test.jadpo` and [area 13, Batches](../../docs/language/13-testing.md#batches).
 
 ## Run it
 
@@ -48,10 +49,12 @@ target/release/jadpo fmt --check examples/24-seed-library
 ```
 
 - `check` ends with `checked: <n> files` and no errors.
-- `test` needs PostgreSQL, and ends with `tested: 8 passed, 8 action tests`.
-  A run starts after its action commits, on the runtime's runner, which
-  a test doesn't have, so the tests see each run as it starts, and test
-  each page's action on its own.
+- `test` needs PostgreSQL, and ends with `tested: 11 passed, 11 action tests`.
+  A run starts after its action commits; in a test it runs to its end
+  before the test's next line, two items a batch with a restart between
+  batches, so the tests see what the whole run did (a packet withdrawn,
+  the count `finished:` kept, a sheet's rows shelved, a list written) and
+  every one of them tests resuming too.
 
 ## Try next
 

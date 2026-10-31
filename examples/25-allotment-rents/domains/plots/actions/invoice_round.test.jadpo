@@ -1,5 +1,6 @@
-// A batch runs after the action that starts it commits, on the runner;
-// a test's host keeps no runner, so these tests see a run as it starts.
+// A batch runs after the action that starts it commits. In a test it runs
+// to the end before the test's next line, so the test sees what the whole
+// round charged.
 
 use plots/entities { RentRound }
 use plots/types { SocietySites }
@@ -15,13 +16,16 @@ test "starting a round twice gives the same run" {
     assert restarted.invoices == first.invoices
 }
 
-test "a round starts running with nothing done yet" {
+test "a round charges its own society's plots alone" {
     var allotments: SocietySites = two_societies()
-    var rent_round: RentRound = attempt open_rent_round(allotments.hill_top.id, 2027)
+    var rent_round: RentRound = attempt open_rent_round(allotments.vale_road.id, 2027)
     var started: RentRound = invoice_round(rent_round)
-    var started_ok: Bool = match started.invoices {
-        some(invoices) -> round_progress(invoices).state == BatchState.running
+    var charged: RentRound = attempt RentRound.get(started.id)
+    assert charged.invoiced == 3
+    assert charged.unlet == 1
+    var round_done: Bool = match started.invoices {
+        some(invoices) -> round_progress(invoices).state == BatchState.finished
         none -> false
     }
-    assert started_ok
+    assert round_done
 }
