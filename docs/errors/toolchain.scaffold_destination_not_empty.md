@@ -19,11 +19,13 @@ it.
 
 A folder `todo-app` already holds a hidden file:
 
-```sh
+```sh run project=e-scaffold-not-empty expect=toolchain.scaffold_destination_not_empty
+mkdir todo-app
+touch todo-app/.gitignore
 jadpo new todo-app
 ```
 
-```text
+```text output
 error: `todo-app` already has files in it
   reason: `jadpo new` writes a whole project, so it writes only into a folder that doesn't exist yet or is empty. It wrote nothing.
   next: Name a folder that doesn't exist yet, or empty `todo-app` first (human)
@@ -40,11 +42,11 @@ decides whether the files already in `todo-app` are kept.
 **If the files in the folder should stay**, name a folder that doesn't
 exist yet:
 
-```sh
+```sh run project=e-scaffold-not-empty
 jadpo new todo-app-2
 ```
 
-```text
+```text output
 Created todo-app-2
     jadpo  0.1
     route  POST /hello

@@ -750,6 +750,13 @@ class ErrorFormat(unittest.TestCase):
         text = FORMATTED.replace('- [Settings](../language/01-a.md#settings)', 'Settings.')
         self.assertIn('links the topics', self.problems(text)[0])
 
+    def test_a_command_error_shows_its_run_block(self):
+        text = FORMATTED.replace('```jadpo check project=e expect=a.b\nx: "no"\n```',
+                                 '```sh run project=e expect=a.b\njadpo go\n```')
+        self.assertEqual(self.problems(text), [])
+        text = text.replace('```sh run project=e expect=a.b', '```sh run project=e expect=a.c')
+        self.assertIn('expect=a.b', self.problems(text)[0])
+
     def test_the_scope_is_what_the_user_layer_and_people_reach(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -773,6 +780,80 @@ class ErrorFormat(unittest.TestCase):
             text = bundle.error_markdown(page, set())
         self.assertEqual(text.count('something other than'), 1)
         self.assertNotIn('project=e-off', text)
+
+
+FAKE_JADPO = """#!/bin/sh
+case "$1" in
+  fail) printf 'error: no\\n  next: Fix it (agent)\\n  rule: cli.x\\n' >&2; exit 1;;
+  where) pwd; echo "$HOME"; echo "checked: 1 file in 0.3 s";;
+  ask) printf '? Enter X  hidden  '; stty -echo; read line; stty echo; printf '\\n'; echo "got $line";;
+  *) echo ok;;
+esac
+"""
+
+
+class Commands(unittest.TestCase):
+    """A ```sh run block: its commands run in a copy of its project, and
+    what they print is compared with the output block after it."""
+    catalogue = {'cli.x': {'id': 'cli.x', 'area': docs.COMMAND_AREA, 'decides': 'agent', 'summary': 'X'}}
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        fake = Path(self.dir.name) / 'jadpo'
+        fake.write_text(FAKE_JADPO)
+        fake.chmod(0o755)
+        self.saved = docs.JADPO, docs._jadpo_built
+        docs.JADPO, docs._jadpo_built = fake, True
+
+    def tearDown(self):
+        docs.JADPO, docs._jadpo_built = self.saved
+        self.dir.cleanup()
+
+    def page(self, text, bless=False):
+        path = Path(self.dir.name) / 'cli.x.md'
+        path.write_text(text)
+        page = docs.ErrorPage(path, self.catalogue)
+        page.collect_blocks()
+        page.check_runs(bless)
+        return page
+
+    def test_what_it_prints_is_compared(self):
+        page = self.page('# `cli.x`\n\n```sh run project=p expect=cli.x\njadpo fail\n```\n\n'
+                         '```text output\nerror: no\n  next: Fix it (agent)\n  rule: cli.x\n```\n')
+        self.assertEqual(page.problems, [])
+        self.assertEqual(page.covered_rules(), {'cli.x'})
+        page = self.page('# `cli.x`\n\n```sh run project=p expect=cli.x\njadpo fail\n```\n\n'
+                         '```text output\nerror: yes\n```\n')
+        self.assertIn('differs', page.problems[0])
+
+    def test_bless_writes_the_output(self):
+        page = self.page('# `cli.x`\n\n```sh run project=p\njadpo go\n```\n', bless=True)
+        self.assertEqual(page.problems, [])
+        page.bless()
+        self.assertIn('```sh run project=p\njadpo go\n```\n\n```text output\nok\n```\n', page.path.read_text())
+
+    def test_it_must_fail_with_its_rule_or_pass(self):
+        page = self.page('# `cli.x`\n\n```sh run project=p expect=cli.y\njadpo fail\n```\n\n'
+                         '```text output\nerror: no\n  next: Fix it (agent)\n  rule: cli.x\n```\n')
+        self.assertIn('expected exactly one cli.y', page.problems[0])
+        page = self.page('# `cli.x`\n\n```sh run project=p\njadpo fail\n```\n\n'
+                         '```text output\nerror: no\n  next: Fix it (agent)\n  rule: cli.x\n```\n')
+        self.assertIn('expected to succeed', page.problems[0])
+
+    def test_paths_and_run_times_are_the_projects_own(self):
+        page = self.page('# `cli.x`\n\n```sh run project=p\njadpo where\n```\n\n'
+                         '```text output\n.\n~\nchecked: 1 file\n```\n')
+        self.assertEqual(page.problems, [])
+
+    def test_the_project_is_its_check_blocks(self):
+        page = self.page('# `cli.x`\n\n```jadpo check project=p file=app.jadpo hidden\napplication {}\n```\n\n'
+                         '```sh run project=p\ncat app.jadpo\n```\n\n```text output\napplication {}\n```\n')
+        self.assertEqual(page.problems, [])
+
+    def test_what_is_typed_at_a_terminal(self):
+        page = self.page('# `cli.x`\n\n```sh run project=p tty typed=abc\njadpo ask\n```\n\n'
+                         '```text output\n? Enter X  hidden\ngot abc\n```\n')
+        self.assertEqual(page.problems, [])
 
 
 if __name__ == '__main__':

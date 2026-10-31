@@ -24,6 +24,17 @@ build/spec-corpus/<page>/<project>/ for the differential run.
 Every other ```jadpo block is a `fragment`, shown and not compiled: code
 the compiler doesn't check yet. A block that is neither fails the check.
 
+A ```sh run block shows commands and is checked by running them
+(docs/writing.md, "How an error page reads"): its lines run with `sh -e`
+in a fresh copy of its project, the `check` blocks with its `project=`,
+with this checkout's `jadpo` in plain mode and an empty home folder, and
+what they print must be the ```text output block after it, which
+`--bless` rewrites. The project's folder prints as the reader's own (`.`),
+the home folder as `~`, and a run's duration is left out. With
+`expect=<rule>` the commands end failing with that rule's diagnostic and
+no other; without it they succeed. `tty` runs them in a terminal, where
+`typed=<value>`, or nothing, and Enter are typed at the first prompt.
+
   python3 tools/docs/language_docs.py --check     # verify, and render into a scratch folder
   python3 tools/docs/language_docs.py             # verify and write build/language-site
   python3 tools/docs/language_docs.py --bless     # rewrite the output blocks after `check` blocks
@@ -38,7 +49,8 @@ it, its words times 1.3. Every rule in the
 compiler's catalogue (`jadpo help --json`) has a page, docs/errors/<rule>.md,
 and no page names a rule the catalogue doesn't have. A rule's page needs a
 `check` block failing with it, unless only a command raises the rule (area
-14), whose page needs one only once it has a `check` block at all. On areas
+14), whose page needs a `check` or ```sh run block failing with it only
+once it has one at all. On areas
 1-9 no `fragment` may check cleanly, since one that does is an example the
 compiler can check.
 
@@ -67,10 +79,12 @@ import html
 import json
 import os
 import re
+import select
 import signal
 import subprocess
 import sys
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
@@ -125,6 +139,16 @@ COMMAND_AREA = 14
 SKIP_POSTGRES = os.environ.get('JADPO_SKIP_POSTGRES') == '1'
 # Seconds rendering one page may take; each takes well under one.
 RENDER_LIMIT = 10
+# Seconds a ```sh run block's commands may take; each takes well under one.
+RUN_LIMIT = 60
+# Seconds a `tty` block waits, once a prompt shows, for the terminal to stop
+# echoing before it types: a prompt for a secret turns the echo off first,
+# and one that doesn't ask for a secret never does.
+ECHO_WAIT = 2
+# A prompt, as the CLI design language draws it: `? Enter API_KEY  hidden`.
+PROMPT = re.compile(r'(?:^|\n)\? ')
+# A diagnostic's rule line in plain output.
+RULE_LINE = re.compile(r'^  rule: (\S+)$', re.MULTILINE)
 
 
 # A slow machine adds the run's duration to a summary line (` in 0.1 s`);
@@ -225,8 +249,13 @@ class Page:
         # File lines before the body, so messages give the file's line numbers.
         self.offset = text[:len(text) - len(self.body)].count('\n')
         self.blocks = []
+        # ```sh run blocks: commands run in a copy of their project.
+        self.runs = []
         self.problems = []
         self.results = {}
+        # Each run block that ran: its expected rule or 'pass', and whether
+        # it behaved as stated.
+        self.run_results = []
         self.blessings = []
         # Projects with tests that ran: (name, files, jadpo test --json).
         self.corpus = []
@@ -236,8 +265,13 @@ class Page:
     def collect_blocks(self):
         lines = self.body.splitlines()
         i, n = 0, 0
+        self.runs = []
         while i < len(lines):
             match = FENCE.match(lines[i])
+            if match and match.group(1) == 'sh' and parse_attrs(match.group(2)).get('run'):
+                self.runs.append(self.run_block(lines, i, parse_attrs(match.group(2))))
+                i = self.runs[-1]['end'] + 1
+                continue
             if match and match.group(1) == 'jadpo':
                 attrs = parse_attrs(match.group(2))
                 j = i + 1
@@ -259,6 +293,81 @@ class Page:
                 self.blocks.append(block)
                 i = j
             i += 1
+
+    def run_block(self, lines, i, attrs):
+        """A ```sh run block at line i, and the output block after it."""
+        j = i + 1
+        while not lines[j].startswith('```'):
+            j += 1
+        attrs.setdefault('project', f'run-{len(self.runs) + 1}')
+        block = {'line': i, 'end': j, 'attrs': attrs, 'source': '\n'.join(lines[i + 1:j]) + '\n'}
+        k = j + 1
+        while k < len(lines) and not lines[k].strip():
+            k += 1
+        if k < len(lines) and lines[k].strip() == OUTPUT_FENCE:
+            m = k + 1
+            while m < len(lines) and not lines[m].startswith('```'):
+                m += 1
+            block['output'] = {'start': k, 'end': m, 'text': '\n'.join(lines[k + 1:m]) + '\n'}
+        return block
+
+    def check_runs(self, bless):
+        """```sh run blocks: each one's commands, run by `sh -e` in a fresh
+        copy of its project (the `check` blocks with its `project=`, made
+        as a reader's commands make them), print what the output block
+        after it holds. With `expect=<rule>` they end failing with that
+        rule's diagnostic, and only that one; without it they succeed."""
+        def run_one(block):
+            name = block['attrs']['project']
+            files = [b for b in self.blocks if b['attrs'].get('check') and b['attrs']['project'] == name]
+            with tempfile.TemporaryDirectory() as tmp:
+                project, home = Path(tmp) / 'project', Path(tmp) / 'home'
+                project.mkdir()
+                home.mkdir()
+                problems = write_project(project, name, files)
+                if files:
+                    problems += self.prepare(str(project), name, files)
+                ran = run_commands(block, project, home)
+                # A block may leave folders read-only, as its error needs;
+                # make them writable again so they can be removed.
+                for folder, _, _ in os.walk(tmp):
+                    os.chmod(folder, 0o700)
+            return problems, ran
+
+        with ThreadPoolExecutor(WORKERS) as pool:
+            ran = list(pool.map(run_one, self.runs))
+        for block, (problems, result) in zip(self.runs, ran):
+            where = f'{block["attrs"]["project"]} (line {block["line"] + self.offset + 1})'
+            self.problems += problems
+            expected = block['attrs'].get('expect')
+            expected = expected if isinstance(expected, str) else 'pass'
+            if result is None:
+                self.problems.append(f'{where}: its commands didn\'t finish in {RUN_LIMIT} s')
+                self.run_results.append({'expected': expected, 'ok': False})
+                continue
+            code, out = result
+            rules = RULE_LINE.findall(out)
+            ok = True
+            if expected == 'pass' and (code or rules):
+                ok = False
+                self.problems.append(f'{where}: expected to succeed, but it exits {code}'
+                                     + (f' with {rules[:3]}' if rules else ''))
+            elif expected != 'pass' and (rules != [expected] or not code):
+                ok = False
+                self.problems.append(f'{where}: expected exactly one {expected} and a failing exit, but got '
+                                     f'{rules[:4] or "no rule"} and exit {code}')
+            written = block.get('output', {}).get('text')
+            if written != out:
+                if bless:
+                    self.blessings.append((block, out))
+                elif written is None:
+                    ok = False
+                    self.problems.append(f'{where}: add a {OUTPUT_FENCE} block after it (run --bless)')
+                else:
+                    ok = False
+                    self.problems.append(f'{where}: its output block differs from what the commands print '
+                                         '(run --bless)')
+            self.run_results.append({'expected': expected, 'ok': ok})
 
     def check_projects(self, bless):
         """`check` blocks, compiled by `jadpo`."""
@@ -287,18 +396,7 @@ class Page:
                 runs = False
             problems, test_code, test_out, test_json_code, test_json = [], None, None, None, None
             with tempfile.TemporaryDirectory() as tmp:
-                steps = 0
-                for block in blocks:
-                    target = Path(tmp) / block['attrs']['file']
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_text(block['source'])
-                    purpose = block['attrs'].get('migrate')
-                    if purpose:
-                        migrated, said = jadpo(['migrate', 'new', purpose], cwd=tmp,
-                                               env={'SOURCE_DATE_EPOCH': str(MIGRATION_EPOCH + 60 * steps)})
-                        steps += 1
-                        if migrated:
-                            problems.append(f'{name}: jadpo migrate new {purpose} failed:\n{said}')
+                problems += write_project(Path(tmp), name, blocks)
                 problems += self.prepare(tmp, name, blocks)
                 code, out = jadpo(['check', tmp])
                 json_code, json_out = jadpo(['check', '--json', tmp])
@@ -450,8 +548,10 @@ class Page:
                                      'the compiler can\'t check it yet')
 
     def covered_rules(self):
-        """Rules a `check` example here shows failing as stated."""
-        return {r['expected'] for r in self.results.values() if r['expected'] != 'pass' and r['ok']}
+        """Rules a `check` example or a ```sh run block here shows failing
+        as stated."""
+        results = [*self.results.values(), *self.run_results]
+        return {r['expected'] for r in results if r['expected'] != 'pass' and r['ok']}
 
     def area_owned(self):
         return 1 <= self.area() <= AREA_OWNED
@@ -482,6 +582,7 @@ class Page:
         self.collect_blocks()
         self.check_marked()
         self.check_projects(bless)
+        self.check_runs(bless)
         self.check_fragments()
 
     def topics(self):
@@ -592,12 +693,14 @@ class ErrorPage(Page):
             return
         if not self.body.startswith(f'# `{self.rule}`\n'):
             self.problems.append(f'the page starts with its heading, # `{self.rule}`')
-        has_checks = any(b['attrs'].get('check') for b in self.blocks)
+        has_checks = any(b['attrs'].get('check') for b in self.blocks) or bool(self.runs)
         # Only a command raises an area-14 rule, so its CLI tests show it;
-        # once its page has a check block, one of them must show the rule.
+        # once its page has a check block or a ```sh run block, one of them
+        # must show the rule.
         needs_example = entry.get('area') != COMMAND_AREA or has_checks
         if needs_example and self.rule not in self.covered_rules():
-            self.problems.append(f'no example for {self.rule}: add a check block failing with it')
+            what = 'a ```sh run block' if entry.get('area') == COMMAND_AREA else 'a check block'
+            self.problems.append(f'no example for {self.rule}: add {what} failing with it')
         if not has_checks and entry.get('area') == COMMAND_AREA and NO_EXAMPLE not in self.body \
                 and '```' not in self.body:
             self.problems.append(f'say "{NO_EXAMPLE}" on a page with no example')
@@ -631,8 +734,8 @@ def error_format_scope(catalogue, root=ROOT):
     error page reads", gives them: those the primer, the Learn path, the
     guides or a teaching example's README names, and those whose next step
     a person decides. A rule only a command raises, whose page has no
-    example yet, waits for the command's output to be checked (roadmap,
-    D13b); every other page follows once D13c is built."""
+    example yet, waits for a ```sh run block that shows it (roadmap,
+    D13b2 and D13b3); every other page follows once D13c is built."""
     named = set()
     for path in [root / 'docs/primer.md', *sorted((root / 'docs/learn').glob('*.md')),
                  *sorted((root / 'docs/guides').glob('*.md'))]:
@@ -722,8 +825,10 @@ def error_format_problems(page):
 
     start, end = spans[ERROR_PARTS[1]]
     shown = fences(lines, start + 1, end)
-    expected = [b for b in page.blocks if start < b['line'] < end and b['attrs'].get('check')
+    expected = [b for b in [*page.blocks, *page.runs] if start < b['line'] < end
+                and (b['attrs'].get('check') or b['attrs'].get('run'))
                 and b['attrs'].get('expect') == page.rule and 'output' in b]
+    expected.sort(key=lambda b: b['line'])
     command = entry.get('area') == COMMAND_AREA and any(info.startswith('text') for _, _, info in shown)
     if not expected and not command:
         problems.append(f'{where(start)}: `{ERROR_PARTS[1]}` shows a check block with expect={page.rule} '
@@ -798,6 +903,110 @@ class Primer(Page):
         if not low <= tokens <= high:
             self.problems.append(f'the primer is about {tokens} tokens (its words times 1.3), '
                                  f'outside {low:,} to {high:,}')
+
+
+def write_project(root, name, blocks):
+    """Writes a project's blocks into `root`, in order, making each
+    `migrate=` block's migration once the blocks up to it are written;
+    problems found doing it."""
+    problems, steps = [], 0
+    for block in blocks:
+        target = root / block['attrs']['file']
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(block['source'])
+        purpose = block['attrs'].get('migrate')
+        if purpose:
+            migrated, said = jadpo(['migrate', 'new', purpose], cwd=str(root),
+                                   env={'SOURCE_DATE_EPOCH': str(MIGRATION_EPOCH + 60 * steps)})
+            steps += 1
+            if migrated:
+                problems.append(f'{name}: jadpo migrate new {purpose} failed:\n{said}')
+    return problems
+
+
+def run_commands(block, project, home):
+    """Runs a ```sh run block's commands with `sh -e` in `project`, as a
+    reader would: `jadpo` is this checkout's, in plain mode, and HOME is
+    an empty folder of its own, so nothing of the machine's leaks in. A
+    `tty` block runs in a terminal and types its `typed=` value, or
+    nothing, then Enter, at the first prompt. (exit code, what it printed
+    with paths as the reader's), or None when it didn't finish."""
+    ensure_jadpo()
+    bin_dir = home.parent / 'bin'
+    bin_dir.mkdir()
+    (bin_dir / 'jadpo').symlink_to(Path(JADPO).resolve())
+    env = {'PATH': f'{bin_dir}{os.pathsep}{os.environ.get("PATH", "/usr/bin:/bin")}', 'HOME': str(home),
+           'JADPO_PLAIN': '1', 'JADPO_TOOLCHAIN': 'local', 'SOURCE_DATE_EPOCH': str(MIGRATION_EPOCH)}
+    for name in ('TMPDIR', 'JADPO_TEST_DATABASE_URL'):
+        if os.environ.get(name):
+            env[name] = os.environ[name]
+    command = ['sh', '-e', '-c', block['source']]
+    attrs = block['attrs']
+    if attrs.get('tty'):
+        typed = attrs.get('typed')
+        result = in_terminal(command, project, env, '' if typed in (None, True) else typed)
+    else:
+        try:
+            done = subprocess.run(command, cwd=project, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT, timeout=RUN_LIMIT)
+        except subprocess.TimeoutExpired:
+            return None
+        result = (done.returncode, done.stdout)
+    if result is None:
+        return None
+    code, out = result
+    text = out.decode('utf-8', 'replace').replace('\r\n', '\n')
+    for path, shown in ((project, '.'), (home, '~'), (project.parent, '.')):
+        # The resolved spelling first, since the other is part of it
+        # (/private/var/folders/... and /var/folders/... on macOS).
+        for spelling in sorted({str(path), os.path.realpath(path)}, key=len, reverse=True):
+            text = text.replace(spelling + '/', '' if shown == '.' else shown + '/').replace(spelling, shown)
+    text = without_run_time('\n'.join(line.rstrip() for line in text.split('\n')))
+    return code, text.strip('\n') + '\n'
+
+
+def in_terminal(command, cwd, env, typed):
+    """Runs `command` in a pseudo-terminal, typing `typed` and Enter once a
+    prompt shows and the terminal has stopped echoing (or ECHO_WAIT has
+    passed, for a prompt that doesn't hide what is typed). (exit code,
+    bytes printed), or None when it didn't finish in RUN_LIMIT."""
+    import termios
+    master, slave = os.openpty()
+    process = subprocess.Popen(command, cwd=cwd, env=env, stdin=slave, stdout=slave, stderr=slave,
+                               start_new_session=True)
+    out, prompted, sent, start = b'', None, False, time.monotonic()
+    try:
+        while process.poll() is None:
+            if time.monotonic() - start > RUN_LIMIT:
+                process.kill()
+                process.wait()
+                return None
+            if select.select([master], [], [], 0.02)[0]:
+                out += os.read(master, 65536)
+            if sent:
+                continue
+            if prompted is None and PROMPT.search(out.decode('utf-8', 'replace')):
+                prompted = time.monotonic()
+            if prompted is not None:
+                hidden = not termios.tcgetattr(slave)[3] & termios.ECHO
+                if hidden or time.monotonic() - prompted > ECHO_WAIT:
+                    os.write(master, typed.encode() + b'\n')
+                    sent = True
+        os.close(slave)
+        slave = None
+        while select.select([master], [], [], 0.1)[0]:
+            try:
+                chunk = os.read(master, 65536)
+            except OSError:
+                break
+            if not chunk:
+                break
+            out += chunk
+    finally:
+        if slave is not None:
+            os.close(slave)
+        os.close(master)
+    return process.returncode, out
 
 
 def keep_records(tmp, blocks):
@@ -1704,7 +1913,7 @@ class Renderer:
                 if i in blocks:
                     out.append(self.code_block(blocks[i]))
                 else:
-                    label = line[3:].strip() or 'text'
+                    label = (line[3:].split() or ['text'])[0]
                     if line.strip() == OUTPUT_FENCE:
                         label = 'jadpo check'
                     out.append(f'<div class="code plain"><div class="label"><span>{html.escape(label)}</span></div>'

@@ -294,8 +294,20 @@ area page or a checked example shows; a page never describes behaviour
 that isn't built.
 
 An error only a command raises, never `jadpo check` or `jadpo test`,
-shows the command as `sh` and what it printed as `text`, copied from a
-real run, as the Learn path shows commands.
+shows the command as a `sh run` block and what it printed as the `text
+output` block after it. The docs check runs the block's lines with
+`sh -e` in a fresh copy of its project, the `check` blocks with the same
+`project=` (usually `hidden`), and compares what they print; `--bless`
+writes it. `expect=<rule>` says the commands end failing with that
+rule's diagnostic and no other; without it they succeed. `tty` runs them
+in a terminal and types `typed=<value>`, or nothing, then Enter, at the
+first prompt. The run has this checkout's `jadpo`, an empty home folder
+and nothing of the machine's environment, so it prints the same
+everywhere: the project's folder prints as `.`, the home folder as `~`,
+and a run's duration is left out. What the error needs, such as a link,
+a read-only folder or a file that isn't UTF-8, is made by the lines
+before the command, where the reader sees it. A fix that needs the
+error's state first is shown as a plain `sh` block, without output.
 
 ## What the docs check enforces
 
@@ -317,6 +329,6 @@ user page that:
 - uses spec vocabulary ("Decided.", "carried to");
 - links a file in this repository rather than a page of the docs;
 - holds a `fragment`, or an example that doesn't compile or whose tests
-  fail.
+  fail, or a `sh run` block that doesn't print its output block.
 
 The rest of this guide is for the writer and the reviewer.
