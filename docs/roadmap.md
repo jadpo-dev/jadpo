@@ -258,16 +258,7 @@ D1 first: the site starts once D1 has merged.
   "Where the content lives", "Topic IDs" and "The bundle"; each area's
   "What is built" and Errors; `docs/errors/`; `docs/language/notes/`.
 - [x] **D2 The primer**: [primer](primer.md), and [documentation](documentation.md), "The bundle".
-- [ ] **D3 Releases** `opus · high` after D1: semantic versions from 0.1.0,
-  release-please over the Conventional Commit types, CI failing a
-  language change under a type that says it isn't one, installers (shell,
-  Homebrew, PowerShell, npm) on each Release, the bundle attached; an
-  app's declared version checked (area 14, "Scaffold"). **Needs a maintainer**
-  before 0.1.0 is published.
-  Built, switched off: release-please, the commit-type check, dist's
-  installers and the bundle on each Release, and `application { jadpo: }`
-  ([documentation](documentation.md), "Versions and releases"); waits for
-  a maintainer's token, tap, npm account and look at 0.1.0.
+- [x] **D3 Releases**: [documentation](documentation.md), "Versions and releases" and "Installing"; area 14, "Scaffold" and "Which jadpo runs"; 0.1.0 published 2026-10-30 with its installers, npm package, Homebrew formula, docs bundle and VS Code extension.
 - [ ] **D4 Issues triaged by an agent** `opus · high` after D3: issues
   and feature requests read, answered and turned into pull requests by an
   agent that holds no secrets and cannot merge or release, since issue text
