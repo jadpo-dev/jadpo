@@ -37,6 +37,7 @@
 //! Built in chunks 4.4 and 4.4b; OAuth scopes (`scopes:`) come after the
 //! first build.
 
+pub mod calls;
 pub mod flow;
 pub mod outputs;
 pub mod proof;
@@ -390,6 +391,10 @@ pub struct RootPolicy {
     /// `tenant: Company`.
     pub tenant: Option<String>,
     pub actions: Vec<ActionGrants>,
+    /// The queries listed under `actions:` (area 9, "Listing a query"),
+    /// each line naming only callers that depend on no record: its
+    /// `action` is the query's name.
+    pub queries: Vec<ActionGrants>,
     /// The memberships held in the tenant.
     pub tenant_memberships: Vec<String>,
 }
@@ -397,6 +402,18 @@ pub struct RootPolicy {
 impl RootPolicy {
     pub fn action(&self, name: &str) -> Option<&ActionGrants> {
         self.actions.iter().find(|line| line.action == name)
+    }
+
+    /// The line under `actions:` listing the query called `name`.
+    pub fn query(&self, name: &str) -> Option<&ActionGrants> {
+        self.queries.iter().find(|line| line.action == name)
+    }
+
+    /// Who the line listing the query called `name` lets run it, checked
+    /// as it starts (area 9, "Listing a query"): anyone signed in, or a
+    /// role held across the whole application.
+    pub fn query_gate(&self, name: &str, memberships: &[Membership]) -> Option<LineGate> {
+        Some(self.query(name)?.gate(&[], memberships))
     }
 }
 
@@ -461,7 +478,8 @@ pub struct RootRead {
     pub model: RootPolicy,
     /// The file it is written in.
     pub path: Option<String>,
-    /// Where each line under `actions:` is written, by its action.
+    /// Where each line under `actions:` is written, by its action or
+    /// query.
     pub places: Vec<(String, Span)>,
     pub problems: Vec<Diagnostic>,
 }
@@ -1067,25 +1085,35 @@ pub fn root_read(db: &dyn Db, project: Project) -> Arc<RootRead> {
             let written = tree::written(key.syntax());
             let span = node_span(&path, key.syntax());
             let names: Vec<String> = key.names().filter_map(|n| tree::name_text(&n)).collect();
-            let action = action_named(&lookup, &names);
-            if action.is_none()
+            // An action, or a query that needs fewer people than its
+            // entity's `read:` (area 9, "Listing a query").
+            let named = match action_named(&lookup, &names) {
+                Some(action) => Some((action, false)),
+                None => query_named(&lookup, &names).map(|query| (query, true)),
+            };
+            if named.is_none()
                 && let [bare] = names.as_slice()
                 && let Some(problem) = bare_action(&lookup, bare, &span)
             {
                 out.problems.push(problem);
                 continue;
             }
-            let Some(action) = action else {
+            let Some((action, query)) = named else {
                 out.problems.push(binding(
                     span,
-                    format!("`{written}` isn't an action"),
-                    "no such action",
-                    "Each line under `actions:` names an action, `domain.action` (or just the action in a single-file project), and lists who may call it.",
-                    "Name an action, or remove the line",
+                    format!("`{written}` isn't an action or a query"),
+                    "no such action or query",
+                    "Each line under `actions:` names an action or a query, `domain.action` (or just its name in a single-file project), and lists who may call it.",
+                    "Name an action or a query, or remove the line",
                 ));
                 continue;
             };
-            if let Some(first) = listed.get(&action) {
+            let listed_as = if query {
+                format!("query {action}")
+            } else {
+                action.clone()
+            };
+            if let Some(first) = listed.get(&listed_as) {
                 out.problems.push(
                     Diagnostic::new(&rule::POLICY_EFFECT_DUPLICATE, format!("`{written}` is listed twice"))
                         .at(span, "listed again")
@@ -1095,7 +1123,7 @@ pub fn root_read(db: &dyn Db, project: Project) -> Arc<RootRead> {
                 );
                 continue;
             }
-            listed.insert(action.clone(), span.clone());
+            listed.insert(listed_as, span.clone());
             out.places
                 .push((action.clone(), node_span(&path, line.syntax())));
             let Some(items) = entries(line.value().as_ref()) else {
@@ -1177,20 +1205,123 @@ pub fn root_read(db: &dyn Db, project: Project) -> Arc<RootRead> {
                         "Name one of these",
                     )),
                 };
+                let resolved = match resolved {
+                    Ok(w) if query => query_entry(w, memberships, at, &text, &written),
+                    other => other,
+                };
                 match resolved {
                     Ok(w) => who.push(w),
                     Err(problem) => out.problems.push(problem),
                 }
             }
-            out.model.actions.push(ActionGrants {
+            let line = ActionGrants {
                 action,
                 written,
                 who,
                 written_who,
-            });
+            };
+            if query {
+                out.model.queries.push(line);
+            } else {
+                out.model.actions.push(line);
+            }
         }
     }
     Arc::new(out)
+}
+
+/// An entry of the line listing a query (area 9, "Listing a query"): it is
+/// checked as the query starts, before any record is read, so it names
+/// only callers that depend on no record, anyone signed in or a role held
+/// across the whole application; anything else is
+/// `policy.binding_invalid`.
+#[allow(clippy::result_large_err)]
+fn query_entry(
+    who: ActionWho,
+    memberships: &[Membership],
+    at: Span,
+    text: &str,
+    written: &str,
+) -> Result<ActionWho, Diagnostic> {
+    let checked = "A listed query's line is checked as the query starts, before it reads a record, and its records stay filtered by its entity's `read:`, so it names only callers that depend on no record: `Access.authenticated`, or a role held across the whole application.";
+    let next = format!(
+        "Name `Access.authenticated` or a role held across the whole application for `{written}`, or leave the query unlisted"
+    );
+    match &who {
+        ActionWho::Signed => Ok(who),
+        ActionWho::Role { membership, .. }
+            if memberships
+                .iter()
+                .any(|m| m.entity == *membership && m.scope.is_none()) =>
+        {
+            Ok(who)
+        }
+        ActionWho::Role { membership, .. } => {
+            let scope = memberships
+                .iter()
+                .find(|m| m.entity == *membership)
+                .and_then(|m| m.scope_entity.clone())
+                .unwrap_or_default();
+            Err(binding(
+                at,
+                format!("`{text}` is a role held in a `{scope}`, which a listed query can't name"),
+                "held in a record",
+                &format!(
+                    "`{text}` is held in one `{scope}`, which no record tells the query as it starts. {checked}"
+                ),
+                &next,
+            ))
+        }
+        ActionWho::Field { entity, .. } => Err(binding(
+            at,
+            format!("`{text}` depends on a `{entity}`, which a listed query can't name"),
+            "depends on a record",
+            &format!(
+                "`{text}` is the caller one `{entity}` points at, which no record tells the query as it starts. {checked}"
+            ),
+            &next,
+        )),
+        ActionWho::Public => Err(binding(
+            at,
+            format!("A listed query can't name `{text}`"),
+            "anyone at all",
+            &format!(
+                "A query is listed when it needs fewer people than its entity's `read:`, and its records stay filtered by that `read:`, so `{text}` would let in nobody the entity doesn't. {checked}"
+            ),
+            &format!(
+                "Remove the line, or name `Access.authenticated` or a role held across the whole application for `{written}`"
+            ),
+        )),
+        ActionWho::System => Err(binding(
+            at,
+            format!("A listed query can't name `{text}`"),
+            "schedules and subscribers",
+            &format!(
+                "No request is the system, and schedules and subscribers read through the entity's `read:` with an unlisted query. {checked}"
+            ),
+            &next,
+        )),
+    }
+}
+
+/// The query `names` names: `domain.query`, or the bare query of a
+/// single-file project.
+fn query_named(lookup: &Lookup<'_>, names: &[String]) -> Option<String> {
+    let (domain, query) = match names {
+        [query] => (None, query),
+        [domain, query] => (Some(domain), query),
+        _ => return None,
+    };
+    let symbol = lookup
+        .declared(query)
+        .iter()
+        .find(|s| s.kind == ItemKind::Query)?;
+    let matches = match (&symbol.ownership, domain) {
+        (Ownership::Domain(holder), Some(domain)) => holder == domain,
+        (Ownership::Loose, None) => true,
+        _ => false,
+    };
+    matches.then(|| query.clone())
 }
 
 fn written_who_kind(expr: &Expr) -> Written {
@@ -1248,15 +1379,24 @@ fn root_unknown(path: &str, node: &jadpo_syntax::SyntaxNode, word: &str) -> Diag
 /// `borrow:` under `actions:` in a project with domains, where an action
 /// is `domain.action`: says so, with the edit when one domain has it.
 fn bare_action(lookup: &Lookup<'_>, action: &str, span: &Span) -> Option<Diagnostic> {
-    let domains: Vec<String> = lookup
-        .declared(action)
+    let declared = lookup.declared(action);
+    let kind = if declared.iter().any(|s| s.kind == ItemKind::Action) {
+        ItemKind::Action
+    } else {
+        ItemKind::Query
+    };
+    let domains: Vec<String> = declared
         .iter()
-        .filter(|s| s.kind == ItemKind::Action)
+        .filter(|s| s.kind == kind)
         .filter_map(|s| s.ownership.domain().map(str::to_string))
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect();
-    let reason = "Root `policy { }` names each action through its domain, `domain.action`, as a call from outside the domain does; a bare name is for a single-file project.";
+    let reason = if kind == ItemKind::Action {
+        "Root `policy { }` names each action through its domain, `domain.action`, as a call from outside the domain does; a bare name is for a single-file project."
+    } else {
+        "Root `policy { }` names each query through its domain, `domain.query`, as a call from outside the domain does; a bare name is for a single-file project."
+    };
     match domains.as_slice() {
         [] => None,
         [domain] => Some(
@@ -1282,7 +1422,15 @@ fn bare_action(lookup: &Lookup<'_>, action: &str, span: &Span) -> Option<Diagnos
             Some(
                 Diagnostic::new(
                     &rule::POLICY_BINDING_INVALID,
-                    format!("`{action}` is an action in {} domains", several.len()),
+                    format!(
+                        "`{action}` is {} in {} domains",
+                        if kind == ItemKind::Action {
+                            "an action"
+                        } else {
+                            "a query"
+                        },
+                        several.len()
+                    ),
                 )
                 .at(span.clone(), "needs its domain")
                 .reason(reason)

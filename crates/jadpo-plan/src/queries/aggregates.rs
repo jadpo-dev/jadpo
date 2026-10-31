@@ -151,6 +151,7 @@ impl Planner<'_> {
                 missing: None,
                 recheck: None,
                 layer: false,
+                gate: self.query_gate(&query.name),
             },
         })
     }

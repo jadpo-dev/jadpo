@@ -262,6 +262,30 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
             ));
         }
     }
+    // The queries listed separately (area 9, "Listing a query"), when
+    // there are any.
+    let mut queries: Vec<&ActionGrants> = access.root.queries.iter().collect();
+    queries.sort_by(|a, b| a.written.cmp(&b.written));
+    if !queries.is_empty() {
+        markdown.push_str(
+            "\n## Queries listed separately\n\n\
+             Each is run only by these, checked as it starts; its records are still \
+             those its entity's `read:` lets the caller see.\n\n\
+             | query | who may run it |\n|---|---|\n",
+        );
+        for line in &queries {
+            let who: Vec<String> = line.written_who.iter().map(|w| format!("`{w}`")).collect();
+            markdown.push_str(&format!(
+                "| `{}` | {} |\n",
+                line.written,
+                if who.is_empty() {
+                    "nobody".to_string()
+                } else {
+                    who.join(", ")
+                }
+            ));
+        }
+    }
     let mut json = Value::object();
     json.set("format", jadpo_graph::manifest::FORMAT);
     json.set_some("tenant", access.root.tenant.as_deref());
@@ -278,5 +302,19 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
             })
             .collect::<Vec<_>>(),
     );
+    if !queries.is_empty() {
+        json.set(
+            "queries",
+            queries
+                .iter()
+                .map(|line| {
+                    let mut entry = Value::object();
+                    entry.set("query", line.written.as_str());
+                    entry.set("who", line.written_who.clone());
+                    entry
+                })
+                .collect::<Vec<_>>(),
+        );
+    }
     Report { markdown, json }
 }

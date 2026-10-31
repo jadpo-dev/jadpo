@@ -20,7 +20,7 @@ use jadpo_db::{Db, File, ItemKind, Project, item_tree};
 use jadpo_diag::{Diagnostic, Span, rule};
 use jadpo_syntax::ast::{self, AstNode, Decl, MemberItem};
 
-use super::proof::{Prover, Reached};
+use super::proof::{Prover, Reached, Way};
 use crate::data::queries::{
     Condition, Element, Include, IncludeKind, OrderField, QueryModel, Source, query_read,
 };
@@ -261,7 +261,10 @@ fn query(
             })
         );
     let mut found = Vec::new();
-    let reached = prover.read(&model.entity);
+    // A listed query's callers passed its line as it started (area 9,
+    // "Listing a query"), and its records are still its entity's `read:`.
+    let line = prover.query_line(&model.name);
+    let reached = Prover::lined(line.as_ref(), prover.read(&model.entity));
     // A `nearest` order and a `geo.distance` one stand in place of
     // `order`, and sort by their field as any order does (chunk 5.8a).
     let mut sorted = written(&model.order);
@@ -287,6 +290,7 @@ fn query(
     );
     walk(
         &prover,
+        line.as_ref(),
         &model.entity,
         &model.element,
         &model.includes,
@@ -305,6 +309,13 @@ fn query(
         return Vec::new();
     };
     let path = file.path(db);
+    // Who may call it, for a reason: its line under `actions:` when it is
+    // listed, its records' `read:` otherwise.
+    let listed = prover.policies.root().query(&model.name);
+    let callers = |entity: &str| match listed {
+        Some(line) => format!("`{}`'s line under `actions:`", line.written),
+        None => format!("`{entity}`'s `read:`"),
+    };
     let result = decl
         .ret_type()
         .and_then(|ret| ret.ty())
@@ -436,7 +447,8 @@ fn query(
                     )
                     .at(at, label)
                     .reason(format!(
-                        "Anyone `{entity}`'s `read:` lets in may see the records `{}` reads{among} and {readers} `{field}`. {shows}, so a query filters and orders only on fields every caller may read.",
+                        "Anyone {} lets in may see the records `{}` reads{among} and {readers} `{field}`. {shows}, so a query filters and orders only on fields every caller may read.",
+                        callers(&entity),
                         model.name
                     ))
                     .next(next),
@@ -456,7 +468,8 @@ fn query(
             .map(|who| format!(", {who} among them,"))
             .unwrap_or_default();
         let reason = format!(
-            "Anyone `{entity}`'s `read:` lets in may call `{}`{among} and {readers} `{field}`. An output has one shape for everyone, so a field some callers may not read can't be in it.",
+            "Anyone {} lets in may call `{}`{among} and {readers} `{field}`. An output has one shape for everyone, so a field some callers may not read can't be in it.",
+            callers(entity),
             model.name
         );
         out.push(
@@ -495,6 +508,7 @@ fn query(
 #[allow(clippy::too_many_arguments)]
 fn walk(
     prover: &Prover<'_>,
+    line: Option<&Way>,
     entity: &str,
     element: &Element,
     includes: &[Include],
@@ -553,7 +567,7 @@ fn walk(
                         prover.parent(entity, &inner.via, &inner.entity, reached)
                     }
                     IncludeKind::Child | IncludeKind::Children => {
-                        let next = prover.read(&inner.entity);
+                        let next = Prover::lined(line, prover.read(&inner.entity));
                         if !prover.field_proved(&inner.entity, &inner.via, &next) {
                             out.push(Unproved::Via {
                                 holder: inner.entity.clone(),
@@ -578,6 +592,7 @@ fn walk(
                 );
                 walk(
                     prover,
+                    line,
                     &inner.entity,
                     &inner.element,
                     &inner.includes,
