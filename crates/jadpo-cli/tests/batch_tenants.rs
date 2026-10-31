@@ -486,6 +486,7 @@ async fn sweep(program: &Program, host: &Harness, action: &str, args: Vec<Value>
 #[test]
 fn a_run_reaches_only_the_tenant_its_one_saved_tenant_id_names() {
     let root = project("6.4c-runs");
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     if !jadpo_test::live() {
@@ -598,6 +599,7 @@ fn a_runs_finished_keeps_its_counts_in_its_tenants_record() {
     // the household the run is limited to, named by the chore it was
     // started from, and the run never reaches the other household.
     let root = project("6.4d-finished");
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     if !jadpo_test::live() {

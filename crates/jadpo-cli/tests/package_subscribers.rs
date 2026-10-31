@@ -133,7 +133,11 @@ fn load(name: &str, sandbox: &str) -> Option<Loaded> {
         fs::create_dir_all(path.parent().expect("parent")).expect("folders");
         fs::write(path, text).expect("write");
     }
-    for args in [&["migrate", "new", "initial"][..], &["check"]] {
+    for args in [
+        &["migrate", "new", "initial"][..],
+        &["records", "update"],
+        &["check"],
+    ] {
         let out = jadpo(&root, args);
         assert_eq!(out.code, 0, "{args:?}: {}{}", out.stdout, out.stderr);
     }

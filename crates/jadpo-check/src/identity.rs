@@ -2052,13 +2052,12 @@ impl Reader<'_> {
                         }
                     }
                 }
+                // Past its limit (`1h`), it needs a person's acceptance,
+                // which `access.jadpo_record` gives a before side (area 8,
+                // "Settings"; chunk A8).
                 "expires_after" => match millis {
-                    Some(millis) if (60_000..=h::MAGIC_LINK_EXPIRES_MAX_MS).contains(&millis) => {
+                    Some(millis) if millis >= 60_000 => {
                         read.expires_after_ms = millis;
-                    }
-                    Some(millis) if millis > h::MAGIC_LINK_EXPIRES_MAX_MS => {
-                        ok = false;
-                        self.acceptance(value_span, "`expires_after:`", &written, "`1h`");
                     }
                     _ => {
                         ok = false;
@@ -2089,28 +2088,14 @@ impl Reader<'_> {
                     }
                 },
                 "code_attempts" | "codes_per_hour" | "failed_codes_per_day" => {
-                    let most = match name.as_str() {
-                        "code_attempts" => Some(h::MAGIC_LINK_CODE_ATTEMPTS_MAX),
-                        "failed_codes_per_day" => Some(h::MAGIC_LINK_FAILED_CODES_PER_DAY_MAX),
-                        _ => None,
-                    };
+                    // `code_attempts:` past 10 and `failed_codes_per_day:`
+                    // past 50 need a person's acceptance (chunk A8).
                     match whole {
-                        Some(count) if count >= 1 && most.is_none_or(|most| count <= most) => {
-                            match name.as_str() {
-                                "code_attempts" => read.code_attempts = count,
-                                "codes_per_hour" => read.codes_per_hour = count,
-                                _ => read.failed_codes_per_day = count,
-                            }
-                        }
-                        Some(count) if count >= 1 => {
-                            ok = false;
-                            self.acceptance(
-                                value_span,
-                                &format!("`{name}:`"),
-                                &written,
-                                &format!("`{}`", most.unwrap_or_default()),
-                            );
-                        }
+                        Some(count) if count >= 1 => match name.as_str() {
+                            "code_attempts" => read.code_attempts = count,
+                            "codes_per_hour" => read.codes_per_hour = count,
+                            _ => read.failed_codes_per_day = count,
+                        },
                         _ => {
                             ok = false;
                             let what = match name.as_str() {
@@ -2408,22 +2393,6 @@ impl Reader<'_> {
             return None;
         }
         Some(field_name)
-    }
-
-    /// A setting loosened past what needs an acceptance (area 8, "Magic
-    /// links"), which comes with acceptances (area 18).
-    fn acceptance(&mut self, span: Span, setting: &str, written: &str, most: &str) {
-        self.out.problems.push(
-            Diagnostic::new(
-                &rule::TOOLCHAIN_NOT_BUILT_YET,
-                format!("{setting} `{written}` isn't built yet"),
-            )
-            .at(span, format!("past {most}"))
-            .reason(format!(
-                "Loosening {setting} past {most} weakens sign-in, so it needs a person's acceptance (area 8), which comes with acceptances (area 18)."
-            ))
-            .next(format!("Keep {setting} at {most} or under for now")),
-        );
     }
 
     fn later(&mut self, span: Span, what: &str, why: &str) {

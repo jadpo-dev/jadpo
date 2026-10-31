@@ -302,6 +302,17 @@ pub fn package_connections(db: &dyn Db, project: Project) -> PackageConnections 
     out
 }
 
+/// Whether `application { }` has a `connections:` block, even an empty
+/// one: such an app keeps `network.jadpo_record` even while it reaches no
+/// host, so its first outside host is compared like any other (chunk A8).
+pub fn declares_connections(db: &dyn Db, project: Project) -> bool {
+    singletons(db, project, "application").iter().any(|found| {
+        tree::members(found.list.clone())
+            .iter()
+            .any(|(key, _)| name_text(key).as_deref() == Some("connections"))
+    })
+}
+
 /// Whether `application { }`'s block `list` declares connection `name`
 /// with a `package:`, read or not.
 pub fn names_package(list: &Option<ast::MemberList>, name: &str) -> bool {

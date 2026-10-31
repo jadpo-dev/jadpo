@@ -1157,10 +1157,14 @@ POST /auth/magic-link/redeem
 ### Settings
 
 Every setting but `link:` has a default. Tightening one is always
-allowed. Loosening one past its limit will need an acceptance: a recorded,
+allowed. Loosening one past its limit needs an acceptance: a recorded,
 reviewed sign-off on a change that weakens security
-([Acceptances](18-records-and-manifest.md#acceptances)), which shows in
-the approval report.
+([Acceptances](18-records-and-manifest.md#acceptances)). In the change
+that takes a setting past its limit, or further past it,
+`jadpo check` fails until an acceptance lists
+`magic_link.expires_after: PolicyChange.sign_in_loosened`, naming the
+setting. `access.jadpo_record` keeps each setting that has a limit, so
+the change shows in its diff.
 
 | Setting | Default | Needs an acceptance above |
 |---|---|---|
@@ -1258,10 +1262,6 @@ Jadpo sends its own magic-link email, worded for you, through your
   `MagicLinkRequest`.
 
 You can write one of them, not both.
-
-Not built yet: a setting loosened past its limit is
-`toolchain.not_built_yet` until acceptances are built. Keep each setting
-within its limit for now.
 
 ## Passkeys
 <!-- topic: passkeys -->
@@ -2465,7 +2465,7 @@ says what you wrote and the error you get.
 | No `address:`, and no `email` field on the entity | `semantic.auth_setting_required` |
 | A setting `magic_link:` doesn't take | `semantic.auth_setting_unknown` |
 | A `link:` that isn't a path on your app's site, a `path:` that isn't fixed segments, `expires_after:` under `1m`, `resend_after:` not above zero, a count under 1, or `same_browser:` that isn't `true` or `false` | `semantic.auth_setting_invalid` |
-| A setting loosened past its limit | `toolchain.not_built_yet`, until [acceptances](18-records-and-manifest.md#acceptances) put it in the approval report |
+| A setting loosened past its limit, with no acceptance this change adds | `acceptance.missing` ([Acceptances](18-records-and-manifest.md#acceptances)) |
 | `generate_routes:` that isn't `true` or `false`, or `false` beside `path:` | `semantic.auth_setting_invalid` |
 | A route your app writes at a generated magic-link path | `route.path_overlap`; with `generate_routes: false` there are none |
 | `MagicLinkAsk`, `MagicLinkConfirmation` or `MagicLinkCode` built with `{ ... }` anywhere but a test, fixture or seed | `type.not_record` |
@@ -3949,7 +3949,6 @@ A feature not built yet is `toolchain.not_built_yet` where it is written.
 | Everything else on this page | Built. |
 | `sign_in:`'s `providers:` and `oauth_provider:`, and `on_first_sign_in:` for provider sign-in | Not built yet. |
 | Scope declarations and policy's scope restrictions | Not built yet. As [Policy](09-policy.md) specifies, an external method narrows scopes only when it declares the scopes it reads; undeclared provider scope or profile claims never replace application authority. |
-| A setting loosened past its limit | Not built yet: waits on [acceptances](18-records-and-manifest.md#acceptances). |
 | OAuth grants: `OAuthGrant` credentials, the connecting and disconnecting routes and `on_behalf_of:` ([Integrations](11-integrations.md)) | Not built yet. `Driver.oidc` for Google and Microsoft sign-in comes with providers. |
 
 ## Errors

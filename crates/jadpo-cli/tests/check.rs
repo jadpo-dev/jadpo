@@ -377,7 +377,7 @@ fn a_cap_on_calls_from_workers_is_said_to_count_per_instance() {
     for (path, text) in files {
         write(&root, path, text);
     }
-    jadpo(&root, &["api", "update"]);
+    jadpo(&root, &["records", "update"]);
     let output = jadpo(&root, &["check"]);
     assert_eq!(output.code, 0, "{}", output.stdout);
     assert!(output.stdout.contains("On Workers"), "{}", output.stdout);

@@ -79,6 +79,7 @@ Look things up
 Change safely
   api           Rewrite the API records       update
   records       List and update the records   update
+  acceptance    Draft a person's acceptance   new
   declines      List or clear declines        list, clear
   fix           Fix a standard type's finding
   suggest       Hint where a standard type or operation fits
@@ -157,6 +158,7 @@ Look things up
 Change safely
   api           Rewrite the API records       update
   records       List and update the records   update
+  acceptance    Draft a person's acceptance   new
   declines      List or clear declines        list · clear
   fix           Fix a standard type's finding
   suggest       Hint where a standard type or operation fits
@@ -333,6 +335,7 @@ fn help_json_is_the_whole_command_reference() {
             "why",
             "api",
             "records",
+            "acceptance",
             "declines",
             "fix",
             "suggest",
@@ -740,6 +743,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "why\tExplain why a schedule didn't run",
             "api\tRewrite the API records",
             "records\tList and update the records",
+            "acceptance\tDraft a person's acceptance",
             "declines\tList or clear declines",
             "fix\tFix a standard type's finding",
             "suggest\tHint where a standard type or operation fits",

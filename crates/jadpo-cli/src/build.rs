@@ -45,7 +45,7 @@ use jadpo_std::DeployTarget;
 use jadpo_std::connections::ConnectionDriver;
 use jadpo_term::{Block, Fact, Json, Outcome, Screen};
 
-use crate::check::{Checked, checked, reported};
+use crate::check::{Checked, checked_before, reported};
 use crate::fmt::project_needed;
 use crate::help::VERSION;
 use crate::run::{Call, Reply, say};
@@ -58,7 +58,10 @@ pub fn build(call: &Call) -> Reply {
     };
     let started = Instant::now();
     say("Checking");
-    let checked = checked(call, &root);
+    let checked = match checked_before(call, &root) {
+        Ok(checked) => checked,
+        Err(reply) => return *reply,
+    };
     if !checked.diagnostics.is_empty() {
         return reported(&cwd, checked, started.elapsed(), "build stopped");
     }

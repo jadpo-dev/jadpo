@@ -1140,10 +1140,12 @@ the sandbox for each one (see "Tests and fakes").
   (a live checkout during development, below). A public package can never
   stand in for a git one. `jadpo check` and `jadpo build` read the lock and
   the committed folders only.
-- **Publisher trust.** Your own company's packages from git install as
-  any other. A third party's package from git, rather than the registry,
-  is marked unverified in the approval report, and needs a person's
-  acceptance to install. Registry packages carry their verified
+- **Publisher trust.** A third party's package from git, rather than the
+  registry, is unverified, and needs a person's acceptance in the change
+  that installs it: `AcmeCouriers.v1: PackageChange.git_source`
+  ([Acceptances](18-records-and-manifest.md#acceptances)). Until a
+  setting tells your own company's repositories from a third party's,
+  every package from git needs one. Registry packages carry their verified
   publisher, and curated ones are marked official.
 - **Prose is unverified wherever it comes from**, such as `///`
   descriptions and `GUIDE.md`. Nothing safety-relevant relies on it.
@@ -1190,7 +1192,7 @@ the sandbox for each one (see "Tests and fakes").
 
 Not built yet: the hosted registry; importers other than `openapi`;
 adding another Jadpo app's OpenAPI document with `jadpo package add`;
-publisher trust; `jadpo approval`; writing an operation's output type from
+telling your own company's git packages from a third party's; `jadpo approval`; writing an operation's output type from
 the sandbox's answer when it has none; and a HAR capture's operations.
 
 ## The surface
@@ -1815,6 +1817,13 @@ sees a new one before it ships. `jadpo check` writes it to
 read cleanly. Each row gives a host, the connection that reaches it, when
 (a package's environment setting picks its live or sandbox host), what
 for (a package, or a driver's capability) and the domains that use it.
+
+A new host needs a person: `jadpo check` keeps the same hosts, by
+connection, in `network.jadpo_record` at the root, and a host a
+connection reaches that it didn't on the default branch, a new
+connection's included, needs an acceptance,
+`couriers: NetworkChange.host_added`
+([Acceptances](18-records-and-manifest.md#acceptances)).
 
 The report is built for small diffs, as
 [the permissions report](09-policy.md#the-permissions-report) is. Rows are
@@ -3572,9 +3581,10 @@ provider {
   and its image is listed the same way.
 - **Outbound network needs the app's permission.** A package only asks
   (`asks:`); the service gets none of those hosts until the connection
-  grants them (`outbound: [...]`), and a new grant appears in the approval
-  report. Until then `jadpo check` names the hosts asked for and the line
-  that grants them.
+  grants them (`outbound: [...]`), and a new grant is a new outside host,
+  which needs a person's acceptance (`NetworkChange.host_added`). Until
+  then `jadpo check` names the hosts asked for and the line that grants
+  them.
 - **Three settings Jadpo always applies** when it creates a container: no
   outbound network unless granted, never privileged, and no access to the
   host's disk. Jadpo creates the containers itself, so there is no
@@ -5034,7 +5044,8 @@ lists, for each change:
   ([Package upgrades](18-records-and-manifest.md#package-upgrades) says
   which need a person);
 - services: a new or changed image, which needs an acceptance before it
-  runs, and new `outbound:` grants;
+  runs, and new `outbound:` grants, which need one too;
+- new outside hosts, each needing an acceptance;
 - third-party packages from git, marked unverified, which need an
   acceptance to install;
 - connections that receive personal data but can't erase it, with their
@@ -5230,8 +5241,9 @@ each refuses.
   package format is read" says.
 - **What `add` refuses.** A package already in the lock (`update` moves
   it); a package whose name the app's own code uses, which is installed,
-  checked and undone, showing `package.name_taken`. A third party's git
-  package installs without an acceptance (see the note at the end).
+  checked and undone, showing `package.name_taken`. A package from git
+  installs, and `jadpo check` then needs a person's acceptance of it
+  (`PackageChange.git_source`).
 - **`update <name>`.** A `path` package is verified again from its folder;
   a `git` one moves to the newest `v<version>` tag whose committed surface
   names the same package, never to an older one, and a folder or tag now
@@ -5289,12 +5301,10 @@ each refuses.
   (`publish.changelog_missing`); an already released one passes.
 
 > Not built yet: adding another Jadpo app's folder, or a package by bare
-> name from the registry, says `toolchain.not_built_yet`. A third party's
-> git package needs an acceptance once `jadpo approval` reports publisher
-> trust ([Package upgrades](18-records-and-manifest.md#package-upgrades));
-> until then it installs without one, and accepting an update's changes
-> waits for `jadpo approval` too. Outside CI, `jadpo build` still builds
-> against a link.
+> name from the registry, says `toolchain.not_built_yet`. Accepting an
+> update's changes waits for package upgrade plans
+> ([Package upgrades](18-records-and-manifest.md#package-upgrades)).
+> Outside CI, `jadpo build` still builds against a link.
 
 ## How connections to packages are read
 <!-- topic: how-connections-to-packages-are-read -->
@@ -6716,7 +6726,7 @@ package's name, as its types are.
 | Webhooks as events, replies, handshakes, queues through a package and the Cloudflare Queues driver | Built. |
 | Services (`runs:`) | Not built yet. |
 | OAuth grants | Not built yet: the application's `grants:` is `toolchain.not_built_yet` where it is written. |
-| Publisher trust for third-party git packages | Not built yet. |
+| Publisher trust for third-party git packages | Built: every package from git needs an [acceptance](18-records-and-manifest.md#acceptances). Not built yet: a setting that lets your own company's git packages in without one. |
 | The hosted registry | Not built yet. |
 | Importers other than OpenAPI | Not built yet. |
 | Choosing a provider when deploying | Not built yet. |
@@ -6733,7 +6743,6 @@ These mistakes are specified but not reported yet:
 | A connection that receives personal data, with no `erasure:` and no acceptance | `jadpo check` |
 | An operation whose scope the grant does not request; a call to a grant connection without `on_behalf_of:` | `jadpo check` |
 | A service image not yet accepted; an `asks:` host not granted by `outbound:` | `jadpo check`, naming the line that grants it |
-| A third-party package from git with no acceptance | `jadpo check` |
 | A capability's connection whose package does not provide it, or a function call or expression in a `provide` mapping, for a capability other than `receiving` and `email` | `jadpo check` |
 
 The rest of the page's mistakes have examples under

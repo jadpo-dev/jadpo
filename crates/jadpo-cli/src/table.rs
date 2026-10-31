@@ -255,7 +255,12 @@ pub static COMMANDS: &[Command] = &[
             required: false,
             values: Values::Path,
         }],
-        flags: &[],
+        flags: &[Flag {
+            name: "--before",
+            value: Some("ref"),
+            description: "The branch or commit to compare with",
+            values: &[],
+        }],
         examples: &[
             Example {
                 description: "Check the project you are in",
@@ -269,9 +274,19 @@ pub static COMMANDS: &[Command] = &[
                 description: "Print the problems as data for tools",
                 command: "jadpo check --json",
             },
+            Example {
+                description: "Compare with another branch to judge acceptances",
+                command: "jadpo check --before release",
+            },
         ],
         arguments_rule: &rule::CLI_CHECK_ARGUMENTS,
-        raises: &[],
+        raises: &[
+            &rule::ACCEPTANCE_BASE_MISSING,
+            &rule::ACCEPTANCE_EDITED,
+            &rule::ACCEPTANCE_MISSING,
+            &rule::ACCEPTANCE_NO_REASON,
+            &rule::ACCEPTANCE_UNMATCHED,
+        ],
         run: commands::check,
     },
     Command {
@@ -999,7 +1014,8 @@ pub static COMMANDS: &[Command] = &[
         group: "Change safely",
         summary: "List and update the records",
         description: "Every file Jadpo generates and the project commits is a record (area 18): each \
-                      API's api/<api>.jadpo_record, the identity registry, each translations \
+                      API's api/<api>.jadpo_record, who can do what (access.jadpo_record), the outside \
+                      hosts (network.jadpo_record), the identity registry, each translations \
                       folder's sources, the suggestions the project ignored or taught, and jadpo.lock. \
                       `jadpo records` lists them by the command that writes them, each with whether \
                       it is up to date, and fails while one is not, naming the command to run. \
@@ -1032,6 +1048,49 @@ pub static COMMANDS: &[Command] = &[
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
         ],
         run: commands::records,
+    },
+    Command {
+        name: "acceptance",
+        synonyms: &[],
+        group: "Change safely",
+        summary: "Draft a person's acceptance",
+        description: "Some changes need a person to accept them (area 18): an API break, a widening of \
+                      who can do what, a new outside host, a new domain, a package from git. `new` \
+                      writes acceptances/<stamp>_<purpose>.jadpo listing every such change since the \
+                      default branch at its merge base that no acceptance this change adds lists yet, \
+                      with no reason. A person writes the reason on a /// line above `acceptance`; \
+                      until then `jadpo check` fails. An agent runs it, then stops and hands over.",
+        arguments: &[
+            Argument {
+                name: "action",
+                description: "What to do",
+                required: true,
+                values: Values::Fixed(crate::acceptance::ACTIONS),
+            },
+            Argument {
+                name: "purpose",
+                description: "The decision it records, in lower_snake_case",
+                required: false,
+                values: Values::Fixed(&[]),
+            },
+        ],
+        flags: &[Flag {
+            name: "--before",
+            value: Some("ref"),
+            description: "The branch or commit to compare with",
+            values: &[],
+        }],
+        examples: &[Example {
+            description: "Draft the acceptance of an API break",
+            command: "jadpo acceptance new accept_the_api_break",
+        }],
+        arguments_rule: &rule::CLI_ACCEPTANCE_ARGUMENTS,
+        raises: &[
+            &rule::ACCEPTANCE_BASE_MISSING,
+            &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::acceptance,
     },
     Command {
         name: "schedules",

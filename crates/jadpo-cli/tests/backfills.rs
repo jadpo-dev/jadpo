@@ -223,6 +223,7 @@ fn a_backfill_with_sql_forms_runs_in_batches_of_update_and_is_then_required() {
         ),
         "{sql}"
     );
+    jadpo(&root, &["records", "update"]);
     assert_eq!(jadpo(&root, &["check"]).code, 0);
     if !jadpo_test::live() {
         return;
@@ -404,6 +405,7 @@ fn a_backfill_that_can_fail_is_refused() {
         &format!("database/migrations/{name}/changes.jadpo"),
         "migration {\n    Todo.rank: {\n        backfill: Rank(text.length(Todo.title))\n    }\n}\n",
     );
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 1);
     assert!(
@@ -424,6 +426,7 @@ fn a_backfill_that_can_fail_is_refused() {
     );
     let finished = jadpo(&root, &["migrate", "new"]);
     assert_eq!(finished.code, 0, "{}{}", finished.stdout, finished.stderr);
+    jadpo(&root, &["records", "update"]);
     assert_eq!(jadpo(&root, &["check"]).code, 0);
 }
 
@@ -466,6 +469,7 @@ fn a_backfill_copies_a_field_only_into_one_its_readers_may_read() {
         &format!("database/migrations/{name}/changes.jadpo"),
         "migration {\n    Note.shown: {\n        backfill: Note.secret\n    }\n}\n",
     );
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 1, "{}", checked.stdout);
     assert!(
@@ -484,6 +488,7 @@ fn a_backfill_copies_a_field_only_into_one_its_readers_may_read() {
     );
     let finished = jadpo(&root, &["migrate", "new"]);
     assert_eq!(finished.code, 0, "{}{}", finished.stdout, finished.stderr);
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}", checked.stdout);
 }
@@ -578,6 +583,7 @@ fn a_backfill_without_a_sql_form_is_worked_out_in_jadpo_with_the_runtimes_values
         "{sql}"
     );
     assert!(!sql.contains("SET \"shouted\" = upper"), "{sql}");
+    jadpo(&root, &["records", "update"]);
     assert_eq!(jadpo(&root, &["check"]).code, 0);
     if !jadpo_test::live() {
         return;
@@ -740,6 +746,7 @@ fn a_backfill_in_jadpo_resumes_after_a_stop_and_fills_rows_written_meanwhile() {
 fn a_backfill_in_jadpo_follows_the_code_it_runs() {
     let root = project("in-jadpo-code");
     priority_in_jadpo(&root);
+    jadpo(&root, &["records", "update"]);
     assert_eq!(jadpo(&root, &["check"]).code, 0);
     // The function changes after the migration was written: its SQL no
     // longer holds what `migrate apply` would run.
@@ -748,6 +755,7 @@ fn a_backfill_in_jadpo_follows_the_code_it_runs() {
         "domains/planning/libraries/priorities.jadpo",
         &FROM_FLAG_IN_JADPO.replace("Priority.normal\n        if", "Priority.low\n        if"),
     );
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 1, "{}", checked.stdout);
     assert!(
@@ -756,6 +764,7 @@ fn a_backfill_in_jadpo_follows_the_code_it_runs() {
         checked.stdout
     );
     assert_eq!(jadpo(&root, &["migrate", "new"]).code, 0);
+    jadpo(&root, &["records", "update"]);
     assert_eq!(jadpo(&root, &["check"]).code, 0);
 }
 
@@ -779,6 +788,7 @@ fn an_earlier_migrations_backfill_in_jadpo_waits_for_the_build_it_was_written_in
     // uses `from_flag`, and it goes.
     fs::remove_file(root.join("domains/planning/libraries/priorities.jadpo")).expect("remove");
     fs::remove_file(root.join("domains/planning/types/legacy_flag.jadpo")).expect("remove");
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}", checked.stdout);
     let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
@@ -859,6 +869,7 @@ fn shop(name: &str, types: &[(&str, &str)], library: &str, backfill: &str) -> (P
     );
     let finished = jadpo(&root, &["migrate", "new"]);
     assert_eq!(finished.code, 0, "{}{}", finished.stdout, finished.stderr);
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     (root, name)
@@ -974,6 +985,7 @@ fn a_backfill_in_jadpos_digest_covers_the_types_it_reaches() {
     // `Whole` keeps fewer places now: rows filled before would hold
     // values the rows filled after don't, so the migration must change.
     write(&root, "domains/shop/types/whole.jadpo", &whole(0));
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 1, "{}", checked.stdout);
     assert!(
@@ -982,6 +994,7 @@ fn a_backfill_in_jadpos_digest_covers_the_types_it_reaches() {
         checked.stdout
     );
     assert_eq!(jadpo(&root, &["migrate", "new"]).code, 0);
+    jadpo(&root, &["records", "update"]);
     assert_eq!(jadpo(&root, &["check"]).code, 0);
 }
 
@@ -1010,6 +1023,7 @@ fn two_backfills(name: &str) -> (PathBuf, String) {
     );
     let finished = jadpo(&root, &["migrate", "new"]);
     assert_eq!(finished.code, 0, "{}{}", finished.stdout, finished.stderr);
+    jadpo(&root, &["records", "update"]);
     assert_eq!(jadpo(&root, &["check"]).code, 0);
     (root, name)
 }
@@ -1269,6 +1283,7 @@ fn a_backfill_reaching_a_setting_a_key_or_a_field_its_migration_adds_is_refused(
         &format!("database/migrations/{name}/changes.jadpo"),
         "migration {\n    Todo.label: {\n        backfill: labels.prefix(Todo.title)\n    }\n    Todo.heading: {\n        backfill: Todo.label\n    }\n    Todo.mac: {\n        backfill: labels.signed(Todo.title)\n    }\n}\n",
     );
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 1, "{}", checked.stdout);
     for (field, read, label) in [
@@ -1340,6 +1355,7 @@ fn a_backfill_in_jadpo_reads_and_fills_a_percentage_as_a_query_reads_one() {
     );
     let finished = jadpo(&root, &["migrate", "new"]);
     assert_eq!(finished.code, 0, "{}{}", finished.stdout, finished.stderr);
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}", checked.stdout);
     let sql = fs::read_to_string(root.join(format!("database/migrations/{name}/postgres.sql")))

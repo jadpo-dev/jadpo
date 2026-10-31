@@ -128,7 +128,7 @@ fn desk(name: &str) -> PathBuf {
         write(&root, &format!("domains/support/{path}"), text);
     }
     // The counts of what its calls use are kept in `main` (chunk 5.5v5).
-    for args in [&["migrate", "new", "initial"][..], &["api", "update"]] {
+    for args in [&["migrate", "new", "initial"][..], &["records", "update"]] {
         let done = jadpo(&root, args);
         assert_eq!(done.code, 0, "{args:?}: {}{}", done.stdout, done.stderr);
     }
@@ -213,6 +213,7 @@ fn jadpo_test_embeds_through_the_fake_and_answers_from_recordings() {
         "domains/support/actions/meaning_of.test.jadpo",
         TESTS,
     );
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     let tested = jadpo(&root, &["test"]);
@@ -503,6 +504,7 @@ fn the_support_desk_answers_from_the_nearest_article_and_a_recording() {
     );
     let migrated = jadpo(&root, &["migrate", "new", "articles"]);
     assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     let tested = jadpo(&root, &["test"]);

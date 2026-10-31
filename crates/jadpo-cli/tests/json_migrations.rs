@@ -236,6 +236,7 @@ fn the_snapshot_records_what_a_json_columns_type_reads() {
     ));
     // Changing the rules inside the value is drift `jadpo check` reports.
     write(&root, TAG, &tag(30));
+    jadpo(&root, &["records", "update"]);
     let check = jadpo(&root, &["check"]);
     assert_ne!(check.code, 0);
     assert!(
@@ -268,6 +269,7 @@ fn a_change_that_only_widens_what_is_read_runs_nothing() {
             .join(format!("database/migrations/{name}/changes.jadpo"))
             .exists()
     );
+    jadpo(&root, &["records", "update"]);
     ok(&jadpo(&root, &["check"]));
     if !jadpo_test::live() {
         return;
@@ -315,6 +317,7 @@ fn a_change_that_may_read_less_checks_every_value_and_refuses_while_one_doesnt_r
         changes.contains("`Parcel.label: { backfill: <value> }`"),
         "{changes}"
     );
+    jadpo(&root, &["records", "update"]);
     ok(&jadpo(&root, &["check"]));
     if !jadpo_test::live() {
         return;
@@ -375,6 +378,7 @@ fn a_backfill_rewrites_the_values_a_narrower_type_doesnt_read() {
         &format!("database/migrations/{name}/changes.jadpo"),
         "/// Shortens tags, relabelling what no longer fits.\nmigration {\n    Parcel.label: {\n        backfill: Label {\n            line: \"?\"\n            note: none\n        }\n    }\n}\n",
     );
+    jadpo(&root, &["records", "update"]);
     let unfinished = jadpo(&root, &["check"]);
     assert!(
         unfinished.stdout.contains("migration.unfinished"),
@@ -396,6 +400,7 @@ fn a_backfill_rewrites_the_values_a_narrower_type_doesnt_read() {
         sql.contains("-- check Parcel.delivery"),
         "a field without one is still checked: {sql}"
     );
+    jadpo(&root, &["records", "update"]);
     ok(&jadpo(&root, &["check"]));
     if !jadpo_test::live() {
         return;
@@ -459,6 +464,7 @@ fn a_required_structured_field_added_to_a_table_with_rows_takes_a_backfill() {
     let made = jadpo(&root, &["migrate", "new", "add_label"]);
     ok(&made);
     let name = latest(&root);
+    jadpo(&root, &["records", "update"]);
     let pending = jadpo(&root, &["check"]);
     assert!(
         pending.stdout.contains("migration.decision_required"),
@@ -487,6 +493,7 @@ fn a_required_structured_field_added_to_a_table_with_rows_takes_a_backfill() {
         "{sql}"
     );
     assert!(sql.contains("$2::jsonb[]"), "{sql}");
+    jadpo(&root, &["records", "update"]);
     ok(&jadpo(&root, &["check"]));
     if !jadpo_test::live() {
         return;

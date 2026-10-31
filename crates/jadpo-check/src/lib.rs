@@ -9,6 +9,7 @@
 //! [`check`] assembles every diagnostic for a project, sorted by file and
 //! position so the same source always gives the same output.
 
+pub mod acceptances;
 pub mod ai;
 pub mod ai_limits;
 pub mod ai_mapping;
@@ -142,6 +143,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                         })
                 })
                 .map(|error| error.to_diagnostic(path))
+                .chain(acceptances::files::quoted_keys(db, *file))
                 .collect::<Vec<_>>()
         })
         .collect();
@@ -164,6 +166,13 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         let cached = project.checked(db);
         for &file in files {
             if cached.contains(file.path(db)) {
+                continue;
+            }
+            // An acceptance names what changed, not declarations to
+            // resolve: [`acceptances`] reads it (area 18).
+            if project.layout(db) == jadpo_db::Layout::Project
+                && acceptances::files::is_acceptance(file.path(db))
+            {
                 continue;
             }
             out.extend(layout_problems(db, project, file).iter().cloned());
@@ -313,6 +322,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(routes::table_problems(db, project).iter().cloned());
         out.extend(routes::signin_problems(db, project).iter().cloned());
         out.extend(records::record_problems(db, project).iter().cloned());
+        out.extend(acceptances::problems(db, project).iter().cloned());
         out.extend(packages::package_problems(db, project).iter().cloned());
         out.extend(providers::operation_problems(db, project).iter().cloned());
         out.extend(
@@ -381,10 +391,12 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
 /// Whether `diagnostic` stops a program running (`jadpo test`, `jadpo
 /// dev`): every error but a record out of date or edited, which is a
 /// promise that `jadpo check` and CI hold to (area 18), not a reason the
-/// program can't run.
+/// program can't run, and an acceptance a change still needs.
 pub fn blocks_running(diagnostic: &Diagnostic) -> bool {
     diagnostic.rule.id != rule::RECORD_OUT_OF_DATE.id
         && diagnostic.rule.id != rule::RECORD_EDITED.id
+        // A change waiting for a person's acceptance still runs (area 18).
+        && !diagnostic.rule.id.starts_with("acceptance.")
 }
 
 /// The zero-based line `offset` is on.

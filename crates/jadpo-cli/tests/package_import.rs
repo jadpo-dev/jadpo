@@ -266,8 +266,9 @@ fn orders_document(dir: &tempdir::Dir) -> PathBuf {
     }
     let migrated = jadpo(&root, &["migrate", "new", "initial"]);
     assert_eq!(migrated.code, 0, "{}", migrated.stdout);
-    let updated = jadpo(&root, &["api", "update"]);
+    let updated = jadpo(&root, &["records", "update"]);
     assert_eq!(updated.code, 0, "{}", updated.stdout);
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}", checked.stdout);
     root.join("build/openapi/main.json")
@@ -377,6 +378,7 @@ public resource v1_memos {
             .join(format!("{folder}/types/exchanged_token.jadpo"))
             .exists()
     );
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}", checked.stdout);
     // Importing the same document again changes nothing.
@@ -510,6 +512,7 @@ public type Booking = Object {
             .iter()
             .all(|finding| finding["decides"] == "agent")
     );
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}", checked.stdout);
 }
@@ -577,6 +580,7 @@ fn importing_again_keeps_corrections_and_adds_what_is_new() {
             .collect::<String>()
     };
     assert!(provider.contains(&format!("sha256:{digest}")), "{provider}");
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}", checked.stdout);
 }
@@ -803,6 +807,7 @@ public type Charge = Object {
     assert!(!root.join(format!("{folder}/types/window.jadpo")).exists());
     // What the importer wasn't sure of stops `check` until it is swapped
     // or declined.
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check", "--json"]);
     assert_ne!(checked.code, 0, "{}", checked.stdout);
     let rules: Vec<String> = json(&checked)["diagnostics"]
@@ -830,6 +835,7 @@ public type Charge = Object {
             "    created: Instant {\n        wire: Wire.unix_seconds\n    }\n",
         );
     write(&root, &charge, &swapped);
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}", checked.stdout);
     // Importing again keeps the swaps, and has nothing more to flag.
@@ -869,6 +875,7 @@ fn a_guess_declined_with_a_reason_passes() {
             "    decline package.standard_candidate: \"A sequence number, not a time\"\n    created: Int\n",
         );
     write(&root, charge, &declined);
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}", checked.stdout);
     let listed = jadpo(&root, &["declines", "list"]);
@@ -923,6 +930,7 @@ imported: 1 operation, 3 types, 4 to check
         );
     write(&root, &charge, &declined);
     // Nothing called, nothing to review.
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.stdout, "checked: 7 files\n");
     // The app calls one operation: the types it reaches are to review,
@@ -942,6 +950,7 @@ imported: 1 operation, 3 types, 4 to check
         "domains/till/actions/look_up.jadpo",
         "use app { payments }\nuse shared/providers/tidepay\n\n/// Looks a charge up.\naction look_up(input: Tidepay.ChargesGetChargesInput) -> Tidepay.Charge {\n    return payments.charges.get_charges(input)\n}\n",
     );
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}", checked.stdout);
     assert_eq!(
@@ -984,6 +993,7 @@ checked: 3 to review, 1 unconfirmed, 9 files
         )
     };
     write(&root, &provider, &listed("Chrage"));
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check", "--json"]);
     assert_ne!(checked.code, 0);
     let diagnostics = &json(&checked)["diagnostics"];
@@ -999,6 +1009,7 @@ checked: 3 to review, 1 unconfirmed, 9 files
         &provider,
         &listed("Charge, ChargesGetChargesInput, Shop"),
     );
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(
         checked.stdout,
@@ -1015,6 +1026,7 @@ checked: 1 unconfirmed, 9 files
         &format!("{folder}/recordings/charges.get_charges.json"),
         "{}\n",
     );
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.stdout, "checked: 9 files\n");
     // Importing again keeps the list, less `Shop`, which the description

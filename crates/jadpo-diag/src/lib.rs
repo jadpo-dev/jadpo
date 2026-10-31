@@ -21,6 +21,11 @@ pub enum Kind {
     Error,
     /// A judgement call: a fix, or a decline with a reason.
     Declinable,
+    /// A judgement call the catalogue marks as a security rule: its
+    /// decline also needs a person's acceptance (area 1, "Writing a
+    /// decline"; area 18, "Acceptances"), since an agent can write a
+    /// decline's reason itself.
+    Security,
 }
 
 /// Who acts on a diagnostic's next step (area 14): a coding agent can make
@@ -49,6 +54,9 @@ pub struct Rule {
     pub area: u8,
     /// Whether a `decline` line may answer it instead of a fix.
     pub declinable: bool,
+    /// Whether the catalogue marks it as a security rule, whose decline a
+    /// person accepts (`PolicyChange.<rule name>_declined`, area 18).
+    pub security: bool,
     /// Who usually decides the next step.
     pub decides: Decider,
     /// One line, sentence case, no full stop.
@@ -84,7 +92,8 @@ macro_rules! rules {
                 pub const $name: Rule = Rule {
                     id: $id,
                     area: $area,
-                    declinable: matches!(Kind::$kind, Kind::Declinable),
+                    declinable: matches!(Kind::$kind, Kind::Declinable | Kind::Security),
+                    security: matches!(Kind::$kind, Kind::Security),
                     decides: Decider::$decides,
                     summary: $summary,
                 };
@@ -97,6 +106,18 @@ macro_rules! rules {
 }
 
 rules! {
+    ACCEPTANCE_BASE_MISSING: "acceptance.base_missing", area 14, Error, Agent,
+        "Base commit the change is compared with isn't in this clone";
+    ACCEPTANCE_EDITED: "acceptance.edited", area 14, Error, Agent,
+        "Acceptance already on the before side was edited";
+    ACCEPTANCE_INVALID: "acceptance.invalid", area 14, Error, Agent,
+        "Acceptance file isn't written as an acceptance";
+    ACCEPTANCE_MISSING: "acceptance.missing", area 14, Error, Human,
+        "Change needs a person's acceptance that no added acceptance gives";
+    ACCEPTANCE_NO_REASON: "acceptance.no_reason", area 14, Error, Human,
+        "Added acceptance has no reason";
+    ACCEPTANCE_UNMATCHED: "acceptance.unmatched", area 14, Error, Agent,
+        "Acceptance lists a change this change doesn't make";
     AI_CONNECTION_REQUIRED: "ai.connection_required", area 21, Error, Agent,
         "Action asks a model but the application names no `ai:` connection";
     AI_SETTINGS_INVALID: "ai.settings_invalid", area 21, Error, Agent,
@@ -115,6 +136,8 @@ rules! {
         "API serve_openapi is not true or false";
     API_SETTING_UNKNOWN: "api.setting_unknown", area 7, Error, Agent,
         "API setting is not one an API takes";
+    CLI_ACCEPTANCE_ARGUMENTS: "cli.acceptance_arguments", area 14, Error, Agent,
+        "Acceptance command has invalid arguments";
     CLI_AI_ARGUMENTS: "cli.ai_arguments", area 14, Error, Agent,
         "AI command has invalid arguments";
     CLI_API_ARGUMENTS: "cli.api_arguments", area 14, Error, Agent,
@@ -621,7 +644,7 @@ rules! {
         "Wire name outside a provider package, or one the type already uses";
     POLICY_BINDING_INVALID: "policy.binding_invalid", area 9, Error, Agent,
         "Policy names something that can't say who";
-    POLICY_CALL_UNGRANTED: "policy.call_ungranted", area 9, Declinable, Human,
+    POLICY_CALL_UNGRANTED: "policy.call_ungranted", area 9, Security, Human,
         "Listed action calls one that refuses some of the people its line lets in";
     POLICY_DECLARATION_DUPLICATE: "policy.declaration_duplicate", area 9, Error, Agent,
         "Policy is declared twice";
@@ -1438,10 +1461,16 @@ pub fn find(id: &str) -> Option<&'static Rule> {
     CATALOGUE.iter().find(|rule| rule.id == id)
 }
 
-/// What a declinable rule's next step adds: the line that declines it.
+/// What a declinable rule's next step adds: the line that declines it,
+/// and for a security rule that a person accepts the decline.
 pub fn decline_offer(rule: &Rule) -> String {
+    let accepted = if rule.security {
+        ", which a person then accepts"
+    } else {
+        ""
+    };
     format!(
-        ", or write `decline {}: \"<why>\"` above it if this is deliberate",
+        ", or write `decline {}: \"<why>\"` above it if this is deliberate{accepted}",
         rule.id
     )
 }
@@ -1664,6 +1693,25 @@ mod tests {
                 "type.standard_exists",
                 "type.variant_retired"
             ]
+        );
+    }
+
+    #[test]
+    fn a_security_rules_decline_is_accepted_by_a_person() {
+        let security: Vec<&str> = CATALOGUE
+            .iter()
+            .filter(|rule| rule.security)
+            .map(|rule| rule.id)
+            .collect();
+        assert_eq!(security, ["policy.call_ungranted"]);
+        const { assert!(rule::POLICY_CALL_UNGRANTED.declinable) };
+        let diagnostic = Diagnostic::new(&rule::POLICY_CALL_UNGRANTED, "A call refuses")
+            .next("List the called action for them");
+        assert_eq!(
+            diagnostic.next.map(|next| next.text).as_deref(),
+            Some(
+                "List the called action for them, or write `decline policy.call_ungranted: \"<why>\"` above it if this is deliberate, which a person then accepts"
+            )
         );
     }
 

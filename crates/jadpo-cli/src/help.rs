@@ -98,6 +98,9 @@ pub fn rule(rule: &Rule) -> Reply {
     if rule.declinable {
         facts.push("declinable".to_string());
     }
+    if rule.security {
+        facts.push("a security rule".to_string());
+    }
     facts.push(
         match rule.decides {
             Decider::Agent => "an agent can fix it",
@@ -122,6 +125,7 @@ pub fn rule(rule: &Rule) -> Reply {
         ("id", rule.id.into()),
         ("area", i64::from(rule.area).into()),
         ("declinable", rule.declinable.into()),
+        ("security", rule.security.into()),
         ("decides", rule.decides.word().into()),
         ("summary", rule.summary.into()),
         ("help", rule.help().into()),
@@ -383,6 +387,7 @@ pub fn reference_json() -> Json {
                     ("area", i64::from(rule.area).into()),
                     ("severity", "error".into()),
                     ("declinable", rule.declinable.into()),
+                    ("security", rule.security.into()),
                     ("decides", rule.decides.word().into()),
                     ("summary", rule.summary.into()),
                     ("help", rule.help().into()),

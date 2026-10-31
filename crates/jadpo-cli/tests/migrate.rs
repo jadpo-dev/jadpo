@@ -64,6 +64,7 @@ fn migrations(root: &Path) -> Vec<String> {
 #[test]
 fn the_first_migration_creates_the_tables_and_check_agrees() {
     let root = project("first");
+    jadpo(&root, &["records", "update"]);
     let before = jadpo(&root, &["check"]);
     assert_eq!(before.code, 1);
     assert!(
@@ -112,6 +113,7 @@ fn the_first_migration_creates_the_tables_and_check_agrees() {
         ),
         "{sql}"
     );
+    jadpo(&root, &["records", "update"]);
     assert_eq!(jadpo(&root, &["check"]).stdout, "checked: 2 files\n");
     let again = jadpo(&root, &["migrate", "new", "nothing"]);
     assert_eq!(again.code, 0);
@@ -181,6 +183,7 @@ fn a_change_that_needs_decisions_waits_for_them() {
     );
     let latest = migrations(&root).pop().expect("a migration");
     let changes_path = format!("database/migrations/{latest}/changes.jadpo");
+    jadpo(&root, &["records", "update"]);
     let check = jadpo(&root, &["check"]);
     assert_eq!(
         check
@@ -200,6 +203,7 @@ fn a_change_that_needs_decisions_waits_for_them() {
             "    Todo.rank: {\n        backfill: 9\n    }",
         );
     write(&root, &changes_path, &written);
+    jadpo(&root, &["records", "update"]);
     let check = jadpo(&root, &["check"]);
     assert!(
         check.stdout.contains("rule: migration.decision_invalid"),
@@ -216,6 +220,7 @@ fn a_change_that_needs_decisions_waits_for_them() {
         &changes_path,
         &written.replace("backfill: 9", "backfill: 3"),
     );
+    jadpo(&root, &["records", "update"]);
     let check = jadpo(&root, &["check"]);
     assert!(
         check.stdout.contains("rule: migration.unfinished"),
@@ -242,6 +247,7 @@ fn a_change_that_needs_decisions_waits_for_them() {
         sql.contains("ALTER TABLE \"todo\" ALTER COLUMN \"title\" DROP NOT NULL;"),
         "{sql}"
     );
+    jadpo(&root, &["records", "update"]);
     assert_eq!(jadpo(&root, &["check"]).code, 0);
     assert_eq!(
         jadpo(&root, &["fmt", "--check"]).code,
@@ -415,6 +421,7 @@ fn allowing_less_replaces_the_stored_values_no_longer_allowed() {
         size,
         "type Size = Enum {\n    small\n    medium\n    large\n    huge\n}\n",
     );
+    jadpo(&root, &["records", "update"]);
     let drift = jadpo(&root, &["check"]);
     assert!(
         drift.stdout.contains("migration.out_of_date"),
@@ -441,6 +448,7 @@ fn allowing_less_replaces_the_stored_values_no_longer_allowed() {
     let waiting = jadpo(&root, &["migrate", "new", "shrink"]);
     assert!(waiting.stdout.contains("allows less"), "{}", waiting.stdout);
     let shrink = migrations(&root).pop().expect("the migration");
+    jadpo(&root, &["records", "update"]);
     let unfinished = jadpo(&root, &["check"]);
     assert!(
         unfinished.stdout.contains("migration.decision_required"),
@@ -454,6 +462,7 @@ fn allowing_less_replaces_the_stored_values_no_longer_allowed() {
     );
     let finished = jadpo(&root, &["migrate", "new", "shrink"]);
     assert_eq!(finished.code, 0, "{}{}", finished.stdout, finished.stderr);
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     let applied = jadpo(&root, &["migrate", "apply", "--url", &url]);
@@ -608,6 +617,7 @@ fn a_query_that_sorts_first_changes_no_index() {
         "domains/planning/queries/a_by_title.jadpo",
         &query("a_by_title"),
     );
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     let again = jadpo(&root, &["migrate", "new", "more_titles"]);
@@ -638,6 +648,7 @@ fn a_query_that_sorts_first_changes_no_index() {
         "{}",
         snapshot(&latest)
     );
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
 }
@@ -717,10 +728,12 @@ fn a_unique_key_moved_within_the_tenant_is_made_again_without_a_decision() {
     write(&root, PROJECT, &tenant_project(true));
     let first = jadpo(&root, &["migrate", "new", "initial"]);
     assert_eq!(first.code, 0, "{}{}", first.stdout, first.stderr);
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}", checked.stdout);
     // The projects now belong to their company.
     write(&root, PROJECT, &tenant_project(false));
+    jadpo(&root, &["records", "update"]);
     let before = jadpo(&root, &["check"]);
     assert!(
         before.stdout.contains("rule: migration.out_of_date"),
@@ -751,6 +764,7 @@ fn a_unique_key_moved_within_the_tenant_is_made_again_without_a_decision() {
         ),
         "{sql}"
     );
+    jadpo(&root, &["records", "update"]);
     let after = jadpo(&root, &["check"]);
     assert_eq!(after.code, 0, "{}", after.stdout);
 }

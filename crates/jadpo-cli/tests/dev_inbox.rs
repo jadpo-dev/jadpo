@@ -190,7 +190,7 @@ fn project() -> (tempdir::Dir, PathBuf) {
     }
     for args in [
         &["migrate", "new", "initial"][..],
-        &["api", "update"],
+        &["records", "update"],
         &["check"],
     ] {
         let done = jadpo(&root, args);
@@ -386,6 +386,7 @@ fn check_scores_templates_and_a_decline_keeps_one_on_purpose() {
         "domains/accounts/emails/sale_email.jadpo",
         &format!("/// Our sale.\n{declared}"),
     );
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check", "--json"]);
     let found: Vec<String> = serde_json::from_str::<serde_json::Value>(&checked.stdout)
         .expect("json")["diagnostics"]
@@ -413,6 +414,7 @@ fn check_scores_templates_and_a_decline_keeps_one_on_purpose() {
             "/// Our sale.\ndecline email.health_problem: \"A test of what the score finds\"\n{declared}"
         ),
     );
+    jadpo(&root, &["records", "update"]);
     let declined = jadpo(&root, &["check"]);
     assert_eq!(declined.code, 0, "{}{}", declined.stdout, declined.stderr);
 }

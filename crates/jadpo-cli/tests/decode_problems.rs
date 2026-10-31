@@ -204,7 +204,7 @@ fn project() -> (tempdir::Dir, std::path::PathBuf) {
     for (path, text) in FILES {
         write(&root, path, text);
     }
-    for args in [&["api", "update"][..], &["check"]] {
+    for args in [&["records", "update"][..], &["check"]] {
         let done = jadpo(&root, args);
         assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
     }

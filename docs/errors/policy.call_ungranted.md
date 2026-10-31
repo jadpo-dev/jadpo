@@ -93,7 +93,7 @@ error: `borrow` calls `lend`, which refuses some of the people `borrow`'s line l
 69 |     return attempt lend(book_id, caller.id)
    |                    ^^^^^^^^^^^^^^^^^^^^^^^^ refuses some callers `Access.authenticated` lets in
   reason: `borrow`'s line under `actions:` covers only the creates, updates, deletes and transitions in `borrow`'s own body; `lend` keeps its own grants, with the same caller. `lend` changes `Book` records, which only `StaffRole.librarian` may, so some callers `Access.authenticated` lets in get 403 `not_permitted` from it.
-  next: Make the change in `borrow`'s own body, or list `lend` under `actions:` for exactly the people `borrow`'s line names, or write `decline policy.call_ungranted: "<why>"` above it if this is deliberate (human)
+  next: Make the change in `borrow`'s own body, or list `lend` under `actions:` for exactly the people `borrow`'s line names, or write `decline policy.call_ungranted: "<why>"` above it if this is deliberate, which a person then accepts (human)
   rule: policy.call_ungranted
   help: https://jadpo.dev/docs/errors/policy.call_ungranted
 

@@ -7,8 +7,9 @@ use jadpo_db::{Database, File, Layout, Project, Record};
 /// A project of `files`, in the order given. A project with entities
 /// gets the migration that creates their tables, as `jadpo migrate new`
 /// would write it, so tests of other rules aren't told the migrations are
-/// out of date; and each domain with events gets its event record, as
-/// `jadpo records update` would write it.
+/// out of date; and each domain with events gets its event record, and the
+/// project its access and network records, as `jadpo records update` would
+/// write them.
 pub fn project(db: &Database, layout: Layout, files: &[(&str, &str)]) -> Project {
     // An email's templates are read as records, as the loader reads them
     // (area 16).
@@ -34,7 +35,30 @@ pub fn project(db: &Database, layout: Layout, files: &[(&str, &str)]) -> Project
     let scratched = make(&scratch, Vec::new());
     let mut records = migration(&scratch, scratched);
     records.extend(event_records(&scratch, scratched));
+    records.extend(root_records(&scratch, scratched));
     make(db, records)
+}
+
+/// `access.jadpo_record` and `network.jadpo_record`, as `jadpo records
+/// update` writes them (chunk A8).
+pub fn root_records(db: &Database, project: Project) -> Vec<Record> {
+    if project.layout(db) != Layout::Project {
+        return Vec::new();
+    }
+    let access = jadpo_check::acceptances::access::record_text(db, project);
+    let network = jadpo_check::acceptances::network::record_text(db, project);
+    [
+        (jadpo_check::acceptances::access::PATH, access),
+        (jadpo_check::acceptances::network::PATH, network),
+    ]
+    .into_iter()
+    .filter_map(|(path, text)| {
+        Some(Record {
+            path: path.to_string(),
+            text: Ok(text.clone()?.clone()?),
+        })
+    })
+    .collect()
 }
 
 /// Each domain's event record, as `jadpo records update` writes it
@@ -110,7 +134,8 @@ pub fn project_with_migrated_records(
 ) -> Project {
     let scratch = Database::default();
     let scratched = project_with_records(&scratch, layout, files, records);
-    let migrated = migration(&scratch, scratched);
+    let mut migrated = migration(&scratch, scratched);
+    migrated.extend(root_records(&scratch, scratched));
     let mut all: Vec<(&str, &str)> = records.to_vec();
     for record in &migrated {
         all.push((
