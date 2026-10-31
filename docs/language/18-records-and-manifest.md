@@ -638,6 +638,7 @@ acceptance {
 | A column or table dropped, an entity moved to another store | `DataChange` | [Migrations](05-data.md#migrations) |
 | Any widening of who can do what, however it arises | `PolicyChange` | [Policy](09-policy.md) |
 | A sign-in setting loosened past its limit | `PolicyChange` | [Magic links](08-identity.md#settings) |
+| A git location added to, or widened in, `packages:`'s `own_sources:` | `PolicyChange` | [Installing safely](11-integrations.md#installing-safely) |
 | A domain created or renamed | `DomainChange` | [Domains](01-project-layout-and-modules.md#domains) |
 | A risky package change ([Package upgrades](#package-upgrades)) | `PackageChange` | [Integrations](11-integrations.md) |
 | A package's service: a new or changed container image, before it runs | `PackageChange` | [Integrations](11-integrations.md) |
@@ -672,9 +673,10 @@ Each change the compiler reports, and the subject it names:
 | `PolicyChange.listing_removed` | `catalogue.staff_books` | An action's or a query's line under `actions:` is gone |
 | `PolicyChange.call_ungranted_declined` | `lending.borrow` | A new `decline policy.call_ungranted:`, on the declaration it sits above |
 | `PolicyChange.sign_in_loosened` | `magic_link.expires_after` | A setting past its limit and looser than before |
+| `PolicyChange.own_source_added` | `"github.com/acme/"` | An entry in `packages:`'s `own_sources:` that wasn't there, or one that now covers more |
 | `DomainChange.created` | `billing` | A folder under `domains/` that wasn't there |
 | `NetworkChange.host_added` | `couriers` | A connection reaches a host it didn't, a new connection's included; one entry covers every new host of the connection |
-| `PackageChange.git_source` | `AcmeCouriers.v1` | A package locked from git that wasn't; every git package, since telling the app's own company's repository from a third party's needs a setting no page gives yet |
+| `PackageChange.git_source` | `AcmeCouriers.v1` | A package locked from git that wasn't, from a repository under none of `packages:`'s `own_sources:` |
 
 Two records give these checks a before side, and put what changed in
 front of the reviewer: `access.jadpo_record`, who can do what, from the
@@ -749,9 +751,9 @@ listed as removed and added.
 - **Shown, and needing a person as a new host:** a new `outbound:` grant
   to a service, and a new connection's hosts, each a `NetworkChange`
   (Richard, 2026-10-30).
-- **A package from git:** every one needs a person for now
-  (`PackageChange.git_source`), your own company's included, until a
-  setting tells your company's repositories from a third party's.
+- **A package from git** needs a person (`PackageChange.git_source`)
+  unless its repository is under one of `packages:`'s `own_sources:`
+  ([Installing safely](11-integrations.md#installing-safely)).
 
 `jadpo package update <name>` prints this part of the review. It is the
 same output as the upgrade plan [Integrations](11-integrations.md)

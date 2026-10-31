@@ -1147,10 +1147,25 @@ the sandbox for each one (see "Tests and fakes").
 - **Publisher trust.** A third party's package from git, rather than the
   registry, is unverified, and needs a person's acceptance in the change
   that installs it: `AcmeCouriers.v1: PackageChange.git_source`
-  ([Acceptances](18-records-and-manifest.md#acceptances)). Until a
-  setting tells your own company's repositories from a third party's,
-  every package from git needs one. Registry packages carry their verified
-  publisher, and curated ones are marked official.
+  ([Acceptances](18-records-and-manifest.md#acceptances)). Registry
+  packages carry their verified publisher, and curated ones are marked
+  official.
+- **Your own company's repositories** are listed in `application { }`'s
+  `packages:` section, each a host and path ending in `/`:
+
+  ```text
+  packages: {
+      own_sources: ["github.com/acme/", "git.acme.example/platform/"]
+  }
+  ```
+
+  A package locked from a repository under one of them needs no
+  `PackageChange.git_source`; everything else about it is reviewed as for
+  any package. Adding an entry, or widening one, is a decision:
+  `"github.com/acme/": PolicyChange.own_source_added`, so an agent can't
+  let a stranger's repository in. Removing one needs nothing. The list is
+  kept in `access.jadpo_record` as `own_source` lines, which gives the
+  check its before side (Richard, 2026-10-31).
 - **Prose is unverified wherever it comes from**, such as `///`
   descriptions and `GUIDE.md`. Nothing safety-relevant relies on it.
 
@@ -1196,7 +1211,7 @@ the sandbox for each one (see "Tests and fakes").
 
 Not built yet: the hosted registry; importers other than `openapi`;
 adding another Jadpo app's OpenAPI document with `jadpo package add`;
-telling your own company's git packages from a third party's; `jadpo approval`; writing an operation's output type from
+`packages:`'s `own_sources:`; `jadpo approval`; writing an operation's output type from
 the sandbox's answer when it has none; and a HAR capture's operations.
 
 ## The surface
@@ -6985,7 +7000,7 @@ package's name, as its types are.
 | Webhooks as events, replies, handshakes, queues through a package and the Cloudflare Queues driver | Built. |
 | Services (`runs:`) | Not built yet. |
 | OAuth grants | Not built yet. |
-| Publisher trust for third-party git packages | Built: every package from git needs an [acceptance](18-records-and-manifest.md#acceptances). Not built yet: a setting that lets your own company's git packages in without one. |
+| Publisher trust for third-party git packages | Built: every package from git needs an [acceptance](18-records-and-manifest.md#acceptances). Not built yet: `packages:`'s `own_sources:`, which lets your own company's repositories in without one. |
 | The public registry: the protocol, the verifier, publishing, facts, search, advisories and compatibility runs | Not built yet. |
 | Importers other than OpenAPI | Not built yet. |
 | Choosing a provider when deploying | Not built yet. |

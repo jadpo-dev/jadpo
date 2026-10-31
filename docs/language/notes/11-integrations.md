@@ -246,6 +246,11 @@ Numbered as the questions they settled, which other pages cite.
     so a fix would otherwise never reach them. The verifier is the `jadpo`
     tool in a container, reached as a provider, so the registry is an
     ordinary Jadpo application.
+    Your own company's git repositories are listed in `packages:`'s
+    `own_sources:` (Richard, 2026-10-31), so they install without
+    `PackageChange.git_source`; adding one is itself a `PolicyChange`,
+    because a list an agent could extend freely would let any repository
+    in.
 16. **Package names** are UpperCamelCase with the package's own version
     label: `Stripe.v2024_06_20`, `AcmeCouriers.v1`, `Postcodes.v2`. Types,
     failures and events are named through the package without the version
