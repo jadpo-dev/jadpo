@@ -4,8 +4,11 @@
 //! first.
 //!
 //! - **The new build** is the checkout's: `--build` names the build being
-//!   deployed, and the checkout must make that build, since its code is
-//!   what the runs are compared with.
+//!   deployed by its build id, `b_` and twelve hex digits, as its stamp
+//!   carries it, and the checkout must make that build (one of its
+//!   deployables must be built as it), since its code is what the runs
+//!   are compared with. The graph's digest, which `jadpo dev`'s records
+//!   keep in its place, isn't a build id.
 //! - **What it reads**, in every store that keeps them: the records of
 //!   actions with several changing calls not abandoned
 //!   (`jadpo_step_records`), and batch runs still going
@@ -74,6 +77,49 @@ fn arguments(message: String, reason: String, next: String) -> Diagnostic {
     Diagnostic::new(&rule::CLI_RUNS_ARGUMENTS, message)
         .reason(reason)
         .next(next)
+}
+
+/// A build id: `b_` and twelve lowercase hex digits (area 14, "The build
+/// stamp").
+fn is_build_id(text: &str) -> bool {
+    text.len() == 14
+        && text.starts_with("b_")
+        && text[2..]
+            .chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+}
+
+/// `--build` names no build the checkout makes: which it does, by
+/// deployable when it has several.
+fn not_made(build: &str, made: &[(String, String)]) -> Diagnostic {
+    let ids: Vec<String> = made.iter().map(|(_, id)| format!("`{id}`")).collect();
+    let message = match made {
+        [] => format!("The checkout makes no build, so `{build}` can't be checked"),
+        [(_, id)] => format!("The checkout makes build `{id}`, not `{build}`"),
+        _ => format!(
+            "The checkout makes builds {}, not `{build}`",
+            crate::run::both(&ids)
+        ),
+    };
+    let mut reason =
+        "The runs are compared with the checkout's code, so it must be the build being deployed."
+            .to_string();
+    if !is_build_id(build) {
+        reason
+            .push_str(" A build id is `b_` and twelve hex digits, as the build's stamp shows it.");
+    }
+    let next = match made {
+        [] => "Run `jadpo check`, fix what it reports, then run this again".to_string(),
+        [(_, id)] => format!("Check out the commit being deployed, or use `--build {id}`"),
+        _ => format!(
+            "Check out the commit being deployed, or use the build of the deployable being deployed: {}",
+            made.iter()
+                .map(|(name, id)| format!("`--build {id}` for `{name}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    };
+    arguments(message, reason, next)
 }
 
 /// What a run does under the new build.
@@ -154,15 +200,16 @@ fn unfinished(call: &Call) -> Reply {
         }
     };
     let plan = prepared.plan();
-    if plan.build_id() != build {
-        return Reply::failed(arguments(
-            format!("The checkout makes build `{}`, not `{build}`", plan.build_id()),
-            "The runs are compared with the checkout's code, so it must be the build being deployed.".to_string(),
-            format!(
-                "Check out the commit being deployed, or use `--build {}`",
-                plan.build_id()
-            ),
-        ));
+    // The build ids the checkout's deployables are built as: what each
+    // one's stamp carries, as the manifest lists them.
+    let lock = std::fs::read(root.join(jadpo_db::LOCK)).unwrap_or_default();
+    let made: Vec<(String, String)> =
+        crate::stamp::deployables(&loaded.db, loaded.project, 0, crate::help::VERSION, &lock)
+            .into_iter()
+            .filter_map(|stamp| Some((stamp.name, stamp.build?)))
+            .collect();
+    if !made.iter().any(|(_, id)| *id == build) {
+        return Reply::failed(not_made(&build, &made));
     }
     // The new build's step shape for each action that keeps steps, and
     // its batch calls' shapes.
