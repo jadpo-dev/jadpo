@@ -175,6 +175,14 @@ Why [Identity](../08-identity.md) is the way it is: the decisions behind it, how
 | The system's sign-in actions and tenants | The magic-link `send:` action runs with its delivery's tenant, as a subscriber's does, which for `jadpo.MagicLinkEmail` is none, and `on_first_sign_in:`'s action with no tenant: each reaches only records every tenant shares, never every tenant's, as area 9 says of the system inside a request. Each is let in only by `Access.system`: what only `Access.public` lets it in to is `policy.system_grant_missing`, at its `send:` or `on_first_sign_in:` |
 | Route tests through the magic-link routes | A route test calls the generated routes with `request { }`. Their inputs are built-in `Input` types named as the API record names them, `MagicLinkAsk`, `MagicLinkConfirmation` and `MagicLinkCode`, which only a test, a fixture or a seed builds, a field that may be `none` left out at will; the confirmation answers `MagicLinkConfirmed` and the redemption `MagicLinkToken`. A test's request carries the app's own `Origin`. `SentEmail` gives the sign-in email's token and code as `sign_in_token: SignInToken?` and `sign_in_code: SignInCode?`, so a test never parses them out of the text and the token stays typed |
 
+- **Confirming one request with a passkey** (Richard, 2026-10-31): a
+  route's `confirm: Confirmation.passkey`, a challenge bound to the
+  signed-in person, the route and the request's input, used once within
+  two minutes. `RouteAuthentication.fresh` only rechecks that a session
+  hasn't been revoked, which a stolen session passes; the public registry
+  needs a release confirmed by a person who can't be phished, and the same
+  holds for payments and deleting accounts.
+
 ## Moved from the area page
 
 When [Identity](../08-identity.md) was rewritten to the
