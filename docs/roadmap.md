@@ -405,13 +405,7 @@ time.
   (`crates/jadpo-diag`) has no mark for a security rule yet: A8 adds it,
   starting with `policy.call_ungranted`, declinable since A2.
 - [x] **A7a `on_first_sign_in:` for external tokens**: area 8, `external_token` and "A person the app has not seen"; area 5, "Tables for sign-in"; compiler/runtime §2.6, "First sign-in by external token".
-- [ ] **A7b Sign-in providers** `opus · xhigh`: area 8, `sign_in:`'s
-  `providers:` (Google first, then Microsoft, through `Driver.oidc`), the
-  routes, checks and `test_providers` its "Providers" decides (Richard,
-  2026-10-30), and `on_first_sign_in:` for provider sign-in. Moved here
-  from "After the first build", item 8 (Richard, 2026-10-30). Done when
-  a staff user signs in with Google through Jadpo alone, tested with the
-  local issuer, interpreted, compiled and on workerd.
+- [x] **A7b Sign-in providers**: area 8, "Providers", "What the compiler checks of sign-in" and Failures; areas 7 (generated routes), 11 (sign-in providers), 13 (signing in for a route test) and 14 (`jadpo dev`); compiler/runtime §2.6, "Sign-in providers".
 - [ ] **A7c Provider sign-in in `jadpo dev`** `opus · high` after A7b:
   area 8, "Providers"; area 14, `jadpo dev`. The local issuer's
   account-chooser page, designed with the design skills first, so
