@@ -1,0 +1,2 @@
+/// When a loan's book is due back.
+type DueTime = Instant {}

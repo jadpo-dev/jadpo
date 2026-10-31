@@ -1,0 +1,6 @@
+use desk/entities { Book }
+
+/// A book as every signed-in customer sees it.
+type CatalogueBook = Output {
+    pick: [Book.id, Book.title, Book.author]
+}

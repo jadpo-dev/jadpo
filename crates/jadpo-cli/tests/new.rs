@@ -130,6 +130,35 @@ fn the_project_is_on_this_jadpos_own_line() {
     );
 }
 
+/// The AGENTS.md an agent reads every session (roadmap chunk A6): its
+/// working method, what isn't built yet and the closest example for each
+/// feature, each generated from the docs (`tools/docs/agent_guidance.py`),
+/// and short enough to read every time.
+#[test]
+fn agents_md_gives_a_working_method_what_is_built_and_the_examples() {
+    let parent = folder("agents");
+    assert_eq!(jadpo(&parent, &["new", "shop"]).code, 0);
+    let agents = fs::read_to_string(parent.join("shop/AGENTS.md")).expect("AGENTS.md");
+    for phrase in [
+        "One concern at a time",
+        "`jadpo check` after each file",
+        "one topic",
+        "Declare a feature and check it",
+        "`jadpo help <rule>`",
+        "`jadpo acceptance new <purpose>`",
+        "never write the reason yourself",
+        "## The closest example for each feature",
+        "https://github.com/jadpo-dev/jadpo/tree/main/examples/29-lending-desk",
+        "## What isn't built yet",
+        "https://jadpo.dev/docs/topics/identity-built.md",
+    ] {
+        assert!(agents.contains(phrase), "{phrase:?} in:\n{agents}");
+    }
+    assert!(!agents.contains("{name}") && !agents.contains("{line}"));
+    let words = agents.split_whitespace().count();
+    assert!(words < 2_000, "{words} words");
+}
+
 #[test]
 fn each_project_gets_its_own_token() {
     let parent = folder("token");

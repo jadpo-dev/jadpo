@@ -190,9 +190,11 @@ serves the release's own copy. The site's `llms.txt` links the skill.
 
 ## How an agent uses it
 
-1. A project made by `jadpo new` holds a short section in its `AGENTS.md`:
-   what Jadpo is, the version the app declares in `app.jadpo`, and where the
-   docs are. Agents load that file on their own.
+1. A project made by `jadpo new` holds a short `AGENTS.md`: what Jadpo
+   is, the version the app declares in `app.jadpo`, where the docs are, a
+   working method, the closest example for each feature and what isn't
+   built yet ([`jadpo new`](language/14-tooling.md#jadpo-new)). Agents
+   load that file on their own.
 2. The agent reads the primer once per session; it is the same every time,
    so prompt caching keeps it cheap.
 3. For a task it reads `index.json` (or `llms.txt`), picks the topics by

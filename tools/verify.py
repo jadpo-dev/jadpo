@@ -362,6 +362,13 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
         # The docs renderer finishes every page, and its list parser's
         # cases, each under a time limit (tools/docs/language_docs_test.py).
         Step('docs renderer', 'lint', [python, 'tools/docs/language_docs_test.py']),
+        # What an agent reads first (roadmap chunk A6): the AGENTS.md
+        # `jadpo new` writes and llms.txt, their examples and what isn't
+        # built generated from examples/README.md and each area's "What is
+        # built" (tools/docs/agent_guidance.py), and its own tests.
+        Step('agent guidance in step with the docs', 'lint',
+             [python, 'tools/docs/agent_guidance.py', '--check']),
+        Step('agent guidance tests', 'lint', [python, 'tools/docs/agent_guidance_test.py']),
         # A pull request's Conventional Commit type against what it changes
         # (docs/documentation.md, "Versions and releases"), and the
         # catalogue that check reads from the source agreeing with

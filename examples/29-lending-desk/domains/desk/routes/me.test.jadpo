@@ -1,0 +1,43 @@
+use desk/entities { Patron }
+use desk/types { Lending, LoanView, NewBook, StockBook }
+use desk/actions { add_book, lend }
+use desk/fixtures { customer_at }
+
+test "a customer sees their own loans and nobody else's" {
+    var cara: Patron = customer_at("cara@reader.example")
+    var dara: Patron = customer_at("dara@reader.example")
+    var dune: StockBook = add_book(
+        NewBook {
+            title: "Dune"
+            author: "Frank Herbert"
+            shelf: "B3"
+            donor: none
+        }
+    )
+    var emma: StockBook = add_book(
+        NewBook {
+            title: "Emma"
+            author: "Jane Austen"
+            shelf: "A1"
+            donor: none
+        }
+    )
+    var caras: LoanView = attempt lend(
+        Lending {
+            book_id: dune.id
+            borrower: cara.email
+        }
+    )
+    attempt lend(
+        Lending {
+            book_id: emma.id
+            borrower: dara.email
+        }
+    )
+    var caras_loans: Response = request {
+        method: HttpMethod.get
+        path: "/me/loans"
+        as: Principal.user(cara)
+    }
+    assert caras_loans.output == [caras]
+}

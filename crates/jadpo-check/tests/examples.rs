@@ -83,11 +83,6 @@ const EXEMPT: &[(&str, &str)] = &[
         "`...` marks code left out of documentation",
     ),
     // Later areas' declarations and the syntax only they use.
-    ("syntax SEED_DECL", "not built: seeds (area 5)"),
-    (
-        "graph node seed",
-        "not built: `jadpo seed`, which runs a seed's actions (area 5)",
-    ),
     (
         "data migration decision FieldChange.dropped",
         "not built: a drop needs a person's acceptance (area 18)",
@@ -129,7 +124,6 @@ const EXEMPT: &[(&str, &str)] = &[
     // Layout places later areas fill.
     ("root file flags.jadpo", "not built: flags (area 16)"),
     ("place monitoring", "not built: monitoring (area 16)"),
-    ("place seeds", "not built: seeds (area 5)"),
 ];
 
 fn root() -> PathBuf {

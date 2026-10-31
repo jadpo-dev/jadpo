@@ -1,0 +1,42 @@
+use desk/entities { Patron }
+
+// Two connections: Google, which signs staff in, and the SMTP server
+// the reminders go through. Google is plain OpenID Connect, so
+// `Driver.oidc` and its issuer's discovery document give the rest; its
+// client ID and secret are settings, the secret given only to the
+// connection.
+application {
+    display_name: "The lending desk"
+    connections: {
+        google: {
+            driver: Driver.oidc
+            issuer: config.google_issuer
+            client_id: config.google_client_id
+            credential: config.google_client_secret
+        }
+        mail: {
+            driver: Driver.smtp
+            host: config.smtp_host
+        }
+    }
+    email: {
+        connection: mail
+        from: config.desk_address
+    }
+}
+
+// Customers and staff are both people: one entity, found by the address
+// they sign in with. Staff are people who hold a role
+// (`domains/desk/entities/staff_member.jadpo`); someone whose record is
+// no longer `active` is refused on their next request.
+principal {
+    user: {
+        subject: Patron.email
+        active: Patron.active == true
+    }
+}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}

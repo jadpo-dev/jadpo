@@ -1,0 +1,5 @@
+/// No one has signed in with that address.
+type NoSuchCustomer = Failure {
+    kind: FailureKind.not_found
+    message: "No customer has signed in with that address."
+}

@@ -1,0 +1,22 @@
+// The principal's user entity: every customer and every member of staff.
+// A person reads their own record, and staff read everyone's, to lend to
+// them by address. Only the system makes one: the first time someone
+// signs in, or a seed taking on staff.
+
+use desk/types { DisplayName, StaffRole }
+
+/// Someone who borrows books, or works at the desk, or both.
+entity Patron {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
+    name: DisplayName?
+    active: Bool
+
+    policy: {
+        create: [Access.system]
+        read: [id, Access.system, StaffRole.admin, StaffRole.front_desk]
+        update: [Access.system]
+    }
+}

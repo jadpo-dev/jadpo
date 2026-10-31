@@ -1,0 +1,28 @@
+// The desk's first staff, for development: `jadpo seed first_staff` runs it
+// against the database on this machine, and refuses any other. Its calls
+// pass no caller, so they run without policy: that is how the first
+// admin, who could take on everyone else, exists at all. Each takes
+// someone on under the Google address they will sign in with; in
+// `jadpo dev`, sign in as them on the account chooser with that address,
+// marked verified.
+
+use desk/types { NewStaff, StaffRole }
+use desk
+
+/// An admin and a front-desk member of staff.
+seed {
+    attempt desk.take_on(
+        NewStaff {
+            email: "bo@lending.example"
+            name: "Bo Adeyemi"
+            role: StaffRole.admin
+        }
+    )
+    attempt desk.take_on(
+        NewStaff {
+            email: "ann@lending.example"
+            name: "Ann Lee"
+            role: StaffRole.front_desk
+        }
+    )
+}

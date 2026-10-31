@@ -58,4 +58,4 @@ cd examples/28-lost-property && ../../target/release/jadpo ai show reply_to_pass
   <!-- try {"file": "domains/lost_property/actions/draft_reply.jadpo", "replace": "        malformed: ReplyUnavailable\n", "with": "", "check": ["failure.rule_unmapped"]} -->
 - In `enquiries.jadpo`, take the `deadline:` out. `jadpo check` reports `route.calls_past_deadline`: the stream may take 25 seconds, longer than the 10-second default.
   <!-- try {"file": "domains/lost_property/routes/enquiries.jadpo", "replace": "        deadline: 30s\n", "with": "", "check": ["route.calls_past_deadline"]} -->
-- That is the last example so far. The [language pages](../../docs/language/README.md) hold the full specification.
+- Then read [29-lending-desk](../29-lending-desk/README.md), where customers and staff share one app, staff signing in with Google.

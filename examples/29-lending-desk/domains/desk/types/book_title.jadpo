@@ -1,0 +1,5 @@
+/// A book's title.
+type BookTitle = Text {
+    min_length: 1
+    max_length: 200
+}
