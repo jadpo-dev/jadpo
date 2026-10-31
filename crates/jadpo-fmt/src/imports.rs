@@ -9,6 +9,7 @@
 
 use jadpo_syntax::SyntaxKind::*;
 use jadpo_syntax::SyntaxNode;
+use rowan::NodeOrToken;
 
 /// The root files a `use` line can name, in the layout's order.
 pub const ROOT_FILES: [&str; 5] = ["app", "config", "authentication", "policy", "flags"];
@@ -39,8 +40,12 @@ pub(crate) struct Rank {
     holder: (usize, String),
     /// The folder's position in the layout, then its name.
     folder: (usize, String),
-    /// The line as written, so equal lines keep a stable order.
-    written: String,
+    /// The line as the formatter writes it, so lines in the same folder
+    /// keep one order: the path, then the names inside the braces sorted.
+    /// The names as written would sort the line before its names are
+    /// sorted, and the next format would sort it again (a mutation of an
+    /// example found two lines for one folder).
+    written: (String, Vec<String>),
 }
 
 fn segments(node: &SyntaxNode) -> Vec<String> {
@@ -73,7 +78,19 @@ fn folder_position(folder: &str) -> (usize, String) {
 pub(crate) fn rank(node: &SyntaxNode) -> Rank {
     let parts = segments(node);
     let names = node.children().any(|child| child.kind() == USE_NAMES);
-    let written = text_of(node);
+    let written = (
+        node.children_with_tokens()
+            .filter(|element| element.kind() != USE_NAMES)
+            .flat_map(|element| match element {
+                NodeOrToken::Node(inner) => vec![text_of(&inner)],
+                NodeOrToken::Token(token) if !token.kind().is_trivia() => {
+                    vec![token.text().to_string()]
+                }
+                NodeOrToken::Token(_) => vec![],
+            })
+            .collect(),
+        sorted_names(node),
+    );
     let none = (0, String::new());
     let (group, holder, folder) = match (parts.as_slice(), names) {
         ([root], true) if ROOT_FILES.contains(&root.as_str()) => (
@@ -98,6 +115,18 @@ pub(crate) fn rank(node: &SyntaxNode) -> Rank {
         folder,
         written,
     }
+}
+
+/// The names a `use` line's braces hold, sorted as the formatter writes them.
+fn sorted_names(node: &SyntaxNode) -> Vec<String> {
+    let mut names: Vec<String> = node
+        .children()
+        .filter(|child| child.kind() == USE_NAMES)
+        .flat_map(|names| names.children())
+        .map(|name| name_key(&name))
+        .collect();
+    names.sort();
+    names
 }
 
 /// The name a `use` line's braces hold, for sorting.
