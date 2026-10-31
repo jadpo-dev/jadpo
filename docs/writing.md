@@ -313,13 +313,15 @@ before the command, where the reader sees it. A fix that needs the
 error's state first is shown as a plain `sh` block, without output.
 
 A rule no run can raise on demand, because it needs a race, a network
-that fails, a machine that can't build or a database server without an
-extension, shows the command as a plain `sh` block and output copied
-from a real run as a plain `text` block. The project's files are still
-`check` blocks, which the gate compiles.
+that fails, a machine that can't build, a database server without an
+extension or `jadpo dev` running beside the command, or whose run can't
+print the same twice, because it shows a random id or a build id that
+changes with the compiler, shows the command as a plain `sh` block and
+output copied from a real run as a plain `text` block. The project's
+files are still `check` blocks, which the gate compiles.
 The sentence before them says the output was copied rather than checked
-and what the run was, such as "a build on a Mac with no C compiler", and
-the copy has the run's folders written as `.` and `~`, as the check
+and what the run was, such as "a build on a Mac with no C compiler",
+with any state written into the database by hand, and the copy has the run's folders written as `.` and `~`, as the check
 writes them. Nothing else in it is edited.
 
 A run whose error needs a read-only file or folder, made with `chmod`,

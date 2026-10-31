@@ -51,7 +51,7 @@ use jadpo_term::{Block, Cell, Fact, Json, Outcome, Screen, Symbol, Table, Token}
 
 use crate::database::Address;
 use crate::run::{Call, Reply, quoted};
-use crate::schedules::{clock, now, plural, store_error, tick_every, url_of};
+use crate::schedules::{clock, now, plural, tick_every, unreadable, url_of};
 
 /// What `jadpo deliveries` does besides listing.
 pub const ACTIONS: &[crate::table::Value] = &[
@@ -474,23 +474,18 @@ fn with_database<T>(
     )
         -> jadpo_runtime::LocalFuture<'d, Result<T, jadpo_runtime::StoreError>>,
 ) -> Result<T, Reply> {
-    let failed = |error: String| {
-        Reply::failed(
-            Diagnostic::new(
-                &rule::DELIVERIES_UNAVAILABLE,
-                format!("The database `{store}` couldn't be read"),
-            )
-            .reason(format!(
-                "Reading its deliveries failed: {error}. Its tables come with its migrations."
-            ))
-            .next("Check the database is running, then run `jadpo migrate apply`"),
-        )
+    let failed = |error: jadpo_runtime::StoreError| {
+        Reply::failed(unreadable(
+            &rule::DELIVERIES_UNAVAILABLE,
+            store,
+            "deliveries",
+            &error,
+        ))
     };
-    let runtime = jadpo_host_native::Runtime::new().map_err(|error| failed(error.to_string()))?;
-    let database = url.open().map_err(|error| failed(store_error(&error)))?;
-    runtime
-        .block_on(work(&database))
-        .map_err(|error| failed(store_error(&error)))
+    let runtime = jadpo_host_native::Runtime::new()
+        .map_err(|error| failed(jadpo_runtime::StoreError::Fault(error.to_string())))?;
+    let database = url.open().map_err(failed)?;
+    runtime.block_on(work(&database)).map_err(failed)
 }
 
 /// Who the operator is, as the machine names them: `USER`, else

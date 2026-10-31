@@ -400,23 +400,18 @@ fn with_database<T>(
     )
         -> jadpo_runtime::LocalFuture<'d, Result<T, jadpo_runtime::StoreError>>,
 ) -> Result<T, Reply> {
-    let failed = |error: String| {
-        Reply::failed(
-            Diagnostic::new(
-                &rule::SCHEDULES_UNAVAILABLE,
-                format!("The database `{store}` couldn't be read"),
-            )
-            .reason(format!(
-                "Reading the schedules' state failed: {error}. Its tables come with the migration that adds the first schedule."
-            ))
-            .next("Check the database is running, then run `jadpo migrate apply`"),
-        )
+    let failed = |error: jadpo_runtime::StoreError| {
+        Reply::failed(unreadable(
+            &rule::SCHEDULES_UNAVAILABLE,
+            store,
+            "schedules",
+            &error,
+        ))
     };
-    let runtime = jadpo_host_native::Runtime::new().map_err(|error| failed(error.to_string()))?;
-    let database = url.open().map_err(|error| failed(store_error(&error)))?;
-    runtime
-        .block_on(work(&database))
-        .map_err(|error| failed(store_error(&error)))
+    let runtime = jadpo_host_native::Runtime::new()
+        .map_err(|error| failed(jadpo_runtime::StoreError::Fault(error.to_string())))?;
+    let database = url.open().map_err(failed)?;
+    runtime.block_on(work(&database)).map_err(failed)
 }
 
 pub(crate) fn store_error(error: &jadpo_runtime::StoreError) -> String {
@@ -431,6 +426,47 @@ pub(crate) fn store_error(error: &jadpo_runtime::StoreError) -> String {
         StoreError::Fault(text) => text.clone(),
     };
     text.trim_end_matches('.').to_string()
+}
+
+/// `rule`, for a command that reads `noun` (`schedules`, `AI usage`)
+/// from the database `store` and couldn't: it can't be reached, it has no
+/// table for them, which the project's migrations make, or reading failed
+/// some other way. Each says what to check, since only the operator knows
+/// whether the address is the right one.
+pub(crate) fn unreadable(
+    rule: &'static jadpo_diag::Rule,
+    store: &str,
+    noun: &str,
+    error: &jadpo_runtime::StoreError,
+) -> Diagnostic {
+    if matches!(error, jadpo_runtime::StoreError::Unavailable) {
+        return Diagnostic::new(rule, format!("The database `{store}` can't be reached"))
+            .reason(format!("Connecting to it failed, so no {noun} could be read."))
+            .next("Check the database is running and its address is right, then run the command again");
+    }
+    if let Some(table) = missing_table(error) {
+        return Diagnostic::new(rule, format!("The database `{store}` has no table for {noun} yet"))
+            .reason(format!(
+                "`{table}` comes with the project's migrations, so either the database hasn't applied them, or it isn't this project's database."
+            ))
+            .next("Run `jadpo migrate apply` if it is this project's database, then run the command again");
+    }
+    Diagnostic::new(rule, format!("The database `{store}` couldn't be read"))
+        .reason(format!(
+            "Reading its {noun} failed: {}.",
+            store_error(error)
+        ))
+        .next("Check the database is running, then run the command again")
+}
+
+/// The table a statement named that the database doesn't have, from the
+/// driver's text for PostgreSQL's `42P01` (`undefined_table`).
+fn missing_table(error: &jadpo_runtime::StoreError) -> Option<&str> {
+    let jadpo_runtime::StoreError::Fault(text) = error else {
+        return None;
+    };
+    let rest = text.strip_prefix("PostgreSQL refused (42P01): relation \"")?;
+    rest.split_once('"').map(|(table, _)| table)
 }
 
 // --- words ------------------------------------------------------------------
@@ -2136,6 +2172,49 @@ mod tests {
     use super::*;
 
     const T: i64 = 1_792_404_230_000; // 2026-10-19T10:03:50Z
+
+    #[test]
+    fn a_database_that_cant_be_read_says_which_of_the_three_it_is() {
+        use jadpo_runtime::StoreError;
+        let said = |error: StoreError| {
+            let diagnostic =
+                unreadable(&rule::DELIVERIES_UNAVAILABLE, "main", "deliveries", &error);
+            (
+                diagnostic.message,
+                diagnostic.reason.unwrap_or_default(),
+                diagnostic.next.map(|next| next.text).unwrap_or_default(),
+            )
+        };
+        // Not reached: nothing about migrations, which can't be the cause.
+        assert_eq!(
+            said(StoreError::Unavailable),
+            (
+                "The database `main` can't be reached".to_string(),
+                "Connecting to it failed, so no deliveries could be read.".to_string(),
+                "Check the database is running and its address is right, then run the command again".to_string(),
+            )
+        );
+        // Reached, without the table the migrations make: the table by
+        // name, and the two things it can mean, not PostgreSQL's code.
+        assert_eq!(
+            said(StoreError::Fault(
+                "PostgreSQL refused (42P01): relation \"jadpo_deliveries\" does not exist".into()
+            )),
+            (
+                "The database `main` has no table for deliveries yet".to_string(),
+                "`jadpo_deliveries` comes with the project's migrations, so either the database hasn't applied them, or it isn't this project's database.".to_string(),
+                "Run `jadpo migrate apply` if it is this project's database, then run the command again".to_string(),
+            )
+        );
+        // Anything else keeps the driver's words.
+        assert_eq!(
+            said(StoreError::Fault(
+                "PostgreSQL refused (42501): permission denied".into()
+            ))
+            .1,
+            "Reading its deliveries failed: PostgreSQL refused (42501): permission denied."
+        );
+    }
 
     #[test]
     fn a_run_in_jadpo_dev_is_one_json_event() {
