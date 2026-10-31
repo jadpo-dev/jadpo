@@ -10,7 +10,7 @@
 use std::path::{Path, PathBuf};
 
 use jadpo_db::{Database, File, Layout, Project};
-use jadpo_plan::{Decoded, Plan, PurgePlan, Raises, WriteSitePlan};
+use jadpo_plan::{Decoded, Plan, PurgeKind, PurgePlan, Raises, WriteSitePlan};
 use jadpo_std::read::{
     Check, Column, Field, IncludeShape, Operand, ReadPlan, Select, Size, Source,
 };
@@ -311,9 +311,15 @@ fn write(name: &str, write: &WriteSitePlan) -> String {
 }
 
 fn purge(plan: &PurgePlan) -> String {
+    let period = match plan.after_setting {
+        Some(setting) => format!("after setting {setting}"),
+        None => format!("after {}ms", plan.after),
+    };
     let mut out = format!(
-        "-- purge {}: after {}ms, store {}\n{}\n",
-        plan.entity, plan.after, plan.store, plan.sql
+        "-- {}: {period}, store {}\n{}\n",
+        plan.what(),
+        plan.store,
+        plan.sql
     );
     for (i, param) in plan.params.iter().enumerate() {
         out.push_str(&format!(
@@ -355,7 +361,13 @@ fn every_query_shape_matches_its_golden_sql() {
         }
     }
     for plan in plan.purges() {
-        written.push((format!("{}_purge", plan.entity.to_lowercase()), purge(plan)));
+        let entity = plan.entity.to_lowercase();
+        let name = match &plan.kind {
+            PurgeKind::Hidden => format!("{entity}_purge"),
+            PurgeKind::Retention => format!("{entity}_retention"),
+            PurgeKind::FieldRetention(field) => format!("{entity}_{field}_retention"),
+        };
+        written.push((name, purge(plan)));
     }
     assert!(
         written.len() >= 6 + 5 + 7,
@@ -752,4 +764,69 @@ query companies() -> List<CompanyCard> {
         companies.contains("(\"jadpo_m0\".\"role\" = "),
         "{companies}"
     );
+}
+
+/// Someone who signs in goes, when their retention ends, with the sign-in
+/// state their store keeps: here their API tokens' sessions (area 15,
+/// "Retention"; chunk P2), in the statement that deletes them.
+#[test]
+fn a_retention_deletes_someone_who_signs_in_with_their_sign_in_state() {
+    let plan = planned(
+        r#"type Handle = Text {
+    max_length: 40
+}
+
+config {
+    member_retention: Duration {
+        default: 730d
+    }
+}
+
+principal {
+    user: {
+        subject: Member.handle
+    }
+}
+
+authentication {
+    api_token: {}
+}
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+    last_seen_at: Instant
+
+    retention: {
+        after: config.member_retention
+        since: last_seen_at
+    }
+}
+"#
+        .to_string(),
+    );
+    let retention = plan.retention("Member", None).expect("Member's retention");
+    assert_eq!(
+        retention.sql,
+        r#"WITH "expired" AS (
+  DELETE FROM "member"
+  WHERE "id" IN (
+    SELECT "id"
+    FROM "member"
+    WHERE "last_seen_at" < $1
+    ORDER BY "last_seen_at" ASC, "id" ASC
+    LIMIT 500
+    FOR UPDATE SKIP LOCKED
+  )
+  RETURNING "id"
+), "removed1" AS (
+  DELETE FROM "jadpo_sessions"
+  WHERE "principal_id" IN (SELECT "id" FROM "expired")
+)
+SELECT "id" FROM "expired""#
+    );
+    assert_eq!(retention.after_setting, Some(0));
+    assert!(plan.purge("Member").is_none(), "no lifecycle, no purge");
 }

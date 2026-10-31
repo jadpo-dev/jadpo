@@ -514,6 +514,50 @@ entity Banner {
     }
 }
 
+// Retention (area 15; chunk P2): a visit is deleted, with its notes, once
+// its time is up, and its address and spend are cleared before that.
+
+config {
+    visit_retention: Duration {
+        default: 365d
+    }
+    visit_address_retention: Duration {
+        default: 30d
+    }
+}
+
+entity Visit {
+    id: Uuid
+    address: IpAddress? {
+        retention: {
+            after: config.visit_address_retention
+            since: at
+        }
+    }
+    spent: Money? {
+        retention: {
+            after: config.visit_address_retention
+            since: at
+        }
+    }
+    at: Instant
+    changed_at: Instant {
+        generated: Generated.on_change
+    }
+
+    retention: {
+        after: config.visit_retention
+        since: at
+    }
+}
+
+entity VisitNote {
+    id: Uuid
+    visit_id: Visit.id {
+        on_delete: OnDelete.cascade
+    }
+}
+
 /// Visible records only, with a partial index.
 query boards_named(name: Board.name) -> List<BoardView> {
     from: Board

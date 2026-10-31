@@ -22,6 +22,7 @@ pub use columns::system_table;
 pub mod lifecycle;
 pub mod migrations;
 pub mod queries;
+pub mod retention;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -54,20 +55,9 @@ pub const SECTIONS: [&str; 7] = [
     "membership",
 ];
 
-/// An entity section an area page decides and this compiler doesn't
-/// build: how it is written, and why it is refused.
-fn unbuilt_section(word: &str) -> (&'static str, &'static str) {
-    match word {
-        "audit" => (
-            "audit:",
-            "An entity's history of changes is area 16's audit trail, which isn't built yet: accepted, no change would be recorded.",
-        ),
-        _ => (
-            "retention:",
-            "Deleting a record when its time is up comes with area 15's retention, which isn't built yet: accepted, the record would be kept for ever. A lifecycle's `purge:` (area 5) is built.",
-        ),
-    }
-}
+/// Why an entity's `audit:`, which area 16 decides and this compiler
+/// doesn't build, is refused.
+const UNBUILT_AUDIT: &str = "An entity's history of changes is area 16's audit trail, which isn't built yet: accepted, no change would be recorded.";
 
 /// The store an entity lives in when its file names none (area 5, "Stores").
 pub const MAIN: &str = "main";
@@ -309,6 +299,10 @@ pub struct EntityModel {
     /// person, whose records erasure and export find by following the
     /// references to it ([`crate::persons`]).
     pub person: bool,
+    /// Its `retention:` (area 15, "Retention"; chunk P2), when it has one
+    /// that reads cleanly: each record is deleted, with what cascades from
+    /// it, once its time is up.
+    pub retention: Option<retention::RetentionModel>,
 }
 
 /// One field of an entity.
@@ -361,6 +355,9 @@ pub struct FieldModel {
     /// For a `File` field, its store and what it holds (area 16; chunk
     /// 6.4b).
     pub file: Option<FileField>,
+    /// Its `retention:` (area 15, "Retention"; chunk P2), when it has one
+    /// that reads cleanly: its value is cleared once its time is up.
+    pub retention: Option<retention::RetentionModel>,
 }
 
 /// A `File` field's settings (area 16, "Files"): the `files` connection
@@ -528,6 +525,12 @@ pub struct EntitySpans {
     /// Its `person:` key, when it has one (area 15; chunk P1): where its
     /// `person` node is placed when it is a person.
     pub person: Option<Span>,
+    /// Its own `retention:` key, when it has one that reads cleanly (area
+    /// 15; chunk P2): where its `retention` node is placed.
+    pub retention: Option<Span>,
+    /// Each field's `retention:` key that reads cleanly, by the field's
+    /// name, in field order.
+    pub field_retentions: Vec<(String, Span)>,
 }
 
 /// One entity read from its file: its model, where its parts are, and the
@@ -590,7 +593,10 @@ pub fn entity_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> O
             fields: Vec::new(),
             purge: None,
             person: None,
+            retention: None,
+            field_retentions: Vec::new(),
         },
+        retentions: Vec::new(),
         out: Vec::new(),
     };
     let model = reader.entity(&symbol.path, &decl)?;
@@ -771,6 +777,10 @@ struct Reader<'a> {
     registry: &'a jadpo_graph::Registry,
     connections: &'a Connections,
     spans: EntitySpans,
+    /// Each field's `retention:` as written, read once every field is
+    /// (area 15; chunk P2): the field's name, the key's place, the block,
+    /// and whether the field is a `File`.
+    retentions: Vec<(String, Span, ast::Member, bool)>,
     out: Vec<Diagnostic>,
 }
 
@@ -793,9 +803,11 @@ impl Reader<'_> {
             indexes: Vec::new(),
             lifecycle: None,
             person: false,
+            retention: None,
         };
         let mut store: Option<(String, Span)> = None;
         let mut lifecycle = None;
+        let mut retention: Option<(ast::Member, Span)> = None;
         let mut unique = None;
         let mut indexes = None;
         let items: Vec<MemberItem> = decl
@@ -860,24 +872,32 @@ impl Reader<'_> {
                     entity.person = self.person(member, &key_span);
                     self.spans.person = Some(key_span.clone());
                 }
-                // Decided on their area pages, not built: refused where
-                // they are written rather than read as a misspelling, and
-                // never accepted to do nothing.
-                // A field may still be named like one (`audit: Amount?`).
-                "audit" | "retention"
+                // `retention:` (area 15; chunk P2), read once every field
+                // is. A field may still be named `retention`.
+                "retention"
                     if !member
                         .value()
                         .is_some_and(|value| crate::types::looks_like_type(&value)) =>
                 {
-                    let (written, why) = unbuilt_section(&word);
+                    retention = Some((member.clone(), key_span));
+                }
+                // Decided on its area page, not built: refused where it is
+                // written rather than read as a misspelling, and never
+                // accepted to do nothing. A field may still be named
+                // `audit` (`audit: Amount?`).
+                "audit"
+                    if !member
+                        .value()
+                        .is_some_and(|value| crate::types::looks_like_type(&value)) =>
+                {
                     self.out.push(
                         Diagnostic::new(
                             &rule::TOOLCHAIN_NOT_BUILT_YET,
-                            format!("An entity's `{written}` isn't built yet"),
+                            "An entity's `audit:` isn't built yet",
                         )
                         .at(key_span, "decided, not built")
-                        .reason(why)
-                        .next(format!("Leave `{word}:` out for now")),
+                        .reason(UNBUILT_AUDIT)
+                        .next("Leave `audit:` out for now"),
                     );
                 }
                 _ => match member.value() {
@@ -947,6 +967,9 @@ impl Reader<'_> {
         }
         let field_spans = self.spans.fields.clone();
         entity.store = self.placement(store, &name, &name_span, (&entity.fields, &field_spans));
+        let lifecycle_span = lifecycle
+            .as_ref()
+            .and_then(|member| member.member_key().map(|key| node_span(path, key.syntax())));
         if let Some(member) = lifecycle {
             let lookup = self.lookup;
             entity.lifecycle = lifecycle::read(
@@ -969,6 +992,7 @@ impl Reader<'_> {
                     .map(|(key, _)| node_span(path, key.syntax()));
             }
         }
+        self.retentions(path, &mut entity, retention, lifecycle_span.as_ref());
         // Names the database keeps (area 5, "Storage types").
         if table.starts_with("jadpo_") {
             self.out.push(
@@ -995,6 +1019,62 @@ impl Reader<'_> {
             }
         }
         Some(entity)
+    }
+
+    /// The entity's `retention:` and its fields' (area 15, "Retention";
+    /// chunk P2), once every field and the lifecycle are read: each read
+    /// and checked, and kept where it reads cleanly.
+    fn retentions(
+        &mut self,
+        path: &str,
+        entity: &mut EntityModel,
+        own: Option<(ast::Member, Span)>,
+        lifecycle_span: Option<&Span>,
+    ) {
+        let lookup = self.lookup;
+        let settings = |name: &str| lookup.setting(name).cloned();
+        for (field, key_span, member, file) in std::mem::take(&mut self.retentions) {
+            let Some(at) = entity.fields.iter().position(|f| f.name == field) else {
+                continue;
+            };
+            let read = retention::read(
+                lookup,
+                &settings,
+                path,
+                entity,
+                retention::On::Field(&field),
+                &member,
+                &key_span,
+                &mut self.out,
+            );
+            let kept = retention::field_problems(
+                entity,
+                &entity.fields[at],
+                file,
+                &key_span,
+                lifecycle_span,
+                &mut self.out,
+            );
+            if let (Some(read), true) = (read, kept) {
+                entity.fields[at].retention = Some(read);
+                self.spans.field_retentions.push((field, key_span));
+            }
+        }
+        if let Some((member, key_span)) = own {
+            entity.retention = retention::read(
+                lookup,
+                &settings,
+                path,
+                entity,
+                retention::On::Entity,
+                &member,
+                &key_span,
+                &mut self.out,
+            );
+            if entity.retention.is_some() {
+                self.spans.retention = Some(key_span);
+            }
+        }
     }
 
     /// `person: true` (area 15, "The person"): whether it says so, or the
@@ -1041,15 +1121,18 @@ impl Reader<'_> {
         entity: &str,
     ) {
         let span = node_span(path, node);
-        // `person:` too, which isn't in [`SECTIONS`] so that a field may
-        // still be named `person`.
-        let near = nearest(written, SECTIONS.iter().copied().chain(["person"]));
+        // `person:` and `retention:` too, which aren't in [`SECTIONS`] so
+        // that a field may still be named either.
+        let near = nearest(
+            written,
+            SECTIONS.iter().copied().chain(["person", "retention"]),
+        );
         let mut problem = Diagnostic::new(
             &rule::DATA_UNKNOWN_SECTION,
             format!("`{written}` isn't something an entity holds"),
         )
         .at(span.clone(), "not a field or a section");
-        let reason = "An entity's file holds only its data definition: fields (`name: Type`), and the sections `store:`, `unique:`, `indexes:`, `lifecycle:`, `caches:`, `policy:`, `membership:` and `person:`. Its identity is always the field `id`; actions, queries and failures go in the domain's own folders.";
+        let reason = "An entity's file holds only its data definition: fields (`name: Type`), and the sections `store:`, `unique:`, `indexes:`, `lifecycle:`, `caches:`, `policy:`, `membership:`, `person:` and `retention:`. Its identity is always the field `id`; actions, queries and failures go in the domain's own folders.";
         problem = match near {
             Some(near) if near != written => problem
                 .reason(format!("{reason} Did you mean `{near}`?"))
@@ -1211,6 +1294,7 @@ impl Reader<'_> {
             scale: None,
             geometry: None,
             file: None,
+            retention: None,
         };
         if ty.has_error() {
             // A type that names nothing is resolution's one error: the
@@ -1548,6 +1632,11 @@ impl Reader<'_> {
                 // A field's own grants narrow its entity's (area 9, "Field
                 // restrictions"), read by `crate::policy`.
                 "policy" => {}
+                // Read once every field is (area 15; chunk P2).
+                "retention" => {
+                    self.retentions
+                        .push((name.to_string(), key_span, member.clone(), file));
+                }
                 // A `File` field's, read above (area 16).
                 "store" | "max_size" | "types" if !file => {
                     self.out.push(
