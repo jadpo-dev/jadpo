@@ -2827,7 +2827,7 @@ its command is built.
 | `cli.deliveries_arguments` | `deliveries` | Deliveries command has invalid arguments |
 | `cli.dev_arguments` | `dev` | Dev command has invalid arguments |
 | `cli.dev_port_invalid` | `dev` | Development port is invalid |
-| `cli.dev_start_failed` | `dev` | Development server could not start |
+| `cli.dev_start_failed` | `dev` | The app couldn't start under `jadpo dev`, usually because another program is using its port, it has no database to run on, or a connection would call a provider's live API |
 | `cli.email_arguments` | `email` | Email command has invalid arguments |
 | `cli.fmt_arguments` | `fmt` | Format command has invalid arguments |
 | `cli.incident_arguments` | `incident` | Incident command has invalid arguments |
@@ -2868,9 +2868,9 @@ its command is built.
 | `cli.watch_output_failed` | `watch` | Watch lifecycle event could not be written |
 | `cli.why_arguments` | `why` | Why command has invalid arguments |
 | `conform.failed` | `package conform` | Package's answers don't conform to its capability |
-| `conform.refused` | `package conform` | Conformance suite can't run against the provider's API |
+| `conform.refused` | `package conform` | The conformance suite wasn't sent to the provider's live API, because the app has no connection to the package, nothing sets the connection's credential or address, or `ai:` doesn't ask its models through it |
 | `recording.failed` | `package record`, `ai record` | Sandbox or model gave no answer to record |
-| `recording.refused` | `package record`, `ai record` | Answer can't be recorded through this connection |
+| `recording.refused` | `package record`, `ai record` | A recording was refused before anything was sent, because its connection would call a live API or has nothing set for its sandbox, its package is installed, or there is nothing to ask its prompt with |
 | `configuration.local_changed` | `config` | Something else saved `.env.local` while `jadpo config set` was saving a value in it |
 | `configuration.local_invalid_encoding` | `config` | The `.env.local` file holds bytes that aren't UTF-8 text |
 | `configuration.local_read_failed` | `config` | The `.env.local` file is there, but it couldn't be read: it is a folder, or you aren't allowed to read it |
@@ -2883,6 +2883,7 @@ its command is built.
 | `configuration.value_invalid` | `config`, `dev` | A setting's value on this machine, from the environment or `.env.local`, doesn't fit the type `config.jadpo` gives it |
 | `configuration.value_missing` | `config`, `dev` | A setting `config.jadpo` declares without a `default:` has no value on this machine, in the environment or `.env.local` |
 | `format.changes_required` | `fmt` | Source files are not canonically formatted |
+| `format.unsafe` | `fmt` | A file was left as it was, because what the formatter made of it didn't read back as the same code, which is a mistake in Jadpo's formatter |
 | `format.write_failed` | `fmt` | A file `jadpo fmt` formatted couldn't be written, usually because it is read-only |
 | `index.accept_check_failed` | `schema index-accept` | Index edit did not pass project checks |
 | `index.accept_identity_count` | `schema index-accept` | Index acceptance changed an unexpected number of schema identities |
@@ -2965,10 +2966,10 @@ its command is built.
 | `runtime.startup_failed` | the running app | Generated runtime failed during startup; a deployable's log event, with every problem that stopped it ([A native deployable](#a-native-deployable)) |
 | `runtime.unhandled_fault` | the running app | Generated runtime contained an unexpected fault |
 | `suggest.record_invalid` | `suggest` | Suggestions record can't be read |
-| `suggest.share_failed` | `suggest share` | Jadpo HQ couldn't be reached or refused what was shared |
+| `suggest.share_failed` | `suggest share` | Jadpo HQ couldn't be reached, or refused what `jadpo suggest share` sent, so the entries wait to be shared again |
 | `test.failed` | `test` | Test run failed |
 | `test.no_tests` | `test` | No tests to run |
-| `test.runtime_start_failed` | `test` | Test runtime could not start |
+| `test.runtime_start_failed` | `test` | The tests couldn't start, because the machine couldn't give `jadpo test` the thread with a large stack they run on, usually for lack of memory |
 | `toolchain.artifact_cleanup_failed` | `artifacts`, `build` | Previous build backup could not be removed |
 | `toolchain.artifact_promote_failed` | `artifacts`, `build` | Staged build artifacts could not be promoted |
 | `toolchain.artifact_stage_failed` | `artifacts`, `build` | Build staging directory could not be created |

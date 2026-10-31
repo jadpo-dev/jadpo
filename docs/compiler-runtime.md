@@ -4932,7 +4932,8 @@ this checkout's `jadpo` first on `PATH`, `JADPO_PLAIN`, an empty `HOME`,
 a fixed `SOURCE_DATE_EPOCH` and no other variable of the machine's. What
 they print, stdout and stderr in the order written, is compared with the
 ` ```text output ` block after it once the project's folder is printed as
-`.`, `HOME` as `~` and a run's duration is dropped; `expect=<rule>` needs
+`.`, `HOME` as `~` and a run's duration, and the clock time in `jadpo
+dev`'s `started` header, are dropped; `expect=<rule>` needs
 that rule's diagnostic and no other and a failing exit, and `tty` runs it
 in a pseudo-terminal, typing `typed=<value>` and Enter at the first prompt
 once the terminal stops echoing (docs/writing.md, "How an error page

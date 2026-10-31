@@ -150,7 +150,7 @@ fn once(
                 stream = Some(connected);
                 break;
             }
-            Err(error) => last = error.to_string(),
+            Err(error) => last = crate::hq::not_connected(&error, CONNECT),
         }
     }
     let stream = stream.ok_or_else(|| format!("No connection to {named}: {last}."))?;

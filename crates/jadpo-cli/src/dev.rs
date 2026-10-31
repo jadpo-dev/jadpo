@@ -876,18 +876,7 @@ pub fn serve_to(
     let listener = match TcpListener::bind(("127.0.0.1", args.port)) {
         Ok(listener) => listener,
         Err(error) => {
-            report_failure(
-                &mut out,
-                Diagnostic::new(
-                    &rule::CLI_DEV_START_FAILED,
-                    format!("Port {} can't be listened on", args.port),
-                )
-                .reason(format!("Listening failed: {error}."))
-                .next(format!(
-                    "Stop what is using port {}, or choose another with `--port`",
-                    args.port
-                )),
-            );
+            report_failure(&mut out, listen_failed(args.port, &error));
             return 1;
         }
     };
@@ -1602,6 +1591,30 @@ fn stores(
     Ok(out)
 }
 
+/// Why `jadpo dev` can't listen on `port`. A port already taken, the
+/// usual case, says so in words, without the operating system's error
+/// number, which differs between macOS and Linux.
+fn listen_failed(port: u16, error: &std::io::Error) -> Diagnostic {
+    if error.kind() == std::io::ErrorKind::AddrInUse {
+        return Diagnostic::new(
+            &rule::CLI_DEV_START_FAILED,
+            format!("Port {port} is already in use"),
+        )
+        .reason(format!(
+            "Another program is listening on port {port}, such as another `jadpo dev`, and only one program can listen on a port."
+        ))
+        .next(format!(
+            "Stop what is using port {port}, or choose another with `--port`"
+        ));
+    }
+    Diagnostic::new(
+        &rule::CLI_DEV_START_FAILED,
+        format!("Port {port} can't be listened on"),
+    )
+    .reason(format!("Listening failed: {error}."))
+    .next("Choose another port with `--port`")
+}
+
 /// Applies each store's pending migrations, working out in Jadpo with
 /// `prepared` a backfill that has no SQL form (chunk 5.6b2); how many ran.
 fn migrate_all(
@@ -2087,6 +2100,23 @@ fn report_failure(out: &mut Out<'_>, problem: Diagnostic) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A taken port says so in words, the same on macOS and Linux, whose
+    /// error numbers for it differ (roadmap D13b2c).
+    #[test]
+    fn a_taken_port_says_so_without_the_systems_number() {
+        let held = TcpListener::bind(("127.0.0.1", 0)).expect("a port");
+        let port = held.local_addr().expect("its address").port();
+        let error = TcpListener::bind(("127.0.0.1", port)).expect_err("taken");
+        let problem = listen_failed(port, &error);
+        assert_eq!(problem.message, format!("Port {port} is already in use"));
+        let reason = problem.reason.expect("a reason");
+        assert!(
+            reason.starts_with("Another program is listening"),
+            "{reason}"
+        );
+        assert!(!reason.contains("os error"), "{reason}");
+    }
 
     #[test]
     fn a_refused_sign_in_shows_its_reason_under_its_request() {
