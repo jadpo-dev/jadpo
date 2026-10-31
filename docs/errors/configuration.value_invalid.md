@@ -20,11 +20,27 @@ A Learn path app's `config.jadpo` declares `max_due_ahead` as a
 `Duration`, with a default of `365d`. Set its variable to something that
 isn't a duration, and check the settings:
 
-```sh
+```jadpo check project=e-value-invalid file=app.jadpo hidden
+application {
+    jadpo: "0.1"
+}
+```
+
+```jadpo check project=e-value-invalid file=config.jadpo hidden
+config {
+    /// How far ahead a todo may be due.
+    max_due_ahead: Duration {
+        default: 365d
+        test: 30d
+    }
+}
+```
+
+```sh run project=e-value-invalid expect=configuration.value_invalid
 MAX_DUE_AHEAD=soon jadpo config check
 ```
 
-```text
+```text output
 Values
   max_due_ahead  invalid  MAX_DUE_AHEAD
 
@@ -45,22 +61,8 @@ decides the value the setting holds on this machine, which only you
 know.
 
 `jadpo dev` checks the same values as it starts, and with this one it
-serves nothing:
-
-```sh
-MAX_DUE_AHEAD=soon jadpo dev
-```
-
-```text
-jadpo dev, started 21:31:18
-error: `MAX_DUE_AHEAD` isn't a valid value for `max_due_ahead`
-  reason: `max_due_ahead` of type `Duration` reads `MAX_DUE_AHEAD`, and the value there breaks `format`. The value isn't shown, so it can't leak into a log.
-  next: Run `jadpo config set max_due_ahead` to store a valid one, or fix `MAX_DUE_AHEAD` in the environment (human)
-  rule: configuration.value_invalid
-  help: https://jadpo.dev/docs/errors/configuration.value_invalid
-
-not running this version: 1 error, waiting for a save that fixes them
-```
+serves nothing: it shows the same error, then waits for a save that
+fixes it.
 
 ## How to fix it
 
@@ -82,11 +84,11 @@ over `.env.local`.
 **If it comes from the environment**, give the variable a value that
 fits the type, such as a hundred years:
 
-```sh
+```sh run project=e-value-invalid
 MAX_DUE_AHEAD=36500d jadpo config check
 ```
 
-```text
+```text output
 Values
   max_due_ahead  set      MAX_DUE_AHEAD
 

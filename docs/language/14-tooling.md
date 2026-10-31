@@ -2812,9 +2812,9 @@ its command is built.
 | `cli.api_arguments` | `api` | Api command has invalid arguments |
 | `cli.build_arguments` | `build` | Build command has invalid arguments |
 | `cli.check_arguments` | `check` | Check command has invalid arguments |
-| `cli.config_arguments` | `config` | Config command has invalid arguments |
-| `cli.config_prompt_failed` | `config` | Secure configuration prompt failed |
-| `cli.config_tty_required` | `config` | Configuration entry requires an interactive terminal |
+| `cli.config_arguments` | `config` | A `jadpo config` command names no action, an action it doesn't have, or a setting `config.jadpo` doesn't declare |
+| `cli.config_prompt_failed` | `config` | Nothing was typed at the prompt of `jadpo config set`, or the terminal couldn't hide what you type there |
+| `cli.config_tty_required` | `config` | You ran `jadpo config set` where there is no terminal to type the value at, such as from a coding agent or a script |
 | `cli.deliveries_arguments` | `deliveries` | Deliveries command has invalid arguments |
 | `cli.dev_arguments` | `dev` | Dev command has invalid arguments |
 | `cli.dev_port_invalid` | `dev` | Development port is invalid |
@@ -2863,15 +2863,15 @@ its command is built.
 | `recording.failed` | `package record`, `ai record` | Sandbox or model gave no answer to record |
 | `recording.refused` | `package record`, `ai record` | Answer can't be recorded through this connection |
 | `configuration.local_changed` | `config` | Local configuration changed during the update |
-| `configuration.local_invalid_encoding` | `config` | Local configuration is not UTF-8 text |
-| `configuration.local_read_failed` | `config` | Local configuration could not be read |
-| `configuration.local_syntax` | `config` | Local configuration syntax is invalid |
-| `configuration.local_unsafe_target` | `config` | Local configuration target is unsafe |
-| `configuration.local_write_failed` | `config` | Local configuration could not be saved |
+| `configuration.local_invalid_encoding` | `config` | The `.env.local` file holds bytes that aren't UTF-8 text |
+| `configuration.local_read_failed` | `config` | The `.env.local` file is there, but it couldn't be read: it is a folder, or you aren't allowed to read it |
+| `configuration.local_syntax` | `config` | A line of `.env.local` isn't blank, a `#` comment or `NAME=value`, or it sets a variable a line above it already sets |
+| `configuration.local_unsafe_target` | `config` | The `.env.local` file that `jadpo config set` would save a value in is a link, not an ordinary file |
+| `configuration.local_write_failed` | `config` | Saving a value in `.env.local` failed, usually because the project's folder can't be written |
 | `configuration.move_name_taken` | `config move`, the editor | A setting already has the constant's name |
 | `configuration.move_read_unsupported` | `config move`, the editor | Constant is read where a setting can't be |
 | `configuration.move_type_unsupported` | `config move`, the editor | Constant's type can't be a setting |
-| `configuration.value_invalid` | `config`, `dev` | Local configuration value is invalid |
+| `configuration.value_invalid` | `config`, `dev` | A setting's value on this machine, from the environment or `.env.local`, doesn't fit the type `config.jadpo` gives it |
 | `configuration.value_missing` | `config`, `dev` | Required local configuration is missing |
 | `deliveries.not_found` | `deliveries` | No delivery or schedule run has the id given |
 | `deliveries.unavailable` | `deliveries` | Deliveries' database couldn't be read |
@@ -2974,17 +2974,17 @@ its command is built.
 | `toolchain.artifact_cleanup_failed` | `artifacts`, `build` | Previous build backup could not be removed |
 | `toolchain.artifact_promote_failed` | `artifacts`, `build` | Staged build artifacts could not be promoted |
 | `toolchain.artifact_stage_failed` | `artifacts`, `build` | Build staging directory could not be created |
-| `toolchain.artifact_write_failed` | `check`, `build` | Generated file could not be written |
+| `toolchain.artifact_write_failed` | `check`, `build` | A file Jadpo writes for you, such as a record, couldn't be written, usually because it or its folder is read-only |
 | `toolchain.build_failed` | `build` | Rust compiler couldn't build the deployable |
 | `toolchain.fetch_failed` | `build` | Rust toolchain or crates couldn't be fetched |
-| `toolchain.project_not_found` | any command | Project path does not exist |
+| `toolchain.project_not_found` | any command | You ran a command that works on a project in a folder with no `app.jadpo`, in it or in any folder above it |
 | `toolchain.project_read_failed` | any command | Project directory could not be read |
-| `toolchain.scaffold_destination_exists` | `new` | Scaffold destination is an existing file |
+| `toolchain.scaffold_destination_exists` | `new` | You ran `jadpo new` with the name of a file that already exists |
 | `toolchain.scaffold_destination_not_empty` | `new` | You ran `jadpo new` on a folder that already has files in it, hidden files included |
-| `toolchain.scaffold_name_invalid` | `new` | Project destination has no valid name |
-| `toolchain.scaffold_read_failed` | `new` | Scaffold destination could not be inspected |
-| `toolchain.scaffold_write_failed` | `new` | Project scaffold file could not be written |
-| `toolchain.source_read_failed` | any command | Jadpo source file could not be read |
+| `toolchain.scaffold_name_invalid` | `new` | You ran `jadpo new` with a path that doesn't end in a folder's name, such as `..` or `/` |
+| `toolchain.scaffold_read_failed` | `new` | You ran `jadpo new` on a path Jadpo can't look into, such as a folder you can't read or a path through a file |
+| `toolchain.scaffold_write_failed` | `new` | You ran `jadpo new`, and writing the project's files failed, usually because the folder it goes in can't be written |
+| `toolchain.source_read_failed` | any command | A `.jadpo` file in the project couldn't be read, because it isn't UTF-8 text or you aren't allowed to read it |
 | `toolchain.target_auth_not_implemented` | `build` | Protected route `{route}` cannot be generated yet |
 | `toolchain.target_durable_workflow_not_implemented` | `build` | Durable workflow target execution is not implemented |
 | `toolchain.target_job_not_implemented` | `build` | Scheduled job `{name}` cannot execute yet |

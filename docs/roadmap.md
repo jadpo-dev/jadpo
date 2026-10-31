@@ -275,14 +275,28 @@ D1 first: the site starts once D1 has merged.
 - [x] **D11 Task guides**: [guides](guides/README.md); [documentation](documentation.md), "Topic IDs" and "The bundle"; [writing guide](writing.md), "Kinds of user page"; `tools/docs/language_docs.py`, `GuidePage`.
 - [x] **D12 What the Learn path found**: [area 8](language/08-identity.md), "In development and tests"; [area 14](language/14-tooling.md), "What is built"; [documentation](documentation.md), "Where the content lives" and "The bundle".
 - [x] **D13a Error pages people reach first**: [writing guide](writing.md), "How an error page reads" and "What the docs check enforces"; [documentation](documentation.md), "The bundle"; `tools/docs/language_docs.py`, `error_format_problems` and `error_format_scope`; the catalogue summaries in `crates/jadpo-diag`.
-- [ ] **D13b Command errors that explain** `opus · high`: a docs-check
-  block that runs a `jadpo` command in its project and compares what it
-  prints, as `check` blocks do for `jadpo check`. Then every rule only a
-  command raises whose page says "No example yet" gets the format of
-  "How an error page reads" with such an example, those a person decides
-  first (`configuration.local_*`, `cli.config_*`, `toolchain.*`,
-  `deliveries.*`, `schedules.*`), its catalogue summary becomes the page's
-  first sentence, and `error_format_scope` stops leaving them out.
+- [ ] **D13b Command errors that explain**: an umbrella, split by size
+  (2026-10-31) into D13b1–D13b3, taken in order; tick it once all three
+  are.
+- [x] **D13b1 The `sh run` block, settings and `jadpo new`**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; `tools/docs/language_docs.py`, `check_runs`; the pages of `configuration.local_*`, `cli.config_*` and `toolchain.*` a run raises, and `configuration.value_invalid`.
+- [ ] **D13b2 Background work, data and the rest a person decides**
+  `opus · high`: the format of "How an error page reads", with a `sh run`
+  example (against a disposable PostgreSQL where it needs one), for every
+  other rule a person decides that only a command raises and whose page
+  says "No example yet": `deliveries.*`, `schedules.*`, `migration.*`,
+  `seed.*`, `runs.unavailable`, `ai.usage_unavailable`,
+  `configuration.value_missing`, `format.*`, `test.runtime_start_failed`,
+  `cli.dev_start_failed`, `conform.refused`, `recording.refused`,
+  `suggest.share_failed`, `translation.exchange_file_invalid`, each
+  catalogue summary its page's first sentence. **Needs a maintainer**
+  first for the three a run can't raise on demand:
+  `configuration.local_changed` (a race inside one save),
+  `toolchain.build_failed` and `toolchain.fetch_failed` (the Rust
+  toolchain failing, or the network).
+- [ ] **D13b3 The other command errors** `opus · high`: the same for the
+  rules only a command raises that an agent decides (`cli.*_arguments`
+  and the rest) whose page says "No example yet"; then
+  `error_format_scope` stops leaving any of them out.
 - [ ] **D13c The rest of the error pages** `opus · high`: every other page
   in `docs/errors/` to the format, each rule's catalogue summary its
   page's first sentence; `error_format_scope` then covers every page.
@@ -356,6 +370,7 @@ time.
 - [x] **A7c Provider sign-in in `jadpo dev`**: area 8, "Providers", "In `jadpo dev`"; area 14, `jadpo dev`; compiler/runtime §2.6, "Sign-in providers".
 
 - [x] **A10 Staff only through their provider**: area 9, "Roles that need a way in" and Decisions; area 8, "How a session started", "How strongly a person signed in", "Company accounts" and Decisions; area 13, "Signing in for a route test"; area 18, "Acceptances" and Decisions; compiler/runtime §2.6, "Roles that need a way in"; `examples/29-lending-desk/README.md`.
+- [x] **A11 Route tests keep their session**: area 13, "Signing in for a route test", "What is built" and Decisions; `examples/29-lending-desk/README.md`.
 
 ## Approvals
 

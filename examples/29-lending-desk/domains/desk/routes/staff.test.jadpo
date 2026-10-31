@@ -1,7 +1,9 @@
 // Route tests act as a member of staff with `as:`, saying how they
 // signed in: a staff role counts only through Google, an admin's only
 // with a second factor (`entities/staff_member.jadpo`), and `as:` alone
-// is someone who signed in by link with one factor. The sign-in itself is
+// is someone who signed in by link with one factor. Within a test, the
+// same person signed in the same way keeps one session, as a browser
+// keeps its cookie, so a day later it has ended. The sign-in itself is
 // the sign-in tests' business (`actions/meet_newcomer.test.jadpo`). What
 // each role reaches follows from the listed queries' lines and the
 // entities' grants.
@@ -65,8 +67,6 @@ test "only an admin adds a book and sees who gave it" {
                 method: HttpMethod.get
                 path: "/staff/donations"
                 as: Principal.user(bo)
-                sign_in: SignInMethod.google
-                strength: AuthenticationStrength.multi_factor
                 sign_in: SignInMethod.google
                 strength: AuthenticationStrength.multi_factor
             }
@@ -149,7 +149,6 @@ test "the front desk lends a book once, and takes it back" {
                 }
                 as: Principal.user(ann)
                 sign_in: SignInMethod.google
-                sign_in: SignInMethod.google
             }
             assert returned.status == 204
         }
@@ -213,4 +212,24 @@ test "an admin needs a second factor" {
         strength: AuthenticationStrength.multi_factor
     }
     assert two_factors.status == 200
+}
+
+test "a Google session ends after a day" {
+    var ann: Patron = staff_at("ann@lending.example", StaffRole.front_desk)
+    var signed_in: Response = request {
+        method: HttpMethod.get
+        path: "/staff/stock"
+        as: Principal.user(ann)
+        sign_in: SignInMethod.google
+    }
+    assert signed_in.status == 200
+    clock.advance(24h)
+    var a_day_later: Response = request {
+        method: HttpMethod.get
+        path: "/staff/stock"
+        as: Principal.user(ann)
+        sign_in: SignInMethod.google
+    }
+    assert a_day_later.status == 401
+    assert a_day_later.code == "invalid_credentials"
 }
