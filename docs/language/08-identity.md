@@ -871,20 +871,123 @@ sent ([Starting and ending a session](#starting-and-ending-a-session)).
 ### Providers
 
 Each sign-in provider is a connection in `app.jadpo`'s `connections:`
-([Integrations](11-integrations.md)), and
-`providers: [...]` names those connections, as `email:` names its
-connection. Google, Microsoft and other OpenID Connect providers are each
-written `google: { driver: Driver.oidc  issuer:  client_id:  credential: }`,
-and the provider's discovery document gives the rest. GitHub and Apple
-aren't plain OpenID Connect, so they have the built-in drivers
-`Driver.github` and `Driver.apple`.
+([Integrations](11-integrations.md)), and `providers: [...]` names those
+connections, as `email:` names its connection. Google, Microsoft and
+other OpenID Connect providers are each `driver: Driver.oidc`, and the
+provider's discovery document gives the rest. GitHub and Apple aren't
+plain OpenID Connect, so they have the built-in drivers `Driver.github`
+and `Driver.apple`.
+
+```jadpo fragment
+// app.jadpo
+connections: {
+    google: {
+        driver: Driver.oidc
+        issuer: config.google_issuer
+        client_id: config.google_client_id
+        credential: config.google_client_secret
+    }
+}
+```
+
+- `issuer:` reads a `Url` setting. Jadpo compares it exactly with the
+  issuer the provider's discovery document names, and with every ID
+  token's. Google's is `https://accounts.google.com`. Microsoft's is
+  `https://login.microsoftonline.com/<tenant-id>/v2.0` for one
+  organisation's accounts, or the consumer tenant's,
+  `9188040d-6c67-4c5b-b112-36a304b66dad`, for personal accounts. Its
+  `common` and `organizations` addresses publish an issuer with a
+  placeholder in it, which no exact comparison matches, so they are
+  refused as `authentication_misconfigured`.
+- `client_id:` reads a `Text` setting: the client ID the provider gave
+  your app. Every ID token must name it as its audience.
+- `credential:` reads a secret setting: the client secret
+  ([Secrets](10-configuration-and-time.md#secrets)).
+- Register `<origin>/auth/<name>/callback` with the provider as the
+  redirect address, `<origin>` being the browser session's `origin:`.
+
+`SignInMethod` has a value for each provider, its connection's name, so
+`on_first_sign_in:`'s action can tell `SignInMethod.google` from
+`SignInMethod.microsoft`.
+
+A provider signs a person in to a browser session, so `providers:` needs
+`browser_session:` with its `origin:`. It also needs `on_first_sign_in:`.
+A provider account finds its user only through the link a first sign-in
+made ([A person the app has not seen](#a-person-the-app-has-not-seen)),
+never by the principal's `subject:` field or an email address, so without
+the action no one could sign in.
+
+#### The routes
+
+Jadpo generates two routes for each provider, in the first API that
+accepts browser sessions:
+
+- `POST /auth/<name>/start` needs no one signed in, but its `Origin` must
+  be the browser session's origin. It takes `{ "return_to": "/books" }`,
+  a path on your site, or an empty body for `/`. It answers
+  `{ "address": ... }`, the provider's sign-in address, which your page
+  sends the browser to. It also sets the `<cookie>_provider` cookie
+  (`HttpOnly`, `Secure`, `SameSite=Lax`, ten minutes), which binds the
+  sign-in to this browser.
+- `GET /auth/<name>/callback` is where the provider sends the browser
+  back. Jadpo checks the sign-in and starts a browser session. Then it
+  answers `303` to `return_to`.
+
+Every refusal also answers `303` to `return_to`, with `?error=<code>`
+after it, so your page can say what happened:
+
+| Code | When |
+|---|---|
+| `sign_in_provider_failed` | The sign-in expired, was used already, came back to another browser, or the provider refused it or sent an ID token that doesn't check |
+| `sign_in_refused` | `on_first_sign_in:` refused the person |
+| `user_disabled` | The person's user isn't `active:` |
+| `authentication_unavailable` | The provider or the database can't be reached |
+| `authentication_misconfigured` | The provider's settings or its discovery document are invalid |
+
+Your page then reads the session with its own requests. The session's
+cookie is `SameSite=Strict`, so a browser doesn't send it on the
+navigation that came back from the provider.
+
+#### What Jadpo checks
+
+- The authorization code flow with PKCE (`S256`), a `state` that works
+  once, for ten minutes, in the browser that started it, and a `nonce`
+  the ID token must carry. Jadpo keeps the `state` only as a digest, and
+  works out the PKCE verifier and the nonce from the binding cookie, so
+  the database holds neither.
+- The code is exchanged at the provider's token endpoint with the client
+  secret. The ID token's signature is checked against the provider's
+  keys, fetched as an external token's are, under the same limits
+  ([Where Jadpo fetches the provider's keys](#where-jadpo-fetches-the-providers-keys)).
+  So are its exact issuer, its audience (`client_id:`, with `azp` naming
+  it when there are several), its expiry and its nonce.
+- Only the token's `sub`, `email`, `email_verified` and `name` are read,
+  into `FirstSignIn`. None is ever stored as the user's identity, and no
+  claim becomes a grant. `address_verified` is `true` only when the
+  provider says `email_verified: true`. Microsoft doesn't say it, so an
+  action can't link a Microsoft account by address.
+
+#### In tests
+
+A route test has `test_providers`, which signs in through the provider
+routes for real, with the test run's local issuer as the provider. Only
+tests can call it:
+
+| Operation | Does |
+|---|---|
+| `test_providers.sign_in(method: SignInMethod, account: TestAccount) -> Response` | Starts the sign-in through `POST /auth/<name>/start` from the app's own page. Then the local issuer signs `account` in and sends the browser back to `GET /auth/<name>/callback` with the binding cookie. It gives the callback's `Response`, whose `code` is the `error` its redirect names, if any |
+
+`TestAccount` holds what a provider says about the person: `subject:
+Text`, `email: Email?`, `email_verified: Bool` and `name: Text?`. Only a
+test, fixture or seed builds one.
+
+Not built yet: provider sign-in in `jadpo dev`, where the local issuer
+shows a page for choosing the account to sign in as, needing no
+credentials; and `Driver.github` and `Driver.apple`.
 
 ### The old name
 
 `sign_in_providers:` is refused, and the error renames it to `sign_in:`.
-
-Not built yet: `providers:` is `toolchain.not_built_yet`. Use magic links
-or passkeys for now.
 
 ## Magic links
 <!-- topic: magic-links -->
@@ -2134,8 +2237,6 @@ test "a newcomer's first token takes them on to wait for approval" {
 }
 ```
 
-Not built yet: `on_first_sign_in:` for provider sign-in, which comes with
-providers.
 
 ## Signing in from code the app writes
 <!-- topic: signing-in-from-code-the-app-writes -->
@@ -3922,7 +4023,8 @@ them in the usual failure body, with the code and status below.
 | A magic link opened in another browser with `same_browser: true` | `sign_in_link_other_browser` | `unauthenticated` | 401 |
 | A code wrong, used, ended, expired or replaced, or no code for the address | `sign_in_code_invalid` | `unauthenticated` | 401 |
 | An address reached `failed_codes_per_day:` | `sign_in_codes_disabled` | `rate_limited` | 429 |
-| `on_first_sign_in` refused, or no user and no `on_first_sign_in:` for a provider or token | `sign_in_refused` | `not_permitted` | 403 |
+| `on_first_sign_in` refused, or no user and no `on_first_sign_in:` for a token | `sign_in_refused` | `not_permitted` | 403 |
+| A provider's sign-in expired, was used, came back to another browser, was refused by the provider, or sent an ID token that doesn't check | `sign_in_provider_failed` | `unauthenticated` | 401 |
 | Too many sends to one address | `rate_limited` | `rate_limited` | 429 |
 | `magic_links.request` given a path to go back to that isn't on the app's site | `sign_in_return_invalid` | `invalid_value` | 422 |
 | A passkey ceremony's challenge expired, was used, was replaced or came from another browser or session | `passkey_challenge_expired` | `unauthenticated` | 401 |
@@ -3947,10 +4049,10 @@ A feature not built yet is `toolchain.not_built_yet` where it is written.
 | Feature | Status |
 |---|---|
 | Everything else on this page | Built. |
-| `sign_in:`'s `providers:` and `oauth_provider:`, and `on_first_sign_in:` for provider sign-in | Not built yet. |
+| `sign_in:`'s providers in `jadpo dev`, `Driver.github`, `Driver.apple` and `oauth_provider:` | Not built yet. |
 | Scope declarations and policy's scope restrictions | Not built yet. As [Policy](09-policy.md) specifies, an external method narrows scopes only when it declares the scopes it reads; undeclared provider scope or profile claims never replace application authority. |
 | A setting loosened past its limit | Not built yet: waits on [acceptances](18-records-and-manifest.md#acceptances). |
-| OAuth grants: `OAuthGrant` credentials, the connecting and disconnecting routes and `on_behalf_of:` ([Integrations](11-integrations.md)) | Not built yet. `Driver.oidc` for Google and Microsoft sign-in comes with providers. |
+| OAuth grants: `OAuthGrant` credentials, the connecting and disconnecting routes and `on_behalf_of:` ([Integrations](11-integrations.md)) | Not built yet. |
 
 ## Errors
 
