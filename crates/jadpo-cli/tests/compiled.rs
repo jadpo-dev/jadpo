@@ -903,7 +903,8 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
     let first_token = page("docs/language/08-identity.md first-token");
     // Area 8's staff signing in with Google (chunk A7b): both provider
     // routes with the local issuer as the provider, the link and the
-    // session.
+    // session. Its three tests sign in through the provider alone, and
+    // each is a route test (chunk A6).
     let google_staff = page("docs/language/08-identity.md google-staff");
     let projects = [
         ("area 7's todos", corpus_project(&files, "workerd-todos")),
@@ -952,7 +953,7 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
         .collect();
     assert_eq!(
         counts,
-        [(3, 3), (2, 2), (4, 4), (1, 1), (5, 5), (1, 1), (1, 1)]
+        [(3, 3), (2, 2), (4, 4), (1, 1), (5, 5), (1, 1), (3, 3)]
     );
     println!(
         "compared on workerd: {} route tests of {} projects with the interpreter's records, every one passing, in {:.0?}",

@@ -95,7 +95,7 @@ test "an address Google hasn't verified signs no one in" {
         }
     )
     assert refused.code == "sign_in_refused"
-    var confirmed: Response = test_providers.sign_in(
+    var second_sign_in: Response = test_providers.sign_in(
         SignInMethod.google,
         TestAccount {
             subject: "2002"
@@ -104,7 +104,7 @@ test "an address Google hasn't verified signs no one in" {
             name: none
         }
     )
-    assert confirmed.code == none
+    assert second_sign_in.code == none
 }
 
 test "a customer's address at Google doesn't make them staff" {
