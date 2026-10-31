@@ -1427,6 +1427,10 @@ migration {
   keep the names they were born with, so renaming a field keeps its
   column. A field renamed by hand, without the registry, reads as one
   removed and one added, and the removed one's decision says so.
+- **Field order is no part of the schema.** PostgreSQL can't move a
+  column, so each column keeps its place, a new field's column goes last
+  wherever the field is written, and fields written in another order are
+  nothing to migrate.
 - **Backfills can be worked out** from each row's own fields, for a new
   field that reshapes data the entity already holds
   ([Computed backfills](#computed-backfills)).
