@@ -660,5 +660,120 @@ class Links(unittest.TestCase):
             self.assertEqual(page.problems, [])
 
 
+FORMATTED = '''# `a.b`
+
+A setting holds something other than `true` or `false`.
+
+## Why Jadpo refuses it
+
+It has two answers.
+
+## What it looks like
+
+```jadpo check project=e expect=a.b
+x: "no"
+```
+
+```text output
+error: no
+  next: Write `false` (agent)
+  rule: a.b
+```
+
+`(agent)` at the end of the `next:` line means your coding agent can make
+the fix itself.
+
+## How to fix it
+
+**If it should be off**, write `false`:
+
+```jadpo fragment
+    x: false
+```
+
+```jadpo check project=e-off hidden
+y {
+    x: false
+}
+```
+
+It is off.
+
+## Related
+
+- [Settings](../language/01-a.md#settings)
+'''
+
+
+class ErrorFormat(unittest.TestCase):
+    catalogue = {'a.b': {'id': 'a.b', 'area': 3, 'decides': 'agent',
+                         'summary': 'A setting holds something other than `true` or `false`'}}
+
+    def problems(self, text):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'a.b.md'
+            path.write_text(text)
+            page = docs.ErrorPage(path, self.catalogue)
+            page.collect_blocks()
+            return docs.error_format_problems(page)
+
+    def test_a_page_with_every_part_passes(self):
+        self.assertEqual(self.problems(FORMATTED), [])
+
+    def test_the_sections_come_in_order(self):
+        text = FORMATTED.replace('## Related', '## See also')
+        self.assertIn('an error page has', self.problems(text)[0])
+
+    def test_what_happened_is_the_catalogue_summary(self):
+        text = FORMATTED.replace('A setting holds', 'The setting holds')
+        self.assertIn('catalogue summary', self.problems(text)[0])
+
+    def test_what_happened_is_one_sentence(self):
+        text = FORMATTED.replace('`false`.\n', '`false`. It is wrong.\n', 1)
+        self.assertIn('one sentence', self.problems(text)[0])
+
+    def test_the_marker_is_explained_in_the_standard_wording(self):
+        text = FORMATTED.replace('can make\nthe fix itself', 'may fix it')
+        self.assertIn('`(agent)`', self.problems(text)[0])
+        human = FORMATTED.replace('(agent)\n', '(human)\n')
+        self.assertIn('`(human)`', self.problems(human)[0])
+
+    def test_a_fragment_is_compiled_by_a_hidden_block(self):
+        text = FORMATTED.replace('    x: false\n}', '    x: true\n}')
+        self.assertIn('hidden check block', self.problems(text)[0])
+
+    def test_each_fix_says_what_it_changes(self):
+        text = FORMATTED.replace('It is off.\n', '')
+        self.assertIn('what it changes', self.problems(text)[0])
+
+    def test_related_links_topics(self):
+        text = FORMATTED.replace('- [Settings](../language/01-a.md#settings)', 'Settings.')
+        self.assertIn('links the topics', self.problems(text)[0])
+
+    def test_the_scope_is_what_the_user_layer_and_people_reach(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for folder in ('docs/learn', 'docs/guides', 'docs/errors', 'examples/one'):
+                (root / folder).mkdir(parents=True)
+            (root / 'docs/learn/01-a.md').write_text('See [it](../errors/a.b.md).\n')
+            (root / 'examples/one/README.md').write_text('Shows `c.d`.\n')
+            (root / 'docs/errors/cli.x.md').write_text('# `cli.x`\n\nNo example yet.\n')
+            catalogue = {'a.b': {'area': 3, 'decides': 'agent'}, 'c.d': {'area': 3, 'decides': 'agent'},
+                         'e.f': {'area': 3, 'decides': 'human'}, 'g.h': {'area': 3, 'decides': 'agent'},
+                         'cli.x': {'area': docs.COMMAND_AREA, 'decides': 'human'}}
+            self.assertEqual(docs.error_format_scope(catalogue, root), {'a.b', 'c.d', 'e.f'})
+
+    def test_the_bundle_gives_the_summary_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'a.b.md'
+            path.write_text(FORMATTED)
+            page = docs.ErrorPage(path, self.catalogue)
+            page.collect_blocks()
+            bundle = docs.Bundle([], [page], {'rules': list(self.catalogue.values()), 'commands': []}, Path(tmp))
+            text = bundle.error_markdown(page, set())
+        self.assertEqual(text.count('something other than'), 1)
+        self.assertNotIn('project=e-off', text)
+
+
 if __name__ == '__main__':
     unittest.main()

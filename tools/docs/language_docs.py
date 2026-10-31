@@ -570,9 +570,18 @@ class ErrorPage(Page):
     def area(self):
         return int(self.catalogue.get(self.rule, {}).get('area', 0))
 
+    # Whether the page must have the parts docs/writing.md, "How an error
+    # page reads", gives it; load_pages sets it from error_format_scope.
+    format_required = False
+
     def check(self, bless=False):
         super().check(bless)
         self.check_rule()
+        if self.format_required or ERROR_PARTS[0] in self.body.split('\n'):
+            self.problems.extend(error_format_problems(self))
+            # It reads like a user page, but shows a fix's changed lines
+            # as a fragment its hidden block compiles.
+            self.problems.extend(p for p in user_page_problems(self) if 'holds no `fragment`' not in p)
 
     def check_rule(self):
         """The page names a rule of the catalogue, is headed by it, and
@@ -592,6 +601,171 @@ class ErrorPage(Page):
         if not has_checks and entry.get('area') == COMMAND_AREA and NO_EXAMPLE not in self.body \
                 and '```' not in self.body:
             self.problems.append(f'say "{NO_EXAMPLE}" on a page with no example')
+
+
+# An error page's sections, in order (docs/writing.md, "How an error page
+# reads"), after its heading and the sentence saying what happened.
+ERROR_PARTS = ('## Why Jadpo refuses it', '## What it looks like', '## How to fix it', '## Related')
+# What a page says the next step's marker means, in the standard wording
+# (docs/writing.md, "The `(human)` and `(agent)` markers").
+MARKER_WORDING = {
+    'human': '`(human)` at the end of the `next:` line tells your coding agent to stop and ask you '
+             'which fix you want, because the choice is yours to make',
+    'agent': '`(agent)` at the end of the `next:` line means your coding agent can make the fix itself',
+}
+NEXT_MARKER = re.compile(r'^\s*next: .*\((human|agent)\)\s*$', re.MULTILINE)
+# Where one sentence ends and another starts, outside code.
+SENTENCE_BREAK = re.compile(r'[.?!] +[A-Z]')
+# A rule named on a page: linked, shown on a `rule:` line, or expected.
+RULE_NAMED = re.compile(r'(?:errors/|rule: |expect=)([a-z_]+\.[a-z_]+)')
+# A rule named in a teaching example's README, in backticks or linked.
+EXAMPLE_RULE = re.compile(r'(?:`|errors/)([a-z_]+\.[a-z_]+)(?:`|\.md)')
+# Whether the sentence under an error page's heading must be its rule's
+# catalogue summary; a writer's own run before the compiler is rebuilt
+# turns it off.
+CHECK_SUMMARIES = True
+
+
+def error_format_scope(catalogue, root=ROOT):
+    """The rules whose pages must have the parts docs/writing.md, "How an
+    error page reads", gives them: those the primer, the Learn path, the
+    guides or a teaching example's README names, and those whose next step
+    a person decides. A rule only a command raises, whose page has no
+    example yet, waits for the command's output to be checked (roadmap,
+    D13b); every other page follows once D13c is built."""
+    named = set()
+    for path in [root / 'docs/primer.md', *sorted((root / 'docs/learn').glob('*.md')),
+                 *sorted((root / 'docs/guides').glob('*.md'))]:
+        if path.exists():
+            named |= set(RULE_NAMED.findall(path.read_text()))
+    for path in sorted((root / 'examples').glob('*/README.md')):
+        named |= set(EXAMPLE_RULE.findall(path.read_text()))
+    named |= {rule for rule, entry in catalogue.items() if entry.get('decides') == 'human'}
+    scope = set()
+    for rule in named & catalogue.keys():
+        page = root / 'docs/errors' / f'{rule}.md'
+        if catalogue[rule].get('area') == COMMAND_AREA and page.exists() and NO_EXAMPLE in page.read_text():
+            continue
+        scope.add(rule)
+    return scope
+
+
+def prose_paragraphs(lines, start, end):
+    """(first line, text joined by spaces) of each paragraph of prose in
+    lines[start:end], outside fences."""
+    out, current, first = [], [], None
+    for i, line, fenced in body_lines(lines[start:end]):
+        if fenced or not line.strip():
+            if current:
+                out.append((first + start, ' '.join(current)))
+            current = []
+            continue
+        if not current:
+            first = i
+        current.append(line.strip())
+    if current:
+        out.append((first + start, ' '.join(current)))
+    return out
+
+
+def fences(lines, start, end):
+    """(opening line, closing line, info) of each fence in lines[start:end]."""
+    out, opening = [], None
+    for i, line, _ in body_lines(lines[start:end]):
+        if not line.startswith('```'):
+            continue
+        if opening is None:
+            opening = (i + start, line[3:].strip())
+        else:
+            out.append((opening[0], i + start, opening[1]))
+            opening = None
+    return out
+
+
+def error_format_problems(page):
+    """Problems with an error page against docs/writing.md, "How an error
+    page reads": what happened in one sentence, its rule's catalogue
+    summary; then why Jadpo refuses it; the example and its output, and
+    what the next step's marker means in the standard wording; each fix
+    as **If …**, its code and what it changes, a fragment of changed lines
+    followed by a hidden check block of the fixed file it is part of; and
+    the related topics, linked."""
+    problems = []
+    lines = page.body.split('\n')
+    entry = page.catalogue.get(page.rule, {})
+
+    def where(i):
+        return f'line {i + page.offset + 1}'
+
+    heads = [(i, line.strip()) for i, line, fenced in body_lines(lines) if not fenced and line.startswith('## ')]
+    found = [heading for _, heading in heads]
+    if found != list(ERROR_PARTS):
+        problems.append(f'its sections are {", ".join(found) or "none"}; an error page has '
+                        f'{", ".join(ERROR_PARTS)}, in that order (docs/writing.md, "How an error page reads")')
+        return problems
+    spans = {heading: (i, heads[n + 1][0] if n + 1 < len(heads) else len(lines))
+             for n, (i, heading) in enumerate(heads)}
+    what = prose_paragraphs(lines, 1, heads[0][0])
+    if len(what) != 1 or fences(lines, 1, heads[0][0]):
+        problems.append(f'say what happened in one sentence under the heading, before `{ERROR_PARTS[0]}`')
+    else:
+        i, text = what[0]
+        if not text.endswith('.') or SENTENCE_BREAK.search(re.sub(r'`[^`]*`', '', text)):
+            problems.append(f'{where(i)}: say what happened in one sentence, ending with a full stop')
+        elif CHECK_SUMMARIES and entry.get('summary') and text != entry['summary'] + '.':
+            problems.append(f'{where(i)}: what happened is the rule\'s catalogue summary with a full stop; '
+                            f'the summary is "{entry["summary"]}" (crates/jadpo-diag/src/lib.rs)')
+    for heading in (ERROR_PARTS[0], ERROR_PARTS[2]):
+        start, end = spans[heading]
+        if not prose_paragraphs(lines, start + 1, end):
+            problems.append(f'{where(start)}: `{heading}` says something in prose')
+
+    start, end = spans[ERROR_PARTS[1]]
+    shown = fences(lines, start + 1, end)
+    expected = [b for b in page.blocks if start < b['line'] < end and b['attrs'].get('check')
+                and b['attrs'].get('expect') == page.rule and 'output' in b]
+    command = entry.get('area') == COMMAND_AREA and any(info.startswith('text') for _, _, info in shown)
+    if not expected and not command:
+        problems.append(f'{where(start)}: `{ERROR_PARTS[1]}` shows a check block with expect={page.rule} '
+                        'and its output')
+    else:
+        after = expected[0]['output']['end'] if expected else next(c for _, c, info in shown if info.startswith('text'))
+        said = ' '.join(re.sub(r'\s+', ' ', text) for _, text in prose_paragraphs(lines, after + 1, end))
+        outputs = '\n'.join('\n'.join(lines[o:c]) for o, c, info in shown if info.startswith('text'))
+        markers = sorted(set(NEXT_MARKER.findall(outputs))) or [entry.get('decides', 'agent')]
+        for marker in markers:
+            if MARKER_WORDING[marker] not in said:
+                problems.append(f'{where(start)}: after the output, say what `({marker})` means in the standard '
+                                f'wording: "{MARKER_WORDING[marker]}" (docs/writing.md)')
+
+    start, end = spans[ERROR_PARTS[2]]
+    fixes = [i for i, line, fenced in body_lines(lines[:end]) if start < i and not fenced and line.startswith('**If ')]
+    if not fixes:
+        problems.append(f'{where(start)}: `{ERROR_PARTS[2]}` gives each fix as "**If …**", then its code')
+    for n, first in enumerate(fixes):
+        last = fixes[n + 1] if n + 1 < len(fixes) else end
+        code = fences(lines, first, last)
+        if not code:
+            problems.append(f'{where(first)}: the fix shows its code')
+            continue
+        if not prose_paragraphs(lines, code[-1][1] + 1, last):
+            problems.append(f'{where(first)}: after the fix\'s code, say what it changes once made')
+        blocks = [b for b in page.blocks if first < b['line'] < last]
+        for k, block in enumerate(blocks):
+            if not block['attrs'].get('fragment'):
+                continue
+            shown_lines = [line.strip() for line in block['source'].split('\n') if line.strip()]
+            proof = next((b for b in blocks[k + 1:] if b['attrs'].get('check') and b['attrs'].get('hidden')
+                          and 'expect' not in b['attrs']), None)
+            whole = {line.strip() for line in proof['source'].split('\n')} if proof else set()
+            if proof is None or not all(line in whole for line in shown_lines):
+                problems.append(f'{where(block["line"])}: a fix\'s fragment is followed by a hidden check block '
+                                'of the fixed file, holding its lines, so the gate compiles the fix')
+
+    start, end = spans[ERROR_PARTS[3]]
+    if not any(LINK.search(text) for _, text in prose_paragraphs(lines, start + 1, end)):
+        problems.append(f'{where(start)}: `{ERROR_PARTS[3]}` links the topics the error touches, by title')
+    return problems
 
 
 class Notes(Page):
@@ -1161,7 +1335,13 @@ class Bundle:
                 skip_to = next(j for j in range(i + 2, len(lines)) if lines[j].startswith('```'))
                 continue
             out.append(line)
-        body = map_links('\n'.join(out).strip('\n'), lambda t: self.link(page.path, t, 'errors', linked))
+        body = '\n'.join(out).strip('\n')
+        # The sentence saying what happened is the rule's summary, which
+        # the head already gives.
+        first, _, rest = body.partition('\n\n')
+        if ' '.join(first.split()) == f'{entry["summary"]}.':
+            body = rest.strip('\n')
+        body = map_links(body, lambda t: self.link(page.path, t, 'errors', linked))
         facts = [f'Area {area}']
         if area_page is not None and area_page.topics():
             overview = area_page.topics()[0]
@@ -1786,6 +1966,9 @@ def load_pages(catalogue, root=ROOT):
     pages = [Page(p, catalogue) for p in sorted(docs.glob('[0-9][0-9]-*.md'))]
     notes = {p.name: Notes(p, catalogue) for p in sorted((docs / 'notes').glob('[0-9][0-9]-*.md'))}
     errors = [ErrorPage(p, catalogue) for p in sorted((root / 'docs/errors').glob('*.md'))]
+    scope = error_format_scope(catalogue, root)
+    for page in errors:
+        page.format_required = page.rule in scope
     return pages, notes, errors
 
 

@@ -262,7 +262,49 @@ the middle of a change. It has these parts, in this order:
    now get a 401").
 6. **`## Related`**: the topics it touches, linked by title.
 
+The sentence saying what happened is the rule's summary in the compiler's
+catalogue (`crates/jadpo-diag`), word for word, with a full stop; the
+catalogue keeps it without one. It starts with a capital letter and says
+what the reader did, not the rule's name: "An API's `serve_openapi:`
+setting holds something other than `true` or `false`." The bundle and
+`jadpo help <rule>` give it once, in the page's head.
+
+A rule raised in more than one way shows each further case after the
+first one's output and marker, each introduced by a sentence saying how
+it differs, with its own example and output.
+
+The marker is explained in one of these two sentences, then what the
+choice decides here, as in "…yours to make: it decides who may call
+`check_health`.":
+
+- "`(human)` at the end of the `next:` line tells your coding agent to
+  stop and ask you which fix you want, because the choice is yours to
+  make"
+- "`(agent)` at the end of the `next:` line means your coding agent can
+  make the fix itself"
+
+A fix's code is the lines that change, as a `fragment`, followed by a
+`hidden` check block of the fixed file, holding those lines, and hidden
+blocks for the project's other files, so the gate compiles every fix. A
+file of a few lines can instead be shown whole, as a `check` block. A fix
+that is a command shows it as `sh`. What a fix changes is only what the
+area page or a checked example shows; a page never describes behaviour
+that isn't built.
+
+An error only a command raises, never `jadpo check` or `jadpo test`,
+shows the command as `sh` and what it printed as `text`, copied from a
+real run, as the Learn path shows commands.
+
 ## What the docs check enforces
+
+An error page has the parts above, in order: its sections, the catalogue
+summary as its first sentence, an example of the error with its output,
+the marker in the standard wording, each fix as "**If …**" with its code,
+a fragment compiled by the hidden block after it, and what the fix
+changes, and at least one related topic. Pages whose rule a person
+decides, or that the user layer or a teaching example names, must have
+them; the others are being brought to the format. It reads like a user
+page, so the rules below hold for it too, but for the fix's fragments.
 
 `python3 tools/docs/language_docs.py --check`, part of the gate, fails a
 user page that:
