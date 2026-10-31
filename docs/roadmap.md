@@ -276,19 +276,18 @@ D1 first: the site starts once D1 has merged.
 - [x] **D12 What the Learn path found**: [area 8](language/08-identity.md), "In development and tests"; [area 14](language/14-tooling.md), "What is built"; [documentation](documentation.md), "Where the content lives" and "The bundle".
 - [x] **D13a Error pages people reach first**: [writing guide](writing.md), "How an error page reads" and "What the docs check enforces"; [documentation](documentation.md), "The bundle"; `tools/docs/language_docs.py`, `error_format_problems` and `error_format_scope`; the catalogue summaries in `crates/jadpo-diag`.
 - [ ] **D13b Command errors that explain**: an umbrella, split by size
-  (2026-10-31) into D13b1, D13b2a–D13b2c and D13b3, taken in order; tick
-  it once all are.
+  (2026-10-31) into D13b1, D13b2a, D13b2b1, D13b2b2, D13b2c and D13b3,
+  taken in order; tick it once all are.
 - [x] **D13b1 The `sh run` block, settings and `jadpo new`**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; `tools/docs/language_docs.py`, `check_runs`; the pages of `configuration.local_*`, `cli.config_*` and `toolchain.*` a run raises, and `configuration.value_invalid`.
 - [x] **D13b2a Copied output, root runs and the first person-decided pages**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; area 14, "What it compiles with"; the pages of `configuration.value_missing`, `configuration.local_changed`, `format.write_failed`, `translation.exchange_file_invalid`, `toolchain.build_failed` and `toolchain.fetch_failed`.
-- [ ] **D13b2b Background work and data** `opus · high`: the format of
-  "How an error page reads", with a `sh run` example against a disposable
-  PostgreSQL, for the person-decided rules a database command raises
-  whose page says "No example yet": `deliveries.*`, `schedules.*`,
-  `runs.unavailable`, `ai.usage_unavailable`, `seed.production_refused`,
-  `seed.unavailable`, `migration.apply_failed`,
-  `migration.extension_missing`, `migration.extension_outdated` and
-  `migration.store_diverged`, each catalogue summary its page's first
-  sentence.
+- [x] **D13b2b1 A database for runs, migrations and seeds**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; area 14, "Database command errors"; `tools/docs/language_docs.py`, `Databases`; the pages of `seed.production_refused`, `seed.unavailable`, `migration.apply_failed`, `migration.store_diverged`, `migration.extension_missing` and `migration.extension_outdated`.
+- [ ] **D13b2b2 Background work** `opus · high`: the format of "How an
+  error page reads", with a `sh run database` example, for
+  `deliveries.*`, `schedules.*`, `runs.unavailable` and
+  `ai.usage_unavailable`, whose pages say "No example yet", each
+  catalogue summary its page's first sentence and area 14's
+  command-error table matching. D13b2b, split by size (2026-10-31)
+  into D13b2b1 and this.
 - [ ] **D13b2c The rest a person decides** `opus · high`: the same for
   `cli.dev_start_failed`, `conform.refused`, `recording.refused`,
   `suggest.share_failed`, `format.unsafe` and

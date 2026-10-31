@@ -410,6 +410,9 @@ fn help_json_is_the_whole_command_reference() {
             "test.failed",
             "test.no_tests",
             "test.runtime_start_failed",
+            "migration.apply_failed",
+            "migration.extension_missing",
+            "migration.extension_outdated",
             "toolchain.not_built_yet",
             "toolchain.project_not_found"
         ])

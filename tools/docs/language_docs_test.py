@@ -658,6 +658,20 @@ class Links(unittest.TestCase):
             page.collect_blocks()
             page.check_rule()
             self.assertEqual(page.problems, [])
+            # Output copied from a run no check can make: its project's
+            # check blocks, which all pass, are compiled all the same.
+            path.write_text('# `cli.x`\n\n```jadpo check project=p file=app.jadpo hidden\napplication {}\n```\n\n'
+                            '```sh\njadpo go\n```\n\n```text\nerror: no\n  rule: cli.x\n```\n')
+            page = docs.ErrorPage(path, catalogue)
+            page.collect_blocks()
+            page.check_rule()
+            self.assertEqual(page.problems, [])
+            # One that fails must be the rule's.
+            path.write_text('# `cli.x`\n\n```jadpo check project=p expect=a.b\nnope\n```\n')
+            page = docs.ErrorPage(path, catalogue)
+            page.collect_blocks()
+            page.check_rule()
+            self.assertEqual(page.problems, ['no example for cli.x: add a ```sh run block failing with it'])
 
 
 FORMATTED = '''# `a.b`
@@ -786,6 +800,7 @@ FAKE_JADPO = """#!/bin/sh
 case "$1" in
   fail) printf 'error: no\\n  next: Fix it (agent)\\n  rule: cli.x\\n' >&2; exit 1;;
   where) pwd; echo "$HOME"; echo "checked: 1 file in 0.3 s";;
+  database) case "$DATABASE_URL" in postgresql://*) echo ok;; *) echo none;; esac;;
   ask) printf '? Enter X  hidden  '; stty -echo; read line; stty echo; printf '\\n'; echo "got $line";;
   *) echo ok;;
 esac
@@ -854,6 +869,37 @@ class Commands(unittest.TestCase):
         page = self.page('# `cli.x`\n\n```sh run project=p tty typed=abc\njadpo ask\n```\n\n'
                          '```text output\n? Enter X  hidden\ngot abc\n```\n')
         self.assertEqual(page.problems, [])
+
+    def test_a_database_block_gets_a_database_of_its_own(self):
+        """`database` gives the commands DATABASE_URL, a new database on
+        the run's server; under JADPO_SKIP_POSTGRES the block is skipped."""
+        asked = []
+
+        class Fake:
+            def create(self, stem):
+                asked.append(stem)
+                return f'postgresql://jadpo@/docs_{stem}_{len(asked)}?host=/tmp'
+
+        saved = docs.DATABASES, docs.SKIP_POSTGRES
+        try:
+            docs.DATABASES, docs.SKIP_POSTGRES = Fake(), False
+            page = self.page('# `cli.x`\n\n```sh run project=p database\njadpo database\n```\n\n'
+                             '```text output\nok\n```\n')
+            self.assertEqual(page.problems, [])
+            self.assertEqual(asked, ['p'])
+            # Without `database`, there is none.
+            page = self.page('# `cli.x`\n\n```sh run project=q\njadpo database\n```\n\n'
+                             '```text output\nnone\n```\n')
+            self.assertEqual(page.problems, [])
+            self.assertEqual(asked, ['p'])
+            docs.SKIP_POSTGRES = True
+            page = self.page('# `cli.x`\n\n```sh run project=p database\njadpo database\n```\n\n'
+                             '```text output\nok\n```\n')
+            self.assertEqual(page.problems, [])
+            self.assertEqual(page.skipped_runs, ['p'])
+            self.assertEqual(asked, ['p'])
+        finally:
+            docs.DATABASES, docs.SKIP_POSTGRES = saved
 
     def test_root_refuses_blocks_that_take_permissions_away(self):
         """Root reads and writes past any permission, so a block whose
