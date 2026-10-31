@@ -253,10 +253,11 @@ pub const PURGE_BATCH: u32 = 500;
 /// Where a purge statement's parameter comes from.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PurgeSource {
-    /// The run's time less the lifecycle's `after:`: a record hidden since
-    /// before it goes.
+    /// The run's time less the lifecycle's or the retention's `after:`: a
+    /// record hidden, or counted from, before it goes.
     Cutoff,
-    /// The run's time, for a `visible:` that reads `clock.now`.
+    /// The run's time, for a `visible:` that reads `clock.now`, and for
+    /// the `Generated.on_change` fields a retention's clearing sets.
     Now,
     /// A literal or an enum value `visible:` compares with, as the storage
     /// codec binds it (area 19, chunk 5.5w3b).
@@ -270,25 +271,63 @@ pub struct PurgeParam {
     pub ty: SqlType,
 }
 
+/// What a purge plan removes once its time is up.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum PurgeKind {
+    /// A lifecycle's `purge:` (area 5, "Lifecycle"): the records hidden
+    /// for its `after:`.
+    Hidden,
+    /// An entity's `retention:` (area 15, "Retention"; chunk P2): every
+    /// record, hidden or not, whose `since:` field is older than its
+    /// `after:`, with what cascades from it.
+    Retention,
+    /// A field's `retention:`, the field by name: its value, cleared on
+    /// every record whose `since:` field is older than its `after:`.
+    FieldRetention(String),
+}
+
 /// The permanent deletion of an entity's hidden records once they have
-/// been hidden for its lifecycle's `after:` (area 5, "Lifecycle"): the
-/// compiler's own operation, outside every action and policy (area 9),
-/// which the built-in hourly purge schedule runs (area 12).
+/// been hidden for its lifecycle's `after:` (area 5, "Lifecycle"), or of
+/// its records or a field's values once their `retention:` ends (area
+/// 15, "Retention"): the compiler's own operation, outside every action
+/// and policy (area 9), which the entity's built-in hourly purge schedule
+/// runs (area 12).
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PurgePlan {
     /// The entity's name.
     pub entity: String,
+    pub kind: PurgeKind,
     pub store: String,
-    /// One batch: `DELETE ... RETURNING "id"` of at most [`PURGE_BATCH`]
+    /// One batch, of at most [`PURGE_BATCH`] records, oldest first, each
+    /// returning its `"id"`: for [`PurgeKind::Hidden`], a `DELETE` of
     /// records that are hidden, hidden since before the cutoff, and that
-    /// no `restricted` reference holds, oldest first.
+    /// no `restricted` reference holds; for [`PurgeKind::Retention`], a
+    /// `DELETE` of records whose `since:` is before the cutoff, with the
+    /// sign-in state of someone who signs in; for
+    /// [`PurgeKind::FieldRetention`], an `UPDATE` clearing the field where
+    /// it holds a value and `since:` is before the cutoff, setting every
+    /// `Generated.on_change` field to the run's time.
     pub sql: String,
     pub params: Vec<PurgeParam>,
     /// The lifecycle's `after:`, in milliseconds; 0 when a setting gives it
-    /// (`after_setting`).
+    /// (`after_setting`), as it always does for a retention.
     pub after: i64,
     /// The setting `after:` reads, by its number in the plan's settings
     /// (area 10, "Retention periods"): the period is what the application
     /// started with, so a run is given it (`purge_after`).
     pub after_setting: Option<u32>,
+}
+
+impl PurgePlan {
+    /// What it is, for a message: "the purge of `Member`", "the retention
+    /// of `Invoice`" or "the retention of `Visitor.signup_ip`".
+    pub fn what(&self) -> String {
+        match &self.kind {
+            PurgeKind::Hidden => format!("the purge of `{}`", self.entity),
+            PurgeKind::Retention => format!("the retention of `{}`", self.entity),
+            PurgeKind::FieldRetention(field) => {
+                format!("the retention of `{}.{field}`", self.entity)
+            }
+        }
+    }
 }

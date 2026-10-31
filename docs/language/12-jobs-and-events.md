@@ -297,13 +297,16 @@ on. What it doesn't reach, the next tick carries on with.
 
 ### The purge schedule
 
-An entity whose [lifecycle](05-data.md#lifecycle) has `purge:`, and
-which is kept in a store, gets a schedule of its own that deletes its
-old records every hour. You don't write it. It is named after the entity
-and its operation, `Member.purge`, as `Member.delete` is. It is keyed by
-the entity's born name, the name it was first declared with, so renaming
-the entity keeps its state and run records. Its `.jadpo` place, which
-`jadpo why` gives, is the lifecycle's `purge:`.
+An entity whose [lifecycle](05-data.md#lifecycle) has `purge:`, or which
+has a [`retention:`](15-personal-data.md#retention) of its own or on a
+field, and which is kept in a store, gets a schedule of its own that
+deletes its old records and clears its expired values every hour. You
+don't write it. It is named after the entity and its operation,
+`Member.purge`, as `Member.delete` is. It is keyed by the entity's born
+name, the name it was first declared with, so renaming the entity keeps
+its state and run records. Its `.jadpo` place, which `jadpo why` gives,
+is the lifecycle's `purge:`, or else the entity's `retention:`, or else
+its first field's.
 
 It runs every hour on the same kind of grid as any schedule, and is
 recorded and watched like any schedule. Its state row, lease and run
@@ -315,16 +318,18 @@ named. `jadpo schedules` lists it; `history`, `pause`, `resume`, `run`
 and `jadpo why` take its name; and `jadpo dev` prints each run.
 
 Each run calls the runtime's purge at the tick's time, outside every
-action and every policy. It deletes at most 20 batches of 500 records
-within the run's time limit, and the next hour's run carries on with
-what it leaves. How old a record must be is the lifecycle's `after:`, or
-the value the app started with for the setting `after:` reads. The run
-emits nothing.
+action and every policy: the entity's retention first, then its
+lifecycle's purge, then each field's retention. It deletes or clears at
+most 20 batches of 500 records among them within the run's time limit,
+and the next hour's run carries on with what it leaves. How old a record
+must be is the lifecycle's or the retention's `after:`, or the value the
+app started with for the setting `after:` reads. The run emits nothing.
 
 A store that can't be reached makes a failed run with `unavailable`, as
 for an action. Anything else the store refuses is `internal_fault`, and
 the batches deleted before it stay deleted. The run records count the
-records deleted (`items`). The screens show `2 records purged` where an
+records deleted, and those a retention cleared a value of (`items`). The
+screens show `2 records purged` where an
 action's run shows its events, and `jadpo dev`'s `--json` line carries
 `items` and `batches`, how many each batch deleted. No test runs the
 purge schedule ([Testing](13-testing.md)).

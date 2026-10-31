@@ -282,6 +282,11 @@ pub enum Detail {
     /// record belongs to the person when it refers to them, directly or
     /// through these references.
     Person { through: Vec<String> },
+    /// A retention (area 15, "Retention"): how long a field's value or an
+    /// entity's records are kept (`after config.signup_ip_retention since
+    /// created_at`), and whether it clears a field's value rather than
+    /// deleting the record.
+    Retention { retention: String, clears: bool },
     /// A route (area 7): its API, success status, input and output, and
     /// deadline. Its method and full path are its name.
     Route {

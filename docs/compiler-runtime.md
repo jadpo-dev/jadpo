@@ -651,6 +651,24 @@ marked `personal:`, an entity that is no person and belongs to none
 (`data.personal_unreachable`), read from the marks area 21's check reads
 (`ai_personal::marks`). Erasure and export will walk the same references.
 
+**Retention** (area 15). An entity's `retention:` and each field's are
+read by `data::retention::read` once the entity's fields and lifecycle
+are, onto `EntityModel::retention` and `FieldModel::retention` (a
+`RetentionModel`: the `Duration` setting `after:` names and the `Instant`
+field `since:` names), with where each is written in `EntitySpans`.
+`retention::field_problems` refuses, as the field is read, a field that
+can't be `none`, one the lifecycle owns or reads, and a `File`;
+`retention::retention_problems` works out from the whole data model what
+deleting one of the entity's records reaches (`retention::reach`: every
+entity through cascades, the `restricted` references holding one of
+them, their `File` fields) and refuses a retention something holds
+(`data.retention_held`), one reaching a `File`, and one cascading to an
+entity `principal { }` names. A retention gives its entity the built-in
+purge schedule (`schedules::purge_place`), and the graph a `retention`
+node, keyed `retention Visitor.signup_ip` or `retention Invoice` by born
+names, under its field or entity, its digest over its period, `since:`
+and whether it clears.
+
 A query is a node (area 6): `jadpo_check::data::queries`
 reads each declaration once into a `QueryModel` (its entity, parameters,
 how many records it returns, the record's fields from the entity's fields
@@ -2241,13 +2259,28 @@ folder, through a recursive query that follows the cascades as deep as
 the data goes); it returns each batch's count (`Purged`). A run stops after `batches` batches (`PURGE_BATCHES`, 20, for the
 schedule) and says whether it `finished`, so a Workers cron run can't
 overrun however much is due, and the next run carries on; the budget is a
-batch count. Area 12's
-hourly purge schedule calls it, with the plan's purge
-and its period as the program started with it (`Plan::purge`,
-from `Started`); a live test calls it
-directly (`crates/jadpo-cli/tests/lifecycle.rs`), stopping one run at its
-budget, and another runs it on the tick
-(`crates/jadpo-cli/tests/purge_schedule.rs`).
+batch count. Retention (area 15) is planned beside it as more
+`PurgePlan`s of the entity's, each with its `PurgeKind`: an entity's
+`Retention`, the same `DELETE` of records, hidden or not, whose `since:`
+is older than the cutoff, wrapped, for an entity `principal { }` names,
+in a `WITH` that deletes the rows of `jadpo_sessions`,
+`jadpo_service_keys`, `jadpo_passkeys`, `jadpo_passkey_challenges` and
+`jadpo_sign_in_links` its store holds for the records it deleted; and a
+field's `FieldRetention`, an `UPDATE` setting every column of the field
+to `NULL`, and each `Generated.on_change` field to the run's time, on the
+oldest records holding a value whose `since:` is older than the cutoff.
+The plan holds an entity's in the order a run applies them, its
+retention, its purge, then its fields'. Area 12's hourly purge schedule
+calls `jadpo_runtime::purge_all` with them and their periods as the
+program started with them (`Plan::purges_of`, from `Started`), which
+runs each in turn, sharing the run's batches, until each comes back
+short or the budget is spent; `items` counts the records deleted and
+the values cleared. A live test calls purge directly
+(`crates/jadpo-cli/tests/lifecycle.rs`), stopping one run at its budget,
+another runs it on the tick (`crates/jadpo-cli/tests/purge_schedule.rs`),
+and `crates/jadpo-cli/tests/retention.rs` runs retention on the tick
+twice, by the interpreter and by the compiled executor on the plan's
+canonical bytes, and shares one run's batches.
 
 **The HTTP component** (`jadpo_runtime::http`). A host
 hands it a `Request` (method, path, query string, headers, body, the

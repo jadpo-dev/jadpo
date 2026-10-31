@@ -1,4 +1,4 @@
--- purge Board: after 2592000000ms, store main
+-- the purge of `Board`: after 2592000000ms, store main
 DELETE FROM "board"
 WHERE "id" IN (
   SELECT "id"
