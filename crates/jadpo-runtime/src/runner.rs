@@ -1841,9 +1841,10 @@ fn written(
                 .map(|place| format!(" at {place}"))
                 .unwrap_or_default();
             let what = match &fault.kind {
-                FaultKind::Defect(what) | FaultKind::NotBuiltYet(what) | FaultKind::Store(what) => {
-                    format!(" ({what})")
-                }
+                FaultKind::Defect(what)
+                | FaultKind::NotBuiltYet(what)
+                | FaultKind::Store(what)
+                | FaultKind::FileRefused { why: what, .. } => format!(" ({what})"),
                 _ => String::new(),
             };
             return Err(format!(
