@@ -1461,6 +1461,10 @@ make the fix itself.
   rule.
 - JSON gives line and column as well as byte offsets, and uses one naming
   style for its keys.
+- A reason that quotes another tool's lines, as `toolchain.build_failed`
+  quotes cargo's, prints each as a line of its own under the reason, its
+  indent kept and blank lines left out; JSON keeps them in the one
+  string, each break a `\n`.
 
 ### When Jadpo itself fails
 
@@ -2173,8 +2177,9 @@ The binary is `build/target/app/app`, and each API's OpenAPI document and
 `<api>.failures.<locale>.json` are copied into `build/target/app/openapi/`.
 It is built without the runtime's `testing` feature.
 
-cargo failing is `toolchain.build_failed`, since the Rust Jadpo writes
-always compiles. A file it can't write is `toolchain.artifact_write_failed`.
+cargo failing to compile it is `toolchain.build_failed`, since the Rust
+Jadpo writes always compiles; crates it can't fetch first are
+`toolchain.fetch_failed`. A file it can't write is `toolchain.artifact_write_failed`.
 
 ### What it compiles with
 
@@ -2204,9 +2209,10 @@ aarch64-apple-darwin`, `Fetching the runtime's crates`). Where stderr
 animates, it is on the live line, each archive with a bar; otherwise it is
 a line on stderr; under `--json` it says nothing. The screen's `fetched`
 line, and `--json`'s `fetched`, say what came (`Rust 1.99.0 (146.9 MB)
-and 292 crates`). A toolchain that can't be fetched is
-`toolchain.fetch_failed`; crates cargo can't fetch fail the build, with
-cargo's own lines, as `toolchain.build_failed`.
+and 292 crates`). A fetch that fails is `toolchain.fetch_failed`: a
+toolchain that can't be fetched, or crates cargo can't fetch, with
+cargo's own lines. A cargo that can't read the workspace Jadpo wrote
+fails before anything is fetched, as `toolchain.build_failed`.
 
 With `CARGO` naming a cargo, that cargo builds instead and nothing is
 fetched. cargo sets `CARGO` for what it runs, and the gate does for this
@@ -2978,7 +2984,7 @@ its command is built.
 | `toolchain.artifact_stage_failed` | `artifacts`, `build` | Build staging directory could not be created |
 | `toolchain.artifact_write_failed` | `check`, `build` | A file Jadpo writes for you, such as a record, couldn't be written, usually because it or its folder is read-only |
 | `toolchain.build_failed` | `build` | The Rust `jadpo build` wrote for a deployable didn't compile, because the machine lacks something the build runs, such as a C compiler, or because of a mistake in Jadpo |
-| `toolchain.fetch_failed` | `build` | The Rust toolchain `jadpo build` compiles with couldn't be fetched, usually because the download server or the mirror `JADPO_RUST_DIST_SERVER` names can't be reached |
+| `toolchain.fetch_failed` | `build` | The Rust toolchain or the crates `jadpo build` compiles with couldn't be fetched, usually because the server they come from, or the mirror in its place, can't be reached |
 | `toolchain.project_not_found` | any command | You ran a command that works on a project in a folder with no `app.jadpo`, in it or in any folder above it |
 | `toolchain.project_read_failed` | any command | Project directory could not be read |
 | `toolchain.scaffold_destination_exists` | `new` | You ran `jadpo new` with the name of a file that already exists |

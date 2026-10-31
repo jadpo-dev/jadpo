@@ -476,7 +476,8 @@ const BUILT_BY: &str = "jadpo-built-by";
 /// online: the index entries the two generated packages need to join the
 /// lock, then each crate the lock names for the host and the build's
 /// target, each checked against the lock's checksum as cargo checks one.
-/// The build itself is always offline.
+/// Either refused, once cargo has read the workspace, is
+/// [`Failed::Fetch`]. The build itself is always offline.
 ///
 /// The target is shared, so the build holds the target's lock until that
 /// copy is made: cargo's own lock keeps two builds from writing the
@@ -516,8 +517,21 @@ pub fn build(release: &Release<'_>) -> Result<Compiled, Failed> {
         }
     };
     if run(release, &["update", "--workspace", "--offline", "--quiet"]).is_err() {
+        // A workspace this cargo can't read fails online as it did
+        // offline, and isn't a fetch that failed; once it reads, what
+        // cargo can't then do online is.
+        run(
+            release,
+            &[
+                "metadata",
+                "--no-deps",
+                "--offline",
+                "--format-version",
+                "1",
+            ],
+        )?;
         say();
-        run(release, &["update", "--workspace", "--quiet"])?;
+        run(release, &["update", "--workspace", "--quiet"]).map_err(fetching)?;
     }
     let mut targets = vec!["--target", release.machine];
     if matches!(release.host, Host::Workers(_)) {
@@ -531,7 +545,8 @@ pub fn build(release: &Release<'_>) -> Result<Compiled, Failed> {
     .is_err()
     {
         say();
-        let said = run(release, &[&["fetch", "--locked"][..], &targets].concat())?;
+        let said =
+            run(release, &[&["fetch", "--locked"][..], &targets].concat()).map_err(fetching)?;
         crates = downloaded(&said);
     }
     let built = ["build", "--release", "--locked", "--offline", "--quiet"];
@@ -576,6 +591,15 @@ pub fn build(release: &Release<'_>) -> Result<Compiled, Failed> {
     std::fs::copy(&compiled, &kept).map_err(io)?;
     drop(lock);
     Ok(Compiled { path: kept, crates })
+}
+
+/// cargo refusing to fetch, online, what its cache couldn't give offline:
+/// a fetch that failed, not a build.
+fn fetching(failed: Failed) -> Failed {
+    match failed {
+        Failed::Refused(said) => Failed::Fetch(said),
+        other => other,
+    }
 }
 
 /// How many crates cargo says it downloaded: a line `Downloaded <crate>

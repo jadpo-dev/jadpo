@@ -557,3 +557,51 @@ fn a_key_bar_names_the_keys_that_work() {
     );
     assert!(coloured.contains("\x1b[1mctrl-c\x1b[0m"), "{coloured:?}");
 }
+
+/// A reason that quotes a tool's own lines, as `toolchain.build_failed`'s
+/// quotes cargo's.
+fn quoting_cargo() -> Diagnostic {
+    Diagnostic::new(&rule::TOOLCHAIN_BUILD_FAILED, "`app` didn't compile")
+        .reason("cargo couldn't build it:\nerror: linker `cc` not found\n  |\n  = note: No such file or directory (os error 2)\n\nerror: could not compile `libc`")
+}
+
+#[test]
+fn a_reasons_own_line_breaks_print_as_lines_under_its_value_in_plain_output() {
+    let out = Screen::new()
+        .with(Block::diagnostic(&quoting_cargo(), &()))
+        .render(&Style::new(Mode::Plain));
+    assert!(!out.contains("\\u{a}"), "{out}");
+    assert!(
+        out.starts_with(
+            "error: `app` didn't compile
+  reason: cargo couldn't build it:
+          error: linker `cc` not found
+            |
+            = note: No such file or directory (os error 2)
+          error: could not compile `libc`
+  rule: toolchain.build_failed
+"
+        ),
+        "{out}"
+    );
+}
+
+#[test]
+fn a_reasons_own_line_breaks_print_as_lines_at_the_value_column() {
+    let out = Screen::new()
+        .with(Block::diagnostic(&quoting_cargo(), &()))
+        .render(&rich());
+    assert!(!out.contains("\\u{a}"), "{out}");
+    assert!(
+        out.contains(
+            "  reason    cargo couldn't build it:
+            error: linker `cc` not found
+              |
+              = note: No such file or directory (os error 2)
+            error: could not compile `libc`
+  rule      toolchain.build_failed
+"
+        ),
+        "{out}"
+    );
+}
