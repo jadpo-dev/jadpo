@@ -25,7 +25,7 @@ use crate::types::Const;
 /// millionths of the disk (`jadpo_std::files::WHOLE_DISK`): `None` for a
 /// percentage that is negative, 100% or more, or finer than a
 /// ten-thousandth of a percent.
-pub fn floor_of(written: &str) -> Option<u32> {
+pub fn parse_floor(written: &str) -> Option<u32> {
     let number = written.strip_suffix('%')?;
     let (whole, places) = number.split_once('.').unwrap_or((number, ""));
     let digits = |part: &str| part.bytes().all(|byte| byte.is_ascii_digit());
@@ -69,7 +69,7 @@ pub fn disk_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                         "path" => out.extend(path_problem(&connection, value, span, folder)),
                         "free_space_floor" => {
                             let floor = match &value {
-                                Some(Const::Percentage(written)) => floor_of(written),
+                                Some(Const::Percentage(written)) => parse_floor(written),
                                 _ => None,
                             };
                             if floor.is_none() {
@@ -187,17 +187,17 @@ fn resolved(path: &Path) -> std::path::PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::floor_of;
+    use super::parse_floor;
 
     /// A floor is a percentage below 100%, to a ten-thousandth of one.
     #[test]
     fn a_floor_is_a_percentage_below_a_hundred() {
-        assert_eq!(floor_of("5%"), Some(50_000));
-        assert_eq!(floor_of("0%"), Some(0));
-        assert_eq!(floor_of("2.5%"), Some(25_000));
-        assert_eq!(floor_of("99.9999%"), Some(999_999));
+        assert_eq!(parse_floor("5%"), Some(50_000));
+        assert_eq!(parse_floor("0%"), Some(0));
+        assert_eq!(parse_floor("2.5%"), Some(25_000));
+        assert_eq!(parse_floor("99.9999%"), Some(999_999));
         for refused in ["100%", "-1%", "5", "5.%", ".5%", "1.00001%", "150%", "5mb"] {
-            assert_eq!(floor_of(refused), None, "{refused}");
+            assert_eq!(parse_floor(refused), None, "{refused}");
         }
     }
 }

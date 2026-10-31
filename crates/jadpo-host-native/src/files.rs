@@ -63,7 +63,7 @@ pub struct DiskStore {
     /// Whether the root is made, with its folders above, as a write needs
     /// it: `jadpo dev`'s, under the project; a deployable's is made, or
     /// refused, as it starts.
-    made_on_write: bool,
+    dev_root: bool,
 }
 
 impl DiskStore {
@@ -101,7 +101,7 @@ impl DiskStore {
         Ok(DiskStore {
             root,
             floor: floor.min(WHOLE_DISK),
-            made_on_write: false,
+            dev_root: false,
         })
     }
 
@@ -111,13 +111,13 @@ impl DiskStore {
         DiskStore {
             root,
             floor: floor.min(WHOLE_DISK),
-            made_on_write: true,
+            dev_root: true,
         }
     }
 
     /// The root, opened; made first when `make` and it is `jadpo dev`'s.
     fn root(&self, make: bool) -> std::io::Result<os::Dir> {
-        if make && self.made_on_write {
+        if make && self.dev_root {
             private_folders(&self.root)?;
         }
         os::Dir::root(&self.root)

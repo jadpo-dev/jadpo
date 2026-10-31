@@ -223,7 +223,7 @@ pub fn files_connections(db: &dyn Db, project: Project) -> Vec<jadpo_std::files:
                     })
                     .and_then(
                         |(_, setting)| match setting.value().as_ref().map(Const::from_expr) {
-                            Some(Const::Percentage(written)) => crate::disk::floor_of(&written),
+                            Some(Const::Percentage(written)) => crate::disk::parse_floor(&written),
                             _ => None,
                         },
                     )
