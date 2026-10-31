@@ -839,7 +839,12 @@ pub(crate) fn new_token(ctx: &mut Ctx<'_>) -> Option<String> {
     if !ctx.secret_random_bytes(&mut bytes) {
         return None;
     }
-    Some(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+    Some(token_text(&bytes))
+}
+
+/// A token's 32 random bytes as its text, in hexadecimal.
+pub(crate) fn token_text(bytes: &[u8; 32]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn defect(ctx: &mut Ctx<'_>, what: &str, site: u32) -> Box<Fault> {

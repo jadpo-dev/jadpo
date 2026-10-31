@@ -178,6 +178,12 @@ POSTGRES = [
     # actions, policy for a call with a caller, a seed that stops, and a
     # database not on this machine refused (area 5, "Seeds"; chunk A5).
     ('live PostgreSQL: seeds', [('jadpo-cli', 'seeds')], []),
+    # Signing in through a provider: the routes on a deployable's host,
+    # Google a stand-in on its outbound seam (chunk A7b), and `jadpo dev`'s
+    # account-chooser page in the provider's place, end to end (area 8,
+    # "Providers"; chunk A7c).
+    ('live PostgreSQL: provider sign-in',
+     [('jadpo-cli', 'provider_sign_in'), ('jadpo-cli', 'dev_provider_sign_in')], []),
     # Every standard operation's SQL form gives what the runtime gives
     # on the same inputs (area 19, "SQL forms"; chunk 5.6).
     ('live PostgreSQL: SQL forms', [('jadpo-cli', 'sql_forms')], ['--nocapture']),
