@@ -407,6 +407,9 @@ mod tests {
         assert_eq!(table[1].driver.settings(), [1, 4]);
         assert!(super::package(&table, 0).is_some() && super::package(&table, 1).is_none());
         assert_eq!(packages(&table).map(|(at, ..)| at).collect::<Vec<_>>(), [0]);
-        assert_eq!(files(&table).collect::<Vec<_>>(), [("uploads", None)]);
+        assert_eq!(
+            files(&table).collect::<Vec<_>>(),
+            [("uploads", None, crate::files::DEFAULT_FREE_SPACE_FLOOR)]
+        );
     }
 }
