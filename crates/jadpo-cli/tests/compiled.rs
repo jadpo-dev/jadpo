@@ -960,7 +960,6 @@ fn exported_to_its_end(folder: &Path) {
         target: Some(".".into()),
         seed: Some(1),
         record: true,
-        batches: true,
         ..jadpo_test::Options::default()
     });
     let jadpo_test::Ran::Done(run) = ran else {

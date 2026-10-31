@@ -52,24 +52,10 @@ language server does everything else.
 
 ## Install Jadpo first
 
-The extension needs the `jadpo` command. Each [release](https://github.com/jadpo-dev/jadpo/releases)
-comes with installers:
-
-- **macOS and Linux**:
-
-      curl --proto '=https' --tlsv1.2 -LsSf https://github.com/jadpo-dev/jadpo/releases/latest/download/jadpo-cli-installer.sh | sh
-
-- **Windows**, in PowerShell:
-
-      powershell -ExecutionPolicy Bypass -c "irm https://github.com/jadpo-dev/jadpo/releases/latest/download/jadpo-cli-installer.ps1 | iex"
-
-- **npm**: `npm install -g @jadpo/jadpo`.
-- **Homebrew**: `brew install jadpo-dev/tap/jadpo`.
-
-The shell and PowerShell installers put `jadpo` in Cargo's folder,
-`~/.cargo/bin` (on Windows, `%USERPROFILE%\.cargo\bin`), and add it to your
-`PATH`. If VS Code was open while you installed, restart it so that it sees
-the new `PATH`. Then open the folder that holds your project's `app.jadpo`.
+The extension needs the `jadpo` command: install it as
+[jadpo.dev/install](https://jadpo.dev/install) shows. If VS Code was open
+while you installed, restart it so that it sees the new `PATH`. Then open
+the folder that holds your project's `app.jadpo`.
 
 ## How it finds `jadpo`
 
@@ -111,28 +97,4 @@ command does.
   a renamed entity field's stored data.
 - **Email templates** aren't highlighted.
 
-## Developing the extension
-
-From a checkout of the Jadpo repository:
-
-1. Run `cargo build -p jadpo-cli`.
-2. Open `editors/vscode` in VS Code and press F5. A second window runs
-   the extension.
-3. In that window, open a Jadpo project, and set `jadpo.server.path` to
-   the full path of the checkout's `target/debug/jadpo`.
-
-To run the tests, run `npm ci && npm test` in `editors/vscode`. The tests
-start that binary through the protocol library the client uses. The
-language server's own tests are in `crates/jadpo-lsp/tests`.
-
-To make a package, run `npm run package`, which writes `jadpo-<version>.vsix`.
-
-`tools/checks/editor_grammar.py` is part of `python3 tools/verify.py` and needs no
-Node. The highlighting grammar (`syntaxes/jadpo.tmLanguage.json`) is written
-by hand, since colouring reads a line at a time and the lexer does not, but
-the word lists are not: the check reads the reserved words and contextual
-keywords the lexer knows, the HTTP methods it starts a route path after, and
-the once-per-project declarations (`application`, `config`, ...), and fails
-when the grammar leaves one out or names one the lexer doesn't reserve. When a
-keyword is added to the language, add it to the grammar in the group that
-fits.
+To work on the extension itself, see [DEVELOPING.md](DEVELOPING.md).
