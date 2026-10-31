@@ -224,6 +224,10 @@ pub struct Identity {
     pub magic_link: Option<MagicLink>,
     /// `on_first_sign_in:`, as written.
     pub first_sign_in: Option<FirstSignIn>,
+    /// `sign_in: { providers: }`'s connections, when each is a sign-in
+    /// provider and a browser session with its `origin:` and
+    /// `on_first_sign_in:` let them sign anyone in (chunk A7b).
+    pub providers: Vec<crate::sign_in_providers::Provider>,
     pub problems: Vec<Diagnostic>,
 }
 
@@ -296,12 +300,14 @@ impl Identity {
 
     /// The store first sign-ins' links are kept in (area 8, "A person the
     /// app has not seen"; chunk A7): the user entity's, when
-    /// `on_first_sign_in:` decides an external token's first sign-in.
+    /// `on_first_sign_in:` decides an external token's or a provider's
+    /// first sign-in.
     pub fn links_store(&self) -> Option<&str> {
-        (self.first_sign_in.is_some() && self.external_token.is_some())
-            .then(|| self.variant(PrincipalKind::User))
-            .flatten()
-            .map(|variant| variant.store.as_str())
+        (self.first_sign_in.is_some()
+            && (self.external_token.is_some() || !self.providers.is_empty()))
+        .then(|| self.variant(PrincipalKind::User))
+        .flatten()
+        .map(|variant| variant.store.as_str())
     }
 
     /// The store service keys are kept in, when service keys are declared:
@@ -734,6 +740,13 @@ impl Reader<'_> {
         if let Some(authentication) = self.once("authentication") {
             self.authentication(&authentication);
         }
+        // Each sign-in provider's connection, read with its settings.
+        self.out.problems.extend(
+            crate::sign_in_providers::oidc_connections(self.db, self.project)
+                .problems
+                .iter()
+                .cloned(),
+        );
     }
 
     // --- application -------------------------------------------------------------
@@ -1287,6 +1300,54 @@ impl Reader<'_> {
             self.out.methods.push(read);
         }
         let magic_link_written = ways.magic_link_written;
+        // A provider starts a browser session at its origin, and finds its
+        // user only through a link `on_first_sign_in:` made (chunk A7b).
+        if let Some((read, span)) = ways.providers {
+            let session = self.out.method(AuthenticationMethod::BrowserSession);
+            let mut ready = true;
+            match session.map(|session| session.origin.is_some()) {
+                None => {
+                    ready = false;
+                    self.out.problems.push(
+                        Diagnostic::new(
+                            &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
+                            "`providers:` needs a browser session",
+                        )
+                        .at(span.clone(), "no `browser_session:`")
+                        .reason("A provider signs a person in to a browser session, at the origin the application's pages are served from, which the provider sends the browser back to.")
+                        .next("Declare `browser_session: { cookie: \"<name>\"  origin: config.<name> }`"),
+                    );
+                }
+                Some(false) => {
+                    ready = false;
+                    self.out.problems.push(
+                        Diagnostic::new(
+                            &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
+                            "`providers:` needs the browser session's `origin:`",
+                        )
+                        .at(span.clone(), "nowhere to come back to")
+                        .reason("The provider sends the browser back to `<origin>/auth/<name>/callback`, the address registered with it, so the origin comes from configuration (area 10), never from a request.")
+                        .next("Add `origin: config.<name>` to `browser_session:`, reading a `Url` setting"),
+                    );
+                }
+                Some(true) => {}
+            }
+            if self.out.first_sign_in.is_none() {
+                ready = false;
+                self.out.problems.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
+                        "`providers:` needs `on_first_sign_in:`",
+                    )
+                    .at(span, "no one could sign in")
+                    .reason("A provider account finds its user only through the link a first sign-in made, never by the principal's `subject:` field or an address, so without `on_first_sign_in:` no one could ever sign in.")
+                    .next("Add `on_first_sign_in: <domain>.<action>` to `authentication { }`, an action taking one `FirstSignIn`"),
+                );
+            }
+            if ready {
+                self.out.providers = read;
+            }
+        }
         // A magic link starts a browser session at its origin.
         if let Some((read, span)) = ways.magic_link {
             let session = self.out.method(AuthenticationMethod::BrowserSession);
@@ -1484,6 +1545,93 @@ impl Reader<'_> {
     /// another type is `semantic.auth_setting_invalid`; a name no setting
     /// has is reported where it is read (area 10), and still given, so the
     /// member doesn't also count as missing.
+    /// `providers: [google, microsoft]`: each a connection on
+    /// `Driver.oidc`, once. `None` when it doesn't read cleanly.
+    fn providers(
+        &mut self,
+        path: &str,
+        key: &Span,
+        member: &ast::Member,
+    ) -> Option<Vec<crate::sign_in_providers::Provider>> {
+        let connections = crate::sign_in_providers::oidc_connections(self.db, self.project);
+        let Some(written) = crate::sign_in_providers::written(path, member) else {
+            self.out.problems.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                    "`providers:` isn't a list of connections",
+                )
+                .at(key.clone(), "not a list")
+                .reason("`providers:` names the connections in `app.jadpo` people sign in through, each on `Driver.oidc`.")
+                .next("Write `providers: [<connection>]`"),
+            );
+            return None;
+        };
+        let mut read: Vec<crate::sign_in_providers::Provider> = Vec::new();
+        let mut clean = !written.is_empty();
+        for (name, at) in written {
+            if read.iter().any(|provider| provider.name == name) {
+                clean = false;
+                self.out.problems.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                        format!("`providers:` names `{name}` twice"),
+                    )
+                    .at(at, "named again")
+                    .reason("Each provider is one way in, with one value of `SignInMethod`.")
+                    .next(format!("Remove the second `{name}`")),
+                );
+                continue;
+            }
+            if jadpo_std::SignInMethod::NAMES.contains(&name.as_str()) {
+                clean = false;
+                self.out.problems.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                        format!("`{name}` is already a way to sign in"),
+                    )
+                    .at(at, "one of the language's own")
+                    .reason("`SignInMethod` has a value for each provider, its connection's name, beside `magic_link`, `passkey` and `external_token`, so a provider can't share one of their names.")
+                    .next(format!("Rename the connection `{name}`")),
+                );
+                continue;
+            }
+            if let Some(provider) = connections.named(&name) {
+                read.push(provider.clone());
+                continue;
+            }
+            clean = false;
+            // A connection on `Driver.oidc` that didn't read cleanly says
+            // why where it is declared.
+            if connections.declared.contains(&name) {
+                continue;
+            }
+            let reason = if crate::data::connections(self.db, self.project)
+                .kind(&name)
+                .is_some()
+            {
+                format!(
+                    "`{name}` is a connection, but not a sign-in provider: one is `driver: Driver.oidc`, with its issuer, client ID and client secret."
+                )
+            } else {
+                format!(
+                    "No connection in `app.jadpo` is called `{name}`. A sign-in provider is a connection on `Driver.oidc`, with its issuer, client ID and client secret."
+                )
+            };
+            self.out.problems.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                    format!("`{name}` isn't a sign-in provider"),
+                )
+                .at(at, "not a `Driver.oidc` connection")
+                .reason(reason)
+                .next(format!(
+                    "Declare `{name}: {{ driver: Driver.oidc  issuer: config.<name>  client_id: config.<name>  credential: config.<name> }}` in `connections:`"
+                )),
+            );
+        }
+        clean.then_some(read)
+    }
+
     fn setting(
         &mut self,
         path: &str,
@@ -1807,11 +1955,11 @@ impl Reader<'_> {
                         .magic_link(path, &key_span, &setting)
                         .map(|read| (read, key_span));
                 }
-                "providers" => self.later(
-                    key_span,
-                    "`providers:`",
-                    "Signing in through a provider such as Google comes after the first build (area 8, question 11)",
-                ),
+                "providers" => {
+                    ways.providers = self
+                        .providers(path, &key_span, &setting)
+                        .map(|read| (read, key_span));
+                }
                 other => {
                     let near = nearest(other, SIGN_IN_WAYS.iter().copied());
                     let problem = Diagnostic::new(
@@ -2416,6 +2564,9 @@ struct Ways {
     magic_link: Option<(MagicLink, Span)>,
     /// Whether `magic_link:` is written, read cleanly or not.
     magic_link_written: bool,
+    /// `providers: [...]`'s connections that are sign-in providers, and
+    /// where `providers:` is written (chunk A7b).
+    providers: Option<(Vec<crate::sign_in_providers::Provider>, Span)>,
 }
 
 /// Whether `text` is a path on the application's own site, which a

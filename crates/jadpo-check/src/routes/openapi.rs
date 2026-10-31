@@ -222,8 +222,15 @@ pub fn document(
     let here = super::served::sign_in_api(db, project).as_deref() == Some(api);
     let passkeys = identity.passkeys().filter(|_| here);
     let magic_links = identity.magic_link_routes().filter(|_| here);
+    let providers: &[crate::sign_in_providers::Provider] =
+        if here { &identity.providers } else { &[] };
     let webhooks = crate::webhooks::declared_in(db, project, api);
-    if routes.is_empty() && passkeys.is_none() && magic_links.is_none() && webhooks.is_empty() {
+    if routes.is_empty()
+        && passkeys.is_none()
+        && magic_links.is_none()
+        && providers.is_empty()
+        && webhooks.is_empty()
+    {
         return None;
     }
     let wire = Wire {
@@ -308,6 +315,20 @@ pub fn document(
             entry.set(
                 &step.method().word().to_ascii_lowercase(),
                 magic_link_operation(step, &mut failure_schemas),
+            );
+        }
+    }
+    for provider in providers {
+        for step in jadpo_std::http::ProviderStep::ALL {
+            let path: String = step
+                .segments(&provider.name)
+                .iter()
+                .map(|text| format!("/{text}"))
+                .collect();
+            let entry = paths.entry(path).or_insert_with(Value::object);
+            entry.set(
+                &step.method().word().to_ascii_lowercase(),
+                provider_operation(&provider.name, step, &mut failure_schemas),
             );
         }
     }
@@ -933,6 +954,128 @@ fn passkey_operation(
 
 /// One of the runtime's magic-link routes (area 8, "Magic links"): its
 /// fixed body and answer, with every failure it can answer.
+/// A sign-in provider's route (area 8, "Providers"; chunk A7b): the
+/// start answers with the provider's address, the callback redirects.
+fn provider_operation(
+    name: &str,
+    step: jadpo_std::http::ProviderStep,
+    failure_schemas: &mut BTreeMap<String, Value>,
+) -> Value {
+    use jadpo_std::http::ProviderStep as S;
+    let text = |description: &str| {
+        let mut out = Value::object();
+        out.set("type", "string");
+        out.set("description", description);
+        out
+    };
+    let mut out = Value::object();
+    out.set(
+        "operationId",
+        format!(
+            "{}_{name}_{}",
+            step.method().word().to_ascii_lowercase(),
+            step.label().replace([' ', '-'], "_")
+        ),
+    );
+    out.set(
+        "description",
+        match step {
+            S::Start => "Starts signing in through the provider: answers with its sign-in address, which the browser goes to, and sets the cookie binding the sign-in to this browser.",
+            S::Callback => "Where the provider sends the browser back: checks the sign-in, starts a browser session and redirects to the path asked for, or to it with `?error=<code>`.",
+        },
+    );
+    out.set("x-jadpo-generated", true);
+    out.set("x-jadpo-changes", true);
+    out.set("security", Vec::<Value>::new());
+    let mut responses = Value::object();
+    match step {
+        S::Start => {
+            let mut properties = Value::object();
+            properties.set(
+                "return_to",
+                text("Where to go once signed in: a path on this site, starting with one `/`. Without it, `/`."),
+            );
+            let mut schema = Value::object();
+            schema.set("type", "object");
+            schema.set("properties", properties);
+            schema.set("additionalProperties", false);
+            let mut json = Value::object();
+            json.set("schema", schema);
+            let mut content = Value::object();
+            content.set("application/json", json);
+            let mut request = Value::object();
+            request.set("required", false);
+            request.set("content", content);
+            out.set("requestBody", request);
+            let mut properties = Value::object();
+            let mut address = text("The provider's sign-in address, to send the browser to.");
+            address.set("format", "uri");
+            properties.set("address", address);
+            let mut answer = Value::object();
+            answer.set("type", "object");
+            answer.set("properties", properties);
+            answer.set("required", vec![Value::from("address")]);
+            answer.set("additionalProperties", false);
+            responses.set(
+                "200",
+                response(
+                    "The provider's address; the response sets the binding cookie.",
+                    Some(answer),
+                ),
+            );
+            let failures = [
+                (
+                    "403",
+                    "CsrfRejected",
+                    "csrf_rejected",
+                    "The request has no `Origin` naming this site.",
+                ),
+                (
+                    "422",
+                    "SignInReturnInvalid",
+                    "sign_in_return_invalid",
+                    "`return_to` isn't a path on this site.",
+                ),
+                (
+                    "503",
+                    "AuthenticationUnavailable",
+                    "authentication_unavailable",
+                    "The provider or the store can't be reached.",
+                ),
+            ];
+            for (status, schema_name, code, description) in failures {
+                failure_schemas.insert(schema_name.to_string(), envelope(code, description, None));
+                responses.set(status, response(description, Some(reference(schema_name))));
+            }
+        }
+        S::Callback => {
+            let mut parameters = Vec::new();
+            for (query, description) in [
+                ("code", "The authorization code the provider gives."),
+                ("state", "The sign-in's `state`, which works once."),
+                ("error", "The provider's refusal, when it refused."),
+            ] {
+                let mut parameter = Value::object();
+                parameter.set("name", query);
+                parameter.set("in", "query");
+                parameter.set("required", false);
+                parameter.set("schema", text(description));
+                parameters.push(parameter);
+            }
+            out.set("parameters", parameters);
+            responses.set(
+                "303",
+                response(
+                    "To the path asked for, signed in, or to it with `?error=` and `sign_in_provider_failed`, `sign_in_refused`, `user_disabled`, `authentication_unavailable` or `authentication_misconfigured`.",
+                    None,
+                ),
+            );
+        }
+    }
+    out.set("responses", responses);
+    out
+}
+
 fn magic_link_operation(
     step: jadpo_std::http::MagicLinkStep,
     failure_schemas: &mut BTreeMap<String, Value>,

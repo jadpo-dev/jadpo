@@ -580,3 +580,6 @@ pins
 projects
 hub
 tag_name
+# CSS's `prefers-reduced-motion`, which `jadpo dev`'s account-chooser page
+# honours (chunk A7c).
+reduced

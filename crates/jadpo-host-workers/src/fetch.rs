@@ -388,6 +388,31 @@ impl Outbound for WorkersOutbound {
         limit: usize,
         timeout_ms: u64,
     ) -> LocalFuture<'a, Result<(u16, Vec<u8>), String>> {
+        self.exchange(url, None, limit, timeout_ms)
+    }
+
+    /// A sign-in provider's token endpoint (area 8, "Providers"; chunk
+    /// A7b): the same guards as a `GET`, sent once.
+    fn post_form<'a>(
+        &'a self,
+        url: &'a str,
+        form: &'a str,
+        limit: usize,
+        timeout_ms: u64,
+    ) -> LocalFuture<'a, Result<(u16, Vec<u8>), String>> {
+        self.exchange(url, Some(form), limit, timeout_ms)
+    }
+}
+
+impl WorkersOutbound {
+    /// A `GET` of `url`, or with `form` a `POST` of it, under the guards.
+    fn exchange<'a>(
+        &'a self,
+        url: &'a str,
+        form: Option<&'a str>,
+        limit: usize,
+        timeout_ms: u64,
+    ) -> LocalFuture<'a, Result<(u16, Vec<u8>), String>> {
         Box::pin(async move {
             let parsed =
                 web_sys::Url::new(url).map_err(|_| format!("`{url}` is not an address"))?;
@@ -397,14 +422,31 @@ impl Outbound for WorkersOutbound {
             if self.reach.as_deref() != Some(parsed.origin().as_str()) {
                 outbound_host(&parsed.hostname())?;
             }
-            let request = Request {
-                method: HttpMethod::Get,
-                url: url.to_string(),
-                headers: vec![("accept".into(), "*/*".into())],
-                body: None,
-                timeout_ms,
-                reading: Reading::default(),
-                repeatable: true,
+            let request = match form {
+                None => Request {
+                    method: HttpMethod::Get,
+                    url: url.to_string(),
+                    headers: vec![("accept".into(), "*/*".into())],
+                    body: None,
+                    timeout_ms,
+                    reading: Reading::default(),
+                    repeatable: true,
+                },
+                Some(form) => Request {
+                    method: HttpMethod::Post,
+                    url: url.to_string(),
+                    headers: vec![
+                        ("accept".into(), "application/json".into()),
+                        (
+                            "content-type".into(),
+                            "application/x-www-form-urlencoded".into(),
+                        ),
+                    ],
+                    body: Some(form.to_string()),
+                    timeout_ms,
+                    reading: Reading::default(),
+                    repeatable: false,
+                },
             };
             let abort = AbortController::new().map_err(|error| js::said(&error))?;
             let _cancellation = AbortOnDrop(abort.clone());

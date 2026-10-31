@@ -59,6 +59,7 @@ pub mod review;
 pub mod routes;
 pub mod schedules;
 pub mod setting_move;
+pub mod sign_in_providers;
 mod std_lib;
 pub mod suggest;
 pub mod surface;

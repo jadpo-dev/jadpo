@@ -1499,6 +1499,13 @@ impl Body<'_> {
                     ),
                     "Call the route from a route test, or `magic_links.request`, `.redeem` or `.redeem_code` from an action, and remove this value",
                 )
+            } else if name == jadpo_std::http::TEST_ACCOUNT {
+                (
+                    format!(
+                        "A `{name}` is what a route test's provider says about the person `test_providers.sign_in` signs in; a real provider says it anywhere else."
+                    ),
+                    "Build it in a test, for `test_providers.sign_in`, and remove this value",
+                )
             } else if name == jadpo_std::http::FIRST_SIGN_IN {
                 (
                     format!(

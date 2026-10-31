@@ -222,7 +222,21 @@ pub fn type_table(db: &dyn Db, project: Project) -> TypeTable {
             lines: Vec::new(),
         });
     }
-    TypeTable::build(&shapes, std)
+    let mut table = TypeTable::build(&shapes, std);
+    // `SignInMethod` has a value for each sign-in provider the app names,
+    // after its own, so theirs keep their places (area 8, "Providers";
+    // chunk A7b).
+    let providers = crate::sign_in_providers::declared(db, project);
+    if !providers.is_empty()
+        && let Some(Def::Enum { variants }) = table.defs.get_mut(jadpo_std::SignInMethod::NAME)
+    {
+        variants.extend(providers.iter().map(|name| VariantDef {
+            name: name.clone(),
+            fields: None,
+            wire_name: None,
+        }));
+    }
+    table
 }
 
 // --- deriving fields ----------------------------------------------------

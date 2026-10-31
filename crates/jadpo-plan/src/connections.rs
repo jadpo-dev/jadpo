@@ -109,7 +109,9 @@ pub(crate) fn table(
                         db, project, connection, setting,
                     )))
                 }
-                ConnectionKind::Other => return None,
+                // A sign-in provider is identity's, read by its settings'
+                // names (area 8, "Providers"; chunk A7b).
+                ConnectionKind::SignIn | ConnectionKind::Other => return None,
             };
             Some(Connection::new(name.clone(), driver))
         })

@@ -85,6 +85,18 @@ pub struct AuthSettings {
     /// `scheme://host[:port]`, in lower case and without a default port.
     origin: Option<String>,
     external: Option<super::external_token::Settings>,
+    /// Each sign-in provider's issuer, client ID and key cache, and its
+    /// client secret, in the plan's order (chunk A7b).
+    providers: Vec<Option<ProviderSettings>>,
+}
+
+/// A sign-in provider's settings, bound at startup: its issuer and client
+/// ID, with a key cache of its own, and its client secret. `Debug` shows
+/// neither.
+#[derive(Clone)]
+pub(crate) struct ProviderSettings {
+    pub(crate) keys: super::external_token::Settings,
+    pub(crate) secret: String,
 }
 
 impl fmt::Debug for AuthSettings {
@@ -105,6 +117,7 @@ impl AuthSettings {
         keys: Vec::new(),
         origin: None,
         external: None,
+        providers: Vec::new(),
     };
 
     /// What `plan`'s `signing_key:` and `origin:` settings hold in
@@ -130,11 +143,31 @@ impl AuthSettings {
             .external_token
             .as_ref()
             .and_then(|plan| super::external_token::Settings::read(plan, values));
+        let providers = plan
+            .providers
+            .iter()
+            .flat_map(|providers| &providers.providers)
+            .map(|provider| {
+                Some(ProviderSettings {
+                    keys: super::external_token::Settings::new(
+                        values.text(&provider.issuer)?,
+                        values.text(&provider.client_id)?,
+                    )?,
+                    secret: values.text(&provider.client_secret)?.to_string(),
+                })
+            })
+            .collect();
         AuthSettings {
             keys,
             origin,
             external,
+            providers,
         }
+    }
+
+    /// The sign-in provider at `at` in the plan, when its settings hold.
+    pub(crate) fn provider(&self, at: u32) -> Option<&ProviderSettings> {
+        self.providers.get(at as usize)?.as_ref()
     }
 
     /// The external issuer and audience bound at startup.
