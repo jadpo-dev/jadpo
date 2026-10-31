@@ -708,7 +708,7 @@ This is not legal advice. A privacy professional reviews the report.
 |---|---|
 | An entity's and an event's `personal: PersonalData.<category>` | Partly built: it is read and checked against the fourteen categories for the [AI](21-ai.md) page's check of what reaches a model, and a marked field on an entity no person reaches is `data.personal_unreachable`. Not built yet: the rest of what this page says marking does. A marked field nothing reads compiles without an error, and no log, report or access record uses the marking. |
 | `person: true` | Built: an entity marked `person: true` is a person, and every record that refers to one, directly or through a chain of references, belongs to them. The build's manifest shows each person under its entity as a `person` node, listing the references its records belong through (`through`). |
-| `erase:`, and `retention:` on a field or an entity | Not built yet: each is `toolchain.not_built_yet` where it is written, so none is accepted and then ignored. |
+| `erase:` on a reference, and `retention:` on a field or an entity | Not built yet: each is `toolchain.not_built_yet` where it is written, so none is accepted and then ignored. |
 | `User.erase(id)` and `User.export(id)` | Not built yet: each is `toolchain.not_built_yet` where it is called. |
 | `privacy:` in `application { }` | Not built yet: it is `toolchain.not_built_yet` where it is written. |
 | Everything else on this page | Not built yet: it is on [the roadmap](../roadmap.md). |

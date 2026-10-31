@@ -54,15 +54,6 @@ impl Persons {
                 .values()
                 .any(|person| person.records.contains(entity))
     }
-
-    /// The people the records of `entity` belong to, in name order.
-    pub fn owners(&self, entity: &str) -> Vec<&str> {
-        self.people
-            .iter()
-            .filter(|(_, person)| person.records.contains(entity))
-            .map(|(name, _)| name.as_str())
-            .collect()
-    }
 }
 
 /// Each person entity's records, from the entities without positions, so
