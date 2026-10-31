@@ -6,6 +6,16 @@ section 5 provides, and documentation under [CC BY 4.0](docs/LICENSE.md). The
 [roadmap](docs/roadmap.md) is the plan; [AGENTS.md](AGENTS.md) has the working
 rules for people and agents alike.
 
+## The project's repositories
+
+- [jadpo-dev/jadpo](https://github.com/jadpo-dev/jadpo): the language,
+  compiler, runtime, CLI, VS Code extension and their docs. Everything
+  that ships is built from here.
+- [jadpo-dev/homebrew-tap](https://github.com/jadpo-dev/homebrew-tap): the
+  Homebrew formula, written by each release (`brew install jadpo-dev/tap/jadpo`).
+- jadpo-dev/jadpo-website (private): the jadpo.dev site, built from this
+  repository's docs bundle.
+
 ## Setup and checks
 
 Clone [jadpo-dev/jadpo](https://github.com/jadpo-dev/jadpo). The
