@@ -374,6 +374,16 @@ rules! {
         "Unique rule or index lists a field twice";
     DATA_RESERVED_TABLE_NAME: "data.reserved_table_name", area 5, Error, Agent,
         "Entity's table name starts with `jadpo_`";
+    DATA_RETENTION_FIELD_REQUIRED: "data.retention_field_required", area 15, Error, Agent,
+        "A field's `retention:` is on a field that can't be `none`, so its value could never be cleared";
+    DATA_RETENTION_HELD: "data.retention_held", area 15, Error, Human,
+        "An entity's `retention:` would delete records that a `restricted` reference keeps from being deleted";
+    DATA_RETENTION_LIFECYCLE_FIELD: "data.retention_lifecycle_field", area 15, Error, Human,
+        "A field's `retention:` would clear a field the entity's lifecycle owns or reads, changing which records are hidden or what stage they are in";
+    DATA_RETENTION_PERIOD: "data.retention_period", area 15, Error, Agent,
+        "A retention's `after:` isn't a `Duration` setting in `config.jadpo`";
+    DATA_RETENTION_SINCE: "data.retention_since", area 15, Error, Agent,
+        "A retention's `since:` isn't one of the record's `Instant` fields";
     DATA_SET_GENERATED_FIELD: "data.set_generated_field", area 6, Error, Agent,
         "Write sets a field the store generates";
     DATA_STORE_REQUIRED: "data.store_required", area 5, Error, Human,

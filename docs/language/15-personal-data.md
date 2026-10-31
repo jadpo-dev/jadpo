@@ -12,14 +12,15 @@ Your app says which data is about a person, and Jadpo does the rest: it
 exports that data when the person asks for a copy, erases it when they ask
 to be forgotten, deletes it when its time is up, and reports where it
 lives. The aim is that requests under GDPR, UK GDPR and CCPA/CPRA work out
-of the box. Only the first part is built: `person: true`, and the check
-that every field marked `personal:` belongs to a person. `personal:` is
-also read for [the AI page's](21-ai.md#personal-data-sent-to-a-model)
-check of what reaches a model. Nothing exports, erases, expires or
-reports personal data yet, so an app on this compiler does those itself.
-`erase:`, `retention:`, `User.erase` and `User.export` are
-`toolchain.not_built_yet` where you write them, so none can be mistaken
-for working ([What is built](#what-is-built)).
+of the box. Built so far: `person: true`, the check that every field
+marked `personal:` belongs to a person, and [retention](#retention),
+which deletes data when its time is up. `personal:` is also read for
+[the AI page's](21-ai.md#personal-data-sent-to-a-model) check of what
+reaches a model. Nothing exports, erases or reports personal data yet, so
+an app on this compiler does those itself. `erase:`, `User.erase` and
+`User.export` are `toolchain.not_built_yet` where you write them, and so
+is any retention this compiler can't carry out in full, so none can be
+mistaken for working ([What is built](#what-is-built)).
 
 The law asks a few things of an app:
 
@@ -42,7 +43,7 @@ is the one fact Jadpo asks you to write down.
 | The person | `person: true` on an entity | Finds every record that belongs to them | Yes |
 | Erasure | `erase:` on references it can't work out | Generates `User.erase(id)` across every store and cache | No: `toolchain.not_built_yet` |
 | Export | nothing | Generates `User.export(id)` | No: `toolchain.not_built_yet` |
-| Retention | `retention:` on a field or entity | Clears or deletes it when the time is up | No: `toolchain.not_built_yet` |
+| Retention | `retention:` on a field or entity | Clears or deletes it when the time is up | Partly: not yet on a `File` or an event, or through a cascade to someone who signs in |
 | Report | nothing | Writes `build/report/personal-data.md` | No |
 
 ## Marking personal fields
@@ -430,19 +431,28 @@ because a partial export or erasure is worse than none.
 <!-- topic: retention -->
 
 Personal data needs an end date: GDPR's storage limitation means you keep
-it only as long as you need it. A `retention:` block gives one, in the
-same `after:` and `since:` shape as a lifecycle's `purge:`
-([Lifecycle](05-data.md#lifecycle)).
+it only as long as you need it. Nothing expires unless you say so: a value
+or record without a `retention:` is kept until your code deletes it or the
+person is erased. A `retention:` block gives the end date, in the same
+`after:` and `since:` shape as a lifecycle's `purge:`
+([Lifecycle](05-data.md#lifecycle)): how long to keep it, `after:`,
+counted from one of the record's `Instant` fields, `since:`.
 
 ### On a field
 
-The value is cleared when the time is up, so the field must be nullable.
-Use it for a value you need only for a while, such as an IP address kept
-for 30 days for fraud checks:
+The value is cleared when its time is up, and the record stays. Use it for
+a value you need only for a while, such as the address a visitor signed
+up from, kept for 30 days for fraud checks:
 
-```jadpo fragment
-entity User {
-    ...
+```jadpo check project=retention-field
+config {
+    signup_ip_retention: Duration {
+        default: 30d
+    }
+}
+
+entity Visitor {
+    id: Uuid
     signup_ip: IpAddress? {
         personal: PersonalData.online
         retention: {
@@ -450,22 +460,122 @@ entity User {
             since: created_at
         }
     }
+    created_at: Instant {
+        generated: Generated.on_create
+    }
+
+    person: true
 }
 ```
+
+Once a visitor signed up more than 30 days ago, `signup_ip` becomes
+`none`, whether a lifecycle hides the visitor or not. Clearing it is a
+change to the record, so its `Generated.on_change` fields take the time
+of the run that cleared it.
+
+The field must be one that can be `none`: its type ends in `?`
+([Values that may be missing](02-values-and-types.md#values-that-may-be-missing)),
+or retention could never clear it
+([`data.retention_field_required`](../errors/data.retention_field_required.md)).
+It can't be a field the entity's [lifecycle](05-data.md#lifecycle) owns
+or reads, such as the `deleted_at` its `visible:` tests, because clearing
+it would show a deleted record again or move it out of its stage
+([`data.retention_lifecycle_field`](../errors/data.retention_lifecycle_field.md)).
 
 ### On an entity
 
 The record is deleted, with whatever cascades from it. Use it for
 invoices, as in [Erasure](#keeping-a-record-without-the-person-erasureretained),
-or for accounts inactive for two years.
+or for accounts inactive for two years. Here an invoice goes six years
+after it was issued, and its lines go with it:
+
+```jadpo check project=retention-entity
+config {
+    invoice_retention: Duration {
+        default: 2192d
+    }
+}
+
+type LineText = Text {
+    max_length: 200
+}
+
+entity Invoice {
+    id: Uuid
+    number: InvoiceNumber
+    issued_at: Instant {
+        generated: Generated.on_create
+    }
+
+    retention: {
+        after: config.invoice_retention
+        since: issued_at
+    }
+}
+
+entity InvoiceLine {
+    id: Uuid
+    invoice_id: Invoice.id {
+        on_delete: OnDelete.cascade
+    }
+    text: LineText
+}
+```
+
+A record is deleted whether a lifecycle hides it or not, and so is every
+record that cascades from it, records with a lifecycle among them, since
+retention, like purge, is an operation the compiler generates. References
+that are `OnDelete.cleared` are set to `none`, as for any delete
+([References and `on_delete`](05-data.md#references-and-on_delete)).
+
+A record an `OnDelete.restricted` reference holds, directly or through
+what deleting it cascades to, can't be deleted, so its retention is an
+error ([`data.retention_held`](../errors/data.retention_held.md)): say
+what deleting it does to the record that holds it.
+
+An entity that someone signs in as, the `user:` or `service:` of
+[`principal { }`](08-identity.md), goes with its sign-in state when its
+retention ends: its sessions and API tokens, service keys, passkeys and
+sign-in links are deleted in the same statement, so nobody can sign in as
+them again.
 
 ### Where the periods come from
 
 The periods are settings in `config.jadpo`
 ([Settings](10-configuration-and-time.md#settings-configjadpo)), so they
-are set per environment and appear in the report. The compiler's built-in
-[purge schedule](12-jobs-and-events.md#the-purge-schedule) applies
-retention too, in small batches, each logged.
+are set per environment and appear in the report. `after:` names a
+`Duration` setting that isn't secret, never a duration written in place
+([`data.retention_period`](../errors/data.retention_period.md)). A run uses
+the value the app started with, and a period that isn't above zero
+deletes and clears nothing: the run fails instead.
+
+`since:` names one of the record's `Instant` fields, bare, as a lifecycle
+names them ([`data.retention_since`](../errors/data.retention_since.md)).
+A record whose `since:` field is `none` isn't counted yet, so it is kept
+until the field has a value and that time is past.
+
+### When it runs
+
+The compiler's built-in [purge schedule](12-jobs-and-events.md#the-purge-schedule)
+applies retention, every hour, so an entity with a `retention:`, its own
+or a field's, has a schedule such as `Invoice.purge` even without a
+lifecycle. A value or record goes at the first run once its `since:` is
+longer ago than `after:`. Each run applies the entity's retention first,
+then its lifecycle's `purge:`, then each field's retention, in small
+batches, each logged, oldest first; the next hour's run carries on with
+what one leaves. Its run record counts the records it deleted and the
+values it cleared, and it emits no events.
+
+Retention changes the database only. An event that was emitted holding a
+value keeps its copy until the runtime removes the event, a day after
+every subscriber has had it
+([Events](12-jobs-and-events.md#declaring-an-event)), and a backup keeps
+what it held until it expires on the hosting platform's schedule.
+
+No test runs retention, as none runs purge: the purge schedule has no
+name a test can write, and moving a test's clock on runs no schedule
+([Schedule tests](13-testing.md#schedule-tests)). It is the compiler's
+own operation, proven by the compiler's live tests on both executors.
 
 A person entity, or an entity holding marked fields, with no retention
 and no purge is listed in the report as "kept until erased".
@@ -493,6 +603,10 @@ and no purge is listed in the report as "kept until erased".
   check above, every stored copy of personal data can be reached.
 - **Sensitive fields stay out of caches.** A cache on an entity that holds
   one leaves those fields out.
+- **Retention can be carried out.** A field's retention clears a field
+  that can be `none` and that no lifecycle owns or reads, an entity's
+  deletes records nothing `restricted` holds, and every period is a
+  `Duration` setting ([Retention](#retention)).
 
 There is no `purpose:` setting and no consent model in the language.
 Purposes and lawful bases belong in your privacy notice, which you write
@@ -708,7 +822,8 @@ This is not legal advice. A privacy professional reviews the report.
 |---|---|
 | An entity's and an event's `personal: PersonalData.<category>` | Partly built: it is read and checked against the fourteen categories for the [AI](21-ai.md) page's check of what reaches a model, and a marked field on an entity no person reaches is `data.personal_unreachable`. Not built yet: the rest of what this page says marking does. A marked field nothing reads compiles without an error, and no log, report or access record uses the marking. |
 | `person: true` | Built: an entity marked `person: true` is a person, and every record that refers to one, directly or through a chain of references, belongs to them. The build's manifest shows each person under its entity as a `person` node, listing the references its records belong through (`through`). |
-| `erase:` on a reference, and `retention:` on a field or an entity | Not built yet: each is `toolchain.not_built_yet` where it is written, so none is accepted and then ignored. |
+| `retention:` on a field or an entity | Partly built. Built: the entity's hourly purge schedule clears a nullable field's value, or deletes the record with what cascades from it and the sign-in state of someone who signs in, at the first run once `since:` is longer ago than `after:`, a `Duration` setting; each problem under [Retention](#retention) is an error where it is written. The graph holds a `retention` node for each, under its field or entity, with its period and `since:`. Not built yet, each `toolchain.not_built_yet` where it is written: a `File` field's retention, and an entity's whose deletion would reach a `File` field, since nothing deletes a file's bytes yet ([Files](16-built-in-services.md#deleting-and-erasing)); an entity's whose deletion would cascade to someone who signs in, whose sign-in state only their own entity's retention deletes; and `retention:` on an event's or an email's field. |
+| `erase:` on a reference | Not built yet: it is `toolchain.not_built_yet` where it is written, so it isn't accepted and then ignored. |
 | `User.erase(id)` and `User.export(id)` | Not built yet: each is `toolchain.not_built_yet` where it is called. |
 | `privacy:` in `application { }` | Not built yet: it is `toolchain.not_built_yet` where it is written. |
 | Everything else on this page | Not built yet: it is on [the roadmap](../roadmap.md). |
@@ -719,3 +834,8 @@ Every error this page's checks produce, with an example that triggers
 it and the compiler's real output from `jadpo check`.
 
 - [`data.personal_unreachable`](../errors/data.personal_unreachable.md)
+- [`data.retention_field_required`](../errors/data.retention_field_required.md)
+- [`data.retention_held`](../errors/data.retention_held.md)
+- [`data.retention_lifecycle_field`](../errors/data.retention_lifecycle_field.md)
+- [`data.retention_period`](../errors/data.retention_period.md)
+- [`data.retention_since`](../errors/data.retention_since.md)

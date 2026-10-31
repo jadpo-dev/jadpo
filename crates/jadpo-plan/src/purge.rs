@@ -2,6 +2,10 @@
 //! deletes the oldest hidden records whose `since:` field is older than the
 //! run's time less `after:`, at most [`PURGE_BATCH`] of them, as
 //! [`jadpo_std::write::PurgePlan`]s the runtime's purge entry point runs.
+//! An entity's `retention:` and its fields' (area 15, "Retention"; chunk
+//! P2) are planned beside it ([`plans`]): one batch deletes the oldest
+//! records, hidden or not, whose `since:` is older than the cutoff, or
+//! clears a field's value on them.
 //!
 //! A record a `restricted` reference holds, or one that removing would
 //! cascade to a record a `restricted` reference holds, stays: the batch
@@ -13,12 +17,13 @@
 //! `FOR UPDATE SKIP LOCKED`, so a purge never waits on, or undoes, a
 //! request changing one of them.
 
-use jadpo_check::data::{DataModel, EntityModel};
+use jadpo_check::data::retention::RetentionModel;
+use jadpo_check::data::{DataModel, EntityModel, FieldModel};
 use jadpo_sql::statement::{self as text, Cascade, Hold};
 use jadpo_sql::{Bind, Value};
 use jadpo_std::OnDelete;
 use jadpo_std::read::SqlType;
-use jadpo_std::write::{PURGE_BATCH, PurgeParam, PurgePlan, PurgeSource};
+use jadpo_std::write::{PURGE_BATCH, PurgeKind, PurgeParam, PurgePlan, PurgeSource};
 
 use crate::queries::{column_type, field};
 
@@ -58,6 +63,132 @@ impl Bind for Purging {
     }
 }
 
+/// The runtime's own tables holding the sign-in state of someone who signs
+/// in, each with the column holding their `id` (area 5, "Tables for
+/// sign-in"): what retention deletes beside their record.
+pub(crate) const SIGN_IN_STATE: [(&str, &str); 5] = [
+    (jadpo_std::system::SESSIONS.table, "principal_id"),
+    (jadpo_std::system::SERVICE_KEYS.table, "principal_id"),
+    (jadpo_std::system::PASSKEYS.table, "principal_id"),
+    (jadpo_std::system::PASSKEY_CHALLENGES.table, "principal_id"),
+    (jadpo_std::system::SIGN_IN_LINKS.table, "user_id"),
+];
+
+/// Everything the purge schedule of `entity` runs, in the order a run
+/// applies them: its `retention:`, which deletes whole records first, then
+/// its lifecycle's `purge:`, then each field's `retention:` in field
+/// order. `sign_in` are the tables of [`SIGN_IN_STATE`] its store holds,
+/// when it is someone who signs in.
+pub(crate) fn plans(
+    model: &DataModel,
+    entity: &EntityModel,
+    setting: &dyn Fn(&str) -> Option<u32>,
+    sign_in: &[(&str, &str)],
+) -> Vec<PurgePlan> {
+    let mut out = Vec::new();
+    if let Some(retention) = &entity.retention
+        && let Some(found) = expired(entity, retention, setting, sign_in)
+    {
+        out.push(found);
+    }
+    out.extend(plan(model, entity, setting));
+    for field in &entity.fields {
+        if let Some(retention) = &field.retention
+            && let Some(found) = cleared(entity, field, retention, setting)
+        {
+            out.push(found);
+        }
+    }
+    out
+}
+
+/// `entity`'s retention: the oldest records, hidden or not, whose `since:`
+/// field is older than the cutoff, deleted with what cascades from them,
+/// and with the rows of `sign_in` that are theirs. The check refuses a
+/// retention a `restricted` reference could hold, so none is left out
+/// here; one that did would make its batch fail on its foreign key rather
+/// than keep the record unseen.
+fn expired(
+    entity: &EntityModel,
+    retention: &RetentionModel,
+    setting: &dyn Fn(&str) -> Option<u32>,
+    sign_in: &[(&str, &str)],
+) -> Option<PurgePlan> {
+    let store = entity.store.clone()?;
+    let since = field(entity, &retention.since)?;
+    let mut purging = Purging::default();
+    let cutoff = purging.param(PurgeSource::Cutoff, column_type(since)?.param());
+    let conditions = vec![text::less_than(&since.born, &cutoff)];
+    let sql = text::purge(&entity.table, &conditions, &since.born, PURGE_BATCH);
+    let sql = if sign_in.is_empty() {
+        sql
+    } else {
+        text::with_removed(&sql, sign_in)
+    };
+    Some(PurgePlan {
+        entity: entity.name.clone(),
+        kind: PurgeKind::Retention,
+        store,
+        sql,
+        params: purging.params,
+        after: 0,
+        after_setting: Some(setting(&retention.setting)?),
+    })
+}
+
+/// `field`'s retention: its value cleared on the oldest records, hidden or
+/// not, that hold one and whose `since:` field is older than the cutoff,
+/// every `Generated.on_change` field set to the run's time, since the
+/// record changes.
+fn cleared(
+    entity: &EntityModel,
+    field_model: &FieldModel,
+    retention: &RetentionModel,
+    setting: &dyn Fn(&str) -> Option<u32>,
+) -> Option<PurgePlan> {
+    let store = entity.store.clone()?;
+    let since = field(entity, &retention.since)?;
+    let mut purging = Purging::default();
+    let cutoff = purging.param(PurgeSource::Cutoff, column_type(since)?.param());
+    let columns: Vec<String> = field_model
+        .columns()
+        .into_iter()
+        .map(|(column, _)| column)
+        .collect();
+    if columns.is_empty() {
+        return None;
+    }
+    let mut set: Vec<(String, String)> = Vec::new();
+    for changed in &entity.fields {
+        if changed.generated == Some(jadpo_std::Generated::OnChange) {
+            let now = purging.param(PurgeSource::Now, column_type(changed)?.param());
+            set.push((changed.born.clone(), now));
+        }
+    }
+    let held: Vec<&str> = columns.iter().map(String::as_str).collect();
+    let conditions = vec![
+        text::any_present(&held),
+        text::less_than(&since.born, &cutoff),
+    ];
+    let sql = text::clear(
+        &entity.table,
+        &columns,
+        &set,
+        &conditions,
+        &since.born,
+        PURGE_BATCH,
+    );
+    Some(PurgePlan {
+        entity: entity.name.clone(),
+        kind: PurgeKind::FieldRetention(field_model.name.clone()),
+        store,
+        sql,
+        params: purging.params,
+        after: 0,
+        after_setting: Some(setting(&retention.setting)?),
+    })
+}
+
 /// `entity`'s purge, when its lifecycle has one.
 pub(crate) fn plan(
     model: &DataModel,
@@ -87,6 +218,7 @@ pub(crate) fn plan(
     let sql = text::purge(&entity.table, &conditions, &since.born, PURGE_BATCH);
     Some(PurgePlan {
         entity: entity.name.clone(),
+        kind: PurgeKind::Hidden,
         store,
         sql,
         params: purging.params,

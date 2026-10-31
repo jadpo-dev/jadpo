@@ -101,6 +101,7 @@ mod receiving;
 mod recordings;
 mod records;
 mod released;
+mod retention;
 mod round_trips;
 mod rule_slice;
 mod schedules;
