@@ -3,7 +3,6 @@ title: Personal data
 area: 15
 status: decided
 checked-with: this checkout's jadpo on every gate run
-rules: []
 ---
 
 # Personal data
@@ -13,13 +12,14 @@ Your app says which data is about a person, and Jadpo does the rest: it
 exports that data when the person asks for a copy, erases it when they ask
 to be forgotten, deletes it when its time is up, and reports where it
 lives. The aim is that requests under GDPR, UK GDPR and CCPA/CPRA work out
-of the box. None of this is built yet. Today `personal:` is read only for
-[the AI page's](21-ai.md#personal-data-sent-to-a-model) check of what
-reaches a model, and nothing exports, erases, expires or reports personal
-data, so an app on this compiler does those itself. `person: true`,
-`erase:` and `retention:` are `toolchain.not_built_yet` where you write
-them, so none can be mistaken for working
-([What is built](#what-is-built)).
+of the box. Only the first part is built: `person: true`, and the check
+that every field marked `personal:` belongs to a person. `personal:` is
+also read for [the AI page's](21-ai.md#personal-data-sent-to-a-model)
+check of what reaches a model. Nothing exports, erases, expires or
+reports personal data yet, so an app on this compiler does those itself.
+`erase:`, `retention:`, `User.erase` and `User.export` are
+`toolchain.not_built_yet` where you write them, so none can be mistaken
+for working ([What is built](#what-is-built)).
 
 The law asks a few things of an app:
 
@@ -38,10 +38,10 @@ is the one fact Jadpo asks you to write down.
 
 | Capability | What you write | What the compiler does | Built yet |
 |---|---|---|---|
-| Marking | `personal:` on a field | Hashes it in logs, lists it in the report | Only for the AI check; nothing hashes, lists or checks it for this page |
-| The person | `person: true` on an entity | Finds every record that belongs to them | No: `toolchain.not_built_yet` |
+| Marking | `personal:` on a field | Hashes it in logs, lists it in the report | Partly: read for the AI check, and checked to belong to a person; nothing hashes or lists it |
+| The person | `person: true` on an entity | Finds every record that belongs to them | Yes |
 | Erasure | `erase:` on references it can't work out | Generates `User.erase(id)` across every store and cache | No: `toolchain.not_built_yet` |
-| Export | nothing | Generates `User.export(id)` | No |
+| Export | nothing | Generates `User.export(id)` | No: `toolchain.not_built_yet` |
 | Retention | `retention:` on a field or entity | Clears or deletes it when the time is up | No: `toolchain.not_built_yet` |
 | Report | nothing | Writes `build/report/personal-data.md` | No |
 
@@ -140,7 +140,52 @@ todo. The compiler follows every reference to find them, and the
 [report](#the-personal-data-report) shows the whole tree for you to review.
 
 A record that refers to two people, such as a message from one user to
-another, belongs to both.
+another, belongs to both. A chain goes on through another person's
+records, so a patient's appointments belong to the patient and, when a
+patient refers to the user who looks after them, to that user too. A
+chain that comes back to an entity it has passed, such as a folder
+inside a folder, ends there.
+
+Here a user is a person, a todo belongs to its owner, and a todo's
+attachment belongs to the owner through the todo. The attachment's
+caption is personal data, and erasing the user can find it:
+
+```jadpo check project=person-records
+type Caption = Text {
+    max_length: 200
+}
+
+entity User {
+    id: Uuid
+    email: Email {
+        unique: true
+        personal: PersonalData.contact
+    }
+
+    person: true
+}
+
+entity Todo {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.restricted
+    }
+    title: Caption
+}
+
+entity Attachment {
+    id: Uuid
+    todo_id: Todo.id {
+        on_delete: OnDelete.cascade
+    }
+    caption: Caption {
+        personal: PersonalData.identifying
+    }
+}
+```
+
+`person:` takes only `true`; an entity that isn't a person leaves the
+line out. A field may still be called `person`.
 
 ## Erasure
 <!-- topic: erasure -->
@@ -438,10 +483,14 @@ and no purge is listed in the report as "kept until erased".
   erasure outcome. `Erasure.anonymised` and `Erasure.retained` have the
   nullable fields and retention they need.
 - **No personal data erasure can't reach.** A marked field on an entity
-  that isn't a person, and doesn't belong to one through references, is a
-  compile error: "erasure cannot find this: reference the person, or mark
-  the entity `person: true`". With the completeness check above, every
-  stored copy of personal data can be reached.
+  that isn't a person, and doesn't belong to one through references, is
+  [`data.personal_unreachable`](../errors/data.personal_unreachable.md):
+  erasure can't find it, so you refer to the person, or mark the entity
+  `person: true`. A field is marked here only by its `personal:`: a
+  standard type that is personal data whatever holds it, such as a
+  `PhoneNumber`, is hashed in logs and its reads recorded, but a shop's
+  own phone number doesn't make the shop a person. With the completeness
+  check above, every stored copy of personal data can be reached.
 - **Sensitive fields stay out of caches.** A cache on an entity that holds
   one leaves those fields out.
 
@@ -657,7 +706,16 @@ This is not legal advice. A privacy professional reviews the report.
 
 | Feature | Status |
 |---|---|
-| An entity's and an event's `personal: PersonalData.<category>` | Built for the [AI](21-ai.md) page alone: it is read and checked against the fourteen categories for the check of what reaches a model. Not built yet: everything this page says marking does. A marked field nothing reads, and one erasure can't reach, compile without the errors "What the compiler checks" lists; no log, report or access record uses the marking. |
-| `person: true`, `erase:`, and `retention:` on a field or an entity | Not built yet: each is `toolchain.not_built_yet` where it is written, so none is accepted and then ignored. |
+| An entity's and an event's `personal: PersonalData.<category>` | Partly built: it is read and checked against the fourteen categories for the [AI](21-ai.md) page's check of what reaches a model, and a marked field on an entity no person reaches is `data.personal_unreachable`. Not built yet: the rest of what this page says marking does. A marked field nothing reads compiles without an error, and no log, report or access record uses the marking. |
+| `person: true` | Built: an entity marked `person: true` is a person, and every record that refers to one, directly or through a chain of references, belongs to them. The build's manifest shows each person under its entity as a `person` node, listing the references its records belong through (`through`). |
+| `erase:` on a reference, and `retention:` on a field or an entity | Not built yet: each is `toolchain.not_built_yet` where it is written, so none is accepted and then ignored. |
+| `User.erase(id)` and `User.export(id)` | Not built yet: each is `toolchain.not_built_yet` where it is called. |
 | `privacy:` in `application { }` | Not built yet: it is `toolchain.not_built_yet` where it is written. |
 | Everything else on this page | Not built yet: it is on [the roadmap](../roadmap.md). |
+
+## Errors
+
+Every error this page's checks produce, with an example that triggers
+it and the compiler's real output from `jadpo check`.
+
+- [`data.personal_unreachable`](../errors/data.personal_unreachable.md)

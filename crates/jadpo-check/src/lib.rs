@@ -45,6 +45,7 @@ mod not_type;
 mod not_value;
 pub mod package_code;
 pub mod packages;
+pub mod persons;
 pub mod policy;
 pub mod polls;
 pub mod prompt_recordings;
@@ -232,6 +233,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             out.extend(types::file_run_problems(db, project, file).iter().cloned());
             out.extend(graph::similar_problems(db, project, file).iter().cloned());
             out.extend(data::data_problems(db, project, file).iter().cloned());
+            out.extend(
+                persons::personal_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
             out.extend(
                 data::queries::query_problems(db, project, file)
                     .iter()

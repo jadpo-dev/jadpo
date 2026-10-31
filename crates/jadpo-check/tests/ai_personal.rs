@@ -38,7 +38,7 @@ fn allowing(categories: &[&str]) -> String {
 
 const PATIENT: (&str, &str) = (
     "domains/clinic/entities/patient.jadpo",
-    "use clinic/types { ClinicalNote, WardName }\n\n/// A patient of the clinic.\nentity Patient {\n    id: Uuid\n    ward: WardName\n    patient_nhs_number: NhsNumber {\n        personal: PersonalData.government_id\n        to_models: false\n    }\n    notes: ClinicalNote {\n        personal: PersonalData.health\n    }\n\n    policy: {\n        read: [Access.public]\n    }\n}\n",
+    "use clinic/types { ClinicalNote, WardName }\n\n/// A patient of the clinic.\nentity Patient {\n    id: Uuid\n    ward: WardName\n    patient_nhs_number: NhsNumber {\n        personal: PersonalData.government_id\n        to_models: false\n    }\n    notes: ClinicalNote {\n        personal: PersonalData.health\n    }\n    person: true\n\n    policy: {\n        read: [Access.public]\n    }\n}\n",
 );
 
 const TYPES: [(&str, &str); 6] = [
@@ -487,7 +487,7 @@ fn a_marked_field_of_a_personal_type_is_one_problem() {
 /// marked as `remark` says: nothing, or one of its marks.
 fn patient_with(remark: &str) -> String {
     format!(
-        "use clinic/types {{ ClinicalNote, Diagnosis, WardName }}\n\n/// A patient of the clinic.\nentity Patient {{\n    id: Uuid\n    ward: WardName\n    patient_nhs_number: NhsNumber {{\n        personal: PersonalData.government_id\n        to_models: false\n    }}\n    notes: ClinicalNote {{\n        personal: PersonalData.health\n    }}\n    diagnosis: Diagnosis {{\n        personal: PersonalData.health\n    }}\n    remark: ClinicalNote?{remark}\n\n    policy: {{\n        read: [Access.public]\n        update: [Access.public]\n    }}\n}}\n"
+        "use clinic/types {{ ClinicalNote, Diagnosis, WardName }}\n\n/// A patient of the clinic.\nentity Patient {{\n    id: Uuid\n    ward: WardName\n    patient_nhs_number: NhsNumber {{\n        personal: PersonalData.government_id\n        to_models: false\n    }}\n    notes: ClinicalNote {{\n        personal: PersonalData.health\n    }}\n    diagnosis: Diagnosis {{\n        personal: PersonalData.health\n    }}\n    remark: ClinicalNote?{remark}\n    person: true\n\n    policy: {{\n        read: [Access.public]\n        update: [Access.public]\n    }}\n}}\n"
     )
 }
 

@@ -634,6 +634,23 @@ need: whether the entity has a lifecycle, the fields it owns, its
 transitions, and a reference through which removing a record would
 cascade to an entity with a lifecycle.
 
+**A person's records** (area 15). An entity's `person: true` is read
+onto its `EntityModel` (`person`), and `jadpo_check::persons::persons`
+works out, once for the project from the models without positions, each
+person entity's records: every entity holding a reference to the person
+or to one of those already found, until no reference adds another, so a
+chain through another person's records goes on and one that comes back
+to an entity it passed ends. A record referring to two people belongs to
+both. Each person keeps the references its records belong through, and a
+`person User` node, keyed by the entity's born name, placed at its
+`person:` and under its entity, lists them as `through`
+(`Attachment.todo_id`, `Todo.owner_id`), so a reference that starts or
+stops making records a person's changes the node's digest and shows in a
+diff. `persons::personal_problems` reports, at an entity's first field
+marked `personal:`, an entity that is no person and belongs to none
+(`data.personal_unreachable`), read from the marks area 21's check reads
+(`ai_personal::marks`). Erasure and export will walk the same references.
+
 A query is a node (area 6): `jadpo_check::data::queries`
 reads each declaration once into a `QueryModel` (its entity, parameters,
 how many records it returns, the record's fields from the entity's fields
@@ -989,7 +1006,7 @@ as `<key>`, has no storage or JSON form, and orders after every other
 kind (a setting's by number, then held keys in constant time), so the
 canonical order stays total although code never compares one. Nothing
 yet makes a held key: keys in encrypted fields come with personal data
-(the roadmap's "After the first build", item 3), which decrypts a
+(the roadmap's chunk P9), which decrypts a
 field of a key type into one on load. What they need of the program comes as `Effects` (the plan's JSON
 table with the program's validators and shapes, the events' numbers and
 subscribers, and the settings), which the interpreter builds from its plan
