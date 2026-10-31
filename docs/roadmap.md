@@ -371,11 +371,7 @@ time.
   reminder schedule over a batch, and route tests for each, with no code
   outside Jadpo. Before 10.2's measured runs, since it changes what they
   measure.
-- [ ] **A9 Unknown sections of `application { }`** `opus · high`: an
-  unknown or misspelt section of the root `application { }` is accepted
-  silently today, so a setting meant to protect the app can be dropped
-  without a word. One list of every area's sections, and a rule refusing
-  any other, as entities' and routes' unknown sections are. Found by A0.
+- [x] **A9 Unknown sections of `application { }`**: area 1, "What `application { }` holds" and "What is built"; the "What is built" of areas 11, 12, 15 and 16.
 - [x] **A8 Acceptances for what exists today**: area 18, "Comparing two builds" and "Acceptances"; area 9, "Protecting policy"; area 14, "`jadpo acceptance new`" and "Review and sign-off"; area 1, "Writing a decline".
 - [x] **A7a `on_first_sign_in:` for external tokens**: area 8, `external_token` and "A person the app has not seen"; area 5, "Tables for sign-in"; compiler/runtime §2.6, "First sign-in by external token".
 - [ ] **A7b Sign-in providers** `opus · xhigh` **needs a maintainer**

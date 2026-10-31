@@ -16,6 +16,7 @@ mod ai_generate;
 mod ai_personal;
 mod ai_providers;
 mod ai_stream;
+mod application_sections;
 mod at_the_cause;
 mod batches;
 mod bodies;
