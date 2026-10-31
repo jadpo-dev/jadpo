@@ -785,21 +785,21 @@ record.
 ```jadpo fragment
 test "a Google session ends after a day" {
     var ann: Patron = staff_at("ann@lending.example", StaffRole.front_desk)
-    var today: Response = request {
+    var signed_in: Response = request {
         method: HttpMethod.get
         path: "/staff/stock"
         as: Principal.user(ann)
         sign_in: SignInMethod.google
     }
-    assert today.status == 200
+    assert signed_in.status == 200
     clock.advance(24h)
-    var tomorrow: Response = request {
+    var a_day_later: Response = request {
         method: HttpMethod.get
         path: "/staff/stock"
         as: Principal.user(ann)
         sign_in: SignInMethod.google
     }
-    assert tomorrow.status == 401
+    assert a_day_later.status == 401
 }
 ```
 
