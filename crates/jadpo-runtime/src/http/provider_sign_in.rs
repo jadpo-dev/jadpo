@@ -674,7 +674,13 @@ mod tests {
     const NOW: i64 = 1_800_000_000_000;
     const ISSUER: &str = "https://accounts.google.com";
     const CLIENT: &str = "desk.apps.googleusercontent.com";
-    const NONCE: &str = "the-nonce";
+
+    /// The nonce these tests' ID tokens carry: one a sign-in would make,
+    /// from a binding cookie and a `state` of fresh random bytes.
+    fn nonce() -> &'static str {
+        static NONCE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+        NONCE.get_or_init(|| derived(&fresh_token(), &fresh_token()).1)
+    }
 
     fn signer() -> KeyRing {
         KeyRing::from_signing_text("0123456789abcdef0123456789abcdef", None)
@@ -703,7 +709,7 @@ mod tests {
 
     fn claims() -> serde_json::Value {
         serde_json::json!({
-            "iss": ISSUER, "aud": CLIENT, "sub": "1098", "nonce": NONCE,
+            "iss": ISSUER, "aud": CLIENT, "sub": "1098", "nonce": nonce(),
             "exp": NOW / 1000 + 300, "iat": NOW / 1000,
             "email": "ann@desk.example", "email_verified": true, "name": "Ann",
             "role": "administrator", "groups": ["staff-admins"],
@@ -711,7 +717,7 @@ mod tests {
     }
 
     fn checked(claims: serde_json::Value) -> Option<IdClaims> {
-        id_token(&token(claims), &keys(), ISSUER, CLIENT, NONCE, NOW).ok()
+        id_token(&token(claims), &keys(), ISSUER, CLIENT, nonce(), NOW).ok()
     }
 
     #[test]
@@ -778,16 +784,25 @@ mod tests {
         named["azp"] = CLIENT.into();
         assert!(checked(named).is_some());
         // A token no key signed is refused.
-        assert!(id_token(&token(claims()), &[], ISSUER, CLIENT, NONCE, NOW).is_err());
+        assert!(id_token(&token(claims()), &[], ISSUER, CLIENT, nonce(), NOW).is_err());
+    }
+
+    /// A binding cookie or a `state` as a sign-in makes one: 32 bytes from
+    /// the platform's secure random source, the native host's, as text.
+    fn fresh_token() -> String {
+        let mut bytes = [0u8; 32];
+        getrandom::fill(&mut bytes).expect("the platform's random source");
+        super::super::identity::token_text(&bytes)
     }
 
     #[test]
     fn the_verifier_and_the_nonce_come_from_the_cookie_and_the_state() {
-        let (pkce, nonce) = derived("cookie", "state");
-        assert_eq!((pkce.clone(), nonce.clone()), derived("cookie", "state"));
+        let (binding, state) = (fresh_token(), fresh_token());
+        let (pkce, nonce) = derived(&binding, &state);
+        assert_eq!((pkce.clone(), nonce.clone()), derived(&binding, &state));
         assert_ne!(pkce, nonce);
-        assert_ne!(derived("another cookie", "state").0, pkce);
-        assert_ne!(derived("cookie", "another state").1, nonce);
+        assert_ne!(derived(&fresh_token(), &state).0, pkce);
+        assert_ne!(derived(&binding, &fresh_token()).1, nonce);
         // PKCE's verifier is 43 to 128 unreserved characters.
         assert_eq!(pkce.len(), 43);
         assert!(
