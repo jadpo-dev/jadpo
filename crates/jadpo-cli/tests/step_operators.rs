@@ -21,8 +21,8 @@ use jadpo_term::Environment;
 use jadpo_test::host::Harness;
 
 use crate::step_records::{
-    CUSTOMER, CUSTOMERS, HOUR, SECOND, SUBSCRIPTION, SUBSCRIPTIONS, T0, TRIES, chosen, delivery,
-    faked, jadpo, record, sent, steps,
+    CUSTOMER, CUSTOMERS, HOUR, SECOND, SUBSCRIPTION, SUBSCRIPTIONS, T0, TRIES, checkout_build,
+    chosen, delivery, faked, jadpo, record, sent, steps,
 };
 use crate::support::fake_provider::FakeProvider;
 
@@ -603,28 +603,6 @@ fn a_routes_steps_its_client_left_are_an_item_kept_thirty_days() {
         rt.block_on(tick(program, &host, gone));
         assert_eq!(rt.block_on(record(&harness)), None);
     }
-}
-
-/// The build id `jadpo check` writes in the manifest for the project's one
-/// deployable: what `jadpo build` stamps it with, and what an operator
-/// copies from the stamp.
-fn checkout_build(root: &Path, at: i64) -> String {
-    let checked = jadpo(root, at, &["check"]);
-    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
-    let text = std::fs::read_to_string(root.join("build/manifest.json")).expect("manifest");
-    let manifest: serde_json::Value = serde_json::from_str(&text).expect("JSON");
-    let deployables = manifest["deployables"].as_object().expect("deployables");
-    let [(_, entry)] = deployables.iter().collect::<Vec<_>>()[..] else {
-        panic!("one deployable: {deployables:?}");
-    };
-    let build = entry["build"].as_str().expect("a build id").to_string();
-    assert!(
-        build.len() == 14
-            && build.starts_with("b_")
-            && build[2..].chars().all(|c| c.is_ascii_hexdigit()),
-        "{build}"
-    );
-    build
 }
 
 /// Before a deploy, `jadpo runs unfinished --build <build id>` lists the
