@@ -1,10 +1,23 @@
 # `semantic.ai_field_unmarked`
 
-A field that stores a marked field's value keeps its marks: each
-category, from `personal:` or the field's type, and `to_models: false`.
-Whatever reads the field later, a prompt among them, sends what it
-holds, so a copy into a field without them would reach a model unchecked. A value one decided, under an `if` or
-a `match`, is stored with it too:
+Code stores a value from a field marked as personal data, or `to_models: false`, in a field that doesn't carry the same marks.
+
+## Why Jadpo refuses it
+
+A field's marks say what it holds: its personal-data category, from
+`personal:` or its type, and `to_models: false` when no model may be
+sent it. Jadpo checks every prompt against those marks. Once a marked
+value is copied into a field without them, whatever reads that field
+later, a prompt among them, would send it unchecked.
+
+So a field that stores a marked value keeps its marks. That holds for a
+value decided by a marked field too, such as one chosen under an `if` or
+a `match` on it.
+
+## What it looks like
+
+The clinic copies a patient's notes, marked `health`, into a remark
+field that has no mark.
 
 ```jadpo check project=e-ai-field-unmarked file=app.jadpo hidden
 application {
@@ -49,6 +62,8 @@ type ClinicalNote = Text {
 }
 ```
 
+domains/clinic/entities/patient.jadpo:
+
 ```jadpo check project=e-ai-field-unmarked file=domains/clinic/entities/patient.jadpo migrate=initial
 use clinic/types { ClinicalNote }
 
@@ -66,6 +81,8 @@ entity Patient {
     }
 }
 ```
+
+domains/clinic/actions/remark_on_notes.jadpo:
 
 ```jadpo check project=e-ai-field-unmarked file=domains/clinic/actions/remark_on_notes.jadpo expect=semantic.ai_field_unmarked
 use clinic/entities { Patient, PatientNotFound }
@@ -95,9 +112,13 @@ error: `Patient.notes` is stored in `Patient.handover_remark`, which isn't marke
 check failed: 1 error, 5 files
 ```
 
-A model's answer carries what its prompt was built from, so a field read
-off it is checked like those fields when it is stored or sent again: the summary of a patient's notes is `health` wherever it
-is kept.
+`(agent)` at the end of the `next:` line means your coding agent can make
+the fix itself.
+
+A model's answer carries what its prompt was built from, so a field
+read off the answer counts as those fields. Here the summary of a
+patient's notes is `health` too, and storing it in the unmarked remark
+is refused in the same way.
 
 ```jadpo check project=e-ai-answer-unmarked file=app.jadpo hidden
 application {
@@ -197,6 +218,8 @@ out anything the notes don't say.
 {notes}
 ```
 
+domains/clinic/actions/keep_handover.jadpo:
+
 ```jadpo check project=e-ai-answer-unmarked file=domains/clinic/actions/keep_handover.jadpo expect=semantic.ai_field_unmarked
 use clinic/entities { Patient, PatientNotFound }
 use clinic/types { ClinicalNote, HandoverSummary }
@@ -239,3 +262,105 @@ error: `Patient.notes` is stored in `Patient.handover_remark`, which isn't marke
 
 check failed: 1 error, 8 files
 ```
+
+## How to fix it
+
+**If the field should hold the value**, give it the same marks. In
+`domains/clinic/entities/patient.jadpo`:
+
+```jadpo fragment
+    handover_remark: ClinicalNote? {
+        personal: PersonalData.health
+    }
+```
+
+```jadpo check project=e-ai-field-unmarked-fix-1 file=domains/clinic/entities/patient.jadpo hidden
+use clinic/types { ClinicalNote }
+
+/// A patient of the clinic.
+entity Patient {
+    id: Uuid
+    notes: ClinicalNote {
+        personal: PersonalData.health
+    }
+    handover_remark: ClinicalNote? {
+        personal: PersonalData.health
+    }
+
+    policy: {
+        read: [Access.authenticated]
+        update: [Access.authenticated]
+    }
+}
+```
+
+```jadpo check project=e-ai-field-unmarked-fix-1 file=app.jadpo hidden
+application {
+    connections: {
+        local_model: {
+            driver: Driver.openai_compatible
+            url: config.model_url
+        }
+    }
+    ai: {
+        connection: local_model
+        models: {
+            default: config.drafting_model
+        }
+        limits: {
+            per_day: {
+                tokens: 2000000
+            }
+        }
+        personal_data: {
+            allowed: [PersonalData.health]
+        }
+    }
+}
+```
+
+```jadpo check project=e-ai-field-unmarked-fix-1 file=config.jadpo hidden
+config {
+    drafting_model: ModelId {
+        default: "meta-llama/Llama-3.1-8B-Instruct"
+    }
+    model_url: Url {
+        default: "http://localhost:8000/v1"
+    }
+}
+```
+
+```jadpo check project=e-ai-field-unmarked-fix-1 file=domains/clinic/types/clinical_note.jadpo hidden
+/// What a clinician wrote about a visit.
+type ClinicalNote = Text {
+    max_length: 4000
+}
+```
+
+```jadpo check project=e-ai-field-unmarked-fix-1 file=domains/clinic/actions/remark_on_notes.jadpo hidden migrate=initial
+use clinic/entities { Patient, PatientNotFound }
+
+/// Copies a patient's notes into the remark the next clinician reads.
+action remark_on_notes(patient_id: Patient.id) fails PatientNotFound -> Patient {
+    var patient: Patient = attempt Patient.get(patient_id)
+    return Patient.update(patient) {
+        set: {
+            handover_remark: patient.notes
+        }
+    }
+}
+```
+
+`handover_remark` is now marked `health`, as the notes are, so a prompt
+that reads it later is checked against
+`ai: { personal_data: { allowed: } }` as the notes would be.
+
+If the field shouldn't hold personal data, leave `Patient.notes`, and
+anything worked out from it, out of what you store there.
+
+## Related
+
+- [Personal data sent to a model](../language/21-ai.md#personal-data-sent-to-a-model)
+- [Following personal data](../language/21-ai.md#following-personal-data)
+- [Marking personal fields](../language/15-personal-data.md#marking-personal-fields)
+- [`semantic.ai_personal_data_not_allowed`](../errors/semantic.ai_personal_data_not_allowed.md)

@@ -1,6 +1,23 @@
 # `policy.output_field_unproved`
 
-A note's owner may call `find_note`, but only its reviewer may read the appraisal, and an output has one shape for everyone:
+A query or action lets a caller see a field's value, directly or through what it decides, though not every caller may read that field.
+
+## Why Jadpo refuses it
+
+A field's own `policy:` can narrow who may read it, below who may read
+its record. An output type has one shape for everyone, so everyone who may
+run a query or action gets every field it sends. If some of them may not
+read one of those fields, the output would show it to them.
+
+Who may read a value is proved from the grants alone, not from the data.
+And a field's value reaches a caller in more ways than an output: through
+a copy, a condition, a value or failure it decides, a record it finds, or
+what a write stores for others to read later. Jadpo checks each of these
+like an output, so a field's `policy:` can't be got round.
+
+## What it looks like
+
+main.jadpo:
 
 ```jadpo check project=e-output-field-unproved expect=policy.output_field_unproved
 type Handle = Text {
@@ -69,7 +86,15 @@ error: `find_note` sends `Note.appraisal`, which not every caller may read
 check failed: 1 error, 1 file
 ```
 
-A value copied through a variable or another type keeps its field's rules, so the same appraisal built into an output by an action is refused there:
+`(agent)` at the end of the `next:` line means your coding agent can make
+the fix itself.
+
+A note's owner may call `find_note`, since `Note`'s `read:` names
+`owner_id`, but only its reviewer may read the appraisal.
+
+A value copied through a variable or another type keeps its field's
+rules. So the same appraisal, built into an output by an action, is
+refused there:
 
 ```jadpo check project=e-output-field-copied expect=policy.output_field_unproved
 type Handle = Text {
@@ -147,7 +172,7 @@ error: `NoteView.appraisal` carries `Note.appraisal`, which not every caller of 
 check failed: 1 error, 1 file
 ```
 
-A condition shows the field it tests, so a list of the notes whose
+A condition shows the field it tests. So a list of the notes whose
 appraisal is "Excellent" is refused to their owners, who may not read it:
 
 ```jadpo check project=e-condition-field-unproved expect=policy.output_field_unproved
@@ -218,7 +243,9 @@ error: `praised_notes` filters on `Note.appraisal`, which not every caller may r
 check failed: 1 error, 1 file
 ```
 
-A value made under a condition shows what the condition tests, so a verdict built from constants is refused when the `if` deciding it tests the appraisal:
+A value made under a condition shows what the condition tests. So a
+verdict built from constants is refused when the `if` deciding it tests
+the appraisal:
 
 ```jadpo check project=e-output-field-decided expect=policy.output_field_unproved
 type Handle = Text {
@@ -293,7 +320,7 @@ error: `Laurel.praised` carries `Note.appraisal`, which not every caller of `jud
 check failed: 1 error, 1 file
 ```
 
-A failure raised on such a condition shows what it tests the same way:
+A failure raised on such a condition shows what it tests in the same way:
 
 ```jadpo check project=e-failure-decided expect=policy.output_field_unproved
 type Handle = Text {
@@ -372,7 +399,9 @@ error: `pin_note` raises `NotPraised` on a condition that tests `Note.appraisal`
 check failed: 1 error, 1 file
 ```
 
-Which record a `get` finds shows the value it is given, so a citation only the reviewer may know can't find its record for the note's owner:
+Which record a `get` finds shows the value it is given. So a citation
+only the reviewer may know can't be used to find its record for the
+note's owner:
 
 ```jadpo check project=e-lookup-field-unproved expect=policy.output_field_unproved
 type Handle = Text {
@@ -454,7 +483,7 @@ error: `note_citation` finds a `Citation` by `Note.citation_id`, which not every
 check failed: 1 error, 1 file
 ```
 
-An include shows the reference it follows the same way:
+An include shows the reference it follows in the same way:
 
 ```jadpo check project=e-include-reference-unproved expect=policy.output_field_unproved
 type Handle = Text {
@@ -541,7 +570,8 @@ error: `note_with_citation` includes the `Citation` each `Note` refers to throug
 check failed: 1 error, 1 file
 ```
 
-A caller may change a record they may not read, so the record an update gives back is proved against its `read:`:
+A caller may change a record they may not read. So the record an update
+gives back is proved against its entity's `read:`:
 
 ```jadpo check project=e-update-record-unproved expect=policy.output_field_unproved
 type Handle = Text {
@@ -613,7 +643,10 @@ error: `SummaryView.summary` carries `Note.summary`, which not every caller of `
 check failed: 1 error, 1 file
 ```
 
-What a write stores is read later, from any request, by everyone who may read the field it is stored in, so a value is stored only where all of them may read it. Here the reviewer copies the appraisal into the summary, which the note's owner may read too:
+What a write stores is read later, from any request, by everyone who may
+read the field it is stored in. So a value is stored only where all of
+them may read it. Here the reviewer copies the appraisal into the
+summary, which the note's owner may read too:
 
 ```jadpo check project=e-stored-field-unproved expect=policy.output_field_unproved
 type Handle = Text {
@@ -682,7 +715,12 @@ error: `publish_appraisal` stores `Note.appraisal` in `Note.summary`, which not 
 check failed: 1 error, 1 file
 ```
 
-A copy between fields the same callers read stays allowed: the reviewer's draft, which only the reviewer may read, becomes the appraisal, which only the reviewer may read too. So does a copy into a record that refers to the one it came from, or into one of the same tenant, when everyone who may read the field may read the value there:
+A copy between fields the same callers read stays allowed. Here the
+reviewer's draft, which only the reviewer may read, becomes the
+appraisal, which only the reviewer may read too. A copy into a record
+that refers to the one it came from, or into one of the same tenant, is
+allowed in the same way when everyone who may read the field may read
+the value there:
 
 ```jadpo check project=stored-field-same-readers
 type Handle = Text {
@@ -742,7 +780,11 @@ action finish_review(note_id: Note.id) fails NoteNotFound -> Note {
 }
 ```
 
-A subscriber's action stores what its event carries, and the event carries what every `emit` of it put there. Here one of the two actions that share a note puts its appraisal, which only the reviewer may read, in the event, and the bulletin the subscriber posts is read by anyone signed in:
+A subscriber's action stores what its event carries, and the event
+carries what every `emit` of it put there. Here one of the two actions
+that share a note puts its appraisal, which only the reviewer may read,
+in the event, and the bulletin the subscriber posts is read by anyone
+signed in:
 
 ```jadpo check project=e-event-stored-unproved expect=policy.output_field_unproved
 type Handle = Text {
@@ -853,7 +895,12 @@ error: `post_circulated` passes `Note.appraisal` to `post_bulletin`, which store
 check failed: 1 error, 1 file
 ```
 
-With only the summary, which anyone signed in may read, in the event, the bulletin may hold it. A value an event carries has left its record, which may change before the delivery, so it is proved as one from any record of its entity, or from a record of the event's tenant when the event's tenant field came from that record, since the subscriber is limited to that tenant (area 12, "Subscribers"):
+With only the summary, which anyone signed in may read, in the event, the
+bulletin may hold it. A value an event carries has left its record, which
+may change before the delivery. So it is proved as a value from any
+record of its entity, or from a record of the event's tenant when the
+event's tenant field came from that record, since the subscriber is
+limited to that tenant ([Subscribers](../language/12-jobs-and-events.md#subscribers)):
 
 ```jadpo check project=event-stored-allowed
 type Handle = Text {
@@ -938,11 +985,11 @@ subscriber post_circulated {
 }
 ```
 
-A webhook's reply action runs as the system, which finds every record its
-grants name, and its reply goes back to whoever sent the webhook, so a
-reply that counts or tests for records only the system may read shows
-whether they are there, and so does whether it fails. Each
-is proved as an output to `Access.public`:
+A webhook's reply action runs as the system, which finds every record
+its grants name, and its reply goes back to whoever sent the webhook. So
+a reply that counts or tests for records only the system may read shows
+whether they are there, and so does whether it fails. Each is proved as
+an output to `Access.public`:
 
 ```jadpo check project=e-reply-shows-records file=app.jadpo hidden
 use support
@@ -1078,6 +1125,8 @@ action answer_call(event: AcmeVoice.IncomingCall) -> AcmeVoice.CallReply {
 }
 ```
 
+domains/support/actions/answer_call.jadpo:
+
 ```jadpo check project=e-reply-shows-records file=domains/support/actions/answer_call.jadpo expect=policy.output_field_unproved
 use support/entities { PhoneLog }
 use support/queries { recent_calls }
@@ -1110,3 +1159,147 @@ error: `answer_call`'s reply shows whether a `PhoneLog` is there, which not ever
 
 check failed: 1 error, 11 files
 ```
+
+## How to fix it
+
+The question is whether everyone who may run `find_note` should see the
+appraisal. Each further case above is fixed the same way, by what its
+`next:` line says: send, test, find by or store only what every caller
+may read.
+
+**If the callers who may not read the field don't need it**, leave it
+out of the output:
+
+```jadpo fragment
+type NoteView = Output {
+    pick: [Note.id, Note.text]
+}
+```
+
+```jadpo check project=e-output-field-unproved-narrower hidden
+type Handle = Text {
+    max_length: 40
+}
+
+entity User {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+
+type NoteText = Text {
+    max_length: 200
+}
+
+entity Note {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    reviewer_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    text: NoteText
+    appraisal: NoteText {
+        policy: {
+            read: [reviewer_id]
+        }
+    }
+
+    policy: {
+        read: [owner_id, reviewer_id]
+    }
+}
+
+type NoteView = Output {
+    pick: [Note.id, Note.text]
+}
+
+query find_note(note_id: Note.id) fails NoteNotFound -> NoteView {
+    from: Note
+    where: Note.id == note_id
+    missing: NoteNotFound
+}
+```
+
+`find_note` sends a note's `id` and `text` to everyone `Note`'s `read:`
+lets in, owners and reviewers alike, and the appraisal stays the
+reviewer's.
+
+**If everyone who may read a note should read its appraisal**, remove the
+field's own `policy:`, so it follows `Note`'s grants:
+
+```jadpo fragment
+    text: NoteText
+    appraisal: NoteText
+```
+
+```jadpo check project=e-output-field-unproved-widened hidden
+type Handle = Text {
+    max_length: 40
+}
+
+entity User {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+
+type NoteText = Text {
+    max_length: 200
+}
+
+entity Note {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    reviewer_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    text: NoteText
+    appraisal: NoteText
+
+    policy: {
+        read: [owner_id, reviewer_id]
+    }
+}
+
+type NoteView = Output {
+    pick: [Note.id, Note.text, Note.appraisal]
+}
+
+query find_note(note_id: Note.id) fails NoteNotFound -> NoteView {
+    from: Note
+    where: Note.id == note_id
+    missing: NoteNotFound
+}
+```
+
+The note's owner may now read its appraisal, and `find_note` sends it to
+them. Removing a field's restriction widens who may read it, so in an app
+already on its default branch the change also needs a person's acceptance
+([Protecting policy](../language/09-policy.md#protecting-policy)).
+
+## Related
+
+- [Outputs](../language/09-policy.md#outputs)
+- [What else shows a field](../language/09-policy.md#what-else-shows-a-field)
+- [Field restrictions](../language/09-policy.md#field-restrictions)
+- [Webhook replies](../language/09-policy.md#webhook-replies)
+- [Events](../language/09-policy.md#events)
+- [Listing a query](../language/09-policy.md#listing-a-query)

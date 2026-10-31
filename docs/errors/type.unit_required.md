@@ -1,11 +1,19 @@
 # `type.unit_required`
 
-A bare number where a physical quantity goes: a quantity is always made
-with its unit, a suffixed literal (`90cm`), `units.of(90,
-LengthUnit.centimetre)`, `text.parse` of text that names one, or another
-quantity of its kind. A number alone could be any length, which is the
-mistake the type exists to prevent, so this is never declinable. A plain
-number still scales a quantity, by `*` and `/`.
+A plain number is given where a physical quantity, such as a length or a mass, needs its unit.
+
+## Why Jadpo refuses it
+
+A quantity type, such as `Length`, holds an amount in a unit. A number
+alone could be any length: 90 could be centimetres, inches or metres.
+Mixing those up is the mistake the type exists to prevent, so a quantity
+is always made with its unit, and this error can never be declined.
+
+A plain number still scales a quantity, by `*` and `/`.
+
+## What it looks like
+
+main.jadpo:
 
 ```jadpo check project=e-unit-required expect=type.unit_required
 type ShelfLength = Length {
@@ -32,8 +40,15 @@ error: `ShelfLength` needs a unit, and `90` is a bare number
 check failed: 1 error, 1 file
 ```
 
-Two kinds that the table doesn't combine don't compile either, by area
-3's `type.arithmetic_operand`, which names the two kinds:
+`(agent)` at the end of the `next:` line means your coding agent can make
+the fix itself.
+
+Two quantities of different kinds, such as a mass and a length, can't be
+added either. That is a different error,
+[`type.arithmetic_operand`](../errors/type.arithmetic_operand.md), which
+names the two kinds.
+
+main.jadpo:
 
 ```jadpo check project=e-quantity-kinds expect=type.arithmetic_operand
 type ShelfLength = Length {}
@@ -59,3 +74,36 @@ error: `ShelfLoad` and `ShelfLength` can't be added: a `Mass` and a `Length` are
 
 check failed: 1 error, 1 file
 ```
+
+## How to fix it
+
+**If the number is written in the code**, write its unit after it:
+
+```jadpo fragment
+    return ShelfLength(90cm)
+```
+
+```jadpo check project=e-unit-required-fix-1 hidden
+type ShelfLength = Length {
+    max: 3metre
+}
+
+/// The shelf a kitchen gets unless the customer asks for another.
+function standard_shelf() -> ShelfLength {
+    return ShelfLength(90cm)
+}
+```
+
+The standard shelf is now 90 centimetres, and anyone reading the code
+sees the unit.
+
+To make a quantity from a number and a unit your code holds, use
+`units.of`, such as `units.of(90, LengthUnit.centimetre)`. It takes an
+`Int` or a `Decimal` and any unit of the kind.
+
+## Related
+
+- [Making a quantity](../language/19-standard-library.md#making-a-quantity)
+- [Suffixed literals](../language/19-standard-library.md#suffixed-literals)
+- [Units](../language/19-standard-library.md#units)
+- [Quantity arithmetic](../language/19-standard-library.md#quantity-arithmetic)
