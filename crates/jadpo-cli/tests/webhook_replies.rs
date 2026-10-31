@@ -359,7 +359,11 @@ fn load(name: &str) -> Option<Loaded> {
     for (path, text) in FILES {
         write(&root, path, text);
     }
-    for args in [&["migrate", "new", "initial"][..], &["check"]] {
+    for args in [
+        &["migrate", "new", "initial"][..],
+        &["records", "update"],
+        &["check"],
+    ] {
         let out = jadpo(&root, args);
         assert_eq!(out.code, 0, "{args:?}: {}{}", out.stdout, out.stderr);
     }
@@ -867,6 +871,7 @@ fn check_with(name: &str, changes: &[(&str, Option<&str>)]) -> Vec<String> {
             write(&root, path, text);
         }
     }
+    jadpo(&root, &["records", "update"]);
     let out = jadpo(&root, &["check", "--json"]);
     let report: serde_json::Value = serde_json::from_str(&out.stdout)
         .unwrap_or_else(|_| panic!("JSON: {}{}", out.stdout, out.stderr));

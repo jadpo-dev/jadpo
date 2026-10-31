@@ -109,6 +109,7 @@ fn vectors_of_every_metric_are_stored_and_read_back_unchanged() {
     let root = project("stored");
     let migrated = jadpo(&root, &["migrate", "new", "initial"]);
     assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     let (sql, _) = migration_sql(&root);
@@ -448,6 +449,7 @@ pub(crate) fn pgvector_too_old() -> bool {
 #[test]
 fn a_nearest_query_s_migration_builds_its_hnsw_index() {
     let root = nearest_project("nearest-index");
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     let (sql, _) = migration_sql(&root);
@@ -700,6 +702,7 @@ fn search_project(name: &str, dimensions: u32, indexes: &str, decline: &str) -> 
     }
     let migrated = jadpo(&root, &["migrate", "new", "initial"]);
     assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     root
@@ -1073,6 +1076,7 @@ fn a_distance_that_is_no_number_meets_no_condition() {
         return;
     }
     let root = far_project("far");
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     let url = database("vector_far");

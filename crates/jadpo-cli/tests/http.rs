@@ -237,7 +237,7 @@ fn project() -> (tempdir::Dir, PathBuf) {
     }
     let migrated = jadpo(&root, &["migrate", "new", "initial"]);
     assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
-    let recorded = jadpo(&root, &["api", "update"]);
+    let recorded = jadpo(&root, &["records", "update"]);
     assert_eq!(recorded.code, 0, "{}{}", recorded.stdout, recorded.stderr);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
@@ -759,7 +759,7 @@ fn the_openapi_document_matches_its_golden_copy() {
     }
     let migrated = jadpo(&root, &["migrate", "new", "initial"]);
     assert_eq!(migrated.code, 0, "{}", migrated.stdout);
-    assert_eq!(jadpo(&root, &["api", "update"]).code, 0);
+    assert_eq!(jadpo(&root, &["records", "update"]).code, 0);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}", checked.stdout);
     let document =
@@ -910,7 +910,7 @@ fn a_write_past_its_deadline_commits_nothing_and_answers_504() {
     }
     for args in [
         &["migrate", "new", "initial"][..],
-        &["api", "update"],
+        &["records", "update"],
         &["check"],
     ] {
         let done = jadpo(&root, args);
@@ -1011,7 +1011,7 @@ fn an_api_that_requires_keys_says_so_in_its_record_and_openapi() {
     );
     for args in [
         &["migrate", "new", "initial"][..],
-        &["api", "update"],
+        &["records", "update"],
         &["check"],
     ] {
         let done = jadpo(&root, args);
@@ -1315,7 +1315,7 @@ fn sign_in_project() -> (tempdir::Dir, PathBuf) {
     }
     for args in [
         &["migrate", "new", "initial"][..],
-        &["api", "update"],
+        &["records", "update"],
         &["check"],
     ] {
         let done = jadpo(&root, args);
@@ -2108,7 +2108,7 @@ fn tokens_project() -> (tempdir::Dir, PathBuf) {
     }
     for args in [
         &["migrate", "new", "initial"][..],
-        &["api", "update"],
+        &["records", "update"],
         &["check"],
     ] {
         let done = jadpo(&root, args);
@@ -2795,7 +2795,7 @@ fn work_that_never_waits_stops_at_its_deadline_and_keeps_nothing() {
     }
     for args in [
         &["migrate", "new", "initial"][..],
-        &["api", "update"],
+        &["records", "update"],
         &["check"],
     ] {
         let done = jadpo(&root, args);
@@ -2857,7 +2857,7 @@ fn work_that_never_waits_leaves_its_worker_to_other_requests() {
     write(&root, "domains/busy/routes/busywork.jadpo", &routes);
     for args in [
         &["migrate", "new", "initial"][..],
-        &["api", "update"],
+        &["records", "update"],
         &["check"],
     ] {
         let done = jadpo(&root, args);
@@ -3012,7 +3012,7 @@ routes Leaving {
 }
 "#,
     );
-    for args in [&["api", "update"][..], &["check"]] {
+    for args in [&["records", "update"][..], &["check"]] {
         let done = jadpo(&root, args);
         assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
     }
@@ -3333,7 +3333,7 @@ fn wire_project() -> (tempdir::Dir, PathBuf) {
     }
     for args in [
         &["migrate", "new", "initial"][..],
-        &["api", "update"],
+        &["records", "update"],
         &["check"],
     ] {
         let done = jadpo(&root, args);

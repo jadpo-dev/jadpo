@@ -105,7 +105,7 @@ fn desk(name: &str) -> PathBuf {
         "use support/actions { answer_customer }\nuse support/types { Asked, SupportAnswer }\n\n/// Customers' questions.\nroutes Answers {\n    prefix: /answers\n\n    /// Anyone asks one.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: Asked\n        output: SupportAnswer\n        deadline: 60s\n        run: answer_customer(input)\n    }\n}\n",
     );
     // The counts of what its calls use are kept in `main` (chunk 5.5v5).
-    for args in [&["migrate", "new", "initial"][..], &["api", "update"]] {
+    for args in [&["migrate", "new", "initial"][..], &["records", "update"]] {
         let done = jadpo(&root, args);
         assert_eq!(done.code, 0, "{args:?}: {}{}", done.stdout, done.stderr);
     }

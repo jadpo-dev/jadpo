@@ -61,8 +61,8 @@ cd examples/11-cake-shop && ../../target/release/jadpo routes
 
 - In `cakes.jadpo`, delete the first route's `authentication: RouteAuthentication.none`. Reading the menu now needs someone signed in, and the menu's route test fails with `test.assertion_failed`: it gets 401, not 200.
   <!-- try {"file": "domains/bakery/routes/cakes.jadpo", "replace": "    GET / {\n        authentication: RouteAuthentication.none\n", "with": "    GET / {\n", "test": ["test.assertion_failed"], "failed": 1} -->
-- In `cake.jadpo`, change `read: [Access.public]` to `read: [Access.authenticated]`. `jadpo check` reports `policy.public_grant_missing`: the menu's routes let anyone call them, and only someone signed in may read a cake.
-  <!-- try {"file": "domains/bakery/entities/cake.jadpo", "replace": "read: [Access.public]", "with": "read: [Access.authenticated]", "check": ["policy.public_grant_missing"]} -->
+- In `cake.jadpo`, change `read: [Access.public]` to `read: [Access.authenticated]`. `jadpo check` reports `policy.public_grant_missing`: the menu's routes let anyone call them, and only someone signed in may read a cake. It also reports `record.out_of_date`: `access.jadpo_record` holds who can do what, and `jadpo records update` writes it again.
+  <!-- try {"file": "domains/bakery/entities/cake.jadpo", "replace": "read: [Access.public]", "with": "read: [Access.authenticated]", "check": ["policy.public_grant_missing", "record.out_of_date"]} -->
 - In `order.jadpo`, change `read: [customer_id, outlet_id]` to `read: [customer_id]`. The counter's test fails with `test.assertion_failed`: an outlet's counter can no longer read the orders it hands over, so its list is empty.
   <!-- try {"file": "domains/bakery/entities/order.jadpo", "replace": "read: [customer_id, outlet_id]", "with": "read: [customer_id]", "test": ["test.assertion_failed"], "failed": 1} -->
 - In `place_order.jadpo`, read the app's version from `"Authorization"` instead of `"X-App-Version"`. `jadpo check` reports `route.header_credential`: authentication owns that header, so no input can read it. It also reports `record.out_of_date`, since the records name the header a client sends.

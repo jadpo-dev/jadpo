@@ -381,6 +381,7 @@ struct Loaded {
 
 fn load(name: &str) -> Option<Loaded> {
     let root = project(name);
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     if !jadpo_test::live() {

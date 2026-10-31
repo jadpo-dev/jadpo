@@ -92,6 +92,7 @@ fn project(name: &str) -> PathBuf {
     );
     let migrated = jadpo(&root, &["migrate", "new", "initial"]);
     assert_eq!(migrated.code, 0, "{}", migrated.stdout);
+    assert_eq!(jadpo(&root, &["records", "update"]).code, 0);
     root
 }
 

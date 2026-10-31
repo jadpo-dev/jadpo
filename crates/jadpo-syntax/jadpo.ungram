@@ -200,8 +200,11 @@ MemberItem =
 Member =
   MemberKey ':' value:Expr? block:MemberList?
 
+// A quoted key is an acceptance's subject that isn't a dotted name
+// (area 18): `"main GET /books": PolicyChange.route_public`.
 MemberKey =
   Name ('.' Name)*
+| 'string'
 
 // An enum variant with no data is just its name (area 2).
 BareMember =

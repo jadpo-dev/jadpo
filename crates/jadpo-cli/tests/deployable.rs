@@ -426,7 +426,7 @@ fn shop() -> PathBuf {
             fs::write(&path, text).expect("written");
         }
     }
-    jadpo(&root, &["api", "update"]);
+    jadpo(&root, &["records", "update"]);
     root
 }
 
@@ -808,7 +808,7 @@ fn declare(root: &Path) {
         }
     }
     jadpo(root, &["migrate", "new", "run_schedules"]);
-    jadpo(root, &["api", "update"]);
+    jadpo(root, &["records", "update"]);
 }
 
 #[cfg(unix)]
@@ -1420,7 +1420,7 @@ fn greeter(name: &str, words: &str) -> PathBuf {
             fs::write(&path, text).expect("written");
         }
     }
-    jadpo(&root, &["api", "update"]);
+    jadpo(&root, &["records", "update"]);
     root
 }
 
@@ -1584,7 +1584,7 @@ fn a_pruned_deployable_cleans_schedule_and_batch_history_before_the_jobs_role() 
     if !root.join("database/migrations").exists() {
         jadpo(&root, &["migrate", "new", "initial"]);
     }
-    jadpo(&root, &["api", "update"]);
+    jadpo(&root, &["records", "update"]);
     let loaded = jadpo_db::load(&root);
     let deployables = jadpo_check::deployables::deployables(&loaded.db, loaded.project);
     let web = jadpo_plan::Plan::for_deployable(
