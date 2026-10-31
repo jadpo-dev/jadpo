@@ -712,6 +712,11 @@ connection or operation is `cli.package_arguments`, with the nearest.
 | `jadpo package record <connection> <operation>` | Confirms an operation against the sandbox and saves the recording |
 | `jadpo package conform <package> <capability>` | Runs a capability's conformance suite |
 | `jadpo package check` | Runs the publishing bar on a package |
+| `jadpo package publish [--dry-run]` | Asks the registry to release the package from a tag |
+| `jadpo package preview` | Serves the package's registry page locally |
+| `jadpo package search <words> [--from <type>] [--to <type>]` | Finds packages and standard-library functions for a need |
+| `jadpo package audit` | Lists the advisories against the app's packages, and whether the app reaches each |
+| `jadpo package verify <folder> [--previous <folder>] [--serve]` | The registry's verifier: the bar, facts, change record and fingerprints |
 
 ### `jadpo package add`
 
@@ -831,8 +836,11 @@ Not built yet:
 - `jadpo package new <Name> --library` or `--provider`, which writes a
   package's own repository: the package format, `recipes/`, a `sample/`
   app and `GUIDE.md`.
-- `jadpo package publish`, which publishes to the registry. It comes with
-  the hosted registry.
+- The registry's commands, `publish` (and `--dry-run`), `preview`,
+  `search`, `audit` and `verify`; `add @publisher/name` from the registry,
+  checked against its public log; `update`'s three-day wait, `--to` and
+  urgent releases; and `check` printing the facts and the change record
+  ([The public registry](11-integrations.md#the-public-registry)).
 - `jadpo package add` from the registry (in the fixed order [Where
   packages come from](11-integrations.md#where-packages-come-from)
   gives), from another Jadpo app's folder (its OpenAPI, such as
