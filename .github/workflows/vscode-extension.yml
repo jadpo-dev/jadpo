@@ -9,12 +9,11 @@ name: VS Code extension
 # run by hand for a tag. A pull request that touches the extension
 # packages it too, testing it and publishing nothing.
 #
-# Publishing is switched off until the repository variable
-# JADPO_VSCODE_PUBLISH is `on`, which needs, first: the Marketplace
-# publisher `jadpo` and an Azure DevOps token for it in the VSCE_PAT
-# secret, and the Open VSX namespace `jadpo` with a trusted publisher for
-# this workflow, which needs no secret. Packaging and attaching run
-# without them.
+# Publishing runs while the repository variable JADPO_VSCODE_PUBLISH is
+# `on` (it is, since 0.1.0): the Marketplace through the publisher `jadpo`
+# and the VSCE_PAT secret, Open VSX through the namespace `jadpo`'s
+# trusted publisher for this workflow, which needs no secret. Packaging
+# and attaching run either way.
 
 on:
   workflow_dispatch:
