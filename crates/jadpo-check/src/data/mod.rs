@@ -95,6 +95,9 @@ pub enum ConnectionKind {
     /// Cloudflare's rate-limiting binding, `Driver.cloudflare_rate_limits`,
     /// which `rate_limits:` counts in on Workers (area 16; chunk 8.2m2).
     CloudflareRateLimits,
+    /// An OpenID Connect provider people sign in with, `Driver.oidc`
+    /// (area 8, "Providers"; chunk A7b).
+    SignIn,
     /// A provider package (area 11).
     Package,
     /// Neither a built-in driver nor a package: area 11 reports it.
@@ -253,6 +256,7 @@ pub(crate) fn connection_kind(list: Option<ast::MemberList>) -> ConnectionKind {
                         Some(Driver::OpenaiCompatible) => ConnectionKind::Model,
                         Some(Driver::CloudflareQueues) => ConnectionKind::CloudflareQueue,
                         Some(Driver::CloudflareRateLimits) => ConnectionKind::CloudflareRateLimits,
+                        Some(Driver::Oidc) => ConnectionKind::SignIn,
                         None => ConnectionKind::Other,
                     },
                     _ => ConnectionKind::Other,

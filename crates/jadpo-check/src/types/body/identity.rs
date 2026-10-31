@@ -50,6 +50,13 @@ pub(crate) fn sign_in_object_fields(
         MAGIC_LINK_EMAIL_TYPE, MAGIC_LINK_EMAIL_TYPE_FIELDS, MAGIC_LINK_REQUEST,
     };
     match name {
+        // What a test's provider says about the person (chunk A7b).
+        jadpo_std::http::TEST_ACCOUNT => Some(vec![
+            ("subject", Ty::Prim(Prim::Text)),
+            ("email", Ty::Prim(Prim::Email).nullable()),
+            ("email_verified", Ty::Prim(Prim::Bool)),
+            ("name", Ty::Prim(Prim::Text).nullable()),
+        ]),
         jadpo_std::http::FIRST_SIGN_IN => Some(vec![
             ("method", method()),
             ("address", Ty::Prim(Prim::Email).nullable()),
@@ -295,6 +302,9 @@ impl Body<'_> {
         if op.test_passkey() {
             return self.test_passkey_call(op, call, callee, written);
         }
+        if op == SessionOp::TestProviderSignIn {
+            return self.test_provider_call(call, callee, written);
+        }
         let span = self.span(callee);
         let args: Vec<ast::Arg> = call
             .arg_list()
@@ -424,6 +434,9 @@ impl Body<'_> {
             }
             SessionOp::TestPasskeyRegister | SessionOp::TestPasskeySignIn => {
                 return self.test_passkey_call(op, call, callee, written);
+            }
+            SessionOp::TestProviderSignIn => {
+                return self.test_provider_call(call, callee, written);
             }
         };
         if args.len() != params.len() || args.iter().any(|arg| arg.name().is_some()) {
@@ -757,6 +770,89 @@ impl Body<'_> {
             result,
             CallKind::Effect(written.to_string()),
             Reach::Session(op),
+        )
+    }
+
+    /// `test_providers.sign_in(method, account)` (area 8, "Providers";
+    /// chunk A7b): only a test signs in through a provider this way.
+    pub(super) fn test_provider_call(
+        &mut self,
+        call: &ast::CallExpr,
+        callee: &ast::Expr,
+        written: &str,
+    ) -> (Ty, CallKind, Reach) {
+        let span = self.span(callee);
+        let args: Vec<ast::Arg> = call
+            .arg_list()
+            .iter()
+            .flat_map(|list| list.args())
+            .collect();
+        let failed = |body: &mut Self| {
+            body.args_only(call);
+            (
+                Ty::Error,
+                CallKind::Effect(written.to_string()),
+                Reach::Unknown,
+            )
+        };
+        if !self.test {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_REQUEST_INVALID,
+                    format!("`{written}` is only for route tests"),
+                )
+                .at(span, "outside a test")
+                .reason("`test_providers` signs a route test in through a provider's routes with the test run's local issuer as the provider; a real provider signs people in anywhere else, so application code never calls it.")
+                .next(format!("Call `{written}` in a test, or remove it")),
+            );
+            return failed(self);
+        }
+        if self.identity().providers.is_empty() {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
+                    format!("`{written}` needs a sign-in provider"),
+                )
+                .at(span, "no `providers:` declared")
+                .reason("`test_providers` signs in through the routes each provider in `sign_in: { providers: }` generates, and `authentication { }` declares none.")
+                .next("Declare `providers: [<connection>]` in `sign_in:`"),
+            );
+            return failed(self);
+        }
+        let params = [
+            ("method", Ty::Named(jadpo_std::SignInMethod::NAME.to_string())),
+            (
+                "account",
+                Ty::Opaque(jadpo_std::http::TEST_ACCOUNT.to_string(), Vec::new()),
+            ),
+        ];
+        if args.len() != params.len() || args.iter().any(|arg| arg.name().is_some()) {
+            let at = call
+                .arg_list()
+                .map_or_else(|| self.span(call), |list| self.span(&list));
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_ARGUMENT_COUNT,
+                    format!("`{written}` takes a `SignInMethod` and a `TestAccount`"),
+                )
+                .at(at, format!("{} given", args.len()))
+                .reason(format!("`{written}` signs the person a `TestAccount` describes in through the provider a `SignInMethod` names, in that order."))
+                .next("Pass `SignInMethod.<provider>` and a `TestAccount { ... }`"),
+            );
+            return failed(self);
+        }
+        for (arg, (_, ty)) in args.iter().zip(&params) {
+            if let Some(value) = arg.expr() {
+                self.check(&value, ty);
+            }
+        }
+        (
+            Ty::Opaque(
+                super::request::RESPONSE.to_string(),
+                vec![Ty::Prim(Prim::Unit)],
+            ),
+            CallKind::Effect(written.to_string()),
+            Reach::Session(SessionOp::TestProviderSignIn),
         )
     }
 

@@ -217,6 +217,10 @@ pub enum Run {
     /// One of the routes `magic_link:` generates (area 8, "Magic links"),
     /// which the runtime answers itself.
     MagicLink(MagicLinkStep),
+    /// One of the two routes each sign-in provider generates (area 8,
+    /// "Providers"; chunk A7b): the provider by its place in
+    /// [`ProvidersPlan::providers`], which the runtime answers itself.
+    Provider(u32, ProviderStep),
     /// `GET <prefix>/openapi.json` (area 7, "OpenAPI"): the API's own
     /// OpenAPI document, its text as `jadpo check` writes it, which the
     /// runtime answers with as it is.
@@ -468,6 +472,103 @@ impl MagicLinkStep {
     }
 }
 
+/// The routes each sign-in provider generates (area 8, "Providers";
+/// chunk A7b), under `/auth/<name>`.
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+pub enum ProviderStep {
+    /// `POST /auth/<name>/start`: the provider's sign-in address, and the
+    /// cookie binding the sign-in to the browser.
+    Start,
+    /// `GET /auth/<name>/callback`: where the provider sends the browser
+    /// back, which starts a browser session.
+    Callback,
+}
+
+impl ProviderStep {
+    pub const ALL: [ProviderStep; 2] = [ProviderStep::Start, ProviderStep::Callback];
+
+    pub fn method(self) -> crate::HttpMethod {
+        match self {
+            ProviderStep::Start => crate::HttpMethod::Post,
+            ProviderStep::Callback => crate::HttpMethod::Get,
+        }
+    }
+
+    /// Its full path's segments for the provider `name`.
+    pub fn segments(self, name: &str) -> Vec<String> {
+        let tail = match self {
+            ProviderStep::Start => "start",
+            ProviderStep::Callback => "callback",
+        };
+        vec!["auth".to_string(), name.to_string(), tail.to_string()]
+    }
+
+    /// Either is open to anyone: the binding cookie is what ties them.
+    pub fn authentication(self) -> Authentication {
+        Authentication::Public
+    }
+
+    /// The status a route plan records; the callback answers `303`
+    /// ([`ProviderStep::code`]), which no route of the app's can.
+    pub fn status(self) -> crate::SuccessStatus {
+        crate::SuccessStatus::Ok
+    }
+
+    /// The status it answers with when it succeeds: `200`, or the
+    /// callback's `303` to where the person goes next.
+    pub fn code(self) -> u16 {
+        match self {
+            ProviderStep::Start => 200,
+            ProviderStep::Callback => 303,
+        }
+    }
+
+    /// What `jadpo routes` and the API record say it runs: `provider
+    /// sign-in start`.
+    pub fn label(self) -> &'static str {
+        match self {
+            ProviderStep::Start => "provider sign-in start",
+            ProviderStep::Callback => "provider sign-in callback",
+        }
+    }
+}
+
+/// What `POST /auth/<name>/start` takes and answers with, by the names
+/// the API record and OpenAPI give them (chunk A7b).
+pub const PROVIDER_START: &str = "ProviderSignInStart";
+pub const PROVIDER_ADDRESS: &str = "ProviderSignInAddress";
+
+/// The failure a provider's sign-in comes back with when it expired, was
+/// used, came back to another browser, or the provider refused it or sent
+/// an ID token that doesn't check (area 8, "Providers"; chunk A7b).
+pub const PROVIDER_FAILED: &str = "sign_in_provider_failed";
+
+/// The sign-in providers `sign_in: { providers: }` names (area 8,
+/// "Providers"; chunk A7b), and how a provider account finds its user.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ProvidersPlan {
+    pub providers: Vec<ProviderPlan>,
+    /// The user a provider account signs in, through its link only: the
+    /// lookup is given `$1` as `NULL`, so no subject field matches.
+    pub first_sign_in: FirstSignInPlan,
+}
+
+/// One sign-in provider, a connection on `Driver.oidc`.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ProviderPlan {
+    /// The connection's name: its routes' segment and its `SignInMethod`.
+    pub name: String,
+    /// Its place in `SignInMethod`, after the language's own.
+    pub ordinal: u32,
+    /// The settings its issuer (`Url`), client ID (`Text`) and client
+    /// secret (a secret) are read from, by name.
+    pub issuer: String,
+    pub client_id: String,
+    pub client_secret: String,
+}
+
 /// Where `magic_link:`'s routes go unless its `path:` says otherwise.
 pub const MAGIC_LINK_PATH: [&str; 2] = ["auth", "magic-link"];
 
@@ -597,6 +698,8 @@ pub fn test_built_fields(name: &str) -> Option<&'static [&'static str]> {
         MAGIC_LINK_ASK => Some(&["address", "return_to", "locale"]),
         MAGIC_LINK_CONFIRMATION => Some(&["token", "address", "code"]),
         MAGIC_LINK_CODE => Some(&["address", "code"]),
+        // What a test's provider says about the person (chunk A7b).
+        TEST_ACCOUNT => Some(&["subject", "email", "email_verified", "name"]),
         _ => None,
     }
 }
@@ -627,6 +730,11 @@ pub const MAGIC_LINKS: &str = "magic_links";
 /// tests"; chunk 5.5z2): a software authenticator driving the generated
 /// passkey routes, `test_passkeys.register` and `.sign_in`.
 pub const TEST_PASSKEYS: &str = "test_passkeys";
+
+/// The namespace a route test signs in through a provider with (area 8,
+/// "Providers"; chunk A7b), and what it says about the person.
+pub const TEST_PROVIDERS: &str = "test_providers";
+pub const TEST_ACCOUNT: &str = "TestAccount";
 
 /// The device holding a passkey `test_passkeys.register` added: only a
 /// test holds one, and nothing reads its parts.
@@ -747,10 +855,15 @@ pub enum SessionOp {
     /// `test_passkeys.sign_in(passkey)`: signs in with it through the two
     /// sign-in routes, giving the second's `Response`.
     TestPasskeySignIn,
+    /// `test_providers.sign_in(method, account)` (area 8, "Providers";
+    /// chunk A7b): only a test calls it, signing `account` in through the
+    /// provider's two routes with the local issuer as the provider, and
+    /// giving the callback's `Response`.
+    TestProviderSignIn,
 }
 
 impl SessionOp {
-    pub const ALL: [SessionOp; 13] = [
+    pub const ALL: [SessionOp; 14] = [
         SessionOp::Start,
         SessionOp::End,
         SessionOp::IssueToken,
@@ -764,6 +877,7 @@ impl SessionOp {
         SessionOp::MagicLinkRedeemCode,
         SessionOp::TestPasskeyRegister,
         SessionOp::TestPasskeySignIn,
+        SessionOp::TestProviderSignIn,
     ];
 
     pub fn name(self) -> &'static str {
@@ -780,7 +894,7 @@ impl SessionOp {
             SessionOp::MagicLinkRedeem => "redeem",
             SessionOp::MagicLinkRedeemCode => "redeem_code",
             SessionOp::TestPasskeyRegister => "register",
-            SessionOp::TestPasskeySignIn => "sign_in",
+            SessionOp::TestPasskeySignIn | SessionOp::TestProviderSignIn => "sign_in",
         }
     }
 
@@ -793,6 +907,8 @@ impl SessionOp {
             Some(MAGIC_LINKS)
         } else if self.test_passkey() {
             Some(TEST_PASSKEYS)
+        } else if self == SessionOp::TestProviderSignIn {
+            Some(TEST_PROVIDERS)
         } else {
             Some("sessions")
         }
@@ -871,7 +987,8 @@ impl SessionOp {
             | SessionOp::MagicLinkRedeem
             | SessionOp::MagicLinkRedeemCode
             | SessionOp::TestPasskeyRegister
-            | SessionOp::TestPasskeySignIn => crate::AuthenticationMethod::BrowserSession,
+            | SessionOp::TestPasskeySignIn
+            | SessionOp::TestProviderSignIn => crate::AuthenticationMethod::BrowserSession,
             SessionOp::IssueToken | SessionOp::Tokens | SessionOp::RevokeToken => {
                 crate::AuthenticationMethod::ApiToken
             }
@@ -997,6 +1114,10 @@ pub struct IdentityPlan {
     pub passkeys: Option<PasskeyPlan>,
     /// `sign_in: { magic_link: }` (area 8, "Magic links"), when declared.
     pub magic_links: Option<MagicLinkPlan>,
+    /// `sign_in: { providers: }` (area 8, "Providers"; chunk A7b), when
+    /// declared.
+    #[serde(default)]
+    pub providers: Option<ProvidersPlan>,
 }
 
 /// External JWT authentication (area 8): configuration names and one

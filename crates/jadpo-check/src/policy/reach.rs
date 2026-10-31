@@ -131,7 +131,8 @@ pub fn session_act(op: SessionOp, user: Option<&str>, service: Option<&str>) -> 
         // `test_passkeys` signs in through the generated routes, from a
         // test only.
         | SessionOp::TestPasskeyRegister
-        | SessionOp::TestPasskeySignIn => Act::SignsIn,
+        | SessionOp::TestPasskeySignIn
+        | SessionOp::TestProviderSignIn => Act::SignsIn,
         SessionOp::Tokens => Act::Entity(user?.to_string(), Effect::Read),
         SessionOp::RevokeToken => Act::Entity(user?.to_string(), Effect::Update),
         SessionOp::Keys => Act::Entity(service?.to_string(), Effect::Read),

@@ -82,10 +82,13 @@ pub fn served_by(db: &dyn Db, project: Project, api: &str) -> Option<Served> {
 
 /// The API the routes `sign_in:` generates belong to (area 8, "Passkeys"
 /// and "Magic links"): the first that accepts browser sessions, when
-/// passkeys or magic links are declared.
+/// passkeys, magic links or sign-in providers are declared.
 pub fn sign_in_api(db: &dyn Db, project: Project) -> Option<String> {
     let identity = crate::identity::identity(db, project);
-    if identity.passkeys().is_none() && identity.magic_link_routes().is_none() {
+    if identity.passkeys().is_none()
+        && identity.magic_link_routes().is_none()
+        && identity.providers.is_empty()
+    {
         return None;
     }
     super::api_table(db, project)

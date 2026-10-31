@@ -146,6 +146,7 @@ fn capability(kind: ConnectionKind) -> &'static str {
         ConnectionKind::Model => "ai",
         ConnectionKind::CloudflareQueue => "receiving",
         ConnectionKind::CloudflareRateLimits => "rate_limits",
+        ConnectionKind::SignIn => "sign_in",
         ConnectionKind::Package => "package",
         ConnectionKind::Other => "other",
     }
@@ -410,8 +411,8 @@ pub fn access_nodes(db: &dyn Db, project: Project) -> Part {
         uses(&mut edges, &key, settings_read(db, project, &at.syntax));
         nodes.push(node);
     }
-    // The ways `sign_in:` checks a person that this compiler builds;
-    // providers come later (area 8, "What is built").
+    // The ways `sign_in:` checks a person (area 8, "What is built"), each
+    // sign-in provider by its connection's name (chunk A7b).
     let joined =
         |path: &[String]| -> String { path.iter().map(|segment| format!("/{segment}")).collect() };
     if let Some(passkey) = &identity.passkey
@@ -424,6 +425,19 @@ pub fn access_nodes(db: &dyn Db, project: Project) -> Part {
             generates_routes: identity.passkeys().is_some(),
         };
         nodes.push(node);
+    }
+    if !identity.providers.is_empty()
+        && let Some(at) = written(db, project, "authentication", &["sign_in", "providers"])
+    {
+        for provider in &identity.providers {
+            let key = registry.key(Kind::SignInProvider, &provider.name, None);
+            let mut node = node_at(db, project, key, Kind::SignInProvider, &at);
+            node.detail = Detail::SignInProvider {
+                path: format!("/auth/{}", provider.name),
+                generates_routes: true,
+            };
+            nodes.push(node);
+        }
     }
     if let Some(magic) = &identity.magic_link
         && let Some(at) = written(db, project, "authentication", &["sign_in", "magic_link"])
@@ -471,6 +485,9 @@ pub fn access_nodes(db: &dyn Db, project: Project) -> Part {
                 }
                 crate::routes::generated::Generating::MagicLink { .. } => {
                     registry.key(Kind::SignInProvider, "magic_link", None)
+                }
+                crate::routes::generated::Generating::Provider(name) => {
+                    registry.key(Kind::SignInProvider, name, None)
                 }
                 crate::routes::generated::Generating::OpenApi(_) => {
                     registry.key(Kind::Api, &api, None)

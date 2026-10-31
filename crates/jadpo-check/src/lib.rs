@@ -48,6 +48,7 @@ pub mod polls;
 pub mod prompt_recordings;
 pub mod prompts;
 pub mod providers;
+pub mod sign_in_providers;
 pub mod publishing;
 pub mod rate_limits;
 pub mod receiving;

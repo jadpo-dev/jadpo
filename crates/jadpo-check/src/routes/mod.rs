@@ -658,6 +658,38 @@ pub fn table_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 continue;
             }
         }
+        // The runtime answers each sign-in provider's routes (area 8,
+        // "Providers"; chunk A7b).
+        let provider = crate::identity::identity(db, project)
+            .providers
+            .iter()
+            .find_map(|provider| {
+                jadpo_std::http::ProviderStep::ALL
+                    .into_iter()
+                    .find(|step| {
+                        let segments: Vec<Segment> = step
+                            .segments(&provider.name)
+                            .into_iter()
+                            .map(Segment::Fixed)
+                            .collect();
+                        route.method == step.method() && overlaps(&route.segments, &segments)
+                    })
+                    .map(|step| (provider.name.clone(), step))
+            });
+        if let Some((name, step)) = provider {
+            out.push(
+                Diagnostic::new(
+                    &rule::ROUTE_PATH_OVERLAP,
+                    format!("`{}` is the runtime's {}", route.label(), step.label()),
+                )
+                .at(span.clone(), "answered by the runtime")
+                .reason(format!(
+                    "With `{name}` in `sign_in: {{ providers: }}`, the runtime answers `/auth/{name}/start` and `/auth/{name}/callback` itself, so this route would never run."
+                ))
+                .next(format!("Give `{}` in `{group}` another path", route.label())),
+            );
+            continue;
+        }
         // The runtime answers its health checks before any route (area 7,
         // "Health").
         let fixed: Vec<&str> = route
