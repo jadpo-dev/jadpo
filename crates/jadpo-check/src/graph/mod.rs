@@ -388,6 +388,10 @@ pub fn graph(db: &dyn Db, project: Project) -> Arc<Graph> {
     for node in person_nodes(db, project) {
         builder.node(node.clone());
     }
+    // Each retention (area 15; chunk P2), placed at its `retention:`.
+    for node in retention_nodes(db, project) {
+        builder.node(node.clone());
+    }
     // The APIs (area 7), once there is a route or `apis:` declares them.
     let apis = crate::routes::api_table(db, project);
     if has_apis(db, project) {
@@ -457,6 +461,101 @@ pub fn person_nodes(db: &dyn Db, project: Project) -> Vec<Node> {
         node.parent = Some(entity_key);
         node.detail = jadpo_graph::Detail::Person { through };
         out.push(node);
+    }
+    out
+}
+
+/// A `retention` node for each `retention:` that reads cleanly (area 15,
+/// "Retention"; chunk P2): an entity's under its entity, keyed by its born
+/// name, and a field's under its field, keyed by the entity's and field's
+/// born names, placed at the `retention:` and holding its period and
+/// `since:` field, so a retention made longer, shorter or counted from
+/// another field changes the node.
+#[salsa::tracked(returns(ref))]
+pub fn retention_nodes(db: &dyn Db, project: Project) -> Vec<Node> {
+    let registry = registry(db, project);
+    let mut out = Vec::new();
+    for entity in crate::data::entity_names(db, project) {
+        let Some(read) =
+            crate::data::entity_read(db, project, crate::lookups::Name::new(db, entity.clone()))
+        else {
+            continue;
+        };
+        let born = registry.born(Kind::Entity, entity, None);
+        let entity_key = registry.key(Kind::Entity, entity, None);
+        let mut kept: Vec<(
+            String,
+            Key,
+            &crate::data::retention::RetentionModel,
+            &jadpo_diag::Span,
+            bool,
+        )> = Vec::new();
+        if let (Some(retention), Some(span)) = (&read.model.retention, &read.spans.retention) {
+            kept.push((born.clone(), entity_key.clone(), retention, span, false));
+        }
+        for (field, span) in &read.spans.field_retentions {
+            let Some(found) = read.model.fields.iter().find(|f| f.name == *field) else {
+                continue;
+            };
+            let Some(retention) = &found.retention else {
+                continue;
+            };
+            let field_key = entity_field_key(registry, entity, std::slice::from_ref(field));
+            let field_born = field_key
+                .name()
+                .rsplit('.')
+                .next()
+                .unwrap_or(field)
+                .to_string();
+            kept.push((
+                format!("{born}.{field_born}"),
+                field_key,
+                retention,
+                span,
+                true,
+            ));
+        }
+        let Some(file) = crate::lookups::file_at(
+            db,
+            project,
+            crate::lookups::Name::new(db, read.model.path.clone()),
+        ) else {
+            continue;
+        };
+        let lines = LineIndex::new(file.text(db));
+        let domain = file_part(db, project, file)
+            .nodes
+            .iter()
+            .find(|found| found.key == entity_key)
+            .and_then(|found| found.domain.clone());
+        for (keyed, parent, retention, span, clears) in kept {
+            let key = Key::new(Kind::Retention, &keyed);
+            let name = match parent.name().split_once('.') {
+                Some((_, field)) if clears => format!("{entity}.{field}"),
+                _ => entity.clone(),
+            };
+            let mut node = Node::new(key.clone(), Kind::Retention, name);
+            let last = span.end.saturating_sub(1).max(span.start);
+            node.place = Some(jadpo_graph::Place {
+                file: span.path.clone(),
+                start: span.start,
+                end: span.end,
+                lines: (lines.line(span.start), lines.line(last)),
+            });
+            node.domain = domain.clone();
+            let shown = retention.shown();
+            node.digest = Some(jadpo_graph::Digest::of([
+                key.as_str(),
+                shown.as_str(),
+                if clears { "clears" } else { "deletes" },
+            ]));
+            node.parent = Some(parent);
+            node.detail = jadpo_graph::Detail::Retention {
+                retention: shown,
+                clears,
+            };
+            out.push(node);
+        }
     }
     out
 }

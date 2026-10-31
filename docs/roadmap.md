@@ -513,15 +513,10 @@ After the registry is live, in order:
      "The person", "What the compiler checks" and "What is built";
      compiler/runtime §2.3, "A person's records";
      `docs/errors/data.personal_unreachable.md`.
-   - [ ] **P2 Retention** `opus · xhigh`: area 15, "Retention"; area 5,
-     "Lifecycle"; area 12, "The purge schedule". `retention: { after:
-     since: }` on a nullable field clears its value, and on an entity
-     deletes the record with what cascades from it, applied by the purge
-     schedule in its batches and run records, the periods from settings.
-     Done when the runtime's tests against PostgreSQL find values and
-     records gone at the first run after their time, interpreted and
-     compiled, and `retention:` on a field or an entity is no longer
-     `toolchain.not_built_yet` (an event's stays refused).
+   - [x] **P2 Retention**: area 15, "Retention", "What is built" and
+     Decisions; area 12, "The purge schedule"; compiler/runtime §2.3,
+     "Retention", and §2.6, "Lifecycles and purge"; the pages of
+     `data.retention_*`.
    - [ ] **P3 Erasure in the main store** `opus · xhigh` after P2: area
      15, "Erasure" ("Deleting the person's records" and "Keeping a
      record without the person"), "Who may erase and export" and "What
@@ -543,7 +538,10 @@ After the registry is live, in order:
      nothing and is left out of queries), records in another store
      erased by a generated subscriber, a `File` field's bytes deleted,
      `PersonErased`, and the erasure log replayed when a backup is
-     restored; OAuth grants and caches join when they are built. To
+     restored; OAuth grants and caches join when they are built. With
+     the bytes and the sign-in state deleted, retention's two
+     `toolchain.not_built_yet` refusals go too: a retention reaching a
+     `File`, and one cascading to someone who signs in. To
      settle with a maintainer first: how a record in another store
      belongs to a person, since no reference crosses stores
      (`data.reference_across_stores`), and which queries "serve the

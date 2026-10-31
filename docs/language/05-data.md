@@ -715,6 +715,12 @@ The details:
   ([The purge schedule](12-jobs-and-events.md#the-purge-schedule)). Each
   run reports how many records each batch deleted, which the schedule
   logs.
+- **Retention beside it.** A `retention:` on the entity, or on one of its
+  fields, deletes records or clears a value once their time is up,
+  whether `visible:` holds or not
+  ([Retention](15-personal-data.md#retention)). The same schedule applies
+  it, and a field a lifecycle owns or reads can't have one, since clearing
+  it would change which records are hidden.
 
 ## Indexes
 <!-- topic: indexes -->

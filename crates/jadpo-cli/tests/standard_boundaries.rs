@@ -660,6 +660,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "reads a lifecycle's retention duration",
     ),
     (
+        "crates/jadpo-check/src/data/retention.rs",
+        "reads that a retention's period is a `Duration` setting",
+    ),
+    (
         "crates/jadpo-check/src/data/queries.rs",
         "reads a constant into the literal a query condition compares",
     ),
