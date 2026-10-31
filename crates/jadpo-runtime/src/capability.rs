@@ -573,6 +573,8 @@ pub struct Faked<H> {
     /// The record a test keeps of what it did (chunk 8.1c), when it keeps
     /// one.
     record: Option<Rc<crate::record::Record>>,
+    /// Whether `host`'s monotonic clock is read through it.
+    clock: bool,
 }
 
 #[cfg(feature = "testing")]
@@ -594,7 +596,18 @@ impl<H: Host> Faked<H> {
             chosen: Vec::new(),
             choose: None,
             record: None,
+            clock: true,
         }
+    }
+
+    /// Hides `host`'s monotonic clock, as a test's host has none: a
+    /// concurrent change reruns an action within the three attempts alone,
+    /// however long a held provider or a waiting lock took (area 6,
+    /// "All-or-nothing actions and concurrent changes"), and nothing runs
+    /// out of time.
+    pub fn without_clock(mut self) -> Faked<H> {
+        self.clock = false;
+        self
     }
 
     /// Keeps each outside call in `record` (chunk 8.1c).
@@ -712,7 +725,11 @@ impl<H: Host> Host for Faked<H> {
     }
 
     fn monotonic_ms(&self) -> Option<u64> {
-        self.host.monotonic_ms()
+        if self.clock {
+            self.host.monotonic_ms()
+        } else {
+            None
+        }
     }
 
     fn now_ms(&self) -> Option<i64> {
