@@ -724,6 +724,8 @@ impl Emitter<'_> {
                 input,
                 idempotency_key,
                 caller,
+                sign_in,
+                strength,
             } => {
                 let Some(index) = self.plan.routes().position_of(route.as_str()) else {
                     let defect = self.defect("a request to a route with no plan", id);
@@ -735,6 +737,8 @@ impl Emitter<'_> {
                     .chain(input)
                     .chain(idempotency_key)
                     .chain(caller)
+                    .chain(sign_in)
+                    .chain(strength)
                     .collect();
                 let values: Vec<TokenStream> = parts.iter().map(|part| self.expr(*part)).collect();
                 let names: Vec<proc_macro2::Ident> = (0..values.len())
@@ -745,8 +749,9 @@ impl Emitter<'_> {
                 }
                 let route = number(u32::try_from(index).unwrap_or(u32::MAX));
                 let (keyed, signed) = (idempotency_key.is_some(), caller.is_some());
+                let (way, strong) = (sign_in.is_some(), strength.is_some());
                 let ran = self.stepped(
-                    quote!(rt::request(cx, p, #route, vec![#(#names),*], #keyed, #signed).await),
+                    quote!(rt::request(cx, p, #route, vec![#(#names),*], [#keyed, #signed, #way, #strong]).await),
                     id,
                     false,
                 );

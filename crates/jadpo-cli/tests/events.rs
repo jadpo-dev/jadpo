@@ -503,6 +503,8 @@ async fn call(
         value: person.clone(),
         key: "user".to_string(),
         session: None,
+        sign_in: None,
+        multi_factor: false,
     }));
     ctx.set_trace(trace);
     let outcome = program.run(&mut ctx, id, args).await;

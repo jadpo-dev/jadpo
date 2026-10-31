@@ -298,6 +298,17 @@ impl Types {
                     field.absent = Some(Constant::None);
                 }
             }
+            // A `TestAccount` leaves out its company and strength (chunk
+            // A10), `none` when it does.
+            if key.name() == jadpo_std::http::TEST_ACCOUNT
+                && let Some(shape) = self.shapes.get_mut(id.0 as usize)
+            {
+                for field in &mut shape.fields {
+                    if jadpo_std::http::TEST_ACCOUNT_OPTIONAL.contains(&&*field.name) {
+                        field.absent = Some(Constant::None);
+                    }
+                }
+            }
             return Some(id);
         }
         let entry = jadpo_std::standard_type(key.name())?;

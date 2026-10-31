@@ -145,7 +145,7 @@ impl Settings {
         host: &dyn crate::Host,
         token: &str,
         now: i64,
-    ) -> Result<String, Failure> {
+    ) -> Result<(String, bool), Failure> {
         if jadpo_value::jwt::preflight_jwt(token).is_err() {
             return Err(INVALID_CREDENTIALS);
         }
@@ -385,29 +385,62 @@ fn verified_subject(
     audience: &str,
     now: i64,
 ) -> Option<String> {
-    check_subject(token, keys, issuer, audience, now).ok()
+    check_subject(token, keys, issuer, audience, now)
+        .ok()
+        .map(|(subject, _)| subject)
 }
 
+/// The subject of `token` once it checks, and whether its `amr` names a
+/// second factor ([`second_factor`]; chunk A10).
 pub(crate) fn check_subject(
     token: &str,
     keys: &[Value],
     issuer: &str,
     audience: &str,
     now: i64,
-) -> Result<String, jadpo_value::Fault> {
+) -> Result<(String, bool), jadpo_value::Fault> {
     let refused = || jadpo_value::Fault::Broke(jadpo_std::RuleKey::Malformed);
     if token.len() > JWT_MAX_LENGTH {
         return Err(refused());
     }
-    let Value::Record(claims) =
-        jadpo_value::jwt::verify_jwt(token, keys, Some(issuer), Some(audience), now)?
+    let (Value::Record(claims), members) =
+        jadpo_value::jwt::verify_jwt_members(token, keys, Some(issuer), Some(audience), now)?
     else {
         return Err(refused());
     };
+    let methods = amr(&members);
     match claims.get("sub") {
-        Some(Value::Text(subject)) if !subject.is_empty() => Ok(subject.to_string()),
+        Some(Value::Text(subject)) if !subject.is_empty() => {
+            Ok((subject.to_string(), second_factor(&methods)))
+        }
         _ => Err(refused()),
     }
+}
+
+/// A token's `amr` claim's texts, when it is a list (RFC 8176).
+pub(crate) fn amr(members: &serde_json::Map<String, serde_json::Value>) -> Vec<&str> {
+    match members.get("amr") {
+        Some(serde_json::Value::Array(items)) => {
+            items.iter().filter_map(serde_json::Value::as_str).collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Whether a token's `amr`, the ways the provider checked the person
+/// (RFC 8176), name more than one factor (area 8, "How strongly a person
+/// signed in"; chunk A10): `mfa`, or something they know (`pwd`, `pin`,
+/// `kba`) with something they hold or are (`hwk`, `swk`, `sc`, `pop`,
+/// `otp`, `sms`, `tel`, `fpt`, `face`, `iris`, `retina`, `vbm`). Anything
+/// else, or none, is one factor.
+pub(crate) fn second_factor(methods: &[&str]) -> bool {
+    const KNOWN: [&str; 3] = ["pwd", "pin", "kba"];
+    const HELD_OR_ARE: [&str; 12] = [
+        "hwk", "swk", "sc", "pop", "otp", "sms", "tel", "fpt", "face", "iris", "retina", "vbm",
+    ];
+    methods.contains(&"mfa")
+        || (methods.iter().any(|m| KNOWN.contains(m))
+            && methods.iter().any(|m| HELD_OR_ARE.contains(m)))
 }
 
 #[cfg(test)]
@@ -583,6 +616,7 @@ mod tests {
     fn run(settings: &Settings, host: &Provider, token: &str) -> Result<String, Failure> {
         crate::block_on(settings.subject(host, token, host.now.get()))
             .expect("provider future completes")
+            .map(|(subject, _)| subject)
     }
 
     #[test]
@@ -849,8 +883,16 @@ mod tests {
         assert_eq!(
             crate::block_on(settings.subject(&local, &local_token, NOW))
                 .expect("completes")
-                .as_deref(),
-            Ok("provisioned-subject")
+                .map(|(subject, multi_factor)| (subject, multi_factor)),
+            Ok(("provisioned-subject".to_string(), false))
+        );
+        // A token whose `amr` names a second factor says so (chunk A10).
+        let strong = issuer
+            .token_with(ISSUER, AUDIENCE, "provisioned-subject", NOW, true)
+            .expect("a token");
+        assert_eq!(
+            crate::block_on(settings.subject(&local, &strong, NOW)).expect("completes"),
+            Ok(("provisioned-subject".to_string(), true))
         );
         assert!(local.provider.calls.borrow().is_empty(), "nothing fetched");
         // The configured issuer's and audience's, and an hour long.

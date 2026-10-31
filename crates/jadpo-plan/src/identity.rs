@@ -201,12 +201,42 @@ impl Planner<'_> {
                 .providers
                 .iter()
                 .enumerate()
-                .map(|(at, provider)| jadpo_std::http::ProviderPlan {
-                    name: provider.name.clone(),
-                    ordinal: u32::try_from(own + at).unwrap_or(u32::MAX),
-                    issuer: provider.issuer.clone(),
-                    client_id: provider.client_id.clone(),
-                    client_secret: provider.secret.clone(),
+                .map(|(at, provider)| {
+                    // A role's requirement naming the provider makes its
+                    // sessions last a day, and one it can meet that needs a
+                    // second factor asks the provider for `amr` (chunk A10).
+                    let requirements: Vec<&jadpo_check::policy::requires::Requirement> = self
+                        .access
+                        .memberships
+                        .iter()
+                        .flat_map(|membership| membership.requires.iter().flatten())
+                        .map(|(_, requirement)| requirement)
+                        .collect();
+                    let names = |requirement: &jadpo_check::policy::requires::Requirement| {
+                        requirement
+                            .sign_in
+                            .as_ref()
+                            .is_some_and(|ways| ways.contains(&provider.name))
+                    };
+                    let named = requirements.iter().any(|requirement| names(requirement));
+                    let asks_amr = requirements.iter().any(|requirement| {
+                        requirement.multi_factor
+                            && (requirement.sign_in.is_none() || names(requirement))
+                    });
+                    jadpo_std::http::ProviderPlan {
+                        name: provider.name.clone(),
+                        ordinal: u32::try_from(own + at).unwrap_or(u32::MAX),
+                        issuer: provider.issuer.clone(),
+                        client_id: provider.client_id.clone(),
+                        client_secret: provider.secret.clone(),
+                        organisation: provider.organisation.clone(),
+                        session_ms: if named {
+                            jadpo_std::http::REQUIRED_PROVIDER_SESSION_MS
+                        } else {
+                            jadpo_std::http::SESSION_LIFETIME_MS
+                        },
+                        asks_amr,
+                    }
                 })
                 .collect(),
             first_sign_in: self.linked_lookup(user, &subject.born)?,

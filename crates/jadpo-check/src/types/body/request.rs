@@ -36,7 +36,16 @@ pub(crate) struct RequestFact {
 }
 
 /// What a `request` block holds.
-const ITEMS: [&str; 6] = ["method", "path", "params", "input", "idempotency_key", "as"];
+const ITEMS: [&str; 8] = [
+    "method",
+    "path",
+    "params",
+    "input",
+    "idempotency_key",
+    "as",
+    "sign_in",
+    "strength",
+];
 
 impl Body<'_> {
     /// The type of `response.<field>`; `None` when `receiver` isn't a
@@ -76,6 +85,9 @@ impl Body<'_> {
         let mut input = None;
         let mut caller: Option<(Expr, jadpo_diag::Span)> = None;
         let mut sent_key: Option<(Expr, jadpo_diag::Span)> = None;
+        // How `as:`'s user signed in (chunk A10): by magic link with one
+        // factor unless these say otherwise.
+        let mut ways: Vec<(&str, Expr, jadpo_diag::Span)> = Vec::new();
         for (key, member) in tree::members(record.member_list()) {
             let Some(item) = tree::name_text(&key) else {
                 continue;
@@ -140,6 +152,16 @@ impl Body<'_> {
                         caller = Some((value, key_span));
                     }
                 }
+                "sign_in" | "strength" => {
+                    if let Some(value) = member.value() {
+                        let word = if item == "sign_in" {
+                            "sign_in"
+                        } else {
+                            "strength"
+                        };
+                        ways.push((word, value, key_span));
+                    }
+                }
                 other => {
                     let near = jadpo_diag::nearest(other, ITEMS.iter().copied());
                     self.out.push(
@@ -149,7 +171,7 @@ impl Body<'_> {
                         )
                         .at(key_span, "unknown item")
                         .reason(format!(
-                            "A request holds `method:`, `path:`, `params:`, `input:`, `idempotency_key:` and `as:`.{}",
+                            "A request holds `method:`, `path:`, `params:`, `input:`, `idempotency_key:`, `as:`, and with `as:` `sign_in:` and `strength:`.{}",
                             near.map_or_else(String::new, |near| format!(
                                 " Did you mean `{near}`?"
                             ))
@@ -277,6 +299,7 @@ impl Body<'_> {
                 self.check(&value, &Ty::Prim(Prim::Text));
             }
         }
+        let mut user_signs_in = false;
         if let Some((value, key_span)) = caller {
             let ty = self.infer(&value);
             match super::identity::caller_kind(&ty) {
@@ -300,6 +323,7 @@ impl Body<'_> {
                         jadpo_std::http::PrincipalKind::User => identity.sessions_store().is_some(),
                         jadpo_std::http::PrincipalKind::Service => identity.keys_store().is_some(),
                     };
+                    user_signs_in = signs_in && kind == jadpo_std::http::PrincipalKind::User;
                     if !signs_in {
                         ok = false;
                         let (methods, declare) = match kind {
@@ -334,6 +358,28 @@ impl Body<'_> {
                             .next("Pass a `Principal.user`, made from the user's record with `Principal.user(user)`"),
                     );
                 }
+            }
+        }
+        // `sign_in:` and `strength:` say how `as:`'s user signed in, so
+        // each needs a user signing in (chunk A10).
+        for (word, value, key_span) in std::mem::take(&mut ways) {
+            let expected = if word == "sign_in" {
+                jadpo_std::SignInMethod::NAME
+            } else {
+                jadpo_std::AuthenticationStrength::NAME
+            };
+            self.check(&value, &Ty::Named(expected.to_string()));
+            if !user_signs_in && ok {
+                ok = false;
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_REQUEST_INVALID,
+                        format!("`{word}:` says how `as:`'s user signed in, and this request signs no user in"),
+                    )
+                    .at(key_span, "no user signs in")
+                    .reason("A request signs in as `as:`'s caller; `sign_in:` and `strength:` say which way in and how strongly a user did, for a role that needs one (area 9). Without them the user signed in by magic link with one factor.")
+                    .next("Give `as: Principal.user(...)`, or remove this line"),
+                );
             }
         }
         if !ok {

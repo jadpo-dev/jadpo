@@ -195,6 +195,97 @@ entity Project {
   a `from_team_id` and a `to_team_id`. Then each grant names the reference
   it means: `TeamRole.lead(from_team_id)` is the lead of the from-team.
 
+### Roles that need a way in
+
+Staff often sign in through their company's provider, such as Google or
+Microsoft, so that switching their account off there ends their access
+everywhere. If they could also sign in by magic link and keep their
+roles, it wouldn't. A membership's `requires:` says, for each role, how
+its holder must have signed in for the role to count:
+
+```jadpo fragment
+// domains/desk/entities/staff_member.jadpo
+entity StaffMember {
+    id: Uuid
+    patron_id: Patron.id {
+        on_delete: OnDelete.cascade
+    }
+    role: StaffRole
+
+    membership: {
+        scope: MembershipScope.application
+        member: patron_id
+        role: role
+        requires: {
+            StaffRole.admin: {
+                sign_in: [SignInMethod.google]
+                strength: AuthenticationStrength.multi_factor
+            }
+            StaffRole.front_desk: {
+                sign_in: [SignInMethod.google]
+            }
+        }
+    }
+}
+```
+
+- `sign_in:` lists the ways in, any of which will do: a provider that
+  `sign_in: { providers: }` names ([Providers](08-identity.md#providers)),
+  or `SignInMethod.external_token`. A magic link or a passkey proves an
+  address or a device, not that the company still vouches for the
+  person, so neither can be listed.
+- `strength: AuthenticationStrength.multi_factor` asks for a second
+  factor: a passkey, or a provider whose ID token says the person used
+  one ([How strongly a person signed in](08-identity.md#how-strongly-a-person-signed-in)).
+- `StaffRole.front_desk: {}` needs nothing. Once one role has a line,
+  every value of the enum has one, so a role added later is decided
+  rather than open by default.
+
+A role counts on a request only when the caller's current session meets
+every line of its block. Otherwise the person is just themselves,
+without that role: Ann, signed in by link, is a customer like any other.
+Nothing is refused when she signs in. The requirement applies wherever
+the role is named: grants, a field's own `policy:`, lines under
+`actions:`, listed queries and what the proofs count on. You write it
+once.
+
+A membership whose role doesn't count doesn't make its holder a member
+of its tenant for that request either, so tenancy fails closed
+([Tenancy](#tenancy)).
+
+A session started through a provider that any role's requirement names
+lasts a day, not 30 days, so a person the company switches off loses the
+role within a day ([How a session started](08-identity.md#how-a-session-started)).
+
+The permissions report lists each role's requirement, and
+`access.jadpo_record` records it. Any change to a role's requirement,
+tighter or looser, and adding or removing a role's line, needs a person's
+acceptance, `PolicyChange.role_requirements_changed`
+([Acceptances](18-records-and-manifest.md#acceptances)).
+
+What the compiler checks:
+
+- A role or a way in the enum doesn't have is
+  [`type.unknown_enum_variant`](../errors/type.unknown_enum_variant.md).
+- A role left out once another has a line is
+  [`policy.requirements_incomplete`](../errors/policy.requirements_incomplete.md).
+- Anything else a role's line can't hold, an empty `sign_in:`,
+  `strength: AuthenticationStrength.primary`, a way Jadpo's own sign-in
+  gives, or a role given twice is
+  [`policy.requirement_invalid`](../errors/policy.requirement_invalid.md).
+- A line no way the app declares could ever meet, such as
+  `SignInMethod.external_token` without `external_token:`, is
+  [`policy.requirement_unsatisfiable`](../errors/policy.requirement_unsatisfiable.md).
+- A route whose API can't carry the sign-in that every role letting
+  anyone in needs is [`policy.effect_ungranted`](../errors/policy.effect_ungranted.md),
+  which names the requirement. A provider's sign-in comes as a browser
+  session and `external_token`'s as its token; an API token or a service
+  key carries neither.
+
+A route test says how its user signed in with `sign_in:` and `strength:`
+beside `as:`; without them, `as:` is someone who signed in by magic link
+with one factor ([Signing in for a route test](13-testing.md#signing-in-for-a-route-test)).
+
 ## Anyone signed in, or anyone
 <!-- topic: anyone-signed-in-or-anyone -->
 
@@ -2610,7 +2701,7 @@ Everything on this page is built except the features below. Each is
 
 | Feature | Status |
 |---|---|
-| Grants, user fields, membership roles, `Access.authenticated`, `Access.public` and `Access.system`, tenancy, `actions:` with listed queries and `policy.call_ungranted`, field restrictions, the permissions report, and the refusals under "When policy says no" | Built. |
+| Grants, user fields, membership roles, roles that need a way in (`requires:`), `Access.authenticated`, `Access.public` and `Access.system`, tenancy, `actions:` with listed queries and `policy.call_ungranted`, field restrictions, the permissions report, and the refusals under "When policy says no" | Built. |
 | `scopes:`, with the tokens issued to other applications (`oauth_token`, `external_token`) | Not built yet. Browser sessions and service keys work without them. |
 | An acceptance for a change that widens access, with `access.jadpo_record` ([Acceptances](18-records-and-manifest.md#acceptances)) | Built. |
 | The approval review that shows the report's changes in plain terms ([Review and sign-off](14-tooling.md#review-and-sign-off)) | Not built yet. Review policy changes in the diff of `access.jadpo_record` instead. |
@@ -2630,6 +2721,9 @@ beside the entities they name; a project keeps them in `app.jadpo` and
 - [`policy.membership_member_required`](../errors/policy.membership_member_required.md)
 - [`policy.membership_role_required`](../errors/policy.membership_role_required.md)
 - [`policy.membership_duplicate`](../errors/policy.membership_duplicate.md)
+- [`policy.requirement_invalid`](../errors/policy.requirement_invalid.md)
+- [`policy.requirements_incomplete`](../errors/policy.requirements_incomplete.md)
+- [`policy.requirement_unsatisfiable`](../errors/policy.requirement_unsatisfiable.md)
 ### Scope
 
 - [`policy.scope_missing`](../errors/policy.scope_missing.md)

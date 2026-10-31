@@ -371,6 +371,11 @@ pub enum Expr {
         idempotency_key: Option<SiteId>,
         /// `as:`: the caller it signs in as (area 8).
         caller: Option<SiteId>,
+        /// `sign_in:` and `strength:`: how `as:`'s user signed in, a
+        /// `SignInMethod` and an `AuthenticationStrength` (area 13; chunk
+        /// A10); by magic link with one factor when left out.
+        sign_in: Option<SiteId>,
+        strength: Option<SiteId>,
     },
     /// `item -> expression`, or `(key, value) -> expression`, given to a
     /// standard operation: its parameters in order.

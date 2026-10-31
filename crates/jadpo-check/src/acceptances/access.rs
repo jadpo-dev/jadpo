@@ -149,6 +149,15 @@ fn entries(db: &dyn Db, project: Project) -> Vec<Entry> {
             out.push(entry);
         }
     }
+    // How each role must be signed in to (chunk A10): any change to one,
+    // or a role's line added or removed, needs a person.
+    for (role, requirement) in crate::policy::report::role_requirements(&lookup, access) {
+        let mut entry = Entry::new(format!("role {role}"));
+        for line in requirement.lines() {
+            entry.push(line);
+        }
+        out.push(entry);
+    }
     let mut declined: Vec<String> = security_declines(db, project)
         .into_iter()
         .map(|(rule, subject)| format!("decline {rule} {subject}"))

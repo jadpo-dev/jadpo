@@ -32,10 +32,17 @@ pub fn call_as(ctx: &mut Ctx<'_>, caller: Option<&Value>) {
             Some(Value::Uuid(id)) => id.to_string(),
             _ => String::new(),
         };
+        // A call with a caller runs as one signed in by magic link with
+        // one factor, as `as:` does unless it says otherwise, so a role
+        // that needs another way in doesn't count (area 9, "Roles that
+        // need a way in"; chunk A10).
         Some(Caller {
             value: value.clone(),
             key: format!("{} {id}", kind.name()),
             session: None,
+            sign_in: (kind == PrincipalKind::User)
+                .then(|| jadpo_std::SignInMethod::MagicLink.name().to_string()),
+            multi_factor: false,
         })
     });
     match caller {

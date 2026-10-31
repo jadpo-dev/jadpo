@@ -1467,10 +1467,14 @@ fn start_config(
         .and_then(|identity| identity.providers.as_ref());
     for provider in providers.iter().flat_map(|providers| &providers.providers) {
         for name in [
-            &provider.issuer,
-            &provider.client_id,
-            &provider.client_secret,
-        ] {
+            Some(&provider.issuer),
+            Some(&provider.client_id),
+            Some(&provider.client_secret),
+            provider.organisation.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
             let Some(field) = plan.fields.iter().find(|field| field.name == *name) else {
                 continue;
             };

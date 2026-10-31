@@ -424,12 +424,16 @@ fn children(expr: &Expr) -> Vec<SiteId> {
             input,
             idempotency_key,
             caller,
+            sign_in,
+            strength,
             ..
         } => {
             out.extend(params.iter().copied());
             out.extend(*input);
             out.extend(*idempotency_key);
             out.extend(*caller);
+            out.extend(*sign_in);
+            out.extend(*strength);
         }
         Expr::Inline { .. }
         | Expr::Literal(_)

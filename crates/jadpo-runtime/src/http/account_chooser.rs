@@ -32,6 +32,9 @@ pub struct Registration {
     pub provider: String,
     pub client_id: String,
     pub redirect_uri: String,
+    /// The company its `organisation:` names (chunk A10): every account
+    /// the page signs in belongs to it.
+    pub organisation: Option<String>,
 }
 
 /// The app's sign-in providers whose settings hold, as it started.
@@ -55,6 +58,7 @@ pub fn registrations(
                 provider: provider.name.clone(),
                 client_id: settings.keys.audience().to_string(),
                 redirect_uri: format!("{origin}/auth/{}/callback", provider.name),
+                organisation: settings.organisation.clone(),
             })
         })
         .collect()
@@ -213,11 +217,20 @@ impl Chooser<'_> {
                 email: (!draft.email.is_empty()).then(|| draft.email.clone()),
                 email_verified: draft.email_verified,
                 name: (!draft.name.is_empty()).then(|| draft.name.clone()),
+                ..Default::default()
             };
             self.accounts.keep(provider, &account);
             account
         };
         let registration = ask.registration;
+        // The page stands in for the company's own sign-in: each account
+        // is one of the company's, and signs in with its second factor
+        // (area 8, "In `jadpo dev`"; chunk A10).
+        let account = Account {
+            organisation: registration.organisation.clone(),
+            multi_factor: true,
+            ..account
+        };
         let code = self.issuer.authorize(
             account,
             &registration.client_id,
@@ -731,6 +744,7 @@ mod tests {
             provider: "google".into(),
             client_id: CLIENT.into(),
             redirect_uri: CALLBACK.into(),
+            organisation: None,
         }]
     }
 
@@ -740,6 +754,7 @@ mod tests {
             email: Some("ann@desk.example".into()),
             email_verified: true,
             name: Some("Ann Example".into()),
+            ..Default::default()
         }
     }
 
@@ -936,6 +951,7 @@ mod tests {
             email: Some("bo@desk.example".into()),
             email_verified: false,
             name: None,
+            ..Default::default()
         };
         kept.keep("google", &bo);
         kept.keep(
@@ -945,6 +961,7 @@ mod tests {
                 email: None,
                 email_verified: false,
                 name: None,
+                ..Default::default()
             },
         );
         let html = text(&answer(&issuer, &kept, &get(&asked(&[]))));

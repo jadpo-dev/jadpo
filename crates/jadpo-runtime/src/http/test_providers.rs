@@ -156,6 +156,12 @@ fn account(value: &Value) -> Option<Account> {
         email: text("email"),
         email_verified: matches!(record.get("email_verified"), Some(Value::Bool(true))),
         name: text("name"),
+        organisation: text("organisation"),
+        multi_factor: matches!(
+            record.get("strength"),
+            Some(Value::Variant(variant))
+                if &*variant.name == jadpo_std::AuthenticationStrength::MultiFactor.name()
+        ),
     })
 }
 

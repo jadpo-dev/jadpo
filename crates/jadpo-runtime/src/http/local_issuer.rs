@@ -30,12 +30,18 @@ const CODE_MS: i64 = 60_000;
 
 /// What a provider says about the person it signs in: what a route
 /// test's `TestAccount` holds.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Account {
     pub subject: String,
     pub email: Option<String>,
     pub email_verified: bool,
     pub name: Option<String>,
+    /// The company the account belongs to, which its ID token names as
+    /// Google's `hd` and Microsoft's `tid` (chunk A10).
+    pub organisation: Option<String>,
+    /// Whether the person signed in with a second factor, which its ID
+    /// token's `amr` says.
+    pub multi_factor: bool,
 }
 
 /// What a code the local issuer gave was given for.
@@ -168,16 +174,32 @@ impl LocalIssuer {
     /// A token for `subject` from `issuer` to `audience`, issued at `now`
     /// (milliseconds) and signing in for [`LOCAL_TOKEN_SECONDS`].
     pub fn token(&self, issuer: &str, audience: &str, subject: &str, now: i64) -> Option<String> {
+        self.token_with(issuer, audience, subject, now, false)
+    }
+
+    /// [`LocalIssuer::token`], its `amr` naming a second factor when
+    /// `multi_factor` (chunk A10).
+    pub fn token_with(
+        &self,
+        issuer: &str,
+        audience: &str,
+        subject: &str,
+        now: i64,
+        multi_factor: bool,
+    ) -> Option<String> {
         use jadpo_value::encoding::to_base64url;
         let issued = now.div_euclid(1000);
         let header = serde_json::json!({"alg": "EdDSA", "kid": LOCAL_KEY_ID, "typ": "JWT"});
-        let claims = serde_json::json!({
+        let mut claims = serde_json::json!({
             "iss": issuer,
             "aud": audience,
             "sub": subject,
             "iat": issued,
             "exp": issued.saturating_add(LOCAL_TOKEN_SECONDS),
         });
+        if multi_factor && let Some(object) = claims.as_object_mut() {
+            object.insert("amr".into(), serde_json::json!(["pwd", "mfa"]));
+        }
         let body = format!(
             "{}.{}",
             to_base64url(header.to_string().as_bytes()),
@@ -266,6 +288,16 @@ impl LocalIssuer {
             if let Some(name) = &grant.account.name {
                 object.insert("name".into(), name.clone().into());
             }
+            if let Some(organisation) = &grant.account.organisation {
+                object.insert("hd".into(), organisation.clone().into());
+                object.insert("tid".into(), organisation.clone().into());
+            }
+            let amr: &[&str] = if grant.account.multi_factor {
+                &["pwd", "mfa"]
+            } else {
+                &["pwd"]
+            };
+            object.insert("amr".into(), amr.into());
         }
         let header = serde_json::json!({"alg": "EdDSA", "kid": LOCAL_KEY_ID, "typ": "JWT"});
         let body = format!(

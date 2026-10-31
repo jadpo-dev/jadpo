@@ -86,8 +86,65 @@ pub(crate) const AUTHENTICATION_MISCONFIGURED: (u16, &str, &str) = (
     "Signing in isn't configured correctly.",
 );
 
-/// Keeps a new session, or with a `NULL` CSRF verifier an API token.
-pub(crate) const START: &str = "INSERT INTO \"jadpo_sessions\" (\"id\", \"principal_id\", \"verifier\", \"csrf_verifier\", \"started_at\", \"ends_at\") VALUES ($1, $2, $3, $4, $5, $6)";
+/// Keeps a new session, or with a `NULL` CSRF verifier an API token,
+/// with the `SignInMethod` it was started through by name, `$7`, and
+/// `$8` `multi_factor` when that proved a second factor; both `NULL` for
+/// one `sessions.start` or `sessions.issue_token` started (chunk A10).
+pub(crate) const START: &str = "INSERT INTO \"jadpo_sessions\" (\"id\", \"principal_id\", \"verifier\", \"csrf_verifier\", \"started_at\", \"ends_at\", \"sign_in_method\", \"strength\") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)";
+
+/// How a session or token was started (area 8, "How a session started";
+/// chunk A10): the `SignInMethod` by name and whether it proved a second
+/// factor, as `jadpo_sessions` keeps them.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SignedInBy {
+    pub method: Option<String>,
+    pub multi_factor: bool,
+}
+
+impl SignedInBy {
+    /// Signed in through `method`, with a second factor when
+    /// `multi_factor`.
+    pub fn through(method: &str, multi_factor: bool) -> SignedInBy {
+        SignedInBy {
+            method: Some(method.to_string()),
+            multi_factor,
+        }
+    }
+
+    /// `$7` and `$8` of [`START`].
+    pub(crate) fn params(&self) -> [SqlValue; 2] {
+        [
+            match &self.method {
+                Some(method) => SqlValue::Text(method.clone()),
+                None => SqlValue::Null(SqlType::Text),
+            },
+            if self.multi_factor {
+                SqlValue::Text(
+                    jadpo_std::AuthenticationStrength::MultiFactor
+                        .name()
+                        .to_string(),
+                )
+            } else {
+                SqlValue::Null(SqlType::Text)
+            },
+        ]
+    }
+
+    /// As a session's row holds them.
+    fn of_row(method: Option<&SqlValue>, strength: Option<&SqlValue>) -> SignedInBy {
+        SignedInBy {
+            method: match method {
+                Some(SqlValue::Text(method)) => Some(method.clone()),
+                _ => None,
+            },
+            multi_factor: matches!(
+                strength,
+                Some(SqlValue::Text(strength))
+                    if strength == jadpo_std::AuthenticationStrength::MultiFactor.name()
+            ),
+        }
+    }
+}
 
 /// Ends one.
 pub(crate) const END: &str = "DELETE FROM \"jadpo_sessions\" WHERE \"id\" = $1";
@@ -351,7 +408,15 @@ pub(crate) async fn authenticate(
         if !*active {
             return Err(Refused::new(SERVICE_DISABLED));
         }
-        let caller = caller_of(route, service, PrincipalKind::Service, id, subject, None)?;
+        let caller = caller_of(
+            route,
+            service,
+            PrincipalKind::Service,
+            id,
+            subject,
+            None,
+            SignedInBy::default(),
+        )?;
         let mut admitted = Admitted::new(caller);
         // The exchange signs what the key's read found (area 8, "Ways to
         // sign in").
@@ -372,6 +437,7 @@ pub(crate) async fn authenticate(
                 subject: subject.clone(),
                 expires,
                 csrf: None,
+                by: SignedInBy::default(),
             };
             let Some(payload) = claims.to_json() else {
                 return Err(Refused::new(AUTHENTICATION_MISCONFIGURED));
@@ -391,10 +457,13 @@ pub(crate) async fn authenticate(
             .auth()
             .external()
             .ok_or_else(|| Refused::new(AUTHENTICATION_MISCONFIGURED))?;
-        let subject = settings
+        let (subject, multi_factor) = settings
             .subject(ctx.host(), credential, ctx.now())
             .await
             .map_err(Refused::new)?;
+        // A provider's token signs in through `external_token` each time
+        // (chunk A10).
+        let by = SignedInBy::through(jadpo_std::SignInMethod::ExternalToken.name(), multi_factor);
         let user = identity
             .user
             .as_ref()
@@ -451,7 +520,7 @@ pub(crate) async fn authenticate(
             if !active {
                 return Err(Refused::new(USER_DISABLED));
             }
-            let caller = caller_of(route, user, PrincipalKind::User, id, subject, None)?;
+            let caller = caller_of(route, user, PrincipalKind::User, id, subject, None, by)?;
             return Ok(Admitted::new(caller));
         }
         let subject = typed.ok_or_else(|| Refused::new(INVALID_CREDENTIALS))?;
@@ -474,7 +543,7 @@ pub(crate) async fn authenticate(
         if !active {
             return Err(Refused::new(USER_DISABLED));
         }
-        let caller = caller_of(route, user, PrincipalKind::User, id, &subject, None)?;
+        let caller = caller_of(route, user, PrincipalKind::User, id, &subject, None, by)?;
         return Ok(Admitted::new(caller));
     }
     Err(Refused::new(INVALID_CREDENTIALS))
@@ -573,6 +642,7 @@ async fn user_credential(
             &SqlValue::Uuid(claims.principal),
             &claims.subject,
             claims.row,
+            claims.by.clone(),
         )?;
         return Ok(Admitted {
             browser: cookie,
@@ -590,11 +660,14 @@ async fn user_credential(
             subject,
             SqlValue::Bool(active),
             SqlValue::Timestamp(ends),
+            way,
+            strength,
         ],
     ) = row.as_deref()
     else {
         return Err(invalid);
     };
+    let by = SignedInBy::of_row(Some(way), Some(strength));
     let csrf = match (cookie, csrf) {
         (true, SqlValue::Text(csrf)) => Some(csrf.clone()),
         (false, SqlValue::Null(_)) => None,
@@ -613,6 +686,7 @@ async fn user_credential(
         id,
         subject,
         Some(*session),
+        by.clone(),
     )?;
     let mut admitted = Admitted {
         browser: cookie,
@@ -631,6 +705,7 @@ async fn user_credential(
             subject: subject.clone(),
             expires: now.saturating_add(delay).min(ends_ms),
             csrf,
+            by,
         };
         if let Some(payload) = claims.to_json() {
             let signed = key.sign(&payload);
@@ -673,6 +748,7 @@ async fn exchanged(
             &SqlValue::Uuid(claims.principal),
             &claims.subject,
             None,
+            SignedInBy::default(),
         )?;
         return Ok(Admitted::new(caller));
     }
@@ -690,6 +766,7 @@ async fn exchanged(
         id,
         subject,
         None,
+        SignedInBy::default(),
     )?;
     Ok(Admitted::new(caller))
 }
@@ -721,7 +798,8 @@ async fn look_up(
     Ok(rows.into_iter().next())
 }
 
-/// The caller a credential signed in, once the route accepts its kind.
+/// The caller a credential signed in, once the route accepts its kind,
+/// signed in as `by` says.
 fn caller_of(
     route: &RoutePlan,
     plan: &PrincipalPlan,
@@ -729,6 +807,7 @@ fn caller_of(
     id: &SqlValue,
     subject: &SqlValue,
     session: Option<[u8; 16]>,
+    by: SignedInBy,
 ) -> Result<Caller, Refused> {
     if route.caller.is_some_and(|wanted| wanted != kind) {
         return Err(Refused::new(NOT_PERMITTED));
@@ -739,8 +818,10 @@ fn caller_of(
         .map_err(|_| Refused::new(AUTHENTICATION_UNAVAILABLE))?;
     Ok(Caller {
         key: format!("{} {id}", kind.name()),
-        value: principal(kind, id, subject),
+        value: principal_of(kind, id, subject, by.multi_factor),
         session,
+        sign_in: by.method,
+        multi_factor: by.multi_factor,
     })
 }
 
@@ -752,8 +833,19 @@ fn bearer(header: &str) -> Option<&str> {
     (scheme.eq_ignore_ascii_case("bearer") && !value.is_empty()).then_some(value)
 }
 
-/// The caller value code receives (area 8, question 2).
+/// The caller value code receives (area 8, question 2), with one factor.
 pub fn principal(kind: PrincipalKind, id: Value, subject: Value) -> Value {
+    principal_of(kind, id, subject, false)
+}
+
+/// The caller value code receives, its `strength` `multi_factor` when its
+/// sign-in proved a second factor (chunk A10).
+pub fn principal_of(kind: PrincipalKind, id: Value, subject: Value, multi_factor: bool) -> Value {
+    let strength = if multi_factor {
+        jadpo_std::AuthenticationStrength::MultiFactor
+    } else {
+        jadpo_std::AuthenticationStrength::Primary
+    };
     Value::record(
         kind.type_name(),
         vec![
@@ -763,8 +855,8 @@ pub fn principal(kind: PrincipalKind, id: Value, subject: Value) -> Value {
                 "strength".into(),
                 Value::variant(
                     jadpo_std::AuthenticationStrength::NAME,
-                    0,
-                    jadpo_std::AuthenticationStrength::Primary.name(),
+                    strength as u32,
+                    strength.name(),
                     Vec::new(),
                 ),
             ),
@@ -828,7 +920,7 @@ fn is_token(text: &str) -> bool {
 }
 
 /// What is kept of a token: its BLAKE3 digest, in hexadecimal.
-pub(crate) fn verifier(token: &str) -> String {
+pub fn verifier(token: &str) -> String {
     blake3::hash(token.as_bytes()).to_hex().to_string()
 }
 
@@ -885,6 +977,10 @@ pub async fn start(
         SqlValue::Text(verifier(&csrf)),
         SqlValue::Timestamp(now.saturating_mul(1000)),
         SqlValue::Timestamp(now.saturating_add(SESSION_LIFETIME_MS).saturating_mul(1000)),
+        // Started by the app's own code, through no way Jadpo checked, so
+        // no role that needs one counts for it (chunk A10).
+        SqlValue::Null(SqlType::Text),
+        SqlValue::Null(SqlType::Text),
     ];
     let store = plan.store.clone();
     let written = match ctx.transaction(&store).await {
@@ -950,6 +1046,8 @@ pub async fn issue_token(
         SqlValue::Null(SqlType::Text),
         SqlValue::Timestamp(now.saturating_mul(1000)),
         SqlValue::Timestamp(now.saturating_add(SESSION_LIFETIME_MS).saturating_mul(1000)),
+        SqlValue::Null(SqlType::Text),
+        SqlValue::Null(SqlType::Text),
     ];
     let store = plan.store.clone();
     if let Err(error) = execute(ctx, &store, START, &params).await {
@@ -1231,10 +1329,20 @@ fn stopped(ctx: &mut Ctx<'_>, error: StoreError, site: u32) -> Stored {
 /// session's token, which scripts can't read, and its CSRF token, which
 /// the application's own pages read to send back in `X-Jadpo-CSRF`.
 pub(crate) fn set_cookies(plan: &IdentityPlan, effect: &SessionEffect) -> Vec<(String, String)> {
+    set_cookies_for(plan, effect, SESSION_LIFETIME_MS)
+}
+
+/// [`set_cookies`] for a session lasting `lifetime_ms`: a provider's
+/// that a role's requirement names lasts a day (chunk A10).
+pub(crate) fn set_cookies_for(
+    plan: &IdentityPlan,
+    effect: &SessionEffect,
+    lifetime_ms: i64,
+) -> Vec<(String, String)> {
     let (Some(cookie), Some(csrf_cookie)) = (plan.cookie.as_deref(), plan.csrf_cookie()) else {
         return Vec::new();
     };
-    let lifetime = SESSION_LIFETIME_MS / 1000;
+    let lifetime = lifetime_ms / 1000;
     let (token, csrf, age) = match effect {
         SessionEffect::Start { token, csrf } => (token.as_str(), csrf.as_str(), lifetime),
         SessionEffect::End => ("", "", 0),
@@ -1295,12 +1403,18 @@ pub(crate) fn refusal(table: &RouteTable, refused: &Refused, request_id: &str) -
 /// `Service.issue_key` issues one. Each is sent as a client first sends
 /// it, without a signed part, so its first request reads the record as a
 /// sign-in's does.
+///
+/// A user's session or token is kept as signed in through `by`'s way in
+/// and strength (area 13, `sign_in:` and `strength:`; chunk A10): by
+/// magic link with one factor unless the request says otherwise, lasting
+/// as one started that way does.
 pub async fn test_credentials(
     ctx: &mut Ctx<'_>,
     app: &super::App<'_>,
     settings: &AuthSettings,
     route: u32,
     caller: &Value,
+    by: &SignedInBy,
 ) -> Result<Vec<(String, String)>, Box<Fault>> {
     let table = app.table;
     let site = 0;
@@ -1352,8 +1466,20 @@ pub async fn test_credentials(
         && accepts(AuthenticationMethod::ExternalToken)
         && let Some(external) = &plan.external_token
     {
-        return external_test_token(ctx, app, settings, external, caller);
+        return external_test_token(ctx, app, settings, external, caller, by.multi_factor);
     }
+    // A provider's session lasts as the provider's own sign-in makes it.
+    let lifetime = plan
+        .providers
+        .as_ref()
+        .and_then(|providers| {
+            providers
+                .providers
+                .iter()
+                .find(|provider| Some(&provider.name) == by.method.as_ref())
+        })
+        .map_or(SESSION_LIFETIME_MS, |provider| provider.session_ms);
+    let [method, strength] = by.params();
     let session = plan.cookie.clone().zip(plan.csrf_cookie()).filter(|_| {
         kind == PrincipalKind::User
             && (accepts(AuthenticationMethod::BrowserSession) || !plan.api_tokens)
@@ -1368,7 +1494,9 @@ pub async fn test_credentials(
                 SqlValue::Text(verifier(&token)),
                 SqlValue::Text(verifier(&csrf)),
                 started,
-                ends(SESSION_LIFETIME_MS),
+                ends(lifetime),
+                method,
+                strength,
             ],
             vec![
                 (
@@ -1396,7 +1524,9 @@ pub async fn test_credentials(
                     SqlValue::Text(verifier(&token)),
                     SqlValue::Null(SqlType::Text),
                     started,
-                    ends(SESSION_LIFETIME_MS),
+                    ends(lifetime),
+                    method,
+                    strength,
                 ],
                 vec![("authorization".to_string(), format!("Bearer {token}"))],
             )
@@ -1449,6 +1579,7 @@ fn external_test_token(
     settings: &AuthSettings,
     external: &jadpo_std::http::ExternalTokenPlan,
     caller: &Value,
+    multi_factor: bool,
 ) -> Result<Vec<(String, String)>, Box<Fault>> {
     let site = 0;
     let Some(configured) = settings.external() else {
@@ -1471,13 +1602,19 @@ fn external_test_token(
     let token = {
         let now = ctx.now();
         ctx.host().local_issuer().and_then(|issuer| {
-            issuer.token(configured.issuer(), configured.audience(), &subject, now)
+            issuer.token_with(
+                configured.issuer(),
+                configured.audience(),
+                &subject,
+                now,
+                multi_factor,
+            )
         })
     };
     // A deployable holds no local issuer, so signs no test in this way.
     #[cfg(not(feature = "testing"))]
     let token: Option<String> = {
-        let _ = (configured, &subject);
+        let _ = (configured, &subject, multi_factor);
         None
     };
     let Some(token) = token else {

@@ -56,6 +56,14 @@ pub(crate) fn sign_in_object_fields(
             ("email", Ty::Prim(Prim::Email).nullable()),
             ("email_verified", Ty::Prim(Prim::Bool)),
             ("name", Ty::Prim(Prim::Text).nullable()),
+            // The company the account belongs to, which the provider's ID
+            // token names (Google's `hd`, Microsoft's `tid`), and how
+            // strongly the person signed in, its `amr` (chunk A10).
+            ("organisation", Ty::Prim(Prim::Text).nullable()),
+            (
+                "strength",
+                Ty::Named(jadpo_std::AuthenticationStrength::NAME.to_string()).nullable(),
+            ),
         ]),
         jadpo_std::http::FIRST_SIGN_IN => Some(vec![
             ("method", method()),

@@ -4,7 +4,8 @@ use desk/entities { Patron }
 // the reminders go through. Google is plain OpenID Connect, so
 // `Driver.oidc` and its issuer's discovery document give the rest; its
 // client ID and secret are settings, the secret given only to the
-// connection.
+// connection. `organisation:` keeps it to the desk's own Google
+// Workspace accounts, by the domain Google names each one with.
 application {
     display_name: "The lending desk"
     connections: {
@@ -13,6 +14,7 @@ application {
             issuer: config.google_issuer
             client_id: config.google_client_id
             credential: config.google_client_secret
+            organisation: config.google_domain
         }
         mail: {
             driver: Driver.smtp

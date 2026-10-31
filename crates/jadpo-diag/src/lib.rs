@@ -670,6 +670,12 @@ rules! {
         "Output carries a value not every caller may read";
     POLICY_PUBLIC_GRANT_MISSING: "policy.public_grant_missing", area 9, Error, Human,
         "Route anyone may call reaches what not everyone may do";
+    POLICY_REQUIREMENT_INVALID: "policy.requirement_invalid", area 9, Error, Agent,
+        "A role's requirement says something a requirement can't";
+    POLICY_REQUIREMENT_UNSATISFIABLE: "policy.requirement_unsatisfiable", area 9, Error, Human,
+        "No way the app signs people in can meet a role's requirement";
+    POLICY_REQUIREMENTS_INCOMPLETE: "policy.requirements_incomplete", area 9, Error, Human,
+        "A membership's `requires:` leaves out one of its roles";
     POLICY_ROLE_FIELD_CREATE_FORBIDDEN: "policy.role_field_create_forbidden", area 9, Error, Agent,
         "Create sets the user field its grant needs from the request, not the caller";
     POLICY_ROLE_UNBOUND: "policy.role_unbound", area 9, Error, Agent,

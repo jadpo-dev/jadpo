@@ -449,6 +449,8 @@ fn caller(part: jadpo_std::policy::CallerPart) -> String {
         CallerPart::SystemTenant => {
             "the tenant a subscriber's event or a batch's saved id names, or none"
         }
+        CallerPart::SignInMethod => "the way the caller's session was started, or none",
+        CallerPart::MultiFactor => "whether the caller's session proved a second factor",
     }
     .to_string()
 }
