@@ -404,12 +404,11 @@ passkeys; policy; jobs and events; email; rate limits; provider calls;
 `ai.embed` and `Vector` fields; `hash.sha256`. It also waits for 8.2n (a
 real deploy) and, before outside authors can publish, D3 (releases).
 
-- [ ] **R1 Confirming an action with a passkey** `opus · xhigh` **needs a
-  maintainer** before it starts: the pages don't yet say how a route
-  requires a passkey for one request (asked 2026-10-31). Area 8. Done
-  when a route can't run until the signed-in person presents one of their
-  own passkeys for that request, and a route test does it with
-  `test_passkeys`.
+- [ ] **R1 Confirming a request with a passkey** `opus · xhigh`: area 8,
+  "Confirm one request with a passkey" (Richard, 2026-10-31). Done when a
+  route can't run until the signed-in person presents one of their own
+  passkeys for that request, and a route test does it with
+  `test_passkeys.confirm`.
 - [ ] **R2 Where personal data goes** `opus · xhigh`: area 15's marking
   checked on entities, events and package types, and the personal-data
   report's list of every connection and host a marked field reaches,
@@ -437,8 +436,8 @@ real deploy) and, before outside authors can publish, D3 (releases).
 - [ ] **R6 The verifier** `opus · high` after R3: area 11, "The verifier".
   `jadpo package verify --serve`, fetching over git and then verifying with
   no network, and its container image published with each release (D3).
-  **Needs a maintainer** to choose the container host before it is
-  deployed.
+  It runs on Fly.io, reached over HTTPS (Richard, 2026-10-31); **needs a
+  maintainer** for the Fly.io account before it is deployed.
 - [ ] **R7 The registry application** **needs a maintainer** to start the
   jadpo.dev session, after R1, R4 and R6: built against the protocol and
   passing R4's conformance test. Until the S3 driver its archives are kept

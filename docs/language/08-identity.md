@@ -2616,6 +2616,37 @@ that lookup, so a disabled user may keep working until then (see
 [The application and revocation](#the-application-and-revocation)). A
 `fresh` route always does the lookup, whatever the delay.
 
+### Confirm one request with a passkey: `confirm: Confirmation.passkey`
+
+Use it where a stolen session or token must not be enough, such as
+releasing a package, moving money or deleting an account. The signed-in
+person approves this one request with one of their own passkeys.
+
+```text
+POST /releases/{release_id}/confirm {
+    authentication: RouteAuthentication.session
+    confirm: Confirmation.passkey
+    run: confirm_release(release_id, current_principal.user)
+}
+```
+
+- **The challenge is bound to the request.** The client first asks the
+  route's generated `…/confirmation` for a challenge; the runtime binds it
+  to the signed-in person, the route and a digest of the request's
+  input. The browser has the person present a passkey, and the request
+  carries the answer.
+- **It is checked before anything runs**: the passkey must be one the
+  signed-in person registered, the answer must show the person was
+  verified (a fingerprint, a face or a PIN), and the challenge must be
+  unused, under two minutes old and match this request's input. Anything
+  else is refused with 403 `confirmation_required`, and nothing runs.
+- **Each challenge works once**, so an answer can't be replayed, and one
+  made for one request can't approve another.
+- **It needs `passkey:`** in `sign_in:`, and a route that needs it says so
+  in its API's record and OpenAPI.
+- **In route tests**, `test_passkeys.confirm(passkey)` answers the next
+  confirmation with that test passkey.
+
 ### Any other value
 
 Anything else is a compile error. The error offers both fixes rather than
@@ -3948,6 +3979,7 @@ A feature not built yet is `toolchain.not_built_yet` where it is written.
 |---|---|
 | Everything else on this page | Built. |
 | `sign_in:`'s `providers:` and `oauth_provider:`, and `on_first_sign_in:` for provider sign-in | Not built yet. |
+| A route's `confirm: Confirmation.passkey` ([Confirm one request with a passkey](#confirm-one-request-with-a-passkey-confirm-confirmationpasskey)) | Not built yet. |
 | Scope declarations and policy's scope restrictions | Not built yet. As [Policy](09-policy.md) specifies, an external method narrows scopes only when it declares the scopes it reads; undeclared provider scope or profile claims never replace application authority. |
 | OAuth grants: `OAuthGrant` credentials, the connecting and disconnecting routes and `on_behalf_of:` ([Integrations](11-integrations.md)) | Not built yet. `Driver.oidc` for Google and Microsoft sign-in comes with providers. |
 
