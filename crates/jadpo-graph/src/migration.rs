@@ -91,6 +91,11 @@ pub struct Refusal {
 /// The snapshot the next migration records, from the latest one and the
 /// schema the source asks for: retired columns stay, and a column whose
 /// field is gone is retired (the only first step a removal has).
+///
+/// Columns stand where the database has them, since PostgreSQL can't move
+/// one: a column the latest snapshot has keeps its position, and a new
+/// one goes after them all, in the order its fields are written. So the
+/// order fields are written in is never a change.
 pub fn next_snapshot(latest: &Schema, source: &Schema) -> Schema {
     let mut out = source.clone();
     for (store_name, store) in &latest.stores {
@@ -102,6 +107,25 @@ pub fn next_snapshot(latest: &Schema, source: &Schema) -> Schema {
             else {
                 continue;
             };
+            let written: Vec<String> = now.ordered().into_iter().map(|(n, _)| n.clone()).collect();
+            let mut after = table
+                .columns
+                .values()
+                .map(|c| c.position + 1)
+                .max()
+                .unwrap_or(0);
+            for name in written {
+                let position = match table.columns.get(&name) {
+                    Some(was) => was.position,
+                    None => {
+                        after += 1;
+                        after - 1
+                    }
+                };
+                if let Some(column) = now.columns.get_mut(&name) {
+                    column.position = position;
+                }
+            }
             if !matches!(table.holds, Holds::Entity(_)) {
                 continue;
             }
@@ -1428,5 +1452,108 @@ mod tests {
             decisions_needed(&unrecorded, &wider)[0].kind,
             NeededKind::Unreadable
         );
+    }
+
+    /// Each column's position in a schema, by name.
+    fn positions(schema: &Schema) -> Vec<(String, u32)> {
+        schema.stores["main"].tables["todo"]
+            .ordered()
+            .into_iter()
+            .map(|(name, column)| (name.clone(), column.position))
+            .collect()
+    }
+
+    const BEFORE: [(&str, &str, bool, bool); 3] = [
+        ("id", "uuid", false, false),
+        ("title", "text", false, false),
+        ("done", "boolean", false, false),
+    ];
+
+    /// A field added anywhere in its entity is one new column at the end
+    /// of its table, which is where PostgreSQL adds it: the columns it
+    /// was written before keep their places and don't read as changed.
+    #[test]
+    fn a_field_added_anywhere_is_only_a_new_column_at_the_end() {
+        let before = schema(&BEFORE);
+        let note = ("note", "text", true, false);
+        for at in 0..=BEFORE.len() {
+            let mut fields = BEFORE.to_vec();
+            fields.insert(at, note);
+            let next = next_snapshot(&before, &schema(&fields));
+            assert_eq!(
+                changes(&before, &next),
+                vec![Change::AddColumn {
+                    store: "main".into(),
+                    table: "todo".into(),
+                    column: "note".into(),
+                }],
+                "added at {at}"
+            );
+            assert_eq!(
+                positions(&next),
+                vec![
+                    ("id".into(), 0),
+                    ("title".into(), 1),
+                    ("done".into(), 2),
+                    ("note".into(), 3),
+                ],
+                "added at {at}"
+            );
+            let sql = migration_sql(&before, &next, &|_| None).expect("sql");
+            assert_eq!(
+                sql.to_document("x"),
+                "-- x: written by `jadpo migrate new` from the snapshots; never edit it by hand.\n\n-- store: main\nALTER TABLE \"todo\" ADD COLUMN \"note\" text;\n",
+                "added at {at}"
+            );
+        }
+    }
+
+    /// Field order is no part of the schema: PostgreSQL can't move a
+    /// column, so fields written in another order are nothing to migrate.
+    #[test]
+    fn reordered_fields_are_nothing_to_migrate() {
+        let before = schema(&BEFORE);
+        let reordered = schema(&[BEFORE[2], BEFORE[0], BEFORE[1]]);
+        let next = next_snapshot(&before, &reordered);
+        assert!(next.same_but_reasons(&before));
+        assert_eq!(changes(&before, &next), Vec::new());
+    }
+
+    /// A real change beside a reorder is the only change, and a field
+    /// added beside a retired one goes after it.
+    #[test]
+    fn a_change_beside_a_reorder_is_the_only_change() {
+        let before = schema(&BEFORE);
+        let source = schema(&[
+            ("title", "text", true, false),
+            ("done", "boolean", false, false),
+            ("id", "uuid", false, false),
+        ]);
+        let next = next_snapshot(&before, &source);
+        assert_eq!(
+            changes(&before, &next),
+            vec![Change::AlterColumn {
+                store: "main".into(),
+                table: "todo".into(),
+                column: "title".into(),
+            }]
+        );
+        assert_eq!(positions(&next), positions(&before));
+        let source = schema(&[
+            ("note", "text", true, false),
+            ("done", "boolean", false, false),
+            ("id", "uuid", false, false),
+        ]);
+        let next = next_snapshot(&before, &source);
+        assert_eq!(
+            positions(&next),
+            vec![
+                ("id".into(), 0),
+                ("title".into(), 1),
+                ("done".into(), 2),
+                ("note".into(), 3),
+            ]
+        );
+        assert!(next.stores["main"].tables["todo"].columns["title"].retired);
     }
 }
