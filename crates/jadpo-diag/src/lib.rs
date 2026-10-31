@@ -123,7 +123,7 @@ rules! {
     AI_SETTINGS_INVALID: "ai.settings_invalid", area 21, Error, Agent,
         "Application's `ai:` holds something it doesn't take, or leaves out what it needs";
     AI_USAGE_UNAVAILABLE: "ai.usage_unavailable", area 14, Error, Human,
-        "AI usage's database couldn't be read";
+        "The app's AI usage couldn't be read from its database, because it can't be reached or has no table for it yet";
     API_AUTHENTICATION_INVALID: "api.authentication_invalid", area 7, Error, Agent,
         "API authentication is not a list of declared sign-in methods";
     API_IDEMPOTENCY_INVALID: "api.idempotency_invalid", area 7, Error, Agent,
@@ -374,6 +374,16 @@ rules! {
         "Unique rule or index lists a field twice";
     DATA_RESERVED_TABLE_NAME: "data.reserved_table_name", area 5, Error, Agent,
         "Entity's table name starts with `jadpo_`";
+    DATA_RETENTION_FIELD_REQUIRED: "data.retention_field_required", area 15, Error, Agent,
+        "A field's `retention:` is on a field that can't be `none`, so its value could never be cleared";
+    DATA_RETENTION_HELD: "data.retention_held", area 15, Error, Human,
+        "An entity's `retention:` would delete records that a `restricted` reference keeps from being deleted";
+    DATA_RETENTION_LIFECYCLE_FIELD: "data.retention_lifecycle_field", area 15, Error, Human,
+        "A field's `retention:` would clear a field the entity's lifecycle owns or reads, changing which records are hidden or undoing what a transition set";
+    DATA_RETENTION_PERIOD: "data.retention_period", area 15, Error, Agent,
+        "A retention's `after:` isn't a `Duration` setting in `config.jadpo`";
+    DATA_RETENTION_SINCE: "data.retention_since", area 15, Error, Agent,
+        "A retention's `since:` isn't one of the record's `Instant` fields";
     DATA_SET_GENERATED_FIELD: "data.set_generated_field", area 6, Error, Agent,
         "Write sets a field the store generates";
     DATA_STORE_REQUIRED: "data.store_required", area 5, Error, Human,
@@ -413,11 +423,11 @@ rules! {
     DECLINE_UNUSED: "decline.unused", area 1, Error, Agent,
         "Decline's rule no longer fires on its declaration";
     DELIVERIES_NOT_FOUND: "deliveries.not_found", area 14, Error, Human,
-        "No delivery or schedule run has the id given";
+        "The id given to `jadpo deliveries` matches no delivery or schedule run in the database";
     DELIVERIES_UNAVAILABLE: "deliveries.unavailable", area 14, Error, Human,
-        "Deliveries' database couldn't be read";
+        "The app's deliveries couldn't be read from their database, because it can't be reached or has no table for them yet";
     DELIVERIES_WRONG_STATE: "deliveries.wrong_state", area 14, Error, Human,
-        "Delivery or schedule run isn't in a state the action applies to";
+        "A delivery or schedule run was asked to do something its state rules out, such as cancelling one that has already failed";
     DEPLOYABLE_API_UNKNOWN: "deployable.api_unknown", area 14, Error, Agent,
         "Deployable serves an API the app doesn't have";
     DEPLOYABLE_EMPTY: "deployable.empty", area 14, Error, Agent,
@@ -865,7 +875,7 @@ rules! {
     ROUTE_STREAM_INVALID: "route.stream_invalid", area 7, Error, Agent,
         "Streaming route answers with another status or waits with `settle:`";
     RUNS_UNAVAILABLE: "runs.unavailable", area 14, Error, Human,
-        "Unfinished runs' database couldn't be read";
+        "The app's unfinished runs couldn't be read from their database, because it can't be reached or has no table for them yet";
     SCHEDULE_EVERY_INVALID: "schedule.every_invalid", area 12, Error, Agent,
         "A schedule's `every:` says how often it runs in something other than a whole number of seconds, minutes, hours or days";
     SCHEDULE_ITEM_INVALID: "schedule.item_invalid", area 12, Error, Agent,
@@ -877,13 +887,13 @@ rules! {
     SCHEDULE_STORE_REQUIRED: "schedule.store_required", area 12, Error, Human,
         "An app has a schedule but no database named to keep its state in, because it has several databases or none";
     SCHEDULES_LEASE_HELD: "schedules.lease_held", area 14, Error, Human,
-        "Schedule is already running";
+        "A schedule was run by hand while another run of it still holds its lease, so it wasn't run again";
     SCHEDULES_NO_TICK: "schedules.no_tick", area 14, Error, Human,
-        "No tick picked up the run asked for";
+        "A schedule was run by hand against a deployment, and no tick of the app picked the run up in time, so nothing ran";
     SCHEDULES_RUN_FAILED: "schedules.run_failed", area 14, Error, Human,
-        "Schedule's run failed";
+        "A schedule run by hand ended in a failure, or its run on the app never ended";
     SCHEDULES_UNAVAILABLE: "schedules.unavailable", area 14, Error, Human,
-        "Schedules' database couldn't be read";
+        "The app's schedules couldn't be read from their database, because it can't be reached or has no table for them yet";
     SEED_FAILED: "seed.failed", area 14, Error, Agent,
         "Seed ended with a failure or a fault";
     SEED_PRODUCTION_REFUSED: "seed.production_refused", area 14, Error, Human,

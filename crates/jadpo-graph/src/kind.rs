@@ -124,7 +124,7 @@ kinds! {
     StorePlacement: "store_placement", Data, Built, 5;
     SystemTable: "system_table", Data, Built, 5;
     PersonalMark: "personal_mark", Data, Reserved, 15;
-    Retention: "retention", Data, Reserved, 15;
+    Retention: "retention", Data, Built, 15;
     Person: "person", Data, Built, 15;
 
     Function: "function", Behaviour, Built, 3;

@@ -1044,6 +1044,7 @@ impl Decls<'_> {
                         input: base == FieldsBase::Input,
                         output: base == FieldsBase::Output,
                         later: base.has_later_settings(),
+                        entity: base == FieldsBase::Entity,
                         ty: Ty::Field(host.to_string(), vec![name.clone()]),
                         declared: declared.clone(),
                     };
@@ -1431,8 +1432,8 @@ impl Decls<'_> {
                 continue;
             }
             seen.insert(key.clone(), (key_span.clone(), value.clone()));
-            if field.is_some_and(|field| field.later)
-                && let Some((what, why)) = unbuilt_field_setting(&key)
+            if let Some(field) = field.filter(|field| field.later)
+                && let Some((what, why)) = unbuilt_field_setting(&key, field.entity)
             {
                 self.out.push(
                     Diagnostic::new(
@@ -2733,6 +2734,9 @@ struct FieldCtx {
     output: bool,
     /// Whether later areas add settings of their own to this field.
     later: bool,
+    /// Whether it is an entity's field, whose `retention:` area 15 builds
+    /// (chunk P2).
+    entity: bool,
     /// The field type, `Type.field`.
     ty: Ty,
     declared: Ty,
@@ -2741,12 +2745,14 @@ struct FieldCtx {
 /// An entity's or event's field setting area 15 decides and this
 /// compiler doesn't build: what to do instead, and why it is refused
 /// rather than skipped. Accepted, it would do nothing, and the app would
-/// believe personal data expires or is erased when it never is.
-fn unbuilt_field_setting(key: &str) -> Option<(&'static str, &'static str)> {
+/// believe personal data expires or is erased when it never is. An
+/// entity's field's `retention:` is built (chunk P2); an event's, or an
+/// email message's, isn't.
+fn unbuilt_field_setting(key: &str, entity: bool) -> Option<(&'static str, &'static str)> {
     match key {
-        "retention" => Some((
-            "Leave `retention:` out for now, and clear the value in a schedule of your own if it must expire",
-            "Clearing a field when its time is up comes with area 15's retention, which isn't built yet: accepted, the value would be kept for ever.",
+        "retention" if !entity => Some((
+            "Leave `retention:` out, and keep a value that must expire in an entity's field with a `retention:` of its own",
+            "Only an entity's fields are cleared when their time is up: an event or an email is sent as it was written and nothing clears a value inside one, so a `retention:` on its field isn't built yet. Accepted, the value would be kept as long as the event or email is.",
         )),
         "erase" => Some((
             "Leave `erase:` out for now",
@@ -2760,15 +2766,18 @@ fn unbuilt_field_setting(key: &str) -> Option<(&'static str, &'static str)> {
 /// policy (area 9), area 21's `to_models:` and area 15's `personal:`, and
 /// a `File` field's store, size and types (area 16). They are checked
 /// where those areas are built; `personal:` and `to_models:` are read
-/// since chunk 5.5v5b. Area 15's `retention:` and `erase:` are refused
-/// before this ([`unbuilt_field_setting`]).
-const LATER_FIELD_SETTINGS: [&str; 11] = [
+/// since chunk 5.5v5b, and an entity's field's `retention:` by
+/// [`crate::data::retention`] (chunk P2). Area 15's `erase:`, and an
+/// event's `retention:`, are refused before this
+/// ([`unbuilt_field_setting`]).
+const LATER_FIELD_SETTINGS: [&str; 12] = [
     "generated",
     "immutable",
     "max_size",
     "on_delete",
     "personal",
     "policy",
+    "retention",
     "role",
     "store",
     "to_models",

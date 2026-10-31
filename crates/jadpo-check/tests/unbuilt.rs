@@ -1,9 +1,10 @@
 //! Protections the area pages promise that aren't built yet are
 //! `toolchain.not_built_yet` where they are written (each area's "What is
 //! built"), never accepted and then ignored, nor reported as wrong syntax:
-//! area 15's `retention:` and `erase:`, area 16's audit trail, and the
-//! application's and a route's `bot_check:`. Area 15's `person: true` is
-//! built (chunk P1, [`crate::persons`]).
+//! area 15's `erase:` and an event's `retention:`, area 16's audit trail,
+//! and the application's and a route's `bot_check:`. Area 15's `person:
+//! true` is built (chunk P1, [`crate::persons`]), and so is `retention:` on
+//! an entity and its fields (chunk P2, [`crate::retention`]).
 
 use jadpo_db::Layout;
 
@@ -24,24 +25,6 @@ fn refused_once(source: &str, what: &str) {
     assert!(
         found[0].starts_with("main.jadpo toolchain.not_built_yet:") && found[0].contains(what),
         "{found:?}"
-    );
-}
-
-#[test]
-fn a_fields_retention_is_refused_not_skipped() {
-    // No `created_at` either: before, this passed silently.
-    refused_once(
-        r#"entity Visitor {
-    id: Uuid
-    signup_ip: IpAddress? {
-        retention: {
-            after: 30.days
-            since: created_at
-        }
-    }
-}
-"#,
-        "`retention:`",
     );
 }
 
@@ -80,7 +63,7 @@ fn an_events_retention_is_refused() {
 }
 
 #[test]
-fn an_entitys_audit_and_retention_are_not_built_yet_rather_than_unknown() {
+fn an_entitys_audit_is_not_built_yet_rather_than_unknown() {
     refused_once(
         r#"entity Invoice {
     id: Uuid
@@ -92,16 +75,6 @@ fn an_entitys_audit_and_retention_are_not_built_yet_rather_than_unknown() {
 }
 "#,
         "`audit:`",
-    );
-    refused_once(
-        r#"entity Invoice {
-    id: Uuid
-    retention: {
-        after: 7.days
-    }
-}
-"#,
-        "`retention:`",
     );
 }
 

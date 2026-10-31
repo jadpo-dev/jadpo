@@ -54,7 +54,9 @@ pub enum ScheduleRun {
     Action(Key),
     /// The built-in purge of the entity of this name (area 5,
     /// "Lifecycle"): every entity whose lifecycle has `purge:` gets one,
-    /// with nothing written for it (area 12, "Schedules"; chunk 6.2c).
+    /// with nothing written for it (area 12, "Schedules"; chunk 6.2c), and
+    /// so does every entity with a `retention:` of its own or on a field
+    /// (area 15, "Retention"; chunk P2), which it applies too.
     Purge(String),
 }
 
@@ -71,19 +73,29 @@ impl ScheduleRun {
 /// How often the built-in purge schedule runs: hourly (area 12).
 pub const PURGE_EVERY_MS: u64 = 60 * 60 * 1000;
 
-/// The built-in purge schedule of `entity`, when its lifecycle purges and
-/// it has a store: `Member.purge`, keyed by the entity's born name so a
-/// rename keeps its state and run records, declared where its `purge:`
-/// is written.
+/// Where the built-in purge schedule of an entity is declared: its
+/// lifecycle's `purge:`, or else its own `retention:`, or else its first
+/// field's (area 15; chunk P2); `None` when it has none of them.
+pub fn purge_place(read: &crate::data::EntityRead) -> Option<&Span> {
+    read.spans
+        .purge
+        .as_ref()
+        .or(read.spans.retention.as_ref())
+        .or(read.spans.field_retentions.first().map(|(_, span)| span))
+}
+
+/// The built-in purge schedule of `entity`, when its lifecycle purges or
+/// it has a retention, and it has a store: `Member.purge`, keyed by the
+/// entity's born name so a rename keeps its state and run records,
+/// declared where its `purge:` is written, or its first `retention:`.
 fn purge_schedule(
     db: &dyn Db,
     project: Project,
     read: &crate::data::EntityRead,
 ) -> Option<ScheduleModel> {
     let entity = &read.model;
-    entity.lifecycle.as_ref()?.purge.as_ref()?;
     entity.store.as_ref()?;
-    let span = read.spans.purge.as_ref()?;
+    let span = purge_place(read)?;
     Some(ScheduleModel {
         key: Key::new(Kind::Schedule, &format!("{}.purge", entity.born)),
         name: format!("{}.purge", entity.name),
@@ -95,7 +107,7 @@ fn purge_schedule(
 }
 
 /// Every entity's built-in purge schedule, by the entity's name, with
-/// where its `purge:` is written.
+/// where its `purge:` or first `retention:` is written.
 #[salsa::tracked(returns(ref))]
 pub fn purge_schedules(db: &dyn Db, project: Project) -> Vec<(Arc<ScheduleModel>, Span)> {
     crate::data::entity_names(db, project)
@@ -105,7 +117,7 @@ pub fn purge_schedules(db: &dyn Db, project: Project) -> Vec<(Arc<ScheduleModel>
                 crate::data::entity_read(db, project, crate::lookups::Name::new(db, name.clone()))
                     .as_ref()?;
             let model = purge_schedule(db, project, read)?;
-            Some((Arc::new(model), read.spans.purge.clone()?))
+            Some((Arc::new(model), purge_place(read)?.clone()))
         })
         .collect()
 }

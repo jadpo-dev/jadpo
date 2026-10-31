@@ -520,6 +520,93 @@ pub fn purge(table: &str, conditions: &[String], since: &str, batch: u32) -> Str
     )
 }
 
+/// One retention batch's clearing (area 15, "Retention"): an `UPDATE` of
+/// `table` setting each of `cleared` to `NULL` and each of `set`, a
+/// column, to the SQL beside it, on at most `batch` rows meeting
+/// `conditions`, oldest `since` first, locked without waiting on any
+/// another transaction holds, returning their `id`s.
+pub fn clear(
+    table: &str,
+    cleared: &[String],
+    set: &[(String, String)],
+    conditions: &[String],
+    since: &str,
+    batch: u32,
+) -> String {
+    let mut inner = format!("  SELECT {}\n  FROM {}", ident("id"), ident(table));
+    where_clause(&mut inner, conditions, "  ");
+    inner.push_str(&format!(
+        "\n  ORDER BY {} ASC, {} ASC\n  LIMIT {batch}\n  FOR UPDATE SKIP LOCKED",
+        ident(since),
+        ident("id")
+    ));
+    let set: Vec<String> = cleared
+        .iter()
+        .map(|column| format!("{} = NULL", ident(column)))
+        .chain(
+            set.iter()
+                .map(|(column, value)| format!("{} = {value}", ident(column))),
+        )
+        .collect();
+    format!(
+        "UPDATE {}\nSET {}\nWHERE {} IN (\n{inner}\n)\nRETURNING {}",
+        ident(table),
+        set.join(",\n  "),
+        ident("id"),
+        ident("id")
+    )
+}
+
+/// Any of `columns` holding a value: a field stored in several columns,
+/// such as `Money`, holds one when any of them does.
+pub fn any_present(columns: &[&str]) -> String {
+    let each: Vec<String> = columns
+        .iter()
+        .map(|column| format!("{} IS NOT NULL", ident(column)))
+        .collect();
+    match each.as_slice() {
+        [one] => one.clone(),
+        _ => format!("({})", each.join(" OR ")),
+    }
+}
+
+/// `delete`, a `DELETE ... RETURNING "id"`, with the rows of each of
+/// `removed`, a table and the column holding the deleted record's `id`,
+/// that refer to a record it deletes, deleted in the same statement: a
+/// person's sign-in state deleted with them (area 15, "Retention"). It
+/// returns the deleted records' `id`s, as `delete` does.
+pub fn with_removed(delete: &str, removed: &[(&str, &str)]) -> String {
+    let mut parts = vec![format!(
+        "{} AS (\n{}\n)",
+        ident("expired"),
+        indented(delete, "  ")
+    )];
+    for (i, (table, column)) in removed.iter().enumerate() {
+        parts.push(format!(
+            "{} AS (\n  DELETE FROM {}\n  WHERE {} IN (SELECT {} FROM {})\n)",
+            ident(&format!("removed{}", i + 1)),
+            ident(table),
+            ident(column),
+            ident("id"),
+            ident("expired")
+        ));
+    }
+    format!(
+        "WITH {}\nSELECT {} FROM {}",
+        parts.join(", "),
+        ident("id"),
+        ident("expired")
+    )
+}
+
+/// `text` with every line indented by `by`.
+fn indented(text: &str, by: &str) -> String {
+    text.lines()
+        .map(|line| format!("{by}{line}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// `NOT EXISTS` a record holding a row of `table` through `path`: each
 /// step a table and its column referring to the step before, the first to
 /// `table`.

@@ -32,7 +32,7 @@ use jadpo_term::{Block, Cell, Fact, Json, Outcome, Screen, Table};
 
 use crate::database::Address;
 use crate::run::{Call, Reply};
-use crate::schedules::{now, store_error, url_of};
+use crate::schedules::{now, unreadable, url_of};
 
 fn arguments(message: impl Into<String>, reason: impl Into<String>, next: &str) -> Reply {
     Reply::failed(
@@ -172,27 +172,24 @@ pub fn usage(call: &Call) -> Reply {
 
 /// Every count from day `first` on in the database at `url`.
 fn read(store: &str, url: &Address, first: i32) -> Result<Vec<Row>, Reply> {
-    let failed = |error: String| {
-        Reply::failed(
-            Diagnostic::new(
-                &rule::AI_USAGE_UNAVAILABLE,
-                format!("The database `{store}` couldn't be read"),
-            )
-            .reason(format!(
-                "Reading what the application's `ai` calls used failed: {error}. Its table comes with its migrations."
-            ))
-            .next("Check the database is running and its address is right"),
-        )
+    let failed = |error: jadpo_runtime::StoreError| {
+        Reply::failed(unreadable(
+            &rule::AI_USAGE_UNAVAILABLE,
+            store,
+            "AI usage",
+            &error,
+        ))
     };
-    let runtime = jadpo_host_native::Runtime::new().map_err(|error| failed(error.to_string()))?;
-    let database = url.open().map_err(|error| failed(store_error(&error)))?;
+    let runtime = jadpo_host_native::Runtime::new()
+        .map_err(|error| failed(jadpo_runtime::StoreError::Fault(error.to_string())))?;
+    let database = url.open().map_err(failed)?;
     use jadpo_runtime::Database;
     let rows = runtime
         .block_on(database.query_once(
             jadpo_runtime::ai_budget::READ,
             &[jadpo_runtime::SqlValue::Date(first)],
         ))
-        .map_err(|error| failed(store_error(&error)))?;
+        .map_err(failed)?;
     Ok(rows.iter().filter_map(|values| row(values)).collect())
 }
 

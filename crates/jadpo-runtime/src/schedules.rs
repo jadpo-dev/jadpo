@@ -1075,12 +1075,13 @@ async fn run_action(
 }
 
 /// The built-in purge of `entity` at `now` (area 5, "Lifecycle"; chunk
-/// 6.2c): the compiler's own operation, outside every action and policy,
-/// [`crate::PURGE_BATCHES`] batches at most, run within `budget`: stopped
-/// at the limit of a run, or before the budget ends. How it went and what
-/// it deleted. A store that can't be reached is `unavailable`, as for an
-/// action; anything else the store refuses is an `internal_fault`, the
-/// batches before it staying deleted.
+/// 6.2c), with its retentions (area 15, "Retention"; chunk P2): the
+/// compiler's own operation, outside every action and policy,
+/// [`crate::PURGE_BATCHES`] batches at most among them, run within
+/// `budget`: stopped at the limit of a run, or before the budget ends. How
+/// it went and what it deleted or cleared. A store that can't be reached
+/// is `unavailable`, as for an action; anything else the store refuses is
+/// an `internal_fault`, the batches before it staying done.
 async fn run_purge(
     executor: &dyn Executor,
     budget: &Budget<'_>,
@@ -1094,10 +1095,11 @@ async fn run_purge(
     };
     // How long it waits, as the program started with it.
     let started = executor.started().unwrap_or_else(crate::started::unstarted);
-    let Some((plan, after)) = executor.plan().purge(entity, &started) else {
+    let plans = executor.plan().purges_of(entity, &started);
+    if plans.is_empty() {
         return (failed("internal_fault", None), None);
-    };
-    let run = crate::purge::purge_after(host, plan, now, crate::PURGE_BATCHES, after.unwrap_or(0));
+    }
+    let run = crate::purge::purge_all(host, &plans, now, crate::PURGE_BATCHES);
     match budget.run(run).await {
         Ok(Ok(purged)) => (Ran::Succeeded { events: 0 }, Some(purged)),
         Ok(Err(StoreError::Unavailable)) => (failed("unavailable", Some("unavailable")), None),

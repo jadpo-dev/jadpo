@@ -421,14 +421,20 @@ impl<'a> Plan<'a> {
         })
     }
 
-    /// The purge of the entity called `entity` (area 5, "Lifecycle"), which
-    /// its built-in schedule runs (chunk 6.2c), with how long it waits, in
+    /// Everything the built-in purge schedule of the entity called
+    /// `entity` runs (chunk 6.2c), in order: its retention, its
+    /// lifecycle's purge (area 5, "Lifecycle") and each field's retention
+    /// (area 15, "Retention"; chunk P2), each with how long it waits, in
     /// milliseconds, as `started` holds it: its `after:`, or the value of
-    /// the setting it reads; `None` when that holds no duration. `None`
-    /// for an entity that isn't purged.
-    pub fn purge(self, entity: &str, started: &Started) -> Option<(&'a PurgePlan, Option<i64>)> {
-        let at = self.purges.iter().position(|plan| plan.entity == entity)?;
-        Some((self.purges.get(at)?, started.purge_after(at)))
+    /// the setting it reads; `None` when that holds no duration. Empty for
+    /// an entity that is neither purged nor retained.
+    pub fn purges_of(self, entity: &str, started: &Started) -> Vec<(&'a PurgePlan, Option<i64>)> {
+        self.purges
+            .iter()
+            .enumerate()
+            .filter(|(_, plan)| plan.entity == entity)
+            .map(|(at, plan)| (plan, started.purge_after(at)))
+            .collect()
     }
 
     /// The program's connections to provider packages (area 11; chunk

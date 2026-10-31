@@ -277,6 +277,10 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
                 through.iter().map(Value::from).collect::<Vec<_>>(),
             );
         }
+        Detail::Retention { retention, clears } => {
+            out.set("retention", retention.as_str());
+            out.set_some("clears", *clears);
+        }
         Detail::Route {
             api,
             status,
@@ -587,6 +591,14 @@ const NODE_FIELDS: &[(&str, &str)] = &[
     (
         "through",
         "A person entity's references that its records belong to the person through, each `Entity.field`",
+    ),
+    (
+        "retention",
+        "How long a retention keeps a field's value or an entity's records: after which `Duration` setting, since which field",
+    ),
+    (
+        "clears",
+        "Whether a retention clears a field's value, rather than deleting the record with what cascades from it",
     ),
     ("when", "When a lifecycle transition is allowed, as written"),
     (

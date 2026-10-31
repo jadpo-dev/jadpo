@@ -240,6 +240,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     .cloned(),
             );
             out.extend(
+                data::retention::retention_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
+            out.extend(
                 data::queries::query_problems(db, project, file)
                     .iter()
                     .cloned(),
