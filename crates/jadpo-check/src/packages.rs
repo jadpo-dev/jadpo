@@ -1310,8 +1310,14 @@ fn locked(
                 home.folder
             ))
             .next(format!(
-                "Restore `{}/` from version control, or install the package again with `jadpo package add`; change the app's own code instead",
-                home.folder
+                "Restore `{}/` from version control, or install it again from its source with `jadpo package update {}`; change the app's own code instead",
+                home.folder,
+                // `update` needs the version while two are held.
+                if home.through == home.code {
+                    home.name.clone()
+                } else {
+                    home.versioned()
+                }
             )),
         );
     }

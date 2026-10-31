@@ -598,7 +598,7 @@ rules! {
         "Latest migration is not finished";
     NAMING_FOLDED_COLLISION: "naming.folded_collision", area 1, Error, Agent,
         "Two names fold to the same file name";
-    NAMING_GENERIC_NAME: "naming.generic_name", area 1, Error, Human,
+    NAMING_GENERIC_NAME: "naming.generic_name", area 1, Error, Agent,
         "A domain or library is called something generic, such as `helpers` or `utils`, that says nothing about what it holds";
     NAMING_ROUND_TRIP: "naming.round_trip", area 1, Error, Agent,
         "Name does not survive conversion to its file name";
