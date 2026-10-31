@@ -71,19 +71,9 @@ jadpo config set mail_api_key
 The command asks for the value of `MAIL_API_KEY` at its prompt.
 
 **If the setting isn't declared yet**, declare it in `config.jadpo`
-first:
+first, beside the others:
 
-```jadpo fragment
-config {
-    ...
-    /// The key for the mail provider's sandbox.
-    mail_key: Text {
-        secret: true
-    }
-}
-```
-
-```jadpo check project=e-config-arguments-declared file=config.jadpo hidden
+```jadpo check project=e-config-arguments-declared file=config.jadpo
 config {
     /// The key the mail provider gave this app.
     mail_api_key: Text {
