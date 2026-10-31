@@ -281,13 +281,7 @@ D1 first: the site starts once D1 has merged.
 - [x] **D13b1 The `sh run` block, settings and `jadpo new`**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; `tools/docs/language_docs.py`, `check_runs`; the pages of `configuration.local_*`, `cli.config_*` and `toolchain.*` a run raises, and `configuration.value_invalid`.
 - [x] **D13b2a Copied output, root runs and the first person-decided pages**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; area 14, "What it compiles with"; the pages of `configuration.value_missing`, `configuration.local_changed`, `format.write_failed`, `translation.exchange_file_invalid`, `toolchain.build_failed` and `toolchain.fetch_failed`.
 - [x] **D13b2b1 A database for runs, migrations and seeds**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; area 14, "Database command errors"; `tools/docs/language_docs.py`, `Databases`; the pages of `seed.production_refused`, `seed.unavailable`, `migration.apply_failed`, `migration.store_diverged`, `migration.extension_missing` and `migration.extension_outdated`.
-- [ ] **D13b2b2 Background work** `opus · high`: the format of "How an
-  error page reads", with a `sh run database` example, for
-  `deliveries.*`, `schedules.*`, `runs.unavailable` and
-  `ai.usage_unavailable`, whose pages say "No example yet", each
-  catalogue summary its page's first sentence and area 14's
-  command-error table matching. D13b2b, split by size (2026-10-31)
-  into D13b2b1 and this.
+- [x] **D13b2b2 Background work**: [writing guide](writing.md), "How an error page reads"; area 14, "Database command errors"; the pages of `deliveries.*`, `schedules.lease_held`, `schedules.no_tick`, `schedules.run_failed`, `schedules.unavailable`, `runs.unavailable` and `ai.usage_unavailable`.
 - [ ] **D13b2c The rest a person decides** `opus · high`: the same for
   `cli.dev_start_failed`, `conform.refused`, `recording.refused`,
   `suggest.share_failed`, `format.unsafe` and

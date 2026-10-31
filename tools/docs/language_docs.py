@@ -776,8 +776,7 @@ def error_format_scope(catalogue, root=ROOT):
     guides or a teaching example's README names, and those whose next step
     a person decides. A rule only a command raises, whose page has no
     example yet, waits for a ```sh run block that shows it (roadmap,
-    D13b2b2, D13b2c and D13b3); every other page follows once D13c is
-    built."""
+    D13b2c and D13b3); every other page follows once D13c is built."""
     named = set()
     for path in [root / 'docs/primer.md', *sorted((root / 'docs/learn').glob('*.md')),
                  *sorted((root / 'docs/guides').glob('*.md'))]:
