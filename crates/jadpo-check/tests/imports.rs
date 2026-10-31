@@ -9,13 +9,13 @@ use jadpo_db::{Database, Layout};
 use support::{APP, problems, project};
 
 const PENCE: (&str, &str) = (
-    "shared/types/pence.jadpo",
-    "type Pence = Int {\n    min: 0\n}\n",
+    "shared/types/coins.jadpo",
+    "type Coins = Int {\n    min: 0\n}\n",
 );
 
 const PERCENT: (&str, &str) = (
-    "shared/types/percent.jadpo",
-    "type Percent = Int {\n    min: 0\n    max: 100\n}\n",
+    "shared/types/portion.jadpo",
+    "type Portion = Int {\n    min: 0\n    max: 100\n}\n",
 );
 
 const TOTAL: &str = "domains/sales/actions/total.jadpo";
@@ -57,28 +57,28 @@ fn a_project_with_its_imports_checks_cleanly() {
         PENCE,
         (
             "domains/sales/types/basket.jadpo",
-            "use shared/types { Pence }\n\ntype Basket = Object {\n    total: Pence\n}\n",
+            "use shared/types { Coins }\n\ntype Basket = Object {\n    total: Coins\n}\n",
         ),
         (
             "shared/libraries/pricing.jadpo",
-            "use shared/types { Pence }\n\nlibrary pricing {\n    function doubled(amount: Pence) -> Pence {\n        return Pence(amount * 2)\n    }\n}\n",
+            "use shared/types { Coins }\n\nlibrary pricing {\n    function doubled(amount: Coins) -> Coins {\n        return Coins(amount * 2)\n    }\n}\n",
         ),
         (
             "domains/menu/actions/price_item.jadpo",
-            "use shared/types { Pence }\n\npublic action price_item() -> Pence {\n    return 250\n}\n",
+            "use shared/types { Coins }\n\npublic action price_item() -> Coins {\n    return 250\n}\n",
         ),
         (
             "domains/sales/actions/price_basket.jadpo",
-            "use shared/types { Pence }\nuse shared/libraries { pricing }\nuse sales/types { Basket }\nuse menu\n\naction price_basket(basket: Basket) -> Pence {\n    var each: Pence = menu.price_item()\n    return pricing.doubled(each)\n}\n",
+            "use shared/types { Coins }\nuse shared/libraries { pricing }\nuse sales/types { Basket }\nuse menu\n\naction price_basket(basket: Basket) -> Coins {\n    var each: Coins = menu.price_item()\n    return pricing.doubled(each)\n}\n",
         ),
         (
             "domains/sales/actions/checkout.jadpo",
-            "use shared/types { Pence }\nuse sales/types { Basket }\nuse sales/actions { price_basket }\n\naction checkout(basket: Basket) -> Pence {\n    return price_basket(basket)\n}\n",
+            "use shared/types { Coins }\nuse sales/types { Basket }\nuse sales/actions { price_basket }\n\naction checkout(basket: Basket) -> Coins {\n    return price_basket(basket)\n}\n",
         ),
         // A test sees its subject's declarations without importing them.
         (
             "domains/sales/actions/price_basket.test.jadpo",
-            "use shared/types { Pence }\nuse sales/types { Basket }\n\ntest \"a basket costs twice an item\" {\n    var total: Pence = price_basket(Basket {\n        total: 0\n    })\n    assert total == 500\n}\n",
+            "use shared/types { Coins }\nuse sales/types { Basket }\n\ntest \"a basket costs twice an item\" {\n    var total: Coins = price_basket(Basket {\n        total: 0\n    })\n    assert total == 500\n}\n",
         ),
     ];
     assert_eq!(problems(Layout::Project, &files), Vec::<String>::new());
@@ -86,30 +86,30 @@ fn a_project_with_its_imports_checks_cleanly() {
 
 #[test]
 fn a_name_used_without_its_import_is_missing_and_the_edit_adds_it() {
-    let text = total("", "basket: Pence");
+    let text = total("", "basket: Coins");
     let files = [APP, PENCE, (TOTAL, text.as_str())];
     assert_eq!(
         problems(Layout::Project, &files),
-        [format!("{TOTAL} import.missing: `Pence` isn't imported")]
+        [format!("{TOTAL} import.missing: `Coins` isn't imported")]
     );
     assert_eq!(
         fixed(&files, TOTAL),
-        total("use shared/types { Pence }\n\n", "basket: Pence")
+        total("use shared/types { Coins }\n\n", "basket: Coins")
     );
 }
 
 #[test]
 fn a_missing_name_joins_its_folders_line() {
     let text = total(
-        "use shared/types { Pence }\n\n",
-        "basket: Pence, off: Percent",
+        "use shared/types { Coins }\n\n",
+        "basket: Coins, off: Portion",
     );
     let files = [APP, PENCE, PERCENT, (TOTAL, text.as_str())];
     assert_eq!(
         fixed(&files, TOTAL),
         total(
-            "use shared/types { Pence, Percent }\n\n",
-            "basket: Pence, off: Percent"
+            "use shared/types { Coins, Portion }\n\n",
+            "basket: Coins, off: Portion"
         )
     );
 }
@@ -121,11 +121,11 @@ fn a_call_into_another_domain_needs_the_domain() {
         PENCE,
         (
             "domains/menu/actions/price_item.jadpo",
-            "use shared/types { Pence }\n\npublic action price_item() -> Pence {\n    return 250\n}\n",
+            "use shared/types { Coins }\n\npublic action price_item() -> Coins {\n    return 250\n}\n",
         ),
         (
             "domains/sales/actions/sell.jadpo",
-            "use shared/types { Pence }\n\naction sell() -> Pence {\n    return menu.price_item()\n}\n",
+            "use shared/types { Coins }\n\naction sell() -> Coins {\n    return menu.price_item()\n}\n",
         ),
     ];
     assert_eq!(
@@ -134,7 +134,7 @@ fn a_call_into_another_domain_needs_the_domain() {
     );
     assert_eq!(
         fixed(&files, "domains/sales/actions/sell.jadpo"),
-        "use shared/types { Pence }\nuse menu\n\naction sell() -> Pence {\n    return menu.price_item()\n}\n"
+        "use shared/types { Coins }\nuse menu\n\naction sell() -> Coins {\n    return menu.price_item()\n}\n"
     );
 }
 
@@ -142,39 +142,39 @@ fn a_call_into_another_domain_needs_the_domain() {
 fn the_first_use_line_goes_below_the_files_opening_comment() {
     let text = total(
         "// What a customer pays.\n\n/// The total.\n",
-        "basket: Pence",
+        "basket: Coins",
     );
     let files = [APP, PENCE, (TOTAL, text.as_str())];
     assert_eq!(
         fixed(&files, TOTAL),
         total(
-            "// What a customer pays.\n\nuse shared/types { Pence }\n\n/// The total.\n",
-            "basket: Pence"
+            "// What a customer pays.\n\nuse shared/types { Coins }\n\n/// The total.\n",
+            "basket: Coins"
         )
     );
 }
 
 #[test]
 fn an_unused_import_is_reported_and_the_edit_removes_it() {
-    let text = total("use shared/types { Pence, Percent }\n\n", "basket: Pence");
+    let text = total("use shared/types { Coins, Portion }\n\n", "basket: Coins");
     let files = [APP, PENCE, PERCENT, (TOTAL, text.as_str())];
     let used = (
         "domains/sales/actions/discount.jadpo",
-        "use shared/types { Percent }\n\naction discount(off: Percent) -> Unit {}\n",
+        "use shared/types { Portion }\n\naction discount(off: Portion) -> Unit {}\n",
     );
     let files = [files.as_slice(), &[used]].concat();
     assert_eq!(
         problems(Layout::Project, &files),
         [format!(
-            "{TOTAL} import.unused: `Percent` is imported but not used"
+            "{TOTAL} import.unused: `Portion` is imported but not used"
         )]
     );
     assert_eq!(
         fixed(&files, TOTAL),
-        total("use shared/types { Pence }\n\n", "basket: Pence")
+        total("use shared/types { Coins }\n\n", "basket: Coins")
     );
     // A domain with no call through it.
-    let text = total("use shared/types { Pence }\nuse menu\n\n", "basket: Pence");
+    let text = total("use shared/types { Coins }\nuse menu\n\n", "basket: Coins");
     let files = [
         APP,
         PENCE,
@@ -192,54 +192,54 @@ fn an_unused_import_is_reported_and_the_edit_removes_it() {
     );
     assert_eq!(
         fixed(&files, TOTAL),
-        total("use shared/types { Pence }\n\n", "basket: Pence")
+        total("use shared/types { Coins }\n\n", "basket: Coins")
     );
 }
 
 #[test]
 fn an_import_from_the_wrong_folder_is_unknown_and_the_edit_moves_it() {
-    let text = total("use shared/failures { Pence }\n\n", "basket: Pence");
+    let text = total("use shared/failures { Coins }\n\n", "basket: Coins");
     let files = [APP, PENCE, (TOTAL, text.as_str())];
     assert_eq!(
         problems(Layout::Project, &files),
         [format!(
-            "{TOTAL} import.unknown: `Pence` isn't in `shared/failures`"
+            "{TOTAL} import.unknown: `Coins` isn't in `shared/failures`"
         )]
     );
     assert_eq!(
         fixed(&files, TOTAL),
-        total("use shared/types { Pence }\n\n", "basket: Pence")
+        total("use shared/types { Coins }\n\n", "basket: Coins")
     );
 }
 
 #[test]
 fn unknown_folders_domains_and_names() {
     let line = |head: &str| {
-        let text = total(&format!("{head}\n\n"), "basket: Pence");
+        let text = total(&format!("{head}\n\n"), "basket: Coins");
         let files = [APP, PENCE, (TOTAL, text.as_str())];
         problems(Layout::Project, &files)
     };
     assert_eq!(
-        line("use shared/type { Pence }")[0],
+        line("use shared/type { Coins }")[0],
         format!("{TOTAL} import.unknown: `shared/type` isn't a folder of `shared/`")
     );
     assert_eq!(
-        line("use sales/helpers { Pence }")[0],
+        line("use sales/helpers { Coins }")[0],
         format!("{TOTAL} import.unknown: `sales/helpers` isn't a folder")
     );
     assert_eq!(
-        line("use sails/types { Pence }")[0],
+        line("use sails/types { Coins }")[0],
         format!("{TOTAL} import.unknown: `sails` isn't a domain")
     );
     assert_eq!(
-        line("use shared/types { Pence, Pense }"),
+        line("use shared/types { Coins, Pense }"),
         [format!("{TOTAL} import.unknown: `Pense` isn't declared")]
     );
 }
 
 #[test]
 fn built_ins_own_declarations_and_the_own_domain_need_no_import() {
-    let text = "use shared/types { Pence, List }\nuse sales/actions { total }\nuse sales\n\naction total(basket: Pence, items: List<Pence>) -> Unit {}\n";
+    let text = "use shared/types { Coins, List }\nuse sales/actions { total }\nuse sales\n\naction total(basket: Coins, items: List<Coins>) -> Unit {}\n";
     let files = [APP, PENCE, (TOTAL, text)];
     assert_eq!(
         problems(Layout::Project, &files),
@@ -258,7 +258,7 @@ fn a_test_needs_no_import_for_its_subjects_declarations() {
         PENCE,
         (
             "domains/sales/actions/price.jadpo",
-            "use shared/types { Pence }\n\nfunction loaf_price() -> Pence {\n    return 250\n}\n\naction price() -> Pence {\n    return loaf_price()\n}\n",
+            "use shared/types { Coins }\n\nfunction loaf_price() -> Coins {\n    return 250\n}\n\naction price() -> Coins {\n    return loaf_price()\n}\n",
         ),
         (
             "domains/sales/actions/price.test.jadpo",
@@ -276,8 +276,8 @@ fn a_test_needs_no_import_for_its_subjects_declarations() {
 #[test]
 fn a_name_or_folder_imported_twice() {
     let text = total(
-        "use shared/types { Pence }\nuse shared/types { Percent }\n\n",
-        "basket: Pence, off: Percent",
+        "use shared/types { Coins }\nuse shared/types { Portion }\n\n",
+        "basket: Coins, off: Portion",
     );
     let files = [APP, PENCE, PERCENT, (TOTAL, text.as_str())];
     assert_eq!(
@@ -289,21 +289,21 @@ fn a_name_or_folder_imported_twice() {
     assert_eq!(
         fixed(&files, TOTAL),
         total(
-            "use shared/types { Pence, Percent }\n\n",
-            "basket: Pence, off: Percent"
+            "use shared/types { Coins, Portion }\n\n",
+            "basket: Coins, off: Portion"
         )
     );
-    let text = total("use shared/types { Pence, Pence }\n\n", "basket: Pence");
+    let text = total("use shared/types { Coins, Coins }\n\n", "basket: Coins");
     let files = [APP, PENCE, (TOTAL, text.as_str())];
     assert_eq!(
         problems(Layout::Project, &files),
         [format!(
-            "{TOTAL} import.duplicate: `Pence` is imported twice"
+            "{TOTAL} import.duplicate: `Coins` is imported twice"
         )]
     );
     assert_eq!(
         fixed(&files, TOTAL),
-        total("use shared/types { Pence }\n\n", "basket: Pence")
+        total("use shared/types { Coins }\n\n", "basket: Coins")
     );
 }
 
@@ -335,15 +335,15 @@ fn a_private_name_from_another_domain_is_visibilitys_to_report() {
 #[test]
 fn loose_files_need_no_imports_and_have_no_folders() {
     let files = [
-        ("a.jadpo", "type Pence = Int {\n    min: 0\n}\n"),
-        ("b.jadpo", "type Basket = Object {\n    total: Pence\n}\n"),
+        ("a.jadpo", "type Coins = Int {\n    min: 0\n}\n"),
+        ("b.jadpo", "type Basket = Object {\n    total: Coins\n}\n"),
     ];
     assert_eq!(problems(Layout::Loose, &files), Vec::<String>::new());
     let files = [
-        ("a.jadpo", "type Pence = Int {\n    min: 0\n}\n"),
+        ("a.jadpo", "type Coins = Int {\n    min: 0\n}\n"),
         (
             "b.jadpo",
-            "use shared/types { Pence }\n\ntype Basket = Object {\n    total: Pence\n}\n",
+            "use shared/types { Coins }\n\ntype Basket = Object {\n    total: Coins\n}\n",
         ),
     ];
     assert_eq!(

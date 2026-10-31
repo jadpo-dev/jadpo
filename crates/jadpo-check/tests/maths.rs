@@ -8,7 +8,7 @@ use crate::support;
 use jadpo_db::Layout;
 use support::rules;
 
-const TYPES: &str = "type Metres = Decimal {\n    scale: 3\n    min: 0.000\n}\n\ntype Factor = Decimal {\n    scale: 6\n    min: 0.000001\n}\n\ntype Change = Decimal {\n    scale: 6\n}\n\ntype Turns = Int {\n    min: 0\n}\n\ntype Step = Int {}\n\ntype NotPositive = Failure {\n    kind: FailureKind.invalid_value\n}\n\n";
+const TYPES: &str = "type Offset = Decimal {\n    scale: 3\n    min: 0.000\n}\n\ntype Factor = Decimal {\n    scale: 6\n    min: 0.000001\n}\n\ntype Change = Decimal {\n    scale: 6\n}\n\ntype Turns = Int {\n    min: 0\n}\n\ntype Step = Int {}\n\ntype NotPositive = Failure {\n    kind: FailureKind.invalid_value\n}\n\n";
 
 fn check(source: &str) -> Vec<String> {
     rules(
@@ -21,7 +21,7 @@ const NONE: &[&str] = &[];
 
 #[test]
 fn every_maths_operation_checks() {
-    let source = "function side(area: Metres) -> Metres {\n    return Metres(decimal.sqrt(area, scale: 3, rounding: Rounding.half_even))\n}\n\nfunction grown(rate: Change, years: Turns) -> Change {\n    return Change(decimal.power(rate, years))\n}\n\nfunction growth(rate: Change) -> Change {\n    return Change(decimal.exp(rate, scale: 6, rounding: Rounding.half_even))\n}\n\nfunction decay(ratio: Factor) -> Change {\n    return Change(decimal.ln(ratio, scale: 6, rounding: Rounding.down))\n}\n\nfunction turn(angle: Change) -> List<Change> {\n    return [Change(decimal.sin(angle, scale: 6, rounding: Rounding.half_up)), Change(decimal.cos(angle, scale: 6, rounding: Rounding.up))]\n}\n\nfunction bearing(north: Change, east: Change) -> Change {\n    return Change(decimal.atan2(east, north, scale: 6, rounding: Rounding.half_even))\n}\n\nfunction circle(radius: Metres) -> Metres {\n    return Metres(decimal.pi(scale: 3, rounding: Rounding.half_even) * radius * radius)\n}\n\nfunction literals() -> List<Change> {\n    return [Change(decimal.sqrt(2.0, scale: 6, rounding: Rounding.down)), Change(decimal.power(1.5, 3)), Change(decimal.ln(2.0, scale: 6, rounding: Rounding.down))]\n}\n";
+    let source = "function side(area: Offset) -> Offset {\n    return Offset(decimal.sqrt(area, scale: 3, rounding: Rounding.half_even))\n}\n\nfunction grown(rate: Change, years: Turns) -> Change {\n    return Change(decimal.power(rate, years))\n}\n\nfunction growth(rate: Change) -> Change {\n    return Change(decimal.exp(rate, scale: 6, rounding: Rounding.half_even))\n}\n\nfunction decay(ratio: Factor) -> Change {\n    return Change(decimal.ln(ratio, scale: 6, rounding: Rounding.down))\n}\n\nfunction turn(angle: Change) -> List<Change> {\n    return [Change(decimal.sin(angle, scale: 6, rounding: Rounding.half_up)), Change(decimal.cos(angle, scale: 6, rounding: Rounding.up))]\n}\n\nfunction bearing(north: Change, east: Change) -> Change {\n    return Change(decimal.atan2(east, north, scale: 6, rounding: Rounding.half_even))\n}\n\nfunction circle(radius: Offset) -> Offset {\n    return Offset(decimal.pi(scale: 3, rounding: Rounding.half_even) * radius * radius)\n}\n\nfunction literals() -> List<Change> {\n    return [Change(decimal.sqrt(2.0, scale: 6, rounding: Rounding.down)), Change(decimal.power(1.5, 3)), Change(decimal.ln(2.0, scale: 6, rounding: Rounding.down))]\n}\n";
     assert_eq!(check(source), NONE);
 }
 
@@ -77,7 +77,7 @@ fn a_logarithm_fails_unless_its_value_is_proved_above_zero() {
     // A `min` of 0 allows 0, which has no logarithm.
     assert_eq!(
         check(
-            "function f(length: Metres) -> Change {\n    return Change(decimal.ln(length, scale: 6, rounding: Rounding.down))\n}\n"
+            "function f(length: Offset) -> Change {\n    return Change(decimal.ln(length, scale: 6, rounding: Rounding.down))\n}\n"
         ),
         ["failure.attempt_required"]
     );
@@ -114,10 +114,10 @@ fn a_scale_is_written_out() {
 
 #[test]
 fn a_square_root_and_e_to_a_power_are_never_below_zero() {
-    // Their results carry their floor of 0, so `Metres` needs no arm.
+    // Their results carry their floor of 0, so `Offset` needs no arm.
     assert_eq!(
         check(
-            "function f(rate: Change) -> Metres {\n    return Metres(decimal.exp(rate, scale: 3, rounding: Rounding.down))\n}\n"
+            "function f(rate: Change) -> Offset {\n    return Offset(decimal.exp(rate, scale: 3, rounding: Rounding.down))\n}\n"
         ),
         NONE
     );

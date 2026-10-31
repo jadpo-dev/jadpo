@@ -220,7 +220,7 @@ type ShopNumber = Int {
     min: 1
 }
 
-type Pence = Int {}
+type Coins = Int {}
 
 type Extra = Text {
     max_length: 40
@@ -255,14 +255,14 @@ type OrderLine = Input {
 
 type Priced = Output {
     size: Size
-    pence: Pence
+    pence: Coins
     wrapping: Wrapping
 }
 
 action price(shop: ShopNumber, input: OrderLine) -> Priced {
     return Priced {
         size: input.size
-        pence: Pence(input.quantity * 250 + shop)
+        pence: Coins(input.quantity * 250 + shop)
         wrapping: Wrapping.plain
     }
 }
@@ -352,12 +352,12 @@ type CakeCount = Int {
     max: 12
 }
 
-type Pence = Int {
+type Coins = Int {
     min: 0
 }
 
 type OrderLine = Object {
-    subtotal: Pence
+    subtotal: Coins
 }
 
 type OrderEmpty = Failure {
@@ -384,10 +384,10 @@ function from_count(n: Count) fails OrderEmpty, OrderTooLarge -> CakeCount {
     return result
 }
 
-function order_total(lines: List<OrderLine>) -> Pence {
-    var mut total: Pence = 0
+function order_total(lines: List<OrderLine>) -> Coins {
+    var mut total: Coins = 0
     for line in lines {
-        total = Pence(total + line.subtotal)
+        total = Coins(total + line.subtotal)
     }
     return total
 }

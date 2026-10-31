@@ -9,7 +9,7 @@ use crate::support;
 use jadpo_interp::on_large_stack;
 use support::{int, main, program, report, text};
 
-const LINE_TOTAL: &str = "type Pence = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\nfunction line_total(price: Pence, quantity: Quantity) -> Pence {\n    var total: Pence = Pence(price * quantity)\n    return total\n}\n\naction price_line(price: Pence, quantity: Quantity) -> Pence {\n    var line: Pence = line_total(price, quantity)\n    return line\n}\n";
+const LINE_TOTAL: &str = "type Coins = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\nfunction line_total(price: Coins, quantity: Quantity) -> Coins {\n    var total: Coins = Coins(price * quantity)\n    return total\n}\n\naction price_line(price: Coins, quantity: Quantity) -> Coins {\n    var line: Coins = line_total(price, quantity)\n    return line\n}\n";
 
 #[test]
 fn an_overflow_names_its_site_and_every_frame() {
@@ -20,7 +20,7 @@ fn an_overflow_names_its_site_and_every_frame() {
 fault: int_overflow in function line_total
  --> main.jadpo:11:30
    |
-11 |     var total: Pence = Pence(price * quantity)
+11 |     var total: Coins = Coins(price * quantity)
    |                              ^^^^^^^^^^^^^^^^ out of range
   reason: `price * quantity` gives a whole number outside `Int`'s range, -9223372036854775808 to 9223372036854775807; Jadpo stops rather than wrap around.
   next: Bound the values that feed it with `max`, so the result always fits (agent)

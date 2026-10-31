@@ -582,17 +582,17 @@ fn a_package_s_tests_and_recipes_are_data() {
 #[test]
 fn a_package_s_code_sees_only_its_own_names() {
     let pence = (
-        "shared/types/pence.jadpo",
-        "type Pence = Int {\n    min: 0\n}\n",
+        "shared/types/coins.jadpo",
+        "type Coins = Int {\n    min: 0\n}\n",
     );
     let uses = (
         "packages/postcodes/v2/types/fee.jadpo",
-        "/// A fee.\npublic type Fee = Object {\n    amount: Pence\n}\n",
+        "/// A fee.\npublic type Fee = Object {\n    amount: Coins\n}\n",
     );
     let found = installed(&with(&[pence, uses]));
     assert!(
         found.iter().any(|p| p.contains(
-            "packages/postcodes/v2/types/fee.jadpo semantic.unknown_name: `Pence` isn't declared"
+            "packages/postcodes/v2/types/fee.jadpo semantic.unknown_name: `Coins` isn't declared"
         )),
         "{found:#?}"
     );

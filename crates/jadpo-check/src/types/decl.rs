@@ -438,6 +438,7 @@ impl Decls<'_> {
                 }
                 let subject = self.table.subject(&parent);
                 let own = self.settings(list, subject, None, &parent);
+                self.unit_as_number(decl, &shape.name, &parent);
                 if self.table.base_prim(&parent) == Some(Prim::Decimal)
                     && own.scale.is_none()
                     && !self
@@ -508,6 +509,54 @@ impl Decls<'_> {
                 self.variants(list, &shape.name);
             }
         }
+    }
+
+    /// `type.unit_as_number` (area 2, "Units and money in plain numbers";
+    /// roadmap F1): a type built on `Int` or `Decimal` whose whole name is
+    /// one of a standard type's units, a currency's minor unit or a
+    /// percentage, by `jadpo suggest`'s name data, is that standard type
+    /// held as a plain number. A judgement call: the `Knots` scouts tie
+    /// are no speed.
+    fn unit_as_number(&mut self, decl: &ast::TypeDecl, name: &str, parent: &Ty) {
+        let Some(builtin) = self.table.base_prim(parent) else {
+            return;
+        };
+        let Some(found) = crate::suggest::unit_named(name, builtin) else {
+            return;
+        };
+        let Some(written) = decl.name() else { return };
+        let standard = found.standard.name;
+        let held = builtin.name();
+        // A word that is a unit of one type and names another (`Pounds`)
+        // names both, with what each holds.
+        let (types, of, carries, next) = match found.or {
+            Some((other, shared)) => (
+                format!("a `{standard}` or a `{}`", other.name),
+                format!("a unit of `{standard}` and of `{}`", other.name),
+                format!("A `{standard}` or a `{}`", other.name),
+                format!(
+                    "Build it on `{standard}` for {} or `{}` for {}, named for what it holds rather than its unit",
+                    shared.unit_holds, other.name, shared.holds
+                ),
+            ),
+            None => (
+                format!("a `{standard}`"),
+                format!("a unit of `{standard}`"),
+                format!("A `{standard}`"),
+                format!("Build it on `{standard}`, named for what it holds rather than its unit"),
+            ),
+        };
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_UNIT_AS_NUMBER,
+                format!("`{name}` holds {types} as a plain number"),
+            )
+            .at(self.span(written.syntax()), "named for a unit")
+            .reason(format!(
+                "`{name}` is named for {of} but is a plain `{held}`, so nothing keeps the unit with the number: a value in another unit passes for one in this one, and it adds to any other number. {carries} carries what the number means, and converts and shows itself by its own rules."
+            ))
+            .next(next),
+        );
     }
 
     /// `type.standard_exists` (area 19, "Packages use the standard

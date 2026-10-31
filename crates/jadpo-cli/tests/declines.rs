@@ -25,44 +25,44 @@ fn jadpo(cwd: &Path, args: &[&str]) -> Output {
     output
 }
 
-const ROUNDING: &str = r#"use shared/types { Pence }
+const ROUNDING: &str = r#"use shared/types { Coins }
 
 library rounding {
     /// The amount, capped at a thousand pence.
-    function capped(amount: Pence) -> Pence {
-        if (amount > Pence(1000)) {
-            return Pence(1000)
+    function capped(amount: Coins) -> Coins {
+        if (amount > Coins(1000)) {
+            return Coins(1000)
         }
         return amount
     }
 
     /// The basket total, capped for the till.
     decline library.similar_exists: "Caps the basket for the till, which may change on its own"
-    function cap_total(total: Pence) -> Pence {
-        if (total > Pence(1000)) {
-            return Pence(1000)
+    function cap_total(total: Coins) -> Coins {
+        if (total > Coins(1000)) {
+            return Coins(1000)
         }
         return total
     }
 }
 "#;
 
-const FEES: &str = r#"use shared/types { Pence }
+const FEES: &str = r#"use shared/types { Coins }
 
 library fees {
-    constant small_order_fee: Pence = 250
+    constant small_order_fee: Coins = 250
     decline constant.similar_exists: "A courier's charge that matches the fee today"
-    constant courier_charge: Pence = 250
+    constant courier_charge: Coins = 250
 }
 "#;
 
-const SALES: &str = r#"use shared/types { Pence }
+const SALES: &str = r#"use shared/types { Coins }
 use shared/libraries { rounding }
 use sales/libraries { fees }
 
-action basket_total(price: Pence) -> Pence {
+action basket_total(price: Coins) -> Coins {
     return rounding.cap_total(
-        rounding.capped(Pence(price + fees.small_order_fee + fees.courier_charge))
+        rounding.capped(Coins(price + fees.small_order_fee + fees.courier_charge))
     )
 }
 "#;
@@ -72,8 +72,8 @@ fn shop(name: &str) -> PathBuf {
     for (path, text) in [
         ("app.jadpo", "application {}\n"),
         (
-            "shared/types/pence.jadpo",
-            "type Pence = Int {\n    min: 0\n}\n",
+            "shared/types/coins.jadpo",
+            "type Coins = Int {\n    min: 0\n}\n",
         ),
         ("shared/libraries/rounding.jadpo", ROUNDING),
         ("domains/sales/libraries/fees.jadpo", FEES),

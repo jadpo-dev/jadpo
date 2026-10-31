@@ -227,6 +227,7 @@ and a security rule's with ", which a person then accepts".
 | `email.field_unused` | [Built-in services](16-built-in-services.md) | An email's field is written by no template and no subject |
 | `email.health_problem` | [Built-in services](16-built-in-services.md) | An email's template fails a check of the mail health score |
 | `rate_limits.counted_in_memory` | [Built-in services](16-built-in-services.md) | A deployable built for Workers would count its rate limits in each instance's memory |
+| [`type.unit_as_number`](../errors/type.unit_as_number.md) | [Values and types](02-values-and-types.md) | A type named for a unit, a currency's minor unit or a percentage is built on a plain number |
 | `type.standard_exists` | [Standard library](19-standard-library.md) | A type has a standard type's shape under another name |
 | `type.variant_retired` | [Standard library](19-standard-library.md) | Code writes a retired code |
 | [`query.nearest_exact`](../errors/query.nearest_exact.md) | [AI](21-ai.md) | Nearest-neighbour order on a vector too long for an index reads every record |
@@ -234,8 +235,9 @@ and a security rule's with ", which a person then accepts".
 Each of these can be right as written. Two helpers can differ on purpose,
 two constants can share a value by coincidence (a VAT rate and a fee), a
 listed action can call a helper only some of its callers are meant to
-pass, a shape can match a standard type by chance, and code that reads
-old records names a withdrawn code on purpose.
+pass, a shape can match a standard type by chance, a name can be a unit
+by chance, and code that reads old records names a withdrawn code on
+purpose.
 
 Plain mistakes are never declinable. That includes retries of a call to an
 outside service that outlast a route's deadline

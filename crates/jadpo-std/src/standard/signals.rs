@@ -13,6 +13,18 @@ pub struct Signals {
     /// Words in a name that say a value is one of these: `price`,
     /// `pence`. A word matches a name's word, or its plural.
     pub names: &'static [&'static str],
+    /// The words of [`Signals::names`] that are themselves one of the
+    /// type's units: `pence`, a currency's minor unit. A type built on
+    /// `Int` or `Decimal` named only by one, or by one of a quantity's
+    /// units ([`Signals::units`]), is the type held as a plain number,
+    /// `type.unit_as_number` (area 2, "Units and money in plain numbers";
+    /// roadmap F1).
+    pub unit_names: &'static [&'static str],
+    /// Words that are another type's unit but name this type too, so a
+    /// type named only by one names both: `Pounds` is a `Mass` or a
+    /// `Money`. Only words that already match a unit belong here, never a
+    /// currency's major units generally.
+    pub shared_units: &'static [SharedUnit],
     /// The built-in types a field, parameter or type with one of
     /// [`Signals::names`] must be built on for the `name` signal to fire:
     /// `timeout_ms: Int` is a `Duration` held as a number.
@@ -33,6 +45,17 @@ pub struct Signals {
     pub validation: Option<Validation>,
 }
 
+/// A word that is one type's unit and names another type too, with what
+/// each holds, for the message that names both.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SharedUnit {
+    pub word: &'static str,
+    /// What the type whose unit it is holds: "a weight".
+    pub unit_holds: &'static str,
+    /// What this type holds: "an amount of money".
+    pub holds: &'static str,
+}
+
 /// What a regular expression must accept and refuse to be a type's
 /// validation written by hand.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -44,6 +67,8 @@ pub struct Validation {
 /// No signals: most types.
 pub const NO_SIGNALS: Signals = Signals {
     names: &[],
+    unit_names: &[],
+    shared_units: &[],
     named_on: &[],
     conversions: &[],
     units: false,
@@ -67,6 +92,12 @@ impl Signals {
 /// a currency symbol by hand.
 pub const MONEY: Signals = Signals {
     names: &["price", "pence", "penny", "cents", "cost"],
+    unit_names: &["pence", "penny", "cents"],
+    shared_units: &[SharedUnit {
+        word: "pound",
+        unit_holds: "a weight",
+        holds: "an amount of money",
+    }],
     named_on: &[Builtin::Int, Builtin::Decimal],
     conversions: &["100", "1000"],
     units: false,
@@ -74,9 +105,24 @@ pub const MONEY: Signals = Signals {
     validation: None,
 };
 
+/// `Percentage`: a proportion held as a whole or decimal number of
+/// percent.
+pub const PERCENTAGE: Signals = Signals {
+    names: &["percent", "percentage", "pct"],
+    unit_names: &["percent", "pct"],
+    shared_units: &[],
+    named_on: &[Builtin::Int, Builtin::Decimal],
+    conversions: &[],
+    units: false,
+    format_literals: &[],
+    validation: None,
+};
+
 /// A quantity: its units' factors, names and codes.
 pub const QUANTITY: Signals = Signals {
     names: &[],
+    unit_names: &[],
+    shared_units: &[],
     named_on: &[Builtin::Int, Builtin::Decimal],
     conversions: &[],
     units: true,
@@ -97,6 +143,17 @@ pub const DURATION: Signals = Signals {
         "hours",
         "timeout",
     ],
+    unit_names: &[
+        "ms",
+        "millis",
+        "milliseconds",
+        "seconds",
+        "secs",
+        "minutes",
+        "mins",
+        "hours",
+    ],
+    shared_units: &[],
     named_on: &[Builtin::Int, Builtin::Decimal],
     conversions: &["1000", "60", "3600", "86400"],
     units: false,
@@ -107,6 +164,8 @@ pub const DURATION: Signals = Signals {
 /// `Instant`: a moment held as a count since the Unix epoch.
 pub const INSTANT: Signals = Signals {
     names: &["epoch", "timestamp", "unix"],
+    unit_names: &[],
+    shared_units: &[],
     named_on: &[Builtin::Int],
     conversions: &["1000"],
     units: false,
@@ -117,6 +176,8 @@ pub const INSTANT: Signals = Signals {
 /// `Email`: an address held as text, or checked by a pattern of its own.
 pub const EMAIL: Signals = Signals {
     names: &["email"],
+    unit_names: &[],
+    shared_units: &[],
     named_on: &[Builtin::Text],
     conversions: &[],
     units: false,
@@ -130,6 +191,8 @@ pub const EMAIL: Signals = Signals {
 /// `Url`: a web address held as text, or checked by a pattern of its own.
 pub const URL: Signals = Signals {
     names: &["url", "link", "website", "homepage"],
+    unit_names: &[],
+    shared_units: &[],
     named_on: &[Builtin::Text],
     conversions: &[],
     units: false,
@@ -143,6 +206,8 @@ pub const URL: Signals = Signals {
 /// `Uuid`: an identifier held as text, or checked by a pattern of its own.
 pub const UUID: Signals = Signals {
     names: &["uuid", "guid"],
+    unit_names: &[],
+    shared_units: &[],
     named_on: &[Builtin::Text],
     conversions: &[],
     units: false,
@@ -227,7 +292,16 @@ mod tests {
                 assert!(crate::Num::parse(constant).is_some(), "{constant}");
             }
             if !signals.names.is_empty() {
-                assert!(!signals.named_on.is_empty(), "{}", entry.name);
+                assert!(
+                    !signals.named_on.is_empty(),
+                    "a standard type with names says what they are built on"
+                );
+            }
+            for unit in signals.unit_names {
+                assert!(
+                    signals.names.contains(unit),
+                    "every unit name is one of its type's names"
+                );
             }
         }
     }

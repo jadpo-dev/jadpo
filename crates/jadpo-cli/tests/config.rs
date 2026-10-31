@@ -1091,15 +1091,15 @@ fn move_does_what_area_10_shows() {
     assert_eq!(actual, expected);
 }
 
-/// A project with `Pence` and one action, `main` in `file`, in the shop
+/// A project with `Coins` and one action, `main` in `file`, in the shop
 /// domain.
 fn shop(name: &str, file: &str, main: &str) -> PathBuf {
     let root = folder(name);
     write(&root, "app.jadpo", "application {}\n");
     write(
         &root,
-        "domains/shop/types/pence.jadpo",
-        "type Pence = Int {\n    min: 0\n}\n",
+        "domains/shop/types/coins.jadpo",
+        "type Coins = Int {\n    min: 0\n}\n",
     );
     write(&root, &format!("domains/shop/actions/{file}"), main);
     root
@@ -1107,7 +1107,7 @@ fn shop(name: &str, file: &str, main: &str) -> PathBuf {
 
 #[test]
 fn move_refuses_every_reason_at_once_and_changes_nothing() {
-    let main = "use shop/types { Pence }\n\naction first_fee() -> Pence {\n    for fee in first_fees {\n        return fee\n    }\n    return 0\n}\n\nconstant fees: List<Pence> = [250, 500]\ndecline constant.similar_exists: \"The first fees, which may differ\"\nconstant first_fees: List<Pence> = fees\n";
+    let main = "use shop/types { Coins }\n\naction first_fee() -> Coins {\n    for fee in first_fees {\n        return fee\n    }\n    return 0\n}\n\nconstant fees: List<Coins> = [250, 500]\ndecline constant.similar_exists: \"The first fees, which may differ\"\nconstant first_fees: List<Coins> = fees\n";
     let root = shop("move-refused", "first_fee.jadpo", main);
     jadpo(&root, &["records", "update"]);
     assert_eq!(
@@ -1147,12 +1147,12 @@ fn move_fills_the_setting_whose_default_names_the_constant() {
     let root = shop(
         "move-fill",
         "page.jadpo",
-        "use shop/types { Pence }\n\naction page() -> Pence {\n    return Pence(config.page_size + largest_page)\n}\n\nconstant largest_page: Pence = 100\n",
+        "use shop/types { Coins }\n\naction page() -> Coins {\n    return Coins(config.page_size + largest_page)\n}\n\nconstant largest_page: Coins = 100\n",
     );
     write(
         &root,
         "config.jadpo",
-        "use shop/types { Pence }\n\nconfig {\n    page_size: Pence {\n        default: largest_page\n    }\n}\n",
+        "use shop/types { Coins }\n\nconfig {\n    page_size: Coins {\n        default: largest_page\n    }\n}\n",
     );
     jadpo(&root, &["records", "update"]);
     let check = jadpo(&root, &["check"]);
@@ -1182,7 +1182,7 @@ Made largest_page a setting
     assert_eq!(output.code, 0);
     assert_eq!(
         fs::read_to_string(root.join("config.jadpo")).expect("config"),
-        "use shop/types { Pence }\n\nconfig {\n    page_size: Pence {\n        default: 100\n    }\n}\n"
+        "use shop/types { Coins }\n\nconfig {\n    page_size: Coins {\n        default: 100\n    }\n}\n"
     );
     jadpo(&root, &["records", "update"]);
     let after = jadpo(&root, &["check"]);
