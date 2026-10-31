@@ -46,6 +46,7 @@ mod delivery_limits;
 mod deployable;
 mod dev_inbox;
 mod dev_provider_calls;
+mod dev_provider_sign_in;
 mod dev_tokens;
 mod driver_factory;
 mod emails;

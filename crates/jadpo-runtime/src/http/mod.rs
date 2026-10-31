@@ -41,6 +41,8 @@
 //! runner gives a schedule's run or a subscriber's delivery, which
 //! `Access.system` grants.
 
+#[cfg(feature = "testing")]
+pub mod account_chooser;
 pub mod address;
 pub mod external_token;
 #[cfg(test)]

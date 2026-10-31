@@ -413,6 +413,48 @@ impl Dev {
     ) -> Reply {
         send(self.port, method, path, headers, body)
     }
+
+    /// The local issuer's account-chooser page (chunk A7c): its address,
+    /// as the listening line gives it.
+    pub(super) fn sign_in_page(&self) -> String {
+        let text = self.out.text();
+        let line = text
+            .lines()
+            .find(|line| line.contains("\"listening\""))
+            .expect("listening");
+        let document: serde_json::Value = serde_json::from_str(line).expect("json");
+        document["data"]["signIn"]
+            .as_str()
+            .unwrap_or_else(|| panic!("no sign-in page: {line}"))
+            .to_string()
+    }
+
+    /// A request to the account-chooser page, `path` its path and query.
+    pub(super) fn send_sign_in(
+        &self,
+        method: &str,
+        path: &str,
+        headers: &[(&str, &str)],
+        body: &str,
+    ) -> Reply {
+        let port: u16 = self
+            .sign_in_page()
+            .rsplit(':')
+            .next()
+            .and_then(|port| port.parse().ok())
+            .expect("the page's port");
+        // As a browser addresses it: by name and port.
+        let mut request = format!(
+            "{method} {path} HTTP/1.1\r\nhost: localhost:{port}\r\nconnection: close\r\ncontent-length: {}\r\n",
+            body.len()
+        );
+        for (name, value) in headers {
+            request.push_str(&format!("{name}: {value}\r\n"));
+        }
+        request.push_str("\r\n");
+        request.push_str(body);
+        send_raw(port, request.as_bytes())
+    }
 }
 
 impl Drop for Dev {
@@ -438,6 +480,15 @@ impl Reply {
             .iter()
             .find(|(header, _)| header.eq_ignore_ascii_case(name))
             .map(|(_, value)| value.as_str())
+    }
+
+    /// Every header called `name`, compared without case.
+    pub(super) fn headers(&self, name: &str) -> Vec<&str> {
+        self.headers
+            .iter()
+            .filter(|(header, _)| header.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+            .collect()
     }
 
     pub(super) fn json(&self) -> serde_json::Value {

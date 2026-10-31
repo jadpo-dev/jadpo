@@ -617,6 +617,41 @@ fn a_member_of_staff_signs_in_with_google_through_the_runtime_alone() {
             .as_deref(),
         Some("sign_in_return_invalid")
     );
+    // Nothing of `jadpo dev`'s account chooser reaches a deployable (chunk
+    // A7c): it has no local issuer, so its start sends the browser to
+    // Google, never to the chooser, and a code the chooser gave goes to
+    // Google's token endpoint like any other, which refuses it.
+    let (asked_fourth, fourth_binding) = restart(r#"{"return_to":"/books"}"#);
+    let chooser =
+        jadpo_runtime::http::local_issuer::LocalIssuer::new(&|bytes: &mut [u8]| host.random(bytes))
+            .expect("an issuer")
+            .with_page("http://localhost:3002");
+    assert!(
+        chooser
+            .authorization("google")
+            .starts_with("http://localhost:3002/")
+    );
+    let chosen = chooser.authorize(
+        jadpo_runtime::http::local_issuer::Account {
+            subject: "110248495921238986420".into(),
+            email: Some("ann@desk.example".into()),
+            email_verified: true,
+            name: Some("Ann Lee".into()),
+        },
+        &asked_fourth["client_id"],
+        &asked_fourth["redirect_uri"],
+        &asked_fourth["nonce"],
+        &asked_fourth["code_challenge"],
+        host.now_ms().expect("a clock"),
+    );
+    let exchanges = host.google.exchanged.borrow().len();
+    let from_chooser = back(&chosen, &asked_fourth["state"], &fourth_binding);
+    assert_eq!(
+        header(&from_chooser, "location"),
+        ["/books?error=sign_in_provider_failed"]
+    );
+    assert_eq!(host.google.exchanged.borrow().len(), exchanges + 1);
+    assert!(cookie(&from_chooser, "desk_session").is_none());
 }
 
 #[test]

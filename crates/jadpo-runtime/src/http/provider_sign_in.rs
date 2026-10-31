@@ -181,6 +181,13 @@ impl<'a> Site<'a> {
         else {
             return Err(Stop::Fail(AUTHENTICATION_MISCONFIGURED));
         };
+        // `jadpo dev`'s local issuer sends the browser to its
+        // account-chooser page for this provider (chunk A7c).
+        #[cfg(feature = "testing")]
+        let authorization = match ctx.host().local_issuer() {
+            Some(local) => local.authorization(&self.provider.name),
+            None => authorization,
+        };
         let (Some(binding), Some(state), Some(id)) = (new_token(ctx), new_token(ctx), ctx.new_id())
         else {
             return Err(Stop::Fail(AUTHENTICATION_MISCONFIGURED));

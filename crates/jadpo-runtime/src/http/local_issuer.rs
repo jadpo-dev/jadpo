@@ -6,8 +6,8 @@
 //! accepts its tokens; it is built only with the `testing` feature, so a
 //! deployable holds none (`tools/checks/deployable.py`).
 
-use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use jadpo_value::Value;
 
@@ -48,6 +48,35 @@ struct Grant {
     expires: i64,
 }
 
+/// The codes a local issuer gave and hasn't been asked to exchange, by
+/// code, and how many it has given. `jadpo dev`'s account-chooser page
+/// gives codes on a thread of its own and the application's workers
+/// exchange them on theirs (chunk A7c), so every local issuer made from
+/// one key shares one book.
+#[derive(Clone, Default)]
+pub struct Codes(Arc<Mutex<CodeBook>>);
+
+impl std::fmt::Debug for Codes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Codes")
+    }
+}
+
+#[derive(Default)]
+struct CodeBook {
+    grants: HashMap<String, Grant>,
+    given: u64,
+}
+
+impl Codes {
+    fn book(&self) -> std::sync::MutexGuard<'_, CodeBook> {
+        match self.0.lock() {
+            Ok(book) => book,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+}
+
 /// The issuer tests and `jadpo dev` run in the configured one's place: an
 /// Ed25519 key made for the run, and its public key as the one `Jwk` its
 /// tokens are checked against. Its `Debug` never shows the key.
@@ -57,9 +86,11 @@ pub struct LocalIssuer {
     seed: String,
     ring: jadpo_value::crypto::KeyRing,
     keys: [Value; 1],
-    /// The codes it gave and hasn't been asked to exchange, by code.
-    grants: RefCell<HashMap<String, Grant>>,
-    given: Cell<u64>,
+    codes: Codes,
+    /// Where `jadpo dev` serves the account-chooser page (chunk A7c), the
+    /// provider's sign-in address in its place; a test's issuer has none
+    /// and answers in process at [`AUTHORIZE`].
+    page: Option<String>,
 }
 
 impl std::fmt::Debug for LocalIssuer {
@@ -96,9 +127,37 @@ impl LocalIssuer {
             seed: seed.to_string(),
             ring,
             keys: [key],
-            grants: RefCell::default(),
-            given: Cell::new(0),
+            codes: Codes::default(),
+            page: None,
         })
+    }
+
+    /// This issuer, giving and taking codes from `codes`, which another
+    /// made from the same key shares.
+    pub fn with_codes(mut self, codes: Codes) -> LocalIssuer {
+        self.codes = codes;
+        self
+    }
+
+    /// The codes it gives and takes.
+    pub fn codes(&self) -> &Codes {
+        &self.codes
+    }
+
+    /// This issuer, sending the browser to the account-chooser page at
+    /// `page` (`http://localhost:<port>`) to sign in (chunk A7c).
+    pub fn with_page(mut self, page: &str) -> LocalIssuer {
+        self.page = Some(page.trim_end_matches('/').to_string());
+        self
+    }
+
+    /// The sign-in address of the provider `provider`: its page on the
+    /// account-chooser, or [`AUTHORIZE`], answered in process.
+    pub fn authorization(&self, provider: &str) -> String {
+        match &self.page {
+            Some(page) => format!("{page}/{provider}/authorize"),
+            None => AUTHORIZE.to_string(),
+        }
     }
 
     /// The key, as [`LocalIssuer::from_seed`] reads it back.
@@ -146,13 +205,14 @@ impl LocalIssuer {
         challenge: &str,
         now: i64,
     ) -> String {
-        let count = self.given.get().wrapping_add(1);
-        self.given.set(count);
+        let mut book = self.codes.book();
+        book.given = book.given.wrapping_add(1);
         let key = blake3::derive_key("jadpo local issuer codes", self.seed.as_bytes());
         let code = jadpo_value::encoding::to_base64url(
-            blake3::keyed_hash(&key, &count.to_be_bytes()).as_bytes(),
+            blake3::keyed_hash(&key, &book.given.to_be_bytes()).as_bytes(),
         );
-        self.grants.borrow_mut().insert(
+        book.grants.retain(|_, grant| grant.expires > now);
+        book.grants.insert(
             code.clone(),
             Grant {
                 account,
@@ -180,7 +240,7 @@ impl LocalIssuer {
         now: i64,
     ) -> Option<String> {
         use jadpo_value::encoding::to_base64url;
-        let grant = self.grants.borrow_mut().remove(code)?;
+        let grant = self.codes.book().grants.remove(code)?;
         let challenge = to_base64url(&jadpo_value::hash::sha256(verifier.as_bytes()));
         if grant.client_id != client_id
             || grant.redirect_uri != redirect_uri
