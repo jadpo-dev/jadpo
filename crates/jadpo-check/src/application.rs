@@ -82,14 +82,20 @@ pub fn section_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     for found in singletons(db, project, "application") {
         for item in found.list.iter().flat_map(|list| list.member_items()) {
-            let (written, span) = match &item {
+            let (written, span, respell) = match &item {
                 MemberItem::Member(member) => {
                     let Some(key) = member.member_key() else {
                         continue;
                     };
                     let names: Vec<String> =
                         key.names().filter_map(|n| tree::name_text(&n)).collect();
-                    (names.join("."), node_span(&found.path, key.syntax()))
+                    // A dotted key is never respelt into one section.
+                    let respell = names.len() == 1;
+                    (
+                        names.join("."),
+                        node_span(&found.path, key.syntax()),
+                        respell,
+                    )
                 }
                 // `...` and a rule are refused where they are written.
                 MemberItem::Elision(_) | MemberItem::RuleMember(_) => continue,
@@ -106,7 +112,7 @@ pub fn section_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             }
             match NOT_BUILT.iter().find(|(section, _)| *section == written) {
                 Some((section, why)) => out.push(not_built(span, section, why)),
-                None => out.push(unknown(span, &written, true)),
+                None => out.push(unknown(span, &written, respell)),
             }
         }
     }
