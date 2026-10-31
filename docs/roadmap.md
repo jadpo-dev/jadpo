@@ -438,6 +438,9 @@ real deploy) and, before outside authors can publish, D3 (releases).
   no network, and its container image published with each release (D3).
   It runs on Fly.io, reached over HTTPS (Richard, 2026-10-31); **needs a
   maintainer** for the Fly.io account before it is deployed.
+  The 0.2.0 release pull request stays open until R6 has merged, so the
+  registry launches with 0.2.0 (Richard, 2026-10-31); no session merges it
+  before then.
 - [ ] **R7 The registry application** **needs a maintainer** to start the
   jadpo.dev session, after R1, R4 and R6: built against the protocol and
   passing R4's conformance test. Until the S3 driver its archives are kept
@@ -449,8 +452,6 @@ After the registry is live, in order:
 - [ ] **R8 `jadpo suggest` points at the registry** `opus · high`: a
   finding when the app's own function fingerprints like a registry
   package's or a standard function (area 14, "Suggestions").
-  The 0.2.0 release pull request stays open until R8 has merged, so 0.2.0
-  ships with it (Richard, 2026-10-31); no session merges it before then.
 - [ ] **R9 Blast radius in an update** `opus · high`: `jadpo package update
   --plan` follows each change record entry through the app's graph to
   the actions, routes, jobs and stored fields it reaches, with the
