@@ -30,25 +30,36 @@
 //!   ([`crate::crashes`]) is given back, due at once, and delivered again
 //!   as the next draw, each attempt counting its keyed calls from none
 //!   under the delivery's key, as a fresh runner's does.
-//!
-//! A batch run a step starts is left as it was started, as before.
+//! - **Batches.** A batch run a step starts, or a delivery or an item
+//!   starts in turn, runs to its end among the deliveries (area 13,
+//!   "Batches"): a batch at a time, each drawn as a delivery is, at the
+//!   test's clock, by a fresh runner as after a restart
+//!   ([`crate::batches::run_a_batch`]), two items a batch on a test's
+//!   host. An item that fails is the run's problem, and a `finished:`
+//!   that fails leaves the run `failed`, which `batches.status` reads; the
+//!   test goes on. A run whose batch couldn't commit gives its lease back
+//!   and waits, as it would for the tick, until the test's clock next
+//!   moves.
 
 use std::collections::BTreeSet;
 
+use crate::batches::{BatchStart, Ran};
 use crate::budget::{Budget, Invocation};
 use crate::outbox::{DIVERGED, Delivery, FAILED};
 use crate::runner::Deferred;
+use crate::test_run::AtClock;
 use jadpo_value::Value;
 
 use crate::{Ctx, Executor, Fault, FaultKind, Outcome, SqlValue};
 
 /// A test's delivery between its steps: the state of the order its
-/// deliveries are drawn in, and the delivery that failed for good, once
-/// one has.
+/// deliveries are drawn in, the delivery that failed for good, once one
+/// has, and how many random draws its batch runs have made.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct BetweenSteps {
     order: u64,
     undelivered: Option<Undelivered>,
+    drawn: u64,
 }
 
 impl BetweenSteps {
@@ -89,6 +100,7 @@ impl Ctx<'_> {
         self.background_mut().set_between_steps(BetweenSteps {
             order,
             undelivered: None,
+            drawn: 0,
         });
     }
 
@@ -125,14 +137,44 @@ fn written(key: &str) -> &str {
     name.rsplit('.').next().unwrap_or(name)
 }
 
+/// One piece of what runs between a test's steps.
+enum Piece {
+    Delivery(Delivery),
+    Batch(BatchStart),
+}
+
+/// Puts `work`, what a step, a delivery or a batch left, among `pool`'s
+/// pieces: each delivery, and each batch run not there already.
+fn pool_up(pool: &mut Vec<Piece>, work: Vec<Deferred>) {
+    for work in work {
+        match work {
+            Deferred::Deliveries(deliveries) => {
+                pool.extend(deliveries.into_iter().map(Piece::Delivery));
+            }
+            Deferred::Batch(start) => add_run(pool, start),
+        }
+    }
+}
+
+/// Puts the run `start` names among `pool`'s pieces, unless it is there.
+fn add_run(pool: &mut Vec<Piece>, start: BatchStart) {
+    let there = pool
+        .iter()
+        .any(|piece| matches!(piece, Piece::Batch(held) if held.run == start.run));
+    if !there {
+        pool.push(Piece::Batch(start));
+    }
+}
+
 /// Delivers what is due in the test's outbox once a step of it has come
-/// back, and what that sets off, until none is due (see the module): when
-/// the step left deliveries, or moved the clock (`advanced`), so a
-/// delivery waiting to retry may be due. Nothing when `ctx` isn't a
-/// test's that delivers between its steps, or is inside an action. The
-/// outcome to end the test with when a delivery failed for good, which
-/// [`Ctx::undelivered`] then names, the test's frame at `at`, the step's
-/// site.
+/// back, and runs the batch runs it started, and what those set off,
+/// until none is due (see the module): when the step left deliveries or
+/// batch runs, or moved the clock (`advanced`), so a delivery waiting to
+/// retry, or a run waiting for its lease to lapse, may be due. Nothing
+/// when `ctx` isn't a test's that delivers between its steps, or is
+/// inside an action. The outcome to end the test with when a delivery
+/// failed for good, which [`Ctx::undelivered`] then names, the test's
+/// frame at `at`, the step's site.
 pub async fn after_step(
     executor: &dyn Executor,
     ctx: &mut Ctx<'_>,
@@ -142,24 +184,28 @@ pub async fn after_step(
     if ctx.background().between_steps().is_none() || ctx.in_action() {
         return Ok(());
     }
-    let Some(events) = executor.plan().events() else {
-        return Ok(());
-    };
-    if events.plan.subscribers.is_empty() {
-        return Ok(());
-    }
-    // A batch run is left as the step left it; the deliveries are read
-    // again from the outbox, with any older one now due.
-    let mut kept = Vec::new();
+    let events = executor
+        .plan()
+        .events()
+        .filter(|events| !events.plan.subscribers.is_empty());
+    let host = ctx.host();
+    let mut pool: Vec<Piece> = Vec::new();
     let mut emitted = false;
     for work in ctx.take_deferred() {
         match work {
+            // Read again from the outbox, with any older one now due.
             Deferred::Deliveries(deliveries) => emitted |= !deliveries.is_empty(),
-            other => kept.push(other),
+            Deferred::Batch(start) => add_run(&mut pool, start),
         }
     }
-    if !emitted && !advanced {
-        ctx.background_mut().defer_all(kept);
+    // The tick picks up a run waiting with no lease once the clock moves.
+    if advanced {
+        let clocked = AtClock::new(host, ctx.now());
+        for start in crate::batches::waiting(executor, &clocked, ctx.now()).await {
+            add_run(&mut pool, start);
+        }
+    }
+    if pool.is_empty() && (events.is_none() || !emitted && !advanced) {
         return Ok(());
     }
     let stores = executor
@@ -167,21 +213,22 @@ pub async fn after_step(
         .schedules()
         .map(|plan| plan.stores.clone())
         .unwrap_or_default();
-    let host = ctx.host();
     let budget = Budget::start(host, Invocation::AfterResponse);
     // Deliveries this runner couldn't claim, never drawn again.
     let mut unclaimed: BTreeSet<[u8; 16]> = BTreeSet::new();
-    let mut pool: Vec<Delivery> = Vec::new();
-    let ended = loop {
-        if pool.is_empty() {
+    loop {
+        let delivering = pool.iter().any(|piece| matches!(piece, Piece::Delivery(_)));
+        if let Some(events) = &events
+            && !delivering
+        {
             for store in &stores {
-                match crate::runner::due(&events, host, store, ctx.now()).await {
+                match crate::runner::due(events, host, store, ctx.now()).await {
                     Ok(due) => pool.extend(
                         due.into_iter()
-                            .filter(|delivery| !unclaimed.contains(&delivery.id)),
+                            .filter(|delivery| !unclaimed.contains(&delivery.id))
+                            .map(Piece::Delivery),
                     ),
                     Err(error) => {
-                        ctx.background_mut().defer_all(std::mem::take(&mut kept));
                         return Err(Outcome::Fault(ctx.fault(
                             FaultKind::Defect(format!(
                                 "the test's outbox in `{store}` couldn't be read: {error:?}"
@@ -191,58 +238,88 @@ pub async fn after_step(
                     }
                 }
             }
-            if pool.is_empty() {
-                break Ok(());
-            }
+        }
+        if pool.is_empty() {
+            return Ok(());
         }
         let draw = ctx
             .background_mut()
             .between_steps_mut()
             .map_or(0, BetweenSteps::draw);
-        let delivery = pool.remove((draw % pool.len() as u64) as usize);
-        // Each attempt counts its keyed calls from none under the
-        // delivery's own key, as a runner's fresh context does, so an
-        // attempt after a crash sends the keys the first one sent (chunk
-        // 7.5d); the test's own are given back after (the attempt's own
-        // doing since chunk 7.9a).
-        let attempted =
-            crate::runner::attempt_delivery(executor, ctx, &budget, delivery.clone(), None).await;
-        match attempted {
-            None => {
-                unclaimed.insert(delivery.id);
-            }
-            Some((mut outcome, state)) if state == FAILED || state == DIVERGED => {
-                let mut undelivered = undelivered(&events, host, &delivery).await;
-                undelivered.diverged = state == DIVERGED;
-                if let Some(between) = ctx.background_mut().between_steps_mut() {
-                    between.undelivered = Some(undelivered);
-                }
-                // Its subscriber's action ran from the test, which stood
-                // at the step.
-                ctx.at(at);
-                let frames = match &mut outcome {
-                    Outcome::Failed(failure) => Some(&mut failure.frames),
-                    Outcome::Fault(fault) => Some(&mut fault.frames),
-                    Outcome::Assertion(assertion) => Some(&mut assertion.frames),
-                    Outcome::Value(_) => None,
+        match pool.remove((draw % pool.len() as u64) as usize) {
+            Piece::Delivery(delivery) => {
+                let Some(events) = &events else {
+                    continue;
                 };
-                if let Some(test) = frames.and_then(|frames| frames.last_mut()) {
-                    test.site = at;
+                // Each attempt counts its keyed calls from none under the
+                // delivery's own key, as a runner's fresh context does, so
+                // an attempt after a crash sends the keys the first one
+                // sent (chunk 7.5d); the test's own are given back after
+                // (the attempt's own doing since chunk 7.9a).
+                let attempted =
+                    crate::runner::attempt_delivery(executor, ctx, &budget, delivery.clone(), None)
+                        .await;
+                match attempted {
+                    None => {
+                        unclaimed.insert(delivery.id);
+                    }
+                    Some((mut outcome, state)) if state == FAILED || state == DIVERGED => {
+                        let mut undelivered = undelivered(events, host, &delivery).await;
+                        undelivered.diverged = state == DIVERGED;
+                        if let Some(between) = ctx.background_mut().between_steps_mut() {
+                            between.undelivered = Some(undelivered);
+                        }
+                        // Its subscriber's action ran from the test, which
+                        // stood at the step.
+                        ctx.at(at);
+                        let frames = match &mut outcome {
+                            Outcome::Failed(failure) => Some(&mut failure.frames),
+                            Outcome::Fault(fault) => Some(&mut fault.frames),
+                            Outcome::Assertion(assertion) => Some(&mut assertion.frames),
+                            Outcome::Value(_) => None,
+                        };
+                        if let Some(test) = frames.and_then(|frames| frames.last_mut()) {
+                            test.site = at;
+                        }
+                        return Err(outcome);
+                    }
+                    Some(_) => {}
                 }
-                break Err(outcome);
+                // What its subscriber's action emitted or started, due now
+                // too.
+                let work = ctx.take_deferred();
+                pool_up(&mut pool, work);
             }
-            Some(_) => {}
-        }
-        // What its subscriber's action emitted, due now too.
-        for work in ctx.take_deferred() {
-            match work {
-                Deferred::Deliveries(deliveries) => pool.extend(deliveries),
-                other => kept.push(other),
+            Piece::Batch(start) => {
+                // A batch at a time, by a fresh runner each, at the test's
+                // clock, with randomness that carries on from the last.
+                let drawn = ctx
+                    .background()
+                    .between_steps()
+                    .map_or(0, |between| between.drawn);
+                let clocked = AtClock::new(host, ctx.now()).after(drawn);
+                let batch_budget = Budget::start(&clocked, Invocation::AfterResponse);
+                let (ran, left) = Box::pin(crate::batches::run_a_batch(
+                    executor,
+                    &clocked,
+                    &batch_budget,
+                    &start,
+                ))
+                .await;
+                // One whose batch couldn't commit gives its lease back, so
+                // the test's next `clock.advance` picks it up.
+                if matches!(ran, Ran::Paused(_)) {
+                    crate::batches::give_back(&clocked, &start).await;
+                }
+                if let Some(between) = ctx.background_mut().between_steps_mut() {
+                    between.drawn = clocked.drawn();
+                }
+                // A run handed on is among what it left; one that ended,
+                // or that waits for the clock to move, isn't.
+                pool_up(&mut pool, left);
             }
         }
-    };
-    ctx.background_mut().defer_all(kept);
-    ended
+    }
 }
 
 /// What a test's report says of `delivery`, which failed for good: its
@@ -290,6 +367,7 @@ mod tests {
             let mut between = BetweenSteps {
                 order,
                 undelivered: None,
+                drawn: 0,
             };
             (0..8).map(|_| between.draw() % 5).collect::<Vec<_>>()
         };

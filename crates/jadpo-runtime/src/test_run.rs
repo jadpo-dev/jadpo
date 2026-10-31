@@ -10,9 +10,9 @@
 //! a package fake and the connection `ai:` names by the `ai` fake, each
 //! outside call kept in the record when the run keeps one, the test's
 //! settings, and, for a test with a database, what each step emits
-//! delivered before the next ([`delivery_order`]) and each step it reaches
-//! counted or crashed at; then its outcome kept, and the batch runs it
-//! started run to their end at its clock ([`AtClock`]) when asked. The
+//! delivered before the next ([`delivery_order`]), with the batch runs it
+//! starts run to their end at its clock ([`AtClock`]), and each step it
+//! reaches counted or crashed at; then its outcome kept. The
 //! host it is given holds the test's stores; what a test's host gives
 //! besides them is [`Caught`]. [`rows`] reads what a test's database holds
 //! when it ends, for its record.
@@ -31,16 +31,15 @@ use crate::crashes::{Boundary, Reached};
 use crate::fakes::{ProviderFake, Usage};
 use crate::files::MemoryFiles;
 use crate::record::{Entry, Record};
-use crate::runner::{Deferred, run_deferred};
 use crate::test_steps::Undelivered;
 use crate::{
     Clock, Ctx, Database, Env, Executor, Fault, FaultKind, Host, LocalFuture, Outcome, Places,
     Plan, SqlValue,
 };
 
-/// How many of a file's rows a test's host reads into one batch, so every
-/// file a test reads resumes between batches (area 13, "Provider calls
-/// and capabilities in tests").
+/// How many items a test's host puts in one batch, a file's rows or a
+/// query's, so every run a test starts resumes between batches (area 13,
+/// "Batches").
 pub const ROWS_PER_BATCH: u32 = 2;
 
 /// One step of SplitMix64.
@@ -99,9 +98,6 @@ pub struct Once<'a> {
     /// The step, from 1, and the boundary to crash the run at (chunk
     /// 7.5d), for a test with a database.
     pub crash: Option<(usize, Boundary)>,
-    /// Each batch run the test started run to its end once it has ended
-    /// (chunk 8.1h).
-    pub batches: bool,
     /// The record each statement, event and outside call is kept in, when
     /// the run keeps one; the host's stores keep theirs in it too.
     pub record: Option<Rc<Record>>,
@@ -177,17 +173,6 @@ pub async fn once(executor: &dyn Executor, host: &dyn Host, once: Once<'_>) -> R
         }
         for paths in crate::record::paths(&ctx.paths_taken(), executor.places()) {
             record.push(paths);
-        }
-    }
-    if once.batches {
-        let started: Vec<Deferred> = ctx
-            .take_deferred()
-            .into_iter()
-            .filter(|work| matches!(work, Deferred::Batch(_)))
-            .collect();
-        if !started.is_empty() {
-            let clocked = AtClock::new(&faked, ctx.now());
-            run_deferred(executor, &clocked, started).await;
         }
     }
     let mut usage = fake.usage();
@@ -354,12 +339,12 @@ pub async fn all_rows<'s>(
     out
 }
 
-/// A test's host, `host`, with the test's clock as it ended, `now`, and
-/// random bytes drawn from a counter, for running what the test left to
-/// run after it (chunk 8.1h): the differential run's batch runs, which a
-/// runner runs as a deployable's does, under its host's clock and
-/// randomness, where a test's host has neither. The same bytes every run,
-/// so both executors' runs make the same identities.
+/// A test's host, `host`, with the test's clock at a step, `now`, and
+/// random bytes drawn from a counter, for the batch runs a test's steps
+/// start (area 13, "Batches"), which a runner runs as a deployable's does,
+/// under its host's clock and randomness, where a test's host has
+/// neither. The same bytes every run, so both executors' runs make the
+/// same identities.
 pub struct AtClock<H> {
     host: H,
     now: i64,
@@ -382,6 +367,18 @@ impl<H: Host> AtClock<H> {
             now,
             drawn: Cell::new(0),
         }
+    }
+
+    /// The host, its randomness carrying on after `drawn` draws: so runs
+    /// between a test's steps never draw the same bytes twice.
+    pub fn after(self, drawn: u64) -> AtClock<H> {
+        self.drawn.set(drawn);
+        self
+    }
+
+    /// How many draws its randomness has made.
+    pub fn drawn(&self) -> u64 {
+        self.drawn.get()
     }
 }
 

@@ -1,5 +1,6 @@
-// A run starts after its action commits, on the runtime's runner, which
-// a test's host keeps none of; a test's store of files is in memory.
+// A file's run reads its rows to the end before the test's next line,
+// two rows a batch with a restart between batches; a test's store of
+// files is in memory.
 
 use seedbank/entities { DonationSheet }
 use seedbank/actions { keep_sheet }
@@ -13,4 +14,14 @@ test "a sheet is kept, and shelving its packets starts once" {
     assert started.shelving != none
     assert restarted.shelving == started.shelving
     assert donations.rows_read == none
+}
+
+test "every row of a sheet is shelved, and one that can't be read is a problem" {
+    var donations: DonationSheet = attempt keep_sheet(
+        "Variety,Saved in,Donated on\nCrimson Flowered broad bean,2024,2024-09-14\nCherokee Trail of Tears bean,2022,2022-09-14\nGardener's Delight tomato,last year,2025-09-14\n"
+    )
+    var shelving: DonationSheet = attempt add_sheet(donations.id)
+    var shelved: DonationSheet = attempt DonationSheet.get(shelving.id)
+    assert shelved.rows_read == 3
+    assert shelved.rows_refused == 1
 }

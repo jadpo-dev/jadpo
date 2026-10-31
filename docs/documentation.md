@@ -267,10 +267,11 @@ needs, or use a local clone with a file-reading coding agent.
     through trusted publishing (OIDC), which needs no token: npmjs.com is
     configured to trust `jadpo-dev/jadpo`'s `release.yml` for the package.
     Both run after the release is published and skip prereleases.
-  - The extension is published only when the repository variable
-    `JADPO_VSCODE_PUBLISH` is `on`, with the Marketplace publisher `jadpo`
-    and its `VSCE_PAT` secret, and the Open VSX namespace `jadpo` with a
-    trusted publisher for `vscode-extension.yml`, which needs no secret.
+  - The extension is published while the repository variable
+    `JADPO_VSCODE_PUBLISH` is `on`, through trusted publishing on both
+    stores, which needs no token: the Marketplace publisher `jadpo` has a
+    trusted publishing policy for `vscode-extension.yml`, and the Open VSX
+    namespace `jadpo` a trusted publisher for it.
 
 ## Installing
 

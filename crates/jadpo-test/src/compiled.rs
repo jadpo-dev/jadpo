@@ -146,7 +146,6 @@ pub fn compare<E: Executor + 'static>(
         target: Some(".".into()),
         seed: Some(1),
         record: true,
-        batches: true,
         ..Options::default()
     };
     let interpreted = match run(options()) {
