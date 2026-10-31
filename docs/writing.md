@@ -309,6 +309,18 @@ a read-only folder or a file that isn't UTF-8, is made by the lines
 before the command, where the reader sees it. A fix that needs the
 error's state first is shown as a plain `sh` block, without output.
 
+A rule no run can raise on demand, because it needs a race, a network
+that fails or a machine that can't build, shows the command as a plain
+`sh` block and output copied from a real run as a plain `text` block.
+The sentence before them says the output was copied rather than checked
+and what the run was, such as "a build on a Mac with no C compiler", and
+the copy has the run's folders written as `.` and `~`, as the check
+writes them. Nothing else in it is edited.
+
+A run whose error needs a read-only file or folder, made with `chmod`,
+shows nothing true as root, who can read and write anything, so the
+docs check refuses to run it as root and asks for an ordinary user.
+
 ## What the docs check enforces
 
 An error page has the parts above, in order: its sections, the catalogue

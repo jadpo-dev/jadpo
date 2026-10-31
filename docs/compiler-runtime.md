@@ -4912,7 +4912,9 @@ they print, stdout and stderr in the order written, is compared with the
 that rule's diagnostic and no other and a failing exit, and `tty` runs it
 in a pseudo-terminal, typing `typed=<value>` and Enter at the first prompt
 once the terminal stops echoing (docs/writing.md, "How an error page
-reads").
+reads"). As root, a block with a `chmod` line is refused rather than
+run, since root ignores the permissions it takes away and the block
+would pass wrongly.
 
 **Teaching examples** (decision "Examples teach every feature"). Each project in `examples/` (a folder holding `app.jadpo`),
 and the golden todo (`benchmarks/golden-todo/`), is copied to a temporary
