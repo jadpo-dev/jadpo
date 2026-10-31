@@ -768,3 +768,75 @@ fn a_unique_key_moved_within_the_tenant_is_made_again_without_a_decision() {
     let after = jadpo(&root, &["check"]);
     assert_eq!(after.code, 0, "{}", after.stdout);
 }
+
+/// Where a field is written in its entity is no part of the schema: a
+/// field added in the middle is one new column, the fields after it don't
+/// read as changed, and fields written in another order are nothing to
+/// migrate.
+#[test]
+fn a_field_added_in_the_middle_changes_only_itself() {
+    const BOOK: &str = "domains/lending/entities/book.jadpo";
+    let root = folder("field-order");
+    write(&root, "app.jadpo", APP);
+    write(
+        &root,
+        BOOK,
+        "entity Book {\n    id: Uuid\n    title: Text\n    added_at: Instant\n    changed_at: Instant\n    on_loan: Bool\n}\n",
+    );
+    let initial = jadpo(&root, &["migrate", "new", "initial"]);
+    assert_eq!(initial.code, 0, "{}{}", initial.stdout, initial.stderr);
+    write(
+        &root,
+        BOOK,
+        "entity Book {\n    id: Uuid\n    title: Text\n    added_at: Instant\n    changed_at: Instant\n    author: Text?\n    on_loan: Bool\n}\n",
+    );
+    let added = jadpo(&root, &["migrate", "new", "add_author"]);
+    assert_eq!(added.code, 0, "{}{}", added.stdout, added.stderr);
+    assert!(
+        added.stdout.contains("+ author  text  new field"),
+        "{}",
+        added.stdout
+    );
+    for unchanged in ["added_at", "changed_at", "on_loan", "allows more"] {
+        assert!(!added.stdout.contains(unchanged), "{}", added.stdout);
+    }
+    let latest = migrations(&root).pop().expect("a migration");
+    let sql = fs::read_to_string(root.join(format!("database/migrations/{latest}/postgres.sql")))
+        .expect("postgres.sql");
+    assert!(
+        sql.ends_with("-- store: main\nALTER TABLE \"book\" ADD COLUMN \"author\" text;\n"),
+        "{sql}"
+    );
+    let snapshot =
+        fs::read_to_string(root.join(format!("database/migrations/{latest}/snapshot.json")))
+            .expect("snapshot.json");
+    let schema = jadpo_graph::schema::Schema::read(&snapshot).expect("a snapshot");
+    let order: Vec<&str> = schema.stores["main"].tables["book"]
+        .ordered()
+        .into_iter()
+        .map(|(name, _)| name.as_str())
+        .collect();
+    assert_eq!(
+        order,
+        ["id", "title", "added_at", "changed_at", "on_loan", "author"]
+    );
+    jadpo(&root, &["records", "update"]);
+    let check = jadpo(&root, &["check"]);
+    assert_eq!(check.code, 0, "{}", check.stdout);
+    write(
+        &root,
+        BOOK,
+        "entity Book {\n    on_loan: Bool\n    author: Text?\n    id: Uuid\n    changed_at: Instant\n    title: Text\n    added_at: Instant\n}\n",
+    );
+    jadpo(&root, &["records", "update"]);
+    let check = jadpo(&root, &["check"]);
+    assert_eq!(check.code, 0, "{}", check.stdout);
+    let again = jadpo(&root, &["migrate", "new", "reorder"]);
+    assert!(
+        again
+            .stdout
+            .starts_with("Nothing to migrate: the entities match "),
+        "{}",
+        again.stdout
+    );
+}
