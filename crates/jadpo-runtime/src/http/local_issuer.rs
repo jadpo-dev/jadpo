@@ -52,9 +52,9 @@ struct Grant {
 /// code, and how many it has given. `jadpo dev`'s account-chooser page
 /// gives codes on a thread of its own and the application's workers
 /// exchange them on theirs (chunk A7c), so every local issuer made from
-/// one key shares one book.
+/// one key shares one set.
 #[derive(Clone, Default)]
-pub struct Codes(Arc<Mutex<CodeBook>>);
+pub struct Codes(Arc<Mutex<Granted>>);
 
 impl std::fmt::Debug for Codes {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -63,15 +63,15 @@ impl std::fmt::Debug for Codes {
 }
 
 #[derive(Default)]
-struct CodeBook {
+struct Granted {
     grants: HashMap<String, Grant>,
-    given: u64,
+    count: u64,
 }
 
 impl Codes {
-    fn book(&self) -> std::sync::MutexGuard<'_, CodeBook> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, Granted> {
         match self.0.lock() {
-            Ok(book) => book,
+            Ok(granted) => granted,
             Err(poisoned) => poisoned.into_inner(),
         }
     }
@@ -205,14 +205,14 @@ impl LocalIssuer {
         challenge: &str,
         now: i64,
     ) -> String {
-        let mut book = self.codes.book();
-        book.given = book.given.wrapping_add(1);
+        let mut granted = self.codes.lock();
+        granted.count = granted.count.wrapping_add(1);
         let key = blake3::derive_key("jadpo local issuer codes", self.seed.as_bytes());
         let code = jadpo_value::encoding::to_base64url(
-            blake3::keyed_hash(&key, &book.given.to_be_bytes()).as_bytes(),
+            blake3::keyed_hash(&key, &granted.count.to_be_bytes()).as_bytes(),
         );
-        book.grants.retain(|_, grant| grant.expires > now);
-        book.grants.insert(
+        granted.grants.retain(|_, grant| grant.expires > now);
+        granted.grants.insert(
             code.clone(),
             Grant {
                 account,
@@ -240,7 +240,7 @@ impl LocalIssuer {
         now: i64,
     ) -> Option<String> {
         use jadpo_value::encoding::to_base64url;
-        let grant = self.codes.book().grants.remove(code)?;
+        let grant = self.codes.lock().grants.remove(code)?;
         let challenge = to_base64url(&jadpo_value::hash::sha256(verifier.as_bytes()));
         if grant.client_id != client_id
             || grant.redirect_uri != redirect_uri

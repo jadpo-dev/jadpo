@@ -342,7 +342,7 @@ fn added(one: &dyn Fn(&str) -> String) -> Draft {
             format!(
                 "{} isn't an email address. Give one like {}, or leave it empty.",
                 code(&draft.email),
-                code("ann@example.com")
+                code("someone@example.com")
             ),
         ));
     }
