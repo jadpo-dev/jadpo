@@ -2866,8 +2866,9 @@ stops short.
   the same runner, a batch at a time. Each value is kept and checked by
   its field's rules, as any value of the field's type is.
 
-Not built yet: publishing events outward, and the error for signals that
-can't be watched, `cli.signal_handler_failed`.
+Not built yet: publishing events outward, whose `publishing:` in
+`application { }` is `toolchain.not_built_yet` where it is written, and
+the error for signals that can't be watched, `cli.signal_handler_failed`.
 
 ## Events from outside
 <!-- topic: events-from-outside -->

@@ -14,6 +14,7 @@ pub mod ai;
 pub mod ai_limits;
 pub mod ai_mapping;
 pub mod ai_personal;
+pub mod application;
 pub mod batches;
 mod case;
 pub mod client_address;
@@ -282,6 +283,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(config::config_problems(db, project).iter().cloned());
         out.extend(version.iter().cloned());
         out.extend(config::connection_problems(db, project).iter().cloned());
+        out.extend(application::section_problems(db, project).iter().cloned());
         out.extend(config::test_value_problems(db, project).iter().cloned());
         out.extend(identity::identity_problems(db, project).iter().cloned());
         out.extend(identity::sign_in_problems(db, project).iter().cloned());

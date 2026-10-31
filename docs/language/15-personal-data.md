@@ -659,4 +659,5 @@ This is not legal advice. A privacy professional reviews the report.
 |---|---|
 | An entity's and an event's `personal: PersonalData.<category>` | Built for the [AI](21-ai.md) page alone: it is read and checked against the fourteen categories for the check of what reaches a model. Not built yet: everything this page says marking does. A marked field nothing reads, and one erasure can't reach, compile without the errors "What the compiler checks" lists; no log, report or access record uses the marking. |
 | `person: true`, `erase:`, and `retention:` on a field or an entity | Not built yet: each is `toolchain.not_built_yet` where it is written, so none is accepted and then ignored. |
+| `privacy:` in `application { }` | Not built yet: it is `toolchain.not_built_yet` where it is written. |
 | Everything else on this page | Not built yet: it is on [the roadmap](../roadmap.md). |

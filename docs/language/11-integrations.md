@@ -6726,7 +6726,7 @@ package's name, as its types are.
 | Package actions, subscribers, recipes and polls | Built. |
 | Webhooks as events, replies, handshakes, queues through a package and the Cloudflare Queues driver | Built. |
 | Services (`runs:`) | Not built yet. |
-| OAuth grants | Not built yet. |
+| OAuth grants | Not built yet: the application's `grants:` is `toolchain.not_built_yet` where it is written. |
 | Publisher trust for third-party git packages | Built: every package from git needs an [acceptance](18-records-and-manifest.md#acceptances). Not built yet: a setting that lets your own company's git packages in without one. |
 | The hosted registry | Not built yet. |
 | Importers other than OpenAPI | Not built yet. |

@@ -341,17 +341,7 @@ Before 0.1.0 is published (D3).
 - [x] **S2 Release provenance**: [security](security.md), "CI and releases"; [documentation](documentation.md), "Installing"; `.github/install-dist.sh`.
 - [x] **S3 Coverage-guided fuzzing**: [security](security.md), "Fuzzing"; `fuzz/`; `.github/workflows/fuzz.yml`.
 - [x] **S4 Code scanning and Scorecard**: [security](security.md), "CI and releases"; `.github/workflows/codeql.yml`, `.github/workflows/scorecard.yml`.
-- [ ] **S5 The OpenSSF Best Practices badge** `sonnet · medium`, right
-  after 0.1.0 is published: the project's entry
-  (https://www.bestpractices.dev/projects/16073) has every passing
-  criterion answered but three that need a release: a unique version per
-  release (`version_unique`), release notes (`release_notes`) and
-  responses to bug reports (`report_responses`). Done when those are
-  marked Met with links to the 0.1.0 release and its notes, the entry
-  shows "passing", and the README carries its badge:
-  `[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16073/badge)](https://www.bestpractices.dev/projects/16073)`.
-  The entry is in the maintainer's name, so the maintainer saves the
-  answers (a prefilled link per part).
+- [x] **S5 The OpenSSF Best Practices badge**: passing and OpenSSF Baseline at https://www.bestpractices.dev/projects/16073; [README](../README.md); [CONTRIBUTING](../CONTRIBUTING.md), "The project's repositories".
 
 ## What an outside agent's first app found
 
@@ -381,11 +371,7 @@ time.
   reminder schedule over a batch, and route tests for each, with no code
   outside Jadpo. Before 10.2's measured runs, since it changes what they
   measure.
-- [ ] **A9 Unknown sections of `application { }`** `opus · high`: an
-  unknown or misspelt section of the root `application { }` is accepted
-  silently today, so a setting meant to protect the app can be dropped
-  without a word. One list of every area's sections, and a rule refusing
-  any other, as entities' and routes' unknown sections are. Found by A0.
+- [x] **A9 Unknown sections of `application { }`**: area 1, "What `application { }` holds" and "What is built"; the "What is built" of areas 11, 12, 15 and 16.
 - [x] **A8 Acceptances for what exists today**: area 18, "Comparing two builds" and "Acceptances"; area 9, "Protecting policy"; area 14, "`jadpo acceptance new`" and "Review and sign-off"; area 1, "Writing a decline".
 - [x] **A7a `on_first_sign_in:` for external tokens**: area 8, `external_token` and "A person the app has not seen"; area 5, "Tables for sign-in"; compiler/runtime §2.6, "First sign-in by external token".
 - [x] **A7b Sign-in providers**: area 8, "Providers", "What the compiler checks of sign-in" and Failures; areas 7 (generated routes), 11 (sign-in providers), 13 (signing in for a route test) and 14 (`jadpo dev`); compiler/runtime §2.6, "Sign-in providers".
