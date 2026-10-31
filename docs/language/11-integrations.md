@@ -893,8 +893,8 @@ held, the app words each under a key that carries the version,
   official packages are `@jadpo/…`. In code a package keeps its own name
   and version label (`Postcodes.v2`), so two publishers' packages with one
   code name can't be installed in the same app. `jadpo package add` takes
-  the scoped name, and the lock's `registry` source records it once the
-  registry client is built.
+  the scoped name, and the lock's `registry` source records it
+  ([The registry protocol](#the-registry-protocol)).
 - Creating an integration checks the registry and warns when the name is
   taken.
 - A package is named in UpperCamelCase with its own version label, such
@@ -923,46 +923,17 @@ pinned in `jadpo.lock` with its source and digest.
 
 ### The registry
 
-The registry is Jadpo's own, and holds Jadpo packages of both kinds.
+The registry at jadpo.dev holds public Jadpo packages of both kinds, as
+Jadpo source with no native code and no install script; nothing in a
+package runs when it is installed, and its code runs only when started
+([What package code may do](#what-package-code-may-do)). A malicious
+package could still name the wrong host or mark an unsafe call
+idempotent, so hosts, services and every package change appear in the
+approval report, the summary a person signs off before a release. How it
+works is in [The public registry](#the-public-registry).
 
-- **Jadpo source only.** A package carries no native code and no install
-  script, and nothing in it runs when it is installed. Its code runs only
-  when started ([What package code may do](#what-package-code-may-do)). A
-  malicious package could still name the wrong host or mark an unsafe call
-  idempotent, so hosts, services and every package change appear in the
-  approval report, the summary a person signs off before a release.
-- **Checked on upload.** The registry repeats every install check. It
-  adds discovery, curated packages marked official, publisher
-  verification and signing. It renders each package's documentation
-  website from its surface, so every package is documented the same way.
-- A few curated packages, Stripe, Twilio and GitHub, imported from their
-  published OpenAPI, live in the Jadpo repository.
-
-**Releasing to the registry** needs a person by default, and no publish
-token exists:
-
-- **A release waits for a passkey.** Publishing names a repository and a
-  tag; the registry fetches that commit, checks it, and holds the release
-  as pending until a releaser confirms it with a passkey on jadpo.dev,
-  seeing its surface diff, what it reaches and its version. A stolen git
-  credential or CI token alone can't publish.
-- **Routine releases may release themselves.** A package can opt into
-  automatic release 24 hours after a release goes pending, unless a member
-  cancels it; every member is told when it goes pending. Only a release
-  that isn't a new major and adds no host, no new place personal data is
-  sent and no new call that changes something qualifies. Any other release
-  always needs the passkey.
-- **Any releaser can confirm.** A publisher is a person or an
-  organisation. An organisation's owners manage its members and packages,
-  and any member who is a releaser confirms with their own passkey.
-- **A new releaser waits seven days** before they can confirm a release,
-  and every member is told they were added. Removing a releaser takes
-  effect at once.
-- **Succession is named in advance.** An owner may name a successor, who
-  can claim the package once the owner hasn't signed in for six months,
-  after the owner is emailed and has 30 days to refuse. Without a named
-  successor Jadpo never hands a package to anyone: it can be marked
-  unmaintained, and a fork is published under its own name.
+A few curated packages, Stripe, Twilio and GitHub, imported from their
+published OpenAPI, live in the Jadpo repository until then.
 
 ### An importer
 
@@ -1403,7 +1374,8 @@ are committed into apps, so a registry's caching would add nothing.
 
 ### Public packages
 
-Public packages go to the registry with `jadpo package publish`.
+Public packages go to the registry with `jadpo package publish`, from a
+tag ([Releasing](#releasing)).
 
 > `jadpo package link <folder>` writes `package
 > Postcodes.v2 link ../postcodes` in the lock and keeps the line it
@@ -1529,6 +1501,260 @@ description of every public message.
 >
 > UK postcodes, read as people type them.
 > ```
+
+## The public registry
+<!-- topic: the-public-registry -->
+
+The registry at jadpo.dev holds public Jadpo packages of both kinds. It is
+itself a Jadpo application, deployed to Cloudflare Workers, and calls one
+service that isn't Jadpo code: the verifier, the `jadpo` tool in a
+container, which compiles and checks what is published. Private packages
+still come from git ([Private packages come from git](#private-packages-come-from-git)).
+
+Four things the language already does make most attacks on package
+registries impossible here: nothing in a package runs at install or build,
+packages have no dependencies, an app commits the exact source it runs, and
+every host a package reaches is declared. The rules below cover what is
+left: a hijacked or hostile publisher releasing code that returns wrong
+values or sends data to a host it may already reach.
+
+### Names and publishers
+
+- **A package's registry name is `@publisher/name`**, such as
+  `@acme/postcodes`; Jadpo's official packages are `@jadpo/…`. In code it
+  keeps its own name and version label (`Postcodes.v2`). `package.jadpo`
+  names its publisher, so a fork can't be published as the original.
+- **A name is never reused**, after a yank, a takedown or a publisher
+  leaving. A name close to a popular one under another publisher, or to a
+  reserved brand, needs Jadpo's approval.
+- **A publisher is a person or an organisation.** An organisation's owners
+  manage its members and packages; its releasers confirm releases; other
+  members see pending releases. An organisation with two owners needs both
+  owners' passkeys to change its owners.
+- **Accounts sign in by magic link or passkey**, and later with Google or
+  GitHub. Anything that publishes, confirms, cancels, yanks, marks a
+  release urgent or changes members needs a passkey; an email address
+  alone never grants it. Each person can keep several passkeys.
+- **A package with one releaser says so** on its page.
+
+### Releasing
+
+A release is made from a tag in any public git repository reached over
+HTTPS. The registry never accepts an upload, and no publish token exists.
+
+1. `jadpo package publish` (or the jadpo.dev page) asks the registry to
+   publish a repository at a tag. It sends only those two, and needs no
+   sign-in, because nothing goes live without a releaser.
+2. The verifier resolves the tag to its commit, fetches that commit, and
+   then, with no network, checks it: only Jadpo source and the package's
+   text files (`package.jadpo`, `provider.jadpo`, `GUIDE.md`,
+   `CHANGELOG.md`, recordings and translations), within the size limit,
+   and the whole publishing bar. Everything the registry shows about the
+   release is worked out from that source, never from anything the
+   publisher sends.
+3. **The release is pending until a releaser confirms it with a passkey**,
+   on a page showing its version, surface diff, changelog and facts.
+4. It goes live, its digest is added to the public log, and its pages are
+   written.
+
+- **Routine releases may release themselves.** A package can opt into
+  automatic release 24 hours after a release goes pending, unless a member
+  cancels it; every member is told when it goes pending. Only a release
+  that isn't a new major and adds no host, no new place personal data is
+  sent and no new call that changes something qualifies. Any other release
+  always needs the passkey.
+- **Any releaser can confirm**, with their own passkey.
+- **A new releaser waits seven days** before they can confirm a release,
+  and every member is told they were added. Removing a releaser takes
+  effect at once.
+- **A tag that moves is refused.** A tag that later points at another
+  commit is reported to the publisher, and the registry keeps the source
+  of the commit that was confirmed.
+- **Succession is named in advance.** An owner may name a successor, who
+  can claim the package once the owner hasn't signed in for six months,
+  after the owner is emailed and has 30 days to refuse. A package moving to
+  another publisher is shown in every app's next update and restarts the
+  three-day wait below. Without a named successor Jadpo never hands a
+  package to anyone: it can be marked unmaintained, and a fork is
+  published under its own name.
+
+### What a release shows
+
+The verifier works out a release's **facts** from the compiled graph:
+
+| Fact | From |
+|---|---|
+| Kind, and whether it is pure | The package's folders and what its code does |
+| Each host, and the operations that reach it | `provider.jadpo` and each operation |
+| Which calls change something at the provider | Each operation |
+| Which personal data reaches which host | `personal:` marking followed to each operation that sends it ([Personal data](15-personal-data.md)) |
+| Whether it declares an `erasure:` call | `provider.jadpo` ([Erasure at providers](15-personal-data.md#erasure-at-providers)) |
+| Types an app may store | Its library types |
+| Failures, per operation and function | The surface |
+| Confirmed operations, and the last passing contract run | Recordings and scheduled runs |
+| The Jadpo releases it compiles and passes its tests with | The compatibility runs |
+| Standard types it could use and doesn't | `package.standard_candidate` |
+
+- **Facts and checks, never one score.** Each line is a fact or a check that
+  passes or fails. Downloads and stars aren't shown in ranking, and there
+  are no ratings or reviews.
+- **A written account of the package**, by a model, from its source,
+  descriptions and examples: what it is for, and each public function in
+  plain words with the ideas it involves. It is labelled as written by a
+  model, and is checked against the surface and the facts: an account that
+  names a declaration the package doesn't have, or an effect the facts
+  don't show, is written again. A model also reads each release's source
+  diff for what the facts can't show, such as a new literal that looks
+  like an account number, and flags it to Jadpo; it never decides
+  anything.
+- **The same facts everywhere**: `jadpo package check` prints them while
+  the package is written, and the pending release, the package's page,
+  `jadpo package show` and `--json` show the same ones.
+- **Reports, not reviews.** A security report goes privately to the
+  publisher and Jadpo; suspected malware goes to Jadpo. An app may opt in
+  to telling the registry when its scheduled contract run gets a
+  response a package can no longer decode, sending the shape that failed
+  and never the values. Issues stay in the package's repository.
+
+### The changelog
+
+`CHANGELOG.md` is written from the release's **change record**. Each entry
+names a declaration and what happened to it: added, removed, retyped, a new
+failure, a new host, personal data sent somewhere new, or its behaviour
+changed. The author writes only why.
+
+- **Behaviour the types don't show.** The verifier runs the previous
+  release's examples and tests against the new code. Each one that now
+  fails is a "behaviour changed" entry. A minor or patch release with one
+  is refused unless the author marks it a fix and says why.
+
+### Search
+
+People and agents describe what they need in words, usually without
+knowing its types, so search reads text first.
+
+- **What is searched**: each package's written account, its descriptions
+  and examples, and each public function's own account, by words (for
+  exact terms such as "H3") and by meaning (embeddings, with `ai.embed`
+  and a `Vector` field, [AI](21-ai.md)). A result names the function that
+  answers the query.
+- **The standard library is in the same index and comes first**, so an
+  agent asking for what Jadpo has built in is told so.
+- **Shape, when the asker knows it.** Each public function also has a
+  fingerprint of its structure: inputs and outputs reduced to standard
+  types and their constraints, its failures and its effects. `--from` and
+  `--to` filter by it, reading the shapes from the app; the tool sends
+  shapes, never source.
+- Results are ranked by fit, then by the facts.
+
+### Installing and updating from the registry
+
+The rules in [Installing safely](#installing-safely) all apply.
+
+- **`jadpo package add @acme/postcodes` installs that exact name or
+  stops.** It never picks a near match, and it shows the publisher,
+  whether they are verified, the package's age and its facts.
+- **Every digest is checked against the public log**, so the registry
+  can't give one app different code from another.
+- **Releases are available as soon as they are live.** `jadpo package
+  update <name>` with no version takes the newest release at least three
+  days old, and names the newer ones it skipped. `--to <version>` takes
+  that release at once, after showing its facts.
+- **Urgent releases skip the wait.** A releaser marks a release urgent, with
+  a reason and a passkey, even under automatic release. The registry
+  publishes an advisory against the versions it fixes, and `update` takes
+  it at once and says why. The urgent mark is shown on the release.
+- **Before an update** the review ([Package upgrades](18-records-and-manifest.md#package-upgrades))
+  also shows a new publisher or owner since the installed version, and the
+  change record.
+- **An app can always fix a package itself**: an installed package is in
+  the format of the app's own integrations, so it can be copied into
+  `shared/providers/` and changed there.
+
+### Yanks, takedowns and advisories
+
+- **A release is never changed or deleted by its publisher.** A releaser
+  may yank one: new installs refuse it, and apps that have it keep
+  working. Jadpo removes a release only for malware or a legal order,
+  leaving a record of why.
+- **An advisory names declarations and versions** (`Postcodes.uk.parse`,
+  2.0.0 to 2.1.2), not just a package. `jadpo package audit` lists the
+  advisories against the app's packages and says whether the app reaches
+  each affected declaration. It is the one check that goes online; `jadpo
+  check` and `build` never do. Run it in CI.
+- **Copies are tracked.** Packages copy code instead of depending on each
+  other, so the verifier fingerprints every public declaration's
+  normalised source. An advisory also names the packages carrying a copy,
+  and their publishers are told.
+
+### Compatibility with Jadpo releases
+
+Every package is compiled and tested against each Jadpo pre-release, so a
+release that would break the ecosystem is caught before it ships, and again
+when it ships. A package's page lists the Jadpo releases it works with,
+with nothing for its author to keep up. The lowest Jadpo version its
+`package.jadpo` declares is checked against that list. When a release
+breaks a package, its publisher is told the errors and what `jadpo fix`
+would change.
+
+### Developing for the registry
+
+Publishing should hold no surprises:
+
+- `jadpo package check` prints the facts, the version the surface diff
+  gives and the change record, exactly as the registry will show them.
+- `jadpo package preview` serves the package's registry page locally.
+- `jadpo package publish --dry-run` runs the verifier on the pushed tag's
+  commit and publishes nothing.
+- The verifier checks with the Jadpo release the package declares and the
+  newest, so a local pass with either is a pass at the registry.
+
+### The registry protocol
+
+The protocol is what the `jadpo` tool and the registry application are each
+built against. It is served at `https://jadpo.dev/registry/v1/` as JSON,
+with failures in the [failure envelope](07-http.md), and is versioned by
+its path. Reads need no sign-in. The `jadpo` tool never signs in: nothing
+it can send makes a release live.
+
+| Request | Answers |
+|---|---|
+| `GET packages/@{publisher}/{name}` | The package: description, kind, code name and label, publisher (verified, official), maintained or its successor, and each release's version, digest, time, and whether it is yanked or urgent |
+| `GET packages/@{publisher}/{name}/releases/{version}` | One release: repository, tag, commit, digest, its `surface.jadpo_record`, facts, change record, written account, compatible Jadpo releases and its index in the log |
+| `GET archives/{digest}` | The release's files as a tar archive whose files, unpacked, have that digest, as the lock computes it |
+| `GET log/head` | The log's size and root hash |
+| `GET log/proof/{digest}` | The release's index and the hashes that prove it is in the log at the head given |
+| `GET search?q=&from=&to=&kind=` | Ranked results, the standard library's first, each naming a package and declaration, with why it matched |
+| `POST advisories/query` | Given installed packages and versions, the advisories against them, each naming its declarations, versions and the packages carrying copies |
+| `POST releases` | Given a repository, a tag and `dry_run`, starts a release (or a dry run) and answers its id |
+| `GET releases/{id}` | Its state (`verifying`, `failed` with the bar's rows, `pending`, `cancelled`, `live`), with its facts and change record once checked |
+
+- **The log** is an append-only Merkle tree of release digests, hashed as
+  RFC 6962 does with SHA-256. `add` and `update` keep the last head they saw
+  in `.jadpo/registry_head` and refuse a head that doesn't extend it.
+- **The lock's `registry` source** records the scoped name:
+  `package Postcodes.v2 version 2.1.0 registry @acme/postcodes digest
+  sha256:…`.
+- **The registry application's served OpenAPI is checked against this
+  table** by a conformance test in the `jadpo` repository, run against a
+  local registry built from the same table, so neither side drifts.
+
+### The verifier
+
+The verifier is `jadpo package verify`, the same tool authors run, in a
+container image published with each Jadpo release.
+
+- **`jadpo package verify <folder> --previous <folder> --json`** runs the
+  publishing bar and writes everything a release shows: the bar's rows,
+  surface, facts, change record, the fingerprints of every public function
+  and declaration, the previous release's examples and tests run against
+  the new code, and the Jadpo release it was checked with.
+- **`--serve`** answers the registry over HTTPS with a credential the
+  registry holds. Each request names a repository, a commit and the
+  previous release's digest. It fetches over git with network to the git
+  host only, then verifies in a process with no network at all.
+- It is reached from the registry as an ordinary connection to a
+  provider package, so the registry needs no feature an app doesn't have.
 
 ## Connecting in `app.jadpo`
 <!-- topic: connecting-in-app-jadpo -->
@@ -6760,7 +6986,7 @@ package's name, as its types are.
 | Services (`runs:`) | Not built yet. |
 | OAuth grants | Not built yet. |
 | Publisher trust for third-party git packages | Built: every package from git needs an [acceptance](18-records-and-manifest.md#acceptances). Not built yet: a setting that lets your own company's git packages in without one. |
-| The hosted registry | Not built yet. |
+| The public registry: the protocol, the verifier, publishing, facts, search, advisories and compatibility runs | Not built yet. |
 | Importers other than OpenAPI | Not built yet. |
 | Choosing a provider when deploying | Not built yet. |
 | Erasure at providers | Not built yet: it comes with [Personal data](15-personal-data.md). |

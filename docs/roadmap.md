@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-10-30. This page is the only list of outstanding work: the
+**Updated:** 2026-10-31. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record language decisions on the [area pages](language/README.md)
 and process rules in [AGENTS.md](../AGENTS.md), not here. A finished chunk
@@ -389,6 +389,77 @@ time.
   (Richard, 2026-10-30). Done when the lending desk example signs staff
   in with Google through Jadpo alone, tested with the local issuer.
 
+## The public registry
+
+The registry at jadpo.dev ([External services](language/11-integrations.md#the-public-registry)).
+These chunks are taken after the A chunks above and before every other
+unticked chunk (Richard, 2026-10-31). The chunks here build the `jadpo`
+side; the registry application itself is built in the jadpo.dev
+repository against [the registry protocol](language/11-integrations.md#the-registry-protocol).
+R1, R2 and R4 touch different crates and run at the same time.
+
+Already built and used by the registry application: Workers with
+PostgreSQL through Hyperdrive, the cron and queues; magic links and
+passkeys; policy; jobs and events; email; rate limits; provider calls;
+`ai.embed` and `Vector` fields; `hash.sha256`. It also waits for 8.2n (a
+real deploy) and, before outside authors can publish, D3 (releases).
+
+- [ ] **R1 Confirming an action with a passkey** `opus · xhigh` **needs a
+  maintainer** before it starts: the pages don't yet say how a route
+  requires a passkey for one request (asked 2026-10-31). Area 8. Done
+  when a route can't run until the signed-in person presents one of their
+  own passkeys for that request, and a route test does it with
+  `test_passkeys`.
+- [ ] **R2 Where personal data goes** `opus · xhigh`: area 15's marking
+  checked on entities, events and package types, and the personal-data
+  report's list of every connection and host a marked field reaches,
+  through provider operations; the same data available to `jadpo package
+  check`. Erasure and retention stay where they are.
+- [ ] **R3 A release's facts, change record and fingerprints**
+  `opus · xhigh` after R2: area 11, "What a release shows", "The
+  changelog", "Search" (the fingerprints) and "Yanks, takedowns and
+  advisories" (copies). `jadpo package check` prints the facts and the
+  change record; the previous release's examples and tests run against
+  the new code; `jadpo package verify --json`. Screens designed with the
+  design skills first.
+- [ ] **R4 The registry protocol and a local registry** `opus · high`:
+  area 11, "The registry protocol". The protocol's requests and answers
+  as types in one crate, the Merkle log and its proofs, a local registry
+  that tests run against, and the conformance test that checks a served
+  OpenAPI document against the protocol.
+- [ ] **R5 The registry commands** `opus · high` after R3 and R4: area 11,
+  "Installing and updating from the registry", "Developing for the
+  registry"; area 14, the package commands. `add @publisher/name` with the
+  log check and the lock's scoped `registry` line, `update`'s three-day
+  wait, `--to` and urgent releases, `search`, `audit`, `publish` and
+  `--dry-run`, `preview`. Every screen designed with the design skills
+  first.
+- [ ] **R6 The verifier** `opus · high` after R3: area 11, "The verifier".
+  `jadpo package verify --serve`, fetching over git and then verifying with
+  no network, and its container image published with each release (D3).
+  **Needs a maintainer** to choose the container host before it is
+  deployed.
+- [ ] **R7 The registry application** **needs a maintainer** to start the
+  jadpo.dev session, after R1, R4 and R6: built against the protocol and
+  passing R4's conformance test. Until the S3 driver its archives are kept
+  in PostgreSQL; until the search capability its word search is its own
+  queries over each package's written account.
+
+After the registry is live, in order:
+
+- [ ] **R8 `jadpo suggest` points at the registry** `opus · high`: a
+  finding when the app's own function fingerprints like a registry
+  package's or a standard function (area 14, "Suggestions").
+- [ ] **R9 Blast radius in an update** `opus · high`: `jadpo package update
+  --plan` follows each change record entry through the app's graph to
+  the actions, routes, jobs and stored fields it reaches, with the
+  compile errors and migrations that would follow; with "After the first
+  build", item 6's package upgrade plans.
+- Then, each with its own chunk below: signed log heads (keys held as data
+  and `crypto.sign`, item 3), the S3 driver for the registry's archives
+  (item 4), the search capability (item 8), and Google and GitHub sign-in
+  for jadpo.dev accounts (A7b, then `Driver.github`).
+
 ## After the first build, in order
 
 1. Units and money in plain numbers: a named type built on `Int` or
@@ -433,7 +504,7 @@ time.
    apps and the cross-app break check; choosing a provider when deploying,
    when an app other people run needs it.
 9. Product work: the developer console and MCP, the graph review UI
-   (Revset-inspired), the public package registry, acting as an OAuth
+   (Revset-inspired), acting as an OAuth
    provider, D1 and row-level security.
 10. A versioned application contract for frontend clients: a public contract
    derived by the compiler, client consumption declarations and generated

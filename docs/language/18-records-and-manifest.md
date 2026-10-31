@@ -219,7 +219,7 @@ What some entries hold:
   tag's commit: `package AcmeCouriers.v1 version 1.4.0 git
   github.com/acme/acme-couriers tag v1.4.0 commit <40 hex> digest
   sha256:<64 hex>`. A `registry` source is
-  `version <v> registry digest <d>`, and a `path` source is
+  `version <v> registry @<publisher>/<name> digest <d>`, and a `path` source is
   `version <v> path <folder> digest <d>`. A `link` is a live folder, so
   it has no version or digest: `package AcmePricing.v2 link
   ../acme-pricing`. Versions are written like `1.4.0`, with an optional
