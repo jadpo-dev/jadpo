@@ -5270,7 +5270,12 @@ release-please's and dist's workflows make releases
   wasm32's) offline first, and only when either fails runs it online,
   announcing `Fetching the runtime's crates` and counting what cargo
   downloads, each crate checked against the lock's checksum; the build
-  itself stays offline. Proved (`crates/jadpo-cli/tests/released.rs`, a
+  itself stays offline. Before the online update it runs `cargo metadata
+  --no-deps --offline`, so a cargo that can't read the workspace fails as
+  `toolchain.build_failed`, and only what cargo then can't do online is
+  `cargo::Failed::Fetch`, `toolchain.fetch_failed` (proved in
+  `crates/jadpo-cli/tests/build.rs`, against a registry nothing answers
+  at and a cargo that reads nothing). Proved (`crates/jadpo-cli/tests/released.rs`, a
   step of the gate's `compiled` group): the built `jadpo` copied out of
   the checkout and run with no Rust on `PATH`, no `CARGO` or
   `CARGO_HOME` and an empty home and cache, against a stand-in dist

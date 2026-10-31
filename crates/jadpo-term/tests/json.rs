@@ -129,3 +129,21 @@ fn locations_give_line_and_column_beside_byte_offsets() {
         serde_json::json!({ "path": path, "start": start, "end": start + 5, "line": 2, "column": 12, "endLine": 2, "endColumn": 17, "replacement": "title" })
     );
 }
+
+#[test]
+fn a_reasons_line_breaks_are_escaped_as_json_escapes_them() {
+    let diagnostic = Diagnostic::new(&rule::TOOLCHAIN_BUILD_FAILED, "`app` didn't compile")
+        .reason("cargo couldn't build it:\nerror: linker `cc` not found");
+    let document = envelope(None, None, &[diagnostic], &()).to_document();
+    assert!(
+        document
+            .contains("\"reason\": \"cargo couldn't build it:\\nerror: linker `cc` not found\""),
+        "{document}"
+    );
+    assert!(!document.contains("\\u{a}"), "{document}");
+    let parsed: serde_json::Value = serde_json::from_str(&document).expect("valid JSON");
+    assert_eq!(
+        parsed["diagnostics"][0]["reason"],
+        "cargo couldn't build it:\nerror: linker `cc` not found"
+    );
+}

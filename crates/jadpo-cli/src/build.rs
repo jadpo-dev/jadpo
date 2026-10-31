@@ -220,6 +220,29 @@ pub fn build(call: &Call) -> Reply {
                 crates += compiled.crates;
                 compiled.path
             }
+            // Crates cargo couldn't fetch are a fetch that failed, not a
+            // build (area 14, "What it compiles with").
+            Err(jadpo_codegen::cargo::Failed::Fetch(said)) => {
+                let into = toolchain
+                    .home
+                    .as_ref()
+                    .map(|home| format!(" into `{}`", home.display()))
+                    .unwrap_or_default();
+                return Reply::failed(
+                    Diagnostic::new(
+                        &rule::TOOLCHAIN_FETCH_FAILED,
+                        format!("`{name}`'s crates couldn't be fetched"),
+                    )
+                    .reason(format!(
+                        "`jadpo build` fetches the crates the runtime's lock names{into} when cargo's cache lacks them, from crates.io or the registry cargo's configuration puts in its place. cargo said:\n{}",
+                        last_lines(&said, 12)
+                    ))
+                    .next_for(
+                        "Run `jadpo build` again once crates.io can be reached, or put a mirror of it in crates.io's place in cargo's configuration (`[source.crates-io]`)",
+                        Decider::Human,
+                    ),
+                );
+            }
             Err(error) => {
                 return Reply::failed(failed(
                     format!("`{name}` didn't compile"),
@@ -399,6 +422,7 @@ fn toolchain(call: &Call, cache: &Path, wasm: bool) -> Result<Toolchain, Box<Dia
             home: call
                 .environment
                 .var("CARGO_HOME")
+                .filter(|home| !home.is_empty())
                 .map(PathBuf::from)
                 .or_else(|| {
                     call.environment
@@ -1214,9 +1238,13 @@ fn documents(
     Ok(out)
 }
 
-/// The last `count` lines of `text`, joined.
+/// The last `count` lines of `text` that say something, joined; blank
+/// ones aren't shown, so they don't count.
 fn last_lines(text: &str, count: usize) -> String {
-    let lines: Vec<&str> = text.trim_end().lines().collect();
+    let lines: Vec<&str> = text
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect();
     lines[lines.len().saturating_sub(count)..].join("\n")
 }
 
@@ -1600,5 +1628,6 @@ mod tests {
     fn only_the_last_lines_of_what_cargo_said_are_kept() {
         assert_eq!(last_lines("a\nb\nc\n", 2), "b\nc");
         assert_eq!(last_lines("a", 5), "a");
+        assert_eq!(last_lines("a\n\nb\n\nc\n\n", 2), "b\nc");
     }
 }
