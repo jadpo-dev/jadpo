@@ -182,6 +182,33 @@ impl Server {
         }
     }
 
+    /// `database` on this server as a `postgresql://` URL, the form a
+    /// connection's `PostgresUrl` setting takes: what the docs check's
+    /// runs are given in `DATABASE_URL` (docs/compiler-runtime.md §2.7,
+    /// "Command examples"). A disposable server's socket is named in the
+    /// query.
+    pub fn address(&self, database: &str) -> String {
+        let database = encoded(database);
+        match &self.kind {
+            Kind::External { url } => {
+                let url = url.trim();
+                let Some(scheme) = url.find("://").map(|at| at + 3) else {
+                    return with_database(url, &database);
+                };
+                let (rest, query) = match url[scheme..].find('?') {
+                    Some(at) => (&url[scheme..scheme + at], &url[scheme + at..]),
+                    None => (&url[scheme..], ""),
+                };
+                let authority = rest.split('/').next().unwrap_or_default();
+                format!("{}{authority}/{database}{query}", &url[..scheme])
+            }
+            Kind::Disposable { root, port, .. } => format!(
+                "postgresql://{USER}@/{database}?host={}&port={port}",
+                encoded_path(&root.to_string_lossy())
+            ),
+        }
+    }
+
     /// Runs `sql` (statements without parameters) on the admin database,
     /// outside any transaction. It runs on a thread of its own, so it may
     /// be called from anywhere, inside a runtime or not.
@@ -203,6 +230,12 @@ impl Server {
     /// Creates a new, empty database named after `stem` and gives its URL.
     /// The name is made unique to this process and call.
     pub fn create_database(&self, stem: &str) -> Result<String, ServerError> {
+        self.new_database(stem).map(|name| self.url(&name))
+    }
+
+    /// Creates a new, empty database named after `stem` and gives its
+    /// name, unique to this process and call.
+    pub fn new_database(&self, stem: &str) -> Result<String, ServerError> {
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let stem: String = stem
             .chars()
@@ -221,7 +254,7 @@ impl Server {
             NEXT.fetch_add(1, Ordering::Relaxed)
         );
         self.admin(&format!("CREATE DATABASE \"{name}\""))?;
-        Ok(self.url(&name))
+        Ok(name)
     }
 }
 
@@ -267,21 +300,33 @@ impl Drop for Server {
 fn with_database(url: &str, database: &str) -> String {
     let url = url.trim();
     if url.starts_with("postgres://") || url.starts_with("postgresql://") {
-        let encoded: String = database
-            .bytes()
-            .map(|b| {
-                if b.is_ascii_alphanumeric() || b == b'_' || b == b'-' {
-                    char::from(b).to_string()
-                } else {
-                    format!("%{b:02X}")
-                }
-            })
-            .collect();
         let joiner = if url.contains('?') { '&' } else { '?' };
-        format!("{url}{joiner}dbname={encoded}")
+        format!("{url}{joiner}dbname={}", encoded(database))
     } else {
         format!("{url} dbname={}", literal(database))
     }
+}
+
+/// `value` percent-encoded for a URL: all but letters, digits, `_` and `-`.
+fn encoded(value: &str) -> String {
+    value
+        .bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || b == b'_' || b == b'-' {
+                char::from(b).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect()
+}
+
+/// A folder's path in a URL's query, its `/`s and `.`s kept.
+fn encoded_path(path: &str) -> String {
+    path.split('/')
+        .map(|part| part.split('.').map(encoded).collect::<Vec<_>>().join("."))
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 /// A value in libpq's key=value form.

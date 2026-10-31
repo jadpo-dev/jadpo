@@ -2894,6 +2894,7 @@ its command is built.
 | `lsp.read_failed` | `lsp` | Language-server input could not be read |
 | `lsp.root_missing` | `lsp` | Language server has no workspace root |
 | `lsp.write_failed` | `lsp` | Language-server response could not be written |
+| `migration.apply_failed` | `migrate apply`, `seed`, `dev`, `test` | Applying the project's migrations to a database stopped at a step that failed |
 | `migration.decision_artifact_exists` | `schema` | Migration decision file already exists |
 | `migration.decision_artifact_invalid` | `schema` | Migration decision file is invalid |
 | `migration.decision_artifact_read_failed` | `schema` | Migration decision file could not be read |
@@ -2908,6 +2909,8 @@ its command is built.
 | `migration.decision_strategy_invalid` | `schema` | Migration strategy is not valid for this change |
 | `migration.decision_unexpected` | `schema` | Decision file contains an unrelated schema change |
 | `migration.decision_unresolved` | `schema` | Migration decision still needs a strategy |
+| `migration.extension_missing` | `migrate apply`, `seed`, `dev`, `test` | The project's migrations need a PostgreSQL extension, such as pgvector, that the database server doesn't offer or that the role applying them can't create |
+| `migration.extension_outdated` | `migrate apply`, `seed`, `dev`, `test` | The database server's PostgreSQL extension, such as pgvector, is older than the project's migrations and queries need |
 | `migration.identity_additions_have_removal` | `schema` | Schema additions cannot be registered while identities are missing |
 | `migration.identity_registry_exists` | `schema` | Schema identity registry already exists |
 | `migration.identity_registry_missing` | `schema` | Schema identity registry is missing |
@@ -2946,6 +2949,7 @@ its command is built.
 | `migration.sql_sqlite_renamed_table_unsupported` | `schema` | SQLite rebuild cannot target a logically renamed table |
 | `migration.sql_strategy_unsupported` | `schema` | Reviewed migration strategy has no SQL implementation |
 | `migration.sql_type_unsupported` | `schema` | Field type has no migration SQL mapping |
+| `migration.store_diverged` | `migrate apply`, `seed`, `dev` | The migrations a database has applied don't match the project's: one has changed since it ran, the project doesn't have one, or one comes out of order |
 | `publish.breaking_change` | `package check` | A package's new version changes or removes something its last release offered, within the same major version ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.changelog_missing` | `package check` | Package's changelog doesn't say why its new version is released ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.description_missing` | `package check` | Package's public declaration has no description ([Publishing errors](11-integrations.md#publishing-errors)) |
@@ -2961,8 +2965,8 @@ its command is built.
 | `schedules.run_failed` | `schedules run`, `deliveries retry` | Schedule's run failed |
 | `schedules.unavailable` | `schedules`, `why` | Schedules' database couldn't be read |
 | `seed.failed` | `seed` | Seed ended with a failure or a fault |
-| `seed.production_refused` | `seed` | Seed refused a database that isn't on this machine |
-| `seed.unavailable` | `seed` | Seed's database couldn't be reached |
+| `seed.production_refused` | `seed` | A seed was run against a database that isn't on this machine, which may be production |
+| `seed.unavailable` | `seed` | The database a seed runs against couldn't be reached, so nothing was run |
 | `suggest.record_invalid` | `suggest` | Suggestions record can't be read |
 | `suggest.share_failed` | `suggest share` | Jadpo HQ couldn't be reached or refused what was shared |
 | `test.failed` | `test` | Test run failed |

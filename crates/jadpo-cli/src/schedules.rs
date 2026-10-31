@@ -420,9 +420,15 @@ fn with_database<T>(
 }
 
 pub(crate) fn store_error(error: &jadpo_runtime::StoreError) -> String {
+    use jadpo_runtime::StoreError;
     let text = match error {
-        jadpo_runtime::StoreError::Fault(text) => text.clone(),
-        other => format!("{other:?}"),
+        StoreError::Unavailable => "the database can't be reached".to_string(),
+        StoreError::Conflict { constraint } => format!("a row breaks `{constraint}`"),
+        StoreError::ConcurrentChange => {
+            "another transaction changed it at the same time".to_string()
+        }
+        StoreError::Statement(fault) => format!("PostgreSQL refused ({fault})"),
+        StoreError::Fault(text) => text.clone(),
     };
     text.trim_end_matches('.').to_string()
 }
