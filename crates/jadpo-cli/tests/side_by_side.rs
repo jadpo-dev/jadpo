@@ -126,6 +126,7 @@ fn a_second_version_installs_beside_the_first_and_both_run() {
         "domains/intake/actions/check_new_postcode.test.jadpo",
         NEW_TEST,
     );
+    jadpo(&app, &["records", "update"]);
     let checked = jadpo(&app, &["check"]);
     assert_eq!(checked.code, 0, "{}", checked.stdout);
     // Each version's code runs in the interpreter, told apart.
@@ -193,6 +194,7 @@ fn callers_move_across_then_the_old_version_goes() {
     assert!(!app.join("packages/postcodes/v2").exists());
     // With one version held, its names no longer carry it: each is
     // reported with the edit that drops it.
+    jadpo(&app, &["records", "update"]);
     let checked = jadpo(&app, &["check"]);
     assert_eq!(checked.code, 1, "{}", checked.stdout);
     assert!(
@@ -203,6 +205,7 @@ fn callers_move_across_then_the_old_version_goes() {
         checked.stdout
     );
     // An agent applies each edit `jadpo check --json` carries.
+    jadpo(&app, &["records", "update"]);
     let report = jadpo(&app, &["check", "--json"]);
     let document: serde_json::Value = serde_json::from_str(&report.stdout).expect("json");
     let path = "domains/intake/actions/check_new_postcode.jadpo";
@@ -231,6 +234,7 @@ fn callers_move_across_then_the_old_version_goes() {
     }
     assert_eq!(text, NEW.replace("Postcodes.v3.", "Postcodes."));
     write(&app, path, &text);
+    jadpo(&app, &["records", "update"]);
     let checked = jadpo(&app, &["check"]);
     assert_eq!(checked.code, 0, "{}", checked.stdout);
 }
@@ -280,6 +284,7 @@ fn a_package_enum_s_values_carry_the_version_and_run() {
             ),
         );
     }
+    jadpo(app, &["records", "update"]);
     let checked = jadpo(app, &["check"]);
     assert_eq!(checked.code, 0, "{}", checked.stdout);
     let tested = jadpo(app, &["test"]);
@@ -442,6 +447,7 @@ fn an_installed_provider_s_resources_wait_until_the_app_calls_into_them() {
         (Vec::new(), vec![BOOKINGS.to_string(), TRACKING.to_string()])
     );
     // Neither resource is compiled, so the mistake in one isn't reached.
+    jadpo(&app, &["records", "update"]);
     let checked = jadpo(&app, &["check"]);
     assert_eq!(checked.code, 0, "{}", checked.stdout);
     // A call into one compiles that resource alone, found by its name.
@@ -454,6 +460,7 @@ fn an_installed_provider_s_resources_wait_until_the_app_calls_into_them() {
         read(&app),
         (vec![TRACKING.to_string()], vec![BOOKINGS.to_string()])
     );
+    jadpo(&app, &["records", "update"]);
     let checked = jadpo(&app, &["check"]);
     assert!(
         checked
@@ -472,6 +479,7 @@ fn a_resource_not_yet_compiled_still_counts_towards_the_digest() {
         "packages/acme_couriers/v1/resources/tracking.jadpo",
         "public resource tracking {}\n",
     );
+    jadpo(&app, &["records", "update"]);
     let checked = jadpo(&app, &["check"]);
     assert_eq!(checked.code, 1, "{}", checked.stdout);
     assert!(
@@ -527,6 +535,7 @@ fn an_installed_package_s_check_is_kept_by_its_digest() {
             },
         }]),
     );
+    jadpo(&app, &["records", "update"]);
     let first = cached(&app, &cache, &["check"]);
     assert_eq!(first.code, 1, "{}", first.stdout);
     assert!(
@@ -552,9 +561,11 @@ fn an_installed_package_s_check_is_kept_by_its_digest() {
     );
     // A file the cache holds is not checked again.
     std::fs::write(&entries[0], format!("{kept}libraries/uk.jadpo\n")).expect("write");
+    jadpo(&app, &["records", "update"]);
     let second = cached(&app, &cache, &["check"]);
     assert_eq!(second.code, 0, "{}", second.stdout);
     // Without a cache, every file is checked.
+    jadpo(&app, &["records", "update"]);
     let plain = jadpo(&app, &["check"]);
     assert_eq!(plain.code, 1, "{}", plain.stdout);
 }

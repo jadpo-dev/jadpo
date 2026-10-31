@@ -184,7 +184,7 @@ fn program(name: &str) -> Program {
         std::fs::write(path, text).expect("write");
     }
     // The counts of what its `ai` calls use are kept in `main`.
-    for args in [&["migrate", "new", "initial"][..], &["api", "update"]] {
+    for args in [&["migrate", "new", "initial"][..], &["records", "update"]] {
         let done = crate::ai_providers::jadpo(&root, args);
         assert_eq!(done.code, 0, "{args:?}: {}{}", done.stdout, done.stderr);
     }

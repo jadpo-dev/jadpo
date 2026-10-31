@@ -344,7 +344,7 @@ fn and_list(items: &[String]) -> String {
     }
 }
 
-fn valid_purpose(purpose: &str) -> bool {
+pub(crate) fn valid_purpose(purpose: &str) -> bool {
     !purpose.is_empty()
         && purpose
             .chars()
@@ -354,7 +354,7 @@ fn valid_purpose(purpose: &str) -> bool {
         && !purpose.contains("__")
 }
 
-fn snake(text: &str) -> String {
+pub(crate) fn snake(text: &str) -> String {
     let mut out = String::new();
     for c in text.chars() {
         if c.is_ascii_alphanumeric() {

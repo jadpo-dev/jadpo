@@ -48,7 +48,7 @@ fn corpus_project(files: &[(String, String)], folder: &str) -> Option<PathBuf> {
     }
     // A project with errors writes no migration, and is left out below.
     if files.iter().any(|(path, _)| path == "app.jadpo") {
-        for args in [&["migrate", "new", "initial"][..], &["api", "update"]] {
+        for args in [&["migrate", "new", "initial"][..], &["records", "update"]] {
             if jadpo(&root, args).code != 0 {
                 return None;
             }

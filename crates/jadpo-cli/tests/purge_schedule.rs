@@ -280,6 +280,7 @@ const DAY: i64 = 24 * HOUR;
 #[test]
 fn the_purge_schedule_is_in_the_snapshot_and_listed_with_the_rest() {
     let root = project("snapshot");
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     let snapshot = fs::read_dir(root.join("database/migrations"))

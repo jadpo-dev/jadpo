@@ -240,6 +240,24 @@ fn write_project(
             .map_err(|error| (path.clone(), error))?;
         routes.extend(own_routes(text));
     }
+    // Who can do what and the outside hosts, as `jadpo records update`
+    // writes them (area 18, chunk A8).
+    for (path, text) in [
+        (
+            jadpo_check::acceptances::access::PATH,
+            jadpo_check::acceptances::access::record_text(&loaded.db, loaded.project),
+        ),
+        (
+            jadpo_check::acceptances::network::PATH,
+            jadpo_check::acceptances::network::record_text(&loaded.db, loaded.project),
+        ),
+    ] {
+        if let Some(Some(text)) = text {
+            written
+                .file(path, text)
+                .map_err(|error| (path.to_string(), error))?;
+        }
+    }
     Ok(routes)
 }
 

@@ -72,10 +72,12 @@ fn listing(root: &Path) -> Vec<String> {
     found
 }
 
-const WRITTEN: [&str; 14] = [
+const WRITTEN: [&str; 16] = [
     ".gitattributes",
     ".gitignore",
     "AGENTS.md",
+    "CODEOWNERS",
+    "access.jadpo_record",
     "api/main.jadpo_record",
     "app.jadpo",
     "config.jadpo",
@@ -169,7 +171,7 @@ fn the_screen_says_what_was_made_and_the_one_command_to_run_next() {
             "Created todo-app
     jadpo  {}
     route  POST /hello
-    files  12 written
+    files  14 written
 
 next: cd todo-app && jadpo dev  serves it on http://localhost:3000
 ",
