@@ -2450,6 +2450,16 @@ in carries a provider's ordinal (`sign_in_events::Way`). In tests the
 local issuer is the provider: its `authorize` and `redeem` answer in
 process, and `test_providers.sign_in` (`SessionOp::TestProviderSignIn`,
 the `testing` feature only) drives both routes through the HTTP component.
+In `jadpo dev` (chunk A7c) the start's address is the local issuer's
+account-chooser page (`LocalIssuer::with_page`), which `jadpo dev` serves
+on its own port: `http::account_chooser` checks the provider, client ID
+and return address against `registrations` (the program's own), answers a
+choice only from its own origin on a `localhost` name, and gives the code
+through `LocalIssuer::authorize`; the workers redeem it from the same
+`Codes`, shared across threads. The test accounts are kept in
+`build/dev/accounts.json` (`dev_accounts`), and a provider's settings that
+nothing gives get stand-ins. The module is in the `testing` feature, which
+`tools/checks/deployable.py` holds out of a deployable.
 
 **Signed sessions** (area 8). The identity reads
 `revocation_delay:`, each method's `signing_key:` (a `SigningKey`

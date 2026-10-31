@@ -403,11 +403,7 @@ time.
   starting with `policy.call_ungranted`, declinable since A2.
 - [x] **A7a `on_first_sign_in:` for external tokens**: area 8, `external_token` and "A person the app has not seen"; area 5, "Tables for sign-in"; compiler/runtime §2.6, "First sign-in by external token".
 - [x] **A7b Sign-in providers**: area 8, "Providers", "What the compiler checks of sign-in" and Failures; areas 7 (generated routes), 11 (sign-in providers), 13 (signing in for a route test) and 14 (`jadpo dev`); compiler/runtime §2.6, "Sign-in providers".
-- [ ] **A7c Provider sign-in in `jadpo dev`** `opus · high` after A7b:
-  area 8, "Providers"; area 14, `jadpo dev`. The local issuer's
-  account-chooser page, designed with the design skills first, so
-  `jadpo dev` signs people in through a provider with no credentials.
-  Split from A7b, whose size it doubled (2026-10-31).
+- [x] **A7c Provider sign-in in `jadpo dev`**: area 8, "Providers", "In `jadpo dev`"; area 14, `jadpo dev`; compiler/runtime §2.6, "Sign-in providers".
 
 ## After the first build, in order
 

@@ -1325,9 +1325,40 @@ failure not_on_the_staff
     status 404
 ```
 
-Not built yet: provider sign-in in `jadpo dev`, where the local issuer
-shows a page for choosing the account to sign in as, needing no
-credentials; and `Driver.github` and `Driver.apple`.
+#### In `jadpo dev`
+
+`jadpo dev` never reaches the provider. Its local issuer
+([External tokens in tests and `jadpo dev`](#external-tokens-in-tests-and-jadpo-dev))
+stands in for every provider, so the provider's settings aren't needed:
+any of `issuer:`, `client_id:` and `credential:` that nothing gives gets a
+stand-in. `POST /auth/<name>/start` answers with the address of the
+local issuer's account-chooser page, which `jadpo dev` serves on its own
+port on your machine; the ready screen gives it on its `sign-in` line.
+
+The page lists the provider's test accounts. Choosing one signs in as it,
+as the provider's own page would: the browser goes back to
+`GET /auth/<name>/callback` with a code, and the route checks it as it
+checks the provider's. **Add a test account** takes what a provider says
+about a person, `TestAccount`'s fields: a subject (made up in Google's
+shape until you change it), an email, whether the provider verified it
+and a name; adding one signs in as it. **Cancel sign-in** answers as a
+refusal at the provider does, so the callback's redirect names
+`sign_in_provider_failed`. The accounts are kept in
+`build/dev/accounts.json`, by provider, for the next session.
+
+The page works from the keyboard and a screen reader alone: each account
+is a button, each field has its label and its problem beside it, and the
+first account, or the first field with a problem, has the focus. It
+follows the system's light or dark setting, and runs no script.
+
+The page takes only the sign-in the app's start route made: the
+provider must be one of the app's, and the client ID and the return
+address the app's own, or it says why and sends the browser nowhere. It
+answers only requests addressed to this machine by name, and a choice
+only from its own page, so another site can't sign you in. A deployable
+never serves it nor accepts its codes.
+
+Not built yet: `Driver.github` and `Driver.apple`.
 
 ### The old name
 
@@ -4411,7 +4442,7 @@ A feature not built yet is `toolchain.not_built_yet` where it is written.
 | Feature | Status |
 |---|---|
 | Everything else on this page | Built. |
-| `sign_in:`'s providers in `jadpo dev`, `Driver.github`, `Driver.apple` and `oauth_provider:` | Not built yet. |
+| `Driver.github`, `Driver.apple` and `oauth_provider:` | Not built yet. |
 | Scope declarations and policy's scope restrictions | Not built yet. As [Policy](09-policy.md) specifies, an external method narrows scopes only when it declares the scopes it reads; undeclared provider scope or profile claims never replace application authority. |
 | A setting loosened past its limit | Not built yet: waits on [acceptances](18-records-and-manifest.md#acceptances). |
 | OAuth grants: `OAuthGrant` credentials, the connecting and disconnecting routes and `on_behalf_of:` ([Integrations](11-integrations.md)) | Not built yet. |
