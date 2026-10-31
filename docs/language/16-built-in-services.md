@@ -2810,14 +2810,14 @@ use bakery/entities { PriceSheet }
 use bakery/types { SheetText }
 
 test "a short sheet is kept" {
-    var kept: PriceSheet = attempt keep_prices("Millers", "flour,1.20\nrye,2.40\n")
-    assert kept.supplier == "Millers"
+    var price_sheet: PriceSheet = attempt keep_prices("Millers", "flour,1.20\nrye,2.40\n")
+    assert price_sheet.supplier == "Millers"
 }
 
 test "a longer sheet isn't kept" {
     var sheet: SheetText = "flour,1.20\nrye,2.40\nspelt,3.10\noats,0.90\n"
-    var kept: PriceSheet = attempt keep_prices("Millers", sheet)
-    assert kept.supplier == "Millers"
+    var price_sheet: PriceSheet = attempt keep_prices("Millers", sheet)
+    assert price_sheet.supplier == "Millers"
 }
 ```
 
