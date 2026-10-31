@@ -62,13 +62,9 @@ fn unbuilt_section(word: &str) -> (&'static str, &'static str) {
             "audit:",
             "An entity's history of changes is area 16's audit trail, which isn't built yet: accepted, no change would be recorded.",
         ),
-        "retention" => (
+        _ => (
             "retention:",
             "Deleting a record when its time is up comes with area 15's retention, which isn't built yet: accepted, the record would be kept for ever. A lifecycle's `purge:` (area 5) is built.",
-        ),
-        _ => (
-            "person: true",
-            "An entity that represents a person is area 15's data subject, and erasure and export, which find the person's records from it, aren't built yet.",
         ),
     }
 }
@@ -296,6 +292,10 @@ pub struct EntityModel {
     pub indexes: Vec<ListRule>,
     /// Its `lifecycle:` (chunk 3.4), when it has one.
     pub lifecycle: Option<lifecycle::LifecycleModel>,
+    /// `person: true` (area 15, "The person"; chunk P1): each record is a
+    /// person, whose records erasure and export find by following the
+    /// references to it ([`crate::persons`]).
+    pub person: bool,
 }
 
 /// One field of an entity.
@@ -512,6 +512,9 @@ pub struct EntitySpans {
     /// Its lifecycle's `purge:` key, when it purges: where its built-in
     /// purge schedule is declared (area 12; chunk 6.2c).
     pub purge: Option<Span>,
+    /// Its `person:` key, when it has one (area 15; chunk P1): where its
+    /// `person` node is placed when it is a person.
+    pub person: Option<Span>,
 }
 
 /// One entity read from its file: its model, where its parts are, and the
@@ -573,6 +576,7 @@ pub fn entity_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> O
             name: Span::new(&symbol.path, 0, 0),
             fields: Vec::new(),
             purge: None,
+            person: None,
         },
         out: Vec::new(),
     };
@@ -775,6 +779,7 @@ impl Reader<'_> {
             unique: Vec::new(),
             indexes: Vec::new(),
             lifecycle: None,
+            person: false,
         };
         let mut store: Option<(String, Span)> = None;
         let mut lifecycle = None;
@@ -832,11 +837,21 @@ impl Reader<'_> {
                     .reason("A record cache keeps copies in a Redis store (area 5), and this compiler builds no Redis driver yet, so an entity using it couldn't run.")
                     .next("Leave `caches:` out for now"),
                 ),
+                // `person: true` (area 15; chunk P1). A field may still be
+                // named `person` (`person: Amount?`).
+                "person"
+                    if !member
+                        .value()
+                        .is_some_and(|value| crate::types::looks_like_type(&value)) =>
+                {
+                    entity.person = self.person(member, &key_span);
+                    self.spans.person = Some(key_span.clone());
+                }
                 // Decided on their area pages, not built: refused where
                 // they are written rather than read as a misspelling, and
                 // never accepted to do nothing.
                 // A field may still be named like one (`audit: Amount?`).
-                "audit" | "retention" | "person"
+                "audit" | "retention"
                     if !member
                         .value()
                         .is_some_and(|value| crate::types::looks_like_type(&value)) =>
@@ -969,6 +984,28 @@ impl Reader<'_> {
         Some(entity)
     }
 
+    /// `person: true` (area 15, "The person"): whether it says so, or the
+    /// problem with anything else written there (`type.setting_value`).
+    fn person(&mut self, member: &ast::Member, key_span: &Span) -> bool {
+        let value = member.value();
+        if value.as_ref().is_some_and(|value| {
+            crate::types::Const::from_expr(value) == crate::types::Const::Bool(true)
+        }) {
+            return true;
+        }
+        let at = value.as_ref().map_or_else(
+            || key_span.clone(),
+            |value| node_span(&key_span.path, value.syntax()),
+        );
+        self.out.push(
+            Diagnostic::new(&rule::TYPE_SETTING_VALUE, "`person:` takes only `true`")
+                .at(at, "not `true`")
+                .reason("`person: true` says each record of the entity is a person, whose records erasing and exporting them find by following the references to it; an entity that isn't a person leaves the line out.")
+                .next("Write `person: true`, or remove the line"),
+        );
+        false
+    }
+
     fn too_long(&mut self, span: &Span, what: &str, physical: &str, kind: &str) {
         self.out.push(
             Diagnostic::new(
@@ -991,13 +1028,15 @@ impl Reader<'_> {
         entity: &str,
     ) {
         let span = node_span(path, node);
-        let near = nearest(written, SECTIONS.iter().copied());
+        // `person:` too, which isn't in [`SECTIONS`] so that a field may
+        // still be named `person`.
+        let near = nearest(written, SECTIONS.iter().copied().chain(["person"]));
         let mut problem = Diagnostic::new(
             &rule::DATA_UNKNOWN_SECTION,
             format!("`{written}` isn't something an entity holds"),
         )
         .at(span.clone(), "not a field or a section");
-        let reason = "An entity's file holds only its data definition: fields (`name: Type`), and the sections `store:`, `unique:`, `indexes:`, `lifecycle:`, `caches:`, `policy:` and `membership:`. Its identity is always the field `id`; actions, queries and failures go in the domain's own folders.";
+        let reason = "An entity's file holds only its data definition: fields (`name: Type`), and the sections `store:`, `unique:`, `indexes:`, `lifecycle:`, `caches:`, `policy:`, `membership:` and `person:`. Its identity is always the field `id`; actions, queries and failures go in the domain's own folders.";
         problem = match near {
             Some(near) if near != written => problem
                 .reason(format!("{reason} Did you mean `{near}`?"))

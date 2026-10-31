@@ -84,6 +84,7 @@ mod passkeys;
 mod paths;
 mod people_places;
 mod percentages;
+mod persons;
 mod policy;
 mod project;
 mod prompt_policy;

@@ -91,6 +91,8 @@ entity Patient {
     notes: ClinicalNote {
         personal: PersonalData.health
     }
+
+    person: true
 }
 ```
 
@@ -243,6 +245,8 @@ entity Patient {
     notes: ClinicalNote {
         personal: PersonalData.health
     }
+
+    person: true
 }
 ```
 

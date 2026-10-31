@@ -188,6 +188,14 @@ fn declaration(graph: &Graph, id: NodeId) -> String {
                 lines.join("\n    ")
             )
         }
+        Detail::Person { through } if through.is_empty() => {
+            format!("{} is a person  // person: true", node.name)
+        }
+        Detail::Person { through } => format!(
+            "{} is a person  // its records belong through {}",
+            node.name,
+            through.join(", ")
+        ),
         Detail::Grant { effect, who } => {
             let entity = node.name.rsplit_once('.').map_or("", |(entity, _)| entity);
             format!("{effect}: [{}]  // `{entity}`'s grant", who.join(", "))

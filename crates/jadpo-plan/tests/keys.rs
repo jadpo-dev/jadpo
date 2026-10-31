@@ -68,7 +68,7 @@ fn a_key_setting_is_its_setting_s_key() {
 #[test]
 fn a_key_read_from_a_field_is_the_field_s() {
     // No field holds a key until encrypted fields arrive (the roadmap's
-    // "After the first build", item 3), so the checker refuses this; the
+    // chunk P9), so the checker refuses this; the
     // plan still says where the key would come from.
     let plan = plan(
         "type Signature = Bytes {}\n\ntype Device = Object {\n    signing_key: PrivateKey\n}\n\nfunction signed(device: Device, body: Text) -> Signature {\n    return Signature(crypto.sign(body, key: device.signing_key))\n}\n",

@@ -277,6 +277,11 @@ pub enum Detail {
         visible: Option<String>,
         purge: Option<String>,
     },
+    /// A person entity (area 15, "The person"): each reference a record
+    /// belongs to the person through, `Entity.field`, in name order. A
+    /// record belongs to the person when it refers to them, directly or
+    /// through these references.
+    Person { through: Vec<String> },
     /// A route (area 7): its API, success status, input and output, and
     /// deadline. Its method and full path are its name.
     Route {
