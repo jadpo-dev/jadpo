@@ -80,7 +80,9 @@ async fn body(
                         route,
                         keyed,
                         signed,
-                    } => request(program, ctx, route, &args, keyed, signed).await,
+                        way,
+                        strong,
+                    } => request(program, ctx, route, &args, [keyed, signed, way, strong]).await,
                     Target::Session(op) => session(program, ctx, op, &args, at.0).await,
                     Target::Batch(op, number) => batch(program, ctx, op, number, &args, at.0).await,
                     // A store's put or read, a provider's operation and a
@@ -250,25 +252,18 @@ fn store<'a, 'p: 'a>(
 /// A route test's request (area 13), through the runtime's HTTP component
 /// as a client's would go, answered as a `Response` value
 /// ([`jadpo_runtime::http::route_test`]). The site's values are the
-/// route's arguments, then, when `keyed`, the `Idempotency-Key` the test
-/// gives, then, when `signed`, the caller it signs in as.
+/// route's arguments, then, as `given` says (`keyed`, `signed`, `way`,
+/// `strong`), the `Idempotency-Key` the test gives, the caller it signs
+/// in as, and how that caller signed in (chunk A10).
 async fn request(
     program: &Program,
     ctx: &mut Ctx<'_>,
     route: u32,
     args: &[Value],
-    keyed: bool,
-    signed: bool,
+    given: [bool; 4],
 ) -> Result<Value, Stop> {
-    let (args, caller) = match (signed, args.split_last()) {
-        (true, Some((caller, rest))) => (rest, Some(caller)),
-        _ => (args, None),
-    };
-    let (args, key) = match (keyed, args.split_last()) {
-        (true, Some((key, rest))) => (rest, Some(key)),
-        _ => (args, None),
-    };
-    jadpo_runtime::http::route_test(&program.app(), program, ctx, route, args, key, caller)
+    let sent = jadpo_runtime::http::RequestValues::split(args, given);
+    jadpo_runtime::http::route_test(&program.app(), program, ctx, route, sent)
         .await
         .map_err(Stop::Fault)
 }

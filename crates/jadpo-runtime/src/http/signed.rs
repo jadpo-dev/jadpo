@@ -97,6 +97,9 @@ pub struct AuthSettings {
 pub(crate) struct ProviderSettings {
     pub(crate) keys: super::external_token::Settings,
     pub(crate) secret: String,
+    /// The company whose accounts alone it signs in, as its
+    /// `organisation:` setting holds it (chunk A10).
+    pub(crate) organisation: Option<String>,
 }
 
 impl fmt::Debug for AuthSettings {
@@ -154,6 +157,10 @@ impl AuthSettings {
                         values.text(&provider.client_id)?,
                     )?,
                     secret: values.text(&provider.client_secret)?.to_string(),
+                    organisation: match &provider.organisation {
+                        Some(setting) => Some(values.text(setting)?.to_string()),
+                        None => None,
+                    },
                 })
             })
             .collect();
@@ -222,6 +229,11 @@ pub(crate) struct Claims {
     pub expires: i64,
     /// A browser session's CSRF token's verifier.
     pub csrf: Option<String>,
+    /// How its session was started (chunk A10): kept as `w`, the
+    /// `SignInMethod`'s name, and `f`, present when it proved a second
+    /// factor. A part without them was signed before they were kept, or
+    /// for a session no way in Jadpo checked started, so it carries none.
+    pub by: super::identity::SignedInBy,
 }
 
 impl Claims {
@@ -239,6 +251,12 @@ impl Claims {
         object.insert("e".into(), self.expires.into());
         if let Some(csrf) = &self.csrf {
             object.insert("c".into(), csrf.clone().into());
+        }
+        if let Some(method) = &self.by.method {
+            object.insert("w".into(), method.clone().into());
+        }
+        if self.by.multi_factor {
+            object.insert("f".into(), true.into());
         }
         Some(serde_json::Value::Object(object).to_string())
     }
@@ -279,6 +297,10 @@ impl Claims {
             subject: subject_value(text("s")?)?,
             expires: object.get("e")?.as_i64()?,
             csrf: text("c").map(str::to_string),
+            by: super::identity::SignedInBy {
+                method: text("w").map(str::to_string),
+                multi_factor: object.get("f") == Some(&serde_json::Value::Bool(true)),
+            },
         })
     }
 }
@@ -447,10 +469,38 @@ mod tests {
                 subject,
                 expires: 1_792_504_800_000,
                 csrf: Some("cd".repeat(32)),
+                by: super::super::identity::SignedInBy::through("google", true),
             };
             let json = claims.to_json().unwrap();
             assert_eq!(Claims::from_json(&json), Some(claims));
         }
+    }
+
+    /// A part keeps how its session was started (chunk A10); one signed
+    /// before that was kept carries no way in, so no role that needs one
+    /// counts until the record is read again.
+    #[test]
+    fn claims_keep_the_way_in_and_its_strength() {
+        let mut claims = Claims {
+            method: AuthenticationMethod::BrowserSession,
+            row: Some([1; 16]),
+            verifier: "ab".repeat(32),
+            principal: [2; 16],
+            subject: SqlValue::Text("ann".into()),
+            expires: 1_792_504_800_000,
+            csrf: None,
+            by: super::super::identity::SignedInBy::through("google", false),
+        };
+        let json = claims.to_json().unwrap();
+        assert!(
+            json.contains("\"w\":\"google\"") && !json.contains("\"f\""),
+            "{json}"
+        );
+        assert_eq!(Claims::from_json(&json), Some(claims.clone()));
+        claims.by = super::super::identity::SignedInBy::default();
+        let json = claims.to_json().unwrap();
+        assert!(!json.contains("\"w\""), "{json}");
+        assert_eq!(Claims::from_json(&json), Some(claims));
     }
 
     /// A part records the encoding it was written in (area 19, chunk 5.9);
@@ -467,6 +517,7 @@ mod tests {
             subject: SqlValue::Text("ann".into()),
             expires: 1_792_504_800_000,
             csrf: Some("cd".repeat(32)),
+            by: Default::default(),
         };
         let json = claims.to_json().unwrap();
         let written: serde_json::Value = serde_json::from_str(&json).unwrap();

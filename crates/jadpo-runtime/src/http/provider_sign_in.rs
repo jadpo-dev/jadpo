@@ -33,7 +33,7 @@ use jadpo_value::Value;
 use super::external_token::Endpoints;
 use super::identity::{
     AUTHENTICATION_MISCONFIGURED, AUTHENTICATION_UNAVAILABLE, CSRF_REJECTED, Refused, START,
-    USER_DISABLED, constant_eq, cookie_values, new_token, set_cookies, verifier,
+    USER_DISABLED, constant_eq, cookie_values, new_token, set_cookies_for, verifier,
 };
 use super::magic_links::{RETURN_INVALID, site_path};
 use super::sign_in_events::{self, SignInEvent, Way};
@@ -58,6 +58,49 @@ const SIGN_IN_MS: i64 = 600_000;
 /// What the provider is asked for: the person's subject, address and
 /// name, and nothing that acts for them.
 const SCOPE: &str = "openid email profile";
+
+/// The OpenID Connect `claims` parameter asking for the ID token's `amr`
+/// (chunk A10): Google gives it to verified apps that ask, Microsoft
+/// always.
+const AMR_CLAIMS: &str = r#"{"id_token":{"amr":{"essential":true}}}"#;
+
+/// Which claim of a provider's ID token names the company an account
+/// belongs to (area 8, "Company accounts"; chunk A10), known from the
+/// provider's exact issuer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Organisation {
+    /// Google's `hd`, a Workspace account's domain, for
+    /// `https://accounts.google.com`.
+    HostedDomain,
+    /// Microsoft's `tid`, the account's tenant, for
+    /// `https://login.microsoftonline.com/<tenant>/v2.0`.
+    Tenant,
+}
+
+impl Organisation {
+    /// The claim `issuer`'s ID tokens name the company by; `None` for a
+    /// provider whose tokens name none.
+    pub(crate) fn of(issuer: &str) -> Option<Organisation> {
+        match jadpo_std::http::organisation_claim(issuer)? {
+            "hd" => Some(Organisation::HostedDomain),
+            _ => Some(Organisation::Tenant),
+        }
+    }
+}
+
+/// Whether the request's host holds the local issuer (tests and `jadpo
+/// dev`).
+fn local_issuer(ctx: &mut Ctx<'_>) -> bool {
+    #[cfg(feature = "testing")]
+    {
+        ctx.host().local_issuer().is_some()
+    }
+    #[cfg(not(feature = "testing"))]
+    {
+        let _ = ctx;
+        false
+    }
+}
 
 /// The most a token endpoint's answer may hold, and how long it may take.
 const ANSWER_BYTES: usize = 65_536;
@@ -227,16 +270,31 @@ impl<'a> Site<'a> {
             return Err(unavailable());
         }
         transaction.commit().await.map_err(|_| unavailable())?;
-        let query = [
+        let redirect_uri = self.redirect_uri();
+        let mut query = vec![
             ("response_type", "code"),
             ("client_id", self.settings.keys.audience()),
-            ("redirect_uri", &self.redirect_uri()),
+            ("redirect_uri", redirect_uri.as_str()),
             ("scope", SCOPE),
-            ("state", &state),
-            ("nonce", &nonce),
-            ("code_challenge", &challenge),
+            ("state", state.as_str()),
+            ("nonce", nonce.as_str()),
+            ("code_challenge", challenge.as_str()),
             ("code_challenge_method", "S256"),
         ];
+        // A role's requirement this provider can meet needs a second
+        // factor, so the ID token is asked to say how the person signed
+        // in, as RFC 8176's `amr` (chunk A10).
+        if self.provider.asks_amr {
+            query.push(("claims", AMR_CLAIMS));
+        }
+        // Google's account chooser offers only the company's accounts; the
+        // ID token's `hd` is checked all the same.
+        if let (Some(organisation), Some(Organisation::HostedDomain)) = (
+            self.settings.organisation.as_deref(),
+            Organisation::of(self.settings.keys.issuer()),
+        ) {
+            query.push(("hd", organisation));
+        }
         let separator = if authorization.contains('?') {
             '&'
         } else {
@@ -341,11 +399,28 @@ impl<'a> Site<'a> {
                 };
                 self.redirect(&return_to, failure)
             })?;
+        // A connection with `organisation:` signs in only that company's
+        // accounts, and links no other (chunk A10).
+        if let Some(wanted) = &self.settings.organisation {
+            let local = cfg!(feature = "testing") && local_issuer(ctx);
+            let held = match Organisation::of(&issuer) {
+                Some(Organisation::HostedDomain) => claims.hosted_domain.as_deref(),
+                Some(Organisation::Tenant) => claims.tenant.as_deref(),
+                // The local issuer stands in for a provider whose issuer
+                // nothing gave; it writes the account's company as both.
+                None if local => claims.hosted_domain.as_deref(),
+                None => return Err(self.redirect(&return_to, AUTHENTICATION_MISCONFIGURED)),
+            };
+            if held != Some(wanted.as_str()) {
+                return Err(self.redirect(&return_to, super::magic_links::REFUSED));
+            }
+        }
         let user = self
             .user(ctx, &claims)
             .await
             .map_err(|refused| self.redirect(&return_to, refused.failure))?;
-        self.session(ctx, user, &return_to).await
+        self.session(ctx, user, claims.multi_factor, &return_to)
+            .await
     }
 
     /// The ID token the provider gives for `code`: from the local
@@ -456,6 +531,7 @@ impl<'a> Site<'a> {
         &self,
         ctx: &mut Ctx<'_>,
         (user, first_time): ([u8; 16], bool),
+        multi_factor: bool,
         return_to: &str,
     ) -> Result<Response, Stop> {
         let now = ctx.now();
@@ -480,9 +556,19 @@ impl<'a> Site<'a> {
                     SqlValue::Text(verifier(&csrf)),
                     SqlValue::Timestamp(now.saturating_mul(1000)),
                     SqlValue::Timestamp(
-                        now.saturating_add(jadpo_std::http::SESSION_LIFETIME_MS)
+                        now.saturating_add(self.provider.session_ms)
                             .saturating_mul(1000),
                     ),
+                    SqlValue::Text(self.provider.name.clone()),
+                    if multi_factor {
+                        SqlValue::Text(
+                            jadpo_std::AuthenticationStrength::MultiFactor
+                                .name()
+                                .to_string(),
+                        )
+                    } else {
+                        SqlValue::Null(jadpo_std::read::SqlType::Text)
+                    },
                 ],
             )
             .await;
@@ -499,9 +585,10 @@ impl<'a> Site<'a> {
             .await
             .map_err(|_| unavailable())?;
         let mut response = self.going(return_to, None);
-        response.headers.extend(set_cookies(
+        response.headers.extend(set_cookies_for(
             self.plan,
             &SessionEffect::Start { token, csrf },
+            self.provider.session_ms,
         ));
         Ok(response)
     }
@@ -611,6 +698,12 @@ pub(crate) struct IdClaims {
     /// Whether the provider says it verified that address.
     pub address_verified: bool,
     pub name: Option<String>,
+    /// Its `hd` and `tid`: the company an account belongs to, by Google's
+    /// claim and Microsoft's (chunk A10).
+    pub hosted_domain: Option<String>,
+    pub tenant: Option<String>,
+    /// Whether its `amr` names a second factor.
+    pub multi_factor: bool,
 }
 
 /// The claims of `token` once it checks against `keys`: signed by one,
@@ -662,6 +755,9 @@ pub(crate) fn id_token(
         address,
         address_verified,
         name,
+        hosted_domain: text("hd").map(str::to_string),
+        tenant: text("tid").map(str::to_string),
+        multi_factor: super::external_token::second_factor(&super::external_token::amr(&members)),
     })
 }
 
@@ -729,6 +825,9 @@ mod tests {
                 address: Some("ann@desk.example".into()),
                 address_verified: true,
                 name: Some("Ann".into()),
+                hosted_domain: None,
+                tenant: None,
+                multi_factor: false,
             })
         );
         // An address the provider doesn't say it verified is unverified,
@@ -785,6 +884,46 @@ mod tests {
         assert!(checked(named).is_some());
         // A token no key signed is refused.
         assert!(id_token(&token(claims()), &[], ISSUER, CLIENT, nonce(), NOW).is_err());
+    }
+
+    /// The company an account belongs to is read from Google's `hd` and
+    /// Microsoft's `tid`, and a second factor from `amr` (chunk A10).
+    #[test]
+    fn the_company_and_a_second_factor_are_read_from_the_token() {
+        let mut company = claims();
+        company["hd"] = "desk.example".into();
+        company["tid"] = "7f1d3a5e-8c2b-4f6a-9d0e-2b4c6a8e0f13".into();
+        company["amr"] = serde_json::json!(["pwd", "mfa"]);
+        let read = checked(company).expect("checks");
+        assert_eq!(read.hosted_domain.as_deref(), Some("desk.example"));
+        assert_eq!(
+            read.tenant.as_deref(),
+            Some("7f1d3a5e-8c2b-4f6a-9d0e-2b4c6a8e0f13")
+        );
+        assert!(read.multi_factor);
+        for (amr, two) in [
+            (serde_json::json!(["pwd"]), false),
+            (serde_json::json!(["hwk"]), false),
+            (serde_json::json!(["pwd", "otp"]), true),
+            (serde_json::json!(["pin", "hwk"]), true),
+            (serde_json::json!("mfa"), false),
+        ] {
+            let mut given = claims();
+            given["amr"] = amr.clone();
+            assert_eq!(checked(given).map(|c| c.multi_factor), Some(two), "{amr}");
+        }
+        assert_eq!(
+            Organisation::of("https://accounts.google.com"),
+            Some(Organisation::HostedDomain)
+        );
+        assert_eq!(
+            Organisation::of(
+                "https://login.microsoftonline.com/7f1d3a5e-8c2b-4f6a-9d0e-2b4c6a8e0f13/v2.0"
+            ),
+            Some(Organisation::Tenant)
+        );
+        assert_eq!(Organisation::of("https://accounts.google.com/"), None);
+        assert_eq!(Organisation::of("https://id.example.com"), None);
     }
 
     /// A binding cookie or a `state` as a sign-in makes one: 32 bytes from

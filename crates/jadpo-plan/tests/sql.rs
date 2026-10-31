@@ -570,3 +570,186 @@ action found(name: Handle, founder: Principal.user) -> Membership {
         "{seat}"
     );
 }
+
+/// A role that needs a way in counts only when the caller's sign-in meets
+/// it (area 9, "Roles that need a way in"; chunk A10), in a grant and in
+/// its tenant: a membership whose role doesn't count makes no one a
+/// member of the tenant for the request, so tenancy fails closed.
+#[test]
+fn a_role_that_needs_a_way_in_counts_in_its_tenant_only_with_it() {
+    let plan = planned(
+        r#"application {
+    connections: {
+        google: {
+            driver: Driver.oidc
+            issuer: config.google_issuer
+            client_id: config.google_client_id
+            credential: config.google_client_secret
+        }
+    }
+}
+
+config {
+    site: Url
+    google_issuer: Url
+    google_client_id: Text
+    google_client_secret: Text {
+        secret: true
+    }
+}
+
+principal {
+    user: {
+        subject: Person.handle
+    }
+}
+
+authentication {
+    browser_session: {
+        cookie: "work_session"
+        origin: config.site
+    }
+    sign_in: {
+        providers: [google]
+    }
+    on_first_sign_in: meet
+}
+
+policy {
+    tenant: Company
+}
+
+type Handle = Text {
+    max_length: 40
+}
+
+type Unknown = Failure {
+    kind: FailureKind.not_found
+}
+
+action meet(first: FirstSignIn) fails Unknown -> Person.id {
+    reject Unknown {}
+}
+
+entity Person {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.system]
+        read: [id]
+        tenant: Tenancy.shared
+    }
+}
+
+type Role = Enum {
+    owner
+    member
+}
+
+entity Company {
+    id: Uuid
+    name: Handle
+
+    policy: {
+        read: [Role.owner]
+    }
+}
+
+entity Membership {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    person_id: Person.id {
+        on_delete: OnDelete.cascade
+    }
+    role: Role
+
+    membership: {
+        scope: company_id
+        member: person_id
+        role: role
+        requires: {
+            Role.owner: { sign_in: [SignInMethod.google] }
+            Role.member: {}
+        }
+    }
+
+    policy: {
+        read: [person_id]
+    }
+}
+
+entity Note {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    text: Handle
+
+    policy: {
+        read: [Access.authenticated]
+    }
+}
+
+type NoteCard = Output {
+    pick: [Note.id, Note.text]
+}
+
+type CompanyCard = Output {
+    pick: [Company.id, Company.name]
+}
+
+query notes() -> List<NoteCard> {
+    from: Note
+    order: [Note.text asc]
+    limit: 100
+}
+
+query companies() -> List<CompanyCard> {
+    from: Company
+    order: [Company.name asc]
+    limit: 100
+}
+"#
+        .to_string(),
+    );
+    let sql = |name: &str| {
+        plan.queries()
+            .iter()
+            .find(|query| query.name == name)
+            .map(|query| query.read.select.sql.clone())
+            .expect("the query")
+    };
+    // Anyone signed in reads a note, but only in a company they belong
+    // to, and an owner's membership counts only through Google.
+    let notes = sql("notes");
+    assert!(
+        notes.contains("EXISTS (SELECT 1 FROM \"membership\" AS \"jadpo_t0\"")
+            && notes.contains("(\"jadpo_t0\".\"role\" IN (")
+            && notes.contains(" OR (\"jadpo_t0\".\"role\" = "),
+        "{notes}"
+    );
+    assert!(
+        plan.queries()
+            .iter()
+            .find(|query| query.name == "notes")
+            .expect("notes")
+            .read
+            .select
+            .params
+            .iter()
+            .any(|param| param.source
+                == jadpo_std::read::Source::Caller(jadpo_std::policy::CallerPart::SignInMethod)),
+        "{notes}"
+    );
+    // The owner's grant on a company counts only with Google too.
+    let companies = sql("companies");
+    assert!(
+        companies.contains("(\"jadpo_m0\".\"role\" = "),
+        "{companies}"
+    );
+}

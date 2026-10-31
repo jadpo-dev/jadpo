@@ -1,7 +1,10 @@
-// Route tests act as a member of staff with `as:`, as any signed-in
-// person; how they got signed in is the sign-in tests' business
-// (`actions/meet_newcomer.test.jadpo`). What each role reaches follows
-// from the listed queries' lines and the entities' grants.
+// Route tests act as a member of staff with `as:`, saying how they
+// signed in: a staff role counts only through Google, an admin's only
+// with a second factor (`entities/staff_member.jadpo`), and `as:` alone
+// is someone who signed in by link with one factor. The sign-in itself is
+// the sign-in tests' business (`actions/meet_newcomer.test.jadpo`). What
+// each role reaches follows from the listed queries' lines and the
+// entities' grants.
 
 use desk/entities { Patron, StaffMember }
 use desk/types { DonatedBook, Lending, NewBook, StaffRole, StockBook }
@@ -24,6 +27,7 @@ test "the front desk sees where books are shelved, and a customer is refused" {
         method: HttpMethod.get
         path: "/staff/stock"
         as: Principal.user(ann)
+        sign_in: SignInMethod.google
     }
     assert stock.output == [dune]
     var refused: Response = request {
@@ -48,6 +52,8 @@ test "only an admin adds a book and sees who gave it" {
             donor: "Mrs Okafor"
         }
         as: Principal.user(bo)
+        sign_in: SignInMethod.google
+        strength: AuthenticationStrength.multi_factor
     }
     assert stocked.status == 201
     match stocked.output {
@@ -59,6 +65,10 @@ test "only an admin adds a book and sees who gave it" {
                 method: HttpMethod.get
                 path: "/staff/donations"
                 as: Principal.user(bo)
+                sign_in: SignInMethod.google
+                strength: AuthenticationStrength.multi_factor
+                sign_in: SignInMethod.google
+                strength: AuthenticationStrength.multi_factor
             }
             var from_okafor: DonatedBook = DonatedBook {
                 id: dune.id
@@ -72,6 +82,7 @@ test "only an admin adds a book and sees who gave it" {
         method: HttpMethod.get
         path: "/staff/donations"
         as: Principal.user(ann)
+        sign_in: SignInMethod.google
     }
     assert refused.status == 403
 }
@@ -88,6 +99,7 @@ test "the front desk can't add a book" {
             donor: none
         }
         as: Principal.user(ann)
+        sign_in: SignInMethod.google
     }
     assert refused.status == 403
 }
@@ -112,6 +124,7 @@ test "the front desk lends a book once, and takes it back" {
         path: "/staff/loans"
         input: lending
         as: Principal.user(ann)
+        sign_in: SignInMethod.google
     }
     assert lent.status == 201
     var relinked: Response = request {
@@ -119,6 +132,7 @@ test "the front desk lends a book once, and takes it back" {
         path: "/staff/loans"
         input: lending
         as: Principal.user(ann)
+        sign_in: SignInMethod.google
     }
     assert relinked.status == 409
     assert relinked.code == "book_on_loan"
@@ -134,6 +148,8 @@ test "the front desk lends a book once, and takes it back" {
                     loan_id: loan.id
                 }
                 as: Principal.user(ann)
+                sign_in: SignInMethod.google
+                sign_in: SignInMethod.google
             }
             assert returned.status == 204
         }
@@ -146,6 +162,7 @@ test "a role taken away is refused on the next request" {
         method: HttpMethod.get
         path: "/staff/stock"
         as: Principal.user(ann)
+        sign_in: SignInMethod.google
     }
     assert before.status == 200
     var staff_roles: List<StaffMember> = roles_of(ann.id)
@@ -156,6 +173,44 @@ test "a role taken away is refused on the next request" {
         method: HttpMethod.get
         path: "/staff/stock"
         as: Principal.user(ann)
+        sign_in: SignInMethod.google
     }
     assert after.status == 403
+}
+
+test "staff roles count only through Google" {
+    var ann: Patron = staff_at("ann@lending.example", StaffRole.front_desk)
+    var by_link: Response = request {
+        method: HttpMethod.get
+        path: "/staff/stock"
+        as: Principal.user(ann)
+    }
+    assert by_link.status == 403
+    assert by_link.code == "not_permitted"
+    var through_google: Response = request {
+        method: HttpMethod.get
+        path: "/staff/stock"
+        as: Principal.user(ann)
+        sign_in: SignInMethod.google
+    }
+    assert through_google.status == 200
+}
+
+test "an admin needs a second factor" {
+    var bo: Patron = staff_at("bo@lending.example", StaffRole.admin)
+    var one_factor: Response = request {
+        method: HttpMethod.get
+        path: "/staff/donations"
+        as: Principal.user(bo)
+        sign_in: SignInMethod.google
+    }
+    assert one_factor.status == 403
+    var two_factors: Response = request {
+        method: HttpMethod.get
+        path: "/staff/donations"
+        as: Principal.user(bo)
+        sign_in: SignInMethod.google
+        strength: AuthenticationStrength.multi_factor
+    }
+    assert two_factors.status == 200
 }

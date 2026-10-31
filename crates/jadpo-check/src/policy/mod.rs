@@ -43,6 +43,7 @@ pub mod outputs;
 pub mod proof;
 pub mod reach;
 pub mod report;
+pub mod requires;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -213,6 +214,31 @@ pub struct Membership {
     pub role: String,
     /// That field's enum: `CompanyRole`.
     pub roles: String,
+    /// `requires:`: for each role, how its holder must have signed in for
+    /// it to count (chunk A10), by the role's value, in the order written;
+    /// `None` when the membership says nothing, so every role counts
+    /// however its holder signed in.
+    pub requires: Option<Vec<(String, requires::Requirement)>>,
+}
+
+impl Membership {
+    /// What `role` needs, when its holder's sign-in matters for it.
+    pub fn requirement(&self, role: &str) -> Option<&requires::Requirement> {
+        self.requires
+            .as_ref()?
+            .iter()
+            .find(|(held, _)| held == role)
+            .map(|(_, requirement)| requirement)
+            .filter(|requirement| !requirement.none())
+    }
+
+    /// Whether any of its roles needs a way in or a strength.
+    pub fn restricted(&self) -> bool {
+        self.requires
+            .iter()
+            .flatten()
+            .any(|(_, requirement)| !requirement.none())
+    }
 }
 
 /// Who an `actions:` line in root `policy { }` lets call its action.
@@ -591,6 +617,7 @@ pub fn membership_read<'db>(
     }
     let at = key_span(&path, first);
     let mut parts: BTreeMap<String, (Span, Option<Expr>)> = BTreeMap::new();
+    let mut requires_member: Option<ast::Member> = None;
     for item in first.block().iter().flat_map(|list| list.member_items()) {
         let MemberItem::Member(member) = item else {
             if let MemberItem::Elision(_) = item {
@@ -608,9 +635,12 @@ pub fn membership_read<'db>(
         };
         let word = tree::written(key.syntax());
         let span = node_span(&path, key.syntax());
-        if !["scope", "member", "role"].contains(&word.as_str()) {
+        if !["scope", "member", "role", "requires"].contains(&word.as_str()) {
             problems.push(unknown_part(&path, key.syntax(), &word));
             continue;
+        }
+        if word == "requires" && requires_member.is_none() {
+            requires_member = Some(member.clone());
         }
         if let Some((first_at, _)) = parts.get(&word) {
             let rule = if word == "scope" {
@@ -754,6 +784,20 @@ pub fn membership_read<'db>(
             )),
         }
     }
+    // `requires:`: how each role's holder must have signed in (chunk
+    // A10), read once the role's enum is known.
+    let requires = match (&role, &requires_member) {
+        (Some((_, roles)), Some(written)) => Some(requires::read(
+            db,
+            project,
+            &lookup,
+            &path,
+            roles,
+            written,
+            &mut problems,
+        )),
+        _ => None,
+    };
     let model = match (scope_ok, member, role) {
         (true, Some(member), Some((role, roles))) => Some(Membership {
             entity: entity.name.clone(),
@@ -762,6 +806,7 @@ pub fn membership_read<'db>(
             member,
             role,
             roles,
+            requires,
         }),
         _ => None,
     };
@@ -770,7 +815,7 @@ pub fn membership_read<'db>(
 
 fn unknown_part(path: &str, node: &jadpo_syntax::SyntaxNode, word: &str) -> Diagnostic {
     let span = node_span(path, node);
-    let near = nearest(word, ["scope", "member", "role"]);
+    let near = nearest(word, ["scope", "member", "role", "requires"]);
     let problem = Diagnostic::new(
         &rule::POLICY_EFFECT_UNKNOWN,
         format!("`{word}` isn't part of a membership"),
@@ -778,9 +823,9 @@ fn unknown_part(path: &str, node: &jadpo_syntax::SyntaxNode, word: &str) -> Diag
     .at(span.clone(), "not a part of a membership")
     .reason(match near {
         Some(near) => {
-            format!("A membership holds `scope:`, `member:` and `role:`. Did you mean `{near}`?")
+            format!("A membership holds `scope:`, `member:`, `role:` and, optionally, `requires:`. Did you mean `{near}`?")
         }
-        None => "A membership holds `scope:`, `member:` and `role:`.".to_string(),
+        None => "A membership holds `scope:`, `member:`, `role:` and, optionally, `requires:`.".to_string(),
     });
     match near {
         Some(near) => problem.next(format!("Use `{near}`")).edit(span, near),

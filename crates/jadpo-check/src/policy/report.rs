@@ -39,6 +39,43 @@ pub(crate) fn qualified(lookup: &Lookup<'_>, name: &str) -> String {
     }
 }
 
+/// `domain.Role`, a role enum with its domain before it, or the bare name
+/// outside a domain.
+pub(crate) fn qualified_type(lookup: &Lookup<'_>, name: &str) -> String {
+    match lookup
+        .declared(name)
+        .iter()
+        .find(|s| matches!(s.kind, ItemKind::Type(_)))
+        .map(|s| &s.ownership)
+    {
+        Some(Ownership::Domain(domain)) => format!("{domain}.{name}"),
+        _ => name.to_string(),
+    }
+}
+
+/// Each role whose membership says how it must be signed in to (area 9,
+/// "Roles that need a way in"; chunk A10), as `domain.Role.value` with
+/// what it needs, in name order.
+pub fn role_requirements(
+    lookup: &Lookup<'_>,
+    access: &Access,
+) -> Vec<(String, super::requires::Requirement)> {
+    let mut out: Vec<(String, super::requires::Requirement)> = access
+        .memberships
+        .iter()
+        .flat_map(|membership| {
+            let roles = qualified_type(lookup, &membership.roles);
+            membership
+                .requires
+                .iter()
+                .flatten()
+                .map(move |(role, requirement)| (format!("{roles}.{role}"), requirement.clone()))
+        })
+        .collect();
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
+}
+
 /// One cell: the list as written, or "nobody".
 fn cell(policy: &EntityPolicy, effect: Effect) -> String {
     listed(policy.lists.get(&effect))
@@ -286,10 +323,59 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
             ));
         }
     }
+    // The roles whose membership says how each must be signed in to
+    // (chunk A10), when any does.
+    let roles = role_requirements(&lookup, access);
+    if !roles.is_empty() {
+        markdown.push_str(
+            "
+## Roles that need a way in
+
+             A role counts on a request only when the caller's session was started as its              row says; signed in another way, the person is themselves without the role,              and holds no membership in its tenant for that request.
+
+             | role | signed in through | strength |
+|---|---|---|
+",
+        );
+        for (role, requirement) in &roles {
+            let ways = match &requirement.sign_in {
+                Some(ways) => ways
+                    .iter()
+                    .map(|way| format!("`{way}`"))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                None => "any way in".to_string(),
+            };
+            let strength = if requirement.multi_factor {
+                "a second factor"
+            } else {
+                "any"
+            };
+            markdown.push_str(&format!(
+                "| `{role}` | {ways} | {strength} |
+"
+            ));
+        }
+    }
     let mut json = Value::object();
     json.set("format", jadpo_graph::manifest::FORMAT);
     json.set_some("tenant", access.root.tenant.as_deref());
     json.set("entities", json_entities);
+    if !roles.is_empty() {
+        json.set(
+            "roles",
+            roles
+                .iter()
+                .map(|(role, requirement)| {
+                    let mut entry = Value::object();
+                    entry.set("role", role.as_str());
+                    entry.set_some("signIn", requirement.sign_in.clone());
+                    entry.set("multiFactor", requirement.multi_factor);
+                    entry
+                })
+                .collect::<Vec<_>>(),
+        );
+    }
     json.set(
         "actions",
         actions

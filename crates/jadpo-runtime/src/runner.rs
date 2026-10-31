@@ -2292,6 +2292,8 @@ mod tests {
             ),
             key: "user 1".into(),
             session: None,
+            sign_in: None,
+            multi_factor: false,
         }));
     }
 

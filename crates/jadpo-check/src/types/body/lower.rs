@@ -1931,6 +1931,12 @@ impl Lower<'_> {
         let caller = value("as")
             .and_then(|member| member.value())
             .map(|expr| self.expr(&expr));
+        let sign_in = value("sign_in")
+            .and_then(|member| member.value())
+            .map(|expr| self.expr(&expr));
+        let strength = value("strength")
+            .and_then(|member| member.value())
+            .map(|expr| self.expr(&expr));
         if let Some(method) = value("method").and_then(|member| member.value()) {
             self.scan(method.syntax());
         }
@@ -1940,6 +1946,8 @@ impl Lower<'_> {
             input,
             idempotency_key,
             caller,
+            sign_in,
+            strength,
         }
     }
 

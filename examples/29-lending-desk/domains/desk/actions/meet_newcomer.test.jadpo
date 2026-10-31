@@ -3,7 +3,9 @@
 // their browser would. A member of staff signs in with Google through
 // `test_providers.sign_in`, which runs the real provider routes with the
 // test run's local issuer standing in for Google; its `Response` is the
-// callback's, whose `code` is the `error` its redirect names, if any.
+// callback's, whose `code` is the `error` its redirect names, if any. A
+// `TestAccount`'s `organisation:` is the Workspace domain Google names
+// the account with, which must be the desk's.
 
 use desk/entities { Patron }
 use desk/types { StaffRole }
@@ -47,6 +49,7 @@ test "staff sign in with Google under the address they were taken on with" {
             email: "ann@lending.example"
             email_verified: true
             name: "Ann Lee"
+            organisation: "lending.example"
         }
     )
     assert first.status == 303
@@ -58,6 +61,7 @@ test "staff sign in with Google under the address they were taken on with" {
             email: none
             email_verified: false
             name: none
+            organisation: "lending.example"
         }
     )
     assert relinked.code == none
@@ -65,6 +69,7 @@ test "staff sign in with Google under the address they were taken on with" {
         method: HttpMethod.get
         path: "/staff/stock"
         as: Principal.user(ann)
+        sign_in: SignInMethod.google
     }
     assert stock.status == 200
 }
@@ -77,6 +82,7 @@ test "a Google account no one took on is refused" {
             email: "stranger@elsewhere.example"
             email_verified: true
             name: none
+            organisation: "lending.example"
         }
     )
     assert refused.status == 303
@@ -92,6 +98,7 @@ test "an address Google hasn't verified signs no one in" {
             email: bo.email
             email_verified: false
             name: none
+            organisation: "lending.example"
         }
     )
     assert refused.code == "sign_in_refused"
@@ -102,6 +109,7 @@ test "an address Google hasn't verified signs no one in" {
             email: bo.email
             email_verified: true
             name: none
+            organisation: "lending.example"
         }
     )
     assert second_sign_in.code == none
@@ -116,7 +124,33 @@ test "a customer's address at Google doesn't make them staff" {
             email: cara.email
             email_verified: true
             name: none
+            organisation: "lending.example"
         }
     )
     assert refused.code == "sign_in_refused"
+}
+
+test "a Google account outside the desk's domain is refused" {
+    var ann: Patron = staff_at("ann@lending.example", StaffRole.front_desk)
+    var no_domain: Response = test_providers.sign_in(
+        SignInMethod.google,
+        TestAccount {
+            subject: "2004"
+            email: ann.email
+            email_verified: true
+            name: none
+        }
+    )
+    assert no_domain.code == "sign_in_refused"
+    var not_the_desks: Response = test_providers.sign_in(
+        SignInMethod.google,
+        TestAccount {
+            subject: "2005"
+            email: ann.email
+            email_verified: true
+            name: none
+            organisation: "elsewhere.example"
+        }
+    )
+    assert not_the_desks.code == "sign_in_refused"
 }

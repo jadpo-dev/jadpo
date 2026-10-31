@@ -4,8 +4,11 @@
 //!
 //! - **A connection on `Driver.oidc`** takes `issuer:` (a `Url`
 //!   setting), `client_id:` (a `Text` setting) and `credential:` (a
-//!   secret setting), each `config.<name>`, and nothing else. The runtime
-//!   reads the rest from the provider's discovery document.
+//!   secret setting), each `config.<name>`, and optionally `organisation:`
+//!   (a `Text` setting, chunk A10): the company whose accounts alone it
+//!   signs in, which only a provider whose tokens name the company (Google
+//!   and Microsoft) can keep to. The runtime reads the rest from the
+//!   provider's discovery document.
 //! - **The names `providers:` gives** are read from the syntax alone
 //!   ([`declared`]), since the type table reads them and the identity
 //!   reads the type table.
@@ -28,6 +31,9 @@ pub struct Provider {
     pub issuer: String,
     pub client_id: String,
     pub secret: String,
+    /// `organisation:`'s `Text` setting: the company whose accounts alone
+    /// the provider signs in (area 8, "Company accounts"; chunk A10).
+    pub organisation: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -71,6 +77,7 @@ pub fn oidc_connections(db: &dyn Db, project: Project) -> Providers {
                 }
                 out.declared.push(connection.clone());
                 let mut read: [Option<String>; 3] = [None, None, None];
+                let mut organisation = None;
                 let mut clean = true;
                 let members = tree::members(entry.block());
                 for (setting, option) in &members {
@@ -82,6 +89,34 @@ pub fn oidc_connections(db: &dyn Db, project: Project) -> Providers {
                     if word == "driver" {
                         continue;
                     }
+                    // The company whose accounts alone it signs in (chunk
+                    // A10): a `Text` setting, checked against the claim the
+                    // provider's tokens name it by.
+                    if word == "organisation" {
+                        let field = option.value().as_ref().and_then(reads);
+                        let declared = field
+                            .as_ref()
+                            .and_then(|field| config(db, project).setting(field));
+                        match declared {
+                            Some(setting) if lookup.base_prim(&setting.ty) == Some(Prim::Text) => {
+                                organisation = field;
+                            }
+                            None if field.is_some() => clean = false,
+                            _ => {
+                                clean = false;
+                                out.problems.push(
+                                    Diagnostic::new(
+                                        &rule::CONNECTION_VALUE_INVALID,
+                                        format!("`{connection}`'s `organisation:` must read a `Text` setting"),
+                                    )
+                                    .at(span, "not the setting it needs")
+                                    .reason("A sign-in provider's `organisation:` is deployment configuration: the company's Google Workspace domain or Microsoft tenant ID, as a `Text` setting read as `config.<name>`.")
+                                    .next("Declare `<name>: Text` in `config.jadpo`, and write `organisation: config.<name>`"),
+                                );
+                            }
+                        }
+                        continue;
+                    }
                     let Some(at) = SETTINGS.iter().position(|(known, _)| *known == word) else {
                         clean = false;
                         out.problems.push(
@@ -90,7 +125,7 @@ pub fn oidc_connections(db: &dyn Db, project: Project) -> Providers {
                                 format!("`{word}` isn't a setting of `{connection}`"),
                             )
                             .at(span, "not an OpenID Connect setting")
-                            .reason("A sign-in provider on `Driver.oidc` takes `issuer:`, `client_id:` and `credential:`, each read from a setting; its discovery document gives the rest.")
+                            .reason("A sign-in provider on `Driver.oidc` takes `issuer:`, `client_id:` and `credential:`, and optionally `organisation:`, each read from a setting; its discovery document gives the rest.")
                             .next(format!("Remove `{word}:`")),
                         );
                         continue;
@@ -158,12 +193,51 @@ pub fn oidc_connections(db: &dyn Db, project: Project) -> Providers {
                         .next(format!("Add `{word}: config.<name>`, reading a `{wanted}` setting")),
                     );
                 }
+                // A provider whose tokens name no company can't keep to
+                // one: its issuer, where a value is written, must be
+                // Google's or a Microsoft tenant's.
+                if let (Some(_), Some(issuer)) = (&organisation, &read[0]) {
+                    let written = config(db, project).setting(issuer).map(|setting| {
+                        [setting.default.clone(), setting.test.clone()]
+                            .into_iter()
+                            .flatten()
+                            .collect::<Vec<String>>()
+                    });
+                    let other = written
+                        .unwrap_or_default()
+                        .into_iter()
+                        .find(|value| jadpo_std::http::organisation_claim(value).is_none());
+                    if let Some(other) = other {
+                        clean = false;
+                        let at = members
+                            .iter()
+                            .find(|(setting, _)| {
+                                name_text(setting).as_deref() == Some("organisation")
+                            })
+                            .map_or_else(
+                                || node_span(&found.path, name.syntax()),
+                                |(setting, _)| node_span(&found.path, setting.syntax()),
+                            );
+                        out.problems.push(
+                            Diagnostic::new(
+                                &rule::CONNECTION_KEY_INVALID,
+                                format!("`{connection}` can't keep to one company's accounts"),
+                            )
+                            .at(at, "its provider's tokens name no company")
+                            .reason(format!(
+                                "`organisation:` is checked against the claim a provider's ID tokens name the account's company by: Google's `hd` (issuer `https://accounts.google.com`) or Microsoft's `tid` (issuer `https://login.microsoftonline.com/<tenant-id>/v2.0`). `{connection}`'s issuer is `{other}`, whose tokens name none."
+                            ))
+                            .next(format!("Remove `organisation:` from `{connection}`, or give it Google's or a Microsoft tenant's issuer")),
+                        );
+                    }
+                }
                 if let ([Some(issuer), Some(client_id), Some(secret)], true) = (read, clean) {
                     out.list.push(Provider {
                         name: connection,
                         issuer,
                         client_id,
                         secret,
+                        organisation,
                     });
                 }
             }

@@ -48,6 +48,66 @@ pub struct Membership {
     /// Its lifecycle's `visible:`, written for its own columns, so a
     /// membership the lifecycle hides grants nothing.
     pub visible: Option<String>,
+    /// For a membership whose roles need a way in (area 9, "Roles that
+    /// need a way in"; chunk A10): each role that counts and, for one that
+    /// needs a way in or a strength, the condition on the caller's
+    /// sign-in that lets it count. In place of `roles`' test, so a role
+    /// whose requirement the caller's session doesn't meet is no
+    /// membership at all, in a grant or in its tenant.
+    pub counts: Option<Box<Counts>>,
+}
+
+/// The roles of a membership whose roles need a way in (chunk A10): its
+/// role column, and each role that counts, as SQL, with the condition on
+/// the caller's sign-in that lets it count, `None` for a role that needs
+/// nothing.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Counts {
+    pub column: String,
+    pub roles: Vec<(String, Option<String>)>,
+}
+
+/// Whether a role counts for a caller (chunk A10): `sign_in`, the
+/// caller's way in, is one of `ways`, and when `multi_factor` is given,
+/// it holds too.
+pub fn requirement(sign_in: Option<(&str, &[String])>, multi_factor: Option<&str>) -> String {
+    let mut parts = Vec::new();
+    if let Some((caller, ways)) = sign_in {
+        parts.push(format!("{caller} IN ({})", ways.join(", ")));
+    }
+    if let Some(multi_factor) = multi_factor {
+        parts.push(format!("{multi_factor} IS TRUE"));
+    }
+    match parts.as_slice() {
+        [] => "TRUE".to_string(),
+        [one] => one.clone(),
+        _ => format!("({})", parts.join(" AND ")),
+    }
+}
+
+/// `counts`' test of the role column `column` under `alias`: any role that
+/// needs nothing, or one whose requirement holds.
+fn counted(alias: &str, column: &str, roles: &[(String, Option<String>)]) -> String {
+    let column = format!("{alias}.{}", ident(column));
+    let plain: Vec<&str> = roles
+        .iter()
+        .filter(|(_, needs)| needs.is_none())
+        .map(|(role, _)| role.as_str())
+        .collect();
+    let mut parts = Vec::new();
+    if !plain.is_empty() {
+        parts.push(format!("{column} IN ({})", plain.join(", ")));
+    }
+    for (role, needs) in roles {
+        if let Some(needs) = needs {
+            parts.push(format!("({column} = {role} AND {needs})"));
+        }
+    }
+    match parts.as_slice() {
+        [] => "FALSE".to_string(),
+        [one] => one.clone(),
+        _ => format!("({})", parts.join(" OR ")),
+    }
 }
 
 /// `"table"."column"`: a column of the row a statement reaches, named so a
@@ -67,7 +127,9 @@ pub fn exists(membership: &Membership) -> String {
     if let Some((column, value)) = &membership.scope {
         tests.push(format!("{alias}.{} = {value}", ident(column)));
     }
-    if let Some((column, roles)) = &membership.roles {
+    if let Some(counts) = &membership.counts {
+        tests.push(counted(&alias, &counts.column, &counts.roles));
+    } else if let Some((column, roles)) = &membership.roles {
         tests.push(format!(
             "{alias}.{} IN ({})",
             ident(column),
@@ -268,10 +330,36 @@ mod tests {
             scope: Some(("company_id".into(), qualified("project", "company_id"))),
             roles: Some(("role".into(), vec!["$3".into(), "$4".into()])),
             visible: None,
+            counts: None,
         };
         assert_eq!(
             exists(&membership),
             "EXISTS (SELECT 1 FROM \"company_membership\" AS \"jadpo_m\" WHERE \"jadpo_m\".\"user_id\" = $2 AND \"jadpo_m\".\"company_id\" = \"project\".\"company_id\" AND \"jadpo_m\".\"role\" IN ($3, $4))"
+        );
+    }
+
+    /// A role that needs a way in counts only when the caller's sign-in
+    /// meets it; one that needs nothing counts as before (chunk A10).
+    #[test]
+    fn a_role_that_needs_a_way_in_counts_only_with_it() {
+        let needs = requirement(Some(("$5", &["$6".to_string()])), Some("$7"));
+        assert_eq!(needs, "($5 IN ($6) AND $7 IS TRUE)");
+        let membership = Membership {
+            table: "staff_member".into(),
+            alias: "jadpo_m0".into(),
+            member: "patron_id".into(),
+            caller: "$2".into(),
+            scope: None,
+            roles: None,
+            visible: None,
+            counts: Some(Box::new(Counts {
+                column: "role".into(),
+                roles: vec![("$3".into(), Some(needs)), ("$4".into(), None)],
+            })),
+        };
+        assert_eq!(
+            exists(&membership),
+            "EXISTS (SELECT 1 FROM \"staff_member\" AS \"jadpo_m0\" WHERE \"jadpo_m0\".\"patron_id\" = $2 AND (\"jadpo_m0\".\"role\" IN ($4) OR (\"jadpo_m0\".\"role\" = $3 AND ($5 IN ($6) AND $7 IS TRUE))))"
         );
     }
 

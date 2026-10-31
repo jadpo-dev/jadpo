@@ -38,6 +38,14 @@ pub enum CallerPart {
     /// came from; `NULL` for a schedule's run, which every tenant's
     /// records it is granted are open to, and for every other caller.
     SystemTenant,
+    /// The `SignInMethod` the caller's session was started through, by
+    /// name (area 9, "Roles that need a way in"; chunk A10): `NULL` for a
+    /// session `sessions.start` or `sessions.issue_token` started, a
+    /// service or no one, so no role that needs one counts.
+    SignInMethod,
+    /// Whether the caller's session proved more than one factor
+    /// (`AuthenticationStrength.multi_factor`).
+    MultiFactor,
 }
 
 impl CallerPart {
@@ -45,7 +53,8 @@ impl CallerPart {
     pub fn ty(self) -> SqlType {
         match self {
             CallerPart::User | CallerPart::Service | CallerPart::SystemTenant => SqlType::Uuid,
-            CallerPart::Signed | CallerPart::System => SqlType::Bool,
+            CallerPart::Signed | CallerPart::System | CallerPart::MultiFactor => SqlType::Bool,
+            CallerPart::SignInMethod => SqlType::Text,
         }
     }
 }

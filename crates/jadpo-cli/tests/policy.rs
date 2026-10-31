@@ -895,6 +895,8 @@ async fn call(
         value: person.clone(),
         key: "user".to_string(),
         session: None,
+        sign_in: None,
+        multi_factor: false,
     }));
     program.run(&mut ctx, id, args).await
 }

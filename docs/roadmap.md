@@ -369,13 +369,7 @@ time.
 - [x] **A7b Sign-in providers**: area 8, "Providers", "What the compiler checks of sign-in" and Failures; areas 7 (generated routes), 11 (sign-in providers), 13 (signing in for a route test) and 14 (`jadpo dev`); compiler/runtime §2.6, "Sign-in providers".
 - [x] **A7c Provider sign-in in `jadpo dev`**: area 8, "Providers", "In `jadpo dev`"; area 14, `jadpo dev`; compiler/runtime §2.6, "Sign-in providers".
 
-- [ ] **A10 Staff only through their provider** `opus · xhigh`: an app
-  can require some people, such as staff holding a role, to sign in only
-  through a named provider, so their access is revoked in one place; today
-  anyone with an address can also sign in by magic link and keep their
-  roles (found building the lending desk). Area 8 doesn't decide how yet:
-  the chunk proposes the declaration and stops for a maintainer's
-  decision before building (Richard, 2026-10-31).
+- [x] **A10 Staff only through their provider**: area 9, "Roles that need a way in" and Decisions; area 8, "How a session started", "How strongly a person signed in", "Company accounts" and Decisions; area 13, "Signing in for a route test"; area 18, "Acceptances" and Decisions; compiler/runtime §2.6, "Roles that need a way in"; `examples/29-lending-desk/README.md`.
 
 ## Approvals
 

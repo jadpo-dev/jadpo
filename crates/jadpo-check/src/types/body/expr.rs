@@ -1539,11 +1539,14 @@ impl Body<'_> {
             return Ty::Error;
         };
         // A route's input may leave out a field that may be `none`, as a
-        // request's body may.
+        // request's body may; a `TestAccount` its company and strength,
+        // which most providers' tests never say (chunk A10).
+        let account = name == jadpo_std::http::TEST_ACCOUNT;
         let fields: Vec<FieldDef> = fields
             .into_iter()
             .map(|(field, ty)| FieldDef {
-                optional: input && matches!(ty, Ty::Nullable(_)),
+                optional: (input && matches!(ty, Ty::Nullable(_)))
+                    || (account && jadpo_std::http::TEST_ACCOUNT_OPTIONAL.contains(&field)),
                 ..plain_field(field, ty)
             })
             .collect();
@@ -1556,7 +1559,7 @@ impl Body<'_> {
             name,
             &[],
             &fields,
-            if input {
+            if input || account {
                 Required::Input
             } else {
                 Required::All

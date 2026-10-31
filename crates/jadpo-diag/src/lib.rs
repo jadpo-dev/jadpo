@@ -670,6 +670,12 @@ rules! {
         "A query or action lets a caller see a field's value, directly or through what it decides, though not every caller may read that field";
     POLICY_PUBLIC_GRANT_MISSING: "policy.public_grant_missing", area 9, Error, Human,
         "A route that anyone may call, with no sign-in, reads or changes a record that only signed-in people are allowed to see";
+    POLICY_REQUIREMENT_INVALID: "policy.requirement_invalid", area 9, Error, Agent,
+        "A role's line in `requires:` holds something a requirement can't";
+    POLICY_REQUIREMENT_UNSATISFIABLE: "policy.requirement_unsatisfiable", area 9, Error, Human,
+        "A role's requirement asks for a sign-in that no way in the app can give";
+    POLICY_REQUIREMENTS_INCOMPLETE: "policy.requirements_incomplete", area 9, Error, Human,
+        "A membership's `requires:` leaves out one of its roles";
     POLICY_ROLE_FIELD_CREATE_FORBIDDEN: "policy.role_field_create_forbidden", area 9, Error, Agent,
         "Create sets the user field its grant needs from the request, not the caller";
     POLICY_ROLE_UNBOUND: "policy.role_unbound", area 9, Error, Agent,

@@ -383,6 +383,15 @@ pub const SESSIONS: SystemTable = SystemTable {
         column("csrf_verifier", SqlType::Text, true),
         column("started_at", SqlType::Timestamp, false),
         column("ends_at", SqlType::Timestamp, false),
+        // The `SignInMethod` it was started through, by name (area 8,
+        // "How a session started"; chunk A10): `NULL` for one
+        // `sessions.start` or `sessions.issue_token` started, and for
+        // one kept before methods were recorded.
+        column("sign_in_method", SqlType::Text, true),
+        // `multi_factor` when that sign-in proved more than one factor (a
+        // passkey, or a provider's `amr` naming a second one); `NULL` for
+        // one factor.
+        column("strength", SqlType::Text, true),
     ],
     primary_key: &["id"],
     unique: &[SystemUnique {

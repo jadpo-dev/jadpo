@@ -463,6 +463,30 @@ Other tests sign in with `as: Principal.user(member)` in a `request`,
 without going through the routes; [Write tests](08-write-tests.md) shows
 how.
 
+## Keep staff to the company's accounts
+
+When some people, such as staff, should keep their powers only while
+their company's provider vouches for them, two lines do it:
+
+- On the provider's connection, `organisation: config.google_domain`
+  reads the company's Google Workspace domain, or its Microsoft tenant
+  ID, from a `Text` setting. An account outside it can't sign in through
+  the provider.
+- On the membership that gives them their role, `requires:` gives each
+  role a line: `OrganiserRole.host: { sign_in: [SignInMethod.google] }`
+  lets the role count only for someone signed in through Google, and
+  `strength: AuthenticationStrength.multi_factor` asks for a second
+  factor too; `OrganiserRole.reader: {}` needs nothing. Signed in by
+  link, an organiser is a member like any other, so switching their
+  Google account off ends their powers, and a Google session lasts a
+  day.
+
+A route test then says how its user signed in, `sign_in:
+SignInMethod.google` beside `as:`. The lending desk example
+(`examples/29-lending-desk`) does all three. See
+[Roles that need a way in](../language/09-policy.md#roles-that-need-a-way-in)
+and [Company accounts](../language/08-identity.md#company-accounts).
+
 ## Read more
 
 [The principal](../language/08-identity.md#the-principal),

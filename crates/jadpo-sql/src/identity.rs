@@ -88,23 +88,27 @@ pub fn passkey_lookup(table: &str, entity_table: &str, active: &str, wheres: &[S
 /// How a caller is looked up by a credential's verifier (area 8, question
 /// 12): `$1` the verifier, `$2` the time now, read from `table` beside
 /// `entity_table`'s record where `wheres` hold, its subject `subject`'s
-/// column and its `active` worked out as given; a browser session's
-/// `csrf_verifier` too when `csrf`.
+/// column and its `active` worked out as given; for a session or an API
+/// token (`session`), its `csrf_verifier` too, and after the rest how it
+/// was started, its `sign_in_method` and `strength` (chunk A10).
 pub fn caller_lookup(
     table: &str,
-    csrf: bool,
+    session: bool,
     entity_table: &str,
     subject: &str,
     active: &str,
     wheres: &[String],
 ) -> String {
-    let csrf = if csrf {
-        format!("s.{}, ", ident("csrf_verifier"))
+    let (csrf, started) = if session {
+        (
+            format!("s.{}, ", ident("csrf_verifier")),
+            format!(", s.{}, s.{}", ident("sign_in_method"), ident("strength")),
+        )
     } else {
-        String::new()
+        (String::new(), String::new())
     };
     format!(
-        "SELECT s.{id}, {csrf}u.{id}, u.{subject_name}, u.{active_name}, s.{ends} FROM {table} AS s CROSS JOIN LATERAL (SELECT {id}, {subject} AS {subject_name}, {active} AS {active_name} FROM {entity_table} WHERE {wheres}) AS u WHERE s.{verifier} = $1 AND s.{ends} > $2",
+        "SELECT s.{id}, {csrf}u.{id}, u.{subject_name}, u.{active_name}, s.{ends}{started} FROM {table} AS s CROSS JOIN LATERAL (SELECT {id}, {subject} AS {subject_name}, {active} AS {active_name} FROM {entity_table} WHERE {wheres}) AS u WHERE s.{verifier} = $1 AND s.{ends} > $2",
         id = ident("id"),
         subject_name = ident("subject"),
         active_name = ident("active"),

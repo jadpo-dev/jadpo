@@ -442,6 +442,8 @@ async fn call(
         value: person.clone(),
         key: "user".to_string(),
         session: None,
+        sign_in: None,
+        multi_factor: false,
     }));
     let outcome = program.run(&mut ctx, id, args).await;
     (outcome, ctx.take_deferred())

@@ -160,6 +160,7 @@ use, is not a teaching example: it is in
 | AI: typed model calls, embeddings and streaming | [28-lost-property](28-lost-property/README.md) |
 | Sign-in with Google through a provider; customers and staff in one app | [29-lending-desk](29-lending-desk/README.md) |
 | Staff roles across the whole app, and a listed query with role-restricted fields | [29-lending-desk](29-lending-desk/README.md) |
+| Roles that count only through a provider (`requires:`), and a provider kept to one company's accounts (`organisation:`) | [29-lending-desk](29-lending-desk/README.md) |
 | Seeds (`jadpo seed`) | [29-lending-desk](29-lending-desk/README.md) |
 | A schedule that starts a batch, tested to the end | [29-lending-desk](29-lending-desk/README.md) |
 

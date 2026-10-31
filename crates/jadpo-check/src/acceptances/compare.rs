@@ -646,6 +646,8 @@ struct Access {
     queries: BTreeMap<String, BTreeSet<String>>,
     declines: BTreeSet<(String, String)>,
     sign_in: BTreeMap<String, String>,
+    /// Each role's requirement lines (chunk A10), by `domain.Role.value`.
+    roles: BTreeMap<String, BTreeSet<String>>,
 }
 
 const EFFECTS: [&str; 4] = ["create", "read", "update", "delete"];
@@ -705,6 +707,11 @@ fn access(text: &str) -> Access {
                     out.declines.insert((rule.to_string(), subject.to_string()));
                 }
             }
+            "role" => {
+                let lines: BTreeSet<String> =
+                    entry.members.iter().map(|m| m.line.clone()).collect();
+                out.roles.insert(rest.to_string(), lines);
+            }
             "sign_in" => {
                 for member in &entry.members {
                     if let Some((name, value)) = member.line.split_once(": ") {
@@ -729,8 +736,9 @@ fn added<'a>(was: Option<&'a BTreeSet<String>>, now: &'a BTreeSet<String>) -> bo
 /// list; a field's own row or `server_only` removed; tenancy loosened, or
 /// a new entity shared by every tenant; a listed query's line removed or a
 /// caller added to it; an `actions:` line added or removed; a security
-/// rule declined; a sign-in setting loosened past its limit. Narrowing,
-/// listing a query and a new entity of a tenant need no one.
+/// rule declined; a sign-in setting loosened past its limit; a role's
+/// requirement changed at all, or its line added or removed (chunk A10).
+/// Narrowing, listing a query and a new entity of a tenant need no one.
 pub fn access_needs(path: &str, before: &str, after: &str, out: &mut Vec<Need>) {
     let was = access(before);
     let now = access(after);
@@ -833,6 +841,19 @@ pub fn access_needs(path: &str, before: &str, after: &str, out: &mut Vec<Need>) 
                 );
             }
             Some(_) => {}
+        }
+    }
+    // A role's requirement changed either way, or a role's line added or
+    // removed, needs a person (Richard, 2026-10-31): who keeps a role
+    // through which sign-in is as much policy as who holds it.
+    let named: BTreeSet<&String> = was.roles.keys().chain(now.roles.keys()).collect();
+    for role in named {
+        if was.roles.get(role) != now.roles.get(role) {
+            add(
+                role.clone(),
+                "PolicyChange.role_requirements_changed",
+                now.roles.contains_key(role).then(|| format!("role {role}")),
+            );
         }
     }
     for (rule, subject) in &now.declines {
@@ -1138,5 +1159,44 @@ sign_in magic_link
             .replace("\nsign_in", "\nquery catalogue.new_books\n    who Access.authenticated\n\nsign_in")
             .replace("\nfield library.Book.cost", "\nentity library.Shelf\n    read Access.authenticated\n    tenant branch_id\n\nfield library.Book.cost");
         assert_eq!(widenings(LIBRARY, &after), Vec::<(String, String)>::new());
+    }
+
+    /// Any change to how a role must be signed in to needs a person,
+    /// tighter or looser, and so does a role's line added or removed
+    /// (Richard, 2026-10-31).
+    #[test]
+    fn every_change_to_a_roles_requirement_needs_a_person() {
+        let roles = "
+role desk.StaffRole.admin
+    sign_in SignInMethod.google
+    strength AuthenticationStrength.multi_factor
+
+role desk.StaffRole.front_desk
+    sign_in SignInMethod.google
+";
+        let before = format!("{LIBRARY}{roles}");
+        let looser = before.replace("    strength AuthenticationStrength.multi_factor\n", "");
+        let tighter = before.replace(
+            "role desk.StaffRole.front_desk\n    sign_in SignInMethod.google\n",
+            "role desk.StaffRole.front_desk\n    sign_in SignInMethod.google\n    strength AuthenticationStrength.multi_factor\n",
+        );
+        let added = format!("{before}\nrole desk.StaffRole.porter\n");
+        let removed = before.replace(
+            "\nrole desk.StaffRole.front_desk\n    sign_in SignInMethod.google\n",
+            "",
+        );
+        for (after, role) in [
+            (&looser, "desk.StaffRole.admin"),
+            (&tighter, "desk.StaffRole.front_desk"),
+            (&added, "desk.StaffRole.porter"),
+            (&removed, "desk.StaffRole.front_desk"),
+        ] {
+            assert_eq!(
+                widenings(&before, after),
+                pairs(&[(role, "PolicyChange.role_requirements_changed")]),
+                "{after}"
+            );
+        }
+        assert_eq!(widenings(&before, &before), Vec::<(String, String)>::new());
     }
 }

@@ -1926,6 +1926,57 @@ pub fn caller_from(
 
 // --- route tests ---------------------------------------------------------------
 
+/// A route test's request's values as its site gives them: the route's
+/// placeholders and input, then, as the site says, the `Idempotency-Key`
+/// it sends, the caller it signs in as (`as:`), and how that caller
+/// signed in (`sign_in:` and `strength:`; chunk A10).
+#[derive(Debug)]
+pub struct RequestValues<'a> {
+    pub args: &'a [Value],
+    pub key: Option<&'a Value>,
+    pub caller: Option<&'a Value>,
+    /// By magic link with one factor unless the request says otherwise.
+    pub by: identity::SignedInBy,
+}
+
+impl<'a> RequestValues<'a> {
+    /// `values` split as `[keyed, signed, way, strong]` say: each flag
+    /// set has its value, from the last back.
+    pub fn split(values: &'a [Value], [keyed, signed, way, strong]: [bool; 4]) -> Self {
+        let mut rest = values;
+        let mut last = |given: bool| -> Option<&'a Value> {
+            if !given {
+                return None;
+            }
+            let (value, before) = rest.split_last()?;
+            rest = before;
+            Some(value)
+        };
+        let strength = last(strong);
+        let sign_in = last(way);
+        let caller = last(signed);
+        let key = last(keyed);
+        let name = |value: Option<&Value>| match value {
+            Some(Value::Variant(variant)) => Some(variant.name.to_string()),
+            _ => None,
+        };
+        let by = identity::SignedInBy {
+            method: Some(
+                name(sign_in)
+                    .unwrap_or_else(|| jadpo_std::SignInMethod::MagicLink.name().to_string()),
+            ),
+            multi_factor: name(strength).as_deref()
+                == Some(jadpo_std::AuthenticationStrength::MultiFactor.name()),
+        };
+        RequestValues {
+            args: rest,
+            key,
+            caller,
+            by,
+        }
+    }
+}
+
 /// A route test's request (area 13: "through the real generated boundary
 /// without a network"), answered by the HTTP component in the test's own
 /// context and read back as a `Response` value: route `route`'s request
@@ -1933,17 +1984,20 @@ pub fn caller_from(
 /// `Idempotency-Key` and signed in as `caller` when given. The fault
 /// behind a 500 ends the test with that fault, as one anywhere else in it
 /// would: a 500 is never what a test means to check.
-#[allow(clippy::too_many_arguments)]
 pub async fn route_test(
     app: &App<'_>,
     executor: &dyn Executor,
     ctx: &mut Ctx<'_>,
     route: u32,
-    args: &[Value],
-    key: Option<&Value>,
-    caller: Option<&Value>,
+    sent: RequestValues<'_>,
 ) -> Result<Value, Box<Fault>> {
-    let Some(request) = test_request(ctx, app, route, args, key, caller).await? else {
+    let RequestValues {
+        args,
+        key,
+        caller,
+        by,
+    } = sent;
+    let Some(request) = test_request(ctx, app, route, args, key, caller, &by).await? else {
         return Ok(Value::None);
     };
     let id = request_id(ctx, u64::from(ctx.actions()));
@@ -1978,6 +2032,7 @@ pub async fn test_request(
     args: &[Value],
     key: Option<&Value>,
     caller: Option<&Value>,
+    by: &identity::SignedInBy,
 ) -> Result<Option<Request>, Box<Fault>> {
     let Some(mut request) = written_request(app, route, args) else {
         return Ok(None);
@@ -1999,7 +2054,8 @@ pub async fn test_request(
     }
     let started = ctx.started();
     if let Some(caller) = caller {
-        let headers = identity::test_credentials(ctx, app, started.auth(), route, caller).await?;
+        let headers =
+            identity::test_credentials(ctx, app, started.auth(), route, caller, by).await?;
         request.headers.extend(headers);
     }
     // The app's own site, as a browser's request from it says, so a route

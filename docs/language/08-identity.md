@@ -86,7 +86,7 @@ The principal has three fields of its own, and no others:
 - `id`: the record's `id`, a `User.id` or a `Service.id`;
 - `subject`: the value of the `subject:` field;
 - `strength`: how the caller proved who they are, `primary` or
-  `multi_factor`.
+  `multi_factor` ([How strongly a person signed in](#how-strongly-a-person-signed-in)).
 
 A role, a tenant or an email address isn't on the principal. Code that
 needs one reads it from the entity, which is where [Policy](09-policy.md)
@@ -903,6 +903,8 @@ connections: {
   your app. Every ID token must name it as its audience.
 - `credential:` reads a secret setting: the client secret
   ([Secrets](10-configuration-and-time.md#secrets)).
+- `organisation:`, optional, reads a `Text` setting: the company whose
+  accounts alone it signs in ([Company accounts](#company-accounts)).
 - Register `<origin>/auth/<name>/callback` with the provider as the
   redirect address, `<origin>` being the browser session's `origin:`.
 
@@ -916,6 +918,42 @@ A provider account finds its user only through the link a first sign-in
 made ([A person the app has not seen](#a-person-the-app-has-not-seen)),
 never by the principal's `subject:` field or an email address, so without
 the action no one could sign in.
+
+#### Company accounts
+
+A company's staff sign in with their work accounts. `organisation:` keeps
+a provider to that company's accounts, so an account outside it, a
+personal Gmail address among them, can't sign in or be linked:
+
+```jadpo fragment
+// app.jadpo
+connections: {
+    google: {
+        driver: Driver.oidc
+        issuer: config.google_issuer
+        client_id: config.google_client_id
+        credential: config.google_client_secret
+        organisation: config.google_domain
+    }
+}
+```
+
+The setting is checked on every sign-in against the claim the provider's
+ID token names the account's company by:
+
+- Google's `hd`, the Google Workspace domain (`desk.example`), for the
+  issuer `https://accounts.google.com`. Google's own page then offers
+  only that domain's accounts.
+- Microsoft's `tid`, the tenant ID, for a tenant's issuer,
+  `https://login.microsoftonline.com/<tenant-id>/v2.0`. The issuer
+  already names one tenant; `tid` is checked as well.
+
+An account whose token names another company, or none, is refused with
+`sign_in_refused`. A provider whose tokens name no company can't keep to
+one, so `organisation:` on a connection whose issuer setting's `default:`
+or `test:` is another provider's is `connection.key_invalid`; one whose
+issuer is only known when the app starts is
+`authentication_misconfigured` at sign-in.
 
 #### The routes
 
@@ -939,7 +977,7 @@ after it, so your page can say what happened:
 | Code | When |
 |---|---|
 | `sign_in_provider_failed` | The sign-in expired, was used already, came back to another browser, or the provider refused it or sent an ID token that doesn't check |
-| `sign_in_refused` | `on_first_sign_in:` refused the person |
+| `sign_in_refused` | `on_first_sign_in:` refused the person, or their account is outside the connection's `organisation:` |
 | `user_disabled` | The person's user isn't `active:` |
 | `authentication_unavailable` | The provider or the database can't be reached |
 | `authentication_misconfigured` | The provider's settings or its discovery document are invalid |
@@ -978,8 +1016,12 @@ tests can call it:
 | `test_providers.sign_in(method: SignInMethod, account: TestAccount) -> Response` | Starts the sign-in through `POST /auth/<name>/start` from the app's own page. Then the local issuer signs `account` in and sends the browser back to `GET /auth/<name>/callback` with the binding cookie. It gives the callback's `Response`, whose `code` is the `error` its redirect names, if any |
 
 `TestAccount` holds what a provider says about the person: `subject:
-Text`, `email: Email?`, `email_verified: Bool` and `name: Text?`. Only a
-test, fixture or seed builds one.
+Text`, `email: Email?`, `email_verified: Bool` and `name: Text?`, and two
+fields a test may leave out: `organisation: Text?`, the company its token
+names ([Company accounts](#company-accounts)), and `strength:
+AuthenticationStrength?`, `multi_factor` for a token whose `amr` names a
+second factor. Only a test, fixture or seed builds one. The session it
+starts records the provider, as a real sign-in's does.
 
 Here a lending desk's staff sign in with Google. A member of staff is
 taken on under their address, and `on_first_sign_in:` links the Google
@@ -1335,8 +1377,10 @@ stand-in. `POST /auth/<name>/start` answers with the address of the
 local issuer's account-chooser page, which `jadpo dev` serves on its own
 port on your machine; the ready screen gives it on its `sign-in` line.
 
-The page lists the provider's test accounts. Choosing one signs in as it,
-as the provider's own page would: the browser goes back to
+The page lists the provider's test accounts. Each is one of the
+company's, when the connection has `organisation:`, and signs in with a
+second factor, so the staff roles that need them can be tried. Choosing
+one signs in as it, as the provider's own page would: the browser goes back to
 `GET /auth/<name>/callback` with a code, and the route checks it as it
 checks the provider's. **Add a test account** takes what a provider says
 about a person, `TestAccount`'s fields: a subject (made up in Google's
@@ -3277,6 +3321,42 @@ and the response of the route that ran the action sets its cookie.
 - Only verifiers are kept: a session's token and its CSRF token are 32
   random bytes each, stored as their digests, so a copy of the database
   signs no one in.
+
+### How a session started
+
+Each session and API token records the way in that started it, its
+`SignInMethod`, and how strongly the person signed in. A role can need
+one ([Roles that need a way in](09-policy.md#roles-that-need-a-way-in)),
+and the check runs on every request against what the session recorded.
+
+- A magic link records `magic_link`, a passkey `passkey`, and a provider
+  its connection's name, such as `google`. A request with an external
+  token signs in through `external_token` each time.
+- `sessions.start` and `sessions.issue_token` record no way in, since
+  your app checked the person itself. A role that needs a way in never
+  counts for such a session.
+- A session started through a provider that any role's requirement
+  names lasts 24 hours, not 30 days, so someone the company switches off
+  at the provider loses the role within a day. After that its requests
+  are 401 `invalid_credentials`, and the person signs in again.
+- Sessions kept before ways in were recorded have none, so a role that
+  needs one returns at the person's next sign-in through the provider.
+
+### How strongly a person signed in
+
+`current_principal.strength` is `multi_factor` when the sign-in proved a
+second factor, and `primary` otherwise:
+
+- a passkey is two factors, the device and what unlocks it;
+- a provider's or an external token's sign-in is two when its token's
+  `amr` (RFC 8176) says so: `mfa`, or something the person knows
+  (`pwd`, `pin`, `kba`) beside something they hold or are (`hwk`, `swk`,
+  `sc`, `pop`, `otp`, `sms`, `tel`, `fpt`, `face`, `iris`, `retina`,
+  `vbm`). When a role's requirement needs a second factor, the sign-in
+  asks the provider for `amr` through the OpenID Connect `claims`
+  parameter. Microsoft sends it; Google sends it to verified apps that
+  ask;
+- a magic link is one.
 
 ### API tokens
 

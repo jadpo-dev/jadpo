@@ -569,7 +569,39 @@ pub struct ProviderPlan {
     pub issuer: String,
     pub client_id: String,
     pub client_secret: String,
+    /// The `Text` setting its `organisation:` is read from, by name: the
+    /// company whose accounts alone it signs in (area 8, "Company
+    /// accounts"; chunk A10).
+    pub organisation: Option<String>,
+    /// How long a session it starts lasts, in milliseconds: a day when a
+    /// role's requirement names it (area 9, "Roles that need a way in"),
+    /// else [`SESSION_LIFETIME_MS`].
+    pub session_ms: i64,
+    /// Whether its sign-in asks for the ID token's `amr`, through the
+    /// `claims` parameter, because a role's requirement it can meet needs
+    /// a second factor.
+    pub asks_amr: bool,
 }
+
+/// The ID token claim that names the company an account belongs to, for
+/// the provider whose exact issuer is `issuer` (area 8, "Company
+/// accounts"; chunk A10): Google's `hd` for `https://accounts.google.com`,
+/// Microsoft's `tid` for `https://login.microsoftonline.com/<tenant>/v2.0`;
+/// `None` for a provider whose tokens name none.
+pub fn organisation_claim(issuer: &str) -> Option<&'static str> {
+    if issuer == "https://accounts.google.com" {
+        return Some("hd");
+    }
+    let tenant = issuer
+        .strip_prefix("https://login.microsoftonline.com/")?
+        .strip_suffix("/v2.0")?;
+    (!tenant.is_empty() && !tenant.contains('/')).then_some("tid")
+}
+
+/// How long a session lasts when a role's requirement names the
+/// provider it was started through: a day (chunk A10), so a person the
+/// company's provider stops signing in loses the role within one.
+pub const REQUIRED_PROVIDER_SESSION_MS: i64 = 24 * 60 * 60 * 1000;
 
 /// Where `magic_link:`'s routes go unless its `path:` says otherwise.
 pub const MAGIC_LINK_PATH: [&str; 2] = ["auth", "magic-link"];
@@ -701,7 +733,14 @@ pub fn test_built_fields(name: &str) -> Option<&'static [&'static str]> {
         MAGIC_LINK_CONFIRMATION => Some(&["token", "address", "code"]),
         MAGIC_LINK_CODE => Some(&["address", "code"]),
         // What a test's provider says about the person (chunk A7b).
-        TEST_ACCOUNT => Some(&["subject", "email", "email_verified", "name"]),
+        TEST_ACCOUNT => Some(&[
+            "subject",
+            "email",
+            "email_verified",
+            "name",
+            "organisation",
+            "strength",
+        ]),
         _ => None,
     }
 }
@@ -737,6 +776,11 @@ pub const TEST_PASSKEYS: &str = "test_passkeys";
 /// "Providers"; chunk A7b), and what it says about the person.
 pub const TEST_PROVIDERS: &str = "test_providers";
 pub const TEST_ACCOUNT: &str = "TestAccount";
+
+/// The `TestAccount` fields a test may leave out (chunk A10): the company
+/// the account belongs to and how strongly it signed in, `none` when left
+/// out.
+pub const TEST_ACCOUNT_OPTIONAL: [&str; 2] = ["organisation", "strength"];
 
 /// The device holding a passkey `test_passkeys.register` added: only a
 /// test holds one, and nothing reads its parts.

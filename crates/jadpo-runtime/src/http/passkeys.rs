@@ -646,6 +646,14 @@ impl Site<'_> {
                     SqlValue::Timestamp(
                         now.saturating_add(SESSION_LIFETIME_MS).saturating_mul(1000),
                     ),
+                    // A passkey with the person's check is two factors:
+                    // the device and what unlocks it (chunk A10).
+                    SqlValue::Text(SignInMethod::Passkey.name().to_string()),
+                    SqlValue::Text(
+                        jadpo_std::AuthenticationStrength::MultiFactor
+                            .name()
+                            .to_string(),
+                    ),
                 ],
             )
             .await;

@@ -54,11 +54,19 @@ pub async fn register(
         );
     };
     // Signed in as `as:` signs in: a browser session of the user's own.
-    let headers =
-        match identity::test_credentials(ctx, app, started.auth(), options.index, user).await {
-            Ok(headers) => headers,
-            Err(fault) => return Stored::Fault(fault),
-        };
+    let headers = match identity::test_credentials(
+        ctx,
+        app,
+        started.auth(),
+        options.index,
+        user,
+        &identity::SignedInBy::through(jadpo_std::SignInMethod::MagicLink.name(), false),
+    )
+    .await
+    {
+        Ok(headers) => headers,
+        Err(fault) => return Stored::Fault(fault),
+    };
     let asked = match send(app, executor, ctx, &options, headers.clone(), None).await {
         Ok(response) => response,
         Err(stored) => return stored,

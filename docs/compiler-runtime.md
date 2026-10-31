@@ -2480,6 +2480,32 @@ through `LocalIssuer::authorize`; the workers redeem it from the same
 nothing gives get stand-ins. The module is in the `testing` feature, which
 `tools/checks/deployable.py` holds out of a deployable.
 
+**Roles that need a way in** (area 9, "Roles that need a way in"; area
+8, "How a session started" and "Company accounts"; chunk A10). The
+checker reads a membership's `requires:` in `policy::requires` into
+`Membership::requires`, each role's `Requirement` (its ways in by
+`SignInMethod` name, and whether it needs a second factor), and
+`policy::reach` refuses a route whose API can't carry the sign-in every
+letting-in role needs. `jadpo_sessions` keeps each session's
+`sign_in_method` and `strength`, which `http::identity::START` writes
+from the way in (`SignedInBy`), the caller lookup reads back and a signed
+part carries (`w`, `f`); an external token signs in through
+`external_token` each request. The `Caller` holds them, bound as
+`CallerPart::SignInMethod` and `CallerPart::MultiFactor`, and the plan's
+membership `EXISTS` counts a restricted role only when they meet its
+requirement (`jadpo_sql::policy::Membership::counts`), in grants, gates
+and tenancy alike, so a role that doesn't count makes no one a member of
+its tenant. A provider any requirement names gets `ProviderPlan::session_ms`
+of a day and, where one needs a second factor, `asks_amr`, which adds the
+`claims` parameter to its start; its `organisation:` is checked at the
+callback against `hd` or `tid` by the issuer (`jadpo_std::http::organisation_claim`).
+`amr` is read by `external_token::second_factor`. In tests a request's
+`sign_in:` and `strength:` follow its caller in its site's values
+(`http::RequestValues`) and reach `test_credentials`; the local issuer
+writes a `TestAccount`'s company as `hd` and `tid` and its strength as
+`amr`, and `jadpo dev`'s chooser gives each account the connection's
+company and a second factor.
+
 **Signed sessions** (area 8). The identity reads
 `revocation_delay:`, each method's `signing_key:` (a `SigningKey`
 setting) and a browser session's `origin:` (a `Url` setting) into the

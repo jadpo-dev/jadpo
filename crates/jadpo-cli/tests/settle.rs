@@ -335,6 +335,7 @@ fn a_route_waits_for_its_follow_on_work_then_answers_with_its_query() {
             program.started().auth(),
             route,
             &caller,
+            &jadpo_runtime::http::identity::SignedInBy::through("magic_link", false),
         )
         .await
         .expect("signed in");
