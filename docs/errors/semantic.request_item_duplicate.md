@@ -230,8 +230,8 @@ test "a memo is tagged" {
 The request now sends one input, so the test checks exactly the request
 it shows.
 
-**If the test means to send both**, make each its own request, in its own
-`var`, and assert on each response.
+A test that means to send both makes each its own request, in its own
+`var`, and asserts on each response.
 
 ## Related
 

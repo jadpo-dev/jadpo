@@ -112,12 +112,11 @@ test "a reminder is due an hour from now" {
 The test now starts at the one instant it shows, and the reminder is due
 an hour after it.
 
-**If it's `config:` or `fakes:` given twice**, put every entry in one
-block: one `config:` holding each setting the test changes, and one
-`fakes:` holding each operation's answers.
-
-**If the test needs two instants**, keep one `clock:` and move the clock
-on with `clock.advance(...)` where the test needs the later one.
+A `config:` or `fakes:` given twice is fixed the same way, by putting
+every entry in one block: one `config:` holding each setting the test
+changes, and one `fakes:` holding each operation's answers. A test that
+needs two instants keeps one `clock:` and moves the clock on with
+`clock.advance(...)` where it needs the later one.
 
 ## Related
 
