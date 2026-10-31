@@ -1125,15 +1125,13 @@ impl Plan {
         }
         // The action `on_first_sign_in:` names, by its callable's number
         // (area 8, "A person the app has not seen"), where a deployable
-        // keeps it: one that serves no API redeems no link.
-        if let Some(magic) = routes
-            .identity
-            .as_mut()
-            .and_then(|identity| identity.magic_links.as_mut())
+        // keeps it: one that serves no API redeems no link and signs no
+        // external token in.
+        if let Some(identity) = routes.identity.as_mut()
             && let Some(name) = &jadpo_check::identity::first_sign_in_action(db, project).0
         {
             let lookup = jadpo_check::lookups::Lookup::new(db, project);
-            magic.first_sign_in = jadpo_check::graph::declaration_key(&lookup, name)
+            let number = jadpo_check::graph::declaration_key(&lookup, name)
                 .filter(|key| {
                     pruning.is_none_or(|pruning| {
                         pruning.keep.callables.contains(key)
@@ -1145,6 +1143,16 @@ impl Plan {
                     })
                 })
                 .and_then(|key| callable_number(&key));
+            if let Some(magic) = identity.magic_links.as_mut() {
+                magic.first_sign_in = number;
+            }
+            if let Some(first) = identity
+                .external_token
+                .as_mut()
+                .and_then(|external| external.first_sign_in.as_mut())
+            {
+                first.action = number;
+            }
         }
         let running = pruning.is_none_or(|pruning| pruning.runs().subscribers);
         let events = events_plan(

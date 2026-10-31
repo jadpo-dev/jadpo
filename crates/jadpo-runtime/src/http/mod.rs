@@ -53,6 +53,7 @@ pub mod local_issuer;
 pub mod magic_links;
 pub(crate) mod passkeys;
 pub(crate) mod sign_in_events;
+pub(crate) mod sign_in_links;
 pub mod signed;
 pub mod test_passkeys;
 mod trie;
@@ -916,7 +917,7 @@ async fn run_route(
     let mut exchanged = None;
     let mut browser = false;
     let caller = if route.authentication.needs_caller() {
-        let checked = identity::authenticate(app, ctx, request, route);
+        let checked = identity::authenticate(app, executor, ctx, request, route);
         match race(checked, &mut deadline).await {
             First::Left(Ok(admitted)) => {
                 reissued = admitted.reissued;
@@ -932,6 +933,7 @@ async fn run_route(
                 }
                 let mut response = identity::refusal(app.table, &refused, request_id);
                 response.counted = refused.credential;
+                response.fault = refused.fault;
                 return response;
             }
             First::Right(()) => return runtime_failure(DEADLINE_EXCEEDED, request_id, None),

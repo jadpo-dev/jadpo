@@ -692,6 +692,7 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         "docs/language/08-identity.md sign-in",
         "docs/language/08-identity.md tokens-and-keys",
         "docs/language/08-identity.md passkeys",
+        "docs/language/08-identity.md first-token",
         "docs/language/09-policy.md policy-end-to-end",
         "docs/language/09-policy.md tenant-references",
         "docs/language/09-policy.md listed-query",
@@ -895,6 +896,10 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
     // Area 9's unique rules and founding within a tenant (chunks 10.3a and
     // 10.3b), whose constraint and founding conditions are the plan's SQL.
     let tenant_keys = page("docs/language/09-policy.md tenant-keys");
+    // Area 8's first sign-in by external token (chunk A7): the local
+    // issuer's token for a subject no one holds runs `on_first_sign_in:`
+    // under the advisory lock and links the newcomer it takes on.
+    let first_token = page("docs/language/08-identity.md first-token");
     let projects = [
         ("area 7's todos", corpus_project(&files, "workerd-todos")),
         (
@@ -916,6 +921,10 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
             "the guest house",
             example_project("27-guest-house", "workerd-guest-house"),
         ),
+        (
+            "area 8's first sign-in by token",
+            corpus_project(&first_token, "workerd-first-token"),
+        ),
     ];
     let folders: Vec<PathBuf> = projects
         .iter()
@@ -932,7 +941,7 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
         .iter()
         .map(|compared| (compared.tests, compared.passed))
         .collect();
-    assert_eq!(counts, [(3, 3), (2, 2), (4, 4), (1, 1), (5, 5)]);
+    assert_eq!(counts, [(3, 3), (2, 2), (4, 4), (1, 1), (5, 5), (1, 1)]);
     println!(
         "compared on workerd: {} route tests of {} projects with the interpreter's records, every one passing, in {:.0?}",
         counts.iter().map(|(tests, _)| tests).sum::<usize>(),

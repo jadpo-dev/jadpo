@@ -14,9 +14,11 @@
 //! (area 10), and the generated `POST /auth/exchange`; in chunk 5.5z:
 //! `sign_in:` with `passkey:`, whose routes the runtime answers; in chunk
 //! 7.3b: `magic_link:` and `on_first_sign_in:`; in chunk 9.1d1:
-//! `external_token:` for provisioned active subjects. Its first-sign-in
-//! hook, sign-in providers and acting as an OAuth provider come later:
-//! each is `toolchain.not_built_yet` where it is written.
+//! `external_token:` for provisioned active subjects; in chunk A7:
+//! `on_first_sign_in:` for an external token's first sign-in, its links
+//! kept beside the users. Sign-in providers and acting as an OAuth
+//! provider come later: each is `toolchain.not_built_yet` where it is
+//! written.
 
 use std::sync::Arc;
 
@@ -290,6 +292,16 @@ impl Identity {
         .then(|| self.variant(PrincipalKind::User))
         .flatten()
         .map(|variant| variant.store.as_str())
+    }
+
+    /// The store first sign-ins' links are kept in (area 8, "A person the
+    /// app has not seen"; chunk A7): the user entity's, when
+    /// `on_first_sign_in:` decides an external token's first sign-in.
+    pub fn links_store(&self) -> Option<&str> {
+        (self.first_sign_in.is_some() && self.external_token.is_some())
+            .then(|| self.variant(PrincipalKind::User))
+            .flatten()
+            .map(|variant| variant.store.as_str())
     }
 
     /// The store service keys are kept in, when service keys are declared:
@@ -1335,12 +1347,6 @@ impl Reader<'_> {
                 ),
                 Some(true) => self.out.passkey = Some(read),
             }
-        }
-        if self.out.external_token.is_some()
-            && let Some(hook) = &self.out.first_sign_in
-        {
-            self.later(hook.span.clone(), "`on_first_sign_in:` with `external_token:`",
-                "Creating or linking an external subject through the first-sign-in hook is not built yet; external tokens currently require a provisioned user");
         }
         // With a revocation delay every method signs what it gives, with a
         // key from secret configuration.
