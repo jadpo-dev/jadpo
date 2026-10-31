@@ -292,10 +292,10 @@ mod tests {
                 assert!(crate::Num::parse(constant).is_some(), "{constant}");
             }
             if !signals.names.is_empty() {
-                assert!(!signals.named_on.is_empty(), "{}", entry.name);
+                assert!(!signals.named_on.is_empty(), "a standard type with names says what they are built on");
             }
             for unit in signals.unit_names {
-                assert!(signals.names.contains(unit), "{} {unit}", entry.name);
+                assert!(signals.names.contains(unit), "{unit} is one of its type's names");
             }
         }
     }
