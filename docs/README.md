@@ -13,6 +13,7 @@ Otherwise start with the [project introduction](../README.md),
 | [Language specification](language/README.md) | Twenty-one areas, all decided; the source of truth for what Jadpo means. The rendered decision log collects every decision |
 | [Compiler and runtime architecture](compiler-runtime.md) | The graph-centred build approach (§1) and the architecture |
 | [Learn Jadpo](learn/README.md) | A todo app built a page at a time, for a newcomer: the user layer, every page's project compiled and tested |
+| [Guides](guides/README.md) | One common job each, start to finish, every guide's project compiled and tested |
 | [Primer](primer.md) | The one page an agent reads before writing an app |
 | [Writing guide](writing.md) | How user-facing docs are written, and the rules the docs check enforces |
 | [Documentation](documentation.md) | How the docs are built and delivered to people and agents; the contract with the jadpo.dev site |

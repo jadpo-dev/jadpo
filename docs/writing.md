@@ -7,7 +7,7 @@ at a time, and an example they can copy.
 ## Two layers
 
 - **The user layer** teaches: the [Learn path](learn/README.md), the
-  [primer](primer.md) and task guides. A newcomer starts on the Learn
+  [primer](primer.md) and the [guides](guides/README.md). A newcomer starts on the Learn
   path, never on an area page. Area pages are organised by part of the
   language and each assumes the others, so no order of them teaches. The
   Learn path is ordered by what each idea needs, for a backend developer
@@ -177,8 +177,14 @@ open. An error's `help:` line is its page's address on the site,
   shows only the files it adds or changes; the docs check builds its
   project on the pages before it, and front matter `removes:` names a
   file the page deletes.
-- **Guide**: one job, such as "Add sign-in": where you start, the steps,
-  the result, and links to the reference topics.
+- **Guide** (`docs/guides/`): one job, such as "Add sign-in": where you
+  start, the steps, the result, and links to the reference topics. Each
+  guide is a whole project of its own, built on no other page. It shows
+  the files the job adds or changes, and the files it starts from are
+  `hidden` blocks, which the docs check compiles and the bundle leaves
+  out; its first paragraph after the opening says in words what those
+  are. Guides don't depend on each other, so each says what it starts
+  from rather than "as the last guide did".
 - **Primer** (`docs/primer.md`): the one page an agent reads before
   writing an app, 3,000 to 5,000 tokens.
 
