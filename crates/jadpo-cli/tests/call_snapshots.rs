@@ -10,6 +10,9 @@
 //!
 //! The provider holds each request while the test looks at the database
 //! from another connection: no transaction of the action's is open then.
+//! Its hosts hide the native clock, as a test's host has none (area 6),
+//! so a provider held, or a lock waited on, past a second on a loaded
+//! machine doesn't end the rerun a test looks for.
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips them.
 
@@ -155,7 +158,8 @@ fn a_call_holds_no_transaction_and_a_change_meanwhile_reruns_the_action() {
     let store = jadpo_host_native::postgres(&url).expect("a store");
     let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch::new()));
     let host = Faked::new(jadpo_host_native::NativeHost::new().with_store("main", store))
-        .with("couriers", driver);
+        .with("couriers", driver)
+        .without_clock();
 
     let added = run(
         &runtime,
@@ -302,7 +306,8 @@ fn a_record_deleted_while_the_call_is_out_reruns_the_action() {
     let store = jadpo_host_native::postgres(&url).expect("a store");
     let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch::new()));
     let host = Faked::new(jadpo_host_native::NativeHost::new().with_store("main", store))
-        .with("couriers", driver);
+        .with("couriers", driver)
+        .without_clock();
     let added = run(
         &runtime,
         &program,
@@ -518,7 +523,8 @@ fn first_loaded_versions_survive_rereads_and_repeated_writes() {
         let store = jadpo_host_native::postgres(&url).unwrap();
         let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch::new()));
         let host = Faked::new(jadpo_host_native::NativeHost::new().with_store("main", store))
-            .with("couriers", driver);
+            .with("couriers", driver)
+            .without_clock();
         let Outcome::Value(shipment) = run(
             &runtime,
             &program,
@@ -660,7 +666,8 @@ fn a_waiting_write_rechecks_the_version_after_the_holder_commits() {
     let store = jadpo_host_native::postgres(&url).unwrap();
     let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch::new()));
     let host = Faked::new(jadpo_host_native::NativeHost::new().with_store("main", store))
-        .with("couriers", driver);
+        .with("couriers", driver)
+        .without_clock();
     let Outcome::Value(shipment) = run(
         &runtime,
         &program,
