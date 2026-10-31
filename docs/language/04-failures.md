@@ -633,6 +633,10 @@ with `internal_fault`, undo its writes, and log which one happened:
 }
 ```
 
+A file written to a field it doesn't fit, kept in another store, of
+another type or larger than the field holds, is a defect too,
+`file_refused` ([What a write checks](16-built-in-services.md#what-a-write-checks)).
+
 Division by zero can't happen, because a divisor's type must exclude zero
 ([Expressions and operators](03-logic.md#expressions-and-operators)). A
 construction that fails at run time never reaches the client as a fault

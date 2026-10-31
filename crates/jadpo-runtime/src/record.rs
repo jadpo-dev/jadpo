@@ -553,7 +553,8 @@ fn fault_kind(kind: &FaultKind) -> String {
         | FaultKind::Defect(what)
         | FaultKind::Provider(what)
         | FaultKind::CallInTransaction(what)
-        | FaultKind::Diverged(what) => format!("{} ({what})", kind.classification()),
+        | FaultKind::Diverged(what)
+        | FaultKind::FileRefused { why: what, .. } => format!("{} ({what})", kind.classification()),
         FaultKind::Store(_) => "store".into(),
         other => other.classification().into(),
     }
