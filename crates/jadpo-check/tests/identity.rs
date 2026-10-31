@@ -615,6 +615,82 @@ authentication {
     );
 }
 
+/// An external token's subject no user has runs `on_first_sign_in:`'s
+/// action, and the link it makes is kept beside the users (area 8, "A
+/// person the app has not seen"; chunk A7).
+const FIRST_EXTERNAL: &str = r#"application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.database_url
+        }
+    }
+}
+config {
+    database_url: PostgresUrl
+    issuer: Url
+    audience: Text
+}
+principal { user: { subject: Member.handle } }
+authentication {
+    external_token: { issuer: config.issuer audience: config.audience }
+    on_first_sign_in: welcome
+}
+type SignUpClosed = Failure {
+    kind: FailureKind.conflict
+}
+entity Member {
+    id: Uuid
+    handle: Text { unique: true }
+    policy: {
+        create: [Access.system]
+        read: [id]
+    }
+}
+/// Takes on someone whose provider vouches for them.
+action welcome(first: FirstSignIn) fails SignUpClosed -> Member.id {
+    match first.subject {
+        none -> {
+            reject SignUpClosed {}
+        }
+        some(subject) -> {
+            var member: Member = attempt Member.create {
+                set: {
+                    handle: subject
+                }
+                conflict: {
+                    Member.handle: SignUpClosed
+                }
+            }
+            return member.id
+        }
+    }
+}
+"#;
+
+#[test]
+fn on_first_sign_in_decides_an_external_tokens_first_sign_in() {
+    let found = support::problems(Layout::Loose, &[("main.jadpo", FIRST_EXTERNAL)]);
+    assert_eq!(found, Vec::<String>::new(), "{found:?}");
+    let db = jadpo_db::Database::default();
+    let project = support::project(&db, Layout::Loose, &[("main.jadpo", FIRST_EXTERNAL)]);
+    let schema = jadpo_check::data::schema(&db, project);
+    let links = &schema.stores["main"].tables["jadpo_sign_in_links"];
+    let columns: Vec<&str> = links.columns.keys().map(String::as_str).collect();
+    assert_eq!(columns, ["linked_at", "method", "subject", "user_id"]);
+    // Without the action no first sign-in is ever linked, and nothing
+    // keeps links.
+    let without = FIRST_EXTERNAL.replace("    on_first_sign_in: welcome\n", "");
+    let db = jadpo_db::Database::default();
+    let project = support::project(&db, Layout::Loose, &[("main.jadpo", without.as_str())]);
+    let schema = jadpo_check::data::schema(&db, project);
+    assert!(
+        !schema.stores["main"]
+            .tables
+            .contains_key("jadpo_sign_in_links")
+    );
+}
+
 #[test]
 fn external_compound_subjects_are_explicitly_not_built() {
     let source = r#"principal { user: { subject: Member.identity } }

@@ -544,6 +544,29 @@ pub const SIGN_IN_REQUESTS: SystemTable = SystemTable {
     }],
 };
 
+/// Who a first sign-in linked (area 8, "A person the app has not seen";
+/// chunk A7): each way in and the subject it names, a provider's or an
+/// external token's, to the user `on_first_sign_in:`'s action gave, so
+/// the next sign-in finds them without it. The way in is
+/// `SignInMethod`'s name, the subject as the token sent it. Nothing in it
+/// signs anyone in on its own: the user's record is read beside it.
+pub const SIGN_IN_LINKS: SystemTable = SystemTable {
+    table: "jadpo_sign_in_links",
+    columns: &[
+        column("method", SqlType::Text, false),
+        column("subject", SqlType::Text, false),
+        column("user_id", SqlType::Uuid, false),
+        column("linked_at", SqlType::Timestamp, false),
+    ],
+    primary_key: &["method", "subject"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[SystemIndex {
+        columns: &["user_id"],
+        reason: "system sign-in links",
+    }],
+};
+
 /// Batch runs (area 12, "How a run goes"; chunk 6.4): which `batches.each`
 /// call each is and the shape it saved under, its `key:` and saved values
 /// as their types' JSON, how far it got (the cursor of the next page, or
@@ -815,7 +838,7 @@ pub const BATCH_TABLES: [&SystemTable; 3] = [&BATCH_RUNS, &BATCH_PROBLEMS, &BATC
 pub const STEP_TABLES: [&SystemTable; 2] = [&STEP_RECORDS, &STEPS];
 
 /// Every system table.
-pub const ALL: [&SystemTable; 23] = [
+pub const ALL: [&SystemTable; 24] = [
     &OUTBOX,
     &DELIVERIES,
     &CIRCUIT_BREAKERS,
@@ -829,6 +852,7 @@ pub const ALL: [&SystemTable; 23] = [
     &PASSKEYS,
     &PASSKEY_CHALLENGES,
     &SIGN_IN_REQUESTS,
+    &SIGN_IN_LINKS,
     &BATCH_RUNS,
     &BATCH_PROBLEMS,
     &BATCH_CANCELS,
