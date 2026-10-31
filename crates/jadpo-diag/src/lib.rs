@@ -113,9 +113,9 @@ rules! {
     ACCEPTANCE_INVALID: "acceptance.invalid", area 14, Error, Agent,
         "Acceptance file isn't written as an acceptance";
     ACCEPTANCE_MISSING: "acceptance.missing", area 14, Error, Human,
-        "Change needs a person's acceptance that no added acceptance gives";
+        "A change could break someone else or widen who can do what, and no acceptance this change adds says a person agreed to it";
     ACCEPTANCE_NO_REASON: "acceptance.no_reason", area 14, Error, Human,
-        "Added acceptance has no reason";
+        "An acceptance this change adds has no `///` line above `acceptance` saying why a person accepted the changes it lists";
     ACCEPTANCE_UNMATCHED: "acceptance.unmatched", area 14, Error, Agent,
         "Acceptance lists a change this change doesn't make";
     AI_CONNECTION_REQUIRED: "ai.connection_required", area 21, Error, Agent,
@@ -133,7 +133,7 @@ rules! {
     API_PREFIX_REQUIRED: "api.prefix_required", area 7, Error, Agent,
         "Declared API has no prefix";
     API_SERVE_OPENAPI_INVALID: "api.serve_openapi_invalid", area 7, Error, Agent,
-        "API serve_openapi is not true or false";
+        "An API's `serve_openapi:` setting holds something other than `true` or `false`";
     API_SETTING_UNKNOWN: "api.setting_unknown", area 7, Error, Agent,
         "API setting is not one an API takes";
     CLI_ACCEPTANCE_ARGUMENTS: "cli.acceptance_arguments", area 14, Error, Agent,
@@ -267,11 +267,11 @@ rules! {
     CONFIGURATION_SECRET_DEFAULT: "configuration.secret_default", area 10, Error, Agent,
         "Secret setting has a value in source";
     CONFIGURATION_SECRET_FLOW: "configuration.secret_flow", area 10, Error, Agent,
-        "Secret setting is used where it could leave the server";
+        "Your code reads a secret setting somewhere other than the few places where Jadpo keeps it on the server";
     CONFIGURATION_SECRET_INVALID: "configuration.secret_invalid", area 10, Error, Agent,
         "Secret option is not true or false";
     CONFIGURATION_TEST_VALUE_MISSING: "configuration.test_value_missing", area 10, Error, Agent,
-        "Setting read by a test has no value in tests";
+        "A test reaches code that reads a setting, and the setting has no value for tests to use";
     CONFIGURATION_TYPE_UNSUPPORTED: "configuration.type_unsupported", area 10, Error, Agent,
         "Setting type cannot be read from one variable";
     CONFIGURATION_UNKNOWN_OPTION: "configuration.unknown_option", area 10, Error, Agent,
@@ -279,7 +279,7 @@ rules! {
     CONFIGURATION_URL_TYPE: "configuration.url_type", area 10, Error, Agent,
         "Connection address is not a setting of the type its driver needs";
     CONFIGURATION_VALUE_INVALID: "configuration.value_invalid", area 14, Error, Human,
-        "Configuration value is invalid";
+        "A setting's value on this machine, from the environment or `.env.local`, doesn't fit the type `config.jadpo` gives it";
     CONFIGURATION_VALUE_MISSING: "configuration.value_missing", area 14, Error, Human,
         "Required configuration is missing";
     CONFORM_FAILED: "conform.failed", area 14, Error, Agent,
@@ -287,7 +287,7 @@ rules! {
     CONFORM_REFUSED: "conform.refused", area 14, Error, Human,
         "Conformance suite can't run against the provider's API";
     CONNECTION_DOMAIN_NOT_LISTED: "connection.domain_not_listed", area 11, Error, Human,
-        "Action calls a connection its domain isn't listed on";
+        "An action calls an outside service through a connection whose `domains:` list doesn't include the action's domain";
     CONNECTION_KEY_INVALID: "connection.key_invalid", area 11, Error, Agent,
         "Connection gives a key its package doesn't take";
     CONNECTION_KEY_MISSING: "connection.key_missing", area 11, Error, Agent,
@@ -305,11 +305,11 @@ rules! {
     DATA_CLEARED_REQUIRED_REFERENCE: "data.cleared_required_reference", area 5, Error, Agent,
         "A reference that can never be `none` is cleared on delete";
     DATA_CONFLICT_CANNOT_BREAK: "data.conflict_cannot_break", area 6, Error, Agent,
-        "Conflict mapping for a rule the write can't break";
+        "A write's `conflict:` block maps a rule that the write can never break";
     DATA_CONFLICT_UNKNOWN: "data.conflict_unknown", area 6, Error, Agent,
         "Conflict mapping names no unique rule or reference";
     DATA_CONFLICT_UNMAPPED: "data.conflict_unmapped", area 6, Error, Agent,
-        "Write can break a rule its `conflict:` doesn't map";
+        "A write could be refused by a unique rule or a reference, and its `conflict:` block doesn't say which failure the caller gets then";
     DATA_DUPLICATE_RULE: "data.duplicate_rule", area 5, Error, Agent,
         "Unique rule or index repeats another";
     DATA_ENTITY_IN_FIELD: "data.entity_in_field", area 5, Error, Agent,
@@ -327,13 +327,13 @@ rules! {
     DATA_IDENTITY_TYPE: "data.identity_type", area 5, Error, Agent,
         "Entity's `id` is not a required `Uuid`";
     DATA_LIFECYCLE_CONDITION: "data.lifecycle_condition", area 5, Error, Agent,
-        "Lifecycle condition isn't a test of the record's own fields";
+        "A lifecycle's `visible:` or `when:` condition isn't a plain test of the record's own fields against fixed values";
     DATA_LIFECYCLE_HARD_DELETE: "data.lifecycle_hard_delete", area 6, Error, Human,
-        "Delete would remove a record its lifecycle keeps";
+        "Code would remove a record that has a lifecycle for good, which only the lifecycle's own purge may do";
     DATA_LIFECYCLE_INITIAL_REQUIRED: "data.lifecycle_initial_required", area 5, Error, Agent,
         "Required field a transition sets has no starting value";
     DATA_LIFECYCLE_OWNED_FIELD: "data.lifecycle_owned_field", area 6, Error, Agent,
-        "Write sets a field only the lifecycle changes";
+        "A create, update or patch sets a field that only the entity's lifecycle may change";
     DATA_LIFECYCLE_PURGE_AFTER: "data.lifecycle_purge_after", area 5, Error, Agent,
         "Purge's `after:` isn't a positive duration";
     DATA_LIFECYCLE_PURGE_SINCE: "data.lifecycle_purge_since", area 5, Error, Agent,
@@ -353,7 +353,7 @@ rules! {
     DATA_ON_DELETE_NOT_REFERENCE: "data.on_delete_not_reference", area 5, Error, Agent,
         "Field that is not a reference sets `on_delete`";
     DATA_ON_DELETE_REQUIRED: "data.on_delete_required", area 5, Error, Human,
-        "Reference does not say what deleting its record does";
+        "A field refers to a record of another entity but doesn't say what happens to it when that record is deleted";
     DATA_PATCH_FIELD_REQUIRED: "data.patch_field_required", area 6, Error, Agent,
         "Patch input has a field that isn't optional";
     DATA_PATCH_FIELD_UNKNOWN: "data.patch_field_unknown", area 6, Error, Agent,
@@ -365,9 +365,9 @@ rules! {
     DATA_READ_IN_LOOP: "data.read_in_loop", area 6, Error, Agent,
         "Query or `get` inside a `for` loop";
     DATA_REFERENCE_ACROSS_STORES: "data.reference_across_stores", area 5, Error, Human,
-        "Reference points at an entity in another store";
+        "A field refers to a record of an entity that is kept in a different database";
     DATA_REFERENCE_CYCLE: "data.reference_cycle", area 5, Error, Human,
-        "Required references form a cycle";
+        "Two or more entities refer to each other through required fields, so none of their records could ever be created first";
     DATA_REPEATED_FIELD: "data.repeated_field", area 5, Error, Agent,
         "Unique rule or index lists a field twice";
     DATA_RESERVED_TABLE_NAME: "data.reserved_table_name", area 5, Error, Agent,
@@ -375,7 +375,7 @@ rules! {
     DATA_SET_GENERATED_FIELD: "data.set_generated_field", area 6, Error, Agent,
         "Write sets a field the store generates";
     DATA_STORE_REQUIRED: "data.store_required", area 5, Error, Human,
-        "Entity names no store and there is no `main`";
+        "An entity names no database to live in, and the app declares databases but none called `main`";
     DATA_STORE_UNKNOWN: "data.store_unknown", area 5, Error, Agent,
         "Entity's store is not a database connection";
     DATA_STORED_DECIMAL_SCALE: "data.stored_decimal_scale", area 6, Error, Agent,
@@ -383,7 +383,7 @@ rules! {
     DATA_STORED_VALUE_OUTSIDE_UPDATE: "data.stored_value_outside_update", area 6, Error, Agent,
         "Stored field read outside an update by `id`";
     DATA_STORED_VALUE_UNPROVEN: "data.stored_value_unproven", area 6, Error, Human,
-        "Update by `id` builds a value from a stored field that could break its type's rules";
+        "An update by `id` works out a new value from a stored field, and the value could break its type's rules";
     DATA_UNIQUE_NULLABLE_FIELD: "data.unique_nullable_field", area 5, Error, Agent,
         "Unique rule includes a field that can be `none`";
     DATA_UNIQUE_SINGLE_FIELD: "data.unique_single_field", area 5, Error, Agent,
@@ -393,7 +393,7 @@ rules! {
     DATA_UNKNOWN_SECTION: "data.unknown_section", area 5, Error, Agent,
         "Entity has a section Jadpo does not know";
     DATA_UPDATE_BY_ID_VALUE: "data.update_by_id_value", area 6, Error, Agent,
-        "Update by `id` sets a value from something it can't use";
+        "An update by `id` sets a value that the database can't work out on its own, such as one read earlier in the action";
     DATA_VECTOR_STORE_UNSUPPORTED: "data.vector_store_unsupported", area 21, Error, Agent,
         "Vector field on a store that isn't PostgreSQL";
     DATA_WRITE_BEFORE_CALL: "data.write_before_call", area 6, Error, Agent,
@@ -439,7 +439,7 @@ rules! {
     EFFECT_FUNCTION_PERSISTENCE: "effect.function_persistence", area 3, Error, Agent,
         "Function reads or writes stored data";
     EFFECT_RECURSIVE_ACTION: "effect.recursive_action", area 3, Error, Human,
-        "Action is part of a call cycle";
+        "An action calls itself, or calls other actions that end up calling it again";
     EMAIL_ATTACHMENT_LIMIT: "email.attachment_limit", area 16, Error, Agent,
         "Email's attachments may exceed what its mail package accepts";
     EMAIL_CONNECTION_REQUIRED: "email.connection_required", area 16, Error, Agent,
@@ -449,7 +449,7 @@ rules! {
     EMAIL_HEALTH_PROBLEM: "email.health_problem", area 16, Declinable, Agent,
         "Email's template fails a check of the mail health score";
     EMAIL_PARTIAL_INVALID: "email.partial_invalid", area 16, Error, Agent,
-        "Template includes a partial that doesn't exist, can't be reached or is given the wrong fields";
+        "An email template includes a partial that doesn't exist, can't be reached from it, or is given the wrong fields";
     EMAIL_SENT_CONTEXT: "email.sent_context", area 16, Error, Agent,
         "Reads `email.sent` outside a test";
     EMAIL_SETTINGS_INVALID: "email.settings_invalid", area 16, Error, Agent,
@@ -457,25 +457,25 @@ rules! {
     EMAIL_TEMPLATE_MISSING: "email.template_missing", area 16, Error, Agent,
         "Email has no template, or a template no email";
     EMAIL_TEMPLATE_NOT_ALLOWED: "email.template_not_allowed", area 16, Error, Agent,
-        "Template does more than read fields, translate and format";
+        "An email template calls a function, does arithmetic or builds a value, when it may only read its fields, translate and format";
     EMAIL_TEMPLATE_VALUE_INVALID: "email.template_value_invalid", area 16, Error, Agent,
-        "Template writes out something that isn't text or a number";
+        "An email template writes out a value that isn't text, a number or an enum with wording, such as a date";
     EVENT_EMIT_INVALID: "event.emit_invalid", area 12, Error, Agent,
         "Emit is given something that isn't an event, or is used outside an action";
     EVENT_SETTINGS_INVALID: "event.settings_invalid", area 12, Error, Agent,
         "Events settings in `app.jadpo` hold something other than a database's `store:`";
     EVENT_STORE_REQUIRED: "event.store_required", area 12, Error, Human,
-        "Action emits an event but writes no store to keep it in";
+        "An action emits an event but writes no database, and the app names no database to keep its events in";
     FAILURE_ATTEMPT_INFALLIBLE: "failure.attempt_infallible", area 3, Error, Agent,
         "Attempt is used on something that cannot fail";
     FAILURE_ATTEMPT_REQUIRED: "failure.attempt_required", area 3, Error, Agent,
-        "Call that can fail is not handled";
+        "A call that can fail is made as if it can't, with nothing passing its failure on or handling it";
     FAILURE_CODE_FORMAT: "failure.code_format", area 4, Error, Agent,
         "Failure code is not lower_snake_case";
     FAILURE_CONTEXT_FIELD_OVERLAP: "failure.context_field_overlap", area 4, Error, Agent,
         "Field is declared for both the client and the log";
     FAILURE_DUPLICATE_CODE: "failure.duplicate_code", area 4, Error, Human,
-        "Failure code is already in use";
+        "Two failures have the same code, or a failure has a code the runtime already answers with itself";
     FAILURE_DUPLICATE_CONTEXT_FIELD: "failure.duplicate_context_field", area 4, Error, Agent,
         "Failure field is given twice";
     FAILURE_DUPLICATE_DECLARATION: "failure.duplicate_declaration", area 4, Error, Agent,
@@ -487,7 +487,7 @@ rules! {
     FAILURE_INVALID_OUTSIDE_CONSTRUCTION: "failure.invalid_outside_construction", area 4, Error, Agent,
         "Catch-all for rules is used on something that is not a construction";
     FAILURE_KIND_REQUIRED: "failure.kind_required", area 4, Error, Agent,
-        "Failure has no kind";
+        "A failure is declared without a `kind:` saying what sort of failure it is";
     FAILURE_KIND_RUNTIME_ONLY: "failure.kind_runtime_only", area 4, Error, Agent,
         "Failure kind is raised only by the runtime";
     FAILURE_MAPPING_KIND: "failure.mapping_kind", area 4, Error, Agent,
@@ -519,13 +519,13 @@ rules! {
     FAILURE_REJECT_PLACEMENT: "failure.reject_placement", area 3, Error, Agent,
         "Reject is used inside an expression";
     FAILURE_RULE_CANNOT_BREAK: "failure.rule_cannot_break", area 4, Error, Agent,
-        "Arm maps a rule the value cannot break";
+        "An `attempt` block maps a rule to a failure, but the value being built can never break that rule";
     FAILURE_RULE_UNMAPPED: "failure.rule_unmapped", area 4, Error, Agent,
-        "Rule that can break has no arm and no catch-all";
+        "An `attempt` block builds a value that can break one of its type's rules, and no arm says which failure that gives";
     FAILURE_STALE_DECLARATION: "failure.stale_declaration", area 4, Error, Agent,
-        "Listed failure can never happen";
+        "A function or action lists a failure after `fails` that nothing in it can ever raise or pass on";
     FAILURE_UNDECLARED_PROPAGATION: "failure.undeclared_propagation", area 4, Error, Agent,
-        "Failure that can leave is not listed after `fails`";
+        "A function or action can end with a failure that its `fails` list doesn't name";
     FAILURE_UNKNOWN_CONTEXT_FIELD: "failure.unknown_context_field", area 4, Error, Agent,
         "Rejected failure has no such field";
     FAILURE_UNKNOWN_MAPPING: "failure.unknown_mapping", area 4, Error, Agent,
@@ -539,23 +539,23 @@ rules! {
     IMPORT_DUPLICATE: "import.duplicate", area 1, Error, Agent,
         "Name or folder imported twice";
     IMPORT_MISSING: "import.missing", area 1, Error, Agent,
-        "Name used without its import";
+        "A file uses a name declared elsewhere in the project without bringing it in on a `use` line";
     IMPORT_UNKNOWN: "import.unknown", area 1, Error, Agent,
         "Import names nothing in its folder";
     IMPORT_UNNEEDED: "import.unneeded", area 1, Error, Agent,
-        "Import of a name the file sees without one";
+        "A file imports a name it already sees without a `use` line, such as a built-in or something its test subject declares";
     IMPORT_UNUSED: "import.unused", area 1, Error, Agent,
         "Imported name the file does not use";
     INSTALL_FETCH_FAILED: "install.fetch_failed", area 14, Error, Human,
-        "Package's git repository or tag couldn't be read";
+        "Installing a package couldn't read its git repository, or found no release there at the tag you gave";
     INSTALL_IN_USE: "install.in_use", area 14, Error, Agent,
         "Package to remove is still used by the app";
     INSTALL_LINK_REFUSED: "install.link_refused", area 14, Error, Agent,
         "Linked package in a CI or production build";
     INSTALL_SURFACE_MISMATCH: "install.surface_mismatch", area 14, Error, Human,
-        "Package's committed surface doesn't match its code";
+        "The package you are installing has code that offers something different from its committed `surface.jadpo_record`";
     LAYOUT_CALL_DIRECTION: "layout.call_direction", area 1, Error, Human,
-        "Shared code depends on a domain";
+        "Code in `shared/` uses a declaration that belongs to one domain";
     LAYOUT_FILE_NAME_MISMATCH: "layout.file_name_mismatch", area 1, Error, Agent,
         "File name does not match its declaration";
     LAYOUT_PROMOTION_REQUIRED: "layout.promotion_required", area 1, Error, Agent,
@@ -581,7 +581,7 @@ rules! {
     MIGRATION_DECISION_INVALID: "migration.decision_invalid", area 5, Error, Agent,
         "Migration decision does not fit its change";
     MIGRATION_DECISION_REQUIRED: "migration.decision_required", area 5, Error, Human,
-        "Migration needs a decision";
+        "A migration needs your decision, such as a value for records already stored, and its `changes.jadpo` doesn't give one yet";
     MIGRATION_DECISION_UNKNOWN: "migration.decision_unknown", area 5, Error, Agent,
         "Migration decides about something that is not changing";
     MIGRATION_EXTENSION_MISSING: "migration.extension_missing", area 14, Error, Human,
@@ -589,9 +589,9 @@ rules! {
     MIGRATION_EXTENSION_OUTDATED: "migration.extension_outdated", area 14, Error, Human,
         "Database's PostgreSQL extension is older than the project's queries need";
     MIGRATION_OUT_OF_DATE: "migration.out_of_date", area 5, Error, Agent,
-        "Entities and the latest migration disagree";
+        "The entities ask for a database schema that no migration has written yet, because they are new or have changed since the latest migration";
     MIGRATION_RECORD_INVALID: "migration.record_invalid", area 5, Error, Human,
-        "Migration folder cannot be read";
+        "A file in a migration's folder is missing, can't be read, or was changed by hand, so Jadpo can't use the migration";
     MIGRATION_STORE_DIVERGED: "migration.store_diverged", area 14, Error, Human,
         "Database does not match the project's migrations";
     MIGRATION_UNFINISHED: "migration.unfinished", area 5, Error, Agent,
@@ -599,27 +599,27 @@ rules! {
     NAMING_FOLDED_COLLISION: "naming.folded_collision", area 1, Error, Agent,
         "Two names fold to the same file name";
     NAMING_GENERIC_NAME: "naming.generic_name", area 1, Error, Human,
-        "Domain or library has a generic name";
+        "A domain or library is called something generic, such as `helpers` or `utils`, that says nothing about what it holds";
     NAMING_ROUND_TRIP: "naming.round_trip", area 1, Error, Agent,
         "Name does not survive conversion to its file name";
     PACKAGE_ACTION_INVALID: "package.action_invalid", area 11, Error, Agent,
         "Package action does what package code may not";
     PACKAGE_DIGEST_MISMATCH: "package.digest_mismatch", area 11, Error, Human,
-        "Installed package's files differ from its digest in the lock";
+        "The files of an installed package in `packages/` have been changed, added or removed since it was installed";
     PACKAGE_EMAILS_FOLDER: "package.emails_folder", area 11, Error, Agent,
         "Package holds email templates";
     PACKAGE_INDEX_INVALID: "package.index_invalid", area 11, Error, Agent,
         "Package's index is missing, or holds what an index can't";
     PACKAGE_LICENCE_NOT_ALLOWED: "package.licence_not_allowed", area 11, Error, Human,
-        "Proprietary package isn't installed from git";
+        "An installed package says its licence is proprietary, but it wasn't installed from a git repository";
     PACKAGE_NAME_MISMATCH: "package.name_mismatch", area 11, Error, Agent,
         "Package's index names another package than its folder";
     PACKAGE_NAME_TAKEN: "package.name_taken", area 11, Error, Human,
-        "Package's name is already one of the app's";
+        "A package has the same name as one of the app's domains, libraries, declarations or other packages";
     PACKAGE_NOT_INSTALLED: "package.not_installed", area 11, Error, Human,
-        "Lock names a package that isn't installed";
+        "The app's lock file, `jadpo.lock`, lists a package whose folder in `packages/` isn't there";
     PACKAGE_NOT_LOCKED: "package.not_locked", area 11, Error, Human,
-        "Installed package has no line in the lock";
+        "A package sits in `packages/`, but `jadpo.lock` has no line for it, so it was copied in rather than installed";
     PACKAGE_NOT_PUBLIC: "package.not_public", area 11, Error, Agent,
         "Code uses a package's declaration that isn't public";
     PACKAGE_OPERATION_INVALID: "package.operation_invalid", area 11, Error, Agent,
@@ -635,7 +635,7 @@ rules! {
     PACKAGE_STANDARD_CANDIDATE: "package.standard_candidate", area 11, Declinable, Agent,
         "Provider field looks like a standard type the package doesn't use";
     PACKAGE_VERSION_NEEDED: "package.version_needed", area 11, Error, Agent,
-        "Name written through a package held in two versions doesn't say which";
+        "Your code names something through a package that the app holds in two versions, without saying which version it means";
     PACKAGE_VERSION_UNNEEDED: "package.version_unneeded", area 11, Error, Agent,
         "Name written through a package held in one version carries a version";
     PACKAGE_WIRE_INVALID: "package.wire_invalid", area 11, Error, Agent,
@@ -645,19 +645,19 @@ rules! {
     POLICY_BINDING_INVALID: "policy.binding_invalid", area 9, Error, Agent,
         "Policy names something that can't say who";
     POLICY_CALL_UNGRANTED: "policy.call_ungranted", area 9, Security, Human,
-        "Listed action calls one that refuses some of the people its line lets in";
+        "An action listed under `actions:` calls another action that refuses some of the people the listed action's line lets in";
     POLICY_DECLARATION_DUPLICATE: "policy.declaration_duplicate", area 9, Error, Agent,
         "Policy is declared twice";
     POLICY_EFFECT_DUPLICATE: "policy.effect_duplicate", area 9, Error, Agent,
         "Policy gives the same list twice";
     POLICY_EFFECT_UNGRANTED: "policy.effect_ungranted", area 9, Error, Human,
-        "Route reaches something no grant allows";
+        "A route runs an action that nobody is allowed to call, because nothing in the app says who may";
     POLICY_EFFECT_UNKNOWN: "policy.effect_unknown", area 9, Error, Agent,
         "Policy holds something that isn't a grant or a setting";
     POLICY_EVENT_TENANT_UNPROVED: "policy.event_tenant_unproved", area 9, Error, Agent,
         "An event or a batch names a tenant its action never reached under its caller's policy";
     POLICY_FIELD_WIDENS_ENTITY: "policy.field_widens_entity", area 9, Error, Agent,
-        "Field policy lets in someone its record's grants don't";
+        "A field's own `policy:` lets in someone its record's grants don't";
     POLICY_MEMBERSHIP_DUPLICATE: "policy.membership_duplicate", area 9, Error, Agent,
         "Entity declares a membership twice, or gives one of its parts twice";
     POLICY_MEMBERSHIP_MEMBER_REQUIRED: "policy.membership_member_required", area 9, Error, Agent,
@@ -667,9 +667,9 @@ rules! {
     POLICY_MEMBERSHIP_SCOPE_REQUIRED: "policy.membership_scope_required", area 9, Error, Agent,
         "Membership doesn't say what it is held in";
     POLICY_OUTPUT_FIELD_UNPROVED: "policy.output_field_unproved", area 9, Error, Agent,
-        "Output carries a value not every caller may read";
+        "A query or action lets a caller see a field's value, directly or through what it decides, though not every caller may read that field";
     POLICY_PUBLIC_GRANT_MISSING: "policy.public_grant_missing", area 9, Error, Human,
-        "Route anyone may call reaches what not everyone may do";
+        "A route that anyone may call, with no sign-in, reads or changes a record that only signed-in people are allowed to see";
     POLICY_ROLE_FIELD_CREATE_FORBIDDEN: "policy.role_field_create_forbidden", area 9, Error, Agent,
         "Create sets the user field its grant needs from the request, not the caller";
     POLICY_ROLE_UNBOUND: "policy.role_unbound", area 9, Error, Agent,
@@ -679,23 +679,23 @@ rules! {
     POLICY_SCOPE_DUPLICATE: "policy.scope_duplicate", area 9, Error, Agent,
         "A scope or tenant is given twice";
     POLICY_SCOPE_MISSING: "policy.scope_missing", area 9, Error, Agent,
-        "Entity has no reference a role or the tenant applies through";
+        "An entity names a role held in another record, or belongs to the app's tenant, but has no reference to that record";
     POLICY_SUBJECT_DUPLICATE: "policy.subject_duplicate", area 9, Error, Agent,
         "Grant names the same caller twice";
     POLICY_SYSTEM_GRANT_MISSING: "policy.system_grant_missing", area 9, Error, Human,
-        "Schedule or subscriber reaches what only `Access.public` grants, not `Access.system`";
+        "A schedule or subscriber reaches a grant that names `Access.public` but not `Access.system`, so the background work would always be refused";
     PROMPT_FREE_TEXT_IN_INSTRUCTIONS: "prompt.free_text_in_instructions", area 21, Error, Agent,
-        "A free-text placeholder is written in a prompt's instructions";
+        "A prompt writes a free-text value, such as text a user typed, in its instructions rather than in its request";
     PROMPT_PLACEHOLDER_TYPE: "prompt.placeholder_type", area 21, Error, Agent,
         "A prompt's field is of a type a prompt can't send";
     PROMPT_PLACEHOLDER_UNKNOWN: "prompt.placeholder_unknown", area 21, Error, Agent,
         "A prompt's text writes a field its type does not have";
     PROMPT_PLACEHOLDER_UNUSED: "prompt.placeholder_unused", area 21, Error, Agent,
-        "A prompt's field is written nowhere in its text";
+        "A prompt's type has a field that its prompt file never writes";
     PROMPT_SECTION_MISSING: "prompt.section_missing", area 21, Error, Agent,
         "A prompt and its file don't make its two sections, each once and in order";
     PUBLISH_BREAKING_CHANGE: "publish.breaking_change", area 14, Error, Human,
-        "Package's surface breaks its last release within one major version";
+        "A package's new version changes or removes something its last release offered, within the same major version";
     PUBLISH_CHANGELOG_MISSING: "publish.changelog_missing", area 14, Error, Agent,
         "Package's changelog doesn't say why its new version is released";
     PUBLISH_DESCRIPTION_MISSING: "publish.description_missing", area 14, Error, Agent,
@@ -717,17 +717,17 @@ rules! {
     QUERY_FROM_NOT_ENTITY: "query.from_not_entity", area 6, Error, Agent,
         "Query reads something that is not an entity";
     QUERY_GEOMETRY_FIELD: "query.geometry_field", area 6, Error, Agent,
-        "Map layer's geometry field is not a stored geometry of its type";
+        "A map-layer query's `geometry:` names a field whose type isn't the shape the layer's result type says each feature holds";
     QUERY_GROUP_KEY: "query.group_key", area 6, Error, Agent,
         "Records cannot be grouped by this";
     QUERY_INCLUDE_DEPTH: "query.include_depth", area 6, Error, Human,
-        "Includes nest more than two levels";
+        "A query's includes nest more than two levels deep: records inside records inside records";
     QUERY_INCLUDE_RESULT: "query.include_result", area 6, Error, Agent,
         "Result type has no field of the right shape for an include";
     QUERY_INCLUDE_UNKNOWN: "query.include_unknown", area 6, Error, Agent,
         "Include names no reference to or from the entity";
     QUERY_LIMIT_RANGE: "query.limit_range", area 6, Error, Agent,
-        "Query limit or page size is below 1";
+        "A query's `limit:` could be less than 1, either as written or because its value's type allows it";
     QUERY_LIMIT_UNBOUNDED: "query.limit_unbounded", area 6, Error, Agent,
         "Query limit or page size comes from a value with no maximum";
     QUERY_NEAREST_EXACT: "query.nearest_exact", area 21, Declinable, Agent,
@@ -739,15 +739,15 @@ rules! {
     QUERY_NEAREST_UNINDEXED: "query.nearest_unindexed", area 21, Error, Agent,
         "Nearest-neighbour order on a vector with no fixed length";
     QUERY_NOT_UNIQUE: "query.not_unique", area 6, Error, Agent,
-        "Query for one record can match several";
+        "A query that returns one record, or none, picks it by a test that several records could match";
     QUERY_OPTIONAL_VALUE: "query.optional_value", area 6, Error, Agent,
         "Condition compares with a value that may be absent, or `where_present:` with one that is always there";
     QUERY_ORDER_DIRECTION: "query.order_direction", area 6, Error, Agent,
         "Order field has no `asc` or `desc`";
     QUERY_ORDER_FIELD: "query.order_field", area 6, Error, Agent,
-        "Field cannot be in a query's order";
+        "A query sorts records by a field, such as a `Bool` or an enum, that the database and Jadpo don't order the same way";
     QUERY_OTHER_DOMAIN: "query.other_domain", area 6, Error, Human,
-        "Query reads another domain's entity";
+        "A query in one domain reads the records of an entity that belongs to another domain";
     QUERY_PAGE_SETTING: "query.page_setting", area 6, Error, Agent,
         "Page block is missing a setting or has a wrong one";
     QUERY_REPEATED_SECTION: "query.repeated_section", area 6, Error, Agent,
@@ -759,7 +759,7 @@ rules! {
     QUERY_RESULT_TYPE: "query.result_type", area 6, Error, Agent,
         "Query result is not the entity or a type derived from it";
     QUERY_SECTION_REQUIRED: "query.section_required", area 6, Error, Agent,
-        "Query is missing a section its result needs";
+        "A query leaves out a section its result type needs, such as `from:`, or the `limit:` that bounds a list";
     QUERY_SECTION_UNEXPECTED: "query.section_unexpected", area 6, Error, Agent,
         "Query has a section its result does not take";
     QUERY_UNKNOWN_FIELD: "query.unknown_field", area 6, Error, Agent,
@@ -779,9 +779,9 @@ rules! {
     RECORD_EDITED: "record.edited", area 18, Error, Agent,
         "Generated record was edited by hand";
     RECORD_FORMAT_NEWER: "record.format_newer", area 18, Error, Human,
-        "Record was written by a newer Jadpo";
+        "A record file in the project was written by a newer Jadpo, in a format this one can't read";
     RECORD_OUT_OF_DATE: "record.out_of_date", area 18, Error, Agent,
-        "Generated record disagrees with the source";
+        "A record file that Jadpo writes from your code is missing, or no longer matches the code";
     RECORDING_FAILED: "recording.failed", area 14, Error, Agent,
         "Sandbox or model gave no answer to record";
     RECORDING_REFUSED: "recording.refused", area 14, Error, Human,
@@ -791,15 +791,15 @@ rules! {
     ROUTE_ARGUMENT_INVALID: "route.argument_invalid", area 7, Error, Agent,
         "Route passes something other than a placeholder, the input or their fields";
     ROUTE_AUTHENTICATION_INVALID: "route.authentication_invalid", area 7, Error, Human,
-        "Route authentication is not RouteAuthentication.none or .fresh";
+        "A route's `authentication:` line holds something other than `RouteAuthentication.none` or `RouteAuthentication.fresh`";
     ROUTE_BINDING_UNUSED: "route.binding_unused", area 7, Error, Agent,
         "Route reads a placeholder or input it never passes on";
     ROUTE_CALLS_PAST_DEADLINE: "route.calls_past_deadline", area 11, Error, Agent,
-        "Outside calls a route reaches can take longer than its deadline";
+        "The outside calls a route makes could, at their slowest, take longer than the route is allowed to run";
     ROUTE_DEADLINE_INVALID: "route.deadline_invalid", area 7, Error, Agent,
         "Route deadline is not a duration up to 60 seconds";
     ROUTE_HEADER_CREDENTIAL: "route.header_credential", area 7, Error, Agent,
-        "Input field reads a header authentication owns";
+        "A route's input reads a header that sign-in or the runtime reads first, such as `Authorization`, a cookie or `Idempotency-Key`";
     ROUTE_HEADER_DUPLICATE: "route.header_duplicate", area 7, Error, Agent,
         "Two input fields read the same header";
     ROUTE_HEADER_NAME_INVALID: "route.header_name_invalid", area 7, Error, Agent,
@@ -835,7 +835,7 @@ rules! {
     ROUTE_RUN_INVALID: "route.run_invalid", area 7, Error, Agent,
         "Route `run:` is not a call of a named action or query";
     ROUTE_RUN_KIND: "route.run_kind", area 7, Error, Agent,
-        "A `GET` route runs a query and other methods run an action";
+        "A `GET` route runs an action, or a route of another method runs a query";
     ROUTE_RUN_REQUIRED: "route.run_required", area 7, Error, Agent,
         "Route does not say what it runs";
     ROUTE_SETTLE_INVALID: "route.settle_invalid", area 7, Error, Agent,
@@ -847,7 +847,7 @@ rules! {
     RUNS_UNAVAILABLE: "runs.unavailable", area 14, Error, Human,
         "Unfinished runs' database couldn't be read";
     SCHEDULE_EVERY_INVALID: "schedule.every_invalid", area 12, Error, Agent,
-        "Schedule's `every:` isn't a whole number of seconds, minutes, hours or days";
+        "A schedule's `every:` says how often it runs in something other than a whole number of seconds, minutes, hours or days";
     SCHEDULE_ITEM_INVALID: "schedule.item_invalid", area 12, Error, Agent,
         "Schedule holds an item it doesn't take, gives one twice or leaves out `every:` or `run:`";
     SCHEDULE_RUN_INVALID: "schedule.run_invalid", area 12, Error, Agent,
@@ -855,7 +855,7 @@ rules! {
     SCHEDULE_SETTINGS_INVALID: "schedule.settings_invalid", area 12, Error, Agent,
         "Schedules settings in `app.jadpo` hold something other than a database's `store:`";
     SCHEDULE_STORE_REQUIRED: "schedule.store_required", area 12, Error, Human,
-        "Schedule has no database named to keep its state and lease in";
+        "An app has a schedule but no database named to keep its state in, because it has several databases or none";
     SCHEDULES_LEASE_HELD: "schedules.lease_held", area 14, Error, Human,
         "Schedule is already running";
     SCHEDULES_NO_TICK: "schedules.no_tick", area 14, Error, Human,
@@ -875,15 +875,15 @@ rules! {
     SEMANTIC_AI_DIMENSIONS_MISMATCH: "semantic.ai_dimensions_mismatch", area 21, Error, Agent,
         "Vector type an embedding is asked for as has a length other than `embedding_dimensions:`";
     SEMANTIC_AI_FIELD_REFUSED: "semantic.ai_field_refused", area 21, Error, Agent,
-        "A field marked `to_models: false` reaches a prompt or an embedded text";
+        "A value from a field marked `to_models: false`, which must never be sent to a model, reaches a prompt or text sent for an embedding";
     SEMANTIC_AI_FIELD_UNMARKED: "semantic.ai_field_unmarked", area 21, Error, Agent,
-        "A marked field's value is stored in a field without its marks";
+        "Code stores a value from a field marked as personal data, or `to_models: false`, in a field that doesn't carry the same marks";
     SEMANTIC_AI_MODEL_LITERAL: "semantic.ai_model_literal", area 21, Error, Agent,
         "A `ModelId` is written out anywhere but a setting's `default:`";
     SEMANTIC_AI_OUTPUT_TYPE: "semantic.ai_output_type", area 21, Error, Agent,
         "Type a model is asked to answer as is one no model's answer can be";
     SEMANTIC_AI_PERSONAL_DATA_NOT_ALLOWED: "semantic.ai_personal_data_not_allowed", area 21, Error, Human,
-        "Personal data reaches a model in a category `ai: { personal_data: { allowed: } }` doesn't list";
+        "Your code sends a model personal data of a kind, such as health records, that the app's `ai:` settings don't allow it to send";
     SEMANTIC_APPLICATION_SECTION_UNKNOWN: "semantic.application_section_unknown", area 1, Error, Agent,
         "Application has a section Jadpo does not know";
     SEMANTIC_AUTH_METHOD_DUPLICATE: "semantic.auth_method_duplicate", area 8, Error, Agent,
@@ -891,7 +891,7 @@ rules! {
     SEMANTIC_AUTH_METHOD_UNKNOWN: "semantic.auth_method_unknown", area 8, Error, Agent,
         "Sign-in method is not one the language has";
     SEMANTIC_AUTH_NOT_SET_UP: "semantic.auth_not_set_up", area 8, Error, Human,
-        "Routes need a signed-in caller, but nothing signs anyone in";
+        "A route needs a signed-in caller, but the app declares no way for anyone to sign in";
     SEMANTIC_AUTH_PRINCIPAL_REQUIRED: "semantic.auth_principal_required", area 8, Error, Agent,
         "Sign-in method has no principal variant to sign in";
     SEMANTIC_AUTH_SETTING_INVALID: "semantic.auth_setting_invalid", area 8, Error, Agent,
@@ -933,7 +933,7 @@ rules! {
     SEMANTIC_REQUEST_INVALID: "semantic.request_invalid", area 13, Error, Agent,
         "Route test request doesn't fit its route";
     SEMANTIC_REQUEST_ROUTE_UNKNOWN: "semantic.request_route_unknown", area 13, Error, Agent,
-        "No route answers a route test's request";
+        "A route test's `request { }` names a method and path that no route in the app answers";
     SEMANTIC_REVOCATION_DELAY_INVALID: "semantic.revocation_delay_invalid", area 8, Error, Agent,
         "Revocation delay is not a positive duration";
     SEMANTIC_STANDARD_NAMESPACE_RESERVED: "semantic.standard_namespace_reserved", area 1, Error, Agent,
@@ -945,41 +945,41 @@ rules! {
     SEMANTIC_UNKNOWN_CALLEE: "semantic.unknown_callee", area 1, Error, Agent,
         "Called name is not declared";
     SEMANTIC_UNKNOWN_NAME: "semantic.unknown_name", area 1, Error, Agent,
-        "Name is not declared";
+        "The code uses a name that nothing in the project or the standard library declares";
     SEMANTIC_UNREACHABLE_CODE: "semantic.unreachable_code", area 3, Error, Agent,
         "Code can never run";
     SEMANTIC_UNUSED_RESULT: "semantic.unused_result", area 3, Error, Agent,
         "Value is computed and thrown away";
     SEMANTIC_UNUSED_VARIABLE: "semantic.unused_variable", area 3, Error, Agent,
-        "Variable is never used";
+        "A variable is given a value that nothing ever reads";
     SEMANTIC_WRONG_NAME_KIND: "semantic.wrong_name_kind", area 1, Error, Agent,
         "Name is the wrong kind of declaration here";
     STEP_CONTEXT: "step.context", area 12, Error, Human,
-        "Several changing calls where a retry can't resume them";
+        "An action makes several changing calls from somewhere a retry can't carry on where it stopped, such as a route whose API doesn't require `Idempotency-Key`";
     STEP_ENCRYPTION_KEY_REQUIRED: "step.encryption_key_required", area 12, Error, Human,
-        "Actions make several changing calls but no key encrypts their answers";
+        "An action makes several changing calls, but the app names no key to encrypt the answers it keeps from them";
     STEP_LARGE_OUTPUT: "step.large_output", area 12, Error, Agent,
         "Operation with a large answer among several changing calls";
     STEP_LATE_FAILURE: "step.late_failure", area 12, Declinable, Agent,
-        "Action can fail for good after a changing call took effect";
+        "An action can fail for good after a call that changes something outside the app took effect, leaving that change behind";
     STEP_SETTINGS_INVALID: "step.settings_invalid", area 12, Error, Agent,
         "Steps setting in `application { }` doesn't read";
     STEP_STORE_REQUIRED: "step.store_required", area 12, Error, Human,
-        "Action makes several changing calls but writes no store to keep their record in";
+        "An action makes several changing calls but writes no database, and the app names no database to keep the record of its calls in";
     STEP_TOO_MANY: "step.too_many", area 12, Error, Agent,
         "More than 8 changing calls on one way through an action";
     STEP_UNKEYED: "step.unkeyed", area 12, Error, Agent,
         "Changing call with no idempotency key beside another changing call";
     STORE_ACTION_SPANS_STORES: "store.action_spans_stores", area 6, Error, Human,
-        "Action writes more than one store";
+        "An action writes to two databases, itself or through an action it calls, but an action's writes all commit in one database";
     SUBSCRIBER_ARGUMENT_INVALID: "subscriber.argument_invalid", area 12, Error, Agent,
         "Subscriber passes something other than its event or a field of it";
     SUBSCRIBER_EVENT_INVALID: "subscriber.event_invalid", area 12, Error, Agent,
-        "Subscriber's `on:` doesn't name an event type";
+        "A subscriber's `on:` names something other than an event, such as an entity or a plain type";
     SUBSCRIBER_ITEM_INVALID: "subscriber.item_invalid", area 12, Error, Agent,
         "Subscriber holds an item it doesn't take, gives one twice or leaves out `on:` or `run:`";
     SUBSCRIBER_RETRY_INVALID: "subscriber.retry_invalid", area 12, Error, Agent,
-        "Subscriber's `retry:` isn't attempts and a duration within their limits";
+        "A subscriber's `retry:` holds something other than 1 to 100 tries and up to 30 days to keep trying";
     SUBSCRIBER_RUN_INVALID: "subscriber.run_invalid", area 12, Error, Agent,
         "Subscriber's `run:` isn't a call of an action in its own domain";
     SUGGEST_RECORD_INVALID: "suggest.record_invalid", area 14, Error, Agent,
@@ -1095,23 +1095,23 @@ rules! {
     SYNTAX_UNTERMINATED_STRING: "syntax.unterminated_string", area 1, Error, Agent,
         "String is not closed";
     SYNTAX_VARIABLE_KEYWORD: "syntax.variable_keyword", area 3, Error, Agent,
-        "Variable declared with `let`, `const` or `val`";
+        "A variable is declared with `let`, `const` or `val`, words from other languages, where Jadpo writes `var`";
     SYNTAX_VARIABLE_TYPE_REQUIRED: "syntax.variable_type_required", area 2, Error, Agent,
         "Variable has no type";
     TEST_ASSERTION_FAILED: "test.assertion_failed", area 13, Error, Agent,
-        "Test assertion does not hold";
+        "A test's `assert` doesn't hold: its condition is false, or a call checked with `assert … fails` returned or failed differently";
     TEST_FAILED: "test.failed", area 14, Error, Agent,
         "Test run failed";
     TEST_FAKE_EXHAUSTED: "test.fake_exhausted", area 13, Error, Agent,
         "Test called a faked operation more times than its fakes script";
     TEST_FAKE_UNUSED: "test.fake_unused", area 13, Error, Agent,
-        "Test left a faked operation's scripted answers unused";
+        "A test passed otherwise, but its `fakes:` scripted more answers for a provider operation than the code called it for";
     TEST_FAULT: "test.fault", area 13, Error, Agent,
         "Test stopped on a fault";
     TEST_NO_TESTS: "test.no_tests", area 14, Error, Agent,
         "No tests to run";
     TEST_RECORDING_UNDECODABLE: "test.recording_undecodable", area 11, Error, Agent,
-        "Recorded provider answer its operation's decoders don't read";
+        "A saved answer from an outside service doesn't fit the types your integration reads that answer as";
     TEST_ROUND_TRIP_FAILED: "test.round_trip_failed", area 11, Error, Agent,
         "Field's decode and encode don't round-trip a recorded value";
     TEST_RUNTIME_START_FAILED: "test.runtime_start_failed", area 14, Error, Human,
@@ -1135,7 +1135,7 @@ rules! {
     TOOLCHAIN_SCAFFOLD_DESTINATION_EXISTS: "toolchain.scaffold_destination_exists", area 14, Error, Human,
         "Scaffold destination is an existing file";
     TOOLCHAIN_SCAFFOLD_DESTINATION_NOT_EMPTY: "toolchain.scaffold_destination_not_empty", area 14, Error, Human,
-        "Scaffold destination directory is not empty";
+        "You ran `jadpo new` on a folder that already has files in it, hidden files included";
     TOOLCHAIN_SCAFFOLD_NAME_INVALID: "toolchain.scaffold_name_invalid", area 14, Error, Agent,
         "Project destination has no valid name";
     TOOLCHAIN_SCAFFOLD_READ_FAILED: "toolchain.scaffold_read_failed", area 14, Error, Human,
@@ -1147,9 +1147,9 @@ rules! {
     TOOLCHAIN_VERSION_INVALID: "toolchain.version_invalid", area 1, Error, Agent,
         "Application's `jadpo:` is not a major and minor version as text";
     TOOLCHAIN_VERSION_NEWER: "toolchain.version_newer", area 1, Error, Human,
-        "Project is on a later Jadpo line";
+        "The project is written for a later Jadpo release line than the `jadpo` checking it, and that `jadpo` can't run the later release instead";
     TOOLCHAIN_VERSION_OLDER: "toolchain.version_older", area 1, Error, Human,
-        "Project is on an earlier Jadpo line";
+        "The project is written for an earlier Jadpo release line than the `jadpo` checking it, and that `jadpo` can't run the earlier release instead";
     TRANSLATION_EXCHANGE_FILE_INVALID: "translation.exchange_file_invalid", area 14, Error, Human,
         "Translation exchange file can't be read or written";
     TRANSLATION_EXCHANGE_UNIT_UNKNOWN: "translation.exchange_unit_unknown", area 14, Error, Agent,
@@ -1161,13 +1161,13 @@ rules! {
     TRANSLATION_FIELD_UNUSED: "translation.field_unused", area 10, Declinable, Agent,
         "No wording in a language uses one of a message's fields";
     TRANSLATION_FILE_MISSING: "translation.file_missing", area 10, Error, Agent,
-        "A supported locale has no language file";
+        "The app supports a locale, but a folder of messages has no language file for it";
     TRANSLATION_FILE_NAME_INVALID: "translation.file_name_invalid", area 10, Error, Agent,
         "A language file is not named for a locale";
     TRANSLATION_GROUP_UNKNOWN: "translation.group_unknown", area 10, Error, Agent,
         "A group in the root language file is not one Jadpo reads";
     TRANSLATION_JADPO_MISSING: "translation.jadpo_missing", area 10, Error, Agent,
-        "A supported locale lacks wording for Jadpo's own messages";
+        "The app supports a locale that Jadpo doesn't ship its own messages in, and the app hasn't worded them itself";
     TRANSLATION_LOCALE_UNSUPPORTED: "translation.locale_unsupported", area 10, Error, Agent,
         "A language file is for a locale the application does not support";
     TRANSLATION_LOCALES_REQUIRED: "translation.locales_required", area 10, Error, Agent,
@@ -1183,7 +1183,7 @@ rules! {
     TRANSLATION_PLACEHOLDER_STYLE: "translation.placeholder_style", area 10, Error, Agent,
         "A wording writes an amount of money without its style, or a style on another field";
     TRANSLATION_PLACEHOLDER_UNKNOWN: "translation.placeholder_unknown", area 10, Error, Agent,
-        "A wording writes a field the message does not have";
+        "A wording writes a placeholder, such as `{nom}`, that isn't one of its message's fields";
     TRANSLATION_REVIEW_INVALID: "translation.review_invalid", area 10, Error, Agent,
         "Translation review is not a TranslationReview";
     TRANSLATION_SOURCES_INVALID: "translation.sources_invalid", area 10, Error, Agent,
@@ -1193,27 +1193,27 @@ rules! {
     TRANSLATION_TOO_MANY_SELECTORS: "translation.too_many_selectors", area 10, Error, Agent,
         "A message has more than one enum or plural field";
     TRANSLATION_VARIANT_MISSING: "translation.variant_missing", area 10, Error, Agent,
-        "A wording lacks a value of the enum or a plural form";
+        "A wording that changes with a count or with an enum's value leaves out one of the plural forms or values";
     TRANSLATION_VARIANT_UNKNOWN: "translation.variant_unknown", area 10, Error, Agent,
         "A wording is for a value or plural form that does not exist";
     TRANSLATION_WORDING_INVALID: "translation.wording_invalid", area 10, Error, Agent,
         "A wording is not a plain string with {field} placeholders";
     TRANSLATION_WORDING_MISSING: "translation.wording_missing", area 10, Error, Agent,
-        "A supported locale has no wording for a message";
+        "A language file of a supported locale leaves out one of the messages, or failures, that its folder has to word";
     TRANSLATION_WORDING_SHAPE: "translation.wording_shape", area 10, Error, Agent,
         "A member is written in the wrong shape for what it words";
     TYPE_ABSENT_FIELD: "type.absent_field", area 2, Error, Agent,
         "Omitted or optional field is not present";
     TYPE_ARGUMENT_COUNT: "type.argument_count", area 3, Error, Agent,
-        "Call has the wrong number of arguments";
+        "A call passes more or fewer values than the function or action it calls has parameters";
     TYPE_ARGUMENT_EMPTY: "type.argument_empty", area 19, Error, Agent,
         "Text that may be empty where it never is";
     TYPE_ARGUMENT_NEGATIVE: "type.argument_negative", area 19, Error, Agent,
-        "Count or position may be negative";
+        "A list or text operation is given a count or a position that might be negative";
     TYPE_ARITHMETIC_OPERAND: "type.arithmetic_operand", area 3, Error, Agent,
-        "Arithmetic operand has the wrong type";
+        "A sum, difference or division mixes two different named types, or uses a value that isn't a number";
     TYPE_ASSIGN_IMMUTABLE: "type.assign_immutable", area 3, Error, Agent,
-        "Value that never changes is assigned";
+        "A variable declared without `mut`, or a parameter, is given a new value";
     TYPE_ASSIGN_UNKNOWN: "type.assign_unknown", area 3, Error, Agent,
         "Assignment target is not declared";
     TYPE_AUTH_CREDENTIAL_STORED: "type.auth_credential_stored", area 8, Error, Agent,
@@ -1229,7 +1229,7 @@ rules! {
     TYPE_AUTH_PRINCIPAL_VARIANT_UNKNOWN: "type.auth_principal_variant_unknown", area 8, Error, Agent,
         "Caller variant is not one the principal declares";
     TYPE_AUTH_PUBLIC_PRINCIPAL: "type.auth_public_principal", area 8, Error, Human,
-        "Public route passes a caller it never reads";
+        "A route that anyone may call, with `authentication: RouteAuthentication.none`, passes on the signed-in caller, though it never looks for one";
     TYPE_AUTH_SESSIONS_CONTEXT: "type.auth_sessions_context", area 8, Error, Agent,
         "Session, API token or service key operation outside an action, or without its sign-in method";
     TYPE_BASE_OUTSIDE_DECLARATION: "type.base_outside_declaration", area 2, Error, Agent,
@@ -1241,7 +1241,7 @@ rules! {
     TYPE_BATCH_EACH_INVALID: "type.batch_each_invalid", area 12, Error, Agent,
         "A batch's `each:` or `finished:` is not one call of an action in its domain, or a write's `each:` no inline function giving the row";
     TYPE_BATCH_FROM_INVALID: "type.batch_from_invalid", area 12, Error, Agent,
-        "A batch's `from:` is not a call of a named query giving a `Page`";
+        "A batch's `from:` is something other than a call of a named query that gives a `Page`, such as a query that gives a `List`";
     TYPE_BATCH_INPUT: "type.batch_input", area 12, Error, Agent,
         "An `Input` or a route placeholder holds a batch type, which only the runtime builds";
     TYPE_BATCH_ORDER_UPDATABLE: "type.batch_order_updatable", area 12, Declinable, Agent,
@@ -1255,23 +1255,23 @@ rules! {
     TYPE_CONSTRAINT_CONTRADICTION: "type.constraint_contradiction", area 2, Error, Agent,
         "Constraints contradict each other";
     TYPE_CONSTRAINT_LOOSENED: "type.constraint_loosened", area 2, Error, Agent,
-        "Refinement loosens a rule it inherits";
+        "A type that builds on another sets a looser bound than the one it inherits, such as a higher `max_length`";
     TYPE_CONSTRAINT_REPEATED: "type.constraint_repeated", area 2, Error, Agent,
         "Constraint is given twice";
     TYPE_CONSTRUCTOR_ARGUMENT_COUNT: "type.constructor_argument_count", area 2, Error, Agent,
         "Constructor is not given exactly one value";
     TYPE_CONSTRUCTOR_INPUT: "type.constructor_input", area 2, Error, Agent,
-        "Value cannot be converted to this type";
+        "A type's constructor is given a value it can't convert, because the value is built on a different kind of value or may be `none`";
     TYPE_COPY_CLASH: "type.copy_clash", area 2, Error, Agent,
         "Copied field would replace another field";
     TYPE_COPY_CYCLE: "type.copy_cycle", area 2, Error, Agent,
         "Type includes its own fields";
     TYPE_COPY_INTO_INPUT: "type.copy_into_input", area 2, Error, Human,
-        "Input copies every field of another type";
+        "An `Input` type copies every field of another type with `include`, so a request could set any of them";
     TYPE_DECIMAL_SCALE_REQUIRED: "type.decimal_scale_required", area 2, Error, Agent,
         "Decimal type has no scale";
     TYPE_DIVISOR_ZERO: "type.divisor_zero", area 3, Error, Agent,
-        "Divisor may be zero";
+        "A division's divisor has a type that allows zero, so the division could fail when the program runs";
     TYPE_DUPLICATE_FIELD: "type.duplicate_field", area 2, Error, Agent,
         "Field is given twice";
     TYPE_DUPLICATE_VARIANT: "type.duplicate_variant", area 2, Error, Agent,
@@ -1287,9 +1287,9 @@ rules! {
     TYPE_FIELD_UNPROVED: "type.field_unproved", area 2, Error, Agent,
         "Object field value may break the field's rules";
     TYPE_FIELD_UPDATE_FORBIDDEN: "type.field_update_forbidden", area 9, Error, Agent,
-        "Update changes a field that never changes";
+        "An update changes a field that stays fixed once its record exists, such as a user field a grant names or a field marked `immutable: true`";
     TYPE_FILE_READ_TOO_LARGE: "type.file_read_too_large", area 16, Error, Agent,
-        "A whole read of a file field that can hold more than 10 MB";
+        "Code reads a whole file into memory from a file field that can hold more than the 10 MB a whole read allows";
     TYPE_FOREIGN_TYPE: "type.foreign_type", area 2, Error, Agent,
         "Type named as another language names it";
     TYPE_FOREIGN_VALUE: "type.foreign_value", area 2, Error, Agent,
@@ -1301,7 +1301,7 @@ rules! {
     TYPE_INLINE_FUNCTION_PLACEMENT: "type.inline_function_placement", area 3, Error, Agent,
         "Inline function is not an argument to a collection operation";
     TYPE_INVALID_LITERAL: "type.invalid_literal", area 2, Error, Agent,
-        "Literal breaks its type's rules";
+        "A literal value breaks a rule of the type it goes into, such as a number below the type's `min`";
     TYPE_INVALID_PATTERN: "type.invalid_pattern", area 2, Error, Agent,
         "Pattern is not a supported regular expression";
     TYPE_LOCALE_DEFAULT_UNSUPPORTED: "type.locale_default_unsupported", area 10, Error, Agent,
@@ -1315,7 +1315,7 @@ rules! {
     TYPE_LOCALE_INVALID: "type.locale_invalid", area 10, Error, Agent,
         "Locale is not written as a Locale";
     TYPE_LOCALE_UNSUPPORTED: "type.locale_unsupported", area 10, Error, Agent,
-        "Locale is not one the application supports";
+        "Your code writes out a locale, such as `Locale.fr_fr`, that isn't in the app's list of supported locales";
     TYPE_LOGICAL_OPERAND: "type.logical_operand", area 3, Error, Agent,
         "Logical operator needs Bool operands";
     TYPE_MAP_KEY_BOUNDARY: "type.map_key_boundary", area 2, Error, Agent,
@@ -1325,7 +1325,7 @@ rules! {
     TYPE_MATCH_DUPLICATE_PATTERN: "type.match_duplicate_pattern", area 3, Error, Agent,
         "Match pattern is already covered";
     TYPE_MATCH_NON_EXHAUSTIVE: "type.match_non_exhaustive", area 3, Error, Agent,
-        "Match does not cover every case";
+        "A `match` on an enum, a `Bool` or a value that may be `none` leaves out one of its cases";
     TYPE_MATCH_PATTERN_TYPE: "type.match_pattern_type", area 3, Error, Agent,
         "Pattern cannot match this value";
     TYPE_MATCH_SOME_NON_OPTIONAL: "type.match_some_non_optional", area 3, Error, Agent,
@@ -1339,11 +1339,11 @@ rules! {
     TYPE_MATCH_WILDCARD_CLOSED: "type.match_wildcard_closed", area 3, Error, Agent,
         "Wildcard on a value whose cases can be listed";
     TYPE_MATCH_WILDCARD_REQUIRED: "type.match_wildcard_required", area 3, Error, Agent,
-        "Open value space needs a wildcard arm";
+        "A `match` on text or a number lists some values but has no `_` arm for all the others";
     TYPE_MISMATCH: "type.mismatch", area 2, Error, Agent,
-        "Value has the wrong type";
+        "A value of one type is used where a different type is required";
     TYPE_MISSING_FIELD: "type.missing_field", area 2, Error, Agent,
-        "Object is missing a field";
+        "An object value is built without one of the fields its type declares";
     TYPE_MISSING_VARIANT_FIELD: "type.missing_variant_field", area 2, Error, Agent,
         "Variant is missing a field";
     TYPE_MONEY_SPLIT: "type.money_split", area 19, Error, Agent,
@@ -1363,7 +1363,7 @@ rules! {
     TYPE_OPTIONAL_OUTSIDE_INPUT: "type.optional_outside_input", area 2, Error, Agent,
         "Optional or default field outside an Input";
     TYPE_ORDERING_OPERAND: "type.ordering_operand", area 3, Error, Agent,
-        "Values cannot be ordered";
+        "A comparison such as `<` or `>` is used on a value that has no order, such as text or a value that may be `none`";
     TYPE_PASSWORD_HASH_EXPOSED: "type.password_hash_exposed", area 19, Error, Agent,
         "Password hash is sent, read from a request or put in a failure";
     TYPE_PRESENTATION_TEXT_PERSISTENCE: "type.presentation_text_persistence", area 10, Error, Agent,
@@ -1401,7 +1401,7 @@ rules! {
     TYPE_STANDARD_CLASH: "type.standard_clash", area 19, Error, Agent,
         "Declaration has a standard type's name";
     TYPE_STANDARD_EXISTS: "type.standard_exists", area 19, Declinable, Agent,
-        "Type has a standard type's shape under another name";
+        "You declared a type with the same fields as a standard type, such as a start and an end, under a name of your own";
     TYPE_SUGGESTIONS_VALUE_INVALID: "type.suggestions_value_invalid", area 14, Error, Agent,
         "Suggestions setting has a value it can't take";
     TYPE_TEMPORAL_CLOCK_INVALID: "type.temporal_clock_invalid", area 10, Error, Agent,
@@ -1417,13 +1417,13 @@ rules! {
     TYPE_TEMPORAL_FORMAT_PART_MISSING: "type.temporal_format_part_missing", area 19, Error, Agent,
         "Format shows a part a local time doesn't have";
     TYPE_TEMPORAL_FORMAT_REQUIRES_TIME: "type.temporal_format_requires_time", area 10, Error, Agent,
-        "Format shows a clock time a date doesn't have";
+        "Your code formats a date with a format that also shows a clock time, and a date has no time to show";
     TYPE_TEMPORAL_LOCALES_REQUIRED: "type.temporal_locales_required", area 10, Error, Agent,
         "Formatting needs declared locales";
     TYPE_TEMPORAL_OPTION_UNUSED: "type.temporal_option_unused", area 10, Error, Agent,
         "Option means nothing for this value";
     TYPE_TEMPORAL_ZONE_REQUIRED: "type.temporal_zone_required", area 10, Error, Agent,
-        "Formatting an instant needs a zone";
+        "Your code formats an `Instant` for people to read without saying which time zone to show it in";
     TYPE_TEST_CLOCK_CONTEXT: "type.test_clock_context", area 13, Error, Agent,
         "The clock is moved outside a test";
     TYPE_TYPE_ARGUMENT_COUNT: "type.type_argument_count", area 2, Error, Agent,
@@ -1431,11 +1431,11 @@ rules! {
     TYPE_UNARY_OPERAND: "type.unary_operand", area 3, Error, Agent,
         "Operator cannot be used with this value";
     TYPE_UNIT_REQUIRED: "type.unit_required", area 19, Error, Agent,
-        "Number is given where a quantity needs a unit";
+        "A plain number is given where a physical quantity, such as a length or a mass, needs its unit";
     TYPE_UNIT_UNKNOWN: "type.unit_unknown", area 19, Error, Agent,
         "Number is written with a suffix that is no unit";
     TYPE_UNKNOWN_ENUM_VARIANT: "type.unknown_enum_variant", area 2, Error, Agent,
-        "Enum has no such variant";
+        "The code names a variant that the enum doesn't have, often a misspelling of one it does";
     TYPE_UNKNOWN_FIELD: "type.unknown_field", area 2, Error, Agent,
         "Type has no such field";
     TYPE_UNKNOWN_SETTING: "type.unknown_setting", area 2, Error, Agent,
@@ -1447,7 +1447,7 @@ rules! {
     TYPE_VARIANT_RETIRED: "type.variant_retired", area 19, Declinable, Agent,
         "Code writes a retired code";
     VISIBILITY_PRIVATE_CROSS_DOMAIN: "visibility.private_cross_domain", area 1, Error, Human,
-        "Another domain uses a private declaration";
+        "Code in one domain uses an action, type or other declaration that another domain keeps private, because it isn't marked `public`";
     VISIBILITY_PUBLIC_NOT_ALLOWED: "visibility.public_not_allowed", area 1, Error, Agent,
         "Declaration can't be public";
     VISIBILITY_PUBLIC_REACHES_PRIVATE: "visibility.public_reaches_private", area 1, Error, Agent,

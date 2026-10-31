@@ -135,7 +135,8 @@ shows the fence as it is, and its relative links are by ID (`passkeys.md`,
 `../errors/failure.kind_required.md`), keeping an anchor within the page;
 a link to anything else, design notes included, names the file on GitHub's
 `main`. An error page leads with its rule's summary, area and who usually
-decides the next step; a command's page is its usage, arguments, flags,
+decides the next step, and leaves out the page's first sentence when it is
+that summary; a command's page is its usage, arguments, flags,
 examples, the flags every command takes and what `--json` gives (the
 same on each page), and errors. The primer is `docs/primer.md` with its hidden blocks
 left out; the docs check compiles its every example, refuses a `fragment`

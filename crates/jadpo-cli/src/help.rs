@@ -112,9 +112,10 @@ pub fn rule(rule: &Rule) -> Reply {
         Screen::new().with(Block::header(rule.id, facts).with_text(format!("{}.", rule.summary)));
     match &page {
         Some(page) => {
-            for part in page_parts(page) {
+            for part in page_parts(page, rule.summary) {
                 screen.push(match part {
                     Part::Prose(paragraphs) => Block::prose(paragraphs),
+                    Part::Heading(heading) => Block::section(heading, Vec::<String>::new()),
                     Part::Example { heading, lines } => Block::section(heading, lines),
                 });
             }
@@ -139,23 +140,30 @@ pub fn rule(rule: &Rule) -> Reply {
 enum Part {
     /// Paragraphs, each one line of text.
     Prose(Vec<String>),
+    /// A `##` heading.
+    Heading(String),
     /// A fenced block: under the file it is in, or what printed it.
     Example { heading: String, lines: Vec<String> },
 }
 
-/// A page's Markdown as prose and examples, in order, after its title:
-/// paragraphs joined into lines with links read as their text, each list
-/// item a paragraph of its own, and each fence that isn't `hidden`.
-fn page_parts(page: &str) -> Vec<Part> {
+/// A page's Markdown as prose, headings and examples, in order, after its
+/// title: paragraphs joined into lines with links read as their text and
+/// bold as plain text, each list item a paragraph of its own, each `##`
+/// heading, and each fence that isn't `hidden`. The sentence under the
+/// title that is the rule's summary is left out, since the header gives it.
+fn page_parts(page: &str, summary: &str) -> Vec<Part> {
     let mut parts = Vec::new();
     let mut paragraphs: Vec<String> = Vec::new();
     let mut current = String::new();
     let mut lines = page.lines().skip_while(|line| line.starts_with("# "));
+    let said = format!("{summary}.");
     let end_paragraph = |current: &mut String, paragraphs: &mut Vec<String>| {
         if !current.is_empty() {
-            paragraphs.push(link_text(&std::mem::take(current)));
+            let text = link_text(&std::mem::take(current)).replace("**", "");
+            paragraphs.push(text);
         }
     };
+    let mut first = true;
     while let Some(line) = lines.next() {
         if let Some(info) = line.strip_prefix("```") {
             end_paragraph(&mut current, &mut paragraphs);
@@ -170,6 +178,11 @@ fn page_parts(page: &str) -> Vec<Part> {
             let words: Vec<&str> = info.split_whitespace().collect();
             let heading = match words.as_slice() {
                 ["jadpo", ..] if words.contains(&"hidden") => continue,
+                ["jadpo", ..] if words.contains(&"fragment") => words
+                    .iter()
+                    .find_map(|word| word.strip_prefix("file="))
+                    .unwrap_or("Code")
+                    .to_string(),
                 ["jadpo", ..] => words
                     .iter()
                     .find_map(|word| word.strip_prefix("file="))
@@ -186,8 +199,21 @@ fn page_parts(page: &str) -> Vec<Part> {
             continue;
         }
         let line = line.trim();
-        if line.is_empty() {
+        if let Some(heading) = line.strip_prefix("## ") {
             end_paragraph(&mut current, &mut paragraphs);
+            if !paragraphs.is_empty() {
+                parts.push(Part::Prose(std::mem::take(&mut paragraphs)));
+            }
+            parts.push(Part::Heading(heading.to_string()));
+            first = false;
+        } else if line.is_empty() {
+            end_paragraph(&mut current, &mut paragraphs);
+            if first && paragraphs.len() == 1 && parts.is_empty() {
+                first = false;
+                if paragraphs[0] == said {
+                    paragraphs.clear();
+                }
+            }
         } else if line.starts_with("- ") || line.starts_with("* ") {
             end_paragraph(&mut current, &mut paragraphs);
             current.push_str(line);
@@ -415,7 +441,7 @@ mod tests {
     fn a_page_is_its_prose_and_visible_examples_in_order() {
         let page = "# `x.y`\n\nFirst line\nsame paragraph.\n\n- one\n- two\n\n```jadpo check project=p file=app.jadpo hidden\napplication {}\n```\n\n```jadpo check project=p file=domains/a/b.jadpo expect=x.y\ntype A = Int {}\n```\n\n```text output\nerror: A\n```\n\nAfter.\n";
         assert_eq!(
-            page_parts(page),
+            page_parts(page, "A"),
             [
                 Part::Prose(vec![
                     "First line same paragraph.".to_string(),
@@ -431,6 +457,22 @@ mod tests {
                     lines: vec!["error: A".to_string()],
                 },
                 Part::Prose(vec!["After.".to_string()]),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_formatted_page_gives_its_headings_and_not_its_summary_again() {
+        let page = "# `x.y`\n\nA thing\nhappened.\n\n## Why Jadpo refuses it\n\nIt is **wrong**.\n\n```jadpo fragment file=app.jadpo\nx: 1\n```\n";
+        assert_eq!(
+            page_parts(page, "A thing happened"),
+            [
+                Part::Heading("Why Jadpo refuses it".to_string()),
+                Part::Prose(vec!["It is wrong.".to_string()]),
+                Part::Example {
+                    heading: "app.jadpo".to_string(),
+                    lines: vec!["x: 1".to_string()],
+                },
             ]
         );
     }
