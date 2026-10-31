@@ -50,6 +50,7 @@ Why [Project layout and modules](../01-project-layout-and-modules.md) is the way
 | Constants in the layout | A `constant` is placed and shared as a helper function is (area 3) |
 | Packages in the layout | The root `packages/` holds only installed packages, checked against `jadpo.lock`; the app's own integrations live in `shared/providers/` in the package format; `use packages/…` always names installed code (area 11) |
 | Records | Committed generated files are readable `.jadpo_record` files beside what they describe, each starting with the line that says what wrote it; a hand edit is an error; `jadpo.lock` keeps its name (area 18) |
+| `application { }`'s sections | One list of every section an area page decides; any other is `semantic.application_section_unknown`, with the edit to a near miss as every obvious repair carries (area 14), so a misspelt protection is never dropped silently; a section decided and not built is `toolchain.not_built_yet`, never unknown |
 
 ## Why some rules are the way they are
 

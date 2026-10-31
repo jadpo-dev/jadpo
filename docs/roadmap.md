@@ -381,11 +381,7 @@ time.
   reminder schedule over a batch, and route tests for each, with no code
   outside Jadpo. Before 10.2's measured runs, since it changes what they
   measure.
-- [ ] **A9 Unknown sections of `application { }`** `opus · high`: an
-  unknown or misspelt section of the root `application { }` is accepted
-  silently today, so a setting meant to protect the app can be dropped
-  without a word. One list of every area's sections, and a rule refusing
-  any other, as entities' and routes' unknown sections are. Found by A0.
+- [x] **A9 Unknown sections of `application { }`**: area 1, "What `application { }` holds" and "What is built"; the "What is built" of areas 11, 12, 15 and 16.
 - [ ] **A8 Acceptances for what exists today** `opus · xhigh` after A2:
   area 18, "Acceptances": `jadpo acceptance new`, matching and the
   `///` reason, CODEOWNERS on `acceptances/` and `api/`, and the kinds

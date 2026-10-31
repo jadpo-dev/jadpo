@@ -453,6 +453,47 @@ build/
   a snippet in these docs, is checked as one implicit domain with the
   layout rules off.
 
+## What `application { }` holds
+<!-- topic: application-sections -->
+
+`application { }` in `app.jadpo` holds the settings for the whole app,
+each in a section of its own. These are all the sections it takes, and
+the page that decides each:
+
+| Section | What it sets | Decided in |
+|---|---|---|
+| `jadpo:` | The Jadpo release line the project is written for | [The root](#the-root) |
+| `display_name:` | The app's name, as people see it | [The application and revocation](08-identity.md#the-application-and-revocation) |
+| `revocation_delay:` | How long a disabled caller or a revoked session may keep working | [The application and revocation](08-identity.md#the-application-and-revocation) |
+| `connections:` | Every database, driver and package the app connects to | [Connecting in `app.jadpo`](11-integrations.md#connecting-in-appjadpo) |
+| `deployables:` | What is built to run, and where | [Declared deployables](14-tooling.md#declared-deployables) |
+| `apis:` | The app's APIs and their versions | [APIs and versions](07-http.md#apis-and-versions) |
+| `client_address:` | Where a request's client address is read | [Client addresses](10-configuration-and-time.md#client-addresses) |
+| `translations:` | Whether the root translations need a review | [Review](10-configuration-and-time.md#review) |
+| `rate_limits:` | Where rate limits are counted | [Rate limits](16-built-in-services.md#rate-limits) |
+| `email:` | The connection every email goes through, and its sender | [Email](16-built-in-services.md#email) |
+| `events:` | The store events are kept in | [Where the event is kept](12-jobs-and-events.md#where-the-event-is-kept) |
+| `schedules:` | The store schedules' state is kept in | [Schedules](12-jobs-and-events.md#schedules) |
+| `steps:` | How an action's steps are kept and sealed | [Several changing calls in one action](12-jobs-and-events.md#several-changing-calls-in-one-action) |
+| `receiving:` | The queues read into the app's events | [Events from outside](12-jobs-and-events.md#events-from-outside) |
+| `ai:` | The model connection, its models and its limits | [The `ai` capability](21-ai.md#the-ai-capability) |
+
+Seven more are decided and not built yet: `bot_check:`
+([Bot protection](16-built-in-services.md#bot-protection)), `documents:`
+([Documents](16-built-in-services.md#documents)), `grants:`
+([OAuth grants](11-integrations.md#acting-for-each-user-oauth-grants)),
+`privacy:` ([Data requests](15-personal-data.md#data-requests)),
+`publishing:` ([Where events travel](12-jobs-and-events.md#where-events-travel)),
+`scanning:` ([Image variants and scanning](16-built-in-services.md#image-variants-and-scanning))
+and `telemetry:` ([Telemetry](16-built-in-services.md#telemetry)). Each is
+`toolchain.not_built_yet` where it is written, since accepting it would
+read as a protection or a service the app doesn't have.
+
+Any other section is `semantic.application_section_unknown`, so a
+misspelt setting meant to protect the app is never dropped without a word.
+When it is a near miss of a section, such as `revocation_dela:`, the
+error's edit respells it.
+
 ## Domains
 <!-- topic: domains -->
 
@@ -1099,6 +1140,7 @@ The compiler builds the decided layout, with each rule's real output under
 | Definition before use | Built: `jadpo fmt` writes each file's declarations before the first one that uses them, and `jadpo fmt --check` fails on a file out of that order. |
 | Referenced assets | Not built yet: `layout.asset_unreferenced` waits for the ways [Integrations](11-integrations.md) and [Built-in services](16-built-in-services.md) refer to files that aren't Jadpo. |
 | Jadpo version | Built: `application { jadpo: "0.1" }`, with `toolchain.version_newer` refusing a project on a later line, `toolchain.version_older` one on an earlier line, each naming the release to install, and `toolchain.version_invalid`; the installed `jadpo` runs the release the line or `jadpo.lock`'s pin names ([Which jadpo runs](14-tooling.md#which-jadpo-runs)). `jadpo new` writes the line of the `jadpo` that ran it. |
+| `application { }`'s sections | Built: the one list of sections ([What `application { }` holds](#what-application---holds)), `semantic.application_section_unknown` for any other, with the edit to the section a near miss meant, and `toolchain.not_built_yet` for the seven decided and not built. |
 | Packages | Built: the root `packages/` and `jadpo.lock`, `shared/providers/`, packages checked as `shared/` is, `use packages/<name>`, and the reachable-from-public rule (`visibility.public_reaches_private`) in domains and packages; [Integrations](11-integrations.md) records the choices. |
 
 ## Errors
@@ -1112,6 +1154,7 @@ rules off; the layout examples are small projects.
 - [`toolchain.version_newer`](../errors/toolchain.version_newer.md)
 - [`toolchain.version_older`](../errors/toolchain.version_older.md)
 - [`toolchain.version_invalid`](../errors/toolchain.version_invalid.md)
+- [`semantic.application_section_unknown`](../errors/semantic.application_section_unknown.md)
 - [`semantic.duplicate_declaration`](../errors/semantic.duplicate_declaration.md)
 - [`semantic.name_case`](../errors/semantic.name_case.md)
 - [`naming.round_trip`](../errors/naming.round_trip.md)

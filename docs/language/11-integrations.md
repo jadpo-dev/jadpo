@@ -6715,7 +6715,7 @@ package's name, as its types are.
 | Package actions, subscribers, recipes and polls | Built. |
 | Webhooks as events, replies, handshakes, queues through a package and the Cloudflare Queues driver | Built. |
 | Services (`runs:`) | Not built yet. |
-| OAuth grants | Not built yet. |
+| OAuth grants | Not built yet: the application's `grants:` is `toolchain.not_built_yet` where it is written. |
 | Publisher trust for third-party git packages | Not built yet. |
 | The hosted registry | Not built yet. |
 | Importers other than OpenAPI | Not built yet. |

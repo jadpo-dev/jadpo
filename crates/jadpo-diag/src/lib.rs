@@ -861,6 +861,8 @@ rules! {
         "Type a model is asked to answer as is one no model's answer can be";
     SEMANTIC_AI_PERSONAL_DATA_NOT_ALLOWED: "semantic.ai_personal_data_not_allowed", area 21, Error, Human,
         "Personal data reaches a model in a category `ai: { personal_data: { allowed: } }` doesn't list";
+    SEMANTIC_APPLICATION_SECTION_UNKNOWN: "semantic.application_section_unknown", area 1, Error, Agent,
+        "`application { }` has a section Jadpo does not know";
     SEMANTIC_AUTH_METHOD_DUPLICATE: "semantic.auth_method_duplicate", area 8, Error, Agent,
         "Sign-in method is declared twice";
     SEMANTIC_AUTH_METHOD_UNKNOWN: "semantic.auth_method_unknown", area 8, Error, Agent,
