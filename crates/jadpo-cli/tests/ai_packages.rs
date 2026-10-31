@@ -144,7 +144,7 @@ fn desk(name: &str, provider: Provider) -> PathBuf {
         ],
     );
     assert_eq!(added.code, 0, "{}{}", added.stdout, added.stderr);
-    for args in [&["api", "update"][..], &["migrate", "new", "initial"]] {
+    for args in [&["records", "update"][..], &["migrate", "new", "initial"]] {
         let out = jadpo(&root, args);
         assert_eq!(out.code, 0, "{args:?}: {}{}", out.stdout, out.stderr);
     }

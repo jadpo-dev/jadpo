@@ -112,6 +112,7 @@ fn a_deployable_builds_each_connections_driver_from_the_plan() {
     for (path, text) in files(server.port) {
         write(&root, path, &text);
     }
+    jadpo(&root, &["records", "update"]);
     let out = jadpo(&root, &["check"]);
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
     let loaded = jadpo_db::load(&root);

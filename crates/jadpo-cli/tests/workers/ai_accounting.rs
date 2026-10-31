@@ -43,7 +43,7 @@ fn an_atomic_budget_refusal_is_recognised_by_the_compiled_worker() {
             "over_budget: BudgetSpent",
         );
     std::fs::write(action_path, action).unwrap();
-    jadpo(&root, &["api", "update"]);
+    jadpo(&root, &["records", "update"]);
     jadpo(&root, &["build", "worker"]);
     let database = Database::on_tcp();
     apply(&database.native, &migrations(&root));

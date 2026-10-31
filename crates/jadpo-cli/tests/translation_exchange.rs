@@ -953,7 +953,7 @@ fn import_writes_jadpos_own_messages_to_the_root_file() {
         read(&root, "translations/sources.jadpo_record")
             .contains("translation pl_pl.jadpo.invalid_input from ")
     );
-    assert_eq!(plain(&root, &["api", "update"]).0, 0);
+    assert_eq!(plain(&root, &["records", "update"]).0, 0);
     let (code, check) = plain(&root, &["check"]);
     assert_eq!(code, 0, "{check}");
 }

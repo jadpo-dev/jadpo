@@ -277,8 +277,8 @@ D1 first: the site starts once D1 has merged.
 - [x] **D6 Packages, services and integrations explained**: [area 11](language/11-integrations.md), "How packages, connections, capabilities and services fit together".
 - [x] **D7 One place for the golden todo and the benchmarks**: [benchmarks](../benchmarks/README.md);
   `tools/` holds the gate and its `docs/`, `checks/`, `references/` and `fixtures/`.
-- [ ] **D8 The VS Code extension, finished and published**: area 14, "Editor support" and "What is built"; `editors/vscode/README.md`; `.github/workflows/vscode-extension.yml`.
-  Waits: the editor's rename, which comes with `jadpo rename` and the identity registry (after the first build, items 6 and 7).
+- [x] **D8a The VS Code extension, published**: area 14, "Editor support" and "What is built"; `editors/vscode/README.md`; `.github/workflows/vscode-extension.yml`.
+- [ ] **D8b Rename in the editor** `opus · high`: area 14, "Editor support". Waits: `jadpo rename` and the identity registry (after the first build, items 6 and 7).
 - [x] **D9 Docs for newcomers**: [writing guide](writing.md); the [Learn path](learn/README.md); the [primer](primer.md); [documentation](documentation.md), "The bundle".
 - [x] **D10 Area pages to the writing guide**: the area pages in [docs/language](language/README.md), each topic to the [writing guide](writing.md), "How a reference topic reads", and the rationale in each area's design notes.
 - [ ] **D11 Task guides** `opus · high`: how-to pages in the bundle, a
@@ -386,21 +386,7 @@ time.
   silently today, so a setting meant to protect the app can be dropped
   without a word. One list of every area's sections, and a rule refusing
   any other, as entities' and routes' unknown sections are. Found by A0.
-- [ ] **A8 Acceptances for what exists today** `opus · xhigh` after A2:
-  area 18, "Acceptances": `jadpo acceptance new`, matching and the
-  `///` reason, CODEOWNERS on `acceptances/` and `api/`, and the kinds
-  whose features are built: any widening of who can do what (a route
-  made public included) and declining a security rule (`PolicyChange`);
-  an API break and an event record's break (`ApiChange`); a domain
-  created or renamed (`DomainChange`); a new outside host
-  (`NetworkChange`); a sign-in setting loosened past its limit (area 8);
-  a third party's package installed from git (`PackageChange`).
-  `access.jadpo_record` and `network.jadpo_record` give them a before
-  side. An outside agent made a route public on request and nothing
-  stopped it (Richard, 2026-10-30). The kinds whose features aren't built
-  yet are named on the items below that build them. The rule catalogue
-  (`crates/jadpo-diag`) has no mark for a security rule yet: A8 adds it,
-  starting with `policy.call_ungranted`, declinable since A2.
+- [x] **A8 Acceptances for what exists today**: area 18, "Comparing two builds" and "Acceptances"; area 9, "Protecting policy"; area 14, "`jadpo acceptance new`" and "Review and sign-off"; area 1, "Writing a decline".
 - [x] **A7a `on_first_sign_in:` for external tokens**: area 8, `external_token` and "A person the app has not seen"; area 5, "Tables for sign-in"; compiler/runtime §2.6, "First sign-in by external token".
 - [x] **A7b Sign-in providers**: area 8, "Providers", "What the compiler checks of sign-in" and Failures; areas 7 (generated routes), 11 (sign-in providers), 13 (signing in for a route test) and 14 (`jadpo dev`); compiler/runtime §2.6, "Sign-in providers".
 - [x] **A7c Provider sign-in in `jadpo dev`**: area 8, "Providers", "In `jadpo dev`"; area 14, `jadpo dev`; compiler/runtime §2.6, "Sign-in providers".

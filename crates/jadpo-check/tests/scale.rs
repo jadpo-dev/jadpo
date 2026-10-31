@@ -255,7 +255,8 @@ struct Bench {
     /// Whether the entities have changed since the migration, which
     /// `jadpo check` reports and nothing else may.
     stale: bool,
-    /// Whether the routes have changed since the API record, likewise.
+    /// Whether the routes or the policy have changed since their records
+    /// (the API record, `access.jadpo_record`), likewise.
     stale_api: bool,
 }
 
@@ -574,6 +575,9 @@ fn an_edit_rechecks_only_what_reads_it() {
         "            read: [owner_id]\n",
         "            read: [owner_id]\n            update: [owner_id]\n",
     );
+    // Who can do what changed, so `access.jadpo_record` is out of date
+    // (chunk A8).
+    bench.stale_api = true;
     let policy = bench.check("a field's policy on one entity");
     assert_eq!(most(&policy), 1, "{policy:?}");
     assert_eq!(

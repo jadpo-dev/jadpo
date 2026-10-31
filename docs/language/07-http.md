@@ -1392,14 +1392,23 @@ needs one uses the same form, such as a database drop, a policy weakening
 or a new domain: one file per decision, listing the changes it allows,
 counted only in the change that adds it.
 
+`jadpo check` compares each API's record with the record on the default
+branch at its merge base, and names each break with the entry an
+acceptance lists: `"main GET /todos/{todo_id: Uuid}":
+ApiChange.route_removed`, `main.CreateTodo.due:
+ApiChange.input_field_required`, `main.CreateTodo.title:
+ApiChange.rule_tightened` (a bound raised or lowered, a rule added, a type
+changed, `none` no longer allowed, an enum variant gone),
+`main.TodoView.priority: ApiChange.output_field_removed` or
+`.output_field_retyped`, and `main.todo_locked: ApiChange.failure_changed`
+(the code gone or its status changed). A route that now takes or
+answers with another type is compared field by field with the one it had.
+A route made open to anyone is `PolicyChange.route_public`
+([Protecting policy](09-policy.md#protecting-policy)).
+
 `acceptances/` and `api/` are owned in CODEOWNERS, the file a code host
 reads to know who must approve changes to a path, so the host's review
-shows who approved it.
-
-> Telling breaking changes apart and requiring their acceptance aren't
-> built yet ([What is built](18-records-and-manifest.md#what-is-built)).
-> Until they are, the record's
-> diff is what a reviewer reads.
+shows who approved it. `jadpo new` writes one listing them.
 
 ## Write revisions
 <!-- topic: write-revisions -->
@@ -1437,7 +1446,7 @@ where an app uses it.
 | Failure wording from a build | Not built yet: `jadpo check` writes `<api>.failures.<locale>.json` beside each OpenAPI document, and `jadpo build` is to write it too. |
 | `x-jadpo-events` | Not built yet: it waits for publishing events outward ([Where events travel](12-jobs-and-events.md#where-events-travel)). |
 | A route's own `rate_limit:` and the Redis store for rate limits | Not built yet ([Rate limits](16-built-in-services.md#rate-limits)). |
-| Classifying breaking changes and their acceptances | Not built yet ([Acceptances](18-records-and-manifest.md#acceptances)). |
+| Classifying breaking changes and their acceptances | Built ([Acceptances](18-records-and-manifest.md#acceptances)). |
 | The `Jadpo-Revision` header | Not built yet: it comes with caches ([Write revisions](#write-revisions)). |
 
 ## Errors

@@ -112,8 +112,9 @@ fn project(name: &str) -> PathBuf {
     for (path, text) in FILES {
         write(&root, path, text);
     }
-    let recorded = jadpo(&root, &["api", "update"]);
+    let recorded = jadpo(&root, &["records", "update"]);
     assert_eq!(recorded.code, 0, "{}{}", recorded.stdout, recorded.stderr);
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     root
@@ -249,6 +250,7 @@ fn a_database_address_that_sets_tls_itself_and_an_authority_that_isnt_pem_are_re
         "config.jadpo",
         "config {\n    database_authority: Certificate\n    database_url: PostgresUrl\n}\n",
     );
+    jadpo(&root, &["records", "update"]);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     let env = Environment::empty()
@@ -696,6 +698,7 @@ fn a_setting_tested_code_reads_with_no_test_value_is_a_compile_error() {
         "domains/site/actions/greet.test.jadpo",
         "use site/types { Welcome }\n\ntest \"it greets\" {\n    var welcome: Welcome = greet()\n    assert welcome.list_size == 25\n}\n",
     );
+    jadpo(&root, &["records", "update"]);
     let output = jadpo(&root, &["check"]);
     assert_eq!(output.code, 1, "{}", output.stdout);
     assert!(
@@ -716,6 +719,7 @@ fn a_setting_tested_code_reads_with_no_test_value_is_a_compile_error() {
         "domains/site/actions/greet.test.jadpo",
         "use site/types { Welcome }\n\ntest \"it greets\" {\n    config: {\n        greeting: \"hi\"\n    }\n    var welcome: Welcome = greet()\n    assert welcome.list_size == 25\n}\n",
     );
+    jadpo(&root, &["records", "update"]);
     let output = jadpo(&root, &["check"]);
     assert_eq!(output.code, 0, "{}", output.stdout);
 }
@@ -728,6 +732,7 @@ fn a_secret_is_made_for_a_run_and_never_written_in_a_test() {
         "domains/site/actions/greet.test.jadpo",
         "use site/types { Welcome }\n\ntest \"it greets\" {\n    config: {\n        session_signing_key: \"0123456789abcdef0123456789abcdef0123\"\n    }\n    var welcome: Welcome = greet()\n    assert welcome.list_size == 25\n}\n",
     );
+    jadpo(&root, &["records", "update"]);
     let output = jadpo(&root, &["check"]);
     assert_eq!(output.code, 1);
     assert!(
@@ -747,8 +752,12 @@ fn as_url(connection: &str) -> String {
         return connection.to_string();
     }
     let part = |key: &str| {
+        // The last pair wins, as libpq reads them: a database named on the
+        // admin connection's pairs is its last `dbname=`, not the server's
+        // own `postgres`.
         connection
             .split_whitespace()
+            .rev()
             .find_map(|pair| pair.strip_prefix(&format!("{key}=")))
             .map(|value| value.trim_matches('\'').to_string())
             .unwrap_or_default()
@@ -887,6 +896,7 @@ Made security.max_login_attempts a setting
         "use accounts/types { AccountLocked, LoginAttempts }\n\naction sign_in(failed_attempts: LoginAttempts) -> AccountLocked {\n    return AccountLocked(failed_attempts >= config.max_login_attempts)\n}\n"
     );
     assert!(!root.join("domains/accounts/libraries").exists());
+    jadpo(&root, &["records", "update"]);
     assert_eq!(jadpo(&root, &["check"]).code, 0);
     assert_eq!(jadpo(&root, &["fmt", "--check"]).code, 0);
 }
@@ -941,6 +951,7 @@ fn move_refuses_a_name_a_setting_has_and_changes_nothing() {
         "domains/accounts/actions/sign_in.jadpo",
         "use accounts/types { AccountLocked, LoginAttempts }\nuse accounts/libraries { security }\n\naction sign_in(failed_attempts: LoginAttempts) -> AccountLocked {\n    return AccountLocked(failed_attempts >= security.max_login_attempts or failed_attempts >= config.max_login_attempts)\n}\n",
     );
+    jadpo(&root, &["records", "update"]);
     assert_eq!(jadpo(&root, &["check"]).code, 0);
     let output = jadpo(&root, &["config", "move", "security.max_login_attempts"]);
     assert_eq!(
@@ -1098,6 +1109,7 @@ fn shop(name: &str, file: &str, main: &str) -> PathBuf {
 fn move_refuses_every_reason_at_once_and_changes_nothing() {
     let main = "use shop/types { Pence }\n\naction first_fee() -> Pence {\n    for fee in first_fees {\n        return fee\n    }\n    return 0\n}\n\nconstant fees: List<Pence> = [250, 500]\ndecline constant.similar_exists: \"The first fees, which may differ\"\nconstant first_fees: List<Pence> = fees\n";
     let root = shop("move-refused", "first_fee.jadpo", main);
+    jadpo(&root, &["records", "update"]);
     assert_eq!(
         jadpo(&root, &["check"]).code,
         0,
@@ -1142,6 +1154,7 @@ fn move_fills_the_setting_whose_default_names_the_constant() {
         "config.jadpo",
         "use shop/types { Pence }\n\nconfig {\n    page_size: Pence {\n        default: largest_page\n    }\n}\n",
     );
+    jadpo(&root, &["records", "update"]);
     let check = jadpo(&root, &["check"]);
     assert_eq!(check.code, 1);
     assert!(
@@ -1171,6 +1184,7 @@ Made largest_page a setting
         fs::read_to_string(root.join("config.jadpo")).expect("config"),
         "use shop/types { Pence }\n\nconfig {\n    page_size: Pence {\n        default: 100\n    }\n}\n"
     );
+    jadpo(&root, &["records", "update"]);
     let after = jadpo(&root, &["check"]);
     assert_eq!(after.code, 0, "{}", after.stdout);
 }

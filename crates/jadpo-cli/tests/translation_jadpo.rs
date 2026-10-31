@@ -78,7 +78,7 @@ fn plain(root: &std::path::Path, args: &[&str]) -> (u8, String) {
 }
 
 fn checked(root: &std::path::Path) -> (u8, String) {
-    assert_eq!(plain(root, &["api", "update"]).0, 0);
+    assert_eq!(plain(root, &["records", "update"]).0, 0);
     plain(root, &["check"])
 }
 

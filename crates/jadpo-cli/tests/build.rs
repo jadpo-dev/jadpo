@@ -102,6 +102,8 @@ const DECLARED: &str = "application {\n    connections: {\n        cache: {\n   
 #[test]
 fn a_declared_deployable_is_built_by_its_name() {
     let root = project("declared", &[("app.jadpo", DECLARED)]);
+    // Its `connections:` block keeps `network.jadpo_record` (chunk A8).
+    jadpo(&root, &["records", "update"]);
     let output = jadpo(&root, &["build", "kisok"]);
     assert_eq!(output.code, 2, "{}{}", output.stdout, output.stderr);
     for expected in [

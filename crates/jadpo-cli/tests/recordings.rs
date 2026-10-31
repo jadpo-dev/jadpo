@@ -187,7 +187,7 @@ fn desk_at(name: &str, sandbox: &str, recordings: &[(&str, String)]) -> PathBuf 
         "domains/shipping/routes/bookings.jadpo",
         "use shipping/actions { book }\nuse shipping/types { Booked, BookingForm }\n\n/// Booking collections.\nroutes Bookings {\n    prefix: /bookings\n\n    /// Anyone at the desk books one.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: BookingForm\n        output: Booked\n        status: SuccessStatus.created\n        run: book(input)\n    }\n}\n",
     );
-    let updated = jadpo(&root, &["api", "update"]);
+    let updated = jadpo(&root, &["records", "update"]);
     assert_eq!(updated.code, 0, "{}{}", updated.stdout, updated.stderr);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);

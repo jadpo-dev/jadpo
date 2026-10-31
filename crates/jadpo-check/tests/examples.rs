@@ -130,7 +130,6 @@ const EXEMPT: &[(&str, &str)] = &[
     ("root file flags.jadpo", "not built: flags (area 16)"),
     ("place monitoring", "not built: monitoring (area 16)"),
     ("place seeds", "not built: seeds (area 5)"),
-    ("place acceptances", "not built: acceptances (area 18)"),
 ];
 
 fn root() -> PathBuf {

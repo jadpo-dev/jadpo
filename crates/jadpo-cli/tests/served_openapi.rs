@@ -88,7 +88,7 @@ fn project(files: &[(&str, &str)]) -> (tempdir::Dir, PathBuf) {
     for (path, text) in files {
         write(&root, path, text);
     }
-    let updated = jadpo(&root, &["api", "update"]);
+    let updated = jadpo(&root, &["records", "update"]);
     assert_eq!(updated.code, 0, "{}", updated.stdout);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}", checked.stdout);
