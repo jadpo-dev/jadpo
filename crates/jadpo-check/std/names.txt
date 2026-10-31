@@ -35,7 +35,7 @@ File FileContents Principal Response Access AiStream
 IssuedToken IssuedKey DecodeProblem FirstSignIn MagicLinkEmail MagicLinkRequest
 MagicLinkRedeemed SignedIn SignInRefused SignInCodesDisabled PasskeyAdded
 PasskeyRemoved TestPasskey SentEmail MagicLinkAsk MagicLinkConfirmation
-MagicLinkCode MagicLinkConfirmed MagicLinkToken
+MagicLinkCode MagicLinkConfirmed MagicLinkToken TestAccount
 BatchRun BatchProgress RowProblem ImportSummary ExportSummary
 Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol
 FieldAccess OnDelete Generated FieldChange
@@ -65,8 +65,9 @@ ai: generate stream embed embed_all
 # members are listed here (area 10). `prompts.render` renders a value of any
 # prompt the project declares (area 21). `magic_links.request`, `.redeem`
 # and `.redeem_code` are magic links' operations an application's own
-# routes call, and `test_passkeys.register` and `.sign_in` a software
-# authenticator only route tests call (area 8). `email.sent` is
+# routes call, `test_passkeys.register` and `.sign_in` a software
+# authenticator only route tests call, and `test_providers.sign_in` a
+# provider only route tests sign in through (area 8). `email.sent` is
 # every email a test sent, rendered whole, read only in tests (area 16,
 # "Email"; chunk 7.3c).
 [generated]
@@ -76,6 +77,7 @@ translations:
 sessions:
 magic_links:
 test_passkeys:
+test_providers:
 batches:
 csv:
 tsv:

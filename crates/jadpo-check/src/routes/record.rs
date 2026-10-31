@@ -102,6 +102,7 @@ pub fn record_texts(db: &dyn Db, project: Project) -> BTreeMap<String, String> {
                     Generating::MagicLink { path, api_tokens } => {
                         magic_link_entries(path, *api_tokens)
                     }
+                    Generating::Provider(name) => provider_entries(name),
                     Generating::OpenApi(served) => vec![openapi_entry(served)],
                     Generating::Webhook(webhook) => vec![webhook_entry(webhook)],
                 })
@@ -305,6 +306,53 @@ fn magic_link_entries(path: &[String], api_tokens: bool) -> Vec<Generated> {
                 )],
                 MagicLinkStep::Request => Vec::new(),
             };
+            Generated {
+                at: (shown, order_of(step.method())),
+                entry,
+                sections,
+            }
+        })
+        .collect()
+}
+
+/// A sign-in provider's two routes (area 8, "Providers"; chunk A7b), as
+/// the record lists them: the runtime's, anyone may call each, the
+/// start's body and answer fixed, the callback a redirect.
+fn provider_entries(name: &str) -> Vec<Generated> {
+    use jadpo_std::http::{PROVIDER_ADDRESS, PROVIDER_START, ProviderStep};
+    ProviderStep::ALL
+        .into_iter()
+        .map(|step| {
+            let shown: String = step
+                .segments(name)
+                .iter()
+                .map(|text| format!("/{text}"))
+                .collect();
+            let mut entry = Entry::new(format!("{} {shown}", step.method().word()))
+                .with("generated provider sign-in")
+                .with("authentication none");
+            let sections = match step {
+                ProviderStep::Start => {
+                    entry.push(format!("input {PROVIDER_START} (body)"));
+                    entry.push(format!("output {PROVIDER_ADDRESS}"));
+                    vec![
+                        (
+                            PROVIDER_START.to_string(),
+                            Entry::new(format!("input {PROVIDER_START}"))
+                                .with("return_to: Text optional"),
+                        ),
+                        (
+                            PROVIDER_ADDRESS.to_string(),
+                            Entry::new(format!("output {PROVIDER_ADDRESS}")).with("address: Url"),
+                        ),
+                    ]
+                }
+                ProviderStep::Callback => {
+                    entry.push("redirect return_to");
+                    Vec::new()
+                }
+            };
+            entry.push(format!("status {}", step.code()));
             Generated {
                 at: (shown, order_of(step.method())),
                 entry,

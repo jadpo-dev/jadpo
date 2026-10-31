@@ -6,7 +6,8 @@ Builds jadpo-host-native's `deployable` example, a deployable's shape on the
 native host, on its own, so nothing turns on the runtime's `testing` feature,
 then reads the binary's symbols: none may name the fakes, the recordings,
 the crash points, the outcome-and-effect record, the delivery between a
-test's steps or the test authenticator, nor OpenSSL or `webauthn-rs` (area 8,
+test's steps, the test authenticator, the local issuer or `jadpo dev`'s
+account-chooser page, nor OpenSSL or `webauthn-rs` (area 8,
 "Passkeys"), while the runtime's HTTP component, its passkey ceremonies and
 the driver factory must be there, so the check reads a real deployable.
 
@@ -39,6 +40,10 @@ ABSENT = {
     # Tests' and `jadpo dev`'s issuer of external tokens (area 8): a
     # deployable never accepts its tokens.
     'the local issuer': path('http', 'local_issuer'),
+    # `jadpo dev`'s account-chooser page, the local issuer's stand-in for
+    # a sign-in provider (area 8, "Providers"): a deployable never serves
+    # it.
+    'the account-chooser page': path('http', 'account_chooser'),
     # No native deployable links OpenSSL (area 8, "Passkeys"): the passkey
     # ceremonies are the runtime's own, in pure Rust.
     'OpenSSL\'s bindings': path('openssl'),

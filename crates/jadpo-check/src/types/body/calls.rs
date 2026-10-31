@@ -465,7 +465,8 @@ impl Body<'_> {
             if let Ownership::Package(_) = self.ownership
                 && (head == "sessions"
                     || head == jadpo_std::http::MAGIC_LINKS
-                    || head == jadpo_std::http::TEST_PASSKEYS)
+                    || head == jadpo_std::http::TEST_PASSKEYS
+                    || head == jadpo_std::http::TEST_PROVIDERS)
             {
                 let span = self.span(callee);
                 self.package_signs_in(span, &written);
@@ -486,6 +487,9 @@ impl Body<'_> {
                 && let Some(op) = jadpo_std::http::SessionOp::test_passkey_op(member)
             {
                 return self.test_passkey_call(op, call, callee, &written);
+            }
+            if head == jadpo_std::http::TEST_PROVIDERS && member == "sign_in" {
+                return self.test_provider_call(call, callee, &written);
             }
             if head == "batches"
                 && let Some(op) = jadpo_std::batch::BatchOp::from_name(member)

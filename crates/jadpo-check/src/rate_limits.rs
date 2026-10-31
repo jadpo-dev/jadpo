@@ -314,6 +314,7 @@ fn described(kind: ConnectionKind) -> &'static str {
         ConnectionKind::Smtp => "an SMTP server",
         ConnectionKind::Model => "a model server",
         ConnectionKind::CloudflareQueue => "a Cloudflare queue",
+        ConnectionKind::SignIn => "a sign-in provider",
         ConnectionKind::Package => "a package's connection",
         ConnectionKind::Redis | ConnectionKind::CloudflareRateLimits | ConnectionKind::Other => {
             "another kind of connection"

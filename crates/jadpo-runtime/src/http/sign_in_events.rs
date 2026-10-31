@@ -33,18 +33,50 @@ use crate::outbox::{Delivery, Sealed};
 use crate::runner::Deferred;
 use crate::{Ctx, Executor, StoreError};
 
+/// A way in, as `SignInMethod` holds it: the language's own, or a
+/// sign-in provider's, after them (area 8, "Providers"; chunk A7b).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Way {
+    pub name: String,
+    pub ordinal: u32,
+}
+
+impl From<SignInMethod> for Way {
+    fn from(method: SignInMethod) -> Way {
+        Way {
+            name: method.name().to_string(),
+            ordinal: jadpo_std::variant_ordinal(SignInMethod::NAME, method.name())
+                .unwrap_or_default(),
+        }
+    }
+}
+
+impl Way {
+    /// Its `SignInMethod` value.
+    pub(crate) fn value(&self) -> Value {
+        Value::variant(SignInMethod::NAME, self.ordinal, &self.name, Vec::new())
+    }
+
+    /// Whether it is the language's own, rather than a provider's.
+    fn own(&self) -> bool {
+        SignInMethod::ALL
+            .iter()
+            .any(|method| method.name() == self.name)
+    }
+}
+
 /// One sign-in event, as the runtime publishes it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum SignInEvent {
     /// A session or API token was started.
     SignedIn {
         user: [u8; 16],
-        method: SignInMethod,
+        method: Way,
         first_time: bool,
     },
     /// A link, code or first sign-in was refused.
     Refused {
-        method: SignInMethod,
+        method: Way,
         reason: SignInRefusal,
         user: Option<[u8; 16]>,
     },
@@ -88,7 +120,7 @@ impl SignInEvent {
                 first_time,
             } => vec![
                 ("user_id", user(&Some(*id))),
-                ("method", method_value(*method)),
+                ("method", method.value()),
                 ("first_time", Value::Bool(*first_time)),
             ],
             SignInEvent::Refused {
@@ -96,7 +128,7 @@ impl SignInEvent {
                 reason,
                 user: id,
             } => vec![
-                ("method", method_value(*method)),
+                ("method", method.value()),
                 ("reason", reason_value(*reason)),
                 ("user_id", user(id)),
             ],
@@ -130,20 +162,26 @@ impl SignInEvent {
                 user: id,
                 method,
                 first_time,
-            } => serde_json::json!({
-                "user_id": user(&Some(*id)),
-                "method": method.name(),
-                "first_time": first_time,
-            }),
+            } => with_ordinal(
+                serde_json::json!({
+                    "user_id": user(&Some(*id)),
+                    "method": method.name,
+                    "first_time": first_time,
+                }),
+                method,
+            ),
             SignInEvent::Refused {
                 method,
                 reason,
                 user: id,
-            } => serde_json::json!({
-                "method": method.name(),
-                "reason": reason.name(),
-                "user_id": user(id),
-            }),
+            } => with_ordinal(
+                serde_json::json!({
+                    "method": method.name,
+                    "reason": reason.name(),
+                    "user_id": user(id),
+                }),
+                method,
+            ),
             SignInEvent::CodesDisabled { user: id, until } => serde_json::json!({
                 "user_id": user(id),
                 "until": until,
@@ -158,9 +196,15 @@ impl SignInEvent {
     }
 }
 
-fn method_value(method: SignInMethod) -> Value {
-    let ordinal = jadpo_std::variant_ordinal(SignInMethod::NAME, method.name()).unwrap_or_default();
-    Value::variant(SignInMethod::NAME, ordinal, method.name(), Vec::new())
+/// A provider's way in keeps its place in the payload too, since only
+/// the plan knows it (chunk A7b).
+fn with_ordinal(mut payload: serde_json::Value, method: &Way) -> serde_json::Value {
+    if !method.own()
+        && let Some(object) = payload.as_object_mut()
+    {
+        object.insert("method_ordinal".to_string(), method.ordinal.into());
+    }
+    payload
 }
 
 fn reason_value(reason: SignInRefusal) -> Value {
@@ -192,6 +236,17 @@ pub(crate) fn read_payload(key: &str, payload: &str) -> Option<Result<Value, Str
             .iter()
             .copied()
             .find(|method| method.name() == written)
+            .map(Way::from)
+            .or_else(|| {
+                let ordinal = object
+                    .get("method_ordinal")
+                    .and_then(serde_json::Value::as_u64)
+                    .and_then(|ordinal| u32::try_from(ordinal).ok())?;
+                Some(Way {
+                    name: written.to_string(),
+                    ordinal,
+                })
+            })
     });
     let event = match name {
         SIGNED_IN => match (
@@ -414,11 +469,11 @@ mod tests {
         for event in [
             SignInEvent::SignedIn {
                 user: [1; 16],
-                method: SignInMethod::MagicLink,
+                method: SignInMethod::MagicLink.into(),
                 first_time: true,
             },
             SignInEvent::Refused {
-                method: SignInMethod::MagicLink,
+                method: SignInMethod::MagicLink.into(),
                 reason: SignInRefusal::CodeInvalid,
                 user: None,
             },
@@ -428,11 +483,11 @@ mod tests {
             },
             SignInEvent::SignedIn {
                 user: [3; 16],
-                method: SignInMethod::Passkey,
+                method: SignInMethod::Passkey.into(),
                 first_time: false,
             },
             SignInEvent::Refused {
-                method: SignInMethod::Passkey,
+                method: SignInMethod::Passkey.into(),
                 reason: SignInRefusal::PasskeyRejected,
                 user: Some([4; 16]),
             },

@@ -396,6 +396,19 @@ pub fn verify_jwt(
     verified(token, keys, issuer, audience, now).map(|(claims, _)| claims)
 }
 
+/// [`verify_jwt`]'s claims, and every claim the token makes besides, as
+/// its JSON members: what a sign-in provider's ID token is read from
+/// (area 8, "Providers"; chunk A7b).
+pub fn verify_jwt_members(
+    token: &str,
+    keys: &[Value],
+    issuer: Option<&str>,
+    audience: Option<&str>,
+    now: i64,
+) -> Result<(Value, serde_json::Map<String, Json>), Fault> {
+    verified(token, keys, issuer, audience, now)
+}
+
 /// `crypto.verify_jwt(token, keys:, issuer:, audience:, as:)` at `now`
 /// (chunk 5.5r4): once the token holds as [`verify_jwt`] checks it, its
 /// claims as the application's object type whose codec is `codec`, those

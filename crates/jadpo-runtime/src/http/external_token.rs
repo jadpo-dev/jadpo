@@ -27,9 +27,19 @@ const CACHE_MS: i64 = 300_000;
 const REFRESH_MS: i64 = 30_000;
 type Failure = (u16, &'static str, &'static str);
 
+/// Where a provider's discovery document says it signs people in and
+/// exchanges codes (area 8, "Providers"; chunk A7b): each an HTTPS
+/// address, `None` when it names none.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Endpoints {
+    pub authorization: Option<String>,
+    pub token: Option<String>,
+}
+
 #[derive(Default)]
 struct State {
     keys: Vec<Value>,
+    endpoints: Endpoints,
     expires: i64,
     next_refresh: i64,
     busy_until: i64,
@@ -60,6 +70,16 @@ impl Settings {
     /// The configured audience.
     pub fn audience(&self) -> &str {
         &self.audience
+    }
+
+    /// An issuer whose tokens name `audience`, with a key cache of its
+    /// own: a sign-in provider's, its client ID the audience (chunk A7b).
+    pub(crate) fn new(issuer: &str, audience: &str) -> Option<Self> {
+        (!issuer.is_empty() && !audience.is_empty()).then(|| Self {
+            issuer: issuer.to_string(),
+            audience: audience.to_string(),
+            state: Rc::default(),
+        })
     }
 
     pub(crate) fn read(
@@ -129,6 +149,40 @@ impl Settings {
         if jadpo_value::jwt::preflight_jwt(token).is_err() {
             return Err(INVALID_CREDENTIALS);
         }
+        self.verified(host, now, &|keys: &[Value]| {
+            check_subject(token, keys, &self.issuer, &self.audience, now)
+        })
+        .await
+    }
+
+    /// Where the provider signs people in and exchanges codes, from its
+    /// discovery document, cached with its keys (chunk A7b); a test's or
+    /// `jadpo dev`'s local issuer's own.
+    pub(crate) async fn endpoints(
+        &self,
+        host: &dyn crate::Host,
+        now: i64,
+    ) -> Result<Endpoints, Failure> {
+        #[cfg(feature = "testing")]
+        if host.local_issuer().is_some() {
+            return Ok(Endpoints {
+                authorization: Some(super::local_issuer::AUTHORIZE.to_string()),
+                token: Some(super::local_issuer::TOKEN.to_string()),
+            });
+        }
+        self.verified(host, now, &|_: &[Value]| Ok(())).await?;
+        Ok(self.state.borrow().endpoints.clone())
+    }
+
+    /// What `check` gives once the provider's keys check a token: from the
+    /// cached keys, else from keys fetched afresh at most once, under the
+    /// cache's limits.
+    pub(crate) async fn verified<T>(
+        &self,
+        host: &dyn crate::Host,
+        now: i64,
+        check: &dyn Fn(&[Value]) -> Result<T, jadpo_value::Fault>,
+    ) -> Result<T, Failure> {
         if discovery(&self.issuer).is_none() || self.audience.is_empty() {
             return Err(AUTHENTICATION_MISCONFIGURED);
         }
@@ -136,8 +190,7 @@ impl Settings {
         // configured one's place, and nothing fetched.
         #[cfg(feature = "testing")]
         if let Some(local) = host.local_issuer() {
-            return check_subject(token, local.keys(), &self.issuer, &self.audience, now)
-                .map_err(|_| INVALID_CREDENTIALS);
+            return check(local.keys()).map_err(|_| INVALID_CREDENTIALS);
         }
         let time = || host.now_ms().unwrap_or(now);
         let mut fresh = false;
@@ -146,7 +199,7 @@ impl Settings {
             let (subject, refresh, busy, expired, failure) = {
                 let state = self.state.borrow();
                 let subject = if state.expires > at {
-                    match check_subject(token, &state.keys, &self.issuer, &self.audience, now) {
+                    match check(&state.keys) {
                         Ok(subject) => Some(subject),
                         Err(jadpo_value::Fault::Broke(jadpo_std::RuleKey::InvalidSignature)) => {
                             None
@@ -202,8 +255,9 @@ impl Settings {
                 if state.generation == generation {
                     state.next_refresh = time().saturating_add(REFRESH_MS);
                     state.failure = fetched.as_ref().err().copied();
-                    if let Ok(keys) = &fetched {
+                    if let Ok((keys, endpoints)) = &fetched {
                         state.keys = keys.clone();
+                        state.endpoints = endpoints.clone();
                         state.expires = time().saturating_add(CACHE_MS);
                     }
                 }
@@ -214,7 +268,7 @@ impl Settings {
         }
     }
 
-    async fn fetch(&self, host: &dyn crate::Host) -> Result<Vec<Value>, Failure> {
+    async fn fetch(&self, host: &dyn crate::Host) -> Result<(Vec<Value>, Endpoints), Failure> {
         let address = discovery(&self.issuer).ok_or(AUTHENTICATION_MISCONFIGURED)?;
         let outbound = host.outbound().ok_or(AUTHENTICATION_UNAVAILABLE)?;
         let (status, bytes) = outbound
@@ -238,6 +292,19 @@ impl Settings {
             .and_then(serde_json::Value::as_str)
             .filter(|url| https(url))
             .ok_or(AUTHENTICATION_MISCONFIGURED)?;
+        // A sign-in provider's endpoints, each HTTPS (chunk A7b); an
+        // external token's issuer needs neither.
+        let endpoint = |name: &str| {
+            document
+                .get(name)
+                .and_then(serde_json::Value::as_str)
+                .filter(|url| https(url))
+                .map(str::to_string)
+        };
+        let endpoints = Endpoints {
+            authorization: endpoint("authorization_endpoint"),
+            token: endpoint("token_endpoint"),
+        };
         let (status, bytes) = outbound
             .get(jwks, JWKS_BYTES, FETCH_MS)
             .await
@@ -289,7 +356,7 @@ impl Settings {
         if signing.is_empty() {
             return Err(AUTHENTICATION_MISCONFIGURED);
         }
-        Ok(signing)
+        Ok((signing, endpoints))
     }
 }
 

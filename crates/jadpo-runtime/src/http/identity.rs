@@ -191,7 +191,7 @@ pub(crate) fn carries_credential(table: &RouteTable, request: &Request) -> bool 
 }
 
 /// Every value cookie `name` has in the request's `Cookie` headers.
-fn cookie_values<'r>(request: &'r Request, name: &str) -> Vec<&'r str> {
+pub(crate) fn cookie_values<'r>(request: &'r Request, name: &str) -> Vec<&'r str> {
     request
         .headers
         .iter()
@@ -818,7 +818,7 @@ fn csrf_holds(request: &Request, csrf: Option<&str>, settings: &AuthSettings) ->
 }
 
 /// Compares in time that doesn't depend on where they differ.
-fn constant_eq(a: &[u8], b: &[u8]) -> bool {
+pub(crate) fn constant_eq(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
@@ -828,13 +828,13 @@ fn is_token(text: &str) -> bool {
 }
 
 /// What is kept of a token: its BLAKE3 digest, in hexadecimal.
-fn verifier(token: &str) -> String {
+pub(crate) fn verifier(token: &str) -> String {
     blake3::hash(token.as_bytes()).to_hex().to_string()
 }
 
 /// 32 random bytes as 64 hexadecimal digits, never kept on a recording's
 /// tape (chunk 5.5r2), so a recorded request holds no credential.
-fn new_token(ctx: &mut Ctx<'_>) -> Option<String> {
+pub(crate) fn new_token(ctx: &mut Ctx<'_>) -> Option<String> {
     let mut bytes = [0u8; 32];
     if !ctx.secret_random_bytes(&mut bytes) {
         return None;
@@ -1604,6 +1604,7 @@ mod tests {
             origin: None,
             passkeys: None,
             magic_links: None,
+            providers: None,
         }
     }
 

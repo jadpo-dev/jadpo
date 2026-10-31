@@ -814,7 +814,7 @@ impl Site<'_> {
         }
         let event = SignInEvent::SignedIn {
             user: person.user,
-            method: SignInMethod::MagicLink,
+            method: SignInMethod::MagicLink.into(),
             first_time: person.first_time,
         };
         sign_in_events::commit_with(ctx, self.executor, &self.plan.store, transaction, &[event])
@@ -837,7 +837,7 @@ impl Site<'_> {
             failure,
         });
         let mut event = SignInEvent::Refused {
-            method: SignInMethod::MagicLink,
+            method: SignInMethod::MagicLink.into(),
             reason,
             user: None,
         };
@@ -877,7 +877,7 @@ impl Site<'_> {
         let id = person.user;
         let event = SignInEvent::SignedIn {
             user: person.user,
-            method: SignInMethod::MagicLink,
+            method: SignInMethod::MagicLink.into(),
             first_time: person.first_time,
         };
         sign_in_events::emit(ctx, self.executor, &self.plan.store, &event)
@@ -1194,7 +1194,7 @@ impl Site<'_> {
                 failure: None,
             });
             let event = SignInEvent::Refused {
-                method: SignInMethod::MagicLink,
+                method: SignInMethod::MagicLink.into(),
                 reason: SignInRefusal::UserDisabled,
                 user: Some(user),
             };

@@ -2136,6 +2136,16 @@ pub fn hosts(db: &dyn Db, project: Project, domains: bool) -> Vec<Row> {
             when: None, reached_for: "runtime identity discovery and signing keys; public HTTPS, no redirects".into(), domains: Vec::new(),
         });
     }
+    // Each sign-in provider's discovery, keys and token endpoint (area 8,
+    // "Providers"; chunk A7b).
+    for provider in &identity.providers {
+        rows.push(Row {
+            connection: provider.name.clone(),
+            host: format!("the issuer in `config.{}` and the public HTTPS keys and token addresses its verified discovery document names", provider.issuer),
+            address: None, setting: Some(provider.issuer.clone()), image: None,
+            when: None, reached_for: "runtime sign-in: discovery, signing keys and the code exchange; public HTTPS, no redirects".into(), domains: Vec::new(),
+        });
+    }
     rows.sort_by(|a, b| (&a.connection, &a.host).cmp(&(&b.connection, &b.host)));
     rows
 }

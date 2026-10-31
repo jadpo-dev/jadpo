@@ -88,6 +88,7 @@ mod policy;
 mod project;
 mod prompt_policy;
 mod prompts;
+mod providers;
 mod quantities;
 mod randomness;
 mod receiving;

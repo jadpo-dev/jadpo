@@ -415,6 +415,36 @@ pub(crate) fn table(
             });
         }
     }
+    // Each sign-in provider's two routes the runtime answers (area 8,
+    // "Providers"; chunk A7b), in the same API, whose session they start.
+    if let Some(api) = passkey_api
+        && serving(&out.apis[api].name)
+    {
+        for (at, provider) in identity.providers.iter().enumerate() {
+            for step in jadpo_std::http::ProviderStep::ALL {
+                let segments = step.segments(&provider.name);
+                out.routes.push(RoutePlan {
+                    key: format!("route {} /{}", step.method().word(), segments.join("/")),
+                    method: step.method(),
+                    segments: segments.into_iter().map(Segment::Fixed).collect(),
+                    api: api as u32,
+                    input: None,
+                    output: None,
+                    status: step.status(),
+                    deadline_ms: jadpo_std::http::DEFAULT_DEADLINE_MS,
+                    run: Run::Provider(at as u32, step),
+                    settle: None,
+                    stream: false,
+                    keys: None,
+                    args: Vec::new(),
+                    authentication: step.authentication(),
+                    caller: None,
+                    file: "generated".to_string(),
+                    line: 0,
+                });
+            }
+        }
+    }
     // The magic-link routes the runtime answers (area 8, "Magic links"),
     // in the same API; the redemption only with API tokens.
     if let Some(magic) = identity.magic_link_routes()
@@ -770,11 +800,18 @@ impl<'t> Codecs<'t> {
             }
             Made::StdEnum(name) => {
                 let spelling = jadpo_std::config::Spelling::of(&name);
-                let listed: Vec<(usize, &str)> = jadpo_std::enums()
+                let mut own: Vec<&str> = jadpo_std::enums()
                     .into_iter()
                     .find(|(written, _)| *written == name)
                     .map(|(_, variants)| variants)
-                    .unwrap_or_default()
+                    .unwrap_or_default();
+                // A sign-in provider's `SignInMethod`, after the
+                // language's own (chunk A7b).
+                let providers = self.types.sign_in_providers().to_vec();
+                if name == jadpo_std::SignInMethod::NAME {
+                    own.extend(providers.iter().map(String::as_str));
+                }
+                let listed: Vec<(usize, &str)> = own
                     .into_iter()
                     .enumerate()
                     .filter(|(ordinal, _)| {
