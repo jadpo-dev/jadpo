@@ -247,6 +247,8 @@ or, for `Principal.service(service)`, a service key
 it out and the request is sent with no one signed in. `sign_in:` and
 `strength:` say how a user signed in
 ([Signing in for a route test](#signing-in-for-a-route-test)).
+Each item is given once, and each placeholder in `params:`; one given
+twice is `semantic.request_item_duplicate`.
 
 `request` gives a `Response`, which has:
 
@@ -693,7 +695,8 @@ The responses each integration operation gives, in order
 ### Everything in the test itself
 
 Settings are written once per test, so a reader sees everything that
-shapes the result in the test itself. Shared data isn't a setting: it
+shapes the result in the test itself; one written twice is
+`semantic.test_setting_duplicate`. Shared data isn't a setting: it
 comes from fixtures ([Shared test data: fixtures](#shared-test-data-fixtures)).
 
 ## Acting as a user

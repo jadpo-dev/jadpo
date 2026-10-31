@@ -938,6 +938,8 @@ rules! {
         "Principal variant is not user or service";
     SEMANTIC_REQUEST_INVALID: "semantic.request_invalid", area 13, Error, Agent,
         "Route test request doesn't fit its route";
+    SEMANTIC_REQUEST_ITEM_DUPLICATE: "semantic.request_item_duplicate", area 13, Error, Agent,
+        "A route test's `request { }` gives an item, or a placeholder in `params:`, twice";
     SEMANTIC_REQUEST_ROUTE_UNKNOWN: "semantic.request_route_unknown", area 13, Error, Agent,
         "A route test's `request { }` names a method and path that no route in the app answers";
     SEMANTIC_REVOCATION_DELAY_INVALID: "semantic.revocation_delay_invalid", area 8, Error, Agent,
@@ -948,6 +950,8 @@ rules! {
         "Standard-library operation has moved to another name";
     SEMANTIC_STANDARD_OPERATION_QUALIFICATION: "semantic.standard_operation_qualification", area 1, Error, Agent,
         "Standard-library operation is called without its namespace";
+    SEMANTIC_TEST_SETTING_DUPLICATE: "semantic.test_setting_duplicate", area 13, Error, Agent,
+        "A test gives one of its settings, `clock:`, `config:` or `fakes:`, twice";
     SEMANTIC_UNKNOWN_CALLEE: "semantic.unknown_callee", area 1, Error, Agent,
         "Called name is not declared";
     SEMANTIC_UNKNOWN_NAME: "semantic.unknown_name", area 1, Error, Agent,

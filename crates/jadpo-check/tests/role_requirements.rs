@@ -389,3 +389,77 @@ test "a company account" {
     let found = problems(&format!("{CODE}{test}"));
     assert_eq!(found, Vec::<String>::new(), "{found:?}");
 }
+
+#[test]
+fn a_route_test_says_each_way_in_once() {
+    let test = r#"
+test "an admin signed in through Google" {
+    config: {
+        google_domain: "desk.example"
+    }
+
+    var ann: Patron = attempt add_patron("ann@desk.example")
+    var answer: Response = request {
+        method: HttpMethod.get
+        path: "/v1/desk/patrons"
+        as: Principal.user(ann)
+        sign_in: SignInMethod.google
+        strength: AuthenticationStrength.multi_factor
+    }
+    assert answer.status == 200
+}
+"#;
+    let found = problems(&format!("{CODE}{test}"));
+    assert_eq!(found, Vec::<String>::new(), "{found:?}");
+    for (line, rule, words) in [
+        (
+            "        sign_in: SignInMethod.google\n",
+            "semantic.request_item_duplicate",
+            "`sign_in:` is given twice",
+        ),
+        (
+            "        strength: AuthenticationStrength.multi_factor\n",
+            "semantic.request_item_duplicate",
+            "`strength:` is given twice",
+        ),
+        (
+            "        as: Principal.user(ann)\n",
+            "semantic.request_item_duplicate",
+            "`as:` is given twice",
+        ),
+        (
+            "    config: {\n        google_domain: \"desk.example\"\n    }\n",
+            "semantic.test_setting_duplicate",
+            "`config:` is given twice",
+        ),
+    ] {
+        let twice = test.replacen(line, &format!("{line}{line}"), 1);
+        let found = problems(&format!("{CODE}{twice}"));
+        assert!(has(&found, rule, words), "{line}: {found:?}");
+        assert_eq!(found.len(), 1, "{line}: {found:?}");
+    }
+}
+
+#[test]
+fn a_test_account_gives_each_field_once() {
+    let test = r#"
+test "a company account" {
+    var answer: Response = test_providers.sign_in(
+        SignInMethod.google,
+        TestAccount {
+            subject: "1"
+            subject: "2"
+            email: "ann@desk.example"
+            email_verified: true
+            name: none
+        }
+    )
+    assert answer.code == none
+}
+"#;
+    let found = problems(&format!("{CODE}{test}"));
+    assert!(
+        has(&found, "type.duplicate_field", "`subject` is given twice"),
+        "{found:?}"
+    );
+}
