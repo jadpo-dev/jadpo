@@ -938,6 +938,32 @@ The registry is Jadpo's own, and holds Jadpo packages of both kinds.
 - A few curated packages, Stripe, Twilio and GitHub, imported from their
   published OpenAPI, live in the Jadpo repository.
 
+**Releasing to the registry** needs a person by default, and no publish
+token exists:
+
+- **A release waits for a passkey.** Publishing names a repository and a
+  tag; the registry fetches that commit, checks it, and holds the release
+  as pending until a releaser confirms it with a passkey on jadpo.dev,
+  seeing its surface diff, what it reaches and its version. A stolen git
+  credential or CI token alone can't publish.
+- **Routine releases may release themselves.** A package can opt into
+  automatic release 24 hours after a release goes pending, unless a member
+  cancels it; every member is told when it goes pending. Only a release
+  that isn't a new major and adds no host, no new place personal data is
+  sent and no new call that changes something qualifies. Any other release
+  always needs the passkey.
+- **Any releaser can confirm.** A publisher is a person or an
+  organisation. An organisation's owners manage its members and packages,
+  and any member who is a releaser confirms with their own passkey.
+- **A new releaser waits seven days** before they can confirm a release,
+  and every member is told they were added. Removing a releaser takes
+  effect at once.
+- **Succession is named in advance.** An owner may name a successor, who
+  can claim the package once the owner hasn't signed in for six months,
+  after the owner is emailed and has 30 days to refuse. Without a named
+  successor Jadpo never hands a package to anyone: it can be marked
+  unmaintained, and a fork is published under its own name.
+
 ### An importer
 
 `jadpo package import <format> <file>` turns a published description into

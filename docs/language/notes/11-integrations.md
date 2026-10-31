@@ -219,6 +219,15 @@ Numbered as the questions they settled, which other pages cite.
     publisher, `@publisher/name`, with the code name unchanged (Richard,
     2026-10-31): every registry with flat names has fought squatting and
     typosquats, and a scope tells a reader who stands behind a package.
+    Releases need a releaser's passkey by default, with an opt-in 24-hour
+    automatic release for routine releases, a seven-day wait for a new
+    releaser and successors named in advance (Richard, 2026-10-31).
+    Publishing whenever a tag appears would make a package as safe as the
+    weakest credential with write access to its repository, which is what
+    the 2025 and 2026 npm worms stole; a passkey can't be phished or copied
+    off a disk. The wait for a new releaser answers the xz-utils takeover,
+    where a stranger earned release rights; refusing to hand over a package
+    with no named successor answers event-stream.
 16. **Package names** are UpperCamelCase with the package's own version
     label: `Stripe.v2024_06_20`, `AcmeCouriers.v1`, `Postcodes.v2`. Types,
     failures and events are named through the package without the version
