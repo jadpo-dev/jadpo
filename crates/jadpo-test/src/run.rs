@@ -39,12 +39,11 @@ struct Kept {
 }
 
 /// What a run keeps besides how each test went: each test's record
-/// (chunk 8.1c), and, for the differential run, what the batch runs a
-/// test started do once run to their end (chunk 8.1h).
+/// (chunk 8.1c), with what the batch runs a test started did, which run
+/// between its steps (area 13, "Batches").
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct Keep {
     pub record: bool,
-    pub batches: bool,
 }
 
 /// What makes a thread's executor when tests run on one other than the
@@ -235,15 +234,7 @@ fn one<E: Executor>(
     keep: Keep,
 ) -> Done {
     let mut kept = keep.record.then(Kept::default);
-    let failure = tested(
-        executor,
-        test,
-        rerun,
-        sources,
-        stores,
-        kept.as_mut(),
-        keep.batches,
-    );
+    let failure = tested(executor, test, rerun, sources, stores, kept.as_mut());
     let record =
         kept.map(|kept| TestRecord::new(&kept.entries, &verdict(failure.as_deref()), &kept.rows));
     (failure, record)
@@ -268,8 +259,7 @@ fn recording(kept: Option<&Kept>) -> Option<Rc<Record>> {
 }
 
 /// Runs one test: `None` when it passed. What it did goes into `kept`,
-/// when given, and with `batches` each batch run it started is run to its
-/// end once it has ended.
+/// when given.
 fn tested<E: Executor>(
     executor: &E,
     test: &Test,
@@ -277,7 +267,6 @@ fn tested<E: Executor>(
     sources: &dyn Sources,
     stores: &Stores<'_>,
     kept: Option<&mut Kept>,
-    batches: bool,
 ) -> Option<Box<TestFailure>> {
     // A recording of one of the app's own integrations, read by its
     // operation's decoders (chunk 7.2d2).
@@ -350,7 +339,6 @@ fn tested<E: Executor>(
             databases,
             runtime,
             callable,
-            batches,
         };
         let first = stored.run(None, kept);
         if first.failure.is_some() {
@@ -391,7 +379,6 @@ fn tested<E: Executor>(
         callable,
         order: None,
         crash: None,
-        batches: false,
         record: record.clone(),
     };
     let ran = block_on(test_run::once(executor, &host, once))
@@ -465,8 +452,6 @@ struct Stored<'s, E> {
     databases: &'s TestDatabases,
     runtime: &'s jadpo_host_native::Runtime,
     callable: u32,
-    /// Each batch run the test started run to its end once it has ended.
-    batches: bool,
 }
 
 /// How one run of a test with a database went.
@@ -500,7 +485,6 @@ impl<E: Executor> Stored<'_, E> {
                 callable: self.callable,
                 order: Some(self.rerun.seed),
                 crash,
-                batches: self.batches,
                 record: record.clone(),
             },
         ));

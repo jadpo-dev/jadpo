@@ -230,7 +230,6 @@ fn compare(
         kind: Some(TestKind::Route),
         seed: Some(SEED),
         record: true,
-        batches: true,
         ..Options::default()
     }) {
         // A project with no route tests compares none.
@@ -353,15 +352,15 @@ impl Remote<'_> {
                 .ok_or("the test server can't be reached over TCP")?;
             stores.insert(store.clone(), url);
         }
-        // Only a test with a database delivers between its steps, counts
-        // the steps it reaches and runs the batches it started, as natively.
+        // Only a test with a database delivers between its steps, runs the
+        // batches its steps start and counts the steps it reaches, as
+        // natively.
         let asked = Asked {
             program: self.program,
             key: test.key.clone(),
             order: copy.as_ref().map(|_| SEED),
             stores,
             crash,
-            batches: copy.is_some(),
             record: record.then(crate::differential::digest_key),
         };
         let answered = self.workerd.post("/run", &asked.to_json());

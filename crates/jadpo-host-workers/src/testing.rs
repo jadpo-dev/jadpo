@@ -10,8 +10,7 @@
 //! posted to the Worker): which program, the test's key, the run's order
 //! seed for a test with a database, the address of a copy of each store's
 //! database on the run's server, which the Worker reaches over
-//! `connect()`, a crash to make and whether to run the batches it started
-//! and keep a record. The Worker runs it as `jadpo test` runs one
+//! `connect()`, a crash to make and whether to keep a record. The Worker runs it as `jadpo test` runs one
 //! ([`jadpo_runtime::test_run::once`]): on a host of its own holding those
 //! stores, their statements kept in the record, with every file kept in
 //! memory and every email caught, as a test's host has them, no randomness
@@ -66,8 +65,6 @@ pub struct Asked {
     pub stores: BTreeMap<String, String>,
     /// The step, from 1, and the boundary to crash the run at.
     pub crash: Option<(usize, Boundary)>,
-    /// Each batch run the test started run to its end.
-    pub batches: bool,
     /// Whether to keep the run's record, with the key its digests are
     /// keyed with: the asking process's own, so they are compared with its
     /// records' (chunk 8.4a).
@@ -86,7 +83,6 @@ impl Asked {
                 "at": at,
                 "boundary": boundary.word(),
             })),
-            "batches": self.batches,
             "record": self.record.map(|key| key.iter().map(|byte| format!("{byte:02x}")).collect::<String>()),
         })
         .to_string()
@@ -123,7 +119,6 @@ impl Asked {
             order: at(&value, "order").as_u64(),
             stores,
             crash,
-            batches: at(&value, "batches").as_bool().unwrap_or(false),
             record: match at(&value, "record") {
                 Value::Null => None,
                 key => Some(digest_key(key)?),
@@ -353,7 +348,6 @@ async fn ran(programs: &[MakeProgram], asked: &Asked) -> Result<Answered, String
         callable,
         order: asked.order,
         crash: asked.crash,
-        batches: asked.batches,
         record: record.clone(),
     };
     // A test without a database runs on a host with no store, as natively.
@@ -565,7 +559,6 @@ mod tests {
             order: Some(u64::MAX),
             stores: BTreeMap::from([("main".into(), "postgresql://jadpo@127.0.0.1:5432/t".into())]),
             crash: Some((2, Boundary::AfterSend)),
-            batches: true,
             record: Some(core::array::from_fn(|at| at as u8 * 7)),
         };
         assert_eq!(Asked::read(&asked.to_json()), Ok(asked));
@@ -575,7 +568,6 @@ mod tests {
             order: None,
             stores: BTreeMap::new(),
             crash: None,
-            batches: false,
             record: None,
         };
         assert_eq!(Asked::read(&without.to_json()), Ok(without));
