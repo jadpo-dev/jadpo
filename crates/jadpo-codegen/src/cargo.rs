@@ -27,6 +27,9 @@ pub enum Failed {
     Start(String),
     /// cargo ran and refused: what it printed.
     Refused(String),
+    /// cargo couldn't fetch the crates a build needs, before it compiled
+    /// anything: what it printed (area 14, "What it compiles with").
+    Fetch(String),
 }
 
 impl std::fmt::Display for Failed {
@@ -34,6 +37,7 @@ impl std::fmt::Display for Failed {
         match self {
             Failed::Start(error) => write!(f, "cargo couldn't be started: {error}"),
             Failed::Refused(output) => write!(f, "cargo couldn't build it:\n{output}"),
+            Failed::Fetch(output) => write!(f, "cargo couldn't fetch the crates:\n{output}"),
         }
     }
 }

@@ -1133,7 +1133,7 @@ rules! {
     TOOLCHAIN_EMPTY_PROJECT: "toolchain.empty_project", area 1, Error, Agent,
         "Project declares nothing";
     TOOLCHAIN_FETCH_FAILED: "toolchain.fetch_failed", area 14, Error, Human,
-        "The Rust toolchain `jadpo build` compiles with couldn't be fetched, usually because the download server or the mirror `JADPO_RUST_DIST_SERVER` names can't be reached";
+        "The Rust toolchain or the crates `jadpo build` compiles with couldn't be fetched, usually because the server they come from, or the mirror in its place, can't be reached";
     TOOLCHAIN_NOT_BUILT_YET: "toolchain.not_built_yet", area 3, Error, Agent,
         "Operation is declared but not built yet";
     TOOLCHAIN_PROJECT_NOT_FOUND: "toolchain.project_not_found", area 14, Error, Agent,
