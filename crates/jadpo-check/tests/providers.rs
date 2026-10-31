@@ -157,7 +157,10 @@ fn google_and_microsoft_sign_in_through_their_connections() {
 fn a_provider_the_app_doesnt_declare_is_no_sign_in_method() {
     let code = CODE.replace("SignInMethod.google", "SignInMethod.github");
     let found = problems(&source(CONNECTIONS, AUTHENTICATION, &code));
-    assert!(has(&found, "type.unknown_enum_variant", "github"), "{found:?}");
+    assert!(
+        has(&found, "type.unknown_enum_variant", "github"),
+        "{found:?}"
+    );
 }
 
 #[test]
@@ -193,19 +196,28 @@ fn a_provider_is_a_connection_on_the_oidc_driver() {
 fn an_oidc_connection_reads_its_settings_from_configuration() {
     let no_client = CONNECTIONS.replace("            client_id: config.google_client_id\n", "");
     let found = problems(&source(&no_client, AUTHENTICATION, CODE));
-    assert!(has(&found, "connection.key_missing", "client_id"), "{found:?}");
+    assert!(
+        has(&found, "connection.key_missing", "client_id"),
+        "{found:?}"
+    );
     let plain = CONNECTIONS.replace(
         "    google_client_secret: Text {\n        secret: true\n    }\n",
         "    google_client_secret: Text\n",
     );
     let found = problems(&source(&plain, AUTHENTICATION, CODE));
-    assert!(has(&found, "connection.value_invalid", "secret"), "{found:?}");
+    assert!(
+        has(&found, "connection.value_invalid", "secret"),
+        "{found:?}"
+    );
     let written = CONNECTIONS.replace(
         "issuer: config.google_issuer",
         "issuer: \"https://accounts.google.com\"",
     );
     let found = problems(&source(&written, AUTHENTICATION, CODE));
-    assert!(has(&found, "connection.value_invalid", "issuer"), "{found:?}");
+    assert!(
+        has(&found, "connection.value_invalid", "issuer"),
+        "{found:?}"
+    );
     let unknown = CONNECTIONS.replace(
         "            client_id: config.google_client_id\n",
         "            client_id: config.google_client_id\n            scopes: config.google_client_id\n",

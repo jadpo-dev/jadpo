@@ -981,9 +981,15 @@ impl Types {
                     // own (chunk A7b).
                     _ => jadpo_std::variant_ordinal(ty, variant).or_else(|| {
                         (ty == jadpo_std::SignInMethod::NAME)
-                            .then(|| self.sign_in_providers.iter().position(|name| name == variant))
+                            .then(|| {
+                                self.sign_in_providers
+                                    .iter()
+                                    .position(|name| name == variant)
+                            })
                             .flatten()
-                            .and_then(|at| u32::try_from(jadpo_std::SignInMethod::NAMES.len() + at).ok())
+                            .and_then(|at| {
+                                u32::try_from(jadpo_std::SignInMethod::NAMES.len() + at).ok()
+                            })
                     })?,
                 };
                 Some(ShapePlan {

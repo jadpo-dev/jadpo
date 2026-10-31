@@ -59,7 +59,9 @@ impl Way {
 
     /// Whether it is the language's own, rather than a provider's.
     fn own(&self) -> bool {
-        SignInMethod::ALL.iter().any(|method| method.name() == self.name)
+        SignInMethod::ALL
+            .iter()
+            .any(|method| method.name() == self.name)
     }
 }
 

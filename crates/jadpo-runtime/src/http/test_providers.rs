@@ -107,11 +107,7 @@ pub async fn sign_in(
         asked("redirect_uri"),
         asked("client_id"),
     ) else {
-        return defect(
-            ctx,
-            "the provider's address names no sign-in to answer",
-            at,
-        );
+        return defect(ctx, "the provider's address names no sign-in to answer", at);
     };
     // The local issuer signs the account in, as the provider would.
     let now = ctx.now();
@@ -171,9 +167,9 @@ struct Route {
 }
 
 fn route(app: &App<'_>, provider: u32, step: ProviderStep) -> Option<Route> {
-    let (index, plan) = app.table.routes.iter().enumerate().find(|(_, plan)| {
-        matches!(plan.run, Run::Provider(at, found) if at == provider && found == step)
-    })?;
+    let (index, plan) = app.table.routes.iter().enumerate().find(
+        |(_, plan)| matches!(plan.run, Run::Provider(at, found) if at == provider && found == step),
+    )?;
     Some(Route {
         index: u32::try_from(index).ok()?,
         path: plan.path(),

@@ -981,6 +981,343 @@ tests can call it:
 Text`, `email: Email?`, `email_verified: Bool` and `name: Text?`. Only a
 test, fixture or seed builds one.
 
+Here a lending desk's staff sign in with Google. A member of staff is
+taken on under their address, and `on_first_sign_in:` links the Google
+account whose address Google has verified to them. The route test signs
+Ann in through Google twice, the second time through the link, and shows
+an unverified address and a Microsoft account refused:
+
+```jadpo check project=google-staff file=app.jadpo
+use desk/entities { Librarian }
+
+application {
+    display_name: "Lending desk"
+    connections: {
+        google: {
+            driver: Driver.oidc
+            issuer: config.google_issuer
+            client_id: config.google_client_id
+            credential: config.google_client_secret
+        }
+        microsoft: {
+            driver: Driver.oidc
+            issuer: config.microsoft_issuer
+            client_id: config.microsoft_client_id
+            credential: config.microsoft_client_secret
+        }
+    }
+}
+
+principal {
+    user: {
+        subject: Librarian.email
+        active: Librarian.active == true
+    }
+}
+```
+
+```jadpo check project=google-staff file=authentication.jadpo
+use desk
+
+authentication {
+    browser_session: {
+        cookie: "desk_session"
+        origin: config.site
+    }
+    sign_in: {
+        providers: [google, microsoft]
+    }
+    on_first_sign_in: desk.link_staff
+}
+```
+
+```jadpo check project=google-staff file=domains/desk/actions/link_staff.jadpo
+use desk/entities { Librarian }
+use desk/failures { NotOnTheStaff }
+use desk/queries { staff_member }
+
+/// Links a Google account to the member of staff with its address, once
+/// Google has verified it.
+action link_staff(first: FirstSignIn) fails NotOnTheStaff -> Librarian.id {
+    if (first.method != SignInMethod.google or not first.address_verified) {
+        reject NotOnTheStaff {}
+    }
+    match first.address {
+        none -> {
+            reject NotOnTheStaff {}
+        }
+        some(address) -> {
+            var librarian: Librarian = attempt staff_member(address)
+            return librarian.id
+        }
+    }
+}
+```
+
+```jadpo check project=google-staff file=domains/desk/routes/staff.test.jadpo
+use desk/types { NewLibrarian }
+use desk/actions { take_on }
+
+test "staff sign in with Google under the address they were taken on with" {
+    attempt take_on(
+        NewLibrarian {
+            email: "ann@desk.example"
+            name: "Ann"
+        }
+    )
+    var first: Response = test_providers.sign_in(
+        SignInMethod.google,
+        TestAccount {
+            subject: "110248495921238986420"
+            email: "ann@desk.example"
+            email_verified: true
+            name: "Ann Lee"
+        }
+    )
+    assert first.status == 303
+    assert first.code == none
+    var again: Response = test_providers.sign_in(
+        SignInMethod.google,
+        TestAccount {
+            subject: "110248495921238986420"
+            email: none
+            email_verified: false
+            name: none
+        }
+    )
+    assert again.code == none
+}
+
+test "an address Google hasn't verified signs no one in" {
+    attempt take_on(
+        NewLibrarian {
+            email: "bo@desk.example"
+            name: "Bo"
+        }
+    )
+    var refused: Response = test_providers.sign_in(
+        SignInMethod.google,
+        TestAccount {
+            subject: "2001"
+            email: "bo@desk.example"
+            email_verified: false
+            name: none
+        }
+    )
+    assert refused.status == 303
+    assert refused.code == "sign_in_refused"
+}
+
+test "a Microsoft account isn't linked by its address" {
+    attempt take_on(
+        NewLibrarian {
+            email: "cy@desk.example"
+            name: "Cy"
+        }
+    )
+    var refused: Response = test_providers.sign_in(
+        SignInMethod.microsoft,
+        TestAccount {
+            subject: "AAAAAAAAAAAAAAAAAAAAAPv0"
+            email: "cy@desk.example"
+            email_verified: true
+            name: "Cy"
+        }
+    )
+    assert refused.code == "sign_in_refused"
+}
+```
+
+```jadpo check project=google-staff file=config.jadpo hidden
+config {
+    google_client_id: Text {
+        test: "desk-google"
+    }
+    google_client_secret: Text {
+        secret: true
+    }
+    google_issuer: Url {
+        default: "https://accounts.google.com"
+    }
+    microsoft_client_id: Text {
+        test: "desk-microsoft"
+    }
+    microsoft_client_secret: Text {
+        secret: true
+    }
+    microsoft_issuer: Url {
+        test: "https://login.microsoftonline.com/7f1d3a5e-8c2b-4f6a-9d0e-2b4c6a8e0f13/v2.0"
+    }
+    site: Url {
+        test: "https://desk.example"
+    }
+}
+```
+
+```jadpo check project=google-staff file=domains/desk/entities/librarian.jadpo hidden
+entity Librarian {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
+    name: Text
+    active: Bool
+
+    policy: {
+        create: [Access.system]
+        read: [id, Access.system]
+    }
+}
+```
+
+```jadpo check project=google-staff file=domains/desk/failures/not_on_the_staff.jadpo hidden
+/// The person isn't on the staff.
+type NotOnTheStaff = Failure {
+    kind: FailureKind.not_found
+}
+```
+
+```jadpo check project=google-staff file=domains/desk/failures/already_on_the_staff.jadpo hidden
+/// Someone on the staff has that address already.
+type AlreadyOnTheStaff = Failure {
+    kind: FailureKind.conflict
+}
+```
+
+```jadpo check project=google-staff file=domains/desk/types/new_librarian.jadpo hidden
+use desk/entities { Librarian }
+
+/// Someone to take on, by the address they sign in with.
+type NewLibrarian = Input {
+    email: Librarian.email
+    name: Librarian.name
+}
+```
+
+```jadpo check project=google-staff file=domains/desk/types/librarian_card.jadpo hidden
+use desk/entities { Librarian }
+
+type LibrarianCard = Output {
+    pick: [Librarian.id, Librarian.name]
+}
+```
+
+```jadpo check project=google-staff file=domains/desk/queries/staff_member.jadpo hidden
+use desk/entities { Librarian }
+use desk/failures { NotOnTheStaff }
+
+/// The member of staff with an address.
+query staff_member(address: Email) fails NotOnTheStaff -> Librarian {
+    from: Librarian
+    where: Librarian.email == address
+    missing: NotOnTheStaff
+}
+```
+
+```jadpo check project=google-staff file=domains/desk/queries/me.jadpo hidden
+use desk/entities { Librarian }
+use desk/types { LibrarianCard }
+use desk/failures { NotOnTheStaff }
+
+/// The signed-in member of staff.
+query me(user: Principal.user) fails NotOnTheStaff -> LibrarianCard {
+    from: Librarian
+    where: Librarian.id == user.id
+    missing: NotOnTheStaff
+}
+```
+
+```jadpo check project=google-staff file=domains/desk/actions/take_on.jadpo hidden
+use desk/entities { Librarian }
+use desk/types { NewLibrarian }
+use desk/failures { AlreadyOnTheStaff }
+
+/// Takes someone on, to sign in with Google under their address.
+action take_on(input: NewLibrarian) fails AlreadyOnTheStaff -> Librarian {
+    return attempt Librarian.create {
+        set: {
+            email: input.email
+            name: input.name
+            active: true
+        }
+        conflict: {
+            Librarian.email: AlreadyOnTheStaff
+        }
+    }
+}
+```
+
+```jadpo check project=google-staff file=domains/desk/routes/staff.jadpo hidden migrate=initial
+use desk/types { LibrarianCard }
+use desk/queries { me }
+
+/// What a signed-in member of staff reaches.
+routes Staff {
+    prefix: /staff
+    GET /me {
+        output: LibrarianCard
+        run: me(current_principal.user)
+    }
+}
+```
+
+```jadpo check project=google-staff file=api/main.jadpo_record hidden
+// Generated by Jadpo from the routes of API main; update it with `jadpo api update`, never by hand.
+record api 1
+
+api main
+    authentication browser_session
+
+GET /auth/google/callback
+    generated provider sign-in
+    authentication none
+    redirect return_to
+    status 303
+
+POST /auth/google/start
+    generated provider sign-in
+    authentication none
+    input ProviderSignInStart (body)
+    output ProviderSignInAddress
+    status 200
+
+GET /auth/microsoft/callback
+    generated provider sign-in
+    authentication none
+    redirect return_to
+    status 303
+
+POST /auth/microsoft/start
+    generated provider sign-in
+    authentication none
+    input ProviderSignInStart (body)
+    output ProviderSignInAddress
+    status 200
+
+GET /openapi.json
+    generated openapi
+    status 200
+
+GET /staff/me
+    caller user
+    output LibrarianCard
+    status 200
+    fails not_on_the_staff
+
+output LibrarianCard
+    id: Uuid
+    name: Text
+
+output ProviderSignInAddress
+    address: Url
+
+input ProviderSignInStart
+    return_to: Text optional
+
+failure not_on_the_staff
+    status 404
+```
+
 Not built yet: provider sign-in in `jadpo dev`, where the local issuer
 shows a page for choosing the account to sign in as, needing no
 credentials; and `Driver.github` and `Driver.apple`.
@@ -2264,7 +2601,8 @@ app's own [subscribers](12-jobs-and-events.md#subscribers) can use:
 `SignInRefusal` is a built-in enum: `link_expired`, `link_other_browser`,
 `code_invalid`, `codes_disabled`, `refused_by_app`, `user_disabled`,
 `passkey_challenge_expired` and `passkey_rejected`. `SignInMethod` has
-`passkey` when `passkey:` is declared.
+`passkey` when `passkey:` is declared, and a value for each sign-in
+provider, its connection's name.
 
 No event carries an address, a link, a code, a challenge, or a passkey's
 credential ID or key.
@@ -2626,6 +2964,23 @@ See [Built-in emails](16-built-in-services.md) for both settings.
 | `emit` of `PasskeyAdded` or `PasskeyRemoved` | `event.emit_invalid` |
 | `test_passkeys.register` or `.sign_in` anywhere but a test | `semantic.request_invalid` |
 | `test_passkeys.register` or `.sign_in` with no `passkey:` | `semantic.auth_setting_required` |
+
+### Sign-in providers
+
+| What you wrote | Error |
+|---|---|
+| A name in `providers:` that isn't a connection on `Driver.oidc` | `semantic.auth_setting_invalid` |
+| A provider named `magic_link`, `passkey` or `external_token`, or named twice | `semantic.auth_setting_invalid` |
+| `providers:` without `browser_session:`, or without its `origin:` | `semantic.auth_setting_required` |
+| `providers:` without `on_first_sign_in:` | `semantic.auth_setting_required` |
+| A `Driver.oidc` connection without `issuer:`, `client_id:` or `credential:` | `connection.key_missing` |
+| `issuer:` not reading a `Url` setting, `client_id:` not a `Text` one, or `credential:` not a secret one | `connection.value_invalid` |
+| Any other setting on a `Driver.oidc` connection | `connection.key_invalid` |
+| A route your app writes at `/auth/<name>/start` or `/auth/<name>/callback` | `route.path_overlap` |
+| `SignInMethod.<name>` for a provider the app doesn't name | `type.unknown_enum_variant` |
+| `test_providers.sign_in` anywhere but a test | `semantic.request_invalid` |
+| `test_providers.sign_in` with no `providers:` | `semantic.auth_setting_required` |
+| `TestAccount` built with `{ ... }` anywhere but a test, fixture or seed | `type.not_record` |
 
 ## Who is calling: `current_principal`
 <!-- topic: who-is-calling-current-principal -->

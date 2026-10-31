@@ -1013,7 +1013,9 @@ format in its own language.
 Some features generate their routes for you:
 
 - magic-link sign-in and passkeys ([Magic links](08-identity.md#magic-links),
-  [Passkeys](08-identity.md#passkeys)), and `POST /auth/exchange`
+  [Passkeys](08-identity.md#passkeys)), each sign-in provider's
+  `POST /auth/<name>/start` and `GET /auth/<name>/callback`
+  ([Providers](08-identity.md#providers)), and `POST /auth/exchange`
   ([Identity](08-identity.md));
 - the privacy requests ([Data requests](15-personal-data.md#data-requests));
 - `GET /flags` ([Feature flags](16-built-in-services.md#feature-flags));

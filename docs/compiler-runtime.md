@@ -2395,7 +2395,6 @@ structured subject fields remain compile-time `toolchain.not_built_yet`
 gates. Without `on_first_sign_in:` an unknown subject is 403
 `sign_in_refused`. Scope declarations are not built yet; area 9 says an
 external method narrows only when it declares the scopes it reads.
-Provider login is not built yet.
 
 **First sign-in by external token** (area 8, "A person the app has not
 seen"; chunk A7). With `on_first_sign_in:` and `external_token:`, the
@@ -2415,6 +2414,36 @@ that arrive together wait on the lock and sign in through that link, so
 the action runs once per subject. A refusal is `sign_in_refused`,
 logged with the failure and published as `SignInRefused`; an action's
 fault is a 500 whose fault the host logs.
+
+**Sign-in providers** (area 8, "Providers"; chunk A7b). The checker
+reads each `Driver.oidc` connection in `jadpo_check::sign_in_providers`
+(`issuer:` a `Url`, `client_id:` a `Text`, `credential:` a secret
+setting) and `sign_in: { providers: }` into `Identity::providers`, once
+a browser session's origin and `on_first_sign_in:` hold; the type table
+gives `SignInMethod` a value per provider after the language's own, read
+from the syntax alone (`sign_in_providers::declared`) so it needs no
+identity, and `jadpo-plan`'s `Types` and JSON codec give them their
+ordinals. `Generating::Provider` puts `POST /auth/<name>/start` and
+`GET /auth/<name>/callback` in the first API that takes browser sessions:
+the record, OpenAPI, the graph and `jadpo routes`. The plan's
+`ProvidersPlan` holds each provider's setting names and ordinal and the
+link-only lookup; `Run::Provider(at, step)` is answered by
+`http::provider_sign_in`. The start keeps `jadpo_provider_sign_ins` (the
+`state`'s and binding cookie's digests, `return_to`, ten minutes); PKCE
+and the nonce are keyed BLAKE3 of the cookie and `state`, never stored.
+Discovery, keys and the authorization and token endpoints come from
+`external_token::Settings`, one cache per provider at startup with
+external tokens' bounds; the code goes to the token endpoint through
+`Outbound::post_form` (native `Outward`, never repeated; Workers' fetch,
+`global_fetch_strictly_public` set where providers are served). The ID
+token is checked by `id_token` (signature, exact `iss`, `aud`, `azp`,
+times, `nonce`) and only `sub`, `email`, `email_verified` and `name`
+reach `FirstSignIn`. The account's user comes from
+`sign_in_links::first`, then a session starts with `SignedIn`, whose way
+in carries a provider's ordinal (`sign_in_events::Way`). In tests the
+local issuer is the provider: its `authorize` and `redeem` answer in
+process, and `test_providers.sign_in` (`SessionOp::TestProviderSignIn`,
+the `testing` feature only) drives both routes through the HTTP component.
 
 **Signed sessions** (area 8). The identity reads
 `revocation_delay:`, each method's `signing_key:` (a `SigningKey`

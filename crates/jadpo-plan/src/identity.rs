@@ -191,7 +191,10 @@ impl Planner<'_> {
         }
         let user = identity.variant(PrincipalKind::User)?;
         let entity = self.model.entity(&user.entity)?;
-        let subject = entity.fields.iter().find(|field| field.name == user.subject)?;
+        let subject = entity
+            .fields
+            .iter()
+            .find(|field| field.name == user.subject)?;
         let own = jadpo_std::SignInMethod::NAMES.len();
         Some(jadpo_std::http::ProvidersPlan {
             providers: identity

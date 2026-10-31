@@ -69,8 +69,7 @@ const EXCHANGE_MS: u64 = 3_000;
 pub(crate) const PUT: &str = "INSERT INTO \"jadpo_provider_sign_ins\" (\"id\", \"provider\", \"state\", \"binding\", \"return_to\", \"expires_at\") VALUES ($1, $2, $3, $4, $5, $6)";
 
 /// Drops the sign-ins that expired before `$1`.
-pub(crate) const SWEEP: &str =
-    "DELETE FROM \"jadpo_provider_sign_ins\" WHERE \"expires_at\" <= $1";
+pub(crate) const SWEEP: &str = "DELETE FROM \"jadpo_provider_sign_ins\" WHERE \"expires_at\" <= $1";
 
 /// Takes a sign-in once, by `$1` its `state`'s digest and `$2` its
 /// provider: its binding cookie's digest, where to go next and when it
@@ -79,7 +78,9 @@ pub(crate) const TAKE: &str = "DELETE FROM \"jadpo_provider_sign_ins\" WHERE \"s
 
 /// The cookie binding a sign-in to the browser that started it.
 pub(crate) fn binding_cookie(plan: &IdentityPlan) -> Option<String> {
-    plan.cookie.as_ref().map(|cookie| format!("{cookie}_provider"))
+    plan.cookie
+        .as_ref()
+        .map(|cookie| format!("{cookie}_provider"))
 }
 
 /// The provider route `step` of the provider at `at`, answered.
@@ -229,7 +230,11 @@ impl<'a> Site<'a> {
             ("code_challenge", &challenge),
             ("code_challenge_method", "S256"),
         ];
-        let separator = if authorization.contains('?') { '&' } else { '?' };
+        let separator = if authorization.contains('?') {
+            '&'
+        } else {
+            '?'
+        };
         let address = format!("{authorization}{separator}{}", form(&query));
         let mut body = String::from("{\"address\":");
         jadpo_value::json::write_string(&address, &mut body);
@@ -282,8 +287,13 @@ impl<'a> Site<'a> {
             )
             .await
             .map_err(|_| unavailable(self, "/"))?;
-        let Some([SqlValue::Text(bound), SqlValue::Text(return_to), SqlValue::Timestamp(ends)]) =
-            rows.first().map(Vec::as_slice)
+        let Some(
+            [
+                SqlValue::Text(bound),
+                SqlValue::Text(return_to),
+                SqlValue::Timestamp(ends),
+            ],
+        ) = rows.first().map(Vec::as_slice)
         else {
             return Err(self.redirect("/", PROVIDER_FAILED));
         };
@@ -382,7 +392,11 @@ impl<'a> Site<'a> {
 
     /// The user the account signs in: through its link, else the one
     /// `on_first_sign_in:` gives; refused unless active.
-    async fn user(&self, ctx: &mut Ctx<'_>, claims: &IdClaims) -> Result<([u8; 16], bool), Refused> {
+    async fn user(
+        &self,
+        ctx: &mut Ctx<'_>,
+        claims: &IdClaims,
+    ) -> Result<([u8; 16], bool), Refused> {
         let first = &self.providers.first_sign_in;
         let params = [
             SqlValue::Null(self.providers.subject_sql),
@@ -525,7 +539,13 @@ fn return_to(request: &Request) -> Result<String, Stop> {
     }
     let json = request
         .header("content-type")
-        .map(|kind| kind.split(';').next().unwrap_or("").trim().to_ascii_lowercase())
+        .map(|kind| {
+            kind.split(';')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_ascii_lowercase()
+        })
         .is_some_and(|kind| kind == "application/json" || kind.ends_with("+json"));
     if !json {
         return Err(Stop::Fail(super::BODY_NOT_JSON));
@@ -564,7 +584,13 @@ fn derived(binding: &str, state: &str) -> (String, String) {
 fn form(pairs: &[(&str, &str)]) -> String {
     pairs
         .iter()
-        .map(|(name, value)| format!("{}={}", super::percent_encode(name), super::percent_encode(value)))
+        .map(|(name, value)| {
+            format!(
+                "{}={}",
+                super::percent_encode(name),
+                super::percent_encode(value)
+            )
+        })
         .collect::<Vec<_>>()
         .join("&")
 }
@@ -619,8 +645,8 @@ pub(crate) fn id_token(
     let address = text("email")
         .filter(|address| jadpo_std::is_email(address))
         .map(str::to_string);
-    let address_verified = address.is_some()
-        && members.get("email_verified") == Some(&serde_json::Value::Bool(true));
+    let address_verified =
+        address.is_some() && members.get("email_verified") == Some(&serde_json::Value::Bool(true));
     let name = text("name")
         .filter(|name| !name.trim().is_empty())
         .map(str::to_string);
@@ -698,7 +724,10 @@ mod tests {
         unverified["email_verified"] = "true".into();
         assert!(checked(unverified).is_some_and(|claims| !claims.address_verified));
         let mut absent = claims();
-        absent.as_object_mut().expect("claims").remove("email_verified");
+        absent
+            .as_object_mut()
+            .expect("claims")
+            .remove("email_verified");
         assert!(checked(absent).is_some_and(|claims| !claims.address_verified));
         // Something that isn't an address is no address at all.
         let mut odd = claims();
@@ -754,6 +783,9 @@ mod tests {
         assert_ne!(derived("cookie", "another state").1, nonce);
         // PKCE's verifier is 43 to 128 unreserved characters.
         assert_eq!(pkce.len(), 43);
-        assert!(pkce.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'));
+        assert!(
+            pkce.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        );
     }
 }

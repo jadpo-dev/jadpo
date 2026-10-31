@@ -305,9 +305,9 @@ impl Identity {
     pub fn links_store(&self) -> Option<&str> {
         (self.first_sign_in.is_some()
             && (self.external_token.is_some() || !self.providers.is_empty()))
-            .then(|| self.variant(PrincipalKind::User))
-            .flatten()
-            .map(|variant| variant.store.as_str())
+        .then(|| self.variant(PrincipalKind::User))
+        .flatten()
+        .map(|variant| variant.store.as_str())
     }
 
     /// The store service keys are kept in, when service keys are declared:

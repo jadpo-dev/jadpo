@@ -601,14 +601,15 @@ impl Plan {
         // Every provider package's types read its provider's answers, a
         // package with no connection's too, whose recordings `jadpo
         // package check` decodes (chunk 5.5v7).
-        let mut types = Types::new(Arc::clone(&graph), rule_bodies).with_providers(
-            jadpo_check::surface::homes(db, project)
-                .into_values()
-                .filter(|home| jadpo_check::connections::reach(db, project, home).is_some())
-                .map(|home| home.folder)
-                .collect(),
-        )
-        .with_sign_in_providers(jadpo_check::sign_in_providers::declared(db, project).clone());
+        let mut types = Types::new(Arc::clone(&graph), rule_bodies)
+            .with_providers(
+                jadpo_check::surface::homes(db, project)
+                    .into_values()
+                    .filter(|home| jadpo_check::connections::reach(db, project, home).is_some())
+                    .map(|home| home.folder)
+                    .collect(),
+            )
+            .with_sign_in_providers(jadpo_check::sign_in_providers::declared(db, project).clone());
         if !backfills.is_empty() {
             let lookup = jadpo_check::lookups::Lookup::new(db, project);
             for ((backfill, (entity, field)), reads) in backfills

@@ -820,7 +820,10 @@ impl Body<'_> {
             return failed(self);
         }
         let params = [
-            ("method", Ty::Named(jadpo_std::SignInMethod::NAME.to_string())),
+            (
+                "method",
+                Ty::Named(jadpo_std::SignInMethod::NAME.to_string()),
+            ),
             (
                 "account",
                 Ty::Opaque(jadpo_std::http::TEST_ACCOUNT.to_string(), Vec::new()),

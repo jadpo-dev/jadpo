@@ -726,7 +726,10 @@ can't, because there a caller only comes from signing in.
 A route test signs in with `as:`, which goes through the application's
 real authentication. A service signs in with a key from
 `Service.issue_key`. So a disabled user is refused exactly as in
-production, and the sign-in checks are tested too.
+production, and the sign-in checks are tested too. To test signing in
+itself, `test_passkeys` signs in with a passkey and `test_providers`
+through a sign-in provider, with the test run's local issuer as the
+provider ([Providers](08-identity.md#providers)).
 
 ### Calls with no caller
 

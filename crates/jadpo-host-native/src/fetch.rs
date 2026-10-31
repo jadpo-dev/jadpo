@@ -312,7 +312,9 @@ impl jadpo_runtime::Outbound for Outward {
                 .header(header::HOST, target.authority())
                 .header(header::ACCEPT, "application/json")
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
-                .body(Full::new(hyper::body::Bytes::from(form.as_bytes().to_vec())))
+                .body(Full::new(hyper::body::Bytes::from(
+                    form.as_bytes().to_vec(),
+                )))
                 .map_err(|error| format!("a request it can't send: {error}"))?;
             let (answer, lease) = self
                 .client

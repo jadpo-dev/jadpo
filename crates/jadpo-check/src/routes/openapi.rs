@@ -1044,14 +1044,8 @@ fn provider_operation(
                 ),
             ];
             for (status, schema_name, code, description) in failures {
-                failure_schemas.insert(
-                    schema_name.to_string(),
-                    envelope(code, description, None),
-                );
-                responses.set(
-                    status,
-                    response(description, Some(reference(schema_name))),
-                );
+                failure_schemas.insert(schema_name.to_string(), envelope(code, description, None));
+                responses.set(status, response(description, Some(reference(schema_name))));
             }
         }
         S::Callback => {

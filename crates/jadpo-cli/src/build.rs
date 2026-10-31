@@ -291,16 +291,14 @@ pub fn build(call: &Call) -> Reply {
                         workers::wrangler(&workers::Wrangler {
                             app: project.name(db),
                             deployable: name,
-                            public_identity: plan
-                                .routes()
-                                .identity
-                                .as_ref()
-                                .is_some_and(|identity| {
+                            public_identity: plan.routes().identity.as_ref().is_some_and(
+                                |identity| {
                                     // A sign-in provider's discovery, keys
                                     // and token endpoint too (chunk A7b).
                                     identity.external_token.is_some()
                                         || identity.providers.is_some()
-                                }),
+                                },
+                            ),
                             required: &required,
                             hyperdrive: &hyperdrive,
                             ticks: plan.schedules().ticks(),

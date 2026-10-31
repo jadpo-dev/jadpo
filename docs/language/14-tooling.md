@@ -221,6 +221,10 @@ a running `jadpo dev` in the project, whose key it signs with: the key is
 made for the session, kept in `build/dev/issuer.json`, readable only by
 you, while it runs, and removed when it stops.
 
+Signing in through a provider ([Providers](08-identity.md#providers))
+isn't built in `jadpo dev` yet: the provider's own settings are needed
+to run it.
+
 **Background work.** Each schedule run and each skipped tick (a paused
 schedule's, once) gets a line with its trace's id, its outcome, what it
 emitted or its failure, and its time. Each alert gets a line when it

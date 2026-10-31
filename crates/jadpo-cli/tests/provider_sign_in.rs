@@ -376,10 +376,12 @@ fn header<'r>(response: &'r Response, name: &str) -> Vec<&'r str> {
 
 /// The value `response` sets cookie `name` to.
 fn cookie(response: &Response, name: &str) -> Option<String> {
-    header(response, "set-cookie").into_iter().find_map(|value| {
-        let (key, rest) = value.split_once('=')?;
-        (key == name).then(|| rest.split(';').next().unwrap_or("").to_string())
-    })
+    header(response, "set-cookie")
+        .into_iter()
+        .find_map(|value| {
+            let (key, rest) = value.split_once('=')?;
+            (key == name).then(|| rest.split(';').next().unwrap_or("").to_string())
+        })
 }
 
 #[test]
@@ -391,7 +393,9 @@ fn a_member_of_staff_signs_in_with_google_through_the_runtime_alone() {
     let loaded = jadpo_db::load(&root);
     let prepared = Prepared::load(&loaded.db, loaded.project).expect("checks");
     let server = jadpo_test::database::server().expect("server");
-    let url = server.create_database("provider_sign_in").expect("database");
+    let url = server
+        .create_database("provider_sign_in")
+        .expect("database");
     super::deployable::apply(&url, &super::deployable::migrations(&root));
     super::deployable::rows(
         &url,
@@ -446,7 +450,12 @@ fn a_member_of_staff_signs_in_with_google_through_the_runtime_alone() {
     // The start, from the app's own page: Google's address with this
     // sign-in's state, nonce and S256 challenge, and the binding cookie.
     let started = start(Some(SITE), r#"{"return_to":"/books"}"#);
-    assert_eq!(started.status, 200, "{:?}", String::from_utf8_lossy(&started.body));
+    assert_eq!(
+        started.status,
+        200,
+        "{:?}",
+        String::from_utf8_lossy(&started.body)
+    );
     let address: Value = serde_json::from_slice(&started.body).expect("JSON");
     let address = address["address"].as_str().expect("an address").to_string();
     let (at, query) = address.split_once('?').expect("a query");
@@ -456,7 +465,10 @@ fn a_member_of_staff_signs_in_with_google_through_the_runtime_alone() {
     assert_eq!(asked["response_type"], "code");
     assert_eq!(asked["scope"], "openid email profile");
     assert_eq!(asked["code_challenge_method"], "S256");
-    assert_eq!(asked["redirect_uri"], "https://desk.example/auth/google/callback");
+    assert_eq!(
+        asked["redirect_uri"],
+        "https://desk.example/auth/google/callback"
+    );
     let binding_header = header(&started, "set-cookie").join("\n");
     assert!(
         binding_header.contains("desk_session_provider=")
@@ -507,10 +519,18 @@ fn a_member_of_staff_signs_in_with_google_through_the_runtime_alone() {
     assert!(!session.is_empty());
     // What Google was sent: the code, the client's secret and the
     // verifier its challenge was made from.
-    let exchanged = host.google.exchanged.borrow().last().cloned().expect("an exchange");
+    let exchanged = host
+        .google
+        .exchanged
+        .borrow()
+        .last()
+        .cloned()
+        .expect("an exchange");
     assert_eq!(exchanged["client_secret"], SECRET);
     assert_eq!(
-        to_base64url(&jadpo_value::hash::sha256(exchanged["code_verifier"].as_bytes())),
+        to_base64url(&jadpo_value::hash::sha256(
+            exchanged["code_verifier"].as_bytes()
+        )),
         asked["code_challenge"]
     );
     assert_eq!(
@@ -532,7 +552,10 @@ fn a_member_of_staff_signs_in_with_google_through_the_runtime_alone() {
     assert_eq!(card["name"], "Ann");
     // The same callback again: the sign-in was used.
     let replayed = back("code-1", &state, &binding);
-    assert_eq!(header(&replayed, "location"), ["/?error=sign_in_provider_failed"]);
+    assert_eq!(
+        header(&replayed, "location"),
+        ["/?error=sign_in_provider_failed"]
+    );
     // Another browser can't finish a sign-in this one started.
     let restart = |body: &str| {
         let started = start(Some(SITE), body);
@@ -544,7 +567,10 @@ fn a_member_of_staff_signs_in_with_google_through_the_runtime_alone() {
                 .expect("a query")
                 .1,
         );
-        (asked, cookie(&started, "desk_session_provider").expect("binding"))
+        (
+            asked,
+            cookie(&started, "desk_session_provider").expect("binding"),
+        )
     };
     let (asked_again, _) = restart("");
     host.google.grants.borrow_mut().insert(
@@ -556,7 +582,10 @@ fn a_member_of_staff_signs_in_with_google_through_the_runtime_alone() {
         },
     );
     let elsewhere = back("code-2", &asked_again["state"], "another-browsers-cookie");
-    assert_eq!(header(&elsewhere, "location"), ["/?error=sign_in_provider_failed"]);
+    assert_eq!(
+        header(&elsewhere, "location"),
+        ["/?error=sign_in_provider_failed"]
+    );
     // An ID token for another sign-in, its nonce not this one's, is
     // refused.
     let (asked_third, third_binding) = restart(r#"{"return_to":"/loans?due=today"}"#);
@@ -642,5 +671,8 @@ fn a_provider_whose_discovery_names_another_issuer_is_misconfigured() {
             ..Request::default()
         },
     ));
-    assert_eq!(started.code.as_deref(), Some("authentication_misconfigured"));
+    assert_eq!(
+        started.code.as_deref(),
+        Some("authentication_misconfigured")
+    );
 }

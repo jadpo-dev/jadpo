@@ -211,7 +211,8 @@ pub type Entries = fn(u32) -> Option<&'static Entry>;
 
 /// The failures the runtime answers with itself (area 7, "How failures
 /// reach the client").
-pub(crate) const INVALID_REQUEST: (u16, &str, &str) = (400, "invalid_request", "Request could not be read.");
+pub(crate) const INVALID_REQUEST: (u16, &str, &str) =
+    (400, "invalid_request", "Request could not be read.");
 const INVALID_INPUT: (u16, &str, &str) = (422, "invalid_input", "Request input is invalid.");
 const HEADER_UNREADABLE: (u16, &str, &str) = (
     400,
@@ -1272,12 +1273,14 @@ async fn run_with_caller(
                     }
                 }
                 // Answered once signed in, without running anything.
-                Run::Exchange | Run::Passkey(_) | Run::MagicLink(_) | Run::Provider(..) | Run::OpenApi(_) => {
-                    Outcome::Fault(ctx.fault(
-                        crate::FaultKind::Defect("an exchange with no key to trade".into()),
-                        Frame::ENTRY,
-                    ))
-                }
+                Run::Exchange
+                | Run::Passkey(_)
+                | Run::MagicLink(_)
+                | Run::Provider(..)
+                | Run::OpenApi(_) => Outcome::Fault(ctx.fault(
+                    crate::FaultKind::Defect("an exchange with no key to trade".into()),
+                    Frame::ENTRY,
+                )),
                 Run::Query(plan) => {
                     match crate::store(
                         ctx,
