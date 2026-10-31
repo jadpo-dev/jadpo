@@ -2579,7 +2579,7 @@ type ProvingTime = Decimal {
     min: 0.0
 }
 
-type Offset = Decimal {
+type RoundDistance = Decimal {
     scale: 1
 }
 
@@ -2626,18 +2626,18 @@ function hourly_rise(grown: Growth) fails NeverRose -> Rise {
 
 /// The direction of a customer at `northing` and `easting` from the
 /// bakery, in radians clockwise from north.
-function course(northing: Offset, easting: Offset) -> Course {
+function course(northing: RoundDistance, easting: RoundDistance) -> Course {
     return Course(decimal.atan2(easting, northing, scale: 6, rounding: Rounding.half_even))
 }
 
 /// Where a van is, east and north of the bakery, `driven` metres on
 /// `course`.
-function easting_after(driven: Offset, course: Course) -> Offset {
-    return Offset(driven * decimal.sin(course, scale: 6, rounding: Rounding.half_even))
+function easting_after(driven: RoundDistance, course: Course) -> RoundDistance {
+    return RoundDistance(driven * decimal.sin(course, scale: 6, rounding: Rounding.half_even))
 }
 
-function northing_after(driven: Offset, course: Course) -> Offset {
-    return Offset(driven * decimal.cos(course, scale: 6, rounding: Rounding.half_even))
+function northing_after(driven: RoundDistance, course: Course) -> RoundDistance {
+    return RoundDistance(driven * decimal.cos(course, scale: 6, rounding: Rounding.half_even))
 }
 ```
 

@@ -122,10 +122,10 @@ fn a_name_that_is_more_than_a_unit_or_a_type_that_holds_its_unit_is_left_alone()
 
 #[test]
 fn it_can_be_declined_with_a_reason() {
-    let declined = "/// Chocolate bars in stock.\ndecline type.unit_as_number: \"Chocolate bars in stock, not a pressure\"\ntype Bars = Int {\n    min: 0\n}\n";
+    let declined = "/// Knots the scouts can tie.\ndecline type.unit_as_number: \"Knots the scouts can tie, not a speed\"\ntype Knots = Int {\n    min: 0\n}\n";
     assert_eq!(messages(declined), NONE);
     assert_eq!(
-        messages("/// Chocolate bars in stock.\ntype Bars = Int {\n    min: 0\n}\n"),
-        ["type.unit_as_number: `Bars` holds a `Pressure` as a plain number"]
+        messages("/// Knots the scouts can tie.\ntype Knots = Int {\n    min: 0\n}\n"),
+        ["type.unit_as_number: `Knots` holds a `Speed` as a plain number"]
     );
 }

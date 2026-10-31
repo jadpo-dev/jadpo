@@ -1699,6 +1699,7 @@ mod tests {
                 "translation.field_unused",
                 "type.batch_order_updatable",
                 "type.standard_exists",
+                "type.unit_as_number",
                 "type.variant_retired"
             ]
         );

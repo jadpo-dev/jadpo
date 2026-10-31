@@ -104,9 +104,9 @@ to a price in another currency doesn't compile.
 line with the reason directly above the declaration:
 
 ```jadpo check project=unit-as-number-declined
-/// Chocolate bars on the shelf.
-decline type.unit_as_number: "Chocolate bars on the shelf, not a pressure"
-type Bars = Int {
+/// Knots the scouts can tie.
+decline type.unit_as_number: "Knots the scouts can tie, not a speed"
+type Knots = Int {
     min: 0
 }
 ```

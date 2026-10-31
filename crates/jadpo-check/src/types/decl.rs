@@ -515,8 +515,8 @@ impl Decls<'_> {
     /// roadmap F1): a type built on `Int` or `Decimal` whose whole name is
     /// one of a standard type's units, a currency's minor unit or a
     /// percentage, by `jadpo suggest`'s name data, is that standard type
-    /// held as a plain number. A judgement call: `Bars` of chocolate are
-    /// no pressure.
+    /// held as a plain number. A judgement call: the `Knots` scouts tie
+    /// are no speed.
     fn unit_as_number(&mut self, decl: &ast::TypeDecl, name: &str, parent: &Ty) {
         let Some(builtin) = self.table.base_prim(parent) else {
             return;

@@ -498,14 +498,14 @@ type ParcelWeight = Mass {
 }
 ```
 
-A name can be a unit by chance: `Bars` of chocolate are no pressure. The
+A name can be a unit by chance: the `Knots` scouts tie are no speed. The
 rule is a judgement call, so you can decline it on the type with a reason
 ([Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)):
 
-```jadpo check project=chocolate-bars
-/// Chocolate bars on the shelf.
-decline type.unit_as_number: "Chocolate bars on the shelf, not a pressure"
-type Bars = Int {
+```jadpo check project=scout-knots
+/// Knots the scouts can tie.
+decline type.unit_as_number: "Knots the scouts can tie, not a speed"
+type Knots = Int {
     min: 0
 }
 ```
