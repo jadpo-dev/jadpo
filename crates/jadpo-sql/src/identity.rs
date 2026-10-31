@@ -135,6 +135,69 @@ pub fn user_by(entity_table: &str, column: &str, active: &str, wheres: &[String]
     )
 }
 
+/// How an external token finds its user once `on_first_sign_in:` may
+/// have linked one (area 8, "A person the app has not seen"; chunk A7), in
+/// one read: the user whose `subject` column is `$1`, else the one
+/// `links` links way in `$3` and subject `$4` to; `$2` the time now. Each
+/// read from `entity_table` where `wheres` hold, giving its `id`, its
+/// `active` worked out as given and its subject.
+pub fn linked_user(
+    links: &str,
+    entity_table: &str,
+    subject: &str,
+    active: &str,
+    wheres: &[String],
+) -> String {
+    let user = |extra: &str| {
+        let mut conditions = vec![extra.to_string()];
+        conditions.extend(wheres.iter().cloned());
+        format!(
+            "SELECT {id}, {active} AS {active_name}, {subject} AS {subject_name} FROM {entity_table} WHERE {conditions}",
+            id = ident("id"),
+            active_name = ident("active"),
+            subject = ident(subject),
+            subject_name = ident("subject"),
+            entity_table = ident(entity_table),
+            conditions = conditions.join(" AND "),
+        )
+    };
+    format!(
+        "SELECT u.{id}, u.{active_name}, u.{subject_name} FROM (SELECT 0 AS {found}, f.* FROM ({direct}) AS f UNION ALL SELECT 1, l.* FROM {links} AS s CROSS JOIN LATERAL ({linked}) AS l WHERE s.{method} = $3 AND s.{link_subject} = $4) AS u WHERE $2::timestamptz IS NOT NULL ORDER BY u.{found} LIMIT 1",
+        id = ident("id"),
+        active_name = ident("active"),
+        subject_name = ident("subject"),
+        found = ident("found"),
+        direct = user(&format!("{} = $1", ident(subject))),
+        linked = user(&format!("{} = s.{}", ident("id"), ident("user_id"))),
+        links = ident(links),
+        method = ident("method"),
+        link_subject = ident("subject"),
+    )
+}
+
+/// A user by `$1` its `id`, `$2` the time now, read from `entity_table`
+/// where `wheres` hold: its `id`, its `active` worked out as given and its
+/// `subject` column. The user `on_first_sign_in:`'s action gave (chunk A7).
+pub fn user_with_subject(
+    entity_table: &str,
+    subject: &str,
+    active: &str,
+    wheres: &[String],
+) -> String {
+    let mut conditions = vec![format!("{} = $1", ident("id"))];
+    conditions.extend(wheres.iter().cloned());
+    conditions.push("$2::timestamptz IS NOT NULL".to_string());
+    format!(
+        "SELECT {id}, {active} AS {active_name}, {subject} AS {subject_name} FROM {entity_table} WHERE {conditions} LIMIT 1",
+        id = ident("id"),
+        active_name = ident("active"),
+        subject = ident(subject),
+        subject_name = ident("subject"),
+        entity_table = ident(entity_table),
+        conditions = conditions.join(" AND "),
+    )
+}
+
 /// A user's address by its `id` (area 8, "Passkeys"; chunk 5.5z2): `$1`
 /// the user's `id`, `$2` the time now, read from `entity_table`'s
 /// `column` where `wheres` hold. What a person's device lists a new

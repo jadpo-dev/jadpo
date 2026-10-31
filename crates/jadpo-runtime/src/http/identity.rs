@@ -120,14 +120,26 @@ pub(crate) struct Refused {
     /// Whether the request carried a credential, so the refusal counts
     /// against its address's rate limit.
     pub credential: bool,
+    /// The fault behind a 500, for the host's log: `on_first_sign_in:`'s
+    /// action's (chunk A7).
+    pub fault: Option<Box<Fault>>,
 }
 
 impl Refused {
-    fn new(failure: (u16, &'static str, &'static str)) -> Refused {
+    pub(crate) fn new(failure: (u16, &'static str, &'static str)) -> Refused {
         Refused {
             failure,
             clear: false,
             credential: true,
+            fault: None,
+        }
+    }
+
+    /// A 500 `internal_fault` for `fault`, which the host logs.
+    pub(crate) fn fault(fault: Box<Fault>) -> Refused {
+        Refused {
+            fault: Some(fault),
+            ..Refused::new(super::INTERNAL_FAULT)
         }
     }
 }
@@ -232,6 +244,7 @@ pub(crate) enum Reissued {
 /// refused.
 pub(crate) async fn authenticate(
     app: &super::App<'_>,
+    executor: &dyn crate::Executor,
     ctx: &mut Ctx<'_>,
     request: &Request,
     route: &RoutePlan,
@@ -394,7 +407,7 @@ pub(crate) async fn authenticate(
             .json
             .codec_of(external.subject_type)
             .ok_or_else(|| Refused::new(AUTHENTICATION_MISCONFIGURED))?;
-        let value = app
+        let typed = app
             .json
             .codecs
             .read_text(
@@ -403,9 +416,45 @@ pub(crate) async fn authenticate(
                 &jadpo_value::json::Path::default(),
                 &mut Vec::new(),
             )
-            .ok_or_else(|| Refused::new(INVALID_CREDENTIALS))?;
-        let subject = crate::to_sql(&value, external.subject_sql)
-            .map_err(|_| Refused::new(INVALID_CREDENTIALS))?;
+            .and_then(|value| crate::to_sql(&value, external.subject_sql).ok());
+        // With `on_first_sign_in:`, a subject no user's field holds, or one
+        // that isn't of its type, is found through the link a first
+        // sign-in made, or decided by the action (chunk A7).
+        if let Some(first) = &external.first_sign_in {
+            let params = [
+                typed.unwrap_or(SqlValue::Null(external.subject_sql)),
+                SqlValue::Timestamp(ctx.now().saturating_mul(1000)),
+                SqlValue::Text(jadpo_std::SignInMethod::ExternalToken.name().to_string()),
+                SqlValue::Text(subject.clone()),
+            ];
+            let rows = database
+                .query_once(&first.lookup, &params)
+                .await
+                .map_err(|_| Refused::new(AUTHENTICATION_UNAVAILABLE))?;
+            let row = match rows.into_iter().next() {
+                Some(row) => row,
+                None => {
+                    super::sign_in_links::external(
+                        ctx,
+                        executor,
+                        &user.store,
+                        first,
+                        &params,
+                        &subject,
+                    )
+                    .await?
+                }
+            };
+            let [id @ SqlValue::Uuid(_), SqlValue::Bool(active), subject] = row.as_slice() else {
+                return Err(Refused::new(AUTHENTICATION_UNAVAILABLE));
+            };
+            if !active {
+                return Err(Refused::new(USER_DISABLED));
+            }
+            let caller = caller_of(route, user, PrincipalKind::User, id, subject, None)?;
+            return Ok(Admitted::new(caller));
+        }
+        let subject = typed.ok_or_else(|| Refused::new(INVALID_CREDENTIALS))?;
         let rows = database
             .query_once(
                 &external.lookup,
