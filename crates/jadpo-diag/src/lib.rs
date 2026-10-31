@@ -245,7 +245,7 @@ rules! {
     CONFIGURATION_FIELD_UNKNOWN: "configuration.field_unknown", area 10, Error, Agent,
         "Configuration has no setting with this name";
     CONFIGURATION_LOCAL_CHANGED: "configuration.local_changed", area 14, Error, Human,
-        "Local configuration changed during the update";
+        "Something else saved `.env.local` while `jadpo config set` was saving a value in it";
     CONFIGURATION_LOCAL_INVALID_ENCODING: "configuration.local_invalid_encoding", area 14, Error, Human,
         "The `.env.local` file holds bytes that aren't UTF-8 text";
     CONFIGURATION_LOCAL_READ_FAILED: "configuration.local_read_failed", area 14, Error, Human,
@@ -281,7 +281,7 @@ rules! {
     CONFIGURATION_VALUE_INVALID: "configuration.value_invalid", area 14, Error, Human,
         "A setting's value on this machine, from the environment or `.env.local`, doesn't fit the type `config.jadpo` gives it";
     CONFIGURATION_VALUE_MISSING: "configuration.value_missing", area 14, Error, Human,
-        "Required configuration is missing";
+        "A setting `config.jadpo` declares without a `default:` has no value on this machine, in the environment or `.env.local`";
     CONFORM_FAILED: "conform.failed", area 14, Error, Agent,
         "Package's answers don't conform to its capability";
     CONFORM_REFUSED: "conform.refused", area 14, Error, Human,
@@ -535,7 +535,7 @@ rules! {
     FORMAT_UNSAFE: "format.unsafe", area 14, Error, Human,
         "Formatting would change the file's meaning";
     FORMAT_WRITE_FAILED: "format.write_failed", area 14, Error, Human,
-        "Formatted source could not be written";
+        "A file `jadpo fmt` formatted couldn't be written, usually because it is read-only";
     IMPORT_DUPLICATE: "import.duplicate", area 1, Error, Agent,
         "Name or folder imported twice";
     IMPORT_MISSING: "import.missing", area 1, Error, Agent,
@@ -1129,11 +1129,11 @@ rules! {
     TOOLCHAIN_ARTIFACT_WRITE_FAILED: "toolchain.artifact_write_failed", area 14, Error, Human,
         "A file Jadpo writes for you, such as a record, couldn't be written, usually because it or its folder is read-only";
     TOOLCHAIN_BUILD_FAILED: "toolchain.build_failed", area 14, Error, Human,
-        "Rust compiler couldn't build the deployable";
+        "The Rust `jadpo build` wrote for a deployable didn't compile, because the machine lacks something the build runs, such as a C compiler, or because of a mistake in Jadpo";
     TOOLCHAIN_EMPTY_PROJECT: "toolchain.empty_project", area 1, Error, Agent,
         "Project declares nothing";
     TOOLCHAIN_FETCH_FAILED: "toolchain.fetch_failed", area 14, Error, Human,
-        "Rust toolchain or crates couldn't be fetched";
+        "The Rust toolchain `jadpo build` compiles with couldn't be fetched, usually because the download server or the mirror `JADPO_RUST_DIST_SERVER` names can't be reached";
     TOOLCHAIN_NOT_BUILT_YET: "toolchain.not_built_yet", area 3, Error, Agent,
         "Operation is declared but not built yet";
     TOOLCHAIN_PROJECT_NOT_FOUND: "toolchain.project_not_found", area 14, Error, Agent,
@@ -1157,7 +1157,7 @@ rules! {
     TOOLCHAIN_VERSION_OLDER: "toolchain.version_older", area 1, Error, Human,
         "The project is written for an earlier Jadpo release line than the `jadpo` checking it, and that `jadpo` can't run the earlier release instead";
     TRANSLATION_EXCHANGE_FILE_INVALID: "translation.exchange_file_invalid", area 14, Error, Human,
-        "Translation exchange file can't be read or written";
+        "A file given to `jadpo translations import` isn't XLIFF 2.x or JSON in the shape `export` writes, or can't be read as one";
     TRANSLATION_EXCHANGE_UNIT_UNKNOWN: "translation.exchange_unit_unknown", area 14, Error, Agent,
         "Translation file holds a unit the project does not have";
     TRANSLATION_FEATURE_OFF: "translation.feature_off", area 10, Error, Agent,

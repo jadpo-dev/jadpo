@@ -141,6 +141,10 @@ SKIP_POSTGRES = os.environ.get('JADPO_SKIP_POSTGRES') == '1'
 RENDER_LIMIT = 10
 # Seconds a ```sh run block's commands may take; each takes well under one.
 RUN_LIMIT = 60
+# A ```sh run line that takes a permission away, as an error about a
+# folder that can't be read or written needs. Root reads and writes past
+# any permission, so as root such a block would pass wrongly.
+TAKES_PERMISSION = re.compile(r'^\s*chmod\b', re.M)
 # Seconds a `tty` block waits, once a prompt shows, for the terminal to stop
 # echoing before it types: a prompt for a secret turns the echo off first,
 # and one that doesn't ask for a secret never does.
@@ -316,9 +320,15 @@ class Page:
         copy of its project (the `check` blocks with its `project=`, made
         as a reader's commands make them), print what the output block
         after it holds. With `expect=<rule>` they end failing with that
-        rule's diagnostic, and only that one; without it they succeed."""
+        rule's diagnostic, and only that one; without it they succeed.
+        As root, a block with a `chmod` line is refused, not run: root
+        ignores the permissions it takes away."""
         def run_one(block):
             name = block['attrs']['project']
+            if TAKES_PERMISSION.search(block['source']) and os.geteuid() == 0:
+                return [f'{name} (line {block["line"] + self.offset + 1}): its commands take a permission away '
+                        'with `chmod`, which root ignores, so as root they would pass wrongly; '
+                        'run the docs check as an ordinary user'], 'refused'
             files = [b for b in self.blocks if b['attrs'].get('check') and b['attrs']['project'] == name]
             with tempfile.TemporaryDirectory() as tmp:
                 project, home = Path(tmp) / 'project', Path(tmp) / 'home'
@@ -341,6 +351,9 @@ class Page:
             self.problems += problems
             expected = block['attrs'].get('expect')
             expected = expected if isinstance(expected, str) else 'pass'
+            if result == 'refused':
+                self.run_results.append({'expected': expected, 'ok': False})
+                continue
             if result is None:
                 self.problems.append(f'{where}: its commands didn\'t finish in {RUN_LIMIT} s')
                 self.run_results.append({'expected': expected, 'ok': False})
@@ -735,7 +748,8 @@ def error_format_scope(catalogue, root=ROOT):
     guides or a teaching example's README names, and those whose next step
     a person decides. A rule only a command raises, whose page has no
     example yet, waits for a ```sh run block that shows it (roadmap,
-    D13b2 and D13b3); every other page follows once D13c is built."""
+    D13b2b, D13b2c and D13b3); every other page follows once D13c is
+    built."""
     named = set()
     for path in [root / 'docs/primer.md', *sorted((root / 'docs/learn').glob('*.md')),
                  *sorted((root / 'docs/guides').glob('*.md'))]:

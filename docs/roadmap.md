@@ -276,26 +276,34 @@ D1 first: the site starts once D1 has merged.
 - [x] **D12 What the Learn path found**: [area 8](language/08-identity.md), "In development and tests"; [area 14](language/14-tooling.md), "What is built"; [documentation](documentation.md), "Where the content lives" and "The bundle".
 - [x] **D13a Error pages people reach first**: [writing guide](writing.md), "How an error page reads" and "What the docs check enforces"; [documentation](documentation.md), "The bundle"; `tools/docs/language_docs.py`, `error_format_problems` and `error_format_scope`; the catalogue summaries in `crates/jadpo-diag`.
 - [ ] **D13b Command errors that explain**: an umbrella, split by size
-  (2026-10-31) into D13b1–D13b3, taken in order; tick it once all three
-  are.
+  (2026-10-31) into D13b1, D13b2a–D13b2c and D13b3, taken in order; tick
+  it once all are.
 - [x] **D13b1 The `sh run` block, settings and `jadpo new`**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; `tools/docs/language_docs.py`, `check_runs`; the pages of `configuration.local_*`, `cli.config_*` and `toolchain.*` a run raises, and `configuration.value_invalid`.
-- [ ] **D13b2 Background work, data and the rest a person decides**
-  `opus · high`: the format of "How an error page reads", with a `sh run`
-  example (against a disposable PostgreSQL where it needs one), for every
-  other rule a person decides that only a command raises and whose page
-  says "No example yet": `deliveries.*`, `schedules.*`, `migration.*`,
-  `seed.*`, `runs.unavailable`, `ai.usage_unavailable`,
-  `configuration.value_missing`, `format.*`, `test.runtime_start_failed`,
+- [x] **D13b2a Copied output, root runs and the first person-decided pages**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; area 14, "What it compiles with"; the pages of `configuration.value_missing`, `configuration.local_changed`, `format.write_failed`, `translation.exchange_file_invalid`, `toolchain.build_failed` and `toolchain.fetch_failed`.
+- [ ] **D13b2b Background work and data** `opus · high`: the format of
+  "How an error page reads", with a `sh run` example against a disposable
+  PostgreSQL, for the person-decided rules a database command raises
+  whose page says "No example yet": `deliveries.*`, `schedules.*`,
+  `runs.unavailable`, `ai.usage_unavailable`, `seed.production_refused`,
+  `seed.unavailable`, `migration.apply_failed`,
+  `migration.extension_missing`, `migration.extension_outdated` and
+  `migration.store_diverged`, each catalogue summary its page's first
+  sentence.
+- [ ] **D13b2c The rest a person decides** `opus · high`: the same for
   `cli.dev_start_failed`, `conform.refused`, `recording.refused`,
-  `suggest.share_failed`, `translation.exchange_file_invalid`, each
-  catalogue summary its page's first sentence. **Needs a maintainer**
-  first for the three a run can't raise on demand:
-  `configuration.local_changed` (a race inside one save),
-  `toolchain.build_failed` and `toolchain.fetch_failed` (the Rust
-  toolchain failing, or the network).
+  `suggest.share_failed`, `format.unsafe` and
+  `test.runtime_start_failed`. An error that quotes the operating
+  system's error number (a port in use, a refused connection) prints a
+  different number on macOS and Linux, so its run can't be checked on
+  both: choose a case that prints none, or copy the output. No run raises
+  `format.unsafe` (the formatter's own mistake) or
+  `test.runtime_start_failed` (no memory for the test thread) at all;
+  each shows output copied from a `jadpo` built with that failure forced,
+  and says so.
 - [ ] **D13b3 The other command errors** `opus · high`: the same for the
-  rules only a command raises that an agent decides (`cli.*_arguments`
-  and the rest) whose page says "No example yet"; then
+  rules only a command raises that an agent decides (`cli.*_arguments`,
+  `seed.failed`, `format.changes_required` and the rest) whose page says
+  "No example yet"; then
   `error_format_scope` stops leaving any of them out.
 - [ ] **D13c The rest of the error pages** `opus · high`: every other page
   in `docs/errors/` to the format, each rule's catalogue summary its
