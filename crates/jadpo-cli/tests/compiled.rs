@@ -399,6 +399,83 @@ test "an accepted card is kept on the plan" {
     ),
 ];
 
+/// The action that keeps a price sheet in `store` as `file_type`, named
+/// `name` (chunk B1).
+fn keeping(name: &str, store: &str, file_type: &str) -> String {
+    format!(
+        "use app {{ {store} }}\nuse bakery/entities {{ PriceSheet }}\nuse bakery/types {{ SheetText, SupplierName }}\nuse bakery/failures {{ SheetNotKept }}\n\n/// Keeps a price sheet in `{store}` as `FileType.{file_type}`.\naction {name}(supplier: SupplierName, sheet_text: SheetText) fails SheetNotKept -> PriceSheet {{\n    var sheet: File = attempt {store}.put(encoding.to_utf8(sheet_text), FileType.{file_type}) {{\n        storage_full: SheetNotKept\n    }}\n    return PriceSheet.create {{\n        set: {{\n            supplier: supplier\n            sheet: sheet\n        }}\n    }}\n}}\n"
+    )
+}
+
+/// A `File` held to its field (area 16, "What a write checks"; chunk
+/// B1): a sheet that fits is kept, and one larger than `max_size:`, one
+/// of a type `types:` doesn't list and one in another store are each the
+/// `file_refused` fault at the write, its site compared both ways.
+pub(crate) fn file_held() -> Vec<(String, String)> {
+    let mut files: Vec<(String, String)> = [
+        (
+            "app.jadpo",
+            "application {\n    connections: {\n        sheets: {\n            driver: Driver.disk\n            path: \"/var/lib/bakery/sheets\"\n        }\n        notes: {\n            driver: Driver.disk\n            path: \"/var/lib/bakery/notes\"\n        }\n    }\n}\n",
+        ),
+        (
+            "domains/bakery/types/sheet_text.jadpo",
+            "/// A price sheet as a supplier sends it.\ntype SheetText = Text {\n    min_length: 1\n    max_length: 100000\n}\n",
+        ),
+        (
+            "domains/bakery/types/supplier_name.jadpo",
+            "/// Who sent a price sheet.\ntype SupplierName = Text {\n    min_length: 1\n    max_length: 80\n}\n",
+        ),
+        (
+            "domains/bakery/failures/sheet_not_kept.jadpo",
+            "/// The store had no room for a sheet.\ntype SheetNotKept = Failure {\n    kind: FailureKind.unavailable\n    message: \"There was no room to keep the sheet.\"\n}\n",
+        ),
+        (
+            "domains/bakery/entities/price_sheet.jadpo",
+            "use bakery/types { SupplierName }\n\n/// A supplier's price sheet, kept as it was sent.\nentity PriceSheet {\n    id: Uuid\n    supplier: SupplierName\n    sheet: File {\n        store: sheets\n        max_size: 20b\n        types: [FileType.csv]\n    }\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n    }\n}\n",
+        ),
+        (
+            "domains/bakery/actions/keep_prices.test.jadpo",
+            r#"use bakery/entities { PriceSheet }
+use bakery/actions { keep_as_pdf, keep_in_notes }
+
+test "a sheet that fits its field is kept" {
+    var kept: PriceSheet = attempt keep_prices("Millers", "flour,1.20")
+    assert kept.supplier == "Millers"
+}
+
+test "a sheet larger than its field holds isn't kept" {
+    var kept: PriceSheet = attempt keep_prices("Millers", "flour,1.20\nrye,2.40\nspelt,3.10\n")
+    assert kept.supplier == "Millers"
+}
+
+test "a sheet of a type its field doesn't take isn't kept" {
+    var kept: PriceSheet = attempt keep_as_pdf("Millers", "flour,1.20")
+    assert kept.supplier == "Millers"
+}
+
+test "a sheet in another store isn't kept" {
+    var kept: PriceSheet = attempt keep_in_notes("Millers", "flour,1.20")
+    assert kept.supplier == "Millers"
+}
+"#,
+        ),
+    ]
+    .into_iter()
+    .map(|(path, text)| (path.to_string(), text.to_string()))
+    .collect();
+    for (name, store, file_type) in [
+        ("keep_prices", "sheets", "csv"),
+        ("keep_as_pdf", "sheets", "pdf"),
+        ("keep_in_notes", "notes", "csv"),
+    ] {
+        files.push((
+            format!("domains/bakery/actions/{name}.jadpo"),
+            keeping(name, store, file_type),
+        ));
+    }
+    files
+}
+
 /// A recursion to the limits (area 3, "Recursion"; chunk 8.4a): a
 /// thousand frames, and four hundred inline functions running at once,
 /// each a level through `list.map`; one level more is the
@@ -598,6 +675,10 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
             "a recursion to the limits".into(),
             corpus_project(&recursion, "compiled-recursion").expect("it checks"),
         ),
+        (
+            "a file held to its field".into(),
+            corpus_project(&file_held(), "compiled-file-held").expect("it checks"),
+        ),
     ]
 }
 
@@ -751,6 +832,9 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
     assert_eq!(counted("an export run to its end"), Some((1, 1)));
     assert_eq!(counted("a package's action caught"), Some((2, 2)));
     assert_eq!(counted("a recursion to the limits"), Some((4, 2)));
+    // A sheet that fits is kept; each setting broken is a fault (chunk
+    // B1).
+    assert_eq!(counted("a file held to its field"), Some((4, 1)));
     assert_eq!(counted("each kind of choice's paths"), Some((2, 2)));
     // Every fuzzed body's tests compared (chunk 9.3).
     for (name, _) in &fuzzed {

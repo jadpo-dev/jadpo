@@ -264,6 +264,7 @@ impl Report {
             FaultKind::CallInTransaction(_) => "not sent".to_string(),
             FaultKind::Diverged(_) => "differs from its record".to_string(),
             FaultKind::Crashed => "crashed here".to_string(),
+            FaultKind::FileRefused { .. } => "not kept".to_string(),
         };
         let text = site.map(|frame| site_text(places, sources, frame, &caret));
         let written = text.as_ref().map_or("", |text| text.written.as_str());
@@ -359,6 +360,13 @@ impl Report {
             FaultKind::Crashed => (
                 "`jadpo test` crashed the run here, at a step of an action with several changing calls, and nothing started it again.".to_string(),
                 "Run the action from a subscriber, or from a route whose API requires `Idempotency-Key`, so a crash resumes it".to_string(),
+                "agent",
+            ),
+            FaultKind::FileRefused { why, next } => (
+                format!(
+                    "{why}; a field keeps only a file that fits its settings, so the write stopped before it ran and nothing the action wrote was kept."
+                ),
+                next.clone(),
                 "agent",
             ),
             FaultKind::Diverged(what) => (

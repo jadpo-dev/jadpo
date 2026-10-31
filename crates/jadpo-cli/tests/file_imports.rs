@@ -979,6 +979,81 @@ fn a_whole_read_gives_the_bytes_and_a_full_store_fails_as_mapped() {
     });
 }
 
+/// A `File` held to its field (area 16, "What a write checks"; chunk
+/// B1): a sheet that fits is kept, and one larger than the field's
+/// `max_size:`, one of a type its `types:` doesn't list and one put in
+/// another store each stop the write as the `file_refused` fault, at the
+/// write, before its statement runs.
+#[test]
+fn a_file_that_doesnt_fit_its_field_is_refused_where_it_is_written() {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("file-imports-b1-held");
+    let _ = fs::remove_dir_all(&root);
+    for (path, text) in crate::compiled::file_held() {
+        write(&root, &path, &text);
+    }
+    for args in [&["migrate", "new", "initial"][..], &["records", "update"]] {
+        let ran = jadpo(&root, args);
+        assert_eq!(ran.code, 0, "{}{}", ran.stdout, ran.stderr);
+    }
+    if !jadpo_test::live() {
+        return;
+    }
+    let ran = jadpo(&root, &["test", "--json", "--seed", "1"]);
+    assert_eq!(ran.code, 1, "{}{}", ran.stdout, ran.stderr);
+    let document: serde_json::Value = serde_json::from_str(&ran.stdout).expect("JSON");
+    let tests = document["data"]["tests"].as_array().expect("tests");
+    let outcome = |name: &str| {
+        let test = tests
+            .iter()
+            .find(|test| test["name"] == name)
+            .unwrap_or_else(|| panic!("{name}: {tests:?}"));
+        (
+            test["outcome"].as_str().unwrap_or_default().to_string(),
+            test["failure"]["fault"]["kind"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            test["failure"]["fault"]["at"]["path"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+        )
+    };
+    assert_eq!(
+        outcome("a sheet that fits its field is kept"),
+        ("passed".to_string(), String::new(), String::new())
+    );
+    for (name, action) in [
+        (
+            "a sheet larger than its field holds isn't kept",
+            "keep_prices",
+        ),
+        (
+            "a sheet of a type its field doesn't take isn't kept",
+            "keep_as_pdf",
+        ),
+        ("a sheet in another store isn't kept", "keep_in_notes"),
+    ] {
+        assert_eq!(
+            outcome(name),
+            (
+                "failed".to_string(),
+                "file_refused".to_string(),
+                format!("domains/bakery/actions/{action}.jadpo")
+            ),
+            "{name}"
+        );
+    }
+    let plain = jadpo(&root, &["test", "--seed", "1"]);
+    for said in [
+        "`PriceSheet.sheet` holds files of at most 20 bytes, and this one is 31 bytes",
+        "`PriceSheet.sheet` takes `FileType.csv`, and this file is `FileType.pdf`",
+        "`PriceSheet.sheet` keeps its files in `sheets`, and this file is in `notes`",
+    ] {
+        assert!(plain.stdout.contains(said), "{said}\n{}", plain.stdout);
+    }
+}
+
 /// `text` as one gzip member (RFC 1952), its deflate data in stored
 /// blocks: what a test can write without a compressor of its own.
 fn gzip(text: &[u8]) -> Vec<u8> {
