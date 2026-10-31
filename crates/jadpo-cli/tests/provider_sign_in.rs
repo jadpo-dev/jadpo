@@ -187,8 +187,10 @@ routes Staff {
     ),
 ];
 
-fn project() -> PathBuf {
-    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("provider-sign-in");
+/// The project, in a folder of `name`'s own: the tests run at once, and
+/// one sharing another's folder would remake its migration under it.
+fn project(name: &str) -> PathBuf {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("provider-sign-in-{name}"));
     let _ = std::fs::remove_dir_all(&root);
     for (path, source) in FILES {
         let path = root.join(path);
@@ -389,7 +391,7 @@ fn a_member_of_staff_signs_in_with_google_through_the_runtime_alone() {
     if !jadpo_test::live() {
         return;
     }
-    let root = project();
+    let root = project("staff");
     let loaded = jadpo_db::load(&root);
     let prepared = Prepared::load(&loaded.db, loaded.project).expect("checks");
     let server = jadpo_test::database::server().expect("server");
@@ -659,7 +661,7 @@ fn a_provider_whose_discovery_names_another_issuer_is_misconfigured() {
     if !jadpo_test::live() {
         return;
     }
-    let root = project();
+    let root = project("issuer");
     let loaded = jadpo_db::load(&root);
     let prepared = Prepared::load(&loaded.db, loaded.project).expect("checks");
     let server = jadpo_test::database::server().expect("server");
