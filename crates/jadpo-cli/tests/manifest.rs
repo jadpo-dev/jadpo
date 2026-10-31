@@ -246,6 +246,8 @@ fn the_manifest_names_the_source_and_each_deployable_with_its_build_id() {
     // build` builds it for.
     let declared = "application {\n    connections: {\n        limits: {\n            driver: Driver.cloudflare_rate_limits\n            namespace: 1001\n        }\n    }\n    rate_limits: {\n        store: limits\n    }\n    deployables: {\n        api: {\n            serves: [main]\n            target: Target.wasm\n        }\n        worker: {\n            serves: [main]\n        }\n    }\n}\n";
     write(&root, "app.jadpo", declared);
+    // Its `connections:` block keeps `network.jadpo_record` (chunk A8).
+    jadpo(&root, &["records", "update"]);
     let output = jadpo(&root, &["check"]);
     assert_eq!(output.code, 0, "{}{}", output.stdout, output.stderr);
     let manifest: serde_json::Value =

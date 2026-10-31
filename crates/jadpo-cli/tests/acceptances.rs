@@ -587,3 +587,28 @@ fn a_sign_in_setting_loosened_past_its_limit_needs_a_person() {
         ]
     );
 }
+
+/// An app with a `connections:` block keeps `network.jadpo_record` even
+/// while it reaches no host, so its first outside host needs a person like
+/// any other, rather than arriving with a record compared with nothing.
+#[test]
+fn an_apps_first_outside_host_needs_a_person() {
+    let root = example("24-seed-library");
+    assert_eq!(problems(&root), Vec::<String>::new());
+    edit(
+        &root,
+        "app.jadpo",
+        "    connections: {\n",
+        "    connections: {\n        main: {\n            driver: Driver.postgres\n            url: config.database_url\n        }\n",
+    );
+    write(
+        &root,
+        "config.jadpo",
+        "config {\n    /// The library's database.\n    database_url: PostgresUrl\n}\n",
+    );
+    assert_eq!(jadpo(&root, &["records", "update"]).code, 0);
+    assert_eq!(
+        problems(&root),
+        ["acceptance.missing: a new outside host the app can send data to needs a person: main"]
+    );
+}

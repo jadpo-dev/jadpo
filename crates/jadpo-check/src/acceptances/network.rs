@@ -26,8 +26,9 @@ use jadpo_db::{Db, Project};
 /// The record's file, at the root.
 pub const PATH: &str = format::NETWORK_FILE;
 
-/// The record's text: `Some(None)` when the app reaches no host, `None`
-/// while its connections have errors.
+/// The record's text: `Some(None)` when the app reaches no host and has no
+/// `connections:` block, `None` while its connections have errors. An app
+/// with the block and no host gets the header alone.
 #[salsa::tracked(returns(ref))]
 pub fn record_text(db: &dyn Db, project: Project) -> Option<Option<String>> {
     if project.layout(db) != jadpo_db::Layout::Project
@@ -53,7 +54,10 @@ pub fn record_text(db: &dyn Db, project: Project) -> Option<Option<String>> {
             .or_insert_with(|| (reached_for, Vec::new()));
         entry.1.push(host);
     }
-    if by_connection.is_empty() {
+    // An app with a `connections:` block keeps the record even while it
+    // reaches no host, so the change that adds its first host is compared
+    // with an empty record, not with nothing (2026-10-30).
+    if by_connection.is_empty() && !crate::connections::declares_connections(db, project) {
         return Some(None);
     }
     let entries: Vec<Entry> = by_connection

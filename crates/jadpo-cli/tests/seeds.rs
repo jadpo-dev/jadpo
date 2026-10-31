@@ -225,8 +225,12 @@ fn as_url(connection: &str) -> String {
         return connection.to_string();
     }
     let part = |key: &str| {
+        // The last pair wins, as libpq reads them: a database named on the
+        // admin connection's pairs is its last `dbname=`, not the server's
+        // own `postgres`.
         connection
             .split_whitespace()
+            .rev()
             .find_map(|pair| pair.strip_prefix(&format!("{key}=")))
             .map(|value| value.trim_matches('\'').to_string())
             .unwrap_or_default()
