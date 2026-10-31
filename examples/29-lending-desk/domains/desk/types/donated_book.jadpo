@@ -1,0 +1,6 @@
+use desk/entities { Book }
+
+/// A book with who gave it, for admins.
+type DonatedBook = Output {
+    pick: [Book.id, Book.title, Book.donor]
+}

@@ -1,0 +1,28 @@
+// Everyone signed in may read a book, but not all of it: where it is
+// shelved is for staff, and who gave it for admins. A query that shows
+// either is listed in `policy.jadpo` for the staff who may read it.
+
+use desk/types { AuthorName, BookTitle, DisplayName, ShelfMark, StaffRole }
+
+/// A book the desk lends.
+entity Book {
+    id: Uuid
+    title: BookTitle
+    author: AuthorName
+    shelf: ShelfMark {
+        policy: {
+            read: [StaffRole.admin, StaffRole.front_desk]
+        }
+    }
+    donor: DisplayName? {
+        policy: {
+            read: [StaffRole.admin]
+        }
+    }
+
+    policy: {
+        create: [StaffRole.admin]
+        read: [Access.authenticated, Access.system]
+        update: [StaffRole.admin]
+    }
+}

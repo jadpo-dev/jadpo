@@ -1,0 +1,9 @@
+use desk/entities { Book }
+
+/// A book an admin adds to the stock.
+type NewBook = Input {
+    title: Book.title
+    author: Book.author
+    shelf: Book.shelf
+    donor: Book.donor
+}

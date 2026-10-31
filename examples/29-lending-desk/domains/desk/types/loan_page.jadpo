@@ -1,0 +1,9 @@
+/// Where a walk over the loans has got to.
+type LoanPage = Input {
+    page_size: PageSize {
+        default: 50
+    }
+    after: PageCursor {
+        optional: true
+    }
+}

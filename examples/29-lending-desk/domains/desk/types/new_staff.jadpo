@@ -1,0 +1,9 @@
+use desk/entities { Patron }
+use desk/types { DisplayName, StaffRole }
+
+/// Someone to take on, by the Google address they sign in with.
+type NewStaff = Input {
+    email: Patron.email
+    name: DisplayName
+    role: StaffRole
+}

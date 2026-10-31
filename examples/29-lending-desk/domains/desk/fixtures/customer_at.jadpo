@@ -1,0 +1,19 @@
+// A customer as signing in by email for the first time would have made
+// them, so a test can lend to them and act as them.
+
+use desk/entities { Patron }
+use desk/failures { AlreadyKnown }
+
+/// A customer who has signed in before, with this address.
+fixture customer_at(address: Patron.email) -> Patron {
+    return attempt Patron.create {
+        set: {
+            email: address
+            name: none
+            active: true
+        }
+        conflict: {
+            Patron.email: AlreadyKnown
+        }
+    }
+}

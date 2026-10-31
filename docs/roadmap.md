@@ -360,17 +360,7 @@ time.
 - [x] **A3 External tokens in tests and `jadpo dev`**: area 8, "External tokens in tests and `jadpo dev`"; area 13, `as:`; area 14, `jadpo dev`'s "External tokens"; area 19, `Jwk`'s `key_ops`.
 - [x] **A4 Batches run to the end in tests**: area 13, "Batches" and "What is built"; compiler/runtime §2.5; `examples/24-seed-library/README.md`.
 - [x] **A5 `jadpo seed`**: area 5, "Seeds"; area 14, "`jadpo seed`" and "Command errors".
-- [ ] **A6 Guidance an agent reads first** `opus · high` after A1 to A5:
-  the `AGENTS.md` that `jadpo new` writes gains a workflow (one concern at
-  a time, `jadpo check` after each file, read one topic not a whole page,
-  declare a feature and check it before designing around it) and a table
-  of what is built, generated from each area's "What is built"; `llms.txt`
-  lists every example, with the closest one per feature; a new teaching
-  example, a lending desk, has magic-link customers, staff on external
-  tokens with two roles, a listed staff query, staff from a seed, a
-  reminder schedule over a batch, and route tests for each, with no code
-  outside Jadpo. Before 10.2's measured runs, since it changes what they
-  measure.
+- [x] **A6 Guidance an agent reads first**: area 14, "`jadpo new`"; [documentation](documentation.md), "How an agent uses it"; `tools/docs/agent_guidance.py`; `examples/29-lending-desk/README.md`.
 - [x] **A9 Unknown sections of `application { }`**: area 1, "What `application { }` holds" and "What is built"; the "What is built" of areas 11, 12, 15 and 16.
 - [x] **A8 Acceptances for what exists today**: area 18, "Comparing two builds" and "Acceptances"; area 9, "Protecting policy"; area 14, "`jadpo acceptance new`" and "Review and sign-off"; area 1, "Writing a decline".
 - [x] **A7a `on_first_sign_in:` for external tokens**: area 8, `external_token` and "A person the app has not seen"; area 5, "Tables for sign-in"; compiler/runtime §2.6, "First sign-in by external token".

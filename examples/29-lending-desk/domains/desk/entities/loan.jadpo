@@ -1,0 +1,27 @@
+// A book is on loan while its loan exists, so a book has one loan at a
+// time (`unique:`), and returning it deletes the loan. Its borrower reads
+// it; staff make, read and end it; the system reminds its borrower.
+
+use desk/entities { Book, Patron }
+use desk/types { DueTime, StaffRole }
+
+/// A book lent to a customer until a time.
+entity Loan {
+    id: Uuid
+    book_id: Book.id {
+        unique: true
+        on_delete: OnDelete.restricted
+    }
+    borrower_id: Patron.id {
+        on_delete: OnDelete.restricted
+    }
+    due_at: DueTime
+    reminded_at: Instant?
+
+    policy: {
+        create: [StaffRole.admin, StaffRole.front_desk]
+        read: [borrower_id, Access.system, StaffRole.admin, StaffRole.front_desk]
+        update: [Access.system]
+        delete: [StaffRole.admin, StaffRole.front_desk]
+    }
+}

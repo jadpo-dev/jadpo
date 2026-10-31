@@ -1,0 +1,6 @@
+use desk/entities { Book }
+
+/// A book as staff see it, with where it is shelved.
+type StockBook = Output {
+    pick: [Book.id, Book.title, Book.shelf]
+}

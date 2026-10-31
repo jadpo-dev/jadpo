@@ -1,0 +1,13 @@
+use desk/types { CatalogueBook }
+use desk/queries { all_books }
+
+/// The desk's books, for anyone signed in.
+routes Books {
+    prefix: /books
+
+    /// The catalogue.
+    GET / {
+        output: List<CatalogueBook>
+        run: all_books()
+    }
+}

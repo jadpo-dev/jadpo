@@ -1,0 +1,5 @@
+/// Where a book is shelved, such as "B3".
+type ShelfMark = Text {
+    min_length: 1
+    max_length: 20
+}

@@ -1,0 +1,29 @@
+// A loan is for fourteen days. The front desk finds the borrower by
+// their address, which staff may read, and a book already out is a
+// conflict the `unique:` rule on `Loan.book_id` maps.
+
+use desk/entities { BookNotFound, Loan, Patron }
+use desk/types { DueTime, Lending, LoanView }
+use desk/failures { BookOnLoan, NoSuchCustomer }
+use desk/queries { patron_at }
+
+/// Lends a book to a customer for fourteen days.
+action lend(input: Lending) fails BookNotFound, BookOnLoan, NoSuchCustomer -> LoanView {
+    var borrower: Patron = attempt patron_at(input.borrower)
+    var loan: Loan = attempt Loan.create {
+        set: {
+            book_id: input.book_id
+            borrower_id: borrower.id
+            due_at: DueTime(clock.now + 14d)
+            reminded_at: none
+        }
+        conflict: {
+            Loan.book_id: BookOnLoan
+        }
+    }
+    return LoanView {
+        id: loan.id
+        book_id: loan.book_id
+        due_at: loan.due_at
+    }
+}

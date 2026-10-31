@@ -1,0 +1,27 @@
+// How staff join: a person, and their role. Nothing on the web calls it.
+// The seed in `database/seeds/` does, with no caller, so without policy,
+// which is how the desk gets its first admin; tests call it the same way.
+
+use desk/entities { Patron, StaffMember }
+use desk/types { NewStaff }
+use desk/failures { AlreadyKnown }
+
+/// Takes someone on, to sign in with Google under their address.
+action take_on(input: NewStaff) fails AlreadyKnown -> StaffMember {
+    var patron: Patron = attempt Patron.create {
+        set: {
+            email: input.email
+            name: input.name
+            active: true
+        }
+        conflict: {
+            Patron.email: AlreadyKnown
+        }
+    }
+    return StaffMember.create {
+        set: {
+            patron_id: patron.id
+            role: input.role
+        }
+    }
+}

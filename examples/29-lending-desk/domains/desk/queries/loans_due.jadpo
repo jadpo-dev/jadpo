@@ -1,0 +1,17 @@
+// A batch walks this a page at a time, in an order no change to a loan
+// moves, so a run meets each loan once.
+
+use desk/entities { Loan }
+use desk/types { DueTime, LoanPage }
+
+/// Loans due by a time whose borrower hasn't been reminded.
+query loans_due(by: DueTime, page: LoanPage) -> Page<Loan> {
+    from: Loan
+    where: Loan.due_at <= by
+    where: Loan.reminded_at == none
+    order: [Loan.id asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}

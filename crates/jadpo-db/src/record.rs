@@ -80,6 +80,7 @@ pub const API: Kind = Kind {
         "input",
         "message",
         "output",
+        "redirect",
         "settle",
         "status",
         "variant",
@@ -833,6 +834,23 @@ output TodoView
         );
         assert_eq!(read_header(&text, &API, FROM), Ok(1));
         assert_eq!(canonical(&text, &API, FROM), Ok(todos()));
+    }
+
+    /// A provider's callback route answers with a redirect (area 8,
+    /// "Providers"), and a stale record holding it still reads, so `check`
+    /// says it is out of date rather than edited by hand (chunk A6).
+    #[test]
+    fn a_provider_callbacks_redirect_reads_back() {
+        let entries = vec![{
+            let mut entry = Entry::new("GET /auth/google/callback");
+            entry.push("generated provider sign-in");
+            entry.push("authentication none");
+            entry.push("redirect return_to");
+            entry.push("status 303");
+            entry
+        }];
+        let text = write(&API, FROM, &entries);
+        assert_eq!(canonical(&text, &API, FROM), Ok(entries));
     }
 
     #[test]
