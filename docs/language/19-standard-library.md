@@ -2546,12 +2546,12 @@ starters and deliveries. Each result is the true value rounded to
 on every target:
 
 ```jadpo check project=number-maths
-type Centimetres = Decimal {
+type TinSize = Decimal {
     scale: 2
     min: 0.00
 }
 
-type SquareCentimetres = Decimal {
+type TinSurface = Decimal {
     scale: 2
     min: 0.00
 }
@@ -2579,7 +2579,7 @@ type ProvingTime = Decimal {
     min: 0.0
 }
 
-type Metres = Decimal {
+type RoundDistance = Decimal {
     scale: 1
 }
 
@@ -2592,14 +2592,14 @@ type NeverRose = Failure {
 }
 
 /// The surface of a round tin, π r².
-function tin_area(radius: Centimetres) -> SquareCentimetres {
-    return SquareCentimetres(decimal.pi(scale: 6, rounding: Rounding.half_even) * radius * radius)
+function tin_area(radius: TinSize) -> TinSurface {
+    return TinSurface(decimal.pi(scale: 6, rounding: Rounding.half_even) * radius * radius)
 }
 
 /// The side of a square tin the same size, rounded down so the cake
 /// fits. A size is never negative, so its square root needs no check.
-function square_side(surface: SquareCentimetres) -> Centimetres {
-    return Centimetres(decimal.sqrt(surface, scale: 2, rounding: Rounding.down))
+function square_side(surface: TinSurface) -> TinSize {
+    return TinSize(decimal.sqrt(surface, scale: 2, rounding: Rounding.down))
 }
 
 /// How much more each tier below the surface needs, at half again a tier:
@@ -2626,18 +2626,18 @@ function hourly_rise(grown: Growth) fails NeverRose -> Rise {
 
 /// The direction of a customer at `northing` and `easting` from the
 /// bakery, in radians clockwise from north.
-function course(northing: Metres, easting: Metres) -> Course {
+function course(northing: RoundDistance, easting: RoundDistance) -> Course {
     return Course(decimal.atan2(easting, northing, scale: 6, rounding: Rounding.half_even))
 }
 
 /// Where a van is, east and north of the bakery, `driven` metres on
 /// `course`.
-function easting_after(driven: Metres, course: Course) -> Metres {
-    return Metres(driven * decimal.sin(course, scale: 6, rounding: Rounding.half_even))
+function easting_after(driven: RoundDistance, course: Course) -> RoundDistance {
+    return RoundDistance(driven * decimal.sin(course, scale: 6, rounding: Rounding.half_even))
 }
 
-function northing_after(driven: Metres, course: Course) -> Metres {
-    return Metres(driven * decimal.cos(course, scale: 6, rounding: Rounding.half_even))
+function northing_after(driven: RoundDistance, course: Course) -> RoundDistance {
+    return RoundDistance(driven * decimal.cos(course, scale: 6, rounding: Rounding.half_even))
 }
 ```
 
@@ -2729,7 +2729,7 @@ type CakePrice = Money {
 
 type Payment = Money {}  // any currency, known only while running
 
-type Pounds = Decimal {
+type EnteredAmount = Decimal {
     scale: 2
 }
 
@@ -2752,7 +2752,7 @@ function list_price() -> CakePrice {
 }
 
 /// An amount a customer typed, in major units of their currency.
-function entered(amount: Pounds, currency: Currency) fails AmountTooPrecise -> Payment {
+function entered(amount: EnteredAmount, currency: Currency) fails AmountTooPrecise -> Payment {
     var entered_amount: Money = attempt money.of(amount, currency) {
         too_many_places: AmountTooPrecise  // 10.50 in yen
     }
@@ -4069,7 +4069,7 @@ type WalkTime = Duration {
     min: 1s
 }
 
-type Miles = Decimal {
+type MilesWalked = Decimal {
     scale: 2
 }
 
@@ -4117,8 +4117,8 @@ function pace_of(stroll: Plank, stroll_time: WalkTime) -> WalkingPace {
 }
 
 /// A distance in miles, to two places.
-function in_miles(stroll: Plank) -> Miles {
-    return Miles(units.in(stroll, LengthUnit.mile, scale: 2, rounding: Rounding.half_even))
+function in_miles(stroll: Plank) -> MilesWalked {
+    return MilesWalked(units.in(stroll, LengthUnit.mile, scale: 2, rounding: Rounding.half_even))
 }
 
 /// A plank's length for the reader, in centimetres.

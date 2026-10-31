@@ -12,7 +12,7 @@ fn check(source: &str) -> Vec<String> {
     rules(Layout::Loose, &[("main.jadpo", source)])
 }
 
-const NAMES: &str = "type Pence = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype Label = Text {}\n\ntype Flag = Bool {}\n\ntype DeliveryState = Enum {\n    pending\n    sent\n    failed\n}\n\ntype ReceiptId = Uuid {}\n\ntype PaymentOutcome = Enum {\n    pending\n    paid: {\n        receipt_id: ReceiptId\n    }\n    declined\n}\n\n";
+const NAMES: &str = "type Coins = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype Label = Text {}\n\ntype Flag = Bool {}\n\ntype DeliveryState = Enum {\n    pending\n    sent\n    failed\n}\n\ntype ReceiptId = Uuid {}\n\ntype PaymentOutcome = Enum {\n    pending\n    paid: {\n        receipt_id: ReceiptId\n    }\n    declined\n}\n\n";
 
 fn with_names(source: &str) -> Vec<String> {
     check(&format!("{NAMES}{source}"))
@@ -24,7 +24,7 @@ const CLEAN: &[String] = &[];
 fn functions_variables_and_conditions_check() {
     assert_eq!(
         with_names(
-            "function line_total(price: Pence, quantity: Quantity) -> Pence {\n    var total: Pence = Pence(price * quantity)\n    return total\n}\n\nfunction with_delivery(price: Pence, quantity: Quantity, delivery: Pence) -> Pence {\n    var subtotal: Pence = line_total(price, quantity)\n    var mut total: Pence = subtotal\n    total = Pence(total + delivery)\n    return total\n}\n\nfunction size(total: Pence, limit: Pence) -> Label {\n    if (total > limit) {\n        return \"large\"\n    } else if (total > 10) {\n        return \"medium\"\n    } else {\n        return \"small\"\n    }\n}\n"
+            "function line_total(price: Coins, quantity: Quantity) -> Coins {\n    var total: Coins = Coins(price * quantity)\n    return total\n}\n\nfunction with_delivery(price: Coins, quantity: Quantity, delivery: Coins) -> Coins {\n    var subtotal: Coins = line_total(price, quantity)\n    var mut total: Coins = subtotal\n    total = Coins(total + delivery)\n    return total\n}\n\nfunction size(total: Coins, limit: Coins) -> Label {\n    if (total > limit) {\n        return \"large\"\n    } else if (total > 10) {\n        return \"medium\"\n    } else {\n        return \"small\"\n    }\n}\n"
         ),
         CLEAN
     );
@@ -54,7 +54,7 @@ fn unit_calls_attempt_and_bare_return_stand_alone() {
 fn loops_inline_functions_and_recursive_functions_check() {
     assert_eq!(
         with_names(
-            "type OrderLine = Object {\n    subtotal: Pence\n}\n\ntype Comment = Object {\n    replies: List<Comment>\n}\n\ntype Replies = Int {\n    min: 0\n}\n\nfunction order_total(lines: List<OrderLine>) -> Pence {\n    var mut total: Pence = 0\n    for line in lines {\n        total = Pence(total + line.subtotal)\n    }\n    return total\n}\n\nfunction reply_count(comment: Comment) -> Replies {\n    var mut count: Replies = 0\n    for reply in comment.replies {\n        count = Replies(count + 1 + reply_count(reply))\n    }\n    return count\n}\n\nfunction subtotals(lines: List<OrderLine>, floor: Pence) -> List<Pence> {\n    var large: List<OrderLine> = list.filter(lines, line -> line.subtotal > floor)\n    return list.map(large, line -> line.subtotal)\n}\n"
+            "type OrderLine = Object {\n    subtotal: Coins\n}\n\ntype Comment = Object {\n    replies: List<Comment>\n}\n\ntype Replies = Int {\n    min: 0\n}\n\nfunction order_total(lines: List<OrderLine>) -> Coins {\n    var mut total: Coins = 0\n    for line in lines {\n        total = Coins(total + line.subtotal)\n    }\n    return total\n}\n\nfunction reply_count(comment: Comment) -> Replies {\n    var mut count: Replies = 0\n    for reply in comment.replies {\n        count = Replies(count + 1 + reply_count(reply))\n    }\n    return count\n}\n\nfunction subtotals(lines: List<OrderLine>, floor: Coins) -> List<Coins> {\n    var large: List<OrderLine> = list.filter(lines, line -> line.subtotal > floor)\n    return list.map(large, line -> line.subtotal)\n}\n"
         ),
         CLEAN
     );
@@ -87,10 +87,10 @@ fn inline_functions_take_the_list_and_the_expected_result() {
 fn division_needs_a_divisor_that_excludes_zero() {
     assert_eq!(
         with_names(
-            "function per_item(total: Pence, quantity: Quantity) -> Pence {\n    var boxes: Int = integer.divide(total, quantity, rounding: Rounding.up)\n    return Pence(boxes + total / Pence(2) - total % 3)\n}\n"
+            "function per_item(total: Coins, quantity: Quantity) -> Coins {\n    var boxes: Int = integer.divide(total, quantity, rounding: Rounding.up)\n    return Coins(boxes + total / Coins(2) - total % 3)\n}\n"
         ),
         ["type.divisor_zero"],
-        "`Pence` allows zero"
+        "`Coins` allows zero"
     );
     assert_eq!(
         with_names(
@@ -116,23 +116,23 @@ fn each_mistake_gives_its_rule() {
             "effect.recursive_action",
         ),
         (
-            "function f(price: Pence) -> Pence {\n    if (price > 10) {\n        return price\n    }\n}\n",
+            "function f(price: Coins) -> Coins {\n    if (price > 10) {\n        return price\n    }\n}\n",
             "semantic.missing_return",
         ),
         (
-            "function f(price: Pence) -> Pence {\n    return\n}\n",
+            "function f(price: Coins) -> Coins {\n    return\n}\n",
             "semantic.missing_return",
         ),
         (
-            "function f(price: Pence) -> Pence {\n    return price\n    return 0\n}\n",
+            "function f(price: Coins) -> Coins {\n    return price\n    return 0\n}\n",
             "semantic.unreachable_code",
         ),
         (
-            "function g(price: Pence) -> Pence {\n    return price\n}\n\naction f(price: Pence) -> Unit {\n    g(price)\n}\n",
+            "function g(price: Coins) -> Coins {\n    return price\n}\n\naction f(price: Coins) -> Unit {\n    g(price)\n}\n",
             "semantic.unused_result",
         ),
         (
-            "function f(price: Pence) -> Pence {\n    var spare: Pence = price\n    return price\n}\n",
+            "function f(price: Coins) -> Coins {\n    var spare: Coins = price\n    return price\n}\n",
             "semantic.unused_variable",
         ),
         (
@@ -140,19 +140,19 @@ fn each_mistake_gives_its_rule() {
             "semantic.unused_variable",
         ),
         (
-            "function f(price: Pence) -> Pence {\n    var price: Pence = 1\n    return price\n}\n",
+            "function f(price: Coins) -> Coins {\n    var price: Coins = 1\n    return price\n}\n",
             "semantic.duplicate_declaration",
         ),
         (
-            "function f(a: Pence, b: Pence) -> Pence {\n    return a\n}\n\nfunction g(price: Pence) -> Pence {\n    return f(price)\n}\n",
+            "function f(a: Coins, b: Coins) -> Coins {\n    return a\n}\n\nfunction g(price: Coins) -> Coins {\n    return f(price)\n}\n",
             "type.argument_count",
         ),
         (
-            "function f(price: Pence, label: Label) -> Pence {\n    return Pence(price + label)\n}\n",
+            "function f(price: Coins, label: Label) -> Coins {\n    return Coins(price + label)\n}\n",
             "type.arithmetic_operand",
         ),
         (
-            "function f(price: Pence, quantity: Quantity) -> Pence {\n    return Pence(price + quantity)\n}\n",
+            "function f(price: Coins, quantity: Quantity) -> Coins {\n    return Coins(price + quantity)\n}\n",
             "type.arithmetic_operand",
         ),
         (
@@ -160,35 +160,35 @@ fn each_mistake_gives_its_rule() {
             "type.arithmetic_operand",
         ),
         (
-            "function f(price: Pence) -> Pence {\n    var fixed: Pence = price\n    fixed = 1\n    return fixed\n}\n",
+            "function f(price: Coins) -> Coins {\n    var fixed: Coins = price\n    fixed = 1\n    return fixed\n}\n",
             "type.assign_immutable",
         ),
         (
-            "function f(price: Pence) -> Pence {\n    price = 1\n    return price\n}\n",
+            "function f(price: Coins) -> Coins {\n    price = 1\n    return price\n}\n",
             "type.assign_immutable",
         ),
         (
-            "function f(price: Pence) -> Pence {\n    total = price\n    return price\n}\n",
+            "function f(price: Coins) -> Coins {\n    total = price\n    return price\n}\n",
             "type.assign_unknown",
         ),
         (
-            "function f(price: Pence) -> Pence {\n    return Pence(price / 0)\n}\n",
+            "function f(price: Coins) -> Coins {\n    return Coins(price / 0)\n}\n",
             "type.divisor_zero",
         ),
         (
-            "function f(price: Pence, quantity: Quantity) -> Flag {\n    return Flag(price == quantity)\n}\n",
+            "function f(price: Coins, quantity: Quantity) -> Flag {\n    return Flag(price == quantity)\n}\n",
             "type.incomparable",
         ),
         (
-            "function f(price: Pence) -> Flag {\n    return Flag(price == none)\n}\n",
+            "function f(price: Coins) -> Flag {\n    return Flag(price == none)\n}\n",
             "type.incomparable",
         ),
         (
-            "function g(price: Pence) -> Pence {\n    return price\n}\n\nfunction f(price: Pence) -> Pence {\n    return g(item -> price)\n}\n",
+            "function g(price: Coins) -> Coins {\n    return price\n}\n\nfunction f(price: Coins) -> Coins {\n    return g(item -> price)\n}\n",
             "type.inline_function_placement",
         ),
         (
-            "function f(price: Pence) -> Flag {\n    return Flag(price and price)\n}\n",
+            "function f(price: Coins) -> Flag {\n    return Flag(price and price)\n}\n",
             "type.logical_operand",
         ),
         (
@@ -240,11 +240,11 @@ fn each_mistake_gives_its_rule() {
             "type.match_wildcard_required",
         ),
         (
-            "function f(lines: List<Pence>) -> Pence {\n    return Pence(list.count(list: lines))\n}\n",
+            "function f(lines: List<Coins>) -> Coins {\n    return Coins(list.count(list: lines))\n}\n",
             "type.named_argument_unknown",
         ),
         (
-            "function g(a: Pence) -> Pence {\n    return a\n}\n\nfunction f(price: Pence) -> Pence {\n    return g(a: price)\n}\n",
+            "function g(a: Coins) -> Coins {\n    return a\n}\n\nfunction f(price: Coins) -> Coins {\n    return g(a: price)\n}\n",
             "type.named_argument_unsupported",
         ),
         (
@@ -252,7 +252,7 @@ fn each_mistake_gives_its_rule() {
             "type.ordering_operand",
         ),
         (
-            "function f(price: Pence?, other: Pence) -> Flag {\n    return Flag(price < other)\n}\n",
+            "function f(price: Coins?, other: Coins) -> Flag {\n    return Flag(price < other)\n}\n",
             "type.ordering_operand",
         ),
         (
@@ -268,11 +268,11 @@ fn each_mistake_gives_its_rule() {
             "type.not_a_value",
         ),
         (
-            "function f(price: Pence) -> Label {\n    if (price) {\n        return \"yes\"\n    }\n    return \"no\"\n}\n",
+            "function f(price: Coins) -> Label {\n    if (price) {\n        return \"yes\"\n    }\n    return \"no\"\n}\n",
             "type.mismatch",
         ),
         (
-            "function f(price: Pence) -> Pence {\n    for item in price {\n        return item\n    }\n    return price\n}\n",
+            "function f(price: Coins) -> Coins {\n    for item in price {\n        return item\n    }\n    return price\n}\n",
             "type.mismatch",
         ),
     ];
@@ -286,14 +286,14 @@ fn one_mistake_gives_one_error() {
     // A misspelt name: the variable it meant is not also unused.
     assert_eq!(
         with_names(
-            "function f(price: Pence) -> Pence {\n    var total: Pence = price\n    return totl\n}\n"
+            "function f(price: Coins) -> Coins {\n    var total: Coins = price\n    return totl\n}\n"
         ),
         ["type.unknown_value"]
     );
     // Code after `return`: once, not again as an unused variable.
     assert_eq!(
         with_names(
-            "function f(price: Pence) -> Pence {\n    return price\n    var spare: Pence = price\n    var other: Pence = spare\n}\n"
+            "function f(price: Coins) -> Coins {\n    return price\n    var spare: Coins = price\n    var other: Coins = spare\n}\n"
         ),
         ["semantic.unreachable_code"]
     );
@@ -315,7 +315,7 @@ fn one_mistake_gives_one_error() {
     // A name declared twice is not also unused.
     assert_eq!(
         with_names(
-            "function f(price: Pence) -> Pence {\n    var price: Pence = 1\n    return 1\n}\n"
+            "function f(price: Coins) -> Coins {\n    var price: Coins = 1\n    return 1\n}\n"
         ),
         ["semantic.duplicate_declaration"]
     );
@@ -323,7 +323,7 @@ fn one_mistake_gives_one_error() {
     // included.
     assert_eq!(
         with_names(
-            "function f(price: Pence, odd: Missing) -> Flag {\n    var mixed: Pence = Pence(price + odd.amount)\n    return Flag(odd and mixed > odd)\n}\n"
+            "function f(price: Coins, odd: Missing) -> Flag {\n    var mixed: Coins = Coins(price + odd.amount)\n    return Flag(odd and mixed > odd)\n}\n"
         ),
         ["semantic.unknown_name"]
     );
@@ -332,7 +332,7 @@ fn one_mistake_gives_one_error() {
 #[test]
 fn checking_is_deterministic() {
     let source = format!(
-        "{NAMES}function f(price: Pence, label: Label) -> Pence {{\n    var spare: Pence = price\n    return Pence(price + label)\n}}\n"
+        "{NAMES}function f(price: Coins, label: Label) -> Coins {{\n    var spare: Coins = price\n    return Coins(price + label)\n}}\n"
     );
     let first = check(&source);
     assert_eq!(first, check(&source));

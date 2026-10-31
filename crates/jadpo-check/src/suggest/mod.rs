@@ -186,6 +186,75 @@ fn matched(written: &[String], hints: &[String]) -> usize {
         .count()
 }
 
+/// What a type named only for a unit holds: the standard type whose
+/// unit it is, and another when the word names that type too
+/// ([`jadpo_std::standard::SharedUnit`]: `Pounds` is a `Mass` or a `Money`).
+#[derive(Clone, Copy, Debug)]
+pub struct UnitNamed {
+    pub standard: &'static StandardType,
+    pub or: Option<(
+        &'static StandardType,
+        &'static jadpo_std::standard::SharedUnit,
+    )>,
+}
+
+/// The standard type a type named `name` and built on `builtin` holds as a
+/// plain number: `Grams` on `Int` is a `Mass`, `Pence` a `Money`. Its
+/// whole name is one of the type's units, as the name signal's data says
+/// them ([`jadpo_std::Signals::unit_names`], and a quantity's units by
+/// name or by a code of two letters or more), or its plural. A name with
+/// more in it (`PricePence`) is left to the name signal. Read by
+/// `type.unit_as_number` (area 2, "Units and money in plain numbers";
+/// roadmap F1), and the name signal leaves such a type to it.
+pub fn unit_named(name: &str, builtin: Builtin) -> Option<UnitNamed> {
+    if !matches!(builtin, Builtin::Int | Builtin::Decimal) {
+        return None;
+    }
+    let written = words(name);
+    let joined = name.to_lowercase();
+    let one = |unit: &[&str]| {
+        unit.len() == written.len()
+            && unit
+                .iter()
+                .zip(&written)
+                .all(|(hint, word)| matched(std::slice::from_ref(word), &[hint.to_string()]) == 1)
+    };
+    let on = |entry: &StandardType| {
+        entry.signals.named_on.contains(&builtin) && entry.holds != Holds::Builtin(builtin)
+    };
+    let standard = jadpo_std::STANDARD_TYPES.iter().find(|entry| {
+        let signals = entry.signals;
+        if !on(entry) {
+            return false;
+        }
+        if signals.unit_names.iter().any(|unit| one(&[unit])) {
+            return true;
+        }
+        let Some(kind) = entry.unit_kind().filter(|_| signals.units) else {
+            return false;
+        };
+        kind.units().iter().any(|unit| {
+            let code = unit.code.to_lowercase();
+            one(&unit.name.split('_').collect::<Vec<_>>())
+                || (code.len() >= 2
+                    && code.chars().all(|c| c.is_ascii_alphabetic())
+                    && (joined == code || joined.strip_suffix('s') == Some(code.as_str())))
+        })
+    })?;
+    let or = jadpo_std::STANDARD_TYPES
+        .iter()
+        .filter(|entry| entry.name != standard.name && on(entry))
+        .find_map(|entry| {
+            let shared = entry
+                .signals
+                .shared_units
+                .iter()
+                .find(|shared| one(&[shared.word]))?;
+            Some((entry, shared))
+        });
+    Some(UnitNamed { standard, or })
+}
+
 /// Whether `token` stands in `text` with no letter either side.
 fn holds_token(text: &str, token: &str) -> bool {
     let mut from = 0;
@@ -609,7 +678,9 @@ fn declarations(
                     continue;
                 };
                 let decl = slice(text, place.start, place.end);
-                if let TypeRef::Builtin(builtin) = inner {
+                if let TypeRef::Builtin(builtin) = inner
+                    && unit_named(&node.name, *builtin).is_none()
+                {
                     let canonical = C::Tag(
                         "type",
                         vec![

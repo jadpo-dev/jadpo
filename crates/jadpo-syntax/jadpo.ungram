@@ -98,7 +98,7 @@ DeclineRule =
 Name =
   'ident'
 
-// `type Pence = Int { min: 0 }`; every type has a base and a block (area 2).
+// `type Stock = Int { min: 0 }`; every type has a base and a block (area 2).
 TypeDecl =
   Visibility? 'type' Name '=' base:Type MemberList?
 

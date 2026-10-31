@@ -27,7 +27,7 @@ fn with_lookup(source: &str) -> Vec<String> {
     check(&[("lookup.jadpo", LOOKUP), ("main.jadpo", source)])
 }
 
-const QUANTITY: &str = "type Pence = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype QuantityTooLarge = Failure {\n    kind: FailureKind.invalid_value\n}\n\n";
+const QUANTITY: &str = "type Coins = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype QuantityTooLarge = Failure {\n    kind: FailureKind.invalid_value\n}\n\n";
 
 fn with_quantity(source: &str) -> Vec<String> {
     one(&format!("{QUANTITY}{source}"))
@@ -99,14 +99,14 @@ fn outcome_match_recovers_maps_and_passes_on() {
 fn constructions_the_ranges_prove_safe_take_no_attempt() {
     assert_eq!(
         with_quantity(
-            "function line_total(price: Pence, quantity: Quantity) -> Pence {\n    var total: Pence = Pence(price * quantity)\n    return total\n}\n\nfunction doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) {\n        max: QuantityTooLarge\n    }\n    return result\n}\n\nfunction halved(quantity: Quantity) -> Pence {\n    return Pence(quantity / 2)\n}\n\nfunction capped(quantity: Quantity) -> Quantity {\n    return Quantity(quantity)\n}\n"
+            "function line_total(price: Coins, quantity: Quantity) -> Coins {\n    var total: Coins = Coins(price * quantity)\n    return total\n}\n\nfunction doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) {\n        max: QuantityTooLarge\n    }\n    return result\n}\n\nfunction halved(quantity: Quantity) -> Coins {\n    return Coins(quantity / 2)\n}\n\nfunction capped(quantity: Quantity) -> Quantity {\n    return Quantity(quantity)\n}\n"
         ),
         CLEAN
     );
     // `price - 1` can go below zero, `quantity * 2` above 1000.
     assert_eq!(
         with_quantity(
-            "function cheaper(price: Pence) -> Pence {\n    return Pence(price - 1)\n}\n"
+            "function cheaper(price: Coins) -> Coins {\n    return Coins(price - 1)\n}\n"
         ),
         ["failure.attempt_required"]
     );

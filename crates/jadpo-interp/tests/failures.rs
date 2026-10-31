@@ -68,11 +68,11 @@ fn a_construction_the_ranges_prove_safe_never_fails_and_one_they_dont_can() {
     let program = program(&[
         (
             "types.jadpo",
-            "type Pence = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype QuantityTooLarge = Failure {\n    kind: FailureKind.invalid_value\n}\n",
+            "type Coins = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype QuantityTooLarge = Failure {\n    kind: FailureKind.invalid_value\n}\n",
         ),
         (
             "main.jadpo",
-            "function line_total(price: Pence, quantity: Quantity) -> Pence {\n    var total: Pence = Pence(price * quantity)  // both at least 0, Pence has no maximum\n    return total\n}\n\nfunction doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) {  // can exceed 1000\n        max: QuantityTooLarge\n    }\n    return result\n}\n",
+            "function line_total(price: Coins, quantity: Quantity) -> Coins {\n    var total: Coins = Coins(price * quantity)  // both at least 0, Coins has no maximum\n    return total\n}\n\nfunction doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    var result: Quantity = attempt Quantity(quantity * 2) {  // can exceed 1000\n        max: QuantityTooLarge\n    }\n    return result\n}\n",
         ),
     ]);
     assert_eq!(value(&program, "line_total", vec![int(0), int(7)]), int(0));
@@ -192,7 +192,7 @@ fn a_failure_arm_can_read_the_failures_fields() {
 #[test]
 fn attempt_passes_failures_on_through_every_caller() {
     let program = main(
-        "type Pence = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype QuantityTooLarge = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction line_total(price: Pence, quantity: Quantity) -> Pence {\n    return Pence(price * quantity)\n}\n\nfunction bulk_quantity(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    if (quantity > 100) {\n        reject QuantityTooLarge\n    }\n    return quantity\n}\n\naction price_line(price: Pence, quantity: Quantity) fails QuantityTooLarge -> Pence {\n    var checked: Quantity = attempt bulk_quantity(quantity)\n    return line_total(price, checked)\n}\n",
+        "type Coins = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype QuantityTooLarge = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction line_total(price: Coins, quantity: Quantity) -> Coins {\n    return Coins(price * quantity)\n}\n\nfunction bulk_quantity(quantity: Quantity) fails QuantityTooLarge -> Quantity {\n    if (quantity > 100) {\n        reject QuantityTooLarge\n    }\n    return quantity\n}\n\naction price_line(price: Coins, quantity: Quantity) fails QuantityTooLarge -> Coins {\n    var checked: Quantity = attempt bulk_quantity(quantity)\n    return line_total(price, checked)\n}\n",
     );
     assert_eq!(
         value(&program, "price_line", vec![int(250), int(4)]),
@@ -214,7 +214,7 @@ fn attempt_passes_failures_on_through_every_caller() {
 fn overflow_is_a_defect_with_the_frames_that_reached_it() {
     // Question 9.
     let program = main(
-        "type Pence = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\nfunction line_total(price: Pence, quantity: Quantity) -> Pence {\n    var total: Pence = Pence(price * quantity)\n    return total\n}\n\naction price_line(price: Pence, quantity: Quantity) -> Pence {\n    var line: Pence = line_total(price, quantity)\n    return line\n}\n",
+        "type Coins = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\nfunction line_total(price: Coins, quantity: Quantity) -> Coins {\n    var total: Coins = Coins(price * quantity)\n    return total\n}\n\naction price_line(price: Coins, quantity: Quantity) -> Coins {\n    var line: Coins = line_total(price, quantity)\n    return line\n}\n",
     );
     let overflow = fault(&program, "price_line", vec![int(i64::MAX / 2), int(3)]);
     assert_eq!(

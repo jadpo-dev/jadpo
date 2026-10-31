@@ -38,8 +38,8 @@ const FILES: &[(&str, &str)] = &[
         "use shipping/types { Tag }\n\ntype Tags = List<Tag> {\n    max_length: 3\n}\n",
     ),
     (
-        "domains/shipping/types/grams.jadpo",
-        "type Grams = Int {\n    min: 0\n    max: 100000\n}\n",
+        "domains/shipping/types/heaps.jadpo",
+        "type Heaps = Int {\n    min: 0\n    max: 100000\n}\n",
     ),
     (
         "domains/shipping/types/shelf.jadpo",
@@ -47,14 +47,14 @@ const FILES: &[(&str, &str)] = &[
     ),
     (
         "domains/shipping/types/label.jadpo",
-        r#"use shipping/types { Grams, Tag }
+        r#"use shipping/types { Heaps, Tag }
 
 /// What is printed on a parcel.
 type Label = Object {
     line: Tag
     note: Tag?
-    weight: Grams
-    limit: Grams
+    weight: Heaps
+    limit: Heaps
     price: Money
     rule within_limit: weight <= limit
 }
@@ -62,27 +62,27 @@ type Label = Object {
     ),
     (
         "domains/shipping/types/delivery.jadpo",
-        r#"use shipping/types { Grams, Tag }
+        r#"use shipping/types { Heaps, Tag }
 
 /// How a parcel leaves.
 type Delivery = Enum {
     collect
     courier: {
         company: Tag
-        weight: Grams
+        weight: Heaps
     }
 }
 "#,
     ),
     (
         "domains/shipping/entities/parcel.jadpo",
-        r#"use shipping/types { Delivery, Grams, Label, Shelf, Tag, Tags }
+        r#"use shipping/types { Delivery, Heaps, Label, Shelf, Tag, Tags }
 
 entity Parcel {
     id: Uuid
     label: Label
     tags: Tags
-    weights: Map<Tag, Grams> {
+    weights: Map<Tag, Heaps> {
         max_length: 4
     }
     shelves: Set<Shelf>
@@ -117,13 +117,13 @@ type ParcelView = Output {
     (
         "domains/shipping/actions/send_parcel.jadpo",
         r#"use shipping/entities { Parcel }
-use shipping/types { Delivery, Grams, Label, ParcelView, Shelf, Tag, Tags }
+use shipping/types { Delivery, Heaps, Label, ParcelView, Shelf, Tag, Tags }
 
 /// What sending a parcel takes.
 type SendParcel = Input {
     label: Label
     tags: Tags
-    weights: Map<Tag, Grams> {
+    weights: Map<Tag, Heaps> {
         max_length: 4
     }
     shelves: Set<Shelf>

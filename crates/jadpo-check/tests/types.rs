@@ -12,7 +12,7 @@ fn check(source: &str) -> Vec<String> {
     rules(Layout::Loose, &[("main.jadpo", source)])
 }
 
-const NAMES: &str = "type ProductName = Text {\n    min_length: 1\n    max_length: 120\n}\n\ntype Pence = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype ItemPrice = Decimal {\n    scale: 2\n    min: 0.00\n}\n\n";
+const NAMES: &str = "type ProductName = Text {\n    min_length: 1\n    max_length: 120\n}\n\ntype Coins = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype ItemPrice = Decimal {\n    scale: 2\n    min: 0.00\n}\n\n";
 
 fn with_names(source: &str) -> Vec<String> {
     check(&format!("{NAMES}{source}"))
@@ -32,7 +32,7 @@ fn named_types_refinements_and_literals_check() {
 fn objects_inputs_outputs_enums_and_collections_check() {
     assert_eq!(
         with_names(
-            "type PriceTag = Object {\n    amount: Pence\n}\n\ntype CreateProduct = Input {\n    name: ProductName\n    price: Pence {\n        default: 0\n    }\n    subtitle: ProductName? {\n        default: none\n    }\n}\n\ntype ProductView = Output {\n    name: ProductName\n    price: PriceTag\n    tags: List<ProductName> {\n        max_length: 10\n    }\n}\n\ntype TicketStatus = Enum {\n    open\n    closed\n}\n\nfunction view(request: CreateProduct) -> ProductView {\n    return ProductView {\n        name: request.name\n        price: PriceTag {\n            amount: request.price\n        }\n        tags: [\"mugs\", \"kitchen\"]\n    }\n}\n\nfunction reopen() -> TicketStatus {\n    return TicketStatus.open\n}\n\nfunction sample() -> CreateProduct {\n    return CreateProduct {\n        name: \"Mug\"\n    }\n}\n"
+            "type PriceTag = Object {\n    amount: Coins\n}\n\ntype CreateProduct = Input {\n    name: ProductName\n    price: Coins {\n        default: 0\n    }\n    subtitle: ProductName? {\n        default: none\n    }\n}\n\ntype ProductView = Output {\n    name: ProductName\n    price: PriceTag\n    tags: List<ProductName> {\n        max_length: 10\n    }\n}\n\ntype TicketStatus = Enum {\n    open\n    closed\n}\n\nfunction view(request: CreateProduct) -> ProductView {\n    return ProductView {\n        name: request.name\n        price: PriceTag {\n            amount: request.price\n        }\n        tags: [\"mugs\", \"kitchen\"]\n    }\n}\n\nfunction reopen() -> TicketStatus {\n    return TicketStatus.open\n}\n\nfunction sample() -> CreateProduct {\n    return CreateProduct {\n        name: \"Mug\"\n    }\n}\n"
         ),
         Vec::<String>::new()
     );
@@ -42,7 +42,7 @@ fn objects_inputs_outputs_enums_and_collections_check() {
 fn each_mistake_gives_its_rule() {
     let cases: &[(&str, &str)] = &[
         (
-            "function add(a: Pence, b: Pence) -> Pence {\n    return a + b\n}\n",
+            "function add(a: Coins, b: Coins) -> Coins {\n    return a + b\n}\n",
             "type.mismatch",
         ),
         (
@@ -119,15 +119,15 @@ fn each_mistake_gives_its_rule() {
             "type.duplicate_variant",
         ),
         (
-            "type Outcome = Enum {\n    paid: {\n        amount: Pence\n    }\n}\n\nfunction paid() -> Outcome {\n    return Outcome.paid {}\n}\n",
+            "type Outcome = Enum {\n    paid: {\n        amount: Coins\n    }\n}\n\nfunction paid() -> Outcome {\n    return Outcome.paid {}\n}\n",
             "type.missing_variant_field",
         ),
         (
-            "type Outcome = Enum {\n    paid: {\n        amount: Pence\n    }\n}\n\nfunction paid(amount: Pence) -> Outcome {\n    return Outcome.paid {\n        amount: amount\n        extra: amount\n    }\n}\n",
+            "type Outcome = Enum {\n    paid: {\n        amount: Coins\n    }\n}\n\nfunction paid(amount: Coins) -> Outcome {\n    return Outcome.paid {\n        amount: amount\n        extra: amount\n    }\n}\n",
             "type.unknown_variant_field",
         ),
         (
-            "type Outcome = Enum {\n    paid: {\n        amount: Pence\n    }\n}\n\nfunction paid(amount: Pence) -> Outcome {\n    return Outcome.paid {\n        amount: amount\n        amount: amount\n    }\n}\n",
+            "type Outcome = Enum {\n    paid: {\n        amount: Coins\n    }\n}\n\nfunction paid(amount: Coins) -> Outcome {\n    return Outcome.paid {\n        amount: amount\n        amount: amount\n    }\n}\n",
             "type.duplicate_variant_field",
         ),
         (
@@ -215,7 +215,7 @@ fn each_mistake_gives_its_rule() {
             "type.not_record",
         ),
         (
-            "type ItemView = Output {\n    pick: Pence\n}\n",
+            "type ItemView = Output {\n    pick: Coins\n}\n",
             "type.setting_value",
         ),
         (
@@ -246,7 +246,7 @@ fn one_mistake_gives_one_error() {
     // from it is `Error` and checks quietly.
     assert_eq!(
         with_names(
-            "function add(a: Pence, b: Missing) -> Pence {\n    var c: Pence = b\n    var d: Pence = b.amount + a\n    return Pence(b.total + c + d)\n}\n"
+            "function add(a: Coins, b: Missing) -> Coins {\n    var c: Coins = b\n    var d: Coins = b.amount + a\n    return Coins(b.total + c + d)\n}\n"
         ),
         ["semantic.unknown_name"]
     );
@@ -254,7 +254,7 @@ fn one_mistake_gives_one_error() {
     // declaration, none where the field is read or built.
     assert_eq!(
         with_names(
-            "type Holder = Object {\n    name: ProductName\n    price: Holder.cost\n}\n\nfunction make(name: ProductName, price: Pence) -> Holder {\n    return Holder {\n        name: name\n        price: price\n    }\n}\n"
+            "type Holder = Object {\n    name: ProductName\n    price: Holder.cost\n}\n\nfunction make(name: ProductName, price: Coins) -> Holder {\n    return Holder {\n        name: name\n        price: price\n    }\n}\n"
         ),
         ["type.unknown_field"]
     );
@@ -358,7 +358,7 @@ fn built_in_values_are_built_from_literals_only() {
 fn loops_and_failures_read_their_types() {
     assert_eq!(
         with_names(
-            "type Line = Object {\n    price: Pence\n}\n\ntype Basket = Object {\n    lines: List<Line>\n}\n\ntype PriceTooHigh = Failure {\n    kind: FailureKind.invalid_value\n    client: {\n        limit: Pence\n    }\n}\n\nfunction first(basket: Basket) -> Pence {\n    for line in basket.lines {\n        return line.price\n    }\n    return 0\n}\n"
+            "type Line = Object {\n    price: Coins\n}\n\ntype Basket = Object {\n    lines: List<Line>\n}\n\ntype PriceTooHigh = Failure {\n    kind: FailureKind.invalid_value\n    client: {\n        limit: Coins\n    }\n}\n\nfunction first(basket: Basket) -> Coins {\n    for line in basket.lines {\n        return line.price\n    }\n    return 0\n}\n"
         ),
         Vec::<String>::new()
     );
@@ -412,20 +412,20 @@ fn standard_operations_check_their_arguments_shape_and_kind() {
     let cases: &[(&str, &[&str])] = &[
         // A list operation takes a list, whatever its items are.
         (
-            "function f(n: Pence) -> Quantity {\n    return Quantity(list.count(n))\n}\n",
+            "function f(n: Coins) -> Quantity {\n    return Quantity(list.count(n))\n}\n",
             &["type.mismatch"],
         ),
         (
-            "function f(n: Pence) -> List<Pence> {\n    return list.map(n, x -> x)\n}\n",
+            "function f(n: Coins) -> List<Coins> {\n    return list.map(n, x -> x)\n}\n",
             &["type.mismatch"],
         ),
         // Division takes numbers, built on `Int` for `integer.divide`.
         (
-            "function f(a: ProductName, b: ProductName) -> Pence {\n    return Pence(integer.divide(a, b, rounding: Rounding.up))\n}\n",
+            "function f(a: ProductName, b: ProductName) -> Coins {\n    return Coins(integer.divide(a, b, rounding: Rounding.up))\n}\n",
             &["type.mismatch", "type.mismatch"],
         ),
         (
-            "function f(a: ItemPrice, b: Quantity) -> Pence {\n    return Pence(integer.divide(a, b, rounding: Rounding.up))\n}\n",
+            "function f(a: ItemPrice, b: Quantity) -> Coins {\n    return Coins(integer.divide(a, b, rounding: Rounding.up))\n}\n",
             &["type.mismatch"],
         ),
         (
@@ -433,18 +433,18 @@ fn standard_operations_check_their_arguments_shape_and_kind() {
             &["failure.undeclared_propagation"],
         ),
         (
-            "function f(total: Pence, boxes: Quantity) -> Quantity {\n    return Quantity(integer.divide(total, boxes, rounding: Rounding.up))\n}\n",
+            "function f(total: Coins, boxes: Quantity) -> Quantity {\n    return Quantity(integer.divide(total, boxes, rounding: Rounding.up))\n}\n",
             &["failure.attempt_required"],
         ),
         // A division of a value never below zero by a divisor of at least
         // 1 is proved like `/`: from zero up to the dividend.
         (
-            "function f(total: Pence, boxes: Quantity) -> Pence {\n    return Pence(integer.divide(total, boxes, rounding: Rounding.up))\n}\n",
+            "function f(total: Coins, boxes: Quantity) -> Coins {\n    return Coins(integer.divide(total, boxes, rounding: Rounding.up))\n}\n",
             &[],
         ),
         // An empty list fixes no type variable, and needs none.
         (
-            "function f() -> Pence {\n    return Pence(list.count([]))\n}\n",
+            "function f() -> Coins {\n    return Coins(list.count([]))\n}\n",
             &[],
         ),
     ];
@@ -459,7 +459,7 @@ fn formatting_is_checked_like_any_operation() {
     // it gives text for people, which isn't a number.
     assert_eq!(
         with_names(
-            "function f(n: Pence) -> Pence {\n    var formatted_price: Pence = text.format(n)\n    return formatted_price\n}\n"
+            "function f(n: Coins) -> Coins {\n    var formatted_price: Coins = text.format(n)\n    return formatted_price\n}\n"
         ),
         ["type.mismatch", "type.argument_count"]
     );

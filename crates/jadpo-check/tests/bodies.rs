@@ -12,7 +12,7 @@ use jadpo_graph::body::{
 use jadpo_graph::{Key, Kind, TypeRef};
 use jadpo_std::{Builtin, Op};
 
-const TYPES: &str = "type Pence = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype Shade = Enum {\n    plain\n    tinted: {\n        level: Pence\n    }\n}\n\ntype Line = Object {\n    price: Pence\n    quantity: Quantity\n}\n\ntype TooMany = Failure {\n    kind: FailureKind.invalid_value\n    client: {\n        limit: Pence\n    }\n}\n\n";
+const TYPES: &str = "type Coins = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype Shade = Enum {\n    plain\n    tinted: {\n        level: Coins\n    }\n}\n\ntype Line = Object {\n    price: Coins\n    quantity: Quantity\n}\n\ntype TooMany = Failure {\n    kind: FailureKind.invalid_value\n    client: {\n        limit: Coins\n    }\n}\n\n";
 
 /// The typed bodies of `source`'s callables, in source order.
 fn bodies(source: &str) -> Vec<(Option<Key>, Body)> {
@@ -55,7 +55,7 @@ fn key(kind: Kind, name: &str) -> Key {
 #[test]
 fn sites_are_numbered_in_source_order_with_types_and_literal_targets() {
     let found = bodies(
-        "function total(line: Line) -> Pence {\n    var sum: Pence = Pence(line.price * line.quantity)\n    return sum\n}\n",
+        "function total(line: Line) -> Coins {\n    var sum: Coins = Coins(line.price * line.quantity)\n    return sum\n}\n",
     );
     let (callable, body) = &found[0];
     assert_eq!(callable.as_ref(), Some(&key(Kind::Function, "total")));
@@ -74,7 +74,7 @@ fn sites_are_numbered_in_source_order_with_types_and_literal_targets() {
         panic!("{:?}", body.block);
     };
     assert_eq!(body.local(*sum).name, "sum");
-    assert_eq!(body.local(*sum).ty, TypeRef::Node(key(Kind::Type, "Pence")));
+    assert_eq!(body.local(*sum).ty, TypeRef::Node(key(Kind::Type, "Coins")));
     let Expr::Call {
         callee: Callee::Construct(target),
         args,
@@ -83,8 +83,8 @@ fn sites_are_numbered_in_source_order_with_types_and_literal_targets() {
     else {
         panic!("{:?}", expr(body, *value));
     };
-    assert_eq!(*target, TypeRef::Node(key(Kind::Type, "Pence")));
-    // `price * quantity` is never negative: building a `Pence` can't fail.
+    assert_eq!(*target, TypeRef::Node(key(Kind::Type, "Coins")));
+    // `price * quantity` is never negative: building a `Coins` can't fail.
     assert_eq!(*fallible, Fallible::Never);
     let Some(Some(product)) = args.first() else {
         panic!("{args:?}");
@@ -107,7 +107,7 @@ fn sites_are_numbered_in_source_order_with_types_and_literal_targets() {
 #[test]
 fn calls_reach_what_the_check_resolved() {
     let found = bodies(
-        "function double(n: Pence) -> Pence {\n    return Pence(n * 2)\n}\n\nfunction prices(lines: List<Line>) -> List<Pence> {\n    var doubled: List<Pence> = list.map(lines, line -> double(line.price))\n    return doubled\n}\n",
+        "function double(n: Coins) -> Coins {\n    return Coins(n * 2)\n}\n\nfunction prices(lines: List<Line>) -> List<Coins> {\n    var doubled: List<Coins> = list.map(lines, line -> double(line.price))\n    return doubled\n}\n",
     );
     let (_, body) = &found[1];
     let Stmt::Var {
@@ -157,7 +157,7 @@ fn calls_reach_what_the_check_resolved() {
 fn an_else_if_chain_is_one_flat_if() {
     let chain = " else if (n == 1) {\n        return n\n    }".repeat(5_000);
     let found = bodies(&format!(
-        "function f(n: Pence) -> Pence {{\n    if (n == 0) {{\n        return n\n    }}{chain} else {{\n        return n\n    }}\n}}\n"
+        "function f(n: Coins) -> Coins {{\n    if (n == 0) {{\n        return n\n    }}{chain} else {{\n        return n\n    }}\n}}\n"
     ));
     let (_, body) = &found[0];
     let Stmt::If {
@@ -174,7 +174,7 @@ fn an_else_if_chain_is_one_flat_if() {
 #[test]
 fn constructions_say_which_rules_break_and_their_failures() {
     let found = bodies(
-        "type Refused = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction cap(n: Pence) fails TooMany, Refused -> Quantity {\n    if (n > 1000) {\n        reject TooMany {\n            limit: 1000\n        }\n    }\n    return attempt Quantity(n) {\n        invalid: Refused\n    }\n}\n",
+        "type Refused = Failure {\n    kind: FailureKind.invalid_value\n}\n\nfunction cap(n: Coins) fails TooMany, Refused -> Quantity {\n    if (n > 1000) {\n        reject TooMany {\n            limit: 1000\n        }\n    }\n    return attempt Quantity(n) {\n        invalid: Refused\n    }\n}\n",
     );
     let (_, body) = &found[0];
     assert_eq!(
@@ -277,7 +277,7 @@ fn constructions_say_which_rules_break_and_their_failures() {
 #[test]
 fn matches_bind_locals_and_number_their_arms() {
     let found = bodies(
-        "function level(shade: Shade) -> Pence {\n    return match (shade) {\n        Shade.plain -> 0\n        Shade.tinted(tint) -> tint.level\n    }\n}\n",
+        "function level(shade: Shade) -> Coins {\n    return match (shade) {\n        Shade.plain -> 0\n        Shade.tinted(tint) -> tint.level\n    }\n}\n",
     );
     let (_, body) = &found[0];
     let Stmt::Return { value: Some(value) } = stmt(body, body.block[0]) else {
@@ -345,7 +345,7 @@ fn a_bodys_names_are_resolved_in_its_own_walk() {
 #[test]
 fn sites_that_can_pause_are_effects_and_calls_into_actions() {
     let found = bodies(
-        "type At = Instant {}\n\naction stamp() -> At {\n    return At(clock.now)\n}\n\naction bump(n: Pence) -> Pence {\n    return Pence(n + 1)\n}\n\naction twice(n: Pence) -> Pence {\n    var once: Pence = bump(n)\n    return bump(once)\n}\n\nfunction plain(n: Pence) -> Pence {\n    return Pence(n + 1)\n}\n",
+        "type At = Instant {}\n\naction stamp() -> At {\n    return At(clock.now)\n}\n\naction bump(n: Coins) -> Coins {\n    return Coins(n + 1)\n}\n\naction twice(n: Coins) -> Coins {\n    var once: Coins = bump(n)\n    return bump(once)\n}\n\nfunction plain(n: Coins) -> Coins {\n    return Coins(n + 1)\n}\n",
     );
     let pausing = |name: &str| -> (bool, Vec<String>) {
         let (_, body) = found

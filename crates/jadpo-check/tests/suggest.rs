@@ -140,14 +140,28 @@ fn a_name_on_a_built_in_type_is_found() {
 
 #[test]
 fn a_parameter_and_a_type_are_named_too() {
-    let text = "/// Pence.\ntype Pence = Int {}\n\n/// A whole number.\ntype Whole = Int {}\n\n/// Waits.\nfunction wait(delay_seconds: Whole, price: Pence) -> Whole {\n    return delay_seconds\n}\n";
+    let text = "/// Pence.\ntype PricePence = Int {}\n\n/// A whole number.\ntype Whole = Int {}\n\n/// Waits.\nfunction wait(delay_seconds: Whole, price: PricePence) -> Whole {\n    return delay_seconds\n}\n";
     assert_eq!(
         rows(text),
         [
-            "name Money: type Pence = Int",
+            "name Money: type PricePence = Int",
             "name Duration: delay_seconds: Whole"
         ]
     );
+}
+
+#[test]
+fn a_type_named_only_for_a_unit_is_left_to_check() {
+    // `type.unit_as_number` reports it (area 2, "Units and money in plain
+    // numbers"), as `type.standard_exists` reports exactly a shape.
+    let text = "/// Pence.\ntype Pence = Int {}\n\n/// Grams.\ntype Grams = Int {}\n\n/// A parcel.\ntype Parcel = Object {\n    weight: Grams\n    price: Pence\n}\n";
+    assert_eq!(rows(text), Vec::<String>::new());
+}
+
+#[test]
+fn a_name_holding_percent_is_a_percentage() {
+    let text = "/// A sale.\ntype Sale = Object {\n    discount_percent: Int\n}\n";
+    assert_eq!(rows(text), ["name Percentage: discount_percent: Int"]);
 }
 
 #[test]

@@ -6,7 +6,7 @@ use jadpo_interp::{FaultKind, MAX_DEPTH, Outcome, Value, on_large_stack};
 use support::{decimal, fault, int, list, main, program, text, value, where_fault};
 
 const NUMBERS: &str =
-    "type Pence = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n";
+    "type Coins = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n";
 
 #[test]
 fn a_function_computes_its_result() {
@@ -14,7 +14,7 @@ fn a_function_computes_its_result() {
         ("numbers.jadpo", NUMBERS),
         (
             "main.jadpo",
-            "/// Total for one order line before discounts.\nfunction line_total(price: Pence, quantity: Quantity) -> Pence {\n    var total: Pence = Pence(price * quantity)\n    return total\n}\n",
+            "/// Total for one order line before discounts.\nfunction line_total(price: Coins, quantity: Quantity) -> Coins {\n    var total: Coins = Coins(price * quantity)\n    return total\n}\n",
         ),
     ]);
     assert_eq!(
@@ -232,11 +232,11 @@ fn a_loop_runs_its_body_once_per_item() {
     let program = program(&[
         (
             "lines.jadpo",
-            "type Pence = Int {\n    min: 0\n}\n\ntype OrderLine = Object {\n    subtotal: Pence\n}\n",
+            "type Coins = Int {\n    min: 0\n}\n\ntype OrderLine = Object {\n    subtotal: Coins\n}\n",
         ),
         (
             "main.jadpo",
-            "function order_total(lines: List<OrderLine>) -> Pence {\n    var mut total: Pence = 0\n    for line in lines {\n        total = Pence(total + line.subtotal)\n    }\n    return total\n}\n",
+            "function order_total(lines: List<OrderLine>) -> Coins {\n    var mut total: Coins = 0\n    for line in lines {\n        total = Coins(total + line.subtotal)\n    }\n    return total\n}\n",
         ),
     ]);
     let line = |n: i64| {

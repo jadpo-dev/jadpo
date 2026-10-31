@@ -476,6 +476,7 @@ miles
 pounds
 grams
 kilograms
+knots
 product
 products
 # a standard operation's name, `text.trim` (area 19); the showcase's variable too
