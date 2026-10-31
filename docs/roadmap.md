@@ -389,28 +389,27 @@ time.
   (Richard, 2026-10-30). Done when the lending desk example signs staff
   in with Google through Jadpo alone, tested with the local issuer.
 
-## Approvals for 0.2.0
+## Approvals
 
 Everything a person must approve is found by the compiler and can be
 approved (Richard, 2026-10-31). These chunks are taken after the A chunks
-above and before every other unticked chunk. When V6 has merged, the
-0.2.0 release pull request is merged; no session merges it before then.
-V1 to V5 run at the same time where they touch different crates.
+above and before every other unticked chunk.
+
+**0.2.0 is V2 alone.** When V2 has merged, the 0.2.0 release pull request
+is merged; no session merges it before then. Everything else in this
+section and the registry chunks below make **0.3.0**, released when V6
+and R6 have both merged. V1 and V3 to V5 run at the same time as each
+other and as R1 and R4, where they touch different crates.
 
 Already built: acceptances (`jadpo acceptance new`, matching, the reason,
 history, the CODEOWNERS gate) for API and event breaks, every widening of
 who can do what (routes made public included), security declines,
 sign-in settings past their limit, new domains, new outside hosts and
-packages from git (every one, until V1). The kinds that belong to features not built yet come
-with those features: `ThresholdChange` with thresholds, a service's image
-with services, bot checks with bot protection, a domain renamed with
-`jadpo domain rename`.
+packages from git (every one, until V1). The kinds that belong to
+features not built yet come with those features: `ThresholdChange` with
+thresholds, a service's image with services, bot checks with bot
+protection, a domain renamed with `jadpo domain rename`.
 
-- [ ] **V1 Your own company's git packages** `opus · high`: area 11,
-  "Installing safely"; area 18, `PolicyChange.own_source_added`.
-  `packages:`'s `own_sources:` in `application { }` (added to area 1's
-  list of sections), its `own_source` lines in `access.jadpo_record`, and
-  `PackageChange.git_source` only for a repository under none of them.
 - [ ] **V2 The approval report** `opus · xhigh`: area 17, "Reviewing a
   change"; area 18, "Comparing two builds". `jadpo approval --before
   <ref>` builds the base, and writes Markdown and JSON in `build/review/`
@@ -421,6 +420,11 @@ with services, bot checks with bot protection, a domain renamed with
   not yet accepted) and the source by declaration. The web view stays
   with the developer console. Screens designed with the design skills
   first. Split here if it is larger than a session.
+- [ ] **V1 Your own company's git packages** `opus · high`: area 11,
+  "Installing safely"; area 18, `PolicyChange.own_source_added`.
+  `packages:`'s `own_sources:` in `application { }` (added to area 1's
+  list of sections), its `own_source` lines in `access.jadpo_record`, and
+  `PackageChange.git_source` only for a repository under none of them.
 - [ ] **V3 Removing data needs a person** `opus · xhigh`: area 5,
   "Migrations"; area 18, `DataChange`. `jadpo migrate new`'s removals (an
   entity removed, one moved to another store, a retired column dropped),
@@ -445,8 +449,9 @@ with services, bot checks with bot protection, a domain renamed with
 ## The public registry
 
 The registry at jadpo.dev ([External services](language/11-integrations.md#the-public-registry)).
-These chunks are taken after the approval chunks above and before every
-other unticked chunk (Richard, 2026-10-31). The chunks here build the `jadpo`
+These chunks are taken after V2 and before every other unticked chunk,
+beside the other approval chunks, and R1 to R6 are part of 0.3.0
+(Richard, 2026-10-31). The chunks here build the `jadpo`
 side; the registry application itself is built in the jadpo.dev
 repository against [the registry protocol](language/11-integrations.md#the-registry-protocol).
 R1 and R4 touch different crates and run at the same time.
@@ -529,7 +534,7 @@ After the registry is live, in order:
    threshold raised or removed.
 5. Debugging and review (area 17): `why`, timelines, `test new --from`,
    `call`.
-6. Records and acceptances: moved to "Approvals for 0.2.0" (2026-10-31).
+6. Records and acceptances: moved to "Approvals" (2026-10-31).
 7. Tooling completeness (area 14): interactive tests, `rename` (refusing a
    name already in use, 2026-10-16), `impact`,
    full completion.
