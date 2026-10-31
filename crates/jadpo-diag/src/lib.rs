@@ -173,6 +173,8 @@ rules! {
         "Runs command has invalid arguments";
     CLI_SCHEDULES_ARGUMENTS: "cli.schedules_arguments", area 14, Error, Agent,
         "Schedules command has invalid arguments";
+    CLI_SEED_ARGUMENTS: "cli.seed_arguments", area 14, Error, Agent,
+        "Seed command has invalid arguments";
     CLI_SQL_ARGUMENTS: "cli.sql_arguments", area 14, Error, Agent,
         "Sql command has invalid arguments";
     CLI_SUGGEST_ARGUMENTS: "cli.suggest_arguments", area 14, Error, Agent,
@@ -619,6 +621,8 @@ rules! {
         "Wire name outside a provider package, or one the type already uses";
     POLICY_BINDING_INVALID: "policy.binding_invalid", area 9, Error, Agent,
         "Policy names something that can't say who";
+    POLICY_CALL_UNGRANTED: "policy.call_ungranted", area 9, Declinable, Human,
+        "Listed action calls one that refuses some of the people its line lets in";
     POLICY_DECLARATION_DUPLICATE: "policy.declaration_duplicate", area 9, Error, Agent,
         "Policy is declared twice";
     POLICY_EFFECT_DUPLICATE: "policy.effect_duplicate", area 9, Error, Agent,
@@ -837,6 +841,12 @@ rules! {
         "Schedule's run failed";
     SCHEDULES_UNAVAILABLE: "schedules.unavailable", area 14, Error, Human,
         "Schedules' database couldn't be read";
+    SEED_FAILED: "seed.failed", area 14, Error, Agent,
+        "Seed ended with a failure or a fault";
+    SEED_PRODUCTION_REFUSED: "seed.production_refused", area 14, Error, Human,
+        "Seed refused a database that isn't on this machine";
+    SEED_UNAVAILABLE: "seed.unavailable", area 14, Error, Human,
+        "Seed's database couldn't be reached";
     SEMANTIC_AI_BUDGET_MISSING: "semantic.ai_budget_missing", area 21, Error, Agent,
         "Application's `ai:` sets no daily limit";
     SEMANTIC_AI_DIMENSIONS_MISMATCH: "semantic.ai_dimensions_mismatch", area 21, Error, Agent,
@@ -1643,6 +1653,7 @@ mod tests {
                 "email.health_problem",
                 "library.similar_exists",
                 "package.standard_candidate",
+                "policy.call_ungranted",
                 "query.nearest_exact",
                 "rate_limits.counted_in_memory",
                 "step.late_failure",

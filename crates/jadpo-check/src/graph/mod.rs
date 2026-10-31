@@ -264,7 +264,7 @@ pub fn callable_key(
             Some(test_key(symbols.registry(), path, &name))
         }
         (Decl::SeedDecl(seed), None) => {
-            let name = seed.name().as_ref().and_then(tree::name_text)?;
+            let name = jadpo_db::seed_name(seed, path);
             Some(symbols.registry().key(Kind::Seed, &name, None))
         }
         (decl, None) => {
@@ -722,8 +722,35 @@ pub fn policy_nodes(
         }
     }
     let root = crate::policy::root_read(db, project);
-    for line in &root.model.actions {
-        let Some(action) = declaration_key(&lookup, &line.action) else {
+    // Each line under `actions:`, an action's or a query's (area 9,
+    // "Listing a query"), grants the declaration it names.
+    let lines = root
+        .model
+        .actions
+        .iter()
+        .map(|line| (line, ItemKind::Action))
+        .chain(
+            root.model
+                .queries
+                .iter()
+                .map(|line| (line, ItemKind::Query)),
+        );
+    for (line, item) in lines {
+        let granted = match item {
+            ItemKind::Action => declaration_key(&lookup, &line.action),
+            _ => lookup
+                .declared(&line.action)
+                .iter()
+                .find(|symbol| symbol.kind == item && symbol.library.is_none())
+                .and_then(|symbol| {
+                    Some(
+                        lookup
+                            .registry()
+                            .key(kind_of(&symbol.kind)?, &symbol.identity(), None),
+                    )
+                }),
+        };
+        let Some(action) = granted else {
             continue;
         };
         let mut node = Node::new(
@@ -742,7 +769,7 @@ pub fn policy_nodes(
             std::iter::once(line.written.as_str())
                 .chain(line.written_who.iter().map(String::as_str)),
         ));
-        node.domain = domain_of(&line.action, ItemKind::Action);
+        node.domain = domain_of(&line.action, item);
         node.detail = Detail::ActionException {
             who: line.written_who.clone(),
         };

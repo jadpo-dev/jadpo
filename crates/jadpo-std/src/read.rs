@@ -664,6 +664,10 @@ pub struct ReadPlan {
     /// For a map layer (area 6, chunk 5.5u8): the list's records are
     /// `Feature`s, given as one `FeatureCollection`.
     pub layer: bool,
+    /// For a query listed under root `policy { actions: }` (area 9,
+    /// "Listing a query"): who may run it, checked as it starts, before
+    /// its statement runs, wherever it is run from.
+    pub gate: Option<crate::policy::Gate>,
 }
 
 /// How far, in metres, the statement of a query with `geo.` conditions

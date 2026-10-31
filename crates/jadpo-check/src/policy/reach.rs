@@ -109,7 +109,7 @@ pub fn acts_of<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> BTree
 }
 
 /// What the action called `name` acts.
-fn acts<'db>(db: &'db dyn Db, project: Project, name: &str) -> &'db BTreeSet<Act> {
+pub(super) fn acts<'db>(db: &'db dyn Db, project: Project, name: &str) -> &'db BTreeSet<Act> {
     acts_of(db, project, Name::new(db, name.to_string()))
 }
 
@@ -201,7 +201,7 @@ struct Reached {
 
 /// The action called `run` and every action it calls, itself or through
 /// another, each once, `run` first.
-fn calls_from(db: &dyn Db, project: Project, run: &str) -> Vec<String> {
+pub(super) fn calls_from(db: &dyn Db, project: Project, run: &str) -> Vec<String> {
     let mut out = vec![run.to_string()];
     let mut at = 0;
     while let Some(current) = out.get(at).cloned() {
@@ -467,6 +467,23 @@ pub fn reach_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
                 Some(op) => generated_reach(db, project, access, op),
                 None => reached(db, project, access, &run, route.run.query),
             };
+            // A listed query's line never names `Access.public` (area 9,
+            // "Listing a query"), so a route anyone may call can't run it.
+            if route.run.query
+                && anyone
+                && let Some(line) = access.root().query(&run)
+            {
+                out.push(public_missing(
+                    &label,
+                    span,
+                    &format!("`{}`'s line under `actions:`", line.written),
+                    &format!(
+                        "Remove `authentication: RouteAuthentication.none` from the route, since `{}`'s line can't name `Access.public`",
+                        line.written
+                    ),
+                ));
+                continue;
+            }
             let listed = (!route.run.query)
                 .then(|| access.root().action(&run))
                 .flatten();
@@ -675,8 +692,8 @@ fn public_only_reached(
 /// Whether policy may refuse the caller of the action called `run` with
 /// 403 `not_permitted` (area 9, "When policy says no"): it, or an action
 /// it calls, is listed under `actions:`, or creates, changes or deletes a
-/// record. A record a read can't see is its code's own not-found failure
-/// instead.
+/// record, or runs a listed query. A record a read can't see is its
+/// code's own not-found failure instead.
 pub fn may_refuse(db: &dyn Db, project: Project, run: &str) -> bool {
     let root = super::root_policy(db, project);
     let mut seen = BTreeSet::from([run.to_string()]);
@@ -689,6 +706,7 @@ pub fn may_refuse(db: &dyn Db, project: Project, run: &str) -> bool {
         for act in acts(db, project, &current) {
             match act {
                 Act::Entity(_, Effect::Create | Effect::Update | Effect::Delete) => return true,
+                Act::Queries(query) if root.query(query).is_some() => return true,
                 Act::Calls(callee) if seen.insert(callee.clone()) => queue.push(callee.clone()),
                 _ => {}
             }
@@ -761,7 +779,7 @@ fn public_missing(label: &str, span: jadpo_diag::Span, what: &str, next: &str) -
 
 /// How `actions:` names the action called `name`: `domain.action`, or the
 /// bare name in a single-file project.
-fn written_action(lookup: &Lookup<'_>, name: &str) -> String {
+pub(super) fn written_action(lookup: &Lookup<'_>, name: &str) -> String {
     use crate::lookups::NameView;
     match lookup
         .declared(name)

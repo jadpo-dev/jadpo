@@ -190,6 +190,18 @@ async fn run(
     let defect = |ctx: &mut Ctx<'_>, what: &str| {
         Stored::Fault(ctx.fault(FaultKind::Defect(what.into()), site))
     };
+    // A listed query's line, checked as it starts (area 9, "Listing a
+    // query"): a caller it doesn't let in is refused before its
+    // statement runs.
+    if let StoreOp::Read(ReadPlan {
+        gate: Some(gate), ..
+    }) = op
+    {
+        match crate::admit(ctx, gate, site).await {
+            Stored::Value(_) => {}
+            refused => return refused,
+        }
+    }
     match op {
         StoreOp::Read(plan) => match read(ctx, plan, json, args, site).await {
             Ok(Found::Value(value)) => Stored::Value(value),

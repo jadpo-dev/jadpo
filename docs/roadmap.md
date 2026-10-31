@@ -366,17 +366,10 @@ time.
 
 - [x] **A0 Every unbuilt protection refused where it is written**: area 15, opening, the capability table and "What is built"; area 9, "Protecting policy"; area 6, "All-or-nothing actions and concurrent changes"; area 16, "What is built".
 - [x] **A1 Diagnostics that point at the cause**: area 1, "Reserved words" and "How a promotion happens"; area 2, "Values that may be missing"; area 9, "Actions"; area 14, "Commands for debugging, editors and help".
-- [ ] **A2 Listed queries and calls a listing doesn't cover** `opus · xhigh`:
-  area 9, "Listing a query" and "A call the listing doesn't cover", with
-  their decisions in the area's notes. Done when a staff query restricts
-  fields to a role on the same entity as a customer catalogue, a route
-  test shows a removed role refused on the next request, and a listed
-  action calling an admin-only helper is `policy.call_ungranted`.
+- [x] **A2 Listed queries and calls a listing doesn't cover**: area 9, "Listing a query", "A call the listing doesn't cover" and "The permissions report"; area 1, "Which rules can be declined".
 - [x] **A3 External tokens in tests and `jadpo dev`**: area 8, "External tokens in tests and `jadpo dev`"; area 13, `as:`; area 14, `jadpo dev`'s "External tokens"; area 19, `Jwk`'s `key_ops`.
 - [x] **A4 Batches run to the end in tests**: area 13, "Batches" and "What is built"; compiler/runtime §2.5; `examples/24-seed-library/README.md`.
-- [ ] **A5 `jadpo seed`** `opus · high`: area 5, seeds, which are specified
-  and were on no chunk; the way to give a dev database its first staff
-  user without SQL.
+- [x] **A5 `jadpo seed`**: area 5, "Seeds"; area 14, "`jadpo seed`" and "Command errors".
 - [ ] **A6 Guidance an agent reads first** `opus · high` after A1 to A5:
   the `AGENTS.md` that `jadpo new` writes gains a workflow (one concern at
   a time, `jadpo check` after each file, read one topic not a whole page,
@@ -388,6 +381,11 @@ time.
   reminder schedule over a batch, and route tests for each, with no code
   outside Jadpo. Before 10.2's measured runs, since it changes what they
   measure.
+- [ ] **A9 Unknown sections of `application { }`** `opus · high`: an
+  unknown or misspelt section of the root `application { }` is accepted
+  silently today, so a setting meant to protect the app can be dropped
+  without a word. One list of every area's sections, and a rule refusing
+  any other, as entities' and routes' unknown sections are. Found by A0.
 - [ ] **A8 Acceptances for what exists today** `opus · xhigh` after A2:
   area 18, "Acceptances": `jadpo acceptance new`, matching and the
   `///` reason, CODEOWNERS on `acceptances/` and `api/`, and the kinds
@@ -400,7 +398,9 @@ time.
   `access.jadpo_record` and `network.jadpo_record` give them a before
   side. An outside agent made a route public on request and nothing
   stopped it (Richard, 2026-10-30). The kinds whose features aren't built
-  yet are named on the items below that build them.
+  yet are named on the items below that build them. The rule catalogue
+  (`crates/jadpo-diag`) has no mark for a security rule yet: A8 adds it,
+  starting with `policy.call_ungranted`, declinable since A2.
 - [ ] **A7 Sign-in providers** `opus · xhigh`: area 8, `sign_in:`'s
   `providers:` (Google first, then Microsoft, through `Driver.oidc`) and
   `on_first_sign_in:` for provider and external-token sign-in. Moved here

@@ -2317,3 +2317,416 @@ action project_map(project_id: Project.id) fails ProjectNotFound -> FeatureColle
     );
     assert_eq!(rules_of(&layer("name")), Vec::<&str>::new());
 }
+
+/// A shop whose books every signed-in member reads, with a shelf note
+/// only `StaffRole.admin` reads; staff hold their role across the whole
+/// application; `actions` are the lines under root `actions:`, and
+/// whatever follows.
+fn shop(actions: &str, code: &str) -> Vec<String> {
+    let text = shop_text(actions, code);
+    support::problems(Layout::Loose, &[("main.jadpo", text.as_str())])
+}
+
+/// [`shop`]'s one file.
+fn shop_text(actions: &str, code: &str) -> String {
+    format!(
+        r#"principal {{
+    user: {{
+        subject: Member.handle
+    }}
+}}
+
+authentication {{
+    api_token: {{}}
+}}
+
+policy {{
+    actions: {{
+{actions}    }}
+}}
+
+type Handle = Text {{
+    max_length: 40
+}}
+
+type StaffRole = Enum {{
+    admin
+    clerk
+}}
+
+entity Member {{
+    id: Uuid
+    handle: Handle {{
+        unique: true
+    }}
+
+    policy: {{
+        read: [id]
+    }}
+}}
+
+entity Staff {{
+    id: Uuid
+    member_id: Member.id {{
+        on_delete: OnDelete.cascade
+    }}
+    role: StaffRole
+
+    membership: {{
+        scope: MembershipScope.application
+        member: member_id
+        role: role
+    }}
+
+    policy: {{
+        read: [member_id]
+    }}
+}}
+
+entity Book {{
+    id: Uuid
+    title: Handle
+    shelf_note: Handle {{
+        policy: {{
+            read: [StaffRole.admin]
+        }}
+    }}
+    borrower_id: Member.id? {{
+        on_delete: OnDelete.restricted
+    }}
+
+    policy: {{
+        create: [StaffRole.admin]
+        read: [Access.authenticated]
+        update: [StaffRole.admin]
+    }}
+}}
+
+type CatalogueBook = Output {{
+    pick: [Book.id, Book.title]
+}}
+
+type StockBook = Output {{
+    pick: [Book.id, Book.title, Book.shelf_note]
+}}
+
+/// Everyone's view.
+query catalogue() -> List<CatalogueBook> {{
+    from: Book
+    order: [Book.title asc]
+    limit: 50
+}}
+
+/// The staff view.
+query stock() -> List<StockBook> {{
+    from: Book
+    order: [Book.title asc]
+    limit: 50
+}}
+
+{code}"#
+    )
+}
+
+/// Area 9, "Listing a query": a query listed for a role proves its output
+/// against that role, so one entity serves a staff view with a field only
+/// the role reads beside a catalogue for everyone signed in; unlisted, the
+/// staff view sends a field not every caller may read.
+#[test]
+fn a_query_listed_for_a_role_proves_its_output_against_the_role() {
+    let unlisted = shop("", "");
+    assert_eq!(
+        rules_of(&unlisted),
+        ["policy.output_field_unproved"],
+        "{unlisted:#?}"
+    );
+    assert!(
+        unlisted[0].contains("`stock` sends `Book.shelf_note`"),
+        "{unlisted:#?}"
+    );
+    assert_eq!(
+        shop("        stock: [StaffRole.admin]\n", ""),
+        Vec::<String>::new()
+    );
+    // A role the field doesn't name proves nothing of it.
+    let clerk = shop("        stock: [StaffRole.clerk]\n", "");
+    assert_eq!(
+        rules_of(&clerk),
+        ["policy.output_field_unproved"],
+        "{clerk:#?}"
+    );
+    assert!(
+        clerk[0].contains("`stock` sends `Book.shelf_note`"),
+        "{clerk:#?}"
+    );
+}
+
+/// A listed query's line holds only entries that depend on no record:
+/// anyone signed in, or a role held across the whole application.
+#[test]
+fn a_listed_querys_line_names_no_record_and_no_one_unsigned() {
+    for entry in ["Book.borrower_id", "Access.public", "Access.system"] {
+        let found = shop(&format!("        stock: [{entry}]\n"), "");
+        assert_eq!(
+            rules_of(&found),
+            ["policy.binding_invalid"],
+            "{entry}: {found:#?}"
+        );
+        assert!(found[0].contains(&format!("`{entry}`")), "{found:#?}");
+    }
+    // Both kinds are names a line may hold; anyone signed in may not read
+    // the shelf note, though.
+    let wider = shop(
+        "        stock: [StaffRole.admin, Access.authenticated]\n",
+        "",
+    );
+    assert_eq!(
+        rules_of(&wider),
+        ["policy.output_field_unproved"],
+        "{wider:#?}"
+    );
+}
+
+/// A route anyone may call can't run a listed query, whose line never
+/// names `Access.public`.
+#[test]
+fn a_route_anyone_may_call_runs_no_listed_query() {
+    let found = shop(
+        "        stock: [StaffRole.admin]\n",
+        r#"routes Books {
+    prefix: /books
+
+    GET /stock {
+        authentication: RouteAuthentication.none
+        output: List<StockBook>
+        run: stock()
+    }
+}
+"#,
+    );
+    assert_eq!(
+        rules_of(&found),
+        ["policy.public_grant_missing"],
+        "{found:#?}"
+    );
+    assert!(found[0].contains("`stock`"), "{found:#?}");
+}
+
+const LEND: &str = r#"action lend(book_id: Book.id, member_id: Member.id) fails BookNotFound, MemberNotFound -> Unit {
+    var book: Book = attempt Book.get(book_id)
+    var lent: Book = attempt Book.update(book) {
+        set: {
+            borrower_id: member_id
+        }
+    }
+    assert lent.borrower_id == member_id
+}
+"#;
+
+/// Area 9, "A call the listing doesn't cover": a listed action calling one
+/// whose writes refuse some of the people its line lets in is
+/// `policy.call_ungranted` at the call; the write in the listed action's
+/// own body, or the called action listed for those people, is not; and
+/// it can be declined.
+#[test]
+fn a_listed_action_calling_one_its_people_cant_pass_is_call_ungranted() {
+    let borrow = |decline: &str| {
+        format!(
+            r#"{LEND}
+{decline}action borrow(book_id: Book.id, caller: Principal.user) fails BookNotFound, MemberNotFound -> Unit {{
+    attempt lend(book_id, caller.id)
+}}
+"#
+        )
+    };
+    let found = shop(
+        "        stock: [StaffRole.admin]\n        borrow: [Access.authenticated]\n",
+        &borrow(""),
+    );
+    assert_eq!(rules_of(&found), ["policy.call_ungranted"], "{found:#?}");
+    assert!(found[0].contains("`borrow` calls `lend`"), "{found:#?}");
+    // The called action listed for the same people.
+    assert_eq!(
+        shop(
+            "        stock: [StaffRole.admin]\n        borrow: [Access.authenticated]\n        lend: [Access.authenticated]\n",
+            &borrow("")
+        ),
+        Vec::<String>::new()
+    );
+    // Declined, as a call only some callers are meant to pass.
+    assert_eq!(
+        shop(
+            "        stock: [StaffRole.admin]\n        borrow: [Access.authenticated]\n",
+            &borrow("decline policy.call_ungranted: \"Only staff borrow through the desk\"\n")
+        ),
+        Vec::<String>::new()
+    );
+    // A line every one of whose people the called action lets in.
+    assert_eq!(
+        shop(
+            "        stock: [StaffRole.admin]\n        borrow: [StaffRole.admin]\n",
+            &borrow("")
+        ),
+        Vec::<String>::new()
+    );
+    // The write in the listed action's own body.
+    let inline = shop(
+        "        stock: [StaffRole.admin]\n        borrow: [Access.authenticated]\n",
+        r#"action borrow(book_id: Book.id, caller: Principal.user) fails BookNotFound -> Unit {
+    var book: Book = attempt Book.get(book_id)
+    var lent: Book = Book.update(book) {
+        set: {
+            borrower_id: caller.id
+        }
+    }
+    assert lent.borrower_id == caller.id
+}
+"#,
+    );
+    assert_eq!(inline, Vec::<String>::new());
+}
+
+/// What the called action refuses is followed through what it calls, and
+/// through a listed action's own line.
+#[test]
+fn a_call_is_checked_through_what_the_called_action_calls() {
+    let found = shop(
+        "        stock: [StaffRole.admin]\n        borrow: [Access.authenticated]\n",
+        &format!(
+            r#"{LEND}
+action lend_now(book_id: Book.id, member_id: Member.id) fails BookNotFound, MemberNotFound -> Unit {{
+    attempt lend(book_id, member_id)
+}}
+
+action borrow(book_id: Book.id, caller: Principal.user) fails BookNotFound, MemberNotFound -> Unit {{
+    attempt lend_now(book_id, caller.id)
+}}
+"#
+        ),
+    );
+    assert_eq!(rules_of(&found), ["policy.call_ungranted"], "{found:#?}");
+    assert!(found[0].contains("`borrow` calls `lend_now`"), "{found:#?}");
+    let gated = shop(
+        "        stock: [StaffRole.admin]\n        borrow: [Access.authenticated]\n        audit: [StaffRole.admin]\n",
+        r#"type Audit = Output {
+    ok: Bool
+}
+
+action audit() -> Audit {
+    return Audit {
+        ok: true
+    }
+}
+
+action borrow() -> Audit {
+    return audit()
+}
+"#,
+    );
+    assert_eq!(rules_of(&gated), ["policy.call_ungranted"], "{gated:#?}");
+}
+
+/// The permissions report shows each listed query and who may run it.
+#[test]
+fn the_permissions_report_shows_listed_queries() {
+    let db = jadpo_db::Database::default();
+    let text = shop_text("        stock: [StaffRole.admin]\n", "");
+    let project = support::project(&db, Layout::Loose, &[("main.jadpo", text.as_str())]);
+    let report = jadpo_check::policy::report::report(&db, project);
+    assert!(
+        report
+            .markdown
+            .contains("## Queries listed separately\n\nEach is run only by these, checked as it starts; its records are still those its entity's `read:` lets the caller see.\n\n| query | who may run it |\n|---|---|\n| `stock` | `StaffRole.admin` |\n"),
+        "{}",
+        report.markdown
+    );
+    let json: String = report
+        .json
+        .to_document()
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect();
+    assert!(
+        json.contains(r#""queries":[{"query":"stock","who":["StaffRole.admin"]}]"#),
+        "{json}"
+    );
+    // A report with no listed query says nothing of them.
+    let none = shop_text("", "");
+    let project = support::project(&db, Layout::Loose, &[("main.jadpo", none.as_str())]);
+    let report = jadpo_check::policy::report::report(&db, project);
+    assert!(
+        !report.markdown.contains("Queries listed"),
+        "{}",
+        report.markdown
+    );
+}
+
+/// A query listed for a role held across the whole application, on a
+/// tenant's records: its callers passed the line and hold a membership in
+/// the tenant of every record they read, so a field only that role reads
+/// is proved.
+#[test]
+fn a_listed_query_on_a_tenants_records_proves_with_its_line_and_the_tenant() {
+    let ledger = |listed: &str| {
+        company_listing(
+            listed,
+            r#"type Auditor = Enum {
+    auditor
+}
+
+entity Audit {
+    id: Uuid
+    person_id: Person.id {
+        on_delete: OnDelete.cascade
+    }
+    role: Auditor
+
+    membership: {
+        scope: MembershipScope.application
+        member: person_id
+        role: role
+    }
+
+    policy: {
+        read: [person_id]
+        tenant: Tenancy.shared
+    }
+}
+
+entity Ledger {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    total: Amount {
+        policy: {
+            read: [Auditor.auditor]
+        }
+    }
+
+    policy: {
+        read: [Role.owner, Auditor.auditor]
+    }
+}
+
+type LedgerView = Output {
+    pick: [Ledger.id, Ledger.total]
+}
+
+query ledgers() -> List<LedgerView> {
+    from: Ledger
+    order: [Ledger.id asc]
+    limit: 50
+}
+"#,
+        )
+    };
+    assert_eq!(
+        rules_of(&ledger("")),
+        ["policy.output_field_unproved"],
+        "{:#?}",
+        ledger("")
+    );
+    let listed = ledger("        ledgers: [Auditor.auditor]\n");
+    assert_eq!(listed, Vec::<String>::new());
+}

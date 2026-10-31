@@ -209,10 +209,10 @@ impl Part<'_> {
                 }
             }
             Decl::SeedDecl(d) => {
-                if let Some(name) = d.name().as_ref().and_then(tree::name_text) {
-                    let key = self.lookup.registry().key(Kind::Seed, &name, None);
-                    self.runnable(key, Kind::Seed, name, d.syntax(), index);
-                }
+                // `seed { }` is named by its file (area 5, "Seeds").
+                let name = jadpo_db::seed_name(d, self.path);
+                let key = self.lookup.registry().key(Kind::Seed, &name, None);
+                self.runnable(key, Kind::Seed, name, d.syntax(), index);
             }
             Decl::TestDecl(d) => {
                 if let Some(token) = d.string_token() {

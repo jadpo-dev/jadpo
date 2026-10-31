@@ -73,7 +73,7 @@ mod tenants;
 use stores::{Dest, Store};
 
 use super::proof::{Fact, Prover, Reached, Way};
-use super::{Effect, Grant, LineGate};
+use super::{Effect, Grant};
 use crate::data::Entities;
 use crate::data::queries::{Element, Include, IncludeKind, Source};
 use crate::lookups::{Lookup, Name};
@@ -975,7 +975,7 @@ impl<'a> Flow<'a> {
         walk.action = listed;
         if listed {
             walk.gate = super::reach::line_gate(self.db, self.project, &name)
-                .and_then(|gate| gate_way(&gate));
+                .and_then(|gate| super::proof::gate_way(&gate));
         }
         for (at, param) in body.params.iter().enumerate() {
             let ty = &body.local(*param).ty;
@@ -1065,30 +1065,6 @@ fn caller_kind(ty: &TypeRef) -> Option<PrincipalKind> {
                 .find(|kind| kind.type_name() == name)
         }
         _ => None,
-    }
-}
-
-/// What a listed action's line checks as the action starts (area 9,
-/// "Actions": anyone signed in, or roles held across the whole
-/// application): every caller passed one of its entries. A line that lets
-/// nobody in proves anything of its callers, since there are none.
-fn gate_way(gate: &LineGate) -> Option<Way> {
-    match gate {
-        LineGate::Signed => Some(vec![vec![Fact::Grant(Grant::Signed)]]),
-        LineGate::Roles(roles) => Some(
-            roles
-                .iter()
-                .map(|(membership, role)| {
-                    vec![Fact::Grant(Grant::Role {
-                        membership: membership.clone(),
-                        role: role.clone(),
-                        via: None,
-                    })]
-                })
-                .collect(),
-        ),
-        LineGate::Nobody => Some(Vec::new()),
-        LineGate::Anyone | LineGate::Statements => None,
     }
 }
 
@@ -2604,7 +2580,13 @@ impl Walk<'_> {
         {
             return Prov::default();
         }
-        let reached = self.gated(flow.prover.read(&model.entity));
+        // A listed query's callers passed its line too, as it started
+        // (area 9, "Listing a query").
+        let line = flow.prover.query_line(&model.name);
+        let reached = self.gated(Prover::lined(
+            line.as_ref(),
+            flow.prover.read(&model.entity),
+        ));
         // One record is the one this read gives; a list's are many.
         let origin = match model.cardinality {
             Cardinality::One | Cardinality::Optional => self.mint(site),
@@ -2617,7 +2599,7 @@ impl Walk<'_> {
             &model.includes,
             &reached,
             origin,
-            &|reached| self.gated(reached),
+            &|reached| self.gated(Prover::lined(line.as_ref(), reached)),
         );
         if model.cardinality == Cardinality::Page {
             let mut page = Prov::default();

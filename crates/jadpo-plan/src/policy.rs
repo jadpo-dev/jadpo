@@ -505,6 +505,17 @@ impl Planner<'_> {
         Some(Gate { callers, system })
     }
 
+    /// Who may run the query called `name`, when root `policy { actions:
+    /// }` lists it (area 9, "Listing a query"): anyone signed in, or a
+    /// role held across the whole application, checked as it starts.
+    pub(crate) fn query_gate(&self, name: &str) -> Option<Gate> {
+        let gate = self
+            .access
+            .root
+            .query_gate(name, &self.access.memberships)?;
+        self.gate(&gate, false)
+    }
+
     /// A caller holding one of `roles`, each held across the whole
     /// application, as a `SELECT 1` of their membership.
     fn roles_gate(&self, roles: &[(String, String)]) -> Option<Callers> {
