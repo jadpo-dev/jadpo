@@ -140,6 +140,8 @@ fn the_schema_lists_every_kind_with_reserved_ones_marked() {
     assert_eq!(status("entity").as_deref(), Some("built"));
     assert_eq!(status("query").as_deref(), Some("built"));
     assert_eq!(status("fixture").as_deref(), Some("declared"));
+    assert_eq!(status("person").as_deref(), Some("built"));
+    assert_eq!(status("personal_mark").as_deref(), Some("reserved"));
     for kind in Kind::ALL {
         assert_eq!(Kind::from_word(kind.word()), Some(*kind));
     }

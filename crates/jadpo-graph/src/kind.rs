@@ -125,7 +125,7 @@ kinds! {
     SystemTable: "system_table", Data, Built, 5;
     PersonalMark: "personal_mark", Data, Reserved, 15;
     Retention: "retention", Data, Reserved, 15;
-    Person: "person", Data, Reserved, 15;
+    Person: "person", Data, Built, 15;
 
     Function: "function", Behaviour, Built, 3;
     Constant: "constant", Behaviour, Built, 3;

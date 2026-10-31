@@ -384,6 +384,10 @@ pub fn graph(db: &dyn Db, project: Project) -> Arc<Graph> {
         builder.edge(model.key.clone(), jadpo_graph::EdgeKind::Writes, entity);
         builder.node(node);
     }
+    // Each person entity (area 15; chunk P1), placed at its `person:`.
+    for node in person_nodes(db, project) {
+        builder.node(node.clone());
+    }
     // The APIs (area 7), once there is a route or `apis:` declares them.
     let apis = crate::routes::api_table(db, project);
     if has_apis(db, project) {
@@ -398,6 +402,63 @@ pub fn graph(db: &dyn Db, project: Project) -> Arc<Graph> {
         }
     }
     Arc::new(builder.build())
+}
+
+/// A `person` node for each person entity (area 15, "The person"; chunk
+/// P1), under its entity and keyed by its born name, placed at its
+/// `person: true` and listing each reference its records belong to the
+/// person through, so a reference that starts or stops making records a
+/// person's changes the node.
+#[salsa::tracked(returns(ref))]
+pub fn person_nodes(db: &dyn Db, project: Project) -> Vec<Node> {
+    let registry = registry(db, project);
+    let mut out = Vec::new();
+    for (entity, person) in &crate::persons::persons(db, project).people {
+        let Some(read) =
+            crate::data::entity_read(db, project, crate::lookups::Name::new(db, entity.clone()))
+        else {
+            continue;
+        };
+        let (true, Some(span)) = (read.model.person, &read.spans.person) else {
+            continue;
+        };
+        let Some(file) = crate::lookups::file_at(
+            db,
+            project,
+            crate::lookups::Name::new(db, span.path.clone()),
+        ) else {
+            continue;
+        };
+        let born = registry.born(Kind::Entity, entity, None);
+        let key = Key::new(Kind::Person, &born);
+        let entity_key = registry.key(Kind::Entity, entity, None);
+        let through: Vec<String> = person
+            .through
+            .iter()
+            .map(|(holder, field)| format!("{holder}.{field}"))
+            .collect();
+        let mut node = Node::new(key.clone(), Kind::Person, entity.clone());
+        let lines = LineIndex::new(file.text(db));
+        let last = span.end.saturating_sub(1).max(span.start);
+        node.place = Some(jadpo_graph::Place {
+            file: span.path.clone(),
+            start: span.start,
+            end: span.end,
+            lines: (lines.line(span.start), lines.line(last)),
+        });
+        node.domain = file_part(db, project, file)
+            .nodes
+            .iter()
+            .find(|found| found.key == entity_key)
+            .and_then(|found| found.domain.clone());
+        node.digest = Some(jadpo_graph::Digest::of(
+            std::iter::once(key.as_str()).chain(through.iter().map(String::as_str)),
+        ));
+        node.parent = Some(entity_key);
+        node.detail = jadpo_graph::Detail::Person { through };
+        out.push(node);
+    }
+    out
 }
 
 /// Whether the project has an HTTP surface: a route, or APIs `apis:`

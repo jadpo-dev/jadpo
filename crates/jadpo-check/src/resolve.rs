@@ -1174,6 +1174,23 @@ impl Names<'_> {
             return;
         }
         let span = self.span(operation);
+        // A person's erasure and export (area 15), decided and not built:
+        // refused as such, so no app takes them for an operation that
+        // doesn't exist and writes its own deletion in their place unseen.
+        if let Some((what, instead)) = unbuilt_person_operation(&name) {
+            out.push(
+                Diagnostic::new(
+                    &rule::TOOLCHAIN_NOT_BUILT_YET,
+                    format!("`{entity}.{name}` isn't built yet"),
+                )
+                .at(span, "decided, not built")
+                .reason(format!(
+                    "{what} is the operation area 15 generates for an entity marked `person: true`, and it isn't built yet."
+                ))
+                .next(instead),
+            );
+            return;
+        }
         let near = nearest(&name, operations.iter().map(String::as_str)).map(str::to_string);
         let listed: Vec<String> = operations.iter().map(|op| format!("`{op}`")).collect();
         let problem = Diagnostic::new(
@@ -2170,4 +2187,20 @@ fn version_unneeded(code: &str, member: Option<&str>, span: Span) -> Diagnostic 
     ))
     .next(format!("Write `{bare}`"))
     .edit(span, "")
+}
+
+/// A person entity's generated operation that isn't built yet (area 15):
+/// what it does, and what an app does for now.
+fn unbuilt_person_operation(name: &str) -> Option<(&'static str, &'static str)> {
+    match name {
+        "erase" => Some((
+            "Erasing a person, with every record that belongs to them,",
+            "Delete the person's records in an action of your own for now",
+        )),
+        "export" => Some((
+            "Exporting everything held about a person",
+            "Read the person's records with queries of your own for now",
+        )),
+        _ => None,
+    }
 }

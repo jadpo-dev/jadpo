@@ -499,7 +499,7 @@ After the registry is live, in order:
   the actions, routes, jobs and stored fields it reaches, with the
   compile errors and migrations that would follow; after V4.
 - Then, each with its own chunk below: signed log heads (keys held as data
-  and `crypto.sign`, item 3), the S3 driver for the registry's archives
+  and `crypto.sign`, P9 under item 3), the S3 driver for the registry's archives
   (item 4), the search capability (item 8), and GitHub sign-in for
   jadpo.dev accounts (`Driver.github`; Google works now, through A7b).
 
@@ -519,8 +519,136 @@ After the registry is live, in order:
    drift from what is built; designed with the design skills first. Area
    19's prose stays as the explanation.
 3. Personal data (area 15), with encrypted fields and keys held as data
-   (area 19, "Encrypted fields" and "Language gaps this page depends on") and `crypto.verify_totp`, which waits on
-   them.
+   (area 19, "Encrypted fields" and "Language gaps this page depends on")
+   and `crypto.verify_totp`: split by size (2026-10-31) into P1 to P12,
+   taken in order. V5 and V6, under "Approvals", build the report's
+   connections and the `ErasureNotPossible` acceptance; the chunks that
+   need them say so.
+   - [x] **P1 The person and the records that belong to them**: area 15,
+     "The person", "What the compiler checks" and "What is built";
+     compiler/runtime §2.3, "A person's records";
+     `docs/errors/data.personal_unreachable.md`.
+   - [ ] **P2 Retention** `opus · xhigh`: area 15, "Retention"; area 5,
+     "Lifecycle"; area 12, "The purge schedule". `retention: { after:
+     since: }` on a nullable field clears its value, and on an entity
+     deletes the record with what cascades from it, applied by the purge
+     schedule in its batches and run records, the periods from settings.
+     Done when the runtime's tests against PostgreSQL find values and
+     records gone at the first run after their time, interpreted and
+     compiled, and `retention:` on a field or an entity is no longer
+     `toolchain.not_built_yet` (an event's stays refused).
+   - [ ] **P3 Erasure in the main store** `opus · xhigh` after P2: area
+     15, "Erasure" ("Deleting the person's records" and "Keeping a
+     record without the person"), "Who may erase and export" and "What
+     the compiler checks" (erasure is complete); area 9, "Grants".
+     `erase:` on a reference, required on each restricted reference into
+     a person's records, `Erasure.anonymised` and `.retained` with the
+     nullable fields and retention they need, and `User.erase(id)`
+     deleting, anonymising or keeping each record as its reference says,
+     in one transaction, records with a lifecycle removed outright, for a
+     caller with delete on the person's record. Until P4, an erasure that
+     would reach another store, a `File` field or the person's own `erase:
+     Erasure.retained` field is `toolchain.not_built_yet`, so no erasure
+     is ever partial. Done when tests erase a person on both executors
+     and find each record gone, anonymised or kept as declared.
+   - [ ] **P4 What else erasure reaches** `opus · xhigh` after P3: area
+     15, "The person's own record", "What erasure reaches" and "What
+     erasure doesn't rewrite"; area 16, "Files". The person's own record
+     kept field by field (an erased person can't sign in, receives
+     nothing and is left out of queries), records in another store
+     erased by a generated subscriber, a `File` field's bytes deleted,
+     `PersonErased`, and the erasure log replayed when a backup is
+     restored; OAuth grants and caches join when they are built. To
+     settle with a maintainer first: how a record in another store
+     belongs to a person, since no reference crosses stores
+     (`data.reference_across_stores`), and which queries "serve the
+     retained purpose". Done when an erased person leaves nothing the
+     page says erasure reaches, on both executors.
+   - [ ] **P5 Export** `opus · high` after P4 and V5: area 15, "Export"
+     and "Who may erase and export"; area 13's generated test.
+     `User.export(id)` as a `PersonalDataExport`: the person's record
+     and every record that belongs to them as JSON, one list per entity
+     with the API's field names, credentials left out, a `File` field as
+     a link, with each kind's retention and the companies that receive
+     it, for a caller with read on the person's record; and the test
+     generated for each person entity that after `erase`, `export`
+     returns nothing. Done when export tests pass on both executors.
+   - [ ] **P6 Erasure at providers** `opus · high` after P4 and V6: area
+     15, "Erasure at providers"; area 11, "Erasure at providers". Each
+     connection's key copied into `PersonErased` before the person's
+     records go, a generated subscriber calling the package's `erasure:`
+     operation after commit and retrying until it confirms, a delivery
+     that gives up parked and shown, and a key that is personal data
+     kept only in the outbox until it is delivered. V6 reads the
+     declarations and builds `ErasureNotPossible`. Done when a test
+     erasing a person sees each fake provider's erasure called once,
+     after the commit.
+   - [ ] **P7 Marked fields in logs and access records** `opus · high`
+     after P5: area 15, "Marked fields in logs", "Sensitive fields" and
+     "Access records"; area 4, "Logging"; area 19's standard types that
+     are personal data, treated as marked there. Every marked field
+     logged as a keyed hash of its canonical text, whatever its type and
+     in a failure's context too, the same on both executors; every
+     export, erasure and read of a sensitive field recorded, without
+     values, as a long-kept log event. Done when log and access-record
+     tests show both on both executors.
+   - [ ] **P8 The personal-data report** `opus · high` after V5 and P7:
+     area 15, "The personal-data report", "Where data is stored", "What
+     this does not cover" and "What the compiler checks" (a marked field
+     nothing reads, declinable). V5 starts the report with the
+     connections a marked field reaches; this adds, for each person
+     entity, every marked field with its category, store and who may
+     read it, its retention or "kept until erased", what erasure does to
+     each record, keys waiting in the outbox, step records, sensitive
+     fields, each store's location setting and what the language covers.
+     Designed with the design skills first. Done when `jadpo check`
+     writes it and its JSON twin, and the approval report shows its diff.
+   - [ ] **P9 Encrypted fields and keys held as data** `opus · xhigh`:
+     area 15, "Encrypted fields"; area 19, "Encrypted fields", "A key is
+     never a value" and "How a secret is kept"; compiler/runtime §2.5,
+     "A key as a value". `encrypted: true` sealed with the application's
+     `field_encryption_key:` and opened on load, refused in unique rules,
+     indexes, filters, ordering, search and logs; a key type in an
+     encrypted field, usable only as a `crypto` call's `key:`; a
+     `TotpSecret` and a `SecretText` stored sealed; rotation through
+     `_PREVIOUS`; interpreted, compiled and on Workers. To settle with a
+     maintainer first: where `field_encryption_key:` is written, and how
+     a key held as data is first made, since code never makes a key.
+     Done when a sealed field round-trips through a store on both
+     executors and its column holds only sealed bytes.
+   - [ ] **P10 What keys held as data allow** `opus · high` after P9:
+     area 19, "Hashing and cryptography" and "Signed tokens".
+     `crypto.verify_totp` (RFC 6238's vectors, one step either side),
+     HS256 in `crypto.verify_jwt` with a shared secret held as data, and
+     signatures with a key per device. To settle with a maintainer
+     first: which HMAC `verify_totp` uses, since the page allows no
+     SHA-1, RFC 6238's default, and points two-factor codes at a package.
+     Done when each is checked against its standard's known answers on
+     both executors and built for WebAssembly.
+   - [ ] **P11 Data requests: the routes** `opus · xhigh` after P5 and
+     P7: area 15, "Data requests" ("Self-service by email", "Signed in",
+     "Made by staff", "Protection" and "Changing the routes"); area 7,
+     "Generated routes"; area 16, "Rate limits". `privacy:` in
+     `application { }`; `POST /privacy/requests`, `/confirm` and
+     `/cancel` with the address-check email; signed-in `POST
+     /privacy/export` and `/privacy/erasure` behind a fresh sign-in;
+     `privacy.create_request` granted in policy; each request a record
+     with its one-month deadline and an event at every step; single-use
+     links and rate limits. Done when route tests make each kind of
+     request on both executors.
+   - [ ] **P12 Data requests: exports, erasures and their emails**
+     `opus · xhigh` after P6 and P11: area 15, "Exports", "Erasures",
+     "Deadlines and events" and "The privacy emails"; area 16, "Built-in
+     emails" and "Files". An export as a single-use download link that
+     expires after 7 days, encrypted at rest and deleted with the link
+     (the file downloads it needs built here unless item 4 has); an
+     erasure after its cooling-off, with its cancel link and a completion
+     email naming what was kept, sent once every provider confirms;
+     `PrivacyRequestOverdue`; the other three emails at five levels, and
+     with no mail connection a required `PrivacyExportReady` subscriber;
+     and `jadpo privacy requests`, designed with the design skills first.
+     Done when a request runs from asking to completion in tests on both
+     executors.
 4. Remaining built-in services (area 16): flags, files, audit, search,
    telemetry thresholds, with the `ThresholdChange` acceptance for a
    threshold raised or removed.

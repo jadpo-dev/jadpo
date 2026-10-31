@@ -362,6 +362,8 @@ rules! {
         "Patch given something other than an `Input`";
     DATA_PATCH_OVERLAP: "data.patch_overlap", area 6, Error, Agent,
         "Supplied-field block sets a field the patch already sets";
+    DATA_PERSONAL_UNREACHABLE: "data.personal_unreachable", area 15, Error, Human,
+        "A field marked as personal data is on an entity that isn't a person and doesn't refer to one, so erasing a person could never find it";
     DATA_READ_IN_LOOP: "data.read_in_loop", area 6, Error, Agent,
         "Query or `get` inside a `for` loop";
     DATA_REFERENCE_ACROSS_STORES: "data.reference_across_stores", area 5, Error, Human,

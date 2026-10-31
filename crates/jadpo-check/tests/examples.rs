@@ -1308,6 +1308,7 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
             | Detail::Placement { .. }
             | Detail::SystemTable { .. }
             | Detail::Lifecycle { .. }
+            | Detail::Person { .. }
             | Detail::Transition { .. }
             | Detail::Grant { .. }
             | Detail::FieldRestriction { .. }

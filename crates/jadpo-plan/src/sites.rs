@@ -153,7 +153,7 @@ pub enum KeySource {
     /// `key: device.signing_key`: the key the field `name` of the value
     /// the site's receiver works out to holds, read as any field is. Only
     /// an encrypted field will hold one, and those aren't built yet (the
-    /// roadmap's "After the first build", item 3).
+    /// roadmap's chunk P9).
     Field { name: String },
 }
 
