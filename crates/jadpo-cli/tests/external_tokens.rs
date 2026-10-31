@@ -321,8 +321,8 @@ impl Outbound for LocalProvider {
 /// Count request/reply wire exchanges only after PostgreSQL's complete
 /// ReadyForQuery message, independent of TCP packet/read fragmentation.
 #[derive(Clone, Default)]
-struct WireCounting {
-    trips: Rc<std::cell::Cell<u32>>,
+pub(super) struct WireCounting {
+    pub(super) trips: Rc<std::cell::Cell<u32>>,
 }
 impl jadpo_drivers::Transport for WireCounting {
     fn connect(

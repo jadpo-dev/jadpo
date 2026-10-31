@@ -94,6 +94,10 @@ impl Planner<'_> {
                     subject_of: self.access(&mut Lookup, entity, Reach::Read).map(|wheres| {
                         statements::address_of(&entity.table, &subject.born, &wheres)
                     }),
+                    first_sign_in: match identity.links_store() {
+                        Some(_) => Some(self.linked_lookup(user, &subject.born)?),
+                        None => None,
+                    },
                 })
             }),
             user: user.and_then(|variant| self.principal(variant, sessions)),
@@ -172,6 +176,37 @@ impl Planner<'_> {
             &statements::active(active.as_deref()),
             &wheres,
         ))
+    }
+
+    /// How an external token's first sign-in is found again (area 8, "A
+    /// person the app has not seen"; chunk A7): by the subject field
+    /// `subject`'s column, else through its link, and the user the action
+    /// gave by its `id`. The action is numbered once every callable is
+    /// (`crate::Plan`).
+    fn linked_lookup(
+        &self,
+        variant: &jadpo_check::identity::Variant,
+        subject: &str,
+    ) -> Option<jadpo_std::http::FirstSignInPlan> {
+        let entity = self.model.entity(&variant.entity)?;
+        let mut bind = Lookup;
+        let active = match &variant.active {
+            Some(condition) => Some(jadpo_sql::condition(&mut bind, entity, condition, false)?),
+            None => None,
+        };
+        let active = statements::active(active.as_deref());
+        let wheres = self.access(&mut bind, entity, Reach::Read)?;
+        Some(jadpo_std::http::FirstSignInPlan {
+            action: None,
+            lookup: statements::linked_user(
+                jadpo_check::data::SIGN_IN_LINKS,
+                &entity.table,
+                subject,
+                &active,
+                &wheres,
+            ),
+            by_id: statements::user_with_subject(&entity.table, subject, &active, &wheres),
+        })
     }
 
     /// A user's address by its `id`, the field `address` names (area 8,

@@ -511,8 +511,10 @@ compares each exactly with what the token says. It accepts EdDSA, RS256
 and ES256 JWTs, using the JWT support in the
 [standard library](19-standard-library.md).
 
-A token is accepted only for a subject your app already has a user for.
-A subject no user has is refused with `sign_in_refused` (403).
+A token is accepted for a subject your app already has a user for, or
+one [`on_first_sign_in:`](#a-person-the-app-has-not-seen) has linked to
+a user. Without it, a subject no user has is refused with
+`sign_in_refused` (403).
 
 Only the subject is used. Every request reads that user's current record,
 which must still meet the principal's `active:` condition and be a record
@@ -1868,8 +1870,272 @@ action create_member(first: FirstSignIn) fails SignUpClosed -> Member.id {
 - A passkey never runs it. Only a person already signed in can add a
   passkey, so every passkey that signs in has its user.
 
-Not built yet: `on_first_sign_in:` for provider and external-token sign-in.
-An external token whose subject no user has is `sign_in_refused` (403).
+An external token is signed in on every request, so its first sign-in
+happens on the first request it comes with:
+
+- Jadpo looks for the user whose `subject:` field holds the token's
+  subject, then for one a first sign-in linked it to, in one read. A
+  subject that isn't of the field's type is looked for among the links
+  only.
+- The action runs once for each subject. Requests that arrive together
+  with a new subject, as a page's first load sends them, wait for the
+  first, then sign in as the user it gave.
+- The user the action gives is linked even when they aren't `active:`,
+  and is refused with `user_disabled` until they are. So an action can
+  take someone on to wait for approval without being asked again.
+
+Here the `staff` API takes the company provider's tokens, as in
+[External tokens in tests and `jadpo dev`](#external-tokens-in-tests-and-jadpo-dev),
+and someone's first token takes them on as a librarian who waits for a
+manager's approval:
+
+```jadpo check project=first-token file=authentication.jadpo
+use desk
+
+authentication {
+    browser_session: {
+        cookie: "desk_session"
+    }
+    external_token: {
+        issuer: config.issuer
+        audience: config.audience
+    }
+    on_first_sign_in: desk.take_on_newcomer
+}
+```
+
+```jadpo check project=first-token file=domains/desk/actions/take_on_newcomer.jadpo
+use desk/entities { Librarian }
+use desk/failures { SubjectTaken }
+
+/// Takes on someone the company's provider vouches for, to wait for a
+/// manager's approval.
+action take_on_newcomer(first: FirstSignIn) fails SubjectTaken -> Librarian.id {
+    match first.subject {
+        none -> {
+            reject SubjectTaken
+        }
+        some(subject) -> {
+            var newcomer: Librarian = attempt Librarian.create {
+                set: {
+                    subject: subject
+                    name: "New starter"
+                    active: false
+                }
+                conflict: {
+                    Librarian.subject: SubjectTaken
+                }
+            }
+            return newcomer.id
+        }
+    }
+}
+```
+
+```jadpo check project=first-token file=app.jadpo hidden
+use desk/entities { Librarian }
+
+application {
+    display_name: "Lending desk"
+    apis: {
+        main: {
+            prefix: /
+            authentication: [AuthenticationMethod.browser_session]
+        }
+        staff: {
+            prefix: /staff
+            authentication: [AuthenticationMethod.external_token]
+        }
+    }
+}
+
+principal {
+    user: {
+        subject: Librarian.subject
+        active: Librarian.active == true
+    }
+}
+```
+
+```jadpo check project=first-token file=config.jadpo hidden
+config {
+    audience: Text {
+        test: "lending-desk"
+    }
+    issuer: Url {
+        default: "https://accounts.google.com"
+        test: "https://id.lending.example/"
+    }
+}
+```
+
+```jadpo check project=first-token file=domains/desk/entities/librarian.jadpo hidden
+entity Librarian {
+    id: Uuid
+    subject: Text {
+        unique: true
+    }
+    name: Text
+    active: Bool
+
+    policy: {
+        create: [Access.system]
+        read: [id]
+        delete: [Access.system]
+    }
+}
+```
+
+```jadpo check project=first-token file=domains/desk/failures/not_a_librarian.jadpo hidden
+/// The caller isn't on the staff.
+type NotALibrarian = Failure {
+    kind: FailureKind.not_found
+}
+```
+
+```jadpo check project=first-token file=domains/desk/failures/subject_taken.jadpo hidden
+/// Someone else already signs in with that subject.
+type SubjectTaken = Failure {
+    kind: FailureKind.conflict
+}
+```
+
+```jadpo check project=first-token file=domains/desk/types/librarian_card.jadpo hidden
+use desk/entities { Librarian }
+
+type LibrarianCard = Output {
+    pick: [Librarian.id, Librarian.name, Librarian.active]
+}
+```
+
+```jadpo check project=first-token file=domains/desk/types/new_librarian.jadpo hidden
+use desk/entities { Librarian }
+
+/// Someone to take on, under the subject their provider gives them.
+type NewLibrarian = Input {
+    subject: Librarian.subject
+    name: Librarian.name
+    active: Librarian.active
+}
+```
+
+```jadpo check project=first-token file=domains/desk/actions/take_on.jadpo hidden
+use desk/entities { Librarian }
+use desk/types { NewLibrarian }
+use desk/failures { SubjectTaken }
+
+/// Takes someone on.
+action take_on(input: NewLibrarian) fails SubjectTaken -> Librarian {
+    return attempt Librarian.create {
+        set: {
+            subject: input.subject
+            name: input.name
+            active: input.active
+        }
+        conflict: {
+            Librarian.subject: SubjectTaken
+        }
+    }
+}
+```
+
+```jadpo check project=first-token file=domains/desk/actions/let_go.jadpo hidden
+use desk/entities { Librarian }
+
+/// Lets someone go, record and all.
+action let_go(librarian: Librarian) {
+    Librarian.delete(librarian)
+}
+```
+
+```jadpo check project=first-token file=domains/desk/queries/me.jadpo hidden
+use desk/entities { Librarian }
+use desk/types { LibrarianCard }
+use desk/failures { NotALibrarian }
+
+/// The signed-in member of staff.
+query me(user: Principal.user) fails NotALibrarian -> LibrarianCard {
+    from: Librarian
+    where: Librarian.id == user.id
+    missing: NotALibrarian
+}
+```
+
+```jadpo check project=first-token file=domains/desk/routes/staff.jadpo hidden migrate=initial
+use desk/types { LibrarianCard }
+use desk/queries { me }
+
+/// What staff reach with their provider's token.
+routes Staff {
+    api: staff
+    prefix: /staff
+    GET /me {
+        output: LibrarianCard
+        run: me(current_principal.user)
+    }
+}
+```
+
+```jadpo check project=first-token file=api/staff.jadpo_record hidden
+// Generated by Jadpo from the routes of API staff; update it with `jadpo api update`, never by hand.
+record api 1
+
+api staff
+    authentication external_token
+
+GET /staff/me
+    caller user
+    output LibrarianCard
+    status 200
+    fails not_a_librarian
+
+GET /staff/openapi.json
+    generated openapi
+    status 200
+
+output LibrarianCard
+    active: Bool
+    id: Uuid
+    name: Text
+
+failure not_a_librarian
+    status 404
+```
+
+```jadpo check project=first-token file=domains/desk/routes/staff.test.jadpo hidden
+use desk/entities { Librarian }
+use desk/types { NewLibrarian }
+use desk/actions { let_go, take_on }
+
+test "a newcomer's first token takes them on to wait for approval" {
+    // `as:` sends a token for the subject the caller was made with, so
+    // once Cy's record is gone no librarian holds it.
+    var cy: Librarian = attempt take_on(
+        NewLibrarian {
+            subject: "google-cy"
+            name: "Cy"
+            active: true
+        }
+    )
+    var newcomer: Principal.user = Principal.user(cy)
+    let_go(cy)
+    var first: Response = request {
+        method: HttpMethod.get
+        path: "/staff/me"
+        as: newcomer
+    }
+    assert first.code == "user_disabled"
+    var returning_card: Response = request {
+        method: HttpMethod.get
+        path: "/staff/me"
+        as: newcomer
+    }
+    assert returning_card.code == "user_disabled"
+}
+```
+
+Not built yet: `on_first_sign_in:` for provider sign-in, which comes with
+providers.
 
 ## Signing in from code the app writes
 <!-- topic: signing-in-from-code-the-app-writes -->
@@ -3681,7 +3947,7 @@ A feature not built yet is `toolchain.not_built_yet` where it is written.
 | Feature | Status |
 |---|---|
 | Everything else on this page | Built. |
-| `sign_in:`'s `providers:` and `oauth_provider:`, and `on_first_sign_in:` for provider and external-token sign-in | Not built yet. An external token's subject that no user has is `sign_in_refused` (403). |
+| `sign_in:`'s `providers:` and `oauth_provider:`, and `on_first_sign_in:` for provider sign-in | Not built yet. |
 | Scope declarations and policy's scope restrictions | Not built yet. As [Policy](09-policy.md) specifies, an external method narrows scopes only when it declares the scopes it reads; undeclared provider scope or profile claims never replace application authority. |
 | A setting loosened past its limit | Not built yet: waits on [acceptances](18-records-and-manifest.md#acceptances). |
 | OAuth grants: `OAuthGrant` credentials, the connecting and disconnecting routes and `on_behalf_of:` ([Integrations](11-integrations.md)) | Not built yet. `Driver.oidc` for Google and Microsoft sign-in comes with providers. |

@@ -1084,8 +1084,8 @@ impl jadpo_runtime::Host for TestHost<'_> {
         self.caught.capability(connection)
     }
 
-    /// Two rows a batch, so every file a test reads resumes between
-    /// batches (area 13, "Provider calls and capabilities in tests").
+    /// Two items a batch, so every run a test starts resumes between
+    /// batches (area 13, "Batches").
     fn rows_per_batch(&self) -> u32 {
         jadpo_runtime::test_run::ROWS_PER_BATCH
     }

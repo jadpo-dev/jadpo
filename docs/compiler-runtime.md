@@ -1447,14 +1447,10 @@ then on that compiled program (`jadpo_test::run_with` runs tests on any
 executor), in one process and on one PostgreSQL server, and compares the
 two runs (`jadpo_test::differential`), printing how many it compared and
 how many passed, or the first line that differs with both sides; a
-project with no tests compares none, its program still made. Each batch
-run a test started is run to its end once the test has
-ended, at the test's clock with counted random bytes
-(`jadpo_test::Options::batches`, `test_run::AtClock`), its pages,
-its `each:` and `finished:` calls and an export's rows kept in the test's
-record, so compiled code's runs are compared too; `jadpo test` leaves a
-run as it started until batches in tests (area 13, "Provider calls and
-capabilities in tests") are built. Its files
+project with no tests compares none, its program still made. The batch
+runs a test's steps start run between them, their pages, their
+`each:` and `finished:` calls and an export's rows kept in the test's
+record, so compiled code's runs are compared too. Its files
 are written only when they change, a module of a project no longer
 given is removed, and the folder is kept
 (`target/jadpo-compiled/corpus/` in the gate), so the runtime crates and
@@ -1768,7 +1764,17 @@ step the executor calls `jadpo_runtime::test_steps::after_step`, which
 draws each delivery due in the outbox at the test's clock from all those
 due, delivers it as the runner does, and ends the test with the failure
 of one that failed for good, `Ctx::undelivered` naming it for the
-report's `test.subscriber_failed` (area 13, "Caches and events").
+report's `test.subscriber_failed` (area 13, "Caches and events"). A batch
+run the step, a delivery or an item starts is drawn among the
+deliveries, a batch at a time (`batches::run_a_batch`): each by a fresh
+runner, which claims the run, reads its saved values again and gives its
+lease back after the one batch, as after a restart, at the test's clock
+and with random bytes counted on from the last batch
+(`test_run::AtClock`), until the run ends; a test's host gives two items
+a batch, a query's page cut to that (area 13, "Batches"). A run whose
+batch couldn't commit gives its lease back (`batches::give_back`), and a
+step that moves the clock picks up the runs with no lease, as the tick
+does (`batches::waiting`).
 
 **Differential test.** Every test runs interpreted and compiled, as Gleam
 runs one
@@ -2390,12 +2396,31 @@ unsupported algorithms and malformed/duplicate JSON before provider I/O; known-i
 refreshing valid cached keys. Outer HTTP deadlines drop native fetches
 and abort Workers fetches through an `AbortController` drop guard.
 Generated API/OpenAPI metadata, redacted failure wording and the network
-inventory expose the method's runtime-owned egress. The external
-first-sign-in hook and multi-column/structured subject fields remain
-compile-time `toolchain.not_built_yet` gates;
-without it an unknown subject is 403 `sign_in_refused`. Scope declarations
-are not built yet; area 9 says an external method narrows only when it
-declares the scopes it reads. Provider login is not built yet.
+inventory expose the method's runtime-owned egress. Multi-column and
+structured subject fields remain compile-time `toolchain.not_built_yet`
+gates. Without `on_first_sign_in:` an unknown subject is 403
+`sign_in_refused`. Scope declarations are not built yet; area 9 says an
+external method narrows only when it declares the scopes it reads.
+Provider login is not built yet.
+
+**First sign-in by external token** (area 8, "A person the app has not
+seen"; chunk A7). With `on_first_sign_in:` and `external_token:`, the
+schema adds `jadpo_sign_in_links` (`jadpo_std::system::SIGN_IN_LINKS`,
+keyed by way in and subject) beside the users, and the plan gives
+`ExternalTokenPlan::first_sign_in`: the action's callable number and one
+statement (`jadpo_sql::identity::linked_user`) reading the user by the
+subject field, else through its link, so a linked user costs one
+authority read as a provisioned one does; a subject that isn't the
+field's type is looked up through links only. On a miss,
+`http::sign_in_links::external` begins a read-committed transaction,
+takes `pg_advisory_xact_lock` keyed by BLAKE3 of the way in and subject,
+reads again, then runs the action as the system with no tenant, as magic
+links do, giving it the subject alone. It reads the user the action gave
+under the lifecycle, keeps the link with `SignedIn` and commits; requests
+that arrive together wait on the lock and sign in through that link, so
+the action runs once per subject. A refusal is `sign_in_refused`,
+logged with the failure and published as `SignInRefused`; an action's
+fault is a 500 whose fault the host logs.
 
 **Signed sessions** (area 8). The identity reads
 `revocation_delay:`, each method's `signing_key:` (a `SigningKey`
@@ -4557,7 +4582,8 @@ for CSV, TSV and JSON Lines; `Codecs::read_cells` and `read_value`), and
 only then opens the page's transaction, holds the run to the same place
 under its lock, and commits the items' writes, the problems and the next
 place (byte, row and line) together. `Host::rows_per_batch` says how many
-rows a batch holds: 100, two on `jadpo test`'s host.
+rows a batch holds: 100, two on `jadpo test`'s host, which cuts a query's
+page to two items as well.
 
 **An export's run** (area 12, "How an export's run is
 kept"; area 16). A file helper's write is

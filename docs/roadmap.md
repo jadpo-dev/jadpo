@@ -368,10 +368,7 @@ time.
 - [x] **A1 Diagnostics that point at the cause**: area 1, "Reserved words" and "How a promotion happens"; area 2, "Values that may be missing"; area 9, "Actions"; area 14, "Commands for debugging, editors and help".
 - [x] **A2 Listed queries and calls a listing doesn't cover**: area 9, "Listing a query", "A call the listing doesn't cover" and "The permissions report"; area 1, "Which rules can be declined".
 - [x] **A3 External tokens in tests and `jadpo dev`**: area 8, "External tokens in tests and `jadpo dev`"; area 13, `as:`; area 14, `jadpo dev`'s "External tokens"; area 19, `Jwk`'s `key_ops`.
-- [ ] **A4 Batches run to the end in tests** `opus · high`: area 13,
-  "Batches", which is specified and was on no chunk. Done when the
-  seed-library example's test of a withdrawn packet passes through its
-  batch, with no page action called by hand.
+- [x] **A4 Batches run to the end in tests**: area 13, "Batches" and "What is built"; compiler/runtime §2.5; `examples/24-seed-library/README.md`.
 - [x] **A5 `jadpo seed`**: area 5, "Seeds"; area 14, "`jadpo seed`" and "Command errors".
 - [ ] **A6 Guidance an agent reads first** `opus · high` after A1 to A5:
   the `AGENTS.md` that `jadpo new` writes gains a workflow (one concern at
@@ -404,12 +401,17 @@ time.
   yet are named on the items below that build them. The rule catalogue
   (`crates/jadpo-diag`) has no mark for a security rule yet: A8 adds it,
   starting with `policy.call_ungranted`, declinable since A2.
-- [ ] **A7 Sign-in providers** `opus · xhigh`: area 8, `sign_in:`'s
-  `providers:` (Google first, then Microsoft, through `Driver.oidc`) and
-  `on_first_sign_in:` for provider and external-token sign-in. Moved here
-  from "After the first build", item 8 (Richard, 2026-10-30). Done when
-  the lending desk example signs staff in with Google through Jadpo
-  alone, tested with the local issuer.
+- [x] **A7a `on_first_sign_in:` for external tokens**: area 8, `external_token` and "A person the app has not seen"; area 5, "Tables for sign-in"; compiler/runtime §2.6, "First sign-in by external token".
+- [ ] **A7b Sign-in providers** `opus · xhigh` **needs a maintainer**
+  before it starts: the pages don't yet say the generated provider
+  routes' requests and answers, how a route test signs in through a
+  provider, how `jadpo dev` does without credentials, how a provider
+  account finds an existing user, or which Microsoft issuers are taken
+  (asked 2026-10-30). Area 8, `sign_in:`'s `providers:` (Google first,
+  then Microsoft, through `Driver.oidc`) and `on_first_sign_in:` for
+  provider sign-in. Moved here from "After the first build", item 8
+  (Richard, 2026-10-30). Done when the lending desk example signs staff
+  in with Google through Jadpo alone, tested with the local issuer.
 
 ## After the first build, in order
 

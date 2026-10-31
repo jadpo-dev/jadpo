@@ -1776,6 +1776,10 @@ can't turn back into the secret.
 - `jadpo_sign_in_requests`, for magic links: one row per address, by its
   digest, with the latest link's and code's verifiers and the counts the
   limits read. Beside the sessions they start.
+- `jadpo_sign_in_links`: each way in and subject a first sign-in linked to
+  a user, when `on_first_sign_in:` decides an external token's first
+  sign-in ([A person the app has not seen](08-identity.md#a-person-the-app-has-not-seen)).
+  Only in the store the principal's user entity lives in.
 
 ### Tables for schedules and other state
 
