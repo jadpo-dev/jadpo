@@ -3,8 +3,11 @@
   "displayName": "Jadpo",
   "description": "Jadpo for VS Code: the compiler's errors as you type, completion, hover, go to definition, formatting and quick fixes.",
   "icon": "icon.png",
-  "galleryBanner": { "color": "#15181c", "theme": "dark" },
-  "version": "0.1.0",
+  "galleryBanner": {
+    "color": "#15181c",
+    "theme": "dark"
+  },
+  "version": "0.2.0",
   "publisher": "jadpo",
   "license": "Apache-2.0",
   "private": true,
