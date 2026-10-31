@@ -7,6 +7,11 @@
 // drafted from the passenger's name is `identifying` too, wherever it is
 // stored.
 //
+// A report is all the office holds of the passenger who made it, so each
+// is a person (`person: true`): erasing the passenger finds every field
+// marked `personal:` here, which no record that belongs to no person may
+// hold.
+//
 // Anyone on the website may report a loss, but only the office reads
 // one: the system, which drafts its reply in a subscriber.
 
@@ -37,4 +42,6 @@ entity LossReport {
         read: [Access.system]
         update: [Access.system]
     }
+
+    person: true
 }
