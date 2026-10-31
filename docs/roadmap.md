@@ -493,7 +493,7 @@ After the registry is live, in order:
   compile errors and migrations that would follow; after V4.
 - Then, each with its own chunk below: signed log heads (keys held as data
   and `crypto.sign`, P9 under item 3), the S3 driver for the registry's archives
-  (item 4), the search capability (item 8), and GitHub sign-in for
+  (B7, under item 4), the search capability (item 8), and GitHub sign-in for
   jadpo.dev accounts (`Driver.github`; Google works now, through A7b).
 
 ## After the first build, in order
@@ -632,9 +632,152 @@ After the registry is live, in order:
      and `jadpo privacy requests`, designed with the design skills first.
      Done when a request runs from asking to completion in tests on both
      executors.
-4. Remaining built-in services (area 16): flags, files, audit, search,
-   telemetry thresholds, with the `ThresholdChange` acceptance for a
-   threshold raised or removed.
+4. Remaining built-in services (area 16): files, flags, audit, search
+   and monitoring thresholds, with the `ThresholdChange` acceptance for a
+   threshold raised or removed: split by size (2026-10-31) into B1 to
+   B13, taken in order. B1 to B8 build files outwards from what a field
+   holds; B9 to B13 touch other crates and pages and may run beside them.
+   The disk driver in production moved here from item 8; the `search`,
+   `bot_check` and `scanning` capabilities, image variants, the
+   `telemetry:` section and custom metrics stay under item 8.
+   - [x] **B1 A `File` held to its field**: area 16, "What a write
+     checks", "A `File` field's settings" and "What is built"; area 4,
+     "Defects"; compiler/runtime §2.6, "Files and a file's run".
+   - [ ] **B2 The disk driver in production** `opus · high`: area 16,
+     "The disk driver"; area 14, "A native deployable"; area 18, "The
+     manifest". A native deployable keeps a `Driver.disk` connection's
+     files at its `path:`, which `jadpo check` refuses inside the
+     project's source or build folders; a put below `free_space_floor:`
+     (5% by default) answers `storage_full`; the manifest records that
+     the app runs on one server. Done when a native deployable puts and
+     reads a file at its `path:`, and a put below the floor answers
+     `storage_full`.
+   - [ ] **B3 Deleting a file's bytes** `opus · high`: area 16,
+     "Deleting and erasing" and "Writing a file your app makes: `put`".
+     The capability's `delete`; a generated subscriber deleting a file's
+     bytes once the change that deletes its record, or clears or replaces
+     its field, commits; and bytes never attached to a record deleted
+     after a day. P4's erasure of a `File` field's bytes uses this
+     subscriber. Done when tests find the bytes gone after each, and kept
+     while a record holds them, on both executors.
+   - [ ] **B4 Downloads** `opus · high`: area 16, "Downloading" and "The
+     disk driver" (downloads). An `Output` that picks a `File` field
+     sends a signed link valid for five minutes with the file's name,
+     size and type; the disk driver serves it from the app's own origin,
+     single ranges and `If-Range` with an ETag from the file's hash,
+     `Content-Disposition: attachment` but for the image allow-list,
+     `nosniff` and `sandbox`, read in fixed windows. Done when route
+     tests download a file whole and by range on both executors, and an
+     expired or altered link is refused.
+   - [ ] **B5 Uploads** `opus · xhigh`: area 16, "Uploading", "Compressed
+     uploads" and "The disk driver" (uploads); area 2, `FileUpload` and
+     `UploadSlot`; area 9, the slot's grant. `Entity.field_upload()`
+     giving a 15-minute `UploadSlot` to a caller with `create` or
+     `update` on the entity; the disk driver's upload route, streamed to
+     a temporary file, `413` at the first byte over `max_size:`, hashed,
+     synced and renamed; a `FileUpload` in an `Input`, attached by an
+     ordinary create or update once the runtime has checked the file is
+     there, its size and its type from its first bytes (`invalid_value`
+     otherwise, B1's check for the rest); a `Content-Encoding` refused.
+     Done when route tests ask for a slot, upload, attach and download on
+     both executors, and each refusal is tested.
+   - [ ] **B6 Large uploads in parts** `opus · high`: area 16, "Large
+     uploads go in parts". A field over 100 MB gets a multipart slot of
+     equal parts, each sent to `PUT /files/<store>/uploads/<slot>/parts/<n>`
+     on disk and resendable, joined on attach with B5's checks; the
+     client helper comes with item 10's generated bindings. Done when
+     route tests upload in parts, resend one after a dropped connection
+     and attach, on both executors.
+   - [ ] **B7 The S3 driver** `opus · xhigh`: area 16, "Files" (S3-compatible
+     services), "Downloading", "Uploading" and "Large uploads go in
+     parts"; area 11, "Connecting in `app.jadpo`". `Driver.s3` with
+     `host:`, `region:`, `bucket:` and `credential:`, natively and on
+     Workers: put, read, join, discard and delete signed with SigV4,
+     downloads as presigned `GET` links, upload slots as presigned `PUT`s
+     and multipart `UploadPart`s in R2's equal parts. The registry's
+     archives can then leave PostgreSQL. Done when it passes the disk
+     driver's tests against a stand-in S3 server, interpreted, compiled
+     and on workerd.
+   - [ ] **B8 Files in tests and `jadpo files`** `opus · high`: area 13,
+     "Files" (fakes); area 14, the files commands; area 16, "The disk
+     driver" (commands). `fixture_file("customers.csv", store:)` from a
+     domain's `fixtures/files/`; a test telling the in-memory store to
+     fail a read (`unavailable`) or a write (`storage_full`); and `jadpo
+     files ls`, `show`, `get`, `put` and `copy` on any store, designed
+     with the design skills first. Done when tests read fixture files and
+     see each failure on both executors, and `jadpo files copy` moves a
+     disk store's files to S3.
+   - [ ] **B9 Flags declared, read and tested** `opus · xhigh`: area 16,
+     "Feature flags" (the declaration, "Changing a flag" for where values
+     live, "Who gets which value" and "What the compiler checks"); area
+     1, `flags.jadpo` and "Rules triggered by time passing"; area 5,
+     `flags: { store: }`; area 13, `flags:` in a test's settings.
+     `flags { }` of `Bool` and enum flags with their default, owner and
+     `expires:`; `flags.name` in actions and a route's `run:` arguments,
+     fixed for the operation and worked out for the caller (named users,
+     then a stable percentage, then everyone), each server holding the
+     values in memory, refreshed within ten seconds and keeping the last
+     on a failed read; `flags:` in a test; an unknown flag, and an expired
+     one (today's date in `check`, the commit's in `build`, not
+     declinable), refused. Named tenants wait for tenancy to be settled
+     for flags. Done when tests read every value of a flag on both
+     executors, with per-user and percentage values from its table.
+   - [ ] **B10 Changing and removing flags** `opus · high` after B9: area
+     16, "Changing a flag", "What the compiler checks" (both values
+     tested), "Removing a flag" and "Flags in browsers and apps"; area
+     14, `jadpo flags`; area 7, `GET /flags`. `jadpo flags set`
+     (`--users`, `--percent`, `--split`) and `list` against an
+     environment, each change logged with who made it, a flag held at 0%
+     or 100% shown "ready to remove"; `check` failing until the tests
+     that reach each read cover every value; `jadpo flags remove --keep`
+     rewriting each read, the branch that can't run, the declaration and
+     the tests' overrides; `client: true` flags worked out for the
+     caller by a generated `GET /flags` in the OpenAPI document. Screens
+     designed with the design skills first. Done when each command's
+     tests pass and a removed flag's project checks and passes its tests.
+   - [ ] **B11 The audit trail** `opus · xhigh` after P2: area 16, "Audit
+     trail" and "Sending audit entries elsewhere"; area 9, the history's
+     grant and field restrictions; area 5, its system table. `audit: {
+     retention: }` on an entity: an entry in the same transaction as each
+     change (the principal, or the application with the request that
+     emitted the event; the action and request; each changed field
+     before and after, server-only fields left out);
+     `Entity.history(id)`, a page of entries for a caller with `read`,
+     without the fields they can't read; entries deleted by P2's purge
+     schedule when their retention ends, and with their record when P3
+     erases it; the permissions report listing audited entities; and
+     `AuditEntryRecorded` emitted in the same transaction when something
+     subscribes. Until P7's keyed hash, an audited entity with a
+     `personal:` field stays `toolchain.not_built_yet`, so no personal
+     value is copied into its history. Done when tests change audited
+     records on both executors and read each change back through
+     `history`.
+   - [ ] **B12 Search on PostgreSQL** `opus · xhigh`: area 16, "Search"
+     but "An engine instead of PostgreSQL", the `search` capability of
+     item 8; area 2, `SearchText`; area 5, "Special kinds of index"; area
+     6, `matches` and "Pages". `search: { fields: language: }` on an
+     entity, with its `tsvector` column and GIN index in its migration
+     and the fields listed first weighted most; `where: Todo matches
+     search_phrase` taking words, quoted phrases and `-word`; with no
+     `order:`, the best matches first and then `id`, in keyset pages;
+     `search:` in place of the full-text index `kind:`. Done when query
+     tests find, rank and page records by words on both executors, and
+     the migration is generated.
+   - [ ] **B13 Monitoring thresholds** `opus · xhigh`: area 16, "Monitoring
+     thresholds"; area 1, `monitoring.jadpo`; area 18, "The manifest" and
+     `ThresholdChange`. The declaration's form, which no page writes
+     yet, decided first and recorded on area 16 and its design notes;
+     each threshold checked to name a route, query, action, schedule or
+     delivery that exists; per-request thresholds compiled into the
+     deployable for item 8's `telemetry:` section to act on, and
+     across-request ones written to `build/monitoring/` as OpenSLO and
+     Prometheus rules and carried in the manifest; a threshold raised or
+     removed refused by `check` until a `ThresholdChange` acceptance
+     names it, its before side read from git, a tightened one needing
+     none. Starting values from production and agents' proposals come
+     with the developer console and MCP (item 9). Done when `check`
+     refuses a loosened threshold until it is accepted, passes a
+     tightened one, and writes the rules.
 5. Debugging and review (area 17): `why`, timelines, `test new --from`,
    `call`.
 6. Records and acceptances: moved to "Approvals" (2026-10-31).
@@ -644,7 +787,7 @@ After the registry is live, in order:
 8. Packages and capabilities after the first build (decided 2026-10-16):
    services run by Jadpo (`runs:`, Docker or Podman hidden behind
    `jadpo services`); the `documents` capability; OAuth grants per owner;
-   search, `bot_check` and `scanning` capabilities; the disk driver;
+   search, `bot_check` and `scanning` capabilities;
    telemetry's `telemetry:` section, custom metrics and the local
    `jadpo traces`, `metrics` and `logs`; `jadpo watch`; publishing packages (`jadpo package new`, `check`,
    `publish`, git-tag versions, publisher trust); a service's new or

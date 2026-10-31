@@ -50,6 +50,13 @@ pub enum FaultKind {
     /// 7.5b): stopped before anything more is sent, and held for an
     /// operator rather than failed.
     Diverged(String),
+    /// A `File` written to a field it doesn't fit (area 16, "What a
+    /// write checks"; chunk B1): kept in another store, of a type the
+    /// field's `types:` doesn't list, or larger than its `max_size:`.
+    /// `why` names the field and what didn't fit, never the file's bytes,
+    /// and `next` what to change. The program's own mistake, since only
+    /// the runtime makes a `File`, from what the action gave `put`.
+    FileRefused { why: String, next: String },
     /// A crash `jadpo test` made at a step of an action with several
     /// changing calls (area 13; chunk 7.5d): the run stops as a process
     /// that died would, nothing it wrote kept, and what ran it starts it
@@ -84,6 +91,7 @@ impl FaultKind {
             FaultKind::CallInTransaction(_) => "call_in_transaction",
             FaultKind::Diverged(_) => "diverged",
             FaultKind::Crashed => "crashed",
+            FaultKind::FileRefused { .. } => "file_refused",
             FaultKind::Defect(_) | FaultKind::Store(_) | FaultKind::Provider(_) => "internal_fault",
         }
     }

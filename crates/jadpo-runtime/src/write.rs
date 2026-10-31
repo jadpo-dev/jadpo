@@ -15,7 +15,7 @@
 //! savepoint ([`crate::action`]).
 
 use jadpo_std::read::Field;
-use jadpo_std::write::{PolicyRefusal, WriteParam, WritePlan, WriteSource};
+use jadpo_std::write::{FileCheck, PolicyRefusal, WriteParam, WritePlan, WriteSource};
 use jadpo_value::Value;
 
 use crate::read::{Interrupt, JsonCodecs, defect, refused, stored_value, to_sql, uuid_text};
@@ -50,6 +50,25 @@ pub(crate) async fn write(
     site: u32,
 ) -> Result<Written, Interrupt> {
     let now = ctx.now();
+    // A `File` that doesn't fit its field stops the write before anything
+    // is sent (area 16, "What a write checks"; chunk B1).
+    for check in &plan.files {
+        let file = source_value(ctx, &check.source, inputs, site, now)?;
+        // Only the runtime makes a `File`, so anything else is Jadpo's
+        // mistake, refused rather than written unchecked.
+        if !matches!(file, Value::None | Value::Record(_)) {
+            return Err(defect(
+                ctx,
+                "a `File` field given a value that isn't a file",
+                site,
+            ));
+        }
+        if let Some((why, next)) = refused_file(check, &file) {
+            return Err(Interrupt::Fault(
+                ctx.fault(FaultKind::FileRefused { why, next }, site),
+            ));
+        }
+    }
     let mut params = params_of(ctx, &plan.params, json, inputs, site, now)?;
     // Open the write transaction before consulting checked keys: a nested
     // rollback may have ended the transaction that established them.
@@ -256,6 +275,73 @@ pub(crate) async fn write(
     Ok(Written::Value(Value::record(&returns.record.ty, fields)))
 }
 
+/// Why `file`, the value a write sets `check`'s field to, isn't one the
+/// field keeps, with what to do about it; `None` when it fits, or is
+/// `none` (area 16, "What a write checks"; chunk B1). The store comes
+/// first, then the type, then the size: a file in another store would be
+/// read from the wrong one whatever its type and size.
+pub fn refused_file(check: &FileCheck, file: &Value) -> Option<(String, String)> {
+    let Value::Record(record) = file else {
+        return None;
+    };
+    let field = &check.field;
+    let store = match record.get("store") {
+        Some(Value::Text(store)) => store.to_string(),
+        _ => String::new(),
+    };
+    if store != check.store {
+        return Some((
+            format!(
+                "`{field}` keeps its files in `{}`, and this file is in `{store}`",
+                check.store
+            ),
+            format!(
+                "Put the file with `{}.put`, the store `{field}` names, or name `{store}` in its `store:`",
+                check.store
+            ),
+        ));
+    }
+    let file_type = match record.get("type") {
+        Some(Value::Variant(variant)) => variant.name.to_string(),
+        _ => String::new(),
+    };
+    if !check.types.is_empty() && !check.types.contains(&file_type) {
+        let takes: Vec<String> = check
+            .types
+            .iter()
+            .map(|t| format!("`FileType.{t}`"))
+            .collect();
+        let takes = match takes.split_last() {
+            Some((last, [])) => last.clone(),
+            Some((last, rest)) => format!("{} or {last}", rest.join(", ")),
+            None => String::new(),
+        };
+        return Some((
+            format!("`{field}` takes {takes}, and this file is `FileType.{file_type}`"),
+            format!(
+                "Put the bytes as a type `{field}`'s `types:` lists, or add `FileType.{file_type}` to it"
+            ),
+        ));
+    }
+    let size = match record.get("size") {
+        Some(Value::Int(size)) => u64::try_from(*size).unwrap_or(u64::MAX),
+        _ => u64::MAX,
+    };
+    if size > check.max_size {
+        return Some((
+            format!(
+                "`{field}` holds files of at most {}, and this one is {}",
+                jadpo_std::files::shown_size(check.max_size),
+                jadpo_std::files::shown_size(size)
+            ),
+            format!(
+                "Bound the bytes before they are put, such as by the `max_length:` of the text they are made from, or raise `{field}`'s `max_size:`"
+            ),
+        ));
+    }
+    None
+}
+
 /// The values of a statement's parameters, from the write's inputs.
 fn params_of(
     ctx: &mut Ctx<'_>,
@@ -358,4 +444,59 @@ fn source_value(
             },
         },
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn check(types: &[&str]) -> FileCheck {
+        FileCheck {
+            field: "PriceSheet.sheet".to_string(),
+            source: WriteSource::Input(0),
+            store: "sheets".to_string(),
+            max_size: 1_000,
+            types: types.iter().map(|t| t.to_string()).collect(),
+        }
+    }
+
+    fn file(store: &str, size: i64, file_type: &str) -> Value {
+        crate::files::file_value(
+            store,
+            &jadpo_std::files::key_for(&[7; 16]),
+            None,
+            size,
+            file_type,
+        )
+    }
+
+    #[test]
+    fn a_file_is_held_to_its_fields_store_then_type_then_size() {
+        let csv = check(&["csv"]);
+        assert_eq!(refused_file(&csv, &file("sheets", 1_000, "csv")), None);
+        assert_eq!(refused_file(&csv, &Value::None), None);
+        let (why, _) = refused_file(&csv, &file("notes", 2_000, "pdf")).expect("refused");
+        assert_eq!(
+            why,
+            "`PriceSheet.sheet` keeps its files in `sheets`, and this file is in `notes`"
+        );
+        let (why, _) = refused_file(&csv, &file("sheets", 2_000, "pdf")).expect("refused");
+        assert_eq!(
+            why,
+            "`PriceSheet.sheet` takes `FileType.csv`, and this file is `FileType.pdf`"
+        );
+        let images = check(&["png", "jpeg", "webp"]);
+        let (why, _) = refused_file(&images, &file("sheets", 10, "pdf")).expect("refused");
+        assert_eq!(
+            why,
+            "`PriceSheet.sheet` takes `FileType.png`, `FileType.jpeg` or `FileType.webp`, and this file is `FileType.pdf`"
+        );
+        let (why, _) = refused_file(&csv, &file("sheets", 1_001, "csv")).expect("refused");
+        assert_eq!(
+            why,
+            "`PriceSheet.sheet` holds files of at most 1 kB, and this one is 1001 bytes"
+        );
+        // A field that names no types takes any.
+        assert_eq!(refused_file(&check(&[]), &file("sheets", 10, "pdf")), None);
+    }
 }

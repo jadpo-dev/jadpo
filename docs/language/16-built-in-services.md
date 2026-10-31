@@ -399,6 +399,9 @@ The field's settings:
 - `max_size:` is the largest file the field accepts.
 - `types:` lists the file types it accepts.
 
+A file is kept in the field only when it fits all three, which every
+write checks ([What a write checks](#what-a-write-checks)).
+
 Cloudflare R2, Amazon S3, Backblaze B2, DigitalOcean Spaces and MinIO all
 use the S3 driver, each with its own host and settings, listed on the
 driver's page. No package wraps the driver with presets.
@@ -2690,6 +2693,8 @@ signed link comes with downloads. A program reads none of its parts yet.
 
 A mistake in any of them is `data.file_field_invalid`. The three
 settings on a field that isn't a `File` are `type.unknown_setting`.
+Every write of the field holds the file it is given to them
+([What a write checks](#what-a-write-checks)).
 
 ### `store.put(bytes, type)`
 
@@ -2702,6 +2707,139 @@ A store with no room answers `storage_full`, the call's one condition.
 Its `attempt` maps it to a failure of kind `unavailable`; it isn't a
 fault of a value, so `invalid:` doesn't cover it. A store that can't be
 reached is the runtime's own `unavailable`.
+
+### What a write checks
+
+A `File` is kept in a field only when it fits the field's settings.
+Every `create`, `update` and patch that sets a `File` field checks,
+before its statement runs, that the file is:
+
+1. in the store the field's `store:` names;
+2. of a type its `types:` lists, when it lists any;
+3. no larger than its `max_size:`.
+
+A file that breaks one stops the write with the fault `file_refused`,
+naming the field and what didn't fit, and nothing the action wrote is
+kept ([Defects](04-failures.md#defects)). It is a fault, not a failure,
+because only the runtime makes a `File`, from the bytes, the type and
+the store the action gave `put`, so the mismatch is the program's own.
+Bound the bytes before the put, such as by the `max_length:` of the
+text they are made from, or change the field's settings. Clearing a
+field, or a patch that leaves it out, checks nothing.
+
+Here the bakery's sheets are at most 32 bytes, so a four-line sheet
+isn't kept:
+
+```jadpo check project=files-held file=app.jadpo hidden
+application {
+    connections: {
+        sheets: {
+            driver: Driver.disk
+            path: "/var/lib/bakery/sheets"
+        }
+    }
+}
+```
+
+```jadpo check project=files-held file=domains/bakery/types/sheet_text.jadpo hidden
+/// A price sheet as a supplier sends it.
+type SheetText = Text {
+    min_length: 1
+    max_length: 100000
+}
+```
+
+```jadpo check project=files-held file=domains/bakery/types/supplier_name.jadpo hidden
+/// Who sent a price sheet.
+type SupplierName = Text {
+    min_length: 1
+    max_length: 80
+}
+```
+
+```jadpo check project=files-held file=domains/bakery/failures/sheet_not_kept.jadpo hidden
+/// The sheets store had no room for a sheet.
+type SheetNotKept = Failure {
+    kind: FailureKind.unavailable
+    message: "There was no room to keep the sheet."
+}
+```
+
+```jadpo check project=files-held file=domains/bakery/entities/price_sheet.jadpo
+use bakery/types { SupplierName }
+
+/// A supplier's price sheet, kept as it was sent.
+entity PriceSheet {
+    id: Uuid
+    supplier: SupplierName
+    sheet: File {
+        store: sheets
+        max_size: 32b
+        types: [FileType.csv]
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+}
+```
+
+```jadpo check project=files-held file=domains/bakery/actions/keep_prices.jadpo hidden migrate=initial
+use app { sheets }
+use bakery/entities { PriceSheet }
+use bakery/types { SheetText, SupplierName }
+use bakery/failures { SheetNotKept }
+
+/// Keeps a price sheet as its supplier sent it.
+action keep_prices(supplier: SupplierName, sheet_text: SheetText) fails SheetNotKept -> PriceSheet {
+    var sheet: File = attempt sheets.put(encoding.to_utf8(sheet_text), FileType.csv) {
+        storage_full: SheetNotKept
+    }
+    return PriceSheet.create {
+        set: {
+            supplier: supplier
+            sheet: sheet
+        }
+    }
+}
+```
+
+```jadpo check project=files-held file=domains/bakery/actions/keep_prices.test.jadpo expect=test.fault
+use bakery/entities { PriceSheet }
+use bakery/types { SheetText }
+
+test "a short sheet is kept" {
+    var price_sheet: PriceSheet = attempt keep_prices("Millers", "flour,1.20\nrye,2.40\n")
+    assert price_sheet.supplier == "Millers"
+}
+
+test "a longer sheet isn't kept" {
+    var sheet: SheetText = "flour,1.20\nrye,2.40\nspelt,3.10\noats,0.90\n"
+    var price_sheet: PriceSheet = attempt keep_prices("Millers", sheet)
+    assert price_sheet.supplier == "Millers"
+}
+```
+
+```text output
+FAIL  a longer sheet isn't kept
+ --> domains/bakery/actions/keep_prices.test.jadpo:11
+
+  fault: file_refused in action keep_prices
+  at: domains/bakery/actions/keep_prices.jadpo:11:12
+   |
+11 |     return PriceSheet.create {
+   |            ^^^^^^^^^^^^^^^^^^^ not kept
+  reason: `PriceSheet.sheet` holds files of at most 32 bytes, and this one is 41 bytes; a field keeps only a file that fits its settings, so the write stopped before it ran and nothing the action wrote was kept.
+  next: Bound the bytes before they are put, such as by the `max_length:` of the text they are made from, or raise `PriceSheet.sheet`'s `max_size:` (agent)
+  stack: domains/bakery/actions/keep_prices.jadpo:11       action keep_prices
+         domains/bakery/actions/keep_prices.test.jadpo:11  test "a longer sheet isn't kept"
+
+  rule: test.fault
+  rerun: jadpo test domains/bakery/actions/keep_prices.test.jadpo:11 --seed 1
+
+test failed: 1 failed, 1 passed, 2 action tests
+```
 
 ### `store.read(file)`
 
@@ -2843,7 +2981,7 @@ The errors this page describes are built with the feature they belong to.
 | The dev inbox and the health score | Built: the dev inbox, `jadpo email`, the health score, `email.health_problem` and `jadpo email check-domain` ([The dev inbox and the health score](#the-dev-inbox-and-the-health-score)), with SpamAssassin's rules in the score ([SpamAssassin in the health score](#spamassassin-in-the-health-score)). Not built yet: the inbox page as part of the developer console, and its link to each mail's trace, which comes with `jadpo trace`. |
 | Rate limits | Built: default rate limits with routes, and their store on Workers, Cloudflare's rate-limiting binding ([Rate limits on Workers](#rate-limits-on-workers)). Not built yet: Redis's driver, which comes with caches. Until then a deployable whose store is Redis counts in its own memory, which on Workers is the judgement call `rate_limits.counted_in_memory`. The binding's windows and the Wrangler entries aren't yet checked against the real edge. |
 | The capability seam | Built: the seam every capability's calls go through, with a delivery that hands its event to a capability, parked as `outcome_unknown` when a send without a key may have acted ([The seam every outside call goes through](#the-seam-every-outside-call-goes-through)). |
-| Files | Partly built. Built: the `files` capability's first part on that seam: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [Files: `put`, `read` and the disk driver in development](#files-put-read-and-the-disk-driver-in-development)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([Files: an export's pieces](#files-an-exports-pieces)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). Not built yet: upload slots, multipart ones included, downloads, deleting and erasing a file's bytes, the S3 driver, a deployable's disk driver at its `path:` and `free_space_floor:`, the error for a disk driver's root inside the project, checking a stored file against its field's `max_size:`, `types:` and `store:` as it is written, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written. |
+| Files | Partly built. Built: the `files` capability's first part on that seam: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [Files: `put`, `read` and the disk driver in development](#files-put-read-and-the-disk-driver-in-development)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([Files: an export's pieces](#files-an-exports-pieces)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). Not built yet: upload slots, multipart ones included, downloads, deleting and erasing a file's bytes, the S3 driver, a deployable's disk driver at its `path:` and `free_space_floor:`, the error for a disk driver's root inside the project, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written. |
 | Flags | Not built yet. |
 | Audit | Not built yet: an entity's `audit:` is `toolchain.not_built_yet` where it is written. |
 | Search | Not built yet. |

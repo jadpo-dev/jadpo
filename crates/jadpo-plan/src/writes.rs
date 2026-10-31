@@ -27,7 +27,8 @@ use jadpo_graph::{Key, Kind, TypeRef};
 use jadpo_std::read::MissingValue;
 use jadpo_std::read::{Field, Record, SqlType};
 use jadpo_std::write::{
-    Guard, Raises, Refusal, Returned, RowCheck, WriteOp, WriteParam, WritePlan, WriteSource,
+    FileCheck, Guard, Raises, Refusal, Returned, RowCheck, WriteOp, WriteParam, WritePlan,
+    WriteSource,
 };
 
 use jadpo_sql::Bind;
@@ -57,6 +58,8 @@ pub struct WriteSitePlan {
 struct Writing {
     params: Vec<WriteParam>,
     inputs: Vec<(SiteId, Option<ValidatorId>)>,
+    /// Each `File` field it sets, held to its settings first (chunk B1).
+    files: Vec<FileCheck>,
 }
 
 impl Writing {
@@ -200,7 +203,7 @@ impl Planner<'_> {
                     // A compound type goes into its several columns (area
                     // 19).
                     let json = self.json_codec(entity_model, field);
-                    let parts = field_columns(&mut writing, field, &source, json)?;
+                    let parts = field_columns(&mut writing, entity_model, field, &source, json)?;
                     let first = parts.first().map(|(_, value)| value.clone())?;
                     for (column, value) in parts {
                         names.push(column);
@@ -351,7 +354,13 @@ impl Planner<'_> {
                                 ));
                             }
                             let json = self.json_codec(entity_model, field);
-                            field_columns(&mut writing, field, &WriteSource::Input(input), json)?
+                            field_columns(
+                                &mut writing,
+                                entity_model,
+                                field,
+                                &WriteSource::Input(input),
+                                json,
+                            )?
                         };
                         let first = parts
                             .first()
@@ -391,6 +400,7 @@ impl Planner<'_> {
                             let json = self.json_codec(entity_model, field);
                             let parts = field_columns(
                                 &mut writing,
+                                entity_model,
                                 field,
                                 &WriteSource::Field {
                                     input,
@@ -457,6 +467,7 @@ impl Planner<'_> {
                                 let json = self.json_codec(entity_model, field);
                                 let parts = field_columns(
                                     &mut writing,
+                                    entity_model,
                                     field,
                                     &WriteSource::Input(at),
                                     json,
@@ -770,6 +781,7 @@ impl Planner<'_> {
                 missing,
                 kept_in_tenant: !kept.is_empty(),
                 row,
+                files: writing.files,
             },
             inputs: writing.inputs,
         })
@@ -975,11 +987,23 @@ fn returning(entity: &EntityModel) -> Vec<String> {
 /// minor units and currency code, area 19).
 fn field_columns(
     writing: &mut Writing,
+    entity: &EntityModel,
     field: &jadpo_check::data::FieldModel,
     source: &WriteSource,
     json: Option<u32>,
 ) -> Option<Vec<(String, String)>> {
     let ty = column_type(field)?.param();
+    // A `File` it sets is held to the field's settings before the
+    // statement runs (area 16, "What a write checks"; chunk B1).
+    if let Some(file) = &field.file {
+        writing.files.push(FileCheck {
+            field: format!("{}.{}", entity.name, field.name),
+            source: source.clone(),
+            store: file.store.clone(),
+            max_size: file.max_size,
+            types: file.types.clone(),
+        });
+    }
     // A JSON-held standard value, written as its contract's JSON by the
     // route codec (chunk 5.5w2b).
     if let Some(codec) = json {

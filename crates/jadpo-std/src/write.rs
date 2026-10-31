@@ -125,6 +125,30 @@ pub struct WritePlan {
     /// how its row is checked to be the version loaded before an outside
     /// call (area 6, "Outside calls hold no transaction"; chunk 7.4).
     pub row: Option<RowCheck>,
+    /// Each `File` field it writes, held to its settings before the
+    /// statement runs (area 16, "What a write checks"; chunk B1).
+    pub files: Vec<FileCheck>,
+}
+
+/// A `File` field a write sets, and what the file it is given must be
+/// (area 16, "What a write checks"; chunk B1): kept in the field's
+/// `store:`, of a type its `types:` lists, and within its `max_size:`.
+/// One that isn't stops the write as the `file_refused` fault, since only
+/// the runtime makes a `File`, from the bytes, type and store the action
+/// chose.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct FileCheck {
+    /// The field, `PriceSheet.sheet`, as the fault names it.
+    pub field: String,
+    /// Where the file comes from: `none` for a field cleared, or a patch
+    /// that leaves it out, which nothing checks.
+    pub source: WriteSource,
+    /// The connection its bytes must be in.
+    pub store: String,
+    /// The most bytes it may hold.
+    pub max_size: u64,
+    /// The `FileType` variants it may be; empty for any.
+    pub types: Vec<String>,
 }
 
 /// What a write holds in its WHERE when its action loaded its row in a snapshot

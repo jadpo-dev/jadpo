@@ -4703,6 +4703,13 @@ most `WHOLE_READ_LIMIT`); a put's `storage_full` comes back as the call's
 condition (`files::Done::Broke`), which the interpreter raises at its
 site as a construction's broken rule. The checker reads a `File` field's
 settings into `FieldModel::file`, and a store's call is `Callee::Files`.
+Each write that sets a `File` field carries a `jadpo_std::write::FileCheck`
+for it in `WritePlan::files` (the planner's `field_columns`, for a create,
+a `set:`, a patch and `when_supplied:` alike), and the runtime's `write`
+holds the value to it before the statement is sent
+(`write::refused_file`: store, then type, then size), a mismatch the
+fault `FaultKind::FileRefused`, classified `file_refused`, the
+program's own (chunk B1).
 Drivers: `jadpo_host_native::files::DiskFiles`, which `jadpo dev` gives
 every connection under `.jadpo/files/`, and `files::MemoryFiles`, the
 fake `jadpo test`'s host and the Rust tests give. A file helper's read
