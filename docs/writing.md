@@ -301,7 +301,10 @@ output` block after it. The docs check runs the block's lines with
 writes it. `expect=<rule>` says the commands end failing with that
 rule's diagnostic and no other; without it they succeed. `tty` runs them
 in a terminal and types `typed=<value>`, or nothing, then Enter, at the
-first prompt. The run has this checkout's `jadpo`, an empty home folder
+first prompt. `database` gives the commands a new, empty database of
+their own on the docs check's PostgreSQL, its address in `DATABASE_URL`,
+which the project's connection reads through
+`url: config.database_url`. The run has this checkout's `jadpo`, an empty home folder
 and nothing of the machine's environment, so it prints the same
 everywhere: the project's folder prints as `.`, the home folder as `~`,
 and a run's duration is left out. What the error needs, such as a link,
@@ -310,8 +313,10 @@ before the command, where the reader sees it. A fix that needs the
 error's state first is shown as a plain `sh` block, without output.
 
 A rule no run can raise on demand, because it needs a race, a network
-that fails or a machine that can't build, shows the command as a plain
-`sh` block and output copied from a real run as a plain `text` block.
+that fails, a machine that can't build or a database server without an
+extension, shows the command as a plain `sh` block and output copied
+from a real run as a plain `text` block. The project's files are still
+`check` blocks, which the gate compiles.
 The sentence before them says the output was copied rather than checked
 and what the run was, such as "a build on a Mac with no C compiler", and
 the copy has the run's folders written as `.` and `~`, as the check

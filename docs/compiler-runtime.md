@@ -4929,7 +4929,12 @@ they print, stdout and stderr in the order written, is compared with the
 that rule's diagnostic and no other and a failing exit, and `tty` runs it
 in a pseudo-terminal, typing `typed=<value>` and Enter at the first prompt
 once the terminal stops echoing (docs/writing.md, "How an error page
-reads"). As root, a block with a `chmod` line is refused rather than
+reads"). `database` puts a new, empty database's `postgresql://` URL in
+`DATABASE_URL`: `jadpo-test-server`, started the first time a block asks
+and kept for the run, creates one for each line it reads, on the server
+`JADPO_TEST_DATABASE_URL` names or a disposable one (the PostgreSQL
+harness below); under `JADPO_SKIP_POSTGRES` the block is reported as
+skipped. As root, a block with a `chmod` line is refused rather than
 run, since root ignores the permissions it takes away and the block
 would pass wrongly.
 

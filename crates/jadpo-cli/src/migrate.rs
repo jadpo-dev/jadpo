@@ -1298,7 +1298,7 @@ fn extension_purpose(extension: &str) -> String {
 }
 
 pub(crate) fn migrate_failed(store: &str, error: jadpo_runtime::MigrateError) -> Diagnostic {
-    use jadpo_runtime::{MigrateError, StoreError};
+    use jadpo_runtime::MigrateError;
     match error {
         MigrateError::Unknown { name } => Diagnostic::new(
             &rule::MIGRATION_STORE_DIVERGED,
@@ -1470,13 +1470,12 @@ pub(crate) fn migrate_failed(store: &str, error: jadpo_runtime::MigrateError) ->
             .next_for(next, Decider::Human)
         }
         MigrateError::Store(store_error) => {
-            let why = match store_error {
-                StoreError::Unavailable => "the database can't be reached".to_string(),
-                StoreError::Conflict { constraint } => format!("a row breaks `{constraint}`"),
-                StoreError::ConcurrentChange => "another transaction changed it at the same time".to_string(),
-                StoreError::Statement(fault) => format!("PostgreSQL refused ({fault})"),
-                StoreError::Fault(fault) => fault,
-            };
+            let why = crate::schedules::store_error(&store_error);
+            let mut letters = why.chars();
+            let why = letters
+                .next()
+                .map(|first| first.to_uppercase().chain(letters).collect::<String>())
+                .unwrap_or_default();
             Diagnostic::new(
                 &rule::MIGRATION_APPLY_FAILED,
                 format!("Migrating `{store}` failed"),
