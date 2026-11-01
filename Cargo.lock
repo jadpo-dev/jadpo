@@ -1715,7 +1715,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "jadpo-check"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "blake3",
  "jadpo-db",
@@ -1731,7 +1731,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-cldr"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "icu_calendar",
  "icu_calendar_data",
@@ -1770,7 +1770,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ed25519-dalek",
  "getrandom 0.4.3",
@@ -1812,7 +1812,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-codegen"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "jadpo-check",
  "jadpo-db",
@@ -1829,7 +1829,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-db"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "jadpo-diag",
  "jadpo-syntax",
@@ -1839,11 +1839,11 @@ dependencies = [
 
 [[package]]
 name = "jadpo-diag"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "jadpo-drivers"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "bytes",
  "jadpo-runtime",
@@ -1855,7 +1855,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-fmt"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "jadpo-diag",
  "jadpo-syntax",
@@ -1864,7 +1864,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-graph"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "blake3",
  "jadpo-sql",
@@ -1873,7 +1873,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-host-native"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "bytes",
  "getrandom 0.4.3",
@@ -1895,7 +1895,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-host-workers"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "jadpo-drivers",
  "jadpo-runtime",
@@ -1914,7 +1914,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-interp"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "jadpo-check",
  "jadpo-db",
@@ -1930,7 +1930,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-lsp"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "jadpo-check",
  "jadpo-db",
@@ -1946,7 +1946,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-plan"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "blake3",
  "jadpo-check",
@@ -1958,7 +1958,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-registry"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "jadpo-db",
  "serde",
@@ -1968,7 +1968,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-runtime"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "blake3",
  "getrandom 0.4.3",
@@ -1988,14 +1988,14 @@ dependencies = [
 
 [[package]]
 name = "jadpo-sql"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "jadpo-std",
 ]
 
 [[package]]
 name = "jadpo-std"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ammonia",
  "html5ever",
@@ -2008,7 +2008,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-syntax"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "jadpo-diag",
  "rowan",
@@ -2017,7 +2017,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-term"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "jadpo-diag",
  "serde_json",
@@ -2025,7 +2025,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-test"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "blake3",
  "jadpo-check",
@@ -2048,7 +2048,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-value"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "argon2",
  "chacha20poly1305",
