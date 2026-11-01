@@ -914,8 +914,10 @@ multi-step runs and batches whose recorded path the new build changes, so
 an operator knows what will stop as `diverged`
 ([Deploys](12-jobs-and-events.md#deploys)). It takes `--json`.
 
-The build must be the one the checkout makes; `cli.runs_arguments` names
-it otherwise. It shows a table of each record whose build differs and
+`--build` takes the new build's id, `b_` and twelve hex digits, as its
+stamp carries it ([The build stamp](#the-build-stamp)) and the manifest
+lists it for each deployable. It must be the id of a build the checkout
+makes; `cli.runs_arguments` names the ones it does otherwise. It shows a table of each record whose build differs and
 whose action's step shape the build changes, so the record stops as
 diverged, or no longer keeps, so its steps are sent again. It also lists
 each running batch run whose call the build changes, which fails. A footer

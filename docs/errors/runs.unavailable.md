@@ -115,18 +115,19 @@ action take_stock(page: ItemPage) -> BatchRun {
 }
 ```
 
-`--build` names the build the checkout makes, a digest of the project
-and of the compiler that builds it, so it changes with every compiler,
-and a checked run would break with the next one. This output is copied
-from a real run instead. It is `jadpo runs unfinished` on a Mac, with
-`DATABASE_URL` naming a new PostgreSQL database, to which the project's
-migrations haven't been applied:
+`--build` names the build being deployed by its build id, which
+`jadpo check` writes in `build/manifest.json` for each deployable. Here
+it is read from there, and `DATABASE_URL` names a new database, to which
+the project's migrations haven't been applied:
 
-```sh
-jadpo runs unfinished --build 3ea6fed39193c7285c39b9ee92a7c8f9
+```sh run project=e-runs-unavailable database expect=runs.unavailable
+jadpo check
+build=$(grep -o 'b_[0-9a-f]\{12\}' build/manifest.json)
+jadpo runs unfinished --build "$build"
 ```
 
-```text
+```text output
+checked: 8 files
 error: The database `main` has no table for unfinished runs yet
   reason: `jadpo_batch_runs` comes with the project's migrations, so either the database hasn't applied them, or it isn't this project's database.
   next: Run `jadpo migrate apply` if it is this project's database, then run the command again (human)
@@ -140,15 +141,17 @@ decides which database the command reads, and whether its schema
 changes.
 
 A database whose server isn't running gives the same error, saying it
-can't be reached. This output is copied from a real run too: the same
-command, with `DATABASE_URL` naming a database on the same Mac with no
-server running:
+can't be reached. Here `DATABASE_URL` names a database on a port where
+no server is listening:
 
-```sh
-DATABASE_URL=postgresql://localhost:5499/stock jadpo runs unfinished --build 3ea6fed39193c7285c39b9ee92a7c8f9
+```sh run project=e-runs-unavailable expect=runs.unavailable
+jadpo check
+build=$(grep -o 'b_[0-9a-f]\{12\}' build/manifest.json)
+DATABASE_URL=postgresql://localhost:5499/stock jadpo runs unfinished --build "$build"
 ```
 
-```text
+```text output
+checked: 8 files
 error: The database `main` can't be reached
   reason: Connecting to it failed, so no unfinished runs could be read.
   next: Check the database is running and its address is right, then run the command again (human)
@@ -165,7 +168,7 @@ migrations, then run the command again:
 
 ```sh
 jadpo migrate apply
-jadpo runs unfinished --build 3ea6fed39193c7285c39b9ee92a7c8f9
+jadpo runs unfinished --build "$build"
 ```
 
 The tables are made, and the command lists what the build changes:
@@ -175,7 +178,7 @@ nothing, on a new database.
 again:
 
 ```sh
-jadpo runs unfinished --build 3ea6fed39193c7285c39b9ee92a7c8f9
+jadpo runs unfinished --build "$build"
 ```
 
 The command reaches the database and lists what the build changes.
@@ -184,7 +187,7 @@ The command reaches the database and lists what the build changes.
 production's with `--url`:
 
 ```sh
-jadpo runs unfinished --build 3ea6fed39193c7285c39b9ee92a7c8f9 --url "$PRODUCTION_DATABASE_URL"
+jadpo runs unfinished --build "$build" --url "$PRODUCTION_DATABASE_URL"
 ```
 
 The command reads that database instead, and leaves the other alone.
