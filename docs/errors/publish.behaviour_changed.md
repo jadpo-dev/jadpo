@@ -82,8 +82,14 @@ reason beside the entry, so whoever upgrades can read it.
 
 **If the change is worth having but the last release wasn't wrong**,
 publish it as a new package, `Postcodes.v3`, in a folder of its own: its
-`package.jadpo` names `Postcodes.v3`. Apps keep `Postcodes.v2` until they
-move across, and its change record still lists what behaves differently.
+`package.jadpo` names `Postcodes.v3`. Run the bar there:
+
+```sh
+jadpo package check
+```
+
+Apps keep `Postcodes.v2` until they move across, and its change record
+still lists what behaves differently.
 
 ## Related
 

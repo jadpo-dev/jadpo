@@ -976,7 +976,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--previous",
                 value: Some("folder"),
-                description: "For verify: the folder of the release before this one",
+                description: "For verify: the release before this one",
                 values: &[],
             },
             Flag {

@@ -12,6 +12,6 @@ mod fingerprints;
 
 pub use changes::{Change, ChangeEntry, behaviour_changed, personal_data_changes, surface_changes};
 pub use facts::{
-    Facts, FailureFact, HostFact, PersonalDataFact, StandardCandidate, facts, holder_name,
+    Facts, FailureFact, HostFact, PersonalDataFact, StandardCandidate, facts, named_holder,
 };
 pub use fingerprints::{Fingerprint, Shape, fingerprints};

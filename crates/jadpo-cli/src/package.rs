@@ -1427,7 +1427,7 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
     // A new version's changes, as its changelog lists them; `None` when
     // the version is one already released.
     let mut listed: Option<Vec<String>> = None;
-    let record_list = || -> Vec<String> {
+    let listing = || -> Vec<String> {
         if record.is_empty() {
             vec!["no change to what it offers".to_string()]
         } else {
@@ -1445,13 +1445,13 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
                 )),
                 Some(last) => {
                     publishing::version(label.as_str(), Some((&last.version, &last.surface)), &now)
-                        .map(|bump| (bump.version.clone(), bump_words(&bump), Some(record_list())))
+                        .map(|bump| (bump.version.clone(), bump_words(&bump), Some(listing())))
                 }
                 None => publishing::version(label.as_str(), None, &now).map(|bump| match &since {
                     Some(since) => (
                         bump.version.clone(),
                         format!("{}, new major since {since}", bump.version),
-                        Some(record_list()),
+                        Some(listing()),
                     ),
                     None => (
                         bump.version.clone(),
@@ -1854,7 +1854,7 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
 /// What a package's operations send, a line for each: aligned columns of
 /// the operation, what it sends and its category, after the hosts.
 fn personal_data_block(hosts: &[String], sends: &[PackageSend]) -> Block {
-    let held = |send: &PackageSend| release::holder_name(&send.holder);
+    let held = |send: &PackageSend| release::named_holder(&send.holder);
     let widest = |of: &dyn Fn(&PackageSend) -> usize| sends.iter().map(of).max().unwrap_or(0);
     let operation = widest(&|send| send.operation.len());
     let holder = widest(&|send| held(send).len());

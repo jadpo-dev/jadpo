@@ -161,11 +161,11 @@ pub fn surface_changes(before: &str, now: &str) -> Vec<ChangeEntry> {
 /// One entry's differences: whatever isn't a new failure or a new host is
 /// one `retyped`, saying what it says now and what it said.
 fn changed(kind: &str, name: &str, old: &[String], new: &[String], out: &mut Vec<ChangeEntry>) {
-    let tidy = |line: &String| line.trim().to_string();
+    let trimmed = |line: &String| line.trim().to_string();
     let removed: Vec<String> = old
         .iter()
         .filter(|line| !new.contains(line))
-        .map(tidy)
+        .map(trimmed)
         .collect();
     let mut added: Vec<String> = Vec::new();
     let (mut failures, mut hosts) = (Vec::new(), Vec::new());
@@ -175,7 +175,7 @@ fn changed(kind: &str, name: &str, old: &[String], new: &[String], out: &mut Vec
         } else if let Some(host) = new_host(kind, line) {
             hosts.push(host.to_string());
         } else {
-            added.push(tidy(line));
+            added.push(trimmed(line));
         }
     }
     if !added.is_empty() || !removed.is_empty() {

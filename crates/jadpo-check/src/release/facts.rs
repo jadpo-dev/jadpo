@@ -100,7 +100,7 @@ pub fn facts(db: &dyn Db, project: Project, folder: &str) -> Option<Facts> {
     for send in &sends {
         for host in &to {
             personal_data.push(PersonalDataFact {
-                field: holder_name(&send.holder),
+                field: named_holder(&send.holder),
                 host: host.clone(),
                 operation: send.operation.clone(),
                 categories: send.categories.clone(),
@@ -134,7 +134,7 @@ pub fn facts(db: &dyn Db, project: Project, folder: &str) -> Option<Facts> {
 
 /// What a package sends, as its facts and `jadpo package check` name it:
 /// `CustomerRequest.notes`, without the package's own name.
-pub fn holder_name(holder: &Holder) -> String {
+pub fn named_holder(holder: &Holder) -> String {
     match holder {
         Holder::Field { host, field } => {
             format!("{}.{field}", host.rsplit('.').next().unwrap_or(host))
