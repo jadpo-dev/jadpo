@@ -237,6 +237,11 @@ impl Body<'_> {
         if self.context.is_pure() {
             return Fallible::Unknown;
         }
+        // A history's page is empty for a record that isn't there or the
+        // caller may not read (area 16; chunk B11).
+        if operation == jadpo_std::audit::HISTORY {
+            return Fallible::Never;
+        }
         let missing = format!("{entity}NotFound");
         if operation == "get" && self.failures.is_declared_failure(&missing) {
             Fallible::Fails(vec![missing])

@@ -287,6 +287,10 @@ pub enum Detail {
     /// created_at`), and whether it clears a field's value rather than
     /// deleting the record.
     Retention { retention: String, clears: bool },
+    /// An entity's audit trail (area 16, "Audit trail"): how long each
+    /// entry of its history is kept (`kept after config.audit_retention`,
+    /// or `kept until erased`).
+    Audit { kept: String },
     /// A route (area 7): its API, success status, input and output, and
     /// deadline. Its method and full path are its name.
     Route {

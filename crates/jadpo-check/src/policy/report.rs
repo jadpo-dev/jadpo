@@ -220,7 +220,25 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
             ));
         }
         let membership = access.membership(&policy.entity);
-        let remarks = remarks(access, policy, membership);
+        let mut remarks = remarks(access, policy, membership);
+        // Its audit trail (area 16; chunk B11): who reads its history.
+        let audit = crate::data::data_model(db, project)
+            .entity(&policy.entity)
+            .and_then(|entity| entity.audit.as_ref());
+        if let Some(audit) = audit {
+            let kept = match &audit.retention {
+                Some(retention) => format!("for `{}`", retention.after_written),
+                None => "until the record is erased".to_string(),
+            };
+            let line = format!(
+                "Audited: each change is kept in its history {kept}, which `{}.history` shows to those who may read the record, without the fields they may not.",
+                policy.entity
+            );
+            if !remarks.is_empty() {
+                remarks.push(' ');
+            }
+            remarks.push_str(&line);
+        }
         if !remarks.is_empty() {
             markdown.push_str(&format!("\n{remarks}\n"));
         }
@@ -251,6 +269,14 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
             entry.set("membership", held);
         }
         entry.set_some("fixed", policy.fixed.clone());
+        if let Some(audit) = audit {
+            let mut kept = Value::object();
+            kept.set_some(
+                "retention",
+                audit.retention.as_ref().map(|r| r.after_written.as_str()),
+            );
+            entry.set("audit", kept);
+        }
         if !policy.fields.is_empty() {
             let fields: Vec<Value> = policy
                 .fields

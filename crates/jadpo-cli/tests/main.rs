@@ -22,6 +22,7 @@ mod ai_record;
 mod ai_steps;
 mod ai_stream;
 mod approval;
+mod audit;
 mod backfills;
 mod background_budget;
 mod batch_calls;

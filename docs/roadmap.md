@@ -552,8 +552,11 @@ After the registry is live, in order:
      logged as a keyed hash of its canonical text, whatever its type and
      in a failure's context too, the same on both executors; every
      export, erasure and read of a sensitive field recorded, without
-     values, as a long-kept log event. Done when log and access-record
-     tests show both on both executors.
+     values, as a long-kept log event; and an audited entity's marked
+     field kept in its history as that hash, lifting B11's
+     `toolchain.not_built_yet` (area 16, "What the audit trail doesn't
+     keep yet"). Done when log and access-record tests show both on both
+     executors.
    - [ ] **P8 The personal-data report** `opus · high` after V5 and P7:
      area 15, "The personal-data report", "Where data is stored", "What
      this does not cover" and "What the compiler checks" (a marked field
@@ -689,23 +692,10 @@ After the registry is live, in order:
      "Removing a flag", "Flags in browsers and apps" and "Flags: changed,
      listed and removed"; area 14, `jadpo flags`; compiler/runtime §2.6,
      "Feature flags".
-   - [ ] **B11 The audit trail** `opus · xhigh` after P2: area 16, "Audit
-     trail" and "Sending audit entries elsewhere"; area 9, the history's
-     grant and field restrictions; area 5, its system table. `audit: {
-     retention: }` on an entity: an entry in the same transaction as each
-     change (the principal, or the application with the request that
-     emitted the event; the action and request; each changed field
-     before and after, server-only fields left out);
-     `Entity.history(id)`, a page of entries for a caller with `read`,
-     without the fields they can't read; entries deleted by P2's purge
-     schedule when their retention ends, and with their record when P3
-     erases it; the permissions report listing audited entities; and
-     `AuditEntryRecorded` emitted in the same transaction when something
-     subscribes. Until P7's keyed hash, an audited entity with a
-     `personal:` field stays `toolchain.not_built_yet`, so no personal
-     value is copied into its history. Done when tests change audited
-     records on both executors and read each change back through
-     `history`.
+   - [x] **B11 The audit trail**: area 16, "Audit trail" (with "Reading
+     a history", "Retention and erasure" and "What the audit trail
+     doesn't keep yet") and Decisions; area 5, "The audit trail's table";
+     compiler/runtime §2.3 and §2.6, "The audit trail".
    - [x] **B12 Search on PostgreSQL**: area 16, "Search", "How it is
      kept", "Search and policy" and "Search and personal data"; area 2,
      `SearchText`; compiler/runtime §2.6, "Search on PostgreSQL".

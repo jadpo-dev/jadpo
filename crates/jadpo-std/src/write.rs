@@ -128,6 +128,10 @@ pub struct WritePlan {
     /// Each `File` field it writes, held to its settings before the
     /// statement runs (area 16, "What a write checks"; chunk B1).
     pub files: Vec<FileCheck>,
+    /// For a write of an audited entity: the entry it records in the same
+    /// transaction (area 16, "Audit trail"; chunk B11). A person's erasure
+    /// records none; it deletes the entries of every record it deletes.
+    pub audit: Option<crate::audit::AuditPlan>,
 }
 
 /// A `File` field a write sets, and what the file it is given must be
@@ -284,6 +288,9 @@ pub enum PurgeKind {
     /// A field's `retention:`, the field by name: its value, cleared on
     /// every record whose `since:` field is older than its `after:`.
     FieldRetention(String),
+    /// An audited entity's `audit: { retention: }` (area 16, "Audit
+    /// trail"; chunk B11): its history's entries older than its `after:`.
+    Audit,
 }
 
 /// The permanent deletion of an entity's hidden records once they have
@@ -328,6 +335,7 @@ impl PurgePlan {
             PurgeKind::FieldRetention(field) => {
                 format!("the retention of `{}.{field}`", self.entity)
             }
+            PurgeKind::Audit => format!("the retention of `{}`'s history", self.entity),
         }
     }
 }

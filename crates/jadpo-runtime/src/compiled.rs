@@ -1096,6 +1096,15 @@ pub async fn get(cx: &mut Ctx<'_>, p: &Program, n: u32, args: &[Value], at: u32)
     }
 }
 
+/// History `n` with `args`, the record's `id` and its `after:`, from site
+/// `at` (area 16; chunk B11).
+pub async fn history(cx: &mut Ctx<'_>, p: &Program, n: u32, args: &[Value], at: u32) -> Ran {
+    match p.process.plan.sites.histories.get(n as usize) {
+        Some(history) => store(cx, p, StoreOp::History(history), args, at).await,
+        None => Err(defect(cx, "a history with no plan", at)),
+    }
+}
+
 /// Write `n` with its inputs, `args`, from site `at`: a refusal its site's
 /// `conflict:` maps is [`Stop::Refused`], for the site to raise its arm's
 /// failure.

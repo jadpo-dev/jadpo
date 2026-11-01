@@ -1478,6 +1478,10 @@ impl Emitter<'_> {
                         Some(self.plan.query(*query).and_then(|plan| plan.caller)),
                     ),
                     Some(Decoded::Get(Some(entity))) => (quote!(rt::get), *entity, Some(None)),
+                    // An audited entity's history (area 16; chunk B11).
+                    Some(Decoded::History(Some(history))) => {
+                        (quote!(rt::history), *history, Some(None))
+                    }
                     // Something a later area builds, named as the
                     // interpreter names it.
                     _ => {

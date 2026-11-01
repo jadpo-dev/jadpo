@@ -701,6 +701,35 @@ the body's `Write` with `erase` set, a `delete` by `id` of the person's
 record, so policy needs `delete` on it and the isolation decision reads
 it as loading a record (`Loads::Erases`), at repeatable read.
 
+**The audit trail** (area 16, "Audit trail"; chunk B11). An entity's
+`audit:` is read by `jadpo_check::data::audit::read`, once its fields
+are, onto `EntityModel::audit` (an `AuditModel`, its retention's
+`Duration` setting read by `data::retention::period` as area 15's are),
+with where it and its retention are written in `EntitySpans`; the
+retention's key places the entity's purge schedule when nothing else
+does (`schedules::purge_place`). `data::schema` gives the store of each
+audited entity `jadpo_std::system::AUDIT`, and the graph an `audit` node,
+keyed by the entity's born name, under it, its digest over how long
+entries are kept (`graph::retention_nodes`). `audit::audit_problems`
+refuses, at `audit:`, what the history can't keep or remove soundly yet
+(a marked field or one of a standard type that is personal data,
+`ai_personal::standard_personal`; a `File`; a field with its own
+retention; a person's record its own retention, its lifecycle's purge or
+another entity's cascade removes), and `WriteRules` carries `audited`,
+`person_owned` and `reaches_audited`, by which the body refuses a hard
+`delete` whose cascade or clearing changes an audited record, or that
+removes a person's audited record (`Body::audited_delete`);
+`erasure::erasures` lists an audited record erasure keeps among what it
+can't do. `Entity.history(id)` and `history(id, after:)` are typed by
+`Body::entity_history`, for an audited entity, as `Page<AuditEntry>`,
+infallible, read as `get` reads (`Fact::Gets`, a `reads` edge); the
+fields of `AuditEntry`, `AuditFieldChange` and `AuditEntryRecorded` are
+`jadpo_std::audit::object_fields`, read where the batch types' are. A
+subscriber may hear `AuditEntryRecorded`, keyed
+`jadpo.AuditEntryRecorded`, once some entity is audited
+(`events::Reader::event`); the permissions report adds an audited
+entity's line and its JSON's `audit`.
+
 A query is a node (area 6): `jadpo_check::data::queries`
 reads each declaration once into a `QueryModel` (its entity, parameters,
 how many records it returns, the record's fields from the entity's fields
@@ -2321,7 +2350,43 @@ a `WritePlan` of `WriteOp::Delete` by `id`, with no refusals, so both
 executors run it through the runtime's one write path unchanged.
 `crates/jadpo-cli/tests/erasure.rs` runs a library's erasure through
 `jadpo test` and reads the rows it leaves; its tests run compiled with
-the interpreter's records in the gate's compiled step.
+the interpreter's records in the gate's compiled step. An audited entity
+among those it deletes adds a part deleting the `jadpo_audit` rows of
+the records found of it, by its born name (`text::erase`'s `audited`).
+
+**The audit trail.** `jadpo-plan`'s `Planner::audit` gives each write of
+an audited entity a `jadpo_std::audit::AuditPlan`: the fields an entry
+records (every field but `id` and the server-only ones, each with its
+JSON codec when it is JSON-held), and, for an update or a delete, a
+`SELECT` of every column by the `id` its `RowCheck` names, `FOR NO KEY
+UPDATE`, or `FOR UPDATE` before a delete (`text::audit_before`), decoded
+as the write's own returned row; a lifecycle's `delete` transition, which
+returns no row, reads the record again after it. `jadpo_runtime::write`
+runs that read after the transaction opens and before the write, so the
+row it locks is the one the write changes at either isolation level, and
+once the write has changed the row `audit::record` adds the entry with
+`INSERT_AUDIT`, its `seq` one past its record's last, in the same
+transaction: each field's value before and after as canonical text
+(`jadpo_value::standard::from`, a variant's name, or the field's JSON),
+only those that differ; who from the caller's parts; the outermost
+action from the frames; the request's id and the trace's. With
+subscribers, which the plan lists from `jadpo_check::events::subscribers`,
+it emits `AuditEntryRecorded` into the action's outbox, its payload the
+runtime's JSON, read back by `audit::read_payload`. `Planner::history`
+plans each audited entity's `HistoryPlan`: one `SELECT TRUE` of the
+record by `id` under its lifecycle and `read` grant, with a `Bool` per
+field whose own `policy:` narrows reading (`text::history_access`); the
+sites decode `Decoded::History`, which the interpreter's
+`Target::History` and the compiled `rt::history` run through
+`StoreOp::History`. `audit::history` asks that unless the call has no
+caller, gives an empty page with no row, then reads 26 entries newest
+first with `HISTORY_ENTRIES`, after the cursor's `seq`, the page's tag
+the entity's born name's, leaving out the fields the caller may not
+read. The retention is a `PurgeKind::Audit` plan of the entity's, after
+its others (`text::audit_purge`, by born name and `at`).
+`crates/jadpo-cli/tests/audit.rs` runs the trail through `jadpo test` and
+reads its rows, its erasure and its retention's batches; its tests run
+compiled with the interpreter's records in the gate's compiled step.
 
 **Lifecycles and purge.** `jadpo-plan`'s `Planner::access` adds an entity's
 `visible:` to every query, `get`, child include, update, delete and
