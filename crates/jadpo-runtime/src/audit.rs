@@ -454,7 +454,8 @@ pub(crate) async fn history(
     // Whether the caller may read the record, and which of its restricted
     // fields; without a caller, every entry and field.
     let mut readable: Vec<bool> = vec![true; plan.restricted.len()];
-    if !ctx.unpoliced() {
+    let policed = !ctx.unpoliced();
+    if policed {
         let now = ctx.now();
         let mut params = Vec::with_capacity(plan.params.len());
         for param in &plan.params {
@@ -494,7 +495,7 @@ pub(crate) async fn history(
     let mut items = Vec::new();
     let mut last = None;
     for row in rows.iter().take(size as usize) {
-        let Some(entry) = entry_of(row, plan, &readable) else {
+        let Some(entry) = entry_of(row, plan, &readable, policed) else {
             return Err(defect(ctx, "an audit entry that doesn't read", site));
         };
         last = row.first().cloned();
@@ -521,8 +522,14 @@ fn page(items: Vec<Value>, next: Option<String>) -> Value {
 }
 
 /// One row of [`HISTORY_ENTRIES`] as an entry, without the restricted
-/// fields `readable` says the caller may not read.
-fn entry_of(row: &[SqlValue], plan: &HistoryPlan, readable: &[bool]) -> Option<Entry> {
+/// fields `readable` says the caller may not read, or, when `policed`, a
+/// field retired or dropped since, whose grant is gone (chunk V3).
+fn entry_of(
+    row: &[SqlValue],
+    plan: &HistoryPlan,
+    readable: &[bool],
+    policed: bool,
+) -> Option<Entry> {
     let text = |at: usize| match row.get(at) {
         Some(SqlValue::Text(text)) => Some(text.clone()),
         _ => None,
@@ -540,10 +547,12 @@ fn entry_of(row: &[SqlValue], plan: &HistoryPlan, readable: &[bool]) -> Option<E
     };
     let changes: serde_json::Value = serde_json::from_str(&text(9)?).ok()?;
     let hidden = |field: &str| {
-        plan.restricted
-            .iter()
-            .zip(readable)
-            .any(|(restricted, may)| restricted == field && !may)
+        (policed && !plan.fields.iter().any(|known| known == field))
+            || plan
+                .restricted
+                .iter()
+                .zip(readable)
+                .any(|(restricted, may)| restricted == field && !may)
     };
     let fields = changes
         .as_array()?
@@ -570,4 +579,50 @@ fn entry_of(row: &[SqlValue], plan: &HistoryPlan, readable: &[bool]) -> Option<E
         trace: text(8),
         fields,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A field retired since an entry was written has no grant any more, so
+    /// a caller is never given what the entry holds of it (chunk V3).
+    #[test]
+    fn a_callers_history_leaves_out_a_field_retired_since() {
+        let plan = HistoryPlan {
+            store: "main".into(),
+            born: "Invoice".into(),
+            access: String::new(),
+            params: Vec::new(),
+            restricted: vec!["discount".into()],
+            fields: vec!["number".into(), "discount".into()],
+            tag: 0,
+        };
+        let row = vec![
+            SqlValue::Int8(1),
+            SqlValue::Timestamp(0),
+            SqlValue::Text("updated".into()),
+            SqlValue::Text("no_caller".into()),
+            SqlValue::Null(SqlType::Uuid),
+            SqlValue::Null(SqlType::Uuid),
+            SqlValue::Null(SqlType::Text),
+            SqlValue::Null(SqlType::Text),
+            SqlValue::Null(SqlType::Text),
+            SqlValue::Text(
+                r#"[{"field":"number"},{"field":"discount"},{"field":"margin","before":"12"}]"#
+                    .into(),
+            ),
+            crate::read::encoding_value(),
+        ];
+        let names = |entry: Entry| -> Vec<String> {
+            entry.fields.into_iter().map(|(name, ..)| name).collect()
+        };
+        let shown = entry_of(&row, &plan, &[true], true).expect("an entry");
+        assert_eq!(names(shown), ["number", "discount"]);
+        let hidden = entry_of(&row, &plan, &[false], true).expect("an entry");
+        assert_eq!(names(hidden), ["number"]);
+        // Without a caller, every field, as a test's call reads them.
+        let every = entry_of(&row, &plan, &[true], false).expect("an entry");
+        assert_eq!(names(every), ["number", "discount", "margin"]);
+    }
 }

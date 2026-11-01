@@ -1323,8 +1323,9 @@ Sealing trades one risk for another, and some of what follows has no fix:
   new` refuses it, since stored values would have to be sealed or opened one
   by one with a key SQL never sees. Add a new field with the setting you
   want, copy each record's value across in an action, then retire the old
-  field. The same goes for a new required sealed field, and a narrower type
-  on one.
+  field. Its column keeps what it held, in the clear when you are turning
+  encryption on, until you [drop it](05-data.md#removing-data). The same goes
+  for a new required sealed field, and a narrower type on one.
 
 ## What this does not cover
 <!-- topic: what-this-does-not-cover -->

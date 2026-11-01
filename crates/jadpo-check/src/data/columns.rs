@@ -514,6 +514,7 @@ pub fn system_table(system: &jadpo_std::system::SystemTable) -> Table {
         .collect();
     Table {
         holds: Holds::System(system.name().to_string()),
+        retired: false,
         columns,
         primary_key: Key {
             name: object_name(&[table], "pkey"),
