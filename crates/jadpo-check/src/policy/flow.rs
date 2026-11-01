@@ -2767,7 +2767,7 @@ impl Walk<'_> {
                     let named = flow.lookup.canonical_name(failure.name());
                     self.reply_shows(flow, *value, &prov.flat(), Shown::Failure(&named));
                     if self.personal {
-                        self.replied(flow, &prov);
+                        self.held_in_reply(flow, &prov);
                     }
                 } else {
                     self.params_in(&prov);

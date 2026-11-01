@@ -347,7 +347,7 @@ impl Walk<'_> {
 
     /// A reply action's failure holding `prov` in a client field: it goes
     /// back where the webhook came from, as its reply does.
-    pub(super) fn replied(&mut self, flow: &Flow<'_>, prov: &Prov) {
+    pub(super) fn held_in_reply(&mut self, flow: &Flow<'_>, prov: &Prov) {
         if !self.reply {
             return;
         }

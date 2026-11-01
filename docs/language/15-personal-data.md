@@ -993,7 +993,6 @@ request that starts sending email addresses to a new provider is seen by
 a person before it ships.
 
 ### Where personal data goes
-<!-- topic: where-personal-data-goes -->
 
 So far the report lists each connection personal data leaves through, the
 hosts that connection reaches and, for each one, every marked field and
