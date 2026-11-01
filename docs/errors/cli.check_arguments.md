@@ -12,7 +12,7 @@ The path is misspelt:
 
 ```jadpo check project=e-check-arguments file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

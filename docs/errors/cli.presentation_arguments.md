@@ -12,7 +12,7 @@ The value is one it doesn't take:
 
 ```jadpo check project=e-presentation-arguments file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

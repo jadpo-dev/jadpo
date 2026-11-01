@@ -128,6 +128,17 @@ action checkout_steps() -> CheckoutSteps {
     }
     return 3
 }
+
+test "the three-step form is shown by default" {
+    assert checkout_steps() == 3
+}
+
+test "the new checkout takes one page" {
+    flags: {
+        new_checkout: true
+    }
+    assert checkout_steps() == 1
+}
 ```
 
 `checkout_steps` now reads `new_checkout`, so it takes one page wherever
@@ -165,6 +176,10 @@ action checkout_steps() -> CheckoutSteps {
         return 1
     }
     return 3
+}
+
+test "the three-step form is shown by default" {
+    assert checkout_steps() == 3
 }
 
 test "the new checkout takes one page" {

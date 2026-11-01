@@ -94,6 +94,17 @@ function checkout_steps(new_checkout: OnePage) -> CheckoutSteps {
 action start_checkout() -> CheckoutSteps {
     return checkout_steps(OnePage(flags.new_checkout))
 }
+
+test "the three-step form is shown by default" {
+    assert start_checkout() == 3
+}
+
+test "the new checkout takes one page" {
+    flags: {
+        new_checkout: true
+    }
+    assert start_checkout() == 1
+}
 ```
 
 `checkout_steps` is pure again, and its tests can pass it either value.

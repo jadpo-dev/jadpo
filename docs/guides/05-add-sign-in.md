@@ -47,7 +47,7 @@ which record a signed-in person is:
 use club/entities { Member }
 
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
     display_name: "The book club"
     connections: {
         google: {

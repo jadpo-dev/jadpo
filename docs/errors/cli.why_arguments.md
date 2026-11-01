@@ -12,7 +12,7 @@ A project with no schedules:
 
 ```jadpo check project=e-why-arguments file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

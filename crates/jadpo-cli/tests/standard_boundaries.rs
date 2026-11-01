@@ -781,6 +781,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "shows a schedule's own times (due, started, ended) to an operator, never an app's value (chunk 6.2b)",
     ),
     (
+        "crates/jadpo-cli/src/flags.rs",
+        "shows when a flag's state last changed to an operator, its own time, never an app's value (chunk B10)",
+    ),
+    (
         "crates/jadpo-cli/src/runs.rs",
         "shows an unfinished run's own start time to an operator, never an app's value (chunk 7.5c)",
     ),

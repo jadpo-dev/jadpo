@@ -494,6 +494,56 @@ pub fn route_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
     out
 }
 
+/// Each flag a route's `run:` passes on (area 16; chunk B10): the route's
+/// key, the flag's name and where `flags.<name>` is written, found after
+/// the route's method and path and before the next route's.
+pub fn flag_arguments(db: &dyn Db, project: Project) -> Vec<(Key, String, Span)> {
+    let mut out = Vec::new();
+    let names = group_names(db, project);
+    for name in names.iter() {
+        let Some(read) = group_read(db, project, Name::new(db, name.clone())).as_ref() else {
+            continue;
+        };
+        let Some(model) = &read.model else { continue };
+        let Some(text) = project
+            .files(db)
+            .iter()
+            .find(|file| *file.path(db) == read.path)
+            .map(|file| file.text(db).clone())
+        else {
+            continue;
+        };
+        let mut starts: Vec<u32> = read.spans.iter().map(|(_, span)| span.start).collect();
+        starts.sort_unstable();
+        for route in &model.routes {
+            let Some((_, span)) = read.spans.iter().find(|(label, _)| *label == route.label())
+            else {
+                continue;
+            };
+            let end = starts
+                .iter()
+                .find(|start| **start > span.start)
+                .map_or(text.len(), |start| *start as usize);
+            for arg in &route.run.args {
+                let ArgRoot::Flag(flag) = &arg.root else {
+                    continue;
+                };
+                let written = format!("{}.{flag}", crate::flags::FLAGS);
+                let from = span.start as usize;
+                let at = text
+                    .get(from..end)
+                    .and_then(|within| within.find(&written))
+                    .map_or(span.clone(), |at| {
+                        let start = (from + at) as u32;
+                        Span::new(&read.path, start, start + written.len() as u32)
+                    });
+                out.push((route.key.clone(), flag.clone(), at));
+            }
+        }
+    }
+    out
+}
+
 /// Problems across groups: two routes that could answer one request (area
 /// 7: "every URL matches exactly one group"). A fixed segment beats a
 /// placeholder, so `GET /todos/archived` sits beside `GET
@@ -527,6 +577,7 @@ pub fn table_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         .collect();
     // Each API's OpenAPI document (area 7, "OpenAPI").
     let documents = served::served(db, project);
+    let flag_routes = served::flags_served(db, project);
     for (i, (group, route, span)) in routes.iter().enumerate() {
         let document = documents.iter().find(|served| {
             let segments: Vec<Segment> = served
@@ -545,6 +596,30 @@ pub fn table_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .at(span.clone(), "answered by the runtime")
                 .reason(format!(
                     "Each API serves its OpenAPI document at `{}` unless its entry in `apis:` says `serve_openapi: false`, so this route would never run.",
+                    served.path()
+                ))
+                .next(format!("Give `{}` in `{group}` another path", route.label())),
+            );
+            continue;
+        }
+        // Each API's `GET <prefix>/flags` (area 16; chunk B10).
+        let flags_route = flag_routes.iter().find(|served| {
+            let segments: Vec<Segment> = served
+                .segments
+                .iter()
+                .map(|text| Segment::Fixed(text.clone()))
+                .collect();
+            route.method == jadpo_std::HttpMethod::Get && overlaps(&route.segments, &segments)
+        });
+        if let Some(served) = flags_route {
+            out.push(
+                Diagnostic::new(
+                    &rule::ROUTE_PATH_OVERLAP,
+                    format!("`{}` is where API `{}` answers its flags", route.label(), served.api),
+                )
+                .at(span.clone(), "answered by the runtime")
+                .reason(format!(
+                    "While a flag has `client: true`, each API answers `GET {}` itself with the flags worked out for the caller, so this route would never run.",
                     served.path()
                 ))
                 .next(format!("Give `{}` in `{group}` another path", route.label())),

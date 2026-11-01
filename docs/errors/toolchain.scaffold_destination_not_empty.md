@@ -48,7 +48,7 @@ jadpo new todo-app-2
 
 ```text output
 Created todo-app-2
-    jadpo  0.1
+    jadpo  0.2
     route  POST /hello
     files  14 written
 

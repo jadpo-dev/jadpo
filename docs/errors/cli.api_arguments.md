@@ -12,7 +12,7 @@ The action is misspelt:
 
 ```jadpo check project=e-api-arguments file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

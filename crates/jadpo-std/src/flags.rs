@@ -28,6 +28,10 @@ pub struct FlagPlan {
     pub values: Vec<String>,
     /// Its `default:`, as a place in `values`.
     pub default: u32,
+    /// `client: true`: also answered, worked out for the caller, by each
+    /// API's generated `GET /flags` (chunk B10).
+    #[serde(default)]
+    pub client: bool,
 }
 
 /// A `Bool` flag's values, in their order.

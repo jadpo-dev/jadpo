@@ -12,7 +12,7 @@ The seed isn't a number:
 
 ```jadpo check project=e-test-arguments file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

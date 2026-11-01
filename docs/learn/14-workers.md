@@ -26,7 +26,7 @@ same as on page 13; only `app.jadpo` changes.
 use todos/entities { User }
 
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
     display_name: "Todos"
     connections: {
         main: {

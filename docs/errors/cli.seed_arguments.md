@@ -12,7 +12,7 @@ A project with no seeds, asked to run one:
 
 ```jadpo check project=e-seed-arguments file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

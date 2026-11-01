@@ -12,7 +12,7 @@ A project with no prompts, asked to show one:
 
 ```jadpo check project=e-ai-arguments file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 
