@@ -969,7 +969,7 @@ pub const BATCH_TABLES: [&SystemTable; 3] = [&BATCH_RUNS, &BATCH_PROBLEMS, &BATC
 pub const STEP_TABLES: [&SystemTable; 2] = [&STEP_RECORDS, &STEPS];
 
 /// Every system table.
-pub const ALL: [&SystemTable; 27] = [
+pub const ALL: [&SystemTable; 28] = [
     &OUTBOX,
     &DELIVERIES,
     &CIRCUIT_BREAKERS,
