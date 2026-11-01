@@ -1006,7 +1006,14 @@ action cancel(invoice_id: Invoice.id) fails InvoiceNotFound -> Unit {
     assert_eq!(audits.len(), 2, "the update and the delete");
     let befores: Vec<&str> = audits
         .iter()
-        .map(|audit| audit.before.as_ref().expect("its record first").sql.as_str())
+        .map(|audit| {
+            audit
+                .before
+                .as_ref()
+                .expect("its record first")
+                .sql
+                .as_str()
+        })
         .collect();
     assert_eq!(
         befores,
@@ -1028,5 +1035,8 @@ action cancel(invoice_id: Invoice.id) fails InvoiceNotFound -> Unit {
         retention.sql,
         "DELETE FROM \"jadpo_audit\"\nWHERE (\"entity\", \"record_id\", \"seq\") IN (\n  SELECT \"entity\", \"record_id\", \"seq\"\n  FROM \"jadpo_audit\"\n  WHERE \"entity\" = $1 AND \"at\" < $2\n  ORDER BY \"at\", \"record_id\", \"seq\"\n  LIMIT 500\n  FOR UPDATE SKIP LOCKED\n)\nRETURNING \"seq\""
     );
-    assert!(plan.history_of("Clerk").is_none(), "an unaudited entity has none");
+    assert!(
+        plan.history_of("Clerk").is_none(),
+        "an unaudited entity has none"
+    );
 }

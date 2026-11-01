@@ -883,7 +883,11 @@ the cursor for the page after, which you pass back as `after:`:
 use billing/entities { Invoice }
 
 /// The invoice's changes, newest first, as the caller may see them.
-action invoice_changes(me: Principal.user, invoice_id: Invoice.id, after: PageCursor?) -> Page<AuditEntry> {
+action invoice_changes(
+    me: Principal.user,
+    invoice_id: Invoice.id,
+    after: PageCursor?
+) -> Page<AuditEntry> {
     return Invoice.history(invoice_id, after: after)
 }
 ```
@@ -911,13 +915,13 @@ Each entry is an `AuditEntry`:
 This test issues an invoice, notes a payment, and reads both changes
 back:
 
-```jadpo check project=audit file=domains/billing/actions/join.jadpo hidden
+```jadpo check project=audit file=domains/billing/actions/hire_clerk.jadpo hidden
 use billing/entities { Clerk }
-use billing/failures { HandleTaken }
 use billing/types { Handle }
+use billing/failures { HandleTaken }
 
-/// Adds a clerk.
-action join(handle: Handle) fails HandleTaken -> Clerk {
+/// Takes on a clerk.
+action hire_clerk(handle: Handle) fails HandleTaken -> Clerk {
     return attempt Clerk.create {
         set: {
             handle: handle
@@ -929,11 +933,11 @@ action join(handle: Handle) fails HandleTaken -> Clerk {
 }
 ```
 
-```jadpo check project=audit file=domains/billing/actions/issue.jadpo hidden
+```jadpo check project=audit file=domains/billing/actions/issue_invoice.jadpo hidden
 use billing/entities { Invoice }
 
 /// Issues an invoice.
-action issue(me: Principal.user, number: InvoiceNumber) -> Invoice {
+action issue_invoice(me: Principal.user, number: InvoiceNumber) -> Invoice {
     return Invoice.create {
         set: {
             clerk_id: me.id
@@ -945,12 +949,16 @@ action issue(me: Principal.user, number: InvoiceNumber) -> Invoice {
 }
 ```
 
-```jadpo check project=audit file=domains/billing/actions/annotate.jadpo hidden
+```jadpo check project=audit file=domains/billing/actions/annotate_invoice.jadpo hidden
 use billing/entities { Invoice, InvoiceNotFound }
 use billing/types { InvoiceNote }
 
 /// Notes something on an invoice.
-action annotate(me: Principal.user, invoice_id: Invoice.id, note: InvoiceNote) fails InvoiceNotFound -> Invoice {
+action annotate_invoice(
+    me: Principal.user,
+    invoice_id: Invoice.id,
+    note: InvoiceNote
+) fails InvoiceNotFound -> Invoice {
     return attempt Invoice.update(invoice_id) {
         set: {
             note: note
@@ -962,25 +970,33 @@ action annotate(me: Principal.user, invoice_id: Invoice.id, note: InvoiceNote) f
 ```jadpo check project=audit file=domains/billing/actions/invoice_changes.test.jadpo
 // domains/billing/actions/invoice_changes.test.jadpo
 use billing/entities { Clerk, Invoice }
-use billing/actions { annotate, issue, join }
+use billing/actions { annotate_invoice, hire_clerk, issue_invoice }
 
 test "each change to an invoice comes back newest first" {
-    var ada: Clerk = attempt join("ada")
-    var invoice: Invoice = issue(Principal.user(ada), "INV-1")
-    attempt annotate(Principal.user(ada), invoice.id, "Paid by card")
+    var ada: Clerk = attempt hire_clerk("ada")
+    var invoice: Invoice = issue_invoice(Principal.user(ada), "INV-1")
+    attempt annotate_invoice(Principal.user(ada), invoice.id, "Paid by card")
     var page: Page<AuditEntry> = invoice_changes(Principal.user(ada), invoice.id, none)
     assert list.map(page.items, entry -> entry.change) == [AuditChange.updated, AuditChange.created]
-    assert list.map(page.items, entry -> entry.action) == ["annotate", "issue"]
-    assert list.map(page.items, entry -> list.map(entry.fields, change -> change.field)) == [["note"], ["clerk_id", "number", "discount"]]
-    assert list.map(page.items, entry -> list.map(entry.fields, change -> change.after)) == [["Paid by card"], [text.from(ada.id), "INV-1", "5"]]
+    assert list.map(page.items, entry -> entry.action) == ["annotate_invoice", "issue_invoice"]
+    assert list.map(page.items, entry -> list.map(entry.fields, change -> change.field)) == [
+        ["note"],
+        ["clerk_id", "number", "discount"]
+    ]
+    assert list.map(page.items, entry -> list.map(entry.fields, change -> change.after)) == [
+        ["Paid by card"],
+        [text.from(ada.id), "INV-1", "5"]
+    ]
 }
 
 test "another clerk sees each change without the discount" {
-    var ada: Clerk = attempt join("ada")
-    var bea: Clerk = attempt join("bea")
-    var invoice: Invoice = issue(Principal.user(ada), "INV-2")
+    var ada: Clerk = attempt hire_clerk("ada")
+    var bea: Clerk = attempt hire_clerk("bea")
+    var invoice: Invoice = issue_invoice(Principal.user(ada), "INV-2")
     var page: Page<AuditEntry> = invoice_changes(Principal.user(bea), invoice.id, none)
-    assert list.map(page.items, entry -> list.map(entry.fields, change -> change.field)) == [["clerk_id", "number"]]
+    assert list.map(page.items, entry -> list.map(entry.fields, change -> change.field)) == [
+        ["clerk_id", "number"]
+    ]
 }
 ```
 

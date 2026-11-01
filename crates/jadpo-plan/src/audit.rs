@@ -132,7 +132,7 @@ impl Planner<'_> {
             access,
             params: statement.into_params(),
             restricted,
-            tag: tag(&Key::from_text(&format!("history {}", entity.born))),
+            tag: tag(&Key::from_text(format!("history {}", entity.born))),
         })
     }
 }
