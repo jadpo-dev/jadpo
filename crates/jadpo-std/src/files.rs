@@ -138,6 +138,55 @@ pub const JOIN: &str = "join";
 /// file, answering `Unit`, whatever was already gone.
 pub const DISCARD: &str = "discard";
 
+/// The capability's operation that deletes a file's bytes (area 16,
+/// "Deleting and erasing"; chunk B3): its input is `{ key }`, and it
+/// answers `Unit` once nothing is kept under `key`, whether or not
+/// anything was, so a repeat acts once. Only the runtime sends it, once
+/// the record of which files are held says no record holds the file
+/// ([`FilesPlan`]).
+pub const DELETE: &str = "delete";
+
+/// The event a change that leaves a file held by no record keeps in the
+/// outbox (chunk B3), whose generated subscriber deletes the file's bytes
+/// ([`crate::subscriber::Target::Files`]): its payload is `{"store", "key"}`,
+/// the runtime's own, never a program's.
+pub const FILE_RELEASED: &str = "jadpo.FileReleased";
+
+/// How long bytes a put kept are left for a record to hold before they
+/// are deleted (area 16, "Writing a file your app makes: `put`"): a day.
+pub const UNHELD_KEPT_MS: i64 = 24 * 60 * 60 * 1000;
+
+/// Where each store of files keeps its record of which files its records
+/// hold (area 16, "Deleting and erasing"; chunk B3): the database store
+/// whose entities' `File` fields name it, which keeps `jadpo_files`
+/// ([`crate::system::FILES`]) and the triggers that count each file's
+/// holders as its rows change. A store of files no entity's field names
+/// has none, and nothing it keeps is deleted.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct FilesPlan {
+    /// By the files connection's name, the database store keeping its
+    /// record.
+    pub ledgers: std::collections::BTreeMap<String, String>,
+}
+
+impl FilesPlan {
+    /// The database store keeping the record of `connection`'s files.
+    pub fn ledger(&self, connection: &str) -> Option<&str> {
+        self.ledgers.get(connection).map(String::as_str)
+    }
+
+    /// Whether database store `store` keeps a record of files.
+    pub fn keeps(&self, store: &str) -> bool {
+        self.ledgers.values().any(|ledger| ledger == store)
+    }
+
+    /// The generated subscriber that deletes `connection`'s unheld bytes:
+    /// `files sheets`.
+    pub fn subscriber(connection: &str) -> String {
+        format!("files {connection}")
+    }
+}
+
 /// The failure a put answers when its store has no room (area 16, "The
 /// disk driver").
 pub const STORAGE_FULL: &str = "storage_full";

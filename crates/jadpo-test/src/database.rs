@@ -980,11 +980,15 @@ impl<'d> TestHost<'d> {
     /// says why in a row of its own.
     pub fn rows(&self, runtime: &jadpo_host_native::Runtime) -> Vec<String> {
         let Some(Held::Holding { stores, .. }) = self.held.get() else {
-            return Vec::new();
+            return self.caught.files_kept();
         };
-        runtime.block_on(jadpo_runtime::test_run::all_rows(stores.iter().map(
-            |(name, store)| (name.as_str(), store.raw() as &dyn jadpo_runtime::Database),
-        )))
+        let mut rows =
+            runtime.block_on(jadpo_runtime::test_run::all_rows(stores.iter().map(
+                |(name, store)| (name.as_str(), store.raw() as &dyn jadpo_runtime::Database),
+            )));
+        // The bytes its stores of files keep, after the rows (chunk B3).
+        rows.extend(self.caught.files_kept());
+        rows
     }
 
     /// Gives it what a test's host gives besides its stores: its stores of

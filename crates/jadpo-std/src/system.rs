@@ -848,6 +848,34 @@ pub const HOUSEKEEPING: SystemTable = SystemTable {
     indexes: &[],
 };
 
+/// Which stored files a store's records hold (area 16, "Deleting and
+/// erasing"; chunk B3), in the store whose entities' `File` fields name
+/// the store of files: a row for each file, by its store of files and
+/// key, counting the fields that hold it. Triggers on each entity table
+/// with a `File` column count them in the same transaction as the row
+/// changes, cascades and purges included; a put adds its file at none
+/// before its bytes are sent. `holders` is the count, `-1` once its
+/// bytes are being deleted and `-2` once they are gone, which no field
+/// may then hold; `since` is when it was last held by none, `NULL`
+/// while held, or released by a commit that hasn't yet left the event
+/// that deletes its bytes.
+pub const FILES: SystemTable = SystemTable {
+    table: "jadpo_files",
+    columns: &[
+        column("store", SqlType::Text, false),
+        column("key", SqlType::Text, false),
+        column("holders", SqlType::Int4, false),
+        column("since", SqlType::Timestamp, true),
+    ],
+    primary_key: &["store", "key"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[SystemIndex {
+        columns: &["holders", "since"],
+        reason: "system files",
+    }],
+};
+
 /// What must commit with an action's own writes, in every store that
 /// holds an entity, since any of them can be written: the outbox, its
 /// deliveries, handled records and idempotency keys; the log of what
@@ -874,7 +902,7 @@ pub const BATCH_TABLES: [&SystemTable; 3] = [&BATCH_RUNS, &BATCH_PROBLEMS, &BATC
 pub const STEP_TABLES: [&SystemTable; 2] = [&STEP_RECORDS, &STEPS];
 
 /// Every system table.
-pub const ALL: [&SystemTable; 25] = [
+pub const ALL: [&SystemTable; 26] = [
     &OUTBOX,
     &DELIVERIES,
     &CIRCUIT_BREAKERS,
@@ -900,6 +928,7 @@ pub const ALL: [&SystemTable; 25] = [
     &POLLS,
     &AI_USAGE,
     &HOUSEKEEPING,
+    &FILES,
 ];
 
 /// The system table called `name`, without its prefix; `None` for a name

@@ -36,8 +36,13 @@
 //!   so the file appears whole or not at all, and joining it again once it
 //!   is does nothing.
 //!
-//! Its I/O is blocking: a window is at most a megabyte. Uploads, downloads
-//! and deleting come with the rest of the files capability (roadmap
+//! - **Deletes that last.** A delete removes the file's name from its
+//!   folder, a link there itself, never what it names, and syncs the
+//!   folder; a key naming nothing is deleted already, so a repeat acts
+//!   once (chunk B3).
+//!
+//! Its I/O is blocking: a window is at most a megabyte. Uploads and
+//! downloads come with the rest of the files capability (roadmap
 //! "Remaining built-in services").
 
 use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
@@ -48,7 +53,8 @@ use jadpo_drivers::factory::Disk;
 use jadpo_runtime::LocalFuture;
 use jadpo_runtime::capability::{Answer, Call, Capability};
 use jadpo_std::files::{
-    DISCARD, JOIN, NOT_FOUND, PUT, READ, STORAGE_FULL, WHOLE_DISK, is_key, key_id, piece_key,
+    DELETE, DISCARD, JOIN, NOT_FOUND, PUT, READ, STORAGE_FULL, WHOLE_DISK, is_key, key_id,
+    piece_key,
 };
 use jadpo_value::Value;
 
@@ -274,6 +280,29 @@ impl DiskStore {
         Answer::Value(Value::Unit)
     }
 
+    /// Deletes file `key` (chunk B3): the name removed from its folder,
+    /// itself if it is a link, never what one names, and the folder
+    /// synced, so the deletion survives a crash. A key that names nothing
+    /// is deleted already.
+    fn delete(&self, key: &str) -> Answer {
+        let (folder, name) = match self.folder(key, false) {
+            Ok(found) => found,
+            Err(error) if names_nothing(&error) => return Answer::Value(Value::Unit),
+            Err(_) => return Answer::Unavailable,
+        };
+        match folder.remove(name) {
+            Ok(()) => {}
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                return Answer::Value(Value::Unit);
+            }
+            Err(_) => return Answer::Unavailable,
+        }
+        match folder.sync() {
+            Ok(()) => Answer::Value(Value::Unit),
+            Err(_) => Answer::Unavailable,
+        }
+    }
+
     fn answer(&self, call: &Call) -> Answer {
         let Value::Record(input) = &call.input else {
             return Answer::Misconfigured;
@@ -297,6 +326,7 @@ impl DiskStore {
                 ),
                 _ => Answer::Misconfigured,
             },
+            DELETE => self.delete(key),
             JOIN | DISCARD => match (input.get("pieces"), key_id(key)) {
                 (Some(Value::Int(pieces)), Some(id)) => {
                     let pieces = u64::try_from(*pieces).unwrap_or(0);
@@ -768,6 +798,88 @@ mod tests {
             answered(&files, &joined(&key, 3)),
             Answer::Failed(NOT_FOUND.into())
         );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    fn deleted(key: &str) -> Call {
+        Call::new(
+            "imports",
+            DELETE,
+            Value::record("FileDelete", vec![(Rc::from("key"), Value::text(key))]),
+            Repeat::Keyed,
+        )
+    }
+
+    /// A delete removes the file under its key, and deleting it again, or
+    /// a key naming nothing, is done already (chunk B3). A key it didn't
+    /// make is refused, and a link at the key or on the way is removed
+    /// itself or names nothing, never what it names: nothing outside the
+    /// store is deleted.
+    #[test]
+    fn a_delete_removes_only_the_file_under_its_key() {
+        let root = root("delete");
+        let files = DiskFiles::under(&root);
+        let key = jadpo_std::files::key_for(&[0x44; 16]);
+        let other = jadpo_std::files::key_for(&[0x45; 16]);
+        for (key, bytes) in [(&key, &b"code\n"[..]), (&other, b"name\n")] {
+            assert_eq!(
+                answered(&files, &put(key, bytes)),
+                Answer::Value(Value::Unit)
+            );
+        }
+        assert_eq!(answered(&files, &deleted(&key)), Answer::Value(Value::Unit));
+        assert!(!root.join("imports").join(&key).exists());
+        assert_eq!(
+            answered(&files, &read(&key, 0, 1)),
+            Answer::Failed(NOT_FOUND.into())
+        );
+        assert!(
+            root.join("imports").join(&other).exists(),
+            "another file stays"
+        );
+        // Again, and a key whose folders were never made: done already.
+        assert_eq!(answered(&files, &deleted(&key)), Answer::Value(Value::Unit));
+        let never = jadpo_std::files::key_for(&[0x99; 16]);
+        assert_eq!(
+            answered(&files, &deleted(&never)),
+            Answer::Value(Value::Unit)
+        );
+        for key in ["../../etc/passwd", "3f/3f/../x", "", "/etc/passwd"] {
+            assert_eq!(
+                answered(&files, &deleted(key)),
+                Answer::Failed(NOT_FOUND.into()),
+                "{key}"
+            );
+        }
+        #[cfg(unix)]
+        {
+            let outside = root.with_extension("outside");
+            fs::create_dir_all(&outside).expect("outside");
+            fs::write(outside.join("secret"), b"x").expect("secret");
+            // A link at the key: it goes, and what it names stays.
+            let linked = jadpo_std::files::key_for(&[0x46; 16]);
+            fs::create_dir_all(root.join("imports").join(&linked[..5])).expect("folders");
+            let file = root.join("imports").join(&linked);
+            std::os::unix::fs::symlink(outside.join("secret"), &file).expect("link");
+            assert_eq!(
+                answered(&files, &deleted(&linked)),
+                Answer::Value(Value::Unit)
+            );
+            assert!(fs::symlink_metadata(&file).is_err(), "the link went");
+            assert_eq!(fs::read(outside.join("secret")).expect("secret"), b"x");
+            // A link where a shard folder goes: nothing through it.
+            let through = jadpo_std::files::key_for(&[0x47; 16]);
+            fs::create_dir_all(outside.join("47")).expect("outside shard");
+            fs::write(outside.join("47").join(&through[6..]), b"x").expect("outside file");
+            std::os::unix::fs::symlink(&outside, root.join("imports").join(&through[..2]))
+                .expect("link");
+            assert_eq!(
+                answered(&files, &deleted(&through)),
+                Answer::Value(Value::Unit)
+            );
+            assert!(outside.join("47").join(&through[6..]).exists());
+            let _ = fs::remove_dir_all(&outside);
+        }
         let _ = fs::remove_dir_all(&root);
     }
 

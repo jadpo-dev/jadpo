@@ -20,6 +20,16 @@
 //!   page's rows put once the page's transaction has closed, joined into
 //!   the one file once every page is written, or dropped when the export
 //!   is cancelled or fails (chunk 6.4b2).
+//! - Deleting a file's bytes (area 16, "Deleting and erasing"; chunk B3):
+//!   the store whose records hold a store's files keeps `jadpo_files`, a
+//!   count of each file's holders that triggers keep as rows change. A
+//!   put records its file there at none before sending ([`KEEP_PUT`]);
+//!   the end of a commit that left files held by none marks them as being
+//!   deleted and leaves a [`FILE_RELEASED`] event for each ([`released`]);
+//!   the tick does the same for bytes held by none for a day, and for any
+//!   a commit left no event for ([`sweep`]). The event's generated
+//!   subscriber sends the capability's [`DELETE`] and records the bytes
+//!   gone ([`GONE`]); a file being deleted or gone can't be held again.
 //! - [`MemoryFiles`]: the in-memory store tests run on (area 13, "Provider
 //!   calls and capabilities in tests"), which can be told to have no room
 //!   and to read a few bytes at a time.
@@ -33,13 +43,38 @@ use std::rc::Rc;
 
 use jadpo_std::RuleKey;
 use jadpo_std::files::{
-    DISCARD, FILE, JOIN, NOT_FOUND, PUT, READ, STORAGE_FULL, WHOLE_READ_LIMIT, key_for, piece_key,
+    DELETE, DISCARD, FILE, FILE_RELEASED, FilesPlan, JOIN, NOT_FOUND, PUT, READ, STORAGE_FULL,
+    UNHELD_KEPT_MS, WHOLE_READ_LIMIT, key_for, piece_key,
 };
 use jadpo_value::Value;
 
 use crate::capability::{Answer, Call, Capability, Repeat, Source};
 use crate::effects::{Unanswered, call};
-use crate::{Ctx, Failure, FaultKind, LocalFuture};
+use crate::outbox::{Delivery, Sealed, micros};
+use crate::{
+    Ctx, Event, Executor, Failure, FaultKind, Isolation, LocalFuture, SqlValue, StoreError,
+    Transaction,
+};
+
+/// A put's file recorded as held by none, at `$3`, before its bytes are
+/// sent, in the store keeping the record of `$1`'s files (chunk B3): a
+/// file held already is left as it is, and one whose bytes are gone is
+/// kept again, since they are about to be.
+pub const KEEP_PUT: &str = "INSERT INTO \"jadpo_files\" (\"store\", \"key\", \"holders\", \"since\") VALUES ($1, $2, 0, $3) ON CONFLICT (\"store\", \"key\") DO UPDATE SET \"holders\" = 0, \"since\" = $3 WHERE \"jadpo_files\".\"holders\" = -2";
+
+/// What a commit leaves, in its own transaction as it ends: each file its
+/// changes left held by none, marked as being deleted at `$1`, which no
+/// record may hold from then on.
+pub const RELEASED: &str = "UPDATE \"jadpo_files\" SET \"holders\" = -1, \"since\" = $1 WHERE \"holders\" = 0 AND \"since\" IS NULL RETURNING \"store\", \"key\"";
+
+/// At most a hundred files due their bytes' deletion at `$1`, marked as
+/// being deleted: held by none since `$2` or before (a day ago), or
+/// released by a commit that left no event, or being deleted since then
+/// with no store confirming it.
+pub const DUE: &str = "WITH \"due\" AS (SELECT \"store\", \"key\" FROM \"jadpo_files\" WHERE (\"holders\" = 0 AND (\"since\" IS NULL OR \"since\" <= $2)) OR (\"holders\" = -1 AND \"since\" <= $2) ORDER BY \"store\", \"key\" LIMIT 100 FOR UPDATE SKIP LOCKED) UPDATE \"jadpo_files\" AS \"f\" SET \"holders\" = -1, \"since\" = $1 FROM \"due\" WHERE \"f\".\"store\" = \"due\".\"store\" AND \"f\".\"key\" = \"due\".\"key\" RETURNING \"f\".\"store\", \"f\".\"key\"";
+
+/// A file's bytes recorded gone once its store confirmed deleting them.
+pub const GONE: &str = "UPDATE \"jadpo_files\" SET \"holders\" = -2 WHERE \"store\" = $1 AND \"key\" = $2 AND \"holders\" = -1";
 
 /// The most bytes one read asks a store for: a page of rows is read in
 /// windows of this size until it holds its rows (chunk 6.4b).
@@ -203,6 +238,22 @@ pub async fn put(ctx: &mut Ctx<'_>, connection: &str, bytes: &Value, file_type: 
         }
     };
     let key = key_for(&id);
+    // Recorded as held by none before the bytes go, so bytes no record
+    // ever holds are found and deleted after a day, a crash between the
+    // two included (chunk B3).
+    if let Err(refused) = keep_put(ctx, connection, &key).await {
+        return match refused {
+            StoreError::Unavailable | StoreError::ConcurrentChange => {
+                Done::Failed(Box::new(Failure {
+                    frames: ctx.frames(),
+                    ..crate::unavailable()
+                }))
+            }
+            other => Done::Fault(FaultKind::Defect(format!(
+                "the record of held files refused a put: {other:?}"
+            ))),
+        };
+    }
     let input = Value::record(
         "FilePut",
         vec![
@@ -229,6 +280,217 @@ pub async fn put(ctx: &mut Ctx<'_>, connection: &str, bytes: &Value, file_type: 
         Err(Unanswered::Failed(code)) if code == STORAGE_FULL => Done::Broke(RuleKey::StorageFull),
         Err(refused) => unanswered(refused, &format!("`{connection}.put`")),
     }
+}
+
+/// Records the file a put keeps under `key` in `connection` as held by
+/// none, in the store keeping the record of its files, if one does.
+async fn keep_put(ctx: &mut Ctx<'_>, connection: &str, key: &str) -> Result<(), StoreError> {
+    let Some(ledger) = ctx.started().files().ledger(connection).map(str::to_string) else {
+        return Ok(());
+    };
+    let now = crate::steps::wall(ctx);
+    let database = ctx
+        .capabilities()
+        .database(&ledger)
+        .ok_or_else(|| StoreError::Fault(format!("no store called `{ledger}`")))?;
+    database
+        .query_once(
+            KEEP_PUT,
+            &[
+                SqlValue::Text(connection.to_string()),
+                SqlValue::Text(key.to_string()),
+                micros(now),
+            ],
+        )
+        .await
+        .map(|_| ())
+}
+
+/// The value of the event that deletes the bytes of `key` in `store`.
+fn released_value(store: &str, key: &str) -> Value {
+    Value::record(
+        FILE_RELEASED,
+        vec![
+            (Rc::from("store"), Value::text(store)),
+            (Rc::from("key"), Value::text(key)),
+        ],
+    )
+}
+
+/// Its payload, the runtime's own JSON.
+fn released_payload(store: &str, key: &str) -> String {
+    serde_json::json!({ "store": store, "key": key }).to_string()
+}
+
+/// The value a [`FILE_RELEASED`] event's payload holds.
+pub(crate) fn read_released(payload: &str) -> Result<Value, String> {
+    let Ok(serde_json::Value::Object(object)) = serde_json::from_str::<serde_json::Value>(payload)
+    else {
+        return Err("not a released file's payload".to_string());
+    };
+    let field = |name: &str| object.get(name).and_then(serde_json::Value::as_str);
+    match (field("store"), field("key")) {
+        (Some(store), Some(key)) if jadpo_std::files::is_key(key) => Ok(released_value(store, key)),
+        _ => Err("not a released file's payload".to_string()),
+    }
+}
+
+/// The store of files and key a [`FILE_RELEASED`] event names.
+pub(crate) fn released_parts(value: &Value) -> Option<(String, String)> {
+    let Value::Record(record) = value else {
+        return None;
+    };
+    match (record.get("store"), record.get("key")) {
+        (Some(Value::Text(store)), Some(Value::Text(key))) => {
+            Some((store.to_string(), key.to_string()))
+        }
+        _ => None,
+    }
+}
+
+/// The capability's `delete` of `key`, which its subscriber sends.
+pub(crate) fn delete_call(connection: &str, key: &str) -> Call {
+    let input = Value::record("FileDelete", vec![(Rc::from("key"), Value::text(key))]);
+    Call::new(connection, DELETE, input, Repeat::Keyed)
+}
+
+/// The events deleting the bytes of `released`, each `(store, key)`, in
+/// order: each handed to its store's generated subscriber.
+fn released_events(released: &mut [(String, String)]) -> Vec<Event> {
+    released.sort();
+    released
+        .iter()
+        .map(|(store, key)| Event {
+            key: FILE_RELEASED.to_string(),
+            value: released_value(store, key),
+            payload: released_payload(store, key),
+            subscribers: vec![FilesPlan::subscriber(store)],
+        })
+        .collect()
+}
+
+/// The `(store, key)` of each row `rows` gave.
+fn named(rows: Vec<crate::Row>) -> Vec<(String, String)> {
+    rows.into_iter()
+        .filter_map(|row| match (row.first(), row.get(1)) {
+            (Some(SqlValue::Text(store)), Some(SqlValue::Text(key))) => {
+                Some((store.clone(), key.clone()))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// As a commit in `transaction` ends (chunk B3): each file its changes
+/// left held by none, marked as being deleted at `now`, with the event
+/// that deletes its bytes, which commits with them.
+pub(crate) async fn released(
+    transaction: &mut dyn Transaction,
+    now: i64,
+) -> Result<Vec<Event>, StoreError> {
+    let rows = transaction.query(RELEASED, &[micros(now)]).await?;
+    Ok(released_events(&mut named(rows)))
+}
+
+/// What a tick's sweep of the records of held files did.
+#[derive(Debug, Default)]
+pub struct Swept {
+    /// The deliveries of the events it kept, to make within the tick.
+    pub deferred: Vec<crate::runner::Deferred>,
+    pub problems: Vec<(String, StoreError)>,
+    /// How many files' bytes it set out to delete.
+    pub due: u64,
+}
+
+/// The tick's sweep of each store keeping a record of held files, at
+/// `now` (chunk B3): at most a hundred files due their bytes' deletion in
+/// each ([`DUE`]), marked as being deleted, with the event that deletes
+/// them, in one transaction.
+pub async fn sweep(executor: &dyn Executor, budget: &crate::budget::Budget<'_>, now: i64) -> Swept {
+    let mut out = Swept::default();
+    let Some(events) = executor.plan().events() else {
+        return out;
+    };
+    let mut ledgers: Vec<&String> = events.plan.files.ledgers.values().collect();
+    ledgers.sort();
+    ledgers.dedup();
+    let host = budget.host();
+    for ledger in ledgers {
+        if budget.spent() {
+            break;
+        }
+        let mut ctx = crate::receiving::system_ctx(executor, host, now);
+        match swept(&mut ctx, ledger, now).await {
+            Ok(deliveries) => {
+                out.due += deliveries.len() as u64;
+                if !deliveries.is_empty() {
+                    out.deferred
+                        .push(crate::runner::Deferred::Deliveries(deliveries));
+                }
+            }
+            Err(error) => out.problems.push((ledger.clone(), error)),
+        }
+    }
+    out
+}
+
+/// One store's sweep.
+async fn swept(ctx: &mut Ctx<'_>, ledger: &str, now: i64) -> Result<Vec<Delivery>, StoreError> {
+    let database = ctx
+        .capabilities()
+        .database(ledger)
+        .ok_or_else(|| StoreError::Fault(format!("no store called `{ledger}`")))?;
+    let mut transaction = database.begin_at(Isolation::ReadCommitted).await?;
+    let rows = match transaction
+        .query(
+            DUE,
+            &[micros(now), micros(now.saturating_sub(UNHELD_KEPT_MS))],
+        )
+        .await
+    {
+        Ok(rows) => rows,
+        Err(error) => {
+            let _ = transaction.rollback().await;
+            return Err(error);
+        }
+    };
+    let events = released_events(&mut named(rows));
+    if events.is_empty() {
+        transaction.rollback().await?;
+        return Ok(Vec::new());
+    }
+    let mut sealed = Sealed {
+        outbox: Vec::with_capacity(events.len()),
+        deliveries: Vec::with_capacity(events.len()),
+    };
+    for event in events {
+        let (Some(outbox), Some(delivery)) = (ctx.new_id(), ctx.new_id()) else {
+            let _ = transaction.rollback().await;
+            return Err(StoreError::Fault(
+                "no random bytes for an event's identity".into(),
+            ));
+        };
+        for subscriber in &event.subscribers {
+            sealed.deliveries.push(Delivery {
+                store: ledger.to_string(),
+                id: delivery,
+                outbox,
+                subscriber: subscriber.clone(),
+                event: event.key.clone(),
+                value: event.value.clone(),
+                emitted_at: now,
+                trace: None,
+                depth: 0,
+            });
+        }
+        sealed.outbox.push((outbox, event.key, event.payload));
+    }
+    if let Err(error) = crate::outbox::write(transaction.as_mut(), &sealed, now, None, 0).await {
+        let _ = transaction.rollback().await;
+        return Err(error);
+    }
+    transaction.commit().await?;
+    Ok(sealed.deliveries)
 }
 
 /// The media type of the `FileType` variant called `name`.
@@ -535,6 +797,10 @@ impl MemoryFiles {
                 files.remove(&**key);
                 Answer::Value(Value::Unit)
             }
+            DELETE => {
+                self.files.borrow_mut().remove(&**key);
+                Answer::Value(Value::Unit)
+            }
             _ => Answer::Misconfigured,
         }
     }
@@ -624,5 +890,42 @@ mod tests {
             matches!(&refused, Done::Fault(FaultKind::Defect(what)) if what.contains("10 MB")),
             "{refused:?}"
         );
+    }
+
+    /// The capability's `delete` leaves nothing under its key, and a
+    /// repeat does nothing more (chunk B3); the event that sends it reads
+    /// back from its payload, which names only a key the runtime makes.
+    #[test]
+    fn a_delete_leaves_nothing_and_its_event_reads_back() {
+        let files = MemoryFiles::new();
+        let kept = files.keep("sheets", b"flour,1.20", "csv");
+        let key = stored(&kept).expect("a stored file").key;
+        let call = delete_call("sheets", &key);
+        assert_eq!(call.operation, DELETE);
+        assert_eq!(call.repeat, Repeat::Keyed);
+        for _ in 0..2 {
+            let answer = crate::block_on(files.call(&call)).expect("no wait");
+            assert_eq!(answer, Answer::Value(Value::Unit));
+            assert_eq!(files.bytes(&key), None);
+        }
+        let mut released = vec![("sheets".to_string(), key.clone())];
+        let events = released_events(&mut released);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].key, FILE_RELEASED);
+        assert_eq!(events[0].subscribers, ["files sheets"]);
+        let read = read_released(&events[0].payload).expect("its payload reads");
+        assert_eq!(read, events[0].value);
+        assert_eq!(
+            released_parts(&read),
+            Some(("sheets".to_string(), key.clone()))
+        );
+        for wrong in [
+            "{}",
+            "[]",
+            r#"{"store":"sheets","key":"../../etc/passwd"}"#,
+            r#"{"store":"sheets"}"#,
+        ] {
+            assert!(read_released(wrong).is_err(), "{wrong}");
+        }
     }
 }

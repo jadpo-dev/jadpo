@@ -335,6 +335,10 @@ pub struct Ticked {
     /// changing calls, for each store that keeps them: how many, and when
     /// the oldest started (chunk 7.5f).
     pub unfinished: Vec<(String, crate::unfinished::Metric)>,
+    /// How many stored files' bytes it set out to delete: held by no
+    /// record for a day, or left by a commit without the event that
+    /// deletes them (area 16, "Deleting and erasing"; chunk B3).
+    pub files: u64,
 }
 
 /// How many rows a tick deleted.
@@ -472,6 +476,17 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
             .deliveries
             .extend(runner::run_within(executor, host, &budget, polled.deferred).await);
         ticked.polled = Some((polled.called, polled.changed)).filter(|&(called, _)| called > 0);
+    }
+    // Stored files held by no record for a day, and any a commit left
+    // without the event deleting their bytes, set out to be deleted and
+    // delivered within what is left of the budget (chunk B3).
+    if !budget.spent() && runs.subscribers {
+        let swept = crate::files::sweep(executor, &budget, now).await;
+        ticked.problems.extend(swept.problems);
+        ticked.files += swept.due;
+        ticked
+            .deliveries
+            .extend(runner::run_within(executor, host, &budget, swept.deferred).await);
     }
     // Unfinished-record metrics and alerts remain prompt; their retention
     // work belongs to hourly housekeeping (chunk 9.1b2).

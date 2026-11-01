@@ -241,6 +241,20 @@ impl Caught {
         self
     }
 
+    /// Each file its stores of files keep, `files <key> <n> bytes`, in
+    /// key order: what a test's record keeps beside its rows, so both
+    /// executors are seen to keep and delete the same bytes (chunk B3).
+    pub fn files_kept(&self) -> Vec<String> {
+        self.files
+            .keys()
+            .into_iter()
+            .map(|key| {
+                let size = self.files.bytes(&key).map_or(0, |bytes| bytes.len());
+                format!("files {key} {size} bytes")
+            })
+            .collect()
+    }
+
     /// What fills `connection`: the caught mail, or the files in memory.
     pub fn capability(&self, connection: &str) -> Option<&dyn Capability> {
         if self.mail_connection.as_deref() == Some(connection) {
