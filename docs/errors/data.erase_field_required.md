@@ -50,6 +50,19 @@ entity Comment {
 ```
 
 ```text output
+error: Erasing a `User` can't clear `Comment.signed_as`
+ --> main.jadpo:24:5
+   |
+20 |     author_id: User.id? {
+   |     --------- keeps the record without the person
+24 |     signed_as: SignedName {
+   |     ^^^^^^^^^ personal data that can't be `none`
+  reason: `author_id` is `OnDelete.cleared`, which means `Erasure.anonymised`: erasing a `User` keeps each comment that refers to them, clearing the reference and every marked field. `signed_as` is marked `personal:`, and only an optional field (`SignedName?`) can be cleared.
+  next: Make `signed_as` `SignedName?`, or say `erase: Erasure.deleted` on `author_id` to delete the comment instead (human)
+  rule: data.erase_field_required
+  help: https://jadpo.dev/docs/errors/data.erase_field_required
+
+check failed: 1 error, 1 file
 ```
 
 `(human)` at the end of the `next:` line tells your coding agent to stop

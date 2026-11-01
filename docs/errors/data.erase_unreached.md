@@ -37,6 +37,17 @@ entity Tag {
 ```
 
 ```text output
+error: Erasing a person never reaches `Tag.category_id`
+ --> main.jadpo:13:9
+   |
+13 |         erase: Erasure.deleted
+   |         ^^^^^ `Category` belongs to no person
+  reason: `erase:` says what erasing a person does to a `Tag` when erasure deletes the `Category` it refers to. `Category` isn't a person (`person: true`) and none of its references leads to one, so erasure never deletes one.
+  next: Remove `erase:` from `category_id` (agent)
+  rule: data.erase_unreached
+  help: https://jadpo.dev/docs/errors/data.erase_unreached
+
+check failed: 1 error, 1 file
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -80,10 +91,51 @@ entity Tag {
 
 Deleting a category still deletes its tags, as `on_delete:` says.
 
-**If the records belong to a person**, refer to that person, or mark
-the entity `person: true` if each record is one
-([The person](../language/15-personal-data.md#the-person)). Erasure then
-reaches them, and `erase:` says what it does.
+**If the records belong to a person**, refer to that person
+([The person](../language/15-personal-data.md#the-person)):
+
+```jadpo fragment
+entity Category {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+}
+```
+
+```jadpo check project=e-erase-unreached-owned hidden
+type TagLabel = Text {
+    max_length: 40
+}
+
+entity User {
+    id: Uuid
+    email: Email {
+        personal: PersonalData.contact
+    }
+
+    person: true
+}
+
+entity Category {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+}
+
+entity Tag {
+    id: Uuid
+    category_id: Category.id {
+        on_delete: OnDelete.cascade
+        erase: Erasure.deleted
+    }
+    label: TagLabel
+}
+```
+
+Erasing a user now deletes their categories, and `erase:` says what
+that does to each tag in one.
 
 ## Related
 

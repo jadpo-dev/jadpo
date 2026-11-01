@@ -43,6 +43,17 @@ entity Todo {
 ```
 
 ```text output
+error: `Todo.owner_id` doesn't say what erasing a `User` does to it
+ --> main.jadpo:16:5
+   |
+16 |     owner_id: User.id {
+   |     ^^^^^^^^ `OnDelete.restricted`, with no `erase:`
+  reason: Erasing a `User` deletes their record, and decides what happens to every record that refers to it. `owner_id` is `OnDelete.restricted`, which stops ordinary code deleting a `User` while a todo refers to it; a person's request to be forgotten can't be refused that way, so the reference says what erasure does instead.
+  next: Add `erase:` to `owner_id`: `Erasure.deleted` deletes the todo too, `Erasure.anonymised` keeps it without the reference or its marked fields, and `Erasure.retained` keeps it as it is until its own retention ends (human)
+  rule: data.erase_required
+  help: https://jadpo.dev/docs/errors/data.erase_required
+
+check failed: 1 error, 1 file
 ```
 
 `(human)` at the end of the `next:` line tells your coding agent to stop
@@ -138,9 +149,66 @@ entity Todo {
 Erasing a user now keeps each of their todos with `owner_id` set to
 `none` and every field marked `personal:` cleared.
 
-**If the law makes you keep it as it is**, as with an invoice, say
-`Erasure.retained` and give the entity a `retention:` saying when it
-goes ([Keeping a record without the person](../language/15-personal-data.md#keeping-a-record-without-the-person-erasureretained)).
+**If the law makes you keep it as it is**, as with an invoice, make the
+reference one that can be `none`, say `Erasure.retained`, and give the
+entity a `retention:` saying when it goes:
+
+```jadpo fragment
+entity Todo {
+    id: Uuid
+    owner_id: User.id? {
+        on_delete: OnDelete.restricted
+        erase: Erasure.retained
+    }
+    ...
+    retention: {
+        after: config.todo_retention
+        since: created_at
+    }
+}
+```
+
+```jadpo check project=e-erase-required-retained hidden
+config {
+    todo_retention: Duration {
+        default: 365d
+    }
+}
+
+type TodoTitle = Text {
+    max_length: 200
+}
+
+entity User {
+    id: Uuid
+    email: Email {
+        personal: PersonalData.contact
+    }
+
+    person: true
+}
+
+entity Todo {
+    id: Uuid
+    owner_id: User.id? {
+        on_delete: OnDelete.restricted
+        erase: Erasure.retained
+    }
+    title: TodoTitle
+    created_at: Instant {
+        generated: Generated.on_create
+    }
+
+    retention: {
+        after: config.todo_retention
+        since: created_at
+    }
+}
+```
+
+Erasing a user now keeps each of their todos as it is, with `owner_id`
+set to `none`, until a year after it was made
+([Keeping a record without the person](../language/15-personal-data.md#keeping-a-record-without-the-person-erasureretained)).
 
 ## Related
 

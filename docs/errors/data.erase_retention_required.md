@@ -48,6 +48,17 @@ entity Invoice {
 ```
 
 ```text output
+error: `Invoice` has no retention, so an invoice kept after erasure would never go
+ --> main.jadpo:18:16
+   |
+18 |         erase: Erasure.retained
+   |                ^^^^^^^^^^^^^^^^ keeps the record as it is
+  reason: `Erasure.retained` on `customer_id` keeps each invoice as it is when a `User` is erased, for a reason the law gives, such as tax records, until its own retention ends. `Invoice` has no `retention:`, so it would be kept for ever.
+  next: Give `Invoice` a `retention: { after: config.<setting> since: <field> }` saying how long it is kept, or use `Erasure.deleted` or `Erasure.anonymised` on `customer_id` (human)
+  rule: data.erase_retention_required
+  help: https://jadpo.dev/docs/errors/data.erase_retention_required
+
+check failed: 1 error, 1 file
 ```
 
 `(human)` at the end of the `next:` line tells your coding agent to stop
@@ -62,14 +73,12 @@ The question is how long the law makes you keep an invoice.
 a `retention:` whose period is a setting:
 
 ```jadpo fragment
-// config.jadpo
 config {
     invoice_retention: Duration {
         default: 2192d
     }
 }
 
-// main.jadpo
 entity Invoice {
     ...
     retention: {
@@ -124,8 +133,49 @@ to `none`, and the purge schedule deletes it six years after it was
 issued.
 
 **If nothing makes you keep it**, delete it with its customer:
-`erase: Erasure.deleted`, or keep it without them or their marked fields
-with `erase: Erasure.anonymised`.
+
+```jadpo fragment
+entity Invoice {
+    id: Uuid
+    customer_id: User.id? {
+        on_delete: OnDelete.restricted
+        erase: Erasure.deleted
+    }
+    ...
+}
+```
+
+```jadpo check project=e-erase-retention-required-deleted hidden
+type BillingName = Text {
+    max_length: 80
+}
+
+entity User {
+    id: Uuid
+    email: Email {
+        personal: PersonalData.contact
+    }
+
+    person: true
+}
+
+entity Invoice {
+    id: Uuid
+    customer_id: User.id? {
+        on_delete: OnDelete.restricted
+        erase: Erasure.deleted
+    }
+    billing_name: BillingName {
+        personal: PersonalData.identifying
+    }
+    issued_at: Instant {
+        generated: Generated.on_create
+    }
+}
+```
+
+Erasing a user now deletes their invoices, and ordinary code still can't
+delete a user who has some.
 
 ## Related
 

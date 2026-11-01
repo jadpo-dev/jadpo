@@ -261,7 +261,7 @@ config {
 }
 ```
 
-```jadpo check project=erasure file=domains/accounts/entities/user.jadpo hidden migrate=initial
+```jadpo check project=erasure file=domains/accounts/entities/user.jadpo hidden
 /// Someone with an account, who may erase only themselves.
 entity User {
     id: Uuid
@@ -323,7 +323,7 @@ The invoice keeps its own copy of the billing name and address, so it no
 longer needs the user. Erasing the user clears `customer_id` and keeps the
 invoice:
 
-```jadpo check project=erasure file=domains/accounts/entities/invoice.jadpo
+```jadpo check project=erasure file=domains/accounts/entities/invoice.jadpo migrate=initial
 // domains/accounts/entities/invoice.jadpo
 use accounts/entities { User }
 use accounts/types { BillingName }
@@ -342,14 +342,14 @@ entity Invoice {
         generated: Generated.on_create
     }
 
-    retention: {
-        after: config.invoice_retention
-        since: issued_at
-    }
-
     policy: {
         create: [customer_id]
         read: [customer_id]
+    }
+
+    retention: {
+        after: config.invoice_retention
+        since: issued_at
     }
 }
 ```

@@ -437,9 +437,13 @@ fn required(entity: &EntityModel, field: &FieldModel, person: &str, at: &Span) -
     let one = words(name);
     let a = article(&one);
     let deletes = if target == person {
-        format!("Erasing a `{person}` deletes their record")
+        format!(
+            "Erasing a `{person}` deletes their record, and decides what happens to every record that refers to it"
+        )
     } else {
-        format!("Erasing a `{person}` deletes each `{target}` of theirs")
+        format!(
+            "Erasing a `{person}` deletes each `{target}` of theirs, and decides what happens to every record that refers to one"
+        )
     };
     Diagnostic::new(
         &rule::DATA_ERASE_REQUIRED,
@@ -447,7 +451,7 @@ fn required(entity: &EntityModel, field: &FieldModel, person: &str, at: &Span) -
     )
     .at(at.clone(), "`OnDelete.restricted`, with no `erase:`")
     .reason(format!(
-        "{deletes}, and decides what happens to every record that refers to one. `{field_name}` is `OnDelete.restricted`, which stops ordinary code deleting a `{target}` while {a} {one} refers to it; a person's request to be forgotten can't be refused that way, so the reference says what erasure does instead."
+        "{deletes}. `{field_name}` is `OnDelete.restricted`, which stops ordinary code deleting a `{target}` while {a} {one} refers to it; a person's request to be forgotten can't be refused that way, so the reference says what erasure does instead."
     ))
     .next(format!(
         "Add `erase:` to `{field_name}`: `Erasure.deleted` deletes the {one} too, `Erasure.anonymised` keeps it without the reference or its marked fields, and `Erasure.retained` keeps it as it is until its own retention ends"
