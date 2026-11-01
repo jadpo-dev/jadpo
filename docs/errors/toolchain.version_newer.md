@@ -74,16 +74,17 @@ jadpo check
 The installed `jadpo` then runs the release the project names, fetching
 it once if it doesn't keep it, and the command's own output follows.
 
-**If the project should be on this `jadpo`'s line**, name that line, the
-major and minor numbers `jadpo --version` shows. In `app.jadpo`:
+**If the project should be on this `jadpo`'s line**, name that line: in
+`app.jadpo`, the major and minor numbers `jadpo --version` shows, in
+place of `X.Y`:
 
 ```jadpo fragment
-    jadpo: "0.2"
+    jadpo: "X.Y"
 ```
 
 ```jadpo check project=e-version-newer-fix-1 file=app.jadpo hidden
 application {
-    jadpo: "0.2"
+    jadpo: "X.Y"
 }
 ```
 

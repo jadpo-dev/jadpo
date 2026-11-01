@@ -285,6 +285,21 @@ needs, or use a local clone with a file-reading coding agent.
   draft GitHub Release holding the notes. Claude merges it, except 0.1.0,
   which a maintainer checks first. Release notes live on the Release, not in a
   changelog file.
+- release-please writes the version into `Cargo.toml` and the extension's
+  `package.json`. The workflow then runs `tools/release/versions.py` on
+  the pull request's branch, which brings the files that repeat it into
+  step, each workspace crate's entry in `Cargo.lock` (by
+  `cargo update --workspace`, nothing else moving) and the extension's
+  `package-lock.json`, and pushes them, so the release pull request
+  passes CI with no hand edits.
+- Every pull request rehearses the next release: CI's `release` job
+  (`tools/release/rehearsal.py`) moves a copy of the checkout to the next
+  minor version as release-please would, runs the same
+  `tools/release/versions.py`, builds `jadpo` with `--locked`, and runs
+  the docs check and the teaching examples with it. A change that would
+  break the release pull request fails on its own. No page names the
+  release line, so moving it breaks none ([docs/writing.md](writing.md),
+  "The release line").
 - The release then gets the docs bundle as `docs-bundle.tar.gz`, and
   dist's workflow (`.github/workflows/release.yml`) builds the installers,
   attaches them, publishes the release, then the Homebrew formula and the
@@ -295,7 +310,7 @@ needs, or use a local clone with a file-reading coding agent.
   (`.github/workflows/vscode-extension.yml`); release-please keeps its
   `package.json` version in step.
 - An app declares the release line it is written for in `app.jadpo`, as
-  `application { jadpo: "0.2" }`; the installed `jadpo` runs that line's
+  `application { jadpo: "X.Y" }`; the installed `jadpo` runs that line's
   release, and a `jadpo` that can't refuses an app on another line (area
   1, "The root"; area 14, "Which jadpo runs").
 - Releases need these, set by a maintainer; each part is off until its

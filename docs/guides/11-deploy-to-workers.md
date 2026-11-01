@@ -139,7 +139,6 @@ config {
 
 ```jadpo check project=guide-workers file=app.jadpo
 application {
-    jadpo: "0.2"
     connections: {
         main: {
             driver: Driver.postgres

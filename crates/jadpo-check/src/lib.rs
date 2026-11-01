@@ -15,6 +15,7 @@ pub mod ai_limits;
 pub mod ai_mapping;
 pub mod ai_personal;
 pub mod application;
+pub mod approval;
 pub mod batches;
 mod case;
 pub mod client_address;

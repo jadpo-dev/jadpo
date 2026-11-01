@@ -7,6 +7,7 @@ mod ai;
 mod ai_record;
 mod ai_usage;
 mod api;
+mod approval;
 mod attestation;
 mod before;
 mod build;

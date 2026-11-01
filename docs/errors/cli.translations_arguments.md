@@ -11,9 +11,7 @@ A `jadpo translations` command names no action, one it doesn't have, or a locale
 A project that supports only its default locale, asked to accept French:
 
 ```jadpo check project=e-translations-arguments file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-translations-arguments expect=cli.translations_arguments

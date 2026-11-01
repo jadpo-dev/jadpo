@@ -313,8 +313,6 @@ declinable: extending the date is the reviewed choice. When
 its date; a build outside git, or before the first commit, judges at
 today.
 
-Not built yet: `jadpo approval`.
-
 ## Decided layout
 <!-- topic: decided-layout -->
 
@@ -432,7 +430,7 @@ build/
   ([Where packages live](11-integrations.md#where-packages-live)). A package
   is laid out as `shared/` is, under the same rules.
 - `app.jadpo` names the Jadpo release line the project is written for, as
-  `jadpo: "0.2"` in `application { }`. It is the major and minor numbers as
+  `jadpo: "X.Y"` in `application { }`. It is the major and minor numbers as
   text, the same form a package's index uses for its own
   ([The package format](11-integrations.md#the-package-format)). It is a
   line, not a minimum: while Jadpo is at 0.x, a minor release may break
@@ -1150,13 +1148,13 @@ The compiler builds the decided layout, with each rule's real output under
 | Reserved words | Built: a reserved word can't name anything. |
 | Comments | Built: `//` and `///` documentation comments. |
 | Similar helpers | Built: `library.similar_exists`, a declinable error. Not built yet: `jadpo impact`. |
-| Declinable errors | Partly built: no warning severity; the `decline <rule>: "<reason>"` line with `decline.unused`, `decline.not_declinable` and `decline.no_reason`; the catalogue's security rules, whose decline needs an [acceptance](18-records-and-manifest.md#acceptances); `jadpo declines list` and `clear`; the editor's "Decline with a reason" and "Remove decline"; and the date rule for an expired [feature flag](16-built-in-services.md#feature-flags), `flag.expired`, judged at today by `check` and at the commit's date by `build`. Not built yet: `jadpo approval` ([Records and manifest](18-records-and-manifest.md)). |
+| Declinable errors | Partly built: no warning severity; the `decline <rule>: "<reason>"` line with `decline.unused`, `decline.not_declinable` and `decline.no_reason`; the catalogue's security rules, whose decline needs an [acceptance](18-records-and-manifest.md#acceptances); `jadpo declines list` and `clear`; the editor's "Decline with a reason" and "Remove decline"; and the date rule for an expired [feature flag](16-built-in-services.md#feature-flags), `flag.expired`, judged at today by `check` and at the commit's date by `build`. `jadpo approval` lists them ([Records and manifest](18-records-and-manifest.md)). |
 | Constants | Built: `constant` as a reserved word and a declaration placed and shared as helper functions are, a private one unique within its domain, `constant.similar_exists`, and a top-level `var` pointed at `constant` ([Constants](03-logic.md#constants)). |
 | Imports | Built: `use <folder> { Names }` and `use <domain>`, with `import.missing`, `import.unknown`, `import.unused`, `import.unneeded` and `import.duplicate`; `jadpo fmt` adds, removes and sorts imports, `jadpo fmt --layout` makes promotion moves, and go to definition works from every use of a name, a `use` line's included. |
 | A file holds only what its primary declaration uses | Built: `layout.unused_declaration` for a supporting declaration the primary declaration doesn't use, directly or through one another. |
 | Definition before use | Built: `jadpo fmt` writes each file's declarations before the first one that uses them, and `jadpo fmt --check` fails on a file out of that order. |
 | Referenced assets | Not built yet: `layout.asset_unreferenced` waits for the ways [Integrations](11-integrations.md) and [Built-in services](16-built-in-services.md) refer to files that aren't Jadpo. |
-| Jadpo version | Built: `application { jadpo: "0.2" }`, with `toolchain.version_newer` refusing a project on a later line, `toolchain.version_older` one on an earlier line, each naming the release to install, and `toolchain.version_invalid`; the installed `jadpo` runs the release the line or `jadpo.lock`'s pin names ([Which jadpo runs](14-tooling.md#which-jadpo-runs)). `jadpo new` writes the line of the `jadpo` that ran it. |
+| Jadpo version | Built: `application { jadpo: "X.Y" }`, with `toolchain.version_newer` refusing a project on a later line, `toolchain.version_older` one on an earlier line, each naming the release to install, and `toolchain.version_invalid`; the installed `jadpo` runs the release the line or `jadpo.lock`'s pin names ([Which jadpo runs](14-tooling.md#which-jadpo-runs)). `jadpo new` writes the line of the `jadpo` that ran it. |
 | `application { }`'s sections | Built: the one list of sections ([What `application { }` holds](#what-application---holds)), `semantic.application_section_unknown` for any other, with the edit to the section a near miss meant, and `toolchain.not_built_yet` for the seven decided and not built. |
 | Packages | Built: the root `packages/` and `jadpo.lock`, `shared/providers/`, packages checked as `shared/` is, `use packages/<name>`, and the reachable-from-public rule (`visibility.public_reaches_private`) in domains and packages; [Integrations](11-integrations.md) records the choices. |
 

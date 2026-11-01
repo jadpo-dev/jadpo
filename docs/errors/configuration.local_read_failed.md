@@ -20,9 +20,7 @@ A project's `config.jadpo` declares a secret `mail_api_key`, and
 `.env.local` is a folder:
 
 ```jadpo check project=e-local-read file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```jadpo check project=e-local-read file=config.jadpo hidden

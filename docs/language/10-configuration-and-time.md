@@ -3763,7 +3763,7 @@ is in [Personal data](15-personal-data.md#retention).
 | Jadpo's own messages | Built, with the root file's owner groups. |
 | Library packages' translations | Built: a package's `translations/`, `Postcodes.translations.<message>(...)`, the root file's package groups and their record lines, and a package's messages in its surface and the publishing bar. |
 | Locale data a deployable carries | Built: its supported locales' only, with the text a `Locale` the app doesn't support is written in (see [Locales](#locales)). |
-| Unaccepted wording in the approval report | Not built yet: `jadpo approval` doesn't exist yet. Use `jadpo translations missing`, which lists it. |
+| Unaccepted wording in the approval report | Built: [`jadpo approval`](17-debugging-and-review.md#wording-not-yet-accepted) lists it, as `jadpo translations missing` does. |
 | Moving a message to `shared/translations/` | Not built yet as a promotion: `layout.promotion_required` doesn't cover messages, so move the message by hand. |
 | Other members of `clock`, `translations`, `sessions` and `oauth` | Not built yet: a member these pages don't describe is `toolchain.not_built_yet` until its area is built. |
 

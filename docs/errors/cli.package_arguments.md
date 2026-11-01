@@ -11,9 +11,7 @@ A `jadpo package` command names no action, one it doesn't have, or a package the
 A project with no packages, asked to show one:
 
 ```jadpo check project=e-package-arguments file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-package-arguments expect=cli.package_arguments

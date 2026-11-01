@@ -4,7 +4,9 @@
 use std::collections::BTreeMap;
 
 use jadpo_diag::{Diagnostic, Span, rule};
-use jadpo_term::{Block, Depth, Fact, Mode, Outcome, Row, Screen, Style, Symbols, Theme, Token};
+use jadpo_term::{
+    Block, DecisionRow, Depth, Fact, Mode, Outcome, Row, Screen, Style, Symbols, Theme, Token,
+};
 
 const TITLES: &str = "domains/planning/libraries/titles.jadpo";
 
@@ -603,5 +605,65 @@ fn a_reasons_own_line_breaks_print_as_lines_at_the_value_column() {
 "
         ),
         "{out}"
+    );
+}
+
+fn decisions() -> Screen {
+    Screen::new().with(Block::Decisions {
+        heading: "2 decisions need a person".to_string(),
+        rows: vec![
+            DecisionRow {
+                decided: false,
+                text: "anyone can now read `lending.Book` records".to_string(),
+                state: "acceptance missing".to_string(),
+                path: vec![
+                    "anyone".to_string(),
+                    "GET /books".to_string(),
+                    "lending.catalogue".to_string(),
+                    "List<BookView>".to_string(),
+                ],
+            },
+            DecisionRow {
+                decided: true,
+                text: "callers no grant names can now call `lending.borrow`, which declines `policy.call_ungranted`".to_string(),
+                state: "accepted".to_string(),
+                path: vec![
+                    "CompanyRole.viewer".to_string(),
+                    "GET /projects/{project_id}/budgets/{budget_id}".to_string(),
+                    "work.project_budget_detail".to_string(),
+                    "ProjectBudgetView.budget".to_string(),
+                ],
+            },
+        ],
+    })
+}
+
+/// Each decision's state ends at column 80 in its own colour, a long
+/// sentence wraps, and a path breaks only between its steps.
+#[test]
+fn decisions_show_their_state_and_their_path() {
+    assert_eq!(
+        decisions().render(&rich()),
+        "2 decisions need a person
+◆ anyone can now read `lending.Book` records                  acceptance missing
+    anyone → GET /books → lending.catalogue → List<BookView>
+✓ callers no grant names can now call `lending.borrow`, which declines
+  `policy.call_ungranted`                                               accepted
+    CompanyRole.viewer → GET /projects/{project_id}/budgets/{budget_id}
+      → work.project_budget_detail → ProjectBudgetView.budget
+"
+    );
+}
+
+#[test]
+fn plain_decisions_say_their_state_in_brackets() {
+    assert_eq!(
+        decisions().render(&Style::new(Mode::Plain)),
+        "2 decisions need a person
+  anyone can now read `lending.Book` records (acceptance missing)
+    anyone → GET /books → lending.catalogue → List<BookView>
+  callers no grant names can now call `lending.borrow`, which declines `policy.call_ungranted` (accepted)
+    CompanyRole.viewer → GET /projects/{project_id}/budgets/{budget_id} → work.project_budget_detail → ProjectBudgetView.budget
+"
     );
 }

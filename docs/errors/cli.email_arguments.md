@@ -11,9 +11,7 @@ A `jadpo email` command names an action it doesn't have, or a mail or link the d
 Nothing has run `jadpo dev` yet, so the inbox is empty:
 
 ```jadpo check project=e-email-arguments file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-email-arguments expect=cli.email_arguments

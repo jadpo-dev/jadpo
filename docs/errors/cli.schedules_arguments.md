@@ -11,9 +11,7 @@ A `jadpo schedules` command names an action it doesn't have, or a schedule the p
 A project with no schedules, asked to run one:
 
 ```jadpo check project=e-schedules-arguments file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-schedules-arguments expect=cli.schedules_arguments

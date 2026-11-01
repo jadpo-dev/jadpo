@@ -166,6 +166,7 @@ Rust 1.88 or later).
 | `jadpo-test` | Test runner, PostgreSQL harness, field-by-field value diffs; the differential comparison with compiled code, natively and inside workerd | |
 | `jadpo-lsp` | Language server | |
 | `jadpo-cldr` | The CLDR data a deployable carries: ICU4X's compiled data baked again for the app's supported locales | |
+| `jadpo-registry` | The registry protocol (area 11): its table, requests and answers, the RFC 6962 log and its proofs, release archives, a local registry served on this machine and the conformance test of a served OpenAPI document | |
 | `jadpo-cli` | The `jadpo` binary: commands, help, completion | |
 
 **`jadpo-std`** decides once what both sides need: what a valid value is
@@ -240,11 +241,38 @@ whole geometry; storage itself binds a geometry without asking, because the
 checker and every reader refuse such a mix (area 20, "Altitudes are all or
 nothing").
 
-**`jadpo-term`, `jadpo-test`, `jadpo-lsp`, `jadpo-cldr` and `jadpo-cli`**
-are tooling: the CLI design language's screens, the test runner (§2.5,
-§2.7), the language server, the locale data `jadpo build` exports for a
-deployable (§2.6, "The locale data a deployable carries"), and the binary
-that nothing depends on.
+**`jadpo-term`, `jadpo-test`, `jadpo-lsp`, `jadpo-cldr`, `jadpo-registry`
+and `jadpo-cli`** are tooling: the CLI design language's screens, the test
+runner (§2.5, §2.7), the language server, the locale data `jadpo build`
+exports for a deployable (§2.6, "The locale data a deployable carries"),
+the registry protocol, and the binary that nothing depends on.
+
+**`jadpo-registry`** is what the `jadpo` tool and the registry
+application at jadpo.dev are each built against (area 11, "The registry
+protocol"). The table is `protocol::ENDPOINTS`, one row per request with
+its placeholders, query, body, status, answer and failures, and
+`shape::named` gives each answer's and body's JSON; the request and
+answer types, the local registry's router, its OpenAPI document and the
+conformance test are all read from them, and a test holds every answer
+the local registry gives to its shape. The log keeps each release's leaf
+hash; proofs are made by RFC 6962 §2.1's recursive definitions and
+verified by RFC 9162 §2.1.3.2 and §2.1.4.2, with SHA-256 from the `sha2`
+the lock uses, and are tested against RFC 6962's vectors, against a
+second recursive implementation for every pair of sizes up to 40, and
+with every byte of every hash changed and hashes dropped, added or
+swapped. An archive is ustar of regular files only, unpacked within a
+size limit and refusing links, extensions, hidden files and any path
+outside the package; its digest is `jadpo_db::package_digest`, the
+lock's. The local registry serves the table from memory over plain HTTP
+on `127.0.0.1` (`local::LocalRegistry::serve`), with its own log, for
+the `jadpo` tool's tests; its client, `http::fetch`, reaches only this
+machine. The registry application is built in another repository, so its
+CI runs the conformance test from a checkout of this one at the Jadpo
+release it targets, against its own served document:
+`JADPO_REGISTRY_OPENAPI=http://127.0.0.1:<port>/registry/v1/openapi.json
+cargo test -p jadpo-registry --test integration conformance::` (a file
+path works too); a Rust caller can use `conformance::check` as a git
+dependency.
 
 **Dependency direction.** Compiler crates never depend on runtime crates,
 except `jadpo-interp`, which links the runtime it shares with compiled
@@ -825,11 +853,21 @@ connection's hosts are `NetworkChange.host_added` (area 18, 2026-10-30),
 which the record comparison below gives. Every git package needs a
 person, since telling the app's own company's repository from a third
 party's needs a setting the pages don't decide; this is the conservative
-reading of area 11's "Publisher trust". The graph diff runs in tests
-until `jadpo approval` builds the base commit, read through `git cat-file
---batch` into an in-memory file set (`jadpo_db::FileSet`, loaded by
-`load_files`, §2.2, "Loading"), checked by the same compiler and cached
-in `build/before/<commit>/`.
+reading of area 11's "Publisher trust". This graph diff runs in tests.
+
+**The approval report** (chunk V2, areas 17 and 18) builds the base: `jadpo
+approval` reads the commit through `git cat-file --batch` into an in-memory
+file set (`jadpo_db::FileSet`, loaded by `load_files`, §2.2, "Loading"),
+checks it with the same compiler and keeps its manifest and its declines in
+`build/before/<commit>/`, used again while this compiler wrote them.
+`jadpo_check::approval` then reads both sides as manifests, the graph's
+canonical JSON, rather than as `Graph`s, since a kept manifest is all the
+before side has: it compares their nodes and edges for the source, the
+newly reachable callables and the other behaviour, and walks today's edges
+(else the before side's, for something gone) for each decision's path. The
+decisions themselves are `acceptances::needs`, the same list `check` judges,
+each carrying its plain words and the callers it lets in from where its
+record is read.
 
 **Acceptances** (chunk A8, area 18) don't build the base. `jadpo check`
 reads the before side from git (`jadpo-cli`'s `before`): the default
@@ -5501,7 +5539,7 @@ workerd") share the step's test file but are a step of the `wasm32`
 group, skipped by this one, since the `wasm32` job builds the runtime
 crates for wasm32 already.
 
-**CI.** GitHub Actions on Linux runs the gate's five groups as parallel
+**CI.** GitHub Actions on Linux runs the gate's six groups as parallel
 jobs, each with the pinned toolchain and its own cargo cache: `lint`
 (formatting, clippy, the name ban, the editor grammar), `docs` (the pages
 and the teaching examples), `tests` (every test, with the live PostgreSQL
@@ -5510,7 +5548,13 @@ steps running at once on one PostgreSQL container named by
 `wasm32` (the runtime crates for wasm32, their checks under Node, the
 Workers host, a Workers deployable and the route tests under workerd,
 which its tests install into `tools/fixtures/workers/` with `npm ci` the runner's
-Node provides); `docs`, `tests`, `compiled` and `wasm32` each build and
+Node provides) and `release` (the next release rehearsed:
+`tools/release/rehearsal.py` copies the checkout, moves it to the next
+minor version as release-please would, brings the lock files into step
+as `release-please.yml` does, then builds `jadpo` with `--locked` and runs
+the docs check and the teaching examples without PostgreSQL, reusing the
+build folder's dependencies; [documentation](documentation.md),
+"Versions and releases"); `docs`, `tests`, `compiled` and `wasm32` each build and
 start their own container from `tools/fixtures/postgres/Dockerfile`, PostgreSQL 16
 with pgvector and PostGIS at pinned versions (area 21,
 "Without pgvector"), while the toolchain installs. A local run's
@@ -5520,7 +5564,7 @@ need pgvector for the vector tests and PostGIS for the geography tests
 `target/`, so the `compiled` job's cache keeps the registry crates built
 in its target folder as well as the workspace's: the cache action keeps
 every registry crate's build in each target folder it finds there. The
-`supported-language` job needs all five and passes only when each did; it
+`supported-language` job needs all six and passes only when each did; it
 is the check branch protection requires. Beside the gate, the
 `commit-type` workflow checks a pull request's Conventional Commit title
 against what it changes, rerunning alone when the title is edited, and

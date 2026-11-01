@@ -371,15 +371,13 @@ time.
 ## Approvals
 
 Everything a person must approve is found by the compiler and can be
-approved (Richard, 2026-10-31). V2 is taken before A10, so 0.2.0 doesn't
-wait for A10's decision; the rest come after the A chunks above and
-before every other unticked chunk.
+approved (Richard, 2026-10-31). The chunks here come after the A chunks
+above and before every other unticked chunk.
 
-**0.2.0 is V2 alone.** When V2 has merged, the 0.2.0 release pull request
-is merged; no session merges it before then. Everything else in this
-section and the registry chunks below make **0.3.0**, released when V6
-and R6 have both merged. V1 and V3 to V5 run at the same time as each
-other and as R1 and R4, where they touch different crates.
+0.2.0 shipped without V2. **V2 is part of 0.3.0,** with everything else in
+this section and the registry chunks below, released when V6 and R6 have
+both merged. V1 and V3 to V5 run at the same time as each other and as R1
+and R4, where they touch different crates.
 
 Already built: acceptances (`jadpo acceptance new`, matching, the reason,
 history, the CODEOWNERS gate) for API and event breaks, every widening of
@@ -390,16 +388,7 @@ features not built yet come with those features: `ThresholdChange` with
 thresholds, a service's image with services, bot checks with bot
 protection, a domain renamed with `jadpo domain rename`.
 
-- [ ] **V2 The approval report** `opus · xhigh`: area 17, "Reviewing a
-  change"; area 18, "Comparing two builds". `jadpo approval --before
-  <ref>` builds the base, and writes Markdown and JSON in `build/review/`
-  in the page's order: each decision in plain words with whether its
-  acceptance exists, the path that makes it true, newly reachable
-  declarations, other behaviour (the API record, schema and migrations,
-  failures, events, integrations, the permissions report's diff, wording
-  not yet accepted) and the source by declaration. The web view stays
-  with the developer console. Screens designed with the design skills
-  first. Split here if it is larger than a session.
+- [x] **V2 The approval report**: area 17, "Reviewing a change"; area 18, "Comparing two builds"; area 14, "`jadpo approval`"; compiler/runtime §2.3, "The approval report"; `docs/errors/cli.approval_arguments.md`.
 - [ ] **V1 Your own company's git packages** `opus · high`: area 11,
   "Installing safely"; area 18, `PolicyChange.own_source_added`.
   `packages:`'s `own_sources:` in `application { }` (added to area 1's
@@ -454,11 +443,7 @@ real deploy) and, before outside authors can publish, D3 (releases).
   change record; the previous release's examples and tests run against
   the new code; `jadpo package verify --json`. Screens designed with the
   design skills first.
-- [ ] **R4 The registry protocol and a local registry** `opus · high`:
-  area 11, "The registry protocol". The protocol's requests and answers
-  as types in one crate, the Merkle log and its proofs, a local registry
-  that tests run against, and the conformance test that checks a served
-  OpenAPI document against the protocol.
+- [x] **R4 The registry protocol and a local registry**: area 11, "The registry protocol"; compiler/runtime §2.1, `jadpo-registry`.
 - [ ] **R5 The registry commands** `opus · high` after R3 and R4: area 11,
   "Installing and updating from the registry", "Developing for the
   registry"; area 14, the package commands. `add @publisher/name` with the
