@@ -454,11 +454,7 @@ real deploy) and, before outside authors can publish, D3 (releases).
   change record; the previous release's examples and tests run against
   the new code; `jadpo package verify --json`. Screens designed with the
   design skills first.
-- [ ] **R4 The registry protocol and a local registry** `opus · high`:
-  area 11, "The registry protocol". The protocol's requests and answers
-  as types in one crate, the Merkle log and its proofs, a local registry
-  that tests run against, and the conformance test that checks a served
-  OpenAPI document against the protocol.
+- [x] **R4 The registry protocol and a local registry**: area 11, "The registry protocol"; compiler/runtime §2.1, `jadpo-registry`.
 - [ ] **R5 The registry commands** `opus · high` after R3 and R4: area 11,
   "Installing and updating from the registry", "Developing for the
   registry"; area 14, the package commands. `add @publisher/name` with the

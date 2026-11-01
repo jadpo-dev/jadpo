@@ -27,7 +27,14 @@ runtime = [
     "jadpo-host-native",
     "jadpo-host-workers",
 ]
-tooling = ["jadpo-term", "jadpo-test", "jadpo-lsp", "jadpo-cldr", "jadpo-cli"]
+tooling = [
+    "jadpo-term",
+    "jadpo-test",
+    "jadpo-lsp",
+    "jadpo-cldr",
+    "jadpo-registry",
+    "jadpo-cli",
+]
 
 # Runtime crates that never build for wasm32: tools/verify.py leaves them
 # out of its wasm32 build. A crate listed before it exists is skipped.
@@ -65,6 +72,7 @@ jadpo-host-native = { path = "crates/jadpo-host-native" }
 jadpo-host-workers = { path = "crates/jadpo-host-workers" }
 jadpo-codegen = { path = "crates/jadpo-codegen" }
 jadpo-cldr = { path = "crates/jadpo-cldr" }
+jadpo-registry = { path = "crates/jadpo-registry" }
 rowan = "=0.16.1"
 ungrammar = "=1.16.1"
 serde_json = "1"
