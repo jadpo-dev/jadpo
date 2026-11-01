@@ -424,3 +424,44 @@ fn a_disk_stores_settings_are_held_to_what_they_say() {
         assert_eq!(rules(settings), vec![expected.to_string()], "{settings}");
     }
 }
+
+/// The fields naming one store of files are counted in one database's
+/// record of held files (area 16, "Deleting and erasing"; chunk B3): a
+/// field in an entity of another database is `toolchain.not_built_yet`
+/// where it is written, since bytes one database's records still hold
+/// could be deleted once the other's let go.
+#[test]
+fn a_store_of_files_held_from_two_databases_is_not_built_yet() {
+    let app = "application {\n    connections: {\n        main: {\n            driver: Driver.postgres\n        }\n        archive: {\n            driver: Driver.postgres\n        }\n        sheets: {\n            driver: Driver.disk\n            path: \"/var/lib/pantry/sheets\"\n        }\n        notes: {\n            driver: Driver.disk\n            path: \"/var/lib/pantry/notes\"\n        }\n    }\n}\n";
+    let old = |store: &str| {
+        format!(
+            "entity OldSheet {{\n    id: Uuid\n    sheet: File? {{\n        store: {store}\n        max_size: 5mb\n    }}\n\n    store: archive\n\n    policy: {{\n        create: [Access.public]\n        read: [Access.public]\n    }}\n}}\n"
+        )
+    };
+    let rules = |store: &str| {
+        let old = old(store);
+        let mut files: Vec<(&str, &str)> = vec![("app.jadpo", app)];
+        files.extend_from_slice(BASE);
+        files.push(("domains/pantry/entities/old_sheet.jadpo", &old));
+        let found = support::problems(Layout::Project, &files);
+        found
+            .into_iter()
+            .filter(|problem| {
+                !problem.contains("import.unused")
+                    && !problem.contains("layout.unused_declaration")
+                    && !problem.contains("migration.")
+            })
+            .collect::<Vec<_>>()
+    };
+    // Its own store of files, counted in its own database: nothing.
+    assert_eq!(rules("notes"), Vec::<String>::new());
+    // The first entity by name, `OldSheet`, keeps the record, so
+    // `ShelfSheet`'s field is the one refused.
+    let found = rules("sheets");
+    assert_eq!(
+        found,
+        [
+            "domains/pantry/entities/shelf_sheet.jadpo toolchain.not_built_yet: `ShelfSheet.sheet` keeps its bytes in `sheets`, as records in `archive` do"
+        ]
+    );
+}

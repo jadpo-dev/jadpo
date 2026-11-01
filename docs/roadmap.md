@@ -636,14 +636,9 @@ After the registry is live, in order:
    - [x] **B2 The disk driver in production**: area 16, "The disk
      driver" and What is built; area 18, "What a node holds"; area 14,
      "Starting"; compiler/runtime §2.6, "Files and a file's run".
-   - [ ] **B3 Deleting a file's bytes** `opus · high`: area 16,
-     "Deleting and erasing" and "Writing a file your app makes: `put`".
-     The capability's `delete`; a generated subscriber deleting a file's
-     bytes once the change that deletes its record, or clears or replaces
-     its field, commits; and bytes never attached to a record deleted
-     after a day. P4's erasure of a `File` field's bytes uses this
-     subscriber. Done when tests find the bytes gone after each, and kept
-     while a record holds them, on both executors.
+   - [x] **B3 Deleting a file's bytes**: area 16, "Deleting and erasing"
+     and "What is built"; area 5, "Tables for schedules and other state";
+     compiler/runtime §2.6, "Files and a file's run".
    - [ ] **B4 Downloads** `opus · high`: area 16, "Downloading" and "The
      disk driver" (downloads). An `Output` that picks a `File` field
      sends a signed link valid for five minutes with the file's name,

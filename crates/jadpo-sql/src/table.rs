@@ -535,6 +535,110 @@ pub fn create_extension(name: &str) -> String {
     format!("CREATE EXTENSION IF NOT EXISTS {}", ident(name))
 }
 
+/// The function each entity table's `jadpo_files` trigger runs (area 16,
+/// "Deleting and erasing"; chunk B3), made once in a store that keeps
+/// `jadpo_files`: for each `File` column the trigger names, a file the row
+/// now holds and didn't counts one more holder, refused once its bytes are
+/// being deleted or are gone, and a file it held and doesn't counts one
+/// fewer, its `since` cleared so the commit's end leaves the event that
+/// deletes its bytes once none holds it. Its `RETURN NULL` changes no row.
+pub const FILES_FUNCTION: &str = "jadpo_files_held";
+
+/// The trigger's name on each table with a `File` column.
+pub const FILES_TRIGGER: &str = "jadpo_files";
+
+/// Creates [`FILES_FUNCTION`].
+pub fn create_files_function() -> String {
+    format!(
+        "CREATE OR REPLACE FUNCTION {}() RETURNS trigger LANGUAGE plpgsql AS $jadpo$
+DECLARE
+    field_name text;
+    held_before jsonb;
+    held_after jsonb;
+BEGIN
+    FOREACH field_name IN ARRAY TG_ARGV LOOP
+        held_before := NULL;
+        held_after := NULL;
+        IF TG_OP <> 'INSERT' THEN
+            held_before := to_jsonb(OLD) -> field_name;
+        END IF;
+        IF TG_OP <> 'DELETE' THEN
+            held_after := to_jsonb(NEW) -> field_name;
+        END IF;
+        IF jsonb_typeof(held_before) IS DISTINCT FROM 'object' THEN
+            held_before := NULL;
+        END IF;
+        IF jsonb_typeof(held_after) IS DISTINCT FROM 'object' THEN
+            held_after := NULL;
+        END IF;
+        IF held_before IS NOT NULL AND held_after IS NOT NULL
+            AND held_before ->> 'store' = held_after ->> 'store'
+            AND held_before ->> 'key' = held_after ->> 'key' THEN
+            CONTINUE;
+        END IF;
+        IF held_after IS NOT NULL THEN
+            INSERT INTO \"jadpo_files\" (\"store\", \"key\", \"holders\", \"since\")
+                VALUES (held_after ->> 'store', held_after ->> 'key', 1, NULL)
+                ON CONFLICT (\"store\", \"key\") DO UPDATE
+                SET \"holders\" = \"jadpo_files\".\"holders\" + 1, \"since\" = NULL
+                WHERE \"jadpo_files\".\"holders\" >= 0;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'a File whose bytes are deleted can''t be kept in a record (%)', held_after ->> 'key';
+            END IF;
+        END IF;
+        IF held_before IS NOT NULL THEN
+            UPDATE \"jadpo_files\" SET \"holders\" = \"holders\" - 1, \"since\" = NULL
+                WHERE \"store\" = held_before ->> 'store'
+                AND \"key\" = held_before ->> 'key'
+                AND \"holders\" > 0;
+        END IF;
+    END LOOP;
+    RETURN NULL;
+END
+$jadpo$",
+        ident(FILES_FUNCTION)
+    )
+}
+
+/// Counts the holders of the files `columns` of `table` hold, its `File`
+/// columns in order, as its rows change (chunk B3): one trigger after
+/// each insert, each update of those columns and each delete, cascades
+/// included.
+pub fn create_files_trigger(table: &str, columns: &[String]) -> String {
+    let arguments: Vec<String> = columns.iter().map(|column| text_literal(column)).collect();
+    format!(
+        "CREATE TRIGGER {} AFTER INSERT OR UPDATE OF {} OR DELETE ON {} FOR EACH ROW EXECUTE FUNCTION {}({})",
+        ident(FILES_TRIGGER),
+        idents(columns),
+        ident(table),
+        ident(FILES_FUNCTION),
+        arguments.join(", ")
+    )
+}
+
+/// Drops `table`'s trigger, so one naming other columns can take its
+/// place.
+pub fn drop_files_trigger(table: &str) -> String {
+    format!(
+        "DROP TRIGGER IF EXISTS {} ON {}",
+        ident(FILES_TRIGGER),
+        ident(table)
+    )
+}
+
+/// Counts the files `columns` of `table`'s rows already hold, as a store
+/// that starts keeping `jadpo_files` finds them (chunk B3).
+pub fn count_held_files(table: &str, columns: &[String]) -> String {
+    let held: Vec<String> = columns
+        .iter()
+        .map(|column| format!("SELECT {} AS \"held\" FROM {}", ident(column), ident(table)))
+        .collect();
+    format!(
+        "INSERT INTO \"jadpo_files\" (\"store\", \"key\", \"holders\") SELECT \"held\" ->> 'store', \"held\" ->> 'key', count(*) FROM ({}) AS \"kept\" WHERE jsonb_typeof(\"held\") = 'object' GROUP BY 1, 2 ON CONFLICT (\"store\", \"key\") DO UPDATE SET \"holders\" = \"jadpo_files\".\"holders\" + EXCLUDED.\"holders\"",
+        held.join(" UNION ALL ")
+    )
+}
+
 /// A line for a person, not the database: `-- text`.
 pub fn comment(text: &str) -> String {
     format!("-- {text}")
