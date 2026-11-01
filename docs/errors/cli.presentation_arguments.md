@@ -11,9 +11,7 @@ A `--color` flag holds something other than `auto`, `always` or `never`, or noth
 The value is one it doesn't take:
 
 ```jadpo check project=e-presentation-arguments file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-presentation-arguments expect=cli.presentation_arguments

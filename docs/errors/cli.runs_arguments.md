@@ -11,9 +11,7 @@ A `jadpo runs` command names an action other than `unfinished`, or leaves out it
 The build is left out:
 
 ```jadpo check project=e-runs-arguments file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-runs-arguments expect=cli.runs_arguments

@@ -12,9 +12,7 @@ You start from an app with a `Book` entity that anyone may read, and a
 shows how to write them.
 
 ```jadpo check project=guide-query file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```jadpo check project=guide-query file=domains/books/entities/book.jadpo hidden

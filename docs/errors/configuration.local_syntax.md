@@ -23,9 +23,7 @@ A project's `config.jadpo` declares a secret `mail_api_key`, and
 `.env.local` sets it with a colon, as a YAML file would:
 
 ```jadpo check project=e-local-syntax file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```jadpo check project=e-local-syntax file=config.jadpo hidden

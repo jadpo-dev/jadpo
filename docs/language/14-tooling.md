@@ -53,7 +53,7 @@ domain, `hello`:
 
 ```text
 todo-app/
-  app.jadpo        application { jadpo: "0.2" } and the project token
+  app.jadpo        application { jadpo: "X.Y" } and the project token
   config.jadpo     config {}, with no settings yet
   policy.jadpo     who may run greet: Access.public
   access.jadpo_record    as jadpo records update writes it
@@ -71,7 +71,7 @@ todo-app/
 ```
 
 - `app.jadpo` names the release line of the `jadpo` that ran `new`, so
-  `jadpo new` from 0.2.x writes `jadpo: "0.2"`
+  `jadpo new` from X.Y.Z writes `jadpo: "X.Y"`
   ([Which jadpo runs](#which-jadpo-runs)). It also holds the project's
   `suggestions { project_token: }`, 32 random hex digits from the
   operating system's generator ([Sharing with Jadpo
@@ -114,7 +114,7 @@ The screen is one status line, then the command to run next:
 
 ```text
 Created todo-app
-    jadpo  0.1
+    jadpo  X.Y
     route  POST /hello
     files  14 written
 
@@ -1171,7 +1171,7 @@ shell or PowerShell installer) is a whole `jadpo` that can also start
 another release, as the `go` command does. Before a command runs, it
 finds the project: the folder you run it from, walked up to `app.jadpo`,
 or else the first argument that names a file or folder in a project. It
-reads the line from `application { jadpo: "0.2" }`
+reads the line from `application { jadpo: "X.Y" }`
 ([The root](01-project-layout-and-modules.md#the-root)).
 
 When the project is on the installed `jadpo`'s own line, or names no
@@ -3126,7 +3126,7 @@ Each row says what is built and what is specified but not built yet.
 |---|---|
 | Command help | Built: every command has `--help` with examples, `jadpo help [command]` explains one, `jadpo help <rule>` prints a rule's page offline, and `jadpo help --json` describes them all. |
 | Project path | Built: every command finds the project by walking up to `app.jadpo`, so a path is optional; run from outside the project, printed paths start with the project as typed. |
-| Scaffold | Built: `jadpo new <name>` writes the fixed root on this `jadpo`'s release line with its project token, the `hello` domain (one route, its action, its policy line, its API record and a route test), `AGENTS.md`, `.gitignore` and `.gitattributes`, passing `check`, `fmt --check` and `test` as written, and refuses a folder that holds anything, with `--json`. The line an app declares is checked: `application { jadpo: "0.2" }`, with `toolchain.version_newer`, `toolchain.version_older` and `toolchain.version_invalid` ([The root](01-project-layout-and-modules.md#the-root)). |
+| Scaffold | Built: `jadpo new <name>` writes the fixed root on this `jadpo`'s release line with its project token, the `hello` domain (one route, its action, its policy line, its API record and a route test), `AGENTS.md`, `.gitignore` and `.gitattributes`, passing `check`, `fmt --check` and `test` as written, and refuses a folder that holds anything, with `--json`. The line an app declares is checked: `application { jadpo: "X.Y" }`, with `toolchain.version_newer`, `toolchain.version_older` and `toolchain.version_invalid` ([The root](01-project-layout-and-modules.md#the-root)). |
 | Which jadpo runs | Built in 0.1.0: every `jadpo` runs the release a project's line or `jadpo.lock` pin names, kept in the cache or fetched from GitHub's releases, its archive checked against its published SHA-256 and its GitHub artifact attestation (Sigstore's verifier, with the public-good trusted root carried in the binary) before it runs, and refuses with `toolchain.version_newer` or `toolchain.version_older` when it can't; `jadpo toolchain` lists, removes, pins and unpins, and `JADPO_TOOLCHAIN=local` runs everything with the `jadpo` started. The trusted root is the one this release was built with: no TUF refresh. |
 | Formatter | Built: one member per line, one blank line between declarations, and `fmt --check` counts the files it read; it keeps `use` lines at the top, sorted, fixes imports inside a project, `--layout` makes promotion moves, and it writes each file's declarations before their use, the primary declaration last. |
 | Error messages | Built: one error per mistake, in the field order [Error messages](#error-messages) gives, `impact` only when it says something, edits on the next step where one exists, and help links to each error's page on the site. |

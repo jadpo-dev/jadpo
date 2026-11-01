@@ -430,7 +430,7 @@ build/
   ([Where packages live](11-integrations.md#where-packages-live)). A package
   is laid out as `shared/` is, under the same rules.
 - `app.jadpo` names the Jadpo release line the project is written for, as
-  `jadpo: "0.2"` in `application { }`. It is the major and minor numbers as
+  `jadpo: "X.Y"` in `application { }`. It is the major and minor numbers as
   text, the same form a package's index uses for its own
   ([The package format](11-integrations.md#the-package-format)). It is a
   line, not a minimum: while Jadpo is at 0.x, a minor release may break
@@ -1153,7 +1153,7 @@ The compiler builds the decided layout, with each rule's real output under
 | A file holds only what its primary declaration uses | Built: `layout.unused_declaration` for a supporting declaration the primary declaration doesn't use, directly or through one another. |
 | Definition before use | Built: `jadpo fmt` writes each file's declarations before the first one that uses them, and `jadpo fmt --check` fails on a file out of that order. |
 | Referenced assets | Not built yet: `layout.asset_unreferenced` waits for the ways [Integrations](11-integrations.md) and [Built-in services](16-built-in-services.md) refer to files that aren't Jadpo. |
-| Jadpo version | Built: `application { jadpo: "0.2" }`, with `toolchain.version_newer` refusing a project on a later line, `toolchain.version_older` one on an earlier line, each naming the release to install, and `toolchain.version_invalid`; the installed `jadpo` runs the release the line or `jadpo.lock`'s pin names ([Which jadpo runs](14-tooling.md#which-jadpo-runs)). `jadpo new` writes the line of the `jadpo` that ran it. |
+| Jadpo version | Built: `application { jadpo: "X.Y" }`, with `toolchain.version_newer` refusing a project on a later line, `toolchain.version_older` one on an earlier line, each naming the release to install, and `toolchain.version_invalid`; the installed `jadpo` runs the release the line or `jadpo.lock`'s pin names ([Which jadpo runs](14-tooling.md#which-jadpo-runs)). `jadpo new` writes the line of the `jadpo` that ran it. |
 | `application { }`'s sections | Built: the one list of sections ([What `application { }` holds](#what-application---holds)), `semantic.application_section_unknown` for any other, with the edit to the section a near miss meant, and `toolchain.not_built_yet` for the seven decided and not built. |
 | Packages | Built: the root `packages/` and `jadpo.lock`, `shared/providers/`, packages checked as `shared/` is, `use packages/<name>`, and the reachable-from-public rule (`visibility.public_reaches_private`) in domains and packages; [Integrations](11-integrations.md) records the choices. |
 

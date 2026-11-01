@@ -35,7 +35,7 @@ the one that is there, and copy the block into it.
 
 ```jadpo check project=learn-todo-02 file=app.jadpo
 application {
-    jadpo: "0.2"
+    jadpo: "X.Y"
 }
 
 suggestions {
@@ -44,9 +44,12 @@ suggestions {
 ```
 
 `application { }` holds the settings for the whole app. For now it has
-one: the release of Jadpo the app is written for. `"0.1"` means any
-0.1 release, the one you built. A block like this holds one setting per
-line, with no commas. `suggestions { }` holds a random token, different
+one: the release line of Jadpo the app is written for, the major and
+minor numbers of the `jadpo` you built, which `jadpo --version` shows
+and these pages write as `X.Y`. It means any release on that line. A
+block like this holds one setting per line, with no commas. When a later
+page shows `app.jadpo`, it leaves this line out: keep yours at the top
+of `application { }`. `suggestions { }` holds a random token, different
 in your project, that is all Jadpo's makers learn about your project if
 you ever share [suggestions](../language/14-tooling.md#suggestions) with
 them.

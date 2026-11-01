@@ -15,9 +15,7 @@ The action it tests is this one:
 ```jadpo check project=guide-tests file=app.jadpo hidden
 use reading/entities { Reader }
 
-application {
-    jadpo: "0.2"
-}
+application {}
 
 principal {
     user: {

@@ -175,6 +175,69 @@ def without_run_time(text):
     return STARTED_AT.sub('', RUN_TIME.sub('', text))
 
 
+# The running `jadpo`'s release line and release, as a page writes them
+# (docs/writing.md, "The release line"): `X.Y` and `X.Y.Z`, so no page
+# goes out of date, or stops checking, when the version moves on. A check
+# block's `jadpo: "X.Y"` is given the running line before it compiles.
+LINE_SHOWN, RELEASE_SHOWN = 'X.Y', 'X.Y.Z'
+LINE_WRITTEN = f'jadpo: "{LINE_SHOWN}"'
+_running = None
+
+
+def running_release():
+    """(line, release) of the `jadpo` the docs are checked with:
+    ('0.2', '0.2.0')."""
+    global _running
+    if _running is None:
+        code, out = jadpo(['--version'])
+        match = re.fullmatch(r'jadpo ((\d+)\.(\d+)\.\d+\S*)\s*', out)
+        if code or not match:
+            sys.exit(f'jadpo --version gave no version:\n{out}')
+        _running = (f'{match.group(2)}.{match.group(3)}', match.group(1))
+    return _running
+
+
+def release_shapes(line, release):
+    """Where the running line or release shows, as (pattern, how a page
+    writes it): `jadpo:` in `app.jadpo` and a code frame quoting it,
+    `jadpo new`'s status line, and `jadpo --version`."""
+    line, release = re.escape(line), re.escape(release)
+    return [(re.compile(rf'jadpo: "{line}"'), LINE_WRITTEN),
+            (re.compile(rf'^(\s*)jadpo  {line}$', re.MULTILINE), rf'\1jadpo  {LINE_SHOWN}'),
+            (re.compile(rf'^jadpo {release}$', re.MULTILINE), f'jadpo {RELEASE_SHOWN}')]
+
+
+def with_release_line(source):
+    """A check block's source as it compiles: `jadpo: "X.Y"` names the
+    running line."""
+    if LINE_WRITTEN not in source:
+        return source
+    return source.replace(LINE_WRITTEN, f'jadpo: "{running_release()[0]}"')
+
+
+def normalised(text):
+    """Command output as a page shows it: no run time or clock time, and
+    the running line and release as `X.Y` and `X.Y.Z`."""
+    text = without_run_time(text)
+    for pattern, shown in release_shapes(*running_release()):
+        text = pattern.sub(shown, text)
+    return text
+
+
+def check_release_line(files, line, release, root=ROOT):
+    """No Markdown file writes the running line or release where a page
+    shows one (docs/writing.md, "The release line"): each would stop
+    checking, or go out of date, when the version moves on."""
+    problems = []
+    for path in files:
+        for number, text in enumerate(path.read_text().split('\n'), 1):
+            for pattern, shown in release_shapes(line, release):
+                if pattern.search(text):
+                    problems.append(f'{path.relative_to(root)}:{number}: names this jadpo\'s release, {release}; '
+                                    f'write `{pattern.sub(shown, text).strip()}` (docs/writing.md, "The release line")')
+    return problems
+
+
 def run(args, cwd=None):
     result = subprocess.run(args, cwd=cwd, capture_output=True, text=True)
     return result.returncode, result.stdout + result.stderr
@@ -297,7 +360,8 @@ class Page:
                 n += 1
                 attrs.setdefault('project', f'example-{n}')
                 attrs.setdefault('file', 'main.jadpo')
-                block = {'line': i, 'end': j, 'attrs': attrs, 'source': '\n'.join(lines[i + 1:j]) + '\n'}
+                block = {'line': i, 'end': j, 'attrs': attrs,
+                         'source': with_release_line('\n'.join(lines[i + 1:j]) + '\n')}
                 # An output block may follow, after blank lines.
                 k = j + 1
                 while k < len(lines) and not lines[k].strip():
@@ -449,9 +513,9 @@ class Page:
                     if expected.startswith('test.'):
                         test_code, test_out = jadpo(['test', '.', '--seed', TEST_SEED], cwd=tmp)
                     test_json_code, test_json = jadpo(['test', '.', '--json', '--seed', TEST_SEED], cwd=tmp)
-            out = without_run_time(out.replace(tmp + '/', '').replace(tmp, '.'))
+            out = normalised(out.replace(tmp + '/', '').replace(tmp, '.'))
             if test_out is not None:
-                test_out = without_run_time(test_out)
+                test_out = normalised(test_out)
             return problems, code, out, json_code, json_out, formatted, test_code, test_out, test_json_code, test_json
 
         with ThreadPoolExecutor(WORKERS) as pool:
@@ -1087,7 +1151,7 @@ def run_commands(block, project, home, database=None):
         # (/private/var/folders/... and /var/folders/... on macOS).
         for spelling in sorted({str(path), os.path.realpath(path)}, key=len, reverse=True):
             text = text.replace(spelling + '/', '' if shown == '.' else shown + '/').replace(spelling, shown)
-    text = without_run_time('\n'.join(line.rstrip() for line in text.split('\n')))
+    text = normalised('\n'.join(line.rstrip() for line in text.split('\n')))
     return code, text.strip('\n') + '\n'
 
 
@@ -2355,6 +2419,9 @@ def check_structure(pages, errors, catalogue, commands=(), root=ROOT, learn=(), 
     files = markdown_files(root)
     problems += check_links(files, root)
     problems += check_help_lines(files, catalogue, root)
+    version = re.fullmatch(r'(\d+)\.(\d+)\.\d+\S*', (help_data or {}).get('version', ''))
+    if version:
+        problems += check_release_line(files, f'{version.group(1)}.{version.group(2)}', version.group(0), root)
     return problems
 
 

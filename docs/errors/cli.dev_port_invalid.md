@@ -15,9 +15,7 @@ somewhere you didn't ask for.
 The port is one past the largest:
 
 ```jadpo check project=e-dev-port file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-dev-port expect=cli.dev_port_invalid
