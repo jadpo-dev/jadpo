@@ -546,3 +546,52 @@ fn a_key_of_another_type_isnt_this_calls() {
     ));
     assert!(found.contains(&"type.mismatch".to_string()), "{found:?}");
 }
+
+#[test]
+fn a_key_goes_into_no_field_but_a_key_types() {
+    let found = rules(&format!(
+        "{DEVICE}entity Label {{\n    id: Uuid\n    text: ClinicalNote\n\n    policy: {{\n        create: [Access.public]\n    }}\n}}\n\naction f(device: Device) -> Label {{\n    return Label.create {{\n        set: {{\n            text: device.device_key\n        }}\n    }}\n}}\n"
+    ));
+    assert!(
+        found.contains(&"type.key_as_value".to_string())
+            || found.contains(&"type.mismatch".to_string()),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn the_re_seal_keeps_its_state_where_schedules_do() {
+    let found = support::rules(
+        Layout::Project,
+        &[
+            (
+                "app.jadpo",
+                "application {\n    connections: {\n        first: {\n            driver: Driver.postgres\n            url: config.first_url\n        }\n        second: {\n            driver: Driver.postgres\n            url: config.second_url\n        }\n    }\n    field_encryption_key: config.field_encryption_key\n}\n",
+            ),
+            (
+                "config.jadpo",
+                "config {\n    field_encryption_key: EncryptionKey\n    first_url: PostgresUrl\n    second_url: PostgresUrl\n}\n",
+            ),
+            (
+                "domains/field/entities/device.jadpo",
+                "/// A device.\nentity Device {\n    id: Uuid\n    device_key: EncryptionKey\n\n    store: first\n}\n",
+            ),
+        ],
+    );
+    assert!(
+        found.contains(&"schedule.store_required".to_string()),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn a_sealed_field_is_in_no_list_a_query_tests() {
+    let found = rules(&format!(
+        "{}\nquery with_notes(notes: List<ClinicalNote>) -> List<Consultation> {{\n    from: Consultation\n    where: Consultation.notes in notes\n    order: [Consultation.id asc]\n    limit: 10\n}}\n",
+        consultation(SEALED)
+    ));
+    assert!(
+        found.contains(&"data.encrypted_field_used".to_string()),
+        "{found:?}"
+    );
+}

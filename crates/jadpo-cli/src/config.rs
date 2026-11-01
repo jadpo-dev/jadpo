@@ -998,7 +998,7 @@ fn rotation_command(call: &Call) -> Reply {
             true,
             &ty,
             &ProblemKind::Invalid {
-                rule: "encryption_key".to_string(),
+                rule: "format".to_string(),
             },
         ));
     };

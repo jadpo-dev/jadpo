@@ -1144,11 +1144,12 @@ column, never its bytes. `field_encryption.reseal`
 (`ScheduleRun::Reseal`, `RuntimePlan::reseals`) moves rows sealed with the
 previous key by their identity bytes, each batch one `UPDATE` comparing each
 row's bytes, so a request that changed one since keeps its change, and
-`sealed::standing` counts them for `jadpo config rotation`. No row version or
-`Generated.on_change` field is touched by anything but the row's `UPDATE`
-itself; a call holding the row sees a concurrent change, as for any write.
+`sealed::standing` counts them for `jadpo config rotation`. A move sets no
+`Generated.on_change` field, since nothing in the record changed; an action
+holding the row across an outside call sees a concurrent change, as for any
+write.
 
-What they need of the program comes as `Effects` (the plan's JSON
+What effects need of the program comes as `Effects` (the plan's JSON
 table with the program's validators and shapes, the events' numbers and
 subscribers, and the settings), which the interpreter builds from its plan
 and compiled code holds as statics, and the keys as the program

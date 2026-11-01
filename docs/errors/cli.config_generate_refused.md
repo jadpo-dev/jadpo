@@ -16,9 +16,7 @@ A project that seals with `field_encryption_key`, whose key is already in
 `.env.local`:
 
 ```jadpo check project=e-config-generate file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```jadpo check project=e-config-generate file=config.jadpo hidden

@@ -61,6 +61,11 @@ jadpo config rotation
 ```
 
 ```text output
+error: The database `main` has no table for sealed rows yet
+  reason: `consultation` comes with the project's migrations, so either the database hasn't applied them, or it isn't this project's database.
+  next: Run `jadpo migrate apply` if it is this project's database, then run the command again (human)
+  rule: cli.config_rotation_unavailable
+  help: https://jadpo.dev/docs/errors/cli.config_rotation_unavailable
 ```
 
 `(human)` at the end of the `next:` line tells your coding agent to stop and

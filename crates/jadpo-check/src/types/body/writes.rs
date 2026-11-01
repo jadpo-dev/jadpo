@@ -1015,8 +1015,15 @@ impl Body<'_> {
         let outer = std::mem::replace(&mut self.stored, stored);
         // A key-type field keeps a key held as data sealed (area 19; chunk
         // P9): one of the two places it may go.
-        for (_, member) in &given {
-            if let Some(value) = member.value() {
+        for (name, member) in &given {
+            let target = tree::name_text(name)
+                .and_then(|name| fields.iter().find(|field| field.name == name));
+            if let (Some(target), Some(value)) = (target, member.value())
+                && self
+                    .table
+                    .base_prim(&target.declared)
+                    .is_some_and(|prim| prim.is_key())
+            {
                 self.facts.key_sinks.insert(node_key(value.syntax()));
             }
         }
