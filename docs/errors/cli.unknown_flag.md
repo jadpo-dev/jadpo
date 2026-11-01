@@ -12,7 +12,7 @@ The flag is misspelt:
 
 ```jadpo check project=e-unknown-flag file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

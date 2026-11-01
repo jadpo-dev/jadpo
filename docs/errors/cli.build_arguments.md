@@ -12,7 +12,7 @@ An app that declares no `deployables:` has one, `app`, and the command names `ap
 
 ```jadpo check project=e-build-arguments file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

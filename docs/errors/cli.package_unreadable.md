@@ -20,7 +20,7 @@ links:
 
 ```jadpo check project=e-package-unreadable file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 
