@@ -643,6 +643,7 @@ sees](12-jobs-and-events.md#what-an-operator-sees)).
 | Command | Does |
 |---|---|
 | `jadpo deliveries` | Lists, retries, dismisses, cancels and resolves schedule runs and event deliveries |
+| `jadpo flags` | Lists feature flags; `set`, `reset`, `remove` |
 | `jadpo schedules` | Lists schedules; `run`, `pause`, `resume`, `history` |
 
 ### `jadpo deliveries`
@@ -678,6 +679,51 @@ key, and the one thing to do. `retry <id> --not-done` sends again a step
 that is in doubt or failed, under its next key generation. `abandon <id>`
 gives the run up ([Several changing calls in one
 action](11-integrations.md#several-changing-calls-in-one-action)).
+
+### `jadpo flags`
+
+Changes who gets which value of a feature flag while the app runs, and
+removes a flag from the source
+([Feature flags](16-built-in-services.md#feature-flags)). `flag` is a
+synonym, and it takes `--json`.
+
+- `jadpo flags`, or `list`, is a table of each flag: everyone's value,
+  how many users are named, its shares, the day it last changed and its
+  state: `○ default` for a flag never changed, `● rolling out` while
+  callers get different values, `● true for everyone` once one value
+  holds, and `✓ ready to remove` when it has held for seven days. A
+  footer and, for the first flag ready to remove, its `remove` command
+  follow. It succeeds whatever it lists.
+- `set <flag> [<value>]` changes one part of the state and leaves the
+  rest: with no option, everyone's value; `--users <id>,…` the named
+  users'; `--percent <n>` one share, `0` removing the shares; `--split
+  <value>=<n>,…` a share for each value. A `Bool` flag's value is
+  `true` when an option is given without one. It shows what the flag
+  gave before and gives now, who made the change and that every server
+  has it within ten seconds.
+- `reset <flag>` gives everyone the `default:` again; with `--users` it
+  stops naming those users.
+- `remove <flag> --keep <value>` rewrites the source as if the flag had
+  always held that value, lists every change file by file, and checks
+  the result, undoing it when it doesn't check
+  ([Flags: changed, listed and removed](16-built-in-services.md#flags-changed-listed-and-removed)).
+
+```text
+$ jadpo flags set new_checkout --percent 10
+✓ Set `new_checkout`
+    was       false for everyone (the default)
+    now       true for 10% of users; false (the default) for everyone else
+    logged    sam · role app_owner
+    applies   within 10 s, on every server
+```
+
+Each change writes a row of `jadpo_flag_changes` in the same statement,
+with the operator's name and the database role, as `jadpo deliveries`
+does. The database is `--url`'s, the connection's setting's, or a
+running `jadpo dev`'s; there is no `--env` flag. An unknown action,
+flag, value, user or share is `cli.flags_arguments`, with the nearest,
+and a database it can't read or a flag that changed meanwhile is
+`flags.unavailable`.
 
 ### `jadpo schedules`
 
@@ -2996,6 +3042,7 @@ yet, or that the design notes replace.
 | `cli.dev_start_failed` | `dev` | The app couldn't start under `jadpo dev`, usually because another program is using its port, it has no database to run on, or a connection would call a provider's live API |
 | `cli.email_arguments` | `email` | A `jadpo email` command names an action it doesn't have, or a mail or link the dev inbox doesn't hold |
 | `cli.fix_arguments` | `fix` | A `jadpo fix` command names a declaration with nothing to fix, or a fix it doesn't have |
+| `cli.flags_arguments` | `flags` | A `jadpo flags` command names an action it doesn't have, a flag the project doesn't declare, or a value, user or share the flag can't take |
 | `cli.fmt_arguments` | `fmt` | A `jadpo fmt` command names a path that isn't there or isn't a `.jadpo` file |
 | `cli.help_arguments` | `help` | A `jadpo help` command names more than one command or rule |
 | `cli.incident_arguments` | `incident` | Incident command has invalid arguments |
@@ -3056,6 +3103,7 @@ against one.
 | `deliveries.not_found` | `deliveries` | The id given to `jadpo deliveries` matches no delivery or schedule run in the database |
 | `deliveries.unavailable` | `deliveries` | The app's deliveries couldn't be read from their database, because it can't be reached or has no table for them yet |
 | `deliveries.wrong_state` | `deliveries` | A delivery or schedule run was asked to do something its state rules out, such as cancelling one that has already failed |
+| `flags.unavailable` | `flags` | The flags' state couldn't be read or changed in their database, because it can't be reached, has no table for them yet, or changed while the command ran |
 | `migration.apply_failed` | `migrate apply`, `seed`, `dev`, `test` | Applying the project's migrations to a database stopped at a step that failed |
 | `migration.extension_missing` | `migrate apply`, `seed`, `dev`, `test` | The project's migrations need a PostgreSQL extension, such as pgvector, that the database server doesn't offer or that the role applying them can't create |
 | `migration.extension_outdated` | `migrate apply`, `seed`, `dev`, `test` | The database server's PostgreSQL extension, such as pgvector, is older than the project's migrations and queries need |

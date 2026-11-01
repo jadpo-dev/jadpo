@@ -19,6 +19,7 @@ pub use crate::deliveries::deliveries;
 pub use crate::dev::dev;
 pub use crate::email::email;
 pub use crate::fix::fix;
+pub use crate::flags::flags;
 pub use crate::fmt::fmt;
 use crate::help::{self, VERSION};
 pub use crate::migrate::migrate;

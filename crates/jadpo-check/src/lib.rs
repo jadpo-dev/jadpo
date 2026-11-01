@@ -33,6 +33,7 @@ pub mod erasure;
 pub mod events;
 mod failures;
 pub mod fixes;
+pub mod flag_remove;
 pub mod flags;
 pub mod formatting;
 pub mod graph;
