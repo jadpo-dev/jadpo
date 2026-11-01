@@ -359,6 +359,11 @@ impl Events<'_> {
         if event == jadpo_std::email::MAGIC_LINK_EMAIL {
             return crate::http::magic_links::read_payload(payload);
         }
+        // A file held by no record, whose payload is the runtime's too
+        // (chunk B3).
+        if event == jadpo_std::files::FILE_RELEASED {
+            return crate::files::read_released(payload);
+        }
         // An event sign-in publishes, whose payload is the runtime's too
         // (chunk 7.3b4).
         if let Some(read) = crate::http::sign_in_events::read_payload(event, payload) {

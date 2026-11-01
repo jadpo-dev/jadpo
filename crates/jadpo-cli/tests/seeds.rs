@@ -382,6 +382,9 @@ fn a_seed_that_fails_says_where_and_keeps_what_it_committed() {
     ] {
         assert!(again.stdout.contains(words), "{words}: {}", again.stdout);
     }
+    // The summary gives its time only when it is slow, in seconds.
+    let summary = again.stdout.trim_end().lines().last().unwrap_or_default();
+    assert!(!summary.ends_with(" ms"), "{summary}");
     assert_eq!(staff(&url).len(), 2);
 }
 

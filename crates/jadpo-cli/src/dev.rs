@@ -100,7 +100,13 @@ pub fn dev(call: &Call) -> Reply {
                         format!("`{written}` isn't a port"),
                     )
                     .reason("A port is a whole number from 0 to 65535; 0 lets the system choose a free one.")
-                    .next(format!("Use a port such as `--port {DEFAULT_PORT}`")),
+                    .next(match written.rsplit_once(':') {
+                        // A host and port, `localhost:8080`: the port alone.
+                        Some((_, port)) if port.parse::<u16>().is_ok() => {
+                            format!("Give the port alone: `--port {port}`")
+                        }
+                        _ => format!("Use a port such as `--port {DEFAULT_PORT}`"),
+                    }),
                 );
             }
         },

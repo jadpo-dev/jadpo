@@ -778,15 +778,23 @@ class ErrorFormat(unittest.TestCase):
                 (root / folder).mkdir(parents=True)
             (root / 'docs/learn/01-a.md').write_text('See [it](../errors/a.b.md).\n')
             (root / 'examples/one/README.md').write_text('Shows `c.d`.\n')
-            (root / 'docs/errors/cli.x.md').write_text('# `cli.x`\n\nNo example yet.\n')
-            (root / 'docs/errors/cli.y.md').write_text('# `cli.y`\n\nIt ran.\n')
+            command = docs.COMMAND_AREA
             catalogue = {'a.b': {'area': 3, 'decides': 'agent'}, 'c.d': {'area': 3, 'decides': 'agent'},
                          'e.f': {'area': 3, 'decides': 'human'}, 'g.h': {'area': 3, 'decides': 'agent'},
-                         'cli.x': {'area': docs.COMMAND_AREA, 'decides': 'human'},
-                         'cli.y': {'area': docs.COMMAND_AREA, 'decides': 'agent'}}
-            # The command line's own rules are in scope once their pages
-            # have an example.
-            self.assertEqual(docs.error_format_scope(catalogue, root), {'a.b', 'c.d', 'e.f', 'cli.y'})
+                         'cli.y': {'area': command, 'decides': 'agent'},
+                         'seed.failed': {'area': command, 'decides': 'agent'},
+                         'acceptance.edited': {'area': command, 'decides': 'agent'},
+                         'deployable.empty': {'area': command, 'decides': 'agent'},
+                         'install.in_use': {'area': command, 'decides': 'agent'}}
+            commands = [{'name': 'check', 'rules': ['acceptance.edited']},
+                        {'name': 'seed', 'rules': ['seed.failed']},
+                        {'name': 'package', 'rules': ['install.in_use']}]
+            # The command line's own rules, and every other rule only a
+            # command raises, are in scope, but for the ones waiting for
+            # D13b3c; a rule `jadpo check` raises, or no command lists,
+            # waits for D13c.
+            self.assertEqual(docs.error_format_scope(catalogue, root, commands),
+                             {'a.b', 'c.d', 'e.f', 'cli.y', 'seed.failed'})
 
     def test_the_bundle_gives_the_summary_once(self):
         with tempfile.TemporaryDirectory() as tmp:

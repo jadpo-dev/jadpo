@@ -66,7 +66,7 @@ pub fn calls(call: &Call) -> Reply {
         },
         Some("script") => match (call.arguments.get(1), call.arguments.get(2)) {
             (Some(operation), Some(answer)) if call.arguments.len() == 3 => {
-                script(&root, operation, answer)
+                script(&cwd, &root, operation, answer)
             }
             _ => Reply::failed(arguments(
                 "`jadpo calls script` takes an operation and its next answer".to_string(),
@@ -343,19 +343,14 @@ fn pretty(text: &str) -> Vec<String> {
 
 // --- script -------------------------------------------------------------------
 
-fn script(root: &Path, operation: &str, answer: &str) -> Reply {
+fn script(cwd: &Path, root: &Path, operation: &str, answer: &str) -> Reply {
     let loaded = jadpo_db::load(root);
+    // The operation and its answer are checked against the app's packages,
+    // so a project with errors shows them, as `jadpo check` does.
     let prepared = match jadpo_interp::Prepared::load(&loaded.db, loaded.project) {
         Ok(prepared) => prepared,
-        Err(_) => {
-            return Reply::failed(
-                Diagnostic::new(
-                    &rule::CLI_CALLS_ARGUMENTS,
-                    "The project has errors, so its operations can't be read",
-                )
-                .reason("`jadpo calls script` checks the operation and its answer against the app's packages, which needs the project to check cleanly.")
-                .next("Run `jadpo check`, fix what it reports, then script the answer again"),
-            );
+        Err(problems) => {
+            return crate::migrate::blocked(&loaded, cwd, problems, "calls not scripted");
         }
     };
     // A prompt asked through a package filling `ai` (chunk 5.5v3b).

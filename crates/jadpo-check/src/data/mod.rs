@@ -17,6 +17,7 @@
 
 pub mod backfill;
 mod columns;
+pub mod held;
 
 pub use columns::system_table;
 pub mod lifecycle;
@@ -3014,6 +3015,17 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
             store
                 .tables
                 .insert(system.table.to_string(), columns::system_table(system));
+        }
+    }
+    // The record of which files a store's records hold, beside the
+    // records whose `File` fields hold them (area 16, "Deleting and
+    // erasing"; chunk B3).
+    for store in held::counters(db, project).values() {
+        if let Some(found) = schema.stores.get_mut(store) {
+            found.tables.insert(
+                system::FILES.table.to_string(),
+                columns::system_table(&system::FILES),
+            );
         }
     }
     // Batch runs live in the store each run's query reads, beside the

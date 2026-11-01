@@ -90,6 +90,11 @@ pub(crate) struct Boundary {
     /// Of `versions`, the rows its open transaction checked and locked,
     /// which stay checked while their locks survive, including savepoints.
     checked: BTreeSet<RowKey>,
+    /// Whether its open transaction has updated or deleted a record, which
+    /// may have left a stored file held by none (area 16, "Deleting and
+    /// erasing"; chunk B3): then, in a store keeping the record of held
+    /// files, the commit leaves the events that delete their bytes.
+    releases: bool,
 }
 
 impl Boundary {
@@ -131,6 +136,7 @@ impl Boundary {
             self.store = Some(store.to_string());
             self.generation = self.generation.wrapping_add(1);
             self.wrote = false;
+            self.releases = false;
             self.loaded.clear();
             self.checked.clear();
         }
@@ -245,6 +251,11 @@ impl Boundary {
             }
             _ => Err(StoreError::ConcurrentChange),
         }
+    }
+
+    /// Its open transaction updated or deleted a record.
+    pub(crate) fn may_release(&mut self) {
+        self.releases = true;
     }
 
     /// Whether it has begun its transaction.
@@ -658,6 +669,24 @@ async fn sealed(ctx: &mut Ctx<'_>, outbox: Option<&str>, outcome: Outcome) -> Ou
 pub(crate) async fn seal(ctx: &mut Ctx<'_>, outbox: Option<&str>) -> Result<(), StoreError> {
     // Kept for a rerun after a concurrent change; the runner clears it.
     let handled = ctx.background().handled().cloned();
+    // A stored file its changes left held by none is marked as being
+    // deleted, with the event that deletes its bytes, in the same commit
+    // (area 16, "Deleting and erasing"; chunk B3).
+    let releasing = ctx.boundary().and_then(|boundary| {
+        boundary
+            .store
+            .clone()
+            .filter(|_| boundary.releases && boundary.transaction.is_some())
+    });
+    if let Some(store) = releasing.filter(|store| ctx.started().files().keeps(store)) {
+        let now = crate::steps::wall(ctx);
+        let transaction = ctx.transaction(&store).await?;
+        let released = crate::files::released(transaction, now).await?;
+        if let Some(boundary) = ctx.boundary_mut() {
+            boundary.releases = false;
+            boundary.outbox.extend(released);
+        }
+    }
     let Some(boundary) = ctx.boundary_mut() else {
         return Ok(());
     };

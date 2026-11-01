@@ -18,7 +18,7 @@ use crate::fmt::project_not_found;
 use crate::run::{Call, Reply};
 
 /// Elapsed time joins the summary only when someone would notice it.
-const SHOW_TIME_FROM: Duration = Duration::from_millis(100);
+pub(crate) const SHOW_TIME_FROM: Duration = Duration::from_millis(100);
 
 pub fn check(call: &Call) -> Reply {
     let cwd = call.cwd.clone().unwrap_or_else(|| PathBuf::from("."));

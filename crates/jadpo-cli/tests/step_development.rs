@@ -347,9 +347,12 @@ fn the_tick_raises_the_alert_on_unfinished_records_once() {
     assert_eq!(metric["count"], 1);
     assert_eq!(metric["alert"], true);
 
-    // Abandoned, it is no longer unfinished.
-    let rows = rt
-        .block_on(harness.rows("SELECT replace(\"id\"::text, '-', '') FROM \"jadpo_deliveries\""));
+    // Abandoned, it is no longer unfinished. Its receipt, put a day ago
+    // and held by no record, is being deleted by a delivery of its own
+    // (chunk B3), which isn't this one.
+    let rows = rt.block_on(harness.rows(
+        "SELECT replace(\"id\"::text, '-', '') FROM \"jadpo_deliveries\" WHERE \"subscriber\" <> 'files sheets'",
+    ));
     let id = match rows.as_slice() {
         [row] => match row.as_slice() {
             [jadpo_runtime::SqlValue::Text(id)] => id[24..].to_string(),
