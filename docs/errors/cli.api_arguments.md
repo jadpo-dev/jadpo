@@ -11,9 +11,7 @@ A `jadpo api` command names no action, one it doesn't have, or more than `update
 The action is misspelt:
 
 ```jadpo check project=e-api-arguments file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-api-arguments expect=cli.api_arguments

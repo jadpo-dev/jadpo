@@ -20,9 +20,7 @@ one byte that isn't UTF-8:
 
 ```jadpo check project=e-source-read file=app.jadpo hidden
 // The café's ordering app.
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-source-read expect=toolchain.source_read_failed

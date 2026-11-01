@@ -16,9 +16,7 @@ each reminder, and the type a batch uses to page through loans.
 to write entities.
 
 ```jadpo check project=guide-background-work file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```jadpo check project=guide-background-work file=domains/loans/types/due_time.jadpo hidden

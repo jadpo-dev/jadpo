@@ -19,9 +19,7 @@ The project's folder is read-only, and `access.jadpo_record`, the record
 of who can do what, has to be written again:
 
 ```jadpo check project=e-artifact-write file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```jadpo check project=e-artifact-write file=policy.jadpo hidden

@@ -19,9 +19,7 @@ A project importing Tidepool's API from the YAML its documentation
 links:
 
 ```jadpo check project=e-package-unreadable file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-package-unreadable expect=cli.package_unreadable
