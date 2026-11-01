@@ -11,7 +11,7 @@
 //! written (a comment, a fact outside the kind's list, a layout Jadpo
 //! doesn't write); otherwise the record is out of date, the source having
 //! moved on. Telling a careful hand edit of a fact from a stale record
-//! needs the base commit's build, which comes with `jadpo approval`.
+//! needs `jadpo check` to build the base commit, as `jadpo approval` does.
 //!
 //! A ledger is parsed and compared with its own canonical rewrite: sorted,
 //! one line per entry, each key once, so a `union` merge that left lines

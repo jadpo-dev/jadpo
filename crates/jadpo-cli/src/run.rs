@@ -342,6 +342,8 @@ pub fn spinner(args: &[String], env: &Environment) -> jadpo_term::Spinner {
     let doing = match (command, action.as_deref()) {
         (Some("test"), _) => "Running tests",
         (Some("check"), _) => "Checking",
+        // Checking, then building the before side once per commit (chunk V2).
+        (Some("approval"), _) => "Checking",
         // Checking, writing the Rust, then cargo (chunk 8.1o).
         (Some("build"), _) => "Building",
         // A backfill's batches say how far they have got (chunk 5.6b).

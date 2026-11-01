@@ -373,7 +373,7 @@ pub fn command_json(command: &Command) -> Json {
 }
 
 /// A canonical JSON value from the graph crate as a `--json` value.
-fn from_graph(value: &jadpo_graph::json::Value) -> Json {
+pub(crate) fn from_graph(value: &jadpo_graph::json::Value) -> Json {
     use jadpo_graph::json::Value;
     match value {
         Value::Null => Json::Null,
