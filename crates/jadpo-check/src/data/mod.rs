@@ -3970,7 +3970,40 @@ fn table_of(
             },
         );
     }
+    // When a person was erased (area 15, "The person's own record"; chunk
+    // P4b), after the fields' columns and the searchable words.
+    if entity.keeps_erased() {
+        out.columns.insert(
+            jadpo_std::ERASED_AT.to_string(),
+            physical::Column {
+                position: position + u32::from(entity.search.is_some()),
+                field: None,
+                sql_type: "timestamptz(3)".to_string(),
+                nullable: true,
+                retired: false,
+                allows: None,
+                comment: None,
+                generated: None,
+                sealed: false,
+            },
+        );
+    }
     out
+}
+
+impl EntityModel {
+    /// Whether erasing one of its records keeps it field by field (area
+    /// 15, "The person's own record"; chunk P4b): it is a person, and a
+    /// field of theirs that isn't a reference says `erase:
+    /// Erasure.retained`. Its table then has a column for when each was
+    /// erased ([`jadpo_std::ERASED_AT`]), and a record holding a value is
+    /// hidden.
+    pub fn keeps_erased(&self) -> bool {
+        self.person
+            && self.fields.iter().any(|field| {
+                field.reference.is_none() && field.erase == Some(jadpo_std::Erasure::Retained)
+            })
+    }
 }
 
 /// The field called `name` of `entity`.
@@ -4107,7 +4140,7 @@ pub fn write_rules<'db>(
         fixed: crate::policy::fixed_fields(db, project, &found.name),
         person: found.person,
         audited: found.audit.is_some(),
-        person_owned: crate::persons::persons(db, project).reaches(&found.name),
+        person_owned: crate::erasure::erasures(db, project).reaches(found),
         ..WriteRules::default()
     };
     for field in &found.fields {

@@ -1,22 +1,22 @@
 //! The person and the records that belong to them (area 15, "The person"
-//! and "What the compiler checks"; chunk P1).
+//! and "What the compiler checks"; chunks P1 and P4b).
 //!
 //! - **A person** is an entity marked `person: true`
 //!   ([`crate::data::EntityModel::person`]). An app may have several.
-//! - **A record belongs to a person** when it refers to them, directly or
-//!   through a chain of references: a todo through its `owner_id`, a todo's
-//!   attachment through the todo. A record that refers to two people
-//!   belongs to both, a chain through another person's records goes on
-//!   through them, and one that comes back to an entity it passed ends
-//!   there. [`persons`] finds every one once for the project, for erasure
-//!   and export to reach and the graph's `person` nodes to show.
+//! - **A record belongs to a person** when it refers to them directly: a
+//!   todo through its `owner_id`, and a reply through its `author_id`, not
+//!   through the todo it answers. A record that refers to two people
+//!   belongs to both, and [`persons`] finds every one once for the project,
+//!   for erasure to ask and the graph's `person` nodes to show.
 //! - **No personal data erasure can't reach.** A field marked `personal:`
-//!   on an entity that is no person and belongs to none is
-//!   `data.personal_unreachable` ([`personal_problems`]): erasing or
-//!   exporting a person could never find it. Only `personal:` marks a
-//!   field here, as area 15 defines a marked field; a standard type that is
-//!   personal data whatever holds it (area 19) doesn't make the entity
-//!   holding it a person's, so a shop's own `PhoneNumber` needs none.
+//!   on an entity that erasing a person never reaches is
+//!   `data.personal_unreachable` ([`personal_problems`]): erasure could
+//!   never find it. Erasure reaches a person's records and walks on through
+//!   what it deletes ([`crate::erasure::Erasures::reaches`]), so a todo's
+//!   attachment is found, though it belongs to no one. Only `personal:`
+//!   marks a field here, as area 15 defines a marked field; a standard type
+//!   that is personal data whatever holds it (area 19) doesn't make the
+//!   entity holding it a person's, so a shop's own `PhoneNumber` needs none.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -33,8 +33,8 @@ pub struct Person {
     /// Every other entity whose records belong to the person, by name.
     pub records: BTreeSet<String>,
     /// Each reference a record belongs to the person through, as its
-    /// entity and field: a reference to the person, or to an entity of
-    /// `records`. The person's own references to itself are among them.
+    /// entity and field: a reference to the person. The person's own
+    /// references to itself are among them.
     pub through: BTreeSet<(String, String)>,
 }
 
@@ -42,18 +42,6 @@ pub struct Person {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Persons {
     pub people: BTreeMap<String, Person>,
-}
-
-impl Persons {
-    /// Whether the records of the entity called `entity` are people, or
-    /// belong to one, so erasing and exporting a person can reach them.
-    pub fn reaches(&self, entity: &str) -> bool {
-        self.people.contains_key(entity)
-            || self
-                .people
-                .values()
-                .any(|person| person.records.contains(entity))
-    }
 }
 
 /// Each person entity's records, from the entities without positions, so
@@ -70,37 +58,26 @@ pub fn persons(db: &dyn Db, project: Project) -> Arc<Persons> {
 }
 
 /// The records that belong to the person `person`: every entity with a
-/// reference to it or to one of those already found, until no reference
-/// adds another.
+/// reference to it.
 fn records_of(entities: &[EntityModel], person: &str) -> Person {
-    let mut reached: BTreeSet<&str> = BTreeSet::from([person]);
-    let mut through = BTreeSet::new();
-    loop {
-        let mut grew = false;
-        for entity in entities {
-            for field in &entity.fields {
-                let Some(reference) = &field.reference else {
-                    continue;
-                };
-                if !reached.contains(reference.target.as_str()) {
-                    continue;
-                }
-                grew |= through.insert((entity.name.clone(), field.name.clone()));
-                grew |= reached.insert(entity.name.as_str());
+    let mut out = Person::default();
+    for entity in entities {
+        for field in &entity.fields {
+            if field
+                .reference
+                .as_ref()
+                .is_none_or(|reference| reference.target != person)
+            {
+                continue;
+            }
+            out.through
+                .insert((entity.name.clone(), field.name.clone()));
+            if entity.name != person {
+                out.records.insert(entity.name.clone());
             }
         }
-        if !grew {
-            break;
-        }
     }
-    Person {
-        records: reached
-            .into_iter()
-            .filter(|name| *name != person)
-            .map(str::to_string)
-            .collect(),
-        through,
-    }
+    out
 }
 
 /// Area 15's problems in one file: each entity it declares holding a
@@ -109,7 +86,7 @@ fn records_of(entities: &[EntityModel], person: &str) -> Person {
 #[salsa::tracked(returns(ref))]
 pub fn personal_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     let path = file.path(db);
-    let people = persons(db, project);
+    let erasures = crate::erasure::erasures(db, project);
     let marks = crate::ai_personal::marks(db, project);
     let mut out = Vec::new();
     let mut seen = BTreeSet::new();
@@ -122,7 +99,7 @@ pub fn personal_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagn
         };
         let entity = &read.model;
         // A `person:` written wrongly is reported where it is written.
-        if entity.path != *path || people.reaches(&entity.name) || read.spans.person.is_some() {
+        if entity.path != *path || erasures.reaches(entity) || read.spans.person.is_some() {
             continue;
         }
         let marked: Vec<usize> = entity
@@ -158,7 +135,7 @@ pub fn personal_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagn
         out.push(
             problem
                 .reason(format!(
-                    "Erasing or exporting a person reaches the records that refer to them, directly or through records that do. `{name}` isn't a person (`person: true`), and none of its references leads to one, so nothing could ever erase or export what it holds."
+                    "Erasing a person reaches the records that refer to them, and the records that refer to what it deletes. `{name}` isn't a person (`person: true`), and none of its references leads to a record erasing one deletes, so nothing could ever erase what it holds."
                 ))
                 .next(format!(
                     "Refer to the person `{name}.{field}` is about, or mark `{name}` `person: true` if each record is one"

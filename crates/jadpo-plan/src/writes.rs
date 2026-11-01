@@ -894,46 +894,19 @@ impl Planner<'_> {
                     set.push((changed.born.clone(), now));
                 }
             }
-            // Where the record may belong to another person too, how to
-            // look for one the erasure keeps.
+            // Where the record may belong to another person too, its own
+            // references to one, each asked whether it holds one the erasure
+            // keeps.
             let erased = |entity: &str| erasure.deleted.iter().position(|name| *name == entity);
-            let others = if kept.through.is_empty() || clears.is_empty() {
-                None
-            } else {
-                let mut starts = Vec::new();
-                for (name, owner) in &kept.through {
-                    starts.push(text::Start {
+            let mut others = Vec::new();
+            if !clears.is_empty() {
+                for (name, person) in &kept.through {
+                    others.push(text::Other {
                         column: field(holder, name)?.born.as_str(),
-                        owner: *owner,
-                        erased: erased(&kept.chain.get(*owner)?.entity),
+                        erased: erased(person),
                     });
                 }
-                let mut climbs = Vec::new();
-                for (from, owner) in kept.chain.iter().enumerate() {
-                    let found = model.entity(&owner.entity)?;
-                    for (name, to) in &owner.climbs {
-                        climbs.push(text::Climbed {
-                            from,
-                            table: found.table.as_str(),
-                            column: field(found, name)?.born.as_str(),
-                            to: *to,
-                            erased: erased(&kept.chain.get(*to)?.entity),
-                        });
-                    }
-                }
-                let people = kept
-                    .chain
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, owner)| owner.person)
-                    .map(|(at, _)| at)
-                    .collect();
-                Some(text::Others {
-                    starts,
-                    climbs,
-                    people,
-                })
-            };
+            }
             keeps.push(text::Keeps {
                 table: holder.table.as_str(),
                 deleted: erased(&kept.entity),
@@ -961,6 +934,46 @@ impl Planner<'_> {
                 audited.push((at, born));
             }
         }
+        // A person entity whose field says it stays keeps each record of
+        // its, with every other marked field cleared and the time noted.
+        let now = if erasure.own.is_empty() {
+            None
+        } else {
+            Some(writing.param(WriteSource::Now, SqlType::Timestamp))
+        };
+        let mut own = Vec::new();
+        for kept in &erasure.own {
+            let entity = deleted.get(kept.entity)?;
+            let mut clears = Vec::new();
+            for name in &kept.clears {
+                let cleared = field(entity, name)?;
+                column_type(cleared)?;
+                clears.extend(cleared.columns().into_iter().map(|(column, _)| column));
+            }
+            let now = now.as_deref()?;
+            let mut set = Vec::new();
+            for changed in &entity.fields {
+                if changed.generated == Some(jadpo_std::Generated::OnChange) {
+                    set.push((changed.born.clone(), now.to_string()));
+                }
+            }
+            // What it refers to may go, and it stays.
+            let mut references = Vec::new();
+            let referring = erasure.kept.iter().find(|held| held.entity == entity.name);
+            for reference in referring.iter().flat_map(|held| &held.references) {
+                let column = field(entity, &reference.field)?.born.as_str();
+                if !clears.iter().any(|cleared| cleared == column) {
+                    references.push((column, reference.target));
+                }
+            }
+            own.push(text::Own {
+                entity: kept.entity,
+                clears,
+                references,
+                now,
+                set,
+            });
+        }
         let tables: Vec<&str> = deleted.iter().map(|entity| entity.table.as_str()).collect();
         let by_id = text::equal("id", &id);
         let granted = self.policy(&mut writing, person, Effect::Delete, &Row::Table)?;
@@ -971,6 +984,7 @@ impl Planner<'_> {
             &keeps,
             &signed_in,
             &audited,
+            &own,
         );
         let (sql, unpoliced, policy) = if granted == jadpo_sql::policy::ANYONE {
             (plain, None, None)
@@ -986,6 +1000,7 @@ impl Planner<'_> {
                 &keeps,
                 &signed_in,
                 &audited,
+                &own,
             );
             (
                 sql,

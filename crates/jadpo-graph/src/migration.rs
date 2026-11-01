@@ -1130,6 +1130,34 @@ fn backfill(
             }],
             ..Filled::default()
         },
+        // An entity that stops keeping erased people's records would show
+        // those it holds again as ordinary ones (area 15, "The person's own
+        // record"), so the column retires only with none left: adding the
+        // constraint fails if a record holds a value.
+        (NeededKind::Retire, Some(Decided::Retired)) if column == jadpo_std::ERASED_AT => {
+            let check = crate::schema::object_name(&[table, "holds_no_erased_person"], "check");
+            Filled {
+                now: vec![
+                    Statement {
+                        sql: table::add_condition(
+                            table,
+                            &check,
+                            &jadpo_sql::statement::not_erased(),
+                        ),
+                        does: "check no one erased is kept",
+                    },
+                    Statement {
+                        sql: table::drop_constraint(table, &check),
+                        does: "check no one erased is kept",
+                    },
+                    Statement {
+                        sql: table::drop_not_null(table, column),
+                        does: "retire column",
+                    },
+                ],
+                ..Filled::default()
+            }
+        }
         (NeededKind::Retire, Some(Decided::Retired)) => Filled {
             now: vec![Statement {
                 sql: table::drop_not_null(table, column),

@@ -62,7 +62,12 @@ impl Planner<'_> {
         for line in &query.filter {
             conditions.push(jadpo_sql::condition(&mut statement, entity, line, false)?);
         }
-        conditions.extend(self.access(&mut statement, entity, Reach::Read)?);
+        let reach = if query.include_erased {
+            Reach::Erased
+        } else {
+            Reach::Read
+        };
+        conditions.extend(self.access(&mut statement, entity, reach)?);
         let policy = self.policy(&mut statement, entity, Effect::Read, &Row::Table)?;
         let limit = match &query.limit {
             Some(Bound::Literal(n)) => Some(n.to_string()),

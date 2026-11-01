@@ -1,11 +1,11 @@
 # `data.personal_unreachable`
 
-A field marked as personal data is on an entity that isn't a person and doesn't refer to one, so erasing a person could never find it.
+A field marked as personal data is on an entity erasing a person never reaches, so it could never be found.
 
 ## Why Jadpo refuses it
 
-Erasing a person, and exporting what is held about them, reach the
-records that refer to them, directly or through records that do. Here a
+Erasing a person reaches the records that refer to them, and the records
+that refer to what it deletes, never past a record it keeps. Here a
 `LossReport` holds a passenger's name and email, both marked
 `personal:`, but it isn't a person and refers to no one. A passenger who
 asked to be forgotten would stay in every report they made. Taking
@@ -44,7 +44,7 @@ error: Erasing a person can't find `LossReport.passenger_name`
    |     ^^^^^^^^^^^^^^ personal data that belongs to no person
 11 |     passenger_email: Email {
    |     --------------- personal data too
-  reason: Erasing or exporting a person reaches the records that refer to them, directly or through records that do. `LossReport` isn't a person (`person: true`), and none of its references leads to one, so nothing could ever erase or export what it holds.
+  reason: Erasing a person reaches the records that refer to them, and the records that refer to what it deletes. `LossReport` isn't a person (`person: true`), and none of its references leads to a record erasing one deletes, so nothing could ever erase what it holds.
   next: Refer to the person `LossReport.passenger_name` is about, or mark `LossReport` `person: true` if each record is one (human)
   rule: data.personal_unreachable
   help: https://jadpo.dev/docs/errors/data.personal_unreachable

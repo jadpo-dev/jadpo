@@ -353,6 +353,16 @@ pub fn drop_constraint(table: &str, name: &str) -> String {
     )
 }
 
+/// Adds the constraint `name` holding each row of `table` to `condition`,
+/// which fails if a row doesn't meet it.
+pub fn add_condition(table: &str, name: &str, condition: &str) -> String {
+    format!(
+        "ALTER TABLE {} ADD CONSTRAINT {} CHECK ({condition})",
+        ident(table),
+        ident(name)
+    )
+}
+
 /// Drops the index `name`.
 pub fn drop_index(name: &str) -> String {
     format!("DROP INDEX {}", ident(name))

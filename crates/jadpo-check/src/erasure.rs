@@ -10,13 +10,14 @@
 //!   to be forgotten can't be refused the way an ordinary delete is.
 //!   `Erasure.retained` keeps the record as it is, clearing only the
 //!   reference, until its own retention ends.
-//! - **Erasing one person never clears another's data** (chunk P4; area
-//!   15's notes, "Records that belong to more than one person"). A record
-//!   that belongs to several people keeps its marked fields while any
-//!   other of them remains: erasure clears only the erased person's
-//!   references, and the marked fields once none of the record's other
-//!   references leads to a person it keeps ([`Kept::through`]). Another
-//!   person's own record loses only the reference, never its fields.
+//! - **Erasing one person never clears another's data** (chunks P4 and
+//!   P4b; area 15's notes, "Records that belong to more than one person").
+//!   A record belongs to the people it refers to directly, and keeps its
+//!   marked fields while any other of them remains: erasure clears only
+//!   the erased person's references, and the marked fields once none of
+//!   the record's own references to a person holds one it keeps
+//!   ([`Kept::through`]). Another person's own record loses only the
+//!   reference, never its fields.
 //! - **What erasing one person reaches** ([`erasures`]): the person's own
 //!   record, and every record a reference with the outcome
 //!   `Erasure.deleted` leads to from one erasure deletes, however deep;
@@ -33,17 +34,23 @@
 //!   and clears, counted by area 16's trigger like any other change
 //!   (chunk B3). Every record erasure reaches is in the person's store,
 //!   since no reference crosses stores.
-//! - **What isn't built yet** is refused, so no erasure is ever partial:
-//!   keeping an audited record, whose history would still hold the
-//!   reference, where `User.erase` is called, and the person's own record
-//!   kept field by field, with `erase:` on its own fields, where that is
-//!   written.
+//! - **The person's own record** (chunk P4b) is kept field by field when a
+//!   field of theirs that isn't a reference says `erase: Erasure.retained`
+//!   ([`Erasure::own`]): every other marked field is cleared, the time is
+//!   noted in the column [`jadpo_std::ERASED_AT`] names, and the record is
+//!   hidden like one a lifecycle hides, until the entity's `retention:`
+//!   ends it. Only a query saying `include_erased: true` finds it
+//!   (`data::queries`).
+//! - **What isn't built yet** is refused where `User.erase` is called, so
+//!   no erasure is ever partial: keeping an audited record, whose history
+//!   would still hold what erasure clears.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use jadpo_db::{Db, File, ItemKind, Project, item_tree};
 use jadpo_diag::{Diagnostic, Span, rule};
+use jadpo_std::http::PrincipalKind;
 use jadpo_std::{Erasure as Outcome, OnDelete};
 
 use crate::data::{DataModel, EntityModel, FieldModel, data_model, entity_read};
@@ -53,7 +60,8 @@ use crate::lookups::Name;
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Erasure {
     /// The entities whose records it deletes, the person's own first. A
-    /// record's place here is the number its entity is tagged with.
+    /// record's place here is the number its entity is tagged with. Those
+    /// [`Erasure::own`] names keep their records field by field instead.
     pub deleted: Vec<String>,
     /// Each reference it follows from a record it deletes to the records
     /// referring to it, which it deletes too.
@@ -61,6 +69,13 @@ pub struct Erasure {
     /// Each entity whose records it keeps while they refer to a record it
     /// deletes, with what it clears on them.
     pub kept: Vec<Kept>,
+    /// Each person entity it reaches that keeps its records field by field
+    /// rather than deleting them.
+    pub own: Vec<Own>,
+    /// Every entity whose records it deletes, or would once each
+    /// `restricted` reference that doesn't say has answered
+    /// `data.erase_required`: what it can find.
+    pub reach: BTreeSet<String>,
     /// What it would reach that isn't built yet, each as the end of a
     /// sentence saying why: what refuses `User.erase` where it is called.
     pub unbuilt: Vec<String>,
@@ -90,30 +105,23 @@ pub struct Kept {
     /// other person the record belongs to remains. None on another
     /// person's own record, whose fields are that person's.
     pub clears: Vec<String>,
-    /// Each of its references that leads to a person, in field order,
-    /// with the place in [`Kept::chain`] of the entity it refers to,
-    /// when it has more than one: a record keeps its marked fields while
-    /// one of them still leads, from a record erasure keeps, to a person
-    /// it keeps. Empty when the record can belong to a person only through
-    /// one reference, which is the one erasure clears.
-    pub through: Vec<(String, usize)>,
-    /// The entities looked through for another person, from those
-    /// [`Kept::through`] refers to.
-    pub chain: Vec<Owner>,
+    /// Each of its own references to a person, in field order, with the
+    /// person's entity: a record keeps its marked fields while one of them
+    /// holds a person the erasure keeps. Empty when the record refers to no
+    /// person, or only through the one reference erasure clears.
+    pub through: Vec<(String, String)>,
 }
 
-/// An entity erasure looks through for another person a kept record
-/// belongs to.
+/// A person entity whose records erasure keeps field by field (area 15,
+/// "The person's own record"; chunk P4b).
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Owner {
-    pub entity: String,
-    /// Whether it is a person entity: a record of it is a person, which
-    /// ends the search.
-    pub person: bool,
-    /// On an entity that isn't a person, each of its references that
-    /// leads to one, with the place in [`Kept::chain`] of the entity it
-    /// refers to.
-    pub climbs: Vec<(String, usize)>,
+pub struct Own {
+    /// The place, in [`Erasure::deleted`], of the entity.
+    pub entity: usize,
+    /// The fields that say `erase: Erasure.retained`, in field order.
+    pub retained: Vec<String>,
+    /// Every other marked field, in field order, which it clears.
+    pub clears: Vec<String>,
 }
 
 /// One reference of a kept entity.
@@ -157,6 +165,28 @@ impl Erasures {
             .find(|(_, erasure)| erasure.deleted.iter().any(|name| name == entity))
             .map(|(person, _)| person.as_str())
     }
+
+    /// Whether erasing a person can find the records of `entity`: it is a
+    /// person, erasure deletes its records, or it refers to a record
+    /// erasure deletes, whatever erasure then does to it. A record past one
+    /// erasure keeps is out of reach.
+    pub fn reaches(&self, entity: &EntityModel) -> bool {
+        self.finds(&entity.name)
+            || entity.fields.iter().any(|field| {
+                field
+                    .reference
+                    .as_ref()
+                    .is_some_and(|reference| self.finds(&reference.target))
+            })
+    }
+
+    /// Whether an erasure deletes records of the entity called `name`, or
+    /// would once each `restricted` reference that doesn't say has answered.
+    fn finds(&self, name: &str) -> bool {
+        self.people
+            .values()
+            .any(|erasure| erasure.reach.contains(name))
+    }
 }
 
 /// What erasing each person entity does, worked out once for the project
@@ -171,7 +201,6 @@ pub fn erasures(db: &dyn Db, project: Project) -> Arc<Erasures> {
             .get(&(entity.to_string(), field.to_string()))
             .is_some_and(|mark| mark.category.is_some())
     };
-    let persons = crate::persons::persons(db, project);
     let people = model
         .entities
         .iter()
@@ -179,7 +208,7 @@ pub fn erasures(db: &dyn Db, project: Project) -> Arc<Erasures> {
         .map(|person| {
             (
                 person.name.clone(),
-                erasure_of(model, persons, &person.name, &marked),
+                erasure_of(model, &person.name, &marked),
             )
         })
         .collect();
@@ -187,14 +216,10 @@ pub fn erasures(db: &dyn Db, project: Project) -> Arc<Erasures> {
 }
 
 /// What erasing one record of `person` does.
-fn erasure_of(
-    model: &DataModel,
-    persons: &crate::persons::Persons,
-    person: &str,
-    marked: &dyn Fn(&str, &str) -> bool,
-) -> Erasure {
+fn erasure_of(model: &DataModel, person: &str, marked: &dyn Fn(&str, &str) -> bool) -> Erasure {
     let mut out = Erasure {
         deleted: vec![person.to_string()],
+        reach: reach_of(model, person),
         ..Erasure::default()
     };
     let mut kept: BTreeMap<String, Vec<KeptReference>> = BTreeMap::new();
@@ -271,98 +296,114 @@ fn erasure_of(
                 clears.push(field.name.clone());
             }
         }
-        let (through, chain) = if clears.is_empty() {
-            (Vec::new(), Vec::new())
+        let through = if clears.is_empty() {
+            Vec::new()
         } else {
-            chain_of(model, persons, entity)
+            people_of(model, entity, &references)
         };
         out.kept.push(Kept {
             entity: name,
             references,
             clears,
             through,
-            chain,
+        });
+    }
+    // A person entity whose field says it stays keeps each record of its
+    // field by field, and its history would still hold what that clears.
+    for (at, name) in out.deleted.iter().enumerate() {
+        let Some(entity) = model.entity(name) else {
+            continue;
+        };
+        if !entity.keeps_erased() {
+            continue;
+        }
+        if entity.audit.is_some() {
+            out.unbuilt.push(format!(
+                "erasing a `{person}` keeps each `{name}` it reaches field by field, and the history its `audit:` keeps would still hold what that clears"
+            ));
+        }
+        let retained = |field: &FieldModel| {
+            field.reference.is_none() && field.erase == Some(Outcome::Retained)
+        };
+        out.own.push(Own {
+            entity: at,
+            retained: entity
+                .fields
+                .iter()
+                .filter(|field| retained(field))
+                .map(|field| field.name.clone())
+                .collect(),
+            clears: entity
+                .fields
+                .iter()
+                .filter(|field| !retained(field) && marked(name, &field.name))
+                .map(|field| field.name.clone())
+                .collect(),
         });
     }
     out
 }
 
-/// The references of `entity`, a record of which erasure would clear,
-/// through which it may belong to another person, and the entities they
-/// lead through, each once: every reference to a person entity or to one
-/// whose records belong to one, climbing from each entity that isn't a
-/// person by its own such references. None when only one reference can
-/// lead to a person, since a record erasure clears is linked to the
-/// erased person through that one.
-fn chain_of(
-    model: &DataModel,
-    persons: &crate::persons::Persons,
-    entity: &EntityModel,
-) -> (Vec<(String, usize)>, Vec<Owner>) {
-    let leading = |entity: &EntityModel| -> Vec<(String, String)> {
-        entity
-            .fields
-            .iter()
-            .filter_map(|field| {
-                let reference = field.reference.as_ref()?;
-                persons
-                    .reaches(&reference.target)
-                    .then(|| (field.name.clone(), reference.target.clone()))
-            })
-            .collect()
-    };
-    let starts = leading(entity);
-    if starts.len() < 2 {
-        return (Vec::new(), Vec::new());
-    }
-    let mut chain: Vec<Owner> = Vec::new();
-    let place = |chain: &mut Vec<Owner>, target: &str| -> usize {
-        if let Some(at) = chain.iter().position(|owner| owner.entity == target) {
-            return at;
+/// Every entity whose records erasing `person` deletes, counting a
+/// `restricted` reference that doesn't say as one that deletes, so one
+/// missing `erase:` is reported once and not again for all that lies past it.
+fn reach_of(model: &DataModel, person: &str) -> BTreeSet<String> {
+    let mut reach = BTreeSet::from([person.to_string()]);
+    loop {
+        let mut grew = false;
+        for holder in &model.entities {
+            let deletes = holder.fields.iter().any(|field| {
+                field
+                    .reference
+                    .as_ref()
+                    .is_some_and(|reference| reach.contains(&reference.target))
+                    && matches!(outcome(field), None | Some(Outcome::Deleted))
+            });
+            if deletes {
+                grew |= reach.insert(holder.name.clone());
+            }
         }
-        chain.push(Owner {
-            entity: target.to_string(),
-            person: model.entity(target).is_some_and(|found| found.person),
-            climbs: Vec::new(),
-        });
-        chain.len() - 1
-    };
-    let through: Vec<(String, usize)> = starts
-        .into_iter()
-        .map(|(field, target)| {
-            let at = place(&mut chain, &target);
-            (field, at)
+        if !grew {
+            return reach;
+        }
+    }
+}
+
+/// The people a record of `entity`, which erasure clears through
+/// `cleared`, belongs to: its own references to a person entity. None
+/// when it has no such reference, or when the only one is the only
+/// reference erasure clears, since a record it clears has lost that person.
+fn people_of(
+    model: &DataModel,
+    entity: &EntityModel,
+    cleared: &[KeptReference],
+) -> Vec<(String, String)> {
+    let people: Vec<(String, String)> = entity
+        .fields
+        .iter()
+        .filter_map(|field| {
+            let reference = field.reference.as_ref()?;
+            model
+                .entity(&reference.target)
+                .is_some_and(|target| target.person)
+                .then(|| (field.name.clone(), reference.target.clone()))
         })
         .collect();
-    let mut at = 0;
-    while at < chain.len() {
-        if !chain[at].person
-            && let Some(found) = model.entity(&chain[at].entity)
-        {
-            let climbs: Vec<(String, usize)> = leading(found)
-                .into_iter()
-                .map(|(field, target)| {
-                    let to = place(&mut chain, &target);
-                    (field, to)
-                })
-                .collect();
-            chain[at].climbs = climbs;
-        }
-        at += 1;
+    match (people.as_slice(), cleared) {
+        ([(only, _)], [one]) if *only == one.field => Vec::new(),
+        _ => people,
     }
-    (through, chain)
 }
 
 /// Area 15's erasure problems in one file, for each entity it declares:
-/// an `erase:` that erasure never reaches, the person's own field's
-/// `erase:` (not built yet), a `restricted` reference into records
+/// an `erase:` that erasure never reaches, a person's own field's `erase:`
+/// that says something it can't, a `restricted` reference into records
 /// erasure deletes with no `erase:`, a field erasure clears that can't be
 /// `none`, and a record kept with `Erasure.retained` that has no
 /// `retention:`.
 #[salsa::tracked(returns(ref))]
 pub fn erasure_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     let path = file.path(db);
-    let people = crate::persons::persons(db, project);
     let erasures = erasures(db, project);
     let marks = crate::ai_personal::marks(db, project);
     let mut out = Vec::new();
@@ -384,6 +425,20 @@ pub fn erasure_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
                 .get(&(entity.name.clone(), field.to_string()))
                 .is_some_and(|mark| mark.category.is_some())
         };
+        let identity = crate::identity::identity(db, project);
+        let subject = |field: &str| {
+            [PrincipalKind::User, PrincipalKind::Service]
+                .into_iter()
+                .filter_map(|kind| identity.variant(kind))
+                .any(|variant| variant.entity == entity.name && variant.subject == field)
+        };
+        out.extend(own_record_problems(
+            entity,
+            &read.spans,
+            erasures,
+            &marked,
+            &subject,
+        ));
         // Each marked field reported once, however many references
         // anonymise the record.
         let mut cleared: BTreeSet<String> = BTreeSet::new();
@@ -397,8 +452,12 @@ pub fn erasure_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
                 .iter()
                 .find(|(name, ..)| *name == field.name)
                 .map(|(_, key, value)| (key.clone(), value.clone()));
-            if let (Some(erase), Some((key, _))) = (field.erase, &written)
-                && let Some(problem) = unreached(entity, field, erase, key, people)
+            if entity.person && field.reference.is_none() {
+                // A person's own field, read above.
+                continue;
+            }
+            if let (Some(_), Some((key, _))) = (field.erase, &written)
+                && let Some(problem) = unreached(entity, field, key, erasures)
             {
                 out.push(problem);
                 continue;
@@ -464,42 +523,26 @@ pub fn erasure_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
     out
 }
 
-/// `entity.field`'s `erase:` when erasure never reaches the field: one
-/// that isn't a reference, or refers to records belonging to no person.
-/// On a person's own field it is the person's own record kept field by
-/// field, which isn't built yet.
+/// `entity.field`'s `erase:` when erasure never reads it: on a field that
+/// isn't a reference, or on a reference to records erasing a person never
+/// deletes.
 fn unreached(
     entity: &EntityModel,
     field: &FieldModel,
-    erase: Outcome,
     key: &Span,
-    people: &crate::persons::Persons,
+    erasures: &Erasures,
 ) -> Option<Diagnostic> {
     let (name, field_name) = (&entity.name, &field.name);
     let target = field.reference.as_ref().map(|r| r.target.as_str());
-    if target.is_some_and(|target| people.reaches(target)) {
+    if target.is_some_and(|target| erasures.finds(target)) {
         return None;
-    }
-    if entity.person {
-        return Some(
-            Diagnostic::new(
-                &rule::TOOLCHAIN_NOT_BUILT_YET,
-                format!("Keeping `{name}.{field_name}` when a `{name}` is erased isn't built yet"),
-            )
-            .at(key.clone(), "decided, not built")
-            .reason(format!(
-                "`erase: Erasure.{}` on a person's own field keeps their record field by field when they are erased, which isn't built yet: erasing a `{name}` deletes their whole record. Accepted, the app would believe `{field_name}` is kept when it is deleted.",
-                erase.name()
-            ))
-            .next(format!("Leave `erase:` off `{field_name}` for now")),
-        );
     }
     let (title, label, reason) = match (&field.reference, target) {
         (Some(_), Some(target)) => (
             format!("Erasing a person never reaches `{name}.{field_name}`"),
-            format!("`{target}` belongs to no person"),
+            format!("erasing a person never deletes a `{target}`"),
             format!(
-                "`erase:` says what erasing a person does to a `{name}` when erasure deletes the `{target}` it refers to. `{target}` isn't a person (`person: true`) and none of its references leads to one, so erasure never deletes one."
+                "`erase:` says what erasing a person does to a `{name}` when erasure deletes the `{target}` it refers to. Erasure deletes a person's record and what its references say goes with it, and a `{target}` isn't either, so it never deletes one."
             ),
         ),
         _ => (
@@ -517,6 +560,203 @@ fn unreached(
             .reason(reason)
             .next(format!("Remove `erase:` from `{field_name}`")),
     )
+}
+
+/// What a person entity's own fields say about keeping its record (area
+/// 15, "The person's own record"; chunk P4b): each `erase:` on a field
+/// that isn't a reference says `Erasure.retained`, on a marked field; and
+/// an entity that keeps its records has a `retention:` saying when they
+/// go, a column free for when they were erased, no reference that deletes
+/// them with another entity's records, and every other marked field able
+/// to be `none`.
+fn own_record_problems(
+    entity: &EntityModel,
+    spans: &crate::data::EntitySpans,
+    erasures: &Erasures,
+    marked: &dyn Fn(&str) -> bool,
+    subject: &dyn Fn(&str) -> bool,
+) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    if !entity.person {
+        return out;
+    }
+    let name = &entity.name;
+    let one = words(name);
+    let written = |field: &str| {
+        spans
+            .field_erasures
+            .iter()
+            .find(|(written, ..)| written == field)
+    };
+    for field in entity.fields.iter().filter(|f| f.reference.is_none()) {
+        let (Some(erase), Some((_, key, _))) = (field.erase, written(&field.name)) else {
+            continue;
+        };
+        let field_name = &field.name;
+        if erase != Outcome::Retained {
+            out.push(
+                Diagnostic::new(
+                    &rule::DATA_ERASE_OWN_FIELD,
+                    format!(
+                        "`{name}.{field_name}` is the person's own field, so only `Erasure.retained` means anything on it"
+                    ),
+                )
+                .at(key.clone(), format!("`Erasure.{}`", erase.name()))
+                .reason(format!(
+                    "On a field of the person's own record, `erase:` says one thing: this field stays when they are erased. Every other marked field is cleared, and the record is deleted when nothing stays, so `Erasure.{}` says nothing a `{name}` doesn't already do.",
+                    erase.name()
+                ))
+                .next(format!(
+                    "Remove `erase:` from `{field_name}`, or say `erase: Erasure.retained` if the law makes you keep it"
+                )),
+            );
+        } else if !marked(field_name) {
+            out.push(
+                Diagnostic::new(
+                    &rule::DATA_ERASE_OWN_FIELD,
+                    format!(
+                        "`{name}.{field_name}` isn't marked `personal:`, so it stays without saying `erase:`"
+                    ),
+                )
+                .at(key.clone(), "not marked")
+                .reason(format!(
+                    "Erasing a `{name}` clears the fields marked `personal:`, and leaves the others, so `erase: Erasure.retained` on `{field_name}` keeps nothing that wouldn't stay, and would keep the person's record for no reason."
+                ))
+                .next(format!(
+                    "Mark `{field_name}` `personal:` if it is about the person, or remove `erase:`"
+                )),
+            );
+        }
+    }
+    if !entity.keeps_erased() {
+        return out;
+    }
+    let first = entity
+        .fields
+        .iter()
+        .find(|field| field.reference.is_none() && field.erase == Some(Outcome::Retained));
+    let (Some(first), Some(at)) = (
+        first,
+        first
+            .and_then(|field| written(&field.name))
+            .map(|(.., value)| value),
+    ) else {
+        return out;
+    };
+    let first_name = &first.name;
+    if entity.retention.is_none() {
+        out.push(
+            Diagnostic::new(
+                &rule::DATA_ERASE_RETENTION_REQUIRED,
+                format!(
+                    "`{name}` has no retention, so what {} {one}'s record keeps after erasure would never go",
+                    an_or_a(&one)
+                ),
+            )
+            .at(at.clone(), "keeps the record field by field")
+            .reason(format!(
+                "`Erasure.retained` on `{first_name}` keeps each {one}'s record when they are erased, for a reason the law gives, until its retention ends. `{name}` has no `retention:`, so it would be kept for ever."
+            ))
+            .next(format!(
+                "Give `{name}` a `retention: {{ after: config.<setting> since: <field> }}` saying how long it is kept, or remove `erase:` from `{first_name}`"
+            )),
+        );
+    }
+    // A reference that deletes the record when someone else's records go
+    // would take what must stay. One to its own entity only ever reaches
+    // someone else this erases field by field too.
+    for (index, field) in entity.fields.iter().enumerate() {
+        let Some(reference) = &field.reference else {
+            continue;
+        };
+        if reference.target == *name
+            || outcome(field) != Some(Outcome::Deleted)
+            || !erasures.finds(&reference.target)
+        {
+            continue;
+        }
+        let Some(span) = spans.fields.get(index) else {
+            continue;
+        };
+        let (field_name, target) = (&field.name, &reference.target);
+        out.push(
+            Diagnostic::new(
+                &rule::DATA_ERASE_OWN_FIELD,
+                format!(
+                    "`{name}.{field_name}` deletes a `{name}` that `{name}.{first_name}` says stays"
+                ),
+            )
+            .at(span.clone(), format!("erasure deletes the `{name}` with its `{target}`"))
+            .also(at.clone(), "keeps the record")
+            .reason(format!(
+                "`Erasure.retained` on `{first_name}` keeps each {one}'s record, because the law makes you keep it, and `{field_name}` deletes that record when erasure deletes the `{target}` it refers to."
+            ))
+            .next(format!(
+                "Say `erase: Erasure.anonymised` on `{field_name}`, or remove `erase:` from `{first_name}`"
+            )),
+        );
+    }
+    for (index, field) in entity.fields.iter().enumerate() {
+        if field.reference.is_none() && field.erase == Some(Outcome::Retained) {
+            continue;
+        }
+        if field.nullable || !marked(&field.name) {
+            continue;
+        }
+        let Some(span) = spans.fields.get(index) else {
+            continue;
+        };
+        let (field_name, ty) = (&field.name, field.ty.strip_nullable());
+        out.push(
+            Diagnostic::new(
+                &rule::DATA_ERASE_FIELD_REQUIRED,
+                format!("Erasing a `{name}` can't clear `{name}.{field_name}`"),
+            )
+            .at(span.clone(), "personal data that can't be `none`")
+            .also(at.clone(), "keeps the record without the person")
+            .reason(format!(
+                "`Erasure.retained` on `{first_name}` keeps each {one}'s record when they are erased, clearing every other marked field. `{field_name}` is marked `personal:`, and only an optional field (`{ty}?`) can be cleared{}.",
+                if subject(field_name) {
+                    format!(", which what a {one} signs in with can't be")
+                } else {
+                    String::new()
+                }
+            ))
+            .next(if subject(field_name) {
+                format!(
+                    "Sign in with a field that holds nothing personal, or say `erase: Erasure.retained` on `{field_name}` if the law makes you keep it too"
+                )
+            } else {
+                format!(
+                    "Make `{field_name}` `{ty}?`, or say `erase: Erasure.retained` on it if the law makes you keep it too"
+                )
+            }),
+        );
+    }
+    if let Some((index, field)) = entity
+        .fields
+        .iter()
+        .enumerate()
+        .find(|(_, field)| field.born == jadpo_std::ERASED_AT)
+        && let Some(span) = spans.fields.get(index)
+    {
+        out.push(
+            Diagnostic::new(
+                &rule::DATA_ERASE_OWN_FIELD,
+                format!(
+                    "`{name}` has a field `{}`, the column it keeps the time someone was erased in",
+                    field.name
+                ),
+            )
+            .at(span.clone(), "the erasure's column")
+            .reason(format!(
+                "An entity that keeps a person's record after they are erased notes the time in a column called `{}`, so no field may be stored under that name.",
+                jadpo_std::ERASED_AT
+            ))
+            .next(format!("Rename `{}`", field.name)),
+        );
+    }
+    out
 }
 
 /// `data.erase_required`: a `restricted` reference into records erasing
