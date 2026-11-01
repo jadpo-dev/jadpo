@@ -984,9 +984,8 @@ fn rotation_command(call: &Call) -> Reply {
         ));
     };
     let previous = layered.variable(&previous_variable);
-    let Some(ring) =
-        jadpo_value::crypto::KeyRing::from_key_text(&current, previous.as_deref())
-            .and_then(|ring| jadpo_runtime::sealed::field_ring(&ring).ok())
+    let Some(ring) = jadpo_value::crypto::KeyRing::from_key_text(&current, previous.as_deref())
+        .and_then(|ring| jadpo_runtime::sealed::field_ring(&ring).ok())
     else {
         let wrong = if jadpo_std::decode_key(&current).is_none() {
             &variable
@@ -1014,10 +1013,7 @@ fn rotation_command(call: &Call) -> Reply {
     let runtime = match jadpo_host_native::Runtime::new() {
         Ok(runtime) => runtime,
         Err(error) => {
-            return unavailable(
-                "main",
-                &jadpo_runtime::StoreError::Fault(error.to_string()),
-            );
+            return unavailable("main", &jadpo_runtime::StoreError::Fault(error.to_string()));
         }
     };
     let mut standing = Vec::with_capacity(reseals.len());
@@ -1049,7 +1045,11 @@ fn rotation_command(call: &Call) -> Reply {
 }
 
 /// The table and the verdict of `jadpo config rotation`.
-fn rotation_screen(standing: &[jadpo_runtime::sealed::Rotation], variable: &str, set: bool) -> Reply {
+fn rotation_screen(
+    standing: &[jadpo_runtime::sealed::Rotation],
+    variable: &str,
+    set: bool,
+) -> Reply {
     use jadpo_term::{Cell, Table};
     let mut table = Table::new(["field", "rows", "current", "previous", "neither"])
         .right(1)
@@ -1086,10 +1086,7 @@ fn rotation_screen(standing: &[jadpo_runtime::sealed::Rotation], variable: &str,
         screen.push(Block::summary(
             Outcome::Failure,
             "Rows no key opens",
-            [
-                Fact::problem(rows_word(neither)),
-                Fact::plain(fields),
-            ],
+            [Fact::problem(rows_word(neither)), Fact::plain(fields)],
         ));
         screen.push(Block::hint(
             "jadpo config check".to_string(),
@@ -1105,17 +1102,17 @@ fn rotation_screen(standing: &[jadpo_runtime::sealed::Rotation], variable: &str,
             ],
         ));
         screen.push(Block::hint(
-            format!("jadpo schedules run {}", jadpo_check::schedules::RESEAL_SCHEDULE),
+            format!(
+                "jadpo schedules run {}",
+                jadpo_check::schedules::RESEAL_SCHEDULE
+            ),
             "moves the next batches now",
         ));
     } else if can_go {
         screen.push(Block::summary(
             Outcome::Success,
             format!("{variable} can go"),
-            [
-                Fact::plain("no row is sealed with it"),
-                Fact::plain(fields),
-            ],
+            [Fact::plain("no row is sealed with it"), Fact::plain(fields)],
         ));
     } else {
         screen.push(Block::summary(

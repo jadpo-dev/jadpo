@@ -614,8 +614,9 @@ fn checked(
     for operand in &check.args {
         args.push(match operand {
             Operand::Column(at) => {
-                let value = stored_value(row, &select.columns, &select.held, *at, env.json, env.ring)
-                    .map_err(Problem::Defect)?;
+                let value =
+                    stored_value(row, &select.columns, &select.held, *at, env.json, env.ring)
+                        .map_err(Problem::Defect)?;
                 if value == Value::None {
                     return Ok(None);
                 }
@@ -727,8 +728,10 @@ fn record(
     let mut fields = Vec::with_capacity(shape.fields.len());
     for (name, field) in &shape.fields {
         let value = match field {
-            Field::Column(at) => stored_value(row, &select.columns, &select.held, *at, env.json, env.ring)
-                .map_err(Problem::Defect)?,
+            Field::Column(at) => {
+                stored_value(row, &select.columns, &select.held, *at, env.json, env.ring)
+                    .map_err(Problem::Defect)?
+            }
             Field::Record(inner) => record(inner, row, select, found, env)?,
             Field::Include(at) => {
                 let (Some(include), Some(matched)) =
@@ -1698,11 +1701,25 @@ mod tests {
         assert!(!why.contains("77"), "{why}");
         assert_eq!(read(77, 1), Ok(Value::Int(77)), "no rules of its own");
         assert_eq!(
-            stored_value(&[SqlValue::Null(SqlType::Int8)], &columns, &held, 0, json, None),
+            stored_value(
+                &[SqlValue::Null(SqlType::Int8)],
+                &columns,
+                &held,
+                0,
+                json,
+                None
+            ),
             Ok(Value::None)
         );
         // A plan's rules always come with its validators.
-        let missing = stored_value(&[SqlValue::Int8(4)], &columns, &held, 0, JsonCodecs::NONE, None);
+        let missing = stored_value(
+            &[SqlValue::Int8(4)],
+            &columns,
+            &held,
+            0,
+            JsonCodecs::NONE,
+            None,
+        );
         assert!(missing.is_err(), "{missing:?}");
     }
 }

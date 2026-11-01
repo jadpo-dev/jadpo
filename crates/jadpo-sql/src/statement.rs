@@ -994,34 +994,6 @@ pub fn erase(
     )
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_page_starts_after_its_cursor_in_each_direction() {
-        let part = |column, param: &str, descending| After {
-            column,
-            param: param.to_string(),
-            collate: false,
-            descending,
-        };
-        assert_eq!(after(&[]), None);
-        assert_eq!(
-            after(&[part("due", "$2", false)]).as_deref(),
-            Some("($2 IS NULL OR \"due\" > $2)")
-        );
-        assert_eq!(
-            after(&[part("due", "$2", false), part("id", "$3", false)]).as_deref(),
-            Some("($2 IS NULL OR (\"due\", \"id\") > ($2, $3))")
-        );
-        assert_eq!(
-            after(&[part("due", "$2", true), part("id", "$3", false)]).as_deref(),
-            Some("($2 IS NULL OR (\"due\" < $2 OR (\"due\" = $2 AND \"id\" > $3)))")
-        );
-    }
-}
-
 /// One batch of a sealed column's rows sealed with the key whose identity
 /// is `$1` (area 15, "Rotating the key"; chunk P9): each row's `id` and
 /// bytes, in `id` order. A sealed value's identity is its third to sixth
@@ -1051,4 +1023,32 @@ pub fn reseal_count(table: &str, column: &str) -> String {
     format!(
         "SELECT count(*), count(*) FILTER (WHERE substring({column} FROM 3 FOR 4) = $1), count(*) FILTER (WHERE substring({column} FROM 3 FOR 4) = $2) FROM {table} WHERE {column} IS NOT NULL"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_page_starts_after_its_cursor_in_each_direction() {
+        let part = |column, param: &str, descending| After {
+            column,
+            param: param.to_string(),
+            collate: false,
+            descending,
+        };
+        assert_eq!(after(&[]), None);
+        assert_eq!(
+            after(&[part("due", "$2", false)]).as_deref(),
+            Some("($2 IS NULL OR \"due\" > $2)")
+        );
+        assert_eq!(
+            after(&[part("due", "$2", false), part("id", "$3", false)]).as_deref(),
+            Some("($2 IS NULL OR (\"due\", \"id\") > ($2, $3))")
+        );
+        assert_eq!(
+            after(&[part("due", "$2", true), part("id", "$3", false)]).as_deref(),
+            Some("($2 IS NULL OR (\"due\" < $2 OR (\"due\" = $2 AND \"id\" > $3)))")
+        );
+    }
 }

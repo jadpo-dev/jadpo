@@ -1604,9 +1604,8 @@ impl Lower<'_> {
                     // type says, so it lowers to the text it is written as:
                     // nothing to work out (area 19; chunk P9).
                     let lowered = if *op == jadpo_std::Op::CryptoNewKey {
-                        arg.expr().map(|value| {
-                            self.connection_name(call, &tree::written(value.syntax()))
-                        })
+                        arg.expr()
+                            .map(|value| self.connection_name(call, &tree::written(value.syntax())))
                     } else {
                         arg.expr().map(|value| self.expr(&value))
                     };

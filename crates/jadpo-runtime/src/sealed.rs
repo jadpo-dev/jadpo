@@ -60,7 +60,9 @@ pub(crate) fn seal(
     };
     let context = sealed_context(bound, id);
     let sealed = match (form, value) {
-        (SealedForm::Key, Value::Key(key)) => jadpo_value::crypto::seal_key(key, ring, &context, source),
+        (SealedForm::Key, Value::Key(key)) => {
+            jadpo_value::crypto::seal_key(key, ring, &context, source)
+        }
         (SealedForm::Secret(_), Value::Secret(secret)) => {
             jadpo_value::crypto::encrypt(secret.expose().as_bytes(), ring, &context, source)
         }
@@ -180,9 +182,9 @@ async fn reseal_batch(
     ring: &KeyRing,
     previous: &[u8],
 ) -> Result<(u64, u64), StoreError> {
-    let database = host.database(&plan.store).ok_or_else(|| {
-        StoreError::Fault(format!("no connection to the store `{}`", plan.store))
-    })?;
+    let database = host
+        .database(&plan.store)
+        .ok_or_else(|| StoreError::Fault(format!("no connection to the store `{}`", plan.store)))?;
     let rows = database
         .query_once(&plan.select, &[SqlValue::Bytes(previous.to_vec())])
         .await?;
@@ -206,10 +208,11 @@ async fn reseal_batch(
         let Ok(opened) = jadpo_value::crypto::decrypt(bytes, ring, &context) else {
             continue;
         };
-        let sealed = jadpo_value::crypto::encrypt(&opened, ring, &context, &mut |out: &mut [u8]| {
-            host.random(out)
-        })
-        .map_err(|_| StoreError::Fault("the host gave no randomness".into()))?;
+        let sealed =
+            jadpo_value::crypto::encrypt(&opened, ring, &context, &mut |out: &mut [u8]| {
+                host.random(out)
+            })
+            .map_err(|_| StoreError::Fault("the host gave no randomness".into()))?;
         ids.push(SqlValue::Uuid(*id));
         was.push(SqlValue::Bytes(bytes.clone()));
         now.push(SqlValue::Bytes(sealed));

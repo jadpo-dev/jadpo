@@ -63,8 +63,8 @@ for it and not counted per type: construction, `text.parse`,
 
 The [design notes](notes/19-standard-library.md) record why each part of
 this page is the way it is, and [What is built](#what-is-built) says
-which parts work today. One operation, `crypto.verify_totp`, waits on
-keys held as data.
+which parts work today. One operation, `crypto.verify_totp`, isn't built
+yet.
 
 ## Shared vocabulary types
 <!-- topic: shared-vocabulary-types -->
@@ -6139,6 +6139,7 @@ safe, so you never choose an algorithm.
 | `crypto.hmac(value, key:)` | `Bytes`, HMAC-SHA-256 with the current key | | none |
 | `crypto.verify_hmac(value, mac, key:)` | `Bool`, in constant time, against the current or previous key | | none |
 | `crypto.sign(value, key:)` | `Bytes`, an Ed25519 signature; `key:` a `PrivateKey` setting | | none |
+| `crypto.new_key(as:)` | A new key of the key type `as:` names, 32 bytes from the host's generator, opaque: it goes only into a key-type field, kept sealed, or a `key:` ([A key is never a value](#a-key-is-never-a-value)). Actions only | | none |
 | `crypto.public_key(key:)` | `PublicKey`, the Ed25519 public half of a `PrivateKey` setting, which the app may publish so others can check what it signs | | none |
 | `crypto.verify_signature(value, signature, key)` | `Bool`; `key` a `PublicKey`, which is not secret and may be read | | none |
 | `crypto.verify_jwt(token, keys:, issuer:, audience:, as:)` | `JwtClaims`, checked against a set of `Jwk`s, each key's own algorithm only (never `none`, never chosen by the token): Ed25519, RS256 for an RSA key and ES256 for a P-256 key, with expiry, not-before and issued-at against `clock.now`, and the issuer and audience the call names, each optional; with `as:`, an `Object` of the application's, the claims it names instead, read as `json.read` reads them, a registered one as `JwtClaims` holds it; it reads the clock, so actions call it | `invalid_signature`, `expired`, `not_yet_valid`, `malformed`, `wrong_audience`, `wrong_issuer` when `issuer:` is given, and `mismatch` when `as:` is | none |
@@ -6320,7 +6321,8 @@ application, which is why it needs these operations.
 
 Code never reads a secret
 ([Secrets](10-configuration-and-time.md#secrets)), and a key is no
-exception. A key is an opaque value, held in a setting:
+exception. A key is an opaque value, held in a setting, or
+[as data](#a-key-is-never-a-value):
 
 - an `EncryptionKey` setting (32 random bytes) for `encrypt` and
   `decrypt`;
@@ -6334,8 +6336,9 @@ makes a `crypto` operation's `key:` one of the places the compiler owns,
 alongside those [Secrets](10-configuration-and-time.md#secrets) lists. A
 key given by position, or read anywhere else, is still
 `configuration.secret_flow`, whose message names the one place the key
-goes. A `key:` given anything but a setting, such as a parameter or
-text, is `type.mismatch`.
+goes. A `key:` given anything but a setting or
+[a key held as data](#a-key-is-never-a-value), such as a parameter or text,
+is `type.mismatch`.
 
 Reading a key anywhere but a `key:` is `configuration.secret_flow`, even
 to take a fingerprint of it:
@@ -6383,18 +6386,146 @@ your app signs.
 ### A key is never a value
 
 `EncryptionKey`, `PrivateKey` and `SigningKey` are built-in secret
-types. Until keys held as data arrive
-([Language gaps](#language-gaps-this-page-depends-on)), only a setting
-holds one. So a key has no text, no JSON form (for `json.write` and
-`json.read`) and no storage: the secret rule wins over the contract's
-"never". Code never makes a key, and building a key type from a value is
-`type.constructor_input`.
+types. A key has no text and no JSON form (for `json.write` and
+`json.read`): the secret rule wins over the contract's "never". Code never
+builds a key from a value it can see, and building a key type from a value
+is `type.constructor_input`.
+
+A setting holds most keys, but a key can also be held as data, one per
+device or person. `crypto.new_key(as: EncryptionKey)` makes one in an action:
+32 bytes from the host's generator, the same whichever key type `as:` names.
+It is opaque, so it does two things. It is stored in a field of a key type,
+which keeps it [sealed](#encrypted-fields), or it is given as a `crypto`
+call's `key:`, straight from a record's field or a `var` holding it. It may
+wait in a `var` on the way to either:
+
+```jadpo check project=keys-as-data file=app.jadpo
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.database_url
+        }
+    }
+    field_encryption_key: config.field_encryption_key
+}
+```
+
+```jadpo check project=keys-as-data file=config.jadpo hidden
+config {
+    database_url: PostgresUrl
+    field_encryption_key: EncryptionKey
+}
+```
+
+```jadpo check project=keys-as-data file=domains/field/types/patient_note.jadpo hidden
+/// A note a device keeps.
+type PatientNote = Text {
+    max_length: 2000
+}
+```
+
+```jadpo check project=keys-as-data file=domains/field/types/sealed_note.jadpo hidden
+/// A note sealed for one device.
+type SealedNote = Bytes {}
+```
+
+```jadpo check project=keys-as-data file=domains/field/types/opened_note.jadpo hidden
+/// A note a device's key opened.
+type OpenedNote = Bytes {}
+```
+
+```jadpo check project=keys-as-data file=domains/field/failures/not_for_this_device.jadpo hidden
+/// The note wasn't sealed for this device.
+type NotForThisDevice = Failure {
+    kind: FailureKind.invalid_value
+}
+```
+
+```jadpo check project=keys-as-data file=domains/field/entities/device.jadpo
+/// A clinician's device, with a key of its own.
+entity Device {
+    id: Uuid
+    device_key: EncryptionKey
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+}
+```
+
+```jadpo check project=keys-as-data file=domains/field/actions/enrol_device.jadpo
+use field/entities { Device }
+
+/// Enrols a device, making its key, which is stored sealed.
+action enrol_device() -> Device {
+    return Device.create {
+        set: {
+            device_key: crypto.new_key(as: EncryptionKey)
+        }
+    }
+}
+```
+
+```jadpo check project=keys-as-data file=domains/field/actions/seal_for_device.jadpo
+use field/entities { Device }
+use field/types { PatientNote, SealedNote }
+
+/// A note sealed with the device's own key.
+action seal_for_device(device: Device, note: PatientNote) -> SealedNote {
+    return SealedNote(crypto.encrypt(note, key: device.device_key, context: "note"))
+}
+```
+
+```jadpo check project=keys-as-data file=domains/field/actions/open_for_device.jadpo hidden
+use field/entities { Device }
+use field/types { OpenedNote, SealedNote }
+use field/failures { NotForThisDevice }
+
+/// What the device's own key opens.
+action open_for_device(
+    device: Device,
+    sealed_note: SealedNote
+) fails NotForThisDevice -> OpenedNote {
+    var opened: Bytes = attempt crypto.decrypt(
+        sealed_note,
+        key: device.device_key,
+        context: "note"
+    ) {
+        unreadable: NotForThisDevice
+    }
+    return OpenedNote(opened)
+}
+```
+
+```jadpo check project=keys-as-data file=domains/field/actions/seal_for_device.test.jadpo migrate=initial
+use field/entities { Device }
+use field/types { OpenedNote, SealedNote }
+use field/failures { NotForThisDevice }
+use field/actions { enrol_device, open_for_device }
+
+test "a note opens for its own device and no other" {
+    var own: Device = enrol_device()
+    var other: Device = enrol_device()
+    var sealed_note: SealedNote = seal_for_device(own, "Allergic to penicillin.")
+    var opened: OpenedNote = attempt open_for_device(own, sealed_note)
+    assert opened == encoding.to_utf8("Allergic to penicillin.")
+    assert open_for_device(other, sealed_note) fails NotForThisDevice
+}
+```
+
+Anywhere else is `type.key_as_value`: returned, passed to code of your own,
+compared with anything but `none`, read as text or bytes, or put in another
+value. A key's bytes come from the host's secret randomness, which a
+recording's tape never holds, and leave the runtime only sealed, so neither a
+recording nor a replay holds one. A key held as data has no previous key: it
+rotates by being replaced.
 
 Each executor gives the operation one opaque key value, which prints as
 `<key>`. It comes from the source the plan decides for the call: the
-setting now, and an encrypted field once keys held as data arrive. Only
-the runtime turns it into the key it holds
-([compiler-runtime §2.5](../compiler-runtime.md#25-executors),
+setting, a key-type field or a `var`. Only the runtime turns it into the key
+it holds ([compiler-runtime §2.5](../compiler-runtime.md#25-executors),
 "A key as a value").
 
 ### The sealed format
@@ -6461,25 +6592,28 @@ for an ETag or a content key.
 There is no MD5 or SHA-1, since both are broken. An outside system that
 still asks for one is reached through a package
 ([Integrations](11-integrations.md)). That includes TOTP, whose RFC 6238
-default is HMAC-SHA-1 and whose per-person secret is a key held as data
-([Language gaps](#language-gaps-this-page-depends-on)).
+default is HMAC-SHA-1 and whose per-person secret is a `TotpSecret`, kept
+sealed ([How a secret is kept](#how-a-secret-is-kept)).
 
 ### Encrypted fields
 
 `notes: ClinicalNote { encrypted: true }` on an entity stores the field
-sealed with the application's `field_encryption_key:`, and decrypts it on
-load. The field is kept out of unique rules, indexes, filters, ordering,
-search and logs, as the table on
+sealed with the application's `field_encryption_key:`, in the sealed format
+above, and decrypts it on load. The field is kept out of unique rules,
+indexes, filters, ordering, search and logs, as the table on
 [Built-in services](16-built-in-services.md) says of field encryption.
-There is one key for the application, never one per person
-([Encrypted fields](15-personal-data.md#encrypted-fields)).
+Each value is sealed under a key derived from the setting for this one use,
+and bound to its column and its record's `id`. There is one key for the
+application, never one per person
+([Encrypted fields](15-personal-data.md#encrypted-fields), which also says
+how it rotates, and what losing it costs).
 
 > `encrypt`, `decrypt`, `hash_password`, `verify_password`, `hmac`,
-> `verify_hmac`, `sign`, `verify_signature` and `public_key` are built,
-> each checked against its standard's known answers and built for
+> `verify_hmac`, `sign`, `verify_signature`, `public_key` and `new_key` are
+> built, each checked against its standard's known answers and built for
 > WebAssembly. None reads randomness itself, and the cipher, Argon2 and
-> Ed25519 wipe their own copies of a key when dropped. Encrypted fields
-> aren't built yet ([the roadmap](../roadmap.md)).
+> Ed25519 wipe their own copies of a key when dropped. Encrypted fields are
+> built.
 
 ## Signed tokens
 <!-- topic: signed-tokens -->
@@ -6594,8 +6728,7 @@ RS256 token naming an EC key's id, and the reverse, all fail
 `invalid_signature` before any key is tried. A key whose own `alg` names
 an algorithm other than the token's is never tried. A key set naming any other algorithm,
 such as RS384, RS512, PS256 or ES384, doesn't read. HS256 needs a shared
-secret held as data, which waits for keys held as data
-([Language gaps](#language-gaps-this-page-depends-on)).
+secret held as data, which isn't built yet ([What is built](#what-is-built)).
 
 ### Keys come only from the call
 
@@ -6871,8 +7004,12 @@ does the same job:
 - A `Jwt` is checked when it arrives and never kept.
 - A one-time code is kept only as the time it was used.
 - A `TotpSecret`, which checking a code needs back, and a `SecretText`
-  are stored sealed with an encrypted field's key
-  ([Encrypted fields](15-personal-data.md#encrypted-fields)).
+  are stored sealed with the application's `field_encryption_key:`, in a
+  field of their own, whether or not the field says `encrypted: true`
+  ([Encrypted fields](15-personal-data.md#encrypted-fields)). Inside another
+  value one is refused.
+- A key type is stored the same way
+  ([A key is never a value](#a-key-is-never-a-value)).
 
 An entity's field that holds any other secret is `type.secret_exposed`,
 and the error's `next:` line names what to keep instead. Keeping the
@@ -7038,11 +7175,8 @@ OpenAPI describes a secret value as a `writeOnly` string, and a
 `Password` with `format: password` as well, so generated clients hide it
 as it is typed.
 
-> Not built yet: storing a `TotpSecret` or a `SecretText` needs keys held
-> as data ([Language gaps this page depends on](#language-gaps-this-page-depends-on)).
-> Until that is built, storing one is `toolchain.not_built_yet` rather
-> than refused. No operation reads a `OneTimeCode` yet: `crypto.verify_totp`
-> waits for keys held as data. `jadpo replay`, which the recordings above
+> No operation reads a `OneTimeCode` yet: `crypto.verify_totp` is not built
+> ([What is built](#what-is-built)). `jadpo replay`, which the recordings above
 > are for, isn't built; when it is, it keeps out the draws a secret value
 > was made from.
 
@@ -11740,7 +11874,7 @@ linked beside it.
 | Drop repeated messages | `set.contains`, `list.distinct` |
 | Latest reading per device | `list.group_by`, `list.last` |
 | Hourly charts over months | Aggregate queries ([Counts, sums and groups](06-reads-and-writes.md#counts-sums-and-groups)) |
-| Each device signs its messages with its own key | Keys held as data (see [What is built](#what-is-built)) |
+| Each device signs its messages with its own key | `crypto.new_key`, and `crypto.sign` with a key-type field as its `key:` ([A key is never a value](#a-key-is-never-a-value)) |
 | Bit-packed payloads | The device's provider package ([Logic and bits](#logic-and-bits)) |
 
 **8. Internal admin tool**
@@ -11835,7 +11969,7 @@ what Jadpo took from each, is in the
 | Feature | Status |
 |---|---|
 | Everything on this page not listed below | Built |
-| Keys held as data, with encrypted fields: `crypto.verify_totp`, HS256 in `crypto.verify_jwt`, per-device signatures, storing a `TotpSecret` or a `SecretText` | Not built yet: waits on [Personal data](15-personal-data.md), after the first build ([the roadmap](../roadmap.md)) |
+| What keys held as data allow: `crypto.verify_totp` and HS256 in `crypto.verify_jwt` | Not built yet: the next chunk on [the roadmap](../roadmap.md) |
 | A `type.standard_exists` or `type.standard_clash` swap of a type already stored or on the wire, and `jadpo rename` | Not built yet: a swap waits on [Records and manifest](18-records-and-manifest.md), `jadpo rename` on [Tooling](14-tooling.md) |
 | A query comparing or ordering by an amount of money, a one-step update working one out, a backfill of a new required one, and a condition on a JSON-held field | Not built yet: `toolchain.not_built_yet` names each |
 | The UK modulus check in `BankAccount` | Not built yet: waits on Vocalink's permission to ship its tables |
@@ -11852,6 +11986,7 @@ Every error the standard library can produce, with an example that
 triggers it and the compiler's real output from `jadpo check`. The
 examples are checked as loose files.
 
+- [`type.key_as_value`](../errors/type.key_as_value.md)
 - [`type.standard_clash`](../errors/type.standard_clash.md)
 - [`type.standard_exists`](../errors/type.standard_exists.md)
 - [`semantic.standard_operation_moved`](../errors/semantic.standard_operation_moved.md)

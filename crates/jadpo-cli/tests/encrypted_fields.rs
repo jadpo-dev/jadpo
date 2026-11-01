@@ -153,6 +153,46 @@ entity Referral {{
             ),
         ),
         (
+            "domains/clinic/entities/visit.jadpo",
+            format!(
+                "use clinic/entities {{ Consultation }}
+use clinic/types {{ ClinicalNote }}
+
+/// A visit during a consultation, whose remark is kept sealed too.
+entity Visit {{
+    id: Uuid
+    consultation_id: Consultation.id {{
+        on_delete: OnDelete.cascade
+    }}
+    remark: ClinicalNote {{
+        encrypted: true
+    }}
+
+{policy}}}
+"
+            ),
+        ),
+        (
+            "domains/clinic/types/visit_shown.jadpo",
+            "use clinic/types { ClinicalNote }\n\n/// A visit's remark, and no more of it.\ntype VisitShown = Output {\n    remark: ClinicalNote\n}\n".to_string(),
+        ),
+        (
+            "domains/clinic/types/visits_shown.jadpo",
+            "use clinic/types { ClinicalNote, VisitShown }\n\n/// A consultation's notes with what its visits say.\ntype VisitsShown = Output {\n    notes: ClinicalNote\n    visits: List<VisitShown>\n}\n".to_string(),
+        ),
+        (
+            "domains/clinic/queries/visits_of.jadpo",
+            "use clinic/entities { Consultation, ConsultationNotFound, Visit }\nuse clinic/types { VisitsShown }\n\n/// A consultation with its visits, both sealed.\nquery visits_of(consultation_id: Consultation.id) fails ConsultationNotFound -> VisitsShown {\n    from: Consultation\n    where: Consultation.id == consultation_id\n    missing: ConsultationNotFound\n    include: {\n        visits: {\n            via: Visit.consultation_id\n            order: [Visit.id asc]\n            limit: 10\n        }\n    }\n}\n".to_string(),
+        ),
+        (
+            "domains/clinic/actions/visit.jadpo",
+            "use clinic/entities { Consultation, Visit }\n\n/// Records a visit.\naction visit(consultation: Consultation, remark: Visit.remark) -> Visit {\n    return Visit.create {\n        set: {\n            consultation_id: consultation.id\n            remark: remark\n        }\n    }\n}\n".to_string(),
+        ),
+        (
+            "domains/clinic/actions/visits_shown.jadpo",
+            "use clinic/entities { Consultation, ConsultationNotFound }\nuse clinic/queries { visits_of }\nuse clinic/types { VisitsShown }\n\n/// A consultation with its visits.\naction visits_shown(consultation_id: Consultation.id) fails ConsultationNotFound -> VisitsShown {\n    return attempt visits_of(consultation_id)\n}\n".to_string(),
+        ),
+        (
             "domains/clinic/queries/notes_of.jadpo",
             "use clinic/entities { Consultation, ConsultationNotFound }\nuse clinic/types { NotesShown }\n\n/// One consultation's notes, reading only them.\nquery notes_of(consultation_id: Consultation.id) fails ConsultationNotFound -> NotesShown {\n    from: Consultation\n    where: Consultation.id == consultation_id\n    missing: ConsultationNotFound\n}\n".to_string(),
         ),
@@ -309,12 +349,7 @@ fn database(root: &Path) -> (jadpo_test::database::TestDatabases, String) {
 const T0: i64 = 1_792_400_400_000;
 const HOUR: i64 = 3_600_000;
 
-async fn outcome(
-    program: &Program,
-    host: &Harness,
-    action: &str,
-    args: Vec<Value>,
-) -> Outcome {
+async fn outcome(program: &Program, host: &Harness, action: &str, args: Vec<Value>) -> Outcome {
     let id = program.plan().find(action).expect("the action");
     let mut ctx = host.ctx(program);
     program.run(&mut ctx, id, args).await
@@ -357,7 +392,11 @@ async fn bytes_of(host: &Harness, table: &str, column: &str) -> Vec<Option<Vec<u
 /// and hold none of `plain`.
 fn only_sealed(bytes: &[u8], plain: &[u8]) {
     assert!(bytes.len() >= 46, "too short for the sealed format");
-    assert_eq!(&bytes[..2], &[1, 1], "the sealed format's version and algorithm");
+    assert_eq!(
+        &bytes[..2],
+        &[1, 1],
+        "the sealed format's version and algorithm"
+    );
     assert!(
         !bytes.windows(plain.len()).any(|window| window == plain),
         "the column holds the value"
@@ -440,6 +479,25 @@ fn a_sealed_field_round_trips_and_its_column_holds_only_sealed_bytes() {
         // `id` comes with it, to open it for.
         let shown = call(&program, &host, "shown", vec![id.clone()]).await;
         assert_eq!(field(&shown, "notes"), text("Allergic to penicillin."));
+
+        // And through an include, whose records' `id`s come with them.
+        call(
+            &program,
+            &host,
+            "visit",
+            vec![made.clone(), text("Came back on Tuesday.")],
+        )
+        .await;
+        let with_visits = call(&program, &host, "visits_shown", vec![id.clone()]).await;
+        assert_eq!(field(&with_visits, "notes"), text("Allergic to penicillin."));
+        let Value::List(visits) = field(&with_visits, "visits") else {
+            panic!("a list of visits");
+        };
+        assert_eq!(field(&visits[0], "remark"), text("Came back on Tuesday."));
+        only_sealed(
+            bytes_of(&host, "visit", "remark").await[0].as_deref().unwrap(),
+            b"Tuesday",
+        );
 
         // Changed on a loaded record, by `id` and by a patch.
         let changed = call(
@@ -559,14 +617,20 @@ fn a_secret_and_a_key_are_stored_sealed_and_a_key_is_usable_only_as_a_key() {
 
         // Each column holds only sealed bytes, a key's 32 among them.
         only_sealed(
-            bytes_of(&host, "device", "authenticator").await[0].as_deref().unwrap(),
+            bytes_of(&host, "device", "authenticator").await[0]
+                .as_deref()
+                .unwrap(),
             b"GEZDGNBVGY3TQOJQ",
         );
         only_sealed(
-            bytes_of(&host, "device", "recovery").await[0].as_deref().unwrap(),
+            bytes_of(&host, "device", "recovery").await[0]
+                .as_deref()
+                .unwrap(),
             b"the blue bicycle",
         );
-        let kept = bytes_of(&host, "device", "device_key").await[0].clone().unwrap();
+        let kept = bytes_of(&host, "device", "device_key").await[0]
+            .clone()
+            .unwrap();
         assert_eq!(kept.len(), 46 + 32, "the sealed format of 32 bytes");
         assert_eq!(&kept[..2], &[1, 1]);
 
@@ -579,8 +643,17 @@ fn a_secret_and_a_key_are_stored_sealed_and_a_key_is_usable_only_as_a_key() {
             vec![device.clone(), text("for this device")],
         )
         .await;
-        let opened = call(&program, &host, "open_for", vec![device.clone(), sealed.clone()]).await;
-        assert_eq!(opened, Value::Bytes(std::rc::Rc::from(&b"for this device"[..])));
+        let opened = call(
+            &program,
+            &host,
+            "open_for",
+            vec![device.clone(), sealed.clone()],
+        )
+        .await;
+        assert_eq!(
+            opened,
+            Value::Bytes(std::rc::Rc::from(&b"for this device"[..]))
+        );
         let other = call(&program, &host, "enrol", vec![Value::None, Value::None]).await;
         assert!(matches!(
             outcome(&program, &host, "open_for", vec![other, sealed]).await,
@@ -589,7 +662,13 @@ fn a_secret_and_a_key_are_stored_sealed_and_a_key_is_usable_only_as_a_key() {
         // A key made for one call does its job and goes with the call.
         call(&program, &host, "seal_once", vec![text("once")]).await;
         // A private key held as data signs: pure Ed25519's 64 bytes.
-        let signed = call(&program, &host, "signed_by", vec![device.clone(), text("note")]).await;
+        let signed = call(
+            &program,
+            &host,
+            "signed_by",
+            vec![device.clone(), text("note")],
+        )
+        .await;
         assert!(matches!(&signed, Value::Bytes(bytes) if bytes.len() == 64));
 
         // A key is replaced by storing another, the old one kept sealed.
@@ -817,7 +896,10 @@ fn a_history_says_a_sealed_field_changed_and_never_what_it_held() {
         assert!(!created.contains("colleague"), "{created}");
         let updated = text_of(&kept[1]);
         assert!(updated.contains("\"letter\""), "{updated}");
-        assert!(!updated.contains("colleague") && !updated.contains("doctor"), "{updated}");
+        assert!(
+            !updated.contains("colleague") && !updated.contains("doctor"),
+            "{updated}"
+        );
     });
 }
 
@@ -867,11 +949,15 @@ fn a_migration_never_seals_or_opens_a_value() {
     };
     // Turned on, a type's column changing or not, and off.
     refused(
-        fields("    plain: Body {\n        encrypted: true\n    }\n    bytes: Blob\n    sealed: Body {\n        encrypted: true\n    }\n"),
+        fields(
+            "    plain: Body {\n        encrypted: true\n    }\n    bytes: Blob\n    sealed: Body {\n        encrypted: true\n    }\n",
+        ),
         "turns `encrypted:` on",
     );
     refused(
-        fields("    plain: Body\n    bytes: Blob {\n        encrypted: true\n    }\n    sealed: Body {\n        encrypted: true\n    }\n"),
+        fields(
+            "    plain: Body\n    bytes: Blob {\n        encrypted: true\n    }\n    sealed: Body {\n        encrypted: true\n    }\n",
+        ),
         "turns `encrypted:` on",
     );
     refused(
@@ -880,7 +966,9 @@ fn a_migration_never_seals_or_opens_a_value() {
     );
     // A required sealed field on rows already there.
     refused(
-        fields("    plain: Body\n    bytes: Blob\n    sealed: Body {\n        encrypted: true\n    }\n    added: Body {\n        encrypted: true\n    }\n"),
+        fields(
+            "    plain: Body\n    bytes: Blob\n    sealed: Body {\n        encrypted: true\n    }\n    added: Body {\n        encrypted: true\n    }\n",
+        ),
         "required sealed column",
     );
     // A narrower type that no SQL can check against what is stored.
@@ -897,7 +985,12 @@ fn a_migration_never_seals_or_opens_a_value() {
         "/// A note's text.\ntype Body = Text {\n    max_length: 200\n}\n",
     );
     refused(
-        format!("{head}{}", entity("    plain: Body\n    bytes: Blob\n    sealed: Body {\n        encrypted: true\n        max_length: 100\n    }\n")),
+        format!(
+            "{head}{}",
+            entity(
+                "    plain: Body\n    bytes: Blob\n    sealed: Body {\n        encrypted: true\n        max_length: 100\n    }\n"
+            )
+        ),
         "allows less",
     );
     // An optional one is added, and then made required, leaving the migration
@@ -905,21 +998,30 @@ fn a_migration_never_seals_or_opens_a_value() {
     write(
         &root,
         path,
-        &fields("    plain: Body\n    bytes: Blob\n    sealed: Body {\n        encrypted: true\n    }\n    added: Body? {\n        encrypted: true\n    }\n"),
+        &fields(
+            "    plain: Body\n    bytes: Blob\n    sealed: Body {\n        encrypted: true\n    }\n    added: Body? {\n        encrypted: true\n    }\n",
+        ),
     );
     let added = jadpo(&root, &["migrate", "new", "add_sealed"]);
     assert_eq!(added.code, 0, "{}{}", added.stdout, added.stderr);
     write(
         &root,
         path,
-        &fields("    plain: Body\n    bytes: Blob\n    sealed: Body {\n        encrypted: true\n    }\n    added: Body {\n        encrypted: true\n    }\n"),
+        &fields(
+            "    plain: Body\n    bytes: Blob\n    sealed: Body {\n        encrypted: true\n    }\n    added: Body {\n        encrypted: true\n    }\n",
+        ),
     );
     let required = jadpo(&root, &["migrate", "new", "require_sealed"]);
     assert_eq!(required.code, 0, "{}{}", required.stdout, required.stderr);
     let sql = fs::read_dir(root.join("database/migrations"))
         .expect("migrations")
         .filter_map(Result::ok)
-        .find(|entry| entry.file_name().to_string_lossy().ends_with("require_sealed"))
+        .find(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .ends_with("require_sealed")
+        })
         .map(|entry| fs::read_to_string(entry.path().join("postgres.sql")).expect("its SQL"))
         .expect("the migration");
     assert!(sql.contains("SET NOT NULL"), "{sql}");
@@ -927,7 +1029,9 @@ fn a_migration_never_seals_or_opens_a_value() {
     write(
         &root,
         path,
-        &fields("    plain: Body\n    bytes: Blob\n    sealed: Body {\n        encrypted: true\n    }\n    added: Body {\n        encrypted: true\n    }\n    copied: Body\n"),
+        &fields(
+            "    plain: Body\n    bytes: Blob\n    sealed: Body {\n        encrypted: true\n    }\n    added: Body {\n        encrypted: true\n    }\n    copied: Body\n",
+        ),
     );
     let need = jadpo(&root, &["migrate", "new", "copy"]);
     assert_eq!(need.code, 0, "{}{}", need.stdout, need.stderr);
@@ -957,7 +1061,8 @@ fn jadpo_at(cwd: &Path, args: &[&str], pairs: &[(&str, &str)], stdout_terminal: 
     }
     run(
         &args,
-        &env.with_terminals(false, stdout_terminal, false).with_cwd(cwd),
+        &env.with_terminals(false, stdout_terminal, false)
+            .with_cwd(cwd),
     )
 }
 
@@ -1219,23 +1324,30 @@ fn rotation_says_when_the_previous_key_can_go() {
     assert_eq!(found["data"]["fields"][0]["field"], "Note.body", "{found}");
     assert_eq!(found["data"]["fields"][0]["current"], 1, "{found}");
     assert_eq!(found["data"]["can_remove_previous"], false, "{found}");
-    assert!(plain(&[("FIELD_ENCRYPTION_KEY", FIRST_KEY)])
-        .stdout
-        .contains("No rotation under way"));
+    assert!(
+        plain(&[("FIELD_ENCRYPTION_KEY", FIRST_KEY)])
+            .stdout
+            .contains("No rotation under way")
+    );
 
     // A rotation begun: the row is under the previous key, so it can't go.
     let during = [
         ("FIELD_ENCRYPTION_KEY", SECOND_KEY),
         ("FIELD_ENCRYPTION_KEY_PREVIOUS", FIRST_KEY),
     ];
-    let found: serde_json::Value =
-        serde_json::from_str(&rotation(&during).stdout).expect("JSON");
+    let found: serde_json::Value = serde_json::from_str(&rotation(&during).stdout).expect("JSON");
     assert_eq!(found["data"]["fields"][0]["previous"], 1, "{found}");
     assert_eq!(found["data"]["can_remove_previous"], false, "{found}");
     let shown = plain(&during).stdout;
     assert!(shown.contains("Rotation under way"), "{shown}");
-    assert!(shown.contains("1 row still under FIELD_ENCRYPTION_KEY_PREVIOUS"), "{shown}");
-    assert!(!shown.contains(SECOND_KEY) && !shown.contains(FIRST_KEY), "{shown}");
+    assert!(
+        shown.contains("1 row still under FIELD_ENCRYPTION_KEY_PREVIOUS"),
+        "{shown}"
+    );
+    assert!(
+        !shown.contains(SECOND_KEY) && !shown.contains(FIRST_KEY),
+        "{shown}"
+    );
 
     // The re-seal done, it can.
     let second = program_with(SECOND_KEY, Some(FIRST_KEY));
@@ -1245,8 +1357,7 @@ fn rotation_says_when_the_previous_key_can_go() {
         .block_on(jadpo_runtime::sealed::reseal_all(&host, &plans, &ring, 1))
         .expect("moved");
     assert_eq!((moved.rows, moved.finished), (1, true));
-    let found: serde_json::Value =
-        serde_json::from_str(&rotation(&during).stdout).expect("JSON");
+    let found: serde_json::Value = serde_json::from_str(&rotation(&during).stdout).expect("JSON");
     assert_eq!(found["data"]["can_remove_previous"], true, "{found}");
     assert!(
         plain(&during)
@@ -1256,7 +1367,10 @@ fn rotation_says_when_the_previous_key_can_go() {
 
     // A key that opens nothing: rows no key opens, and nothing can go.
     let third = "TM0Imyj_ltqdtsNG7BFOD1uKMZ81q6Yk2oz27U-4pvs";
-    let wrong = [("FIELD_ENCRYPTION_KEY", third), ("FIELD_ENCRYPTION_KEY_PREVIOUS", FIRST_KEY)];
+    let wrong = [
+        ("FIELD_ENCRYPTION_KEY", third),
+        ("FIELD_ENCRYPTION_KEY_PREVIOUS", FIRST_KEY),
+    ];
     let shown = plain(&wrong).stdout;
     assert!(shown.contains("Rows no key opens"), "{shown}");
     let found: serde_json::Value = serde_json::from_str(&rotation(&wrong).stdout).expect("JSON");
@@ -1291,4 +1405,30 @@ fn rotation_names_a_database_it_cant_read() {
         output.stdout,
         output.stderr
     );
+}
+
+#[test]
+fn a_key_field_that_may_be_none_is_read_once_checked() {
+    let root = small("nullable-key");
+    write(
+        &root,
+        "domains/notes/types/sealed_text.jadpo",
+        "/// Bytes sealed for a device.\ntype SealedText = Bytes {}\n",
+    );
+    write(
+        &root,
+        "domains/notes/entities/device.jadpo",
+        &format!(
+            "/// A device.\nentity Device {{\n    id: Uuid\n    device_key: EncryptionKey?\n\n{POLICY}}}\n"
+        ),
+    );
+    write(
+        &root,
+        "domains/notes/actions/seal_if_keyed.jadpo",
+        "use notes/entities { Device }\nuse notes/types { Body, SealedText }\n\n/// A note sealed for a device with a key, or nothing.\naction seal_if_keyed(device: Device, note: Body) -> SealedText? {\n    if (device.device_key == none) {\n        return none\n    }\n    var key: EncryptionKey = device.device_key\n    return SealedText(crypto.encrypt(note, key: key, context: \"note\"))\n}\n",
+    );
+    let output = jadpo(&root, &["check"]);
+    let shown = format!("{}{}", output.stdout, output.stderr);
+    assert!(!shown.contains("type.key_as_value"), "{shown}");
+    assert!(!shown.contains("type.mismatch"), "{shown}");
 }

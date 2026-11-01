@@ -238,7 +238,10 @@ fn the_key_is_an_encryption_key_setting_read_at_the_top_of_application() {
         // A `SigningKey` is text of any length; this is 32 random bytes.
         ("    other_key: SigningKey\n", "config.other_key"),
         ("    other_key: PrivateKey\n", "config.other_key"),
-        ("    other_key: Text {\n        secret: true\n    }\n", "config.other_key"),
+        (
+            "    other_key: Text {\n        secret: true\n    }\n",
+            "config.other_key",
+        ),
     ] {
         let found = bare(&format!(
             "config {{\n{settings}}}\n\napplication {{\n    field_encryption_key: {value}\n}}\n"
@@ -303,6 +306,44 @@ fn a_sealed_field_is_in_no_filter_or_ordering() {
             "{query}: {found:?}"
         );
     }
+}
+
+#[test]
+fn a_sealed_field_is_in_no_aggregate() {
+    let entity = consultation(
+        "    fee: Int {\n        encrypted: true\n    }\n    seen_on: CalendarDate {\n        encrypted: true\n    }\n    notes: ClinicalNote {\n        encrypted: true\n    }\n",
+    );
+    let shape = "type Tally = Output {\n    total: Int\n}\n\ntype ByNotes = Output {\n    notes: ClinicalNote\n    total: Int\n}\n\n";
+    for query in [
+        "query totals() -> Tally {\n    from: Consultation\n    aggregate: {\n        total: sum(Consultation.fee)\n    }\n}\n",
+        "query by_notes() -> List<ByNotes> {\n    from: Consultation\n    group: {\n        notes: Consultation.notes\n    }\n    aggregate: {\n        total: count()\n    }\n    order: [notes asc]\n    limit: 10\n}\n",
+    ] {
+        let found = rules(&format!("{entity}\n{shape}{query}"));
+        assert!(
+            found.contains(&"data.encrypted_field_used".to_string()),
+            "{query}: {found:?}"
+        );
+    }
+}
+
+#[test]
+fn a_sealed_field_doesnt_decide_who_a_caller_is_or_what_role_they_hold() {
+    let found = rules(
+        "type Handle = Text {\n    max_length: 40\n}\n\nentity Member {\n    id: Uuid\n    handle: Handle {\n        unique: true\n    }\n    active: Bool {\n        encrypted: true\n    }\n\n    policy: {\n        read: [Access.public]\n    }\n}\n\nprincipal {\n    user: {\n        subject: Member.handle\n        active: Member.active == true\n    }\n}\n\nauthentication {\n    api_token: {}\n}\n",
+    );
+    assert!(
+        found.contains(&"data.encrypted_field_used".to_string()),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn a_record_holding_a_secret_is_written_as_json_by_no_one() {
+    let found = rules(&format!(
+        "{}\nfunction written(consultation: Consultation) -> Shown {{\n    return Shown(json.write(consultation))\n}}\n",
+        consultation("    recovery: SecretText\n    device_key: EncryptionKey\n")
+    ));
+    assert!(!found.is_empty(), "{found:?}");
 }
 
 #[test]

@@ -10,10 +10,10 @@ use jadpo_diag::{Diagnostic, rule};
 use jadpo_syntax::SyntaxKind;
 use jadpo_syntax::ast::{self, AstNode, Expr};
 
-use super::facts::node_key;
+use super::facts::{Reach, node_key};
 use super::{Body, LocalKind};
-use crate::tree;
 use crate::resolve::Want;
+use crate::tree;
 use crate::types::{FieldsBase, Prim, Ty, TypeRef};
 
 impl Body<'_> {
@@ -144,11 +144,16 @@ impl Body<'_> {
             if !self.table.base_prim(ty).is_some_and(|prim| prim.is_key()) {
                 continue;
             }
-            // A setting's read is `configuration.secret_flow`'s, and a block
-            // or a bracket holds what is inside it.
+            // A setting's read is `configuration.secret_flow`'s, a key built
+            // from a value `type.constructor_input`'s, and a bracket holds
+            // what is inside it.
             if self.facts.key_sinks.contains(&at)
                 || is_setting_read(&expr)
-                || matches!(node.parent().map(|parent| parent.kind()), Some(SyntaxKind::PAREN_EXPR))
+                || matches!(self.facts.reaches.get(&at), Some(Reach::Construct(_)))
+                || matches!(
+                    node.parent().map(|parent| parent.kind()),
+                    Some(SyntaxKind::PAREN_EXPR)
+                )
                 || waits_in_a_var(&node)
                 || compared_with_none(&node)
             {
@@ -185,7 +190,10 @@ fn compared_with_none(node: &jadpo_syntax::SyntaxNode) -> bool {
     let is_none = |side: Option<Expr>| {
         side.is_some_and(|side| {
             side.syntax() != node
-                && matches!(crate::types::Const::from_expr(&side), crate::types::Const::None)
+                && matches!(
+                    crate::types::Const::from_expr(&side),
+                    crate::types::Const::None
+                )
         })
     };
     binary

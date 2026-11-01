@@ -772,7 +772,6 @@ fn block_lines(block: &Block, grid: &Grid, style: &Style) -> Vec<Line> {
                 let (symbol, token) = match outcome {
                     Outcome::Success => (Symbol::Success, Token::Success),
                     Outcome::Failure => (Symbol::Failure, Token::Failure),
-        Outcome::Running => (Symbol::Running, Token::Accent),
                     Outcome::Running => (Symbol::Running, Token::Accent),
                 };
                 lines.push(vec![

@@ -1826,3 +1826,91 @@ fn a_deployable_keeps_a_disk_stores_files_at_its_path() {
     let _ = ended(&mut child, 30);
     let _ = fs::remove_dir_all(&kept);
 }
+
+#[test]
+fn a_deployable_keeps_a_sealed_field_sealed() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let target = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let root = target
+        .parent()
+        .unwrap_or(target)
+        .join("jadpo-compiled/deployable/sealed-clinic");
+    crate::encrypted_fields::project_at(
+        &root,
+        "    connections: {\n        main: {\n            driver: Driver.postgres\n            url: config.database_url\n        }\n    }\n",
+    );
+    let output = run(
+        &["build".to_string(), "--json".to_string()],
+        &at(&root, &shared_cache()),
+    );
+    assert_eq!(output.code, 0, "{}{}", output.stdout, output.stderr);
+    let server = jadpo_test::postgres::Server::start().expect("a server");
+    let connection = server.create_database("sealed_clinic").expect("a database");
+    apply(&connection, &migrations(&root));
+    let url = as_url(&connection);
+    let binary = root.join("build/target/app/app");
+
+    // Without its key, it doesn't start.
+    let (mut child, lines) = start(
+        &binary,
+        &[
+            ("DATABASE_URL", url.as_str()),
+            ("HOST", "127.0.0.1"),
+            ("PORT", "0"),
+        ],
+    );
+    let refused = next(&lines, 60);
+    assert_eq!(refused["event"], "runtime.startup_failed", "{refused}");
+    assert!(
+        refused.to_string().contains("FIELD_ENCRYPTION_KEY"),
+        "{refused}"
+    );
+    let _ = ended(&mut child, 10);
+
+    let settings = [
+        ("DATABASE_URL", url.as_str()),
+        ("FIELD_ENCRYPTION_KEY", crate::encrypted_fields::FIRST_KEY),
+        ("HOST", "127.0.0.1"),
+        ("PORT", "0"),
+    ];
+    let (mut child, lines) = start(&binary, &settings);
+    let started = next(&lines, 60);
+    assert_eq!(started["event"], "runtime.started", "{started}");
+    let address = started["address"]
+        .as_str()
+        .expect("its address")
+        .to_string();
+    let (status, body) = exchange(
+        &address,
+        "POST",
+        "/consultations",
+        r#"{"notes":"Allergic to penicillin."}"#,
+    );
+    assert_eq!(status, 201, "{body}");
+    assert_eq!(
+        serde_json::from_str::<Value>(&body).expect("JSON")["notes"],
+        "Allergic to penicillin."
+    );
+    // The column holds only sealed bytes, and the answer reads back from it.
+    let kept = rows(
+        &connection,
+        "SELECT encode(\"notes\", 'hex'), \"id\"::text FROM \"consultation\"",
+    );
+    let (hex, id) = (&kept[0][0], &kept[0][1]);
+    assert!(hex.starts_with("0101"), "the sealed format: {hex}");
+    let plain: String = b"penicillin"
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    assert!(!hex.contains(&plain), "the column holds the value");
+    let (status, body) = exchange(&address, "GET", &format!("/consultations/{id}"), "");
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        serde_json::from_str::<Value>(&body).expect("JSON")["notes"],
+        "Allergic to penicillin."
+    );
+    child.kill().expect("stopped");
+    let _ = child.wait();
+}

@@ -970,19 +970,179 @@ a person before it ships.
 ## Encrypted fields
 <!-- topic: encrypted-fields -->
 
-An entity field can be stored encrypted:
-`notes: ClinicalNote { encrypted: true }`. It is sealed with your app's
-one `field_encryption_key:` and decrypted when it is loaded. An encrypted
-field is kept out of unique rules, indexes, filters, ordering, search and
-logs.
+An entity field can be stored encrypted. It is sealed with your app's one
+`field_encryption_key:` when it is written and opened when it is loaded,
+so your code reads it as it reads any field, and a copy of the database
+holds only sealed bytes. A clinic keeps each consultation's notes that way:
 
+```jadpo check project=encrypted-notes file=app.jadpo
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.database_url
+        }
+    }
+    field_encryption_key: config.field_encryption_key
+}
+```
+
+```jadpo check project=encrypted-notes file=config.jadpo
+config {
+    database_url: PostgresUrl
+    field_encryption_key: EncryptionKey
+}
+```
+
+```jadpo check project=encrypted-notes file=domains/clinic/types/clinical_note.jadpo hidden
+/// What a clinician wrote.
+type ClinicalNote = Text {
+    max_length: 2000
+}
+```
+
+```jadpo check project=encrypted-notes file=domains/clinic/entities/consultation.jadpo
+use clinic/types { ClinicalNote }
+
+/// A consultation, whose notes only the application can read.
+entity Consultation {
+    id: Uuid
+    notes: ClinicalNote {
+        encrypted: true
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+}
+```
+
+```jadpo check project=encrypted-notes file=domains/clinic/actions/record_consultation.jadpo hidden
+use clinic/entities { Consultation }
+
+/// Records a consultation.
+action record_consultation(notes: Consultation.notes) -> Consultation {
+    return Consultation.create {
+        set: {
+            notes: notes
+        }
+    }
+}
+```
+
+```jadpo check project=encrypted-notes file=domains/clinic/actions/record_consultation.test.jadpo migrate=initial
+use clinic/entities { Consultation }
+
+test "a consultation's notes read back as they were written" {
+    var seen: Consultation = record_consultation("Allergic to penicillin.")
+    assert seen.notes == "Allergic to penicillin."
+    var found: Consultation = attempt Consultation.get(seen.id)
+    assert found.notes == "Allergic to penicillin."
+}
+```
+
+A field of any stored type may be `encrypted: true`, whatever columns it
+would have had: it is kept as its type's JSON, sealed, in one `bytea`, so
+it holds as much as a structured field does. Each value is bound to its
+column and its record's `id`, so moved to another row it opens for no one,
+and one value sealed twice gives different bytes.
+
+A key type, a `TotpSecret` and a `SecretText` are always kept sealed, in a
+field of their own, whether or not the field says so, and `encrypted:
+false` on one is refused
+([How a secret is kept](19-standard-library.md#how-a-secret-is-kept)).
 There are no per-person keys (see [Erasure](#what-erasure-doesnt-rewrite)).
-Keys can also be held as data: a key per device or person in an
-encrypted field, usable only as a `crypto` call's `key:`
-([Hashing and cryptography](19-standard-library.md#hashing-and-cryptography)).
+Keys can also be held as data: a key per device or person in a key-type
+field, usable only as a `crypto` call's `key:`
+([A key is never a value](19-standard-library.md#a-key-is-never-a-value)).
 
 Every field sent to an AI model is listed in the report above
 ([Following personal data](21-ai.md#following-personal-data)).
+
+### What a sealed field can't do
+
+Only your app can read a sealed column, and its bytes change every time it
+is written, so nothing that has the database read it can work.
+`data.encrypted_field_used` refuses a sealed field in:
+
+- a unique rule or an index;
+- a query's filter, ordering or group;
+- a search's `fields:`;
+- a lifecycle's conditions and the fields it sets, and a retention's or a
+  purge's `since:`;
+- a value the database works out in an update by `id`;
+- a computed backfill, which is SQL or runs without the key;
+- a failure's fields, since a failure is written to the log.
+
+What the database itself has to read can't be sealed at all:
+`data.encrypted_field_invalid` refuses `encrypted:` on the `id`, a
+reference, a generated field and a `File`.
+
+Reading one in an action and answering with it is fine, and policy decides
+who may. A field's `retention:`, and erasure, clear a sealed value as they
+clear any. The history of an [audited](16-built-in-services.md#audit-trail)
+record says a sealed field changed and never what it held. Spans and
+runtime logs carry no field's value at all.
+
+### The key
+
+`field_encryption_key:` is written at the top of `application { }`, and
+reads an `EncryptionKey` setting: 32 random bytes, written as 43 Base64url
+characters. A `SigningKey` won't do (`data.field_encryption_key_invalid`).
+Your app needs one only when it has an encrypted, key-type, `TotpSecret` or
+`SecretText` field, and then `data.field_encryption_key_required` says so at
+the first of them. The key your fields are sealed with is derived from the
+setting for this one use, so a `crypto.encrypt` call of your own under the
+same setting never meets them.
+
+| Where | How it is given |
+|---|---|
+| Your machine | `jadpo config set field_encryption_key --generate` writes 32 random bytes into `.env.local` and prints nothing. `jadpo config check` then says `set`, and `jadpo dev` refuses to start until it is |
+| A native server | `FIELD_ENCRYPTION_KEY` in the environment or from a secret manager. `jadpo config generate field_encryption_key` makes one, only into a pipe; at a terminal it refuses |
+| Workers | A Wrangler secret, which `jadpo build` lists in `secrets.required`: `jadpo config generate field_encryption_key \| wrangler secret put FIELD_ENCRYPTION_KEY` |
+| Tests | `jadpo test` makes a throwaway key for each run, as it does every secret |
+
+### Rotating the key
+
+To replace the key without taking the app down:
+
+1. Set the new key as `FIELD_ENCRYPTION_KEY`, and move the old one to
+   `FIELD_ENCRYPTION_KEY_PREVIOUS`. New values are sealed with the new key,
+   and values sealed with either read.
+2. An app that keeps anything sealed has a built-in schedule,
+   `field_encryption.reseal`, that runs every hour. While `_PREVIOUS` is set
+   it rewrites rows still under the old key, at most 20 batches of 500 a run,
+   and changes nothing else about them. `jadpo schedules` lists it, and
+   `jadpo schedules run field_encryption.reseal` starts a run.
+3. `jadpo config rotation` counts each sealed field's rows against both keys.
+   When it says `FIELD_ENCRYPTION_KEY_PREVIOUS can go`, remove it.
+
+A key held in a key-type field rotates by being replaced: store a new one,
+as `crypto.new_key(as: EncryptionKey)` makes it.
+
+### What can't be undone
+
+Sealing trades one risk for another, and some of what follows has no fix:
+
+- **Losing the key loses every sealed value for good.** Backups don't help,
+  because they hold the same sealed bytes. Keep an offline copy of the key,
+  somewhere apart from your backups.
+- **Removing `_PREVIOUS` too soon, or rotating twice before the re-seal has
+  finished, loses the rows still under the older key.** Removal is safe only
+  once `jadpo config rotation` says so. Each rotation starts with a run of
+  it.
+- **A restored backup needs the key it was written with.** Keep each old key
+  for as long as you keep a backup written under it.
+- **A key leaked together with a copy of the database can't be fixed by
+  rotating.** Rotating protects what is written from then on, and the copy
+  still opens with the old key. Treat that as a breach of everything sealed.
+- **Turning `encrypted:` on or off needs a data migration.** `jadpo migrate
+  new` refuses it, since stored values would have to be sealed or opened one
+  by one with a key SQL never sees. Add a new field with the setting you
+  want, copy each record's value across in an action, then retire the old
+  field. The same goes for a new required sealed field, and a narrower type
+  on one.
 
 ## What this does not cover
 <!-- topic: what-this-does-not-cover -->
@@ -1017,6 +1177,7 @@ This is not legal advice. A privacy professional reviews the report.
 | `User.erase(id)` | Partly built. Built: for a caller with `delete` on the person's record, one statement deletes the record, hidden or not, with the sign-in state of anyone it deletes who signs in, and deletes, anonymises or keeps each record of theirs as its reference says, however deep, records with a lifecycle removed outright. Not built yet, each `toolchain.not_built_yet` where `erase` is called, so no erasure is ever partial: one that would delete a `File`'s bytes ([Files](16-built-in-services.md#deleting-and-erasing)), one that would anonymise another person's own record, such as a user whose `invited_by_id` is cleared, and one that would keep an audited record, whose history still refers to the person ([Audit trail](16-built-in-services.md#audit-trail)). An audited record it deletes takes its history with it. `PersonErased`, the erasure log, records in another store and providers' erasure aren't built either, and nothing emits or calls them. |
 | `User.export(id)` | Not built yet: it is `toolchain.not_built_yet` where it is called. |
 | `privacy:` in `application { }` | Not built yet: it is `toolchain.not_built_yet` where it is written. |
+| Encrypted fields | Built: `encrypted: true`, key-type, `TotpSecret` and `SecretText` fields, sealed on write and opened on read, interpreted, compiled and on Workers; each refusal above; rotation through `_PREVIOUS`, with `field_encryption.reseal` and `jadpo config rotation`. |
 | Everything else on this page | Not built yet: it is on [the roadmap](../roadmap.md). |
 
 ## Errors
@@ -1024,10 +1185,14 @@ This is not legal advice. A privacy professional reviews the report.
 Every error this page's checks produce, with an example that triggers
 it and the compiler's real output from `jadpo check`.
 
+- [`data.encrypted_field_invalid`](../errors/data.encrypted_field_invalid.md)
+- [`data.encrypted_field_used`](../errors/data.encrypted_field_used.md)
 - [`data.erase_field_required`](../errors/data.erase_field_required.md)
 - [`data.erase_required`](../errors/data.erase_required.md)
 - [`data.erase_retention_required`](../errors/data.erase_retention_required.md)
 - [`data.erase_unreached`](../errors/data.erase_unreached.md)
+- [`data.field_encryption_key_invalid`](../errors/data.field_encryption_key_invalid.md)
+- [`data.field_encryption_key_required`](../errors/data.field_encryption_key_required.md)
 - [`data.personal_unreachable`](../errors/data.personal_unreachable.md)
 - [`data.retention_field_required`](../errors/data.retention_field_required.md)
 - [`data.retention_held`](../errors/data.retention_held.md)

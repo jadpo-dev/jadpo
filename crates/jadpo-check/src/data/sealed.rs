@@ -26,10 +26,10 @@ use jadpo_diag::{Diagnostic, Span, rule};
 use jadpo_std::standard::security;
 use jadpo_syntax::ast::{AstNode, Expr};
 
-use super::{EntitySpans, FieldModel, Reader, data_model, entity_read, entity_names};
+use super::{EntitySpans, FieldModel, Reader, data_model, entity_names, entity_read};
 use crate::lookups::{Lookup, Name};
 use crate::tree::{self, dotted, node_span};
-use crate::types::{Const, TypeView, Ty};
+use crate::types::{Const, Ty, TypeView};
 
 /// What a sealed field's bytes hold once opened.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -106,9 +106,10 @@ impl Reader<'_> {
         match (&told, &written) {
             (Some(Const::Bool(_)) | None, _) => {}
             (Some(_), Some((key, member))) => {
-                let span = member
-                    .value()
-                    .map_or_else(|| node_span(path, key.syntax()), |v| node_span(path, v.syntax()));
+                let span = member.value().map_or_else(
+                    || node_span(path, key.syntax()),
+                    |v| node_span(path, v.syntax()),
+                );
                 self.out.push(
                     Diagnostic::new(
                         &rule::DATA_ENCRYPTED_FIELD_INVALID,
@@ -180,18 +181,30 @@ impl Reader<'_> {
         field: &FieldModel,
     ) {
         let why = if field.name == "id" {
-            Some(("every record's `id`", "A sealed value is bound to its record's `id`, which the database also looks every record up by."))
+            Some((
+                "every record's `id`",
+                "A sealed value is bound to its record's `id`, which the database also looks every record up by.",
+            ))
         } else if field.reference.is_some() {
-            Some(("a reference", "A reference is a foreign key, which the database itself compares."))
+            Some((
+                "a reference",
+                "A reference is a foreign key, which the database itself compares.",
+            ))
         } else if field.generated.is_some() {
-            Some(("a generated field", "A generated field is set from the operation's clock in the statement itself, and read by the database."))
+            Some((
+                "a generated field",
+                "A generated field is set from the operation's clock in the statement itself, and read by the database.",
+            ))
         } else if field.file.is_some()
             || matches!(
                 self.lookup.structure(field.ty.strip_nullable()),
                 Ty::Opaque(held, args) if held == jadpo_std::files::FILE && args.is_empty()
             )
         {
-            Some(("a `File`", "A `File`'s column refers to bytes kept in a store of files, and the database counts who holds them."))
+            Some((
+                "a `File`",
+                "A `File`'s column refers to bytes kept in a store of files, and the database counts who holds them.",
+            ))
         } else {
             None
         };
@@ -201,7 +214,10 @@ impl Reader<'_> {
                     &rule::DATA_ENCRYPTED_FIELD_INVALID,
                     format!("`{entity}.{}` can't be kept sealed", field.name),
                 )
-                .at(node_span(path, value.syntax()), format!("{what}, read by the database"))
+                .at(
+                    node_span(path, value.syntax()),
+                    format!("{what}, read by the database"),
+                )
                 .reason(reason)
                 .next(format!("Remove `encrypted:` from `{}`", field.name)),
             );
@@ -252,9 +268,15 @@ pub fn field_key(db: &dyn Db, project: Project) -> Arc<FieldKeyRead> {
             let Some(read) = read else {
                 let literal = matches!(value, Some(Expr::Literal(_)));
                 let (message, label) = if literal {
-                    ("An encryption key is written in the source", "a secret in source")
+                    (
+                        "An encryption key is written in the source",
+                        "a secret in source",
+                    )
                 } else {
-                    ("`field_encryption_key:` doesn't read a setting", "not `config.<name>`")
+                    (
+                        "`field_encryption_key:` doesn't read a setting",
+                        "not `config.<name>`",
+                    )
                 };
                 out.problems.push(
                     Diagnostic::new(&rule::DATA_FIELD_ENCRYPTION_KEY_INVALID, message)
@@ -346,4 +368,3 @@ pub(crate) fn is_sealed(db: &dyn Db, project: Project, entity: &str, field: &str
                 .any(|found| found.name == field && found.sealed.is_some())
         })
 }
-

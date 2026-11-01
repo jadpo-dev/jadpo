@@ -1221,7 +1221,10 @@ impl Body<'_> {
                 // Or a key held as data: a `var`, or a key-type field of a
                 // record (area 19; chunk P9).
                 if self.holds_key_as_data(&value)
-                    && self.table.base_prim(&given).is_some_and(|prim| prim.is_key())
+                    && self
+                        .table
+                        .base_prim(&given)
+                        .is_some_and(|prim| prim.is_key())
                 {
                     self.held_key_argument(&value, &given, written, key);
                 } else if !given.has_error() {

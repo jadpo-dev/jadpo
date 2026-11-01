@@ -153,11 +153,11 @@ rules! {
     CLI_CONFIG_ARGUMENTS: "cli.config_arguments", area 14, Error, Agent,
         "A `jadpo config` command names no action, an action it doesn't have, or a setting `config.jadpo` doesn't declare";
     CLI_CONFIG_GENERATE_REFUSED: "cli.config_generate_refused", area 14, Error, Human,
-        "`jadpo config generate` would write a new key where a person could read it, or `--generate` would replace a key already set";
+        "A new key would be written where a person could read it, by `jadpo config generate`, or `--generate` would replace a key already set";
     CLI_CONFIG_PROMPT_FAILED: "cli.config_prompt_failed", area 14, Error, Human,
         "Nothing was typed at the prompt of `jadpo config set`, or the terminal couldn't hide what you type there";
     CLI_CONFIG_ROTATION_UNAVAILABLE: "cli.config_rotation_unavailable", area 14, Error, Human,
-        "`jadpo config rotation` couldn't count the sealed rows, because their database can't be reached or has no table for them yet";
+        "The sealed rows `jadpo config rotation` counts couldn't be counted, because their database can't be reached or has no table for them yet";
     CLI_CONFIG_TTY_REQUIRED: "cli.config_tty_required", area 14, Error, Human,
         "You ran `jadpo config set` where there is no terminal to type the value at, such as from a coding agent or a script";
     CLI_DECLINES_ARGUMENTS: "cli.declines_arguments", area 14, Error, Agent,
@@ -335,7 +335,7 @@ rules! {
     DATA_ERASE_UNREACHED: "data.erase_unreached", area 15, Error, Agent,
         "A field's `erase:` is on a field erasing a person never reaches: one that isn't a reference, or a reference to records that belong to no person";
     DATA_FIELD_ENCRYPTION_KEY_INVALID: "data.field_encryption_key_invalid", area 15, Error, Agent,
-        "`field_encryption_key:` reads something other than an `EncryptionKey` setting";
+        "The application's `field_encryption_key:` reads something other than an `EncryptionKey` setting";
     DATA_FIELD_ENCRYPTION_KEY_REQUIRED: "data.field_encryption_key_required", area 15, Error, Human,
         "A field is kept sealed, but the application names no key to seal it with";
     DATA_FIELD_LIST_REQUIRED: "data.field_list_required", area 5, Error, Agent,

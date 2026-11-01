@@ -1075,19 +1075,42 @@ plan decides once, on the `key:` argument's site
 config.<name>`, which each executor passes as `Key::Setting(n)` without
 reading the setting, and `KeySource::Field { name }` for a field whose
 type is a key type, which each executor reads as it reads any field,
-the field holding a `Key::Held`. `None` (anything else, which the
-checker refuses as `type.mismatch`) is a defect at the call.
-`effects::crypto` builds the operation's key ring from either: a
-setting's from the keys the program started with (`effects::Keys`, read
-from the settings, with its `_PREVIOUS`), a held key's from its own
-bytes, with no previous key, since a key held as data rotates by being
-replaced; any other value in the key's place is a defect. A key prints
-as `<key>`, has no storage or JSON form, and orders after every other
-kind (a setting's by number, then held keys in constant time), so the
-canonical order stays total although code never compares one. Nothing
-yet makes a held key: keys in encrypted fields come with personal data
-(the roadmap's chunk P9), which decrypts a
-field of a key type into one on load. What they need of the program comes as `Effects` (the plan's JSON
+the field holding a `Key::Held`, and `KeySource::Local` for a `var`, read as
+any local is. `None` (anything else, which the checker refuses as
+`type.mismatch`) is a defect at the call. `effects::crypto` builds the
+operation's key ring from either: a setting's from the keys the program
+started with (`effects::Keys`, read from the settings, with its
+`_PREVIOUS`), a held key's from its own bytes, with no previous key, since a
+key held as data rotates by being replaced; any other value in the key's
+place is a defect. A key prints as `<key>`, has no JSON form, and orders after
+every other kind (a setting's by number, then held keys in constant time), so
+the canonical order stays total although code never compares one. A held key
+is made by `crypto.new_key` from the invocation's secret random bytes, never
+on a recording's tape, and leaves `jadpo_value::crypto` only as `seal_key`'s
+sealed bytes, which `open_key` turns back into one (chunk P9).
+
+**Sealed fields (chunk P9).** A field the data model marks sealed
+(`FieldModel::sealed`: `encrypted: true`, a key type, a `TotpSecret` or a
+`SecretText`) has one `bytea` column, recorded in the snapshot
+(`Column::sealed`) because a `Bytes` field's type wouldn't show the change. A
+write's parameter is `WriteSource::Sealed` and a read's column
+`Column::Sealed`, both naming a `SealedForm` (a codec's JSON, a secret's text
+or a key's bytes) and what the value is bound to, `table.column` by the names
+they were born with, with the record's `id`. `read::Columns` adds the `id` to
+any statement reading a sealed column, whatever its projection keeps, and a
+create seals against the one identity it draws. `jadpo_runtime::sealed` is the
+only code that seals or opens one; it uses the ring `Started::field_ring`
+derives once from `application { field_encryption_key: }`, so a setting's own
+key never serves two uses. A value that won't open is a defect naming the
+column, never its bytes. `field_encryption.reseal`
+(`ScheduleRun::Reseal`, `RuntimePlan::reseals`) moves rows sealed with the
+previous key by their identity bytes, each batch one `UPDATE` comparing each
+row's bytes, so a request that changed one since keeps its change, and
+`sealed::standing` counts them for `jadpo config rotation`. No row version or
+`Generated.on_change` field is touched by anything but the row's `UPDATE`
+itself; a call holding the row sees a concurrent change, as for any write.
+
+What they need of the program comes as `Effects` (the plan's JSON
 table with the program's validators and shapes, the events' numbers and
 subscribers, and the settings), which the interpreter builds from its plan
 and compiled code holds as statics, and the keys as the program

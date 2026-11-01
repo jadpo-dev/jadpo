@@ -676,12 +676,12 @@ pub fn migration_sql(
                     }),
                     // A sealed field made required: no SQL fills it, so a
                     // record still without a value stops the migration.
-                    None if was.nullable && !now.nullable && now.sealed && !now.retired => plan
-                        .columns
-                        .push(Statement {
+                    None if was.nullable && !now.nullable && now.sealed && !now.retired => {
+                        plan.columns.push(Statement {
                             sql: table::set_not_null(table, column),
                             does: "require a value",
-                        }),
+                        })
+                    }
                     None => {}
                 }
             }
@@ -1309,6 +1309,7 @@ mod tests {
                     sql_type: ty.to_string(),
                     nullable: *nullable,
                     retired: *retired,
+                    sealed: false,
                     allows: None,
                     comment: None,
                     generated: None,

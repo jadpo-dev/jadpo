@@ -164,7 +164,8 @@ impl Reader<'_> {
                 &field.name,
                 "A query's condition",
                 Self::span(scope.path, whole),
-                "Find the records by another field, and work this one out in the action".to_string(),
+                "Find the records by another field, and work this one out in the action"
+                    .to_string(),
             ));
             return None;
         }

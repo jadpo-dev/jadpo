@@ -54,7 +54,7 @@ jadpo config chek
 
 ```text output
 error: `chek` isn't something `jadpo config` does
-  reason: `jadpo config` does `check`, `move` and `set`. Did you mean `check`?
+  reason: `jadpo config` does `check`, `generate`, `move`, `rotation` and `set`. Did you mean `check`?
   next: Use `check` instead of `chek` (agent)
   rule: cli.config_arguments
   help: https://jadpo.dev/docs/errors/cli.config_arguments

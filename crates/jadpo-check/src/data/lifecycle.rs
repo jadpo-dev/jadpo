@@ -615,7 +615,10 @@ impl<'a> Reader<'a, '_> {
                 &field.name,
                 "A lifecycle",
                 span,
-                format!("Remove `encrypted:` from `{}`, or use another field", field.name),
+                format!(
+                    "Remove `encrypted:` from `{}`, or use another field",
+                    field.name
+                ),
             ));
             return None;
         }
