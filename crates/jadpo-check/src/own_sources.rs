@@ -225,7 +225,7 @@ fn refusal(entry: &str) -> Option<Refusal> {
     }
     let Some(folder) = entry.strip_suffix('/') else {
         let reason = format!(
-            "{HOST_AND_PATH}. An entry ends in `/` so that what it covers reads plainly: `github.com/acme/` covers `github.com/acme/postcodes`, and never `github.com/acme-evil/postcodes`."
+            "{HOST_AND_PATH}. An entry ends in `/` so that what it covers reads plainly: `github.com/acme/` covers `github.com/acme/tools`, and never `github.com/acme-evil/tools`."
         );
         return Some(if entry.is_empty() {
             Refusal::new(reason, format!("Write {SHAPE}"))

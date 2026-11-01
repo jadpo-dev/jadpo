@@ -57,7 +57,7 @@ error: `github.com/acme` isn't a host and a path ending in `/`
   |
 3 |         own_sources: ["github.com/acme"]
   |                       ^^^^^^^^^^^^^^^^^ not a git location
-  reason: An entry is a host and a path ending in `/`, such as `github.com/acme/`. An entry ends in `/` so that what it covers reads plainly: `github.com/acme/` covers `github.com/acme/postcodes`, and never `github.com/acme-evil/postcodes`.
+  reason: An entry is a host and a path ending in `/`, such as `github.com/acme/`. An entry ends in `/` so that what it covers reads plainly: `github.com/acme/` covers `github.com/acme/tools`, and never `github.com/acme-evil/tools`.
   next: Write `github.com/acme/` (agent)
   rule: package.own_source_invalid
   help: https://jadpo.dev/docs/errors/package.own_source_invalid
