@@ -392,8 +392,8 @@ pub enum Detail {
     /// A route the runtime answers itself (areas 7, 8 and 11): the API it
     /// is in (`None` for health, which is outside every API), what
     /// generates it (`health`, `openapi`, `exchange`, `passkey`,
-    /// `magic_link`, `webhook`), and who may call it (`none`, `caller`,
-    /// `service`, `user`, `signature`).
+    /// `magic_link`, `webhook`, `confirmation`), and who may call it
+    /// (`none`, `caller`, `service`, `user`, `signature`).
     GeneratedRoute {
         api: Option<String>,
         generated: String,
@@ -433,6 +433,17 @@ pub enum Detail {
         default: String,
         owner: String,
         expires: String,
+    },
+    /// A monitoring threshold (area 16, "Monitoring thresholds"): what it
+    /// watches (`route`, `action`, `query`, `schedule`, `subscriber`, or
+    /// `disk` for a store's floor) and its limits as written, `p95` and
+    /// `300ms`, those judged per request apart from those judged across
+    /// requests over `within`.
+    Threshold {
+        watches: String,
+        per_request: Vec<(String, String)>,
+        across_requests: Vec<(String, String)>,
+        within: Option<String>,
     },
     /// The application's `locales { }` (area 10): its default, the locales
     /// it supports in the order listed, and those whose translations are

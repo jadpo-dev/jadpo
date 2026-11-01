@@ -103,6 +103,7 @@ pub mod subscriber;
 pub mod system;
 #[cfg(feature = "testing")]
 pub mod testing;
+pub mod thresholds;
 mod time;
 pub mod translation;
 pub mod types;
@@ -113,10 +114,10 @@ pub use builtin::{Builtin, KEY_SIZE, SIGNING_KEY_MIN};
 pub use constant::{Constant, Hidden};
 pub use enums::{
     Access, AuditBy, AuditChange, AuthenticationMethod, AuthenticationStrength, BatchState,
-    ClientAddressSource, CodeForm, ComponentStyle, CsvFormat, DeployTarget, Driver, Dst,
-    EntityChange, Erasure, FieldAccess, FieldChange, Generated, HttpMethod, Idempotency, IndexKind,
-    InvalidDay, LOCALE, MembershipScope, MoneyDisplay, MoneyPrecision, MoneySign, Month, OnDelete,
-    ProviderEnvironment, Rounding, RouteAuthentication, ScheduleTrigger, SearchLanguage,
+    ClientAddressSource, CodeForm, ComponentStyle, Confirmation, CsvFormat, DeployTarget, Driver,
+    Dst, EntityChange, Erasure, FieldAccess, FieldChange, Generated, HttpMethod, Idempotency,
+    IndexKind, InvalidDay, LOCALE, MembershipScope, MoneyDisplay, MoneyPrecision, MoneySign, Month,
+    OnDelete, ProviderEnvironment, Rounding, RouteAuthentication, ScheduleTrigger, SearchLanguage,
     SignInMethod, SignInRefusal, SuccessStatus, Tenancy, TextDirection, TextFormat,
     TranslationReview, Trigger, UuidVersion, VectorDistance, Weekday, ZONE, enums, variant_ordinal,
 };

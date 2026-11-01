@@ -428,11 +428,9 @@ passkeys; policy; jobs and events; email; rate limits; provider calls;
 `ai.embed` and `Vector` fields; `hash.sha256`. It also waits for 8.2n (a
 real deploy) and, before outside authors can publish, D3 (releases).
 
-- [ ] **R1 Confirming a request with a passkey** `opus · xhigh`: area 8,
-  "Confirm one request with a passkey" (Richard, 2026-10-31). Done when a
-  route can't run until the signed-in person presents one of their own
-  passkeys for that request, and a route test does it with
-  `test_passkeys.confirm`.
+- [x] **R1 Confirming a request with a passkey**: area 8, "Confirm one
+  request with a passkey"; compiler/runtime, "Confirming one request with a
+  passkey".
 - [ ] **R3 A release's facts, change record and fingerprints**
   `opus · xhigh` after V5: area 11, "What a release shows", "The
   changelog", "Search" (the fingerprints) and "Yanks, takedowns and
@@ -498,28 +496,29 @@ After the registry is live, in order:
      the compiler checks", "What is built" and the design notes'
      "Erasure, as built"; compiler/runtime §2.3, "Erasure", and §2.6, "A
      person's erasure"; the pages of `data.erase_*`.
-   - [ ] **P4 What else erasure reaches** `opus · xhigh` after P3: area
-     15, "The person's own record", "What erasure reaches" and "What
-     erasure doesn't rewrite"; area 16, "Files". The person's own record
-     kept field by field (an erased person can't sign in, receives
-     nothing and is left out of queries), records in another store
-     erased by a generated subscriber, a `File` field's bytes deleted,
-     `PersonErased`, and the erasure log replayed when a backup is
-     restored; OAuth grants and caches join when they are built. With
-     the bytes and the sign-in state deleted, retention's two
-     `toolchain.not_built_yet` refusals go too: a retention reaching a
-     `File`, and one cascading to someone who signs in; and erasure's,
-     where `erase` is called, of a `File`'s bytes. Records shared by
-     several people keep their marked fields until the last of them is
-     erased, and anonymising another person's own record clears only
-     the reference (area 15's notes, Richard 2026-11-01): P3's refusal
-     goes and P3's clear-on-either behaviour changes to match. To settle
-     with a maintainer first: how a record in another store belongs to a
-     person, since no reference crosses stores
-     (`data.reference_across_stores`), and which queries "serve the
-     retained purpose". Done when an erased person leaves nothing the
-     page says erasure reaches, on both executors.
-   - [ ] **P5 Export** `opus · high` after P4 and V5: area 15, "Export"
+   - [x] **P4 What else erasure reaches: shared records, files and
+     sign-in**: area 15, "Records that belong to several people",
+     "Retention" and "What is built", and the design notes' "Erasure and
+     retention, as built (chunk P4)"; compiler/runtime §2.3, "Erasure"
+     and "Retention", and §2.6, "A person's erasure" and "Lifecycles and
+     purge".
+   - [ ] **P4b The person's own record, other stores and the erasure
+     log** `opus · xhigh` after P4, **needs a maintainer** before it
+     starts: area 15, "The person's own record", "What erasure reaches"
+     and "What erasure doesn't rewrite". The person's own record kept
+     field by field (an erased person can't sign in, receives nothing
+     and is left out of queries), records in another store erased by a
+     generated subscriber, `PersonErased`, and the erasure log replayed
+     when a backup is restored; OAuth grants and caches join when they
+     are built. The pages leave four questions open: how a record in
+     another store belongs to a person, since no reference crosses
+     stores (`data.reference_across_stores`); which queries "serve the
+     retained purpose"; what `PersonErased` carries; and where the
+     erasure log is kept, so that restoring a store's backup doesn't
+     take it back too, and when it is replayed. Done when an erased
+     person leaves nothing the page says erasure reaches, on both
+     executors.
+   - [ ] **P5 Export** `opus · high` after P4b and V5: area 15, "Export"
      and "Who may erase and export"; area 13's generated test.
      `User.export(id)` as a `PersonalDataExport`: the person's record
      and every record that belongs to them as JSON, one list per entity
@@ -528,7 +527,7 @@ After the registry is live, in order:
      it, for a caller with read on the person's record; and the test
      generated for each person entity that after `erase`, `export`
      returns nothing. Done when export tests pass on both executors.
-   - [ ] **P6 Erasure at providers** `opus · high` after P4 and V6: area
+   - [ ] **P6 Erasure at providers** `opus · high` after P4b and V6: area
      15, "Erasure at providers"; area 11, "Erasure at providers". Each
      connection's key copied into `PersonErased` before the person's
      records go, a generated subscriber calling the package's `erasure:`
@@ -692,21 +691,9 @@ After the registry is live, in order:
    - [x] **B12 Search on PostgreSQL**: area 16, "Search", "How it is
      kept", "Search and policy" and "Search and personal data"; area 2,
      `SearchText`; compiler/runtime §2.6, "Search on PostgreSQL".
-   - [ ] **B13 Monitoring thresholds** `opus · xhigh`: area 16, "Monitoring
-     thresholds"; area 1, `monitoring.jadpo`; area 18, "The manifest" and
-     `ThresholdChange`. The declaration's form, which no page writes
-     yet, decided first and recorded on area 16 and its design notes;
-     each threshold checked to name a route, query, action, schedule or
-     delivery that exists; per-request thresholds compiled into the
-     deployable for item 8's `telemetry:` section to act on, and
-     across-request ones written to `build/monitoring/` as OpenSLO and
-     Prometheus rules and carried in the manifest; a threshold raised or
-     removed refused by `check` until a `ThresholdChange` acceptance
-     names it, its before side read from git, a tightened one needing
-     none. Starting values from production and agents' proposals come
-     with the developer console and MCP (item 9). Done when `check`
-     refuses a loosened threshold until it is accepted, passes a
-     tightened one, and writes the rules.
+   - [x] **B13 Monitoring thresholds**: area 16, "Writing a threshold",
+     "Setting and changing them" and "Monitoring thresholds: checked and
+     generated", and Decisions; area 18, "Acceptances" (`ThresholdChange`).
 5. Debugging and review (area 17): `why`, timelines, `test new --from`,
    `call`.
 6. Records and acceptances: moved to "Approvals" (2026-10-31).

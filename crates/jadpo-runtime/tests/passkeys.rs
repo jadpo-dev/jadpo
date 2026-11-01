@@ -925,3 +925,269 @@ fn the_test_authenticator_gets_the_same_answers_from_both() {
         ]
     );
 }
+
+// --- confirming one request (area 8, "Confirm one request with a passkey") ---
+
+/// What each host makes of confirming with `key`, kept as `stored`, by an
+/// answer `change` alters: `webauthn-rs`'s passkey authentication and the
+/// runtime's own.
+fn confirm_with(
+    key: &Signing,
+    stored: &PasskeyParts,
+    change: impl Fn(&mut Asserting),
+) -> [Result<PasskeyParts, PasskeyError>; 2] {
+    both().map(|ceremonies| {
+        let (options, state) = ceremonies
+            .start_confirmation(ORIGIN, TIMEOUT, std::slice::from_ref(stored))
+            .unwrap();
+        let mut asserting = Asserting::new(&options);
+        change(&mut asserting);
+        ceremonies.finish_confirmation(ORIGIN, TIMEOUT, &state, &asserting.answer(key), stored)
+    })
+}
+
+fn confirms(
+    key: &Signing,
+    stored: &PasskeyParts,
+    case: &str,
+    change: impl Fn(&mut Asserting),
+) -> PasskeyParts {
+    same(confirm_with(key, stored, change), case)
+        .unwrap_or_else(|error| panic!("{case}: {error:?}"))
+}
+
+fn confirm_refused(
+    key: &Signing,
+    stored: &PasskeyParts,
+    case: &str,
+    change: impl Fn(&mut Asserting),
+) {
+    assert_eq!(
+        same(confirm_with(key, stored, change), case),
+        Err(PasskeyError::Rejected),
+        "{case}"
+    );
+}
+
+#[test]
+fn the_confirmation_options_are_webauthn_rss() {
+    let es256 = Signing::es256();
+    let stored = registers(&es256, "registering", |_| {});
+    let with_transports = PasskeyParts {
+        credential_id: vec![0xc3; 32],
+        transports: vec!["internal".to_string(), "hybrid".to_string()],
+        ..stored.clone()
+    };
+    let allow = [stored.clone(), with_transports];
+    let [reference, jadpo] = both().map(|ceremonies| {
+        let (options, _) = ceremonies
+            .start_confirmation("http://localhost:8080", 120_000, &allow)
+            .unwrap();
+        let mut options: Json = serde_json::from_str(&options).unwrap();
+        options["publicKey"]["challenge"] = Json::Null;
+        options
+    });
+    assert_eq!(reference, jadpo);
+    // The person's own passkeys are listed, the person verified, and there
+    // is no autofill to offer them in.
+    let key = &jadpo["publicKey"];
+    assert_eq!(key["rpId"], "localhost");
+    assert_eq!(key["userVerification"], "required");
+    assert_eq!(key["timeout"], 120_000);
+    assert_eq!(key["allowCredentials"][0]["id"], to_base64url(&[0xc1; 32]));
+    assert_eq!(
+        key["allowCredentials"][1]["transports"],
+        json!(["internal", "hybrid"])
+    );
+    assert_eq!(jadpo.get("mediation"), None);
+    // Options listing none would let any passkey answer: neither gives them.
+    for ceremonies in both() {
+        assert_eq!(
+            ceremonies.start_confirmation(ORIGIN, TIMEOUT, &[]).err(),
+            Some(PasskeyError::Misconfigured)
+        );
+    }
+    // Each challenge is new, and 32 bytes.
+    let (first, _) = JADPO
+        .start_confirmation(ORIGIN, TIMEOUT, std::slice::from_ref(&stored))
+        .unwrap();
+    let (second, _) = JADPO
+        .start_confirmation(ORIGIN, TIMEOUT, std::slice::from_ref(&stored))
+        .unwrap();
+    assert_eq!(challenge_of(&first).len(), 32);
+    assert_ne!(challenge_of(&first), challenge_of(&second));
+}
+
+#[test]
+fn confirming_comes_out_the_same_on_both() {
+    let es256 = Signing::es256();
+    let stored = registers(&es256, "registering", |_| {});
+    let used = confirms(&es256, &stored, "a counter going up", |_| {});
+    assert_eq!(used.sign_count, 1);
+    assert_eq!(used.public_key, stored.public_key);
+    let none = confirms(
+        &es256,
+        &stored,
+        "a passkey that keeps no counter",
+        |asserting| {
+            asserting.counter = 0;
+        },
+    );
+    assert_eq!(none.sign_count, 0);
+    confirms(
+        &es256,
+        &stored,
+        "made in another site's frame, which webauthn-rs allows",
+        |asserting| {
+            asserting.client.insert("crossOrigin".into(), json!(true));
+        },
+    );
+    confirms(&es256, &stored, "the device's extensions", |asserting| {
+        asserting.flags |= ED;
+        asserting.extensions = Some(Cbor::Map(BTreeMap::new()));
+    });
+    let high_s = Signing::HighS(match &es256 {
+        Signing::Es256(key) => key.clone(),
+        _ => unreachable!(),
+    });
+    confirms(&high_s, &stored, "a high S", |_| {});
+    // The person is known, so the device needn't name them; the runtime
+    // checks a user handle given against the passkey's itself.
+    confirms(&es256, &stored, "no user handle", |asserting| {
+        asserting.user_handle = Json::Null;
+    });
+    confirms(&es256, &stored, "another user handle", |asserting| {
+        asserting.user_handle = json!(to_base64url(&[8; 16]));
+    });
+
+    let counted = PasskeyParts {
+        sign_count: 5,
+        ..stored.clone()
+    };
+    for (case, counter) in [("the same count", 5), ("a lower count", 4), ("none", 0)] {
+        confirm_refused(&es256, &counted, case, |asserting| {
+            asserting.counter = counter
+        });
+    }
+    assert_eq!(
+        confirms(&es256, &counted, "a higher count", |asserting| asserting
+            .counter =
+            9)
+        .sign_count,
+        9
+    );
+
+    confirm_refused(&es256, &stored, "another site", |asserting| {
+        asserting
+            .client
+            .insert("origin".into(), json!("https://evil.example"));
+    });
+    confirm_refused(&es256, &stored, "registering's type", |asserting| {
+        asserting
+            .client
+            .insert("type".into(), json!("webauthn.create"));
+    });
+    confirm_refused(&es256, &stored, "another challenge", |asserting| {
+        asserting
+            .client
+            .insert("challenge".into(), json!(to_base64url(&[9; 32])));
+    });
+    confirm_refused(&es256, &stored, "another relying party", |asserting| {
+        asserting.rp_id = "evil.example".into();
+    });
+    confirm_refused(&es256, &stored, "not present", |asserting| {
+        asserting.flags &= !UP
+    });
+    confirm_refused(&es256, &stored, "not verified", |asserting| {
+        asserting.flags &= !UV
+    });
+    confirm_refused(&es256, &stored, "backed up, never eligible", |asserting| {
+        asserting.flags |= BS;
+    });
+    confirm_refused(&es256, &stored, "a spoiled signature", |asserting| {
+        asserting.spoiled = true
+    });
+    confirm_refused(&Signing::es256(), &stored, "another key", |_| {});
+    confirm_refused(&es256, &stored, "another passkey's id", |asserting| {
+        asserting.raw_id = vec![0xc2; 32];
+    });
+
+    // A passkey that wasn't eligible for backup may become so, unlike when
+    // signing in, and is kept so; one that was may never stop.
+    let eligible = confirms(&es256, &stored, "now eligible for backup", |asserting| {
+        asserting.flags |= BE;
+    });
+    assert!(eligible.backup_eligible);
+    assert!(!eligible.backed_up);
+    let synced = registers(&es256, "a synced passkey", |making| making.flags |= BE);
+    let backed = confirms(&es256, &synced, "now backed up", |asserting| {
+        asserting.flags |= BE | BS;
+    });
+    assert!(backed.backed_up);
+    confirm_refused(&es256, &synced, "no longer eligible", |_| {});
+
+    let rs256 = Signing::rs256(2048);
+    let stored = registers(&rs256, "an RS256 passkey", |_| {});
+    confirms(&rs256, &stored, "RS256", |_| {});
+    confirm_refused(&rs256, &stored, "RS256 spoiled", |asserting| {
+        asserting.spoiled = true
+    });
+}
+
+/// An answer from a passkey the options didn't list is refused though it
+/// checks against that passkey's own key: the options are the person's.
+#[test]
+fn a_passkey_the_options_dont_allow_cant_confirm() {
+    let es256 = Signing::es256();
+    let stored = registers(&es256, "registering", |_| {});
+    let elsewhere = PasskeyParts {
+        credential_id: vec![0xc2; 32],
+        ..stored.clone()
+    };
+    let [reference, jadpo] = both().map(|ceremonies| {
+        let (options, state) = ceremonies
+            .start_confirmation(ORIGIN, TIMEOUT, std::slice::from_ref(&stored))
+            .unwrap();
+        let mut asserting = Asserting::new(&options);
+        asserting.raw_id = vec![0xc2; 32];
+        ceremonies.finish_confirmation(
+            ORIGIN,
+            TIMEOUT,
+            &state,
+            &asserting.answer(&es256),
+            &elsewhere,
+        )
+    });
+    assert_eq!(reference, Err(PasskeyError::Rejected));
+    assert_eq!(jadpo, Err(PasskeyError::Rejected));
+}
+
+/// The test authenticator confirms with both, and they keep the same
+/// passkey.
+#[test]
+fn the_test_authenticator_confirms_on_both() {
+    let mut kept = Vec::new();
+    for ceremonies in both() {
+        let mut device = TestAuthenticator::seeded(ORIGIN, 91);
+        let (options, state) = ceremonies
+            .start_registration(ORIGIN, TIMEOUT, HANDLE, ACCOUNT, &[])
+            .unwrap();
+        let made = device.create(&options).unwrap();
+        let stored = ceremonies
+            .finish_registration(ORIGIN, TIMEOUT, &state, &made)
+            .unwrap();
+        let (options, state) = ceremonies
+            .start_confirmation(ORIGIN, TIMEOUT, std::slice::from_ref(&stored))
+            .unwrap();
+        let answer = device.get(&options).unwrap();
+        let read = ceremonies.read_answer(&answer).unwrap();
+        assert_eq!(read.challenge, challenge_of(&options));
+        assert_eq!(read.credential_id, stored.credential_id);
+        let used = ceremonies
+            .finish_confirmation(ORIGIN, TIMEOUT, &state, &answer, &stored)
+            .unwrap();
+        assert_eq!(used.sign_count, 1);
+        kept.push(used);
+    }
+    assert_eq!(kept[0], kept[1]);
+}

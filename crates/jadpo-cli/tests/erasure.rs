@@ -10,7 +10,15 @@
 //! - their fines, kept with `Erasure.retained`, stay as they are with
 //!   their lines, only the reference cleared;
 //! - their sessions go with them, and another member's records, sessions
-//!   and record stay.
+//!   and record stay;
+//! - a letter between two members keeps its signature until the last of
+//!   them is erased, each erasure clearing only its own member's
+//!   reference, and a member they invited keeps their own record, only
+//!   the reference to them cleared (chunk P4);
+//! - the bytes of every file their records held go once the erasure
+//!   commits: their photo, each loan's slip, and the photo on a review
+//!   kept without them (chunk P4, through area 16's count of a file's
+//!   holders).
 //!
 //! Policy lets a member erase only themselves: another member's erasure
 //! of them is their not-found failure and changes no row. A member who
@@ -71,7 +79,7 @@ pub(crate) fn files() -> Vec<(String, String)> {
     let mut files: Vec<(String, String)> = vec![
         (
             "app.jadpo".to_string(),
-            "use lending/entities { Member }\n\napplication {}\n\nprincipal {\n    user: {\n        subject: Member.handle\n    }\n}\n\nauthentication {\n    api_token: {}\n}\n".to_string(),
+            "use lending/entities { Member }\n\napplication {\n    connections: {\n        scans: {\n            driver: Driver.disk\n            path: \"/var/lib/library/scans\"\n        }\n    }\n}\n\nprincipal {\n    user: {\n        subject: Member.handle\n    }\n}\n\nauthentication {\n    api_token: {}\n}\n".to_string(),
         ),
         (
             "config.jadpo".to_string(),
@@ -80,6 +88,14 @@ pub(crate) fn files() -> Vec<(String, String)> {
         (
             "domains/lending/types/name.jadpo".to_string(),
             "/// A name, a title or a line of text.\ntype Name = Text {\n    max_length: 80\n}\n".to_string(),
+        ),
+        (
+            "domains/lending/types/scan_text.jadpo".to_string(),
+            "/// What a scanned page or photo holds, as text.\ntype ScanText = Text {\n    min_length: 1\n    max_length: 1000\n}\n".to_string(),
+        ),
+        (
+            "domains/lending/failures/scan_not_kept.jadpo".to_string(),
+            "/// The store of scans had no room.\ntype ScanNotKept = Failure {\n    kind: FailureKind.unavailable\n    message: \"There was no room to keep the scan.\"\n}\n".to_string(),
         ),
         (
             "domains/lending/failures/handle_taken.jadpo".to_string(),
@@ -95,6 +111,15 @@ entity Member {
     id: Uuid
     handle: Name {
         unique: true
+        personal: PersonalData.identifying
+    }
+    invited_by_id: Member.id? {
+        on_delete: OnDelete.cleared
+    }
+    photo: File? {
+        store: scans
+        max_size: 1mb
+        types: [FileType.csv]
         personal: PersonalData.identifying
     }
     left_at: Instant?
@@ -140,6 +165,11 @@ entity Loan {{
     title: Name
     renewal_of: Loan.id? {{
         on_delete: OnDelete.cascade
+    }}
+    slip: File? {{
+        store: scans
+        max_size: 1mb
+        types: [FileType.csv]
     }}
     returned_at: Instant?
 
@@ -192,6 +222,12 @@ entity Review {{
     }}
     body: Name
     signed_as: Name? {{
+        personal: PersonalData.identifying
+    }}
+    photo: File? {{
+        store: scans
+        max_size: 1mb
+        types: [FileType.csv]
         personal: PersonalData.identifying
     }}
     changed_at: Instant {{
@@ -247,25 +283,77 @@ entity FineLine {{
 "
             ),
         ),
+        (
+            "domains/lending/entities/letter.jadpo".to_string(),
+            format!(
+                "use lending/entities {{ Member }}
+use lending/types {{ Name }}
+
+/// A letter one member sends another, which belongs to both.
+entity Letter {{
+    id: Uuid
+    from_id: Member.id? {{
+        on_delete: OnDelete.cleared
+    }}
+    to_id: Member.id? {{
+        on_delete: OnDelete.cleared
+    }}
+    body: Name
+    signed_as: Name? {{
+        personal: PersonalData.identifying
+    }}
+
+{OPEN}}}
+"
+            ),
+        ),
     ];
     files.extend([
         action(
             "join",
             "use lending/entities { Member }\nuse lending/failures { HandleTaken }",
             "(handle: Member.handle) fails HandleTaken -> Member",
-            "    return attempt Member.create {\n        set: {\n            handle: handle\n        }\n        conflict: {\n            Member.handle: HandleTaken\n        }\n    }\n",
+            "    return attempt Member.create {\n        set: {\n            handle: handle\n            invited_by_id: none\n            photo: none\n        }\n        conflict: {\n            Member.handle: HandleTaken\n        }\n    }\n",
+        ),
+        action(
+            "invite",
+            "use lending/entities { Member }\nuse lending/failures { HandleTaken }",
+            "(inviter: Member, handle: Member.handle) fails HandleTaken -> Member",
+            "    return attempt Member.create {\n        set: {\n            handle: handle\n            invited_by_id: inviter.id\n            photo: none\n        }\n        conflict: {\n            Member.handle: HandleTaken\n        }\n    }\n",
+        ),
+        (
+            "domains/lending/actions/join_with_photo.jadpo".to_string(),
+            "use app { scans }\nuse lending/entities { Member }\nuse lending/failures { HandleTaken, ScanNotKept }\nuse lending/types { ScanText }\n\n/// Adds a member with their photo: a handle taken leaves the photo\n/// held by no record.\ndecline step.late_failure: \"A photo no record holds is deleted after a day\"\naction join_with_photo(handle: Member.handle, photo_text: ScanText) fails HandleTaken, ScanNotKept -> Member {\n    var photo: File = attempt scans.put(encoding.to_utf8(photo_text), FileType.csv) {\n        storage_full: ScanNotKept\n    }\n    return attempt Member.create {\n        set: {\n            handle: handle\n            invited_by_id: none\n            photo: photo\n        }\n        conflict: {\n            Member.handle: HandleTaken\n        }\n    }\n}\n".to_string(),
+        ),
+        action(
+            "scan_slip",
+            "use app { scans }\nuse lending/entities { Loan }\nuse lending/failures { ScanNotKept }\nuse lending/types { ScanText }",
+            "(loan: Loan, slip_text: ScanText) fails ScanNotKept -> Loan",
+            "    var slip: File = attempt scans.put(encoding.to_utf8(slip_text), FileType.csv) {\n        storage_full: ScanNotKept\n    }\n    return Loan.update(loan) {\n        set: {\n            slip: slip\n        }\n    }\n",
+        ),
+        action(
+            "review_with_photo",
+            "use app { scans }\nuse lending/entities { Member, Review }\nuse lending/failures { ScanNotKept }\nuse lending/types { ScanText }",
+            "(member: Member, body: Review.body, signed_as: Review.signed_as, photo_text: ScanText) fails ScanNotKept -> Review",
+            "    var photo: File = attempt scans.put(encoding.to_utf8(photo_text), FileType.csv) {\n        storage_full: ScanNotKept\n    }\n    return Review.create {\n        set: {\n            member_id: member.id\n            body: body\n            signed_as: signed_as\n            photo: photo\n        }\n    }\n",
+        ),
+        action(
+            "send",
+            "use lending/entities { Letter, Member }",
+            "(from: Member, to: Member, body: Letter.body, signed_as: Letter.signed_as) -> Letter",
+            "    return Letter.create {\n        set: {\n            from_id: from.id\n            to_id: to.id\n            body: body\n            signed_as: signed_as\n        }\n    }\n",
         ),
         action(
             "borrow",
             "use lending/entities { Loan, Member }",
             "(member: Member, title: Loan.title) -> Loan",
-            "    return Loan.create {\n        set: {\n            member_id: member.id\n            title: title\n            renewal_of: none\n        }\n    }\n",
+            "    return Loan.create {\n        set: {\n            member_id: member.id\n            title: title\n            renewal_of: none\n            slip: none\n        }\n    }\n",
         ),
         action(
             "renew",
             "use lending/entities { Loan }",
             "(loan: Loan) -> Loan",
-            "    return Loan.create {\n        set: {\n            member_id: loan.member_id\n            title: loan.title\n            renewal_of: loan.id\n        }\n    }\n",
+            "    return Loan.create {\n        set: {\n            member_id: loan.member_id\n            title: loan.title\n            renewal_of: loan.id\n            slip: none\n        }\n    }\n",
         ),
         action(
             "give_back",
@@ -283,7 +371,7 @@ entity FineLine {{
             "write_review",
             "use lending/entities { Member, Review }",
             "(member: Member, body: Review.body, signed_as: Review.signed_as) -> Review",
-            "    return Review.create {\n        set: {\n            member_id: member.id\n            body: body\n            signed_as: signed_as\n        }\n    }\n",
+            "    return Review.create {\n        set: {\n            member_id: member.id\n            body: body\n            signed_as: signed_as\n            photo: none\n        }\n    }\n",
         ),
         action(
             "charge",
@@ -336,6 +424,7 @@ const TESTS: &str = r#"use lending/entities {
     LoanNotFound,
     LoanNote,
     LoanNoteNotFound,
+    Letter,
     Member,
     MemberNotFound,
     Review
@@ -346,10 +435,15 @@ use lending/actions {
     charge,
     erase_member,
     give_back,
+    invite,
     join,
+    join_with_photo,
     leave,
     note,
     renew,
+    review_with_photo,
+    scan_slip,
+    send,
     write_review
 }
 
@@ -403,10 +497,52 @@ test "a member who has left is erased with their returned loans" {
     attempt close_account(Principal.user(ada))
     assert close_account(Principal.user(ada)) fails MemberNotFound
 }
+
+test "a letter keeps its signature until the last of its members is erased" {
+    var ada: Member = attempt join("ada")
+    var bob: Member = attempt join("bob")
+    var hello: Letter = send(ada, bob, "Hello", "Ada")
+    var answer: Letter = send(bob, ada, "Hi", "Bob")
+    attempt close_account(Principal.user(ada))
+    var kept: Letter = attempt Letter.get(hello.id)
+    assert kept.from_id == none
+    assert kept.to_id == bob.id
+    assert kept.signed_as == "Ada"
+    var answered: Letter = attempt Letter.get(answer.id)
+    assert answered.to_id == none
+    assert answered.signed_as == "Bob"
+    attempt close_account(Principal.user(bob))
+    var last: Letter = attempt Letter.get(hello.id)
+    assert last.to_id == none
+    assert last.signed_as == none
+    assert last.body == "Hello"
+}
+
+test "erasing a member keeps those they invited, without the reference" {
+    var ada: Member = attempt join("ada")
+    var cat: Member = attempt invite(ada, "cat")
+    attempt close_account(Principal.user(ada))
+    var stays: Member = attempt Member.get(cat.id)
+    assert stays.handle == "cat"
+    assert stays.invited_by_id == none
+}
+
+test "erasing a member lets go of every file their records held" {
+    var ada: Member = attempt join_with_photo("ada", "ada,photo")
+    var loan: Loan = borrow(ada, "Emma")
+    var scanned: Loan = attempt scan_slip(loan, "emma,slip")
+    var said: Review = attempt review_with_photo(ada, "Lovely", "Ada", "ada,reading")
+    attempt close_account(Principal.user(ada))
+    assert Loan.get(scanned.id) fails LoanNotFound
+    var kept: Review = attempt Review.get(said.id)
+    assert kept.photo == none
+    assert kept.signed_as == none
+    assert kept.body == "Lovely"
+}
 "#;
 
 fn project(name: &str) -> PathBuf {
-    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("erasure-p3-{name}"));
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("erasure-p4-{name}"));
     let _ = fs::remove_dir_all(&root);
     for (path, text) in files() {
         write(&root, &path, &text);
@@ -426,7 +562,7 @@ fn erasure_passes_its_tests() {
     let root = project("tests");
     let tested = jadpo(&root, &["test", "--seed", "1"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
-    assert!(tested.stdout.contains("3 passed"), "{}", tested.stdout);
+    assert!(tested.stdout.contains("6 passed"), "{}", tested.stdout);
 }
 
 /// 2026-10-19T09:00:00Z.
@@ -684,4 +820,220 @@ fn erasure_leaves_the_rows_its_references_say() {
             ["bob"]
         );
     });
+}
+
+/// Runs `action` with `args` on `host`, as the member `caller` when one
+/// is given, then the work it left for after its response, giving what
+/// it gave.
+async fn done_on(
+    program: &Program,
+    harness: &Harness,
+    host: &dyn jadpo_runtime::Host,
+    action: &str,
+    args: Vec<Value>,
+    caller: Option<&Value>,
+) -> Outcome {
+    let id = program.plan().find(action).expect("the action");
+    let mut ctx = harness.ctx_on(program, host);
+    if let Some(Value::Record(member)) = caller {
+        let signed_in = jadpo_runtime::http::identity::principal(
+            jadpo_std::http::PrincipalKind::User,
+            member.get("id").cloned().expect("an id"),
+            member.get("handle").cloned().expect("a handle"),
+        );
+        ctx.set_caller(Some(Caller {
+            value: signed_in,
+            key: "user".to_string(),
+            session: None,
+            sign_in: None,
+            multi_factor: false,
+        }));
+    }
+    let outcome = program.run(&mut ctx, id, args).await;
+    let work = ctx.take_deferred();
+    jadpo_runtime::runner::run_deferred(program, host, work).await;
+    outcome
+}
+
+/// The value of `outcome`, which must be one.
+fn value(action: &str, outcome: Outcome) -> Value {
+    match outcome {
+        Outcome::Value(value) => value,
+        other => panic!("{action}: expected a value, got {other:?}"),
+    }
+}
+
+/// The key a record's `File` field holds its bytes under.
+fn key_in(record: &Value, field: &str) -> String {
+    match record {
+        Value::Record(record) => match record.get(field) {
+            Some(Value::Record(file)) => match file.get("key") {
+                Some(Value::Text(key)) => key.to_string(),
+                other => panic!("not a key: {other:?}"),
+            },
+            other => panic!("not a file: {other:?}"),
+        },
+        other => panic!("not a record: {other:?}"),
+    }
+}
+
+/// What erasing one member leaves of what they share with another, and of
+/// the bytes their records held (chunk P4), as SQL and the store of files
+/// show them after a run through the interpreter: the letter keeps its
+/// signature until the last of its members is erased, the member Ada
+/// invited keeps their record, and the bytes of Ada's photo, her loan's
+/// slip and the photo on the review kept without her go once the erasure
+/// commits, while Bob's stay.
+#[test]
+fn erasure_keeps_what_others_share_and_lets_go_of_its_files() {
+    use std::rc::Rc;
+
+    use jadpo_runtime::capability::{Capability, Faked};
+    use jadpo_runtime::files::MemoryFiles;
+
+    if !jadpo_test::live() {
+        return;
+    }
+    let root = project("shared");
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+    let databases = jadpo_test::database::TestDatabases::new(steps, false);
+    let copy = databases.acquire().expect("a test database");
+    let (_, url) = copy.stores.get("main").expect("main").clone();
+    let harness = Harness::postgres(&url).at(T0).random_from(0);
+    let files = Rc::new(MemoryFiles::new());
+    let host = Faked::new(&harness).with("scans", Rc::clone(&files) as Rc<dyn Capability>);
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        let run = |action: &'static str, args: Vec<Value>| {
+            let (program, harness, host) = (&program, &harness, &host);
+            async move { value(action, done_on(program, harness, host, action, args, None).await) }
+        };
+        let ada = run(
+            "join_with_photo",
+            vec![Value::text("ada"), Value::text("ada,photo")],
+        )
+        .await;
+        let bob = run(
+            "join_with_photo",
+            vec![Value::text("bob"), Value::text("bob,photo")],
+        )
+        .await;
+        run("invite", vec![ada.clone(), Value::text("cat")]).await;
+        let mut held = Vec::new();
+        for (member, handle) in [(&ada, "ada"), (&bob, "bob")] {
+            let loan = run(
+                "borrow",
+                vec![member.clone(), Value::text(&format!("{handle}'s loan"))],
+            )
+            .await;
+            let scanned = run(
+                "scan_slip",
+                vec![loan, Value::text(&format!("{handle},slip"))],
+            )
+            .await;
+            let review = run(
+                "review_with_photo",
+                vec![
+                    member.clone(),
+                    Value::text(&format!("{handle}'s review")),
+                    Value::text(&format!("{handle} signed")),
+                    Value::text(&format!("{handle},reading")),
+                ],
+            )
+            .await;
+            held.push([
+                key_in(member, "photo"),
+                key_in(&scanned, "slip"),
+                key_in(&review, "photo"),
+            ]);
+        }
+        run(
+            "send",
+            vec![ada.clone(), bob.clone(), Value::text("Hello"), Value::text("Ada")],
+        )
+        .await;
+        run(
+            "send",
+            vec![bob.clone(), ada.clone(), Value::text("Hi"), Value::text("Bob")],
+        )
+        .await;
+        run(
+            "send",
+            vec![ada.clone(), ada.clone(), Value::text("A note to self"), Value::text("Ada")],
+        )
+        .await;
+        let mut kept = files.keys();
+        kept.sort();
+        let mut all: Vec<String> = held.iter().flatten().cloned().collect();
+        all.sort();
+        assert_eq!(kept, all, "six files, each held once");
+
+        harness.set_now(T0 + HOUR);
+        value(
+            "forget",
+            done_on(&program, &harness, &host, "forget", vec![id_of(&ada)], Some(&ada)).await,
+        );
+
+        let letters = || async {
+            texts(
+                &harness,
+                "SELECT \"body\" || ' from ' || coalesce((SELECT \"handle\" FROM \"member\" WHERE \"id\" = \"from_id\"), 'none') || ' to ' || coalesce((SELECT \"handle\" FROM \"member\" WHERE \"id\" = \"to_id\"), 'none') || ' signed ' || coalesce(\"signed_as\", 'none') FROM \"letter\" ORDER BY 1",
+            )
+            .await
+        };
+        assert_eq!(
+            letters().await,
+            [
+                "A note to self from none to none signed none",
+                "Hello from none to bob signed Ada",
+                "Hi from bob to none signed Bob",
+            ],
+            "a letter Bob shares keeps its signature; Ada's own is cleared"
+        );
+        assert_eq!(
+            texts(
+                &harness,
+                "SELECT \"handle\" || ' ' || (\"invited_by_id\" IS NULL)::text FROM \"member\" ORDER BY 1"
+            )
+            .await,
+            ["bob true", "cat true"],
+            "the member Ada invited keeps their record without her"
+        );
+        let mut left = files.keys();
+        left.sort();
+        let mut bobs = held[1].to_vec();
+        bobs.sort();
+        assert_eq!(left, bobs, "Ada's photo, slip and review photo are gone");
+        assert_eq!(
+            texts(
+                &harness,
+                "SELECT \"body\" || ' ' || coalesce(\"signed_as\", 'none') || ' ' || (\"photo\" IS NULL)::text FROM \"review\" ORDER BY 1"
+            )
+            .await,
+            ["ada's review none true", "bob's review bob signed false"]
+        );
+
+        // Bob was the last of the letter's members: its signature goes
+        // with him.
+        harness.set_now(T0 + 2 * HOUR);
+        value(
+            "forget",
+            done_on(&program, &harness, &host, "forget", vec![id_of(&bob)], Some(&bob)).await,
+        );
+        assert_eq!(
+            letters().await,
+            [
+                "A note to self from none to none signed none",
+                "Hello from none to none signed none",
+                "Hi from none to none signed none",
+            ]
+        );
+        assert!(files.keys().is_empty(), "{:?}", files.keys());
+    });
+    drop(harness);
+    databases.release(copy, false);
 }

@@ -686,13 +686,14 @@ are, onto `EntityModel::retention` and `FieldModel::retention` (a
 `RetentionModel`: the `Duration` setting `after:` names and the `Instant`
 field `since:` names), with where each is written in `EntitySpans`.
 `retention::field_problems` refuses, as the field is read, a field that
-can't be `none`, one the lifecycle owns or reads, and a `File`;
+can't be `none` and one the lifecycle owns or reads;
 `retention::retention_problems` works out from the whole data model what
 deleting one of the entity's records reaches (`retention::reach`: every
-entity through cascades, the `restricted` references holding one of
-them, their `File` fields) and refuses a retention something holds
-(`data.retention_held`), one reaching a `File`, and one cascading to an
-entity `principal { }` names. A retention gives its entity the built-in
+entity through cascades and the `restricted` references holding one of
+them) and refuses a retention something holds (`data.retention_held`).
+A `File` it clears or deletes needs nothing of its own: area 16's
+trigger counts the change, and the tick's sweep deletes the bytes. A
+retention gives its entity the built-in
 purge schedule (`schedules::purge_place`), and the graph a `retention`
 node, keyed `retention Visitor.signup_ip` or `retention Invoice` by born
 names, under its field or entity, its digest over its period, `since:`
@@ -710,11 +711,17 @@ record's number its entity's place there), each reference with
 `Erasure.deleted` it follows from one of them to the records referring
 to it (`follows`), each entity it keeps while it refers to one
 (`kept`, with its references and the marked fields an anonymising one
-clears, none on another person's own record), and what it would reach
-that isn't built (`unbuilt`: a deleted record's `File`, a cleared
-`File`, another person's own record anonymised). A kept record's own
-children stay with it, so the walk goes on only through what erasure
-deletes. `erasure::erasure_problems` reports where each field is
+clears, none on another person's own record). A kept entity with more
+than one reference leading to a person, such as a letter's sender and
+recipient, also lists them (`Kept::through`) and the entities they lead
+through to a person (`Kept::chain`, each with the references climbed
+from it), worked out from `persons`: its marked fields are cleared only
+on a record none of them still leads from to a person erasure keeps
+(chunk P4). What it would reach that isn't built is `unbuilt`: a kept
+record of an audited entity, whose history would still hold the
+reference. A kept record's own children stay with it, so the walk goes
+on only through what erasure deletes; a `File` it deletes or clears is
+counted by area 16's trigger like any change. `erasure::erasure_problems` reports where each field is
 written: an `erase:` on a field that is no reference or on a reference
 to records no person reaches (`data.erase_unreached`), the person's own
 field's (`toolchain.not_built_yet`), a `restricted` reference into
@@ -2384,7 +2391,14 @@ entity's number; one data-modifying part per kept entity clears its
 references to the records found (a `CASE` each when it has several) and,
 where an anonymising one matched, its marked fields' columns, setting
 each `Generated.on_change` field to the operation's time, on records not
-deleted themselves; one deletes the sign-in state (§2.6's
+deleted themselves. For a kept entity whose records may belong to
+someone else too, a part before it (`"last1"`) selects the records whose
+marked fields go: those an anonymising reference matched from which
+none of `Kept::through` leads to a person kept, asked directly when
+each leads straight to a person entity, and otherwise by a recursive
+query in a `NOT EXISTS` that climbs `Kept::chain` from the record's
+references, never through a record being erased, until it reaches a
+person's record (chunk P4). One deletes the sign-in state (§2.6's
 `SIGN_IN_STATE`, `purge::sign_in_state`) of each record found of an
 entity someone signs in as; and one deletes every record found of each
 entity, whatever its lifecycle. All the parts see one snapshot, and the
@@ -2393,11 +2407,14 @@ a deleted record. It returns the person's `id`; no row is the person's
 not-found failure, asked without policy as a delete's probe asks. It is
 a `WritePlan` of `WriteOp::Delete` by `id`, with no refusals, so both
 executors run it through the runtime's one write path unchanged.
-`crates/jadpo-cli/tests/erasure.rs` runs a library's erasure through
-`jadpo test` and reads the rows it leaves; its tests run compiled with
-the interpreter's records in the gate's compiled step. An audited entity
-among those it deletes adds a part deleting the `jadpo_audit` rows of
-the records found of it, by its born name (`text::erase`'s `audited`).
+An audited entity among those it deletes adds a part deleting the
+`jadpo_audit` rows of the records found of it, by its born name
+(`text::erase`'s `audited`). The commit of an erasure that deleted or
+cleared a `File` releases its bytes through area 16's count of holders
+(§2.6, "Files and a file's run"). `crates/jadpo-cli/tests/erasure.rs`
+runs a library's erasure through `jadpo test` and reads the rows and the
+bytes it leaves; its tests run compiled with the interpreter's records
+in the gate's compiled step.
 
 **The audit trail.** `jadpo-plan`'s `Planner::audit` gives each write of
 an audited entity a `jadpo_std::audit::AuditPlan`: the fields an entry
@@ -2461,10 +2478,14 @@ overrun however much is due, and the next run carries on; the budget is a
 batch count. Retention (area 15) is planned beside it as more
 `PurgePlan`s of the entity's, each with its `PurgeKind`: an entity's
 `Retention`, the same `DELETE` of records, hidden or not, whose `since:`
-is older than the cutoff, wrapped, for an entity `principal { }` names,
-in a `WITH` that deletes the rows of `jadpo_sessions`,
-`jadpo_service_keys`, `jadpo_passkeys`, `jadpo_passkey_challenges` and
-`jadpo_sign_in_links` its store holds for the records it deleted; and a
+is older than the cutoff, wrapped, when it or an entity it cascades to
+is one `principal { }` names, in a `WITH` (`statement::with_removed`)
+that deletes the rows of `jadpo_sessions`, `jadpo_service_keys`,
+`jadpo_passkeys`, `jadpo_passkey_challenges` and `jadpo_sign_in_links`
+its store holds for the records it deleted, and, for those reached
+through a cascade (chunk P4), for the records a recursive part finds by
+following the cascades that lead to them from the records deleted, in
+the statement's snapshot; and a
 field's `FieldRetention`, an `UPDATE` setting every column of the field
 to `NULL`, and each `Generated.on_change` field to the run's time, on the
 oldest records holding a value whose `since:` is older than the cutoff.
@@ -2818,6 +2839,25 @@ check against its chain. `jadpo_runtime::test_authenticator` (the
 test signs in with, on `p256`, its keys and ids drawn from its seed and
 its signatures RFC 6979's, so it needs no generator:
 `SoftwareAuthenticators` is `jadpo test`'s host's and a test Worker's.
+
+**Confirming one request with a passkey** (area 8, "Confirm one request
+with a passkey"; chunk R1). `RouteModel::confirm` becomes `RoutePlan::confirm`,
+and the plan appends a `RoutePlan` with `Run::Confirmation(<route>)` at
+`<path>/confirmation` for each, with the route's method
+(`http::confirmation_method`); `routes::generated` lists it, so the
+record, the graph (`generated_route`, parented on the route) and OpenAPI
+agree, and `jadpo routes` shows it. `http::confirmation` answers it after
+signing in, reading the request with `read_request` under the confirmed
+route's number, and keeps the challenge through `http::passkeys` for two
+minutes, bound to the person and `idempotency::digest` of the route and
+input. `run_with_caller` calls `confirmation::check` after reading the
+input and before the idempotency claim, so a replay under a key confirms
+again and nothing runs unconfirmed. The ceremony is `Passkeys::start_confirmation`
+and `finish_confirmation`, `webauthn-rs`'s passkey authentication behind the
+same seam on every host, native and Workers alike. A route test arms
+`Ctx::confirming` with `test_passkeys.confirm`; `http::route_test` takes it
+for the next request to a confirmed route and answers through the route's
+`…/confirmation` with the test host's authenticator.
 
 **Magic links** (area 8, "Magic links"). The identity
 reads `sign_in: { magic_link: }` into `Identity::magic_link` and
@@ -3474,6 +3514,20 @@ flags take; then imports, formatting and `check`, undone on any error.
 document (record, graph node, OpenAPI operation and `routes` listing from
 `served::flags_served`), planned as `Run::Flags` of the `client: true`
 flags' numbers and answered by the HTTP component through `Ctx::flag`.
+
+**Monitoring thresholds** (area 16, "Monitoring thresholds: checked and
+generated"). `jadpo_check::thresholds` reads each domain's `thresholds {
+}` twice: `written` as text alone, which the before side's monitoring
+files from git are read with too, and `thresholds` against the project,
+resolving each subject to its node's key. The acceptances compare the
+two readings by threshold name (`loosened`), and `app.jadpo`'s disk
+floors (`floors_lowered`), into `ThresholdChange` needs. The graph gets a
+`threshold` node for each threshold and floor; the plan carries the
+per-request limits as `RuntimePlan::thresholds`
+(`jadpo_std::thresholds::ThresholdPlan`, keyed by what each watches, with
+`limits_exceeded` for the telemetry that will judge requests by them); and `jadpo
+check` and `jadpo dev` write `rules`' Prometheus and OpenSLO files to
+`build/monitoring/`, removing one that has nothing left to say.
 
 **The capability seam** (area 16). Every call that leaves the
 process goes through one exchange, `jadpo_runtime::outside::exchange`

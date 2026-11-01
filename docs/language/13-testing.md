@@ -746,7 +746,10 @@ real authentication. A service signs in with a key from
 production, and the sign-in checks are tested too. To test signing in
 itself, `test_passkeys` signs in with a passkey and `test_providers`
 through a sign-in provider, with the test run's local issuer as the
-provider ([Providers](08-identity.md#providers)).
+provider ([Providers](08-identity.md#providers)). A route that asks the
+signed-in person for a passkey is confirmed with
+`test_passkeys.confirm(passkey)`
+([Passkeys in tests](08-identity.md#passkeys-in-tests)).
 
 A role can count only for someone who signed in a particular way
 ([Roles that need a way in](09-policy.md#roles-that-need-a-way-in)), so

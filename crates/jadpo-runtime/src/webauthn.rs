@@ -38,8 +38,15 @@
 //!   chains, and browsers send `none` when none is asked for (area 8,
 //!   "Passkey attestation").
 //!
+//! Confirming one request with a passkey (area 8, "Confirm one request
+//! with a passkey") is `webauthn-rs`'s passkey authentication: the options
+//! list the signed-in person's passkeys in `allowCredentials`, and the
+//! answer must come from one of them. As there, a passkey that wasn't
+//! eligible for backup may say it is now, and is kept so.
+//!
 //! A ceremony's state is JSON the runtime keeps server-side and gives back
-//! once: the challenge and, registering, the passkeys not to make again.
+//! once: the challenge and, registering, the passkeys not to make again,
+//! or, confirming, the passkeys allowed.
 
 use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
@@ -490,6 +497,26 @@ fn state_of(state: &str) -> Result<(Vec<u8>, Vec<Vec<u8>>), PasskeyError> {
     Ok((challenge, exclude))
 }
 
+/// A confirmation's state as kept: its challenge and the passkeys it
+/// allows.
+fn allowed_of(state: &str) -> Result<(Vec<u8>, Vec<Vec<u8>>), PasskeyError> {
+    let state: Json = serde_json::from_str(state).map_err(|_| PasskeyError::Misconfigured)?;
+    let challenge = state
+        .get("challenge")
+        .and_then(Json::as_str)
+        .and_then(from_base64url)
+        .ok_or(PasskeyError::Misconfigured)?;
+    let allow = match state.get("allow") {
+        Some(Json::Array(ids)) if !ids.is_empty() => ids
+            .iter()
+            .map(|id| id.as_str().and_then(from_base64url))
+            .collect::<Option<_>>()
+            .ok_or(PasskeyError::Misconfigured)?,
+        _ => return Err(PasskeyError::Misconfigured),
+    };
+    Ok((challenge, allow))
+}
+
 /// Whether the client data is what `site` asked `kind` for with
 /// `challenge`.
 fn client_checks(client: &ClientData, kind: &str, challenge: &[u8], site: &Site) -> bool {
@@ -680,6 +707,100 @@ impl Passkeys for WebAuthn {
         Ok(PasskeyParts {
             sign_count: counter.max(stored.sign_count),
             backed_up: auth.has(BACKED_UP),
+            ..stored.clone()
+        })
+    }
+
+    fn start_confirmation(
+        &self,
+        origin: &str,
+        timeout_ms: u32,
+        allow: &[PasskeyParts],
+    ) -> Result<(String, String), PasskeyError> {
+        let site = Site::of(origin)?;
+        if allow.is_empty() {
+            return Err(PasskeyError::Misconfigured);
+        }
+        let challenge = to_base64url(&self.challenge()?);
+        let allowed: Vec<Json> = allow
+            .iter()
+            .map(|passkey| {
+                let mut credential = Map::new();
+                credential.insert("type".into(), json!("public-key"));
+                credential.insert("id".into(), json!(to_base64url(&passkey.credential_id)));
+                let transports: Vec<&String> = passkey
+                    .transports
+                    .iter()
+                    .filter(|name| TRANSPORTS.contains(&name.as_str()))
+                    .collect();
+                if !transports.is_empty() {
+                    credential.insert("transports".into(), json!(transports));
+                }
+                Json::Object(credential)
+            })
+            .collect();
+        let options = json!({
+            "publicKey": {
+                "challenge": challenge,
+                "timeout": timeout_ms,
+                "rpId": site.id,
+                "allowCredentials": allowed,
+                "userVerification": "required",
+            },
+        });
+        let ids: Vec<String> = allow
+            .iter()
+            .map(|passkey| to_base64url(&passkey.credential_id))
+            .collect();
+        let state = json!({ "challenge": challenge, "allow": ids });
+        Ok((options.to_string(), state.to_string()))
+    }
+
+    fn finish_confirmation(
+        &self,
+        origin: &str,
+        _timeout_ms: u32,
+        state: &str,
+        credential: &str,
+        stored: &PasskeyParts,
+    ) -> Result<PasskeyParts, PasskeyError> {
+        let site = Site::of(origin)?;
+        let (challenge, allow) = allowed_of(state)?;
+        let answer = assertion(credential).ok_or(PasskeyError::Rejected)?;
+        // The answer is from a passkey the options allowed, and it is the
+        // one kept.
+        if !allow.contains(&answer.raw_id) || answer.raw_id != stored.credential_id {
+            return Err(PasskeyError::Rejected);
+        }
+        let key = Key::from_kept(&stored.public_key).ok_or(PasskeyError::Misconfigured)?;
+        let client = client_data(&answer.client_data).ok_or(PasskeyError::Rejected)?;
+        let auth = auth_data(&answer.auth_data).ok_or(PasskeyError::Rejected)?;
+        let counter = auth.counter;
+        let went_back = (counter > 0 || stored.sign_count > 0) && counter <= stored.sign_count;
+        // A passkey that wasn't eligible for backup may become so, as
+        // `webauthn-rs`'s passkey authentication allows; never the other
+        // way, and never backed up without having been eligible.
+        let eligible = auth.has(BACKUP_ELIGIBLE);
+        let eligibility_changed =
+            eligible != stored.backup_eligible && !(eligible && !stored.backup_eligible);
+        if !client_checks(&client, "webauthn.get", &challenge, &site)
+            || auth.rp_id_hash != sha256(site.id.as_bytes())
+            || !auth.has(USER_PRESENT)
+            || !auth.has(USER_VERIFIED)
+            || eligibility_changed
+            || (auth.has(BACKED_UP) && !stored.backup_eligible)
+            || !key.signed(
+                &signed_data(&answer.auth_data, &answer.client_data),
+                &answer.signature,
+            )
+            || went_back
+        {
+            return Err(PasskeyError::Rejected);
+        }
+        Ok(PasskeyParts {
+            sign_count: counter.max(stored.sign_count),
+            backed_up: auth.has(BACKED_UP),
+            backup_eligible: stored.backup_eligible || eligible,
             ..stored.clone()
         })
     }

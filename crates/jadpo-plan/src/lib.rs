@@ -793,15 +793,12 @@ impl Plan {
         // An entity's purge and retentions run where schedules run.
         let purges: Vec<PurgePlan> = if pruning.is_none_or(|pruning| pruning.runs().schedules) {
             // Someone who signs in goes with their sign-in state, in the
-            // tables their store holds (area 15; chunk P2).
+            // tables their store holds (area 15; chunks P2 and P4).
             let sign_in = purge::sign_in_state(db, project);
             model
                 .entities
                 .iter()
-                .flat_map(|entity| {
-                    let tables = sign_in.get(&entity.name).map_or(&[][..], Vec::as_slice);
-                    purge::plans(model, entity, &setting_number, tables)
-                })
+                .flat_map(|entity| purge::plans(model, entity, &setting_number, &sign_in))
                 .collect()
         } else {
             Vec::new()
@@ -1199,7 +1196,11 @@ impl Plan {
                 identity.external_token = None;
             }
             if !taken(jadpo_std::AuthenticationMethod::BrowserSession) {
-                identity.origin = None;
+                // A passkey's answer is checked against the origin, so a
+                // route a person confirms with one keeps it (chunk R1).
+                if !routes.routes.iter().any(|route| route.confirm) {
+                    identity.origin = None;
+                }
                 identity.providers = None;
             }
         }
@@ -1459,6 +1460,7 @@ impl Plan {
             json,
             config,
             flags,
+            thresholds: thresholds(db, project),
             routes,
             events,
             batches,
@@ -1959,4 +1961,21 @@ fn ai_package(
         embed,
         prices: mapping.prices.clone(),
     })
+}
+
+/// Each threshold with a limit judged per request (area 16; chunk B13),
+/// by subject, keyed by what it watches.
+fn thresholds(db: &dyn Db, project: Project) -> Vec<jadpo_std::thresholds::ThresholdPlan> {
+    use jadpo_check::thresholds::Limit;
+    jadpo_check::thresholds::thresholds(db, project)
+        .thresholds
+        .iter()
+        .filter(|threshold| threshold.limits.keys().any(|limit| limit.per_request()))
+        .map(|threshold| jadpo_std::thresholds::ThresholdPlan {
+            name: threshold.subject.clone(),
+            watches: threshold.target.key.as_str().to_string(),
+            duration_ms: threshold.limits.get(&Limit::Duration).copied(),
+            queries: threshold.limits.get(&Limit::Queries).copied(),
+        })
+        .collect()
 }

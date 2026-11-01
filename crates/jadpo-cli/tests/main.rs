@@ -139,6 +139,7 @@ mod tenant_moves;
 mod tenant_reach;
 #[path = "test.rs"]
 mod test_command;
+mod thresholds;
 mod tick_deletes;
 mod translation_exchange;
 mod translation_jadpo;

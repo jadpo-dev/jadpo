@@ -848,6 +848,8 @@ rules! {
         "Route reads a placeholder or input it never passes on";
     ROUTE_CALLS_PAST_DEADLINE: "route.calls_past_deadline", area 11, Error, Agent,
         "The outside calls a route makes could, at their slowest, take longer than the route is allowed to run";
+    ROUTE_CONFIRM_INVALID: "route.confirm_invalid", area 8, Error, Agent,
+        "A route's `confirm:` holds something other than `Confirmation.passkey`, or no signed-in person could confirm the route";
     ROUTE_DEADLINE_INVALID: "route.deadline_invalid", area 7, Error, Agent,
         "Route deadline is not a duration up to 60 seconds";
     ROUTE_HEADER_CREDENTIAL: "route.header_credential", area 7, Error, Agent,
@@ -1180,6 +1182,10 @@ rules! {
         "Subscriber failed for good during a test";
     TEST_UNEXPECTED_FAILURE: "test.unexpected_failure", area 13, Error, Agent,
         "Test ended in a failure it did not expect";
+    THRESHOLD_DECLARATION_INVALID: "threshold.declaration_invalid", area 16, Error, Agent,
+        "A threshold in `thresholds { }` doesn't watch one thing, gives a limit that doesn't apply to it, or gives a value a limit can't take";
+    THRESHOLD_SUBJECT_UNKNOWN: "threshold.subject_unknown", area 16, Error, Agent,
+        "A threshold watches a route, action, query, schedule or subscriber its domain doesn't have";
     TOOLCHAIN_ARTIFACT_WRITE_FAILED: "toolchain.artifact_write_failed", area 14, Error, Human,
         "A file Jadpo writes for you, such as a record, couldn't be written, usually because it or its folder is read-only";
     TOOLCHAIN_BUILD_FAILED: "toolchain.build_failed", area 14, Error, Human,

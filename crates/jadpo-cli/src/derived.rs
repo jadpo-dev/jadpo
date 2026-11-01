@@ -84,6 +84,42 @@ pub fn network(db: &dyn jadpo_db::Db, project: jadpo_db::Project) -> Vec<(String
     ]
 }
 
+/// The monitoring rules (area 16, "Thresholds across requests"; chunk
+/// B13), once the thresholds read cleanly: `build/monitoring/prometheus.yaml`
+/// and `openslo.yaml`, each only while it has something to say. `None`
+/// while the thresholds have problems, so the files already there are
+/// left as they were.
+pub fn monitoring(
+    db: &dyn jadpo_db::Db,
+    project: jadpo_db::Project,
+) -> Option<Vec<(String, String)>> {
+    if !jadpo_check::thresholds::clean(db, project) {
+        return None;
+    }
+    let thresholds = jadpo_check::thresholds::thresholds(db, project);
+    let floors = jadpo_check::thresholds::project_floors(db, project);
+    Some(
+        jadpo_check::thresholds::rules(&thresholds.thresholds, &floors)
+            .into_iter()
+            .map(|(file, text)| (format!("{MONITORING}/{file}"), text))
+            .collect(),
+    )
+}
+
+/// Where the monitoring rules are written.
+pub const MONITORING: &str = "build/monitoring";
+
+/// Removes the monitoring rules `rules` no longer holds, so a tool never
+/// applies a threshold that is gone.
+pub fn remove_stale_monitoring(root: &Path, rules: &[(String, String)]) {
+    for file in ["prometheus.yaml", "openslo.yaml"] {
+        let path = format!("{MONITORING}/{file}");
+        if !rules.iter().any(|(written, _)| *written == path) {
+            let _ = std::fs::remove_file(root.join(&path));
+        }
+    }
+}
+
 /// The provider report (area 11, layers 4 and 5; chunk 7.2e2), once the
 /// connections read cleanly and the app has an integration of its own:
 /// `build/report/providers.md` and its `.json` twin, each call confirmed

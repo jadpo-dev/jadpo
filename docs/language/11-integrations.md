@@ -5863,7 +5863,8 @@ check.
   `x-jadpo-failure` (named from the code, with its kind and message), no
   host (the connection gives `host:`), and no finding. Its runtime's own
   routes (`x-jadpo-generated`: the exchange, passkeys, the served
-  document) are left out. An API that signs callers in only with a
+  document) are left out, and so is a route a person confirms with a
+  passkey (`x-jadpo-confirm`), which no package can call. An API that signs callers in only with a
   browser session gets no credential, and a finding.
 - **Importing again merges** one declaration and one member at a time:
   what the description adds is added, what both have is kept as the file
