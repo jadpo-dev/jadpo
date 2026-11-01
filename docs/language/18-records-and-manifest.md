@@ -903,7 +903,7 @@ Needs a person
 
 ✓ package updated  AcmeCouriers.v2 2.4.0 · 3 changed · 3 need a person
 
-→ jadpo acceptance new upgrade_acme_couriers  drafts these for a person's reason
+→ jadpo acceptance new upgrade_acme_couriers  writes these up for a person's reason
 ```
 
 The removed field is also a compile error in `delivery_view`, which the

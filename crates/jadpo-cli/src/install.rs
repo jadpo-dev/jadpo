@@ -1134,7 +1134,7 @@ pub fn update(call: &Call) -> Reply {
     screen.push(if decide > 0 {
         Block::hint(
             format!("jadpo acceptance new upgrade_{name}"),
-            "drafts these for a person's reason",
+            "writes these up for a person's reason",
         )
     } else {
         Block::hint(
