@@ -110,6 +110,7 @@ mod receiving;
 mod recordings;
 mod records;
 mod released;
+mod removals;
 mod retention;
 mod round_trips;
 mod rule_slice;

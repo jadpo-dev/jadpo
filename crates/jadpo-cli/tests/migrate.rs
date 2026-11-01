@@ -257,30 +257,6 @@ fn a_change_that_needs_decisions_waits_for_them() {
 }
 
 #[test]
-fn removing_an_entity_isnt_built_yet() {
-    let root = project("remove");
-    write(
-        &root,
-        "domains/planning/entities/tag.jadpo",
-        "entity Tag {\n    id: Uuid\n}\n",
-    );
-    assert_eq!(jadpo(&root, &["migrate", "new", "initial"]).code, 0);
-    fs::remove_file(root.join(TODO)).expect("remove");
-    let refused = jadpo(&root, &["migrate", "new", "remove_todo"]);
-    assert_eq!(refused.code, 1);
-    assert!(
-        refused.stderr.contains("rule: toolchain.not_built_yet"),
-        "{}",
-        refused.stderr
-    );
-    assert!(
-        refused.stderr.contains("entity `Todo` removed"),
-        "{}",
-        refused.stderr
-    );
-}
-
-#[test]
 fn apply_and_status_need_a_database() {
     let root = project("needs-url");
     assert_eq!(jadpo(&root, &["migrate", "new", "initial"]).code, 0);

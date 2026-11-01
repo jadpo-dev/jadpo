@@ -382,8 +382,8 @@ and R4, where they touch different crates.
 Already built: acceptances (`jadpo acceptance new`, matching, the reason,
 history, the CODEOWNERS gate) for API and event breaks, every widening of
 who can do what (routes made public included), security declines,
-sign-in settings past their limit, new domains, new outside hosts and
-packages from git (every one, until V1). The kinds that belong to
+sign-in settings past their limit, new domains, new outside hosts,
+packages from git (every one, until V1) and removing data. The kinds that belong to
 features not built yet come with those features: `ThresholdChange` with
 thresholds, a service's image with services, bot checks with bot
 protection, a domain renamed with `jadpo domain rename`.
@@ -394,10 +394,7 @@ protection, a domain renamed with `jadpo domain rename`.
   `packages:`'s `own_sources:` in `application { }` (added to area 1's
   list of sections), its `own_source` lines in `access.jadpo_record`, and
   `PackageChange.git_source` only for a repository under none of them.
-- [ ] **V3 Removing data needs a person** `opus · xhigh`: area 5,
-  "Migrations"; area 18, `DataChange`. `jadpo migrate new`'s removals (an
-  entity removed, one moved to another store, a retired column dropped),
-  each refused by `check` until a `DataChange` acceptance names it.
+- [x] **V3 Removing data needs a person**: area 5, "Removing data"; area 18, "Acceptances" and `DataChange`; area 14, "`jadpo migrate`"; area 16, "Deleting and erasing" and "Retention and erasure"; compiler/runtime §2.3, "Removals"; `docs/errors/migration.drop_not_accepted.md`.
 - [ ] **V4 Risky package upgrades need a person** `opus · high`: area 18,
   "Package upgrades". The review compares the operations and declarations
   the app uses, version ignored; a used operation removed, a used field
