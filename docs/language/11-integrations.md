@@ -5035,8 +5035,9 @@ and the cache runs in memory. Where the other connections go in
 - The network report labels each host with its connection and
   capability.
 - The personal-data report lists the connections that receive marked
-  fields, which of them can erase, and the acceptances for those that
-  can't.
+  fields ([Where personal data goes](15-personal-data.md#where-personal-data-goes)),
+  which of them can erase, and the acceptances for those that can't. Which
+  can erase isn't built yet.
 
 ### Targets
 
@@ -7061,6 +7062,7 @@ package's name, as its types are.
 | Webhooks as events, replies, handshakes, queues through a package and the Cloudflare Queues driver | Built. |
 | Services (`runs:`) | Not built yet. |
 | OAuth grants | Not built yet: the application's `grants:` is `toolchain.not_built_yet` where it is written. |
+| Which personal data a package's operations send, and to which hosts, in `jadpo package check` ([Where personal data goes](15-personal-data.md#where-personal-data-goes)) | Built. The other facts under [What a release shows](#what-a-release-shows) come with the registry. |
 | Publisher trust for third-party git packages | Built: a package from a git repository under none of `packages:`'s `own_sources:` needs an [acceptance](18-records-and-manifest.md#acceptances), as does adding or widening an entry; an entry is `package.own_source_invalid` unless it is a host and a path ending in `/`. |
 | The registry protocol: its requests and answers, the log and its proofs, a local registry and the conformance test | Built (`jadpo-registry`). |
 | The public registry: the verifier, publishing, facts, search, advisories and compatibility runs | Not built yet. |

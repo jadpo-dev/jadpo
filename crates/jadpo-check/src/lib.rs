@@ -51,6 +51,7 @@ mod not_value;
 pub mod own_sources;
 pub mod package_code;
 pub mod packages;
+pub mod personal_data;
 pub mod persons;
 pub mod policy;
 pub mod polls;
