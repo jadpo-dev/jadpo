@@ -29,10 +29,8 @@ pub fn type_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
     let lookup = Lookup::for_file(db, project, file);
     // A provider package's types may say a field's or variant's spelling on
     // the wire (area 11, decided 2026-10-20).
-    let provider = jadpo_db::location(db, project, file)
-        .ownership
-        .package()
-        .is_some_and(|home| crate::connections::reach(db, project, home).is_some());
+    let home = jadpo_db::location(db, project, file).ownership.package();
+    let provider = home.is_some_and(|home| crate::connections::reach(db, project, home).is_some());
     let mut checker = Decls {
         path: file.path(db),
         table: &lookup,
@@ -40,6 +38,7 @@ pub fn type_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
         headers: Vec::new(),
         failure: false,
         provider,
+        packaged: home.is_some(),
     };
     for decl in source.decls() {
         checker.decl(&decl);
@@ -80,6 +79,9 @@ pub(super) struct Decls<'a> {
     /// Whether the file is in a provider package, whose fields and
     /// variants may give `wire_name:` (area 11).
     pub provider: bool,
+    /// Whether the file is in a package, whose types' fields may be marked
+    /// `personal:` (area 15; chunk V5).
+    pub packaged: bool,
 }
 
 impl Decls<'_> {
@@ -1044,6 +1046,7 @@ impl Decls<'_> {
                         input: base == FieldsBase::Input,
                         output: base == FieldsBase::Output,
                         later: base.has_later_settings(),
+                        marked: crate::ai_personal::holds_marks(base, self.packaged),
                         entity: base == FieldsBase::Entity,
                         ty: Ty::Field(host.to_string(), vec![name.clone()]),
                         declared: declared.clone(),
@@ -1475,6 +1478,25 @@ impl Decls<'_> {
                 // Read for what reaches a model (area 21; chunk 5.5v5b).
                 if let Some(problem) = crate::ai_personal::mark_problem(&key, &value, value_span) {
                     self.out.push(problem);
+                }
+                continue;
+            }
+            // A package's own type carries `personal:` beside its
+            // constraints, so what it sends is reported (chunk V5); any
+            // other type holds what a marked field gave it, and is marked
+            // where that field is.
+            if let Some(field) = field
+                && key == crate::ai_personal::PERSONAL
+            {
+                if field.marked {
+                    if let Some(problem) =
+                        crate::ai_personal::mark_problem(&key, &value, value_span)
+                    {
+                        self.out.push(problem);
+                    }
+                } else {
+                    self.out
+                        .push(crate::ai_personal::mark_refused(key_span, &field.ty));
                 }
                 continue;
             }
@@ -2757,6 +2779,9 @@ struct FieldCtx {
     output: bool,
     /// Whether later areas add settings of their own to this field.
     later: bool,
+    /// Whether `personal:` may mark it: an entity's, an event's, an email's
+    /// or a package's own type's (area 15; chunk V5).
+    marked: bool,
     /// Whether it is an entity's field, whose `retention:` area 15 builds
     /// (chunk P2).
     entity: bool,

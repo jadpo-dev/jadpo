@@ -39,13 +39,17 @@
 //! false` (`semantic.ai_field_unmarked`). A
 //! parameter stored is checked where it is passed, and an event's part
 //! where a subscriber passes it.
+//!
+//! What this walk follows is also what the personal-data report lists
+//! ([`super::exits`]): that module keeps what leaves through each
+//! connection, a prompt's model among them.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use jadpo_db::{Db, File, Project};
 use jadpo_diag::{Diagnostic, Span, rule};
 use jadpo_graph::TypeRef;
-use jadpo_graph::body::{Body, SiteId};
+use jadpo_graph::body::{Body, Expr, Node, SiteId};
 
 use super::{Flow, Prov, Src, Walk, model_payloads, shallow};
 use crate::ai_personal::{self, Holder, Holding};
@@ -77,13 +81,24 @@ impl Reach<'_> {
     }
 }
 
-impl Walk<'_> {
+impl<'b> Walk<'b> {
+    /// The type of the value at `site`: a local's read is typed by the
+    /// local, whose type its site doesn't always repeat.
+    pub(super) fn value_type(&self, site: SiteId) -> &'b TypeRef {
+        let at = self.body.site(site);
+        match (&at.ty, &at.node) {
+            (TypeRef::Written(_), Node::Expr(Expr::Local(id))) => &self.body.local(*id).ty,
+            (ty, _) => ty,
+        }
+    }
+
     /// Marks `prov`, the value at `site`, with each standard type its type
     /// is that is personal data whatever holds it.
     pub(super) fn typed(&mut self, flow: &Flow<'_>, site: SiteId, prov: &mut Prov) {
-        for (ty, category) in ai_personal::shallow(&flow.lookup, &self.body.site(site).ty) {
+        for (ty, category) in ai_personal::shallow(&flow.lookup, self.value_type(site)) {
             prov.add(Src::Typed { ty, category });
         }
+        self.typed_as_field(flow, site, prov);
     }
 
     /// `receiver.field`, giving `out`: a marked field of an entity or an
@@ -97,7 +112,7 @@ impl Walk<'_> {
         field: &str,
         out: &mut Prov,
     ) {
-        let mut ty = &self.body.site(receiver).ty;
+        let mut ty = self.value_type(receiver);
         while let TypeRef::Nullable(inner) = ty {
             ty = inner;
         }
@@ -105,6 +120,7 @@ impl Walk<'_> {
             return;
         };
         let host = key.name();
+        self.read_marked(flow, host, field, out);
         let followed = held
             .whole
             .iter()
@@ -120,11 +136,9 @@ impl Walk<'_> {
             return;
         }
         let marks = ai_personal::marks(flow.db, flow.project);
-        if ai_personal::field_holding(&flow.lookup, marks, host, field).is_some() {
-            out.add(Src::Marked {
-                host: host.to_string(),
-                field: field.to_string(),
-            });
+        let (host, field) = super::exits::field_origin(flow, host, field);
+        if ai_personal::field_holding(&flow.lookup, marks, &host, &field).is_some() {
+            out.add(Src::Marked { host, field });
         }
     }
 
@@ -147,6 +161,7 @@ impl Walk<'_> {
                 .map(|def| def.declared.clone());
             let sink = format!("{shown}.{name}");
             let span = self.span(*value);
+            self.prompted_out(flow, shown, prov, declared.as_ref());
             self.reaches(
                 flow,
                 span,
@@ -319,10 +334,10 @@ impl Walk<'_> {
 /// The holders of personal data a value holds, each with what it is and
 /// whether it only decided the value; a parameter's part in it is given
 /// to `param`, for the callers to check.
-struct Held(BTreeMap<Holder, (Holding, bool)>);
+pub(super) struct Held(pub(super) BTreeMap<Holder, (Holding, bool)>);
 
 impl Held {
-    fn hold(&mut self, holder: Holder, holding: &Holding, decided: bool) {
+    pub(super) fn hold(&mut self, holder: Holder, holding: &Holding, decided: bool) {
         let entry = self
             .0
             .entry(holder)
@@ -339,7 +354,7 @@ impl Held {
     }
 
     /// A standard type a marked field is of is reported with the field.
-    fn fold_types(&mut self) {
+    pub(super) fn fold_types(&mut self) {
         let with_fields: BTreeSet<(String, String)> = self
             .0
             .iter()
@@ -358,7 +373,11 @@ impl Held {
 }
 
 /// What `prov` holds that is personal data, and what decided it.
-fn holders(flow: &Flow<'_>, prov: &Prov, mut param: impl FnMut(usize, Vec<String>)) -> Held {
+pub(super) fn holders(
+    flow: &Flow<'_>,
+    prov: &Prov,
+    mut param: impl FnMut(usize, Vec<String>),
+) -> Held {
     let marks = ai_personal::marks(flow.db, flow.project);
     let field =
         |host: &str, field: &str| ai_personal::field_holding(&flow.lookup, marks, host, field);
@@ -414,7 +433,12 @@ fn holders(flow: &Flow<'_>, prov: &Prov, mut param: impl FnMut(usize, Vec<String
                 held.hold(Holder::Type(ty), &holding, decided);
             }
             Src::Param(at, path) => param(at, path),
-            Src::Caller(_) | Src::Deep(_) | Src::Decided(_) | Src::Present { .. } => {}
+            Src::Caller(_)
+            | Src::Deep(_)
+            | Src::Decided(_)
+            | Src::Present { .. }
+            | Src::Declared { .. }
+            | Src::Answered(_) => {}
         }
     }
     held
@@ -623,6 +647,34 @@ fn upper_first(text: &str) -> String {
     }
 }
 
+/// The part of `event` at `full`: what every `emit` of it put there
+/// (`payload`), and the event's own marks, each on its field.
+pub(super) fn event_part(flow: &Flow<'_>, payload: &Prov, event: &str, full: &[String]) -> Prov {
+    let marks = ai_personal::marks(flow.db, flow.project);
+    let marked = |name: &str| {
+        ai_personal::field_holding(&flow.lookup, marks, event, name).map(|_| Src::Marked {
+            host: event.to_string(),
+            field: name.to_string(),
+        })
+    };
+    let mut prov = payload.at(full);
+    match full.first() {
+        Some(first) => {
+            if let Some(src) = marked(first) {
+                prov.add(src);
+            }
+        }
+        None => {
+            for field in flow.lookup.fields(event).into_iter().flatten() {
+                if let Some(src) = marked(&field.name) {
+                    prov.fields.entry(field.name.clone()).or_default().add(src);
+                }
+            }
+        }
+    }
+    prov
+}
+
 /// What the subscribers in `file` pass a model from their events: each
 /// part of its event a subscriber passes its action that the action
 /// sends a model, or stores in a field without its marks, checked
@@ -642,7 +694,6 @@ pub(super) fn subscriber_problems(db: &dyn Db, project: Project, file: File) -> 
         personal: true,
     };
     let payloads = model_payloads(db, project);
-    let marks = ai_personal::marks(db, project);
     let body = Body::default();
     let mut out = Vec::new();
     for read in reads {
@@ -652,33 +703,7 @@ pub(super) fn subscriber_problems(db: &dyn Db, project: Project, file: File) -> 
             continue;
         }
         let payload = payloads.get(&model.event).cloned().unwrap_or_default();
-        let event = model.event.name();
-        // The part of the event at `full`: what every `emit` of it put
-        // there, and the event's own marks, each on its field.
-        let marked = |name: &str| {
-            ai_personal::field_holding(&flow.lookup, marks, event, name).map(|_| Src::Marked {
-                host: event.to_string(),
-                field: name.to_string(),
-            })
-        };
-        let part = |full: &[String]| {
-            let mut prov = payload.at(full);
-            match full.first() {
-                Some(first) => {
-                    if let Some(src) = marked(first) {
-                        prov.add(src);
-                    }
-                }
-                None => {
-                    for field in flow.lookup.fields(event).into_iter().flatten() {
-                        if let Some(src) = marked(&field.name) {
-                            prov.fields.entry(field.name.clone()).or_default().add(src);
-                        }
-                    }
-                }
-            }
-            prov
-        };
+        let part = |full: &[String]| event_part(&flow, &payload, model.event.name(), full);
         let mut walk = Walk::blank(&body, file.path(db).clone(), model.name.clone());
         walk.report = true;
         walk.personal = true;

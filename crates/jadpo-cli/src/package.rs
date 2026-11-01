@@ -43,6 +43,18 @@
 //! → git tag v2.1.0  tags the release once surface.jadpo_record is committed
 //! ```
 //!
+//! A provider package whose operations send personal data says which, before
+//! the bar: each operation with what it sends and its category, and the
+//! hosts it goes to (area 15; chunk V5):
+//!
+//! ```text
+//! Personal data sent
+//!   to https://api.acme-pay.example
+//!   to https://sandbox.acme-pay.example
+//!   customers.create  CustomerRequest.name   identifying
+//!   customers.create  CustomerRequest.notes  health, sensitive
+//! ```
+//!
 //! The package is checked placed as the app's own integration in a scratch
 //! app (the golden rule: a package compiles as the app's own code does),
 //! and every path is shown relative to the package's folder.
@@ -51,6 +63,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use jadpo_check::ai_personal::Holder;
+use jadpo_check::personal_data::PackageSend;
 use jadpo_check::publishing::{self, Bump};
 use jadpo_check::surface::{self, Declaration, Surface, What, first_paragraph};
 use jadpo_db::{Locked, Source};
@@ -1401,6 +1415,15 @@ fn check(call: &Call) -> Reply {
     for block in test_blocks {
         screen.push(block);
     }
+    // Where its personal data goes (chunk V5), once it compiles: a package
+    // with errors may hold calls that can't be followed.
+    let sends =
+        compiled_cleanly.then(|| jadpo_check::personal_data::package_sends(db, project, &mount));
+    if let Some((hosts, sends)) = &sends
+        && !sends.is_empty()
+    {
+        screen.push(personal_data_block(hosts, sends));
+    }
     let rows: Vec<Row> = items
         .iter()
         .map(|item| {
@@ -1487,6 +1510,12 @@ fn check(call: &Call) -> Reply {
                 ])
             })),
         ),
+        (
+            "personal_data",
+            sends.as_ref().map_or(Json::Null, |(hosts, sends)| {
+                personal_data_json(hosts, sends)
+            }),
+        ),
         ("surface", file_json(written)),
         (
             "changelog",
@@ -1502,6 +1531,84 @@ fn check(call: &Call) -> Reply {
         diagnostics,
         sources,
     }
+}
+
+/// What a package's operations send, a line for each: aligned columns of
+/// the operation, what it sends and its category, after the hosts.
+fn personal_data_block(hosts: &[String], sends: &[PackageSend]) -> Block {
+    let held = |send: &PackageSend| match &send.holder {
+        Holder::Field { host, field } => {
+            format!("{}.{field}", host.rsplit('.').next().unwrap_or(host))
+        }
+        Holder::Type(ty) => ty.clone(),
+    };
+    let widest = |of: &dyn Fn(&PackageSend) -> usize| sends.iter().map(of).max().unwrap_or(0);
+    let operation = widest(&|send| send.operation.len());
+    let holder = widest(&|send| held(send).len());
+    // A host on a line of its own, so it copies whole.
+    let mut lines: Vec<String> = hosts.iter().map(|host| format!("to {host}")).collect();
+    for send in sends {
+        let categories: Vec<String> = send
+            .categories
+            .iter()
+            .map(|category| {
+                if jadpo_check::ai_personal::is_sensitive(category) {
+                    format!("{category}, sensitive")
+                } else {
+                    category.clone()
+                }
+            })
+            .collect();
+        lines.push(format!(
+            "{:operation$}  {:holder$}  {}{}",
+            send.operation,
+            held(send),
+            categories.join("; "),
+            if send.decided {
+                " (only decides what is sent)"
+            } else {
+                ""
+            }
+        ));
+    }
+    Block::Section {
+        heading: "Personal data sent".to_string(),
+        lines,
+    }
+}
+
+/// [`personal_data_block`]'s facts, as `--json` gives them.
+fn personal_data_json(hosts: &[String], sends: &[PackageSend]) -> Json {
+    Json::object([
+        (
+            "hosts",
+            Json::array(hosts.iter().map(|host| Json::from(host.as_str()))),
+        ),
+        (
+            "sends",
+            Json::array(sends.iter().map(|send| {
+                let (host, field, ty) = match &send.holder {
+                    Holder::Field { host, field } => (
+                        Json::from(host.as_str()),
+                        Json::from(field.as_str()),
+                        Json::Null,
+                    ),
+                    Holder::Type(ty) => (Json::Null, Json::Null, Json::from(ty.as_str())),
+                };
+                Json::object([
+                    ("operation", Json::from(send.operation.as_str())),
+                    ("host", host),
+                    ("field", field),
+                    ("type", ty),
+                    (
+                        "categories",
+                        Json::array(send.categories.iter().map(|c| Json::from(c.as_str()))),
+                    ),
+                    ("decided_only", send.decided.into()),
+                ])
+            })),
+        ),
+    ])
 }
 
 /// `file` in the package's folder, as the reader reaches it.

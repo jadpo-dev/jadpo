@@ -150,7 +150,9 @@ impl Walk<'_> {
             | Src::Deep(_)
             | Src::Present { .. }
             | Src::Typed { .. }
-            | Src::Marked { .. } => false,
+            | Src::Marked { .. }
+            | Src::Declared { .. }
+            | Src::Answered(_) => false,
         }
     }
 

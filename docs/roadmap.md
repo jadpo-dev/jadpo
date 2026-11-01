@@ -404,11 +404,9 @@ protection, a domain renamed with `jadpo domain rename`.
   removed or retyped, a new failure on a used operation, or a host or
   credential scheme changed needs a `PackageChange` acceptance; `jadpo
   package update` prints the review.
-- [ ] **V5 Where personal data goes** `opus · xhigh`: area 15's marking
-  checked on entities, events and package types, and the personal-data
-  report's list of every connection and host a marked field reaches,
-  through provider operations; the same data available to `jadpo package
-  check`. Erasure and retention stay where they are.
+- [x] **V5 Where personal data goes**: area 15, "Marking personal fields"
+  and "Where personal data goes"; area 14, `jadpo package check`;
+  compiler/runtime §2.3, "Where personal data goes".
 - [ ] **V6 Personal data a connection can't erase** `opus · high` after V5:
   area 15, "Erasure at providers"; area 18, `ErasureNotPossible`. A
   connection that receives a marked field, whose package declares no
