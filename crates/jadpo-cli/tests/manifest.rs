@@ -38,6 +38,8 @@ const DERIVED: &[&str] = &[
     "build/report/permissions.json",
     "build/report/network.md",
     "build/report/network.json",
+    "build/report/personal-data.md",
+    "build/report/personal-data.json",
 ];
 
 use crate::support;
@@ -170,9 +172,16 @@ fn a_project_with_errors_still_writes_and_says_so() {
     let output = jadpo(&root, &["check", "--json"]);
     assert_eq!(output.code, 1);
     let document: serde_json::Value = serde_json::from_str(&output.stdout).expect("JSON");
+    // All but the personal-data report, which only a project with no errors
+    // can be sure of (area 15; chunk V5).
+    let written: Vec<&str> = DERIVED
+        .iter()
+        .copied()
+        .filter(|path| !path.contains("personal-data"))
+        .collect();
     assert_eq!(
         document["data"]["build"],
-        serde_json::json!(DERIVED),
+        serde_json::json!(written),
         "the files written are listed for tools"
     );
     let manifest: serde_json::Value =

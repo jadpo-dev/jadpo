@@ -898,6 +898,18 @@ The bar is shown a row per item: passed, failed or not checked yet. When
 the package compiles and its version is allowed, `surface.jadpo_record` is
 written, to be compared with the previous tag's.
 
+When the package compiles and sends personal data, a section before the bar
+says where: each host, then each operation with what it sends and its
+category ([Where personal data goes](15-personal-data.md#where-personal-data-goes)).
+`--json` gives the same as `personal_data`, `null` for a package with errors:
+
+```text
+Personal data sent
+  to https://api.acme-pay.example
+  to https://sandbox.acme-pay.example
+  customers.create  CustomerRequest.notes  health, sensitive
+```
+
 Not built yet:
 
 - `jadpo package new <Name> --library` or `--provider`, which writes a

@@ -141,6 +141,29 @@ pub fn providers(db: &dyn jadpo_db::Db, project: jadpo_db::Project) -> Vec<(Stri
     ]
 }
 
+/// The personal-data report (area 15; chunk V5): `build/report/personal-data.md`
+/// and its `.json` twin, each connection personal data leaves through and
+/// the hosts it reaches.
+pub fn personal_data(db: &dyn jadpo_db::Db, project: jadpo_db::Project) -> Vec<(String, String)> {
+    let report = jadpo_check::personal_data::report(db, project);
+    vec![
+        (PERSONAL_DATA_MD.to_string(), report.markdown),
+        (PERSONAL_DATA_JSON.to_string(), report.json.to_document()),
+    ]
+}
+
+/// Removes the personal-data report: a project with errors may hold calls
+/// the walk can't see, so one left from before would say less than the
+/// code does (chunk V5).
+pub fn remove_personal_data(root: &Path) {
+    for path in [PERSONAL_DATA_MD, PERSONAL_DATA_JSON] {
+        let _ = std::fs::remove_file(root.join(path));
+    }
+}
+
+const PERSONAL_DATA_MD: &str = "build/report/personal-data.md";
+const PERSONAL_DATA_JSON: &str = "build/report/personal-data.json";
+
 /// What the manifest says of the check that wrote it (area 18): the
 /// compiler, how many errors it found, the commit the project is at and
 /// whether its tree was modified, and each deployable's target and build

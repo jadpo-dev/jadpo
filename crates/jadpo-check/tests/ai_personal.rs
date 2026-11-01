@@ -823,3 +823,33 @@ fn a_model_s_answer_keeps_its_sources_read_rules() {
     assert_eq!(found.len(), 1, "{found:?}");
     assert!(found[0].contains("`Patient.notes`"), "{found:?}");
 }
+
+/// What reaches a model is listed in the personal-data report (area 15),
+/// through the connection `ai:` names, whatever `allowed:` says of it.
+#[test]
+fn what_reaches_a_model_leaves_through_the_connection_ai_names() {
+    let db = Database::default();
+    let app = app(&allowing(&["health"]));
+    let summarise = action("", "patient.notes");
+    let mut all: Vec<(&str, &str)> = vec![("app.jadpo", app.as_str()), CONFIG, PATIENT];
+    all.extend_from_slice(&TYPES);
+    all.push((ACTION_PATH, summarise.as_str()));
+    let project = support::project_with_migrated_records(
+        &db,
+        Layout::Project,
+        &all,
+        &[PROMPT, NUMBER_PROMPT],
+    );
+    let sent: Vec<String> = jadpo_check::personal_data::sent(&db, project)
+        .iter()
+        .map(|sent| {
+            format!(
+                "{} {} {}",
+                sent.connection,
+                sent.holder.key(),
+                sent.through.named()
+            )
+        })
+        .collect();
+    assert_eq!(sent, ["local_model Patient.notes prompt SummariseNotes"]);
+}
