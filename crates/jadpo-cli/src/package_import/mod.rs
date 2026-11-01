@@ -80,7 +80,16 @@ pub(crate) fn import(call: &Call) -> Reply {
                     &rule::CLI_PACKAGE_UNREADABLE,
                     format!("`{file}` can't be read"),
                 )
-                .reason(format!("Reading it failed: {error}."))
+                .reason(match error.kind() {
+                    std::io::ErrorKind::NotFound => {
+                        "There's no file at this path, from the folder the command runs in."
+                            .to_string()
+                    }
+                    std::io::ErrorKind::PermissionDenied => {
+                        "This user may not read it.".to_string()
+                    }
+                    _ => format!("Reading it failed: {error}."),
+                })
                 .next("Give the path of the OpenAPI document, from this folder"),
             );
         }
@@ -97,7 +106,7 @@ pub(crate) fn import(call: &Call) -> Reply {
                 .reason(if yaml {
                     "The importer reads an OpenAPI document as JSON; YAML isn't read yet.".to_string()
                 } else {
-                    format!("The importer reads an OpenAPI document as JSON, and this one stops at line {}: {error}.", error.line())
+                    format!("The importer reads an OpenAPI document as JSON, and this one stops at line {}: {}.", error.line(), without_place(&error))
                 })
                 .next(if yaml {
                     "Convert the document to JSON, then import that"
@@ -632,6 +641,16 @@ pub(crate) fn wrap(text: &str, width: usize) -> Vec<String> {
         lines.push(line);
     }
     lines
+}
+
+/// What a JSON parser's error says, without the line and column it ends
+/// with, which the reason gives once.
+fn without_place(error: &serde_json::Error) -> String {
+    let said = error.to_string();
+    match said.rfind(" at line ") {
+        Some(at) => said[..at].to_string(),
+        None => said,
+    }
 }
 
 #[cfg(test)]

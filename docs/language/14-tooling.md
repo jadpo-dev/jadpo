@@ -951,7 +951,8 @@ reaches a real address ([Email](16-built-in-services.md#email)). It takes
   for the domain given, or for `email: { from: }`'s.
 
 An unknown action, mail or link is `cli.email_arguments`, with the
-nearest.
+nearest. A browser that can't be started is `email.browser_failed`, with
+the link to open yourself.
 
 ### `jadpo runs unfinished`
 
@@ -2869,9 +2870,9 @@ its command is built.
 | `acceptance.missing` | `check`, `build` | A change could break someone else or widen who can do what, and no acceptance this change adds says a person agreed to it |
 | `acceptance.no_reason` | `check`, `build` | An acceptance this change adds has no `///` line above `acceptance` saying why a person accepted the changes it lists |
 | `acceptance.unmatched` | `check`, `build` | Acceptance lists a change this change doesn't make |
-| `conform.failed` | `package conform` | Package's answers don't conform to its capability |
+| `conform.failed` | `package conform` | A package's answers to `jadpo package conform` don't fit the capability it fills, or the suite couldn't run |
 | `conform.refused` | `package conform` | The conformance suite wasn't sent to the provider's live API, because the app has no connection to the package, nothing sets the connection's credential or address, or `ai:` doesn't ask its models through it |
-| `recording.failed` | `package record`, `ai record` | Sandbox or model gave no answer to record |
+| `recording.failed` | `package record`, `ai record` | A recording by `jadpo package record` or `jadpo ai record` got no answer worth keeping from the sandbox or the model, or its call couldn't be made |
 | `recording.refused` | `package record`, `ai record` | A recording was refused before anything was sent, because its connection would call a live API or has nothing set for its sandbox, its package is installed, or there is nothing to ask its prompt with |
 | `configuration.local_changed` | `config` | Something else saved `.env.local` while `jadpo config set` was saving a value in it |
 | `configuration.local_invalid_encoding` | `config` | The `.env.local` file holds bytes that aren't UTF-8 text |
@@ -2879,12 +2880,13 @@ its command is built.
 | `configuration.local_syntax` | `config` | A line of `.env.local` isn't blank, a `#` comment or `NAME=value`, or it sets a variable a line above it already sets |
 | `configuration.local_unsafe_target` | `config` | The `.env.local` file that `jadpo config set` would save a value in is a link, not an ordinary file |
 | `configuration.local_write_failed` | `config` | Saving a value in `.env.local` failed, usually because the project's folder can't be written |
-| `configuration.move_name_taken` | `config move`, the editor | A setting already has the constant's name |
-| `configuration.move_read_unsupported` | `config move`, the editor | Constant is read where a setting can't be |
-| `configuration.move_type_unsupported` | `config move`, the editor | Constant's type can't be a setting |
+| `configuration.move_name_taken` | `config move`, the editor | A constant `jadpo config move` was asked to make a setting has the name of a setting `config { }` already declares |
+| `configuration.move_read_unsupported` | `config move`, the editor | A constant `jadpo config move` was asked to make a setting is read where a setting can't be: in a query, an update by `id`, a backfill or another constant's value |
+| `configuration.move_type_unsupported` | `config move`, the editor | A constant `jadpo config move` was asked to make a setting has a type one environment variable can't hold, such as a list or an object |
 | `configuration.value_invalid` | `config`, `dev` | A setting's value on this machine, from the environment or `.env.local`, doesn't fit the type `config.jadpo` gives it |
 | `configuration.value_missing` | `config`, `dev` | A setting `config.jadpo` declares without a `default:` has no value on this machine, in the environment or `.env.local` |
-| `format.changes_required` | `fmt` | Source files are not canonically formatted |
+| `email.browser_failed` | `email open` | A `jadpo email open` command couldn't start the browser to open a mail's link |
+| `format.changes_required` | `fmt` | A file `jadpo fmt --check` read isn't laid out as `jadpo fmt` would write it |
 | `format.unsafe` | `fmt` | A file was left as it was, because what the formatter made of it didn't read back as the same code, which is a mistake in Jadpo's formatter |
 | `format.write_failed` | `fmt` | A file `jadpo fmt` formatted couldn't be written, usually because it is read-only |
 | `index.accept_check_failed` | `schema index-accept` | Index edit did not pass project checks |
@@ -2967,10 +2969,10 @@ its command is built.
 | `runtime.outcome_unknown` | the running app | Generated runtime could not confirm whether an effect committed |
 | `runtime.startup_failed` | the running app | Generated runtime failed during startup; a deployable's log event, with every problem that stopped it ([A native deployable](#a-native-deployable)) |
 | `runtime.unhandled_fault` | the running app | Generated runtime contained an unexpected fault |
-| `suggest.record_invalid` | `suggest` | Suggestions record can't be read |
+| `suggest.record_invalid` | `suggest` | A suggestions record `jadpo suggest` reads, `ignored_suggestions.jadpo_record` or `taught_suggestions.jadpo_record`, isn't as Jadpo writes it |
 | `suggest.share_failed` | `suggest share` | Jadpo HQ couldn't be reached, or refused what `jadpo suggest share` sent, so the entries wait to be shared again |
-| `test.failed` | `test` | Test run failed |
-| `test.no_tests` | `test` | No tests to run |
+| `test.failed` | `test`, `package check` | A test failed under `jadpo test`, or among a package's own tests under `jadpo package check` |
+| `test.no_tests` | `test` | A `jadpo test` command found no test to run: the project has none, or none matches the path, line, name, kind or `--failed` it gives |
 | `test.runtime_start_failed` | `test` | The tests couldn't start, because the machine couldn't give `jadpo test` the thread with a large stack they run on, usually for lack of memory |
 | `toolchain.artifact_cleanup_failed` | `artifacts`, `build` | Previous build backup could not be removed |
 | `toolchain.artifact_promote_failed` | `artifacts`, `build` | Staged build artifacts could not be promoted |
@@ -2992,7 +2994,7 @@ its command is built.
 | `toolchain.target_liveness_not_local` | `build` | Authored liveness route is not dependency-free |
 | `toolchain.target_store_not_implemented` | `build` | Authority store target adapter is not implemented |
 | `translation.exchange_file_invalid` | `translations export`, `translations import` | A file given to `jadpo translations import` isn't XLIFF 2.x or JSON in the shape `export` writes, or can't be read as one |
-| `translation.exchange_unit_unknown` | `translations import` | Translation file holds a unit the project does not have |
+| `translation.exchange_unit_unknown` | `translations import` | A file given to `jadpo translations import` holds a unit of wording the project doesn't have |
 
 Three errors can't be reached at all: `type.job_delivery_selector_invalid`
 (Delivery selector does not match its entity types),
@@ -3027,7 +3029,7 @@ yet, or that the design notes replace.
 | `cli.declines_arguments` | `declines` | A `jadpo declines` command names no action, one it doesn't have, or a rule or path that isn't the project's |
 | `cli.deliveries_arguments` | `deliveries` | A `jadpo deliveries` command names an action it doesn't have, no id for one that needs it, or a state or page it doesn't list |
 | `cli.dev_arguments` | `dev` | A `jadpo dev` command names an action it doesn't have, `token` without a user's id, or a `--url` the project's several stores can't share |
-| `cli.dev_port_invalid` | `dev` | Development port is invalid |
+| `cli.dev_port_invalid` | `dev` | A `jadpo dev --port` flag holds something other than a whole number from 0 to 65535 |
 | `cli.dev_start_failed` | `dev` | The app couldn't start under `jadpo dev`, usually because another program is using its port, it has no database to run on, or a connection would call a provider's live API |
 | `cli.email_arguments` | `email` | A `jadpo email` command names an action it doesn't have, or a mail or link the dev inbox doesn't hold |
 | `cli.fix_arguments` | `fix` | A `jadpo fix` command names a declaration with nothing to fix, or a fix it doesn't have |
@@ -3046,8 +3048,8 @@ yet, or that the design notes replace.
 | `cli.migrate_arguments` | `migrate` | A `jadpo migrate` command names no action, one it doesn't have, or a purpose for an action that takes none |
 | `cli.new_arguments` | `new` | A `jadpo new` command names no project, or more than one |
 | `cli.package_arguments` | `package` | A `jadpo package` command names no action, one it doesn't have, or a package the project doesn't hold |
-| `cli.package_not_openapi` | `package import` | Description to import is not an OpenAPI 3 document |
-| `cli.package_unreadable` | `package import` | Description to import could not be read as JSON |
+| `cli.package_not_openapi` | `package import` | A file given to `jadpo package import` is JSON but not an OpenAPI 3.0 or 3.1 document |
+| `cli.package_unreadable` | `package import` | A file given to `jadpo package import` isn't there, can't be read, or isn't JSON |
 | `cli.presentation_arguments` | any command | A `--color` flag holds something other than `auto`, `always` or `never`, or nothing |
 | `cli.project_required` | any command | Command requires a project path |
 | `cli.records_arguments` | `records` | A `jadpo records` command names an action other than `update` |
@@ -3102,7 +3104,7 @@ against one.
 | `schedules.no_tick` | `schedules run`, `deliveries retry` | A schedule was run by hand against a deployment, and no tick of the app picked the run up in time, so nothing ran |
 | `schedules.run_failed` | `schedules run`, `deliveries retry` | A schedule run by hand ended in a failure, or its run on the app never ended |
 | `schedules.unavailable` | `schedules`, `deliveries retry`, `why` | The app's schedules couldn't be read from their database, because it can't be reached or has no table for them yet |
-| `seed.failed` | `seed` | Seed ended with a failure or a fault |
+| `seed.failed` | `seed` | A seed `jadpo seed` ran stopped at a call that failed or faulted, and the calls before it stay in the database |
 | `seed.production_refused` | `seed` | A seed was run against a database that isn't on this machine, which may be production |
 | `seed.unavailable` | `seed` | The database a seed runs against couldn't be reached, so nothing was run |
 

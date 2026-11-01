@@ -113,14 +113,11 @@ pub fn sql(call: &Call) -> Reply {
         });
     };
     let plan = Plan::build(db, loaded.project);
+    // A query that checks always has a statement; without one the mistake
+    // is Jadpo's, and its crash screen says so (area 14, "When Jadpo
+    // itself fails").
     let Some(planned) = plan.query_named(name) else {
-        return Reply::failed(
-            Diagnostic::new(&rule::CLI_SQL_ARGUMENTS, format!("`{name}` has no SQL"))
-                .reason(
-                    "The query checks, but no statement could be made for it: a mistake in Jadpo.",
-                )
-                .next("Report it to Jadpo's maintainers"),
-        );
+        panic!("query `{name}` checks, but no statement was made for it");
     };
     let line = jadpo_check::graph::graph(db, loaded.project)
         .get(&query.key)

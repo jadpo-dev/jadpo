@@ -1011,6 +1011,8 @@ pub static COMMANDS: &[Command] = &[
             &rule::CLI_PACKAGE_UNREADABLE,
             &rule::RECORDING_FAILED,
             &rule::RECORDING_REFUSED,
+            &rule::CONFORM_FAILED,
+            &rule::CONFORM_REFUSED,
             &rule::INSTALL_FETCH_FAILED,
             &rule::INSTALL_IN_USE,
             &rule::INSTALL_SURFACE_MISMATCH,
@@ -1599,6 +1601,7 @@ pub static COMMANDS: &[Command] = &[
         raises: &[
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
             &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+            &rule::EMAIL_BROWSER_FAILED,
         ],
         run: commands::email,
     },

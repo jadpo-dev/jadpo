@@ -516,6 +516,16 @@ error: No test's name contains `add wrongly`
   help: https://jadpo.dev/docs/errors/test.no_tests
 "
     );
+    // With one test, its name is the one said not to match.
+    let one = loose("no-name-one", &[ADDS]);
+    let output = jadpo(&one, &["test", ".", "--name", "tomorrow"]);
+    assert!(
+        output
+            .stdout
+            .contains("  reason: The one test's name doesn't contain this text.\n"),
+        "{}",
+        output.stdout
+    );
     let found = jadpo(&root, &["test", ".", "--name", "WRONG", "--seed", "1"]);
     assert!(
         found

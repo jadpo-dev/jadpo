@@ -641,6 +641,28 @@ fn what_the_importer_cant_read_is_refused() {
             refused.stdout
         );
     }
+    // Each says what it found once, without the system's error number.
+    let reason = |args: &[&str]| {
+        let mut with_json = args.to_vec();
+        with_json.push("--json");
+        json(&jadpo(&root, &with_json))["diagnostics"][0]["reason"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    };
+    assert_eq!(
+        reason(&["package", "import", "openapi", "missing.json"]),
+        "There's no file at this path, from the folder the command runs in."
+    );
+    assert_eq!(
+        reason(&["package", "import", "openapi", "swagger.json"]),
+        "The importer reads OpenAPI 3.0 and 3.1, and this is a Swagger 2.0 document, the version before OpenAPI 3."
+    );
+    write(&root, "cut.json", "{\n  \"openapi\": \"3.1.0\",\n");
+    assert_eq!(
+        reason(&["package", "import", "openapi", "cut.json"]),
+        "The importer reads an OpenAPI document as JSON, and this one stops at line 3: EOF while parsing a value."
+    );
     assert!(!root.join("shared").exists());
 }
 

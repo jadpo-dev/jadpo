@@ -723,12 +723,15 @@ pub fn set(args: &SetArgs, env: &Environment) -> u8 {
     let loaded = jadpo_db::load(&args.root);
     let prepared = match Prepared::load(&loaded.db, loaded.project) {
         Ok(prepared) => prepared,
-        Err(_) => {
-            return fail(
-                Diagnostic::new(&rule::CLI_CONFIG_ARGUMENTS, "The project has errors now")
-                    .reason("It checked a moment ago, and a save since then broke it.")
-                    .next("Run `jadpo check`, then `jadpo config set` again"),
-            );
+        // It checked a moment ago, and a save since then broke it: the
+        // errors are the project's, shown as `jadpo check` shows them.
+        Err(problems) => {
+            let cwd = std::env::current_dir().unwrap_or_else(|_| args.root.clone());
+            let blocked = blocked(&loaded, &cwd, problems, "config not set");
+            if let Reply::Report { screen, .. } = blocked {
+                let _ = std::io::stderr().write_all(screen.render(&err_style).as_bytes());
+            }
+            return 1;
         }
     };
     let plan = prepared.plan().config();
@@ -797,13 +800,10 @@ pub fn set(args: &SetArgs, env: &Environment) -> u8 {
 /// it in `.env.local`. The screen that says so; never the value.
 pub fn store(args: &SetArgs, typed: &str) -> Result<Screen, Box<Diagnostic>> {
     let loaded = jadpo_db::load(&args.root);
-    let prepared = Prepared::load(&loaded.db, loaded.project).map_err(|_| {
-        Box::new(
-            Diagnostic::new(&rule::CLI_CONFIG_ARGUMENTS, "The project has errors now")
-                .reason("It checked a moment ago, and a save since then broke it.")
-                .next("Run `jadpo check`, then `jadpo config set` again"),
-        )
-    })?;
+    // A save since the prompt broke the project: its first error, by its
+    // own rule.
+    let prepared = Prepared::load(&loaded.db, loaded.project)
+        .map_err(|problems| Box::new(problems.into_iter().next().expect("an error")))?;
     let plan = prepared.plan().config();
     let Some((_, field)) = plan.field(&args.field) else {
         return Err(Box::new(Diagnostic::new(

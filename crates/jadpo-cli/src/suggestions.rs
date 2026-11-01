@@ -297,6 +297,7 @@ fn taught(root: &Path) -> Result<Vec<Taught>, Box<Diagnostic>> {
         Ok(text) => taught::parse(&text).map_err(|(line, why)| {
             record_invalid(
                 taught::FILE,
+                &text,
                 line,
                 &why,
                 "`jadpo suggest found`",
@@ -350,24 +351,44 @@ fn write_taught(root: &Path, entries: &[Taught]) -> Result<(), Box<Diagnostic>> 
     write_lines(root, SIGNALS, &cache)
 }
 
-/// A committed record that can't be read.
+/// A committed record that can't be read: `text`'s line `line` (from 0)
+/// is wrong, as `why` says.
 fn record_invalid(
     file: &str,
+    text: &str,
     line: usize,
     why: &str,
     writer: &str,
     again: &str,
 ) -> Box<Diagnostic> {
+    let problem = Diagnostic::new(
+        &rule::SUGGEST_RECORD_INVALID,
+        format!("`{file}` can't be read"),
+    );
+    // A merge of two branches that both changed the record leaves git's
+    // markers in it, and both sides' entries are worth keeping.
+    let marker = text.lines().nth(line).is_some_and(|written| {
+        ["<<<<<<<", "=======", ">>>>>>>", "|||||||"]
+            .iter()
+            .any(|mark| written.starts_with(mark))
+    });
+    if marker {
+        return Box::new(
+            problem
+                .reason(format!(
+                    "Line {} is a marker git leaves when two branches both changed the record, and the lines on either side of it are each branch's.",
+                    line + 1
+                ))
+                .next("Keep the entries of both sides, delete the marker lines, then run `jadpo suggest` again"),
+        );
+    }
     Box::new(
-        Diagnostic::new(
-            &rule::SUGGEST_RECORD_INVALID,
-            format!("`{file}` can't be read"),
-        )
-        .reason(format!(
-            "Line {}: {why}. The record is written by {writer}, never by hand.",
-            line + 1
-        ))
-        .next(format!("Restore `{file}` from git, then {again}")),
+        problem
+            .reason(format!(
+                "Line {}: {why}. The record is written by {writer}, never by hand.",
+                line + 1
+            ))
+            .next(format!("Restore `{file}` from git, then {again}")),
     )
 }
 
@@ -382,6 +403,7 @@ fn ignores(root: &Path) -> Result<(Vec<record::Ignore>, bool), Box<Diagnostic>> 
         .map_err(|(line, why)| {
             record_invalid(
                 record::FILE,
+                &text,
                 line,
                 &why,
                 "`jadpo suggest ignore`",

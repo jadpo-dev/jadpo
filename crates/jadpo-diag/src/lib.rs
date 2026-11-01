@@ -163,7 +163,7 @@ rules! {
     CLI_DEV_ARGUMENTS: "cli.dev_arguments", area 14, Error, Agent,
         "A `jadpo dev` command names an action it doesn't have, `token` without a user's id, or a `--url` the project's several stores can't share";
     CLI_DEV_PORT_INVALID: "cli.dev_port_invalid", area 14, Error, Agent,
-        "Development port is invalid";
+        "A `jadpo dev --port` flag holds something other than a whole number from 0 to 65535";
     CLI_DEV_START_FAILED: "cli.dev_start_failed", area 14, Error, Human,
         "The app couldn't start under `jadpo dev`, usually because another program is using its port, it has no database to run on, or a connection would call a provider's live API";
     CLI_EMAIL_ARGUMENTS: "cli.email_arguments", area 14, Error, Agent,
@@ -185,9 +185,9 @@ rules! {
     CLI_PACKAGE_ARGUMENTS: "cli.package_arguments", area 14, Error, Agent,
         "A `jadpo package` command names no action, one it doesn't have, or a package the project doesn't hold";
     CLI_PACKAGE_NOT_OPENAPI: "cli.package_not_openapi", area 14, Error, Agent,
-        "Description to import is not an OpenAPI 3 document";
+        "A file given to `jadpo package import` is JSON but not an OpenAPI 3.0 or 3.1 document";
     CLI_PACKAGE_UNREADABLE: "cli.package_unreadable", area 14, Error, Agent,
-        "Description to import could not be read as JSON";
+        "A file given to `jadpo package import` isn't there, can't be read, or isn't JSON";
     CLI_PRESENTATION_ARGUMENTS: "cli.presentation_arguments", area 14, Error, Agent,
         "A `--color` flag holds something other than `auto`, `always` or `never`, or nothing";
     CLI_RECORDS_ARGUMENTS: "cli.records_arguments", area 14, Error, Agent,
@@ -259,11 +259,11 @@ rules! {
     CONFIGURATION_LOCAL_WRITE_FAILED: "configuration.local_write_failed", area 14, Error, Human,
         "Saving a value in `.env.local` failed, usually because the project's folder can't be written";
     CONFIGURATION_MOVE_NAME_TAKEN: "configuration.move_name_taken", area 14, Error, Agent,
-        "A setting already has the constant's name";
+        "A constant `jadpo config move` was asked to make a setting has the name of a setting `config { }` already declares";
     CONFIGURATION_MOVE_READ_UNSUPPORTED: "configuration.move_read_unsupported", area 14, Error, Agent,
-        "Constant is read where a setting can't be";
+        "A constant `jadpo config move` was asked to make a setting is read where a setting can't be: in a query, an update by `id`, a backfill or another constant's value";
     CONFIGURATION_MOVE_TYPE_UNSUPPORTED: "configuration.move_type_unsupported", area 14, Error, Agent,
-        "Constant's type can't be a setting";
+        "A constant `jadpo config move` was asked to make a setting has a type one environment variable can't hold, such as a list or an object";
     CONFIGURATION_MULTIPLE_DECLARATIONS: "configuration.multiple_declarations", area 10, Error, Agent,
         "Configuration is declared more than once";
     CONFIGURATION_SECRET_DEFAULT: "configuration.secret_default", area 10, Error, Agent,
@@ -285,7 +285,7 @@ rules! {
     CONFIGURATION_VALUE_MISSING: "configuration.value_missing", area 14, Error, Human,
         "A setting `config.jadpo` declares without a `default:` has no value on this machine, in the environment or `.env.local`";
     CONFORM_FAILED: "conform.failed", area 14, Error, Agent,
-        "Package's answers don't conform to its capability";
+        "A package's answers to `jadpo package conform` don't fit the capability it fills, or the suite couldn't run";
     CONFORM_REFUSED: "conform.refused", area 14, Error, Human,
         "The conformance suite wasn't sent to the provider's live API, because the app has no connection to the package, nothing sets the connection's credential or address, or `ai:` doesn't ask its models through it";
     CONNECTION_DISK_PATH_INVALID: "connection.disk_path_invalid", area 16, Error, Human,
@@ -466,6 +466,8 @@ rules! {
         "An action calls itself, or calls other actions that end up calling it again";
     EMAIL_ATTACHMENT_LIMIT: "email.attachment_limit", area 16, Error, Agent,
         "Email's attachments may exceed what its mail package accepts";
+    EMAIL_BROWSER_FAILED: "email.browser_failed", area 14, Error, Human,
+        "A `jadpo email open` command couldn't start the browser to open a mail's link";
     EMAIL_CONNECTION_REQUIRED: "email.connection_required", area 16, Error, Agent,
         "Action emits an email but the application names no email connection";
     EMAIL_FIELD_UNUSED: "email.field_unused", area 16, Declinable, Agent,
@@ -571,7 +573,7 @@ rules! {
     FLAGS_UNAVAILABLE: "flags.unavailable", area 14, Error, Human,
         "The flags' state couldn't be read or changed in their database, because it can't be reached, has no table for them yet, or changed while the command ran";
     FORMAT_CHANGES_REQUIRED: "format.changes_required", area 14, Error, Agent,
-        "Source file is not formatted";
+        "A file `jadpo fmt --check` read isn't laid out as `jadpo fmt` would write it";
     FORMAT_UNSAFE: "format.unsafe", area 14, Error, Human,
         "A file was left as it was, because what the formatter made of it didn't read back as the same code, which is a mistake in Jadpo's formatter";
     FORMAT_WRITE_FAILED: "format.write_failed", area 14, Error, Human,
@@ -829,7 +831,7 @@ rules! {
     RECORD_OUT_OF_DATE: "record.out_of_date", area 18, Error, Agent,
         "A record file that Jadpo writes from your code is missing, or no longer matches the code";
     RECORDING_FAILED: "recording.failed", area 14, Error, Agent,
-        "Sandbox or model gave no answer to record";
+        "A recording by `jadpo package record` or `jadpo ai record` got no answer worth keeping from the sandbox or the model, or its call couldn't be made";
     RECORDING_REFUSED: "recording.refused", area 14, Error, Human,
         "A recording was refused before anything was sent, because its connection would call a live API or has nothing set for its sandbox, its package is installed, or there is nothing to ask its prompt with";
     ROUTE_API_UNKNOWN: "route.api_unknown", area 7, Error, Agent,
@@ -915,7 +917,7 @@ rules! {
     SEARCH_UNDECLARED: "search.undeclared", area 16, Error, Agent,
         "A query searches an entity by words that has no `search:` section";
     SEED_FAILED: "seed.failed", area 14, Error, Agent,
-        "Seed ended with a failure or a fault";
+        "A seed `jadpo seed` ran stopped at a call that failed or faulted, and the calls before it stay in the database";
     SEED_PRODUCTION_REFUSED: "seed.production_refused", area 14, Error, Human,
         "A seed was run against a database that isn't on this machine, which may be production";
     SEED_UNAVAILABLE: "seed.unavailable", area 14, Error, Human,
@@ -1037,7 +1039,7 @@ rules! {
     SUBSCRIBER_RUN_INVALID: "subscriber.run_invalid", area 12, Error, Agent,
         "Subscriber's `run:` isn't a call of an action in its own domain";
     SUGGEST_RECORD_INVALID: "suggest.record_invalid", area 14, Error, Agent,
-        "Suggestions record can't be read";
+        "A suggestions record `jadpo suggest` reads, `ignored_suggestions.jadpo_record` or `taught_suggestions.jadpo_record`, isn't as Jadpo writes it";
     SUGGEST_SHARE_FAILED: "suggest.share_failed", area 14, Error, Human,
         "Jadpo HQ couldn't be reached, or refused what `jadpo suggest share` sent, so the entries wait to be shared again";
     SYNTAX_ASSERTION_FORM: "syntax.assertion_form", area 13, Error, Agent,
@@ -1155,7 +1157,7 @@ rules! {
     TEST_ASSERTION_FAILED: "test.assertion_failed", area 13, Error, Agent,
         "A test's `assert` doesn't hold: its condition is false, or a call checked with `assert … fails` returned or failed differently";
     TEST_FAILED: "test.failed", area 14, Error, Agent,
-        "Test run failed";
+        "A test failed under `jadpo test`, or among a package's own tests under `jadpo package check`";
     TEST_FAKE_EXHAUSTED: "test.fake_exhausted", area 13, Error, Agent,
         "Test called a faked operation more times than its fakes script";
     TEST_FAKE_UNUSED: "test.fake_unused", area 13, Error, Agent,
@@ -1163,7 +1165,7 @@ rules! {
     TEST_FAULT: "test.fault", area 13, Error, Agent,
         "Test stopped on a fault";
     TEST_NO_TESTS: "test.no_tests", area 14, Error, Agent,
-        "No tests to run";
+        "A `jadpo test` command found no test to run: the project has none, or none matches the path, line, name, kind or `--failed` it gives";
     TEST_RECORDING_UNDECODABLE: "test.recording_undecodable", area 11, Error, Agent,
         "A saved answer from an outside service doesn't fit the types your integration reads that answer as";
     TEST_ROUND_TRIP_FAILED: "test.round_trip_failed", area 11, Error, Agent,
@@ -1207,7 +1209,7 @@ rules! {
     TRANSLATION_EXCHANGE_FILE_INVALID: "translation.exchange_file_invalid", area 14, Error, Human,
         "A file given to `jadpo translations import` isn't XLIFF 2.x or JSON in the shape `export` writes, or can't be read as one";
     TRANSLATION_EXCHANGE_UNIT_UNKNOWN: "translation.exchange_unit_unknown", area 14, Error, Agent,
-        "Translation file holds a unit the project does not have";
+        "A file given to `jadpo translations import` holds a unit of wording the project doesn't have";
     TRANSLATION_FEATURE_OFF: "translation.feature_off", area 10, Error, Agent,
         "A language file words a Jadpo message of a feature the application has off";
     TRANSLATION_FIELD_TYPE: "translation.field_type", area 10, Error, Agent,

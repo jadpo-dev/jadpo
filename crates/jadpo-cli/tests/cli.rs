@@ -910,3 +910,21 @@ error: `--url` needs a URL
 "
     );
 }
+
+/// A port given with its host, as an address is written, is refused with
+/// the port alone to give instead.
+#[test]
+fn a_port_with_its_host_names_the_port_alone() {
+    let output = jadpo(&["dev", "--port", "localhost:8080"]);
+    assert_eq!(output.code, 2);
+    assert_eq!(
+        output.stderr,
+        "\
+error: `localhost:8080` isn't a port
+  reason: A port is a whole number from 0 to 65535; 0 lets the system choose a free one.
+  next: Give the port alone: `--port 8080` (agent)
+  rule: cli.dev_port_invalid
+  help: https://jadpo.dev/docs/errors/cli.dev_port_invalid
+"
+    );
+}

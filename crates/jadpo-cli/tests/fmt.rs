@@ -96,7 +96,7 @@ fn check_reports_each_unformatted_file_and_changes_nothing() {
   rule: format.changes_required
   help: https://jadpo.dev/docs/errors/format.changes_required
 
-fmt failed: 1 not formatted, 1 formatted
+fmt failed: 1 not formatted, 1 already formatted
 "
     );
     assert_eq!(read(&root, COUNT), MESSY_COUNT);
@@ -126,7 +126,7 @@ fn rich_check_output_uses_symbols_and_the_footer() {
     assert!(
         output
             .stdout
-            .ends_with("\n✗ fmt failed  1 not formatted · 1 formatted\n"),
+            .ends_with("\n✗ fmt failed  1 not formatted · 1 already formatted\n"),
         "{}",
         output.stdout
     );
@@ -204,7 +204,7 @@ fn a_named_file_or_folder_is_formatted_on_its_own() {
     assert!(
         output
             .stdout
-            .ends_with("fmt failed: 1 not formatted, 1 formatted\n")
+            .ends_with("fmt failed: 1 not formatted, 1 already formatted\n")
     );
 }
 
