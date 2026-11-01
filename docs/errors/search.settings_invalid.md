@@ -38,7 +38,7 @@ entity Todo {
 ```
 
 ```text output
-error: `Todo.priority` isn't text, so it can't be searched by words
+error: `Todo.priority` isn't text, so a search can't read its words
  --> main.jadpo:16:25
    |
 16 |         fields: [title, priority]

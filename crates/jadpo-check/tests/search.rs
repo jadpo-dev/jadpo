@@ -182,7 +182,7 @@ fn search_settings_are_checked() {
         ),
         (
             "    search: {\n        fields: [title, priority]\n        language: SearchLanguage.english\n    }\n",
-            "search.settings_invalid: `Todo.priority` isn't text, so it can't be searched by words",
+            "search.settings_invalid: `Todo.priority` isn't text, so a search can't read its words",
         ),
         (
             "    search: {\n        fields: [Todo.title]\n        language: SearchLanguage.english\n    }\n",
@@ -264,7 +264,7 @@ query search_todos(phrase: SearchText) -> List<TodoView> {
 ";
     assert_eq!(
         problems(&todo("", undeclared)),
-        ["search.undeclared: `Todo` can't be searched by words"]
+        ["search.undeclared: `Todo` has no `search:`, so its records can't be found by words"]
     );
     let refused = [
         (

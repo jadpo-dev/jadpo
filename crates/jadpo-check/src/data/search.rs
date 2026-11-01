@@ -10,7 +10,7 @@
 //! sensitive category (area 15): a search reads what the field says, and
 //! every read of a sensitive field is to be recorded in the access
 //! records, which aren't built yet. Any other personal field may be
-//! searched: its words live in the record's own row, worked out from the
+//! with_matches: its words live in the record's own row, worked out from the
 //! field, so whatever clears or deletes the field clears its words too.
 
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
@@ -190,7 +190,7 @@ pub(super) fn read(
                         if !text {
                             out.push(invalid(
                                 span,
-                                format!("`{name}.{field_name}` isn't text, so it can't be searched by words"),
+                                format!("`{name}.{field_name}` isn't text, so a search can't read its words"),
                                 &format!("`{}`", field.ty),
                                 format!(
                                     "A search reads the words of text fields: a type built on `Text`, kept in one text column. `{name}.{field_name}` is `{}`.",

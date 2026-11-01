@@ -825,7 +825,7 @@ impl Reader<'_> {
         let mut store: Option<(String, Span)> = None;
         let mut lifecycle = None;
         let mut retention: Option<(ast::Member, Span)> = None;
-        let mut searched: Option<(ast::Member, Span)> = None;
+        let mut with_matches: Option<(ast::Member, Span)> = None;
         let mut unique = None;
         let mut indexes = None;
         let items: Vec<MemberItem> = decl
@@ -906,7 +906,7 @@ impl Reader<'_> {
                         .value()
                         .is_some_and(|value| crate::types::looks_like_type(&value)) =>
                 {
-                    searched = Some((member.clone(), key_span));
+                    with_matches = Some((member.clone(), key_span));
                 }
                 // Decided on its area page, not built: refused where it is
                 // written rather than read as a misspelling, and never
@@ -1020,7 +1020,7 @@ impl Reader<'_> {
             }
         }
         self.retentions(path, &mut entity, retention, lifecycle_span.as_ref());
-        if let Some((member, key_span)) = searched {
+        if let Some((member, key_span)) = with_matches {
             entity.search_written = true;
             entity.search = search::read(
                 self.lookup,
@@ -3517,7 +3517,7 @@ fn nearest_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &
         else {
             continue;
         };
-        // Over 4,000 dimensions it is searched exactly, with no index
+        // Over 4,000 dimensions it is with_matches exactly, with no index
         // (chunk 5.5v1c).
         if nearest.search == queries::VectorSearch::Exact {
             continue;

@@ -1897,12 +1897,12 @@ use planning/entities { Todo }
 use planning/types { TodoSearch, TodoView }
 
 /// The todos whose words match a search, best first.
-query search_todos(search: TodoSearch) -> Page<TodoView> {
+query search_todos(asked: TodoSearch) -> Page<TodoView> {
     from: Todo
-    where: Todo matches search.phrase
+    where: Todo matches asked.phrase
     page: {
-        size: search.page_size
-        after: search.after
+        size: asked.page_size
+        after: asked.after
     }
 }
 ```
@@ -1980,7 +1980,7 @@ test "the best matches come first, a page at a time" {
     var in_notes: Todo = add_todo("Call the bank", "ask about packing boxes")
     var in_title: Todo = add_todo("Pack the van", none)
     var in_both: Todo = add_todo("Pack books", "packing tape too")
-    var unmatched: Todo = add_todo("Water plants", none)
+    var watering: Todo = add_todo("Water plants", none)
     var first: Page<TodoView> = search_todos(
         TodoSearch {
             phrase: "packing"
@@ -1998,13 +1998,13 @@ test "the best matches come first, a page at a time" {
     assert in_notes.title == "Call the bank"
     assert in_title.title == "Pack the van"
     assert in_both.title == "Pack books"
-    assert unmatched.title == "Water plants"
+    assert watering.title == "Water plants"
 }
 
 test "a quoted phrase, a word left out, and or as a word" {
-    var van: Todo = add_todo("Pack the van", none)
+    var van_todo: Todo = add_todo("Pack the van", none)
     var books: Todo = add_todo("Pack books", "the van is full")
-    assert van.title == "Pack the van"
+    assert van_todo.title == "Pack the van"
     assert books.title == "Pack books"
     var phrase: Page<TodoView> = search_todos(
         TodoSearch {
@@ -2013,13 +2013,13 @@ test "a quoted phrase, a word left out, and or as a word" {
         }
     )
     assert titles(phrase) == "Pack the van"
-    var without: Page<TodoView> = search_todos(
+    var no_books: Page<TodoView> = search_todos(
         TodoSearch {
             phrase: "pack -books"
             page_size: 10
         }
     )
-    assert titles(without) == "Pack the van"
+    assert titles(no_books) == "Pack the van"
     var both_words: Page<TodoView> = search_todos(
         TodoSearch {
             phrase: "books or van"
@@ -2253,12 +2253,15 @@ use notes/actions { register, write_note }
 test "a search finds only the caller's notes, and others' never move them" {
     var ann: Member = attempt register("ann")
     var bob: Member = attempt register("bob")
-    var plan: Note = write_note(Principal.user(ann), "budget plan")
-    var review: Note = write_note(Principal.user(ann), "budget review, and the budget after it")
-    var secret: Note = write_note(Principal.user(bob), "budget budget budget")
-    assert plan.body == "budget plan"
-    assert review.body == "budget review, and the budget after it"
-    assert secret.body == "budget budget budget"
+    var budget_plan: Note = write_note(Principal.user(ann), "budget plan")
+    var budget_review: Note = write_note(
+        Principal.user(ann),
+        "budget review, and the budget after it"
+    )
+    var bobs_note: Note = write_note(Principal.user(bob), "budget budget budget")
+    assert budget_plan.body == "budget plan"
+    assert budget_review.body == "budget review, and the budget after it"
+    assert bobs_note.body == "budget budget budget"
     var first: Page<NoteView> = search_notes(Principal.user(ann), "budget", none)
     assert list.map(first.items, item -> item.body) == ["budget review, and the budget after it"]
     var second: Page<NoteView> = search_notes(Principal.user(ann), "budget", first.next)

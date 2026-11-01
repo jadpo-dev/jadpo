@@ -633,7 +633,7 @@ impl Reader<'_> {
                 self.out.push(
                     Diagnostic::new(
                         &rule::SEARCH_UNDECLARED,
-                        format!("`{name}` can't be searched by words"),
+                        format!("`{name}` has no `search:`, so its records can't be found by words"),
                     )
                     .at(Self::span(scope.path, whole), "no `search:`")
                     .reason(format!(
@@ -652,9 +652,9 @@ impl Reader<'_> {
             self.optional_in_where(scope, rhs);
             return None;
         }
-        let searched = matches!(ty.strip_nullable(), Ty::Prim(Prim::SearchText))
+        let with_matches = matches!(ty.strip_nullable(), Ty::Prim(Prim::SearchText))
             || self.lookup.base_prim(&ty) == Some(Prim::SearchText);
-        if !matches!(value, Value::Param { .. }) || (!searched && !ty.has_error()) {
+        if !matches!(value, Value::Param { .. }) || (!with_matches && !ty.has_error()) {
             let written = shown(rhs.syntax());
             self.out.push(
                 Diagnostic::new(

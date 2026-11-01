@@ -104,11 +104,11 @@ impl<'a> Reader<'a> {
         // What each cardinality needs and refuses. A search by words
         // (area 16, "Search"; chunk B12) needs no `order:`: without one,
         // the best matches come first.
-        let searched = sections
+        let with_matches = sections
             .filters
             .iter()
             .any(|(_, member)| member.value().is_some_and(|value| holds_matches(&value)));
-        let (needs, refuses): (&[&str], &[&str]) = match (cardinality, searched) {
+        let (needs, refuses): (&[&str], &[&str]) = match (cardinality, with_matches) {
             (Cardinality::One, _) => (&["missing"], &["order", "limit", "page"]),
             (Cardinality::Optional, _) => (&[], &["missing", "order", "limit", "page"]),
             (Cardinality::List, false) => (&["order", "limit"], &["page", "missing"]),

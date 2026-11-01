@@ -37,7 +37,7 @@ query search_todos(phrase: SearchText) -> List<TodoView> {
 ```
 
 ```text output
-error: `Todo` can't be searched by words
+error: `Todo` has no `search:`, so its records can't be found by words
  --> main.jadpo:16:12
    |
 16 |     where: Todo matches phrase
