@@ -332,8 +332,51 @@ pub(crate) fn table(
             args,
             authentication: route.authentication,
             caller: route.caller,
+            confirm: route.confirm,
             file: group.path.clone(),
             line,
+        });
+    }
+    // Each confirmed route's `<path>/confirmation` (area 8, "Confirm one
+    // request with a passkey"), in its API, asked with its method: the
+    // runtime reads the request as the route itself would and answers with
+    // the options.
+    let confirmed: Vec<(usize, RoutePlan)> = out
+        .routes
+        .iter()
+        .enumerate()
+        .filter(|(_, route)| route.confirm)
+        .map(|(at, route)| (at, route.clone()))
+        .collect();
+    for (at, route) in confirmed {
+        let mut segments = route.segments.clone();
+        segments.push(Segment::Fixed(
+            jadpo_std::http::CONFIRMATION_SEGMENT.to_string(),
+        ));
+        let method = jadpo_std::http::confirmation_method(route.method);
+        out.routes.push(RoutePlan {
+            key: format!(
+                "route {} {}",
+                method.word(),
+                jadpo_std::http::path_text(&segments)
+            ),
+            method,
+            segments,
+            api: route.api,
+            input: None,
+            output: None,
+            status: jadpo_std::SuccessStatus::Ok,
+            deadline_ms: jadpo_std::http::DEFAULT_DEADLINE_MS,
+            run: Run::Confirmation(at as u32),
+            settle: None,
+            stream: false,
+            keys: None,
+            args: Vec::new(),
+            authentication: route.authentication,
+            caller: Some(jadpo_std::http::PrincipalKind::User),
+            confirm: false,
+            file: "generated".to_string(),
+            line: 0,
         });
     }
     // The exchange the runtime answers (area 8, "Ways to sign in"): in
@@ -366,6 +409,7 @@ pub(crate) fn table(
             args: Vec::new(),
             authentication: jadpo_std::http::Authentication::Required,
             caller: Some(jadpo_std::http::PrincipalKind::Service),
+            confirm: false,
             file: "generated".to_string(),
             line: 0,
         });
@@ -413,6 +457,7 @@ pub(crate) fn table(
                 authentication: step.authentication(),
                 caller: (step.authentication().needs_caller())
                     .then_some(jadpo_std::http::PrincipalKind::User),
+                confirm: false,
                 file: "generated".to_string(),
                 line: 0,
             });
@@ -442,6 +487,7 @@ pub(crate) fn table(
                     args: Vec::new(),
                     authentication: step.authentication(),
                     caller: None,
+                    confirm: false,
                     file: "generated".to_string(),
                     line: 0,
                 });
@@ -476,6 +522,7 @@ pub(crate) fn table(
                 args: Vec::new(),
                 authentication: step.authentication(),
                 caller: None,
+                confirm: false,
                 file: "generated".to_string(),
                 line: 0,
             });
@@ -518,6 +565,7 @@ pub(crate) fn table(
                 args: Vec::new(),
                 authentication: served.authentication,
                 caller: None,
+                confirm: false,
                 file: "generated".to_string(),
                 line: 0,
             });
@@ -561,6 +609,7 @@ pub(crate) fn table(
             args: Vec::new(),
             authentication: served.authentication,
             caller: None,
+            confirm: false,
             file: "generated".to_string(),
             line: 0,
         });

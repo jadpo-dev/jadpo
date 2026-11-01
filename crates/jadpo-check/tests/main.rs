@@ -30,6 +30,7 @@ mod client_address;
 mod colour_media;
 mod conditions;
 mod config;
+mod confirmations;
 mod constants;
 mod crypto;
 mod data_formats;

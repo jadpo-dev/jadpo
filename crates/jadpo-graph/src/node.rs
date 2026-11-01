@@ -392,8 +392,8 @@ pub enum Detail {
     /// A route the runtime answers itself (areas 7, 8 and 11): the API it
     /// is in (`None` for health, which is outside every API), what
     /// generates it (`health`, `openapi`, `exchange`, `passkey`,
-    /// `magic_link`, `webhook`), and who may call it (`none`, `caller`,
-    /// `service`, `user`, `signature`).
+    /// `magic_link`, `webhook`, `confirmation`), and who may call it
+    /// (`none`, `caller`, `service`, `user`, `signature`).
     GeneratedRoute {
         api: Option<String>,
         generated: String,

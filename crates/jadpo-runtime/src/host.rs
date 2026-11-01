@@ -265,6 +265,35 @@ pub trait Passkeys {
         stored: &PasskeyParts,
         user_handle: [u8; 16],
     ) -> Result<PasskeyParts, PasskeyError>;
+
+    /// The options for confirming one request with one of `allow`, the
+    /// signed-in person's passkeys (area 8, "Confirm one request with a
+    /// passkey"), as WebAuthn's `PublicKeyCredentialRequestOptionsJSON`
+    /// inside `publicKey`, listing them in `allowCredentials`, and the
+    /// state to check the answer with: `webauthn-rs`'s passkey
+    /// authentication, the person verified. No passkey to allow is
+    /// `Misconfigured`, since options listing none would let any passkey
+    /// answer.
+    fn start_confirmation(
+        &self,
+        origin: &str,
+        timeout_ms: u32,
+        allow: &[PasskeyParts],
+    ) -> Result<(String, String), PasskeyError>;
+
+    /// `stored` after confirming with it: the answer checked against
+    /// `state`, which must allow it, and the stored key, its counter,
+    /// backup state and eligibility updated as `webauthn-rs` updates a
+    /// passkey it authenticated. A counter that didn't go up, when either
+    /// is above zero, is `Rejected`.
+    fn finish_confirmation(
+        &self,
+        origin: &str,
+        timeout_ms: u32,
+        state: &str,
+        credential: &str,
+        stored: &PasskeyParts,
+    ) -> Result<PasskeyParts, PasskeyError>;
 }
 
 /// A software authenticator (area 8, "In development and tests"; chunk

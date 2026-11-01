@@ -44,6 +44,7 @@
 #[cfg(feature = "testing")]
 pub mod account_chooser;
 pub mod address;
+pub(crate) mod confirmation;
 pub mod external_token;
 #[cfg(test)]
 mod guarantees;
@@ -1011,6 +1012,24 @@ async fn run_route(
         }
         // Each API's own OpenAPI document (area 7, "OpenAPI"), as it is.
         (None, Run::OpenApi(document)) => openapi(request, request_id, document),
+        // A confirmed route's options (area 8, "Confirm one request with a
+        // passkey"), with no idempotency key: each request is a new
+        // challenge.
+        (None, Run::Confirmation(confirmed)) => {
+            let answered = confirmation::options(
+                app,
+                executor,
+                ctx,
+                request,
+                request_id,
+                *confirmed,
+                confirmation::person(caller.as_ref()),
+            );
+            match race(answered, &mut deadline).await {
+                First::Left(response) => response,
+                First::Right(()) => runtime_failure(DEADLINE_EXCEEDED, request_id, None),
+            }
+        }
         // Each `client: true` flag, worked out for the caller (area 16,
         // "Flags in browsers and apps"; chunk B10).
         (None, Run::Flags(numbers)) => {
@@ -1195,6 +1214,27 @@ async fn run_with_caller(
         Read::Problems(problems) => return invalid_input(request_id, &problems),
         Read::Values { params, input } => (params, input),
     };
+    let mut deadline = deadline;
+    // A person's confirmation with their passkey, before anything runs
+    // (area 8, "Confirm one request with a passkey").
+    if route.confirm {
+        let person = confirmation::person(ctx.caller());
+        let checked = confirmation::check(
+            app,
+            executor,
+            ctx,
+            request,
+            request_id,
+            route,
+            person,
+            (&params, input.as_ref()),
+        );
+        match race(checked, &mut deadline).await {
+            First::Left(Ok(())) => {}
+            First::Left(Err(refused)) => return *refused,
+            First::Right(()) => return runtime_failure(DEADLINE_EXCEEDED, request_id, None),
+        }
+    }
     // The call's arguments.
     let mut args = Vec::with_capacity(route.args.len());
     for arg in &route.args {
@@ -1257,7 +1297,6 @@ async fn run_with_caller(
     // What was left for after the response before this route ran: only
     // its own action's work is waited for (chunk 6.3).
     let earlier = ctx.deferred().len();
-    let mut deadline = deadline;
     let mut attempt = 1;
     let began = crate::boundary::rerun_began(ctx);
     // Its client sends it again under its key after a crash `jadpo test`
@@ -1343,6 +1382,7 @@ async fn run_with_caller(
                 | Run::MagicLink(_)
                 | Run::Provider(..)
                 | Run::OpenApi(_)
+                | Run::Confirmation(_)
                 | Run::Flags(_) => Outcome::Fault(ctx.fault(
                     crate::FaultKind::Defect("an exchange with no key to trade".into()),
                     Frame::ENTRY,
@@ -1928,6 +1968,7 @@ pub async fn session(
         (SessionOp::TestPasskeySignIn, _) => {
             test_passkeys::sign_in(&executor.app(), executor, ctx, args, at).await
         }
+        (SessionOp::TestPasskeyConfirm, _) => test_passkeys::confirm(ctx, args, at),
         // `test_providers`, which only a route test calls (chunk A7b),
         // through a provider's routes with the local issuer as the
         // provider.
@@ -2061,9 +2102,20 @@ pub async fn route_test(
         caller,
         by,
     } = sent;
-    let Some(request) = test_request(ctx, app, route, args, key, caller, &by).await? else {
+    let Some(mut request) = test_request(ctx, app, route, args, key, caller, &by).await? else {
         return Ok(Value::None);
     };
+    // A route with `confirm:`, confirmed with the test passkey
+    // `test_passkeys.confirm` gave (area 8; chunk R1).
+    if app
+        .table
+        .routes
+        .get(route as usize)
+        .is_some_and(|plan| plan.confirm)
+        && let Some(confirming) = ctx.take_confirming()
+    {
+        test_passkeys::confirming(app, executor, ctx, route, &mut request, confirming).await?;
+    }
     let id = request_id(ctx, u64::from(ctx.actions()));
     let mut response = handle(app, executor, ctx, &request, &id).await;
     if let Some(fault) = response.fault.take() {

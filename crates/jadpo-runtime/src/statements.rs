@@ -252,6 +252,14 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::http::magic_links::WRONG.to_string(),
         ),
         (
+            "http::confirmation::OWN",
+            crate::http::confirmation::OWN.to_string(),
+        ),
+        (
+            "http::confirmation::USED",
+            crate::http::confirmation::USED.to_string(),
+        ),
+        (
             "http::passkeys::ADD",
             crate::http::passkeys::ADD.to_string(),
         ),

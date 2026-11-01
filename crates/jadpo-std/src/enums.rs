@@ -496,6 +496,15 @@ std_enum! {
 }
 
 std_enum! {
+    /// What a route's `confirm:` asks of the signed-in person before it
+    /// runs (area 8, "Confirm one request with a passkey").
+    Confirmation: "Confirmation" {
+        /// One of their own passkeys, presented for this one request.
+        Passkey: "passkey",
+    }
+}
+
+std_enum! {
     /// The ways a caller can sign in (area 8, "Ways to sign in"), each one
     /// named block in `authentication.jadpo`; an API lists the ones it
     /// accepts.
@@ -829,6 +838,7 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
             RouteAuthentication::NAME,
             RouteAuthentication::NAMES.to_vec(),
         ),
+        (Confirmation::NAME, Confirmation::NAMES.to_vec()),
         (
             AuthenticationMethod::NAME,
             AuthenticationMethod::NAMES.to_vec(),
@@ -911,6 +921,7 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         HttpMethod::NAME => position(HttpMethod::NAMES),
         Idempotency::NAME => position(Idempotency::NAMES),
         RouteAuthentication::NAME => position(RouteAuthentication::NAMES),
+        Confirmation::NAME => position(Confirmation::NAMES),
         AuthenticationMethod::NAME => position(AuthenticationMethod::NAMES),
         AuthenticationStrength::NAME => position(AuthenticationStrength::NAMES),
         SignInMethod::NAME => position(SignInMethod::NAMES),
