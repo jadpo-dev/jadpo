@@ -18,7 +18,9 @@ deletes data when its time is up, and [erasure](#erasure) of a person's
 records in their store, the bytes of their files included. `personal:`
 is also read for
 [the AI page's](21-ai.md#personal-data-sent-to-a-model) check of what
-reaches a model. Nothing exports or reports personal data yet, so an app
+reaches a model, and [the report](#the-personal-data-report) lists every
+connection and host personal data reaches. Nothing exports personal data
+yet, and the report doesn't yet list the rest of what it will, so an app
 on this compiler does those itself. `User.export` is
 `toolchain.not_built_yet` where you write it, and so is any retention or
 erasure this compiler can't carry out in full, so none can be mistaken
@@ -41,12 +43,12 @@ is the one fact Jadpo asks you to write down.
 
 | Capability | What you write | What the compiler does | Built yet |
 |---|---|---|---|
-| Marking | `personal:` on a field | Hashes it in logs, lists it in the report | Partly: read for the AI check, and checked to belong to a person; nothing hashes or lists it |
+| Marking | `personal:` on a field | Hashes it in logs, lists it in the report | Partly: read for the AI check and the report's connections, and checked to belong to a person; nothing hashes it |
 | The person | `person: true` on an entity | Finds every record that belongs to them | Yes |
 | Erasure | `erase:` on references it can't work out | Generates `User.erase(id)` across every store and cache | Partly: in the person's store, files' bytes included; not yet the person's own record kept field by field, or another store |
 | Export | nothing | Generates `User.export(id)` | No: `toolchain.not_built_yet` |
 | Retention | `retention:` on a field or entity | Clears or deletes it when the time is up | Partly: not yet on an event |
-| Report | nothing | Writes `build/report/personal-data.md` | No |
+| Report | nothing | Writes `build/report/personal-data.md` | Partly: every connection and host personal data reaches |
 
 ## Marking personal fields
 <!-- topic: marking-personal-fields -->
@@ -93,6 +95,29 @@ you can't add categories of your own. These are the fourteen:
 
 "Sensitive" covers GDPR's special categories (Articles 9 and 10) and the
 extra ones CCPA/CPRA lists: government IDs and precise location.
+
+`personal:` goes on a field of an entity, an event or an email, or of an
+object, input or output a package declares, wherever Jadpo keeps or sends the
+value. A provider package marks
+what its API takes and gives, so an app sees what it is sending and
+receiving without reading the provider's documentation. Here the package
+says a customer's phone number is contact data, whatever the app fills it
+with:
+
+```jadpo fragment
+// packages/stripe/v2024_06_20/types/customer_request.jadpo
+/// A customer to create.
+public type CustomerRequest = Input {
+    phone: Text {
+        personal: PersonalData.contact
+    }
+}
+```
+
+The category is checked the same way everywhere (`type.setting_value`). An
+app's own object, input or output carries no mark
+(`type.unknown_setting`): it holds what a marked field gave it, and
+Jadpo follows the value back to that field.
 
 ### Marked fields in logs
 
@@ -1072,6 +1097,58 @@ change a person signs off before it ships
 request that starts sending email addresses to a new provider is seen by
 a person before it ships.
 
+### Where personal data goes
+
+So far the report lists each connection personal data leaves through, the
+hosts that connection reaches and, for each one, every marked field and
+every standard type that is personal data sent through it, by what sends it.
+It is `build/report/personal-data.md`, with a `.json` twin, and `jadpo
+check` writes it only for a project with no errors. Where a body doesn't
+check, nothing can say what it sends, so a check that fails takes the last
+report away rather than leave one that says less than the code does.
+
+A connection is listed for each of the ways a value leaves the app:
+
+| Through | What counts |
+|---|---|
+| A provider's operation | What it is given, and what its input's type holds, a package's marks among them |
+| A package's action | Everything it is given, whatever the action then does, and what its own operations send |
+| A store of files | What goes in a file `put` there, and each row a writer puts in one |
+| A model | Each prompt built and each text sent for an embedding, through the connection `ai:` names |
+| An email | Each one emitted, and a magic link's address, through the connection `email:` names |
+| A webhook's reply | What the reply or a failure's client field holds, through the connection the webhook came from |
+
+The report never says data stays when it may leave. When the compiler can't
+tell, it counts as reaching:
+
+- The compiler follows a value as it does for
+  [what reaches a model](21-ai.md#following-personal-data): through
+  variables, your app's functions and actions, standard operations, lists,
+  objects, a batch's items and a query's `Output`. A parameter is followed
+  to what every caller passes, and an event's part to what every `emit`
+  put there.
+- What decided a value leaves with it. A value made under an `if` or a
+  `match` on a marked field, or a call made under one, sends that field, and
+  the report says it only decided what was sent.
+- A value counts for what its type says, however it got there: a value of a
+  marked field's type, `caller.subject` among them, and a whole parameter by
+  everything its type holds. So an action only a route calls counts for its
+  input's type.
+- A library's function gives back anything it was given, in any part, since
+  nothing follows that code.
+- A provider's answer may hold anything its call was sent, in any part. So
+  an id a provider made counts as the name it was made from when it is sent
+  on to another connection. This is for the report alone: storing that id or
+  sending it to a model doesn't need the name's marks.
+
+Stores and caches aren't in this list. What each keeps comes with the rest
+of the report.
+
+`jadpo package check` shows the same for a package, whoever calls it: what
+each of its operations sends, from its input's type and what its actions and
+subscribers read off marked fields, and the hosts it goes to
+([What a release shows](11-integrations.md#what-a-release-shows)).
+
 ## Encrypted fields
 <!-- topic: encrypted-fields -->
 
@@ -1115,13 +1192,14 @@ This is not legal advice. A privacy professional reviews the report.
 
 | Feature | Status |
 |---|---|
-| An entity's and an event's `personal: PersonalData.<category>` | Partly built: it is read and checked against the fourteen categories for the [AI](21-ai.md) page's check of what reaches a model, and a marked field on an entity no person reaches is `data.personal_unreachable`. Not built yet: the rest of what this page says marking does. A marked field nothing reads compiles without an error, and no log, report or access record uses the marking. |
+| `personal: PersonalData.<category>` on an entity's, an event's or an email's field, or an object's, input's or output's a package declares | Partly built: it is read and checked against the fourteen categories for the [AI](21-ai.md) page's check of what reaches a model and for [where personal data goes](#where-personal-data-goes), and a marked field on an entity no person reaches is `data.personal_unreachable`. On an app's own object, input or output it is `type.unknown_setting`. Not built yet: the rest of what this page says marking does. A marked field nothing reads compiles without an error, and no log or access record uses the marking. |
 | `person: true` | Built: an entity marked `person: true` is a person, and every record that refers to one, directly or through a chain of references, belongs to them. The build's manifest shows each person under its entity as a `person` node, listing the references its records belong through (`through`). |
 | `retention:` on a field or an entity | Partly built. Built: the entity's hourly purge schedule clears a nullable field's value, or deletes the record with what cascades from it and the sign-in state of everyone it deletes who signs in, cascades included, at the first run once `since:` is longer ago than `after:`, a `Duration` setting; a `File`'s bytes go once no record holds it ([Files](16-built-in-services.md#deleting-and-erasing)); each problem under [Retention](#retention) is an error where it is written. The graph holds a `retention` node for each, under its field or entity, with its period and `since:`. Not built yet: `retention:` on an event's or an email's field, `toolchain.not_built_yet` where it is written. |
 | `erase:` on a reference | Built: each problem under [Erasure](#erasure) and "Erasure is complete" is an error where it is written. Not built yet: `erase:` on the person's own field, which keeps their record field by field ([The person's own record](#the-persons-own-record)); it is `toolchain.not_built_yet` where it is written, and erasure deletes the whole record. |
 | `User.erase(id)` | Partly built. Built: for a caller with `delete` on the person's record, one statement deletes the record, hidden or not, with the sign-in state of anyone it deletes who signs in, and deletes, anonymises or keeps each record of theirs as its reference says, however deep, records with a lifecycle removed outright. A record that belongs to several people keeps its marked fields until the last of them is erased, and another person's own record loses only the reference ([Records that belong to several people](#records-that-belong-to-several-people)). The bytes of each `File` it deletes or clears go once it commits ([Files](16-built-in-services.md#deleting-and-erasing)), and an audited record it deletes takes its history with it. Not built yet: one that would keep an audited record, whose history still refers to the person ([Audit trail](16-built-in-services.md#audit-trail)), `toolchain.not_built_yet` where `erase` is called, so no erasure is ever partial; and the person's own record kept field by field (above), records in another store, `PersonErased`, the erasure log and providers' erasure, which nothing emits or calls. |
 | `User.export(id)` | Not built yet: it is `toolchain.not_built_yet` where it is called. |
 | `privacy:` in `application { }` | Not built yet: it is `toolchain.not_built_yet` where it is written. |
+| The personal-data report | Partly built: `jadpo check` writes `build/report/personal-data.md` and `.json`, for a project with no errors, listing [where personal data goes](#where-personal-data-goes), and `jadpo package check` shows the same for a package. Not built yet: the rest of its list, each person entity's fields, category, store and readers, retention, what erasure does, keys in the outbox, step records and OAuth grants; whether a connection can erase its copy, and the acceptance for one that can't; and its diff in the approval review. |
 | Everything else on this page | Not built yet: it is on [the roadmap](../roadmap.md). |
 
 ## Errors

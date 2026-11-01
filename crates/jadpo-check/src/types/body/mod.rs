@@ -1396,6 +1396,7 @@ impl Body<'_> {
                         headers: Vec::new(),
                         failure: false,
                         provider: false,
+                        packaged: false,
                     };
                     let ok = decls.type_node(&TypeNode::Type(ty.clone()), false);
                     self.out.append(&mut decls.out);
