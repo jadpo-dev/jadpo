@@ -157,6 +157,23 @@ pub fn bucket(flag: &str, user: &str) -> u8 {
     u8::try_from(u64::from_le_bytes(first) % 100).unwrap_or(0)
 }
 
+/// The `id` of `caller` when it is a signed-in user, as the runtime holds
+/// it: what a share and a named user are chosen by. `None` for a service
+/// and for no one.
+pub fn user_of(caller: Option<&crate::Caller>) -> Option<String> {
+    match &caller?.value {
+        Value::Record(record)
+            if &*record.ty == jadpo_std::http::PrincipalKind::User.type_name() =>
+        {
+            match record.get("id") {
+                Some(Value::Uuid(id)) => Some(id.to_string()),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
 /// The value at place `at` among `flag`'s values, as code reads it.
 pub fn value(flag: &FlagPlan, at: u32) -> Value {
     match &flag.enum_type {

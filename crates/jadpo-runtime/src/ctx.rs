@@ -1372,17 +1372,7 @@ impl<'p> Ctx<'p> {
                 let state = self
                     .flag_state
                     .get_or_insert_with(|| started.flags().state());
-                let user = self.caller.as_ref().and_then(|caller| match &caller.value {
-                    Value::Record(record)
-                        if &*record.ty == jadpo_std::http::PrincipalKind::User.type_name() =>
-                    {
-                        match record.get("id") {
-                            Some(Value::Uuid(id)) => Some(id.to_string()),
-                            _ => None,
-                        }
-                    }
-                    _ => None,
-                });
+                let user = crate::flags::user_of(self.caller.as_ref());
                 state.choose(at, flag, user.as_deref())
             }
         };

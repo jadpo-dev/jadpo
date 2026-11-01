@@ -604,6 +604,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "works out a constant's value at compile time",
     ),
     (
+        "crates/jadpo-check/src/flags.rs",
+        "checks a flag's `expires:`, a date read by the contract's own reader (chunk B9)",
+    ),
+    (
         "crates/jadpo-check/src/events.rs",
         "checks a subscriber's `retry: { within: }`, a duration read by the contract's own reader",
     ),
@@ -730,6 +734,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
     (
         "crates/jadpo-runtime/src/http/sign_in_events.rs",
         "makes the sign-in events a subscriber's action is given, values in memory; their payload keeps ids and times as the runtime's own text and numbers",
+    ),
+    (
+        "crates/jadpo-runtime/src/flags.rs",
+        "works out a flag's value for the caller from the signed-in user's `id`, a value held, never sent (chunk B9)",
     ),
     ("crates/jadpo-runtime/src/store.rs", "fills a missing `now`"),
     (
