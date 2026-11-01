@@ -255,6 +255,23 @@ std_enum! {
 }
 
 std_enum! {
+    /// What erasing a person does to a record that refers to them, or to
+    /// one of their records (area 15, "Erasure"; chunk P3): a reference's
+    /// `erase:`, which an `OnDelete.restricted` reference into a person's
+    /// records must give.
+    Erasure: "Erasure" {
+        /// The record is deleted, with everything that cascades from it.
+        Deleted: "deleted",
+        /// The record is kept; the reference and every marked field are
+        /// cleared.
+        Anonymised: "anonymised",
+        /// The record is kept as it is until its own retention ends; only
+        /// the reference is cleared.
+        Retained: "retained",
+    }
+}
+
+std_enum! {
     /// A special kind of index an entity's `indexes:` entry asks for with
     /// `kind:` (area 5, "Indexes"), where the store builds it.
     IndexKind: "IndexKind" {
@@ -722,6 +739,7 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (ComponentStyle::NAME, ComponentStyle::NAMES.to_vec()),
         (Generated::NAME, Generated::NAMES.to_vec()),
         (OnDelete::NAME, OnDelete::NAMES.to_vec()),
+        (Erasure::NAME, Erasure::NAMES.to_vec()),
         (IndexKind::NAME, IndexKind::NAMES.to_vec()),
         (FieldChange::NAME, FieldChange::NAMES.to_vec()),
         (Driver::NAME, Driver::NAMES.to_vec()),
@@ -806,6 +824,7 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         ComponentStyle::NAME => position(ComponentStyle::NAMES),
         Generated::NAME => position(Generated::NAMES),
         OnDelete::NAME => position(OnDelete::NAMES),
+        Erasure::NAME => position(Erasure::NAMES),
         IndexKind::NAME => position(IndexKind::NAMES),
         FieldChange::NAME => position(FieldChange::NAMES),
         Driver::NAME => position(Driver::NAMES),

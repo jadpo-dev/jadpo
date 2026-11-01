@@ -656,7 +656,8 @@ test "a body cut into segments" {
 "#;
 
 /// The projects chunk 8.4a compares: a package's action caught, and a
-/// recursion to the limits.
+/// recursion to the limits; with a `File` held to its field (chunk B1)
+/// and a person's erasure (chunk P3, `crate::erasure`).
 fn parity_projects() -> Vec<(String, PathBuf)> {
     let caught: Vec<(String, String)> = PACKAGE_CAUGHT
         .iter()
@@ -678,6 +679,10 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
         (
             "a file held to its field".into(),
             corpus_project(&file_held(), "compiled-file-held").expect("it checks"),
+        ),
+        (
+            "an erasure".into(),
+            corpus_project(&crate::erasure::files(), "compiled-erasure").expect("it checks"),
         ),
     ]
 }
@@ -783,8 +788,10 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         "docs/language/10-configuration-and-time.md translation-messages",
         "docs/language/12-jobs-and-events.md several-steps",
         "docs/language/13-testing.md fakes-in-tests",
+        "docs/language/15-personal-data.md erasure",
         "docs/language/21-ai.md ai-embed",
         "a key kept without key_ops",
+        "an erasure",
         "examples 11-cake-shop",
         "examples 12-recipe-book",
         "examples 15-parcel-tracker",

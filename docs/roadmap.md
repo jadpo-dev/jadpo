@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-10-31. This page is the only list of outstanding work: the
+**Updated:** 2026-11-01. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record language decisions on the [area pages](language/README.md)
 and process rules in [AGENTS.md](../AGENTS.md), not here. A finished chunk
@@ -517,20 +517,10 @@ After the registry is live, in order:
      Decisions; area 12, "The purge schedule"; compiler/runtime §2.3,
      "Retention", and §2.6, "Lifecycles and purge"; the pages of
      `data.retention_*`.
-   - [ ] **P3 Erasure in the main store** `opus · xhigh` after P2: area
-     15, "Erasure" ("Deleting the person's records" and "Keeping a
-     record without the person"), "Who may erase and export" and "What
-     the compiler checks" (erasure is complete); area 9, "Grants".
-     `erase:` on a reference, required on each restricted reference into
-     a person's records, `Erasure.anonymised` and `.retained` with the
-     nullable fields and retention they need, and `User.erase(id)`
-     deleting, anonymising or keeping each record as its reference says,
-     in one transaction, records with a lifecycle removed outright, for a
-     caller with delete on the person's record. Until P4, an erasure that
-     would reach another store, a `File` field or the person's own `erase:
-     Erasure.retained` field is `toolchain.not_built_yet`, so no erasure
-     is ever partial. Done when tests erase a person on both executors
-     and find each record gone, anonymised or kept as declared.
+   - [x] **P3 Erasure in the main store**: area 15, "Erasure", "What
+     the compiler checks", "What is built" and the design notes'
+     "Erasure, as built"; compiler/runtime §2.3, "Erasure", and §2.6, "A
+     person's erasure"; the pages of `data.erase_*`.
    - [ ] **P4 What else erasure reaches** `opus · xhigh` after P3: area
      15, "The person's own record", "What erasure reaches" and "What
      erasure doesn't rewrite"; area 16, "Files". The person's own record
@@ -541,11 +531,15 @@ After the registry is live, in order:
      restored; OAuth grants and caches join when they are built. With
      the bytes and the sign-in state deleted, retention's two
      `toolchain.not_built_yet` refusals go too: a retention reaching a
-     `File`, and one cascading to someone who signs in. To
-     settle with a maintainer first: how a record in another store
-     belongs to a person, since no reference crosses stores
-     (`data.reference_across_stores`), and which queries "serve the
-     retained purpose". Done when an erased person leaves nothing the
+     `File`, and one cascading to someone who signs in; and erasure's,
+     where `erase` is called, of a `File`'s bytes. To settle with a
+     maintainer first: how a record in another store belongs to a
+     person, since no reference crosses stores
+     (`data.reference_across_stores`), which queries "serve the retained
+     purpose", and what anonymising another person's own record does
+     (P3 refuses an erasure that would: erasing a user whom another
+     user's cleared `invited_by_id` refers to, whose marked fields are
+     that user's own). Done when an erased person leaves nothing the
      page says erasure reaches, on both executors.
    - [ ] **P5 Export** `opus · high` after P4 and V5: area 15, "Export"
      and "Who may erase and export"; area 13's generated test.

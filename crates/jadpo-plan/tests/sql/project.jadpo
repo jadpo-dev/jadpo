@@ -524,6 +524,9 @@ config {
     visit_address_retention: Duration {
         default: 30d
     }
+    fine_retention: Duration {
+        default: 2192d
+    }
 }
 
 entity Visit {
@@ -931,4 +934,95 @@ query quiet_subtitles(prefix: Book.title) -> List<BookCard> {
     where: not text.ends_with(Book.subtitle, "!")
     order: [Book.id asc]
     limit: 20
+}
+
+// Erasure (area 15; chunk P3): erasing a patron deletes their loans,
+// hidden or not, with each loan's renewals and notes; keeps their reviews
+// without them or the name they signed with; and keeps their fines as
+// they are until the fines' own retention ends.
+
+type PatronName = Text {
+    max_length: 80
+}
+
+entity Patron {
+    id: Uuid
+    name: PatronName {
+        personal: PersonalData.identifying
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.authenticated]
+        delete: [Access.authenticated]
+    }
+
+    person: true
+}
+
+entity Loan {
+    id: Uuid
+    patron_id: Patron.id {
+        on_delete: OnDelete.restricted
+        erase: Erasure.deleted
+    }
+    renewal_of: Loan.id? {
+        on_delete: OnDelete.cascade
+    }
+    returned_at: Instant?
+
+    lifecycle: {
+        visible: returned_at == none
+        transitions: {
+            delete: {
+                when: returned_at == none
+                set: {
+                    returned_at: clock.now
+                }
+            }
+        }
+    }
+}
+
+entity LoanNote {
+    id: Uuid
+    loan_id: Loan.id {
+        on_delete: OnDelete.restricted
+        erase: Erasure.deleted
+    }
+}
+
+entity Review {
+    id: Uuid
+    patron_id: Patron.id? {
+        on_delete: OnDelete.cleared
+    }
+    signed_as: PatronName? {
+        personal: PersonalData.identifying
+    }
+    changed_at: Instant {
+        generated: Generated.on_change
+    }
+}
+
+entity Fine {
+    id: Uuid
+    patron_id: Patron.id? {
+        on_delete: OnDelete.restricted
+        erase: Erasure.retained
+    }
+    loan_id: Loan.id? {
+        on_delete: OnDelete.cleared
+        erase: Erasure.retained
+    }
+    issued_at: Instant
+
+    retention: {
+        after: config.fine_retention
+        since: issued_at
+    }
+}
+
+action forget_patron(patron_id: Patron.id) fails PatronNotFound -> Unit {
+    attempt Patron.erase(patron_id)
 }

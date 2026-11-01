@@ -314,6 +314,14 @@ rules! {
         "Unique rule or index repeats another";
     DATA_ENTITY_IN_FIELD: "data.entity_in_field", area 5, Error, Agent,
         "Field holds an entity instead of a reference to one";
+    DATA_ERASE_FIELD_REQUIRED: "data.erase_field_required", area 15, Error, Human,
+        "Erasing a person would clear a field that can't be `none`: a reference whose record erasure keeps, or a marked field of a record it anonymises";
+    DATA_ERASE_REQUIRED: "data.erase_required", area 15, Error, Human,
+        "A `restricted` reference into records that erasing a person deletes doesn't say what erasure does to the record holding it";
+    DATA_ERASE_RETENTION_REQUIRED: "data.erase_retention_required", area 15, Error, Human,
+        "Erasing a person keeps records with `Erasure.retained`, but their entity has no `retention:` saying when they go";
+    DATA_ERASE_UNREACHED: "data.erase_unreached", area 15, Error, Agent,
+        "A field's `erase:` is on a field erasing a person never reaches: one that isn't a reference, or a reference to records that belong to no person";
     DATA_FIELD_LIST_REQUIRED: "data.field_list_required", area 5, Error, Agent,
         "Unique rule or index is not a list of fields";
     DATA_FIELD_WITHOUT_JSON: "data.field_without_json", area 5, Error, Agent,

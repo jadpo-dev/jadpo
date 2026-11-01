@@ -51,6 +51,7 @@ mod dev_provider_sign_in;
 mod dev_tokens;
 mod driver_factory;
 mod emails;
+mod erasure;
 mod events;
 mod external_first_sign_in;
 mod external_tokens;
