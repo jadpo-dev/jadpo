@@ -185,12 +185,12 @@ entity Visit {{
             "use clinic/entities { Consultation, ConsultationNotFound, Visit }\nuse clinic/types { VisitsShown }\n\n/// A consultation with its visits, both sealed.\nquery visits_of(consultation_id: Consultation.id) fails ConsultationNotFound -> VisitsShown {\n    from: Consultation\n    where: Consultation.id == consultation_id\n    missing: ConsultationNotFound\n    include: {\n        visits: {\n            via: Visit.consultation_id\n            order: [Visit.id asc]\n            limit: 10\n        }\n    }\n}\n".to_string(),
         ),
         (
-            "domains/clinic/actions/visit.jadpo",
-            "use clinic/entities { Consultation, Visit }\n\n/// Records a visit.\naction visit(consultation: Consultation, remark: Visit.remark) -> Visit {\n    return Visit.create {\n        set: {\n            consultation_id: consultation.id\n            remark: remark\n        }\n    }\n}\n".to_string(),
+            "domains/clinic/actions/record_visit.jadpo",
+            "use clinic/entities { Consultation, Visit }\n\n/// Records a visit.\naction record_visit(consultation: Consultation, remark: Visit.remark) -> Visit {\n    return Visit.create {\n        set: {\n            consultation_id: consultation.id\n            remark: remark\n        }\n    }\n}\n".to_string(),
         ),
         (
-            "domains/clinic/actions/visits_shown.jadpo",
-            "use clinic/entities { Consultation, ConsultationNotFound }\nuse clinic/queries { visits_of }\nuse clinic/types { VisitsShown }\n\n/// A consultation with its visits.\naction visits_shown(consultation_id: Consultation.id) fails ConsultationNotFound -> VisitsShown {\n    return attempt visits_of(consultation_id)\n}\n".to_string(),
+            "domains/clinic/actions/show_visits.jadpo",
+            "use clinic/entities { Consultation, ConsultationNotFound }\nuse clinic/queries { visits_of }\nuse clinic/types { VisitsShown }\n\n/// A consultation with its visits.\naction show_visits(consultation_id: Consultation.id) fails ConsultationNotFound -> VisitsShown {\n    return attempt visits_of(consultation_id)\n}\n".to_string(),
         ),
         (
             "domains/clinic/queries/notes_of.jadpo",
@@ -484,11 +484,11 @@ fn a_sealed_field_round_trips_and_its_column_holds_only_sealed_bytes() {
         call(
             &program,
             &host,
-            "visit",
+            "record_visit",
             vec![made.clone(), text("Came back on Tuesday.")],
         )
         .await;
-        let with_visits = call(&program, &host, "visits_shown", vec![id.clone()]).await;
+        let with_visits = call(&program, &host, "show_visits", vec![id.clone()]).await;
         assert_eq!(field(&with_visits, "notes"), text("Allergic to penicillin."));
         let Value::List(visits) = field(&with_visits, "visits") else {
             panic!("a list of visits");
@@ -1425,7 +1425,7 @@ fn a_key_field_that_may_be_none_is_read_once_checked() {
     write(
         &root,
         "domains/notes/actions/seal_if_keyed.jadpo",
-        "use notes/entities { Device }\nuse notes/types { Body, SealedText }\n\n/// A note sealed for a device with a key, or nothing.\naction seal_if_keyed(device: Device, note: Body) -> SealedText? {\n    if (device.device_key == none) {\n        return none\n    }\n    var key: EncryptionKey = device.device_key\n    return SealedText(crypto.encrypt(note, key: key, context: \"note\"))\n}\n",
+        "use notes/entities { Device }\nuse notes/types { Body, SealedText }\n\n/// A note sealed for a device with a key, or nothing.\naction seal_if_keyed(device: Device, note: Body) -> SealedText? {\n    return match device.device_key {\n        some(key) -> SealedText(crypto.encrypt(note, key: key, context: \"note\"))\n        none -> none\n    }\n}\n",
     );
     let output = jadpo(&root, &["check"]);
     let shown = format!("{}{}", output.stdout, output.stderr);

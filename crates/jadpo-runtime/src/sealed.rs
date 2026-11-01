@@ -55,10 +55,10 @@ pub(crate) fn seal(
     let ring = ring.ok_or_else(|| {
         format!("`{bound}` is kept sealed, and `field_encryption_key:` has no value in this run")
     })?;
-    let Value::Uuid(id) = id else {
+    let Ok(SqlValue::Uuid(id)) = crate::read::to_sql(id, SqlType::Uuid) else {
         return Err(format!("`{bound}` sealed for a record with no `id`"));
     };
-    let context = sealed_context(bound, id);
+    let context = sealed_context(bound, &uuid_text(&id));
     let sealed = match (form, value) {
         (SealedForm::Key, Value::Key(key)) => {
             jadpo_value::crypto::seal_key(key, ring, &context, source)
@@ -106,7 +106,7 @@ pub(crate) fn open(
     let context = sealed_context(bound, &uuid_text(id));
     let unreadable = || {
         format!(
-            "a sealed `{bound}` no key in this run opens: altered, moved from another record, or sealed with a key the application no longer has"
+            "a sealed `{bound}` no key in this run opens: changed, moved from another record, or sealed with a key the application no longer has"
         )
     };
     if matches!(form, SealedForm::Key) {

@@ -1035,10 +1035,10 @@ action record_consultation(notes: Consultation.notes) -> Consultation {
 use clinic/entities { Consultation }
 
 test "a consultation's notes read back as they were written" {
-    var seen: Consultation = record_consultation("Allergic to penicillin.")
-    assert seen.notes == "Allergic to penicillin."
-    var found: Consultation = attempt Consultation.get(seen.id)
-    assert found.notes == "Allergic to penicillin."
+    var written_up: Consultation = record_consultation("Allergic to penicillin.")
+    assert written_up.notes == "Allergic to penicillin."
+    var read_back: Consultation = attempt Consultation.get(written_up.id)
+    assert read_back.notes == "Allergic to penicillin."
 }
 ```
 

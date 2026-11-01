@@ -6396,8 +6396,8 @@ device or person. `crypto.new_key(as: EncryptionKey)` makes one in an action:
 32 bytes from the host's generator, the same whichever key type `as:` names.
 It is opaque, so it does two things. It is stored in a field of a key type,
 which keeps it [sealed](#encrypted-fields), or it is given as a `crypto`
-call's `key:`, straight from a record's field or a `var` holding it. It may
-wait in a `var` on the way to either:
+call's `key:`, straight from a record's field, a `var` holding it or a name a
+`match` binds it to. It may wait in a `var` on the way to either:
 
 ```jadpo check project=keys-as-data file=app.jadpo
 application {
@@ -6426,7 +6426,7 @@ type PatientNote = Text {
 ```
 
 ```jadpo check project=keys-as-data file=domains/field/types/sealed_note.jadpo hidden
-/// A note sealed for one device.
+/// A note sealed for one tablet.
 type SealedNote = Bytes {}
 ```
 
@@ -6436,15 +6436,15 @@ type OpenedNote = Bytes {}
 ```
 
 ```jadpo check project=keys-as-data file=domains/field/failures/not_for_this_device.jadpo hidden
-/// The note wasn't sealed for this device.
+/// The note wasn't sealed for this tablet.
 type NotForThisDevice = Failure {
     kind: FailureKind.invalid_value
 }
 ```
 
-```jadpo check project=keys-as-data file=domains/field/entities/device.jadpo
-/// A clinician's device, with a key of its own.
-entity Device {
+```jadpo check project=keys-as-data file=domains/field/entities/tablet.jadpo
+/// A clinician's tablet, with a key of its own.
+entity Tablet {
     id: Uuid
     device_key: EncryptionKey
 
@@ -6456,11 +6456,11 @@ entity Device {
 ```
 
 ```jadpo check project=keys-as-data file=domains/field/actions/enrol_device.jadpo
-use field/entities { Device }
+use field/entities { Tablet }
 
-/// Enrols a device, making its key, which is stored sealed.
-action enrol_device() -> Device {
-    return Device.create {
+/// Enrols a tablet, making its key, which is stored sealed.
+action enrol_device() -> Tablet {
+    return Tablet.create {
         set: {
             device_key: crypto.new_key(as: EncryptionKey)
         }
@@ -6469,49 +6469,49 @@ action enrol_device() -> Device {
 ```
 
 ```jadpo check project=keys-as-data file=domains/field/actions/seal_for_device.jadpo
-use field/entities { Device }
+use field/entities { Tablet }
 use field/types { PatientNote, SealedNote }
 
 /// A note sealed with the device's own key.
-action seal_for_device(device: Device, note: PatientNote) -> SealedNote {
-    return SealedNote(crypto.encrypt(note, key: device.device_key, context: "note"))
+action seal_for_device(tablet: Tablet, note: PatientNote) -> SealedNote {
+    return SealedNote(crypto.encrypt(note, key: tablet.device_key, context: "note"))
 }
 ```
 
 ```jadpo check project=keys-as-data file=domains/field/actions/open_for_device.jadpo hidden
-use field/entities { Device }
+use field/entities { Tablet }
 use field/types { OpenedNote, SealedNote }
 use field/failures { NotForThisDevice }
 
 /// What the device's own key opens.
 action open_for_device(
-    device: Device,
+    tablet: Tablet,
     sealed_note: SealedNote
 ) fails NotForThisDevice -> OpenedNote {
-    var opened: Bytes = attempt crypto.decrypt(
+    var note_bytes: Bytes = attempt crypto.decrypt(
         sealed_note,
-        key: device.device_key,
+        key: tablet.device_key,
         context: "note"
     ) {
         unreadable: NotForThisDevice
     }
-    return OpenedNote(opened)
+    return OpenedNote(note_bytes)
 }
 ```
 
 ```jadpo check project=keys-as-data file=domains/field/actions/seal_for_device.test.jadpo migrate=initial
-use field/entities { Device }
+use field/entities { Tablet }
 use field/types { OpenedNote, SealedNote }
 use field/failures { NotForThisDevice }
 use field/actions { enrol_device, open_for_device }
 
 test "a note opens for its own device and no other" {
-    var own: Device = enrol_device()
-    var other: Device = enrol_device()
-    var sealed_note: SealedNote = seal_for_device(own, "Allergic to penicillin.")
-    var opened: OpenedNote = attempt open_for_device(own, sealed_note)
-    assert opened == encoding.to_utf8("Allergic to penicillin.")
-    assert open_for_device(other, sealed_note) fails NotForThisDevice
+    var clinic_tablet: Tablet = enrol_device()
+    var ward_tablet: Tablet = enrol_device()
+    var sealed_note: SealedNote = seal_for_device(clinic_tablet, "Allergic to penicillin.")
+    var note_read: OpenedNote = attempt open_for_device(clinic_tablet, sealed_note)
+    assert note_read == encoding.to_utf8("Allergic to penicillin.")
+    assert open_for_device(ward_tablet, sealed_note) fails NotForThisDevice
 }
 ```
 

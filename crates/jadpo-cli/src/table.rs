@@ -2080,13 +2080,13 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--generate",
                 value: None,
-                description: "With `set`, make a new key and store it, printing nothing",
+                description: "With `set`, make a key, printing nothing",
                 values: &[],
             },
             Flag {
                 name: "--url",
                 value: Some("url"),
-                description: "With `rotation`, read this database rather than the connection's",
+                description: "With `rotation`, the database to read",
                 values: &[],
             },
         ],

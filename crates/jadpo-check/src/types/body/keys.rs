@@ -72,9 +72,9 @@ impl Body<'_> {
     }
 
     /// Whether `value`, given to a `crypto` call's `key:`, holds a key as
-    /// data: a `var` of a key type, or a key-type field of an entity's
-    /// record. A parameter or a value of any other kind holds none, since
-    /// only those two ever hold one.
+    /// data: a `var` of a key type or a name a `match` bound to one, or a
+    /// key-type field of an entity's record. A parameter or a value of any
+    /// other kind holds none, since only those ever hold one.
     pub(super) fn holds_key_as_data(&self, value: &Expr) -> bool {
         match value {
             Expr::ParenExpr(paren) => paren
@@ -82,7 +82,12 @@ impl Body<'_> {
                 .is_some_and(|inner| self.holds_key_as_data(&inner)),
             Expr::NameRef(name) => self
                 .find(&tree::name_ref_text(name).unwrap_or_default())
-                .is_some_and(|local| matches!(local.kind, LocalKind::Var | LocalKind::VarMut)),
+                .is_some_and(|local| {
+                    matches!(
+                        local.kind,
+                        LocalKind::Var | LocalKind::VarMut | LocalKind::Binding
+                    )
+                }),
             Expr::FieldExpr(field) => self.receiver_type(field).is_some_and(|receiver| {
                 let structure = self.table.structure(receiver.strip_nullable());
                 matches!(&structure, Ty::Named(name) if self.table.base(name) == Some(FieldsBase::Entity))
@@ -155,6 +160,7 @@ impl Body<'_> {
                     Some(SyntaxKind::PAREN_EXPR)
                 )
                 || waits_in_a_var(&node)
+                || matched_for_none(&node)
                 || compared_with_none(&node)
             {
                 continue;
@@ -179,6 +185,15 @@ impl Body<'_> {
 fn waits_in_a_var(node: &jadpo_syntax::SyntaxNode) -> bool {
     node.parent()
         .is_some_and(|parent| parent.kind() == SyntaxKind::VAR_STMT)
+}
+
+/// Whether `node` is what a `match` looks at, which binds a key that may be
+/// `none` only to another name for it: `some(key) -> ...`.
+fn matched_for_none(node: &jadpo_syntax::SyntaxNode) -> bool {
+    node.parent()
+        .and_then(ast::MatchExpr::cast)
+        .and_then(|matched| matched.expr())
+        .is_some_and(|looked_at| looked_at.syntax() == node)
 }
 
 /// Whether `node` is compared with `none`, which says only whether a field

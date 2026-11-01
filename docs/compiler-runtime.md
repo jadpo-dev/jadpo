@@ -1113,8 +1113,8 @@ plan decides once, on the `key:` argument's site
 config.<name>`, which each executor passes as `Key::Setting(n)` without
 reading the setting, and `KeySource::Field { name }` for a field whose
 type is a key type, which each executor reads as it reads any field,
-the field holding a `Key::Held`, and `KeySource::Local` for a `var`, read as
-any local is. `None` (anything else, which the checker refuses as
+the field holding a `Key::Held`, and `KeySource::Local` for a `var` or a name
+a `match` bound, read as any local is. `None` (anything else, which the checker refuses as
 `type.mismatch`) is a defect at the call. `effects::crypto` builds the
 operation's key ring from either: a setting's from the keys the program
 started with (`effects::Keys`, read from the settings, with its

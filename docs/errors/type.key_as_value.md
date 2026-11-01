@@ -21,26 +21,26 @@ application {
     field_encryption_key: config.field_encryption_key
 }
 
-/// A device, with a key of its own.
-entity Device {
+/// A tablet, with a key of its own.
+entity Tablet {
     id: Uuid
     device_key: EncryptionKey
 }
 
 /// The device's key.
-function key_of(device: Device) -> EncryptionKey {
-    return device.device_key
+function key_of(tablet: Tablet) -> EncryptionKey {
+    return tablet.device_key
 }
 ```
 
 ```text output
-error: `device.device_key` is a key, read as a value
+error: `tablet.device_key` is a key, read as a value
  --> main.jadpo:17:12
    |
-17 |     return device.device_key
+17 |     return tablet.device_key
    |            ^^^^^^^^^^^^^^^^^ a key, read here
   reason: A key held as data is opaque: code never reads, prints, compares, returns or passes on a key, so it goes only into a key-type field, which keeps it sealed, or a `crypto` call's `key:`.
-  next: Give `device.device_key` only as a `crypto` call's `key:`, or set a key-type field to it (agent)
+  next: Give `tablet.device_key` only as a `crypto` call's `key:`, or set a key-type field to it (agent)
   rule: type.key_as_value
   help: https://jadpo.dev/docs/errors/type.key_as_value
 
@@ -57,7 +57,7 @@ key is.
 the call's `key:`:
 
 ```jadpo fragment
-    return Sealed(crypto.encrypt(note, key: device.device_key, context: "note"))
+    return Sealed(crypto.encrypt(note, key: tablet.device_key, context: "note"))
 ```
 
 ```jadpo check project=e-key-as-value-fix hidden
@@ -75,15 +75,15 @@ type Note = Text {
     max_length: 200
 }
 
-/// A device, with a key of its own.
-entity Device {
+/// A tablet, with a key of its own.
+entity Tablet {
     id: Uuid
     device_key: EncryptionKey
 }
 
 /// A note sealed with the device's key.
-action seal_for(device: Device, note: Note) -> Sealed {
-    return Sealed(crypto.encrypt(note, key: device.device_key, context: "note"))
+action seal_for(tablet: Tablet, note: Note) -> Sealed {
+    return Sealed(crypto.encrypt(note, key: tablet.device_key, context: "note"))
 }
 ```
 
@@ -93,7 +93,7 @@ The key never leaves the runtime, and what it sealed may go anywhere.
 optional and compare it with `none`:
 
 ```jadpo fragment
-    return Keyed(device.device_key != none)
+    return Keyed(tablet.device_key != none)
 ```
 
 ```jadpo check project=e-key-as-value-none hidden
@@ -107,19 +107,20 @@ application {
 
 type Keyed = Bool {}
 
-/// A device, which may have a key of its own.
-entity Device {
+/// A tablet, which may have a key of its own.
+entity Tablet {
     id: Uuid
     device_key: EncryptionKey?
 }
 
 /// Whether the device has a key.
-function keyed(device: Device) -> Keyed {
-    return Keyed(device.device_key != none)
+function keyed(tablet: Tablet) -> Keyed {
+    return Keyed(tablet.device_key != none)
 }
 ```
 
-That says nothing of the key itself.
+That says nothing of the key itself, and a `match` on it binds the key under
+another name, for a `crypto` call's `key:`.
 
 ## Related
 
