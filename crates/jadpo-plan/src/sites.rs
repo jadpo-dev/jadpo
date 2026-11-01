@@ -89,6 +89,9 @@ pub enum Decoded {
     Query(Option<u32>),
     /// `Entity.get(id)`, by the number of the entity's plan.
     Get(Option<u32>),
+    /// An audited entity's `history(id)` or `history(id, after:)`, by the
+    /// number of its plan (area 16; chunk B11).
+    History(Option<u32>),
     /// `create`, `update` or `delete`: the number of the write's plan, and
     /// the failure each `conflict:` arm raises, with where each of its
     /// given fields goes.
@@ -332,6 +335,8 @@ pub(crate) struct Decoder<'a> {
     pub query: &'a dyn Fn(&Key) -> Option<u32>,
     /// The number of each entity's plan, by its key.
     pub entity: &'a dyn Fn(&Key) -> Option<u32>,
+    /// An audited entity's `history` plan's number, by the entity's key.
+    pub history: &'a dyn Fn(&Key) -> Option<u32>,
     /// The number of the plan of the write at each site of this body.
     pub write: &'a dyn Fn(u32) -> Option<u32>,
     /// The number of each setting, by its key (area 10).
@@ -948,6 +953,9 @@ impl Decoder<'_> {
                 Callee::Query(key) => Decoded::Query((self.query)(key)),
                 Callee::Entity { entity, operation } if operation == "get" => {
                     Decoded::Get((self.entity)(entity))
+                }
+                Callee::Entity { entity, operation } if operation == jadpo_std::audit::HISTORY => {
+                    Decoded::History((self.history)(entity))
                 }
                 Callee::Entity { entity, operation } => {
                     Decoded::Written(format!("{}.{operation}", self.types.name(entity)))

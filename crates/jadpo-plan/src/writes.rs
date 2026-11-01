@@ -763,6 +763,14 @@ impl Planner<'_> {
             Some(returned) => Some(returned?),
             None => None,
         };
+        // What it records in an audited entity's history, in the same
+        // transaction (area 16; chunk B11).
+        let audit = self.audit(
+            entity_model,
+            *op,
+            transition.is_some(),
+            row.as_ref().map(|row| row.id.clone()),
+        )?;
         Some(WriteSitePlan {
             plan: WritePlan {
                 store,
@@ -787,6 +795,7 @@ impl Planner<'_> {
                 kept_in_tenant: !kept.is_empty(),
                 row,
                 files: writing.files,
+                audit,
             },
             inputs: writing.inputs,
         })
@@ -877,6 +886,18 @@ impl Planner<'_> {
                 signed_in.push((at, *table, *column));
             }
         }
+        // Each audited record it deletes takes its history with it (area 16,
+        // "Audit trail"; chunk B11).
+        let mut audited = Vec::new();
+        for (at, entity) in deleted.iter().enumerate() {
+            if entity.audit.is_some() {
+                let born = writing.param(
+                    WriteSource::Stored(jadpo_std::SqlValue::Text(entity.born.clone())),
+                    SqlType::Text,
+                );
+                audited.push((at, born));
+            }
+        }
         let tables: Vec<&str> = deleted.iter().map(|entity| entity.table.as_str()).collect();
         let by_id = text::equal("id", &id);
         let granted = self.policy(&mut writing, person, Effect::Delete, &Row::Table)?;
@@ -886,6 +907,7 @@ impl Planner<'_> {
             &follows,
             &keeps,
             &signed_in,
+            &audited,
         );
         let (sql, unpoliced, policy) = if granted == jadpo_sql::policy::ANYONE {
             (plain, None, None)
@@ -894,7 +916,14 @@ impl Planner<'_> {
             let asked = asking.param(WriteSource::Input(record), SqlType::Uuid);
             let mut probe = text::select_one(&person.table);
             text::where_clause(&mut probe, &[text::equal("id", &asked)], "");
-            let sql = text::erase(&tables, &[by_id, granted], &follows, &keeps, &signed_in);
+            let sql = text::erase(
+                &tables,
+                &[by_id, granted],
+                &follows,
+                &keeps,
+                &signed_in,
+                &audited,
+            );
             (
                 sql,
                 Some(plain),
@@ -928,6 +957,7 @@ impl Planner<'_> {
                 kept_in_tenant: false,
                 row: None,
                 files: Vec::new(),
+                audit: None,
             },
             inputs: writing.inputs,
         })
@@ -1068,7 +1098,7 @@ impl Planner<'_> {
     }
 
     /// The record a written row becomes: every column of the entity.
-    fn returned(&mut self, entity: &EntityModel) -> Option<Returned> {
+    pub(crate) fn returned(&mut self, entity: &EntityModel) -> Option<Returned> {
         let mut columns = Vec::new();
         let mut held = Vec::new();
         let mut fields = Vec::new();

@@ -35,6 +35,7 @@ mod generate;
 mod identity;
 mod json;
 
+pub(crate) use batches::batch_fields;
 pub(crate) use identity::sign_in_object_fields;
 mod known;
 mod lower;
