@@ -1069,22 +1069,62 @@ pub fn network(path: &str, before: &str, after: &str, out: &mut Vec<Need>) {
     }
 }
 
+/// What the access record's `own_source` lines say.
+fn own_source_lines(text: &str) -> Vec<String> {
+    entries(text, &format::ACCESS)
+        .into_iter()
+        .filter_map(|entry| {
+            entry
+                .heading
+                .strip_prefix("own_source ")
+                .map(str::to_string)
+        })
+        .collect()
+}
+
+/// An own source added or widened (area 11, "Installing safely"): an entry
+/// that lets in a repository the before side's list didn't. Removing one,
+/// or narrowing one, lets nothing new in and needs nothing. A before side
+/// with no access record had no list, so its first entry needs a person
+/// like any other.
+pub fn own_source_needs(path: &str, before: &str, after: &str, out: &mut Vec<Need>) {
+    let was = own_source_lines(before);
+    for entry in own_source_lines(after) {
+        if !crate::own_sources::covers(&was, &entry) {
+            need(
+                out,
+                Family::Access,
+                path,
+                Some(&format!("own_source {entry}")),
+                format!("\"{entry}\""),
+                "PolicyChange.own_source_added",
+            );
+        }
+    }
+}
+
 /// A third party's package installed from git (area 11, "Publisher
-/// trust"): every git package not locked from git before, since telling
-/// the app's own company's repository from a third party's needs a
-/// setting the pages don't decide.
-pub fn lock(path: &str, before: &str, after: &str, out: &mut Vec<Need>) {
-    let from_git = |text: &str| -> BTreeSet<String> {
+/// trust"): a package locked from a git repository it wasn't locked from
+/// before, unless the repository is under one of `own`, today's
+/// `own_sources:`. A package moved to another repository is new code from
+/// someone new, so it counts as much as one new to git. A before side with
+/// no lock had no packages, so its first needs a person like any other.
+pub fn lock(path: &str, before: &str, after: &str, own: &[String], out: &mut Vec<Need>) {
+    let from_git = |text: &str| -> BTreeMap<String, String> {
         jadpo_db::parse_lock(&format::normalise(text))
             .unwrap_or_default()
             .into_iter()
-            .filter(|locked| matches!(locked.source, jadpo_db::Source::Git { .. }))
-            .map(|locked| locked.package)
+            .filter_map(|locked| match locked.source {
+                jadpo_db::Source::Git { repository, .. } => Some((locked.package, repository)),
+                _ => None,
+            })
             .collect()
     };
     let was = from_git(before);
-    for package in from_git(after) {
-        if !was.contains(&package) {
+    for (package, repository) in from_git(after) {
+        if was.get(&package) != Some(&repository)
+            && crate::own_sources::covering(own, &repository).is_none()
+        {
             out.push(Need {
                 heading: Some(format!("package {package}")),
                 said: super::words::said(&Family::Lock, &package, "PackageChange.git_source"),

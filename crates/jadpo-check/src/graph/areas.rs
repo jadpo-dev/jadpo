@@ -277,6 +277,7 @@ fn lock_entries(db: &dyn Db, project: Project) -> Vec<Node> {
         .unwrap_or_default();
     let index = LineIndex::new(text);
     let homes = crate::surface::homes(db, project);
+    let own = &crate::own_sources::own_sources(db, project).entries;
     let mut out = Vec::new();
     for locked in lines {
         let line = locked.line();
@@ -336,6 +337,11 @@ fn lock_entries(db: &dyn Db, project: Project) -> Vec<Node> {
             ),
             Source::Link { path } => (None, "link", Some(path.clone()), None, None, None),
         };
+        let own_source = location
+            .as_deref()
+            .filter(|_| source == "git")
+            .and_then(|repository| crate::own_sources::covering(own, repository))
+            .map(str::to_string);
         node.detail = Detail::LockEntry {
             version,
             source: source.to_string(),
@@ -343,6 +349,7 @@ fn lock_entries(db: &dyn Db, project: Project) -> Vec<Node> {
             tag,
             commit,
             digest,
+            own_source,
         };
         out.push(node);
     }

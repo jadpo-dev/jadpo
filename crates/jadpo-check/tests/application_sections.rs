@@ -149,6 +149,7 @@ fn the_list_is_every_section_the_area_pages_give() {
             "flags",
             "grants",
             "jadpo",
+            "packages",
             "privacy",
             "publishing",
             "rate_limits",

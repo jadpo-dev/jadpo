@@ -138,6 +138,10 @@ pub fn said(family: &Family, subject: &str, change: &str) -> String {
         "PolicyChange.listing_removed" => format!(
             "`{subject}` is no longer listed under `actions:`, so its entities' grants decide who can run it"
         ),
+        "PolicyChange.own_source_added" => format!(
+            "packages from repositories under `{}` now install without a person's acceptance",
+            subject.trim_matches('"')
+        ),
         "NetworkChange.host_added" => {
             format!("connection `{subject}` can now reach a host it couldn't")
         }

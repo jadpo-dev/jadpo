@@ -422,6 +422,7 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             tag,
             commit,
             digest,
+            own_source,
         } => {
             out.set_some("version", version.as_deref());
             out.set("source", source.as_str());
@@ -429,6 +430,7 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             out.set_some("tag", tag.as_deref());
             out.set_some("commit", commit.as_deref());
             out.set_some("packageDigest", digest.as_deref());
+            out.set_some("ownSource", own_source.as_deref());
         }
         Detail::GeneratedRoute {
             api,

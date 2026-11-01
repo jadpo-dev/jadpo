@@ -17,7 +17,7 @@ use super::packages::{git, plain, repository};
 
 /// A package's own repository with its surface written, and an app beside
 /// it: `<dir>/postcodes` and `<dir>/shop`.
-fn workspace(name: &str) -> (tempdir::Dir, PathBuf, PathBuf) {
+pub(super) fn workspace(name: &str) -> (tempdir::Dir, PathBuf, PathBuf) {
     let (dir, package) = repository(name);
     let checked = plain(&package, &["package", "check"]);
     assert!(
@@ -31,7 +31,7 @@ fn workspace(name: &str) -> (tempdir::Dir, PathBuf, PathBuf) {
 }
 
 /// Commits everything and tags it.
-fn release(package: &Path, tag: &str) {
+pub(super) fn release(package: &Path, tag: &str) {
     git(package, &["add", "-A"]);
     git(package, &["commit", "-q", "-m", tag]);
     git(package, &["tag", tag]);

@@ -109,8 +109,9 @@ pub const EVENTS_FILE: &str = "events.jadpo_record";
 /// Who can do what, `access.jadpo_record` at the root (areas 9 and 18,
 /// chunk A8): a view of the permissions report, each entity's and field's
 /// grants, the actions and queries listed separately, the security rules
-/// declined and the sign-in settings that have a limit, so a change that
-/// widens access is a diff in the pull request and has a before side.
+/// declined, the sign-in settings that have a limit and the company's own
+/// git locations, so a change that widens access is a diff in the pull
+/// request and has a before side.
 pub const ACCESS: Kind = Kind {
     word: "access",
     format: 1,
@@ -118,7 +119,15 @@ pub const ACCESS: Kind = Kind {
     update: "`jadpo records update`",
     command: "jadpo records update",
     headings: &[
-        "tenant", "entity", "field", "action", "query", "role", "decline", "sign_in",
+        "tenant",
+        "entity",
+        "field",
+        "action",
+        "query",
+        "role",
+        "decline",
+        "sign_in",
+        "own_source",
     ],
     facts: &[
         "create",

@@ -239,12 +239,27 @@ fn called(graph: &Graph, id: NodeId) -> bool {
         .any(|caller| graph.node(caller).kind != Kind::Test)
 }
 
-/// A lock entry from git: a package not from the registry, whose publisher
-/// nothing verifies (area 11, "Publisher trust"). Telling the app's own
-/// company's repository from a third party's needs a setting the pages
-/// don't decide, so every git package needs a person until they do.
-fn from_git(node: &Node) -> bool {
-    matches!(&node.detail, Detail::LockEntry { source, .. } if source == "git")
+/// A lock entry from a third party's git repository: a package not from
+/// the registry, whose publisher nothing verifies, from a repository under
+/// none of `packages:`'s `own_sources:` (area 11, "Publisher trust").
+fn third_party_git(node: &Node) -> bool {
+    matches!(
+        &node.detail,
+        Detail::LockEntry { source, own_source: None, .. } if source == "git"
+    )
+}
+
+/// Whether a lock entry came from this git repository before.
+fn same_repository(old: &Node, node: &Node) -> bool {
+    match (&old.detail, &node.detail) {
+        (
+            Detail::LockEntry {
+                source, location, ..
+            },
+            Detail::LockEntry { location: now, .. },
+        ) => source == "git" && location == now,
+        _ => false,
+    }
 }
 
 fn service(node: &Node) -> Option<&str> {
@@ -258,7 +273,7 @@ fn service(node: &Node) -> Option<&str> {
 fn added_needs(before: &Graph, node: &Node) -> Vec<String> {
     match node.kind {
         Kind::Domain => need("DomainChange.created"),
-        Kind::LockEntry if from_git(node) => need("PackageChange.git_source"),
+        Kind::LockEntry if third_party_git(node) => need("PackageChange.git_source"),
         Kind::Host if service(node).is_some() => need("PackageChange.service_image"),
         // A host added to a connection the app already had is its host
         // changed; a new connection's hosts are `NetworkChange.host_added`
@@ -329,7 +344,9 @@ fn changed_needs(
             ) if was != now => need("PackageChange.credential_changed"),
             _ => Vec::new(),
         },
-        Kind::LockEntry if from_git(node) && changed.detail => need("PackageChange.git_source"),
+        Kind::LockEntry if third_party_git(node) && !same_repository(old, node) => {
+            need("PackageChange.git_source")
+        }
         Kind::Principal if changed.detail => need("PolicyChange.principal_changed"),
         _ => Vec::new(),
     }

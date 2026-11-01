@@ -1164,9 +1164,32 @@ the sandbox for each one (see "Tests and fakes").
   `PackageChange.git_source`; everything else about it is reviewed as for
   any package. Adding an entry, or widening one, is a decision:
   `"github.com/acme/": PolicyChange.own_source_added`, so an agent can't
-  let a stranger's repository in. Removing one needs nothing. The list is
-  kept in `access.jadpo_record` as `own_source` lines, which gives the
-  check its before side (Richard, 2026-10-31).
+  let a stranger's repository in. Removing one needs nothing, nor does
+  narrowing one, or adding one below an entry already there, since no new
+  repository gets in. The list is kept in `access.jadpo_record` as
+  `own_source` lines, which gives the check its before side (Richard,
+  2026-10-31).
+
+  A repository is under an entry by its host and its whole path parts,
+  never by how its text starts, and an address that can't be told apart
+  from someone else's is under nothing, which only costs a person's
+  acceptance:
+
+  | Against `github.com/acme/` | Under it? | Why |
+  |---|---|---|
+  | `github.com/acme/postcodes`, `github.com/acme/tools/postcodes` | Yes | Below the entry |
+  | `github.com/acme/postcodes.git`, `https://github.com/acme/postcodes`, `ssh://git@github.com/acme/postcodes`, `git@github.com:acme/postcodes.git` | Yes | The same repository, as git reads it |
+  | `GitHub.com/acme/postcodes` | Yes | A host's name has no case |
+  | `github.com/Acme/postcodes` | No | A path keeps its case, since many servers tell the two apart |
+  | `github.com/acme-evil/postcodes`, `github.com/acme` | No | Whole path parts only, and strictly below the entry |
+  | `github.com:8443/acme/postcodes` | No | Another server. An entry can name a port: `git.acme.example:8443/platform/` |
+  | `github.com@evil.example/acme/postcodes`, `https://token@github.com/acme/postcodes` | No | An account in the address, other than ssh's `git` |
+  | `github.com/acme/../evil/postcodes`, `github.com/acme/%2e%2e/evil/postcodes` | No | Nothing is resolved or unescaped |
+  | `http://github.com/acme/postcodes`, `git://…`, `file://…` | No | They prove nothing about who answers |
+
+  An entry itself is refused unless it is a lower-case host and a path
+  ending in `/`, `package.own_source_invalid`: `github.com/` alone would
+  let in every repository on the host.
 - **Prose is unverified wherever it comes from**, such as `///`
   descriptions and `GUIDE.md`. Nothing safety-relevant relies on it.
 
@@ -1212,8 +1235,8 @@ the sandbox for each one (see "Tests and fakes").
 
 Not built yet: the hosted registry; importers other than `openapi`;
 adding another Jadpo app's OpenAPI document with `jadpo package add`;
-`packages:`'s `own_sources:`; writing an operation's output type from
-the sandbox's answer when it has none; and a HAR capture's operations.
+writing an operation's output type from the sandbox's answer when it has
+none; and a HAR capture's operations.
 
 ## The surface
 <!-- topic: the-surface -->
@@ -7038,7 +7061,7 @@ package's name, as its types are.
 | Webhooks as events, replies, handshakes, queues through a package and the Cloudflare Queues driver | Built. |
 | Services (`runs:`) | Not built yet. |
 | OAuth grants | Not built yet: the application's `grants:` is `toolchain.not_built_yet` where it is written. |
-| Publisher trust for third-party git packages | Built: every package from git needs an [acceptance](18-records-and-manifest.md#acceptances). Not built yet: `packages:`'s `own_sources:`, which lets your own company's repositories in without one. |
+| Publisher trust for third-party git packages | Built: a package from a git repository under none of `packages:`'s `own_sources:` needs an [acceptance](18-records-and-manifest.md#acceptances), as does adding or widening an entry; an entry is `package.own_source_invalid` unless it is a host and a path ending in `/`. |
 | The registry protocol: its requests and answers, the log and its proofs, a local registry and the conformance test | Built (`jadpo-registry`). |
 | The public registry: the verifier, publishing, facts, search, advisories and compatibility runs | Not built yet. |
 | Importers other than OpenAPI | Not built yet. |
@@ -7248,6 +7271,7 @@ public type SlotTaken = Failure {
 - [`package.not_installed`](../errors/package.not_installed.md)
 - [`package.digest_mismatch`](../errors/package.digest_mismatch.md)
 - [`package.licence_not_allowed`](../errors/package.licence_not_allowed.md)
+- [`package.own_source_invalid`](../errors/package.own_source_invalid.md)
 - [`package.version_needed`](../errors/package.version_needed.md)
 - [`package.version_unneeded`](../errors/package.version_unneeded.md)
 - [`package.operation_invalid`](../errors/package.operation_invalid.md)

@@ -379,8 +379,9 @@ pub enum Detail {
     },
     /// A line of `jadpo.lock` (area 18, "The lock"): the package's version,
     /// where it came from (`registry`, `git`, `path` or `link`), the
-    /// repository or folder, a git package's tag and commit, and its
-    /// digest.
+    /// repository or folder, a git package's tag and commit, its digest,
+    /// and the entry of `packages:`'s `own_sources:` its repository is
+    /// under, if any.
     LockEntry {
         version: Option<String>,
         source: String,
@@ -388,6 +389,7 @@ pub enum Detail {
         tag: Option<String>,
         commit: Option<String>,
         digest: Option<String>,
+        own_source: Option<String>,
     },
     /// A route the runtime answers itself (areas 7, 8 and 11): the API it
     /// is in (`None` for health, which is outside every API), what

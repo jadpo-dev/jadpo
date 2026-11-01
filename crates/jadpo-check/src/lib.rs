@@ -48,6 +48,7 @@ pub mod mail_health;
 mod naming;
 mod not_type;
 mod not_value;
+pub mod own_sources;
 pub mod package_code;
 pub mod packages;
 pub mod persons;
@@ -314,6 +315,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(version.iter().cloned());
         out.extend(config::connection_problems(db, project).iter().cloned());
         out.extend(application::section_problems(db, project).iter().cloned());
+        out.extend(own_sources::problems(db, project).iter().cloned());
         out.extend(config::test_value_problems(db, project).iter().cloned());
         out.extend(identity::identity_problems(db, project).iter().cloned());
         out.extend(identity::sign_in_problems(db, project).iter().cloned());

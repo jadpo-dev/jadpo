@@ -258,8 +258,72 @@ fn locked(package: &str, source: &str) -> Node {
         tag: None,
         commit: None,
         digest: Some("sha256:00".to_string()),
+        own_source: None,
     };
     entry
+}
+
+/// A lock entry of `package` from git at `repository`, under `own_source`
+/// when it is one of the company's.
+fn locked_git(package: &str, repository: &str, own_source: Option<&str>) -> Node {
+    let mut entry = locked(package, "git");
+    if let Detail::LockEntry {
+        location,
+        own_source: own,
+        ..
+    } = &mut entry.detail
+    {
+        *location = Some(repository.to_string());
+        *own = own_source.map(str::to_string);
+    }
+    entry
+}
+
+/// A package from git needs a person when it is new to a repository, and
+/// that repository is under none of `packages:`'s `own_sources:` (chunk
+/// V1).
+#[test]
+fn a_diff_asks_for_a_person_only_for_a_third_partys_git_repository() {
+    const OWN: &str = "github.com/acme/";
+    let mut before = Builder::new();
+    before.node(locked_git("Moved.v1", "github.com/acme/moved", Some(OWN)));
+    before.node(locked_git("Kept.v1", "github.com/stranger/kept", None));
+    before.node(locked_git("Listed.v1", "github.com/acme/listed", Some(OWN)));
+    before.node(locked("Registered.v1", "registry"));
+    let before = before.build();
+    let mut after = Builder::new();
+    after.node(locked_git("New.v1", "github.com/acme/new", Some(OWN)));
+    after.node(locked_git("Stranger.v1", "github.com/stranger/x", None));
+    after.node(locked_git("Moved.v1", "github.com/stranger/moved", None));
+    let mut bumped = locked_git("Kept.v1", "github.com/stranger/kept", None);
+    if let Detail::LockEntry { version, .. } = &mut bumped.detail {
+        *version = Some("2.0.0".to_string());
+    }
+    after.node(bumped);
+    // Its entry removed, its repository the same.
+    after.node(locked_git("Listed.v1", "github.com/acme/listed", None));
+    after.node(locked_git(
+        "Registered.v1",
+        "github.com/acme/own",
+        Some(OWN),
+    ));
+    let after = after.build();
+    let changes = diff(&before, &after);
+    let needs = |key: &str| -> Vec<String> {
+        changes
+            .get(key)
+            .map(|change| change.needs.clone())
+            .unwrap_or_default()
+    };
+    assert!(needs("lock_entry New.v1").is_empty());
+    assert_eq!(
+        needs("lock_entry Stranger.v1"),
+        ["PackageChange.git_source"]
+    );
+    assert_eq!(needs("lock_entry Moved.v1"), ["PackageChange.git_source"]);
+    assert!(needs("lock_entry Kept.v1").is_empty());
+    assert!(needs("lock_entry Listed.v1").is_empty());
+    assert!(needs("lock_entry Registered.v1").is_empty());
 }
 
 /// What area 18 says needs a person in a package or sign-in change
