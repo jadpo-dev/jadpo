@@ -940,7 +940,8 @@ Not built yet:
   `../orders`), or from a URL serving an OpenAPI document. A registry name
   and another app's folder say `toolchain.not_built_yet` until the
   registry and the importer. A package from git needs a person's
-  acceptance once installed (`PackageChange.git_source`).
+  acceptance once installed (`PackageChange.git_source`), unless its
+  repository is under one of `packages:`'s `own_sources:`.
 - `jadpo package import` for `smithy`, `postman`, `har` and `dts`. They
   are `toolchain.not_built_yet` until first needed.
 - `jadpo package conform` for any capability but `ai`, which is

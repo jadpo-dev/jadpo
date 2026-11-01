@@ -383,17 +383,13 @@ Already built: acceptances (`jadpo acceptance new`, matching, the reason,
 history, the CODEOWNERS gate) for API and event breaks, every widening of
 who can do what (routes made public included), security declines,
 sign-in settings past their limit, new domains, new outside hosts and
-packages from git (every one, until V1). The kinds that belong to
+third parties' packages from git. The kinds that belong to
 features not built yet come with those features: `ThresholdChange` with
 thresholds, a service's image with services, bot checks with bot
 protection, a domain renamed with `jadpo domain rename`.
 
 - [x] **V2 The approval report**: area 17, "Reviewing a change"; area 18, "Comparing two builds"; area 14, "`jadpo approval`"; compiler/runtime §2.3, "The approval report"; `docs/errors/cli.approval_arguments.md`.
-- [ ] **V1 Your own company's git packages** `opus · high`: area 11,
-  "Installing safely"; area 18, `PolicyChange.own_source_added`.
-  `packages:`'s `own_sources:` in `application { }` (added to area 1's
-  list of sections), its `own_source` lines in `access.jadpo_record`, and
-  `PackageChange.git_source` only for a repository under none of them.
+- [x] **V1 Your own company's git packages**: area 11, "Installing safely"; area 18, "Acceptances"; area 1, "What `application { }` holds"; compiler/runtime §2.3; `docs/errors/package.own_source_invalid.md`.
 - [ ] **V3 Removing data needs a person** `opus · xhigh`: area 5,
   "Migrations"; area 18, `DataChange`. `jadpo migrate new`'s removals (an
   entity removed, one moved to another store, a retired column dropped),

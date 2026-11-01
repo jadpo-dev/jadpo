@@ -476,6 +476,7 @@ the page that decides each:
 | `display_name:` | The app's name, as people see it | [The application and revocation](08-identity.md#the-application-and-revocation) |
 | `revocation_delay:` | How long a disabled caller or a revoked session may keep working | [The application and revocation](08-identity.md#the-application-and-revocation) |
 | `connections:` | Every database, driver and package the app connects to | [Connecting in `app.jadpo`](11-integrations.md#connecting-in-appjadpo) |
+| `packages:` | Your own company's git locations, whose packages need no one's acceptance | [Installing safely](11-integrations.md#installing-safely) |
 | `deployables:` | What is built to run, and where | [Declared deployables](14-tooling.md#declared-deployables) |
 | `apis:` | The app's APIs and their versions | [APIs and versions](07-http.md#apis-and-versions) |
 | `client_address:` | Where a request's client address is read | [Client addresses](10-configuration-and-time.md#client-addresses) |

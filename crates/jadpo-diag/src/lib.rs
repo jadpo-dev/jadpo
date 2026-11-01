@@ -680,6 +680,8 @@ rules! {
         "Code uses a package's declaration that isn't public";
     PACKAGE_OPERATION_INVALID: "package.operation_invalid", area 11, Error, Agent,
         "Provider operation holds what it can't, or lacks what it needs";
+    PACKAGE_OWN_SOURCE_INVALID: "package.own_source_invalid", area 11, Error, Agent,
+        "Application's `packages:` lists your company's git locations wrongly";
     PACKAGE_PROVIDER_INVALID: "package.provider_invalid", area 11, Error, Agent,
         "Provider file holds what it can't, or lacks `protocol:`";
     PACKAGE_PROVIDER_MISSING: "package.provider_missing", area 11, Error, Agent,

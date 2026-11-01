@@ -891,13 +891,17 @@ and `.failure_added` for an operation something other than a test calls,
 `.host_changed` for a host's address changed or one added to a connection
 the app already had, `.service_image` for a service's image new or
 changed, `.credential_changed` for a connection's credential scheme, and
-`.git_source` for a package locked from git; `PolicyChange.principal_added`,
+`.git_source` for a package newly locked from a git repository whose lock
+entry names no own source; `PolicyChange.principal_added`,
 `.principal_changed`, `.sign_in_method_added` and `.sign_in_added`. A new
 connection's hosts are `NetworkChange.host_added` (area 18, 2026-10-30),
-which the record comparison below gives. Every git package needs a
-person, since telling the app's own company's repository from a third
-party's needs a setting the pages don't decide; this is the conservative
-reading of area 11's "Publisher trust". This graph diff runs in tests.
+and an entry of `packages:`'s `own_sources:` added or widened is
+`PolicyChange.own_source_added`, which the record comparison below gives.
+A lock entry's `own_source` (`ownSource` in the manifest) is the entry its
+repository is under, read by `jadpo_check::own_sources`, which fails
+closed: by exact host and whole path parts, with an address it can't tell
+apart from someone else's under nothing (area 11, "Installing safely").
+This graph diff runs in tests.
 
 **The approval report** (chunk V2, areas 17 and 18) builds the base: `jadpo
 approval` reads the commit through `git cat-file --batch` into an in-memory
@@ -924,8 +928,10 @@ git ignores, such as a test's under `target/`, isn't looked for.
 today's source writes, entry by entry: the API and event records for
 `ApiChange` (each type's fields as sent, read or both, by what reaches
 them from a route's input, output or failures), `access.jadpo_record`
-for `PolicyChange`, `network.jadpo_record` for `NetworkChange`,
-`jadpo.lock` for `PackageChange.git_source`, the domain folders for
+for `PolicyChange` (its `own_source` lines read as empty when the before
+side has no record), `network.jadpo_record` for `NetworkChange`,
+`jadpo.lock` for `PackageChange.git_source` (read as empty when the before
+side has none), the domain folders for
 `DomainChange.created`. Each acceptance a change adds is matched against
 that list; one the before side has is history, compared byte for byte.
 The acceptance rules don't stop `jadpo test` or `jadpo dev`, as records

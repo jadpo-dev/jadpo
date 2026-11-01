@@ -38,16 +38,26 @@ pub fn needs(db: &dyn Db, project: Project) -> Vec<Need> {
     let mut out = Vec::new();
     api_needs(db, project, before, &mut out);
     event_needs(db, project, before, &mut out);
-    if let (Some(was), Some(now)) = (before.text(access::PATH), access::record_text(db, project)) {
-        compare::access_needs(access::PATH, was, now.as_deref().unwrap_or(""), &mut out);
+    if let Some(now) = access::record_text(db, project) {
+        let now = now.as_deref().unwrap_or("");
+        let was = before.text(access::PATH);
+        if let Some(was) = was {
+            compare::access_needs(access::PATH, was, now, &mut out);
+        }
+        compare::own_source_needs(access::PATH, was.unwrap_or(""), now, &mut out);
     }
     if let (Some(was), Some(now)) = (network_before(before), network::record_text(db, project)) {
         compare::network(network::PATH, was, now.as_deref().unwrap_or(""), &mut out);
     }
-    if let Some(was) = before.text(jadpo_db::LOCK) {
-        let now = written(db, project, jadpo_db::LOCK).unwrap_or_default();
-        compare::lock(jadpo_db::LOCK, was, &now, &mut out);
-    }
+    let now = written(db, project, jadpo_db::LOCK).unwrap_or_default();
+    let own = &crate::own_sources::own_sources(db, project).entries;
+    compare::lock(
+        jadpo_db::LOCK,
+        before.text(jadpo_db::LOCK).unwrap_or(""),
+        &now,
+        own,
+        &mut out,
+    );
     compare::domains(&before.domains, &domains(db, project), &mut out);
     threshold_needs(db, project, before, &mut out);
     out.sort();
@@ -423,6 +433,10 @@ fn said(change: &str, family: &Family) -> (&'static str, &'static str) {
         "PolicyChange.role_requirements_changed" => (
             "changing how a role must be signed in to needs a person",
             "Who keeps the role, and where their access is revoked, follows from it, whether it is tighter or looser.",
+        ),
+        "PolicyChange.own_source_added" => (
+            "a new own source lets its repositories in without a person",
+            "A package from a repository under it installs without `PackageChange.git_source`, and an agent could use that to let in a stranger's code.",
         ),
         "NetworkChange.host_added" => (
             "a new outside host the app can send data to needs a person",

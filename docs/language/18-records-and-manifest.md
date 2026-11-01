@@ -28,7 +28,7 @@ it.
 |---|---|---|---|---|---|
 | API record | Each API's routes, fields and failure codes | `api/<api>.jadpo_record` | Yes | `jadpo api update` | `check`, reviewers, client teams |
 | Event record | Each domain's events, the fields they carry and the types those name ([The event record](12-jobs-and-events.md#the-event-record)) | `domains/<domain>/events/events.jadpo_record` | Yes | `jadpo records update` | `check`, reviewers |
-| Access record | Who can do what: each entity's and field's grants, where records belong, the actions and queries listed separately, the security rules declined and the sign-in settings that have a limit ([Acceptances](#acceptances)) | `access.jadpo_record` | Yes | `jadpo records update` | `check`, reviewers |
+| Access record | Who can do what: each entity's and field's grants, where records belong, the actions and queries listed separately, the security rules declined, the sign-in settings that have a limit and your company's own git locations ([Acceptances](#acceptances)) | `access.jadpo_record` | Yes | `jadpo records update` | `check`, reviewers |
 | Network record | Every outside host the app can reach, by connection ([The network report](11-integrations.md#the-network-report)) | `network.jadpo_record` | Yes | `jadpo records update` | `check`, reviewers |
 | Migrations | Each step of the database, with a snapshot of the whole schema | `database/migrations/` | Yes | `jadpo migrate new` | `migrate apply`, `check` |
 | Identity registry | What each renamed thing was born as | `database/identities.jadpo_record` | Yes | `jadpo rename`, `jadpo domain …`, `jadpo fmt --layout` | the compiler, `migrate`, `incident` |
@@ -579,7 +579,10 @@ costs one build per base commit.
   alone (2026-10-30); and a before side with no network record whose
   `app.jadpo` has no `connections:` block reached no outside host, so its
   record is read as empty and the change that adds the block and a host
-  needs `NetworkChange.host_added`. Only a before side with the block and
+  needs `NetworkChange.host_added`. In the same way a before side with no
+  `jadpo.lock` had no packages, and one with no `access.jadpo_record` no
+  `own_sources:`, so the first package from git and the first entry are
+  still compared. Only a before side with the block and
   no record, a project from before the record, is compared with nothing
   (2026-10-31). A base commit the clone doesn't hold, as in a
   depth-1 checkout, is
@@ -685,10 +688,10 @@ Each change the compiler reports, and the subject it names:
 | `PolicyChange.call_ungranted_declined` | `lending.borrow` | A new `decline policy.call_ungranted:`, on the declaration it sits above |
 | `PolicyChange.sign_in_loosened` | `magic_link.expires_after` | A setting past its limit and looser than before |
 | `PolicyChange.role_requirements_changed` | `desk.StaffRole.admin` | A role's `requires:` line changed, tighter or looser, or a role's line added or removed |
-| `PolicyChange.own_source_added` | `"github.com/acme/"` | An entry in `packages:`'s `own_sources:` that wasn't there, or one that now covers more |
+| `PolicyChange.own_source_added` | `"github.com/acme/"` | An entry in `packages:`'s `own_sources:` that wasn't there, or one that now covers more; not one below an entry already there, which lets nothing new in |
 | `DomainChange.created` | `billing` | A folder under `domains/` that wasn't there |
 | `NetworkChange.host_added` | `couriers` | A connection reaches a host it didn't, a new connection's included; one entry covers every new host of the connection |
-| `PackageChange.git_source` | `AcmeCouriers.v1` | A package locked from git that wasn't, from a repository under none of `packages:`'s `own_sources:` |
+| `PackageChange.git_source` | `AcmeCouriers.v1` | A package locked from git that wasn't, or locked from another repository than it was, from a repository under none of `packages:`'s `own_sources:` |
 | `ThresholdChange.raised` | `planning.todo_list.p95`, `planning.todo_list.within` | A threshold's limit is higher than the same-named threshold's on the before side, or its `within:` longer |
 | `ThresholdChange.removed` | `planning.todo_list.p95`, or `planning.todo_list` | A limit is gone from a threshold; or the threshold is gone, or watches something else |
 | `ThresholdChange.lowered` | `uploads.free_space_floor` | A disk store's `free_space_floor:` is lower than it was |
