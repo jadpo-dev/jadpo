@@ -672,11 +672,12 @@ from an older version of its prompt passes, with an alert on the report.
 
 A test needs no settings. Without them, its clock is fixed at
 2000-01-01T00:00:00Z, never the real time; each configuration field
-has its `test:` or `default:` value from `config.jadpo`; and each call to a
-provider answers with its fake's generated default.
+has its `test:` or `default:` value from `config.jadpo`; each call to a
+provider answers with its fake's generated default; and each feature flag
+has its `default:`.
 
 To change any of these, write a `name: value` setting at the top of the
-test's body, before its first statement. There are three, and all are
+test's body, before its first statement. There are four, and all are
 optional.
 
 ### `clock:`
@@ -693,6 +694,15 @@ Configuration values that differ from the test values in `config.jadpo`
 
 The responses each integration operation gives, in order
 ([Fakes for integrations](#fakes-for-integrations)).
+
+### `flags:`
+
+The value each feature flag it names has for every caller in the test,
+`flags: { new_checkout: true }`, written as the flag's `default:` is: `true`
+or `false`, or the enum's variant
+([What the compiler checks](16-built-in-services.md#what-the-compiler-checks)).
+A flag it doesn't name has its `default:`, never a value an environment
+holds.
 
 ### Everything in the test itself
 

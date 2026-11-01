@@ -16,7 +16,7 @@ use crate::tree::{self, node_span};
 
 /// The sections `application { }` holds and this compiler builds, in the
 /// order the error lists them, each read by its area's check.
-pub const SECTIONS: [&str; 15] = [
+pub const SECTIONS: [&str; 16] = [
     // Area 1: the Jadpo release line.
     "jadpo",
     // Area 8: the app's name, and how long a revoked caller may act.
@@ -31,8 +31,9 @@ pub const SECTIONS: [&str; 15] = [
     // Area 10: the client's address, and the root translations' review.
     "client_address",
     "translations",
-    // Area 16: rate limits' store, and email.
+    // Area 16: rate limits' store, flags' store, and email.
     "rate_limits",
+    "flags",
     "email",
     // Area 12: where events, schedules and steps are kept, and queues read.
     "events",

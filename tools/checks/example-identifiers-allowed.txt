@@ -4,6 +4,9 @@
 # vocabulary, or a word the language itself defines. Never add an example
 # application's own nouns (todo, invoice, customer) to make a check pass.
 
+# Words the language itself defines: a feature flag's `owner:` (area 16,
+# "Feature flags")
+owner
 # Words the language itself defines: `Enum.all` lists an enum's variants
 # (area 19, "Closed value sets are enums"), and the standard types' names and parts
 all

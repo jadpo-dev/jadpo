@@ -61,6 +61,7 @@ mod file_deletes;
 mod file_exports;
 mod file_imports;
 mod fix;
+mod flags;
 mod fmt;
 mod geo_layers;
 mod geo_queries;

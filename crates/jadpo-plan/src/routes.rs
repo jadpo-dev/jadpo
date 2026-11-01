@@ -241,6 +241,9 @@ pub(crate) fn table(
                         params.iter().position(|p| p == name).unwrap_or(0) as u32,
                     ),
                     ArgRoot::Caller => jadpo_std::http::ArgRoot::Caller,
+                    ArgRoot::Flag(name) => jadpo_std::http::ArgRoot::Flag(
+                        crate::flags::number(db, project, name).unwrap_or(0),
+                    ),
                     // `result` is read only by `settle:`'s `answer:`.
                     ArgRoot::Result => jadpo_std::http::ArgRoot::Input,
                 },

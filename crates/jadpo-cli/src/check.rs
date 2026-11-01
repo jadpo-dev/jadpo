@@ -53,23 +53,62 @@ pub fn check(call: &Call) -> Reply {
         },
     };
     let started = Instant::now();
-    let checked = match checked_before(call, &target) {
+    let checked = match checked_before(call, &target, JudgedOn::Today) {
         Ok(checked) => checked,
         Err(reply) => return *reply,
     };
     reported(&cwd, checked, started.elapsed(), "check failed")
 }
 
+/// The date a rule triggered by time passing is judged at (area 1, "Rules
+/// triggered by time passing").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum JudgedOn {
+    /// Today: what `jadpo check` judges at, so CI fails a new change.
+    Today,
+    /// The commit's date: what `jadpo build` judges at, so rebuilding a
+    /// merged revision is never blocked by a date passing.
+    Commit,
+}
+
+/// The day `on` names for the project at `root`, in days since
+/// 1970-01-01, in UTC: `SOURCE_DATE_EPOCH` when it is set, as everything a
+/// build stamps; else today, or for [`JudgedOn::Commit`] the time of the
+/// commit checked out, when there is one.
+pub(crate) fn judged_day(call: &Call, root: &std::path::Path, on: JudgedOn) -> i32 {
+    let seconds = call
+        .environment
+        .var("SOURCE_DATE_EPOCH")
+        .and_then(|epoch| epoch.trim().parse::<i64>().ok())
+        .or_else(|| match on {
+            JudgedOn::Commit => crate::build::commit_seconds(root),
+            JudgedOn::Today => None,
+        })
+        .unwrap_or_else(|| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0))
+        });
+    i32::try_from(seconds.div_euclid(86_400)).unwrap_or(0)
+}
+
 /// [`checked`], with the before side read from git first, so acceptances
-/// are judged (area 18, chunk A8): what `jadpo check` and `jadpo build`
-/// run. `--before` names the branch or commit to compare with.
-pub(crate) fn checked_before(call: &Call, target: &std::path::Path) -> Result<Checked, Box<Reply>> {
+/// are judged (area 18, chunk A8), and the date rules triggered by time
+/// passing are judged at, `on`: what `jadpo check` and `jadpo build` run.
+/// `--before` names the branch or commit to compare with.
+pub(crate) fn checked_before(
+    call: &Call,
+    target: &std::path::Path,
+    on: JudgedOn,
+) -> Result<Checked, Box<Reply>> {
     let with = call
         .values
         .iter()
         .find(|(flag, _)| *flag == "--before")
         .map(|(_, value)| value.as_str());
     checked_with(call, target, |loaded| {
+        let day = judged_day(call, &loaded.root, on);
+        loaded.set_judged_on(Some(day));
         if loaded.project.layout(&loaded.db) != Layout::Project {
             return Ok(());
         }
@@ -385,5 +424,65 @@ fn report(
         data,
         diagnostics,
         sources,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use jadpo_term::Environment;
+
+    fn call(environment: Environment) -> Call {
+        Call {
+            arguments: Vec::new(),
+            flags: Vec::new(),
+            values: Vec::new(),
+            cwd: None,
+            environment,
+        }
+    }
+
+    fn today() -> i32 {
+        let seconds = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        i32::try_from(seconds / 86_400).unwrap_or(0)
+    }
+
+    #[test]
+    fn check_judges_at_today_and_build_at_the_commits_date() {
+        let root = std::env::temp_dir().join(format!("jadpo-judged-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("folder");
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(&root)
+                .args(args)
+                .env("GIT_AUTHOR_DATE", "2026-03-01T12:00:00Z")
+                .env("GIT_COMMITTER_DATE", "2026-03-01T12:00:00Z")
+                .env("GIT_AUTHOR_NAME", "Test")
+                .env("GIT_AUTHOR_EMAIL", "test@example.test")
+                .env("GIT_COMMITTER_NAME", "Test")
+                .env("GIT_COMMITTER_EMAIL", "test@example.test")
+                .output()
+                .expect("git runs")
+        };
+        let plain = call(Environment::empty());
+        // Outside git, a build judges at today too.
+        assert_eq!(judged_day(&plain, &root, JudgedOn::Commit), today());
+        git(&["init", "-q"]);
+        std::fs::write(root.join("app.jadpo"), "application {}\n").expect("write");
+        git(&["add", "."]);
+        git(&["commit", "-q", "-m", "first"]);
+        let commit = jadpo_std::date_number("2026-03-01").expect("a date");
+        assert_eq!(judged_day(&plain, &root, JudgedOn::Commit), commit);
+        assert_eq!(judged_day(&plain, &root, JudgedOn::Today), today());
+        // `SOURCE_DATE_EPOCH` fixes both, as it fixes what a build stamps.
+        let fixed = call(Environment::empty().with_var("SOURCE_DATE_EPOCH", "1792504800"));
+        let day = jadpo_std::date_number("2026-10-20").expect("a date");
+        assert_eq!(judged_day(&fixed, &root, JudgedOn::Commit), day);
+        assert_eq!(judged_day(&fixed, &root, JudgedOn::Today), day);
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

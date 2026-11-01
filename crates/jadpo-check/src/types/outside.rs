@@ -167,6 +167,7 @@ pub(super) fn children(node: &Node) -> Vec<SiteId> {
             | Expr::Stored { .. }
             | Expr::Propagate { .. }
             | Expr::Config { .. }
+            | Expr::Flag { .. }
             | Expr::Constant { .. }
             | Expr::Now
             | Expr::SentEmails

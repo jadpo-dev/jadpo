@@ -1,6 +1,6 @@
 # `semantic.test_setting_duplicate`
 
-A test gives one of its settings, `clock:`, `config:` or `fakes:`, twice.
+A test gives one of its settings, `clock:`, `config:`, `fakes:` or `flags:`, twice.
 
 ## Why Jadpo refuses it
 

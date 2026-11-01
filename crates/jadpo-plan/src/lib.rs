@@ -36,6 +36,7 @@ mod connections;
 mod constant;
 mod deployable;
 mod emails;
+mod flags;
 mod identity;
 mod policy;
 mod providers;
@@ -504,6 +505,8 @@ impl Plan {
         let mut overrides: HashMap<Key, Vec<(String, String)>> = HashMap::new();
         // Where each test's `clock:` starts its clock.
         let mut clocks: HashMap<Key, i64> = HashMap::new();
+        // What each test's `flags:` gives, by the test's key.
+        let mut test_flags: HashMap<Key, Vec<(u32, u32)>> = HashMap::new();
         for &file in project.files(db) {
             let path = file.path(db).clone();
             files.insert(path.clone(), file.text(db).clone());
@@ -520,6 +523,14 @@ impl Plan {
                     }
                     if let Some(start) = given.clock {
                         clocks.insert(key.clone(), start);
+                    }
+                    let given_flags: Vec<(u32, u32)> = given
+                        .flags
+                        .iter()
+                        .filter_map(|(name, at)| Some((flags::number(db, project, name)?, *at)))
+                        .collect();
+                    if !given_flags.is_empty() {
+                        test_flags.insert(key.clone(), given_flags);
                     }
                 }
                 found.push((key, kind, path.clone(), Arc::clone(&checked.body)));
@@ -896,6 +907,7 @@ impl Plan {
                 entity: &entity,
                 write: &write,
                 setting: &setting_of,
+                flag: &|key: &Key| flags::number(db, project, key.name()),
                 json: &mut json_types,
                 prompt: &|key: &str| {
                     let fields = prompt_fields.get(key).cloned();
@@ -944,13 +956,19 @@ impl Plan {
                 })
                 .collect();
             let clock = clocks.get(&key).copied();
+            let given_flags = test_flags.get(&key).cloned().unwrap_or_default();
             let number = u32::try_from(callables.len()).unwrap_or(u32::MAX);
             if kind == Kind::Test {
                 testing.tests.insert(key.as_str().to_string(), number);
-                if !settings.is_empty() || clock.is_some() {
-                    testing
-                        .setups
-                        .insert(number, jadpo_std::testing::TestSetup { settings, clock });
+                if !settings.is_empty() || clock.is_some() || !given_flags.is_empty() {
+                    testing.setups.insert(
+                        number,
+                        jadpo_std::testing::TestSetup {
+                            settings,
+                            clock,
+                            flags: given_flags,
+                        },
+                    );
                 }
             } else {
                 keyed.insert(key.as_str().to_string(), number);
@@ -1412,12 +1430,14 @@ impl Plan {
                 )
             })
             .collect();
+        let flags = flags::plan(db, project, &mut types);
         let runtime = RuntimePlan {
             validators,
             shapes,
             failures,
             json,
             config,
+            flags,
             routes,
             events,
             batches,

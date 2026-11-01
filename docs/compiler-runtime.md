@@ -746,8 +746,9 @@ the runtime answers itself, keyed by its method and path and placed under
 what generates it, from the one list the API record also reads
 (`routes::generated`), each connection's webhook whether or not the app
 declares the `webhooks` API, and health beside any API; and
-`service_nodes`, a `config_field` for each setting, the `locale_set
-application`, and, beside any API, `rate_limit address` and `rate_limit
+`service_nodes`, a `config_field` for each setting, a `flag` for each
+feature flag (using the enum it holds), the `locale_set application`,
+and, beside any API, `rate_limit address` and `rate_limit
 caller`, using the connection they are counted in. `cache` and
 `oauth_scope` stay reserved: nothing the language builds declares one yet
 (`caches:` comes with Redis entities, area 5; scope declarations with OAuth
@@ -3315,6 +3316,26 @@ Package-backed capabilities use one generic driver, the package driver
 driver runs over its `Transport`; packages never generate driver code. Drivers
 list their targets for `jadpo check` (area 11), and test fakes implement
 the same traits.
+
+**Feature flags** (area 16, "Feature flags"). `jadpo_check::flags`
+reads `flags { }` once per project into each flag's type, values,
+`default:`, owner and date, and `application { flags: { store: } }` into
+the store `jadpo_flags` goes in, the only database when none is named;
+`flag_type` gives a body or a route the type of one flag, so a read
+depends on that flag alone. A read lowers to `Expr::Flag`, a `Uses` edge
+to the flag's node, and a route's `run:` argument to `ArgRoot::Flag`; the
+plan numbers the flags in name order (`jadpo_std::flags::FlagsPlan`),
+each enum flag with the type its values carry, and a test's `flags:` as
+`TestSetup::flags`. Both executors read a flag through `Ctx::flag`, as
+the HTTP component reads a route's argument: a test's value, else the
+state the operation's first read fixed, worked out for the signed-in
+user and kept for the rest of the operation. `Started` holds the state
+(`jadpo_runtime::flags::Held`), which `Serving` reads again with
+`flags::refresh` as a request or a tick begins, at most every
+`REFRESH_MS`, marking the read before it waits and keeping the old state
+when it fails. `flag.expired` is judged at `Project::judged_on`, which
+`jadpo check` sets to today and `jadpo build` to the commit's date, or
+`SOURCE_DATE_EPOCH`'s; nothing else sets it, so no run judges a date.
 
 **The capability seam** (area 16). Every call that leaves the
 process goes through one exchange, `jadpo_runtime::outside::exchange`

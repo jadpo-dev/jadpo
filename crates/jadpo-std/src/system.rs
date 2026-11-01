@@ -876,6 +876,28 @@ pub const FILES: SystemTable = SystemTable {
     }],
 };
 
+/// Each feature flag's current state (area 16, "Changing a flag"; chunk
+/// B9), in `flags: { store: }`: the value everyone gets, `NULL` for the
+/// flag's `default:`; the named users' fixed values, a JSON object of
+/// each user's `id` to a value; and the shares of users given a value by
+/// a stable percentage, a JSON array of `[value, percent]` pairs taken in
+/// order. A value is `true` or `false`, or an enum's variant by name. A
+/// flag with no row gives everyone its `default:`.
+pub const FLAGS: SystemTable = SystemTable {
+    table: "jadpo_flags",
+    columns: &[
+        column("flag", SqlType::Text, false),
+        column("value", SqlType::Text, true),
+        column("users", SqlType::Json, true),
+        column("shares", SqlType::Json, true),
+        column("set_at", SqlType::Timestamp, false),
+    ],
+    primary_key: &["flag"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[],
+};
+
 /// What must commit with an action's own writes, in every store that
 /// holds an entity, since any of them can be written: the outbox, its
 /// deliveries, handled records and idempotency keys; the log of what
@@ -902,7 +924,7 @@ pub const BATCH_TABLES: [&SystemTable; 3] = [&BATCH_RUNS, &BATCH_PROBLEMS, &BATC
 pub const STEP_TABLES: [&SystemTable; 2] = [&STEP_RECORDS, &STEPS];
 
 /// Every system table.
-pub const ALL: [&SystemTable; 26] = [
+pub const ALL: [&SystemTable; 27] = [
     &OUTBOX,
     &DELIVERIES,
     &CIRCUIT_BREAKERS,
@@ -927,6 +949,7 @@ pub const ALL: [&SystemTable; 26] = [
     &PARKED_MESSAGES,
     &POLLS,
     &AI_USAGE,
+    &FLAGS,
     &HOUSEKEEPING,
     &FILES,
 ];

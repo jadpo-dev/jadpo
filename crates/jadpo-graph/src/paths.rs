@@ -441,6 +441,7 @@ fn children(expr: &Expr) -> Vec<SiteId> {
         | Expr::Stored { .. }
         | Expr::Propagate { .. }
         | Expr::Config { .. }
+        | Expr::Flag { .. }
         | Expr::Constant { .. }
         | Expr::Now
         | Expr::SentEmails

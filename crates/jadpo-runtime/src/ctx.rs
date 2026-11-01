@@ -225,6 +225,12 @@ pub struct Ctx<'p> {
     /// The settings a test gives its own values (area 13): each by its
     /// number in the plan.
     settings: Vec<(u32, Value)>,
+    /// What a test's `flags:` gives, by flag and value number (area 16).
+    test_flags: Vec<(u32, u32)>,
+    /// The flags' state the operation's first flag fixed, and each flag's
+    /// value once worked out, by number: fixed for the operation.
+    flag_state: Option<std::rc::Rc<crate::flags::State>>,
+    flag_values: Vec<(u32, Value)>,
     /// The credentials a route test's `as:` signed its callers in with,
     /// each sent again by the same caller's later requests (area 13,
     /// "Signing in for a route test"; chunk A11).
@@ -345,6 +351,9 @@ impl<'p> Ctx<'p> {
             deadline: None,
             inline: 0,
             settings: Vec::new(),
+            test_flags: Vec::new(),
+            flag_state: None,
+            flag_values: Vec::new(),
             signed_in: Vec::new(),
             started: None,
             background: Background::default(),
@@ -1337,6 +1346,39 @@ impl<'p> Ctx<'p> {
     /// instead of the values the application started with.
     pub fn set_settings(&mut self, settings: Vec<(u32, Value)>) {
         self.settings = settings;
+    }
+
+    /// Gives the invocation a test's `flags:`, by flag and value number
+    /// (area 16): each read instead of what the flags' state gives.
+    pub fn set_test_flags(&mut self, flags: Vec<(u32, u32)>) {
+        self.test_flags = flags;
+    }
+
+    /// `flags.<name>`, flag number `at`, worked out for the caller (area
+    /// 16, "Who gets which value"): a test's own value, else what the state
+    /// the operation's first flag fixed gives the signed-in user, or
+    /// everyone else's value for a service, the system or no one. Worked
+    /// out once per operation, and never failing: a flag no state names
+    /// gives its `default:`. `None` for a number no flag has.
+    pub fn flag(&mut self, at: u32) -> Option<Value> {
+        if let Some((_, value)) = self.flag_values.iter().find(|(number, _)| *number == at) {
+            return Some(value.clone());
+        }
+        let started = self.started();
+        let flag = started.flags().flag(at)?;
+        let place = match self.test_flags.iter().find(|(number, _)| *number == at) {
+            Some((_, place)) => *place,
+            None => {
+                let state = self
+                    .flag_state
+                    .get_or_insert_with(|| started.flags().state());
+                let user = crate::flags::user_of(self.caller.as_ref());
+                state.choose(at, flag, user.as_deref())
+            }
+        };
+        let value = crate::flags::value(flag, place);
+        self.flag_values.push((at, value.clone()));
+        Some(value)
     }
 
     /// The headers a route test's earlier request signed `who` in with,

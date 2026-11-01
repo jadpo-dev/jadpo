@@ -337,6 +337,16 @@ fn declaration(graph: &Graph, id: NodeId) -> String {
             let secret = if *secret { "  // secret" } else { "" };
             format!("config.{}: {}{secret}", node.name, ty.render(&name))
         }
+        Detail::Flag {
+            ty,
+            default,
+            owner,
+            expires,
+        } => format!(
+            "flags.{}: {}  // {default} by default, owned by \"{owner}\", expires {expires}",
+            node.name,
+            ty.render(&name)
+        ),
         Detail::LocaleSet {
             default, supported, ..
         } => format!(

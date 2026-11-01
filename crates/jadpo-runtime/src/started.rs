@@ -45,6 +45,8 @@ pub struct Started {
     /// Where each store of files keeps its record of which files are held
     /// (area 16, "Deleting and erasing"; chunk B3).
     files: jadpo_std::files::FilesPlan,
+    /// The flags, and the state of them it last read (area 16; chunk B9).
+    flags: crate::flags::Held,
 }
 
 impl fmt::Debug for Started {
@@ -94,10 +96,12 @@ impl Started {
             .events
             .map(|events| events.files.clone())
             .unwrap_or_default();
+        let flags = crate::flags::Held::new(plan.flags.cloned().unwrap_or_default());
         let Some(values) = values else {
             return Started {
                 purge_after,
                 files,
+                flags,
                 ..Started::default()
             };
         };
@@ -141,6 +145,7 @@ impl Started {
             .unwrap_or_default(),
             purge_after,
             files,
+            flags,
         }
     }
 
@@ -179,6 +184,11 @@ impl Started {
     /// origin.
     pub fn auth(&self) -> &AuthSettings {
         &self.auth
+    }
+
+    /// The flags, and the state of them last read (area 16).
+    pub fn flags(&self) -> &crate::flags::Held {
+        &self.flags
     }
 
     /// How a request's client address is chosen.
