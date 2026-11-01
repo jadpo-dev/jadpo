@@ -114,7 +114,9 @@ pub fn said(family: &Family, subject: &str, change: &str) -> String {
         "PolicyChange.confirmation_removed" => {
             let (api, route) = route(subject);
             if api == "main" || api.is_empty() {
-                format!("a signed-in session alone can now run `{route}`, without the person's passkey")
+                format!(
+                    "a signed-in session alone can now run `{route}`, without the person's passkey"
+                )
             } else {
                 format!(
                     "a signed-in session alone can now run `{route}` of API `{api}`, without the person's passkey"
