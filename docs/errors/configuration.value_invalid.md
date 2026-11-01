@@ -22,7 +22,7 @@ isn't a duration, and check the settings:
 
 ```jadpo check project=e-value-invalid file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

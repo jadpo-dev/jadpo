@@ -20,7 +20,7 @@ of who can do what, has to be written again:
 
 ```jadpo check project=e-artifact-write file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

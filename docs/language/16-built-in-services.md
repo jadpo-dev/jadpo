@@ -148,7 +148,7 @@ flag (`flag.read_context`), so you pass them its value as a parameter. As
 with `clock.now`, the value is fixed for the whole operation, so one
 request never sees a flag change halfway through.
 
-```jadpo check project=feature-flags file=domains/ordering/actions/start_checkout.jadpo migrate=initial
+```jadpo check project=feature-flags file=domains/ordering/actions/start_checkout.jadpo
 use ordering/types { CheckoutShown }
 
 /// The checkout this customer is shown.
@@ -172,9 +172,11 @@ A flag's current state lives in your app's own database, in a table Jadpo
 owns, `jadpo_flags`, in the database `application { flags: { store: } }`
 names, or the only one there is. With several databases and none named,
 the flags are `flag.store_required`. You change it while the app runs,
-with `jadpo flags` against an environment
-([Commands for services, calls, email and stored data](14-tooling.md#commands-for-services-calls-email-and-stored-data)).
-Each change is logged with who made it.
+with `jadpo flags` against that database
+([`jadpo flags`](14-tooling.md#jadpo-flags)). Each change is logged with
+who made it: the name the operator's machine gives and the database role
+that made it. Whoever may write to the database may change a flag, as
+for every operator command; Jadpo has no operator accounts of its own.
 
 Each server holds the flag values in its own memory and refreshes them
 every few seconds, so a change applies within ten seconds. Flags are
@@ -185,10 +187,16 @@ fails a request.
 Flags aren't a capability, and no outside flag service fills them.
 
 ```text
-jadpo flags set new_checkout --env production --users 0192... --percent 10
-jadpo flags set checkout_layout --env production --split classic=50,single_column=50
-jadpo flags list --env production
+jadpo flags set new_checkout --users 0192f1c4-7a3e-7c1d-9b2a-5e6f7a8b9c0d --percent 10
+jadpo flags set checkout_layout --split classic=50,single_column=50
+jadpo flags list
 ```
+
+The database is found as `jadpo schedules` finds its own: the one
+`--url` names, else the address its connection's setting gives, else a
+running `jadpo dev`'s. There is no `--env` flag: an environment is its
+configuration, so production's flags are changed with production's
+address.
 
 ### Who gets which value
 
@@ -219,7 +227,7 @@ value in the event it emits.
   fails until the tests that reach each read cover both `true` and
   `false`, or every variant.
 
-```jadpo check project=feature-flags file=domains/ordering/actions/start_checkout.test.jadpo
+```jadpo check project=feature-flags file=domains/ordering/actions/start_checkout.test.jadpo migrate=initial
 use ordering/types { CheckoutLayout, CheckoutShown }
 
 test "the three-step form is shown by default" {
@@ -245,7 +253,8 @@ test "the new checkout takes one page, in the layout the test gives" {
   revision is never blocked by a date passing. To keep a flag longer you
   edit the date, so keeping one is a reviewed choice.
 - Whether a flag has sat at 100% or 0% is runtime state the compiler
-  can't see, so `jadpo flags list` marks those flags "ready to remove".
+  can't see, so `jadpo flags list` marks those flags "ready to remove":
+  every caller has had one value for seven days.
 
 ### Removing a flag
 
@@ -254,10 +263,25 @@ read becomes `true`, the branch that can no longer run goes, the
 declaration goes, and test overrides for the removed value are deleted.
 Jadpo can do this exactly because it knows every read.
 
+A test that gave the flag a removed value, or left it at a `default:`
+that is removed, and reached a read, tested the branch that has gone, so
+it goes too; a test that gave it the kept value loses only that line. The
+command lists every change file by file, and a removal whose result
+wouldn't check is undone, so the project always checks after it. The
+flag's row in the database is left: a row no flag has is never read.
+`flags { }` stays when its last flag goes, with the tables.
+
 ### Flags in browsers and apps
 
 A flag with `client: true` is also returned, worked out for the caller,
-by a generated `GET /flags` route in the OpenAPI document.
+by a generated `GET /flags` route in the OpenAPI document. Each API gets
+one under its prefix, answered for whoever the request signed in as, so
+a page reads the values its user gets. A flag without `client: true`
+never leaves the server.
+
+```json
+{ "new_checkout": true, "checkout_layout": "single_column" }
+```
 
 ### What flags are not for
 
@@ -3517,9 +3541,9 @@ Each flag in `flags { }` is a `Bool` or an enum whose variants carry no
 data, with a `default:` written as a test's `flags:` writes a value, an
 `owner:` in quotes, and an `expires:` date in quotes, `"2027-01-31"`. A
 flag missing one of the three, giving one that isn't valid, of another
-type, or declared twice is `flag.declaration_invalid`. `client:` is
-`toolchain.not_built_yet` where it is written, until `GET /flags` is
-built.
+type, or declared twice is `flag.declaration_invalid`. `client: true`
+or `false` says whether `GET /flags` answers it
+([`GET /flags`](#get-flags)).
 
 ### Where it is read
 
@@ -3563,6 +3587,107 @@ commit's date, both in UTC, or at `SOURCE_DATE_EPOCH` when it is set. A
 flag is past its date from the day after it, and `flag.expired` names
 its owner. Running a program or its tests judges no date.
 
+## Flags: changed, listed and removed
+<!-- topic: flags-changed-listed-and-removed -->
+
+`jadpo flags` reads and changes `jadpo_flags` in the flags' store, found
+as `jadpo schedules` finds its database, and runs none of the app's code
+([`jadpo flags`](14-tooling.md#jadpo-flags)).
+
+### Setting a value
+
+`jadpo flags set <flag> [<value>]` changes one part of the flag's state
+and leaves the rest:
+
+- With no option, `<value>` becomes everyone's value.
+- `--users <id>,<id>` gives those users `<value>`, each `id` a `Uuid`.
+- `--percent <n>` replaces the shares with one, `<value>` for `n`% of
+  users; `--percent 0` removes them.
+- `--split <value>=<n>,…` replaces the shares with one for each value,
+  in the order written, the percentages adding up to 100 or less. It
+  takes no `<value>`, and not with `--percent`.
+
+`--users` and `--percent` go together. A `Bool` flag's `<value>` is
+`true` when an option is given without one. A value is written as a
+test's `flags:` writes it, `true` or a variant's name.
+
+`jadpo flags reset <flag>` gives everyone the `default:` again, its row
+deleted; with `--users`, only those users stop being named.
+
+### The log
+
+Each change writes a row of `jadpo_flag_changes` in the same statement
+as the change: when, the flag, `set` or `reset`, its state before and
+after, the name the operator's machine gives (`USER`, else `LOGNAME` or
+`USERNAME`), and the database role PostgreSQL authenticated
+(`session_user`), which the statement reads itself so it can't be
+faked. The screen shows both, as `jadpo deliveries` does. A row is kept
+for good: changes are few, and a flag's history is what a reviewer reads
+when a release went wrong. Its rows, like `jadpo_flags`, hold named
+users' `id`s; a user's erasure removes them from both, which comes with
+erasures ([Erasures](15-personal-data.md#erasures)). A change is made
+only to the row as it was read, so of two operators acting at once, one
+acts and the other is told it changed (`flags.unavailable`).
+
+There is no production guard and no prompt. Changing a flag is the point
+of a running app's flags; a change is logged, reversible and reaches
+every server within ten seconds.
+
+### Ready to remove
+
+A flag is ready to remove when every caller gets one value (each named
+user's, each share's with a percentage above 0 and everyone's are the
+same) and its row last changed seven days ago or more. A flag never
+changed has no row, so it is never marked: it hasn't been released.
+
+### Both values tested
+
+`flag.value_untested` follows the calls each test makes, through the
+actions and fixtures it reaches and the routes it sends requests
+through (their `run:` and the action it runs), to every `flags.<name>`
+in the bodies it reaches, whichever branch of them it takes. A test gives each flag its `flags:` value, or the
+`default:`. A read the reaching tests don't give every value is an
+error at the read, naming the values missing, and it can't be declined.
+A test's own read of a flag isn't counted.
+
+### Removing
+
+`jadpo flags remove <flag> --keep <value>` refuses a project that
+doesn't check, and refuses `<value>` that isn't one of the flag's. Then:
+
+- A read that is an `if`'s whole condition, alone, behind `!`, or
+  compared with `==` or `!=` to a value, decides the `if`: its block or
+  its `else` stays, unwrapped to the enclosing block, and an `else if`
+  chain keeps its own conditions. When the kept block ends by
+  returning, what came after it in the same block can't run and goes.
+- Every other read becomes the kept value, `true` or `Type.variant`.
+- The declaration goes from `flags { }`. When it was the last, `flags {
+  }` stays, empty, so `jadpo_flags` and its log stay: dropping them is a
+  migration of its own, which comes with dropping tables.
+- Each test's `flags:` line for it goes, and `flags:` with it when it
+  was the last. A test whose value was another and that reached a read
+  goes whole; here a read inside an `if` another flag decides is
+  reached only by the tests whose values take that branch.
+
+- An enum flag's type goes too when nothing uses it any more, and its
+  file when nothing else is in it.
+
+Imports a change leaves unused go, and each file is formatted as it
+was. The result is checked, and undone with its errors when it doesn't
+check. A flag a route's `run:` passes on is refused before anything
+changes, since a route's `run:` passes no value written out: the
+action reads the flag itself first.
+
+### `GET /flags`
+
+Each API with a record gets `GET <prefix>/flags` while a flag has
+`client: true`. It is authenticated as the API's routes are, and
+answers with a JSON object of each `client: true` flag by name, a
+`Bool` as `true` or `false` and an enum as its variant's name, worked
+out for the caller as an action's read is, with `cache-control:
+no-store`. The OpenAPI document gives its schema, the enum's values
+listed. A route the app writes at that path is `route.path_overlap`.
+
 ## What is built
 <!-- topic: built-in-services-built -->
 
@@ -3578,7 +3703,7 @@ The errors this page describes are built with the feature they belong to.
 | Rate limits | Built: default rate limits with routes, and their store on Workers, Cloudflare's rate-limiting binding ([Rate limits on Workers](#rate-limits-on-workers)). Not built yet: Redis's driver, which comes with caches. Until then a deployable whose store is Redis counts in its own memory, which on Workers is the judgement call `rate_limits.counted_in_memory`. The binding's windows and the Wrangler entries aren't yet checked against the real edge. |
 | The capability seam | Built: the seam every capability's calls go through, with a delivery that hands its event to a capability, parked as `outcome_unknown` when a send without a key may have acted ([The seam every outside call goes through](#the-seam-every-outside-call-goes-through)). |
 | Files | Partly built. Built: the `files` capability's first part on that seam: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [Files: `put`, `read` and the disk driver in development](#files-put-read-and-the-disk-driver-in-development)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([Files: an export's pieces](#files-an-exports-pieces)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). A file's bytes are deleted once no record holds it, after the change commits, through the generated subscriber `files <store>`, and a day after a `put` when no record ever held them, a person's erasure and retention included ([Deleting and erasing](#deleting-and-erasing)). Not built yet: upload slots, multipart ones included, downloads, fields naming one store of files in entities of two databases, the S3 driver, the floor as a monitoring threshold, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written. |
-| Flags | Partly built: `flags { }` of `Bool` and enum flags with their `default:`, `owner:` and `expires:`; `flags.<name>` in actions, tests and a route's `run:` arguments, worked out for the caller from `jadpo_flags` in `flags: { store: }`, held in each server's memory and fixed for the operation; a test's `flags:`; `flag.unknown`, `flag.read_context` and `flag.expired` ([Flags: declared, read and tested](#flags-declared-read-and-tested)). Not built yet: `jadpo flags set`, `list` and `remove`, the log of changes, `check` failing until both values are tested, `client: true` and `GET /flags`, and named tenants, which wait for tenancy to be settled for flags. |
+| Flags | Built: `flags { }` of `Bool` and enum flags with their `default:`, `owner:` and `expires:`; `flags.<name>` in actions, tests and a route's `run:` arguments, worked out for the caller from `jadpo_flags` in `flags: { store: }`, held in each server's memory and fixed for the operation; a test's `flags:`; `flag.unknown`, `flag.read_context` and `flag.expired` ([Flags: declared, read and tested](#flags-declared-read-and-tested)). `jadpo flags list`, `set`, `reset` and `remove`, each change logged in `jadpo_flag_changes`; `flag.value_untested`; and `client: true` with each API's `GET /flags` ([Flags: changed, listed and removed](#flags-changed-listed-and-removed)). Not built yet: named tenants, which wait for tenancy to be settled for flags; and a user's erasure reaching their `id` in `jadpo_flags` and `jadpo_flag_changes`, which comes with erasures. |
 | Audit | Not built yet: an entity's `audit:` is `toolchain.not_built_yet` where it is written. |
 | Search | Built on PostgreSQL: `search: { fields: language: }` with its generated column, GIN index and migrations, `matches` with a `SearchText`, the best matches first in keyset pages, and policy over every search ([Search](#search)). Not built yet: an engine's `store:`, `toolchain.not_built_yet` where it is written, and `jadpo search reindex`, which come with the `search` capability's packages; and searching a field of a sensitive category, `toolchain.not_built_yet` in `fields:` until the access records are built. |
 | Documents | Not built yet: the application's `documents:` is `toolchain.not_built_yet` where it is written. |
@@ -3616,3 +3741,4 @@ The errors this page describes are built with the feature they belong to.
 - [`flag.store_invalid`](../errors/flag.store_invalid.md)
 - [`flag.store_required`](../errors/flag.store_required.md)
 - [`flag.unknown`](../errors/flag.unknown.md)
+- [`flag.value_untested`](../errors/flag.value_untested.md)

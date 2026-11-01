@@ -691,19 +691,10 @@ After the registry is live, in order:
      and "Flags: declared, read and tested"; area 1, "Rules triggered by
      time passing"; area 13, "Test settings"; compiler/runtime §2.6,
      "Feature flags".
-   - [ ] **B10 Changing and removing flags** `opus · high` after B9: area
-     16, "Changing a flag", "What the compiler checks" (both values
-     tested), "Removing a flag" and "Flags in browsers and apps"; area
-     14, `jadpo flags`; area 7, `GET /flags`. `jadpo flags set`
-     (`--users`, `--percent`, `--split`) and `list` against an
-     environment, each change logged with who made it, a flag held at 0%
-     or 100% shown "ready to remove"; `check` failing until the tests
-     that reach each read cover every value; `jadpo flags remove --keep`
-     rewriting each read, the branch that can't run, the declaration and
-     the tests' overrides; `client: true` flags worked out for the
-     caller by a generated `GET /flags` in the OpenAPI document. Screens
-     designed with the design skills first. Done when each command's
-     tests pass and a removed flag's project checks and passes its tests.
+   - [x] **B10 Changing and removing flags**: area 16, "Changing a flag",
+     "Removing a flag", "Flags in browsers and apps" and "Flags: changed,
+     listed and removed"; area 14, `jadpo flags`; compiler/runtime §2.6,
+     "Feature flags".
    - [ ] **B11 The audit trail** `opus · xhigh` after P2: area 16, "Audit
      trail" and "Sending audit entries elsewhere"; area 9, the history's
      grant and field restrictions; area 5, its system table. `audit: {

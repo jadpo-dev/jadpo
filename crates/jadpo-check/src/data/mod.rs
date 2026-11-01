@@ -3185,19 +3185,19 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
     }
     // Flags' state goes in `flags: { store: }`, or the only database
     // (area 16; chunk B9).
+    // The log of their changes goes beside it (chunk B10).
     if let Some(store) = crate::flags::store(db, project) {
-        schema
+        let tables = &mut schema
             .stores
             .entry(store)
             .or_insert_with(|| physical::Store {
                 driver: Driver::Postgres.name().to_string(),
                 tables: BTreeMap::new(),
             })
-            .tables
-            .insert(
-                system::FLAGS.table.to_string(),
-                columns::system_table(&system::FLAGS),
-            );
+            .tables;
+        for table in [&system::FLAGS, &system::FLAG_CHANGES] {
+            tables.insert(table.table.to_string(), columns::system_table(table));
+        }
     }
     // Every schema store keeps runtime state (entities have the outbox,
     // and state-only stores hold schedules or AI usage). Add this after

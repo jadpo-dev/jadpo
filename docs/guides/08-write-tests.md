@@ -16,7 +16,7 @@ The action it tests is this one:
 use reading/entities { Reader }
 
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 
 principal {

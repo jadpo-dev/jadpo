@@ -12,7 +12,7 @@ Nothing has run `jadpo dev` yet, so the log is empty, and the command asks for a
 
 ```jadpo check project=e-calls-arguments file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

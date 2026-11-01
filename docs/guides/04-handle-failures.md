@@ -14,7 +14,7 @@ a `LoanView` output type, and a fixture that stores a book for tests;
 
 ```jadpo check project=guide-failures file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

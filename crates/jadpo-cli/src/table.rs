@@ -86,6 +86,8 @@ pub enum Values {
     Schedule,
     /// The name of one of the project's deployables (chunk 8.1o2).
     Deployable,
+    /// The name of one of the project's feature flags (chunk B10).
+    Flag,
     /// A delivery's or schedule run's id, which nothing completes: they
     /// are in a database, not the project (chunk 6.12).
     Id,
@@ -1186,6 +1188,101 @@ pub static COMMANDS: &[Command] = &[
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
         ],
         run: commands::schedules,
+    },
+    Command {
+        name: "flags",
+        synonyms: &["flag"],
+        group: "Production",
+        summary: "Change and remove flags",
+        description: "Each flag's state is kept in the database `flags: { store: }` names (area 16). \
+                      `jadpo flags` lists each flag with everyone's value, how many users are named, \
+                      its shares, when it last changed, and whether it is ready to remove: every \
+                      caller has had one value for seven days. `set` changes one part: with no \
+                      option, everyone's value; --users gives named users the value; --percent \
+                      gives it to that share of users, 0 removing the shares; --split gives each \
+                      value its share. A `Bool` flag's value is true when an option is given without \
+                      one. `reset` gives everyone the default again, or with --users stops naming \
+                      those users. Each change is logged with the operator's name and database role. \
+                      `remove` rewrites the source as if the flag had always held --keep's value, \
+                      and checks the result. The database is the one --url names, or the one its \
+                      connection's setting gives, or the one a running jadpo dev started.",
+        arguments: &[
+            Argument {
+                name: "action",
+                description: "What to do: list, set, reset or remove",
+                required: false,
+                values: Values::Fixed(crate::flags::ACTIONS),
+            },
+            Argument {
+                name: "flag",
+                description: "The flag's name, as `flags.jadpo` declares it",
+                required: false,
+                values: Values::Flag,
+            },
+            Argument {
+                name: "value",
+                description: "The value `set` gives: true or false, or a variant's name",
+                required: false,
+                values: Values::Id,
+            },
+        ],
+        flags: &[
+            Flag {
+                name: "--url",
+                value: Some("url"),
+                description: "The database the flags' state is in",
+                values: &[],
+            },
+            Flag {
+                name: "--users",
+                value: Some("ids"),
+                description: "Users, by `id`, separated by commas",
+                values: &[],
+            },
+            Flag {
+                name: "--percent",
+                value: Some("n"),
+                description: "The share of users given it, 0 to 100",
+                values: &[],
+            },
+            Flag {
+                name: "--split",
+                value: Some("shares"),
+                description: "Each value's share of users: old=50,new=50",
+                values: &[],
+            },
+            Flag {
+                name: "--keep",
+                value: Some("value"),
+                description: "The value `remove` keeps wherever it is read",
+                values: &[],
+            },
+        ],
+        examples: &[
+            Example {
+                description: "See every flag and who gets which value",
+                command: "jadpo flags",
+            },
+            Example {
+                description: "Turn a flag on for 10% of users",
+                command: "jadpo flags set beta_banner --percent 10",
+            },
+            Example {
+                description: "Compare two variants, half the users each",
+                command: "jadpo flags set banner_style --split old=50,new=50",
+            },
+            Example {
+                description: "Remove a flag every user has had on for a week",
+                command: "jadpo flags remove beta_banner --keep true",
+            },
+        ],
+        arguments_rule: &rule::CLI_FLAGS_ARGUMENTS,
+        raises: &[
+            &rule::FLAGS_UNAVAILABLE,
+            &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::flags,
     },
     Command {
         name: "deliveries",
