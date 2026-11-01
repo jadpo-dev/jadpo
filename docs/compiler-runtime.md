@@ -3347,7 +3347,7 @@ floors (`floors_lowered`), into `ThresholdChange` needs. The graph gets a
 `threshold` node for each threshold and floor; the plan carries the
 per-request limits as `RuntimePlan::thresholds`
 (`jadpo_std::thresholds::ThresholdPlan`, keyed by what each watches, with
-`crossed` for the telemetry that will judge requests by them); and `jadpo
+`limits_exceeded` for the telemetry that will judge requests by them); and `jadpo
 check` and `jadpo dev` write `rules`' Prometheus and OpenSLO files to
 `build/monitoring/`, removing one that has nothing left to say.
 

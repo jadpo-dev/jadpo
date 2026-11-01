@@ -23,16 +23,16 @@ pub struct ThresholdPlan {
 
 impl ThresholdPlan {
     /// Whether a request or run that took `duration_ms` and ran `queries`
-    /// crossed it.
-    pub fn crossed(&self, duration_ms: u64, queries: u64) -> bool {
+    /// went past it.
+    pub fn exceeded(&self, duration_ms: u64, queries: u64) -> bool {
         self.duration_ms.is_some_and(|limit| duration_ms > limit)
             || self.queries.is_some_and(|limit| queries > limit)
     }
 }
 
 /// The names of the thresholds on `watches` that a request which took
-/// `duration_ms` and ran `queries` crossed, in plan order.
-pub fn crossed<'a>(
+/// `duration_ms` and ran `queries` went past, in plan order.
+pub fn limits_exceeded<'a>(
     plans: &'a [ThresholdPlan],
     watches: &'a str,
     duration_ms: u64,
@@ -40,7 +40,7 @@ pub fn crossed<'a>(
 ) -> impl Iterator<Item = &'a str> + 'a {
     plans
         .iter()
-        .filter(move |plan| plan.watches == watches && plan.crossed(duration_ms, queries))
+        .filter(move |plan| plan.watches == watches && plan.exceeded(duration_ms, queries))
         .map(|plan| plan.name.as_str())
 }
 
@@ -49,7 +49,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_request_crosses_a_limit_only_past_it() {
+    fn a_request_exceeds_a_limit_only_past_it() {
         let plans = [
             ThresholdPlan {
                 name: "hello.greeting_route".into(),
@@ -65,19 +65,22 @@ mod tests {
             },
         ];
         let route = "route POST /hello";
-        assert_eq!(crossed(&plans, route, 800, 2).count(), 0);
+        assert_eq!(limits_exceeded(&plans, route, 800, 2).count(), 0);
         assert_eq!(
-            crossed(&plans, route, 801, 0).collect::<Vec<_>>(),
+            limits_exceeded(&plans, route, 801, 0).collect::<Vec<_>>(),
             ["hello.greeting_route"]
         );
         assert_eq!(
-            crossed(&plans, route, 10, 3).collect::<Vec<_>>(),
+            limits_exceeded(&plans, route, 10, 3).collect::<Vec<_>>(),
             ["hello.greeting_route"]
         );
         assert_eq!(
-            crossed(&plans, "action greet", 51, 100).collect::<Vec<_>>(),
+            limits_exceeded(&plans, "action greet", 51, 100).collect::<Vec<_>>(),
             ["hello.greeting"]
         );
-        assert_eq!(crossed(&plans, "action other", 10_000, 100).count(), 0);
+        assert_eq!(
+            limits_exceeded(&plans, "action other", 10_000, 100).count(),
+            0
+        );
     }
 }

@@ -1333,6 +1333,7 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
             | Detail::SignInProvider { .. }
             | Detail::LocaleSet { .. }
             | Detail::RateLimit { .. }
+            | Detail::Threshold { .. }
             | Detail::Schedule { .. }
             | Detail::Subscriber { .. } => {}
             Detail::Route { input, output, .. } => {

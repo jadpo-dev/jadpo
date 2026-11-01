@@ -555,7 +555,7 @@ impl<'a> Reader<'a> {
                     at,
                     "not a name",
                     "Each threshold has a name of its own, which an acceptance and the generated rules name it by.",
-                    "Give the threshold one name, such as `todo_list:`".to_string(),
+                    "Give the threshold one name, such as `checkout_speed:`".to_string(),
                 );
                 continue;
             };
@@ -653,7 +653,7 @@ impl<'a> Reader<'a> {
                         format!("`{name}` watches more than one thing"),
                         key_at,
                         "a second subject",
-                        "A threshold watches one thing, a route with `route:` or an action, query, schedule or subscriber with `watches:`, so what crossed it is never in doubt.",
+                        "A threshold watches one thing, a route with `route:` or an action, query, schedule or subscriber with `watches:`, so what went past it is never in doubt.",
                         format!("Give `{word}:` a threshold of its own"),
                     );
                     continue;
@@ -836,7 +836,7 @@ impl<'a> Reader<'a> {
     }
 
     fn route(&mut self, name: &str, option: &ast::Member, at: &Span) -> Option<Subject> {
-        let reason = "`route:` names the route a threshold watches as a route test does: `route: { method: HttpMethod.get path: \"/todos\" }`, its path as `jadpo routes` prints it, placeholders by name.";
+        let reason = "`route:` names the route a threshold watches as a route test does: `route: { method: HttpMethod.get path: \"/orders\" }`, its path as `jadpo routes` prints it, placeholders by name.";
         if option.block().is_none() {
             self.invalid(
                 format!("`route:` on `{name}` isn't a route's method and path"),
@@ -1087,7 +1087,7 @@ fn route_target(
                 format!("`duration:` on `{name}` isn't shorter than `{label}`'s deadline"),
             )
             .at(at, format!("its deadline is {}", jadpo_std::Dur { millis: i128::from(route.deadline_ms) }))
-            .reason("A request still running at its route's deadline is stopped and answered `timed_out`, so a `duration:` at or past the deadline can never be crossed.")
+            .reason("A request still running at its route's deadline is stopped and answered `timed_out`, so a `duration:` at or past the deadline can never be exceeded.")
             .next(format!("Make `duration:` shorter than {}, or raise the route's `deadline:`", jadpo_std::Dur { millis: i128::from(route.deadline_ms) })),
         );
         return None;

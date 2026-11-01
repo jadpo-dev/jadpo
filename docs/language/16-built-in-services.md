@@ -1069,7 +1069,7 @@ type Visitor = Input {
 ```jadpo check project=monitoring-thresholds file=domains/hello/types/greeting.jadpo hidden
 /// What a visitor is told.
 type Greeting = Output {
-    message: Text
+    salutation: Text
 }
 ```
 
@@ -1079,7 +1079,7 @@ use hello/types { Greeting, Visitor }
 /// Greets a visitor by name.
 action greet(input: Visitor) -> Greeting {
     return Greeting {
-        message: "Hello, {input.name}"
+        salutation: "Hello, {input.name}"
     }
 }
 ```

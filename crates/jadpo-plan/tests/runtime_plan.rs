@@ -368,11 +368,11 @@ fn a_plan_carries_the_thresholds_judged_per_request() {
         ),
         (
             "domains/hello/types/greeting.jadpo",
-            "/// What a visitor is told.\ntype Greeting = Output {\n    message: Text\n}\n",
+            "/// What a visitor is told.\ntype Greeting = Output {\n    salutation: Text\n}\n",
         ),
         (
             "domains/hello/actions/greet.jadpo",
-            "use hello/types { Greeting, Visitor }\n\n/// Greets a visitor by name.\naction greet(input: Visitor) -> Greeting {\n    return Greeting {\n        message: \"Hello, {input.name}\"\n    }\n}\n",
+            "use hello/types { Greeting, Visitor }\n\n/// Greets a visitor by name.\naction greet(input: Visitor) -> Greeting {\n    return Greeting {\n        salutation: \"Hello, {input.name}\"\n    }\n}\n",
         ),
         (
             "domains/hello/routes/hello.jadpo",

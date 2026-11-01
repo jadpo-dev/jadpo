@@ -425,7 +425,7 @@ fn said(change: &str, family: &Family) -> (&'static str, &'static str) {
         ),
         "ThresholdChange.raised" => (
             "raising a threshold can silence its alert",
-            "What crossed the old limit no longer crosses this one, so no one is told when it gets worse.",
+            "What went past the old limit no longer goes past this one, so no one is told when it gets worse.",
         ),
         "ThresholdChange.removed" => (
             "removing a threshold can silence its alert",
