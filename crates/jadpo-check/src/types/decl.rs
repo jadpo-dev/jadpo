@@ -2788,9 +2788,11 @@ fn unbuilt_field_setting(key: &str, entity: bool) -> Option<(&'static str, &'sta
 /// where those areas are built; `personal:` and `to_models:` are read
 /// since chunk 5.5v5b, an entity's field's `retention:` by
 /// [`crate::data::retention`] (chunk P2), and its `erase:` by
-/// [`crate::erasure`] (chunk P3). An event's `retention:` is refused
+/// [`crate::erasure`] (chunk P3), and its `encrypted:` by
+/// [`crate::data::sealed`] (chunk P9). An event's `retention:` is refused
 /// before this ([`unbuilt_field_setting`]), and its `erase:` too.
-const LATER_FIELD_SETTINGS: [&str; 13] = [
+const LATER_FIELD_SETTINGS: [&str; 14] = [
+    "encrypted",
     "erase",
     "generated",
     "immutable",

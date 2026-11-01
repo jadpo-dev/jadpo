@@ -350,6 +350,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .cloned(),
         );
         out.extend(types::steps_settings(db, project).problems.iter().cloned());
+        out.extend(data::sealed::key_problems(db, project).iter().cloned());
         out.extend(routes::table_problems(db, project).iter().cloned());
         out.extend(routes::signin_problems(db, project).iter().cloned());
         out.extend(records::record_problems(db, project).iter().cloned());

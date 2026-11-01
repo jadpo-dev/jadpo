@@ -117,9 +117,11 @@ pub(crate) async fn read_as(
 ) -> Result<Found, Interrupt> {
     let now = ctx.now();
     let loaded = RefCell::new(Vec::new());
+    let started = ctx.started();
     let mut env = Env {
         args,
         json,
+        ring: started.field_ring(),
         now,
         size: 0,
         cursor: Vec::new(),
@@ -241,6 +243,7 @@ pub(crate) async fn count(
     let env = Env {
         args,
         json,
+        ring: None,
         now: ctx.now(),
         size: 0,
         cursor: Vec::new(),
@@ -345,6 +348,8 @@ struct Env<'a> {
     args: &'a [Value],
     /// The codecs a JSON-held column is read with.
     json: JsonCodecs<'a>,
+    /// The key a sealed column is opened with (area 15; chunk P9).
+    ring: Option<&'a jadpo_value::crypto::KeyRing>,
     now: i64,
     size: i64,
     /// The values of the cursor a page continues after.
@@ -609,7 +614,7 @@ fn checked(
     for operand in &check.args {
         args.push(match operand {
             Operand::Column(at) => {
-                let value = stored_value(row, &select.columns, &select.held, *at, env.json)
+                let value = stored_value(row, &select.columns, &select.held, *at, env.json, env.ring)
                     .map_err(Problem::Defect)?;
                 if value == Value::None {
                     return Ok(None);
@@ -672,6 +677,7 @@ fn records<'a>(
                 let inner = Env {
                     args: env.args,
                     json: env.json,
+                    ring: env.ring,
                     now: env.now,
                     size: env.size,
                     cursor: Vec::new(),
@@ -721,7 +727,7 @@ fn record(
     let mut fields = Vec::with_capacity(shape.fields.len());
     for (name, field) in &shape.fields {
         let value = match field {
-            Field::Column(at) => stored_value(row, &select.columns, &select.held, *at, env.json)
+            Field::Column(at) => stored_value(row, &select.columns, &select.held, *at, env.json, env.ring)
                 .map_err(Problem::Defect)?,
             Field::Record(inner) => record(inner, row, select, found, env)?,
             Field::Include(at) => {
@@ -1083,10 +1089,26 @@ pub fn field_value(
     at: u32,
     json: JsonCodecs<'_>,
 ) -> Result<Value, String> {
+    opened_value(row, columns, at, json, None)
+}
+
+/// [`field_value`], with `ring` the key a sealed column is opened with
+/// (area 15, "Encrypted fields"; chunk P9).
+pub(crate) fn opened_value(
+    row: &[SqlValue],
+    columns: &[Column],
+    at: u32,
+    json: JsonCodecs<'_>,
+    ring: Option<&jadpo_value::crypto::KeyRing>,
+) -> Result<Value, String> {
     let at = at as usize;
     let (Some(sql), Some(column)) = (row.get(at), columns.get(at)) else {
         return Err("a row without a column it needs".into());
     };
+    if let Column::Sealed { form, bound, id } = column {
+        let id = row.get(*id as usize);
+        return crate::sealed::open(sql, form, (bound, id), ring, json);
+    }
     if let Column::Json(number) = column {
         return match sql {
             // `none` is the column's `NULL`; JSON's own `null` is never
@@ -1191,8 +1213,9 @@ pub fn stored_value(
     held: &[Option<FieldRules>],
     at: u32,
     json: JsonCodecs<'_>,
+    ring: Option<&jadpo_value::crypto::KeyRing>,
 ) -> Result<Value, String> {
-    let value = field_value(row, columns, at, json)?;
+    let value = opened_value(row, columns, at, json, ring)?;
     held_to(&value, held.get(at as usize).and_then(Option::as_ref), json)?;
     Ok(value)
 }
@@ -1666,6 +1689,7 @@ mod tests {
                 &held,
                 at,
                 json,
+                None,
             )
         };
         assert_eq!(read(4, 0), Ok(Value::Int(4)));
@@ -1674,11 +1698,11 @@ mod tests {
         assert!(!why.contains("77"), "{why}");
         assert_eq!(read(77, 1), Ok(Value::Int(77)), "no rules of its own");
         assert_eq!(
-            stored_value(&[SqlValue::Null(SqlType::Int8)], &columns, &held, 0, json),
+            stored_value(&[SqlValue::Null(SqlType::Int8)], &columns, &held, 0, json, None),
             Ok(Value::None)
         );
         // A plan's rules always come with its validators.
-        let missing = stored_value(&[SqlValue::Int8(4)], &columns, &held, 0, JsonCodecs::NONE);
+        let missing = stored_value(&[SqlValue::Int8(4)], &columns, &held, 0, JsonCodecs::NONE, None);
         assert!(missing.is_err(), "{missing:?}");
     }
 }

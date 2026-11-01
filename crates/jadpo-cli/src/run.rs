@@ -108,6 +108,9 @@ pub enum Reply {
     },
     /// A session that takes over standard input and output.
     Session(Session),
+    /// What a pipe is given and nothing else, a new key's text (`jadpo config
+    /// generate`): no document ever wraps it, so `--json` is refused.
+    Pipe(String),
 }
 
 #[derive(Debug)]
@@ -265,6 +268,31 @@ pub(crate) fn finish(
                 stderr,
                 code: 0,
                 session: Some(session),
+            };
+        }
+        Reply::Pipe(_) if json => {
+            let refusal = Diagnostic::new(
+                &rule::CLI_CONFIG_GENERATE_REFUSED,
+                "`jadpo config generate` can't write JSON",
+            )
+            .reason("It writes a key and nothing else into a pipe, and a document wrapping one would be kept by whatever reads it.")
+            .next_for(
+                "Leave out `--json`, and pipe it into your secret manager",
+                jadpo_diag::Decider::Human,
+            );
+            return Output {
+                stdout: envelope(name, None, &[refusal], &()).to_document(),
+                stderr: String::new(),
+                code: 2,
+                session: None,
+            };
+        }
+        Reply::Pipe(text) => {
+            return Output {
+                stdout: text,
+                stderr: String::new(),
+                code: 0,
+                session: None,
             };
         }
         Reply::Done { text, data } => (Some(data), None, Some(text)),

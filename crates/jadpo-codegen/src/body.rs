@@ -2004,7 +2004,8 @@ impl Emitter<'_> {
                 .get(arg.0 as usize)
                 .map(|site| site.node.clone());
             // A key comes from where the plan says (chunk 10.3d): its
-            // setting's, never read as a value, or the field that holds it.
+            // setting's, never read as a value, or the field or `var` that
+            // holds it.
             if matches!(param.kind, ParamKind::Builtin(builtin) if builtin.is_key()) {
                 match self.decoded(*arg) {
                     Some(Decoded::Key(Some(KeySource::Setting(setting)))) => {
@@ -2013,7 +2014,7 @@ impl Emitter<'_> {
                             let #name = Value::Key(jadpo_value::crypto::Key::Setting(#setting));
                         ));
                     }
-                    Some(Decoded::Key(Some(KeySource::Field { .. }))) => {
+                    Some(Decoded::Key(Some(KeySource::Field { .. } | KeySource::Local))) => {
                         let value = self.expr(*arg);
                         lets.push(quote!(let #name = #value;));
                     }

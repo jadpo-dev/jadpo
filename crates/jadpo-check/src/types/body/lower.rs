@@ -1600,7 +1600,16 @@ impl Lower<'_> {
                 let params = op.operation().params;
                 let mut args = vec![None; params.len()];
                 for (arg, slot) in arguments.iter().zip(slots) {
-                    let lowered = arg.expr().map(|value| self.expr(&value));
+                    // `crypto.new_key`'s `as:` is a type, which its site's
+                    // type says, so it lowers to the text it is written as:
+                    // nothing to work out (area 19; chunk P9).
+                    let lowered = if *op == jadpo_std::Op::CryptoNewKey {
+                        arg.expr().map(|value| {
+                            self.connection_name(call, &tree::written(value.syntax()))
+                        })
+                    } else {
+                        arg.expr().map(|value| self.expr(&value))
+                    };
                     if let Some(slot) = slot
                         && let Some(place) = args.get_mut(slot)
                     {

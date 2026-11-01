@@ -38,6 +38,7 @@ mod decode_problems;
 mod deployables;
 mod determinism;
 mod domain_names;
+mod encrypted_fields;
 mod email_partials;
 mod erasure;
 mod events;

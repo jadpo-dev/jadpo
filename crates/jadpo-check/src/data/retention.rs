@@ -307,6 +307,16 @@ fn since_field(
     if field.ty.has_error() {
         return None;
     }
+    if field.sealed.is_some() {
+        out.push(super::sealed::used(
+            &entity.name,
+            &field.name,
+            "A retention",
+            span,
+            "Name an `Instant` field that isn't encrypted".to_string(),
+        ));
+        return None;
+    }
     if lookup.representation(&field_ty(entity, field)) != Some(Prim::Instant) {
         out.push(
             Diagnostic::new(&rule::DATA_RETENTION_SINCE, format!("`{name}` isn't a time"))

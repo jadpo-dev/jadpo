@@ -101,6 +101,12 @@ pub struct RuntimePlan {
     /// `SigningKey` setting its answers are sealed with, by number.
     pub build: String,
     pub steps_key: Option<u32>,
+    /// The `EncryptionKey` setting `application { field_encryption_key: }`
+    /// reads, by number (area 15, "Encrypted fields"; chunk P9).
+    pub field_key: Option<u32>,
+    /// Each sealed field's re-seal (chunk P9), which a deployable that
+    /// doesn't run the schedules leaves out.
+    pub reseals: Vec<crate::write::ResealPlan>,
     /// The background work this program runs besides the routes it serves
     /// (area 14, "Declared deployables"; chunk 8.1o2): everything but in a
     /// declared deployable that runs less.

@@ -157,6 +157,17 @@ impl Reader<'_> {
             }
         };
         let field_written = format!("{}.{}", entity.name, field.name);
+        // Only the application can open a sealed field (area 15; chunk P9).
+        if field.sealed.is_some() {
+            self.out.push(crate::data::sealed::used(
+                &entity.name,
+                &field.name,
+                "A query's condition",
+                Self::span(scope.path, whole),
+                "Find the records by another field, and work this one out in the action".to_string(),
+            ));
+            return None;
+        }
         // A field kept in several columns, or whole as its JSON (chunks
         // 5.5w2b and 5.9b), isn't compared in a query yet, through an
         // operation or not: PostgreSQL compares `jsonb` by its own rules,

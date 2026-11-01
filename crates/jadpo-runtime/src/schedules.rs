@@ -991,6 +991,17 @@ pub(crate) async fn run_claimed(
             None,
         ),
         ScheduleRun::Purge(entity) => run_purge(executor, budget, entity, now).await,
+        ScheduleRun::Reseal => {
+            let (ran, moved) = run_reseal(executor, budget).await;
+            (
+                ran,
+                moved.map(|moved| crate::purge::Purged {
+                    entity: String::new(),
+                    batches: vec![moved.rows],
+                    finished: moved.finished,
+                }),
+            )
+        }
     };
     // Measured on the monotonic clock from the run's own time, so the
     // record's duration is how long it took whatever the wall clock did;
@@ -1117,6 +1128,31 @@ async fn run_purge(
     let run = crate::purge::purge_all(host, &plans, now, crate::PURGE_BATCHES);
     match budget.run(run).await {
         Ok(Ok(purged)) => (Ran::Succeeded { events: 0 }, Some(purged)),
+        Ok(Err(StoreError::Unavailable)) => (failed("unavailable", Some("unavailable")), None),
+        Ok(Err(_)) => (failed("internal_fault", None), None),
+        Err(_) => (failed("deadline_exceeded", None), None),
+    }
+}
+
+/// Runs the field key's re-seal (area 15, "Rotating the key"; chunk P9):
+/// [`crate::PURGE_BATCHES`] batches at most, the next run carrying on.
+async fn run_reseal(
+    executor: &dyn Executor,
+    budget: &Budget<'_>,
+) -> (Ran, Option<crate::sealed::Resealed>) {
+    let host = budget.host();
+    let failed = |code: &str, kind: Option<&str>| Ran::Failed {
+        code: code.to_string(),
+        kind: kind.map(str::to_string),
+    };
+    let started = executor.started().unwrap_or_else(crate::started::unstarted);
+    let Some(ring) = started.field_ring() else {
+        return (failed("internal_fault", None), None);
+    };
+    let plans = executor.plan().reseals;
+    let run = crate::sealed::reseal_all(host, plans, ring, crate::PURGE_BATCHES);
+    match budget.run(run).await {
+        Ok(Ok(moved)) => (Ran::Succeeded { events: 0 }, Some(moved)),
         Ok(Err(StoreError::Unavailable)) => (failed("unavailable", Some("unavailable")), None),
         Ok(Err(_)) => (failed("internal_fault", None), None),
         Err(_) => (failed("deadline_exceeded", None), None),

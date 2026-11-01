@@ -58,6 +58,9 @@ pub enum ScheduleRun {
     /// so does every entity with a `retention:` of its own or on a field
     /// (area 15, "Retention"; chunk P2), which it applies too.
     Purge(String),
+    /// The built-in re-seal of every sealed field (area 15, "Rotating the
+    /// key"; chunk P9): an application that keeps anything sealed gets one.
+    Reseal,
 }
 
 impl ScheduleRun {
@@ -65,7 +68,7 @@ impl ScheduleRun {
     pub fn action(&self) -> Option<&Key> {
         match self {
             ScheduleRun::Action(key) => Some(key),
-            ScheduleRun::Purge(_) => None,
+            ScheduleRun::Purge(_) | ScheduleRun::Reseal => None,
         }
     }
 }
@@ -122,6 +125,40 @@ pub fn purge_schedules(db: &dyn Db, project: Project) -> Vec<(Arc<ScheduleModel>
             Some((Arc::new(model), purge_place(read)?.clone()))
         })
         .collect()
+}
+
+/// What the built-in re-seal schedule is called: every sealed field shares
+/// one, since they share one key.
+pub const RESEAL_SCHEDULE: &str = "field_encryption.reseal";
+
+/// The built-in re-seal schedule (area 15, "Rotating the key"; chunk P9),
+/// when the application keeps anything sealed in a store and names its key,
+/// declared where `field_encryption_key:` is written.
+#[salsa::tracked(returns(ref))]
+pub fn reseal_schedule(db: &dyn Db, project: Project) -> Option<(Arc<ScheduleModel>, Span)> {
+    let read = crate::data::sealed::field_key(db, project);
+    read.setting.as_ref()?;
+    let span = read.span.clone()?;
+    let kept = crate::data::data_model(db, project)
+        .entities
+        .iter()
+        .any(|entity| {
+            entity.store.is_some() && entity.fields.iter().any(|field| field.sealed.is_some())
+        });
+    if !kept {
+        return None;
+    }
+    Some((
+        Arc::new(ScheduleModel {
+            key: Key::new(Kind::Schedule, RESEAL_SCHEDULE),
+            name: RESEAL_SCHEDULE.to_string(),
+            path: span.path.clone(),
+            line: crate::events::location_line(db, project, &span.path, span.start),
+            every_ms: PURGE_EVERY_MS,
+            run: ScheduleRun::Reseal,
+        }),
+        span,
+    ))
 }
 
 /// One schedule as read, with its problems.
@@ -223,6 +260,11 @@ pub fn schedules(db: &dyn Db, project: Project) -> Arc<Vec<Arc<ScheduleModel>>> 
                 .iter()
                 .map(|(model, _)| Arc::clone(model)),
         )
+        .chain(
+            reseal_schedule(db, project)
+                .iter()
+                .map(|(model, _)| Arc::clone(model)),
+        )
         .collect();
     out.sort_by(|a, b| a.key.cmp(&b.key));
     out.dedup_by(|a, b| a.key == b.key);
@@ -239,6 +281,7 @@ pub fn declares_schedules(db: &dyn Db, project: Project) -> bool {
             .iter()
             .any(|item| item.kind == ItemKind::Schedule)
     }) || !purge_schedules(db, project).is_empty()
+        || reseal_schedule(db, project).is_some()
 }
 
 /// The problems of the schedules `file` declares: how each reads, where
@@ -279,6 +322,12 @@ pub fn schedule_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagn
             {
                 out.push(purge_store_required(db, project, entity, span));
             }
+        }
+        // And the field key's built-in re-seal (area 15; chunk P9).
+        if let Some((model, span)) = reseal_schedule(db, project)
+            && model.path == *path
+        {
+            out.push(store_required(db, project, &model.name, span));
         }
     }
     out

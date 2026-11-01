@@ -28,6 +28,45 @@
 //!   no `config { }` at all (a note, not an error); a project that does
 //!   not check yet (its errors, as every command shows them).
 //!
+//! `set --generate`, `generate` and `rotation` (chunk P9), designed before
+//! they were built (impeccable's shape pass against the CLI design language,
+//! run unattended, so its assumptions are marked):
+//!
+//! - *Job.* Someone, or their coding agent, gives an environment the key
+//!   encrypted fields are sealed with, and later rotates it, when losing it
+//!   would lose every sealed value for good. Mode: operate. What keeps the
+//!   data safe is that a key is never on anyone's screen and that the
+//!   command saying "the old key can go" can be believed.
+//! - `set <key> --generate` prints nothing at all on success, so an agent's
+//!   transcript holds no trace of the key: the one thing to do next is
+//!   `jadpo config check`, which says `set` (decided by the maintainer; the
+//!   one exception to "every screen answers what happened"). It needs no
+//!   terminal, since nothing is typed. `--json` gives a document naming the
+//!   setting, never the value (assumption). It refuses a setting that isn't
+//!   a key by `cli.config_arguments`, and one that already has a value by
+//!   `cli.config_generate_refused`: replacing a key would strand all it
+//!   sealed.
+//! - `generate <key>` writes the key alone to stdout, one line, for a pipe
+//!   into a secret manager, and at a terminal refuses with
+//!   `cli.config_generate_refused`, whose `next:` names both safe forms. It
+//!   refuses `--json`, which would wrap the key in a document a tool keeps.
+//! - `rotation` is one table, one verdict and at most one hint, as `jadpo
+//!   schedules` is: a field a row, `rows`, `current`, `previous` and
+//!   `neither` right-aligned (assumption: `neither` rather than "unreadable",
+//!   since it says what is known). The footer answers the operator's one
+//!   question in their terms. `✓ FIELD_ENCRYPTION_KEY_PREVIOUS can go`, only
+//!   when it is set and no row needs it. `● Rotation under way`, with the
+//!   count left, and the hint `jadpo schedules run field_encryption.reseal`.
+//!   `✓ No rotation under way`, with no `_PREVIOUS` and every row current.
+//!   `✗ Rows no key opens`, whatever else is true, with what to do instead of
+//!   removing anything: it exits 0, since the question was answered, and
+//!   `--json` says `can_remove_previous` (assumption). Nothing is ever said
+//!   of a key but its variable.
+//! - *States.* Nothing sealed (a line, not an error); a key missing or
+//!   invalid (the check's own errors); a database out of reach or not
+//!   migrated (`cli.config_rotation_unavailable`, as `jadpo schedules` says
+//!   it); several stores (one table, each field once; assumption).
+//!
 //! `move`, designed before it was built (impeccable's shape pass against
 //! the CLI design language, run unattended, so its assumptions are marked):
 //!
@@ -85,15 +124,23 @@ pub struct SetArgs {
     pub choice: ColorChoice,
 }
 
-/// The two things the command does.
+/// The things the command does.
 pub const ACTIONS: &[crate::table::Value] = &[
     crate::table::Value {
         name: "check",
         description: "List each setting as set, default, missing or invalid",
     },
     crate::table::Value {
+        name: "generate",
+        description: "Write a new key to a pipe, never to a terminal",
+    },
+    crate::table::Value {
         name: "move",
         description: "Make a constant a setting, rewriting every read",
+    },
+    crate::table::Value {
+        name: "rotation",
+        description: "Count the sealed rows still under the previous field key",
     },
     crate::table::Value {
         name: "set",
@@ -117,7 +164,9 @@ pub fn config(call: &Call) -> Reply {
     };
     match action.as_str() {
         "check" => check(call),
+        "generate" => generate_command(call),
         "move" => move_command(call),
+        "rotation" => rotation_command(call),
         "set" => set_command(call),
         other => {
             let names: Vec<&str> = ACTIONS.iter().map(|a| a.name).collect();
@@ -298,8 +347,15 @@ fn check(call: &Call) -> Reply {
             ],
         ));
         if let Some(first) = standing.iter().find(|setting| setting.state.is_problem()) {
+            let ty = model
+                .setting(&first.field)
+                .map_or_else(String::new, |s| s.ty.to_string());
             screen.push(Block::hint(
-                format!("jadpo config set {}", first.field),
+                if made_not_typed(&ty) {
+                    format!("jadpo config set {} --generate", first.field)
+                } else {
+                    format!("jadpo config set {}", first.field)
+                },
                 "stores it in .env.local",
             ));
         }
@@ -344,10 +400,17 @@ pub(crate) fn value_diagnostic(
             "`{field}` is required: it has no `default:`, so the app can't start without a value for it."
         ))
         .next_for(
-            format!(
-                "Run `jadpo config set {field}` to store it in `{}`, or set `{variable}` in the environment",
-                local::FILE
-            ),
+            if made_not_typed(ty) {
+                format!(
+                    "Run `jadpo config set {field} --generate` to make one and store it in `{}`, or set `{variable}` in the environment",
+                    local::FILE
+                )
+            } else {
+                format!(
+                    "Run `jadpo config set {field}` to store it in `{}`, or set `{variable}` in the environment",
+                    local::FILE
+                )
+            },
             jadpo_diag::Decider::Human,
         ),
         ProblemKind::Invalid { rule } if rule == jadpo_runtime::config::TLS_RULE => Diagnostic::new(
@@ -384,6 +447,12 @@ pub(crate) fn value_diagnostic(
             )
         }
     }
+}
+
+/// Whether a setting of type `ty` is 32 random bytes nobody ever needs to
+/// type, so the way to give it a value is to make one.
+fn made_not_typed(ty: &str) -> bool {
+    matches!(ty, "EncryptionKey" | "PrivateKey")
 }
 
 /// The errors for the settings that stop an app starting.
@@ -691,6 +760,9 @@ fn set_command(call: &Call) -> Reply {
                 .next("Use one of them"),
         });
     }
+    if call.flag("--generate") {
+        return set_generated(call, &root, field, &loaded);
+    }
     if !call.environment.stdin_terminal {
         return Reply::failed(
             Diagnostic::new(
@@ -709,6 +781,366 @@ fn set_command(call: &Call) -> Reply {
         field: field.clone(),
         choice: ColorChoice::Auto,
     })))
+}
+
+/// A setting's name as a key's: why it isn't one, when it isn't.
+fn key_setting(loaded: &jadpo_db::Loaded, field: &str, command: &str) -> Result<(), Reply> {
+    use jadpo_check::types::TypeView;
+    let lookup = jadpo_check::lookups::Lookup::new(&loaded.db, loaded.project);
+    let model = jadpo_check::config::config(&loaded.db, loaded.project);
+    let Some(setting) = model.setting(field) else {
+        return Err(Reply::failed(Diagnostic::new(
+            &rule::CLI_CONFIG_ARGUMENTS,
+            format!("`{field}` isn't a setting"),
+        )));
+    };
+    if lookup
+        .base_prim(&setting.ty)
+        .is_some_and(|prim| prim.is_key())
+    {
+        return Ok(());
+    }
+    Err(Reply::failed(
+        Diagnostic::new(
+            &rule::CLI_CONFIG_ARGUMENTS,
+            format!("`{field}` isn't a key, so `jadpo config {command}` can't make one"),
+        )
+        .reason(format!(
+            "It makes 32 random bytes for a setting of a key type, an `EncryptionKey`, a `PrivateKey` or a `SigningKey`; `{field}` is `{}`, whose value only you know.",
+            setting.ty
+        ))
+        .next_for(
+            format!("Run `jadpo config set {field}` yourself in a terminal"),
+            jadpo_diag::Decider::Human,
+        ),
+    ))
+}
+
+/// A new key's text: 32 bytes from the operating system, as the unpadded
+/// Base64url a key setting's variable holds; `None` when it gives none.
+fn new_key_text() -> Option<String> {
+    let mut bytes = [0u8; jadpo_std::KEY_SIZE];
+    random(&mut bytes).then(|| jadpo_value::encoding::to_base64url(&bytes))
+}
+
+fn no_randomness() -> Diagnostic {
+    Diagnostic::new(
+        &rule::CLI_CONFIG_GENERATE_REFUSED,
+        "This machine gave no random bytes to make a key from",
+    )
+    .reason("A key is 32 bytes from the operating system's generator, and Jadpo never makes one any other way.")
+    .next_for(
+        "Check the operating system's random source, then run the command again",
+        jadpo_diag::Decider::Human,
+    )
+}
+
+/// `jadpo config set <field> --generate`: a new key in `.env.local`, seen
+/// by no one, and nothing printed.
+fn set_generated(call: &Call, root: &Path, field: &str, loaded: &jadpo_db::Loaded) -> Reply {
+    if let Err(reply) = key_setting(loaded, field, "set --generate") {
+        return reply;
+    }
+    let layered = match Layered::new(root, &call.environment) {
+        Ok(layered) => layered,
+        Err(problem) => return Reply::failed(*problem),
+    };
+    let model = jadpo_check::config::config(&loaded.db, loaded.project);
+    let variable = model
+        .setting(field)
+        .map_or_else(|| field.to_uppercase(), |setting| setting.variable.clone());
+    // Replacing a key would strand all it sealed (area 15, "Rotating the
+    // key"), so only a setting with no value gets one.
+    if layered.variable(&variable).is_some() {
+        return Reply::failed(
+            Diagnostic::new(
+                &rule::CLI_CONFIG_GENERATE_REFUSED,
+                format!("`{variable}` already has a value, so `--generate` leaves it alone"),
+            )
+            .reason("Replacing a key leaves every value sealed with it unreadable, for good, and no backup brings them back without the old key.")
+            .next_for(
+                format!(
+                    "To rotate it, move its value to `{variable}_PREVIOUS` in `{}`, remove `{variable}`, and run this again; to start again with no data, delete the line yourself",
+                    local::FILE
+                ),
+                jadpo_diag::Decider::Human,
+            ),
+        );
+    }
+    let Some(key) = new_key_text() else {
+        return Reply::failed(no_randomness());
+    };
+    let args = SetArgs {
+        root: root.to_path_buf(),
+        field: field.to_string(),
+        choice: ColorChoice::Auto,
+    };
+    match store(&args, &key) {
+        Ok(_) => Reply::Done {
+            text: crate::run::Text::Raw(String::new()),
+            data: Json::object([
+                ("setting", Json::from(field)),
+                ("variable", Json::from(variable.as_str())),
+                ("file", Json::from(local::FILE)),
+            ]),
+        },
+        Err(problem) => Reply::failed(*problem),
+    }
+}
+
+/// `jadpo config generate <field>`: a new key, written to stdout alone, for
+/// a pipe into a secret manager, and never to a terminal.
+fn generate_command(call: &Call) -> Reply {
+    let cwd = call.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
+    let Some(field) = call.arguments.get(1) else {
+        return Reply::failed(
+            Diagnostic::new(
+                &rule::CLI_CONFIG_ARGUMENTS,
+                "`jadpo config generate` needs a setting",
+            )
+            .reason("It makes a key for one setting of a key type, so it needs to know which.")
+            .next("Run `jadpo config generate <field> | <your secret manager>`, naming a field of `config { }`"),
+        );
+    };
+    if call.environment.stdout_terminal {
+        return Reply::failed(
+            Diagnostic::new(
+                &rule::CLI_CONFIG_GENERATE_REFUSED,
+                "`jadpo config generate` writes a key, and this is a terminal",
+            )
+            .reason("A key on a screen reaches scrollback, screen shares and a coding agent's context, and losing or leaking this one can't be undone, so the command writes it only into a pipe.")
+            .next_for(
+                format!(
+                    "Pipe it into your secret manager, `jadpo config generate {field} | wrangler secret put <VARIABLE>`, or run `jadpo config set {field} --generate` to keep it in `{}`",
+                    local::FILE
+                ),
+                jadpo_diag::Decider::Human,
+            ),
+        );
+    }
+    let Some(root) = jadpo_db::find_root(&cwd) else {
+        return project_not_found("config");
+    };
+    let loaded = jadpo_db::load(&root);
+    if let Err(problems) = Prepared::load(&loaded.db, loaded.project) {
+        return blocked(&loaded, &cwd, problems, "config stopped");
+    }
+    if let Err(reply) = key_setting(&loaded, field, "generate") {
+        return reply;
+    }
+    let Some(key) = new_key_text() else {
+        return Reply::failed(no_randomness());
+    };
+    Reply::Pipe(format!("{key}\n"))
+}
+
+/// `jadpo config rotation`: how each sealed field's rows stand against the
+/// keys this machine has (area 15, "Rotating the key"; chunk P9).
+fn rotation_command(call: &Call) -> Reply {
+    let cwd = call.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
+    let Some(root) = jadpo_db::find_root(&cwd) else {
+        return project_not_found("config");
+    };
+    let loaded = jadpo_db::load(&root);
+    let prepared = match Prepared::load(&loaded.db, loaded.project) {
+        Ok(prepared) => prepared,
+        Err(problems) => return blocked(&loaded, &cwd, problems, "config stopped"),
+    };
+    let setting = jadpo_check::data::sealed::field_key(&loaded.db, loaded.project)
+        .setting
+        .clone();
+    let reseals = prepared.plan().runtime().reseals.clone();
+    let Some(setting) = setting.filter(|_| !reseals.is_empty()) else {
+        return Reply::screen(
+            Screen::new().with(Block::Answer {
+                headline: "The project keeps nothing sealed".to_string(),
+                fields: Vec::new(),
+            }),
+            Json::object([
+                ("fields", Json::array(Vec::<Json>::new())),
+                ("can_remove_previous", false.into()),
+            ]),
+        );
+    };
+    let layered = match Layered::new(&root, &call.environment) {
+        Ok(layered) => layered,
+        Err(problem) => return Reply::failed(*problem),
+    };
+    let model = jadpo_check::config::config(&loaded.db, loaded.project);
+    let variable = model
+        .setting(&setting)
+        .map_or_else(|| setting.to_uppercase(), |found| found.variable.clone());
+    let ty = model
+        .setting(&setting)
+        .map_or_else(String::new, |found| found.ty.to_string());
+    let previous_variable = format!("{variable}_PREVIOUS");
+    let Some(current) = layered.variable(&variable) else {
+        return Reply::failed(value_diagnostic(
+            &setting,
+            &variable,
+            true,
+            &ty,
+            &ProblemKind::Missing,
+        ));
+    };
+    let previous = layered.variable(&previous_variable);
+    let Some(ring) =
+        jadpo_value::crypto::KeyRing::from_key_text(&current, previous.as_deref())
+            .and_then(|ring| jadpo_runtime::sealed::field_ring(&ring).ok())
+    else {
+        let wrong = if jadpo_std::decode_key(&current).is_none() {
+            &variable
+        } else {
+            &previous_variable
+        };
+        return Reply::failed(value_diagnostic(
+            &setting,
+            wrong,
+            true,
+            &ty,
+            &ProblemKind::Invalid {
+                rule: "encryption_key".to_string(),
+            },
+        ));
+    };
+    let unavailable = |store: &str, error: &jadpo_runtime::StoreError| {
+        Reply::failed(crate::schedules::unreadable(
+            &rule::CLI_CONFIG_ROTATION_UNAVAILABLE,
+            store,
+            "sealed rows",
+            error,
+        ))
+    };
+    let runtime = match jadpo_host_native::Runtime::new() {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            return unavailable(
+                "main",
+                &jadpo_runtime::StoreError::Fault(error.to_string()),
+            );
+        }
+    };
+    let mut standing = Vec::with_capacity(reseals.len());
+    for plan in &reseals {
+        let address = match crate::schedules::url_of(call, &root, &loaded, &plan.store) {
+            Ok(Some(address)) => address,
+            Ok(None) => {
+                return Reply::failed(
+                    Diagnostic::new(
+                        &rule::CLI_CONFIG_ROTATION_UNAVAILABLE,
+                        format!("`jadpo config rotation` needs the address of the database `{}`", plan.store),
+                    )
+                    .reason("No variable gives the address of its connection, and no `jadpo dev` is running with one.")
+                    .next("Set the connection's setting, start `jadpo dev`, or add `--url postgresql://…`"),
+                );
+            }
+            Err(reply) => return reply,
+        };
+        let database = match address.open() {
+            Ok(database) => database,
+            Err(error) => return unavailable(&plan.store, &error),
+        };
+        match runtime.block_on(jadpo_runtime::sealed::standing(&database, plan, &ring)) {
+            Ok(found) => standing.push(found),
+            Err(error) => return unavailable(&plan.store, &error),
+        }
+    }
+    rotation_screen(&standing, &previous_variable, previous.is_some())
+}
+
+/// The table and the verdict of `jadpo config rotation`.
+fn rotation_screen(standing: &[jadpo_runtime::sealed::Rotation], variable: &str, set: bool) -> Reply {
+    use jadpo_term::{Cell, Table};
+    let mut table = Table::new(["field", "rows", "current", "previous", "neither"])
+        .right(1)
+        .right(2)
+        .right(3)
+        .right(4);
+    for field in standing {
+        table = table.row(vec![
+            Cell::text(field.field.as_str()),
+            Cell::text(field.rows.to_string()),
+            Cell::text(field.current.to_string()),
+            Cell::text(field.previous.to_string()),
+            Cell::text(field.unreadable.to_string()),
+        ]);
+    }
+    let previous: u64 = standing.iter().map(|field| field.previous).sum();
+    let neither: u64 = standing.iter().map(|field| field.unreadable).sum();
+    let rows: u64 = standing.iter().map(|field| field.rows).sum();
+    let rows_word = |count: u64| {
+        if count == 1 {
+            "1 row".to_string()
+        } else {
+            format!("{count} rows")
+        }
+    };
+    let fields = if standing.len() == 1 {
+        "1 field".to_string()
+    } else {
+        format!("{} fields", standing.len())
+    };
+    let can_go = set && previous == 0 && neither == 0;
+    let mut screen = Screen::new().with(Block::Table(table));
+    if neither > 0 {
+        screen.push(Block::summary(
+            Outcome::Failure,
+            "Rows no key opens",
+            [
+                Fact::problem(rows_word(neither)),
+                Fact::plain(fields),
+            ],
+        ));
+        screen.push(Block::hint(
+            "jadpo config check".to_string(),
+            "says which keys this machine has; restore the key they were sealed with",
+        ));
+    } else if previous > 0 {
+        screen.push(Block::summary(
+            Outcome::Running,
+            "Rotation under way",
+            [
+                Fact::plain(format!("{} still under {variable}", rows_word(previous))),
+                Fact::plain(fields),
+            ],
+        ));
+        screen.push(Block::hint(
+            format!("jadpo schedules run {}", jadpo_check::schedules::RESEAL_SCHEDULE),
+            "moves the next batches now",
+        ));
+    } else if can_go {
+        screen.push(Block::summary(
+            Outcome::Success,
+            format!("{variable} can go"),
+            [
+                Fact::plain("no row is sealed with it"),
+                Fact::plain(fields),
+            ],
+        ));
+    } else {
+        screen.push(Block::summary(
+            Outcome::Success,
+            "No rotation under way",
+            [Fact::plain(rows_word(rows)), Fact::plain(fields)],
+        ));
+    }
+    let data = Json::object([
+        (
+            "fields",
+            Json::array(standing.iter().map(|field| {
+                Json::object([
+                    ("field", Json::from(field.field.as_str())),
+                    ("rows", Json::from(field.rows as i64)),
+                    ("current", Json::from(field.current as i64)),
+                    ("previous", Json::from(field.previous as i64)),
+                    ("neither", Json::from(field.unreadable as i64)),
+                ])
+            })),
+        ),
+        ("previous_set", set.into()),
+        ("can_remove_previous", can_go.into()),
+    ]);
+    Reply::screen(screen, data)
 }
 
 /// Runs the prompt; the exit code.

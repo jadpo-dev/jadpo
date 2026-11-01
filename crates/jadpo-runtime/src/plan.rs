@@ -120,6 +120,8 @@ impl Loaded {
             batches: &plan.batches,
             schedules: Some(&plan.schedules),
             purges: &plan.purges,
+            field_key: plan.field_key,
+            reseals: &plan.reseals,
             connections: &plan.connections,
             providers: Some(&plan.providers),
             ai: plan.ai.as_ref(),
@@ -169,6 +171,11 @@ pub struct Plan<'a> {
     pub schedules: Option<&'a SchedulesPlan>,
     /// Each entity's purge, in the order [`Started`] keeps their periods.
     pub purges: &'a [PurgePlan],
+    /// The `EncryptionKey` setting every sealed field is sealed with, by
+    /// its number (area 15, "Encrypted fields"; chunk P9).
+    pub field_key: Option<u32>,
+    /// What the field key's re-seal reads and writes of each sealed field.
+    pub reseals: &'a [jadpo_std::write::ResealPlan],
     /// Every connection, with its driver and the targets it runs on
     /// (chunk 8.1d): what a host builds each connection's driver from.
     pub connections: &'a [Connection],
@@ -224,6 +231,8 @@ impl Plan<'static> {
         batches: &[],
         schedules: None,
         purges: &[],
+            field_key: None,
+            reseals: &[],
         connections: &[],
         providers: None,
         ai: None,

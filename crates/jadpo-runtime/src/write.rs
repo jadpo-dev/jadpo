@@ -311,11 +311,13 @@ pub(crate) async fn write(
         return Ok(Written::Value(Value::Unit));
     };
     let mut fields = Vec::with_capacity(returns.record.fields.len());
+    let started = ctx.started();
+    let ring = started.field_ring();
     for (name, field) in &returns.record.fields {
         let Field::Column(at) = field else {
             return Err(defect(ctx, "a written record with an include", site));
         };
-        match stored_value(row, &returns.columns, &returns.held, *at, json) {
+        match stored_value(row, &returns.columns, &returns.held, *at, json, ring) {
             Ok(value) => fields.push((std::rc::Rc::from(name.as_str()), value)),
             Err(what) => return Err(defect(ctx, &what, site)),
         }
@@ -420,7 +422,48 @@ fn params_of(
     now: i64,
 ) -> Result<Vec<SqlValue>, Interrupt> {
     let mut params = Vec::with_capacity(written.len());
+    // A new record's one identity: its `id`, and what its sealed fields are
+    // bound to (chunk P9).
+    let mut new_id: Option<Value> = None;
     for param in written {
+        if param.source == WriteSource::NewId {
+            let id = new_identity(ctx, &mut new_id, site)?;
+            match to_sql(&id, param.ty) {
+                Ok(sql) => params.push(sql),
+                Err(what) => return Err(defect(ctx, &what, site)),
+            }
+            continue;
+        }
+        // A sealed field's value, sealed for its record (area 15, "Encrypted
+        // fields"; chunk P9).
+        if let WriteSource::Sealed {
+            of,
+            form,
+            bound,
+            id,
+        } = &param.source
+        {
+            let value = source_value(ctx, of, inputs, site, now)?;
+            let id = if **id == WriteSource::NewId {
+                new_identity(ctx, &mut new_id, site)?
+            } else {
+                source_value(ctx, id, inputs, site, now)?
+            };
+            let started = ctx.started();
+            let sealed = crate::sealed::seal(
+                &value,
+                form,
+                (bound, &id),
+                started.field_ring(),
+                json,
+                &mut |bytes: &mut [u8]| ctx.secret_random_bytes(bytes),
+            );
+            match sealed {
+                Ok(sql) => params.push(sql),
+                Err(what) => return Err(defect(ctx, &what, site)),
+            }
+            continue;
+        }
         if let WriteSource::Caller(part) = &param.source {
             params.push(ctx.caller_param(*part));
             continue;
@@ -448,6 +491,20 @@ fn params_of(
         }
     }
     Ok(params)
+}
+
+/// The identity a new record is given, drawn once however often it is read.
+fn new_identity(
+    ctx: &mut Ctx<'_>,
+    held: &mut Option<Value>,
+    site: u32,
+) -> Result<Value, Interrupt> {
+    if let Some(id) = held {
+        return Ok(id.clone());
+    }
+    let id = source_value(ctx, &WriteSource::NewId, &[], site, 0)?;
+    *held = Some(id.clone());
+    Ok(id)
 }
 
 /// The value a write's parameter is sent, from where its source says.
@@ -499,6 +556,10 @@ fn source_value(
         // Answered above, bound already.
         WriteSource::Stored(_) => {
             return Err(defect(ctx, "a bound literal read as a part", site));
+        }
+        // Answered above, as its sealed bytes.
+        WriteSource::Sealed { .. } => {
+            return Err(defect(ctx, "a sealed value read as a part", site));
         }
         // One of the columns a compound standard type is stored in (area
         // 19).

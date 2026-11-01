@@ -598,6 +598,17 @@ impl Reader<'_> {
             return None;
         }
         let field = self.field_ref(path, entity, &value)?;
+        // Only the application can open a sealed field (area 15; chunk P9).
+        if field.sealed.is_some() {
+            self.out.push(crate::data::sealed::used(
+                &entity.name,
+                &field.name,
+                "A group",
+                value_span,
+                "Group by another field".to_string(),
+            ));
+            return None;
+        }
         let ty = Ty::Field(entity.name.clone(), vec![field.name.clone()]);
         let held = field.sql_type.as_deref() != Some("jsonb") && field.compound.is_none();
         let groupable = held

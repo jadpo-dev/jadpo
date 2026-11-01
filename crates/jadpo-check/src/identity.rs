@@ -1518,6 +1518,7 @@ impl Reader<'_> {
                 .map(|field| {
                     field.compound.is_some()
                         || field.json.is_some()
+                        || field.sealed.is_some()
                         || crate::data::sql_type(field).is_none()
                 })
             })

@@ -360,6 +360,18 @@ impl Reader<'_> {
             && starts_upper(&tree::name_ref_text(&first).unwrap_or_default())
         {
             let field = self.field_ref(scope.path, entity, &lhs)?;
+            // Only the application can open a sealed field (area 15; chunk
+            // P9).
+            if field.sealed.is_some() {
+                self.out.push(crate::data::sealed::used(
+                    &entity.name,
+                    &field.name,
+                    "A query's condition",
+                    Self::span(scope.path, whole),
+                    "Find the records by another field, and compare this one in the action".to_string(),
+                ));
+                return None;
+            }
             // A compound type is stored in several columns, which a
             // query's condition doesn't compare yet (area 19).
             if field.compound.is_some() {
