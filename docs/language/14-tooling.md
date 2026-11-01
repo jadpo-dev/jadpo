@@ -384,6 +384,8 @@ language.
 | `jadpo seed <name>` | Fills the development database from a seed |
 | `jadpo config move <constant>` | Makes a constant a setting |
 | `jadpo config set <field>` / `check` | Sets or checks your local settings in `.env.local` |
+| `jadpo config generate <field>` | Writes a new key into a pipe, never to a terminal |
+| `jadpo config rotation` | Counts the sealed rows still under the previous field key |
 | `jadpo translations missing` / `unused` / `update` / `accept` | Shows and records the state of each language's wording |
 | `jadpo translations builtin` | Lists Jadpo's own messages your app can show |
 | `jadpo translations export` / `import` | Exchanges wording with translation services |
@@ -458,6 +460,27 @@ terminal. It checks the value against the setting's type, then writes
 `.env.local`: only as an ordinary file, through a private temporary file,
 and only if the file hasn't changed since it was read. It adds
 `.env.local` to `.gitignore`.
+
+`set <field> --generate` writes a new key for a setting of a key type in the
+same way, with no prompt and no terminal, and prints nothing, so no transcript
+holds it; with `--json`, a document naming the setting and never the value. A
+setting that isn't a key is `cli.config_arguments`, and one that already has a
+value, in the environment or the file, is `cli.config_generate_refused`.
+
+`generate <field>` writes a new key alone to its output, for a pipe into a
+secret manager, and keeps nothing. At a terminal, or with `--json`, it is
+`cli.config_generate_refused`.
+
+`rotation` counts each sealed field's rows against the application's
+`field_encryption_key:` and its `_PREVIOUS`, read as `check` reads them, in the
+connection's database or the one `--url` names: how many hold a value, and how
+many of them the current key, the previous key and neither sealed. It ends on
+what to do: `FIELD_ENCRYPTION_KEY_PREVIOUS can go`, `Rotation under way`, `No
+rotation under way`, or `Rows no key opens`, the only one of them it colours as
+a problem. It answers either way, exiting 0, and its `--json` holds
+`can_remove_previous`. It never prints a key
+([Rotating the key](15-personal-data.md#rotating-the-key)). A database it can't
+read is `cli.config_rotation_unavailable`.
 
 ### `jadpo translations`
 
@@ -3061,7 +3084,9 @@ yet, or that the design notes replace.
 | `cli.check_arguments` | `check` | A `jadpo check` command names a path that isn't there or isn't a `.jadpo` file, or a `--before` git doesn't know |
 | `cli.completions_arguments` | `completions` | A `jadpo completions` command names no shell, or one Jadpo writes no completions for |
 | `cli.config_arguments` | `config` | A `jadpo config` command names no action, an action it doesn't have, or a setting `config.jadpo` doesn't declare |
+| `cli.config_generate_refused` | `config` | A new key would be written where a person could read it, by `jadpo config generate`, or `--generate` would replace a key already set |
 | `cli.config_prompt_failed` | `config` | Nothing was typed at the prompt of `jadpo config set`, or the terminal couldn't hide what you type there |
+| `cli.config_rotation_unavailable` | `config` | The sealed rows `jadpo config rotation` counts couldn't be counted, because their database can't be reached or has no table for them yet |
 | `cli.config_tty_required` | `config` | You ran `jadpo config set` where there is no terminal to type the value at, such as from a coding agent or a script |
 | `cli.declines_arguments` | `declines` | A `jadpo declines` command names no action, one it doesn't have, or a rule or path that isn't the project's |
 | `cli.deliveries_arguments` | `deliveries` | A `jadpo deliveries` command names an action it doesn't have, no id for one that needs it, or a state or page it doesn't list |

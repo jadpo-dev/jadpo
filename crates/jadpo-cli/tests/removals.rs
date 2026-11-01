@@ -587,6 +587,171 @@ fn an_entity_moved_starts_empty_and_leaves_its_records_behind() {
     assert!(!sql.contains("store: archive"), "{sql}");
 }
 
+// --- encrypted fields ------------------------------------------------------
+
+const NOTE: &str = "domains/clinic/entities/note.jadpo";
+
+fn note(fields: &str, store: &str) -> String {
+    format!(
+        "entity Note {{\n    id: Uuid\n{fields}\n    store: {store}\n\n    policy: {{\n        read: [Access.public]\n    }}\n}}\n"
+    )
+}
+
+const SECRET: &str = "    secret: Text {\n        encrypted: true\n    }\n";
+
+/// A project whose `Note` holds a required sealed field, in `main` of two
+/// stores.
+fn sealed(name: &str) -> PathBuf {
+    let root = folder(name);
+    write(
+        &root,
+        "app.jadpo",
+        "application {\n    connections: {\n        main: {\n            driver: Driver.postgres\n        }\n        archive: {\n            driver: Driver.postgres\n        }\n    }\n    schedules: {\n        store: main\n    }\n    field_encryption_key: config.field_encryption_key\n}\n",
+    );
+    write(
+        &root,
+        "config.jadpo",
+        "config {\n    field_encryption_key: EncryptionKey\n}\n",
+    );
+    write(&root, NOTE, &note(SECRET, "main"));
+    write(
+        &root,
+        TAG,
+        "entity Tag {\n    id: Uuid\n\n    store: archive\n}\n",
+    );
+    let made = jadpo(&root, &["migrate", "new", "initial"]);
+    assert_eq!(made.code, 0, "{}{}", made.stdout, made.stderr);
+    assert_eq!(jadpo(&root, &["records", "update"]).code, 0);
+    root
+}
+
+/// A sealed field is retired and dropped as any other is: neither reads or
+/// writes what it holds, so neither is what `encrypted:`'s refusals are
+/// about (area 15, "Encrypted fields"), and they still stand.
+#[test]
+fn a_sealed_field_is_retired_and_dropped_as_any_other() {
+    let root = sealed("sealed-field");
+    // Those refusals, with the field still in use.
+    write(&root, NOTE, &note("    secret: Text\n", "main"));
+    let off = jadpo(&root, &["migrate", "new", "unseal"]);
+    assert_eq!(off.code, 1, "{}{}", off.stdout, off.stderr);
+    assert!(
+        off.stderr.contains("turns `encrypted:` off"),
+        "{}",
+        off.stderr
+    );
+    write(
+        &root,
+        NOTE,
+        &note(
+            &format!("{SECRET}    other: Text {{\n        encrypted: true\n    }}\n"),
+            "main",
+        ),
+    );
+    let required = jadpo(&root, &["migrate", "new", "add_other"]);
+    assert_eq!(required.code, 1, "{}{}", required.stdout, required.stderr);
+    assert!(
+        required.stderr.contains("required sealed column"),
+        "{}",
+        required.stderr
+    );
+
+    // Retired.
+    write(&root, NOTE, &note("", "main"));
+    let made = jadpo(&root, &["migrate", "new", "retire_secret"]);
+    assert_eq!(made.code, 0, "{}{}", made.stdout, made.stderr);
+    let text = latest(&root, "changes.jadpo")
+        .replace("Note.secret: {}", "Note.secret: FieldChange.retired");
+    set_latest(&root, "changes.jadpo", &text);
+    let finished = jadpo(&root, &["migrate", "new"]);
+    assert_eq!(finished.code, 0, "{}{}", finished.stdout, finished.stderr);
+    let sql = latest(&root, "postgres.sql");
+    assert!(
+        sql.contains("ALTER COLUMN \"secret\" DROP NOT NULL"),
+        "{sql}"
+    );
+    let snapshot: serde_json::Value =
+        serde_json::from_str(&latest(&root, "snapshot.json")).expect("JSON");
+    let column = &snapshot["stores"]["main"]["tables"]["note"]["columns"]["secret"];
+    assert_eq!(column["retired"], serde_json::json!(true), "{column}");
+    assert_eq!(column["sealed"], serde_json::json!(true), "{column}");
+    assert_eq!(jadpo(&root, &["records", "update"]).code, 0);
+    assert_eq!(jadpo(&root, &["check"]).code, 0);
+
+    // Back as a plain field, it would read sealed bytes as text.
+    write(&root, NOTE, &note("    secret: Text?\n", "main"));
+    let back = jadpo(&root, &["migrate", "new", "bring_back"]);
+    assert_eq!(back.code, 1, "{}{}", back.stdout, back.stderr);
+    write(&root, NOTE, &note("", "main"));
+
+    // Dropped, for good, with what it held shown as what the column is.
+    let dropped = jadpo(
+        &root,
+        &["migrate", "new", "drop_secret", "--drop", "Note.secret"],
+    );
+    assert_eq!(dropped.code, 0, "{}{}", dropped.stdout, dropped.stderr);
+    assert!(
+        dropped.stdout.contains("- secret  bytea  dropped"),
+        "{}",
+        dropped.stdout
+    );
+    assert!(
+        latest(&root, "postgres.sql").contains("ALTER TABLE \"note\" DROP COLUMN \"secret\";"),
+        "{}",
+        latest(&root, "postgres.sql")
+    );
+    // A later required sealed field of that name is new, so it is refused
+    // for the reason any is.
+    write(&root, NOTE, &note(SECRET, "main"));
+    let again = jadpo(&root, &["migrate", "new", "add_secret"]);
+    assert_eq!(again.code, 1, "{}{}", again.stdout, again.stderr);
+    assert!(
+        again.stderr.contains("required sealed column"),
+        "{}",
+        again.stderr
+    );
+}
+
+/// A required sealed field is no reason to refuse a move or a retirement:
+/// a table made new has no rows to seal, and the one left behind is kept as
+/// it is.
+#[test]
+fn an_entity_with_a_sealed_field_moves_and_retires_as_any_other() {
+    let root = sealed("sealed-entity");
+    write(&root, NOTE, &note(SECRET, "archive"));
+    let moved = jadpo(&root, &["migrate", "new", "move_note"]);
+    assert_eq!(moved.code, 0, "{}{}", moved.stdout, moved.stderr);
+    let sql = latest(&root, "postgres.sql");
+    assert!(sql.contains("CREATE TABLE \"note\""), "{sql}");
+    let snapshot: serde_json::Value =
+        serde_json::from_str(&latest(&root, "snapshot.json")).expect("JSON");
+    let left = &snapshot["stores"]["main"]["tables"]["note"];
+    assert_eq!(left["retired"], serde_json::json!(true), "{left}");
+    assert_eq!(
+        left["columns"]["secret"]["sealed"],
+        serde_json::json!(true),
+        "{left}"
+    );
+    assert_eq!(jadpo(&root, &["records", "update"]).code, 0);
+    assert_eq!(jadpo(&root, &["check"]).code, 0);
+    let dropped = jadpo(&root, &["migrate", "new", "drop_old", "--drop", "Note"]);
+    assert_eq!(dropped.code, 0, "{}{}", dropped.stdout, dropped.stderr);
+    assert!(
+        latest(&root, "postgres.sql").contains("-- store: main\nDROP TABLE \"note\";"),
+        "{}",
+        latest(&root, "postgres.sql")
+    );
+
+    fs::remove_file(root.join(NOTE)).expect("removed");
+    let made = jadpo(&root, &["migrate", "new", "remove_note"]);
+    assert_eq!(made.code, 0, "{}{}", made.stdout, made.stderr);
+    assert!(
+        latest(&root, "changes.jadpo").contains("    Note: {}\n"),
+        "{}",
+        latest(&root, "changes.jadpo")
+    );
+}
+
 // --- the acceptance --------------------------------------------------------
 
 #[test]

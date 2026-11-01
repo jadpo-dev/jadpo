@@ -127,6 +127,9 @@ pub struct AuditedField {
     /// For a JSON-held field, its codec in the plan's JSON table: its
     /// value is kept as that JSON. Otherwise its canonical text.
     pub json: Option<u32>,
+    /// Whether it is kept sealed (area 15, "Encrypted fields"; chunk P9):
+    /// the history says that it changed, and never what it holds.
+    pub sealed: bool,
 }
 
 /// What `Entity.history(id)` reads: a page of the record's entries, newest

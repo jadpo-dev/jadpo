@@ -558,25 +558,13 @@ After the registry is live, in order:
      fields, each store's location setting and what the language covers.
      Designed with the design skills first. Done when `jadpo check`
      writes it and its JSON twin, and the approval report shows its diff.
-   - [ ] **P9 Encrypted fields and keys held as data** `opus · xhigh`:
-     area 15, "Encrypted fields"; area 19, "Encrypted fields", "A key is
-     never a value" and "How a secret is kept"; compiler/runtime §2.5,
-     "A key as a value". `encrypted: true` sealed with the application's
-     `field_encryption_key:` and opened on load, refused in unique rules,
-     indexes, filters, ordering, search and logs; a key type in an
-     encrypted field, usable only as a `crypto` call's `key:`; a
-     `TotpSecret` and a `SecretText` stored sealed; rotation through
-     `_PREVIOUS`; interpreted, compiled and on Workers. Decided (Richard, 2026-11-01): `field_encryption_key:` is written at
-     the top of `application { }` as `config.field_encryption_key`, an
-     `EncryptionKey` setting (32 random bytes), made with `jadpo config set
-     field_encryption_key --generate`, rotated through `_PREVIOUS` with a
-     generated re-seal pass and a count of rows still under the old key;
-     a key held as data is made by `crypto.new_key(as: <key type>)`,
-     actions only, usable only stored sealed or as a `crypto` call's
-     `key:`. Losing the key loses the sealed data for good: the pages say
-     so.
-     Done when a sealed field round-trips through a store on both
-     executors and its column holds only sealed bytes.
+   - [x] **P9 Encrypted fields and keys held as data**: area 15, "Encrypted
+     fields", "Rotating the key" and "What can't be undone"; area 19, "A key
+     is never a value", "Encrypted fields" and "How a secret is kept"; area
+     10, "Setting a value"; area 14, "`jadpo config set` and `jadpo config
+     check`"; compiler/runtime §2.5, "A key as a value" and "Sealed fields";
+     the pages of `data.encrypted_*`, `data.field_encryption_key_*`,
+     `type.key_as_value` and `cli.config_generate_refused`.
    - [ ] **P10 What keys held as data allow** `opus · high` after P9:
      area 19, "Hashing and cryptography" and "Signed tokens".
      `crypto.verify_totp` (RFC 6238's vectors, one step either side),

@@ -38,13 +38,15 @@ const OPTIONS: [&str; 4] = ["secret", "default", "binding", "test"];
 /// The members of `application { }` and `authentication { }` whose value
 /// may be a secret: the places the compiler itself owns (area 10,
 /// "Secrets"). A connection's address, an integration's credential (and a
-/// webhook's `secret:`), and a signing key.
-pub const SECRET_SINKS: [&str; 5] = [
+/// webhook's `secret:`), a signing key, and the key encrypted fields are
+/// sealed with (area 15).
+pub const SECRET_SINKS: [&str; 6] = [
     "url",
     "credential",
     "signing_key",
     "secret",
     "encryption_key",
+    "field_encryption_key",
 ];
 
 /// How a setting's value is read from its variable.

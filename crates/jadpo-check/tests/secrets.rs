@@ -122,9 +122,9 @@ fn a_secret_is_never_stored_as_itself() {
         ("token: BearerToken", "type.secret_exposed"),
         ("token: Jwt?", "type.secret_exposed"),
         ("keys: List<ApiKey>", "type.secret_exposed"),
-        // Kept sealed once keys held as data and encrypted fields arrive.
-        ("secret: TotpSecret", "toolchain.not_built_yet"),
-        ("note: SecretText", "toolchain.not_built_yet"),
+        // Kept sealed, with the key the application names (chunk P9).
+        ("secret: TotpSecret", "data.field_encryption_key_required"),
+        ("note: SecretText", "data.field_encryption_key_required"),
     ] {
         assert_eq!(
             check(&format!(

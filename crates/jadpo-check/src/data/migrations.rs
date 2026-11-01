@@ -819,7 +819,11 @@ fn decode_column(
     entity: &str,
     field: &super::FieldModel,
 ) -> Option<jadpo_std::read::Column> {
-    if field.json.is_some() || field.compound.is_some() || field.range_item.is_some() {
+    if field.json.is_some()
+        || field.compound.is_some()
+        || field.range_item.is_some()
+        || field.sealed.is_some()
+    {
         return None;
     }
     if field

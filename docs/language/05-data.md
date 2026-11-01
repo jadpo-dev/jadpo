@@ -475,6 +475,10 @@ A field that may be empty is written `T?`, like `due_at` above. Only an
 rather than the caller, is the lifecycle's `initial:`
 ([Lifecycle](#lifecycle)).
 
+`encrypted: true` keeps a field sealed in one `bytea`, whatever its type,
+which only the application can read
+([Encrypted fields](15-personal-data.md#encrypted-fields)).
+
 ## Unique rules
 <!-- topic: unique-rules -->
 
@@ -2058,7 +2062,7 @@ Each feature not built yet is `toolchain.not_built_yet` where it is used.
 | Standard types stored in named columns, and the standard collections | Built. Comparing or ordering by them in a query is not built yet. |
 | Manifest nodes | Built: a node for each entity's placement, unique rule, index and reference, with `references` edges between entities, one for each system table and migration snapshot, and one for each lifecycle and transition (`lifecycle Todo`, `transition Todo.delete`, with its `when:`, whether it can refuse a record and the fields it sets). |
 | Removing data | Built: retiring a field or an entity, moving an entity to another store and `--drop`, each needing its [acceptance](18-records-and-manifest.md#acceptances) ([Removing data](#removing-data)). Copying an entity's records to its new store is yours to do. |
-| Other schema changes in `jadpo migrate new` | Not built yet: a new `pattern:` on a stored field, and other column type changes. |
+| Other schema changes in `jadpo migrate new` | Not built yet: a new `pattern:` on a stored field, and other column type changes. Turning `encrypted:` on or off is refused for good: it needs a data migration ([Encrypted fields](15-personal-data.md#encrypted-fields)). |
 | A worked-out backfill for a field that allows less | Not built yet. |
 | A backfill in Jadpo that fills a value held in several columns, or reads a field held so or as JSON | Not built yet. |
 | Entities in Redis and record caches (`caches:`) | Not built yet. Clearing only the cached entries a change affects isn't designed yet. |

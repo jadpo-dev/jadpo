@@ -464,3 +464,33 @@ fn not_held(model: &DataModel, entity: &EntityModel, path: &[(String, String)]) 
     }
     Some(text::not_held(&entity.table, &steps))
 }
+
+/// What the field key's re-seal reads and writes of each sealed field (area
+/// 15, "Rotating the key"; chunk P9): every sealed field of every entity in
+/// a store, in name order.
+pub(crate) fn reseals(model: &DataModel) -> Vec<jadpo_std::write::ResealPlan> {
+    let mut out = Vec::new();
+    for entity in &model.entities {
+        let Some(store) = &entity.store else {
+            continue;
+        };
+        for field in &entity.fields {
+            if field.sealed.is_none() {
+                continue;
+            }
+            out.push(jadpo_std::write::ResealPlan {
+                field: format!("{}.{}", entity.name, field.name),
+                store: store.clone(),
+                bound: crate::queries::sealed_bound(entity, field),
+                select: text::reseal_select(
+                    &entity.table,
+                    &field.born,
+                    jadpo_std::write::RESEAL_BATCH,
+                ),
+                update: text::reseal_update(&entity.table, &field.born),
+                count: text::reseal_count(&entity.table, &field.born),
+            });
+        }
+    }
+    out
+}

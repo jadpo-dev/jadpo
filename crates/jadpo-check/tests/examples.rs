@@ -1567,6 +1567,7 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
             jadpo_check::schedules::ScheduleRun::Purge(_) => {
                 used.insert("purge schedule".to_string());
             }
+            jadpo_check::schedules::ScheduleRun::Reseal => {}
         }
     }
     // A test that runs a schedule is a schedule test, which `jadpo test

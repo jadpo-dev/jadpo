@@ -83,11 +83,13 @@ pub(crate) fn record_of(
     site: u32,
 ) -> Result<Value, Interrupt> {
     let mut fields = Vec::with_capacity(returned.record.fields.len());
+    let started = ctx.started();
+    let ring = started.field_ring();
     for (name, field) in &returned.record.fields {
         let jadpo_std::read::Field::Column(at) = field else {
             return Err(defect(ctx, "an audited record with an include", site));
         };
-        match crate::read::stored_value(row, &returned.columns, &returned.held, *at, json) {
+        match crate::read::stored_value(row, &returned.columns, &returned.held, *at, json, ring) {
             Ok(value) => fields.push((Rc::from(name.as_str()), value)),
             Err(what) => return Err(defect(ctx, &what, site)),
         }
@@ -126,6 +128,15 @@ pub(crate) async fn record(
             Some(Value::Record(record)) => record.get(&field.name).cloned().unwrap_or(Value::None),
             _ => Value::None,
         };
+        // A sealed field's history says that it changed, never what it
+        // holds, and a history kept in clear couldn't say more (area 16;
+        // chunk P9).
+        if field.sealed {
+            if of(before) != of(after) {
+                changed.push((field.name.clone(), None, None));
+            }
+            continue;
+        }
         let was =
             text_of(&of(before), field.json, json).map_err(|what| defect(ctx, &what, site))?;
         let now = text_of(&of(after), field.json, json).map_err(|what| defect(ctx, &what, site))?;

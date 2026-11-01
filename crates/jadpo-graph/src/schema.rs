@@ -125,6 +125,12 @@ pub struct Column {
     /// B12). Such a column holds nothing of its own, so it is dropped
     /// rather than retired, and made again when its expression changes.
     pub generated: Option<String>,
+    /// Whether its field is kept sealed with the application's
+    /// `field_encryption_key:` (area 15, "Encrypted fields"; chunk P9): its
+    /// `bytea` holds only sealed bytes, which no SQL can read or write. A
+    /// `Bytes` field's column is `bytea` either way, so the type alone
+    /// doesn't say; a snapshot written before chunk P9 has none.
+    pub sealed: bool,
 }
 
 /// What a column's field allows beyond its column type: an enum's
@@ -455,6 +461,7 @@ impl Table {
             entry.set("type", &column.sql_type);
             entry.set_some("nullable", column.nullable);
             entry.set_some("retired", column.retired);
+            entry.set_some("sealed", column.sealed);
             if let Some(allows) = &column.allows {
                 entry.set("allows", allows.to_value());
             }
@@ -550,6 +557,7 @@ impl Table {
                     sql_type: text_of(entry, "type")?,
                     nullable: flag(entry, "nullable"),
                     retired: flag(entry, "retired"),
+                    sealed: flag(entry, "sealed"),
                     allows: entry
                         .get("allows")
                         .map(Allows::from_value)
@@ -1187,6 +1195,7 @@ mod tests {
                 sql_type: "uuid".into(),
                 nullable: false,
                 retired: false,
+                sealed: false,
                 allows: None,
                 comment: None,
                 generated: None,
@@ -1201,6 +1210,7 @@ mod tests {
                     sql_type: "timestamptz(3)".into(),
                     nullable: true,
                     retired: false,
+                    sealed: false,
                     allows: None,
                     comment: None,
                     generated: None,

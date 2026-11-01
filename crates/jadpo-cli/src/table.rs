@@ -2072,7 +2072,11 @@ pub static COMMANDS: &[Command] = &[
                       of its name and type in `config { }` with its value as `default:`, the \
                       constant deleted and every read rewritten to `config.<name>`; it refuses, \
                       changing nothing, a type a setting can't hold, a name a setting has, and a \
-                      read in a query, an update by `id`, a backfill or another constant.",
+                      read in a query, an update by `id`, a backfill or another constant. \
+                      `set <key> --generate` stores a new key, 32 random bytes, in `.env.local` and \
+                      prints nothing; `generate <key>` writes a new key into a pipe and refuses a \
+                      terminal. `rotation` counts the sealed rows still under \
+                      `FIELD_ENCRYPTION_KEY_PREVIOUS`, so you know when it can go.",
         arguments: &[
             Argument {
                 name: "action",
@@ -2087,11 +2091,36 @@ pub static COMMANDS: &[Command] = &[
                 values: Values::Fixed(&[]),
             },
         ],
-        flags: &[],
+        flags: &[
+            Flag {
+                name: "--generate",
+                value: None,
+                description: "With `set`, make a key, printing nothing",
+                values: &[],
+            },
+            Flag {
+                name: "--url",
+                value: Some("url"),
+                description: "With `rotation`, the database to read",
+                values: &[],
+            },
+        ],
         examples: &[
             Example {
                 description: "See which settings still need a value",
                 command: "jadpo config check",
+            },
+            Example {
+                description: "Make the key encrypted fields are sealed with, seen by no one",
+                command: "jadpo config set field_encryption_key --generate",
+            },
+            Example {
+                description: "Send a new key straight to a secret manager",
+                command: "jadpo config generate field_encryption_key | wrangler secret put FIELD_ENCRYPTION_KEY",
+            },
+            Example {
+                description: "See when the previous field key can be removed",
+                command: "jadpo config rotation",
             },
             Example {
                 description: "Store a secret without typing it anywhere it is kept",
