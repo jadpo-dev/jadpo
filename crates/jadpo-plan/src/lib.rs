@@ -793,15 +793,12 @@ impl Plan {
         // An entity's purge and retentions run where schedules run.
         let purges: Vec<PurgePlan> = if pruning.is_none_or(|pruning| pruning.runs().schedules) {
             // Someone who signs in goes with their sign-in state, in the
-            // tables their store holds (area 15; chunk P2).
+            // tables their store holds (area 15; chunks P2 and P4).
             let sign_in = purge::sign_in_state(db, project);
             model
                 .entities
                 .iter()
-                .flat_map(|entity| {
-                    let tables = sign_in.get(&entity.name).map_or(&[][..], Vec::as_slice);
-                    purge::plans(model, entity, &setting_number, tables)
-                })
+                .flat_map(|entity| purge::plans(model, entity, &setting_number, &sign_in))
                 .collect()
         } else {
             Vec::new()

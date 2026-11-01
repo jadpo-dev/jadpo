@@ -812,8 +812,10 @@ impl Planner<'_> {
     /// policy sees it, it is a `delete` of the person's record (area 9,
     /// "Grants"); the records of theirs it reaches need no grant, as purge
     /// needs none, since an erasure that stopped short would be worse
-    /// than none. An erasure the check refuses as not built yet has no
-    /// plan.
+    /// than none. A record that belongs to several people loses its
+    /// marked fields only once none of its other references leads to a
+    /// person the erasure keeps (chunk P4). An erasure the check refuses
+    /// as not built yet has no plan.
     fn erase(&mut self, person: &EntityModel, target: SiteId) -> Option<WriteSitePlan> {
         let model: &DataModel = self.model;
         let erasure = self.lookup.erasure(&person.name)?.clone();
@@ -872,12 +874,53 @@ impl Planner<'_> {
                     set.push((changed.born.clone(), now));
                 }
             }
+            // Where the record may belong to another person too, how to
+            // look for one the erasure keeps.
+            let erased = |entity: &str| erasure.deleted.iter().position(|name| *name == entity);
+            let others = if kept.through.is_empty() || clears.is_empty() {
+                None
+            } else {
+                let mut starts = Vec::new();
+                for (name, owner) in &kept.through {
+                    starts.push(text::Start {
+                        column: field(holder, name)?.born.as_str(),
+                        owner: *owner,
+                        erased: erased(&kept.chain.get(*owner)?.entity),
+                    });
+                }
+                let mut climbs = Vec::new();
+                for (from, owner) in kept.chain.iter().enumerate() {
+                    let found = model.entity(&owner.entity)?;
+                    for (name, to) in &owner.climbs {
+                        climbs.push(text::Climbed {
+                            from,
+                            table: found.table.as_str(),
+                            column: field(found, name)?.born.as_str(),
+                            to: *to,
+                            erased: erased(&kept.chain.get(*to)?.entity),
+                        });
+                    }
+                }
+                let people = kept
+                    .chain
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, owner)| owner.person)
+                    .map(|(at, _)| at)
+                    .collect();
+                Some(text::Others {
+                    starts,
+                    climbs,
+                    people,
+                })
+            };
             keeps.push(text::Keeps {
                 table: holder.table.as_str(),
-                deleted: erasure.deleted.iter().position(|name| *name == kept.entity),
+                deleted: erased(&kept.entity),
                 references,
                 clears,
                 set,
+                others,
             });
         }
         let mut signed_in = Vec::new();
