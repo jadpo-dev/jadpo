@@ -19,9 +19,7 @@ A project's `config.jadpo` declares a secret `mail_api_key`, and Enter
 is pressed at the prompt with nothing typed:
 
 ```jadpo check project=e-config-prompt file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```jadpo check project=e-config-prompt file=config.jadpo hidden

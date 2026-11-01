@@ -5478,7 +5478,7 @@ workerd") share the step's test file but are a step of the `wasm32`
 group, skipped by this one, since the `wasm32` job builds the runtime
 crates for wasm32 already.
 
-**CI.** GitHub Actions on Linux runs the gate's five groups as parallel
+**CI.** GitHub Actions on Linux runs the gate's six groups as parallel
 jobs, each with the pinned toolchain and its own cargo cache: `lint`
 (formatting, clippy, the name ban, the editor grammar), `docs` (the pages
 and the teaching examples), `tests` (every test, with the live PostgreSQL
@@ -5487,7 +5487,13 @@ steps running at once on one PostgreSQL container named by
 `wasm32` (the runtime crates for wasm32, their checks under Node, the
 Workers host, a Workers deployable and the route tests under workerd,
 which its tests install into `tools/fixtures/workers/` with `npm ci` the runner's
-Node provides); `docs`, `tests`, `compiled` and `wasm32` each build and
+Node provides) and `release` (the next release rehearsed:
+`tools/release/rehearsal.py` copies the checkout, moves it to the next
+minor version as release-please would, brings the lock files into step
+as `release-please.yml` does, then builds `jadpo` with `--locked` and runs
+the docs check and the teaching examples without PostgreSQL, reusing the
+build folder's dependencies; [documentation](documentation.md),
+"Versions and releases"); `docs`, `tests`, `compiled` and `wasm32` each build and
 start their own container from `tools/fixtures/postgres/Dockerfile`, PostgreSQL 16
 with pgvector and PostGIS at pinned versions (area 21,
 "Without pgvector"), while the toolchain installs. A local run's
@@ -5497,7 +5503,7 @@ need pgvector for the vector tests and PostGIS for the geography tests
 `target/`, so the `compiled` job's cache keeps the registry crates built
 in its target folder as well as the workspace's: the cache action keeps
 every registry crate's build in each target folder it finds there. The
-`supported-language` job needs all five and passes only when each did; it
+`supported-language` job needs all six and passes only when each did; it
 is the check branch protection requires. Beside the gate, the
 `commit-type` workflow checks a pull request's Conventional Commit title
 against what it changes, rerunning alone when the title is edited, and

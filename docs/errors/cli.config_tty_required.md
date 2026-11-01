@@ -19,9 +19,7 @@ A project's `config.jadpo` declares a secret `mail_api_key`, and a
 coding agent runs the command:
 
 ```jadpo check project=e-config-tty file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```jadpo check project=e-config-tty file=config.jadpo hidden

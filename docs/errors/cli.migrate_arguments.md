@@ -11,9 +11,7 @@ A `jadpo migrate` command names no action, one it doesn't have, or a purpose for
 The action is misspelt:
 
 ```jadpo check project=e-migrate-arguments file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-migrate-arguments expect=cli.migrate_arguments

@@ -567,9 +567,7 @@ lists the ways to sign in.
 ```jadpo check project=tool-share file=app.jadpo
 use lending/entities { Member }
 
-application {
-    jadpo: "0.2"
-}
+application {}
 
 principal {
     user: {

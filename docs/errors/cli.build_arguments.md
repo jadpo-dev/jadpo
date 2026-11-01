@@ -11,9 +11,7 @@ A `jadpo build` command names a deployable the app doesn't have, or more than on
 An app that declares no `deployables:` has one, `app`, and the command names `api`:
 
 ```jadpo check project=e-build-arguments file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-build-arguments expect=cli.build_arguments

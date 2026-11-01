@@ -21,9 +21,7 @@ A Learn path app's `config.jadpo` declares `max_due_ahead` as a
 isn't a duration, and check the settings:
 
 ```jadpo check project=e-value-invalid file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```jadpo check project=e-value-invalid file=config.jadpo hidden

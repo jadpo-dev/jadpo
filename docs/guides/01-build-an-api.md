@@ -13,9 +13,7 @@ stores one, and a query `book_by_id` that reads one.
 [Query records](03-query-records.md) show how to write those.
 
 ```jadpo check project=guide-api file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```jadpo check project=guide-api file=domains/books/entities/book.jadpo hidden

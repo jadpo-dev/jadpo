@@ -17,9 +17,7 @@ Two branches each ignored a finding, and merging them left git's
 conflict markers in the record:
 
 ```jadpo check project=e-suggest-record file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-suggest-record expect=suggest.record_invalid
