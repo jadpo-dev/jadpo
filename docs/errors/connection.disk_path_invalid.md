@@ -1,12 +1,21 @@
 # `connection.disk_path_invalid`
 
+A disk store's `path:` isn't an absolute folder outside the project.
+
+## Why Jadpo refuses it
+
 A store of files on the server's own disk, `driver: Driver.disk`, keeps
-its files in the folder `path:` names. They are your users' data, so the
-folder is written in full, and plainly, and is never inside the project:
-among its source or in `build/`, git would commit them, `jadpo build` and
-`jadpo dev` could write over them, and every copy of the source would
-carry them (area 16, "The disk driver"). A relative path is refused,
-since it would depend on where the server starts:
+its files in the folder `path:` names, and those files are your users'
+data. Inside the project, among its source or in `build/`, git would
+commit them, `jadpo build` and `jadpo dev` could write over them, and
+every copy of the source would carry them. A relative path is refused
+too, since the folder it names depends on where the server starts, which
+is often the project's own folder. Only you know which folder on the
+server is kept for the app's data, so Jadpo doesn't choose one.
+
+## What it looks like
+
+app.jadpo:
 
 ```jadpo check project=e-disk-path-relative file=app.jadpo expect=connection.disk_path_invalid
 application {
@@ -33,7 +42,12 @@ error: `uploads`'s `path:` must be an absolute folder
 check failed: 1 error, 1 file
 ```
 
-So is one with `.` or `..` in it, which would hide which folder it is:
+`(human)` at the end of the `next:` line tells your coding agent to stop
+and ask you which fix you want, because the choice is yours to make: it
+decides where on the server your users' files are kept.
+
+A path with `.` or `..` in it is refused the same way, since it hides
+which folder it is:
 
 ```jadpo check project=e-disk-path-dotted file=app.jadpo expect=connection.disk_path_invalid
 application {
@@ -60,9 +74,39 @@ error: `uploads`'s `path:` must name its folder without `.` or `..`
 check failed: 1 error, 1 file
 ```
 
-A folder inside the project's own, such as `build/files` under it, or a
-link that leads there, is refused as `` `uploads`'s `path:` is inside
-the project ``, its label naming the folder it is in (`` inside `build/` ``).
-Choose a folder the server keeps for the app's data, such as
-`/var/lib/<app>/uploads`; the deployable makes it, the app's user's
-alone, as it starts.
+So is a folder inside the project's own, such as `build/files` under it,
+or a link that leads there: the headline is `` `uploads`'s `path:` is
+inside the project ``, and the label names the folder it is in, such as
+`` inside `build/` ``.
+
+## How to fix it
+
+**If the server keeps a folder for the app's data**, name it in full:
+
+```jadpo fragment
+uploads: {
+    driver: Driver.disk
+    path: "/var/lib/acme/uploads"
+}
+```
+
+```jadpo check project=e-disk-path-fix file=app.jadpo hidden
+application {
+    connections: {
+        uploads: {
+            driver: Driver.disk
+            path: "/var/lib/acme/uploads"
+        }
+    }
+}
+```
+
+The deployable makes the folder as it starts when it is missing, readable
+by the app's user only, and doesn't use one other users can write to.
+
+## Related
+
+- [The disk driver](../language/16-built-in-services.md#the-disk-driver)
+- [Files](../language/16-built-in-services.md#files)
+- [A native deployable](../language/14-tooling.md#a-native-deployable)
+- [`deployable.target_unsupported`](../errors/deployable.target_unsupported.md)
