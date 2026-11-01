@@ -239,7 +239,7 @@ fn a_path_ends_at_the_output_field_and_respects_a_querys_line() {
         ]
     );
     // Where it is shelved, for everyone signed in: the only query that
-    // shows it is still listed for the staff, so no way reaches it yet.
+    // shows it is still listed for the staff, so no way there is found.
     git(&root, &["checkout", "-q", "."]);
     edit(
         &root,
@@ -256,7 +256,7 @@ fn a_path_ends_at_the_output_field_and_respects_a_querys_line() {
     assert_eq!(data["decisions"][0]["paths"], serde_json::json!([]));
     let markdown = fs::read_to_string(root.join("build/review/approval.md")).expect("written");
     assert!(
-        markdown.contains("- **Path:** no route, schedule or subscriber reaches it yet."),
+        markdown.contains("- **Path:** none found from a route, schedule or subscriber."),
         "{markdown}"
     );
 }

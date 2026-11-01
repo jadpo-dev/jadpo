@@ -141,7 +141,7 @@ pub fn render(report: &Report) -> String {
             [] if paths.sought => {
                 let _ = writeln!(
                     out,
-                    "- **Path:** no route, schedule or subscriber reaches it yet."
+                    "- **Path:** none found from a route, schedule or subscriber."
                 );
             }
             [] => {}

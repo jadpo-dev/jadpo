@@ -427,7 +427,11 @@ pub fn paths(view: &View<'_>, need: &Need, public: &Public) -> Paths {
             let field_id = field
                 .as_ref()
                 .map(|field| format!("field {entity}.{field}"));
-            let reads = |node: &Node<'_>| node.edges("reads").contains(&entity_id.as_str());
+            // A query's includes read their entity's records too.
+            let reads = |node: &Node<'_>| {
+                node.edges("reads").contains(&entity_id.as_str())
+                    || node.edges("includes").contains(&entity_id.as_str())
+            };
             for chain in ways(view, &triggers, &reads) {
                 let trigger = &view.nodes[chain[0]];
                 let last = chain.last().and_then(|id| view.get(id));

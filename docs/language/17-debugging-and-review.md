@@ -567,8 +567,8 @@ report:
    route → action or query → field → output. A path starts only with
    callers who can take it: `anyone` only through a route anyone may call,
    and a query or action listed under `actions:` only for those on its line
-   ([Listing a query](09-policy.md#listing-a-query)). A change with no such
-   way yet says so.
+   ([Listing a query](09-policy.md#listing-a-query)). A decision with no
+   such way says none was found; the source and the records still hold it.
 3. **Newly reachable code.** Declarations that didn't change but are now
    reached from a new place, which a line diff never shows.
 4. **Other behaviour.** Changes to the
