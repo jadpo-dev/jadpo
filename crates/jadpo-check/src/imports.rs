@@ -64,6 +64,10 @@ enum Role {
     /// `policy.binding_invalid`'s to report, and the import that brought
     /// the name in counts as used, so it isn't a second report.
     PolicyAction,
+    /// A bare name a threshold watches, `watches: greet` under
+    /// `thresholds { }` (area 16): an action, query, schedule or
+    /// subscriber of the file's own domain.
+    Subject,
 }
 
 /// The first place a file writes a name that may come from elsewhere.
@@ -232,6 +236,7 @@ fn name_ref_use(node: &SyntaxNode) -> Option<(String, Role, u32, u32)> {
             if upper { Role::Type } else { Role::Qualifier }
         }
         CALL_EXPR if !upper => Role::Call,
+        MEMBER if !upper && threshold_subject(&parent) => Role::Subject,
         // A file helper's write names the store of files it writes to,
         // a connection, as its first argument (chunk 6.4b2).
         ARG if !upper && writes_to(&parent) => Role::Qualifier,
@@ -293,6 +298,32 @@ fn member_key_use(node: &SyntaxNode) -> Option<(String, Role, u32, u32)> {
         Role::Qualifier
     };
     Some((name, role, start, end))
+}
+
+/// Whether `member` is what a threshold under `thresholds { }` watches
+/// by name, `watches: greet`.
+fn threshold_subject(member: &SyntaxNode) -> bool {
+    let named = member
+        .children()
+        .find(|child| child.kind() == MEMBER_KEY)
+        .is_some_and(|key| key.text() == "watches");
+    named
+        && member
+            .parent()
+            .filter(|list| list.kind() == MEMBER_LIST)
+            .and_then(|list| list.parent())
+            .filter(|threshold| threshold.kind() == MEMBER)
+            .and_then(|threshold| threshold.parent())
+            .filter(|list| list.kind() == MEMBER_LIST)
+            .and_then(|list| list.parent())
+            .is_some_and(|decl| {
+                decl.kind() == SINGLETON_DECL
+                    && decl
+                        .children_with_tokens()
+                        .filter_map(|element| element.into_token())
+                        .find(|token| !token.kind().is_trivia())
+                        .is_some_and(|token| token.text() == crate::thresholds::THRESHOLDS)
+            })
 }
 
 /// Whether `key` is a line's key under `policy { actions: { } }`.
@@ -749,6 +780,22 @@ impl Here<'_> {
                 Some(Need::Name(Box::new(symbol.clone())))
             }
             Role::PolicyAction => None,
+            // A threshold watches its own domain's declarations only; one
+            // of another domain is the threshold's to report.
+            Role::Subject => {
+                let symbol = self.table.declared(name).iter().find(|symbol| {
+                    symbol.library.is_none()
+                        && symbol.ownership == self.location.ownership
+                        && matches!(
+                            symbol.kind,
+                            ItemKind::Action
+                                | ItemKind::Query
+                                | ItemKind::Schedule
+                                | ItemKind::Subscriber
+                        )
+                })?;
+                Some(Need::Name(Box::new(symbol.clone())))
+            }
             Role::Qualifier => {
                 if self.std.reserved(name) {
                     return None;
@@ -813,7 +860,7 @@ impl Here<'_> {
             Role::Call => {
                 self.table.declared(&w.name).is_empty() && self.std.namespace_of(&w.name).is_none()
             }
-            Role::PolicyAction => self.table.declared(&w.name).is_empty(),
+            Role::PolicyAction | Role::Subject => self.table.declared(&w.name).is_empty(),
             Role::Qualifier => {
                 w.called
                     && !self.std.reserved(&w.name)

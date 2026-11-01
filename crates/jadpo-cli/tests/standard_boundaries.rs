@@ -628,6 +628,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "checks a schedule's `every:`, a duration read by the contract's own reader",
     ),
     (
+        "crates/jadpo-check/src/thresholds.rs",
+        "checks a threshold's limits and `within:`, durations read by the contract's own reader (chunk B13)",
+    ),
+    (
         "crates/jadpo-check/src/types/rules.rs",
         "checks a rule's literal against its type",
     ),

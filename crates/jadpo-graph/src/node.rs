@@ -434,6 +434,17 @@ pub enum Detail {
         owner: String,
         expires: String,
     },
+    /// A monitoring threshold (area 16, "Monitoring thresholds"): what it
+    /// watches (`route`, `action`, `query`, `schedule`, `subscriber`, or
+    /// `disk` for a store's floor) and its limits as written, `p95` and
+    /// `300ms`, those judged per request apart from those judged across
+    /// requests over `within`.
+    Threshold {
+        watches: String,
+        per_request: Vec<(String, String)>,
+        across_requests: Vec<(String, String)>,
+        within: Option<String>,
+    },
     /// The application's `locales { }` (area 10): its default, the locales
     /// it supports in the order listed, and those whose translations are
     /// in progress, each as `Locale`'s variant (`en_gb`).

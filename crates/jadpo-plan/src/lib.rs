@@ -1475,6 +1475,7 @@ impl Plan {
             json,
             config,
             flags,
+            thresholds: thresholds(db, project),
             routes,
             events,
             batches,
@@ -1977,4 +1978,21 @@ fn ai_package(
         embed,
         prices: mapping.prices.clone(),
     })
+}
+
+/// Each threshold with a limit judged per request (area 16; chunk B13),
+/// by subject, keyed by what it watches.
+fn thresholds(db: &dyn Db, project: Project) -> Vec<jadpo_std::thresholds::ThresholdPlan> {
+    use jadpo_check::thresholds::Limit;
+    jadpo_check::thresholds::thresholds(db, project)
+        .thresholds
+        .iter()
+        .filter(|threshold| threshold.limits.keys().any(|limit| limit.per_request()))
+        .map(|threshold| jadpo_std::thresholds::ThresholdPlan {
+            name: threshold.subject.clone(),
+            watches: threshold.target.key.as_str().to_string(),
+            duration_ms: threshold.limits.get(&Limit::Duration).copied(),
+            queries: threshold.limits.get(&Limit::Queries).copied(),
+        })
+        .collect()
 }

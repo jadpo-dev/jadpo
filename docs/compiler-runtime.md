@@ -3522,6 +3522,20 @@ document (record, graph node, OpenAPI operation and `routes` listing from
 `served::flags_served`), planned as `Run::Flags` of the `client: true`
 flags' numbers and answered by the HTTP component through `Ctx::flag`.
 
+**Monitoring thresholds** (area 16, "Monitoring thresholds: checked and
+generated"). `jadpo_check::thresholds` reads each domain's `thresholds {
+}` twice: `written` as text alone, which the before side's monitoring
+files from git are read with too, and `thresholds` against the project,
+resolving each subject to its node's key. The acceptances compare the
+two readings by threshold name (`loosened`), and `app.jadpo`'s disk
+floors (`floors_lowered`), into `ThresholdChange` needs. The graph gets a
+`threshold` node for each threshold and floor; the plan carries the
+per-request limits as `RuntimePlan::thresholds`
+(`jadpo_std::thresholds::ThresholdPlan`, keyed by what each watches, with
+`limits_exceeded` for the telemetry that will judge requests by them); and `jadpo
+check` and `jadpo dev` write `rules`' Prometheus and OpenSLO files to
+`build/monitoring/`, removing one that has nothing left to say.
+
 **The capability seam** (area 16). Every call that leaves the
 process goes through one exchange, `jadpo_runtime::outside::exchange`
 ("One outside-call path" below), which

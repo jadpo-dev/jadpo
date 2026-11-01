@@ -609,6 +609,68 @@ pub fn service_nodes(db: &dyn Db, project: Project) -> Part {
         };
         nodes.push(node);
     }
+    // Each monitoring threshold (area 16), using what it watches, and
+    // each disk store's floor, using its connection.
+    for threshold in &crate::thresholds::thresholds(db, project).thresholds {
+        let Some(member) = crate::thresholds::member_of(db, project, threshold) else {
+            continue;
+        };
+        let at = Written {
+            path: threshold.path.clone(),
+            syntax: member.syntax().clone(),
+        };
+        let key = registry.key(Kind::Threshold, &threshold.subject, None);
+        let mut node = node_at(db, project, key.clone(), Kind::Threshold, &at);
+        uses(&mut edges, &key, [threshold.target.key.clone()]);
+        let limits = |per_request: bool| -> Vec<(String, String)> {
+            threshold
+                .limits
+                .iter()
+                .filter(|(limit, _)| limit.per_request() == per_request)
+                .map(|(limit, value)| {
+                    (
+                        limit.word().to_string(),
+                        crate::thresholds::value_text(*limit, *value),
+                    )
+                })
+                .collect()
+        };
+        node.detail = Detail::Threshold {
+            watches: threshold.target.watches.word().to_string(),
+            per_request: limits(true),
+            across_requests: limits(false),
+            within: threshold
+                .across()
+                .then(|| crate::thresholds::within_text(threshold.within_ms)),
+        };
+        nodes.push(node);
+    }
+    for (connection, floor) in crate::thresholds::project_floors(db, project) {
+        let Some(at) = written(db, project, "application", &["connections", &connection]) else {
+            continue;
+        };
+        let key = registry.key(
+            Kind::Threshold,
+            &format!("{connection}.free_space_floor"),
+            None,
+        );
+        let mut node = node_at(db, project, key.clone(), Kind::Threshold, &at);
+        uses(
+            &mut edges,
+            &key,
+            [registry.key(Kind::Connection, &connection, None)],
+        );
+        node.detail = Detail::Threshold {
+            watches: "disk".to_string(),
+            per_request: Vec::new(),
+            across_requests: vec![(
+                "free_space_floor".to_string(),
+                crate::thresholds::percent(u64::from(floor)),
+            )],
+            within: None,
+        };
+        nodes.push(node);
+    }
     let locales = crate::locales::locales(db, project);
     if let Some(plan) = &locales.plan
         && let Some(at) = declared(db, project, "locales")

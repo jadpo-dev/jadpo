@@ -63,6 +63,10 @@ pub struct RuntimePlan {
     /// Every feature flag and the store their state is kept in (area 16,
     /// "Feature flags"; chunk B9).
     pub flags: FlagsPlan,
+    /// Every threshold with a limit judged per request, by subject (area
+    /// 16, "Monitoring thresholds"; chunk B13): what the `telemetry:`
+    /// section judges each request by.
+    pub thresholds: Vec<crate::thresholds::ThresholdPlan>,
     /// Every connection, in name order, with its driver, the settings
     /// that driver is built from and the targets it runs on (area 11;
     /// chunk 8.1d): what a host builds each connection's driver from.
