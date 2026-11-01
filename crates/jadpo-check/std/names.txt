@@ -41,7 +41,7 @@ PasskeyRemoved TestPasskey SentEmail MagicLinkAsk MagicLinkConfirmation
 MagicLinkCode MagicLinkConfirmed MagicLinkToken TestAccount
 BatchRun BatchProgress RowProblem ImportSummary ExportSummary
 Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol
-FieldAccess OnDelete Generated FieldChange
+FieldAccess OnDelete Generated FieldChange EntityChange
 ApiChange PersonalData Erasure SearchLanguage RateLimitKey
 AuditEntry AuditFieldChange AuditEntryRecorded AuditChange AuditBy
 

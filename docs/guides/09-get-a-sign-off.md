@@ -2,8 +2,8 @@
 <!-- topic: guide-get-a-sign-off -->
 
 Some changes can hurt someone outside the code: removing a field a
-client reads, letting more people see a record, or sending data to a
-new outside host. `jadpo check` fails on each of them
+client reads, letting more people see a record, sending data to a new
+outside host, or dropping data for good. `jadpo check` fails on each of them
 until a person accepts it in an acceptance, a small file that says what
 was decided and why. A coding agent drafts the file and then stops,
 because the reason has to come from you. This guide removes a field
@@ -270,6 +270,6 @@ the error pages [acceptance.missing](../errors/acceptance.missing.md) and
   policy, failures and data for a reviewer to read, isn't built yet. Read
   the diffs of `api/`, `access.jadpo_record` and `network.jadpo_record`
   instead.
-- Acceptances for dropping a column or table, for a package upgrade
-  plan, and for raising a monitoring threshold aren't built yet; they
-  come with the commands that make those changes.
+- Acceptances for a package upgrade plan and for raising a monitoring
+  threshold aren't built yet; they come with the commands that make those
+  changes.

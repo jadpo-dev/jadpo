@@ -77,6 +77,11 @@ pub fn seed(call: &Call) -> Reply {
             return reply;
         }
     }
+    // Pending migrations are applied first, and none that drops data runs
+    // without a person's acceptance (area 5, "Migrations"; chunk V3).
+    if let Some(problem) = ready.unaccepted.first() {
+        return Reply::failed(problem.clone());
+    }
     let started = std::time::Instant::now();
     crate::run::say(&format!("Seeding `{name}`"));
     let migrated = match migrate(&addresses, &ready) {

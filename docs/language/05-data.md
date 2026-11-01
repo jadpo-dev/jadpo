@@ -1429,13 +1429,9 @@ migration {
   run, so the editor, the build and CI all stop. Loose files, with no
   `app.jadpo`, have no migrations, so the check is a project's.
 - **Decisions only where needed:** a value for existing rows of a
-  required field, or retiring a field.
-- **Removing a field takes two migrations.** `FieldChange.retired` comes
-  first: code stops using the field, and the column stays, now nullable,
-  for servers still running the old build. Later, `FieldChange.dropped`
-  removes it, and needs an explicit acceptance, a person's recorded
-  approval of a breaking change
-  ([Acceptances](18-records-and-manifest.md#acceptances)).
+  required field, or retiring a field or an entity.
+- **Removing data takes two migrations**, and a person
+  ([Removing data](#removing-data)).
 - **Renames keep their data.** The identity registry, a file Jadpo keeps
   under `database/`, records what each renamed thing was born as
   ([Records and manifest](18-records-and-manifest.md)). Tables and columns
@@ -1473,9 +1469,118 @@ digest past PostgreSQL's 63 bytes. Each store that holds an entity also
 gets the runtime's [system tables](#system-tables), prefixed `jadpo_`.
 
 Not built yet: `jadpo rename`, which writes the identity registry
-([Tooling](14-tooling.md)); `FieldChange.dropped` and its acceptance;
-removing an entity, moving one between stores, and changing a column's
-type other than widening it. `jadpo migrate new` says so for each.
+([Tooling](14-tooling.md)), and changing a column's type other than
+widening it. `jadpo migrate new` says so for each.
+
+### Removing data
+
+Nothing a migration removes goes without a person, and nothing goes at
+the first step. When a field or an entity leaves the source, it is
+retired: code stops using it, and its column or table stays with its
+data, for servers still running the old build. Dropping it for good is a
+later migration of its own, which `jadpo migrate new` writes only when
+you name what goes:
+
+```jadpo check project=removing file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=removing file=domains/planning/entities/todo.jadpo hidden migrate=initial
+entity Todo {
+    id: Uuid
+    title: Text
+    legacy_flag: Bool
+}
+```
+
+```jadpo check project=removing file=domains/planning/entities/todo.jadpo hidden migrate=retire_legacy_flag
+entity Todo {
+    id: Uuid
+    title: Text
+}
+```
+
+```jadpo check project=removing file=database/migrations/20261020T1401_retire_legacy_flag/changes.jadpo hidden migrate=finish
+migration {
+    Todo.legacy_flag: FieldChange.retired
+}
+```
+
+```sh run project=removing
+jadpo migrate new drop_legacy_flag --drop Todo.legacy_flag
+```
+
+```text output
+  compared the entities with 20261020T1401_retire_legacy_flag
+
+  Todo
+    - legacy_flag  boolean  dropped: the column and its data go for good
+
+Wrote database/migrations/20261020T1402_drop_legacy_flag/
+    snapshot.json  the whole schema at this point
+    postgres.sql   1 statement: drop column
+    changes.jadpo  every decision made
+
+decision: 1 change waits for a person's acceptance
+  next: A person accepts it: `jadpo acceptance new <purpose>` writes the draft for them. (human)
+```
+
+Its `changes.jadpo` says the same, `Todo.legacy_flag: FieldChange.dropped`,
+and `postgres.sql` holds the one statement. `jadpo check` then fails until
+an acceptance this change adds lists `Todo.legacy_flag:
+DataChange.column_dropped` with a person's reason
+([Acceptances](18-records-and-manifest.md#acceptances)), and
+`jadpo approval` says what goes in plain words: the store, the table, each
+column and its type.
+
+| What leaves | First step | Needs a person | Second step | Needs a person |
+|---|---|---|---|---|
+| A field | Its column retired, `Todo.legacy_flag: FieldChange.retired` | | `--drop Todo.legacy_flag`, `FieldChange.dropped` | `DataChange.column_dropped` |
+| An entity | Its table retired, `Todo: EntityChange.retired` | `DataChange.entity_removed` | `--drop Todo`, `EntityChange.dropped` | `DataChange.table_dropped` |
+| An entity moved to another store | A new table there, the old one retired, nothing to write | `DataChange.entity_moved` | `--drop Todo` | `DataChange.table_dropped` |
+
+- **A retired entity is out of reach.** Its table keeps its keys and
+  indexes for servers on the old build, but no code reads it, and erasure
+  and retention no longer reach its records, which is why retiring an
+  entity needs an acceptance when retiring a field doesn't. It refers to
+  nothing any more, so its rows don't hold back a delete of what they
+  named.
+- **Land the two steps in separate deploys.** A drop in the same deploy as
+  its retirement takes the column from servers still running the old
+  build. Nothing checks this for you: the acceptance is where it is
+  weighed.
+- **What was retired stays retired.** An entity can't take back a retired
+  table, nor a field a retired column, until a migration has dropped it. A
+  field or entity renamed by hand reads as one removed and one added, so
+  its decision says to give it back its name.
+- **Moving copies nothing.** A migration runs against one store at a
+  time, so an entity moved to another starts empty there and its records
+  stay behind, retired, until you copy them across and drop them.
+- **Files are let go of.** Dropping a `File` column or a table with one
+  takes a holder from each file its rows hold, in the same transaction,
+  and the file's bytes go as any file's do once no record holds them
+  ([Deleting and erasing](16-built-in-services.md#deleting-and-erasing)),
+  as long as a `File` field still names their store of files. While it is
+  only retired, its rows still hold them.
+- **The audit trail stays.** No migration removes an entry of
+  `jadpo_audit`. A dropped field's values stay in its entries until their
+  retention ends, where no caller is shown them
+  ([Retention and erasure](16-built-in-services.md#retention-and-erasure)).
+  Nothing purges the entries of an entity that is gone, and the report says
+  so.
+- **System tables stay.** A table of Jadpo's own that nothing asks for any
+  more, such as the audit trail's once no entity is audited, stays, with
+  nothing to decide and no migration written. It may hold what can't be
+  got back.
+- **It can't run without its acceptance.** `jadpo migrate apply` refuses
+  a project with a removal no acceptance lists with a reason
+  ([`migration.drop_not_accepted`](../errors/migration.drop_not_accepted.md)),
+  whatever git says, before it reaches a database. So do `jadpo seed` and
+  `jadpo dev` on a database they didn't start themselves. A test's database
+  and one `jadpo dev` starts are thrown away, so they run it. Editing a
+  migration already on the before side so that it removes something needs
+  an acceptance too, and a statement that removes what the snapshots keep
+  is [`migration.record_invalid`](../errors/migration.record_invalid.md).
 
 ## Computed backfills
 <!-- topic: computed-backfills -->
@@ -1956,7 +2061,8 @@ Each feature not built yet is `toolchain.not_built_yet` where it is used.
 | The check of every stored value on read | Built. `CHECK` constraints holding fields' rules in the database are not built yet. |
 | Standard types stored in named columns, and the standard collections | Built. Comparing or ordering by them in a query is not built yet. |
 | Manifest nodes | Built: a node for each entity's placement, unique rule, index and reference, with `references` edges between entities, one for each system table and migration snapshot, and one for each lifecycle and transition (`lifecycle Todo`, `transition Todo.delete`, with its `when:`, whether it can refuse a record and the fields it sets). |
-| Other schema changes in `jadpo migrate new` | Not built yet: removing an entity, moving one between stores, dropping a retired column (it needs [acceptances](18-records-and-manifest.md#acceptances)), a new `pattern:` on a stored field, and other column type changes. Turning `encrypted:` on or off is refused for good: it needs a data migration ([Encrypted fields](15-personal-data.md#encrypted-fields)). |
+| Removing data | Built: retiring a field or an entity, moving an entity to another store and `--drop`, each needing its [acceptance](18-records-and-manifest.md#acceptances) ([Removing data](#removing-data)). Copying an entity's records to its new store is yours to do. |
+| Other schema changes in `jadpo migrate new` | Not built yet: a new `pattern:` on a stored field, and other column type changes. Turning `encrypted:` on or off is refused for good: it needs a data migration ([Encrypted fields](15-personal-data.md#encrypted-fields)). |
 | A worked-out backfill for a field that allows less | Not built yet. |
 | A backfill in Jadpo that fills a value held in several columns, or reads a field held so or as JSON | Not built yet. |
 | Entities in Redis and record caches (`caches:`) | Not built yet. Clearing only the cached entries a change affects isn't designed yet. |
@@ -2009,6 +2115,7 @@ source.
 - [`migration.decision_required`](../errors/migration.decision_required.md)
 - [`migration.decision_invalid`](../errors/migration.decision_invalid.md)
 - [`migration.decision_unknown`](../errors/migration.decision_unknown.md)
+- [`migration.drop_not_accepted`](../errors/migration.drop_not_accepted.md)
 - [`migration.unfinished`](../errors/migration.unfinished.md)
 - [`migration.backfill_can_fail`](../errors/migration.backfill_can_fail.md)
 - [`migration.backfill_outside_row`](../errors/migration.backfill_outside_row.md)

@@ -49,12 +49,16 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-/// The migrations of each of `project`'s stores.
+/// The migrations of each of `project`'s stores it has a connection to. A
+/// store it has left, with only retired tables behind (area 5,
+/// "Migrations"), holds nothing a deployable reads.
 pub fn stores(db: &dyn jadpo_db::Db, project: jadpo_db::Project) -> Stores {
+    let databases = jadpo_check::data::connections(db, project).databases();
     jadpo_check::data::migrations::store_steps(jadpo_check::data::migrations::migrations(
         db, project,
     ))
     .into_iter()
+    .filter(|(store, _)| databases.contains(store))
     .map(|(store, migrations)| {
         let migrations = migrations
             .into_iter()
