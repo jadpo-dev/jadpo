@@ -104,6 +104,7 @@ pub fn record_texts(db: &dyn Db, project: Project) -> BTreeMap<String, String> {
                     }
                     Generating::Provider(name) => provider_entries(name),
                     Generating::OpenApi(served) => vec![openapi_entry(served)],
+                    Generating::Flags(served) => vec![flags_entry(db, project, served)],
                     Generating::Webhook(webhook) => vec![webhook_entry(webhook)],
                 })
                 .collect();
@@ -184,6 +185,31 @@ fn openapi_entry(served: &super::served::Served) -> Generated {
         entry.push("authentication none");
     }
     entry.push("status 200");
+    Generated {
+        at: (path, order_of(jadpo_std::HttpMethod::Get)),
+        entry,
+        sections: Vec::new(),
+    }
+}
+
+/// The generated `GET <prefix>/flags` (area 16, "Flags in browsers and
+/// apps"; chunk B10), as the record lists it: the runtime's, answering
+/// with each `client: true` flag by name and type, so turning one on or
+/// off for clients is a change to the API.
+fn flags_entry(db: &dyn Db, project: Project, served: &super::served::Served) -> Generated {
+    let path = served.path();
+    let mut entry = Entry::new(format!("GET {path}")).with("generated flags");
+    if !served.authentication.needs_caller() {
+        entry.push("authentication none");
+    }
+    entry.push("status 200");
+    for flag in crate::flags::flags(db, project)
+        .flags
+        .iter()
+        .filter(|flag| flag.client)
+    {
+        entry.push(format!("flag {}: {}", flag.name, flag.ty));
+    }
     Generated {
         at: (path, order_of(jadpo_std::HttpMethod::Get)),
         entry,
