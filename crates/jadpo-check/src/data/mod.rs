@@ -25,6 +25,7 @@ pub mod lifecycle;
 pub mod migrations;
 pub mod queries;
 pub mod retention;
+pub mod sealed;
 pub mod search;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -375,6 +376,10 @@ pub struct FieldModel {
     /// when erasure deletes the record it refers to. Where it may be
     /// written is [`crate::erasure`]'s to check.
     pub erase: Option<jadpo_std::Erasure>,
+    /// What it keeps sealed in its `bytea`, when it is kept sealed with the
+    /// application's `field_encryption_key:` (area 15, "Encrypted fields";
+    /// chunk P9), which no SQL reads or writes.
+    pub sealed: Option<sealed::Holds>,
 }
 
 /// A `File` field's settings (area 16, "Files"): the `files` connection
@@ -1363,6 +1368,7 @@ impl Reader<'_> {
             file: None,
             retention: None,
             erase: None,
+            sealed: None,
         };
         if ty.has_error() {
             // A type that names nothing is resolution's one error: the
@@ -1419,8 +1425,13 @@ impl Reader<'_> {
             );
             return Some(field);
         }
-        // A secret value is never stored as itself (area 19, chunk 5.5r2).
-        if let Some(secret) = crate::types::secrets::held_secret(self.lookup, &ty, &mut Vec::new())
+        // A secret value is never stored as itself (area 19, chunk 5.5r2):
+        // what checking it needs back is kept sealed, in a field of its own
+        // (chunk P9).
+        let kept = sealed::kept_sealed(self.lookup, &ty);
+        if kept.is_none()
+            && let Some(secret) =
+                crate::types::secrets::held_secret(self.lookup, &ty, &mut Vec::new())
         {
             self.out.push(crate::types::secrets::stored(
                 entity,
@@ -1483,7 +1494,30 @@ impl Reader<'_> {
             );
             return Some(field);
         }
+        let sealing = self.sealing(path, entity, name, value, &ty, kept);
+        if let Some(holds) = sealing {
+            // Kept whole in one `bytea` whatever its type, which only Jadpo
+            // reads. What its type allows is recorded as it always is, so a
+            // change to it is seen, and a structured value's reads besides.
+            if let Ok(column) = column_type(self.lookup, &ty)
+                && column == "jsonb"
+            {
+                field.allows = physical::Allows {
+                    json: Some(columns::json_reads(
+                        self.lookup,
+                        &Ty::Field(entity.to_string(), vec![name.to_string()]),
+                    )),
+                    ..physical::Allows::default()
+                };
+            }
+            field.builtin = None;
+            field.scale = None;
+            field.sealed = Some(holds);
+            field.sql_type = Some("bytea".to_string());
+        }
         match column_type(self.lookup, &ty) {
+            // Read above.
+            _ if field.sealed.is_some() => {}
             // A geometry is stored in a PostGIS `geography` column, checked
             // to hold its type's geometry in WGS84 (area 20, chunk 5.5u4).
             Ok(sql) if sql == "geography" && geometry_of(self.lookup, &ty).is_some() => {
@@ -1677,7 +1711,20 @@ impl Reader<'_> {
                         "`Generated.on_create` or `Generated.on_change`",
                     ),
                 },
+                // Read above, by `sealing`.
+                "encrypted" => {}
                 "unique" => match member.value().as_ref().map(Const::from_expr) {
+                    // Sealed twice, one value's bytes differ, so no unique
+                    // rule could compare it (area 15; chunk P9).
+                    Some(Const::Bool(true)) if field.sealed.is_some() => {
+                        self.out.push(sealed::used(
+                            entity,
+                            name,
+                            "A unique rule",
+                            key_span,
+                            format!("Remove `unique:` from `{name}`, or `encrypted:`"),
+                        ));
+                    }
                     // A value stored whole as JSON is compared by no unique
                     // rule yet (chunk 5.9b).
                     Some(Const::Bool(true)) if field.json.is_some() => {
@@ -1802,6 +1849,9 @@ impl Reader<'_> {
             target,
             on_delete: on_delete.map(|(o, _)| o),
         });
+        if field.sealed.is_some() {
+            self.sealed_holds_up(path, entity, value, &field);
+        }
         Some(field)
     }
 
@@ -2415,6 +2465,19 @@ impl Reader<'_> {
                         .reason(format!("Each field counts once in {a_what}."))
                         .next(format!("Remove the second `{field}`")),
                     );
+                    continue;
+                }
+                // Sealed twice, one value's bytes differ, so neither could
+                // compare it (area 15; chunk P9).
+                if found.sealed.is_some() {
+                    broken = true;
+                    self.out.push(sealed::used(
+                        &entity.name,
+                        &field,
+                        if unique { "A unique rule" } else { "An index" },
+                        entry_span,
+                        format!("Leave `{field}` out of `{rule_name}`, or remove its `encrypted:`"),
+                    ));
                     continue;
                 }
                 // A value stored whole as JSON is compared by no unique rule
@@ -3752,6 +3815,7 @@ fn table_of(
                     nullable: field.nullable
                         || entry.is_some_and(|entry| entry.part_may_be_none(at)),
                     retired: false,
+                    sealed: field.sealed.is_some(),
                     allows: Some(allows),
                     comment: match entry {
                         Some(entry) => entry.part_comment(at),
@@ -3875,6 +3939,7 @@ fn table_of(
                 sql_type: "tsvector".to_string(),
                 nullable: true,
                 retired: false,
+                sealed: false,
                 allows: None,
                 comment: None,
                 generated: Some(jadpo_sql::search::document(search.language, &columns)),

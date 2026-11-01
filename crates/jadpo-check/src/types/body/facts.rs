@@ -171,6 +171,9 @@ pub(crate) struct Facts {
     pub reads: BTreeMap<NodeKey, usize>,
     /// What each call reaches.
     pub reaches: BTreeMap<NodeKey, Reach>,
+    /// Each value of a key type going where a key may go: a `crypto` call's
+    /// `key:`, or a key-type field (area 19, "A key is never a value").
+    pub key_sinks: BTreeSet<NodeKey>,
     /// Each standard-library call's arguments: the parameter each fills.
     pub slots: BTreeMap<NodeKey, Vec<Option<usize>>>,
     /// Each field read, as its host and path: `Note` and `body`.

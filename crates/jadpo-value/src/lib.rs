@@ -513,6 +513,7 @@ pub fn run(
             | Op::CryptoEncrypt
             | Op::CryptoHashPassword
             | Op::CryptoHmac
+            | Op::CryptoNewKey
             | Op::CryptoPublicKey
             | Op::CryptoSign
             | Op::CryptoVerifyHmac
@@ -896,6 +897,7 @@ mod tests {
                 | Op::CryptoEncrypt
                 | Op::CryptoHashPassword
                 | Op::CryptoHmac
+                | Op::CryptoNewKey
                 | Op::CryptoPublicKey
                 | Op::CryptoSign
                 | Op::CryptoVerifyHmac

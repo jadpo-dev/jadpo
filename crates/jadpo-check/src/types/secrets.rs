@@ -21,8 +21,15 @@ use super::ty::Ty;
 pub(crate) fn secret_of(table: &dyn TypeView, ty: &Ty) -> Option<&'static str> {
     let mut current = ty.strip_nullable().clone();
     for _ in 0..32 {
-        let Ty::Named(name) = &current else {
-            return None;
+        let name = match &current {
+            Ty::Named(name) => name,
+            // A type that names a field holds what the field does: an
+            // entity's can hold a secret, kept sealed (chunk P9).
+            Ty::Field(host, path) => {
+                current = table.field(host, path)?.declared.strip_nullable().clone();
+                continue;
+            }
+            _ => return None,
         };
         if let Some(secret) = security::secret_value(name) {
             return Some(secret);
@@ -308,21 +315,26 @@ pub(crate) fn field(
 }
 
 /// An entity's field holding a secret value: refused for a password, a
-/// key, a token and a JWT, which are kept only as a hash; not built yet for
-/// a `TotpSecret` or a `SecretText`, which will be kept sealed with an
-/// encrypted field's key.
+/// key, a token and a JWT, which are kept only as a hash. A `TotpSecret` and
+/// a `SecretText` are kept sealed in a field of their own (chunk P9), so one
+/// is refused only inside a structure.
 pub(crate) fn stored(entity: &str, name: &str, secret: &str, span: Span) -> Diagnostic {
     if security::stored_encrypted_later(secret) {
         return Diagnostic::new(
-            &rule::TOOLCHAIN_NOT_BUILT_YET,
-            format!("Storing a `{secret}` field isn't built yet"),
+            &rule::TYPE_SECRET_EXPOSED,
+            format!(
+                "`{entity}.{name}` keeps {} `{secret}` inside another value",
+                indefinite(secret)
+            ),
         )
-        .at(span, "a secret, stored")
+        .at(span, "a secret, inside a value")
         .reason(format!(
-            "{} `{secret}` is never stored as itself: it will be stored sealed with an encrypted field's key, once keys held as data and encrypted fields are built (area 19, \"Language gaps\"); until then this compiler can't keep `{entity}.{name}`.",
+            "{} `{secret}` is never stored as itself, only sealed with the application's `field_encryption_key:`, in a field of its own, so its column holds only sealed bytes.",
             capital(indefinite(secret))
         ))
-        .next(format!("Keep `{entity}.{name}` out of storage for now"));
+        .next(format!(
+            "Give the `{secret}` a field of its own on `{entity}`, typed `{secret}`"
+        ));
     }
     let next = match secret {
         security::PASSWORD => format!(

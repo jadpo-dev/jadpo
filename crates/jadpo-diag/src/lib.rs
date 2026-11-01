@@ -154,8 +154,12 @@ rules! {
         "A `jadpo completions` command names no shell, or one Jadpo writes no completions for";
     CLI_CONFIG_ARGUMENTS: "cli.config_arguments", area 14, Error, Agent,
         "A `jadpo config` command names no action, an action it doesn't have, or a setting `config.jadpo` doesn't declare";
+    CLI_CONFIG_GENERATE_REFUSED: "cli.config_generate_refused", area 14, Error, Human,
+        "A new key would be written where a person could read it, by `jadpo config generate`, or `--generate` would replace a key already set";
     CLI_CONFIG_PROMPT_FAILED: "cli.config_prompt_failed", area 14, Error, Human,
         "Nothing was typed at the prompt of `jadpo config set`, or the terminal couldn't hide what you type there";
+    CLI_CONFIG_ROTATION_UNAVAILABLE: "cli.config_rotation_unavailable", area 14, Error, Human,
+        "The sealed rows `jadpo config rotation` counts couldn't be counted, because their database can't be reached or has no table for them yet";
     CLI_CONFIG_TTY_REQUIRED: "cli.config_tty_required", area 14, Error, Human,
         "You ran `jadpo config set` where there is no terminal to type the value at, such as from a coding agent or a script";
     CLI_DECLINES_ARGUMENTS: "cli.declines_arguments", area 14, Error, Agent,
@@ -318,6 +322,10 @@ rules! {
         "A write could be refused by a unique rule or a reference, and its `conflict:` block doesn't say which failure the caller gets then";
     DATA_DUPLICATE_RULE: "data.duplicate_rule", area 5, Error, Agent,
         "Unique rule or index repeats another";
+    DATA_ENCRYPTED_FIELD_INVALID: "data.encrypted_field_invalid", area 15, Error, Agent,
+        "A field that can't be stored sealed, or that says it isn't sealed when its type always is";
+    DATA_ENCRYPTED_FIELD_USED: "data.encrypted_field_used", area 15, Error, Agent,
+        "An encrypted field is used somewhere the database or a log would have to read it";
     DATA_ENTITY_IN_FIELD: "data.entity_in_field", area 5, Error, Agent,
         "Field holds an entity instead of a reference to one";
     DATA_ERASE_FIELD_REQUIRED: "data.erase_field_required", area 15, Error, Human,
@@ -328,6 +336,10 @@ rules! {
         "Erasing a person keeps records with `Erasure.retained`, but their entity has no `retention:` saying when they go";
     DATA_ERASE_UNREACHED: "data.erase_unreached", area 15, Error, Agent,
         "A field's `erase:` is on a field erasing a person never reaches: one that isn't a reference, or a reference to records that belong to no person";
+    DATA_FIELD_ENCRYPTION_KEY_INVALID: "data.field_encryption_key_invalid", area 15, Error, Agent,
+        "The application's `field_encryption_key:` reads something other than an `EncryptionKey` setting";
+    DATA_FIELD_ENCRYPTION_KEY_REQUIRED: "data.field_encryption_key_required", area 15, Error, Human,
+        "A field is kept sealed, but the application names no key to seal it with";
     DATA_FIELD_LIST_REQUIRED: "data.field_list_required", area 5, Error, Agent,
         "Unique rule or index is not a list of fields";
     DATA_FIELD_WITHOUT_JSON: "data.field_without_json", area 5, Error, Agent,
@@ -1368,6 +1380,8 @@ rules! {
         "A literal value breaks a rule of the type it goes into, such as a number below the type's `min`";
     TYPE_INVALID_PATTERN: "type.invalid_pattern", area 2, Error, Agent,
         "Pattern is not a supported regular expression";
+    TYPE_KEY_AS_VALUE: "type.key_as_value", area 19, Error, Agent,
+        "A key held as data is read as a value, when it goes only into a key-type field or a `crypto` call's `key:`";
     TYPE_LOCALE_DEFAULT_UNSUPPORTED: "type.locale_default_unsupported", area 10, Error, Agent,
         "Default locale is not a supported one";
     TYPE_LOCALE_DUPLICATE: "type.locale_duplicate", area 10, Error, Agent,

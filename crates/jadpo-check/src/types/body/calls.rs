@@ -1155,6 +1155,7 @@ impl Body<'_> {
         let mut parsed: Option<(Ty, Option<Expr>)> = None;
         // The type `json.read`'s `as:` names (area 19, "Data formats").
         let mut read_as: Option<Ty> = None;
+        let mut new_key_as: Option<Ty> = None;
         // `crypto.verify_jwt`'s `as:`, when given: the type, or `None` once
         // what is wrong with it is reported (chunk 5.5r4).
         let mut claims_as: Option<Option<Ty>> = None;
@@ -1212,10 +1213,23 @@ impl Body<'_> {
                 && key.is_key()
                 && !is_setting_read(&value)
             {
-                if ty.is_none() {
-                    self.infer(&value);
+                self.facts.key_sinks.insert(node_key(value.syntax()));
+                let given = match ty {
+                    Some(ty) => ty,
+                    None => self.infer(&value),
+                };
+                // Or a key held as data: a `var`, or a key-type field of a
+                // record (area 19; chunk P9).
+                if self.holds_key_as_data(&value)
+                    && self
+                        .table
+                        .base_prim(&given)
+                        .is_some_and(|prim| prim.is_key())
+                {
+                    self.held_key_argument(&value, &given, written, key);
+                } else if !given.has_error() {
+                    self.key_argument(&value, written, key);
                 }
-                self.key_argument(&value, written, key);
                 continue;
             }
             if kind == Some(jadpo_std::Kind::Range) {
@@ -1348,6 +1362,12 @@ impl Body<'_> {
                     }
                     contract = Some((given, entry));
                 }
+                continue;
+            }
+            if kind == Some(jadpo_std::Kind::Type)
+                && table.is_some_and(|table| table.op == jadpo_std::Op::CryptoNewKey)
+            {
+                new_key_as = self.key_type_argument(&value, written);
                 continue;
             }
             if kind == Some(jadpo_std::Kind::Type)
@@ -1573,6 +1593,9 @@ impl Body<'_> {
         }
         if table.is_some_and(|table| table.op == jadpo_std::Op::JsonRead) {
             return self.json_read_result(call, read_as);
+        }
+        if table.is_some_and(|table| table.op == jadpo_std::Op::CryptoNewKey) {
+            return self.new_key_result(call, new_key_as);
         }
         if table.is_some_and(|table| table.op == jadpo_std::Op::CryptoVerifyJwt)
             && let Some(claims) = claims_as
@@ -2784,12 +2807,13 @@ impl Body<'_> {
                 )
                 .at(span, "a key made in code")
                 .reason(format!(
-                    "{} `{}` is a secret that comes only from its setting, so it never lands in the source, a log or the database; code never holds one, and gives the setting, `config.<name>`, only where the compiler owns the place, such as a `crypto` call's `key:`.",
+                    "{} `{}` is a secret that comes only from its setting, or from `crypto.new_key` as 32 random bytes, so it never lands in the source or a log, and in the database only sealed; code never builds one from a value it can see, and gives it only where the compiler owns the place, such as a `crypto` call's `key:`.",
                     if key.name().starts_with('E') { "An" } else { "A" },
                     key.name()
                 ))
                 .next(format!(
-                    "Declare `<name>: {}` in `config.jadpo`, and give `config.<name>` where the key is needed, such as a `crypto` call's `key:`",
+                    "Declare `<name>: {}` in `config.jadpo` and give `config.<name>` where the key is needed, such as a `crypto` call's `key:`, or make one with `crypto.new_key(as: {})` in an action",
+                    key.name(),
                     key.name()
                 )),
             );
@@ -3012,7 +3036,8 @@ impl Body<'_> {
             )
             .at(span, "not `config.<name>`")
             .reason(format!(
-                "A key is opaque and comes only from its setting, so a `crypto` call's key is written `key: config.<name>`, reading a `{}` setting, the one place code gives a key; no other value holds one.",
+                "A key is opaque and comes only from its setting or from a field that holds one, so a `crypto` call's key is written `key: config.<name>`, reading a `{}` setting, `key: <record>.<field>`, or a `var` holding `crypto.new_key(as: {})`; no other value holds one.",
+                key.name(),
                 key.name()
             ))
             .next(format!(

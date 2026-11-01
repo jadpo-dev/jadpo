@@ -69,6 +69,18 @@ impl Reader<'_> {
                 continue;
             };
             let written = format!("{}.{}", entity.name, field.name);
+            // Only the application can open a sealed field (area 15; chunk
+            // P9).
+            if field.sealed.is_some() {
+                self.out.push(crate::data::sealed::used(
+                    &entity.name,
+                    &field.name,
+                    "A query's `order:`",
+                    item_span.clone(),
+                    "Sort by another field".to_string(),
+                ));
+                continue;
+            }
             if let Some(at) = out.iter().position(|o| o.field == field.name) {
                 self.out.push(
                     Diagnostic::new(

@@ -107,8 +107,8 @@ pub enum Decoded {
     Flag(Option<u32>),
     /// A `crypto` call's `key:` (area 19, chunk 10.3d): where the key
     /// comes from, decided here once so neither executor tells it by the
-    /// site's node; `None` for anything but a key setting or a field that
-    /// holds a key, which the checker rules out.
+    /// site's node; `None` for anything but a key setting, or a field or a
+    /// `var` that holds a key, which the checker rules out.
     Key(Option<KeySource>),
     /// `*` or `/` of an amount of money by a number: how the result is
     /// rounded to a whole minor unit, the amount's type's `rounding:`
@@ -157,10 +157,12 @@ pub enum KeySource {
     /// number, as the program started with it.
     Setting(u32),
     /// `key: device.signing_key`: the key the field `name` of the value
-    /// the site's receiver works out to holds, read as any field is. Only
-    /// an encrypted field will hold one, and those aren't built yet (the
-    /// roadmap's chunk P9).
+    /// the site's receiver works out to holds, read as any field is. A
+    /// record's key-type field holds one, kept sealed (area 19; chunk P9).
     Field { name: String },
+    /// `key: made`: the key a `var` holds, read as any local is, which it
+    /// has from `crypto.new_key` or a record's key-type field (chunk P9).
+    Local,
 }
 
 /// A `batches.each` call as its site decodes it, before the plan numbers
@@ -784,6 +786,14 @@ impl Decoder<'_> {
                 Some(KeySource::Field {
                     name: self.types.field_name(field).to_string(),
                 })
+            }
+            Node::Expr(Expr::Local(_))
+                if self
+                    .types
+                    .chain(&site.ty)
+                    .is_some_and(|(builtin, _)| builtin.is_key()) =>
+            {
+                Some(KeySource::Local)
             }
             _ => None,
         }

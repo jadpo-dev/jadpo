@@ -12,6 +12,9 @@
 //!   WHEN <supplied> THEN <value> ELSE <column> END`, so a field left out
 //!   keeps its value and the text never changes.
 //! - A delete removes the record.
+//! - A sealed field's value goes as bytes sealed with the application's
+//!   field key, bound to its column and its record's `id` (area 15,
+//!   "Encrypted fields"; chunk P9).
 //!
 //! Each write lists the constraints a refusal can name: each `conflict:`
 //! arm's rule, and each reference it writes, which names a record that
@@ -208,7 +211,12 @@ impl Planner<'_> {
                     // A compound type goes into its several columns (area
                     // 19).
                     let json = self.json_codec(entity_model, field);
-                    let parts = field_columns(&mut writing, entity_model, field, &source, json)?;
+                    // A sealed value is bound to the new record's `id`.
+                    let sealed = self
+                        .sealed_form(entity_model, field)
+                        .map(|form| (form, WriteSource::NewId));
+                    let parts =
+                        field_columns(&mut writing, entity_model, field, &source, json, sealed)?;
                     let first = parts.first().map(|(_, value)| value.clone())?;
                     for (column, value) in parts {
                         names.push(column);
@@ -359,12 +367,16 @@ impl Planner<'_> {
                                 ));
                             }
                             let json = self.json_codec(entity_model, field);
+                            let sealed = self
+                                .sealed_form(entity_model, field)
+                                .map(|form| (form, id_source.clone()));
                             field_columns(
                                 &mut writing,
                                 entity_model,
                                 field,
                                 &WriteSource::Input(input),
                                 json,
+                                sealed,
                             )?
                         };
                         let first = parts
@@ -403,6 +415,9 @@ impl Planner<'_> {
                                 SqlType::Bool,
                             );
                             let json = self.json_codec(entity_model, field);
+                            let sealed = self
+                                .sealed_form(entity_model, field)
+                                .map(|form| (form, id_source.clone()));
                             let parts = field_columns(
                                 &mut writing,
                                 entity_model,
@@ -412,6 +427,7 @@ impl Planner<'_> {
                                     field: name.clone(),
                                 },
                                 json,
+                                sealed,
                             )?;
                             let _ = ty;
                             let (first_column, first) = parts.first().cloned()?;
@@ -470,12 +486,16 @@ impl Planner<'_> {
                                 }
                                 let _ = ty;
                                 let json = self.json_codec(entity_model, field);
+                                let sealed = self
+                                    .sealed_form(entity_model, field)
+                                    .map(|form| (form, id_source.clone()));
                                 let parts = field_columns(
                                     &mut writing,
                                     entity_model,
                                     field,
                                     &WriteSource::Input(at),
                                     json,
+                                    sealed,
                                 )?;
                                 let (first_column, first) = parts.first().cloned()?;
                                 for (column, value) in &parts {
@@ -1153,8 +1173,11 @@ impl Planner<'_> {
             // Every stored field is read back, held to its rules (chunk
             // 5.9d); a JSON-held one by its codec.
             held.push(
-                (!matches!(column, jadpo_std::read::Column::Json(_)))
-                    .then(|| self.held_field(entity, field)),
+                (!matches!(
+                    column,
+                    jadpo_std::read::Column::Json(_) | jadpo_std::read::Column::Sealed { .. }
+                ))
+                .then(|| self.held_field(entity, field)),
             );
             columns.push(column);
             for _ in 1..parts {
@@ -1162,6 +1185,18 @@ impl Planner<'_> {
                 held.push(None);
             }
             fields.push((field.name.clone(), Field::Column(at)));
+        }
+        // A sealed value is opened for its own record (chunk P9).
+        let id = fields
+            .iter()
+            .find_map(|(name, field)| match (name.as_str(), field) {
+                ("id", Field::Column(at)) => Some(*at),
+                _ => None,
+            });
+        for column in &mut columns {
+            if let jadpo_std::read::Column::Sealed { id: at, .. } = column {
+                *at = id?;
+            }
         }
         Some(Returned {
             columns,
@@ -1203,15 +1238,26 @@ fn returning(entity: &EntityModel) -> Vec<String> {
 
 /// The columns `field` is written to with the value from `source`, each
 /// with its value as SQL: one, or each of a compound type's (`Money`'s
-/// minor units and currency code, area 19).
+/// minor units and currency code, area 19). A sealed field's `sealed` is
+/// how its bytes read and where its record's `id` comes from.
 fn field_columns(
     writing: &mut Writing,
     entity: &EntityModel,
     field: &jadpo_check::data::FieldModel,
     source: &WriteSource,
     json: Option<u32>,
+    sealed: Option<(jadpo_std::read::SealedForm, WriteSource)>,
 ) -> Option<Vec<(String, String)>> {
     let ty = column_type(field)?.param();
+    if let Some((form, id)) = sealed {
+        let source = WriteSource::Sealed {
+            of: Box::new(source.clone()),
+            form,
+            bound: crate::queries::sealed_bound(entity, field),
+            id: Box::new(id),
+        };
+        return Some(vec![(field.born.clone(), writing.param(source, ty))]);
+    }
     // A `File` it sets is held to the field's settings before the
     // statement runs (area 16, "What a write checks"; chunk B1).
     if let Some(file) = &field.file {

@@ -94,7 +94,7 @@ Production
 
 Set up
   new           Start a project
-  config        Check and set local settings  check, move, set
+  config        Check and set local settings
   completions   Turn on Tab completion        zsh, bash, fish
   toolchain     Manage Jadpo releases         list, remove, pin, unpin
   lsp           Run the language server for editors
@@ -175,7 +175,7 @@ Production
 
 Set up
   new           Start a project
-  config        Check and set local settings  check · move · set
+  config        Check and set local settings
   completions   Turn on Tab completion        zsh · bash · fish
   toolchain     Manage Jadpo releases         list · remove · pin · unpin
   lsp           Run the language server for editors

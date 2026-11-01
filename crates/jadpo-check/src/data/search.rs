@@ -182,6 +182,19 @@ pub(super) fn read(
                             problems = true;
                             continue;
                         }
+                        // Only the application can open a sealed field
+                        // (area 15; chunk P9).
+                        if field.sealed.is_some() {
+                            out.push(crate::data::sealed::used(
+                                name,
+                                &field.name,
+                                "A search",
+                                span,
+                                format!("Remove `{field_name}` from `fields:`"),
+                            ));
+                            problems = true;
+                            continue;
+                        }
                         let ty = Ty::Field(name.clone(), vec![field.name.clone()]);
                         let text = field.sql_type.as_deref() == Some("text")
                             && field.json.is_none()

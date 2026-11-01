@@ -489,7 +489,9 @@ fn crypto(
     // seals with a nonce production used under the same key (chunk 5.8a);
     // a password's salt is the invocation's random bytes, as `random`'s
     // are.
-    let secret = op == Op::CryptoEncrypt;
+    // A new key's bytes are secret too, so no recording's tape ever holds a
+    // key unsealed (chunk P9).
+    let secret = matches!(op, Op::CryptoEncrypt | Op::CryptoNewKey);
     let made = jadpo_value::crypto::run(
         op,
         values,
