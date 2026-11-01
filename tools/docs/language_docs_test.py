@@ -1089,5 +1089,41 @@ class TypeReference(unittest.TestCase):
         self.assertTrue(any('`Money` is listed under' in p for p in moved), moved)
 
 
+class ReleaseLine(unittest.TestCase):
+    """No page names the running release (docs/writing.md, "The release
+    line"), so moving the version on breaks none."""
+
+    def setUp(self):
+        self.running, docs._running = docs._running, ('0.3', '0.3.0')
+
+    def tearDown(self):
+        docs._running = self.running
+
+    def test_output_shows_the_running_line_and_release_as_placeholders(self):
+        out = 'Created todo-app\n    jadpo  0.3\n    route  POST /hello\njadpo 0.3.0\n2 |     jadpo: "0.3"\n'
+        self.assertEqual(docs.normalised(out),
+                         'Created todo-app\n    jadpo  X.Y\n    route  POST /hello\njadpo X.Y.Z\n'
+                         '2 |     jadpo: "X.Y"\n')
+
+    def test_other_lines_and_numbers_are_left_as_they_are(self):
+        out = '    jadpo  0.2\nThis project needs Jadpo 99.0\n    jadpo: "0.0"\ntotal * 0.3\n'
+        self.assertEqual(docs.normalised(out), out)
+
+    def test_a_check_block_compiles_the_placeholder_as_the_running_line(self):
+        self.assertEqual(docs.with_release_line('application {\n    jadpo: "X.Y"\n}\n'),
+                         'application {\n    jadpo: "0.3"\n}\n')
+        self.assertEqual(docs.with_release_line('application {}\n'), 'application {}\n')
+
+    def test_a_page_naming_the_running_line_or_release_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            page = root / 'page.md'
+            page.write_text('as `application { jadpo: "0.3" }`\n```text\n    jadpo  0.3\njadpo 0.3.0\n```\n'
+                            'Fetching Jadpo 0.3.2, `jadpo: "X.Y"`, `jadpo: "99.0"`\n')
+            problems = docs.check_release_line([page], '0.3', '0.3.0', root)
+        self.assertEqual([p.split(': ')[0] for p in problems], ['page.md:1', 'page.md:3', 'page.md:4'], problems)
+        self.assertIn('write `as `application { jadpo: "X.Y" }``', problems[0])
+
+
 if __name__ == '__main__':
     unittest.main()

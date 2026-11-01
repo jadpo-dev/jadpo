@@ -9,6 +9,7 @@ here, so this script stays the single gate that CI and every session run
   python3 tools/verify.py --profile quick  # without live PostgreSQL, compiled code or the wasm32 steps
   python3 tools/verify.py --group lint     # one CI job's share (repeatable)
   python3 tools/verify.py --group compiled # the differential run alone
+  python3 tools/verify.py --group release  # the next release rehearsed
   python3 tools/verify.py --require-examples  # fail on a feature no example uses
   python3 tools/verify.py --group compiled --fuzz 2000 --fuzz-seed 7  # a longer fuzzed run
 
@@ -42,7 +43,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WASM = 'wasm32-unknown-unknown'
 # The CI jobs a step belongs to (.github/workflows/validation.yml).
-GROUPS = ('lint', 'docs', 'tests', 'compiled', 'wasm32')
+GROUPS = ('lint', 'docs', 'tests', 'compiled', 'wasm32', 'release')
 # Each test binary is a process of its own and runs its tests on threads;
 # this many run at once.
 JOBS = os.cpu_count() or 4
@@ -381,6 +382,12 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
         # catalogue that check reads from the source agreeing with
         # `jadpo help --json`.
         Step('commit type check', 'lint', [python, 'tools/checks/commit_type_test.py']),
+        # The files that repeat the version (Cargo.lock's workspace crates,
+        # the extension's package-lock.json) are at Cargo.toml's, and the
+        # release tools' own tests (tools/release/).
+        Step('files repeating the version in step with it', 'lint',
+             [python, 'tools/release/versions.py', '--check']),
+        Step('release tools', 'lint', [python, 'tools/release/release_test.py']),
         Step('commit type check reads the catalogue jadpo lists', 'docs',
              [python, 'tools/checks/commit_type.py', '--catalogue'], jadpo=True),
         # The maths on `Decimal`'s reference values are what their
@@ -484,6 +491,14 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
         # host's deployable example built without the runtime's `testing`
         # feature, its symbols naming none of the fakes, recordings or crash
         # points.
+        # The next release rehearsed (docs/documentation.md, "Versions and
+        # releases"): a copy of the checkout at the next minor version, its
+        # lock files brought into step as release-please.yml does it, must
+        # build `jadpo` with --locked and pass the docs check and the
+        # teaching examples. It builds in the gate's build folder, so it
+        # runs after everything else, by itself.
+        checks.append(Step('the next release rehearsed: --locked build, docs and examples', 'release',
+                           [python, 'tools/release/rehearsal.py'], alone=True, show=True))
         checks.append(Step('a deployable built without testing', 'tests',
                            [python, 'tools/checks/deployable.py'], lane='cargo'))
         checks.append(Step('golden todo: all 44 workerd cases', 'wasm32',

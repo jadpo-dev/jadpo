@@ -11,9 +11,7 @@ A `jadpo declines` command names no action, one it doesn't have, or a rule or pa
 The rule given to `--rule` is misspelt:
 
 ```jadpo check project=e-declines-arguments file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-declines-arguments expect=cli.declines_arguments

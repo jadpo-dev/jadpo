@@ -44,6 +44,52 @@ jobs:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+      # release-please writes the version into Cargo.toml and package.json
+      # alone, so on its own the release pull request's Cargo.lock is a
+      # version behind and every `--locked` job fails. tools/release/
+      # versions.py brings the files that repeat the version into step on
+      # the pull request's branch, as the `release` job of validation.yml
+      # rehearses on every pull request, and pushes them with
+      # RELEASE_PLEASE_TOKEN, so CI runs on the result. It runs on every
+      # push while the pull request is open, since release-please rewrites
+      # the branch each time, and does nothing when the files are in step.
+      - id: pull-request
+        name: Find the release pull request
+        if: steps.release.outputs.release_created != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch="$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --label 'autorelease: pending' \
+            --json headRefName --jq '.[0].headRefName // empty')"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+      - if: steps.pull-request.outputs.branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.pull-request.outputs.branch }}
+          persist-credentials: false
+      - if: steps.pull-request.outputs.branch
+        name: Install the pinned Rust toolchain
+        run: |
+          channel="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
+          rustup toolchain install "$channel" --profile minimal
+      - if: steps.pull-request.outputs.branch
+        name: Bring the lock files to the release's version
+        env:
+          BRANCH: ${{ steps.pull-request.outputs.branch }}
+          TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          python3 tools/release/versions.py
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit --quiet --all --message 'chore: bring the lock files to the release'"'"'s version'
+          # The token reaches git for this push alone, never the checkout.
+          auth="$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
+            push origin "HEAD:refs/heads/$BRANCH"
 
   # The docs bundle of the tagged commit, attached to its release while it
   # is still a draft (docs/documentation.md, "The bundle").

@@ -11,9 +11,7 @@ A `jadpo why` command names no schedule, one the project doesn't declare, or mor
 A project with no schedules:
 
 ```jadpo check project=e-why-arguments file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-why-arguments expect=cli.why_arguments
