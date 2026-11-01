@@ -493,7 +493,7 @@ type SignedName = Text {
 }
 ```
 
-```jadpo check project=erasure file=domains/accounts/entities/postcard.jadpo
+```jadpo check project=erasure file=domains/accounts/entities/postcard.jadpo migrate=postcards
 // domains/accounts/entities/postcard.jadpo
 use accounts/entities { User }
 use accounts/types { CardText, SignedName }
