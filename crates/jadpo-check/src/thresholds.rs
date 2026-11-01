@@ -675,7 +675,9 @@ impl<'a> Reader<'a> {
             if word == "within" {
                 within = Some(value_at.clone());
                 match duration(&option) {
-                    Some(ms) if ms.is_multiple_of(MINUTE_MS) && (MINUTE_MS..=DAY_MS).contains(&ms) => {
+                    Some(ms)
+                        if ms.is_multiple_of(MINUTE_MS) && (MINUTE_MS..=DAY_MS).contains(&ms) =>
+                    {
                         read.written.within_ms = Some(ms);
                     }
                     _ => {
