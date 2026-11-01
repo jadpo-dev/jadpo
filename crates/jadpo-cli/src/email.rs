@@ -579,12 +579,27 @@ fn open(mail: &Mail, wanted: &str, environment: &jadpo_term::Environment) -> Rep
         ));
     }
     if let Err(error) = start_browser(link, environment) {
+        let set = browser_var(environment).is_some();
+        let (program, _) = opener(link, browser_var(environment), System::current());
+        let who = if set {
+            format!("`BROWSER` names `{program}` as the browser")
+        } else {
+            format!("`BROWSER` isn't set, so the system's `{program}` opens links")
+        };
+        let why = match error.kind() {
+            std::io::ErrorKind::NotFound => "there's no program of that name".to_string(),
+            std::io::ErrorKind::PermissionDenied => "this user may not run it".to_string(),
+            _ => format!("starting it failed: {error}"),
+        };
         return Reply::failed(
-            Diagnostic::new(&rule::CLI_EMAIL_ARGUMENTS, "The browser couldn't be opened")
-                .reason(format!("Starting it failed: {error}."))
-                .next(format!(
-                    "Set `BROWSER` to your browser's command, or open `{link}` yourself"
-                )),
+            Diagnostic::new(
+                &rule::EMAIL_BROWSER_FAILED,
+                "The browser couldn't be started",
+            )
+            .reason(format!("{who}, and {why}."))
+            .next(format!(
+                "Set `BROWSER` to your browser's command, or open `{link}` yourself"
+            )),
         );
     }
     let screen = Screen::new().with(Block::Status {
@@ -605,18 +620,7 @@ fn open(mail: &Mail, wanted: &str, environment: &jadpo_term::Environment) -> Rep
 /// Starts the browser on `link`: `$BROWSER` when set, else the system's
 /// opener. It isn't waited for.
 fn start_browser(link: &str, environment: &jadpo_term::Environment) -> std::io::Result<()> {
-    let browser = environment
-        .var("BROWSER")
-        .filter(|value| !value.is_empty())
-        .map(str::to_string);
-    let system = if cfg!(target_os = "macos") {
-        System::Mac
-    } else if cfg!(windows) {
-        System::Windows
-    } else {
-        System::Other
-    };
-    let (program, args) = opener(link, browser, system);
+    let (program, args) = opener(link, browser_var(environment), System::current());
     std::process::Command::new(program)
         .args(args)
         .stdin(std::process::Stdio::null())
@@ -626,12 +630,33 @@ fn start_browser(link: &str, environment: &jadpo_term::Environment) -> std::io::
         .map(|_| ())
 }
 
+/// `$BROWSER`, when it is set to something.
+fn browser_var(environment: &jadpo_term::Environment) -> Option<String> {
+    environment
+        .var("BROWSER")
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
 /// The operating systems whose openers differ.
 #[derive(Clone, Copy, Debug)]
 enum System {
     Mac,
     Windows,
     Other,
+}
+
+impl System {
+    /// The one this `jadpo` was built for.
+    fn current() -> System {
+        if cfg!(target_os = "macos") {
+            System::Mac
+        } else if cfg!(windows) {
+            System::Windows
+        } else {
+            System::Other
+        }
+    }
 }
 
 /// The program that opens `link`, and its arguments: `browser` when set,

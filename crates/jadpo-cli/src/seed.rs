@@ -140,10 +140,14 @@ pub fn seed(call: &Call) -> Reply {
                 .with(Block::summary(
                     Shown::Failure,
                     "seed failed",
-                    [
-                        Fact::plain(format!("`{name}`")),
-                        Fact::plain(crate::schedules::duration(ms)),
-                    ],
+                    // Its time only when it is slow, as `jadpo check` gives it.
+                    [Fact::plain(
+                        if started.elapsed() >= crate::check::SHOW_TIME_FROM {
+                            format!("`{name}` in {:.1} s", started.elapsed().as_secs_f64())
+                        } else {
+                            format!("`{name}`")
+                        },
+                    )],
                 ));
             Reply::Report {
                 screen,

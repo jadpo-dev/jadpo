@@ -451,12 +451,7 @@ fn conformed(call: &Call) -> Reply {
             package: &filled,
             recordings: scratch
                 .0
-                .join(format!(
-                    "{}/{}/{}",
-                    jadpo_db::PACKAGES,
-                    home.name,
-                    home.version
-                ))
+                .join(mount(&home))
                 .join(jadpo_runtime::recorded::FOLDER),
         },
         against: &against,
@@ -621,6 +616,18 @@ fn live_target(
 /// Writes the suite's app in `root`: the package in `packages/` as the
 /// app installed it, locked to its digest there, its connection, `ai:`,
 /// and the domain whose actions ask each case.
+/// Where the suite's app holds the package. The app's own package, in
+/// `shared/providers/`, is the suite's app's own too, with no lock line:
+/// as an installed copy it would answer to an installed package's rules,
+/// such as being proprietary only when installed from git.
+fn mount(home: &jadpo_db::PackageHome) -> String {
+    if home.installed {
+        format!("{}/{}/{}", jadpo_db::PACKAGES, home.name, home.version)
+    } else {
+        home.folder.clone()
+    }
+}
+
 fn place(
     root: &Path,
     source: &Path,
@@ -628,7 +635,8 @@ fn place(
     locked: Option<&jadpo_db::Locked>,
     suite: &Suite<'_>,
 ) -> Result<(), String> {
-    let mount = format!("{}/{}/{}", jadpo_db::PACKAGES, home.name, home.version);
+    let own = !home.installed;
+    let mount = mount(home);
     let write = |path: &str, text: &str| -> Result<(), String> {
         let path = root.join(path);
         if let Some(parent) = path.parent() {
@@ -645,6 +653,9 @@ fn place(
     }
     for (path, text) in sources(suite) {
         write(&path, &text)?;
+    }
+    if own {
+        return Ok(());
     }
     // Locked to the digest of the files copied, as `jadpo package add`
     // locks them.
@@ -1270,11 +1281,14 @@ impl Run<'_> {
     /// The tokens the typed answer says it used, read as `usage:` says.
     fn usage(&self, answer: Option<&str>) -> Case {
         const NAME: &str = "usage";
+        // Usage is read from the typed answer's case, whose own failure
+        // says what to fix first.
         let Some(answer) = answer else {
-            return self.misread(
+            return self.failed(
                 NAME,
                 "no answer to read".into(),
                 "The typed answer's case got no answer, so there is no usage to read.".into(),
+                "Fix the typed answer's case first, then run it again (agent)".into(),
             );
         };
         let Some(ai) = self.program.ai() else {
