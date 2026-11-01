@@ -11,7 +11,8 @@
 //! service keys, running `generated exchange`, written `generated`; so are
 //! the routes passkeys bring (`generated passkey sign-in` and the rest), in
 //! the first API that accepts browser sessions, and each API's own OpenAPI
-//! document (`generated openapi`, area 7). Each connection's webhooks are
+//! document (`generated openapi`, area 7), and its flags while a flag has
+//! `client: true` (`generated flags`, area 16). Each connection's webhooks are
 //! listed in the `webhooks` API, running `generated webhook` with
 //! `signature` as their authentication (chunk 7.7), the API shown at
 //! `/webhooks` when the app declares none.
@@ -156,6 +157,28 @@ pub fn routes(call: &Call) -> Reply {
                 method: "GET".to_string(),
                 path: served.path(),
                 runs: "generated openapi".to_string(),
+                authentication: if served.authentication.needs_caller() {
+                    "required"
+                } else {
+                    "none"
+                },
+                file: String::new(),
+                line: 0,
+                place: "generated".to_string(),
+            });
+        }
+        lines.sort_by(|a, b| (&a.api, &a.path, &a.method).cmp(&(&b.api, &b.path, &b.method)));
+    }
+    // Each API's flags while a flag has `client: true` (area 16; chunk
+    // B10).
+    let flags = jadpo_check::routes::served::flags_served(db, project);
+    if !flags.is_empty() {
+        for served in flags {
+            lines.push(Line {
+                api: served.api.clone(),
+                method: "GET".to_string(),
+                path: served.path(),
+                runs: "generated flags".to_string(),
                 authentication: if served.authentication.needs_caller() {
                     "required"
                 } else {

@@ -1011,6 +1011,12 @@ async fn run_route(
         }
         // Each API's own OpenAPI document (area 7, "OpenAPI"), as it is.
         (None, Run::OpenApi(document)) => openapi(request, request_id, document),
+        // Each `client: true` flag, worked out for the caller (area 16,
+        // "Flags in browsers and apps"; chunk B10).
+        (None, Run::Flags(numbers)) => {
+            ctx.set_caller(caller.clone());
+            client_flags(ctx, request, request_id, numbers)
+        }
         (None, _) => {
             run_with_caller(
                 app,
@@ -1059,6 +1065,62 @@ fn exchange(request: &Request, request_id: &str, (token, expires): (String, i64)
     match jadpo_value::standard::entry_of(&expires) {
         Some(entry) => jadpo_value::standard::json::write(entry, &expires, &mut body),
         None => body.push_str("null"),
+    }
+    body.push('}');
+    Response {
+        status: 200,
+        headers: vec![
+            ("content-type".to_string(), "application/json".to_string()),
+            ("cache-control".to_string(), "no-store".to_string()),
+        ],
+        body: body.into_bytes(),
+        ..Response::default()
+    }
+}
+
+/// `GET <prefix>/flags`'s answer (area 16, "Flags in browsers and apps";
+/// chunk B10): a JSON object of each flag numbered in `numbers` by name,
+/// a `Bool` as `true` or `false` and an enum as its variant's name, worked
+/// out for the caller as an action's read is. Like any route that takes no
+/// input, it refuses a query string or a body.
+fn client_flags(
+    ctx: &mut Ctx<'_>,
+    request: &Request,
+    request_id: &str,
+    numbers: &[u32],
+) -> Response {
+    if request
+        .query
+        .as_deref()
+        .is_some_and(|query| !query.is_empty())
+        || !request.body.iter().all(u8::is_ascii_whitespace)
+    {
+        return invalid_input(
+            request_id,
+            &[Problem {
+                field: String::new(),
+                rule: "unknown_field".to_string(),
+            }],
+        );
+    }
+    let mut body = String::from("{");
+    for &at in numbers {
+        let Some(name) = ctx.started().flags().flag(at).map(|flag| flag.name.clone()) else {
+            continue;
+        };
+        let Some(value) = ctx.flag(at) else {
+            continue;
+        };
+        if body.len() > 1 {
+            body.push(',');
+        }
+        write_string(&name, &mut body);
+        body.push(':');
+        match value {
+            jadpo_value::Value::Bool(on) => body.push_str(if on { "true" } else { "false" }),
+            jadpo_value::Value::Variant(variant) => write_string(&variant.name, &mut body),
+            _ => body.push_str("null"),
+        }
     }
     body.push('}');
     Response {
@@ -1280,7 +1342,8 @@ async fn run_with_caller(
                 | Run::Passkey(_)
                 | Run::MagicLink(_)
                 | Run::Provider(..)
-                | Run::OpenApi(_) => Outcome::Fault(ctx.fault(
+                | Run::OpenApi(_)
+                | Run::Flags(_) => Outcome::Fault(ctx.fault(
                     crate::FaultKind::Defect("an exchange with no key to trade".into()),
                     Frame::ENTRY,
                 )),

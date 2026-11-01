@@ -73,6 +73,57 @@ pub fn served(db: &dyn Db, project: Project) -> Vec<Served> {
         .collect()
 }
 
+/// Each API's generated `GET <prefix>/flags` while a flag has `client:
+/// true` (area 16, "Flags in browsers and apps"; chunk B10): every API
+/// with routes of its own or sign-in's, authenticated as its routes are,
+/// in API name order.
+pub fn flags_served(db: &dyn Db, project: Project) -> Vec<Served> {
+    if !crate::flags::flags(db, project)
+        .flags
+        .iter()
+        .any(|flag| flag.client)
+    {
+        return Vec::new();
+    }
+    let apis = super::api_table(db, project);
+    let groups = super::groups(db, project);
+    let identity = crate::identity::identity(db, project);
+    let sign_in = sign_in_api(db, project);
+    apis.apis
+        .iter()
+        .filter(|api| {
+            sign_in.as_deref() == Some(api.name.as_str())
+                || groups.routes().any(|(group, _)| group.api == api.name)
+        })
+        .map(|api| {
+            let signs_in = super::apis::accepted_methods(db, project, &api.name)
+                .into_iter()
+                .any(|method| identity.built(method));
+            Served {
+                api: api.name.clone(),
+                segments: api
+                    .prefix
+                    .iter()
+                    .cloned()
+                    .chain([jadpo_std::http::FLAGS_PATH.to_string()])
+                    .collect(),
+                authentication: if signs_in {
+                    Authentication::Required
+                } else {
+                    Authentication::Public
+                },
+            }
+        })
+        .collect()
+}
+
+/// API `api`'s generated `GET <prefix>/flags`, if it has one.
+pub fn flags_served_by(db: &dyn Db, project: Project, api: &str) -> Option<Served> {
+    flags_served(db, project)
+        .into_iter()
+        .find(|served| served.api == api)
+}
+
 /// API `api`'s served document, if it serves one.
 pub fn served_by(db: &dyn Db, project: Project, api: &str) -> Option<Served> {
     served(db, project)
