@@ -236,7 +236,7 @@ pub(crate) fn mark_refused(span: Span, field: &Ty) -> Diagnostic {
     )
     .at(span, "unknown setting")
     .reason(format!(
-        "`personal:` marks a field of an entity, an event, an email or a package's own type, where Jadpo keeps or sends its value. `{host}` is none of these: a value in it is followed back to the marked field it came from, so it needs no mark of its own."
+        "`personal:` marks a field of an entity, an event or an email, or of an object, input or output a package declares, where Jadpo keeps or sends its value. `{host}` is none of these: a value in it is followed back to the marked field it came from, so it needs no mark of its own."
     ))
     .next(format!("Remove `{PERSONAL}`, and mark the field its value is read from"))
 }
@@ -479,8 +479,10 @@ pub fn deep(
                 Some(Def::Scalar { parent, .. }) => deep(lookup, marks, parent, out, seen),
                 Some(Def::Fields { base, fields, .. }) => {
                     for field in fields {
-                        if (matches!(base, FieldsBase::Entity | FieldsBase::Event)
-                            || marks.is_packaged(name))
+                        if (matches!(
+                            base,
+                            FieldsBase::Entity | FieldsBase::Event | FieldsBase::EmailMessage
+                        ) || marks.is_packaged(name))
                             && let Some(holding) = own_mark(marks, name, &field.name)
                         {
                             out.entry(Holder::Field {

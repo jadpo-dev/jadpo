@@ -138,6 +138,44 @@ fn a_project_with_errors_keeps_no_report() {
     assert!(!root.join("build/report/personal-data.json").exists());
 }
 
+/// What only decided what was sent says so, and a store on the server's own
+/// disk is told apart from a connection whose hosts aren't known.
+#[test]
+fn the_report_says_how_each_value_goes_and_where() {
+    let root = project("personal-report-how", "user.plan");
+    write(
+        &root,
+        "app.jadpo",
+        "application {\n    connections: {\n        main: {\n            driver: Driver.postgres\n        }\n        papers: {\n            driver: Driver.disk\n            path: \"/var/lib/papers\"\n        }\n        pay: {\n            package: AcmePay.v1\n            domains: [billing]\n            credential: config.pay_api_key\n            environment: config.pay_environment\n        }\n    }\n}\n",
+    );
+    write(
+        &root,
+        SEND,
+        "use app { pay }\nuse billing/entities { User, UserNotFound }\nuse shared/providers/acme_pay\n\n/// Sends a user to Acme Pay.\naction send(user_id: User.id) fails UserNotFound -> AcmePay.CustomerReply {\n    var user: User = attempt User.get(user_id)\n    if (user.display_name == \"x\") {\n        return pay.customers.create(AcmePay.CustomerRequest {\n            name: \"a\"\n            notes: \"b\"\n        })\n    }\n    return pay.customers.create(AcmePay.CustomerRequest {\n        name: \"c\"\n        notes: \"d\"\n    })\n}\n",
+    );
+    write(
+        &root,
+        "domains/billing/failures/no_room.jadpo",
+        "/// The store is full.\ntype NoRoom = Failure {\n    kind: FailureKind.unavailable\n}\n",
+    );
+    write(
+        &root,
+        "domains/billing/actions/keep.jadpo",
+        "use app { papers }\nuse billing/entities { User, UserNotFound }\nuse billing/failures { NoRoom }\n\n/// Keeps a user's name as a file.\naction keep(user_id: User.id) fails UserNotFound, NoRoom -> File {\n    var user: User = attempt User.get(user_id)\n    return attempt papers.put(encoding.to_utf8(user.display_name), FileType.csv) {\n        storage_full: NoRoom\n    }\n}\n",
+    );
+    jadpo(&root, &["records", "update"]);
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    let report = fs::read_to_string(root.join("build/report/personal-data.md")).expect("report");
+    for line in [
+        "## `papers`\n\nKeeps its files on the server's own disk, so it reaches no host.\n",
+        "| `User.display_name` | `identifying` | a file in the store | sent |",
+        "| `User.display_name` | `identifying` | operation `customers.create` | decided what was sent |",
+    ] {
+        assert!(report.contains(line), "{line}\n\n{report}");
+    }
+}
+
 /// An app that sends nothing marked says so.
 #[test]
 fn an_app_that_sends_nothing_says_so() {

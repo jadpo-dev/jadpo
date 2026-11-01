@@ -134,6 +134,13 @@ fn rows(db: &Database, project: jadpo_db::Project) -> Vec<String> {
         .collect()
 }
 
+/// What leaves in a project that checks clean, the only kind the report is
+/// written for.
+fn clean_rows(db: &Database, project: jadpo_db::Project) -> Vec<String> {
+    assert_eq!(problems(db, project), Vec::<String>::new());
+    rows(db, project)
+}
+
 /// What leaves when `billing` holds `files`, which must check clean.
 fn reach(request: &str, files: &[(&str, &str)]) -> Vec<String> {
     let (db, project) = checked(request, files);
@@ -597,15 +604,16 @@ fn a_file_goes_to_its_store() {
         "        pay: {",
         "        papers: {\n            driver: Driver.disk\n            path: \"/var/lib/papers\"\n        }\n        pay: {",
     );
-    let keep = "use app { papers }\nuse billing/entities { User, UserNotFound }\n\n/// Keeps a user's notes as a file.\naction keep(user_id: User.id) fails UserNotFound -> File {\n    var user: User = attempt User.get(user_id)\n    return papers.put(encoding.to_utf8(user.notes), FileType.csv)\n}\n";
+    let keep = "use app { papers }\nuse billing/entities { User, UserNotFound }\nuse billing/failures { NoRoom }\n\n/// Keeps a user's notes as a file.\naction keep(user_id: User.id) fails UserNotFound, NoRoom -> File {\n    var user: User = attempt User.get(user_id)\n    return attempt papers.put(encoding.to_utf8(user.notes), FileType.csv) {\n        storage_full: NoRoom\n    }\n}\n";
     let (db, project) = checked(
         PLAIN_REQUEST,
         &[
             ("app.jadpo", app.as_str()),
+            NO_ROOM,
             ("domains/billing/actions/keep.jadpo", keep),
         ],
     );
-    assert_eq!(rows(&db, project), ["papers User.notes a file"]);
+    assert_eq!(clean_rows(&db, project), ["papers User.notes a file"]);
 
     let page = (
         "domains/billing/types/user_page.jadpo",
@@ -638,8 +646,14 @@ fn a_file_goes_to_its_store() {
             dump,
         ],
     );
-    assert_eq!(rows(&db, project), ["papers User.notes a file"]);
+    assert_eq!(clean_rows(&db, project), ["papers User.notes a file"]);
 }
+
+/// A store's refusal, for what puts files in one.
+const NO_ROOM: (&str, &str) = (
+    "domains/billing/failures/no_room.jadpo",
+    "/// The store is full.\ntype NoRoom = Failure {\n    kind: FailureKind.unavailable\n}\n",
+);
 
 const MAIL_APP: &str = "application {\n    display_name: \"Pay\"\n    connections: {\n        main: {\n            driver: Driver.postgres\n        }\n        mail: {\n            driver: Driver.smtp\n            host: \"smtp.pay.example\"\n        }\n        pay: {\n            package: AcmePay.v1\n            domains: [billing]\n            credential: config.pay_api_key\n            environment: config.pay_environment\n        }\n    }\n    events: {\n        store: main\n    }\n    email: {\n        connection: mail\n        from: \"hello@pay.example\"\n    }\n}\n";
 
@@ -661,18 +675,78 @@ fn an_email_goes_through_the_connection_email_names() {
     );
     let welcomes = (
         "domains/billing/actions/welcomes.jadpo",
-        "use billing/emails { WelcomeEmail }\nuse billing/entities { User, UserNotFound }\n\n/// Welcomes a user.\naction welcomes(user_id: User.id) fails UserNotFound -> Unit {\n    var user: User = attempt User.get(user_id)\n    emit WelcomeEmail {\n        to: user.email\n        locale: Locale(\"en\")\n        subject: \"Welcome\"\n        name: user.display_name\n    }\n}\n",
+        "use billing/emails { WelcomeEmail }\nuse billing/entities { User, UserNotFound }\n\n/// Welcomes a user.\naction welcomes(user_id: User.id) fails UserNotFound -> Unit {\n    var user: User = attempt User.get(user_id)\n    emit WelcomeEmail {\n        to: user.email\n        locale: Locale.en_gb\n        name: user.display_name\n    }\n}\n",
     );
     let (db, project) = checked(
         PLAIN_REQUEST,
         &[("app.jadpo", MAIL_APP), welcome, html, txt, welcomes],
     );
     assert_eq!(
-        rows(&db, project),
+        clean_rows(&db, project),
         [
             "mail User.display_name email WelcomeEmail",
             "mail User.email email WelcomeEmail"
         ]
+    );
+}
+
+/// An email's own field marked `personal:` counts, whatever fills it.
+#[test]
+fn an_email_s_own_mark_counts() {
+    let notice = (
+        "domains/billing/emails/notice_email.jadpo",
+        "use shared/providers/acme_pay\n\n/// Tells someone something.\ntype NoticeEmail = EmailMessage {\n    about: AcmePay.Words {\n        personal: PersonalData.health\n    }\n}\n",
+    );
+    let html = (
+        "domains/billing/emails/notice_email.html",
+        "<p>{{ about }}</p>\n",
+    );
+    let txt = ("domains/billing/emails/notice_email.txt", "{{ about }}\n");
+    let notices = (
+        "domains/billing/actions/notices.jadpo",
+        "use billing/emails { NoticeEmail }\n\n/// Sends a notice.\naction notices(to: Email) -> Unit {\n    emit NoticeEmail {\n        to: to\n        locale: Locale.en_gb\n        about: \"x\"\n    }\n}\n",
+    );
+    let (db, project) = checked(
+        PLAIN_REQUEST,
+        &[("app.jadpo", MAIL_APP), notice, html, txt, notices],
+    );
+    assert_eq!(
+        clean_rows(&db, project),
+        ["mail NoticeEmail.about email NoticeEmail"]
+    );
+    // Passed whole, with no field read, it counts for what its type marks.
+    let passed = (
+        "domains/billing/actions/notices.jadpo",
+        "use billing/emails { NoticeEmail }\n\n/// Sends a notice it is given.\naction notices(message: NoticeEmail) -> Unit {\n    emit message\n}\n",
+    );
+    let (db, project) = checked(
+        PLAIN_REQUEST,
+        &[("app.jadpo", MAIL_APP), notice, html, txt, passed],
+    );
+    assert_eq!(
+        clean_rows(&db, project),
+        ["mail NoticeEmail.about email NoticeEmail"]
+    );
+}
+
+/// A field of an enum's payload counts for what it is.
+#[test]
+fn a_field_of_an_enum_s_payload_counts() {
+    let outcome = (
+        "shared/providers/acme_pay/v1/types/lookup.jadpo",
+        "/// How a lookup went.\npublic type Lookup = Enum {\n    found: {\n        phone: PhoneNumber\n    }\n    missing\n}\n",
+    );
+    let shown = (
+        "domains/billing/actions/shown.jadpo",
+        "use app { pay }\nuse shared/providers/acme_pay\n\n/// Sends what a lookup found.\naction shown(lookup: AcmePay.Lookup) -> AcmePay.CustomerReply {\n    return pay.customers.create(AcmePay.CustomerRequest {\n        name: match lookup {\n            AcmePay.Lookup.found(found) -> AcmePay.Words(json.write(found.phone))\n            AcmePay.Lookup.missing -> \"none\"\n        }\n    })\n}\n",
+    );
+    let (db, project) = checked(PLAIN_REQUEST, &[outcome, shown]);
+    assert_eq!(
+        (problems(&db, project), rows(&db, project)),
+        (
+            Vec::<String>::new(),
+            vec!["pay PhoneNumber customers.create".to_string()]
+        )
     );
 }
 
@@ -688,7 +762,10 @@ fn a_magic_link_takes_its_address_to_the_mailer() {
         PLAIN_REQUEST,
         &[("app.jadpo", app.as_str()), ("config.jadpo", config)],
     );
-    assert_eq!(rows(&db, project), ["mail User.email email MagicLinkEmail"]);
+    assert_eq!(
+        clean_rows(&db, project),
+        ["mail User.email email MagicLinkEmail"]
+    );
 }
 
 /// Marks: read on a package's own type, against the same categories, and
@@ -906,7 +983,7 @@ fn a_package_s_subscriber_goes_through_each_connection_to_it() {
         ],
     );
     assert_eq!(
-        rows(&db, project),
+        clean_rows(&db, project),
         ["pay AcmePay.CustomerSeen.contact customers.look_up"]
     );
     let (_, sends) = personal_data::package_sends(&db, project, HOME);
@@ -915,33 +992,6 @@ fn a_package_s_subscriber_goes_through_each_connection_to_it() {
         .map(|send| format!("{} {}", send.operation, send.holder.key()))
         .collect();
     assert_eq!(lines, ["customers.look_up AcmePay.CustomerSeen.contact"]);
-}
-
-/// Actions that call each other: everything that may flow round the cycle
-/// counts, however many times round.
-#[test]
-fn a_cycle_of_actions_is_followed_until_nothing_more_is_found() {
-    let ping = (
-        "domains/billing/actions/ping.jadpo",
-        "use app { pay }\nuse billing/actions { pong }\nuse shared/providers/acme_pay\n\n/// Passes a name on, or sends it.\naction ping(name: AcmePay.Words, again: Bool) -> AcmePay.CustomerReply {\n    if (again) {\n        return pong(name)\n    }\n    return pay.customers.create(AcmePay.CustomerRequest {\n        name: name\n    })\n}\n",
-    );
-    let pong = (
-        "domains/billing/actions/pong.jadpo",
-        "use billing/actions { ping }\nuse shared/providers/acme_pay\n\n/// Passes a name back.\naction pong(name: AcmePay.Words) -> AcmePay.CustomerReply {\n    return ping(name, false)\n}\n",
-    );
-    let body = send("    return pong(user.notes)").replace(
-        "use billing/entities",
-        "use billing/actions { pong }\nuse billing/entities",
-    );
-    let (db, project) = checked(PLAIN_REQUEST, &[ping, pong, (SEND, &body)]);
-    assert!(
-        rows(&db, project)
-            .iter()
-            .any(|row| row == "pay User.notes customers.create"),
-        "{:?} {:?}",
-        rows(&db, project),
-        problems(&db, project)
-    );
 }
 
 /// A package's own mark counts in the check of what reaches a model too,

@@ -95,8 +95,9 @@ you can't add categories of your own. These are the fourteen:
 "Sensitive" covers GDPR's special categories (Articles 9 and 10) and the
 extra ones CCPA/CPRA lists: government IDs and precise location.
 
-`personal:` goes on a field of an entity, an event, an email or a package's
-own type, wherever Jadpo keeps or sends the value. A provider package marks
+`personal:` goes on a field of an entity, an event or an email, or of an
+object, input or output a package declares, wherever Jadpo keeps or sends the
+value. A provider package marks
 what its API takes and gives, so an app sees what it is sending and
 receiving without reading the provider's documentation. Here the package
 says a customer's phone number is contact data, whatever the app fills it
@@ -1087,7 +1088,7 @@ This is not legal advice. A privacy professional reviews the report.
 
 | Feature | Status |
 |---|---|
-| `personal: PersonalData.<category>` on an entity's, an event's, an email's or a package's own type's field | Partly built: it is read and checked against the fourteen categories for the [AI](21-ai.md) page's check of what reaches a model and for [where personal data goes](#where-personal-data-goes), and a marked field on an entity no person reaches is `data.personal_unreachable`. On an app's own object, input or output it is `type.unknown_setting`. Not built yet: the rest of what this page says marking does. A marked field nothing reads compiles without an error, and no log or access record uses the marking. |
+| `personal: PersonalData.<category>` on an entity's, an event's or an email's field, or an object's, input's or output's a package declares | Partly built: it is read and checked against the fourteen categories for the [AI](21-ai.md) page's check of what reaches a model and for [where personal data goes](#where-personal-data-goes), and a marked field on an entity no person reaches is `data.personal_unreachable`. On an app's own object, input or output it is `type.unknown_setting`. Not built yet: the rest of what this page says marking does. A marked field nothing reads compiles without an error, and no log or access record uses the marking. |
 | `person: true` | Built: an entity marked `person: true` is a person, and every record that refers to one, directly or through a chain of references, belongs to them. The build's manifest shows each person under its entity as a `person` node, listing the references its records belong through (`through`). |
 | `retention:` on a field or an entity | Partly built. Built: the entity's hourly purge schedule clears a nullable field's value, or deletes the record with what cascades from it and the sign-in state of someone who signs in, at the first run once `since:` is longer ago than `after:`, a `Duration` setting; each problem under [Retention](#retention) is an error where it is written. The graph holds a `retention` node for each, under its field or entity, with its period and `since:`. Not built yet, each `toolchain.not_built_yet` where it is written: a `File` field's retention, and an entity's whose deletion would reach a `File` field, since nothing deletes a file's bytes yet ([Files](16-built-in-services.md#deleting-and-erasing)); an entity's whose deletion would cascade to someone who signs in, whose sign-in state only their own entity's retention deletes; and `retention:` on an event's or an email's field. |
 | `erase:` on a reference | Built: each problem under [Erasure](#erasure) and "Erasure is complete" is an error where it is written. Not built yet: `erase:` on the person's own field, which keeps their record field by field ([The person's own record](#the-persons-own-record)); it is `toolchain.not_built_yet` where it is written, and erasure deletes the whole record. |

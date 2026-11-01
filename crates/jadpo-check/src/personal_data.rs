@@ -167,7 +167,15 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
             rows.iter().filter(|row| row.connection == *name).collect();
         markdown.push_str(&format!("## `{name}`\n\n"));
         if hosts.is_empty() {
-            markdown.push_str("Reaches no outside host.\n\n");
+            // Said only of what is known to stay on the server: any other
+            // connection with no host listed isn't said to reach none.
+            let on_disk = crate::data::connections(db, project).kind(name)
+                == Some(crate::data::ConnectionKind::Files);
+            markdown.push_str(if on_disk {
+                "Keeps its files on the server's own disk, so it reaches no host.\n\n"
+            } else {
+                "The network report lists no host for it, which doesn't mean it reaches none.\n\n"
+            });
         } else {
             for row in &hosts {
                 match &row.when {
