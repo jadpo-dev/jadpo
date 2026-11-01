@@ -522,9 +522,7 @@ impl Body<'_> {
     /// the person's record and decides what happens to every record of
     /// theirs, in one statement. It takes the person's `id` and no block,
     /// needs `delete` on the person's record as policy sees it, and fails
-    /// with the person's not-found failure. An erasure reaching what isn't
-    /// built yet is refused here, where it is written, so none is ever
-    /// partial. Its type.
+    /// with the person's not-found failure. Its type.
     pub(super) fn erase(
         &mut self,
         entity: &str,
@@ -615,29 +613,6 @@ impl Body<'_> {
                 ))
                 .next(format!("Remove `{word}: ...`"))
                 .edit(removal, ""),
-            );
-        }
-        // What isn't built yet, refused where the erasure is written.
-        let unbuilt = self
-            .writes
-            .erasure(entity)
-            .map(|erasure| erasure.unbuilt.clone())
-            .unwrap_or_default();
-        if let Some(first) = unbuilt.first() {
-            let mut first = first.clone();
-            if let Some(head) = first.get(..1) {
-                first = format!("{}{}", head.to_uppercase(), &first[1..]);
-            }
-            self.out.push(
-                Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    format!("Erasing a `{entity}` here isn't built yet"),
-                )
-                .at(head_span.clone(), "decided, not built")
-                .reason(format!(
-                    "{first}, which erasure can't do yet: accepted, the app would believe a `{entity}` erased while data of theirs remains."
-                ))
-                .next(format!("Erase a `{entity}` in an action of your own for now")),
             );
         }
         let not_found = self.not_found_of(entity, head_span, &written);

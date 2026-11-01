@@ -800,9 +800,9 @@ struct Reader<'a> {
     connections: &'a Connections,
     spans: EntitySpans,
     /// Each field's `retention:` as written, read once every field is
-    /// (area 15; chunk P2): the field's name, the key's place, the block,
-    /// and whether the field is a `File`.
-    retentions: Vec<(String, Span, ast::Member, bool)>,
+    /// (area 15; chunk P2): the field's name, the key's place and the
+    /// block.
+    retentions: Vec<(String, Span, ast::Member)>,
     /// Each field marked with a sensitive category of personal data (area
     /// 15), with the category, which a search can't read yet (chunk B12).
     sensitive: Vec<(String, String)>,
@@ -1082,7 +1082,7 @@ impl Reader<'_> {
     ) {
         let lookup = self.lookup;
         let settings = |name: &str| lookup.setting(name).cloned();
-        for (field, key_span, member, file) in std::mem::take(&mut self.retentions) {
+        for (field, key_span, member) in std::mem::take(&mut self.retentions) {
             let Some(at) = entity.fields.iter().position(|f| f.name == field) else {
                 continue;
             };
@@ -1099,7 +1099,6 @@ impl Reader<'_> {
             let kept = retention::field_problems(
                 entity,
                 &entity.fields[at],
-                file,
                 &key_span,
                 lifecycle_span,
                 &mut self.out,
@@ -1699,7 +1698,7 @@ impl Reader<'_> {
                 // Read once every field is (area 15; chunk P2).
                 "retention" => {
                     self.retentions
-                        .push((name.to_string(), key_span, member.clone(), file));
+                        .push((name.to_string(), key_span, member.clone()));
                 }
                 // A `File` field's, read above (area 16).
                 "store" | "max_size" | "types" if !file => {

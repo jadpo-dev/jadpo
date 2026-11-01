@@ -10,6 +10,13 @@
 //!   to be forgotten can't be refused the way an ordinary delete is.
 //!   `Erasure.retained` keeps the record as it is, clearing only the
 //!   reference, until its own retention ends.
+//! - **Erasing one person never clears another's data** (chunk P4; area
+//!   15's notes, "Records that belong to more than one person"). A record
+//!   that belongs to several people keeps its marked fields while any
+//!   other of them remains: erasure clears only the erased person's
+//!   references, and the marked fields once none of the record's other
+//!   references leads to a person it keeps ([`Kept::through`]). Another
+//!   person's own record loses only the reference, never its fields.
 //! - **What erasing one person reaches** ([`erasures`]): the person's own
 //!   record, and every record a reference with the outcome
 //!   `Erasure.deleted` leads to from one erasure deletes, however deep;
@@ -22,12 +29,12 @@
 //!   it anonymises, and a record it keeps with `Erasure.retained` has a
 //!   `retention:` saying when it goes. An `erase:` erasure never reaches
 //!   does nothing, so it is refused.
-//! - **What isn't built yet** is refused where `User.erase` is called, so
-//!   no erasure is ever partial: one that would delete a `File`'s bytes,
-//!   or anonymise another person's own record. The person's own record
-//!   kept field by field, with `erase:` on its own fields, is refused
-//!   where that is written. Every record erasure reaches is in the
-//!   person's store, since no reference crosses stores.
+//! - **A `File`'s bytes** go with the records and fields erasure deletes
+//!   and clears, counted by area 16's trigger like any other change
+//!   (chunk B3). The person's own record kept field by field, with
+//!   `erase:` on its own fields, isn't built yet, and is refused where
+//!   that is written. Every record erasure reaches is in the person's
+//!   store, since no reference crosses stores.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -51,9 +58,6 @@ pub struct Erasure {
     /// Each entity whose records it keeps while they refer to a record it
     /// deletes, with what it clears on them.
     pub kept: Vec<Kept>,
-    /// What it would reach that isn't built yet, each as the end of a
-    /// sentence saying why: what refuses `User.erase` where it is called.
-    pub unbuilt: Vec<String>,
 }
 
 /// A reference erasure follows to records it deletes.
@@ -76,8 +80,34 @@ pub struct Kept {
     /// clears where it refers to a record erasure deletes.
     pub references: Vec<KeptReference>,
     /// The marked fields it clears on a record one of its
-    /// `Erasure.anonymised` references keeps, in field order.
+    /// `Erasure.anonymised` references keeps, in field order, once no
+    /// other person the record belongs to remains. None on another
+    /// person's own record, whose fields are that person's.
     pub clears: Vec<String>,
+    /// Each of its references that leads to a person, in field order,
+    /// with the place in [`Kept::chain`] of the entity it refers to,
+    /// when it has more than one: a record keeps its marked fields while
+    /// one of them still leads, from a record erasure keeps, to a person
+    /// it keeps. Empty when the record can belong to a person only through
+    /// one reference, which is the one erasure clears.
+    pub through: Vec<(String, usize)>,
+    /// The entities looked through for another person, from those
+    /// [`Kept::through`] refers to.
+    pub chain: Vec<Owner>,
+}
+
+/// An entity erasure looks through for another person a kept record
+/// belongs to.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Owner {
+    pub entity: String,
+    /// Whether it is a person entity: a record of it is a person, which
+    /// ends the search.
+    pub person: bool,
+    /// On an entity that isn't a person, each of its references that
+    /// leads to one, with the place in [`Kept::chain`] of the entity it
+    /// refers to.
+    pub climbs: Vec<(String, usize)>,
 }
 
 /// One reference of a kept entity.
@@ -135,6 +165,7 @@ pub fn erasures(db: &dyn Db, project: Project) -> Arc<Erasures> {
             .get(&(entity.to_string(), field.to_string()))
             .is_some_and(|mark| mark.category.is_some())
     };
+    let persons = crate::persons::persons(db, project);
     let people = model
         .entities
         .iter()
@@ -142,7 +173,7 @@ pub fn erasures(db: &dyn Db, project: Project) -> Arc<Erasures> {
         .map(|person| {
             (
                 person.name.clone(),
-                erasure_of(model, &person.name, &marked),
+                erasure_of(model, persons, &person.name, &marked),
             )
         })
         .collect();
@@ -150,7 +181,12 @@ pub fn erasures(db: &dyn Db, project: Project) -> Arc<Erasures> {
 }
 
 /// What erasing one record of `person` does.
-fn erasure_of(model: &DataModel, person: &str, marked: &dyn Fn(&str, &str) -> bool) -> Erasure {
+fn erasure_of(
+    model: &DataModel,
+    persons: &crate::persons::Persons,
+    person: &str,
+    marked: &dyn Fn(&str, &str) -> bool,
+) -> Erasure {
     let mut out = Erasure {
         deleted: vec![person.to_string()],
         ..Erasure::default()
@@ -199,64 +235,105 @@ fn erasure_of(model: &DataModel, person: &str, marked: &dyn Fn(&str, &str) -> bo
         }
         at += 1;
     }
-    for name in &out.deleted {
-        let Some(entity) = model.entity(name) else {
-            continue;
-        };
-        for field in entity.fields.iter().filter(|field| field.file.is_some()) {
-            let what = if name == person {
-                format!(
-                    "a `{person}`'s `{}` is a `File`, whose bytes erasing them would delete",
-                    field.name
-                )
-            } else {
-                format!(
-                    "erasing a `{person}` deletes their `{name}` records, whose `{}` is a `File`, with its bytes",
-                    field.name
-                )
-            };
-            out.unbuilt.push(what);
-        }
-    }
     for (name, references) in kept {
         let Some(entity) = model.entity(&name) else {
             continue;
         };
         let anonymised = references
             .iter()
-            .filter(|reference| reference.outcome == Outcome::Anonymised)
-            .collect::<Vec<_>>();
+            .any(|reference| reference.outcome == Outcome::Anonymised);
         let mut clears = Vec::new();
-        if let Some(first) = anonymised.first() {
-            if entity.person {
-                out.unbuilt.push(format!(
-                    "erasing a `{person}` would anonymise each `{name}` whose `{}` refers to them, clearing marked fields that are that person's own",
-                    first.field
-                ));
-            } else {
-                let references: BTreeSet<&str> =
-                    references.iter().map(|r| r.field.as_str()).collect();
-                for field in &entity.fields {
-                    if references.contains(field.name.as_str()) || !marked(&name, &field.name) {
-                        continue;
-                    }
-                    if field.file.is_some() {
-                        out.unbuilt.push(format!(
-                            "erasing a `{person}` clears `{name}.{}`, a `File`, with its bytes",
-                            field.name
-                        ));
-                    }
-                    clears.push(field.name.clone());
+        // Another person's own record keeps its fields: only the
+        // reference to the erased person goes.
+        if anonymised && !entity.person {
+            let references: BTreeSet<&str> = references.iter().map(|r| r.field.as_str()).collect();
+            for field in &entity.fields {
+                if references.contains(field.name.as_str()) || !marked(&name, &field.name) {
+                    continue;
                 }
+                clears.push(field.name.clone());
             }
         }
+        let (through, chain) = if clears.is_empty() {
+            (Vec::new(), Vec::new())
+        } else {
+            chain_of(model, persons, entity)
+        };
         out.kept.push(Kept {
             entity: name,
             references,
             clears,
+            through,
+            chain,
         });
     }
     out
+}
+
+/// The references of `entity`, a record of which erasure would clear,
+/// through which it may belong to another person, and the entities they
+/// lead through, each once: every reference to a person entity or to one
+/// whose records belong to one, climbing from each entity that isn't a
+/// person by its own such references. None when only one reference can
+/// lead to a person, since a record erasure clears is linked to the
+/// erased person through that one.
+fn chain_of(
+    model: &DataModel,
+    persons: &crate::persons::Persons,
+    entity: &EntityModel,
+) -> (Vec<(String, usize)>, Vec<Owner>) {
+    let leading = |entity: &EntityModel| -> Vec<(String, String)> {
+        entity
+            .fields
+            .iter()
+            .filter_map(|field| {
+                let reference = field.reference.as_ref()?;
+                persons
+                    .reaches(&reference.target)
+                    .then(|| (field.name.clone(), reference.target.clone()))
+            })
+            .collect()
+    };
+    let starts = leading(entity);
+    if starts.len() < 2 {
+        return (Vec::new(), Vec::new());
+    }
+    let mut chain: Vec<Owner> = Vec::new();
+    let place = |chain: &mut Vec<Owner>, target: &str| -> usize {
+        if let Some(at) = chain.iter().position(|owner| owner.entity == target) {
+            return at;
+        }
+        chain.push(Owner {
+            entity: target.to_string(),
+            person: model.entity(target).is_some_and(|found| found.person),
+            climbs: Vec::new(),
+        });
+        chain.len() - 1
+    };
+    let through: Vec<(String, usize)> = starts
+        .into_iter()
+        .map(|(field, target)| {
+            let at = place(&mut chain, &target);
+            (field, at)
+        })
+        .collect();
+    let mut at = 0;
+    while at < chain.len() {
+        if !chain[at].person
+            && let Some(found) = model.entity(&chain[at].entity)
+        {
+            let climbs: Vec<(String, usize)> = leading(found)
+                .into_iter()
+                .map(|(field, target)| {
+                    let to = place(&mut chain, &target);
+                    (field, to)
+                })
+                .collect();
+            chain[at].climbs = climbs;
+        }
+        at += 1;
+    }
+    (through, chain)
 }
 
 /// Area 15's erasure problems in one file, for each entity it declares:
@@ -344,7 +421,6 @@ pub fn erasure_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
                         for (other_at, other) in entity.fields.iter().enumerate() {
                             if other.name == field.name
                                 || other.nullable
-                                || other.file.is_some()
                                 || !marked(&other.name)
                                 || !cleared.insert(other.name.clone())
                             {

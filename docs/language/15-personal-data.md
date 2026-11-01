@@ -15,7 +15,8 @@ lives. The aim is that requests under GDPR, UK GDPR and CCPA/CPRA work out
 of the box. Built so far: `person: true`, the check that every field
 marked `personal:` belongs to a person, [retention](#retention), which
 deletes data when its time is up, and [erasure](#erasure) of a person's
-records in their store. `personal:` is also read for
+records in their store, the bytes of their files included. `personal:`
+is also read for
 [the AI page's](21-ai.md#personal-data-sent-to-a-model) check of what
 reaches a model. Nothing exports or reports personal data yet, so an app
 on this compiler does those itself. `User.export` is
@@ -42,9 +43,9 @@ is the one fact Jadpo asks you to write down.
 |---|---|---|---|
 | Marking | `personal:` on a field | Hashes it in logs, lists it in the report | Partly: read for the AI check, and checked to belong to a person; nothing hashes or lists it |
 | The person | `person: true` on an entity | Finds every record that belongs to them | Yes |
-| Erasure | `erase:` on references it can't work out | Generates `User.erase(id)` across every store and cache | Partly: in the person's store; not yet a `File`'s bytes, the person's own record kept field by field, or another store |
+| Erasure | `erase:` on references it can't work out | Generates `User.erase(id)` across every store and cache | Partly: in the person's store, files' bytes included; not yet the person's own record kept field by field, or another store |
 | Export | nothing | Generates `User.export(id)` | No: `toolchain.not_built_yet` |
-| Retention | `retention:` on a field or entity | Clears or deletes it when the time is up | Partly: not yet on a `File` or an event, or through a cascade to someone who signs in |
+| Retention | `retention:` on a field or entity | Clears or deletes it when the time is up | Partly: not yet on an event |
 | Report | nothing | Writes `build/report/personal-data.md` | No |
 
 ## Marking personal fields
@@ -215,11 +216,14 @@ and the compiler refuses an erasure it can't complete.
 | `erase:` on a reference to a person | What happens to the record | Needs |
 |---|---|---|
 | `Erasure.deleted` | Deleted, with everything that cascades from it | |
-| `Erasure.anonymised` | Kept; the reference and every marked field are cleared | the reference and marked fields nullable |
+| `Erasure.anonymised` | Kept; the reference is cleared, and every marked field once no other person the record belongs to remains | the reference and marked fields nullable |
 | `Erasure.retained` | Kept as it is until its own retention ends; only the reference is cleared | the reference nullable, and `retention:` on the entity |
 
 A marked field is one with a `personal:` setting, which says it holds
 personal data ([Marking personal fields](#marking-personal-fields)). A
+record that belongs to someone else too keeps its marked fields until
+the last of its people is erased
+([Records that belong to several people](#records-that-belong-to-several-people)). A
 nullable field is one whose type ends in `?`, so it can hold no value
 ([Values that may be missing](02-values-and-types.md#values-that-may-be-missing)).
 
@@ -457,6 +461,102 @@ test "closing an account deletes the todos and keeps the invoices" {
     var still_billed: Invoice = attempt Invoice.get(invoice.id)
     assert still_billed.customer_id == none
     assert still_billed.billing_name == "Ada Lovelace"
+}
+```
+
+### Records that belong to several people
+
+A record can belong to more than one person: a postcard from one user
+to another belongs to both. Erasing one person never clears another
+person's data. Erasing either user clears only their own reference, and
+the postcard keeps its marked fields while the other remains; they are
+cleared when the last of them is erased. Erasure finds the others
+through the record's references, as it finds every person's records, so
+a reply someone writes on another user's todo also belongs to the
+todo's owner, and keeps its marked fields while that owner remains.
+
+Another person's own record is never anonymised: a user whose
+`invited_by_id` refers to the person erased keeps their own fields, and
+only the reference is cleared.
+
+```jadpo check project=erasure file=domains/accounts/types/card_text.jadpo hidden
+/// What a postcard says.
+type CardText = Text {
+    max_length: 500
+}
+```
+
+```jadpo check project=erasure file=domains/accounts/types/signed_name.jadpo hidden
+/// The name a postcard is signed with.
+type SignedName = Text {
+    max_length: 80
+}
+```
+
+```jadpo check project=erasure file=domains/accounts/entities/postcard.jadpo
+// domains/accounts/entities/postcard.jadpo
+use accounts/entities { User }
+use accounts/types { CardText, SignedName }
+
+/// A postcard one user sends another, which belongs to both of them.
+entity Postcard {
+    id: Uuid
+    sender_id: User.id? {
+        on_delete: OnDelete.cleared
+    }
+    recipient_id: User.id? {
+        on_delete: OnDelete.cleared
+    }
+    body: CardText
+    signed_as: SignedName? {
+        personal: PersonalData.identifying
+    }
+
+    policy: {
+        create: [sender_id]
+        read: [sender_id, recipient_id]
+    }
+}
+```
+
+```jadpo check project=erasure file=domains/accounts/actions/write_postcard.jadpo hidden
+use accounts/entities { Postcard, User }
+
+/// Sends a postcard.
+action write_postcard(
+    me: Principal.user,
+    to: User,
+    body: Postcard.body,
+    signed_as: Postcard.signed_as
+) -> Postcard {
+    return Postcard.create {
+        set: {
+            sender_id: me.id
+            recipient_id: to.id
+            body: body
+            signed_as: signed_as
+        }
+    }
+}
+```
+
+```jadpo check project=erasure file=domains/accounts/actions/write_postcard.test.jadpo
+// domains/accounts/actions/write_postcard.test.jadpo
+use accounts/entities { Postcard, User }
+use accounts/actions { close_account, sign_up }
+
+test "a postcard keeps its signature until both its users are erased" {
+    var ada: User = attempt sign_up("ada@example.com")
+    var bob: User = attempt sign_up("bob@example.com")
+    var card: Postcard = write_postcard(Principal.user(ada), bob, "See you on Tuesday", "Ada")
+    attempt close_account(Principal.user(ada))
+    var after_ada: Postcard = attempt Postcard.get(card.id)
+    assert after_ada.sender_id == none
+    assert after_ada.signed_as == "Ada"
+    attempt close_account(Principal.user(bob))
+    var after_both: Postcard = attempt Postcard.get(card.id)
+    assert after_both.signed_as == none
+    assert after_both.body == "See you on Tuesday"
 }
 ```
 
@@ -715,9 +815,14 @@ what deleting it does to the record that holds it.
 
 An entity that someone signs in as, the `user:` or `service:` of
 [`principal { }`](08-identity.md), goes with its sign-in state when its
-retention ends: its sessions and API tokens, service keys, passkeys and
-sign-in links are deleted in the same statement, so nobody can sign in as
-them again.
+retention ends, or another record's retention cascades to it: its
+sessions and API tokens, service keys, passkeys and sign-in links are
+deleted in the same statement, so nobody can sign in as them again.
+
+A `File` field's retention clears the field, and a record's deletes the
+record, cascades included; either way the file's bytes are deleted once
+no record holds them
+([Deleting and erasing](16-built-in-services.md#deleting-and-erasing)).
 
 ### Where the periods come from
 
@@ -1009,9 +1114,9 @@ This is not legal advice. A privacy professional reviews the report.
 |---|---|
 | An entity's and an event's `personal: PersonalData.<category>` | Partly built: it is read and checked against the fourteen categories for the [AI](21-ai.md) page's check of what reaches a model, and a marked field on an entity no person reaches is `data.personal_unreachable`. Not built yet: the rest of what this page says marking does. A marked field nothing reads compiles without an error, and no log, report or access record uses the marking. |
 | `person: true` | Built: an entity marked `person: true` is a person, and every record that refers to one, directly or through a chain of references, belongs to them. The build's manifest shows each person under its entity as a `person` node, listing the references its records belong through (`through`). |
-| `retention:` on a field or an entity | Partly built. Built: the entity's hourly purge schedule clears a nullable field's value, or deletes the record with what cascades from it and the sign-in state of someone who signs in, at the first run once `since:` is longer ago than `after:`, a `Duration` setting; each problem under [Retention](#retention) is an error where it is written. The graph holds a `retention` node for each, under its field or entity, with its period and `since:`. Not built yet, each `toolchain.not_built_yet` where it is written: a `File` field's retention, and an entity's whose deletion would reach a `File` field, since nothing deletes a file's bytes yet ([Files](16-built-in-services.md#deleting-and-erasing)); an entity's whose deletion would cascade to someone who signs in, whose sign-in state only their own entity's retention deletes; and `retention:` on an event's or an email's field. |
+| `retention:` on a field or an entity | Partly built. Built: the entity's hourly purge schedule clears a nullable field's value, or deletes the record with what cascades from it and the sign-in state of everyone it deletes who signs in, cascades included, at the first run once `since:` is longer ago than `after:`, a `Duration` setting; a `File`'s bytes go once no record holds it ([Files](16-built-in-services.md#deleting-and-erasing)); each problem under [Retention](#retention) is an error where it is written. The graph holds a `retention` node for each, under its field or entity, with its period and `since:`. Not built yet: `retention:` on an event's or an email's field, `toolchain.not_built_yet` where it is written. |
 | `erase:` on a reference | Built: each problem under [Erasure](#erasure) and "Erasure is complete" is an error where it is written. Not built yet: `erase:` on the person's own field, which keeps their record field by field ([The person's own record](#the-persons-own-record)); it is `toolchain.not_built_yet` where it is written, and erasure deletes the whole record. |
-| `User.erase(id)` | Partly built. Built: for a caller with `delete` on the person's record, one statement deletes the record, hidden or not, with the sign-in state of anyone it deletes who signs in, and deletes, anonymises or keeps each record of theirs as its reference says, however deep, records with a lifecycle removed outright. Not built yet, each `toolchain.not_built_yet` where `erase` is called, so no erasure is ever partial: one that would delete a `File`'s bytes ([Files](16-built-in-services.md#deleting-and-erasing)), and one that would anonymise another person's own record, such as a user whose `invited_by_id` is cleared. `PersonErased`, the erasure log, records in another store and providers' erasure aren't built either, and nothing emits or calls them. |
+| `User.erase(id)` | Partly built. Built: for a caller with `delete` on the person's record, one statement deletes the record, hidden or not, with the sign-in state of anyone it deletes who signs in, and deletes, anonymises or keeps each record of theirs as its reference says, however deep, records with a lifecycle removed outright. A record that belongs to several people keeps its marked fields until the last of them is erased, and another person's own record loses only the reference ([Records that belong to several people](#records-that-belong-to-several-people)). The bytes of each `File` it deletes or clears go once it commits ([Files](16-built-in-services.md#deleting-and-erasing)). Not built yet: the person's own record kept field by field (above), records in another store, `PersonErased`, the erasure log and providers' erasure; nothing emits or calls them. |
 | `User.export(id)` | Not built yet: it is `toolchain.not_built_yet` where it is called. |
 | `privacy:` in `application { }` | Not built yet: it is `toolchain.not_built_yet` where it is written. |
 | Everything else on this page | Not built yet: it is on [the roadmap](../roadmap.md). |

@@ -838,6 +838,240 @@ SELECT "id" FROM "expired""#
     assert!(plan.purge("Member").is_none(), "no lifecycle, no purge");
 }
 
+/// Someone who signs in, reached through a cascade from a record whose
+/// retention ends, goes with the sign-in state their store keeps (area
+/// 15, "Retention"; chunk P4): the statement follows the cascades from
+/// the records it deletes, as its snapshot shows them, to find whose
+/// sessions go.
+#[test]
+fn a_retention_cascading_to_someone_who_signs_in_deletes_their_sign_in_state() {
+    let plan = planned(
+        r#"type Handle = Text {
+    max_length: 40
+}
+
+config {
+    club_retention: Duration {
+        default: 730d
+    }
+}
+
+principal {
+    user: {
+        subject: Member.handle
+    }
+}
+
+authentication {
+    api_token: {}
+}
+
+entity Club {
+    id: Uuid
+    opened_at: Instant
+
+    retention: {
+        after: config.club_retention
+        since: opened_at
+    }
+}
+
+entity Team {
+    id: Uuid
+    club_id: Club.id {
+        on_delete: OnDelete.cascade
+    }
+}
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+    team_id: Team.id {
+        on_delete: OnDelete.cascade
+    }
+}
+"#
+        .to_string(),
+    );
+    let retention = plan.retention("Club", None).expect("Club's retention");
+    assert_eq!(
+        retention.sql,
+        r#"WITH RECURSIVE "expired" AS (
+  DELETE FROM "club"
+  WHERE "id" IN (
+    SELECT "id"
+    FROM "club"
+    WHERE "opened_at" < $1
+    ORDER BY "opened_at" ASC, "id" ASC
+    LIMIT 500
+    FOR UPDATE SKIP LOCKED
+  )
+  RETURNING "id"
+), "reached" ("entity", "id") AS (
+  SELECT 0, "expired"."id" FROM "expired"
+  UNION
+  SELECT "edge"."entity", "edge"."id"
+  FROM "reached"
+  JOIN (
+    SELECT 0 AS "parent", "edge1"."club_id" AS "parent_id", 1 AS "entity", "edge1"."id" AS "id" FROM "team" AS "edge1"
+    UNION ALL
+    SELECT 1 AS "parent", "edge2"."team_id" AS "parent_id", 2 AS "entity", "edge2"."id" AS "id" FROM "member" AS "edge2"
+  ) AS "edge" ON "edge"."parent" = "reached"."entity" AND "edge"."parent_id" = "reached"."id"
+), "removed1" AS (
+  DELETE FROM "jadpo_sessions"
+  WHERE "principal_id" IN (SELECT "id" FROM "reached" WHERE "entity" = 2)
+)
+SELECT "id" FROM "expired""#
+    );
+}
+
+/// A record that belongs to several people keeps its marked fields while
+/// another of them remains (area 15, "Records that belong to several
+/// people"; chunk P4): erasing one clears only their reference, and the
+/// marked fields of the records whose last person it was, found by
+/// looking from each record's other references for a person erasure
+/// keeps. A record that can belong to its author alone is cleared as it
+/// was, and another person's own record loses only the reference.
+#[test]
+fn an_erasure_clears_a_shared_records_marked_fields_only_for_its_last_person() {
+    let plan = planned(
+        r#"type Line = Text {
+    max_length: 80
+}
+
+entity Member {
+    id: Uuid
+    invited_by_id: Member.id? {
+        on_delete: OnDelete.cleared
+    }
+    handle: Line {
+        personal: PersonalData.identifying
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        delete: [Access.public]
+    }
+
+    person: true
+}
+
+entity Board {
+    id: Uuid
+    owner_id: Member.id {
+        on_delete: OnDelete.cascade
+    }
+}
+
+entity Note {
+    id: Uuid
+    from_id: Member.id? {
+        on_delete: OnDelete.cleared
+    }
+    to_id: Member.id? {
+        on_delete: OnDelete.cleared
+    }
+    signed_as: Line? {
+        personal: PersonalData.identifying
+    }
+}
+
+entity Pin {
+    id: Uuid
+    board_id: Board.id? {
+        on_delete: OnDelete.cleared
+    }
+    author_id: Member.id? {
+        on_delete: OnDelete.cleared
+    }
+    caption: Line? {
+        personal: PersonalData.identifying
+    }
+}
+
+action forget(member_id: Member.id) fails MemberNotFound -> Unit {
+    attempt Member.erase(member_id)
+}
+"#
+        .to_string(),
+    );
+    let mut found = None;
+    for callable in plan.callables() {
+        for site in &callable.sites {
+            if let Decoded::Write { plan: Some(id), .. } = &site.decoded {
+                found = plan.write(*id).cloned();
+            }
+        }
+    }
+    let erase = found.expect("the erasure's plan").plan;
+    assert_eq!(
+        erase.sql,
+        r#"WITH RECURSIVE "erased" ("entity", "id") AS (
+  SELECT 0, "member"."id"
+  FROM "member"
+  WHERE "id" = $1
+  UNION
+  SELECT "edge"."entity", "edge"."id"
+  FROM "erased"
+  JOIN (
+    SELECT 0 AS "parent", "edge1"."owner_id" AS "parent_id", 1 AS "entity", "edge1"."id" AS "id" FROM "board" AS "edge1"
+  ) AS "edge" ON "edge"."parent" = "erased"."entity" AND "edge"."parent_id" = "erased"."id"
+), "kept1" AS (
+  UPDATE "member"
+  SET "invited_by_id" = NULL
+  WHERE "invited_by_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0)
+    AND "id" NOT IN (SELECT "id" FROM "erased" WHERE "entity" = 0)
+), "last2" ("id") AS (
+  SELECT "note"."id"
+  FROM "note"
+  WHERE ("from_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0) OR "to_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0))
+    AND ("note"."from_id" IS NULL OR "note"."from_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0))
+    AND ("note"."to_id" IS NULL OR "note"."to_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0))
+), "kept2" AS (
+  UPDATE "note"
+  SET "from_id" = CASE WHEN "from_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0) THEN NULL ELSE "from_id" END,
+    "to_id" = CASE WHEN "to_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0) THEN NULL ELSE "to_id" END,
+    "signed_as" = CASE WHEN "id" IN (SELECT "id" FROM "last2") THEN NULL ELSE "signed_as" END
+  WHERE ("from_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0) OR "to_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0))
+), "last3" ("id") AS (
+  SELECT "pin"."id"
+  FROM "pin"
+  WHERE ("author_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0) OR "board_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 1))
+    AND NOT EXISTS (
+      WITH RECURSIVE "owner" ("entity", "id") AS (
+        SELECT 0, "pin"."board_id" WHERE "pin"."board_id" IS NOT NULL AND "pin"."board_id" NOT IN (SELECT "id" FROM "erased" WHERE "entity" = 1)
+        UNION ALL
+        SELECT 1, "pin"."author_id" WHERE "pin"."author_id" IS NOT NULL AND "pin"."author_id" NOT IN (SELECT "id" FROM "erased" WHERE "entity" = 0)
+        UNION
+        SELECT "up"."entity", "up"."id"
+        FROM "owner"
+        JOIN (
+          SELECT 0 AS "from", "up1"."id" AS "from_id", 1 AS "entity", "up1"."owner_id" AS "id" FROM "board" AS "up1" WHERE "up1"."owner_id" IS NOT NULL AND "up1"."owner_id" NOT IN (SELECT "id" FROM "erased" WHERE "entity" = 0)
+        ) AS "up" ON "up"."from" = "owner"."entity" AND "up"."from_id" = "owner"."id"
+      )
+      SELECT 1 FROM "owner" WHERE "owner"."entity" IN (1)
+    )
+), "kept3" AS (
+  UPDATE "pin"
+  SET "author_id" = CASE WHEN "author_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0) THEN NULL ELSE "author_id" END,
+    "board_id" = CASE WHEN "board_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 1) THEN NULL ELSE "board_id" END,
+    "caption" = CASE WHEN "id" IN (SELECT "id" FROM "last3") THEN NULL ELSE "caption" END
+  WHERE ("author_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0) OR "board_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 1))
+), "deleted1" AS (
+  DELETE FROM "board"
+  WHERE "id" IN (SELECT "id" FROM "erased" WHERE "entity" = 1)
+), "deleted0" AS (
+  DELETE FROM "member"
+  WHERE "id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0)
+  RETURNING "id"
+)
+SELECT "id" FROM "deleted0""#
+    );
+}
+
 /// A person who signs in is erased with the sign-in state their store
 /// keeps, in the statement that erases them (area 15, "Erasure"; chunk
 /// P3), whose record is found under the policy letting the caller delete
