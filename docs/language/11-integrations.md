@@ -5601,8 +5601,9 @@ bar, and what `jadpo package verify --json` writes.
 > `surface` row checks the committed `surface.jadpo_record` against the
 > code, and the `changelog` row checks the list under the version's heading
 > against the change record, each `publish.stale_files` when it differs.
-> The previous folder's version is the one its committed surface says. With
-> no `--previous` it is a first release. Its JSON holds `package`,
+> The previous folder's version is the one its committed surface says, and
+> it has to be a release of the same name in code. With no `--previous` it
+> is a first release. Its JSON holds `package`,
 > `version`, `passed`, `bar`, `surface` (the record's text), `facts`,
 > `change_record`, `fingerprints`, `previous` (`since`, `ran`, each `failed`)
 > and `jadpo`, the release it was checked with. Its screen is `check`'s,

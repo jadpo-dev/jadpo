@@ -1236,6 +1236,21 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
         compiled.label.clone(),
         compiled.mount.clone(),
     );
+    // Another name would pass as a new major version, which nothing refuses.
+    if let Mode::Verify {
+        previous: Some(given),
+    } = &mode
+        && given
+            .package
+            .rsplit_once('.')
+            .is_none_or(|(name, _)| name != code)
+    {
+        return Reply::failed(arguments(
+            format!("`{}` isn't an earlier release of `{package}`", given.package),
+            "A release is compared with the last one of its own package, whatever its major version: a package keeps its name in code.".to_string(),
+            format!("Give an earlier release of `{code}` with `--previous`"),
+        ));
+    }
     let shown = jadpo_db::shown_root(&cwd, &folder);
     let (db, project) = (&compiled.loaded.db, compiled.loaded.project);
     let compile = compiled.problems.clone();

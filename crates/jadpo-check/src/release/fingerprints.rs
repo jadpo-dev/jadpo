@@ -122,37 +122,38 @@ pub fn fingerprints(db: &dyn Db, project: Project, folder: &str) -> Vec<Fingerpr
                         effects,
                     ))
                 }
-                What::Function { .. } | What::Action { .. } => {
-                    let key = callables.get(&declaration.name)?;
-                    let node = graph.get(key)?;
-                    let Detail::Callable { signature, .. } = &node.detail else {
-                        return None;
-                    };
-                    let mut effects = Vec::new();
-                    if let Some(steps) = steps.get(key) {
-                        if steps.calls.is_some() {
-                            effects.push("calls");
+                What::Function { .. } | What::Action { .. } => callables
+                    .get(&declaration.name)
+                    .and_then(|key| Some((key, graph.get(key)?)))
+                    .and_then(|(key, node)| {
+                        let Detail::Callable { signature, .. } = &node.detail else {
+                            return None;
+                        };
+                        let mut effects = Vec::new();
+                        if let Some(steps) = steps.get(key) {
+                            if steps.calls.is_some() {
+                                effects.push("calls");
+                            }
+                            if steps.changing > 0 {
+                                effects.push("changes");
+                            }
                         }
-                        if steps.changing > 0 {
-                            effects.push("changes");
-                        }
-                    }
-                    let unit = TypeRef::Builtin(jadpo_std::Builtin::Unit);
-                    Some(Shape::new(
-                        signature
-                            .params
-                            .iter()
-                            .map(|(_, ty)| reducer.reduce(ty))
-                            .collect(),
-                        (signature.result != unit).then(|| reducer.reduce(&signature.result)),
-                        signature
-                            .fails
-                            .iter()
-                            .map(|ty| reducer.failure(ty))
-                            .collect(),
-                        effects,
-                    ))
-                }
+                        let unit = TypeRef::Builtin(jadpo_std::Builtin::Unit);
+                        Some(Shape::new(
+                            signature
+                                .params
+                                .iter()
+                                .map(|(_, ty)| reducer.reduce(ty))
+                                .collect(),
+                            (signature.result != unit).then(|| reducer.reduce(&signature.result)),
+                            signature
+                                .fails
+                                .iter()
+                                .map(|ty| reducer.failure(ty))
+                                .collect(),
+                            effects,
+                        ))
+                    }),
                 _ => None,
             };
             Some(Fingerprint {

@@ -811,6 +811,34 @@ fn verify_says_what_it_needs() {
         "{}",
         serve.stderr
     );
+    // Another package's release can't stand in as the one before it, which
+    // would pass as a new major version.
+    let (other, root) = released("release-verify-other");
+    let copied = other.path().join("copied");
+    copy(&root, &copied);
+    write(
+        &copied,
+        "package.jadpo",
+        &super::packages::INDEX.replace("Postcodes.v2", "Addresses.v1"),
+    );
+    let another = plain(
+        dir.path(),
+        &[
+            "package",
+            "verify",
+            root.to_str().expect("a path"),
+            "--previous",
+            copied.to_str().expect("a path"),
+        ],
+    );
+    assert_eq!(another.code, 2, "{}", another.stderr);
+    assert!(
+        another
+            .stderr
+            .contains("`Addresses.v1` isn't an earlier release of `Postcodes.v2`"),
+        "{}",
+        another.stderr
+    );
     let (_kept, root) = repository("release-verify-previous");
     let refused = plain(
         dir.path(),
