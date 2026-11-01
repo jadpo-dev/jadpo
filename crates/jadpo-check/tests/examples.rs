@@ -123,7 +123,6 @@ const EXEMPT: &[(&str, &str)] = &[
     ),
     // Layout places later areas fill.
     ("root file flags.jadpo", "not built: flags (area 16)"),
-    ("place monitoring", "not built: monitoring (area 16)"),
 ];
 
 fn root() -> PathBuf {

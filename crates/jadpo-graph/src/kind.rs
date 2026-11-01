@@ -167,7 +167,7 @@ kinds! {
     EmailTemplate: "email_template", Services, Reserved, 16;
     Flag: "flag", Services, Built, 16;
     RateLimit: "rate_limit", Services, Built, 7;
-    Threshold: "threshold", Services, Reserved, 16;
+    Threshold: "threshold", Services, Built, 16;
 
     ApiRecord: "api_record", Records, Reserved, 7;
     MigrationSnapshot: "migration_snapshot", Records, Built, 5;

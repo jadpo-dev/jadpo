@@ -725,7 +725,7 @@ application {
   by default, is the share of the disk kept free: a put, an upload or a
   join that would leave less free than it answers `storage_full` and
   writes nothing, so imports and the database aren't starved of space.
-  The floor is reported as a monitoring threshold.
+  The floor is a [monitoring threshold](#thresholds-across-requests).
 - **Commands.** `jadpo files ls`, `show`, `get`, `put` and `copy` work
   on any store, in development or production. `jadpo files copy` moves a
   store's files to another, which is how you move off one server.
@@ -987,6 +987,125 @@ they are reviewed with the code and versioned with each build rather
 than configured in a monitoring tool. There are two kinds, because only
 one can be judged by a single process.
 
+### Writing a threshold
+
+A domain's thresholds are its `thresholds { }`, in
+`domains/<domain>/monitoring.jadpo`. Each is `name: { }` giving one
+thing it watches and its limits, and its `///` line, what it protects,
+is the summary of the alerts made from it:
+
+```jadpo check project=monitoring-thresholds file=domains/hello/monitoring.jadpo
+use hello/actions { greet }
+
+thresholds {
+    /// A visitor is greeted quickly.
+    greeting_route: {
+        route: {
+            method: HttpMethod.post
+            path: "/hello"
+        }
+        duration: 800ms
+        queries: 2
+        p95: 300ms
+        server_failures: 1%
+        within: 5m
+    }
+
+    /// Working out a greeting stays quick.
+    greeting: {
+        watches: greet
+        p99: 50ms
+    }
+}
+```
+
+```jadpo check project=monitoring-thresholds file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=monitoring-thresholds file=policy.jadpo hidden
+use hello
+
+policy {
+    actions: {
+        hello.greet: [Access.public]
+    }
+}
+```
+
+```jadpo check project=monitoring-thresholds file=domains/hello/types/visitor.jadpo hidden
+/// Who is calling.
+type Visitor = Input {
+    name: Text {
+        max_length: 40
+    }
+}
+```
+
+```jadpo check project=monitoring-thresholds file=domains/hello/types/greeting.jadpo hidden
+/// What a visitor is told.
+type Greeting = Output {
+    message: Text
+}
+```
+
+```jadpo check project=monitoring-thresholds file=domains/hello/actions/greet.jadpo hidden
+use hello/types { Greeting, Visitor }
+
+/// Greets a visitor by name.
+action greet(input: Visitor) -> Greeting {
+    return Greeting {
+        message: "Hello, {input.name}"
+    }
+}
+```
+
+```jadpo check project=monitoring-thresholds file=domains/hello/routes/hello.jadpo hidden
+use hello/types { Greeting, Visitor }
+use hello/actions { greet }
+
+/// Greetings.
+routes Hello {
+    prefix: /hello
+
+    /// Greets whoever calls it.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: Visitor
+        output: Greeting
+        run: greet(input)
+    }
+}
+```
+
+What it watches is in its own domain:
+
+- `route:` names a route by its `method:` and its path as `jadpo
+  routes` prints it, placeholders by name, as a route test names one;
+- `watches:` names an action, query, schedule or subscriber, imported
+  like any name the file uses. Their names are unique across the
+  project, so the name says which.
+
+Its limits, each an upper bound:
+
+| Limit | Kind | Watches | Value |
+|---|---|---|---|
+| `duration:` | Per request | Anything | The longest one request or run may take; a route's is shorter than its `deadline:` |
+| `queries:` | Per request | All but a query | The most queries one may run |
+| `p50:`, `p90:`, `p95:`, `p99:` | Across requests | Anything | That share of the requests within `within:` takes at most this long |
+| `server_failures:` | Across requests | Anything | The share within `within:` that may end in a fault or a failure of a kind answered with a 5xx: `unavailable`, `timed_out`, `outcome_unknown`, `misconfigured` or `internal_fault`; never one a client caused |
+| `oldest_waiting:` | Across requests | A subscriber | The age its oldest waiting delivery may reach |
+
+`within:` is the window the across-request limits are judged over, a
+whole number of minutes, hours or a day from `1m` to `1d`, and `5m`
+when left out. A percentile is no shorter than a lower one beside it,
+and `server_failures:` is above `0%` and below `100%`. A threshold that
+names nothing in its domain is
+[`threshold.subject_unknown`](../errors/threshold.subject_unknown.md);
+any other mistake in one, such as a limit that doesn't apply to what it
+watches, is
+[`threshold.declaration_invalid`](../errors/threshold.declaration_invalid.md).
+
 ### Thresholds per request
 
 These judge one request: its duration, its number of queries, whether
@@ -1016,6 +1135,10 @@ when asked. The build manifest carries the same thresholds, so a tool
 that reads it needs no generated rules. The rules are applied when you
 deploy, and a change made in the tool is overwritten, as with Terraform.
 
+A disk store's `free_space_floor:` ([The disk driver](#the-disk-driver))
+is one of these too: the rules raise an alert when the store's disk has
+less free than its floor, as puts start answering `storage_full`.
+
 ### Setting and changing them
 
 - **Starting values** come from what the compiler knows, such as the
@@ -1029,7 +1152,15 @@ deploy, and a change made in the tool is overwritten, as with Terraform.
 - **Loosening needs a person.** Raising or removing a threshold is how
   an agent would silence an alert, so it needs an
   [acceptance](18-records-and-manifest.md#acceptances) and appears in
-  the approval report. Tightening one doesn't.
+  the approval report. Tightening one doesn't. `jadpo check` compares
+  each threshold with the one of the same name on the before side, read
+  from git: a limit raised, or a longer `within:`, is
+  `planning.todo_list.p95: ThresholdChange.raised`; a limit gone is
+  `ThresholdChange.removed` on the limit, and a threshold gone, or
+  watching something else, on the threshold, `planning.todo_list`; a
+  disk store's floor lowered is `uploads.free_space_floor:
+  ThresholdChange.lowered`. A new threshold, a lower limit and a higher
+  floor need nothing.
 - **Per build and per flag value.** Thresholds belong to a build. Each
   flag value takes its own branch, so it has its own path and metrics,
   with no extra tagging.
@@ -3539,6 +3670,70 @@ commit's date, both in UTC, or at `SOURCE_DATE_EPOCH` when it is set. A
 flag is past its date from the day after it, and `flag.expired` names
 its owner. Running a program or its tests judges no date.
 
+## Monitoring thresholds: checked and generated
+<!-- topic: monitoring-thresholds-generated -->
+
+How `jadpo check` reads a domain's thresholds and what it writes from
+them (chunk B13; the form of a threshold decided 2026-11-01).
+
+### Where they are read
+
+A domain has one `thresholds { }`, in its `monitoring.jadpo`; a second,
+or one in any other file of a project, is
+`threshold.declaration_invalid`. A loose file may hold one, watching
+what the loose files declare. A threshold's name is unique in its
+domain, and its subject, as an acceptance names it, is
+`<domain>.<threshold>`.
+
+### In the deployable
+
+The per-request limits, `duration:` and `queries:`, go into the
+runtime's plan with the identity key of what each watches, so both
+executors and every deployable hold the same thresholds. They are what
+the `telemetry:` section judges each request by once it is built; until
+then nothing reads them.
+
+### The rules in `build/monitoring/`
+
+`jadpo check` writes two files once the thresholds read cleanly, and
+none while there are no across-request limits or floors:
+
+- **`prometheus.yaml`**, Prometheus alerting rules: a group for each
+  domain, `jadpo.<domain>`, and `jadpo.files` for the disk floors, with
+  an alert for each across-request limit, named
+  `<domain>_<threshold>_<limit>` and labelled `jadpo_threshold` with its
+  subject, its `///` line as the summary.
+- **`openslo.yaml`**, OpenSLO v1: a `Service` for each domain and an
+  `SLO` for each percentile and `server_failures:`, each counted by
+  `Occurrences` over a rolling `within:`. A `p95: 300ms` is the share of
+  requests done within 300 ms, with a target of `0.95`; a
+  `server_failures: 1%` the share that didn't fail on the server, with a
+  target of `0.99`. `oldest_waiting:` and the floors are conditions
+  rather than objectives, so they are Prometheus rules only.
+
+The rules read the metrics the runtime will send, under the names a
+Prometheus that takes OpenTelemetry gives them:
+
+| Metric | Prometheus name | Attributes |
+|---|---|---|
+| A route's duration, a histogram in seconds | `http_server_request_duration_seconds` | `http.request.method`, `http.route` as `jadpo routes` prints it, `http.response.status_code` |
+| An action's, query's, schedule run's or delivery's duration, a histogram in seconds | `jadpo_run_duration_seconds` | `jadpo.kind` (`action`, `query`, `schedule`, `subscriber`), `jadpo.name` (`hello.greet`), `jadpo.outcome` (`ok`, `failure`, `server_failure`) |
+| The age of a subscriber's oldest waiting delivery, a gauge in seconds | `jadpo_delivery_oldest_waiting_seconds` | `jadpo.name` |
+| The share of a disk store's disk that is free, a gauge from 0 to 1 | `jadpo_files_free_ratio` | `jadpo.connection` |
+
+Each duration histogram has a bucket boundary at every duration a
+threshold on it names, so a percentile's count is exact rather than
+read between buckets.
+
+### In the manifest
+
+Each threshold is a `threshold` node named by its subject, with a
+`uses` edge to what it watches, `watches` saying what kind of thing that
+is, and its limits as written, its per-request ones under `perRequest`
+and the others under `acrossRequests` beside `within`. A disk store's
+floor is a `threshold` node named `<connection>.free_space_floor`, which
+watches `disk` and uses its connection.
+
 ## What is built
 <!-- topic: built-in-services-built -->
 
@@ -3553,7 +3748,7 @@ The errors this page describes are built with the feature they belong to.
 | The dev inbox and the health score | Built: the dev inbox, `jadpo email`, the health score, `email.health_problem` and `jadpo email check-domain` ([The dev inbox and the health score](#the-dev-inbox-and-the-health-score)), with SpamAssassin's rules in the score ([SpamAssassin in the health score](#spamassassin-in-the-health-score)). Not built yet: the inbox page as part of the developer console, and its link to each mail's trace, which comes with `jadpo trace`. |
 | Rate limits | Built: default rate limits with routes, and their store on Workers, Cloudflare's rate-limiting binding ([Rate limits on Workers](#rate-limits-on-workers)). Not built yet: Redis's driver, which comes with caches. Until then a deployable whose store is Redis counts in its own memory, which on Workers is the judgement call `rate_limits.counted_in_memory`. The binding's windows and the Wrangler entries aren't yet checked against the real edge. |
 | The capability seam | Built: the seam every capability's calls go through, with a delivery that hands its event to a capability, parked as `outcome_unknown` when a send without a key may have acted ([The seam every outside call goes through](#the-seam-every-outside-call-goes-through)). |
-| Files | Partly built. Built: the `files` capability's first part on that seam: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [Files: `put`, `read` and the disk driver in development](#files-put-read-and-the-disk-driver-in-development)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([Files: an export's pieces](#files-an-exports-pieces)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). Not built yet: upload slots, multipart ones included, downloads, deleting and erasing a file's bytes, the S3 driver, the floor as a monitoring threshold, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written. |
+| Files | Partly built. Built: the `files` capability's first part on that seam: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [Files: `put`, `read` and the disk driver in development](#files-put-read-and-the-disk-driver-in-development)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([Files: an export's pieces](#files-an-exports-pieces)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). The floor is a monitoring threshold ([Monitoring thresholds](#monitoring-thresholds)). Not built yet: upload slots, multipart ones included, downloads, deleting and erasing a file's bytes, the S3 driver, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written. |
 | Flags | Partly built: `flags { }` of `Bool` and enum flags with their `default:`, `owner:` and `expires:`; `flags.<name>` in actions, tests and a route's `run:` arguments, worked out for the caller from `jadpo_flags` in `flags: { store: }`, held in each server's memory and fixed for the operation; a test's `flags:`; `flag.unknown`, `flag.read_context` and `flag.expired` ([Flags: declared, read and tested](#flags-declared-read-and-tested)). Not built yet: `jadpo flags set`, `list` and `remove`, the log of changes, `check` failing until both values are tested, `client: true` and `GET /flags`, and named tenants, which wait for tenancy to be settled for flags. |
 | Audit | Not built yet: an entity's `audit:` is `toolchain.not_built_yet` where it is written. |
 | Search | Built on PostgreSQL: `search: { fields: language: }` with its generated column, GIN index and migrations, `matches` with a `SearchText`, the best matches first in keyset pages, and policy over every search ([Search](#search)). Not built yet: an engine's `store:`, `toolchain.not_built_yet` where it is written, and `jadpo search reindex`, which come with the `search` capability's packages; and searching a field of a sensitive category, `toolchain.not_built_yet` in `fields:` until the access records are built. |
@@ -3562,7 +3757,7 @@ The errors this page describes are built with the feature they belong to.
 | Outgoing webhooks | Not built yet. |
 | The `telemetry:` section | Not built yet: it is `toolchain.not_built_yet` where it is written. Nor is telemetry in the developer console. |
 | Path IDs | Not built yet for requests. Each body's ways are numbered, and the differential run compares the paths each test's bodies took, but no request carries a `path` or a `path_key`. |
-| Monitoring thresholds | Not built yet. |
+| Monitoring thresholds | Built: `thresholds { }` in each domain's `monitoring.jadpo`, each threshold checked to watch a route, action, query, schedule or subscriber of its domain with limits that apply to it; the per-request limits in the runtime's plan, the across-request limits and the disk floors written to `build/monitoring/` as Prometheus and OpenSLO rules and carried in the manifest; and a limit raised or removed, or a floor lowered, refused by `check` until a `ThresholdChange` acceptance names it ([Monitoring thresholds: checked and generated](#monitoring-thresholds-checked-and-generated)). Not built yet: acting on the per-request limits, which comes with the `telemetry:` section, starting values from the query report and production, and an agent's proposals through MCP. |
 
 [The roadmap](../roadmap.md) says when.
 
@@ -3592,3 +3787,5 @@ The errors this page describes are built with the feature they belong to.
 - [`flag.store_invalid`](../errors/flag.store_invalid.md)
 - [`flag.store_required`](../errors/flag.store_required.md)
 - [`flag.unknown`](../errors/flag.unknown.md)
+- [`threshold.declaration_invalid`](../errors/threshold.declaration_invalid.md)
+- [`threshold.subject_unknown`](../errors/threshold.subject_unknown.md)

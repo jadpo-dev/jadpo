@@ -40,6 +40,8 @@ pub enum Family {
     Lock,
     Domains,
     Decline,
+    /// A domain's `monitoring.jadpo`, or `app.jadpo`'s disk floors.
+    Thresholds,
 }
 
 fn need(

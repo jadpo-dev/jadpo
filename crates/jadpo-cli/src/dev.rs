@@ -1314,6 +1314,10 @@ pub(crate) fn prepare(
         .then(|| jadpo_check::policy::report::report(db, project));
     let mut surfaces = crate::derived::surfaces(db, project);
     surfaces.extend(crate::derived::network(db, project));
+    if let Some(rules) = crate::derived::monitoring(db, project) {
+        crate::derived::remove_stale_monitoring(root, &rules);
+        surfaces.extend(rules);
+    }
     let stamp = crate::derived::stamp(db, project, root, errors);
     let _ = crate::derived::write(
         root,

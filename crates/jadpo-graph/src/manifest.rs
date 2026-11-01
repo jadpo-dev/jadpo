@@ -478,6 +478,28 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             out.set("owner", owner.as_str());
             out.set("expires", expires.as_str());
         }
+        Detail::Threshold {
+            watches,
+            per_request,
+            across_requests,
+            within,
+        } => {
+            out.set("watches", watches.as_str());
+            for (field, limits) in [
+                ("perRequest", per_request),
+                ("acrossRequests", across_requests),
+            ] {
+                if limits.is_empty() {
+                    continue;
+                }
+                let mut object = Value::object();
+                for (limit, value) in limits {
+                    object.set(limit, value.as_str());
+                }
+                out.set(field, object);
+            }
+            out.set_some("within", within.as_deref());
+        }
         Detail::LocaleSet {
             default,
             supported,

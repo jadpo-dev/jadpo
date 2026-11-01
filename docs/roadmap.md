@@ -731,21 +731,9 @@ After the registry is live, in order:
    - [x] **B12 Search on PostgreSQL**: area 16, "Search", "How it is
      kept", "Search and policy" and "Search and personal data"; area 2,
      `SearchText`; compiler/runtime §2.6, "Search on PostgreSQL".
-   - [ ] **B13 Monitoring thresholds** `opus · xhigh`: area 16, "Monitoring
-     thresholds"; area 1, `monitoring.jadpo`; area 18, "The manifest" and
-     `ThresholdChange`. The declaration's form, which no page writes
-     yet, decided first and recorded on area 16 and its design notes;
-     each threshold checked to name a route, query, action, schedule or
-     delivery that exists; per-request thresholds compiled into the
-     deployable for item 8's `telemetry:` section to act on, and
-     across-request ones written to `build/monitoring/` as OpenSLO and
-     Prometheus rules and carried in the manifest; a threshold raised or
-     removed refused by `check` until a `ThresholdChange` acceptance
-     names it, its before side read from git, a tightened one needing
-     none. Starting values from production and agents' proposals come
-     with the developer console and MCP (item 9). Done when `check`
-     refuses a loosened threshold until it is accepted, passes a
-     tightened one, and writes the rules.
+   - [x] **B13 Monitoring thresholds**: area 16, "Writing a threshold",
+     "Setting and changing them" and "Monitoring thresholds: checked and
+     generated", and Decisions; area 18, "Acceptances" (`ThresholdChange`).
 5. Debugging and review (area 17): `why`, timelines, `test new --from`,
    `call`.
 6. Records and acceptances: moved to "Approvals" (2026-10-31).

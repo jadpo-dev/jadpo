@@ -353,3 +353,48 @@ entity Reader {
     let restored = RuntimePlan::decode(&bytes).expect("decodes");
     assert_eq!(restored.routes.identity, plan.runtime().routes.identity);
 }
+
+/// Each threshold judged per request is in the plan compiled code holds,
+/// keyed by what it watches, and nothing judged across requests is
+/// (area 16, "Monitoring thresholds"; chunk B13).
+#[test]
+fn a_plan_carries_the_thresholds_judged_per_request() {
+    let files: Vec<(String, String)> = [
+        ("app.jadpo", "application {\n}\n"),
+        ("policy.jadpo", "use hello\n\npolicy {\n    actions: {\n        hello.greet: [Access.public]\n    }\n}\n"),
+        (
+            "domains/hello/types/visitor.jadpo",
+            "/// Who is calling.\ntype Visitor = Input {\n    name: Text {\n        max_length: 40\n    }\n}\n",
+        ),
+        (
+            "domains/hello/types/greeting.jadpo",
+            "/// What a visitor is told.\ntype Greeting = Output {\n    message: Text\n}\n",
+        ),
+        (
+            "domains/hello/actions/greet.jadpo",
+            "use hello/types { Greeting, Visitor }\n\n/// Greets a visitor by name.\naction greet(input: Visitor) -> Greeting {\n    return Greeting {\n        message: \"Hello, {input.name}\"\n    }\n}\n",
+        ),
+        (
+            "domains/hello/routes/hello.jadpo",
+            "use hello/types { Greeting, Visitor }\nuse hello/actions { greet }\n\n/// Greetings.\nroutes Hello {\n    prefix: /hello\n\n    /// Greets whoever calls it.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: Visitor\n        output: Greeting\n        run: greet(input)\n    }\n}\n",
+        ),
+        (
+            "domains/hello/monitoring.jadpo",
+            "use hello/actions { greet }\n\nthresholds {\n    /// A visitor is greeted quickly.\n    greeting_route: {\n        route: {\n            method: HttpMethod.post\n            path: \"/hello\"\n        }\n        duration: 800ms\n        queries: 2\n        p95: 300ms\n    }\n\n    /// Working out a greeting stays quick.\n    greeting: {\n        watches: greet\n        p99: 50ms\n    }\n}\n",
+        ),
+    ]
+    .iter()
+    .map(|(path, text)| (path.to_string(), text.to_string()))
+    .collect();
+    let bytes = planned(&files).expect("the greeter plans");
+    let plan = RuntimePlan::decode(&bytes).expect("its bytes read back");
+    assert_eq!(
+        plan.thresholds,
+        [jadpo_std::thresholds::ThresholdPlan {
+            name: "hello.greeting_route".to_string(),
+            watches: "route POST /hello".to_string(),
+            duration_ms: Some(800),
+            queries: Some(2),
+        }]
+    );
+}
