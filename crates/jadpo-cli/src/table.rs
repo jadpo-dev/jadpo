@@ -581,7 +581,14 @@ pub static COMMANDS: &[Command] = &[
             },
         ],
         arguments_rule: &rule::CLI_FMT_ARGUMENTS,
-        raises: &[],
+        raises: &[
+            &rule::FORMAT_CHANGES_REQUIRED,
+            &rule::FORMAT_UNSAFE,
+            &rule::FORMAT_WRITE_FAILED,
+            &rule::LAYOUT_PROMOTION_REQUIRED,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+            &rule::TOOLCHAIN_SOURCE_READ_FAILED,
+        ],
         run: commands::fmt,
     },
     Command {

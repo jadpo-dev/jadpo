@@ -282,17 +282,7 @@ D1 first: the site starts once D1 has merged.
 - [x] **D13b2a Copied output, root runs and the first person-decided pages**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; area 14, "What it compiles with"; the pages of `configuration.value_missing`, `configuration.local_changed`, `format.write_failed`, `translation.exchange_file_invalid`, `toolchain.build_failed` and `toolchain.fetch_failed`.
 - [x] **D13b2b1 A database for runs, migrations and seeds**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; area 14, "Database command errors"; `tools/docs/language_docs.py`, `Databases`; the pages of `seed.production_refused`, `seed.unavailable`, `migration.apply_failed`, `migration.store_diverged`, `migration.extension_missing` and `migration.extension_outdated`.
 - [x] **D13b2b2 Background work**: [writing guide](writing.md), "How an error page reads"; area 14, "Database command errors"; the pages of `deliveries.*`, `schedules.lease_held`, `schedules.no_tick`, `schedules.run_failed`, `schedules.unavailable`, `runs.unavailable` and `ai.usage_unavailable`.
-- [ ] **D13b2c The rest a person decides** `opus · high`: the same for
-  `cli.dev_start_failed`, `conform.refused`, `recording.refused`,
-  `suggest.share_failed`, `format.unsafe` and
-  `test.runtime_start_failed`. An error that quotes the operating
-  system's error number (a port in use, a refused connection) prints a
-  different number on macOS and Linux, so its run can't be checked on
-  both: choose a case that prints none, or copy the output. No run raises
-  `format.unsafe` (the formatter's own mistake) or
-  `test.runtime_start_failed` (no memory for the test thread) at all;
-  each shows output copied from a `jadpo` built with that failure forced,
-  and says so.
+- [x] **D13b2c The rest a person decides**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; area 14, "Command errors"; the pages of `cli.dev_start_failed`, `conform.refused`, `recording.refused`, `suggest.share_failed`, `format.unsafe` and `test.runtime_start_failed`.
 - [x] **D13b3a The command line's own errors**: area 14, "Command-line errors"; `tools/docs/language_docs.py`, `error_format_scope`; the pages of `cli.*_arguments`, `cli.unknown_command` and `cli.unknown_flag`.
 - [ ] **D13b3b The other command errors** `opus · high`: the same for the
   rest of the rules only a command raises that an agent decides and whose

@@ -213,7 +213,7 @@ pub(crate) fn setup(
                             ),
                         )
                         .reason(format!(
-                            "`jadpo dev` lets the operations `development: {{ sandbox: }}` names through to the provider's sandbox, never its live API, and `{variable}` chooses `live`."
+                            "`jadpo dev` lets the operations `development: {{ sandbox: }}` and `--sandbox` name through to the provider's sandbox, never its live API, and `{variable}` chooses `live`."
                         ))
                         .next(format!(
                             "Set `{variable}` to `sandbox` in `.env.local`, or run `jadpo dev --fake {name}`"

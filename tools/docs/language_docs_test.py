@@ -864,6 +864,12 @@ class Commands(unittest.TestCase):
                          '```text output\n.\n~\nchecked: 1 file\n```\n')
         self.assertEqual(page.problems, [])
 
+    def test_the_clock_time_a_command_started_is_left_out(self):
+        """`jadpo dev` heads its output with the time it started, which no
+        two runs share; like a duration, it is left out."""
+        self.assertEqual(docs.without_run_time('jadpo dev, started 21:13:00\nerror: x\nchecked: 1 file in 0.1 s\n'),
+                         'jadpo dev\nerror: x\nchecked: 1 file\n')
+
     def test_the_project_is_its_check_blocks(self):
         page = self.page('# `cli.x`\n\n```jadpo check project=p file=app.jadpo hidden\napplication {}\n```\n\n'
                          '```sh run project=p\ncat app.jadpo\n```\n\n```text output\napplication {}\n```\n')
