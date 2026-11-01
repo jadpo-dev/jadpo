@@ -1650,6 +1650,13 @@ required in your app's other locales and rewordable once you declare
 | `passkey_limit_reached` | "You have as many passkeys as an account can hold. Remove one to add another." |
 | `passkey_not_found` | "That passkey isn't on your account." |
 
+A route with `confirm: Confirmation.passkey` brings one more, on once a
+route says it:
+
+| Message | `en_gb` wording |
+|---|---|
+| `confirmation_required` | "Confirm this with your passkey to go on." |
+
 ### Level 3: branding
 
 Every email, built in or your app's own, is wrapped in your app's shared

@@ -45,6 +45,7 @@ fn route(method: HttpMethod, path: &str, run: Run) -> RoutePlan {
         args: Vec::new(),
         authentication: Authentication::Public,
         caller: None,
+        confirm: false,
         file: "routes.jadpo".into(),
         line: 1,
     }

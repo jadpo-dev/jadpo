@@ -2946,15 +2946,25 @@ the generated routes for real. Only tests can call it:
 |---|---|
 | `test_passkeys.register(user: Principal.user, name: Text) -> TestPasskey` | Adds a passkey for `user` through `POST /auth/passkey/register/options` and `POST /auth/passkey/register`, signed in as `as:` signs in, and gives the device holding it |
 | `test_passkeys.sign_in(passkey: TestPasskey) -> Response` | Signs in with it through the two sign-in routes and gives the second's `Response` |
+| `test_passkeys.confirm(passkey: TestPasskey)` | Confirms the next request the test sends to a route with `confirm: Confirmation.passkey` with it ([Confirm one request with a passkey](#confirm-one-request-with-a-passkey-confirm-confirmationpasskey)) |
 
 Each `TestPasskey` is a device of its own holding one passkey, made by
 the program running the tests, so only a test ever holds one. Called
 anywhere else, `test_passkeys` is `semantic.request_invalid`.
 
-If a route refuses `register`, or the first step of `sign_in`, the test
-ends as a fault naming the route and its code, since the test meant to
-have a passkey. A refusal of the sign-in itself comes back in its
-`Response`, for the test to check.
+If a route refuses `register`, the first step of `sign_in` or a
+confirmation's options, the test ends as a fault naming the route and its
+code, since the test meant to have a passkey. A refusal of the sign-in or
+of the confirmed request itself comes back in its `Response`, for the test
+to check.
+
+`test_passkeys.confirm` sends the next request to the route's
+`…/confirmation` first, with the same caller and input, and has the device
+answer. The
+device answers with its own passkey whatever the options list, as an
+attacker's device would, so a test can show another person's passkey being
+refused. A request to a route with `confirm:` the test didn't confirm goes
+without an answer.
 
 ```jadpo fragment
 test "a passkey signs Ada in" {
@@ -3044,8 +3054,11 @@ See [Built-in emails](16-built-in-services.md) for both settings.
 | A route your app writes at a generated passkey path | `route.path_overlap` |
 | A subscriber of `PasskeyAdded` or `PasskeyRemoved` with no `passkey:` | `subscriber.event_invalid` |
 | `emit` of `PasskeyAdded` or `PasskeyRemoved` | `event.emit_invalid` |
-| `test_passkeys.register` or `.sign_in` anywhere but a test | `semantic.request_invalid` |
-| `test_passkeys.register` or `.sign_in` with no `passkey:` | `semantic.auth_setting_required` |
+| `test_passkeys.register`, `.sign_in` or `.confirm` anywhere but a test | `semantic.request_invalid` |
+| `test_passkeys.register`, `.sign_in` or `.confirm` with no `passkey:` | `semantic.auth_setting_required` |
+| A route's `confirm:` holding anything but `Confirmation.passkey`, on a route open to anyone or for a service | `route.confirm_invalid` |
+| A route's `confirm:` with no `passkey:` | `semantic.auth_setting_required` |
+| A route your app writes at a confirmed route's `…/confirmation`, or a confirmed `GET` beside a confirmed `POST` at one path | `route.path_overlap` |
 
 ### Sign-in providers
 
@@ -3154,42 +3167,370 @@ that lookup, so a disabled user may keep working until then (see
 [The application and revocation](#the-application-and-revocation)). A
 `fresh` route always does the lookup, whatever the delay.
 
+### Any other value
+
+Any other `authentication:` value is a compile error. The error offers both
+fixes rather than guessing, because one keeps the route protected and the
+other opens it to anyone.
+
 ### Confirm one request with a passkey: `confirm: Confirmation.passkey`
 
 Use it where a stolen session or token must not be enough, such as
 releasing a package, moving money or deleting an account. The signed-in
 person approves this one request with one of their own passkeys.
 
-```text
-POST /releases/{release_id}/confirm {
-    authentication: RouteAuthentication.session
-    confirm: Confirmation.passkey
-    run: confirm_release(release_id, current_principal.user)
+```jadpo check project=confirmation file=domains/registry/routes/releases.jadpo
+use registry/entities { Release }
+use registry/actions { confirm_release }
+
+routes Releases {
+    prefix: /releases
+
+    POST /{release_id: Release.id}/confirm {
+        confirm: Confirmation.passkey
+        status: SuccessStatus.no_content
+        run: confirm_release(release_id)
+    }
 }
 ```
 
-- **The challenge is bound to the request.** The client first asks the
-  route's generated `…/confirmation` for a challenge; the runtime binds it
-  to the signed-in person, the route and a digest of the request's
-  input. The browser has the person present a passkey, and the request
-  carries the answer.
+A client confirms a request in three steps, around the browser's own
+prompt. It first sends the same request to the route's generated
+`<path>/confirmation`, with the same method, placeholders, query or body
+and headers (a `GET`'s goes as a `POST`, since asking keeps a challenge),
+for the options to give `navigator.credentials.get()`
+(`PublicKeyCredential.parseRequestOptionsFromJSON` reads what `publicKey`
+holds):
+
+```text
+POST /releases/0192d3c4-.../confirm/confirmation
+
+200 OK
+{ "publicKey": { "challenge": "Vh3q...", "rpId": "registry.example", "allowCredentials": [{ "type": "public-key", "id": "AQID..." }], "userVerification": "required", "timeout": 120000 } }
+```
+
+The browser has the person present a passkey, and the request itself
+carries the device's answer in `X-Jadpo-Confirmation`, the JSON WebAuthn's
+`toJSON()` writes, in base64 (`btoa(JSON.stringify(credential))`):
+
+```text
+POST /releases/0192d3c4-.../confirm
+X-Jadpo-Confirmation: eyJpZCI6IkFRSUQi...
+
+204 No Content
+```
+
+- **The challenge is bound to the request.** The runtime reads the
+  options request as the route itself would, so input the route would
+  refuse is refused here, before anyone is asked for a passkey. It binds
+  the challenge to the signed-in person and a digest of the route and
+  that input, the one an `Idempotency-Key` is checked against. So the
+  same input written differently, with its members in another order, is
+  the same request.
+- **The options list only the person's passkeys.** A person with none is
+  refused with 403 `confirmation_required` rather than given options any
+  passkey could answer, so a frontend sends them to add one.
 - **It is checked before anything runs**: the passkey must be one the
   signed-in person registered, the answer must show the person was
   verified (a fingerprint, a face or a PIN), and the challenge must be
   unused, under two minutes old and match this request's input. Anything
-  else is refused with 403 `confirmation_required`, and nothing runs.
+  else is refused with 403 `confirmation_required`, and nothing runs. The
+  answer is checked as a passkey's sign-in is
+  ([Signing in](#signing-in)): the origin, the relying party, the
+  signature and the counter. On success the passkey's counter, backup
+  state and last use are written.
 - **Each challenge works once**, so an answer can't be replayed, and one
-  made for one request can't approve another.
-- **It needs `passkey:`** in `sign_in:`, and a route that needs it says so
-  in its API's record and OpenAPI.
+  made for one request can't approve another. It is used up when the
+  answer arrives, whether or not the answer checks. A new options request
+  for the same person, route and input replaces the earlier one.
+- **The two minutes are fixed.** `passkey:`'s `expires_after:` doesn't
+  change them.
+- **A retry confirms again.** An `Idempotency-Key` is checked after the
+  confirmation, so a client repeating a request with its key presents a
+  passkey again and gets the first response. A confirmation can't be
+  skipped by repeating a key.
+- **It needs a person signed in.** `confirm:` on a route with
+  `authentication: RouteAuthentication.none`, or one that passes on
+  `current_principal.service`, is `route.confirm_invalid`. Any credential
+  of a signed-in person can carry an answer, since the answer is what
+  proves it's them; a route that also needs their record read now adds
+  `authentication: RouteAuthentication.fresh`.
+- **It needs `passkey:`** in `sign_in:` (`semantic.auth_setting_required`),
+  and a route that needs it says so in its API's record (`confirm passkey`)
+  and OpenAPI (`x-jadpo-confirm`, with the header and the 403). The
+  generated route is listed beside it in both and in `jadpo routes`, marked
+  generated. A route your app writes at that path is `route.path_overlap`,
+  as is a confirmed `GET` beside a confirmed `POST`, which would share one.
+- **Taking it off needs a person.** A route that stops asking for a
+  confirmation needs an acceptance, `PolicyChange.confirmation_removed`
+  ([Records](18-records-and-manifest.md)), since a stolen session is then
+  enough again.
 - **In route tests**, `test_passkeys.confirm(passkey)` answers the next
-  confirmation with that test passkey.
+  confirmation with that test passkey
+  ([Passkeys in tests](#passkeys-in-tests)).
 
-### Any other value
+```jadpo check project=confirmation file=config.jadpo hidden
+config {
+    browser_origin: Url {
+        test: "https://registry.example"
+    }
+    mail_sender: Email
+    smtp_host: Hostname
+}
+```
 
-Anything else is a compile error. The error offers both fixes rather than
-guessing, because one keeps the route protected and the other opens it to
-anyone.
+```jadpo check project=confirmation file=app.jadpo hidden
+use registry/entities { Publisher }
+
+application {
+    display_name: "Registry"
+    connections: {
+        mail: {
+            driver: Driver.smtp
+            host: config.smtp_host
+        }
+    }
+    email: {
+        connection: mail
+        from: config.mail_sender
+    }
+}
+
+principal {
+    user: {
+        subject: Publisher.email
+    }
+}
+```
+
+```jadpo check project=confirmation file=authentication.jadpo hidden
+authentication {
+    browser_session: {
+        cookie: "registry_session"
+        origin: config.browser_origin
+    }
+    sign_in: {
+        magic_link: {
+            link: "/sign-in/confirm"
+        }
+        passkey: {}
+    }
+}
+```
+
+```jadpo check project=confirmation file=domains/registry/entities/publisher.jadpo hidden
+entity Publisher {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+    }
+}
+```
+
+```jadpo check project=confirmation file=domains/registry/entities/release.jadpo hidden
+use registry/entities { Publisher }
+
+entity Release {
+    id: Uuid
+    publisher_id: Publisher.id {
+        on_delete: OnDelete.restricted
+    }
+    confirmed: Bool
+
+    policy: {
+        create: [publisher_id]
+        read: [publisher_id]
+        update: [publisher_id]
+    }
+}
+```
+
+```jadpo check project=confirmation file=domains/registry/failures/email_taken.jadpo hidden
+/// The address has an account already.
+type EmailTaken = Failure {
+    kind: FailureKind.conflict
+}
+```
+
+```jadpo check project=confirmation file=domains/registry/failures/release_not_found.jadpo hidden
+/// No such release.
+type ReleaseNotFound = Failure {
+    kind: FailureKind.not_found
+}
+```
+
+```jadpo check project=confirmation file=domains/registry/types/enrolment.jadpo hidden
+type Enrolment = Input {
+    email: Email
+}
+```
+
+```jadpo check project=confirmation file=domains/registry/actions/enrol_publisher.jadpo hidden
+use registry/entities { Publisher }
+use registry/types { Enrolment }
+use registry/failures { EmailTaken }
+
+/// Adds a publisher with an address.
+action enrol_publisher(input: Enrolment) fails EmailTaken -> Publisher {
+    return attempt Publisher.create {
+        set: {
+            email: input.email
+        }
+        conflict: {
+            Publisher.email: EmailTaken
+        }
+    }
+}
+```
+
+```jadpo check project=confirmation file=domains/registry/actions/draft_release.jadpo hidden
+use registry/entities { Release }
+
+/// Starts a release nobody has confirmed.
+action draft_release(publisher: Principal.user) -> Release {
+    return Release.create {
+        set: {
+            publisher_id: publisher.id
+            confirmed: false
+        }
+    }
+}
+```
+
+```jadpo check project=confirmation file=domains/registry/actions/confirm_release.jadpo hidden
+use registry/entities { Release }
+use registry/failures { ReleaseNotFound }
+
+/// Sends a release out.
+action confirm_release(release_id: Release.id) fails ReleaseNotFound -> Unit {
+    var confirmed: Release = attempt Release.update(release_id) {
+        set: {
+            confirmed: true
+        }
+    }
+    assert confirmed.confirmed
+}
+```
+
+```jadpo check project=confirmation file=policy.jadpo hidden
+use registry
+
+policy {
+    actions: {
+        registry.enrol_publisher: [Access.public]
+    }
+}
+```
+
+```jadpo check project=confirmation file=domains/registry/fixtures/publisher_called.jadpo hidden
+use registry/entities { Publisher }
+use registry/types { Enrolment }
+use registry/actions { enrol_publisher }
+
+/// A publisher with `address`, with no passkey.
+fixture publisher_called(address: Email) -> Principal.user {
+    var publisher: Publisher = attempt enrol_publisher(
+        Enrolment {
+            email: address
+        }
+    )
+    return Principal.user(publisher)
+}
+```
+
+```jadpo check project=confirmation file=domains/registry/fixtures/drafted_by.jadpo hidden migrate=initial
+use registry/entities { Release }
+use registry/actions { draft_release }
+
+/// A release of `publisher`'s that nobody has confirmed.
+fixture drafted_by(publisher: Principal.user) -> Release {
+    return draft_release(publisher)
+}
+```
+
+A route test confirms the next request with a test passkey. Without it,
+or with another person's, nothing runs:
+
+```jadpo check project=confirmation file=domains/registry/routes/releases.test.jadpo
+use registry/entities { Release }
+use registry/fixtures { drafted_by, publisher_called }
+
+test "a release goes out once its publisher confirms it with a passkey" {
+    var ada: Principal.user = publisher_called("ada@example.com")
+    var phone: TestPasskey = test_passkeys.register(ada, "Phone")
+    var release: Release = drafted_by(ada)
+    test_passkeys.confirm(phone)
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/releases/{release_id}/confirm"
+        params: {
+            release_id: release.id
+        }
+        as: ada
+    }
+    assert response.status == 204
+}
+
+test "a stolen session alone sends nothing out" {
+    var ada: Principal.user = publisher_called("ada@example.com")
+    var phone: TestPasskey = test_passkeys.register(ada, "Phone")
+    var release: Release = drafted_by(ada)
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/releases/{release_id}/confirm"
+        params: {
+            release_id: release.id
+        }
+        as: ada
+    }
+    assert response.status == 403
+    assert response.code == "confirmation_required"
+    var signed_in: Response = test_passkeys.sign_in(phone)
+    assert signed_in.status == 204
+}
+
+test "another person's passkey confirms nothing" {
+    var ada: Principal.user = publisher_called("ada@example.com")
+    var mallory: Principal.user = publisher_called("mallory@example.com")
+    var ada_phone: TestPasskey = test_passkeys.register(ada, "Phone")
+    var mallory_phone: TestPasskey = test_passkeys.register(mallory, "Phone")
+    var release: Release = drafted_by(ada)
+    test_passkeys.confirm(mallory_phone)
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/releases/{release_id}/confirm"
+        params: {
+            release_id: release.id
+        }
+        as: ada
+    }
+    assert response.status == 403
+    assert response.code == "confirmation_required"
+    var signed_in: Response = test_passkeys.sign_in(ada_phone)
+    assert signed_in.status == 204
+}
+```
+
+The API record says the route asks for a passkey, and lists the route Jadpo
+answers beside it:
+
+```text
+POST /releases/{release_id: Uuid}/confirm
+    confirm passkey
+    status 204
+    fails release_not_found
+
+POST /releases/{release_id: Uuid}/confirm/confirmation
+    generated confirmation
+    caller user
+    output PasskeyRequestOptions
+    status 200
+```
 
 ### Apps with more than one API
 
@@ -4536,9 +4877,11 @@ them in the usual failure body, with the code and status below.
 | The passkey is registered already | `passkey_already_registered` | `conflict` | 409 |
 | The person has 20 passkeys already | `passkey_limit_reached` | `conflict` | 409 |
 | No passkey of the signed-in person has that `id` | `passkey_not_found` | `not_found` | 404 |
+| A route's `confirm:` isn't met: no answer, one that doesn't check or isn't from one of the person's own passkeys, one for another request, used already or too old, or a person with no passkey | `confirmation_required` | `not_permitted` | 403 |
 
 `user_disabled` and `service_disabled` are built in and never declared,
-as are the `sign_in_` and `passkey_` failures. Their wording for people is
+as are the `sign_in_` and `passkey_` failures and
+`confirmation_required`. Their wording for people is
 Jadpo's own ([Built-in services](16-built-in-services.md)).
 
 With a [revocation delay](#fewer-database-reads-revocation_delay), a
@@ -4554,7 +4897,6 @@ A feature not built yet is `toolchain.not_built_yet` where it is written.
 |---|---|
 | Everything else on this page | Built. |
 | `Driver.github`, `Driver.apple` and `oauth_provider:` | Not built yet. |
-| A route's `confirm: Confirmation.passkey` ([Confirm one request with a passkey](#confirm-one-request-with-a-passkey-confirm-confirmationpasskey)) | Not built yet. |
 | Scope declarations and policy's scope restrictions | Not built yet. As [Policy](09-policy.md) specifies, an external method narrows scopes only when it declares the scopes it reads; undeclared provider scope or profile claims never replace application authority. |
 | OAuth grants: `OAuthGrant` credentials, the connecting and disconnecting routes and `on_behalf_of:` ([Integrations](11-integrations.md)) | Not built yet. |
 
@@ -4565,6 +4907,7 @@ The examples are one file each, so the application, principal and
 sign-in methods sit beside the entity they name; a project keeps them in
 `app.jadpo` and `authentication.jadpo`.
 
+- [`route.confirm_invalid`](../errors/route.confirm_invalid.md)
 - [`semantic.multiple_applications`](../errors/semantic.multiple_applications.md)
 - [`semantic.multiple_principals`](../errors/semantic.multiple_principals.md)
 - [`semantic.multiple_authentication`](../errors/semantic.multiple_authentication.md)

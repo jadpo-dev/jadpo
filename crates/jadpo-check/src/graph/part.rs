@@ -682,6 +682,9 @@ impl Part<'_> {
             .collect();
         let providers = ops.contains(&jadpo_std::http::SessionOp::TestProviderSignIn);
         let passkeys = ops.iter().any(|op| op.test_passkey());
+        // `test_passkeys.confirm` goes through each confirmed route's
+        // `…/confirmation` (area 8).
+        let confirms = ops.contains(&jadpo_std::http::SessionOp::TestPasskeyConfirm);
         if !providers && !passkeys {
             return Vec::new();
         }
@@ -692,6 +695,7 @@ impl Part<'_> {
             .filter(|what| {
                 matches!(what, Generating::Provider(_)) && providers
                     || matches!(what, Generating::Passkey(_)) && passkeys
+                    || matches!(what, Generating::Confirmation(_)) && confirms
             })
             .flat_map(|what| what.routes())
             .map(|route| registry.key(Kind::GeneratedRoute, &route.label(), None))

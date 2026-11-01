@@ -1,6 +1,7 @@
 //! The routes the runtime answers itself in each API (areas 7, 8 and 11):
-//! the services' token exchange, the passkey and magic-link routes, the
-//! API's own OpenAPI document and each connection's webhook. The API
+//! the services' token exchange, the passkey and magic-link routes, each
+//! confirmed route's `…/confirmation`, the API's own OpenAPI document and
+//! each connection's webhook. The API
 //! record lists them (`generated ...`, [`super::record`]) and the graph
 //! has a `generated_route` node for each (chunk 10.3g), both from this one
 //! list, so they never disagree. Health is outside every API, so it is
@@ -13,6 +14,7 @@ use jadpo_std::AuthenticationMethod;
 use jadpo_std::http::{MagicLinkStep, PasskeyStep, ProviderStep};
 
 use super::served::Served;
+use super::{RouteModel, Segment};
 use crate::webhooks::WebhookModel;
 
 /// What generates a route the runtime answers in an API.
@@ -33,6 +35,10 @@ pub enum Generating {
     OpenApi(Served),
     /// A connection's webhook (area 11, "Receiving from outside").
     Webhook(Box<WebhookModel>),
+    /// `<path>/confirmation` for a route with `confirm:
+    /// Confirmation.passkey`, asked with its method (area 8, "Confirm one
+    /// request with a passkey"), by the route it confirms.
+    Confirmation(Box<RouteModel>),
 }
 
 /// One route the runtime answers, as the graph keys it.
@@ -43,7 +49,7 @@ pub struct GeneratedRoute {
     /// Its path, a placeholder in braces: `/auth/passkey/{passkey_id}`.
     pub path: String,
     /// What generates it: `exchange`, `passkey`, `magic_link`,
-    /// `provider`, `openapi` or `webhook`.
+    /// `provider`, `openapi`, `webhook` or `confirmation`.
     pub generated: &'static str,
     /// Who may call it: `none`, `caller`, `service`, `user` or `signature`.
     pub authentication: &'static str,
@@ -122,8 +128,29 @@ impl Generating {
                 generated: "webhook",
                 authentication: "signature",
             }],
+            Generating::Confirmation(route) => vec![GeneratedRoute {
+                method: jadpo_std::http::confirmation_method(route.method),
+                path: confirmation_path(route),
+                generated: "confirmation",
+                authentication: "user",
+            }],
         }
     }
+}
+
+/// A confirmed route's `…/confirmation`, its placeholders in braces:
+/// `/releases/{release_id}/confirm/confirmation`.
+pub fn confirmation_path(route: &RouteModel) -> String {
+    let segments = route
+        .confirmation_segments()
+        .unwrap_or_else(|| route.segments.clone());
+    segments
+        .iter()
+        .map(|segment| match segment {
+            Segment::Fixed(text) => format!("/{text}"),
+            Segment::Param { name, .. } => format!("/{{{name}}}"),
+        })
+        .collect()
 }
 
 /// What generates routes in each API that has a record, by API name: an
@@ -178,6 +205,12 @@ pub fn generating(db: &dyn Db, project: Project) -> BTreeMap<String, Vec<Generat
             }
             for webhook in crate::webhooks::declared_in(db, project, &api) {
                 out.push(Generating::Webhook(Box::new(webhook)));
+            }
+            // Each confirmed route's options (area 8).
+            for (_, route) in groups.routes().filter(|(group, _)| group.api == api) {
+                if route.confirm {
+                    out.push(Generating::Confirmation(Box::new(route.clone())));
+                }
             }
             (api, out)
         })

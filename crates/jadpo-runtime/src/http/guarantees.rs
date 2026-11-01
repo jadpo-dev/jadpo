@@ -467,6 +467,7 @@ fn table(keys: Option<&str>, required: bool) -> RouteTable {
             args: Vec::new(),
             authentication: jadpo_std::http::Authentication::Public,
             caller: None,
+            confirm: false,
             file: "domains/widgets/routes/widgets.jadpo".into(),
             line: 1,
         }],

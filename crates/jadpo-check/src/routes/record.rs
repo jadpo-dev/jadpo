@@ -9,7 +9,9 @@
 //! An entry `api <name>` says how clients sign in to it (one
 //! `authentication` fact per method, chunk 4.9) and whether its writes
 //! must send an `Idempotency-Key` (`idempotency required`); a route for
-//! one kind of caller says which (`caller user`).
+//! one kind of caller says which (`caller user`), and a route a person
+//! confirms with a passkey says so (`confirm passkey`), beside the
+//! `…/confirmation` the runtime answers for it (`generated confirmation`).
 //!
 //! The record is the wire contract, so a field shows what a client sends
 //! or reads (`Text { max_length: 200 }`), not the name of the type behind
@@ -105,6 +107,9 @@ pub fn record_texts(db: &dyn Db, project: Project) -> BTreeMap<String, String> {
                     Generating::Provider(name) => provider_entries(name),
                     Generating::OpenApi(served) => vec![openapi_entry(served)],
                     Generating::Webhook(webhook) => vec![webhook_entry(webhook)],
+                    Generating::Confirmation(route) => {
+                        vec![confirmation_entry(&wire, &lookup, route)]
+                    }
                 })
                 .collect();
             let mut head = Entry::new(format!("api {api}"));
@@ -172,6 +177,68 @@ fn exchange_entry() -> Generated {
                 .with("expires_at: Instant")
                 .with("token: ServiceToken"),
         )],
+    }
+}
+
+/// A route's path with each placeholder's wire type:
+/// `/todos/{todo_id: Uuid}`.
+fn typed_path(
+    wire: &Wire<'_>,
+    lookup: &Lookup<'_>,
+    segments: &[Segment],
+    refs: &mut BTreeSet<Key>,
+) -> String {
+    let path: String = segments
+        .iter()
+        .map(|segment| match segment {
+            Segment::Fixed(text) => format!("/{text}"),
+            Segment::Param { name, ty } => {
+                format!("/{{{name}: {}}}", wire.render(&type_ref(lookup, ty), refs))
+            }
+        })
+        .collect();
+    if path.is_empty() {
+        "/".to_string()
+    } else {
+        path
+    }
+}
+
+/// Where a route's input comes from, as its record says it.
+fn input_line(route: &RouteModel, input: &str) -> String {
+    let source = if route.method.reads_query() {
+        "query"
+    } else {
+        "body"
+    };
+    format!("input {input} ({source})")
+}
+
+/// The generated `<path>/confirmation` of a route with `confirm:
+/// Confirmation.passkey` (area 8, "Confirm one request with a passkey"),
+/// as the record lists it: the runtime's, asked with the route's method,
+/// reading its input and answering with WebAuthn's request options.
+fn confirmation_entry(wire: &Wire<'_>, lookup: &Lookup<'_>, route: &RouteModel) -> Generated {
+    let segments = route
+        .confirmation_segments()
+        .unwrap_or_else(|| route.segments.clone());
+    let shown = typed_path(wire, lookup, &segments, &mut BTreeSet::new());
+    let method = jadpo_std::http::confirmation_method(route.method);
+    let mut entry = Entry::new(format!("{} {shown}", method.word()))
+        .with("generated confirmation")
+        .with("caller user");
+    if let Some(input) = &route.input {
+        entry.push(input_line(route, input));
+    }
+    entry.push(format!(
+        "output {}",
+        jadpo_std::http::PASSKEY_REQUEST_OPTIONS
+    ));
+    entry.push("status 200");
+    Generated {
+        at: (super::generated::confirmation_path(route), order_of(method)),
+        entry,
+        sections: Vec::new(),
     }
 }
 
@@ -434,24 +501,7 @@ fn write(
         while let Some(next) = due.next_if(|next| (route.path(), method_order(route)) > next.at) {
             out.push(next.entry);
         }
-        let path: String = route
-            .segments
-            .iter()
-            .map(|segment| match segment {
-                Segment::Fixed(text) => format!("/{text}"),
-                Segment::Param { name, ty } => {
-                    format!(
-                        "/{{{name}: {}}}",
-                        wire.render(&type_ref(lookup, ty), &mut refs)
-                    )
-                }
-            })
-            .collect();
-        let path = if path.is_empty() {
-            "/".to_string()
-        } else {
-            path
-        };
+        let path = typed_path(wire, lookup, &route.segments, &mut refs);
         let mut entry = Entry::new(format!("{} {path}", route.method.word()));
         // A route anyone may call says so: opening one is a change a
         // reviewer must see (area 8).
@@ -462,16 +512,19 @@ fn write(
         if let Some(kind) = route.caller {
             entry.push(format!("caller {}", kind.name()));
         }
+        // A route a person confirms with a passkey (area 8): dropping it
+        // lets a stolen session through, which a reviewer must see.
+        if route.confirm {
+            entry.push(format!(
+                "confirm {}",
+                jadpo_std::Confirmation::Passkey.name()
+            ));
+        }
         if let Some(input) = &route.input {
             if let Some(key) = declaration_key(lookup, input) {
                 refs.insert(key);
             }
-            let source = if route.method.reads_query() {
-                "query"
-            } else {
-                "body"
-            };
-            entry.push(format!("input {input} ({source})"));
+            entry.push(input_line(route, input));
         }
         if let Some(output) = &route.output {
             // A model's answer, streamed (area 7; chunk 5.5v6).

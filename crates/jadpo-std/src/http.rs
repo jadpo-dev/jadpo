@@ -225,6 +225,12 @@ pub enum Run {
     /// OpenAPI document, its text as `jadpo check` writes it, which the
     /// runtime answers with as it is.
     OpenApi(String),
+    /// `<path>/confirmation`, generated for a route with `confirm:
+    /// Confirmation.passkey` and asked with its method (area 8, "Confirm
+    /// one request with a passkey"): the options for confirming that
+    /// route's request, which it reads as the route itself would, by the
+    /// route's number.
+    Confirmation(u32),
 }
 
 /// The routes `sign_in: { passkey: }` generates (area 8, "Passkeys"),
@@ -360,6 +366,34 @@ pub const PASSKEY_REQUEST_OPTIONS: &str = "PasskeyRequestOptions";
 /// A passkey as its holder sees it: `id`, `name`, `registered_at` and
 /// `last_used_at`, never its key or credential ID.
 pub const PASSKEY_VIEW: &str = "PasskeyView";
+
+/// The segment a route's `confirm:` adds after its path for the route the
+/// runtime answers with the options for a confirmation (area 8, "Confirm
+/// one request with a passkey"): `<path>/confirmation`.
+pub const CONFIRMATION_SEGMENT: &str = "confirmation";
+
+/// The method a route's `…/confirmation` is asked with: the route's own,
+/// so a client sends the same request there first, and two routes at one
+/// path each have theirs; a `GET`'s is a `POST`, since asking keeps a
+/// challenge.
+pub fn confirmation_method(method: crate::HttpMethod) -> crate::HttpMethod {
+    match method {
+        crate::HttpMethod::Get => crate::HttpMethod::Post,
+        other => other,
+    }
+}
+
+/// The header a confirmed request carries the device's answer in: the
+/// JSON WebAuthn's `toJSON()` writes, in base64.
+pub const CONFIRMATION_HEADER: &str = "X-Jadpo-Confirmation";
+
+/// How long a confirmation's challenge lasts: two minutes, whatever
+/// `passkey:`'s `expires_after:` says (area 8).
+pub const CONFIRMATION_EXPIRES_MS: i64 = 2 * 60 * 1000;
+
+/// What a route's `confirm:` reports when the request isn't confirmed
+/// (area 8): 403, and nothing runs.
+pub const CONFIRMATION_REQUIRED: &str = "confirmation_required";
 
 /// What `passkey:` generates and how the runtime answers it (area 8,
 /// "Passkeys").
@@ -769,7 +803,7 @@ pub const MAGIC_LINKS: &str = "magic_links";
 
 /// The namespace only route tests call (area 8, "In development and
 /// tests"; chunk 5.5z2): a software authenticator driving the generated
-/// passkey routes, `test_passkeys.register` and `.sign_in`.
+/// passkey routes, `test_passkeys.register`, `.sign_in` and `.confirm`.
 pub const TEST_PASSKEYS: &str = "test_passkeys";
 
 /// The namespace a route test signs in through a provider with (area 8,
@@ -904,6 +938,11 @@ pub enum SessionOp {
     /// `test_passkeys.sign_in(passkey)`: signs in with it through the two
     /// sign-in routes, giving the second's `Response`.
     TestPasskeySignIn,
+    /// `test_passkeys.confirm(passkey)` (area 8, "Confirm one request with
+    /// a passkey"): the next request a route test makes to a route with
+    /// `confirm:` is confirmed with it, through the route's generated
+    /// `…/confirmation`.
+    TestPasskeyConfirm,
     /// `test_providers.sign_in(method, account)` (area 8, "Providers";
     /// chunk A7b): only a test calls it, signing `account` in through the
     /// provider's two routes with the local issuer as the provider, and
@@ -912,7 +951,7 @@ pub enum SessionOp {
 }
 
 impl SessionOp {
-    pub const ALL: [SessionOp; 14] = [
+    pub const ALL: [SessionOp; 15] = [
         SessionOp::Start,
         SessionOp::End,
         SessionOp::IssueToken,
@@ -926,6 +965,7 @@ impl SessionOp {
         SessionOp::MagicLinkRedeemCode,
         SessionOp::TestPasskeyRegister,
         SessionOp::TestPasskeySignIn,
+        SessionOp::TestPasskeyConfirm,
         SessionOp::TestProviderSignIn,
     ];
 
@@ -944,6 +984,7 @@ impl SessionOp {
             SessionOp::MagicLinkRedeemCode => "redeem_code",
             SessionOp::TestPasskeyRegister => "register",
             SessionOp::TestPasskeySignIn | SessionOp::TestProviderSignIn => "sign_in",
+            SessionOp::TestPasskeyConfirm => "confirm",
         }
     }
 
@@ -1000,7 +1041,9 @@ impl SessionOp {
     pub fn test_passkey(self) -> bool {
         matches!(
             self,
-            SessionOp::TestPasskeyRegister | SessionOp::TestPasskeySignIn
+            SessionOp::TestPasskeyRegister
+                | SessionOp::TestPasskeySignIn
+                | SessionOp::TestPasskeyConfirm
         )
     }
 
@@ -1037,6 +1080,7 @@ impl SessionOp {
             | SessionOp::MagicLinkRedeemCode
             | SessionOp::TestPasskeyRegister
             | SessionOp::TestPasskeySignIn
+            | SessionOp::TestPasskeyConfirm
             | SessionOp::TestProviderSignIn => crate::AuthenticationMethod::BrowserSession,
             SessionOp::IssueToken | SessionOp::Tokens | SessionOp::RevokeToken => {
                 crate::AuthenticationMethod::ApiToken
@@ -1340,6 +1384,11 @@ pub struct RoutePlan {
     /// The kind of caller its call selects (`current_principal.user`): a
     /// caller of the other kind is refused before it runs.
     pub caller: Option<PrincipalKind>,
+    /// Whether it runs only once the signed-in person confirms this one
+    /// request with a passkey of their own (`confirm:
+    /// Confirmation.passkey`, area 8).
+    #[serde(default)]
+    pub confirm: bool,
     /// Where it is written, for logs and `jadpo dev`.
     pub file: String,
     pub line: u32,

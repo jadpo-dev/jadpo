@@ -785,6 +785,7 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         "docs/language/08-identity.md sign-in",
         "docs/language/08-identity.md tokens-and-keys",
         "docs/language/08-identity.md passkeys",
+        "docs/language/08-identity.md confirmation",
         "docs/language/08-identity.md first-token",
         "docs/language/08-identity.md google-staff",
         "docs/language/09-policy.md policy-end-to-end",
@@ -980,7 +981,7 @@ fn a_route_tests_spans_are_in_its_record() {
 /// next line, and its fixtures. Teaching example 27, the guest house,
 /// registers and signs in with `test_passkeys` there, the test
 /// authenticator and the passkey ceremonies built for wasm32 (area 8,
-/// "Passkeys").
+/// "Passkeys"), and area 8's release is confirmed with one.
 #[test]
 fn route_tests_on_workerd_give_the_interpreters_records() {
     if !jadpo_test::live() {
@@ -1008,6 +1009,10 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
     // session. Its three tests sign in through the provider alone, and
     // each is a route test (chunk A6).
     let google_staff = page("docs/language/08-identity.md google-staff");
+    // Area 8's release a publisher confirms with a passkey (chunk R1): the
+    // route's `…/confirmation`, the ceremony built for wasm32 and the
+    // challenge taken once, each refusal with the interpreter's record.
+    let confirmation = page("docs/language/08-identity.md confirmation");
     let projects = [
         ("area 7's todos", corpus_project(&files, "workerd-todos")),
         (
@@ -1037,6 +1042,10 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
             "area 8's staff signing in with Google",
             corpus_project(&google_staff, "workerd-google-staff"),
         ),
+        (
+            "area 8's release confirmed with a passkey",
+            corpus_project(&confirmation, "workerd-confirmation"),
+        ),
     ];
     let folders: Vec<PathBuf> = projects
         .iter()
@@ -1055,7 +1064,16 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
         .collect();
     assert_eq!(
         counts,
-        [(3, 3), (2, 2), (4, 4), (1, 1), (5, 5), (1, 1), (3, 3)]
+        [
+            (3, 3),
+            (2, 2),
+            (4, 4),
+            (1, 1),
+            (5, 5),
+            (1, 1),
+            (3, 3),
+            (3, 3)
+        ]
     );
     println!(
         "compared on workerd: {} route tests of {} projects with the interpreter's records, every one passing, in {:.0?}",

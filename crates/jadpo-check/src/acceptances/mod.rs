@@ -320,6 +320,10 @@ fn said(change: &str, family: &Family) -> (&'static str, &'static str) {
             "opening a route to anyone widens who can call it",
             "Anyone at all may now call it, without signing in.",
         ),
+        "PolicyChange.confirmation_removed" => (
+            "no longer confirming a route with a passkey lets a stolen session through",
+            "A signed-in session alone now runs a request that needed the person's own passkey.",
+        ),
         "PolicyChange.widened" => (
             "widening who can do what needs a person",
             "Callers who were refused are now let in.",

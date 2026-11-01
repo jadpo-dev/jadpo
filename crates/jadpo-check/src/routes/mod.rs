@@ -48,8 +48,9 @@ const OUTPUT_ONLY: &str = "A route returns only an `Output` type (area 2), a `Li
 
 /// What a route entry may hold, in the order `jadpo fmt` writes them
 /// (area 14, "Formatting").
-pub const ROUTE_ITEMS: [&str; 8] = [
+pub const ROUTE_ITEMS: [&str; 9] = [
     "authentication",
+    "confirm",
     "rate_limit",
     "input",
     "output",
@@ -205,6 +206,10 @@ pub struct RouteModel {
     pub authentication: Authentication,
     /// The kind of caller it passes on (`current_principal.user`).
     pub caller: Option<PrincipalKind>,
+    /// Whether the signed-in person confirms each request with one of
+    /// their own passkeys before it runs (`confirm: Confirmation.passkey`,
+    /// area 8).
+    pub confirm: bool,
     pub run: Run,
     /// What it waits for before it answers, with `settle:`; its `output:`
     /// is then what `answer:` gives.
@@ -219,6 +224,20 @@ pub struct RouteModel {
 impl RouteModel {
     pub fn path(&self) -> String {
         path_text(&self.segments)
+    }
+
+    /// With `confirm:`, the path of the route the runtime answers with the
+    /// options for confirming this one's request, `<path>/confirmation`
+    /// (area 8, "Confirm one request with a passkey"), asked with
+    /// [`jadpo_std::http::confirmation_method`].
+    pub fn confirmation_segments(&self) -> Option<Vec<Segment>> {
+        self.confirm.then(|| {
+            let mut segments = self.segments.clone();
+            segments.push(Segment::Fixed(
+                jadpo_std::http::CONFIRMATION_SEGMENT.to_string(),
+            ));
+            segments
+        })
     }
 
     /// `GET /todos/{todo_id}`.
@@ -716,6 +735,61 @@ pub fn table_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .next(format!("Give `{}` in `{group}` another path", route.label())),
             );
             continue;
+        }
+        // The runtime answers each confirmed route's `…/confirmation`
+        // (area 8, "Confirm one request with a passkey").
+        let confirming = routes.iter().find(|(_, other, _)| {
+            route.method == jadpo_std::http::confirmation_method(other.method)
+                && other
+                    .confirmation_segments()
+                    .is_some_and(|segments| overlaps(&route.segments, &segments))
+        });
+        if let Some((_, other, other_span)) = confirming {
+            out.push(
+                Diagnostic::new(
+                    &rule::ROUTE_PATH_OVERLAP,
+                    format!(
+                        "`{}` is where the runtime confirms `{}`",
+                        route.label(),
+                        other.label()
+                    ),
+                )
+                .at(span.clone(), "answered by the runtime")
+                .also(other_span.clone(), "asks for a passkey's confirmation")
+                .reason(format!(
+                    "A route with `confirm: Confirmation.passkey` has `{} {}/confirmation`, which the runtime answers with the options for confirming its request, so this route would never run.",
+                    route.method.word(),
+                    other.path().trim_end_matches('/')
+                ))
+                .next(format!("Give `{}` in `{group}` another path", route.label())),
+            );
+            continue;
+        }
+        // A `GET`'s confirmation is a `POST`: with a `POST` at its path
+        // confirmed too, one route would answer for both (area 8).
+        if route.confirm && route.method == jadpo_std::HttpMethod::Get {
+            let both = routes.iter().find(|(_, other, _)| {
+                other.confirm
+                    && other.method == jadpo_std::HttpMethod::Post
+                    && overlaps(&other.segments, &route.segments)
+            });
+            if let Some((_, other, other_span)) = both {
+                out.push(
+                    Diagnostic::new(
+                        &rule::ROUTE_PATH_OVERLAP,
+                        format!(
+                            "`{}` and `{}` would be confirmed through one route",
+                            route.label(),
+                            other.label()
+                        ),
+                    )
+                    .at(span.clone(), "confirmed through a `POST`")
+                    .also(other_span.clone(), "confirmed through the same `POST`")
+                    .reason("A confirmed `GET` asks for its options with `POST <path>/confirmation`, since asking keeps a challenge, and a confirmed `POST` at the same path asks there too, so one route would have to answer for both.")
+                    .next(format!("Give `{}` in `{group}` another path", route.label())),
+                );
+                continue;
+            }
         }
         let earlier = routes[..i].iter().find(|(_, other, _)| {
             other.method == route.method && overlaps(&other.segments, &route.segments)
@@ -1419,6 +1493,11 @@ impl Reader<'_> {
             Some(member) => self.authentication(member)?,
             None => Authentication::Required,
         };
+        // `confirm:`.
+        let confirm = match items.get("confirm") {
+            Some(member) => self.confirm(member)?,
+            None => false,
+        };
         // `input:`.
         let input = items
             .get("input")
@@ -1637,6 +1716,10 @@ impl Reader<'_> {
             SuccessStatus::NoContent => None,
             _ => Some(sig.result.clone()),
         };
+        // A person confirms it with one of their own passkeys (area 8).
+        if confirm && let Some(member) = items.get("confirm") {
+            self.confirmable(member, &label);
+        }
         if self.out.len() > before {
             return None;
         }
@@ -1657,6 +1740,7 @@ impl Reader<'_> {
             deadline_ms,
             authentication: self.authentication,
             caller: self.caller.as_ref().map(|(kind, _)| *kind),
+            confirm,
             run,
             settle: settle.map(|(settle, _, _)| settle),
             fails: sig.fails.clone(),
@@ -1699,6 +1783,93 @@ impl Reader<'_> {
                 );
                 None
             }
+        }
+    }
+
+    /// `confirm:`: `Confirmation.passkey` (area 8, "Confirm one request
+    /// with a passkey"), the only way a route asks a person to confirm a
+    /// request. Anything else is refused, never read as no confirmation.
+    fn confirm(&mut self, member: &ast::Member) -> Option<bool> {
+        let value = member.value();
+        let read = value.as_ref().and_then(|value| {
+            let (first, rest) = tree::dotted(value)?;
+            let [variant] = rest.as_slice() else {
+                return None;
+            };
+            (tree::name_ref_text(&first)? == jadpo_std::Confirmation::NAME).then_some(())?;
+            jadpo_std::Confirmation::from_name(&tree::name_ref_text(variant)?)
+        });
+        match read {
+            Some(jadpo_std::Confirmation::Passkey) => Some(true),
+            None => {
+                let written = value
+                    .as_ref()
+                    .map(|v| tree::written(v.syntax()))
+                    .unwrap_or_default();
+                let span = value
+                    .as_ref()
+                    .map_or_else(|| self.span(member), |v| self.span(v));
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::ROUTE_CONFIRM_INVALID,
+                        format!("`{written}` isn't a `Confirmation`"),
+                    )
+                    .at(span.clone(), "not `Confirmation.passkey`")
+                    .reason("`confirm:` says what the signed-in person presents before the route runs, and `Confirmation.passkey`, one of their own passkeys for this one request, is the only way there is.")
+                    .next("Write `confirm: Confirmation.passkey`")
+                    .edit(span, "Confirmation.passkey"),
+                );
+                None
+            }
+        }
+    }
+
+    /// Whether a person can confirm route `label` with a passkey: it needs
+    /// one signed in, a user rather than a service, and `passkey:` in
+    /// `sign_in:` for their passkeys.
+    fn confirmable(&mut self, member: &ast::Member, label: &str) {
+        let span = member
+            .member_key()
+            .map_or_else(|| self.span(member), |key| self.span(&key));
+        if self.authentication == Authentication::Public {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::ROUTE_CONFIRM_INVALID,
+                    format!("`{label}` is open to anyone, so no one signed in can confirm it"),
+                )
+                .at(span, "needs a signed-in person")
+                .reason("`confirm: Confirmation.passkey` asks the signed-in person for one of their own passkeys, and `authentication: RouteAuthentication.none` reads no credential, so there is no person whose passkey it could be.")
+                .next("Remove `authentication: RouteAuthentication.none` so callers sign in"),
+            );
+            return;
+        }
+        if let Some((PrincipalKind::Service, at)) = &self.caller {
+            let at = at.clone();
+            self.out.push(
+                Diagnostic::new(
+                    &rule::ROUTE_CONFIRM_INVALID,
+                    format!("`{label}` runs for a service, which has no passkey"),
+                )
+                .at(span, "asks for a passkey")
+                .also(at, "a service's call")
+                .reason("`confirm: Confirmation.passkey` asks the signed-in person for one of their own passkeys; a service signs in with its key and holds none.")
+                .next("Pass `current_principal.user`, or remove `confirm:` from a route only services call"),
+            );
+            return;
+        }
+        if crate::identity::identity(self.db, self.project)
+            .passkeys()
+            .is_none()
+        {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
+                    format!("`{label}`'s `confirm:` needs passkeys"),
+                )
+                .at(span, "no `passkey:` declared")
+                .reason("`confirm: Confirmation.passkey` asks the signed-in person for one of the passkeys they added through the routes `sign_in: { passkey: }` generates, and `authentication { }` declares none.")
+                .next("Declare `passkey: {}` in `sign_in:`"),
+            );
         }
     }
 

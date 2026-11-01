@@ -1021,6 +1021,10 @@ Some features generate their routes for you:
 - `GET /flags` ([Feature flags](16-built-in-services.md#feature-flags));
 - a provider package's webhooks ([Webhooks](#webhooks));
 - each API's `GET <prefix>/openapi.json` ([OpenAPI](#openapi));
+- `<path>/confirmation` beside a route with `confirm:
+  Confirmation.passkey`, asked with the route's method, with the options
+  for confirming its request
+  ([Confirm one request with a passkey](08-identity.md#confirm-one-request-with-a-passkey-confirm-confirmationpasskey));
 - connecting and disconnecting an OAuth grant:
   `POST /connections/<name>/start`, `GET /connections/<name>/callback` and
   `POST /connections/<name>/disconnect`
@@ -1140,6 +1144,7 @@ package, with no corrections or recordings
 | Field | On | Holds |
 |---|---|---|
 | `x-jadpo-changes` | Every operation | Whether the operation changes something: `true` for a route that runs an action, `false` for a `GET` and for the runtime's own reads |
+| `x-jadpo-confirm` | A route with `confirm:` | What the signed-in person presents before it runs, `passkey` ([Confirm one request with a passkey](08-identity.md#confirm-one-request-with-a-passkey-confirm-confirmationpasskey)); the operation lists the `X-Jadpo-Confirmation` header and the 403 `confirmation_required` |
 | `x-jadpo-idempotency` | Every operation that reads an `Idempotency-Key` | Whether it takes `Idempotency-Key`, and whether the API requires it: `header`, `required` (the API's `idempotency:`), `keeps` (`response`: a repeat gets the first answer; `request`: a repeat waits for the first but runs again; `nothing`: running it again changes nothing, or no store keeps it), `window` (`1d`), `max_length` (255), and the codes a key's repeat answers with, `in_use` (`conflict`) and `reused` (`idempotency_key_reused`) |
 | `x-jadpo-failure` | The schema of each failure the application declares | Its `code` and `kind` (`not_found`); sign-in's, policy's and the runtime's own codes carry none, since the caller's runtime handles them |
 | `x-jadpo-constraints` | Every field's, placeholder's and success response's schema | Every field's rules: its type and rules as the API record writes them, `Text { min_length: 1, max_length: 200 }`, `List<TodoView>`, `Money?` |

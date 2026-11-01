@@ -65,7 +65,7 @@ ai: generate stream embed embed_all
 # members are listed here (area 10). `prompts.render` renders a value of any
 # prompt the project declares (area 21). `magic_links.request`, `.redeem`
 # and `.redeem_code` are magic links' operations an application's own
-# routes call, `test_passkeys.register` and `.sign_in` a software
+# routes call, `test_passkeys.register`, `.sign_in` and `.confirm` a software
 # authenticator only route tests call, and `test_providers.sign_in` a
 # provider only route tests sign in through (area 8). `email.sent` is
 # every email a test sent, rendered whole, read only in tests (area 16,

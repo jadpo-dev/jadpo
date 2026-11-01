@@ -14,7 +14,9 @@
 //! document (`generated openapi`, area 7). Each connection's webhooks are
 //! listed in the `webhooks` API, running `generated webhook` with
 //! `signature` as their authentication (chunk 7.7), the API shown at
-//! `/webhooks` when the app declares none.
+//! `/webhooks` when the app declares none. A route a person confirms with
+//! a passkey has its `…/confirmation` listed beside it, running `generated
+//! confirmation` (area 8, "Confirm one request with a passkey").
 
 use std::path::PathBuf;
 
@@ -308,6 +310,24 @@ fn listing(groups: &Groups, graph: &jadpo_graph::Graph) -> Vec<Line> {
             }
         })
         .collect();
+    // Each confirmed route's options, which the runtime answers (area 8).
+    for (group, route) in groups.routes().filter(|(_, route)| route.confirm) {
+        out.push(Line {
+            api: group.api.clone(),
+            method: jadpo_std::http::confirmation_method(route.method)
+                .word()
+                .to_string(),
+            path: jadpo_check::routes::generated::confirmation_path(route),
+            runs: "generated confirmation".to_string(),
+            authentication: match route.authentication {
+                jadpo_std::http::Authentication::Fresh => "fresh",
+                _ => "required",
+            },
+            file: String::new(),
+            line: 0,
+            place: "generated".to_string(),
+        });
+    }
     out.sort_by(|a, b| (&a.api, &a.path, &a.method).cmp(&(&b.api, &b.path, &b.method)));
     out
 }

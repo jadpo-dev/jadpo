@@ -225,6 +225,10 @@ pub struct Ctx<'p> {
     /// The settings a test gives its own values (area 13): each by its
     /// number in the plan.
     settings: Vec<(u32, Value)>,
+    /// The test passkey `test_passkeys.confirm` gave for the next request
+    /// a route test makes to a route with `confirm:`, by its device's
+    /// number, with the call's site (area 8; chunk R1).
+    confirming: Option<(u32, u32)>,
     /// What a test's `flags:` gives, by flag and value number (area 16).
     test_flags: Vec<(u32, u32)>,
     /// The flags' state the operation's first flag fixed, and each flag's
@@ -351,6 +355,7 @@ impl<'p> Ctx<'p> {
             deadline: None,
             inline: 0,
             settings: Vec::new(),
+            confirming: None,
             test_flags: Vec::new(),
             flag_state: None,
             flag_values: Vec::new(),
@@ -774,6 +779,18 @@ impl<'p> Ctx<'p> {
     /// Sets the cookie binding a magic link to the request's browser.
     pub fn set_sign_in_cookie(&mut self, cookie: Option<String>) {
         self.sign_in_cookie = cookie;
+    }
+
+    /// Gives the test passkey, by its device's number, that the next
+    /// request a route test makes to a route with `confirm:` is confirmed
+    /// with, and where `test_passkeys.confirm` was called (chunk R1).
+    pub fn set_confirming(&mut self, device: u32, site: u32) {
+        self.confirming = Some((device, site));
+    }
+
+    /// The test passkey `test_passkeys.confirm` gave, once.
+    pub fn take_confirming(&mut self) -> Option<(u32, u32)> {
+        self.confirming.take()
     }
 
     /// Keeps why a sign-in was refused, for the request's log line.
