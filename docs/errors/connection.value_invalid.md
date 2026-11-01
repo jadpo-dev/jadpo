@@ -208,3 +208,9 @@ error: `couriers`'s `sandbox:` lists `bookings.creat`, which `AcmeCouriers.v1` d
 
 check failed: 1 error, 12 files
 ```
+
+`erasure: { key: }` names the field of the person's record holding what the
+provider knows them by, so it is a field of a `person: true` entity, of the
+type the package's `erasure:` `by:` names. Each of these is this error, such
+as `` `pay`'s `erasure:` key `User.plan` isn't a `CustomerId` ``
+([Erasure at providers](../language/15-personal-data.md#erasure-at-providers)).

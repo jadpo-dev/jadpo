@@ -55,6 +55,7 @@ mod disk_files;
 mod driver_factory;
 mod emails;
 mod erasure;
+mod erasure_not_possible;
 mod events;
 mod external_first_sign_in;
 mod external_tokens;

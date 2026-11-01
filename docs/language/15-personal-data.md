@@ -695,11 +695,37 @@ and Postmark are erased the same way.
   delivered. The personal-data report lists it there.
 - **A connection that receives personal data but can't erase it** is a
   compile error. That is a connection whose package declares no
-  `erasure:`, or which names no key. An
+  `erasure:`, or which names no key, or reached with a driver rather than a
+  package; or one whose key is on one person entity while it also receives
+  the data of another. An
   [acceptance](18-records-and-manifest.md#acceptances), a committed file
   in which a person states why the data stays there (tax records at an
   accounting provider, say), allows it, and the report lists the
-  connection and the reason.
+  connection and the reason:
+
+  ```jadpo fragment
+  /// Acme Books must keep invoices for seven years for tax.
+  acceptance {
+      changes: {
+          accounting: ErasureNotPossible.data_stays
+      }
+  }
+  ```
+
+  It holds for as long as the connection keeps data, so a project that
+  already sends some needs it as soon as a change is judged, and later
+  changes need no other. Taking it away takes away what it allowed. It
+  covers the connection: a new field sent there later needs no other
+  acceptance, and shows in the approval review's difference of the report.
+  A store of files on the server's own disk is no other company, so it
+  needs none: a file goes with the records that hold it.
+- **The declarations are checked**, since each lets a connection off that
+  acceptance. `call:` is an operation of the package that changes something
+  and takes only the key: one field of its input of the type `by:` names,
+  any other optional
+  ([`package.provider_invalid`](../errors/package.provider_invalid.md)).
+  `key:` is a field of a `person: true` entity, of that type
+  ([`connection.value_invalid`](../errors/connection.value_invalid.md)).
 - **Anything else** your app sends data to, such as a CRM it calls
   through its own integration, can be erased by your own `PersonErased`
   subscribers.
@@ -921,6 +947,10 @@ and no purge is listed in the report as "kept until erased".
   `PhoneNumber`, is hashed in logs and its reads recorded, but a shop's
   own phone number doesn't make the shop a person. With the completeness
   check above, every stored copy of personal data can be reached.
+- **What leaves can be erased.** A connection that receives personal data
+  and can't erase it needs a person's acceptance
+  ([Erasure at providers](#erasure-at-providers),
+  [`acceptance.missing`](../errors/acceptance.missing.md)).
 - **Sensitive fields stay out of caches.** A cache on an entity that holds
   one leaves those fields out.
 - **Retention can be carried out.** A field's retention clears a field
@@ -1138,11 +1168,18 @@ tell, it counts as reaching:
   nothing follows that code.
 - A provider's answer may hold anything its call was sent, in any part. So
   an id a provider made counts as the name it was made from when it is sent
-  on to another connection. This is for the report alone: storing that id or
-  sending it to a model doesn't need the name's marks.
+  on to another connection, and its row says "may be in a provider's answer"
+  rather than "sent". This is for the report and
+  [the acceptance](#erasure-at-providers) alone: storing that id or sending it
+  to a model doesn't need the name's marks.
 
 Stores and caches aren't in this list. What each keeps comes with the rest
 of the report.
+
+Each connection says what becomes of its copy when a person is erased: the
+provider's call and the field holding its key, the app's own store, or kept,
+with why and an acceptance's reason. Jadpo doesn't call a provider's
+`erasure:` yet, and the report says so.
 
 `jadpo package check` shows the same for a package, whoever calls it: what
 each of its operations sends, from its input's type and what its actions and
@@ -1199,7 +1236,8 @@ This is not legal advice. A privacy professional reviews the report.
 | `User.erase(id)` | Partly built. Built: for a caller with `delete` on the person's record, one statement deletes the record, hidden or not, with the sign-in state of anyone it deletes who signs in, and deletes, anonymises or keeps each record of theirs as its reference says, however deep, records with a lifecycle removed outright. A record that belongs to several people keeps its marked fields until the last of them is erased, and another person's own record loses only the reference ([Records that belong to several people](#records-that-belong-to-several-people)). The bytes of each `File` it deletes or clears go once it commits ([Files](16-built-in-services.md#deleting-and-erasing)), and an audited record it deletes takes its history with it. Not built yet: one that would keep an audited record, whose history still refers to the person ([Audit trail](16-built-in-services.md#audit-trail)), `toolchain.not_built_yet` where `erase` is called, so no erasure is ever partial; and the person's own record kept field by field (above), records in another store, `PersonErased`, the erasure log and providers' erasure, which nothing emits or calls. |
 | `User.export(id)` | Not built yet: it is `toolchain.not_built_yet` where it is called. |
 | `privacy:` in `application { }` | Not built yet: it is `toolchain.not_built_yet` where it is written. |
-| The personal-data report | Partly built: `jadpo check` writes `build/report/personal-data.md` and `.json`, for a project with no errors, listing [where personal data goes](#where-personal-data-goes), and `jadpo package check` shows the same for a package. Not built yet: the rest of its list, each person entity's fields, category, store and readers, retention, what erasure does, keys in the outbox, step records and OAuth grants; whether a connection can erase its copy, and the acceptance for one that can't; and its diff in the approval review. |
+| The personal-data report | Partly built: `jadpo check` writes `build/report/personal-data.md` and `.json`, for a project with no errors, listing [where personal data goes](#where-personal-data-goes), and `jadpo package check` shows the same for a package. Each connection says whether its copy is erased or kept for an accepted reason, and the approval review shows its difference from the before side's, a connection at a time. Not built yet: the rest of its list, each person entity's fields, category, store and readers, retention, what erasure does, keys in the outbox, step records and OAuth grants. |
+| `erasure:` on a package and on a connection | Partly built. Built: each is read and checked, and a connection that receives personal data and can't erase it needs an `ErasureNotPossible` acceptance ([Erasure at providers](#erasure-at-providers)). Not built yet: calling the package's `erasure:`, so a connection that declares one is not yet asked to erase anyone. |
 | Everything else on this page | Not built yet: it is on [the roadmap](../roadmap.md). |
 
 ## Errors
@@ -1207,6 +1245,8 @@ This is not legal advice. A privacy professional reviews the report.
 Every error this page's checks produce, with an example that triggers
 it and the compiler's real output from `jadpo check`.
 
+- [`acceptance.missing`](../errors/acceptance.missing.md)
+- [`connection.value_invalid`](../errors/connection.value_invalid.md)
 - [`data.erase_field_required`](../errors/data.erase_field_required.md)
 - [`data.erase_required`](../errors/data.erase_required.md)
 - [`data.erase_retention_required`](../errors/data.erase_retention_required.md)
@@ -1217,3 +1257,4 @@ it and the compiler's real output from `jadpo check`.
 - [`data.retention_lifecycle_field`](../errors/data.retention_lifecycle_field.md)
 - [`data.retention_period`](../errors/data.retention_period.md)
 - [`data.retention_since`](../errors/data.retention_since.md)
+- [`package.provider_invalid`](../errors/package.provider_invalid.md)

@@ -100,7 +100,7 @@ pub fn approval(call: &Call) -> Reply {
     };
     let day = judged_day(call, &loaded.root, JudgedOn::Today);
     crate::run::say(&format!("Building the before side, {}", side.described));
-    let (commit, before, before_declines) = match base_build(&loaded.root, &side.commit, day) {
+    let base = match base_build(&loaded.root, &side.commit, day) {
         Ok(found) => found,
         Err(problem) => return Reply::failed(*problem),
     };
@@ -109,10 +109,11 @@ pub fn approval(call: &Call) -> Reply {
         project,
         Base {
             described: side.described.clone(),
-            commit,
+            commit: base.commit,
         },
-        &before,
-        &before_declines,
+        &base.manifest,
+        &base.declines,
+        &base.personal,
         &after,
     );
     let mut data = report.json();
@@ -149,26 +150,37 @@ fn read_manifest(path: &Path) -> Option<Value> {
     json::parse(&std::fs::read_to_string(path).ok()?).ok()
 }
 
-/// The before side at `commit`: the whole commit, its manifest and its
-/// declines, kept in `build/before/<commit>/` once built, and used from
-/// there while this compiler wrote them, since the same source and
-/// compiler always build the same graph (area 18, "Comparing two
+/// The before side, built: the whole commit, its manifest, its declines and
+/// its personal-data report.
+struct BaseBuild {
+    commit: String,
+    manifest: Value,
+    declines: Value,
+    personal: Value,
+}
+
+/// The before side at `commit`, kept in `build/before/<commit>/` once built,
+/// and used from there while this compiler wrote it, since the same source
+/// and compiler always build the same graph (area 18, "Comparing two
 /// builds").
-fn base_build(
-    root: &Path,
-    commit: &str,
-    day: i32,
-) -> Result<(String, Value, Value), Box<Diagnostic>> {
+fn base_build(root: &Path, commit: &str, day: i32) -> Result<BaseBuild, Box<Diagnostic>> {
     let full = crate::before::full_commit(root, commit).unwrap_or_else(|| commit.to_string());
     let kept = format!("build/before/{full}/manifest.json");
     let kept_declines = format!("build/before/{full}/declines.json");
-    if let (Some(value), Some(declines)) = (
+    let kept_personal = format!("build/before/{full}/personal-data.json");
+    if let (Some(value), Some(declines), Some(personal)) = (
         read_manifest(&root.join(&kept)),
         read_manifest(&root.join(&kept_declines)),
+        read_manifest(&root.join(&kept_personal)),
     ) && value.get("compiler").and_then(Value::as_str) == Some(VERSION)
         && value.get("format") == Some(&Value::Int(manifest::FORMAT))
     {
-        return Ok((full, value, declines));
+        return Ok(BaseBuild {
+            commit: full,
+            manifest: value,
+            declines,
+            personal,
+        });
     }
     let files = crate::before::tree(root, &full);
     let mut loaded = jadpo_db::load_files(root.to_path_buf(), &files);
@@ -188,9 +200,16 @@ fn base_build(
         },
     );
     let declines = approval::declines_json(&loaded.db, loaded.project);
+    let personal = approval::personal_json(&loaded.db, loaded.project, errors);
     crate::derived::put(root, &kept, &value.to_document())?;
     crate::derived::put(root, &kept_declines, &declines.to_document())?;
-    Ok((full, value, declines))
+    crate::derived::put(root, &kept_personal, &personal.to_document())?;
+    Ok(BaseBuild {
+        commit: full,
+        manifest: value,
+        declines,
+        personal,
+    })
 }
 
 fn count(n: usize, one: &str) -> String {
@@ -280,6 +299,7 @@ fn screen(report: &Report) -> Screen {
     let label = |key: &'static str| -> &'static str {
         match key {
             "integrations" => "outside",
+            "personal_data" => "personal",
             key => key,
         }
     };
