@@ -26,7 +26,7 @@ use jadpo_runtime::{PasskeyAnswer, PasskeyError, PasskeyParts, Passkeys};
 use serde_cbor_2::Value as Cbor;
 use webauthn_rs::prelude::{
     Base64UrlSafeData, COSEKey, COSEKeyType, Credential, DiscoverableAuthentication,
-    DiscoverableKey, Passkey, PasskeyRegistration, PublicKeyCredential,
+    DiscoverableKey, Passkey, PasskeyAuthentication, PasskeyRegistration, PublicKeyCredential,
     RegisterPublicKeyCredential, Url, Uuid, Webauthn, WebauthnBuilder,
 };
 use webauthn_rs_core::proto::{
@@ -175,6 +175,59 @@ impl Passkeys for Reference {
         let mut passkey = Passkey::from(load(stored)?);
         let result = site
             .finish_discoverable_authentication(&answer, state, &[DiscoverableKey::from(&passkey)])
+            .map_err(|_| PasskeyError::Rejected)?;
+        if passkey.update_credential(&result).is_none() {
+            return Err(PasskeyError::Rejected);
+        }
+        parts(&Credential::from(passkey))
+    }
+
+    /// `webauthn-rs`'s passkey authentication, the person's passkeys
+    /// listed; none listed is refused here as the runtime refuses it,
+    /// since `webauthn-rs` would ask for any passkey.
+    fn start_confirmation(
+        &self,
+        origin: &str,
+        timeout_ms: u32,
+        allow: &[PasskeyParts],
+    ) -> Result<(String, String), PasskeyError> {
+        if allow.is_empty() {
+            return Err(PasskeyError::Misconfigured);
+        }
+        let site = Self::site(origin, timeout_ms)?;
+        let passkeys = allow
+            .iter()
+            .map(|parts| load(parts).map(Passkey::from))
+            .collect::<Result<Vec<_>, _>>()?;
+        let (options, state) = site
+            .start_passkey_authentication(&passkeys)
+            .map_err(|_| PasskeyError::Misconfigured)?;
+        let options = serde_json::to_string(&options).map_err(|_| PasskeyError::Misconfigured)?;
+        let state = serde_json::to_string(&state).map_err(|_| PasskeyError::Misconfigured)?;
+        Ok((options, state))
+    }
+
+    fn finish_confirmation(
+        &self,
+        origin: &str,
+        timeout_ms: u32,
+        state: &str,
+        credential: &str,
+        stored: &PasskeyParts,
+    ) -> Result<PasskeyParts, PasskeyError> {
+        let site = Self::site(origin, timeout_ms)?;
+        let state: PasskeyAuthentication =
+            serde_json::from_str(state).map_err(|_| PasskeyError::Misconfigured)?;
+        let answer: PublicKeyCredential =
+            serde_json::from_str(credential).map_err(|_| PasskeyError::Rejected)?;
+        // The kept passkey is read as the runtime reads it, before the
+        // answer.
+        let mut passkey = Passkey::from(load(stored)?);
+        if answer.raw_id.as_slice() != stored.credential_id.as_slice() {
+            return Err(PasskeyError::Rejected);
+        }
+        let result = site
+            .finish_passkey_authentication(&answer, &state)
             .map_err(|_| PasskeyError::Rejected)?;
         if passkey.update_credential(&result).is_none() {
             return Err(PasskeyError::Rejected);

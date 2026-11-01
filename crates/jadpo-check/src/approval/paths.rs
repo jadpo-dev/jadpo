@@ -141,7 +141,9 @@ fn target(view: &View<'_>, need: &Need) -> Option<Target> {
             })
     };
     match need.change.as_str() {
-        "PolicyChange.route_public" | "ApiChange.route_removed" => {
+        "PolicyChange.route_public"
+        | "PolicyChange.confirmation_removed"
+        | "ApiChange.route_removed" => {
             let text = subject.trim_matches('"');
             let (api, name) = text.split_once(' ')?;
             Some(Target::Route {
@@ -315,6 +317,7 @@ fn may_start(view: &View<'_>, public: &Public, caller: &str, chain: &[&str]) -> 
 fn fixed_actor(need: &Need) -> Option<String> {
     match (&need.family, need.change.as_str()) {
         (_, "PolicyChange.route_public") => Some("anyone".to_string()),
+        (_, "PolicyChange.confirmation_removed") => Some("anyone signed in".to_string()),
         (Family::Api, _) => Some("a client".to_string()),
         _ => None,
     }

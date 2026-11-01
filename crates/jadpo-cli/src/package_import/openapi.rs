@@ -12,7 +12,8 @@
 //!   or `delete`; any other is named from its `operationId`, or for a
 //!   Jadpo application's from its method and fixed segments. A Jadpo
 //!   application's generated routes (`x-jadpo-generated`) are its
-//!   runtime's, and left out.
+//!   runtime's, and left out, as is a route a person confirms with a
+//!   passkey (`x-jadpo-confirm`), which no package can call.
 //! - **An operation's input** is its body's type when it has no
 //!   placeholders or query parameters, else a type of its own,
 //!   `<Resource><Operation>Input`, holding its placeholders, its query
@@ -112,7 +113,9 @@ pub fn read(
             let Some(operation) = item.get(method).and_then(Value::as_object) else {
                 continue;
             };
-            if operation.get("x-jadpo-generated") == Some(&Value::Bool(true)) {
+            if operation.get("x-jadpo-generated") == Some(&Value::Bool(true))
+                || operation.contains_key("x-jadpo-confirm")
+            {
                 continue;
             }
             let resource = resource_of(operation, path);

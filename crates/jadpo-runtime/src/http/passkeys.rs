@@ -111,9 +111,9 @@ const SIGN_IN: &str = "sign_in";
 const REGISTER: &str = "register";
 
 /// Why a step stopped: the response that says so.
-type Stop = Box<Response>;
+pub(super) type Stop = Box<Response>;
 
-fn stop(failure: (u16, &str, &str), request_id: &str) -> Stop {
+pub(super) fn stop(failure: (u16, &str, &str), request_id: &str) -> Stop {
     Box::new(runtime_failure(failure, request_id, None))
 }
 
@@ -193,14 +193,14 @@ async fn run(
 /// What every step reads: the plan, the codecs a passkey is kept with, the
 /// configured origin, the host's ceremonies, the executor whose
 /// subscribers hear its events, and the request's id.
-struct Site<'s> {
-    plan: &'s IdentityPlan,
-    passkeys: &'s PasskeyPlan,
-    json: &'s crate::JsonCodecs<'s>,
-    origin: &'s str,
-    ceremonies: &'s dyn Passkeys,
-    executor: &'s dyn Executor,
-    request_id: &'s str,
+pub(super) struct Site<'s> {
+    pub(super) plan: &'s IdentityPlan,
+    pub(super) passkeys: &'s PasskeyPlan,
+    pub(super) json: &'s crate::JsonCodecs<'s>,
+    pub(super) origin: &'s str,
+    pub(super) ceremonies: &'s dyn Passkeys,
+    pub(super) executor: &'s dyn Executor,
+    pub(super) request_id: &'s str,
 }
 
 /// Why a sign-in stopped: a refusal, which the log and `SignInRefused`
@@ -228,7 +228,7 @@ impl Site<'_> {
         u32::try_from(self.passkeys.expires_after_ms).unwrap_or(u32::MAX)
     }
 
-    fn fail(&self, failure: (u16, &str, &str)) -> Stop {
+    pub(super) fn fail(&self, failure: (u16, &str, &str)) -> Stop {
         stop(failure, self.request_id)
     }
 
@@ -238,7 +238,7 @@ impl Site<'_> {
     /// `WebAuthnCredential`'s rules, or none, one kept before encodings
     /// were recorded, as it was written then. Any other encoding, a later
     /// release's, isn't read.
-    fn read_kept(&self, stored: &str, encoding: &SqlValue) -> Option<Credential> {
+    pub(super) fn read_kept(&self, stored: &str, encoding: &SqlValue) -> Option<Credential> {
         match encoding {
             SqlValue::Null(_) => read_unversioned(stored),
             SqlValue::Int2(n) if u64::try_from(*n).is_ok_and(reads_encoding) => {
@@ -249,14 +249,14 @@ impl Site<'_> {
     }
 
     /// `credential` as the contract's JSON, in this release's encoding.
-    fn write_kept(&self, credential: &Credential) -> Result<SqlValue, Stop> {
+    pub(super) fn write_kept(&self, credential: &Credential) -> Result<SqlValue, Stop> {
         self.json
             .write(self.passkeys.credential, &credential.to_value())
             .map_err(|_| self.fail(AUTHENTICATION_MISCONFIGURED))
     }
 
     /// One statement on its own, against the store the user lives in.
-    async fn once(
+    pub(super) async fn once(
         &self,
         ctx: &Ctx<'_>,
         sql: &str,
@@ -363,9 +363,9 @@ impl Site<'_> {
     }
 
     /// Keeps a new challenge for `binding`, read from the options
-    /// `start` gave, and sweeps the expired ones.
+    /// `start` gave, lasting `lasts_ms`, and sweeps the expired ones.
     #[allow(clippy::too_many_arguments)]
-    async fn keep(
+    pub(super) async fn keep(
         &self,
         ctx: &mut Ctx<'_>,
         options: &str,
@@ -374,6 +374,7 @@ impl Site<'_> {
         binding: String,
         user: Option<SqlValue>,
         handle: Option<[u8; 16]>,
+        lasts_ms: i64,
     ) -> Result<(), Stop> {
         let challenge = serde_json::from_str::<serde_json::Value>(options)
             .ok()
@@ -401,10 +402,7 @@ impl Site<'_> {
                 SqlValue::Bytes(handle.to_vec())
             }),
             SqlValue::Text(state),
-            SqlValue::Timestamp(
-                now.saturating_add(self.passkeys.expires_after_ms)
-                    .saturating_mul(1000),
-            ),
+            SqlValue::Timestamp(now.saturating_add(lasts_ms).saturating_mul(1000)),
         ];
         self.once(ctx, PUT_CHALLENGE, &params).await?;
         Ok(())
@@ -413,7 +411,7 @@ impl Site<'_> {
     /// Takes the challenge `credential` answers, if it is still kept for
     /// `purpose`, bound to `binding` and unexpired; any other answer is
     /// `passkey_challenge_expired`. The challenge is gone either way.
-    async fn take(
+    pub(super) async fn take(
         &self,
         ctx: &Ctx<'_>,
         credential: &str,
@@ -489,6 +487,7 @@ impl Site<'_> {
             text_verifier(&token),
             None,
             None,
+            self.passkeys.expires_after_ms,
         )
         .await?;
         let age = self.passkeys.expires_after_ms / 1000;
@@ -723,6 +722,7 @@ impl Site<'_> {
             session_binding(session),
             Some(SqlValue::Uuid(user)),
             Some(handle),
+            self.passkeys.expires_after_ms,
         )
         .await?;
         Ok(ok_json(200, options))
@@ -976,7 +976,7 @@ impl Site<'_> {
             .ok_or_else(|| self.fail(NOT_FOUND))
     }
 
-    async fn passkeys_of(
+    pub(super) async fn passkeys_of(
         &self,
         ctx: &Ctx<'_>,
         user: [u8; 16],
@@ -999,22 +999,22 @@ impl Site<'_> {
 type Holder = ([u8; 16], Option<[u8; 16]>, String);
 
 /// A challenge taken for an answer.
-struct Taken {
-    state: String,
-    user: Option<[u8; 16]>,
-    handle: Option<[u8; 16]>,
-    answer: crate::PasskeyAnswer,
+pub(super) struct Taken {
+    pub(super) state: String,
+    pub(super) user: Option<[u8; 16]>,
+    pub(super) handle: Option<[u8; 16]>,
+    pub(super) answer: crate::PasskeyAnswer,
 }
 
 /// A passkey as `jadpo_passkeys` keeps it: a `WebAuthnCredential` (area
 /// 19), its ceremony's parts and the person's, each time in milliseconds
 /// since 1970.
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct Credential {
-    ceremony: PasskeyParts,
-    name: String,
-    registered_at: i64,
-    last_used_at: Option<i64>,
+pub(super) struct Credential {
+    pub(super) ceremony: PasskeyParts,
+    pub(super) name: String,
+    pub(super) registered_at: i64,
+    pub(super) last_used_at: Option<i64>,
 }
 
 impl Credential {
@@ -1097,7 +1097,7 @@ impl Credential {
 }
 
 /// The encoding a passkey is written in, as its column holds it.
-fn encoding_value() -> SqlValue {
+pub(super) fn encoding_value() -> SqlValue {
     SqlValue::Int2(i16::try_from(ENCODING).unwrap_or(i16::MAX))
 }
 
@@ -1166,7 +1166,7 @@ fn view(id: &[u8; 16], credential: &Credential) -> String {
     serde_json::Value::Object(object).to_string()
 }
 
-fn ok_json(status: u16, body: String) -> Response {
+pub(super) fn ok_json(status: u16, body: String) -> Response {
     Response {
         status,
         headers: vec![("content-type".to_string(), "application/json".to_string())],
@@ -1200,7 +1200,7 @@ fn session_binding(session: [u8; 16]) -> String {
     format!("session {}", format_uuid(&session))
 }
 
-fn constant_eq(a: &[u8], b: &[u8]) -> bool {
+pub(super) fn constant_eq(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
@@ -1232,7 +1232,7 @@ fn cookie_value<'r>(request: &'r Request, name: &str) -> Option<&'r str> {
     found.next().is_none().then_some(first)
 }
 
-fn format_uuid(bytes: &[u8; 16]) -> String {
+pub(super) fn format_uuid(bytes: &[u8; 16]) -> String {
     let mut out = String::with_capacity(36);
     for (at, byte) in bytes.iter().enumerate() {
         if matches!(at, 4 | 6 | 8 | 10) {

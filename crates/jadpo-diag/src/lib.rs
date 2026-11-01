@@ -858,6 +858,8 @@ rules! {
         "Route reads a placeholder or input it never passes on";
     ROUTE_CALLS_PAST_DEADLINE: "route.calls_past_deadline", area 11, Error, Agent,
         "The outside calls a route makes could, at their slowest, take longer than the route is allowed to run";
+    ROUTE_CONFIRM_INVALID: "route.confirm_invalid", area 8, Error, Agent,
+        "A route's `confirm:` holds something other than `Confirmation.passkey`, or no signed-in person could confirm the route";
     ROUTE_DEADLINE_INVALID: "route.deadline_invalid", area 7, Error, Agent,
         "Route deadline is not a duration up to 60 seconds";
     ROUTE_HEADER_CREDENTIAL: "route.header_credential", area 7, Error, Agent,

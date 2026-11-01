@@ -238,6 +238,7 @@ mod tests {
                 args: Vec::new(),
                 authentication: Authentication::Public,
                 caller: None,
+                confirm: false,
                 file: "domains/widgets/routes/widgets.jadpo".into(),
                 line: 1,
             }],

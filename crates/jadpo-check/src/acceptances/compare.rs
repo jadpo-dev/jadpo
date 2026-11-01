@@ -511,6 +511,20 @@ pub fn api(api: &str, path: &str, before: &str, after: Option<&str>, out: &mut V
                     "PolicyChange.route_public",
                 );
             }
+            // A route a person confirmed with a passkey that no longer
+            // asks: a stolen session is enough again (area 8).
+            let confirmed =
+                |entry: &Entry| entry.members.iter().any(|m| m.line.starts_with("confirm "));
+            if confirmed(entry) && !confirmed(now) {
+                need(
+                    out,
+                    Family::Api,
+                    path,
+                    Some(heading),
+                    route_subject(api, heading),
+                    "PolicyChange.confirmation_removed",
+                );
+            }
             // A route that now takes or answers with another type: compare
             // what its clients sent and read with what it takes and answers.
             let input = |entry: &Entry| {
@@ -1192,6 +1206,21 @@ failure todo_locked
             api_needs(TODOS, &after),
             pairs(&[("\"main POST /todos\"", "PolicyChange.route_public")])
         );
+    }
+
+    /// A route that stops asking for the person's passkey needs a person;
+    /// one that starts asking needs no one (area 8).
+    #[test]
+    fn a_route_no_longer_confirmed_is_a_policy_change() {
+        let confirmed = TODOS.replace(
+            "POST /todos\n    input",
+            "POST /todos\n    confirm passkey\n    input",
+        );
+        assert_eq!(
+            api_needs(&confirmed, TODOS),
+            pairs(&[("\"main POST /todos\"", "PolicyChange.confirmation_removed")])
+        );
+        assert_eq!(api_needs(TODOS, &confirmed), Vec::<(String, String)>::new());
     }
 
     #[test]

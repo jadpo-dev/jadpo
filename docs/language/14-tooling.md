@@ -1128,8 +1128,8 @@ list such as `pick: [Todo.id, Todo.title]` stays on one line.
 The sections inside a declaration go in one order:
 
 - a failure's `kind`, `code`, `message`, `client`, `internal`;
-- a route's `authentication`, `rate_limit`, `input`, `output`, `status`,
-  `deadline`, `run`;
+- a route's `authentication`, `confirm`, `rate_limit`, `input`, `output`,
+  `status`, `deadline`, `run`;
 - an entity's fields, then `identity`, `persistence`, `lifecycle`,
   `membership`, `policy`, `freshness`, `guard`, `person`.
 

@@ -795,15 +795,12 @@ impl Plan {
         // An entity's purge and retentions run where schedules run.
         let purges: Vec<PurgePlan> = if pruning.is_none_or(|pruning| pruning.runs().schedules) {
             // Someone who signs in goes with their sign-in state, in the
-            // tables their store holds (area 15; chunk P2).
+            // tables their store holds (area 15; chunks P2 and P4).
             let sign_in = purge::sign_in_state(db, project);
             model
                 .entities
                 .iter()
-                .flat_map(|entity| {
-                    let tables = sign_in.get(&entity.name).map_or(&[][..], Vec::as_slice);
-                    purge::plans(model, entity, &setting_number, tables)
-                })
+                .flat_map(|entity| purge::plans(model, entity, &setting_number, &sign_in))
                 .collect()
         } else {
             Vec::new()
@@ -1214,7 +1211,11 @@ impl Plan {
                 identity.external_token = None;
             }
             if !taken(jadpo_std::AuthenticationMethod::BrowserSession) {
-                identity.origin = None;
+                // A passkey's answer is checked against the origin, so a
+                // route a person confirms with one keeps it (chunk R1).
+                if !routes.routes.iter().any(|route| route.confirm) {
+                    identity.origin = None;
+                }
                 identity.providers = None;
             }
         }
