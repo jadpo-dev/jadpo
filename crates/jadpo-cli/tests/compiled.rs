@@ -688,6 +688,11 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
             corpus_project(&crate::erasure::files(), "compiled-erasure").expect("it checks"),
         ),
         (
+            "a kept record".into(),
+            corpus_project(&crate::erasure::kept_files(), "compiled-kept-record")
+                .expect("it checks"),
+        ),
+        (
             "a file's bytes deleted".into(),
             corpus_project(&crate::file_deletes::files(), "compiled-file-deletes")
                 .expect("it checks"),
@@ -802,9 +807,11 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         "docs/language/12-jobs-and-events.md several-steps",
         "docs/language/13-testing.md fakes-in-tests",
         "docs/language/15-personal-data.md erasure",
+        "docs/language/15-personal-data.md kept-record",
         "docs/language/21-ai.md ai-embed",
         "a key kept without key_ops",
         "an erasure",
+        "a kept record",
         "a file's bytes deleted",
         "an audit trail",
         "examples 11-cake-shop",

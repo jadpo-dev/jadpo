@@ -931,11 +931,11 @@ SELECT "id" FROM "expired""#
 
 /// A record that belongs to several people keeps its marked fields while
 /// another of them remains (area 15, "Records that belong to several
-/// people"; chunk P4): erasing one clears only their reference, and the
-/// marked fields of the records whose last person it was, found by
-/// looking from each record's other references for a person erasure
-/// keeps. A record that can belong to its author alone is cleared as it
-/// was, and another person's own record loses only the reference.
+/// people"; chunks P4 and P4b): erasing one clears only their reference,
+/// and the marked fields of the records whose last person it was, found by
+/// asking each record's own references to a person. A pin on a board
+/// belongs to its author alone, not to the board's owner, and another
+/// person's own record loses only the reference.
 #[test]
 fn an_erasure_clears_a_shared_records_marked_fields_only_for_its_last_person() {
     let plan = planned(
@@ -1042,20 +1042,7 @@ action forget(member_id: Member.id) fails MemberNotFound -> Unit {
   SELECT "pin"."id"
   FROM "pin"
   WHERE ("author_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0) OR "board_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 1))
-    AND NOT EXISTS (
-      WITH RECURSIVE "owner" ("entity", "id") AS (
-        SELECT 0, "pin"."board_id" WHERE "pin"."board_id" IS NOT NULL AND "pin"."board_id" NOT IN (SELECT "id" FROM "erased" WHERE "entity" = 1)
-        UNION ALL
-        SELECT 1, "pin"."author_id" WHERE "pin"."author_id" IS NOT NULL AND "pin"."author_id" NOT IN (SELECT "id" FROM "erased" WHERE "entity" = 0)
-        UNION
-        SELECT "up"."entity", "up"."id"
-        FROM "owner"
-        JOIN (
-          SELECT 0 AS "from", "up1"."id" AS "from_id", 1 AS "entity", "up1"."owner_id" AS "id" FROM "board" AS "up1" WHERE "up1"."owner_id" IS NOT NULL AND "up1"."owner_id" NOT IN (SELECT "id" FROM "erased" WHERE "entity" = 0)
-        ) AS "up" ON "up"."from" = "owner"."entity" AND "up"."from_id" = "owner"."id"
-      )
-      SELECT 1 FROM "owner" WHERE "owner"."entity" IN (1)
-    )
+    AND ("pin"."author_id" IS NULL OR "pin"."author_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0))
 ), "kept3" AS (
   UPDATE "pin"
   SET "author_id" = CASE WHEN "author_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0) THEN NULL ELSE "author_id" END,
@@ -1071,6 +1058,237 @@ action forget(member_id: Member.id) fails MemberNotFound -> Unit {
   RETURNING "id"
 )
 SELECT "id" FROM "deleted0""#
+    );
+}
+
+/// A person's own field that says `Erasure.retained` keeps their record
+/// field by field (area 15, "The person's own record"; chunk P4b): the
+/// statement clears every other marked field and notes when they were
+/// erased, the first time, rather than deleting the record; deletes their
+/// sign-in state and everything else as ever; and takes each generated
+/// field the operation's time. Their record is hidden from then on: from
+/// a query, a `get`, a parent or child include, every write and every
+/// sign-in lookup, unless a query says `include_erased: true`.
+#[test]
+fn an_erasure_keeps_a_persons_retained_fields_and_hides_their_record() {
+    let plan = planned(
+        r#"type Line = Text {
+    max_length: 80
+}
+
+principal {
+    user: {
+        subject: Holder.login
+    }
+}
+
+authentication {
+    api_token: {}
+}
+
+entity Holder {
+    id: Uuid
+    login: Line {
+        unique: true
+    }
+    handle: Line? {
+        personal: PersonalData.identifying
+    }
+    policy_number: Line {
+        personal: PersonalData.identifying
+        erase: Erasure.retained
+    }
+    plan: Line
+    ended_at: Instant?
+    invited_by_id: Holder.id? {
+        on_delete: OnDelete.cleared
+    }
+    household_id: Household.id? {
+        on_delete: OnDelete.cleared
+    }
+    changed_at: Instant {
+        generated: Generated.on_change
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+        delete: [Access.public]
+    }
+
+    retention: {
+        after: config.holder_retention
+        since: ended_at
+    }
+
+    person: true
+}
+
+entity Claim {
+    id: Uuid
+    holder_id: Holder.id {
+        on_delete: OnDelete.cascade
+    }
+
+    policy: {
+        read: [Access.public]
+    }
+}
+
+entity Household {
+    id: Uuid
+    owner_id: Holder.id {
+        on_delete: OnDelete.cascade
+    }
+
+    policy: {
+        read: [Access.public]
+    }
+}
+
+config {
+    holder_retention: Duration {
+        default: 1825d
+    }
+}
+
+type HolderLine = Output {
+    pick: [Holder.id, Holder.plan]
+}
+
+type KeptPolicy = Output {
+    pick: [Holder.id, Holder.policy_number]
+}
+
+type ClaimWithHolder = Output {
+    pick: [Claim.id]
+    holder: HolderLine
+}
+
+query holders() -> List<HolderLine> {
+    from: Holder
+    order: [Holder.id asc]
+    limit: 10
+}
+
+query kept_policies(number: Holder.policy_number) -> List<KeptPolicy> {
+    from: Holder
+    where: Holder.policy_number == number
+    order: [Holder.id asc]
+    limit: 10
+    include_erased: true
+}
+
+query claim_with_holder(claim_id: Claim.id) -> ClaimWithHolder? {
+    from: Claim
+    where: Claim.id == claim_id
+    include: {
+        holder: {
+            via: Claim.holder_id
+        }
+    }
+}
+
+action forget(holder_id: Holder.id) fails HolderNotFound -> Unit {
+    attempt Holder.erase(holder_id)
+}
+"#
+        .to_string(),
+    );
+    let mut found = None;
+    for callable in plan.callables() {
+        for site in &callable.sites {
+            if let Decoded::Write { plan: Some(id), .. } = &site.decoded {
+                found = plan.write(*id).cloned();
+            }
+        }
+    }
+    let erase = found.expect("the erasure's plan").plan;
+    assert_eq!(
+        erase.sql,
+        r#"WITH RECURSIVE "erased" ("entity", "id") AS (
+  SELECT 0, "holder"."id"
+  FROM "holder"
+  WHERE "id" = $1
+  UNION
+  SELECT "edge"."entity", "edge"."id"
+  FROM "erased"
+  JOIN (
+    SELECT 0 AS "parent", "edge1"."holder_id" AS "parent_id", 1 AS "entity", "edge1"."id" AS "id" FROM "claim" AS "edge1"
+    UNION ALL
+    SELECT 0 AS "parent", "edge2"."owner_id" AS "parent_id", 2 AS "entity", "edge2"."id" AS "id" FROM "household" AS "edge2"
+  ) AS "edge" ON "edge"."parent" = "erased"."entity" AND "edge"."parent_id" = "erased"."id"
+), "kept1" AS (
+  UPDATE "holder"
+  SET "invited_by_id" = CASE WHEN "invited_by_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0) THEN NULL ELSE "invited_by_id" END,
+    "household_id" = CASE WHEN "household_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 2) THEN NULL ELSE "household_id" END,
+    "changed_at" = $2
+  WHERE ("invited_by_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0) OR "household_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 2))
+    AND "id" NOT IN (SELECT "id" FROM "erased" WHERE "entity" = 0)
+), "signed_out1" AS (
+  DELETE FROM "jadpo_sessions"
+  WHERE "principal_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0)
+), "deleted1" AS (
+  DELETE FROM "claim"
+  WHERE "id" IN (SELECT "id" FROM "erased" WHERE "entity" = 1)
+), "deleted2" AS (
+  DELETE FROM "household"
+  WHERE "id" IN (SELECT "id" FROM "erased" WHERE "entity" = 2)
+), "own0" AS (
+  UPDATE "holder"
+  SET "handle" = NULL,
+    "invited_by_id" = CASE WHEN "invited_by_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0) THEN NULL ELSE "invited_by_id" END,
+    "household_id" = CASE WHEN "household_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 2) THEN NULL ELSE "household_id" END,
+    "jadpo_erased_at" = COALESCE("jadpo_erased_at", $2),
+    "changed_at" = $2
+  WHERE "id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0)
+  RETURNING "id"
+)
+SELECT "id" FROM "own0""#
+    );
+    // Their record is hidden wherever it is reached...
+    let erased = "\"jadpo_erased_at\" IS NULL";
+    let select = |name: &str| {
+        plan.query_named(name)
+            .expect("the query")
+            .read
+            .select
+            .sql
+            .clone()
+    };
+    assert!(select("holders").contains(erased), "{}", select("holders"));
+    let get = &plan
+        .entities()
+        .iter()
+        .find(|entity| entity.name == "Holder")
+        .expect("Holder")
+        .get
+        .select
+        .sql;
+    assert!(get.contains(erased), "{get}");
+    let parent = &plan
+        .query_named("claim_with_holder")
+        .expect("the query")
+        .read
+        .select
+        .includes[0]
+        .select
+        .sql;
+    assert!(parent.contains(erased), "{parent}");
+    let lookup = plan
+        .routes()
+        .identity
+        .as_ref()
+        .and_then(|identity| identity.user.as_ref())
+        .and_then(|user| user.lookup.clone())
+        .expect("how a token finds its holder");
+    assert!(lookup.contains(erased), "{lookup}");
+    // ...except by a query that says so.
+    assert!(
+        !select("kept_policies").contains(erased),
+        "{}",
+        select("kept_policies")
     );
 }
 

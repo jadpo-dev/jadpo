@@ -665,20 +665,17 @@ cascade to an entity with a lifecycle.
 **A person's records** (area 15). An entity's `person: true` is read
 onto its `EntityModel` (`person`), and `jadpo_check::persons::persons`
 works out, once for the project from the models without positions, each
-person entity's records: every entity holding a reference to the person
-or to one of those already found, until no reference adds another, so a
-chain through another person's records goes on and one that comes back
-to an entity it passed ends. A record referring to two people belongs to
-both. Each person keeps the references its records belong through, and a
-`person User` node, keyed by the entity's born name, placed at its
-`person:` and under its entity, lists them as `through`
-(`Attachment.todo_id`, `Todo.owner_id`), so a reference that starts or
-stops making records a person's changes the node's digest and shows in a
-diff. `persons::personal_problems` reports, at an entity's first field
-marked `personal:`, an entity that is no person and belongs to none
-(`data.personal_unreachable`), read from the marks area 21's check reads
-(`ai_personal::marks`). Erasure walks the same references, and export
-will.
+person entity's records: every entity holding a reference to the person.
+A record referring to two people belongs to both. Each person keeps the
+references its records belong through, and a `person User` node, keyed by
+the entity's born name, placed at its `person:` and under its entity,
+lists them as `through` (`Todo.owner_id`), with the fields erasure keeps of
+their record as `retained`, so a reference that starts or stops making
+records a person's, or a field kept or no longer kept, changes the node's
+digest and shows in a diff. `persons::personal_problems` reports, at an
+entity's first field marked `personal:`, an entity erasure never reaches
+(`data.personal_unreachable`, from `Erasures::reaches`), read from the
+marks area 21's check reads (`ai_personal::marks`).
 
 **Where personal data goes** (area 15; chunk V5). The walk for what
 reaches a model (`policy::flow`'s `models`) also keeps what leaves through
@@ -748,59 +745,36 @@ record's number its entity's place there), each reference with
 `Erasure.deleted` it follows from one of them to the records referring
 to it (`follows`), each entity it keeps while it refers to one
 (`kept`, with its references and the marked fields an anonymising one
-clears, none on another person's own record). A kept entity with more
-than one reference leading to a person, such as a letter's sender and
-recipient, also lists them (`Kept::through`) and the entities they lead
-through to a person (`Kept::chain`, each with the references climbed
-from it), worked out from `persons`: its marked fields are cleared only
-on a record none of them still leads from to a person erasure keeps
-(chunk P4). What it would reach that isn't built is `unbuilt`: a kept
-record of an audited entity, whose history would still hold the
-reference. A kept record's own children stay with it, so the walk goes
-on only through what erasure deletes; a `File` it deletes or clears is
-counted by area 16's trigger like any change. `erasure::erasure_problems` reports where each field is
-written: an `erase:` on a field that is no reference or on a reference
-to records no person reaches (`data.erase_unreached`), the person's own
-field's (`toolchain.not_built_yet`), a `restricted` reference into
-records erasure deletes with no `erase:` (`data.erase_required`), a
-reference or marked field it clears that can't be `none`
-(`data.erase_field_required`), and `Erasure.retained` on an entity with
-no `retention:` (`data.erase_retention_required`). `User.erase(user_id)`
-is typed by `Body::erase`, for an entity whose `WriteRules::person`
-holds: one `id` argument, no block, the person's not-found failure, and
-`toolchain.not_built_yet` where `unbuilt` names anything. It lowers to
-the body's `Write` with `erase` set, a `delete` by `id` of the person's
-record, so policy needs `delete` on it and the isolation decision reads
-it as loading a record (`Loads::Erases`), at repeatable read.
-
-**The audit trail** (area 16, "Audit trail"; chunk B11). An entity's
-`audit:` is read by `jadpo_check::data::audit::read`, once its fields
-are, onto `EntityModel::audit` (an `AuditModel`, its retention's
-`Duration` setting read by `data::retention::period` as area 15's are),
-with where it and its retention are written in `EntitySpans`; the
-retention's key places the entity's purge schedule when nothing else
-does (`schedules::purge_place`). `data::schema` gives the store of each
-audited entity `jadpo_std::system::AUDIT`, and the graph an `audit` node,
-keyed by the entity's born name, under it, its digest over how long
-entries are kept (`graph::retention_nodes`). `audit::audit_problems`
-refuses, at `audit:`, what the history can't keep or remove soundly yet
-(a marked field or one of a standard type that is personal data,
-`ai_personal::standard_personal`; a `File`; a field with its own
-retention; a person's record its own retention, its lifecycle's purge or
-another entity's cascade removes), and `WriteRules` carries `audited`,
-`person_owned` and `reaches_audited`, by which the body refuses a hard
-`delete` whose cascade or clearing changes an audited record, or that
-removes a person's audited record (`Body::audited_delete`);
-`erasure::erasures` lists an audited record erasure keeps among what it
-can't do. `Entity.history(id)` and `history(id, after:)` are typed by
-`Body::entity_history`, for an audited entity, as `Page<AuditEntry>`,
-infallible, read as `get` reads (`Fact::Gets`, a `reads` edge); the
-fields of `AuditEntry`, `AuditFieldChange` and `AuditEntryRecorded` are
-`jadpo_std::audit::object_fields`, read where the batch types' are. A
-subscriber may hear `AuditEntryRecorded`, keyed
-`jadpo.AuditEntryRecorded`, once some entity is audited
-(`events::Reader::event`); the permissions report adds an audited
-entity's line and its JSON's `audit`.
+clears, none on another person's own record). A kept entity's own
+references to a person are listed too (`Kept::through`) when it could
+belong to someone erasure keeps: its marked fields are cleared only on a
+record none of them holds such a person. A kept record's own children stay
+with it, so the walk goes on only through what erasure deletes; a `File`
+it deletes or clears is counted by area 16's trigger like any change.
+`Erasure::reach` is the same walk counting a `restricted` reference that
+doesn't say as one that deletes, so one missing `erase:` is reported once,
+and `Erasures::reaches` is what `personal_problems` asks. A person entity
+one of whose fields that isn't a reference says `Erasure.retained`
+(`EntityModel::keeps_erased`) is listed in `Erasure::own` with the fields it
+keeps and the marked fields it clears, and its table has a column for
+when each was erased (`jadpo_std::ERASED_AT`).
+`erasure::erasure_problems` reports where each field is written: an
+`erase:` on a field that is no reference or on a reference to records
+erasure never deletes (`data.erase_unreached`), a person's own field's
+that says anything but `Erasure.retained` or isn't marked
+(`data.erase_own_field`), a `restricted` reference into records erasure
+deletes with no `erase:` (`data.erase_required`), a reference or marked
+field it clears that can't be `none` (`data.erase_field_required`), and
+`Erasure.retained` on an entity with no `retention:`
+(`data.erase_retention_required`). `User.erase(user_id)` is typed by
+`Body::erase`, for an entity whose `WriteRules::person` holds: one `id`
+argument, no block and the person's not-found failure. It lowers to the
+body's `Write` with `erase` set, a `delete` by `id` of the person's record,
+so policy needs `delete` on it and the isolation decision reads it as
+loading a record (`Loads::Erases`), at repeatable read. A query's
+`include_erased: true` is read onto `QueryModel::include_erased`, and
+`Reader::include_erased` refuses what it may not read
+(`query.include_erased_reads`, `query.include_erased_unused`).
 
 A query is a node (area 6): `jadpo_check::data::queries`
 reads each declaration once into a `QueryModel` (its entity, parameters,
@@ -2469,17 +2443,18 @@ where an anonymising one matched, its marked fields' columns, setting
 each `Generated.on_change` field to the operation's time, on records not
 deleted themselves. For a kept entity whose records may belong to
 someone else too, a part before it (`"last1"`) selects the records whose
-marked fields go: those an anonymising reference matched from which
-none of `Kept::through` leads to a person kept, asked directly when
-each leads straight to a person entity, and otherwise by a recursive
-query in a `NOT EXISTS` that climbs `Kept::chain` from the record's
-references, never through a record being erased, until it reaches a
-person's record (chunk P4). One deletes the sign-in state (§2.6's
+marked fields go: those an anonymising reference matched whose own
+references to a person (`Kept::through`) each hold none or one found.
+One deletes the sign-in state (§2.6's
 `SIGN_IN_STATE`, `purge::sign_in_state`) of each record found of an
 entity someone signs in as; and one deletes every record found of each
-entity, whatever its lifecycle. All the parts see one snapshot, and the
-foreign keys are checked at the statement's end, when nothing refers to
-a deleted record. It returns the person's `id`; no row is the person's
+entity, whatever its lifecycle, or, of an entity `Erasure::own` names,
+an `UPDATE` clearing its marked fields, setting `jadpo_erased_at` to the
+operation's time unless it holds one, and each `Generated.on_change` field
+to that time (`"own0"`). Clearing marked fields clears the table's retired
+columns too, read from the latest migration's snapshot. All the parts see one snapshot, and the foreign
+keys are checked at the statement's end, when nothing refers to a deleted
+record. It returns the person's `id`; no row is the person's
 not-found failure, asked without policy as a delete's probe asks. It is
 a `WritePlan` of `WriteOp::Delete` by `id`, with no refusals, so both
 executors run it through the runtime's one write path unchanged.
@@ -2529,7 +2504,10 @@ compiled with the interpreter's records in the gate's compiled step.
 **Lifecycles and purge.** `jadpo-plan`'s `Planner::access` adds an entity's
 `visible:` to every query, `get`, child include, update, delete and
 transition, never to the parent an include reads, which stays readable
-while hidden (area 6, "Children and parents"); `clock.now` in it is the operation's
+while hidden (area 6, "Children and parents"), and `"jadpo_erased_at" IS
+NULL` on an entity that keeps an erased person's record to all of those,
+the parent included, and every sign-in lookup, unless a query says
+`include_erased: true` (`Reach::Erased`); `clock.now` in it is the operation's
 clock, sent as a parameter. A transition's statement is an `UPDATE` of the
 fields its `set:` gives (fixed values and `clock.now` parameters) and every `on_change` field, with its `when:` in the `WHERE`
 when it can refuse a visible record; a create fills each owned field from

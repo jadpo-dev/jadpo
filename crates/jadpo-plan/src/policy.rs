@@ -699,6 +699,7 @@ pub(crate) fn gates(
         action: None,
         json,
         sign_in: Default::default(),
+        retired: Default::default(),
     };
     access
         .root

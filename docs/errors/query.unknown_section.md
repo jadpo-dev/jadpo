@@ -26,7 +26,7 @@ error: `order_by` isn't something a query holds
    |
 15 |     order_by: [Book.id asc]
    |     ^^^^^^^^ not a section
-  reason: A query's block holds `from:`, `geometry:`, `where:`, `where_present:`, `group:`, `aggregate:`, `order:`, `limit:`, `page:`, `include:` and `missing:`. Did you mean `order:`?
+  reason: A query's block holds `from:`, `geometry:`, `where:`, `where_present:`, `group:`, `aggregate:`, `order:`, `limit:`, `page:`, `include:`, `missing:` and `include_erased:`. Did you mean `order:`?
   next: Use `order:` (agent)
   rule: query.unknown_section
   help: https://jadpo.dev/docs/errors/query.unknown_section

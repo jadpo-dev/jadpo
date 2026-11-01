@@ -1,6 +1,6 @@
 # `data.erase_field_required`
 
-Erasing a person would clear a field that can't be `none`: a reference whose record erasure keeps, or a marked field of a record it anonymises.
+Erasing a person would clear a field that can't be `none`: a reference whose record erasure keeps, a marked field of a record it anonymises, or a marked field of the person's own record it keeps.
 
 ## Why Jadpo refuses it
 
@@ -9,8 +9,10 @@ Erasure keeps some records without the person. One kept with
 its reference to the person and every field marked `personal:`. One kept
 with `Erasure.retained` loses only the reference. A field whose type
 doesn't end in `?` must always hold a value, so erasure couldn't clear
-it, and the person's data would stay. Here a comment is kept when its
-author is erased, but the name it was signed with can't be cleared.
+it, and the person's data would stay. A person's own record kept with
+`erase: Erasure.retained` on one of its fields loses every other marked
+field the same way. Here a comment is kept when its author is erased, but
+the name it was signed with can't be cleared.
 
 Jadpo won't choose for you: whether the comment is kept without the
 name, or deleted with its author, is a decision about your records.
