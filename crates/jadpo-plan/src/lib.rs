@@ -1196,7 +1196,11 @@ impl Plan {
                 identity.external_token = None;
             }
             if !taken(jadpo_std::AuthenticationMethod::BrowserSession) {
-                identity.origin = None;
+                // A passkey's answer is checked against the origin, so a
+                // route a person confirms with one keeps it (chunk R1).
+                if !routes.routes.iter().any(|route| route.confirm) {
+                    identity.origin = None;
+                }
                 identity.providers = None;
             }
         }

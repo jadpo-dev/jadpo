@@ -431,11 +431,9 @@ passkeys; policy; jobs and events; email; rate limits; provider calls;
 `ai.embed` and `Vector` fields; `hash.sha256`. It also waits for 8.2n (a
 real deploy) and, before outside authors can publish, D3 (releases).
 
-- [ ] **R1 Confirming a request with a passkey** `opus · xhigh`: area 8,
-  "Confirm one request with a passkey" (Richard, 2026-10-31). Done when a
-  route can't run until the signed-in person presents one of their own
-  passkeys for that request, and a route test does it with
-  `test_passkeys.confirm`.
+- [x] **R1 Confirming a request with a passkey**: area 8, "Confirm one
+  request with a passkey"; compiler/runtime, "Confirming one request with a
+  passkey".
 - [ ] **R3 A release's facts, change record and fingerprints**
   `opus · xhigh` after V5: area 11, "What a release shows", "The
   changelog", "Search" (the fingerprints) and "Yanks, takedowns and

@@ -128,10 +128,11 @@ pub fn session_act(op: SessionOp, user: Option<&str>, service: Option<&str>) -> 
         | SessionOp::MagicLinkRequest
         | SessionOp::MagicLinkRedeem
         | SessionOp::MagicLinkRedeemCode
-        // `test_passkeys` signs in through the generated routes, from a
-        // test only.
+        // `test_passkeys` signs in and confirms through the generated
+        // routes, from a test only.
         | SessionOp::TestPasskeyRegister
         | SessionOp::TestPasskeySignIn
+        | SessionOp::TestPasskeyConfirm
         | SessionOp::TestProviderSignIn => Act::SignsIn,
         SessionOp::Tokens => Act::Entity(user?.to_string(), Effect::Read),
         SessionOp::RevokeToken => Act::Entity(user?.to_string(), Effect::Update),

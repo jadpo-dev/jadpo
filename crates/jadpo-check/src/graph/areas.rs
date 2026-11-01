@@ -495,6 +495,8 @@ pub fn access_nodes(db: &dyn Db, project: Project) -> Part {
                 }
                 // Below, whether its API is declared or not.
                 crate::routes::generated::Generating::Webhook(_) => continue,
+                // A confirmation belongs to the route it confirms (area 8).
+                crate::routes::generated::Generating::Confirmation(route) => route.key.clone(),
             };
             for route in what.routes() {
                 nodes.push(generated_route(

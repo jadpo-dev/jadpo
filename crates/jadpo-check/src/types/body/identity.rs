@@ -440,7 +440,9 @@ impl Body<'_> {
             | SessionOp::MagicLinkRedeemCode => {
                 return self.magic_link_call(op, call, callee, written);
             }
-            SessionOp::TestPasskeyRegister | SessionOp::TestPasskeySignIn => {
+            SessionOp::TestPasskeyRegister
+            | SessionOp::TestPasskeySignIn
+            | SessionOp::TestPasskeyConfirm => {
                 return self.test_passkey_call(op, call, callee, written);
             }
             SessionOp::TestProviderSignIn => {
@@ -664,9 +666,10 @@ impl Body<'_> {
         )
     }
 
-    /// `test_passkeys.register(user, name)` and `test_passkeys.sign_in(
-    /// passkey)`: a software authenticator driving the generated passkey
-    /// routes for real (area 8, "In development and tests"; chunk 5.5z2).
+    /// `test_passkeys.register(user, name)`, `test_passkeys.sign_in(
+    /// passkey)` and `test_passkeys.confirm(passkey)`: a software
+    /// authenticator driving the generated passkey routes for real (area 8,
+    /// "In development and tests"; chunk 5.5z2).
     /// Only a test calls them, so only a test ever holds a `TestPasskey`.
     pub(super) fn test_passkey_call(
         &mut self,
@@ -727,6 +730,16 @@ impl Body<'_> {
                 ],
                 Ty::Opaque(jadpo_std::http::TEST_PASSKEY.to_string(), Vec::new()),
             ),
+            // The next request to a route with `confirm:` is confirmed
+            // with it (area 8, "Confirm one request with a passkey").
+            SessionOp::TestPasskeyConfirm => (
+                vec![(
+                    "passkey",
+                    "the device's",
+                    Ty::Opaque(jadpo_std::http::TEST_PASSKEY.to_string(), Vec::new()),
+                )],
+                Ty::Prim(Prim::Unit),
+            ),
             _ => (
                 vec![(
                     "passkey",
@@ -754,10 +767,10 @@ impl Body<'_> {
                     format!("`{written}` takes {takes}"),
                 )
                 .at(at, format!("{} given", args.len()))
-                .reason(if op == SessionOp::TestPasskeyRegister {
-                    format!("`{written}` adds a passkey for a user, signed in as `as:` signs in, under the name its person gives it: {takes}, in that order.")
-                } else {
-                    format!("`{written}` signs in with the passkey a device holds: {takes}.")
+                .reason(match op {
+                    SessionOp::TestPasskeyRegister => format!("`{written}` adds a passkey for a user, signed in as `as:` signs in, under the name its person gives it: {takes}, in that order."),
+                    SessionOp::TestPasskeyConfirm => format!("`{written}` confirms the next request to a route with `confirm:` with the passkey a device holds: {takes}."),
+                    _ => format!("`{written}` signs in with the passkey a device holds: {takes}."),
                 })
                 .next(format!("Pass {takes}")),
             );

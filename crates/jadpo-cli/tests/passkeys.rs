@@ -14,7 +14,10 @@
 //! - a person has several passkeys, renames and removes their own and
 //!   never another's; a device that holds one already makes no second;
 //! - a disabled person signs in with none, and every public write needs
-//!   the application's own `Origin`.
+//!   the application's own `Origin`;
+//! - a route with `confirm: Confirmation.passkey` runs only for the
+//!   signed-in person's own passkey, for that very request, once, within
+//!   two minutes (chunk R1).
 //!
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips the
@@ -240,6 +243,55 @@ routes Account {
 }
 "#,
     ),
+    // A request a person confirms with a passkey (chunk R1).
+    (
+        "domains/notes/types/new_handle.jadpo",
+        "use notes/types { Handle }\n\ntype NewHandle = Input {\n    handle: Handle\n}\n",
+    ),
+    (
+        "domains/notes/actions/change_handle.jadpo",
+        r#"use notes/entities { Member }
+use notes/failures { EmailTaken, MemberNotFound }
+use notes/types { NewHandle }
+
+/// Changes the signed-in member's handle.
+action change_handle(input: NewHandle, member: Principal.user) fails EmailTaken, MemberNotFound -> Unit {
+    var changed: Member = attempt Member.update(member.id) {
+        set: {
+            handle: input.handle
+        }
+        conflict: {
+            Member.handle: EmailTaken
+        }
+    }
+    assert changed.handle == input.handle
+}
+"#,
+    ),
+    (
+        "domains/notes/routes/account_handle.jadpo",
+        r#"use notes/actions { change_handle }
+use notes/types { NewHandle }
+
+routes AccountHandle {
+    prefix: /account/handle
+
+    POST / {
+        confirm: Confirmation.passkey
+        input: NewHandle
+        status: SuccessStatus.no_content
+        run: change_handle(input, current_principal.user)
+    }
+
+    PUT / {
+        confirm: Confirmation.passkey
+        input: NewHandle
+        status: SuccessStatus.no_content
+        run: change_handle(input, current_principal.user)
+    }
+}
+"#,
+    ),
     (
         "domains/notes/types/member_status.jadpo",
         "type MemberStatus = Enum {\n    active\n    suspended\n}\n",
@@ -392,6 +444,22 @@ public fixture signed_up_ada() -> Principal.user {
 "#,
     ),
     (
+        "domains/notes/fixtures/signed_up_bob.jadpo",
+        r#"use notes/actions { add_member }
+use notes/entities { Member }
+use notes/types { NewMember }
+
+/// Bob, signed up, with no passkey.
+fixture signed_up_bob() -> Principal.user {
+    var member: Member = attempt add_member(NewMember {
+        email: "bob@example.com"
+        handle: "bob"
+    })
+    return Principal.user(member)
+}
+"#,
+    ),
+    (
         "tests/passkeys.test.jadpo",
         r#"use notes
 
@@ -411,6 +479,75 @@ test "with her phone lost, Ada adds a new passkey and signs in with it" {
     var new_phone: TestPasskey = test_passkeys.register(ada, "New phone")
     var response: Response = test_passkeys.sign_in(new_phone)
     assert response.status == 204
+}
+"#,
+    ),
+    (
+        "domains/notes/routes/account_handle.test.jadpo",
+        r#"use notes/fixtures { signed_up_ada, signed_up_bob }
+use notes/types { NewHandle }
+
+test "Ada confirms changing her handle with her passkey" {
+    var ada: Principal.user = signed_up_ada()
+    var phone: TestPasskey = test_passkeys.register(ada, "Phone")
+    test_passkeys.confirm(phone)
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/account/handle"
+        as: ada
+        input: NewHandle {
+            handle: "countess"
+        }
+    }
+    assert response.status == 204
+    // A confirmation answers one request: the next asks again.
+    var again: Response = request {
+        method: HttpMethod.post
+        path: "/account/handle"
+        as: ada
+        input: NewHandle {
+            handle: "lovelace"
+        }
+    }
+    assert again.status == 403
+    assert again.code == "confirmation_required"
+}
+
+test "without her passkey Ada's handle stays as it is" {
+    var ada: Principal.user = signed_up_ada()
+    var phone: TestPasskey = test_passkeys.register(ada, "Phone")
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/account/handle"
+        as: ada
+        input: NewHandle {
+            handle: "countess"
+        }
+    }
+    assert response.status == 403
+    assert response.code == "confirmation_required"
+    var signed_in: Response = test_passkeys.sign_in(phone)
+    assert signed_in.status == 204
+}
+
+test "Bob's passkey can't confirm Ada's request" {
+    var ada: Principal.user = signed_up_ada()
+    var bob: Principal.user = signed_up_bob()
+    var ada_phone: TestPasskey = test_passkeys.register(ada, "Ada's phone")
+    var bob_phone: TestPasskey = test_passkeys.register(bob, "Bob's phone")
+    test_passkeys.confirm(bob_phone)
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/account/handle"
+        as: ada
+        input: NewHandle {
+            handle: "countess"
+        }
+    }
+    assert response.status == 403
+    assert response.code == "confirmation_required"
+    var signed_in: Response = test_passkeys.sign_in(ada_phone)
+    assert signed_in.status == 204
 }
 "#,
     ),
@@ -1281,5 +1418,380 @@ fn a_route_test_signs_in_with_test_passkeys() {
     let done = jadpo_cli::run(&["test".to_string()], &env);
     let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
-    assert!(done.stdout.contains("2 passed"), "{}", done.stdout);
+    assert!(done.stdout.contains("5 passed"), "{}", done.stdout);
+}
+
+// --- confirming one request with a passkey (chunk R1) --------------------------
+
+const CONFIRMATION: &str = "x-jadpo-confirmation";
+
+/// A signed-in write with the device's answer in its header.
+fn confirmed(browser: &Browser, method: &str, path: &str, body: &str, answer: &str) -> Request {
+    let mut request = browser.write(method, path, body);
+    request.headers.push((
+        CONFIRMATION.to_string(),
+        jadpo_value::encoding::to_base64url(answer.as_bytes()),
+    ));
+    request
+}
+
+const COUNTESS: &str = "{\"handle\":\"countess\"}";
+const LOVELACE: &str = "{\"handle\":\"lovelace\"}";
+
+impl Live {
+    /// The options `POST <path>/confirmation`, the route's own method,
+    /// gives `browser`, and the device's answer to them.
+    fn confirmation(
+        &self,
+        browser: &Browser,
+        device: &mut TestAuthenticator,
+        path: &str,
+        body: &str,
+    ) -> String {
+        let options = self.send(&browser.write("POST", &format!("{path}/confirmation"), body));
+        assert_eq!(options.status, 200, "{}", text(&options));
+        device.get(&text(&options)).expect("the device answers")
+    }
+
+    /// A member's handle, by their address.
+    fn handle_of(&self, email: &str) -> String {
+        let rows = self.rows(&format!(
+            "SELECT \"handle\" FROM \"member\" WHERE \"email\" = '{email}'"
+        ));
+        match rows.first().map(Vec::as_slice) {
+            Some([jadpo_runtime::SqlValue::Text(handle)]) => handle.clone(),
+            other => panic!("no member {email}: {other:?}"),
+        }
+    }
+
+    /// `email`, signed up in a browser with a passkey on a device.
+    fn with_passkey(&self, email: &str) -> (Browser, TestAuthenticator) {
+        let mut browser = self.sign_up(email);
+        let mut device = TestAuthenticator::new(ORIGIN);
+        let added = self.register(&mut browser, &mut device, "Phone");
+        assert_eq!(added.status, 201, "{}", text(&added));
+        (browser, device)
+    }
+}
+
+#[test]
+fn a_request_runs_only_once_its_person_confirms_it() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let live = Live::new("confirm");
+    let (browser, mut device) = live.with_passkey("ada@example.com");
+    // Without the device's answer, nothing runs.
+    let plain = live.send(&browser.write("POST", "/account/handle", COUNTESS));
+    refused(&plain, 403, "confirmation_required");
+    assert_eq!(live.handle_of("ada@example.com"), "ada");
+    // The options list her passkey, verifying her, and last two minutes.
+    let options = live.send(&browser.write("POST", "/account/handle/confirmation", COUNTESS));
+    assert_eq!(options.status, 200, "{}", text(&options));
+    assert!(
+        options
+            .headers
+            .contains(&("cache-control".to_string(), "no-store".to_string())),
+        "{:?}",
+        options.headers
+    );
+    let shown = json(&options);
+    let key = &shown["publicKey"];
+    assert_eq!(key["rpId"], "notes.example");
+    assert_eq!(key["userVerification"], "required");
+    assert_eq!(key["timeout"], 120_000);
+    assert_eq!(key["allowCredentials"].as_array().map(Vec::len), Some(1));
+    assert_eq!(shown.get("mediation"), None);
+    // With it, the route runs.
+    let answer = device.get(&text(&options)).expect("the device answers");
+    let done = live.send(&confirmed(
+        &browser,
+        "POST",
+        "/account/handle",
+        COUNTESS,
+        &answer,
+    ));
+    assert_eq!(done.status, 204, "{}", text(&done));
+    assert_eq!(live.handle_of("ada@example.com"), "countess");
+    // Each answer works once.
+    let replayed = live.send(&confirmed(
+        &browser,
+        "POST",
+        "/account/handle",
+        COUNTESS,
+        &answer,
+    ));
+    refused(&replayed, 403, "confirmation_required");
+    // Asking again and answering again confirms again, the counter having
+    // gone up.
+    let answer = live.confirmation(&browser, &mut device, "/account/handle", LOVELACE);
+    let done = live.send(&confirmed(
+        &browser,
+        "POST",
+        "/account/handle",
+        LOVELACE,
+        &answer,
+    ));
+    assert_eq!(done.status, 204, "{}", text(&done));
+    assert_eq!(live.handle_of("ada@example.com"), "lovelace");
+    // The passkey's last use is kept, and it still signs her in.
+    let listed = json(&live.send(&browser.write("GET", "/auth/passkey", "")));
+    assert!(listed[0]["last_used_at"].is_string(), "{listed}");
+    let (_, response) = live.sign_in(&mut device);
+    assert_eq!(response.status, 204, "{}", text(&response));
+}
+
+#[test]
+fn a_confirmation_is_for_that_request_alone() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let live = Live::new("confirm_request");
+    let (browser, mut device) = live.with_passkey("ada@example.com");
+    // Made for one input, it approves no other, and is used up.
+    let answer = live.confirmation(&browser, &mut device, "/account/handle", COUNTESS);
+    let other = live.send(&confirmed(
+        &browser,
+        "POST",
+        "/account/handle",
+        LOVELACE,
+        &answer,
+    ));
+    refused(&other, 403, "confirmation_required");
+    assert_eq!(live.handle_of("ada@example.com"), "ada");
+    let same = live.send(&confirmed(
+        &browser,
+        "POST",
+        "/account/handle",
+        COUNTESS,
+        &answer,
+    ));
+    refused(&same, 403, "confirmation_required");
+    assert_eq!(live.handle_of("ada@example.com"), "ada");
+    // Made for one route, it approves no other with the same input.
+    let answer = live.confirmation(&browser, &mut device, "/account/handle", COUNTESS);
+    let other = live.send(&confirmed(
+        &browser,
+        "PUT",
+        "/account/handle",
+        COUNTESS,
+        &answer,
+    ));
+    refused(&other, 403, "confirmation_required");
+    assert_eq!(live.handle_of("ada@example.com"), "ada");
+    // The other route has its own, asked with its method.
+    let options = live.send(&browser.write("PUT", "/account/handle/confirmation", COUNTESS));
+    assert_eq!(options.status, 200, "{}", text(&options));
+    let answer = device.get(&text(&options)).expect("the device answers");
+    let done = live.send(&confirmed(
+        &browser,
+        "PUT",
+        "/account/handle",
+        COUNTESS,
+        &answer,
+    ));
+    assert_eq!(done.status, 204, "{}", text(&done));
+    assert_eq!(live.handle_of("ada@example.com"), "countess");
+    // Written differently, the same input is the same request.
+    let answer = live.confirmation(&browser, &mut device, "/account/handle", COUNTESS);
+    let spaced = "{ \"handle\" : \"countess\" }";
+    let done = live.send(&confirmed(
+        &browser,
+        "POST",
+        "/account/handle",
+        spaced,
+        &answer,
+    ));
+    assert_eq!(done.status, 204, "{}", text(&done));
+    // An input it can't run is refused before any challenge is made.
+    let unread = live.send(&browser.write(
+        "POST",
+        "/account/handle/confirmation",
+        "{\"handle\":\"countess\",\"extra\":1}",
+    ));
+    refused(&unread, 422, "invalid_input");
+}
+
+/// An `Idempotency-Key` skips no confirmation: a repeat asks for one of its
+/// own, and then gets the first answer without running again.
+#[test]
+fn a_repeat_under_its_key_confirms_again() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let live = Live::new("confirm_key");
+    let (browser, mut device) = live.with_passkey("ada@example.com");
+    let keyed = |mut request: Request, key: &str| {
+        request
+            .headers
+            .push(("idempotency-key".to_string(), key.to_string()));
+        request
+    };
+    let answer = live.confirmation(&browser, &mut device, "/account/handle", COUNTESS);
+    let first = live.send(&keyed(
+        confirmed(&browser, "POST", "/account/handle", COUNTESS, &answer),
+        "first",
+    ));
+    assert_eq!(first.status, 204, "{}", text(&first));
+    // Changed since, so a repeat that ran again would change it back.
+    let answer = live.confirmation(&browser, &mut device, "/account/handle", LOVELACE);
+    let second = live.send(&keyed(
+        confirmed(&browser, "POST", "/account/handle", LOVELACE, &answer),
+        "second",
+    ));
+    assert_eq!(second.status, 204, "{}", text(&second));
+    assert_eq!(live.handle_of("ada@example.com"), "lovelace");
+    // The key alone is refused, however it was answered before.
+    let bare = live.send(&keyed(
+        browser.write("POST", "/account/handle", COUNTESS),
+        "first",
+    ));
+    refused(&bare, 403, "confirmation_required");
+    // Confirmed again, it gets the first answer, and nothing runs.
+    let answer = live.confirmation(&browser, &mut device, "/account/handle", COUNTESS);
+    let repeat = live.send(&keyed(
+        confirmed(&browser, "POST", "/account/handle", COUNTESS, &answer),
+        "first",
+    ));
+    assert_eq!(repeat.status, 204, "{}", text(&repeat));
+    assert_eq!(live.handle_of("ada@example.com"), "lovelace");
+}
+
+#[test]
+fn a_confirmation_lasts_two_minutes() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let live = Live::new("confirm_expiry");
+    let (browser, mut device) = live.with_passkey("ada@example.com");
+    let answer = live.confirmation(&browser, &mut device, "/account/handle", COUNTESS);
+    live.at(START + 2 * MINUTE);
+    let late = live.send(&confirmed(
+        &browser,
+        "POST",
+        "/account/handle",
+        COUNTESS,
+        &answer,
+    ));
+    refused(&late, 403, "confirmation_required");
+    assert_eq!(live.handle_of("ada@example.com"), "ada");
+    // Under the two minutes it works.
+    let answer = live.confirmation(&browser, &mut device, "/account/handle", COUNTESS);
+    live.at(START + 4 * MINUTE - 1);
+    let done = live.send(&confirmed(
+        &browser,
+        "POST",
+        "/account/handle",
+        COUNTESS,
+        &answer,
+    ));
+    assert_eq!(done.status, 204, "{}", text(&done));
+}
+
+#[test]
+fn only_the_persons_own_passkey_confirms() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let live = Live::new("confirm_own");
+    let (ada, _ada_device) = live.with_passkey("ada@example.com");
+    let (bob, mut bob_device) = live.with_passkey("bob@example.com");
+    // Bob's device answers the options Ada was given (a real browser would
+    // never offer it): the runtime refuses it, Ada's session or not.
+    let answer = live.confirmation(&ada, &mut bob_device, "/account/handle", COUNTESS);
+    let stolen = live.send(&confirmed(
+        &ada,
+        "POST",
+        "/account/handle",
+        COUNTESS,
+        &answer,
+    ));
+    refused(&stolen, 403, "confirmation_required");
+    assert_eq!(live.handle_of("ada@example.com"), "ada");
+    // A challenge Bob was given, answered by his own passkey, confirms
+    // nothing of Ada's: it is bound to him.
+    let answer = live.confirmation(&bob, &mut bob_device, "/account/handle", COUNTESS);
+    let crossed = live.send(&confirmed(
+        &ada,
+        "POST",
+        "/account/handle",
+        COUNTESS,
+        &answer,
+    ));
+    refused(&crossed, 403, "confirmation_required");
+    assert_eq!(live.handle_of("ada@example.com"), "ada");
+    // A person with no passkey is given no options any passkey could
+    // answer.
+    let carol = live.sign_up("carol@example.com");
+    let none = live.send(&carol.write("POST", "/account/handle/confirmation", COUNTESS));
+    refused(&none, 403, "confirmation_required");
+    // The options need someone signed in, with the session's CSRF token.
+    let anonymous =
+        live.send(&Browser::default().public("POST", "/account/handle/confirmation", COUNTESS));
+    assert_eq!(anonymous.status, 401, "{}", text(&anonymous));
+    let forged = live.send(&ada.public("POST", "/account/handle/confirmation", COUNTESS));
+    refused(&forged, 403, "csrf_rejected");
+}
+
+#[test]
+fn an_answer_that_doesnt_check_confirms_nothing() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let live = Live::new("confirm_checks");
+    let (mut browser, mut device) = live.with_passkey("ada@example.com");
+    // From another site.
+    device.at("https://evil.example");
+    let answer = live.confirmation(&browser, &mut device, "/account/handle", COUNTESS);
+    let elsewhere = live.send(&confirmed(
+        &browser,
+        "POST",
+        "/account/handle",
+        COUNTESS,
+        &answer,
+    ));
+    refused(&elsewhere, 403, "confirmation_required");
+    device.at(ORIGIN);
+    // A counter gone back.
+    let answer = live.confirmation(&browser, &mut device, "/account/handle", COUNTESS);
+    let done = live.send(&confirmed(
+        &browser,
+        "POST",
+        "/account/handle",
+        COUNTESS,
+        &answer,
+    ));
+    assert_eq!(done.status, 204, "{}", text(&done));
+    device.set_sign_count(0);
+    let answer = live.confirmation(&browser, &mut device, "/account/handle", LOVELACE);
+    let cloned = live.send(&confirmed(
+        &browser,
+        "POST",
+        "/account/handle",
+        LOVELACE,
+        &answer,
+    ));
+    refused(&cloned, 403, "confirmation_required");
+    assert_eq!(live.handle_of("ada@example.com"), "countess");
+    device.set_sign_count(100);
+    // A header that can't be read.
+    let mut unread = browser.write("POST", "/account/handle", LOVELACE);
+    unread
+        .headers
+        .push((CONFIRMATION.to_string(), "not an answer".to_string()));
+    refused(&live.send(&unread), 403, "confirmation_required");
+    // A sign-in's answer confirms nothing, nor a confirmation's signs in.
+    let answer = live.answer(&mut browser, &mut device);
+    let signing = live.send(&confirmed(
+        &browser,
+        "POST",
+        "/account/handle",
+        LOVELACE,
+        &answer,
+    ));
+    refused(&signing, 403, "confirmation_required");
+    let answer = live.confirmation(&browser, &mut device, "/account/handle", LOVELACE);
+    let finished = live.finish(&mut browser, &answer);
+    refused(&finished, 401, "passkey_challenge_expired");
+    assert_eq!(live.handle_of("ada@example.com"), "countess");
 }

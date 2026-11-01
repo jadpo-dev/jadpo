@@ -111,6 +111,18 @@ pub fn said(family: &Family, subject: &str, change: &str) -> String {
                 format!("anyone can now call `{route}` of API `{api}`, without signing in")
             }
         }
+        "PolicyChange.confirmation_removed" => {
+            let (api, route) = route(subject);
+            if api == "main" || api.is_empty() {
+                format!(
+                    "a signed-in session alone can now run `{route}`, without the person's passkey"
+                )
+            } else {
+                format!(
+                    "a signed-in session alone can now run `{route}` of API `{api}`, without the person's passkey"
+                )
+            }
+        }
         "PolicyChange.restriction_removed" => format!(
             "`{subject}` no longer has a restriction of its own, so it follows its record's grants"
         ),
@@ -140,6 +152,18 @@ pub fn said(family: &Family, subject: &str, change: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_route_no_longer_confirmed_says_what_is_enough_now() {
+        assert_eq!(
+            said(
+                &Family::Api,
+                "\"main POST /todos\"",
+                "PolicyChange.confirmation_removed"
+            ),
+            "a signed-in session alone can now run `POST /todos`, without the person's passkey"
+        );
+    }
 
     #[test]
     fn callers_read_as_people() {

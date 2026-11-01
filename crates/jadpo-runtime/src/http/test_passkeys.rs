@@ -11,6 +11,13 @@
 //! - **`sign_in(passkey)`** asks for the sign-in options from a browser of
 //!   its own, has the device answer them and posts the answer with the
 //!   browser's binding cookie, giving the second route's `Response`.
+//! - **`confirm(passkey)`** (chunk R1) gives the device that confirms the
+//!   next request the test makes to a route with `confirm:`: that request
+//!   first asks the route's `…/confirmation` for options with the same
+//!   caller and input, has the device answer them, and carries the answer
+//!   in `X-Jadpo-Confirmation`. Like a device a test controls, it answers
+//!   with the passkey it holds whatever the options allow, so a test shows
+//!   the runtime refusing another person's passkey.
 //!
 //! A refusal on the way to a passkey, which the test meant to make, ends
 //! the test as a fault naming the route and its failure's code.
@@ -21,7 +28,7 @@ use jadpo_std::http::{PasskeyStep, Run, TEST_PASSKEY};
 use jadpo_value::Value;
 
 use super::{App, Request, Response, handle, identity, request_id, response_value};
-use crate::{Ctx, Executor, FaultKind, Stored};
+use crate::{Ctx, Executor, Fault, FaultKind, Stored};
 
 /// `test_passkeys.register(user, name)`, called at site `at`.
 pub async fn register(
@@ -110,14 +117,7 @@ pub async fn sign_in(
     args: &[Value],
     at: u32,
 ) -> Stored {
-    let device = match args {
-        [Value::Record(record)] => match record.get("device") {
-            Some(Value::Int(device)) => u32::try_from(*device).ok(),
-            _ => None,
-        },
-        _ => None,
-    };
-    let Some(device) = device else {
+    let Some(device) = device_of(args) else {
         return defect(ctx, "`test_passkeys.sign_in` given no `TestPasskey`", at);
     };
     let (Some(origin), Some(options), Some(finish), Some(cookie)) = (
@@ -167,6 +167,102 @@ pub async fn sign_in(
         Ok(response) => Stored::Value(response_value(app, finish.index, &response, &[])),
         Err(stored) => stored,
     }
+}
+
+/// `test_passkeys.confirm(passkey)`, called at site `at`: the next request
+/// to a route with `confirm:` is confirmed with it.
+pub fn confirm(ctx: &mut Ctx<'_>, args: &[Value], at: u32) -> Stored {
+    let Some(device) = device_of(args) else {
+        return defect(ctx, "`test_passkeys.confirm` given no `TestPasskey`", at);
+    };
+    ctx.set_confirming(device, at);
+    Stored::Value(Value::Unit)
+}
+
+/// The device a `TestPasskey` argument names.
+fn device_of(args: &[Value]) -> Option<u32> {
+    match args {
+        [Value::Record(record)] => match record.get("device") {
+            Some(Value::Int(device)) => u32::try_from(*device).ok(),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// Confirms `request`, a route test's request to route `route`, with
+/// `device`, as `test_passkeys.confirm` called at site `at` asked: the
+/// options its `…/confirmation` gives for the same caller and input, the
+/// device's answer to them, and that answer in the request's header. A
+/// refusal on the way to it ends the test, naming the route and its code.
+pub(super) async fn confirming(
+    app: &App<'_>,
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    route: u32,
+    request: &mut Request,
+    (device, at): (u32, u32),
+) -> Result<(), Box<Fault>> {
+    let fault = |ctx: &mut Ctx<'_>, what: &str| ctx.fault(FaultKind::Defect(what.to_string()), at);
+    let found = app
+        .table
+        .routes
+        .iter()
+        .find(|plan| matches!(plan.run, Run::Confirmation(confirmed) if confirmed == route));
+    let Some(plan) = found else {
+        return Err(fault(
+            ctx,
+            "`test_passkeys.confirm` with no `…/confirmation` route",
+        ));
+    };
+    let Some(authenticators) = ctx.host().test_authenticators() else {
+        return Err(fault(
+            ctx,
+            "`test_passkeys.confirm` outside a test: only a test has a software authenticator",
+        ));
+    };
+    // The same request to the route's `…/confirmation`, as the browser
+    // asks before the person presents a passkey.
+    let mut asking = request.clone();
+    asking.method = plan.method.word().to_string();
+    asking.path = format!(
+        "{}/{}",
+        request.path.trim_end_matches('/'),
+        jadpo_std::http::CONFIRMATION_SEGMENT
+    );
+    asking
+        .headers
+        .retain(|(name, _)| !name.eq_ignore_ascii_case(super::idempotency::HEADER));
+    let id = request_id(ctx, u64::from(ctx.actions()));
+    let mut asked = handle(app, executor, ctx, &asking, &id).await;
+    if let Some(fault) = asked.fault.take() {
+        return Err(fault);
+    }
+    if asked.status != 200 {
+        let code = asked.code.as_deref().unwrap_or("no code");
+        let label = plan.label();
+        return Err(fault(
+            ctx,
+            &format!(
+                "`{label}` answered {} {code} on the way to a test passkey's confirmation",
+                asked.status
+            ),
+        ));
+    }
+    let answer = match authenticators.get(device, &body_text(&asked)) {
+        Ok(answer) => answer,
+        Err(why) => {
+            return Err(fault(
+                ctx,
+                &format!("the test's device couldn't answer: {why}"),
+            ));
+        }
+    };
+    request.headers.push((
+        jadpo_std::http::CONFIRMATION_HEADER.to_string(),
+        jadpo_value::encoding::to_base64url(answer.as_bytes()),
+    ));
+    Ok(())
 }
 
 /// One generated passkey route: its number in the table and its path.

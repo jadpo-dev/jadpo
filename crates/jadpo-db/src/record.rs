@@ -74,6 +74,7 @@ pub const API: Kind = Kind {
     facts: &[
         "authentication",
         "caller",
+        "confirm",
         "fails",
         "generated",
         "idempotency",
