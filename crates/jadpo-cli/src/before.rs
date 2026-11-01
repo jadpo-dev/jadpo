@@ -280,3 +280,66 @@ fn contents(top: &Path, base: &str, prefix: &str, paths: &[&String]) -> BTreeMap
     }
     out
 }
+
+/// The whole commit `commit` names, for the project at `root`: what
+/// `jadpo approval` builds and keeps the manifest of under it.
+pub fn full_commit(root: &Path, commit: &str) -> Option<String> {
+    line(
+        root,
+        &[
+            "rev-parse",
+            "-q",
+            "--verify",
+            &format!("{commit}^{{commit}}"),
+        ],
+    )
+}
+
+/// Every file of the project at `root` as commit `commit` holds it, by
+/// project-relative path, as [`jadpo_db::read`] finds a project on disk:
+/// the files a project can hold, hidden ones and `build/` left out
+/// (chunk V2). A package linked to a live checkout is read as installed,
+/// since the checkout isn't part of the commit.
+pub fn tree(root: &Path, commit: &str) -> jadpo_db::FileSet {
+    let mut files = jadpo_db::FileSet::default();
+    let Some(top) = line(root, &["rev-parse", "--show-toplevel"]) else {
+        return files;
+    };
+    let top = Path::new(&top).to_path_buf();
+    let prefix = line(root, &["rev-parse", "--show-prefix"]).unwrap_or_default();
+    let pathspec = if prefix.is_empty() {
+        "."
+    } else {
+        prefix.as_str()
+    };
+    let listed = git(
+        &top,
+        &[
+            "ls-tree",
+            "-r",
+            "-z",
+            "--name-only",
+            "--full-tree",
+            commit,
+            "--",
+            pathspec,
+        ],
+    )
+    .unwrap_or_default();
+    let paths: Vec<String> = listed
+        .split('\0')
+        .filter_map(|path| path.strip_prefix(prefix.as_str()))
+        .filter(|path| {
+            !path.is_empty()
+                && !path.starts_with("build/")
+                && !path.split('/').any(|part| part.starts_with('.'))
+                && jadpo_db::role(path, jadpo_db::Layout::Project).is_some()
+        })
+        .map(str::to_string)
+        .collect();
+    let wanted: Vec<&String> = paths.iter().collect();
+    for (path, text) in contents(&top, commit, &prefix, &wanted) {
+        files.insert(path, Ok(text));
+    }
+    files
+}
