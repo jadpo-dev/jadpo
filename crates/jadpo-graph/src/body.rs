@@ -330,6 +330,11 @@ pub enum Expr {
         transition: Option<Key>,
         /// `update` and `delete`: the record loaded earlier, or its `id`.
         target: Option<SiteId>,
+        /// A person's erasure, `User.erase(user_id)` (area 15; chunk P3):
+        /// a `delete` by `id` of the person's record, which also deletes,
+        /// anonymises or keeps every record of theirs as its reference
+        /// says, in the same statement.
+        erase: bool,
         /// Whether `target` is the record's `id`: an update by `id` may read
         /// the stored values (`Post.view_count + 1`), and the write fails
         /// with `not_found` when no record has it.

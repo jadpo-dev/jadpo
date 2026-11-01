@@ -13,14 +13,15 @@ exports that data when the person asks for a copy, erases it when they ask
 to be forgotten, deletes it when its time is up, and reports where it
 lives. The aim is that requests under GDPR, UK GDPR and CCPA/CPRA work out
 of the box. Built so far: `person: true`, the check that every field
-marked `personal:` belongs to a person, and [retention](#retention),
-which deletes data when its time is up. `personal:` is also read for
+marked `personal:` belongs to a person, [retention](#retention), which
+deletes data when its time is up, and [erasure](#erasure) of a person's
+records in their store. `personal:` is also read for
 [the AI page's](21-ai.md#personal-data-sent-to-a-model) check of what
-reaches a model. Nothing exports, erases or reports personal data yet, so
-an app on this compiler does those itself. `erase:`, `User.erase` and
-`User.export` are `toolchain.not_built_yet` where you write them, and so
-is any retention this compiler can't carry out in full, so none can be
-mistaken for working ([What is built](#what-is-built)).
+reaches a model. Nothing exports or reports personal data yet, so an app
+on this compiler does those itself. `User.export` is
+`toolchain.not_built_yet` where you write it, and so is any retention or
+erasure this compiler can't carry out in full, so none can be mistaken
+for working ([What is built](#what-is-built)).
 
 The law asks a few things of an app:
 
@@ -41,7 +42,7 @@ is the one fact Jadpo asks you to write down.
 |---|---|---|---|
 | Marking | `personal:` on a field | Hashes it in logs, lists it in the report | Partly: read for the AI check, and checked to belong to a person; nothing hashes or lists it |
 | The person | `person: true` on an entity | Finds every record that belongs to them | Yes |
-| Erasure | `erase:` on references it can't work out | Generates `User.erase(id)` across every store and cache | No: `toolchain.not_built_yet` |
+| Erasure | `erase:` on references it can't work out | Generates `User.erase(id)` across every store and cache | Partly: in the person's store; not yet a `File`'s bytes, the person's own record kept field by field, or another store |
 | Export | nothing | Generates `User.export(id)` | No: `toolchain.not_built_yet` |
 | Retention | `retention:` on a field or entity | Clears or deletes it when the time is up | Partly: not yet on a `File` or an event, or through a cascade to someone who signs in |
 | Report | nothing | Writes `build/report/personal-data.md` | No |
@@ -170,6 +171,7 @@ entity Todo {
     id: Uuid
     owner_id: User.id {
         on_delete: OnDelete.restricted
+        erase: Erasure.deleted
     }
     title: Caption
 }
@@ -221,6 +223,13 @@ personal data ([Marking personal fields](#marking-personal-fields)). A
 nullable field is one whose type ends in `?`, so it can hold no value
 ([Values that may be missing](02-values-and-types.md#values-that-may-be-missing)).
 
+Erasure follows the references from every record it deletes, however
+deep, so a reference to one of the person's todos decides what erasure
+does to its record in the same way. A record erasure keeps stays with
+whatever refers to it, as it does when an ordinary delete clears a
+reference. Everything goes in one statement, so an erasure is never left
+half done.
+
 ### Deleting the person's records: `Erasure.deleted`
 
 Use it for records that are only the person's, such as their todos.
@@ -228,17 +237,81 @@ Here `Todo`'s reference to its owner is restricted, so ordinary code can't
 delete a user who still has todos, but erasing the owner deletes their
 todos:
 
-```jadpo fragment
-// domains/planning/entities/todo.jadpo
+```jadpo check project=erasure file=app.jadpo hidden
+use accounts/entities { User }
+
+application {}
+
+principal {
+    user: {
+        subject: User.email
+    }
+}
+
+authentication {
+    api_token: {}
+}
+```
+
+```jadpo check project=erasure file=config.jadpo hidden
+config {
+    invoice_retention: Duration {
+        default: 2192d
+    }
+}
+```
+
+```jadpo check project=erasure file=domains/accounts/entities/user.jadpo hidden
+/// Someone with an account, who may erase only themselves.
+entity User {
+    id: Uuid
+    email: Email {
+        unique: true
+        personal: PersonalData.contact
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+        delete: [id]
+    }
+
+    person: true
+}
+```
+
+```jadpo check project=erasure file=domains/accounts/types/todo_title.jadpo hidden
+/// What a todo says.
+type TodoTitle = Text {
+    max_length: 200
+}
+```
+
+```jadpo check project=erasure file=domains/accounts/types/billing_name.jadpo hidden
+/// A name as it is billed.
+type BillingName = Text {
+    max_length: 120
+}
+```
+
+```jadpo check project=erasure file=domains/accounts/entities/todo.jadpo
+// domains/accounts/entities/todo.jadpo
+use accounts/entities { User }
+use accounts/types { TodoTitle }
+
+/// Something a user means to do, deleted with them.
 entity Todo {
     id: Uuid
     owner_id: User.id {
         on_delete: OnDelete.restricted
-        role: TodoRole.owner
         erase: Erasure.deleted
     }
     title: TodoTitle
-    ...
+
+    policy: {
+        create: [owner_id]
+        read: [owner_id]
+    }
 }
 ```
 
@@ -250,19 +323,28 @@ The invoice keeps its own copy of the billing name and address, so it no
 longer needs the user. Erasing the user clears `customer_id` and keeps the
 invoice:
 
-```jadpo fragment
-// domains/billing/entities/invoice.jadpo
+```jadpo check project=erasure file=domains/accounts/entities/invoice.jadpo migrate=initial
+// domains/accounts/entities/invoice.jadpo
+use accounts/entities { User }
+use accounts/types { BillingName }
+
+/// A bill, kept for the tax years without its customer.
 entity Invoice {
     id: Uuid
     customer_id: User.id? {
         on_delete: OnDelete.restricted
         erase: Erasure.retained
     }
-    billing_name: PersonName {
+    billing_name: BillingName {
         personal: PersonalData.identifying
     }
     issued_at: Instant {
         generated: Generated.on_create
+    }
+
+    policy: {
+        create: [customer_id]
+        read: [customer_id]
     }
 
     retention: {
@@ -279,6 +361,104 @@ A record you keep this way holds its own copy of the details it needs,
 as the invoice holds the billing name. It never points at a stub left in
 place of the person. It also needs a `retention:` of its own, which says
 when it is deleted.
+
+### Erasing someone
+
+An action erases a person by their `id`. Here a signed-in user closes
+their own account, which `User`'s `delete: [id]` allows only for
+themselves
+([Who may erase and export](#who-may-erase-and-export)):
+
+```jadpo check project=erasure file=domains/accounts/actions/close_account.jadpo
+// domains/accounts/actions/close_account.jadpo
+use accounts/entities { User, UserNotFound }
+
+/// Erases the signed-in user: their todos are deleted, and their
+/// invoices kept without them.
+action close_account(me: Principal.user) fails UserNotFound -> Unit {
+    attempt User.erase(me.id)
+}
+```
+
+`User.erase` takes no block, since what it does to each record is
+written on the references, and nothing can refuse it but policy. A
+person who isn't there, or whom the caller may not delete, is the
+person's not-found failure, `UserNotFound`. A person a lifecycle hides,
+such as one who deleted their account earlier, is erased too.
+
+This test signs a user up, gives them a todo and an invoice, and closes
+their account:
+
+```jadpo check project=erasure file=domains/accounts/failures/email_taken.jadpo hidden
+/// Someone has that address already.
+type EmailTaken = Failure {
+    kind: FailureKind.conflict
+}
+```
+
+```jadpo check project=erasure file=domains/accounts/actions/sign_up.jadpo hidden
+use accounts/entities { User }
+use accounts/failures { EmailTaken }
+
+/// Adds a user.
+action sign_up(email: User.email) fails EmailTaken -> User {
+    return attempt User.create {
+        set: {
+            email: email
+        }
+        conflict: {
+            User.email: EmailTaken
+        }
+    }
+}
+```
+
+```jadpo check project=erasure file=domains/accounts/actions/add_todo.jadpo hidden
+use accounts/entities { Todo }
+
+/// Adds a todo.
+action add_todo(me: Principal.user, title: Todo.title) -> Todo {
+    return Todo.create {
+        set: {
+            owner_id: me.id
+            title: title
+        }
+    }
+}
+```
+
+```jadpo check project=erasure file=domains/accounts/actions/bill.jadpo hidden
+use accounts/entities { Invoice }
+
+/// Issues an invoice.
+action bill(me: Principal.user, billing_name: Invoice.billing_name) -> Invoice {
+    return Invoice.create {
+        set: {
+            customer_id: me.id
+            billing_name: billing_name
+        }
+    }
+}
+```
+
+```jadpo check project=erasure file=domains/accounts/actions/close_account.test.jadpo
+// domains/accounts/actions/close_account.test.jadpo
+use accounts/entities { Invoice, Todo, TodoNotFound, User, UserNotFound }
+use accounts/actions { add_todo, bill, sign_up }
+
+test "closing an account deletes the todos and keeps the invoices" {
+    var ada: User = attempt sign_up("ada@example.com")
+    var me: Principal.user = Principal.user(ada)
+    var todo: Todo = add_todo(me, "Buy milk")
+    var invoice: Invoice = bill(me, "Ada Lovelace")
+    attempt close_account(me)
+    assert User.get(ada.id) fails UserNotFound
+    assert Todo.get(todo.id) fails TodoNotFound
+    var still_billed: Invoice = attempt Invoice.get(invoice.id)
+    assert still_billed.customer_id == none
+    assert still_billed.billing_name == "Ada Lovelace"
+}
+```
 
 ### The person's own record
 
@@ -590,8 +770,15 @@ and no purge is listed in the report as "kept until erased".
   it, with a reason, because a field kept for a legal reason may be read
   only by export.
 - **Erasure is complete.** Every reference into a person's records has an
-  erasure outcome. `Erasure.anonymised` and `Erasure.retained` have the
-  nullable fields and retention they need.
+  erasure outcome: a `restricted` one into records erasure deletes says
+  what it does
+  ([`data.erase_required`](../errors/data.erase_required.md)).
+  `Erasure.anonymised` and `Erasure.retained` have the nullable fields
+  ([`data.erase_field_required`](../errors/data.erase_field_required.md))
+  and retention
+  ([`data.erase_retention_required`](../errors/data.erase_retention_required.md))
+  they need, and an `erase:` erasure never reaches is refused
+  ([`data.erase_unreached`](../errors/data.erase_unreached.md)).
 - **No personal data erasure can't reach.** A marked field on an entity
   that isn't a person, and doesn't belong to one through references, is
   [`data.personal_unreachable`](../errors/data.personal_unreachable.md):
@@ -823,8 +1010,9 @@ This is not legal advice. A privacy professional reviews the report.
 | An entity's and an event's `personal: PersonalData.<category>` | Partly built: it is read and checked against the fourteen categories for the [AI](21-ai.md) page's check of what reaches a model, and a marked field on an entity no person reaches is `data.personal_unreachable`. Not built yet: the rest of what this page says marking does. A marked field nothing reads compiles without an error, and no log, report or access record uses the marking. |
 | `person: true` | Built: an entity marked `person: true` is a person, and every record that refers to one, directly or through a chain of references, belongs to them. The build's manifest shows each person under its entity as a `person` node, listing the references its records belong through (`through`). |
 | `retention:` on a field or an entity | Partly built. Built: the entity's hourly purge schedule clears a nullable field's value, or deletes the record with what cascades from it and the sign-in state of someone who signs in, at the first run once `since:` is longer ago than `after:`, a `Duration` setting; each problem under [Retention](#retention) is an error where it is written. The graph holds a `retention` node for each, under its field or entity, with its period and `since:`. Not built yet, each `toolchain.not_built_yet` where it is written: a `File` field's retention, and an entity's whose deletion would reach a `File` field, since nothing deletes a file's bytes yet ([Files](16-built-in-services.md#deleting-and-erasing)); an entity's whose deletion would cascade to someone who signs in, whose sign-in state only their own entity's retention deletes; and `retention:` on an event's or an email's field. |
-| `erase:` on a reference | Not built yet: it is `toolchain.not_built_yet` where it is written, so it isn't accepted and then ignored. |
-| `User.erase(id)` and `User.export(id)` | Not built yet: each is `toolchain.not_built_yet` where it is called. |
+| `erase:` on a reference | Built: each problem under [Erasure](#erasure) and "Erasure is complete" is an error where it is written. Not built yet: `erase:` on the person's own field, which keeps their record field by field ([The person's own record](#the-persons-own-record)); it is `toolchain.not_built_yet` where it is written, and erasure deletes the whole record. |
+| `User.erase(id)` | Partly built. Built: for a caller with `delete` on the person's record, one statement deletes the record, hidden or not, with the sign-in state of anyone it deletes who signs in, and deletes, anonymises or keeps each record of theirs as its reference says, however deep, records with a lifecycle removed outright. Not built yet, each `toolchain.not_built_yet` where `erase` is called, so no erasure is ever partial: one that would delete a `File`'s bytes ([Files](16-built-in-services.md#deleting-and-erasing)), and one that would anonymise another person's own record, such as a user whose `invited_by_id` is cleared. `PersonErased`, the erasure log, records in another store and providers' erasure aren't built either, and nothing emits or calls them. |
+| `User.export(id)` | Not built yet: it is `toolchain.not_built_yet` where it is called. |
 | `privacy:` in `application { }` | Not built yet: it is `toolchain.not_built_yet` where it is written. |
 | Everything else on this page | Not built yet: it is on [the roadmap](../roadmap.md). |
 
@@ -833,6 +1021,10 @@ This is not legal advice. A privacy professional reviews the report.
 Every error this page's checks produce, with an example that triggers
 it and the compiler's real output from `jadpo check`.
 
+- [`data.erase_field_required`](../errors/data.erase_field_required.md)
+- [`data.erase_required`](../errors/data.erase_required.md)
+- [`data.erase_retention_required`](../errors/data.erase_retention_required.md)
+- [`data.erase_unreached`](../errors/data.erase_unreached.md)
 - [`data.personal_unreachable`](../errors/data.personal_unreachable.md)
 - [`data.retention_field_required`](../errors/data.retention_field_required.md)
 - [`data.retention_held`](../errors/data.retention_held.md)

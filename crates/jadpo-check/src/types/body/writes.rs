@@ -50,6 +50,10 @@ pub(crate) struct WriteFact {
     /// By `id`: the entity's not-found failure.
     pub not_found: Option<String>,
     pub fallible: Fallible,
+    /// A person's erasure, `User.erase(user_id)` (area 15; chunk P3): a
+    /// `delete` of the person's record by `id`, as policy sees it, which
+    /// decides what happens to every record of theirs too.
+    pub erase: bool,
 }
 
 /// A rule a write can break (area 6, "When a write is refused").
@@ -231,6 +235,17 @@ impl Body<'_> {
         let op = match text(operation).as_str() {
             "update" => WriteOp::Update,
             "delete" => WriteOp::Delete,
+            // A person's erasure deletes their record (area 15; chunk P3),
+            // and a block after it is its own, which it refuses.
+            crate::resolve::ERASE
+                if self.callable_kind(&head) == Some(ItemKind::Entity)
+                    && self
+                        .writes
+                        .write_rules(&head)
+                        .is_some_and(|rules| rules.person) =>
+            {
+                WriteOp::Delete
+            }
             // A lifecycle transition is an update of the fields it sets.
             name if self.callable_kind(&head) == Some(ItemKind::Entity)
                 && self
@@ -495,9 +510,185 @@ impl Body<'_> {
                 missing,
                 not_found,
                 fallible,
+                erase: false,
             },
         );
         result
+    }
+
+    // --- a person's erasure -----------------------------------------------
+
+    /// `Person.erase(person_id)` (area 15, "Erasure"; chunk P3): deletes
+    /// the person's record and decides what happens to every record of
+    /// theirs, in one statement. It takes the person's `id` and no block,
+    /// needs `delete` on the person's record as policy sees it, and fails
+    /// with the person's not-found failure. An erasure reaching what isn't
+    /// built yet is refused here, where it is written, so none is ever
+    /// partial. Its type.
+    pub(super) fn erase(
+        &mut self,
+        entity: &str,
+        call: &ast::CallExpr,
+        block: Option<ast::MemberList>,
+        head_span: Span,
+    ) -> Ty {
+        let written = format!("{entity}.erase");
+        let person = self
+            .writes
+            .write_rules(entity)
+            .is_some_and(|rules| rules.person);
+        if !person {
+            self.args_only(call);
+            self.walk(|walk| walk.member_values(block));
+            self.out.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_UNKNOWN_CALLEE,
+                    format!("`{entity}` has no operation `erase`"),
+                )
+                .at(head_span, "not a person")
+                .reason(format!(
+                    "`erase` is the operation generated for an entity marked `person: true`: it deletes the person's record and decides what happens to every record of theirs. `{entity}` isn't a person, so it has `get`, `create`, `update` and `delete`, with one more for each transition its lifecycle names."
+                ))
+                .next(format!(
+                    "Delete the record with `{entity}.delete`, or mark `{entity}` `person: true` if each record is a person"
+                )),
+            );
+            return Ty::Error;
+        }
+        if self.test {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_NOT_CALLABLE,
+                    format!("A test can't call `{written}`"),
+                )
+                .at(head_span.clone(), "erases a person")
+                .reason(format!(
+                    "Only actions write records (area 6), so a test erases a person through the action that does it, which is what it proves. A test may still read, with `{entity}.get` and queries, to see what erasure left."
+                ))
+                .next(format!("Call the action that erases the `{entity}`")),
+            );
+        }
+        let id = Ty::Field(entity.to_string(), vec!["id".to_string()]);
+        let args = Self::arguments(call);
+        match args.as_slice() {
+            [arg] => {
+                if let Some(value) = arg.expr() {
+                    self.erase_target(entity, &written, &id, &value);
+                }
+            }
+            _ => {
+                self.args_only(call);
+                let snake = crate::case::to_snake(entity);
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_ARGUMENT_COUNT,
+                        format!("`{written}` takes one argument, and {} given", args.len()),
+                    )
+                    .at(self.span(call), "one argument")
+                    .reason(format!(
+                        "`{written}` erases the person with the `{entity}.id` it is given."
+                    ))
+                    .next(format!("Call `{written}({snake}_id)`")),
+                );
+            }
+        }
+        // `erase` takes no block: nothing it does is written at the call.
+        for item in block.iter().flat_map(|list| list.member_items()) {
+            let MemberItem::Member(member) = item else {
+                continue;
+            };
+            let Some(key) = member.member_key() else {
+                continue;
+            };
+            let word = tree::written(key.syntax());
+            let span = self.span(&key);
+            let removal = crate::tree::removal(self.path, &member);
+            self.walk(|walk| walk.member(&member));
+            self.out.push(
+                Diagnostic::new(
+                    &rule::DATA_WRITE_SECTION_UNEXPECTED,
+                    format!("`{written}` takes no `{word}:`"),
+                )
+                .at(span, "not a section here")
+                .reason(format!(
+                    "What `{written}` does to each record is written once, on the references that link it to the person (`erase:` and `on_delete:`), and nothing can refuse it, so it takes no block."
+                ))
+                .next(format!("Remove `{word}: ...`"))
+                .edit(removal, ""),
+            );
+        }
+        // What isn't built yet, refused where the erasure is written.
+        let unbuilt = self
+            .writes
+            .erasure(entity)
+            .map(|erasure| erasure.unbuilt.clone())
+            .unwrap_or_default();
+        if let Some(first) = unbuilt.first() {
+            let mut first = first.clone();
+            if let Some(head) = first.get(..1) {
+                first = format!("{}{}", head.to_uppercase(), &first[1..]);
+            }
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TOOLCHAIN_NOT_BUILT_YET,
+                    format!("Erasing a `{entity}` here isn't built yet"),
+                )
+                .at(head_span.clone(), "decided, not built")
+                .reason(format!(
+                    "{first}, which erasure can't do yet: accepted, the app would believe a `{entity}` erased while data of theirs remains."
+                ))
+                .next(format!("Erase a `{entity}` in an action of your own for now")),
+            );
+        }
+        let not_found = self.not_found_of(entity, head_span, &written);
+        self.facts.writes.insert(
+            node_key(call.syntax()),
+            WriteFact {
+                entity: entity.to_string(),
+                op: WriteOp::Delete,
+                transition: None,
+                by_id: true,
+                block,
+                arms: Vec::new(),
+                missing: Vec::new(),
+                not_found: Some(not_found.clone()),
+                fallible: Fallible::Fails(vec![not_found]),
+                erase: true,
+            },
+        );
+        Ty::Prim(Prim::Unit)
+    }
+
+    /// The person an erasure erases: their `id`. A record loaded earlier
+    /// is passed by its `id`, so the call says which person whatever was
+    /// read.
+    fn erase_target(&mut self, entity: &str, written: &str, id: &Ty, value: &Expr) {
+        if super::is_literal(value) {
+            self.check(value, id);
+            return;
+        }
+        let actual = self.infer(value);
+        if self.table.assignable(&actual, id) || actual.has_error() {
+            return;
+        }
+        let span = self.span(value);
+        let record = Ty::Named(entity.to_string());
+        let problem = Diagnostic::new(
+            &rule::TYPE_MISMATCH,
+            format!("`{written}` takes a `{entity}.id`, and this is `{actual}`"),
+        )
+        .at(span.clone(), format!("this is `{actual}`"))
+        .reason(format!(
+            "`{written}` erases the person with the `{entity}.id` it is given."
+        ));
+        self.out.push(if self.table.assignable(&actual, &record) {
+            let shown = crate::tree::written(value.syntax());
+            problem
+                .next(format!("Pass `{shown}.id`"))
+                .edit(span, format!("{shown}.id"))
+        } else {
+            problem.next(format!("Pass the `{entity}`'s `id` here"))
+        });
     }
 
     /// The record an `update` or `delete` writes: one loaded earlier in

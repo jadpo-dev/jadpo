@@ -74,6 +74,38 @@ pub(crate) const SIGN_IN_STATE: [(&str, &str); 5] = [
     (jadpo_std::system::SIGN_IN_LINKS.table, "user_id"),
 ];
 
+/// Each entity someone signs in as (the `user:` or `service:` of
+/// `principal { }`), with the tables of [`SIGN_IN_STATE`] its store
+/// holds: what deleting one of their records deletes with them, for
+/// retention (chunk P2) and erasure (chunk P3).
+pub(crate) fn sign_in_state(
+    db: &dyn jadpo_db::Db,
+    project: jadpo_db::Project,
+) -> std::collections::BTreeMap<String, Vec<(&'static str, &'static str)>> {
+    let identity = jadpo_check::identity::identity(db, project);
+    let schema = jadpo_check::data::schema(db, project);
+    let model = jadpo_check::data::data_model(db, project);
+    model
+        .entities
+        .iter()
+        .filter(|entity| {
+            identity
+                .variants
+                .iter()
+                .any(|variant| variant.entity == entity.name)
+        })
+        .filter_map(|entity| {
+            let store = schema.stores.get(entity.store.as_ref()?)?;
+            let tables = SIGN_IN_STATE
+                .iter()
+                .filter(|(table, _)| store.tables.contains_key(*table))
+                .copied()
+                .collect();
+            Some((entity.name.clone(), tables))
+        })
+        .collect()
+}
+
 /// Everything the purge schedule of `entity` runs, in the order a run
 /// applies them: its `retention:`, which deletes whole records first, then
 /// its lifecycle's `purge:`, then each field's `retention:` in field
