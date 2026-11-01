@@ -95,6 +95,10 @@ pub(crate) struct Planner<'a> {
     /// The types the plan's JSON table numbers, `json.read`'s and
     /// `json.write`'s with each JSON-held field's (chunk 5.5w2b).
     pub json: &'a RefCell<Vec<TypeRef>>,
+    /// Each entity someone signs in as, with the tables of their sign-in
+    /// state its store holds, each with the column holding their `id`:
+    /// what a person's erasure deletes with them (area 15; chunk P3).
+    pub sign_in: std::collections::BTreeMap<String, Vec<(&'static str, &'static str)>>,
 }
 
 /// One statement being written: its parameters, deduplicated, so a value
@@ -1236,6 +1240,7 @@ pub(crate) fn plans(
         access,
         action: None,
         json,
+        sign_in: Default::default(),
     };
     let mut query_plans: Vec<QueryPlan> = queries
         .queries

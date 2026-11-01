@@ -18,6 +18,10 @@
 //!   the `UPDATE` changes nothing, a second statement asks whether the
 //!   record is there, which tells the refusal from not-found only when it
 //!   sees the first statement's snapshot;
+//! - erases a person (area 15; chunk P3): its one statement reaches every
+//!   record of theirs, and one added since its snapshot must be a
+//!   concurrent change, which reruns the action, rather than a reference
+//!   the database clears unseen;
 //! - or calls an action or fixture that does, since that action joins its
 //!   transaction.
 //!
@@ -61,6 +65,10 @@ pub enum Loads {
     /// A transition whose `when:` can refuse a visible record:
     /// `Entity.transition`.
     Guarded(String),
+    /// A person's erasure (area 15; chunk P3), whose one statement must
+    /// meet a record added since its snapshot as a concurrent change: the
+    /// person entity's name.
+    Erases(String),
     /// An action or fixture it calls loads one: its name.
     Calls(String),
 }
@@ -76,6 +84,7 @@ impl Loads {
             Loads::Guarded(transition) => {
                 format!("runs `{transition}`, whose `when:` can refuse a record")
             }
+            Loads::Erases(entity) => format!("erases a `{entity}` with `{entity}.erase`"),
             Loads::Calls(action) => format!("calls `{action}`, which loads a record"),
         }
     }
@@ -132,6 +141,9 @@ pub fn file_loading(db: &dyn Db, project: Project, file: File) -> BTreeMap<Key, 
                     loading.calls.insert(callee.clone());
                 }
                 Fact::Writes(write) => {
+                    if write.erase {
+                        found(Loads::Erases(write.entity.clone()), &mut loading);
+                    }
                     if write.given {
                         found(Loads::WritesBack(write.entity.clone()), &mut loading);
                     }

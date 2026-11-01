@@ -742,6 +742,198 @@ pub fn not_held_anywhere(table: &str, cascades: &[Cascade<'_>], holds: &[Hold<'_
     )
 }
 
+/// A reference a person's erasure follows (area 15, "Erasure"; chunk P3):
+/// from the records of the entity numbered `from` among those it deletes
+/// to the records of the entity numbered `to` that refer to one through
+/// `table`'s `column`, which it deletes too.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Followed<'a> {
+    pub from: usize,
+    pub to: usize,
+    pub table: &'a str,
+    pub column: &'a str,
+}
+
+/// A table whose records a person's erasure keeps while they refer to
+/// one it deletes, and what it clears on them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Keeps<'a> {
+    pub table: &'a str,
+    /// Its entity's number among those erasure deletes records of, when it
+    /// is one: those records are deleted, not kept.
+    pub deleted: Option<usize>,
+    /// Each reference column it clears where it refers to a record of the
+    /// entity numbered beside it, and whether that anonymises the record.
+    pub references: Vec<(&'a str, usize, bool)>,
+    /// The columns of the marked fields it clears on a record an
+    /// anonymising reference keeps.
+    pub clears: Vec<String>,
+    /// Each column set on every record it changes, to the SQL beside it:
+    /// a `Generated.on_change` field, to the operation's time.
+    pub set: Vec<(String, String)>,
+}
+
+/// The `id`s of the records of the entity numbered `entity` that a
+/// person's erasure deletes.
+fn erased(entity: usize) -> String {
+    format!(
+        "SELECT {} FROM {} WHERE {} = {entity}",
+        ident("id"),
+        ident("erased"),
+        ident("entity")
+    )
+}
+
+/// One person's erasure (area 15, "Erasure"; chunk P3), as one statement,
+/// so it is all or nothing. A recursive query finds the person's record
+/// in `tables[0]` meeting `person` (the `id` and the policy that lets the
+/// caller delete it, hidden or not) and every record each of `follows`
+/// leads to from one already found, tagging each with its entity's
+/// number in `tables`, each record once, so a loop in the data ends too.
+/// Then each of `keeps` clears its references to them, and its marked
+/// fields where an anonymising reference matched; every record found is
+/// deleted, whether a lifecycle hides it or not; and each of `signed_in`,
+/// a table and the column holding the `id` of a record of the entity
+/// numbered beside it, loses its rows for the records deleted. Every
+/// part sees the same snapshot, and the foreign keys are checked once at
+/// its end, when nothing refers to a deleted record. It returns the
+/// person's `id`, or no row when the record isn't there or policy
+/// refuses the caller.
+pub fn erase(
+    tables: &[&str],
+    person: &[String],
+    follows: &[Followed<'_>],
+    keeps: &[Keeps<'_>],
+    signed_in: &[(usize, &str, &str)],
+) -> String {
+    let mut base = format!(
+        "  SELECT 0, {}.{}\n  FROM {}",
+        ident(tables[0]),
+        ident("id"),
+        ident(tables[0])
+    );
+    where_clause(&mut base, person, "  ");
+    let found = if follows.is_empty() {
+        base
+    } else {
+        let edges: Vec<String> = follows
+            .iter()
+            .enumerate()
+            .map(|(i, follow)| {
+                let alias = ident(&format!("edge{}", i + 1));
+                format!(
+                    "SELECT {} AS \"parent\", {alias}.{} AS \"parent_id\", {} AS \"entity\", {alias}.\"id\" AS \"id\" FROM {} AS {alias}",
+                    follow.from,
+                    ident(follow.column),
+                    follow.to,
+                    ident(follow.table)
+                )
+            })
+            .collect();
+        format!(
+            "{base}\n  UNION\n  SELECT \"edge\".\"entity\", \"edge\".\"id\"\n  FROM \"erased\"\n  JOIN (\n    {}\n  ) AS \"edge\" ON \"edge\".\"parent\" = \"erased\".\"entity\" AND \"edge\".\"parent_id\" = \"erased\".\"id\"",
+            edges.join("\n    UNION ALL\n    ")
+        )
+    };
+    let mut parts = vec![format!(
+        "{} ({}, {}) AS (\n{found}\n)",
+        ident("erased"),
+        ident("entity"),
+        ident("id")
+    )];
+    for (i, keep) in keeps.iter().enumerate() {
+        let matched =
+            |column: &str, entity: usize| format!("{} IN ({})", ident(column), erased(entity));
+        let one = keep.references.len() == 1;
+        let mut set: Vec<String> = keep
+            .references
+            .iter()
+            .map(|(column, entity, _)| {
+                if one {
+                    format!("{} = NULL", ident(column))
+                } else {
+                    set_when(column, &matched(column, *entity), "NULL")
+                }
+            })
+            .collect();
+        let anonymising: Vec<String> = keep
+            .references
+            .iter()
+            .filter(|(_, _, anonymises)| *anonymises)
+            .map(|(column, entity, _)| matched(column, *entity))
+            .collect();
+        let every = anonymising.len() == keep.references.len();
+        for column in &keep.clears {
+            if every {
+                set.push(format!("{} = NULL", ident(column)));
+            } else {
+                set.push(set_when(column, &anonymising.join(" OR "), "NULL"));
+            }
+        }
+        set.extend(
+            keep.set
+                .iter()
+                .map(|(column, value)| format!("{} = {value}", ident(column))),
+        );
+        let any: Vec<String> = keep
+            .references
+            .iter()
+            .map(|(column, entity, _)| matched(column, *entity))
+            .collect();
+        let mut condition = if one {
+            any.join("")
+        } else {
+            format!("({})", any.join(" OR "))
+        };
+        if let Some(entity) = keep.deleted {
+            condition.push_str(&format!(
+                "\n    AND {} NOT IN ({})",
+                ident("id"),
+                erased(entity)
+            ));
+        }
+        parts.push(format!(
+            "{} AS (\n  UPDATE {}\n  SET {}\n  WHERE {condition}\n)",
+            ident(&format!("kept{}", i + 1)),
+            ident(keep.table),
+            set.join(",\n    ")
+        ));
+    }
+    for (i, (entity, table, column)) in signed_in.iter().enumerate() {
+        parts.push(format!(
+            "{} AS (\n  DELETE FROM {}\n  WHERE {} IN ({})\n)",
+            ident(&format!("signed_out{}", i + 1)),
+            ident(table),
+            ident(column),
+            erased(*entity)
+        ));
+    }
+    for (entity, table) in tables.iter().enumerate().skip(1) {
+        parts.push(format!(
+            "{} AS (\n  DELETE FROM {}\n  WHERE {} IN ({})\n)",
+            ident(&format!("deleted{entity}")),
+            ident(table),
+            ident("id"),
+            erased(entity)
+        ));
+    }
+    parts.push(format!(
+        "{} AS (\n  DELETE FROM {}\n  WHERE {} IN ({})\n  RETURNING {}\n)",
+        ident("deleted0"),
+        ident(tables[0]),
+        ident("id"),
+        erased(0),
+        ident("id")
+    ));
+    format!(
+        "WITH{} {}\nSELECT {} FROM {}",
+        if follows.is_empty() { "" } else { " RECURSIVE" },
+        parts.join(", "),
+        ident("id"),
+        ident("deleted0")
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,10 +1,11 @@
 //! Protections the area pages promise that aren't built yet are
 //! `toolchain.not_built_yet` where they are written (each area's "What is
 //! built"), never accepted and then ignored, nor reported as wrong syntax:
-//! area 15's `erase:` and an event's `retention:`, area 16's audit trail,
-//! and the application's and a route's `bot_check:`. Area 15's `person:
-//! true` is built (chunk P1, [`crate::persons`]), and so is `retention:` on
-//! an entity and its fields (chunk P2, [`crate::retention`]).
+//! area 15's event `retention:`, area 16's audit trail, and the
+//! application's and a route's `bot_check:`. Area 15's `person: true` is
+//! built (chunk P1, [`crate::persons`]), and so are `retention:` on an
+//! entity and its fields (chunk P2, [`crate::retention`]) and a
+//! reference's `erase:` (chunk P3, [`crate::erasure`]).
 
 use jadpo_db::Layout;
 
@@ -25,25 +26,6 @@ fn refused_once(source: &str, what: &str) {
     assert!(
         found[0].starts_with("main.jadpo toolchain.not_built_yet:") && found[0].contains(what),
         "{found:?}"
-    );
-}
-
-#[test]
-fn a_fields_erase_is_refused_not_skipped() {
-    refused_once(
-        r#"entity Account {
-    id: Uuid
-}
-
-entity Note {
-    id: Uuid
-    author_id: Account.id {
-        on_delete: OnDelete.cascade
-        erase: Erasure.deleted
-    }
-}
-"#,
-        "`erase:`",
     );
 }
 

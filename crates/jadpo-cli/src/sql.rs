@@ -175,6 +175,7 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
             transition,
             by_id,
             conflicts,
+            erase,
             ..
         }) = &found.node
         else {
@@ -183,6 +184,7 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
         let entity = entity.name().to_string();
         let operation = match transition {
             Some(key) => key.name().to_string(),
+            None if *erase => format!("{entity}.erase"),
             None => format!("{entity}.{}", op.word()),
         };
         let target = if *by_id {
@@ -191,6 +193,10 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
             format!("the {entity} loaded earlier")
         };
         let does = match (op, transition) {
+            // A person's erasure (area 15; chunk P3).
+            _ if *erase => {
+                format!("erases {target}, deleting, anonymising or keeping each record of theirs")
+            }
             (WriteOp::Create, _) => format!("creates a {entity}"),
             (WriteOp::Delete, Some(_)) => {
                 format!("runs {operation} on {target}, which keeps the record")

@@ -689,7 +689,8 @@ The details:
   which changes the record and keeps it. An entity with a lifecycle but no
   `delete` transition can't be deleted by code at all. Neither can a
   record whose removal would cascade to one with a lifecycle
-  (`data.lifecycle_hard_delete`). Only purge removes such records.
+  (`data.lifecycle_hard_delete`). Only purge, retention and erasing a
+  person ([Erasure](15-personal-data.md#erasure)) remove such records.
 - **Transitions see visible records only.** A transition is an update, so
   it reaches a record only while `visible:` holds. A hidden record is the
   entity's not-found failure, and restoring one needs a decision of its

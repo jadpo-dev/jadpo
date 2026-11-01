@@ -38,6 +38,7 @@ mod deployables;
 mod determinism;
 mod domain_names;
 mod email_partials;
+mod erasure;
 mod events;
 mod examples;
 mod exports;

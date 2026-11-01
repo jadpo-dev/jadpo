@@ -344,6 +344,10 @@ pub trait SigView {
 pub trait WriteView {
     /// What a write to the entity called `entity` can break.
     fn write_rules(&self, entity: &str) -> Option<&WriteRules>;
+
+    /// What erasing a record of the person entity called `person` does
+    /// (area 15, "Erasure"; chunk P3).
+    fn erasure(&self, person: &str) -> Option<&crate::erasure::Erasure>;
 }
 
 /// Reading declared failures.
@@ -614,6 +618,12 @@ impl SigView for Lookup<'_> {
 impl WriteView for Lookup<'_> {
     fn write_rules(&self, entity: &str) -> Option<&WriteRules> {
         crate::data::write_rules(self.db, self.project, self.name(entity)).as_ref()
+    }
+
+    fn erasure(&self, person: &str) -> Option<&crate::erasure::Erasure> {
+        crate::erasure::erasures(self.db, self.project)
+            .people
+            .get(person)
     }
 }
 

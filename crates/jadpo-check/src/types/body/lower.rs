@@ -2130,6 +2130,7 @@ impl Lower<'_> {
             op: fact.op,
             transition,
             target,
+            erase: fact.erase,
             by_id: fact.by_id,
             set,
             patch,

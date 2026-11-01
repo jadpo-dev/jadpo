@@ -369,6 +369,11 @@ pub struct FieldModel {
     /// Its `retention:` (area 15, "Retention"; chunk P2), when it has one
     /// that reads cleanly: its value is cleared once its time is up.
     pub retention: Option<retention::RetentionModel>,
+    /// Its `erase:` (area 15, "Erasure"; chunk P3), when it reads
+    /// cleanly: on a reference, what erasing a person does to this record
+    /// when erasure deletes the record it refers to. Where it may be
+    /// written is [`crate::erasure`]'s to check.
+    pub erase: Option<jadpo_std::Erasure>,
 }
 
 /// A `File` field's settings (area 16, "Files"): the `files` connection
@@ -542,6 +547,9 @@ pub struct EntitySpans {
     /// Each field's `retention:` key that reads cleanly, by the field's
     /// name, in field order.
     pub field_retentions: Vec<(String, Span)>,
+    /// Each field's `erase:` that reads cleanly (area 15; chunk P3), by
+    /// the field's name, in field order: its key and its value.
+    pub field_erasures: Vec<(String, Span, Span)>,
 }
 
 /// One entity read from its file: its model, where its parts are, and the
@@ -606,6 +614,7 @@ pub fn entity_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> O
             person: None,
             retention: None,
             field_retentions: Vec::new(),
+            field_erasures: Vec::new(),
         },
         retentions: Vec::new(),
         sensitive: Vec::new(),
@@ -1337,6 +1346,7 @@ impl Reader<'_> {
             geometry: None,
             file: None,
             retention: None,
+            erase: None,
         };
         if ty.has_error() {
             // A type that names nothing is resolution's one error: the
@@ -1704,6 +1714,25 @@ impl Reader<'_> {
                         .next(format!("Remove `{word}`")),
                     );
                 }
+                // What erasing a person does to this record (area 15;
+                // chunk P3), checked against the whole data model by
+                // `crate::erasure`.
+                "erase" => match names.as_slice() {
+                    [host, variant]
+                        if host == jadpo_std::Erasure::NAME
+                            && jadpo_std::Erasure::from_name(variant).is_some() =>
+                    {
+                        field.erase = jadpo_std::Erasure::from_name(variant);
+                        self.spans
+                            .field_erasures
+                            .push((name.to_string(), key_span, value_span));
+                    }
+                    _ => self.setting_value(
+                        value_span,
+                        "erase",
+                        "`Erasure.deleted`, `Erasure.anonymised` or `Erasure.retained`",
+                    ),
+                },
                 "on_delete" => match names.as_slice() {
                     [host, variant]
                         if host == OnDelete::NAME && OnDelete::from_name(variant).is_some() =>
@@ -3894,6 +3923,10 @@ pub struct WriteRules {
     /// changes: those policy reaches the caller or the tenant through
     /// (area 9, "A user field on the record").
     pub fixed: Vec<String>,
+    /// Whether the entity is a person (`person: true`), whose generated
+    /// `erase` deletes their record and decides what happens to every
+    /// record of theirs (area 15, "Erasure"; chunk P3).
+    pub person: bool,
 }
 
 /// What one transition writes (area 5, "Lifecycle").
@@ -3940,6 +3973,7 @@ pub fn write_rules<'db>(
     let found = entity_model(db, project, entity).as_deref()?;
     let mut rules = WriteRules {
         fixed: crate::policy::fixed_fields(db, project, &found.name),
+        person: found.person,
         ..WriteRules::default()
     };
     for field in &found.fields {

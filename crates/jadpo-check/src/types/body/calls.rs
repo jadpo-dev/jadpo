@@ -323,6 +323,16 @@ impl Body<'_> {
                     let ty = self.entity_get(&head, call, span);
                     return (ty, CallKind::Effect(written), reach);
                 }
+                // A person's erasure (area 15; chunk P3), unless an entity
+                // that is no person names a transition `erase`.
+                if rest[0] == crate::resolve::ERASE
+                    && !self.writes.write_rules(&head).is_some_and(|rules| {
+                        !rules.person && rules.transition(crate::resolve::ERASE).is_some()
+                    })
+                {
+                    let ty = self.erase(&head, call, block, span);
+                    return (ty, CallKind::Effect(written), reach);
+                }
                 let op = match rest[0].as_str() {
                     "update" => Some(jadpo_std::write::WriteOp::Update),
                     "delete" => Some(jadpo_std::write::WriteOp::Delete),

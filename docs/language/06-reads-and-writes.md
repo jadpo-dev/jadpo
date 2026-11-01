@@ -2117,7 +2117,11 @@ An action loads a record when it:
   than of its `id`;
 - runs a transition whose `when:` can refuse a visible record, since
   telling that refusal from a missing record takes a second statement,
-  which must see the first one's snapshot.
+  which must see the first one's snapshot;
+- erases a person with `User.erase`, whose statement reaches every
+  record of theirs, so a record added since its snapshot must rerun or
+  fail it rather than be left behind
+  ([Erasure](15-personal-data.md#erasure)).
 
 A create, and an update, delete or other transition by `id`, counters
 among them, loads nothing: the store checks a reference a create sets in

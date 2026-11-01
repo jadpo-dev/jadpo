@@ -888,6 +888,11 @@ impl<'a> Reader<'a, '_> {
                     "`{}.{transition}` is already an operation every entity has, so a transition can't take its name; `delete` is the one a transition may take over.",
                     entity.name
                 ))
+            } else if entity.person && ["erase", "export"].contains(&transition.as_str()) {
+                Some(format!(
+                    "`{}` is a person, and `{}.{transition}` is the operation area 15 generates for one, so a transition can't take its name.",
+                    entity.name, entity.name
+                ))
             } else if entity.fields.iter().any(|f| f.name == transition) {
                 Some(format!(
                     "`{}.{transition}(value)` builds a value of the field's type, so a transition can't share the field's name.",
