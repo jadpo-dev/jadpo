@@ -129,7 +129,7 @@ pub struct Line {
     pub noun: &'static str,
     pub place: Option<(String, i64)>,
     /// Whether it says how things stand, whatever this change did, such
-    /// as a type shipped unreviewed: counted without a mark.
+    /// as a type not reviewed: counted without a mark.
     pub stands: bool,
 }
 
@@ -225,7 +225,7 @@ pub fn plural(noun: &str, n: usize) -> String {
         "entry" => "entries".to_string(),
         "`fails` entry" => "`fails` entries".to_string(),
         "translation not yet accepted" => "translations not yet accepted".to_string(),
-        "type shipped unreviewed" => "types shipped unreviewed".to_string(),
+        "type not reviewed" => "types not reviewed".to_string(),
         "call not confirmed" => "calls not confirmed".to_string(),
         noun => format!("{noun}s"),
     }
@@ -357,7 +357,7 @@ pub fn report(
                 .filter_map(|entry| entry.heading.strip_prefix("connection "))
                 .collect();
             section.lines = integrations(&was, &now, &shown);
-            section.lines.extend(shipped_unchecked(db, project));
+            section.lines.extend(unchecked_integrations(db, project));
             section
         },
         {
@@ -947,14 +947,14 @@ fn integrations(was: &View<'_>, now: &View<'_>, shown: &BTreeSet<&str>) -> Vec<L
 /// for (area 11, "Mapping imported types to standard types"): the imported
 /// types the app's calls reach still to review, and the calls no recording
 /// confirms.
-fn shipped_unchecked(db: &dyn Db, project: Project) -> Vec<Line> {
+fn unchecked_integrations(db: &dyn Db, project: Project) -> Vec<Line> {
     let mut out = Vec::new();
     for review in crate::review::review(db, project) {
         for name in review.outstanding() {
             out.push(Line {
                 mark: Mark::Added,
                 said: format!("`{name}` of `{}` ships unreviewed", review.package),
-                noun: "type shipped unreviewed",
+                noun: "type not reviewed",
                 place: None,
                 stands: true,
             });

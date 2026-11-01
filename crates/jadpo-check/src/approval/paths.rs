@@ -274,7 +274,7 @@ pub fn route_name(written: &str) -> String {
 /// subscribers only as those triggers, and a person only through a route;
 /// and each action or query on the way listed under `actions:` lets them
 /// in, since its line is checked as it starts (area 9, "Listing a query").
-fn can_take(view: &View<'_>, public: &Public, caller: &str, chain: &[&str]) -> bool {
+fn may_start(view: &View<'_>, public: &Public, caller: &str, chain: &[&str]) -> bool {
     let Some(trigger) = chain.first().and_then(|id| view.get(id)) else {
         return false;
     };
@@ -412,7 +412,7 @@ pub fn paths(view: &View<'_>, need: &Need, public: &Public) -> Paths {
         let who: Vec<String> = need
             .who
             .iter()
-            .filter(|caller| can_take(view, public, caller, chain))
+            .filter(|caller| may_start(view, public, caller, chain))
             .map(|caller| actor(caller))
             .collect();
         if who.is_empty() {

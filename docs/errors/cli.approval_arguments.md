@@ -52,11 +52,15 @@ error: Nothing to compare with: not a git repository
 jadpo approval
 ```
 
+It writes `build/review/approval.md` and `.json`, comparing with the default branch at its merge base.
+
 **If you meant to compare with something else**, such as the commit a deployed build's events carry, name it:
 
 ```sh
 jadpo approval --before 8d113e6
 ```
+
+It writes the same report, comparing with that commit.
 
 ## Related
 

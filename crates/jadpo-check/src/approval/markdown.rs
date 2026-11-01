@@ -102,7 +102,7 @@ pub fn render(report: &Report) -> String {
     } else {
         let _ = writeln!(
             out,
-            "Each change that needs a person to accept it, with the path that makes it true. `jadpo acceptance new <purpose>` drafts the acceptance, and a person writes why on a `///` line above `acceptance`.\n"
+            "Each change that needs a person to accept it, with the path that makes it true. `jadpo acceptance new <purpose>` writes the acceptance's draft, and a person writes why on a `///` line above `acceptance`.\n"
         );
     }
     for decision in &report.decisions {
