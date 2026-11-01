@@ -65,19 +65,24 @@ fn format_with(
     if same {
         return Ok(formatted);
     }
-    Err(vec![
-        SyntaxError::new(
-            &jadpo_diag::rule::FORMAT_UNSAFE,
-            "Formatting this file would change it",
-            0,
-            0,
-        )
-        .label("left as it is")
-        .reason(
-            "The formatted text didn't read back as the same code, or didn't stay the same when formatted again, so the formatter wrote nothing. This is a mistake in the formatter, not in the file.",
-        )
-        .next("Leave the file as it is, and report it to Jadpo's maintainers with the file"),
-    ])
+    Err(vec![unsafe_to_format()])
+}
+
+/// `format.unsafe`: the formatter's own mistake, never the file's. Its
+/// headline says the file wasn't formatted, not that formatting would
+/// change it, which formatting always does.
+fn unsafe_to_format() -> SyntaxError {
+    SyntaxError::new(
+        &jadpo_diag::rule::FORMAT_UNSAFE,
+        "This file couldn't be formatted safely",
+        0,
+        0,
+    )
+    .label("left as it is")
+    .reason(
+        "The formatted text didn't read back as the same code, or didn't stay the same when formatted again, so the formatter wrote nothing. This is a mistake in the formatter, not in the file.",
+    )
+    .next("Leave the file as it is, and report it to Jadpo's maintainers with the file")
 }
 
 /// What formatting must keep: every significant token in the order the
@@ -114,4 +119,18 @@ fn format_tree(node: &SyntaxNode) -> String {
         "a comment was dropped"
     );
     doc::print(&doc, WIDTH)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_refusal_says_the_file_was_left_as_it_was() {
+        let refused = unsafe_to_format();
+        assert_eq!(refused.rule.id, "format.unsafe");
+        assert_eq!(refused.message, "This file couldn't be formatted safely");
+        assert_eq!(refused.label, "left as it is");
+        assert!(refused.reason.contains("mistake in the formatter"));
+    }
 }

@@ -166,10 +166,13 @@ RULE_LINE = re.compile(r'^  rule: (\S+)$', re.MULTILINE)
 # A slow machine adds the run's duration to a summary line (` in 0.1 s`);
 # output blocks are compared and written without it.
 RUN_TIME = re.compile(r' in \d+(?:\.\d+)? s$', re.MULTILINE)
+# A long-running command's header gives the clock time it started
+# (`jadpo dev, started 21:13:00`); that is left out the same way.
+STARTED_AT = re.compile(r', started \d{2}:\d{2}:\d{2}$', re.MULTILINE)
 
 
 def without_run_time(text):
-    return RUN_TIME.sub('', text)
+    return STARTED_AT.sub('', RUN_TIME.sub('', text))
 
 
 def run(args, cwd=None):
@@ -776,7 +779,7 @@ def error_format_scope(catalogue, root=ROOT):
     guides or a teaching example's README names, and those whose next step
     a person decides. A rule only a command raises, whose page has no
     example yet, waits for a ```sh run block that shows it (roadmap,
-    D13b2c and D13b3); every other page follows once D13c is built."""
+    D13b3); every other page follows once D13c is built."""
     named = set()
     for path in [root / 'docs/primer.md', *sorted((root / 'docs/learn').glob('*.md')),
                  *sorted((root / 'docs/guides').glob('*.md'))]:

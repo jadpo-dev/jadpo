@@ -405,6 +405,27 @@ pub(crate) fn refusal(
         && !unset.is_empty()
     {
         let variables: Vec<String> = unset.iter().map(|name| format!("`{name}`")).collect();
+        // The setting that chooses the environment is set to `sandbox`;
+        // a credential or address, to the sandbox's own.
+        let chooser = match &chosen.address {
+            Address::Hosts { environment, .. } => Some(variable(*environment)),
+            _ => None,
+        };
+        let (chooses, others): (Vec<&String>, Vec<&String>) = unset
+            .iter()
+            .partition(|name| chooser.as_deref() == Some(name.as_str()));
+        let others: Vec<String> = others.iter().map(|name| format!("`{name}`")).collect();
+        let set = match (chooses.first(), others.is_empty()) {
+            (Some(chooser), true) => format!("Set `{chooser}` to `sandbox` in `.env.local`"),
+            (Some(chooser), false) => format!(
+                "Set {} to the sandbox's and `{chooser}` to `sandbox` in `.env.local`",
+                crate::package::and_list(&others)
+            ),
+            (None, _) => format!(
+                "Set {} in `.env.local` to the sandbox's",
+                crate::package::and_list(&others)
+            ),
+        };
         return Some(Box::new(
             Diagnostic::new(
                 &rule::RECORDING_REFUSED,
@@ -415,10 +436,7 @@ pub(crate) fn refusal(
                 crate::package::and_list(&variables),
                 if variables.len() == 1 { "it" } else { "them" }
             ))
-            .next_marked(format!(
-                "Set {} in `.env.local` to the sandbox's, then run it again (human)",
-                crate::package::and_list(&variables)
-            )),
+            .next_marked(format!("{set}, then run it again (human)")),
         ));
     }
     match &chosen.address {

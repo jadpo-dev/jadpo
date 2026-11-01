@@ -417,6 +417,25 @@ fn help_json_is_the_whole_command_reference() {
             "toolchain.project_not_found"
         ])
     );
+    // So does `jadpo fmt`, its formatter's own refusal among them.
+    let fmt = data["commands"]
+        .as_array()
+        .expect("commands")
+        .iter()
+        .find(|command| command["name"] == "fmt")
+        .expect("fmt");
+    assert_eq!(
+        fmt["rules"],
+        serde_json::json!([
+            "cli.fmt_arguments",
+            "format.changes_required",
+            "format.unsafe",
+            "format.write_failed",
+            "layout.promotion_required",
+            "toolchain.project_not_found",
+            "toolchain.source_read_failed"
+        ])
+    );
     let flags: Vec<(&str, &serde_json::Value)> = test["flags"]
         .as_array()
         .expect("flags")

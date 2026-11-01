@@ -165,7 +165,7 @@ rules! {
     CLI_DEV_PORT_INVALID: "cli.dev_port_invalid", area 14, Error, Agent,
         "Development port is invalid";
     CLI_DEV_START_FAILED: "cli.dev_start_failed", area 14, Error, Human,
-        "Development server could not start";
+        "The app couldn't start under `jadpo dev`, usually because another program is using its port, it has no database to run on, or a connection would call a provider's live API";
     CLI_EMAIL_ARGUMENTS: "cli.email_arguments", area 14, Error, Agent,
         "Email command has invalid arguments";
     CLI_FIX_ARGUMENTS: "cli.fix_arguments", area 14, Error, Agent,
@@ -285,7 +285,7 @@ rules! {
     CONFORM_FAILED: "conform.failed", area 14, Error, Agent,
         "Package's answers don't conform to its capability";
     CONFORM_REFUSED: "conform.refused", area 14, Error, Human,
-        "Conformance suite can't run against the provider's API";
+        "The conformance suite wasn't sent to the provider's live API, because the app has no connection to the package, nothing sets the connection's credential or address, or `ai:` doesn't ask its models through it";
     CONNECTION_DISK_PATH_INVALID: "connection.disk_path_invalid", area 16, Error, Human,
         "A disk store's `path:` isn't an absolute folder outside the project";
     CONNECTION_DOMAIN_NOT_LISTED: "connection.domain_not_listed", area 11, Error, Human,
@@ -547,7 +547,7 @@ rules! {
     FORMAT_CHANGES_REQUIRED: "format.changes_required", area 14, Error, Agent,
         "Source file is not formatted";
     FORMAT_UNSAFE: "format.unsafe", area 14, Error, Human,
-        "Formatting would change the file's meaning";
+        "A file was left as it was, because what the formatter made of it didn't read back as the same code, which is a mistake in Jadpo's formatter";
     FORMAT_WRITE_FAILED: "format.write_failed", area 14, Error, Human,
         "A file `jadpo fmt` formatted couldn't be written, usually because it is read-only";
     IMPORT_DUPLICATE: "import.duplicate", area 1, Error, Agent,
@@ -805,7 +805,7 @@ rules! {
     RECORDING_FAILED: "recording.failed", area 14, Error, Agent,
         "Sandbox or model gave no answer to record";
     RECORDING_REFUSED: "recording.refused", area 14, Error, Human,
-        "Answer can't be recorded through this connection";
+        "A recording was refused before anything was sent, because its connection would call a live API or has nothing set for its sandbox, its package is installed, or there is nothing to ask its prompt with";
     ROUTE_API_UNKNOWN: "route.api_unknown", area 7, Error, Agent,
         "Route group names an API the application doesn't declare";
     ROUTE_ARGUMENT_INVALID: "route.argument_invalid", area 7, Error, Agent,
@@ -1009,7 +1009,7 @@ rules! {
     SUGGEST_RECORD_INVALID: "suggest.record_invalid", area 14, Error, Agent,
         "Suggestions record can't be read";
     SUGGEST_SHARE_FAILED: "suggest.share_failed", area 14, Error, Human,
-        "Jadpo HQ couldn't be reached or refused what was shared";
+        "Jadpo HQ couldn't be reached, or refused what `jadpo suggest share` sent, so the entries wait to be shared again";
     SYNTAX_ASSERTION_FORM: "syntax.assertion_form", area 13, Error, Agent,
         "Assertion written in another language's form";
     SYNTAX_ASYNC_AWAIT: "syntax.async_await", area 3, Error, Agent,
@@ -1139,7 +1139,7 @@ rules! {
     TEST_ROUND_TRIP_FAILED: "test.round_trip_failed", area 11, Error, Agent,
         "Field's decode and encode don't round-trip a recorded value";
     TEST_RUNTIME_START_FAILED: "test.runtime_start_failed", area 14, Error, Human,
-        "Test runtime could not start";
+        "The tests couldn't start, because the machine couldn't give `jadpo test` the thread with a large stack they run on, usually for lack of memory";
     TEST_SUBSCRIBER_FAILED: "test.subscriber_failed", area 13, Error, Agent,
         "Subscriber failed for good during a test";
     TEST_UNEXPECTED_FAILURE: "test.unexpected_failure", area 13, Error, Agent,

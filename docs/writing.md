@@ -307,17 +307,24 @@ which the project's connection reads through
 `url: config.database_url`. The run has this checkout's `jadpo`, an empty home folder
 and nothing of the machine's environment, so it prints the same
 everywhere: the project's folder prints as `.`, the home folder as `~`,
-and a run's duration is left out. What the error needs, such as a link,
+and a run's duration, and the clock time `jadpo dev` says it started,
+are left out. What the error needs, such as a link,
 a read-only folder or a file that isn't UTF-8, is made by the lines
 before the command, where the reader sees it. A fix that needs the
 error's state first is shown as a plain `sh` block, without output.
 
 A rule no run can raise on demand, because it needs a race, a network
 that fails, a machine that can't build, a database server without an
-extension or `jadpo dev` running beside the command, or whose run can't
-print the same twice, because it shows a random id or a build id that
-changes with the compiler, shows the command as a plain `sh` block and
-output copied from a real run as a plain `text` block. The project's
+extension or another program, such as `jadpo dev`, running beside the
+command, or whose run can't print the same twice, because it shows a
+random id or a build id that changes with the compiler, shows the
+command as a plain `sh` block and output copied from a real run as a
+plain `text` block. An error that quotes the operating system's error
+number is worded without it where it can be, since macOS and Linux
+number the same error differently, so its run is checked on both. A
+failure no ordinary run reaches, a mistake of Jadpo's own or a machine
+out of memory, is copied from a `jadpo` built from the checkout with
+that failure forced, and the sentence before it says how. The project's
 files are still `check` blocks, which the gate compiles.
 The sentence before them says the output was copied rather than checked
 and what the run was, such as "a build on a Mac with no C compiler",
