@@ -438,8 +438,9 @@ pub fn graph(db: &dyn Db, project: Project) -> Arc<Graph> {
 /// A `person` node for each person entity (area 15, "The person"; chunk
 /// P1), under its entity and keyed by its born name, placed at its
 /// `person: true` and listing each reference its records belong to the
-/// person through, so a reference that starts or stops making records a
-/// person's changes the node.
+/// person through and the fields erasure keeps of their record (chunk
+/// P4b), so a reference that starts or stops making records a person's,
+/// or a field kept or no longer kept, changes the node.
 #[salsa::tracked(returns(ref))]
 pub fn person_nodes(db: &dyn Db, project: Project) -> Vec<Node> {
     let registry = registry(db, project);
@@ -482,11 +483,22 @@ pub fn person_nodes(db: &dyn Db, project: Project) -> Vec<Node> {
             .iter()
             .find(|found| found.key == entity_key)
             .and_then(|found| found.domain.clone());
+        let retained: Vec<String> = read
+            .model
+            .fields
+            .iter()
+            .filter(|field| {
+                field.reference.is_none() && field.erase == Some(jadpo_std::Erasure::Retained)
+            })
+            .map(|field| field.name.clone())
+            .collect();
         node.digest = Some(jadpo_graph::Digest::of(
-            std::iter::once(key.as_str()).chain(through.iter().map(String::as_str)),
+            std::iter::once(key.as_str())
+                .chain(through.iter().map(String::as_str))
+                .chain(retained.iter().map(String::as_str)),
         ));
         node.parent = Some(entity_key);
-        node.detail = jadpo_graph::Detail::Person { through };
+        node.detail = jadpo_graph::Detail::Person { through, retained };
         out.push(node);
     }
     out

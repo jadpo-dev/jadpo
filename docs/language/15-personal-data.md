@@ -12,11 +12,11 @@ Your app says which data is about a person, and Jadpo does the rest: it
 exports that data when the person asks for a copy, erases it when they ask
 to be forgotten, deletes it when its time is up, and reports where it
 lives. The aim is that requests under GDPR, UK GDPR and CCPA/CPRA work out
-of the box. Built so far: `person: true`, the check that every field
-marked `personal:` belongs to a person, [retention](#retention), which
-deletes data when its time is up, and [erasure](#erasure) of a person's
-records in their store, the bytes of their files included. `personal:`
-is also read for
+of the box. Built so far: `person: true`, the check that erasure can find
+every field marked `personal:`, [retention](#retention), which deletes
+data when its time is up, and [erasure](#erasure) of a person's records in
+their store, the bytes of their files included and their own record kept
+field by field where it must be. `personal:` is also read for
 [the AI page's](21-ai.md#personal-data-sent-to-a-model) check of what
 reaches a model, and [the report](#the-personal-data-report) lists every
 connection and host personal data reaches. Nothing exports personal data
@@ -43,9 +43,9 @@ is the one fact Jadpo asks you to write down.
 
 | Capability | What you write | What the compiler does | Built yet |
 |---|---|---|---|
-| Marking | `personal:` on a field | Hashes it in logs, lists it in the report | Partly: read for the AI check and the report's connections, and checked to belong to a person; nothing hashes it |
+| Marking | `personal:` on a field | Hashes it in logs, lists it in the report | Partly: read for the AI check and the report's connections, and checked that erasure can find it; nothing hashes it |
 | The person | `person: true` on an entity | Finds every record that belongs to them | Yes |
-| Erasure | `erase:` on references it can't work out | Generates `User.erase(id)` across every store and cache | Partly: in the person's store, files' bytes included; not yet the person's own record kept field by field, or another store |
+| Erasure | `erase:` on references it can't work out | Generates `User.erase(id)` across every store and cache | Partly: in the person's store, files' bytes and the person's own record kept field by field included; not yet another store |
 | Export | nothing | Generates `User.export(id)` | No: `toolchain.not_built_yet` |
 | Retention | `retention:` on a field or entity | Clears or deletes it when the time is up | Partly: not yet on an event |
 | Report | nothing | Writes `build/report/personal-data.md` | Partly: every connection and host personal data reaches |
@@ -162,21 +162,20 @@ entity User {
 ```
 
 You don't list which records belong to the person. A record **belongs
-to** a person when it refers to them, directly or through a chain of
-references: a todo through its `owner_id`, a todo's attachment through the
-todo. The compiler follows every reference to find them, and the
-[report](#the-personal-data-report) shows the whole tree for you to review.
+to** a person when it refers to them directly: a todo through its
+`owner_id`. The compiler reads every reference to find them, and the
+[report](#the-personal-data-report) shows them for you to review.
 
 A record that refers to two people, such as a message from one user to
-another, belongs to both. A chain goes on through another person's
-records, so a patient's appointments belong to the patient and, when a
-patient refers to the user who looks after them, to that user too. A
-chain that comes back to an entity it has passed, such as a folder
-inside a folder, ends there.
+another, belongs to both. A record that refers only to another record
+belongs to no one: a reply someone writes on another user's todo refers
+to its author and to the todo, not to the todo's owner, so it belongs to
+its author alone.
 
-Here a user is a person, a todo belongs to its owner, and a todo's
-attachment belongs to the owner through the todo. The attachment's
-caption is personal data, and erasing the user can find it:
+Erasure still reaches further than a person's own records, through what
+it deletes ([Erasure](#erasure)). Here a user is a person, a todo belongs
+to its owner, and an attachment goes with its todo. The attachment's
+caption is personal data, and erasing the user deletes it:
 
 ```jadpo check project=person-records
 type Caption = Text {
@@ -495,10 +494,14 @@ A record can belong to more than one person: a postcard from one user
 to another belongs to both. Erasing one person never clears another
 person's data. Erasing either user clears only their own reference, and
 the postcard keeps its marked fields while the other remains; they are
-cleared when the last of them is erased. Erasure finds the others
-through the record's references, as it finds every person's records, so
-a reply someone writes on another user's todo also belongs to the
-todo's owner, and keeps its marked fields while that owner remains.
+cleared when the last of them is erased.
+
+The people a record belongs to are those it refers to directly. A reply
+someone writes on another user's todo belongs to its author alone, so
+erasing the todo's owner clears only the reply's `todo_id`, and erasing
+its author clears its marked fields too. A record kept that refers to no
+person at all has no one left, so it loses its marked fields when
+erasure deletes what it refers to.
 
 Another person's own record is never anonymised: a user whose
 `invited_by_id` refers to the person erased keeps their own fields, and
@@ -585,6 +588,76 @@ test "a postcard keeps its signature until both its users are erased" {
 }
 ```
 
+A reply shows the difference:
+
+```jadpo check project=erasure file=domains/accounts/entities/reply.jadpo migrate=replies
+// domains/accounts/entities/reply.jadpo
+use accounts/entities { Todo, User }
+use accounts/types { CardText, SignedName }
+
+/// What someone writes on a todo, which belongs to whoever wrote it.
+entity Reply {
+    id: Uuid
+    todo_id: Todo.id? {
+        on_delete: OnDelete.cleared
+    }
+    author_id: User.id? {
+        on_delete: OnDelete.cleared
+    }
+    body: CardText
+    signed_as: SignedName? {
+        personal: PersonalData.identifying
+    }
+
+    policy: {
+        create: [author_id]
+        read: [author_id]
+    }
+}
+```
+
+```jadpo check project=erasure file=domains/accounts/actions/write_reply.jadpo hidden
+use accounts/entities { Reply, Todo }
+
+/// Writes on a todo.
+action write_reply(
+    me: Principal.user,
+    todo: Todo,
+    body: Reply.body,
+    signed_as: Reply.signed_as
+) -> Reply {
+    return Reply.create {
+        set: {
+            todo_id: todo.id
+            author_id: me.id
+            body: body
+            signed_as: signed_as
+        }
+    }
+}
+```
+
+```jadpo check project=erasure file=domains/accounts/actions/write_reply.test.jadpo
+// domains/accounts/actions/write_reply.test.jadpo
+use accounts/entities { Reply, Todo, User }
+use accounts/actions { add_todo, close_account, sign_up }
+
+test "a reply's signature goes with its author, not the todo's owner" {
+    var ada: User = attempt sign_up("ada@example.com")
+    var bob: User = attempt sign_up("bob@example.com")
+    var todo: Todo = add_todo(Principal.user(ada), "Buy milk")
+    var reply: Reply = write_reply(Principal.user(bob), todo, "Which kind?", "Bob")
+    attempt close_account(Principal.user(ada))
+    var after_owner: Reply = attempt Reply.get(reply.id)
+    assert after_owner.todo_id == none
+    assert after_owner.signed_as == "Bob"
+    attempt close_account(Principal.user(bob))
+    var after_author: Reply = attempt Reply.get(reply.id)
+    assert after_author.signed_as == none
+    assert after_author.body == "Which kind?"
+}
+```
+
 ### The person's own record
 
 The person's own record is erased field by field, because it can't always
@@ -592,11 +665,212 @@ go: an insurer, for example, must keep policy records for at least five
 years.
 
 - Where nothing must be kept, the record is deleted.
-- Otherwise a field marked `erase: Erasure.retained` stays, which needs
-  the entity's `retention:`, and every other marked field is cleared. The
-  person can no longer sign in, receives nothing, and is left out of every
-  query except those that serve the retained purpose. When the retention
-  ends, the purge schedule deletes the rest.
+- Otherwise a field that says `erase: Erasure.retained` stays, and so does
+  every field not marked `personal:`. Every other marked field is cleared.
+
+Here erasing a customer clears their name and keeps their policy number
+until their retention ends:
+
+```jadpo check project=kept-record file=app.jadpo hidden
+use cover/entities { Customer }
+
+application {}
+
+principal {
+    user: {
+        subject: Customer.handle
+    }
+}
+
+authentication {
+    api_token: {}
+}
+```
+
+```jadpo check project=kept-record file=config.jadpo hidden
+config {
+    policy_retention: Duration {
+        default: 1826d
+    }
+}
+```
+
+```jadpo check project=kept-record file=domains/cover/types/policy_number.jadpo hidden
+/// A policy's number.
+type PolicyNumber = Text {
+    max_length: 20
+}
+```
+
+```jadpo check project=kept-record file=domains/cover/types/customer_name.jadpo hidden
+/// What someone is called.
+type CustomerName = Text {
+    max_length: 120
+}
+```
+
+```jadpo check project=kept-record file=domains/cover/types/account_handle.jadpo hidden
+/// What someone signs in with, which says nothing about them.
+type AccountHandle = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=kept-record file=domains/cover/entities/customer.jadpo
+// domains/cover/entities/customer.jadpo
+use cover/types { AccountHandle, CustomerName, PolicyNumber }
+
+/// Someone with a policy, part of whose record the law makes us keep.
+entity Customer {
+    id: Uuid
+    handle: AccountHandle {
+        unique: true
+    }
+    customer_name: CustomerName? {
+        personal: PersonalData.identifying
+    }
+    policy_number: PolicyNumber {
+        personal: PersonalData.identifying
+        erase: Erasure.retained
+    }
+    policy_ended_at: Instant?
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        delete: [id]
+    }
+
+    person: true
+
+    retention: {
+        after: config.policy_retention
+        since: policy_ended_at
+    }
+}
+```
+
+- A field that stays is marked `personal:`, since an unmarked field stays
+  anyway ([`data.erase_own_field`](../errors/data.erase_own_field.md)).
+- No reference of theirs deletes them with another entity's records, since
+  what the law keeps doesn't depend on who else is erased
+  ([`data.erase_own_field`](../errors/data.erase_own_field.md)). Their
+  references to records erasure deletes are cleared.
+- The entity needs a `retention:`, or what stays would stay for ever
+  ([`data.erase_retention_required`](../errors/data.erase_retention_required.md)).
+  It applies to every record, erased or not, so count from something like
+  the end of the policy: a record whose `since:` field is `none` isn't
+  counted, and a customer whose policy hasn't ended stays. When the time
+  is up, the [purge schedule](12-jobs-and-events.md#the-purge-schedule)
+  deletes the rest.
+- Every marked field that doesn't stay can be `none`
+  ([`data.erase_field_required`](../errors/data.erase_field_required.md)).
+  What someone [signs in with](08-identity.md) must always have a value,
+  so it stays too, or holds nothing personal, as `handle` does here.
+- A column [retired](05-data.md#removing-data) on a record whose marked
+  fields erasure clears is cleared with them, since nothing says any more
+  whether it held personal data. A sealed field
+  ([Encrypted fields](#encrypted-fields)) is treated like any other.
+
+A record kept this way is hidden, as a [lifecycle](05-data.md#lifecycle)
+hides one. No query, `get` or include finds it, and no update, delete or
+transition reaches it, so the person receives nothing. Their sessions, API
+tokens, service keys, passkeys and sign-in links go with the erasure, and
+they can't sign in again, however they try: every way in looks them up, and
+finds no one. Erasing them again finds them and changes nothing.
+
+### Reading what is kept: `include_erased:`
+
+A query that serves the reason the record was kept says so, with
+`include_erased: true`. It finds erased people as well as everyone else.
+It may read nothing but their `id` and the fields that say `erase:
+Erasure.retained`, in its result, its conditions and its order, and it
+brings no other records with it
+([`query.include_erased_reads`](../errors/query.include_erased_reads.md)).
+The personal-data report lists every such query.
+
+```jadpo check project=kept-record file=domains/cover/types/kept_policy.jadpo
+// domains/cover/types/kept_policy.jadpo
+use cover/entities { Customer }
+
+/// What the law makes us keep of a customer.
+type KeptPolicy = Output {
+    pick: [Customer.id, Customer.policy_number]
+}
+```
+
+```jadpo check project=kept-record file=domains/cover/queries/kept_policies.jadpo
+// domains/cover/queries/kept_policies.jadpo
+use cover/entities { Customer }
+use cover/types { KeptPolicy }
+
+/// Whoever holds a policy number, erased or not, for a regulator's audit.
+query kept_policies(number: Customer.policy_number) -> List<KeptPolicy> {
+    from: Customer
+    where: Customer.policy_number == number
+    order: [Customer.id asc]
+    limit: 10
+    include_erased: true
+}
+```
+
+On an entity that keeps nothing of an erased person there is nothing for
+it to find, so it is refused
+([`query.include_erased_unused`](../errors/query.include_erased_unused.md)).
+
+```jadpo check project=kept-record file=domains/cover/failures/handle_taken.jadpo hidden
+/// Someone signs in with that already.
+type HandleTaken = Failure {
+    kind: FailureKind.conflict
+}
+```
+
+```jadpo check project=kept-record file=domains/cover/actions/take_out_policy.jadpo hidden
+use cover/entities { Customer }
+use cover/failures { HandleTaken }
+
+/// Takes out a policy.
+action take_out_policy(
+    handle: Customer.handle,
+    customer_name: Customer.customer_name,
+    number: Customer.policy_number
+) fails HandleTaken -> Customer {
+    return attempt Customer.create {
+        set: {
+            handle: handle
+            customer_name: customer_name
+            policy_number: number
+            policy_ended_at: none
+        }
+        conflict: {
+            Customer.handle: HandleTaken
+        }
+    }
+}
+```
+
+```jadpo check project=kept-record file=domains/cover/actions/close_account.jadpo hidden migrate=initial
+use cover/entities { Customer, CustomerNotFound }
+
+/// Erases the signed-in customer.
+action close_account(me: Principal.user) fails CustomerNotFound -> Unit {
+    attempt Customer.erase(me.id)
+}
+```
+
+```jadpo check project=kept-record file=domains/cover/actions/close_account.test.jadpo
+// domains/cover/actions/close_account.test.jadpo
+use cover/entities { Customer, CustomerNotFound }
+use cover/actions { take_out_policy }
+use cover/queries { kept_policies }
+
+test "closing an account hides the customer and keeps the policy number" {
+    var ada: Customer = attempt take_out_policy("ada", "Ada Lovelace", "P-100")
+    attempt close_account(Principal.user(ada))
+    assert Customer.get(ada.id) fails CustomerNotFound
+    assert list.map(kept_policies("P-100"), kept -> kept.policy_number) == ["P-100"]
+}
+```
 
 ### What erasure reaches
 
@@ -605,7 +879,13 @@ years.
   ([Caches](05-data.md#caches)). An action can write to only one store,
   so records your app keeps in another store are erased straight after,
   by an event [subscriber](12-jobs-and-events.md#subscribers) that Jadpo
-  generates.
+  generates. Such a record refers to the person with a reference that
+  says `erase:` and has no `on_delete:`. It isn't a foreign key, since no
+  database holds one across stores: the subscriber applies what `erase:`
+  says in that store, after the main store commits.
+  Any other reference across stores, with an `on_delete:` or to an entity
+  that isn't a person, is
+  [`data.reference_across_stores`](../errors/data.reference_across_stores.md).
 - **Records with a lifecycle** are removed outright, not soft-deleted.
   Your own code can't do that, but erasure, like purge, is an operation
   the compiler generates, so it can
@@ -628,10 +908,15 @@ years.
 ### What erasure doesn't rewrite
 
 - **Backups** aren't rewritten. Each erasure leaves an entry in an erasure
-  log, holding the person's `id` and the time and nothing else. Restoring a
-  backup replays the log before the app starts. Backups themselves expire
-  on the hosting platform's schedule, which the report states. This is
-  what the UK regulator, the ICO, calls putting data "beyond use".
+  log, holding the person entity's name, the person's `id` and the time
+  and nothing else. Your app names where the log is kept, in `privacy: {
+  erasure_log: { store: } }`: a store that holds no person's records, or a
+  store of files, so restoring a person's database can't take the log back
+  with it. The runtime replays the log every time it starts, erasing again
+  anyone logged who is still there, so a restored backup is erased before
+  the app serves anything. Backups themselves expire on the hosting
+  platform's schedule, which the report states. This is what the UK
+  regulator, the ICO, calls putting data "beyond use".
 - **There are no per-person encryption keys**, so erasure never works by
   deleting a person's key ("crypto-shredding").
 - **Logs** aren't rewritten either. They hold identifiers and hashes,
@@ -674,9 +959,11 @@ stripe: {
 }
 ```
 
-Erasure emits a `PersonErased` event. It is a declaration on the package,
-not part of any [capability](11-integrations.md#capabilities), so Stripe
-and Postmark are erased the same way.
+Erasure emits a `PersonErased` event, which holds the person entity's name,
+the person's `id` and when they were erased, and nothing personal, besides
+the keys below. The `erasure:` is a declaration on the package, not part of
+any [capability](11-integrations.md#capabilities), so Stripe and Postmark
+are erased the same way.
 
 - **Your app first, then the providers.** When `User.erase` runs, Jadpo
   copies each connection's key, here `stripe_customer_id`, into the
@@ -708,8 +995,9 @@ and Postmark are erased the same way.
 <!-- topic: personal-data-export (was export) -->
 
 `User.export(user_id)` returns everything held about the person: their
-record and every record that belongs to them, as JSON, one list per
-entity, with the same field names as the API. You write nothing for it
+record, every record that belongs to them and the records erasure deletes
+with those, as JSON, one list per entity, with the same field names as the
+API. You write nothing for it
 beyond calling it:
 
 ```jadpo fragment
@@ -906,17 +1194,29 @@ and no purge is listed in the report as "kept until erased".
   erasure outcome: a `restricted` one into records erasure deletes says
   what it does
   ([`data.erase_required`](../errors/data.erase_required.md)).
-  `Erasure.anonymised` and `Erasure.retained` have the nullable fields
+  `Erasure.anonymised` and `Erasure.retained`, on a reference or on the
+  person's own field, have the nullable fields
   ([`data.erase_field_required`](../errors/data.erase_field_required.md))
   and retention
   ([`data.erase_retention_required`](../errors/data.erase_retention_required.md))
-  they need, and an `erase:` erasure never reaches is refused
-  ([`data.erase_unreached`](../errors/data.erase_unreached.md)).
+  they need. An `erase:` erasure never reads is refused
+  ([`data.erase_unreached`](../errors/data.erase_unreached.md)), and so
+  is one on the person's own field that says anything but
+  `Erasure.retained`, or on an unmarked one
+  ([`data.erase_own_field`](../errors/data.erase_own_field.md)).
+- **What is kept is read only for the reason it is kept.** A query saying
+  `include_erased: true` reads only `id` and the retained fields
+  ([`query.include_erased_reads`](../errors/query.include_erased_reads.md)),
+  on an entity that keeps someone's record
+  ([`query.include_erased_unused`](../errors/query.include_erased_unused.md)).
 - **No personal data erasure can't reach.** A marked field on an entity
-  that isn't a person, and doesn't belong to one through references, is
-  [`data.personal_unreachable`](../errors/data.personal_unreachable.md):
-  erasure can't find it, so you refer to the person, or mark the entity
-  `person: true`. A field is marked here only by its `personal:`: a
+  erasing a person never reaches is
+  [`data.personal_unreachable`](../errors/data.personal_unreachable.md).
+  Erasure reaches a person, the records that refer to them, and the
+  records that refer to what it deletes, never past a record it keeps. So
+  a marked field that erasure can't find needs you to refer to the person,
+  or to mark the entity `person: true`. A field is marked here only by
+  its `personal:`: a
   standard type that is personal data whatever holds it, such as a
   `PhoneNumber`, is hashed in logs and its reads recorded, but a shop's
   own phone number doesn't make the shop a person. With the completeness
@@ -1074,6 +1374,7 @@ in the same form as its other reports ([The report](14-tooling.md#the-report)).
 For each person entity it lists:
 
 - every marked field, with its category, entity, store and caches;
+- the queries that say `include_erased: true`;
 - who may read it, from policy;
 - its retention, or "kept until erased";
 - what erasure does to each record that belongs to the person;
@@ -1353,11 +1654,12 @@ This is not legal advice. A privacy professional reviews the report.
 
 | Feature | Status |
 |---|---|
-| `personal: PersonalData.<category>` on an entity's, an event's or an email's field, or an object's, input's or output's a package declares | Partly built: it is read and checked against the fourteen categories for the [AI](21-ai.md) page's check of what reaches a model and for [where personal data goes](#where-personal-data-goes), and a marked field on an entity no person reaches is `data.personal_unreachable`. On an app's own object, input or output it is `type.unknown_setting`. Not built yet: the rest of what this page says marking does. A marked field nothing reads compiles without an error, and no log or access record uses the marking. |
-| `person: true` | Built: an entity marked `person: true` is a person, and every record that refers to one, directly or through a chain of references, belongs to them. The build's manifest shows each person under its entity as a `person` node, listing the references its records belong through (`through`). |
+| `personal: PersonalData.<category>` on an entity's, an event's or an email's field, or an object's, input's or output's a package declares | Partly built: it is read and checked against the fourteen categories for the [AI](21-ai.md) page's check of what reaches a model and for [where personal data goes](#where-personal-data-goes), and a marked field on an entity erasure never reaches is `data.personal_unreachable`. On an app's own object, input or output it is `type.unknown_setting`. Not built yet: the rest of what this page says marking does. A marked field nothing reads compiles without an error, and no log or access record uses the marking. |
+| `person: true` | Built: an entity marked `person: true` is a person, and every record that refers to one directly belongs to them. The build's manifest shows each person under its entity as a `person` node, listing the references its records belong through (`through`) and the fields erasure keeps of their record (`retained`). |
 | `retention:` on a field or an entity | Partly built. Built: the entity's hourly purge schedule clears a nullable field's value, or deletes the record with what cascades from it and the sign-in state of everyone it deletes who signs in, cascades included, at the first run once `since:` is longer ago than `after:`, a `Duration` setting; a `File`'s bytes go once no record holds it ([Files](16-built-in-services.md#deleting-and-erasing)); each problem under [Retention](#retention) is an error where it is written. The graph holds a `retention` node for each, under its field or entity, with its period and `since:`. Not built yet: `retention:` on an event's or an email's field, `toolchain.not_built_yet` where it is written. |
-| `erase:` on a reference | Built: each problem under [Erasure](#erasure) and "Erasure is complete" is an error where it is written. Not built yet: `erase:` on the person's own field, which keeps their record field by field ([The person's own record](#the-persons-own-record)); it is `toolchain.not_built_yet` where it is written, and erasure deletes the whole record. |
-| `User.erase(id)` | Partly built. Built: for a caller with `delete` on the person's record, one statement deletes the record, hidden or not, with the sign-in state of anyone it deletes who signs in, and deletes, anonymises or keeps each record of theirs as its reference says, however deep, records with a lifecycle removed outright. A record that belongs to several people keeps its marked fields until the last of them is erased, and another person's own record loses only the reference ([Records that belong to several people](#records-that-belong-to-several-people)). The bytes of each `File` it deletes or clears go once it commits ([Files](16-built-in-services.md#deleting-and-erasing)), and an audited record it deletes takes its history with it. Not built yet: one that would keep an audited record, whose history still refers to the person ([Audit trail](16-built-in-services.md#audit-trail)), `toolchain.not_built_yet` where `erase` is called, so no erasure is ever partial; and the person's own record kept field by field (above), records in another store, `PersonErased`, the erasure log and providers' erasure, which nothing emits or calls. |
+| `erase:` on a reference or the person's own field | Built: each problem under [Erasure](#erasure) and "Erasure is complete" is an error where it is written. Not built yet: a reference to a person from another store, which stays [`data.reference_across_stores`](../errors/data.reference_across_stores.md) until a generated subscriber can apply it. |
+| `include_erased:` on a query | Built: it finds the people erasure keeps a record of too, and is held to what they keep. The [report](#the-personal-data-report) that lists these queries isn't built yet. |
+| `User.erase(id)` | Partly built. Built: for a caller with `delete` on the person's record, one statement deletes the record, hidden or not, with the sign-in state of anyone it deletes who signs in, and deletes, anonymises or keeps each record of theirs as its reference says, however deep, records with a lifecycle removed outright. A record that belongs to several people keeps its marked fields until the last of them is erased, and another person's own record loses only the reference ([Records that belong to several people](#records-that-belong-to-several-people)). The person's own record stays field by field, hidden, where one of their fields says so ([The person's own record](#the-persons-own-record)). The bytes of each `File` it deletes or clears go once it commits ([Files](16-built-in-services.md#deleting-and-erasing)), and an audited record it deletes takes its history with it. Not built yet: one that would keep an audited record, whose history still refers to the person ([Audit trail](16-built-in-services.md#audit-trail)), `toolchain.not_built_yet` where `erase` is called, so no erasure is ever partial; and records in another store, `PersonErased`, the erasure log and providers' erasure, which nothing emits or calls. |
 | `User.export(id)` | Not built yet: it is `toolchain.not_built_yet` where it is called. |
 | `privacy:` in `application { }` | Not built yet: it is `toolchain.not_built_yet` where it is written. |
 | Encrypted fields | Built: `encrypted: true`, key-type, `TotpSecret` and `SecretText` fields, sealed on write and opened on read, interpreted, compiled and on Workers; each refusal above; rotation through `_PREVIOUS`, with `field_encryption.reseal` and `jadpo config rotation`. |
@@ -1372,6 +1674,7 @@ it and the compiler's real output from `jadpo check`.
 - [`data.encrypted_field_invalid`](../errors/data.encrypted_field_invalid.md)
 - [`data.encrypted_field_used`](../errors/data.encrypted_field_used.md)
 - [`data.erase_field_required`](../errors/data.erase_field_required.md)
+- [`data.erase_own_field`](../errors/data.erase_own_field.md)
 - [`data.erase_required`](../errors/data.erase_required.md)
 - [`data.erase_retention_required`](../errors/data.erase_retention_required.md)
 - [`data.erase_unreached`](../errors/data.erase_unreached.md)
@@ -1383,3 +1686,5 @@ it and the compiler's real output from `jadpo check`.
 - [`data.retention_lifecycle_field`](../errors/data.retention_lifecycle_field.md)
 - [`data.retention_period`](../errors/data.retention_period.md)
 - [`data.retention_since`](../errors/data.retention_since.md)
+- [`query.include_erased_reads`](../errors/query.include_erased_reads.md)
+- [`query.include_erased_unused`](../errors/query.include_erased_unused.md)

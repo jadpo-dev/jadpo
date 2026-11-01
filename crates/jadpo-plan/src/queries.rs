@@ -80,6 +80,9 @@ pub(crate) enum Reach {
     Parent,
     /// An update, a delete or a transition.
     Write,
+    /// A query saying `include_erased: true` (area 15, "The person's own
+    /// record"): the people erasure keeps a record of are found too.
+    Erased,
 }
 
 /// Builds the plans of a project's queries and entities.
@@ -99,6 +102,11 @@ pub(crate) struct Planner<'a> {
     /// state its store holds, each with the column holding their `id`:
     /// what a person's erasure deletes with them (area 15; chunk P3).
     pub sign_in: std::collections::BTreeMap<String, Vec<(&'static str, &'static str)>>,
+    /// Each table's retired columns, by store and table, from the latest
+    /// migration: a person's erasure clears them on a record it clears the
+    /// marked fields of, since it can't know which held personal data once
+    /// the field has left the source (area 15; chunk P4b).
+    pub retired: std::collections::BTreeMap<(String, String), Vec<String>>,
 }
 
 /// One statement being written: its parameters, deduplicated, so a value
@@ -411,7 +419,12 @@ impl Planner<'_> {
         if let Some((_, _, column, _)) = &nearest {
             conditions.push(jadpo_sql::condition::present(column));
         }
-        conditions.extend(self.access(&mut statement, entity, Reach::Read)?);
+        let reach = if query.include_erased {
+            Reach::Erased
+        } else {
+            Reach::Read
+        };
+        conditions.extend(self.access(&mut statement, entity, reach)?);
         let policy = self.policy(&mut statement, entity, Effect::Read, &Row::Table)?;
         let size = match &query.limit {
             Some(Bound::Value(value)) => Some(self.source(value)?),
@@ -820,7 +833,10 @@ impl Planner<'_> {
     /// lifecycle's `visible:` (area 5), so a hidden record is in no query,
     /// `get`, update or delete, and policy grants with chunk 4.4. A parent
     /// a record refers to is read even when its lifecycle hides it, since
-    /// the reference still holds (area 6, "Children and parents").
+    /// the reference still holds (area 6, "Children and parents"). A
+    /// person's record erasure kept is hidden everywhere, a parent included,
+    /// except from a query that asks for it (`Reach::Erased`; area 15, "The
+    /// person's own record").
     pub(crate) fn access(
         &self,
         bind: &mut dyn Bind,
@@ -832,6 +848,9 @@ impl Planner<'_> {
             && let Some(visible) = entity.lifecycle.as_ref().and_then(|l| l.visible.as_ref())
         {
             out.push(jadpo_sql::condition(bind, entity, visible, false)?);
+        }
+        if reach != Reach::Erased && entity.keeps_erased() {
+            out.push(text::not_erased());
         }
         Some(out)
     }
@@ -1288,6 +1307,7 @@ pub(crate) fn plans(
         action: None,
         json,
         sign_in: Default::default(),
+        retired: Default::default(),
     };
     let mut query_plans: Vec<QueryPlan> = queries
         .queries

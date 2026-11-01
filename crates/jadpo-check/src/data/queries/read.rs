@@ -10,6 +10,147 @@ impl<'a> Reader<'a> {
     }
 
     pub(super) fn query(&mut self, symbol: &Symbol, decl: &ast::QueryDecl) -> Option<QueryModel> {
+        let mut model = self.read_query(symbol, decl)?;
+        let list = decl.member_list();
+        let written =
+            list.iter()
+                .flat_map(|list| list.member_items())
+                .find_map(|item| match item {
+                    MemberItem::Member(member)
+                        if member
+                            .member_key()
+                            .and_then(|key| key.names().next())
+                            .and_then(|name| tree::name_text(&name))
+                            .as_deref()
+                            == Some("include_erased") =>
+                    {
+                        Some(member)
+                    }
+                    _ => None,
+                });
+        if let Some(member) = written {
+            model.include_erased = self.include_erased(symbol.path.as_str(), &model, &member);
+        }
+        Some(model)
+    }
+
+    /// `include_erased: true` (area 15, "The person's own record"; chunk
+    /// P4b): the query finds the people erasure keeps a record of too, so it
+    /// reads nothing but their `id` and the fields erasure keeps, and
+    /// brings no other records with them. Whether it says so, with each
+    /// problem in what it reads reported.
+    fn include_erased(&mut self, path: &str, model: &QueryModel, member: &ast::Member) -> bool {
+        let key = member
+            .member_key()
+            .map_or_else(|| Span::new(path, 0, 0), |key| Self::span(path, &key));
+        let value = member.value();
+        if !value.as_ref().is_some_and(|value| {
+            crate::types::Const::from_expr(value) == crate::types::Const::Bool(true)
+        }) {
+            let at = value
+                .as_ref()
+                .map_or_else(|| key.clone(), |value| Self::span(path, value));
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_SETTING_VALUE,
+                    "`include_erased:` takes only `true`",
+                )
+                .at(at, "not `true`")
+                .reason("`include_erased: true` says a query also finds the people erasure keeps a record of; a query that leaves them out, as every query does, leaves the line out.")
+                .next("Write `include_erased: true`, or remove the line"),
+            );
+            return false;
+        }
+        let name = &model.name;
+        let entity = &model.entity;
+        let Some(found) = self.entities.get(entity) else {
+            return false;
+        };
+        if !found.keeps_erased() {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::QUERY_INCLUDE_ERASED_UNUSED,
+                    format!(
+                        "`{name}` includes erased people, and erasing a `{entity}` keeps nothing to find"
+                    ),
+                )
+                .at(key, "nothing to include")
+                .reason(format!(
+                    "Erasing a `{entity}` deletes their whole record, since none of its fields says `erase: Erasure.retained`, so nothing is left for `include_erased:` to find."
+                ))
+                .next("Remove `include_erased: true`"),
+            );
+            return false;
+        }
+        if !model.includes.is_empty() {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::QUERY_INCLUDE_ERASED_READS,
+                    format!(
+                        "`{name}` brings other records with what erasure keeps of a `{entity}`"
+                    ),
+                )
+                .at(key.clone(), "reads what erasure kept")
+                .reason("`include_erased:` lets a query read a person's kept record for the reason the law keeps it, and nothing else: their `id` and the fields that say `erase: Erasure.retained`. An include reads more.")
+                .next("Read the other records in a query of their own that leaves erased people out"),
+            );
+        }
+        let kept = |field: &str| {
+            field == "id"
+                || found.fields.iter().any(|f| {
+                    f.name == field
+                        && f.reference.is_none()
+                        && f.erase == Some(jadpo_std::Erasure::Retained)
+                })
+        };
+        let mut reads: BTreeSet<String> = BTreeSet::new();
+        for (_, source) in &model.element.fields {
+            match source {
+                Source::Column(field) => {
+                    reads.insert(field.clone());
+                }
+                Source::Entry {
+                    field: Some(field), ..
+                } => {
+                    reads.insert(field.clone());
+                }
+                Source::Entry { field: None, .. } | Source::Include(_) => {}
+            }
+        }
+        for condition in &model.filter {
+            condition.fields(&mut reads);
+        }
+        reads.extend(model.order.iter().map(|order| order.field.clone()));
+        reads.extend(model.nearest.iter().map(|order| order.field.clone()));
+        reads.extend(model.distance.iter().map(|order| order.field.clone()));
+        reads.extend(model.geometry.iter().cloned());
+        if let Some(grouping) = &model.grouping {
+            reads.extend(
+                grouping
+                    .entries
+                    .iter()
+                    .filter_map(|(_, entry)| entry.field().map(str::to_string)),
+            );
+        }
+        for field in reads.iter().filter(|field| !kept(field)) {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::QUERY_INCLUDE_ERASED_READS,
+                    format!(
+                        "`{name}` reads `{entity}.{field}`, which isn't `erase: Erasure.retained`"
+                    ),
+                )
+                .at(key.clone(), "reads what erasure kept")
+                .reason("`include_erased:` lets a query read a person's kept record for the reason the law keeps it, and nothing else: their `id` and the fields that say `erase: Erasure.retained`. Erasure clears a marked field, and an unmarked one isn't kept for that reason.")
+                .next(format!(
+                    "Stop reading `{field}` here: leave it out of the result, the conditions and the order"
+                )),
+            );
+        }
+        true
+    }
+
+    fn read_query(&mut self, symbol: &Symbol, decl: &ast::QueryDecl) -> Option<QueryModel> {
         let path = symbol.path.as_str();
         let name_node = decl.name()?;
         let name = tree::name_text(&name_node)?;
@@ -287,6 +428,7 @@ impl<'a> Reader<'a> {
             distance,
             grouping: None,
             geometry,
+            include_erased: false,
         })
     }
 

@@ -55,7 +55,7 @@ pub(crate) use vectors::{metric, vector_type};
 pub use aggregates::{AggregateKind, Entry, EntryOrder, GroupKey, Grouping};
 
 /// The sections a query declaration holds (area 6, "Named queries").
-pub const SECTIONS: [&str; 11] = [
+pub const SECTIONS: [&str; 12] = [
     "from",
     "geometry",
     "where",
@@ -67,6 +67,7 @@ pub const SECTIONS: [&str; 11] = [
     "page",
     "include",
     "missing",
+    "include_erased",
 ];
 
 /// The settings of an include written as a block (area 6, "Children and
@@ -344,6 +345,10 @@ pub struct QueryModel {
     /// For a map layer, a `FeatureCollection<G, P>` (chunk 5.5u8): the
     /// field each feature's geometry is, its properties being `element`.
     pub geometry: Option<String>,
+    /// `include_erased: true` (area 15, "The person's own record"; chunk
+    /// P4b): it finds the people erasure keeps a record of too, reading
+    /// nothing of them but what it kept.
+    pub include_erased: bool,
 }
 
 /// Every query of a project, without positions: for what reads them all,
