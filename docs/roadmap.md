@@ -641,15 +641,9 @@ After the registry is live, in order:
    - [x] **B1 A `File` held to its field**: area 16, "What a write
      checks", "A `File` field's settings" and "What is built"; area 4,
      "Defects"; compiler/runtime §2.6, "Files and a file's run".
-   - [ ] **B2 The disk driver in production** `opus · high`: area 16,
-     "The disk driver"; area 14, "A native deployable"; area 18, "The
-     manifest". A native deployable keeps a `Driver.disk` connection's
-     files at its `path:`, which `jadpo check` refuses inside the
-     project's source or build folders; a put below `free_space_floor:`
-     (5% by default) answers `storage_full`; the manifest records that
-     the app runs on one server. Done when a native deployable puts and
-     reads a file at its `path:`, and a put below the floor answers
-     `storage_full`.
+   - [x] **B2 The disk driver in production**: area 16, "The disk
+     driver" and What is built; area 18, "What a node holds"; area 14,
+     "Starting"; compiler/runtime §2.6, "Files and a file's run".
    - [ ] **B3 Deleting a file's bytes** `opus · high`: area 16,
      "Deleting and erasing" and "Writing a file your app makes: `put`".
      The capability's `delete`; a generated subscriber deleting a file's

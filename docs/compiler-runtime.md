@@ -4710,9 +4710,23 @@ holds the value to it before the statement is sent
 (`write::refused_file`: store, then type, then size), a mismatch the
 fault `FaultKind::FileRefused`, classified `file_refused`, the
 program's own (chunk B1).
-Drivers: `jadpo_host_native::files::DiskFiles`, which `jadpo dev` gives
-every connection under `.jadpo/files/`, and `files::MemoryFiles`, the
-fake `jadpo test`'s host and the Rust tests give. A file helper's read
+Drivers: `jadpo_host_native::files::DiskStore`, one store over one
+folder, which a native deployable keeps at its connection's `path:`
+(`files::ServerDisk`, the `Disk` that `deployable_supplies` gives the
+driver factory; `DiskStore::at` makes the folder `0700`, or refuses one
+other users can write to, which the factory lists as `Why::Invalid`) and
+`files::DiskFiles` keeps each of `jadpo dev`'s under `.jadpo/files/`,
+with the floors the plan's `ConnectionDriver::Disk { floor }` gives;
+and `files::MemoryFiles`, the fake `jadpo test`'s host and the Rust
+tests give. On Unix `DiskStore` opens every folder and file relative to
+the one above with `openat` and `O_NOFOLLOW` (through `rustix`, since
+the workspace forbids `unsafe`), and reads `fstatvfs` for the floor,
+held in millionths of the disk, which a put or a join checks against
+its own bytes before it makes a folder. `jadpo_check::disk` checks a
+store's keys, `path:` against `Project::folder` (the project's folder
+with links resolved) and `free_space_floor:`; `jadpo_cli::stamp` lists
+each deployable's reached disk stores as the manifest's `one_server`
+(chunk B2). A file helper's read
 is `BatchOp::Read(RowFormat)`, planned as a `BatchPlan` whose `from` is
 `BatchFrom::File` (the row type's JSON-table number and each field's
 column) and whose store is `jadpo_check::types::file_run_stores`'s; the

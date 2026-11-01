@@ -1700,3 +1700,129 @@ fn a_pruned_deployable_cleans_schedule_and_batch_history_before_the_jobs_role() 
         "jobs retains its prompt schedule work"
     );
 }
+
+/// A native deployable keeps a `Driver.disk` store's files at its `path:`
+/// (area 16, "The disk driver"; chunk B2): the folder made the app's
+/// user's alone as it starts, a put sheet landing there under its key,
+/// `0600` in `0700` folders, and read back in as the sheet's prices; a put
+/// to a store below its `free_space_floor:` answers `storage_full`,
+/// writing nothing; the manifest records that it runs on one server; and
+/// a store whose folder other users can write to isn't built, listed as
+/// it starts.
+#[cfg(unix)]
+#[test]
+fn a_deployable_keeps_a_disk_stores_files_at_its_path() {
+    use std::os::unix::fs::PermissionsExt;
+    if !jadpo_test::live() {
+        return;
+    }
+    let target = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let base = target
+        .parent()
+        .unwrap_or(target)
+        .join("jadpo-compiled/deployable");
+    let root = base.join("disk-bakery");
+    let kept = base.join("disk-bakery-files");
+    let _ = fs::remove_dir_all(&kept);
+    let (sheets, full) = (kept.join("sheets"), kept.join("full"));
+    crate::disk_files::write_all(&root, &crate::disk_files::bakery(&sheets, &full));
+    if !root.join("database").exists() {
+        jadpo(&root, &["migrate", "new", "initial"]);
+    }
+    jadpo(&root, &["records", "update"]);
+    let output = run(
+        &["build".to_string(), "--json".to_string()],
+        &at(&root, &shared_cache()),
+    );
+    assert_eq!(output.code, 0, "{}{}", output.stdout, output.stderr);
+    let manifest: Value =
+        serde_json::from_str(&fs::read_to_string(root.join("build/manifest.json")).expect("read"))
+            .expect("JSON");
+    assert_eq!(
+        manifest["deployables"]["app"]["one_server"],
+        serde_json::json!(["full", "sheets"]),
+        "{manifest}"
+    );
+    assert!(!kept.exists(), "building makes no store's folder");
+
+    let server = jadpo_test::postgres::Server::start().expect("a server");
+    let connection = server.create_database("disk_bakery").expect("a database");
+    apply(&connection, &migrations(&root));
+    let url = as_url(&connection);
+    let settings = [
+        ("DATABASE_URL", url.as_str()),
+        ("HOST", "127.0.0.1"),
+        ("PORT", "0"),
+    ];
+    let binary = root.join("build/target/app/app");
+    let (mut child, lines) = start(&binary, &settings);
+    let started = next(&lines, 60);
+    assert_eq!(started["event"], "runtime.started", "{started}");
+    assert_eq!(started["unbuilt"], serde_json::json!([]), "{started}");
+    for folder in [&sheets, &full] {
+        let meta = fs::metadata(folder).expect("made as it starts");
+        assert_eq!(meta.permissions().mode() & 0o777, 0o700, "{folder:?}");
+    }
+    let address = started["address"]
+        .as_str()
+        .expect("its address")
+        .to_string();
+
+    let (status, body) = exchange(&address, "POST", "/sheets", crate::disk_files::SHEET);
+    assert_eq!(status, 201, "{body}");
+    let file = crate::disk_files::kept_file(&sheets);
+    assert_eq!(fs::read(&file).expect("kept"), b"code\nA1\nB2\n");
+    assert_eq!(
+        fs::metadata(&file).expect("kept").permissions().mode() & 0o777,
+        0o600
+    );
+    let shard = file.parent().expect("a shard");
+    assert_eq!(
+        fs::metadata(shard).expect("a shard").permissions().mode() & 0o777,
+        0o700
+    );
+    // The record holds the file's key, which is where it is kept.
+    let key = rows(&connection, "SELECT sheet->>'key' FROM price_sheet");
+    assert_eq!(sheets.join(&key[0][0]), file, "{key:?}");
+    assert!(
+        crate::disk_files::eventually(30, || count(&connection, "price_line") == 2),
+        "the sheet's two prices were read back in from the disk"
+    );
+
+    let (status, body) = exchange(
+        &address,
+        "POST",
+        "/sheets/overflow",
+        crate::disk_files::SHEET,
+    );
+    assert_eq!(status, 503, "{body}");
+    let answer: Value = serde_json::from_str(&body).expect("JSON");
+    assert_eq!(answer["error"]["code"], "sheet_not_kept", "{body}");
+    assert_eq!(crate::disk_files::files_under(&full), 0);
+    assert_eq!(count(&connection, "overflow_sheet"), 0);
+    let stopped = Command::new("kill")
+        .args(["-TERM", &child.id().to_string()])
+        .status()
+        .expect("kill runs");
+    assert!(stopped.success());
+    assert_eq!(ended(&mut child, 30), Some(0));
+
+    // A store whose folder other users can write to isn't built: it is
+    // listed as the deployable starts, which serves on.
+    fs::set_permissions(&sheets, fs::Permissions::from_mode(0o777)).expect("opened up");
+    let (mut child, lines) = start(&binary, &settings);
+    let started = next(&lines, 60);
+    assert_eq!(started["event"], "runtime.started", "{started}");
+    let unbuilt = started["unbuilt"].as_array().expect("unbuilt");
+    assert_eq!(unbuilt.len(), 1, "{started}");
+    assert_eq!(unbuilt[0]["connection"], "sheets", "{started}");
+    assert!(
+        unbuilt[0]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("other users")),
+        "{started}"
+    );
+    let _ = child.kill();
+    let _ = ended(&mut child, 30);
+    let _ = fs::remove_dir_all(&kept);
+}

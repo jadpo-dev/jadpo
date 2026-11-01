@@ -210,6 +210,12 @@ fn load_files_into(root: PathBuf, files: &FileSet, db: Database, lazily: bool) -
     )
     .name(name)
     .lazy(lazy)
+    .folder(
+        std::fs::canonicalize(&root)
+            .unwrap_or_else(|_| root.clone())
+            .to_string_lossy()
+            .into_owned(),
+    )
     .new(&db);
     let mut loaded = Loaded {
         db,

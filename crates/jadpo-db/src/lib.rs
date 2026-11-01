@@ -213,6 +213,13 @@ pub struct Project {
     #[default]
     #[returns(ref)]
     pub before: Before,
+    /// The project's folder on this machine, its absolute path with links
+    /// resolved: what `jadpo check` holds a disk store's `path:` outside
+    /// (area 16, "The disk driver"; chunk B2). Empty where none is known,
+    /// as in a test's project or the editor's.
+    #[default]
+    #[returns(ref)]
+    pub folder: String,
 }
 
 /// The before side of a change (area 18, "Comparing two builds" and

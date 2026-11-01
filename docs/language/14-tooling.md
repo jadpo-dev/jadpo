@@ -2249,7 +2249,11 @@ variable, never the value ([Configuration and
 time](10-configuration-and-time.md)).
 
 It builds each connection's driver. One it can't build is listed as it
-starts, and answered `misconfigured` when used. A database whose
+starts, and answered `misconfigured` when used. A store of files on the
+server's own disk is kept at its `path:`, which it makes, readable by the
+app's user only, when it is missing; one with no `path:`, or whose folder
+other users can write to, isn't built
+([The disk driver](16-built-in-services.md#the-disk-driver)). A database whose
 connection names no `url:` stops the start, since only `jadpo dev` and
 `jadpo test` give one an address of their own.
 

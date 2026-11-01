@@ -67,7 +67,7 @@ use serde_json::{Value, json};
 
 use crate::http::{AppHandler, Handler, MakeHandler, WorkerThread, serve};
 use crate::tracked::unless;
-use crate::{DRAIN_GRACE, Drivers, NativeHost, Runtime, supplies};
+use crate::{DRAIN_GRACE, Drivers, NativeHost, Runtime, deployable_supplies};
 
 /// What a generated deployable's `main` hands [`run`]: the program, its
 /// build stamp and each store's migrations, shared with the Workers host
@@ -242,7 +242,11 @@ fn tick(deployable: &Deployable, log: &Log) -> Result<ExitCode, Vec<Value>> {
         )]
     })?;
     let drivers = match program.started() {
-        Some(started) => Drivers::build(&program.runtime().connections, &started, &supplies()),
+        Some(started) => Drivers::build(
+            &program.runtime().connections,
+            &started,
+            &deployable_supplies(),
+        ),
         None => Drivers::default(),
     };
     let Some(stores) = unless_stopped(
@@ -330,7 +334,11 @@ fn handlers(
         };
         let program = program.with_config(&values);
         let drivers = match program.started() {
-            Some(started) => Drivers::build(&program.runtime().connections, &started, &supplies()),
+            Some(started) => Drivers::build(
+                &program.runtime().connections,
+                &started,
+                &deployable_supplies(),
+            ),
             None => Drivers::default(),
         };
         let logged = Rc::new(Logged::new(log, drivers.unbuilt()));
@@ -357,7 +365,11 @@ fn check_stores(
         )]
     })?;
     let drivers = match program.started() {
-        Some(started) => Drivers::build(&program.runtime().connections, &started, &supplies()),
+        Some(started) => Drivers::build(
+            &program.runtime().connections,
+            &started,
+            &deployable_supplies(),
+        ),
         None => Drivers::default(),
     };
     let mut problems = Vec::new();
