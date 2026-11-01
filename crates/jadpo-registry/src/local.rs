@@ -15,10 +15,10 @@ use crate::log::{Log, LogEntry};
 use crate::names::{Digest, Handle, ScopedName, Version};
 use crate::protocol::{
     ARCHIVE_NOT_FOUND, Advisory, AdvisoryAnswer, BarRow, ConsistencyProof, Facts, Failure,
-    InclusionProof, SIZE_PAST_HEAD, Method, NOT_IN_LOG, PACKAGE_NOT_FOUND, Package, PackageKind,
-    Publisher, RELEASE_NOT_FOUND, RELEASE_REQUEST_NOT_FOUND, REPOSITORY_REFUSED, Refusal, Release,
-    ReleaseRequest, ReleaseState, ReleaseSummary, Request, SearchAnswer, SearchResult,
-    StartedRelease,
+    InclusionProof, Method, NOT_IN_LOG, PACKAGE_NOT_FOUND, Package, PackageKind, Publisher,
+    RELEASE_NOT_FOUND, RELEASE_REQUEST_NOT_FOUND, REPOSITORY_REFUSED, Refusal, Release,
+    ReleaseRequest, ReleaseState, ReleaseSummary, Request, SIZE_PAST_HEAD, SearchAnswer,
+    SearchResult, StartedRelease,
 };
 
 /// A release to add: its package's details, used when the package is new,
