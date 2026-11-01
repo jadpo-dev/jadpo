@@ -123,7 +123,6 @@ const EXEMPT: &[(&str, &str)] = &[
     ),
     // Layout places later areas fill.
     ("root file flags.jadpo", "not built: flags (area 16)"),
-    ("place monitoring", "not built: monitoring (area 16)"),
 ];
 
 fn root() -> PathBuf {
@@ -1335,6 +1334,7 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
             | Detail::SignInProvider { .. }
             | Detail::LocaleSet { .. }
             | Detail::RateLimit { .. }
+            | Detail::Threshold { .. }
             | Detail::Schedule { .. }
             | Detail::Subscriber { .. } => {}
             Detail::Route { input, output, .. } => {

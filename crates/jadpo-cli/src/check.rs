@@ -324,6 +324,11 @@ fn checked_with(
         let mut surfaces = derived::surfaces(db, loaded.project);
         surfaces.extend(derived::network(db, loaded.project));
         surfaces.extend(derived::providers(db, loaded.project));
+        let monitoring = derived::monitoring(db, loaded.project);
+        if let Some(rules) = &monitoring {
+            derived::remove_stale_monitoring(&loaded.root, rules);
+            surfaces.extend(rules.iter().cloned());
+        }
         let stamp = derived::stamp(db, loaded.project, &loaded.root, errors);
         match derived::write(
             &loaded.root,

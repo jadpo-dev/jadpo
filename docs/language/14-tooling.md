@@ -1581,6 +1581,9 @@ build/
   inventory/                  routes and callables
   audit/                      failures, entities, transactions, configuration, policy
   openapi/openapi.json
+  monitoring/
+    prometheus.yaml           alerting rules for each threshold judged across requests, and each disk floor
+    openslo.yaml              an OpenSLO objective for each percentile and server-failure limit
   compatibility/              public failure codes
   before/<commit>/            the before side's manifest and declines (jadpo approval only)
   review/                     approval.md and approval.json (jadpo approval only)
@@ -1600,8 +1603,12 @@ Each report is written as Markdown, which an agent can search, with a
 [Reads and writes](06-reads-and-writes.md), and is kept beside the schema
 report because a reviewer reads them together.
 
-Not built yet: the reports, OpenAPI and the monitoring rules in
-`build/`, which come with the pages that specify them. Among them are
+`jadpo check` also writes the monitoring rules to `build/monitoring/`
+once the thresholds read cleanly
+([Monitoring thresholds](16-built-in-services.md#monitoring-thresholds)).
+
+Not built yet: the reports in `build/`, which come with the pages that
+specify them. Among them are
 the schema report ([Data](05-data.md)) and the permissions report ([The
 permissions report](09-policy.md#the-permissions-report)).
 
@@ -3131,7 +3138,7 @@ Each row says what is built and what is specified but not built yet.
 | Formatter | Built: one member per line, one blank line between declarations, and `fmt --check` counts the files it read; it keeps `use` lines at the top, sorted, fixes imports inside a project, `--layout` makes promotion moves, and it writes each file's declarations before their use, the primary declaration last. |
 | Error messages | Built: one error per mistake, in the field order [Error messages](#error-messages) gives, `impact` only when it says something, edits on the next step where one exists, and help links to each error's page on the site. |
 | JSON output | Built: every command takes `--json` and prints one envelope (`schemaVersion` 2) with project-relative paths and `data.root`, line and column beside byte offsets, and camelCase keys; `jadpo test --json` is described in [Testing](13-testing.md) and under `testReport` in `jadpo help --json`. |
-| `build/` | Built: `jadpo check` writes `build/manifest.json` and the catalogues in `build/catalogue/`; `jadpo test` keeps its last run in `build/test/`. Not built yet: the reports, OpenAPI and the monitoring rules in `build/`. |
+| `build/` | Built: `jadpo check` writes `build/manifest.json` and the catalogues in `build/catalogue/`; `jadpo test` keeps its last run in `build/test/`. Since chunk B13 the monitoring rules in `build/monitoring/`. Not built yet: the reports in `build/`. |
 | Commands | Built: each command [The `jadpo` command](#the-jadpo-command) and the topics after it describe, apart from those in their "Not built yet" notes. |
 | Language server | Built: diagnostics; hover, with a query's SQL and a route's full path; go to definition, from a `use` line too; find references; completion; formatting as `jadpo fmt`; quick fixes from each error's edit, promotion among them; and the code actions under [Editor support](#editor-support). Not built yet: rename, which waits for `jadpo rename`. |
 | VS Code extension | Built: starts `jadpo lsp`, formats on save, highlights, a status item naming the `jadpo` running, "Open Generated File", and packaging and publishing on each release to the VS Code Marketplace and Open VSX, which publishes through trusted publishing. |

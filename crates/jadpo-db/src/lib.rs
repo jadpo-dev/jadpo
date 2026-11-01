@@ -265,6 +265,14 @@ pub struct BeforeSide {
     pub domains: BTreeSet<String>,
 }
 
+/// Whether a project-relative path is a domain's monitoring file,
+/// `domains/<domain>/monitoring.jadpo`.
+pub fn monitoring_file(path: &str) -> bool {
+    path.strip_prefix("domains/")
+        .and_then(|rest| rest.split_once('/'))
+        .is_some_and(|(domain, file)| !domain.is_empty() && file == "monitoring.jadpo")
+}
+
 impl BeforeSide {
     /// The text of `path` on the before side, CRLF read as LF.
     pub fn text(&self, path: &str) -> Option<&str> {
@@ -275,10 +283,13 @@ impl BeforeSide {
 /// Whether a project-relative path is one the before side holds (chunk
 /// A8): a record, the lock, a file in `acceptances/`, or `app.jadpo`,
 /// whose `connections:` block says whether a project with no network
-/// record reached any outside host.
+/// record reached any outside host and holds the disk stores' floors; and
+/// each domain's `monitoring.jadpo`, whose thresholds a change may loosen
+/// (area 16; chunk B13).
 pub fn compared_on_the_before_side(path: &str) -> bool {
     path == PROJECT_FILE
         || path.starts_with("acceptances/")
+        || monitoring_file(path)
         || record::kind_of(path).is_some_and(|(kind, _)| {
             [
                 record::API.word,
