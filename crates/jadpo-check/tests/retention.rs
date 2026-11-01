@@ -4,9 +4,11 @@
 //! `Duration` setting, `since:` one of the record's `Instant` fields, and
 //! the entity's built-in purge schedule applies it. What retention can't
 //! do is refused where it is written: a required field, a field the
-//! lifecycle owns or reads, a record a `restricted` reference holds, a
-//! `File`'s bytes and a cascade to someone who signs in. An event's
-//! `retention:` stays `toolchain.not_built_yet`.
+//! lifecycle owns or reads, and a record a `restricted` reference holds.
+//! A `File`'s bytes go with it (chunk P4, through area 16's count of a
+//! file's holders), and someone who signs in, reached through a cascade
+//! too, goes with their sign-in state. An event's `retention:` stays
+//! `toolchain.not_built_yet`.
 
 use jadpo_db::{Database, Layout};
 use jadpo_graph::{Detail, Key, Kind, Status};
@@ -273,7 +275,7 @@ fn an_entitys_retention_deletes_nothing_a_restricted_reference_holds() {
 }
 
 #[test]
-fn retention_that_would_leave_a_files_bytes_is_not_built_yet() {
+fn retention_reaches_a_files_bytes() {
     let app = "application {\n    connections: {\n        uploads: {\n            driver: Driver.disk\n            path: \"/var/lib/claims\"\n        }\n    }\n}\n";
     let claim = "entity Claim {
     id: Uuid
@@ -291,14 +293,13 @@ fn retention_that_would_leave_a_files_bytes_is_not_built_yet() {
     }
 }
 ";
+    // Clearing the field lets go of its file, whose bytes then go.
     let found = support::problems(
         Layout::Loose,
         &[("app.jadpo", app), ("main.jadpo", &with_settings(claim))],
     );
-    assert!(
-        found.len() == 1 && found[0].contains("main.jadpo toolchain.not_built_yet:"),
-        "{found:?}"
-    );
+    assert!(found.is_empty(), "{found:?}");
+    // So does deleting the record, and one that cascades from it.
     let whole = claim
         .replace(
             "        retention: {\n            after: config.signup_ip_retention\n            since: created_at\n        }\n",
@@ -312,8 +313,18 @@ fn retention_that_would_leave_a_files_bytes_is_not_built_yet() {
         Layout::Loose,
         &[("app.jadpo", app), ("main.jadpo", &with_settings(&whole))],
     );
+    assert!(found.is_empty(), "{found:?}");
+    // A `File` that can't be `none` still can't be cleared.
+    let required = claim.replace("scan: File? {", "scan: File {");
+    let found = support::problems(
+        Layout::Loose,
+        &[
+            ("app.jadpo", app),
+            ("main.jadpo", &with_settings(&required)),
+        ],
+    );
     assert!(
-        found.len() == 1 && found[0].contains("main.jadpo toolchain.not_built_yet:"),
+        found.len() == 1 && found[0].contains("main.jadpo data.retention_field_required:"),
         "{found:?}"
     );
 }
@@ -351,7 +362,7 @@ entity Member {
 ";
 
 #[test]
-fn a_person_who_signs_in_is_deleted_with_their_sign_in_state_but_not_through_a_cascade() {
+fn a_person_who_signs_in_is_deleted_with_their_sign_in_state_through_a_cascade_too() {
     // Members who sign in go when their time is up, their sessions,
     // passkeys and sign-in links with them.
     let own = CLUB.replace(
@@ -359,17 +370,13 @@ fn a_person_who_signs_in_is_deleted_with_their_sign_in_state_but_not_through_a_c
         "    joined_at: Instant\n\n    retention: {\n        after: config.invoice_retention\n        since: joined_at\n    }\n",
     );
     assert_eq!(rules(&own), CLEAN);
-    // Deleting a club would delete its members through the cascade, and
-    // their sign-in state with nothing.
+    // Deleting a club deletes its members through the cascade, with
+    // their sign-in state.
     let club = CLUB.replace(
         "    opened_at: Instant\n",
         "    opened_at: Instant\n\n    retention: {\n        after: config.invoice_retention\n        since: opened_at\n    }\n",
     );
-    let found = problems(&club);
-    assert!(
-        found.len() == 1 && found[0].starts_with("main.jadpo toolchain.not_built_yet:"),
-        "{found:?}"
-    );
+    assert_eq!(rules(&club), CLEAN);
 }
 
 #[test]
