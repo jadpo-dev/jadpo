@@ -2810,7 +2810,8 @@ alike.
 <!-- topic: command-errors -->
 
 These are the errors only a command raises, so `jadpo check` can't show
-them with a source example. Some rows belong to commands that the design
+them with a source example; the command line's own are under
+[Command-line errors](#command-line-errors). Some rows belong to commands that the design
 notes replace (`schema`, `artifacts`, `watch`); each row is rewritten as
 its command is built.
 
@@ -2822,57 +2823,6 @@ its command is built.
 | `acceptance.missing` | `check`, `build` | A change could break someone else or widen who can do what, and no acceptance this change adds says a person agreed to it |
 | `acceptance.no_reason` | `check`, `build` | An acceptance this change adds has no `///` line above `acceptance` saying why a person accepted the changes it lists |
 | `acceptance.unmatched` | `check`, `build` | Acceptance lists a change this change doesn't make |
-| `cli.acceptance_arguments` | `acceptance` | Acceptance command has invalid arguments |
-| `cli.ai_arguments` | `ai` | AI command has invalid arguments |
-| `cli.api_arguments` | `api` | Api command has invalid arguments |
-| `cli.build_arguments` | `build` | Build command has invalid arguments |
-| `cli.check_arguments` | `check` | Check command has invalid arguments |
-| `cli.config_arguments` | `config` | A `jadpo config` command names no action, an action it doesn't have, or a setting `config.jadpo` doesn't declare |
-| `cli.config_prompt_failed` | `config` | Nothing was typed at the prompt of `jadpo config set`, or the terminal couldn't hide what you type there |
-| `cli.config_tty_required` | `config` | You ran `jadpo config set` where there is no terminal to type the value at, such as from a coding agent or a script |
-| `cli.deliveries_arguments` | `deliveries` | Deliveries command has invalid arguments |
-| `cli.dev_arguments` | `dev` | Dev command has invalid arguments |
-| `cli.dev_port_invalid` | `dev` | Development port is invalid |
-| `cli.dev_start_failed` | `dev` | The app couldn't start under `jadpo dev`, usually because another program is using its port, it has no database to run on, or a connection would call a provider's live API |
-| `cli.email_arguments` | `email` | Email command has invalid arguments |
-| `cli.fmt_arguments` | `fmt` | Format command has invalid arguments |
-| `cli.incident_arguments` | `incident` | Incident command has invalid arguments |
-| `cli.incident_invalid` | `incident` | Runtime event is not a valid enrichment input |
-| `cli.incident_manifest_invalid` | `incident` | Local build manifest is not valid JSON |
-| `cli.incident_manifest_missing` | `incident` | Local build manifest is missing |
-| `cli.incident_manifest_stale` | `incident` | Local build manifest does not match current sources |
-| `cli.incident_operation_unknown` | `incident` | Runtime operation is absent from the local manifest |
-| `cli.incident_read_failed` | `incident` | Runtime event file could not be read |
-| `cli.incident_revision_mismatch` | `incident` | Runtime event and local source revisions differ |
-| `cli.lsp_arguments` | `lsp` | Language-server command has invalid arguments |
-| `cli.new_arguments` | `new` | New command has invalid arguments |
-| `cli.package_arguments` | `package` | Package command has invalid arguments |
-| `cli.package_not_openapi` | `package import` | Description to import is not an OpenAPI 3 document |
-| `cli.package_unreadable` | `package import` | Description to import could not be read as JSON |
-| `cli.presentation_arguments` | any command | Terminal presentation option is invalid |
-| `cli.project_required` | any command | Command requires a project path |
-| `cli.routes_arguments` | `routes` | Routes command has invalid arguments |
-| `cli.runs_arguments` | `runs` | Runs command has invalid arguments |
-| `cli.schedules_arguments` | `schedules` | Schedules command has invalid arguments |
-| `cli.schema_command_required` | `schema` | Schema command requires a subcommand |
-| `cli.schema_decision_arguments` | `schema` | Schema decision command has invalid arguments |
-| `cli.schema_diff_arguments` | `schema` | Schema diff command has invalid arguments |
-| `cli.schema_index_accept_arguments` | `schema` | Index acceptance requires a recommendation path |
-| `cli.schema_plan_arguments` | `schema` | Schema plan command has invalid arguments |
-| `cli.schema_rename_arguments` | `schema` | Schema rename command has invalid arguments |
-| `cli.schema_snapshot_arguments` | `schema` | Schema snapshot command requires an output path |
-| `cli.schema_sql_arguments` | `schema` | Schema SQL command has invalid arguments |
-| `cli.seed_arguments` | `seed` | Seed command has invalid arguments |
-| `cli.signal_handler_failed` | any command | Shutdown handler could not be installed |
-| `cli.suggest_arguments` | `suggest` | Suggest command has invalid arguments |
-| `cli.test_arguments` | `test` | Test command has invalid arguments |
-| `cli.toolchain_arguments` | `toolchain` | Toolchain command has invalid arguments |
-| `cli.unknown_command` | any command | Unknown Jadpo command |
-| `cli.unknown_schema_command` | `schema` | Unknown schema subcommand |
-| `cli.watch_arguments` | `watch` | Watch command has invalid arguments |
-| `cli.watch_input_read_failed` | `watch` | Watched project inputs could not be read |
-| `cli.watch_output_failed` | `watch` | Watch lifecycle event could not be written |
-| `cli.why_arguments` | `why` | Why command has invalid arguments |
 | `conform.failed` | `package conform` | Package's answers don't conform to its capability |
 | `conform.refused` | `package conform` | The conformance suite wasn't sent to the provider's live API, because the app has no connection to the package, nothing sets the connection's credential or address, or `ai:` doesn't ask its models through it |
 | `recording.failed` | `package record`, `ai record` | Sandbox or model gave no answer to record |
@@ -3006,6 +2956,80 @@ delivery value cannot be authored or exposed). They belong to the
 delivery descriptor that the [Jobs and events design
 notes](notes/12-jobs-and-events.md) leave open, and go with it if it is
 accepted.
+
+## Command-line errors
+<!-- topic: command-line-errors -->
+
+These are the errors about the command line itself: a command, an action
+or a flag Jadpo doesn't have, or an argument or a value a command can't
+use. Each names what the command takes, and its page shows a run. The
+rows for `incident`, `schema` and `watch` belong to commands not built
+yet, or that the design notes replace.
+
+| Rule | Raised by | What it means |
+|---|---|---|
+| `cli.acceptance_arguments` | `acceptance` | A `jadpo acceptance` command names no action, one it doesn't have, or no purpose for `new` |
+| `cli.ai_arguments` | `ai` | A `jadpo ai` command names no action, one it doesn't have, or a prompt the project doesn't declare |
+| `cli.api_arguments` | `api` | A `jadpo api` command names no action, one it doesn't have, or more than `update` |
+| `cli.build_arguments` | `build` | A `jadpo build` command names a deployable the app doesn't have, or more than one |
+| `cli.calls_arguments` | `calls` | A `jadpo calls` command names an action it doesn't have, a call the log doesn't hold, or an answer without its operation |
+| `cli.check_arguments` | `check` | A `jadpo check` command names a path that isn't there or isn't a `.jadpo` file, or a `--before` git doesn't know |
+| `cli.completions_arguments` | `completions` | A `jadpo completions` command names no shell, or one Jadpo writes no completions for |
+| `cli.config_arguments` | `config` | A `jadpo config` command names no action, an action it doesn't have, or a setting `config.jadpo` doesn't declare |
+| `cli.config_prompt_failed` | `config` | Nothing was typed at the prompt of `jadpo config set`, or the terminal couldn't hide what you type there |
+| `cli.config_tty_required` | `config` | You ran `jadpo config set` where there is no terminal to type the value at, such as from a coding agent or a script |
+| `cli.declines_arguments` | `declines` | A `jadpo declines` command names no action, one it doesn't have, or a rule or path that isn't the project's |
+| `cli.deliveries_arguments` | `deliveries` | A `jadpo deliveries` command names an action it doesn't have, no id for one that needs it, or a state or page it doesn't list |
+| `cli.dev_arguments` | `dev` | A `jadpo dev` command names an action it doesn't have, `token` without a user's id, or a `--url` the project's several stores can't share |
+| `cli.dev_port_invalid` | `dev` | Development port is invalid |
+| `cli.dev_start_failed` | `dev` | The app couldn't start under `jadpo dev`, usually because another program is using its port, it has no database to run on, or a connection would call a provider's live API |
+| `cli.email_arguments` | `email` | A `jadpo email` command names an action it doesn't have, or a mail or link the dev inbox doesn't hold |
+| `cli.fix_arguments` | `fix` | A `jadpo fix` command names a declaration with nothing to fix, or a fix it doesn't have |
+| `cli.fmt_arguments` | `fmt` | A `jadpo fmt` command names a path that isn't there or isn't a `.jadpo` file |
+| `cli.help_arguments` | `help` | A `jadpo help` command names more than one command or rule |
+| `cli.incident_arguments` | `incident` | Incident command has invalid arguments |
+| `cli.incident_invalid` | `incident` | Runtime event is not a valid enrichment input |
+| `cli.incident_manifest_invalid` | `incident` | Local build manifest is not valid JSON |
+| `cli.incident_manifest_missing` | `incident` | Local build manifest is missing |
+| `cli.incident_manifest_stale` | `incident` | Local build manifest does not match current sources |
+| `cli.incident_operation_unknown` | `incident` | Runtime operation is absent from the local manifest |
+| `cli.incident_read_failed` | `incident` | Runtime event file could not be read |
+| `cli.incident_revision_mismatch` | `incident` | Runtime event and local source revisions differ |
+| `cli.lsp_arguments` | `lsp` | A `jadpo lsp` command is given an argument, which it doesn't take |
+| `cli.migrate_arguments` | `migrate` | A `jadpo migrate` command names no action, one it doesn't have, or a purpose for an action that takes none |
+| `cli.new_arguments` | `new` | A `jadpo new` command names no project, or more than one |
+| `cli.package_arguments` | `package` | A `jadpo package` command names no action, one it doesn't have, or a package the project doesn't hold |
+| `cli.package_not_openapi` | `package import` | Description to import is not an OpenAPI 3 document |
+| `cli.package_unreadable` | `package import` | Description to import could not be read as JSON |
+| `cli.presentation_arguments` | any command | A `--color` flag holds something other than `auto`, `always` or `never`, or nothing |
+| `cli.project_required` | any command | Command requires a project path |
+| `cli.records_arguments` | `records` | A `jadpo records` command names an action other than `update` |
+| `cli.routes_arguments` | `routes` | A `jadpo routes` command is given an argument, which it doesn't take |
+| `cli.runs_arguments` | `runs` | A `jadpo runs` command names an action other than `unfinished`, or leaves out its `--build` |
+| `cli.schedules_arguments` | `schedules` | A `jadpo schedules` command names an action it doesn't have, or a schedule the project doesn't declare |
+| `cli.schema_command_required` | `schema` | Schema command requires a subcommand |
+| `cli.schema_decision_arguments` | `schema` | Schema decision command has invalid arguments |
+| `cli.schema_diff_arguments` | `schema` | Schema diff command has invalid arguments |
+| `cli.schema_index_accept_arguments` | `schema` | Index acceptance requires a recommendation path |
+| `cli.schema_plan_arguments` | `schema` | Schema plan command has invalid arguments |
+| `cli.schema_rename_arguments` | `schema` | Schema rename command has invalid arguments |
+| `cli.schema_snapshot_arguments` | `schema` | Schema snapshot command requires an output path |
+| `cli.schema_sql_arguments` | `schema` | Schema SQL command has invalid arguments |
+| `cli.seed_arguments` | `seed` | A `jadpo seed` command names no seed, one the project doesn't have, or more than one |
+| `cli.signal_handler_failed` | any command | Shutdown handler could not be installed |
+| `cli.sql_arguments` | `sql` | A `jadpo sql` command names no query or action, one the project doesn't declare, or an action that writes nothing |
+| `cli.suggest_arguments` | `suggest` | A `jadpo suggest` command names an action it doesn't have, or a suggestion the last scan didn't find |
+| `cli.test_arguments` | `test` | A `jadpo test` command names a path that isn't there, or a seed, a kind or a `--name` it can't use |
+| `cli.toolchain_arguments` | `toolchain` | A `jadpo toolchain` command names an action it doesn't have, or a release that isn't kept |
+| `cli.translations_arguments` | `translations` | A `jadpo translations` command names no action, one it doesn't have, or a locale the project doesn't translate into |
+| `cli.unknown_command` | any command | A `jadpo` command line starts with a command Jadpo doesn't have, or asks `jadpo help` about a command or rule it doesn't have |
+| `cli.unknown_flag` | any command | A `jadpo` command line has a flag the command doesn't take |
+| `cli.unknown_schema_command` | `schema` | Unknown schema subcommand |
+| `cli.version_arguments` | `version` | A `jadpo version` command is given an argument, which it doesn't take |
+| `cli.watch_arguments` | `watch` | Watch command has invalid arguments |
+| `cli.watch_input_read_failed` | `watch` | Watched project inputs could not be read |
+| `cli.watch_output_failed` | `watch` | Watch lifecycle event could not be written |
+| `cli.why_arguments` | `why` | A `jadpo why` command names no schedule, one the project doesn't declare, or more than one |
 
 ## Database command errors
 <!-- topic: database-command-errors -->
