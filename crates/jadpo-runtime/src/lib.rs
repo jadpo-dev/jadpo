@@ -118,6 +118,7 @@ mod failure;
 pub mod fakes;
 mod fault;
 pub mod files;
+pub mod flags;
 mod host;
 pub mod http;
 pub mod lease;

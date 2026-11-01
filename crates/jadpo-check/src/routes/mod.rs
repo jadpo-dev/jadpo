@@ -147,6 +147,9 @@ pub enum ArgRoot {
     /// `result`, what the action returned: only in `settle:`'s `answer:`
     /// (area 7, "Waiting for follow-on work").
     Result,
+    /// `flags.<name>`, a feature flag's value worked out for the caller
+    /// (area 16), by the flag's name.
+    Flag(String),
 }
 
 /// One argument: a placeholder or the input, or a field read through them.
@@ -2696,6 +2699,8 @@ impl Reader<'_> {
             (ArgRoot::Param(root.clone()), (*ty).clone())
         } else if root == "current_principal" {
             return self.caller_argument(expr, &first, &rest, used);
+        } else if root == crate::flags::FLAGS {
+            return self.flag_argument(expr, &rest);
         } else if let Some(named) = crate::not_value::classify(self.lookup, self.lookup, &root) {
             // A declaration's name is no value (area 3).
             self.out.push(crate::not_value::diagnostic(
@@ -2756,6 +2761,43 @@ impl Reader<'_> {
             },
             ty,
         ))
+    }
+
+    /// `flags.<name>`: the flag's value, worked out for the caller (area
+    /// 16, "Feature flags").
+    fn flag_argument(&mut self, expr: &Expr, rest: &[ast::NameRef]) -> Option<(Arg, Ty)> {
+        let [name] = rest else {
+            self.out
+                .push(self.argument_invalid(expr, "a field of a flag"));
+            return None;
+        };
+        let name = tree::name_ref_text(name)?;
+        let found = crate::flags::flag_type(
+            self.db,
+            self.project,
+            crate::lookups::Name::new(self.db, name.clone()),
+        );
+        match found {
+            None => {
+                let span = self.span(expr);
+                self.out.push(crate::flags::unknown(
+                    self.db,
+                    self.project,
+                    &name,
+                    span,
+                    false,
+                ));
+                None
+            }
+            Some(Ty::Error) => None,
+            Some(ty) => Some((
+                Arg {
+                    root: ArgRoot::Flag(name),
+                    path: Vec::new(),
+                },
+                ty.clone(),
+            )),
+        }
     }
 
     /// The fields `rest` read through a value of type `ty`, and the type

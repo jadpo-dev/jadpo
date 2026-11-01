@@ -836,6 +836,7 @@ impl Place<'_> {
     fn members_of_generated(&self, namespace: &str) -> Vec<Item> {
         match namespace {
             crate::config::CONFIG => self.settings(None),
+            crate::flags::FLAGS => self.flags(),
             crate::translations::TRANSLATIONS => self.translation_scopes(),
             _ => self
                 .std
@@ -1146,6 +1147,24 @@ impl Place<'_> {
                 let mut item = Item::new(&setting.name, What::Setting).detail(detail);
                 item.docs = Some(format!("Read from `{}`.", setting.variable));
                 item.fits = self.fits(&setting.ty, expected);
+                item
+            })
+            .collect()
+    }
+
+    /// `flags.`: each flag `flags { }` declares (area 16).
+    fn flags(&self) -> Vec<Item> {
+        crate::flags::flags(self.db, self.project)
+            .flags
+            .iter()
+            .map(|flag| {
+                let mut item = Item::new(&flag.name, What::Setting).detail(flag.ty.to_string());
+                item.docs = Some(format!(
+                    "{} by default; owned by \"{}\", expires {}.",
+                    flag.written(flag.default),
+                    flag.owner,
+                    flag.expires
+                ));
                 item
             })
             .collect()

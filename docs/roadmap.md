@@ -691,21 +691,10 @@ After the registry is live, in order:
      with the design skills first. Done when tests read fixture files and
      see each failure on both executors, and `jadpo files copy` moves a
      disk store's files to S3.
-   - [ ] **B9 Flags declared, read and tested** `opus · xhigh`: area 16,
-     "Feature flags" (the declaration, "Changing a flag" for where values
-     live, "Who gets which value" and "What the compiler checks"); area
-     1, `flags.jadpo` and "Rules triggered by time passing"; area 5,
-     `flags: { store: }`; area 13, `flags:` in a test's settings.
-     `flags { }` of `Bool` and enum flags with their default, owner and
-     `expires:`; `flags.name` in actions and a route's `run:` arguments,
-     fixed for the operation and worked out for the caller (named users,
-     then a stable percentage, then everyone), each server holding the
-     values in memory, refreshed within ten seconds and keeping the last
-     on a failed read; `flags:` in a test; an unknown flag, and an expired
-     one (today's date in `check`, the commit's in `build`, not
-     declinable), refused. Named tenants wait for tenancy to be settled
-     for flags. Done when tests read every value of a flag on both
-     executors, with per-user and percentage values from its table.
+   - [x] **B9 Flags declared, read and tested**: area 16, "Feature flags"
+     and "Flags: declared, read and tested"; area 1, "Rules triggered by
+     time passing"; area 13, "Test settings"; compiler/runtime §2.6,
+     "Feature flags".
    - [ ] **B10 Changing and removing flags** `opus · high` after B9: area
      16, "Changing a flag", "What the compiler checks" (both values
      tested), "Removing a flag" and "Flags in browsers and apps"; area

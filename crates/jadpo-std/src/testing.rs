@@ -52,6 +52,10 @@ pub struct TestSetup {
     /// Where its `clock:` starts its clock, in milliseconds since
     /// 1970-01-01T00:00:00Z.
     pub clock: Option<i64>,
+    /// The value its `flags:` gives each flag it names, by the flag's
+    /// number in the plan's flags and the value's place among the flag's
+    /// values (area 16, "What the compiler checks"; chunk B9).
+    pub flags: Vec<(u32, u32)>,
 }
 
 impl TestingPlan {

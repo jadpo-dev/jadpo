@@ -800,6 +800,9 @@ pub enum ArgRoot {
     /// The signed-in caller, `current_principal` (area 8); a variant the
     /// route selects is the route's [`RoutePlan::caller`].
     Caller,
+    /// `flags.<name>`, by the flag's number in the plan's flags: its value
+    /// worked out for the caller (area 16, "Feature flags"; chunk B9).
+    Flag(u32),
 }
 
 /// Whether a route needs a signed-in caller (area 8, "Routes: signed in

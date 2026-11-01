@@ -312,6 +312,7 @@ impl<'a> Canon<'a> {
                 }
             }
             Expr::Config { field } => C::Name(vec!["config".into(), last(field)]),
+            Expr::Flag { flag } => C::Name(vec!["flags".into(), last(flag)]),
             Expr::Stored { field } => C::Name(vec![field.written().to_string()]),
             Expr::Inline { params, body } => {
                 let mut parts: Vec<C> = params

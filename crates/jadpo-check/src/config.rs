@@ -1486,6 +1486,9 @@ pub struct TestSettings {
     /// Where its `clock:` starts the test's clock, in milliseconds since
     /// 1970-01-01T00:00:00Z (area 13, "Test settings").
     pub clock: Option<i64>,
+    /// The value its `flags:` gives each flag it names, as the place of
+    /// the value among the flag's values (area 16; chunk B9).
+    pub flags: Vec<(String, u32)>,
     pub problems: Vec<Diagnostic>,
 }
 
@@ -1559,6 +1562,17 @@ pub fn test_settings<'db>(
             }
             continue;
         }
+        if word == crate::flags::FLAGS {
+            crate::flags::test_flags(
+                db,
+                project,
+                &path,
+                member.block(),
+                &mut out.flags,
+                &mut reader.out.problems,
+            );
+            continue;
+        }
         if word != "config" {
             continue;
         }
@@ -1623,7 +1637,7 @@ pub fn test_settings<'db>(
 
 /// The settings a test writes at the top of its body (area 13, "Test
 /// settings").
-const TEST_SETTINGS: [&str; 3] = ["clock", "config", "fakes"];
+const TEST_SETTINGS: [&str; 4] = ["clock", "config", "fakes", "flags"];
 
 /// A test's `clock:`: an instant written out, `"2026-01-15T12:00:00Z"`.
 fn test_clock(path: &str, value: &ast::Expr) -> Result<i64, Box<Diagnostic>> {

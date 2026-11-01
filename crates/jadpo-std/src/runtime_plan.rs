@@ -19,6 +19,7 @@ use crate::canonical;
 use crate::compiled::{ActionPlan, SitesPlan};
 use crate::config::ConfigPlan;
 use crate::connections::Connection;
+use crate::flags::FlagsPlan;
 use crate::http::{JsonTable, RouteTable};
 use crate::prompt::PromptPlan;
 use crate::provider::ProviderPlan;
@@ -59,6 +60,9 @@ pub struct RuntimePlan {
     /// order (areas 5 and 15): an entity's retention, then its purge,
     /// then its fields' retentions, as its purge schedule runs them.
     pub purges: Vec<PurgePlan>,
+    /// Every feature flag and the store their state is kept in (area 16,
+    /// "Feature flags"; chunk B9).
+    pub flags: FlagsPlan,
     /// Every connection, in name order, with its driver, the settings
     /// that driver is built from and the targets it runs on (area 11;
     /// chunk 8.1d): what a host builds each connection's driver from.

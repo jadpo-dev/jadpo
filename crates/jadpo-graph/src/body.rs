@@ -393,6 +393,11 @@ pub enum Expr {
     Config {
         field: Key,
     },
+    /// `flags.<name>`: a feature flag's value, worked out for the caller
+    /// once per operation (area 16, "Feature flags").
+    Flag {
+        flag: Key,
+    },
     /// A constant's value (area 3, Constants): `free_delivery_from` beside
     /// its declaration, `pricing.vat_rate` from a library. Its value was
     /// worked out and checked while compiling; an executor runs the
