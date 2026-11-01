@@ -701,6 +701,35 @@ the body's `Write` with `erase` set, a `delete` by `id` of the person's
 record, so policy needs `delete` on it and the isolation decision reads
 it as loading a record (`Loads::Erases`), at repeatable read.
 
+**The audit trail** (area 16, "Audit trail"; chunk B11). An entity's
+`audit:` is read by `jadpo_check::data::audit::read`, once its fields
+are, onto `EntityModel::audit` (an `AuditModel`, its retention's
+`Duration` setting read by `data::retention::period` as area 15's are),
+with where it and its retention are written in `EntitySpans`; the
+retention's key places the entity's purge schedule when nothing else
+does (`schedules::purge_place`). `data::schema` gives the store of each
+audited entity `jadpo_std::system::AUDIT`, and the graph an `audit` node,
+keyed by the entity's born name, under it, its digest over how long
+entries are kept (`graph::retention_nodes`). `audit::audit_problems`
+refuses, at `audit:`, what the history can't keep or remove soundly yet
+(a marked field or one of a standard type that is personal data,
+`ai_personal::standard_personal`; a `File`; a field with its own
+retention; a person's record its own retention, its lifecycle's purge or
+another entity's cascade removes), and `WriteRules` carries `audited`,
+`person_owned` and `reaches_audited`, by which the body refuses a hard
+`delete` whose cascade or clearing changes an audited record, or that
+removes a person's audited record (`Body::audited_delete`);
+`erasure::erasures` lists an audited record erasure keeps among what it
+can't do. `Entity.history(id)` and `history(id, after:)` are typed by
+`Body::entity_history`, for an audited entity, as `Page<AuditEntry>`,
+infallible, read as `get` reads (`Fact::Gets`, a `reads` edge); the
+fields of `AuditEntry`, `AuditFieldChange` and `AuditEntryRecorded` are
+`jadpo_std::audit::object_fields`, read where the batch types' are. A
+subscriber may hear `AuditEntryRecorded`, keyed
+`jadpo.AuditEntryRecorded`, once some entity is audited
+(`events::Reader::event`); the permissions report adds an audited
+entity's line and its JSON's `audit`.
+
 A query is a node (area 6): `jadpo_check::data::queries`
 reads each declaration once into a `QueryModel` (its entity, parameters,
 how many records it returns, the record's fields from the entity's fields
@@ -2311,7 +2340,43 @@ a `WritePlan` of `WriteOp::Delete` by `id`, with no refusals, so both
 executors run it through the runtime's one write path unchanged.
 `crates/jadpo-cli/tests/erasure.rs` runs a library's erasure through
 `jadpo test` and reads the rows it leaves; its tests run compiled with
-the interpreter's records in the gate's compiled step.
+the interpreter's records in the gate's compiled step. An audited entity
+among those it deletes adds a part deleting the `jadpo_audit` rows of
+the records found of it, by its born name (`text::erase`'s `audited`).
+
+**The audit trail.** `jadpo-plan`'s `Planner::audit` gives each write of
+an audited entity a `jadpo_std::audit::AuditPlan`: the fields an entry
+records (every field but `id` and the server-only ones, each with its
+JSON codec when it is JSON-held), and, for an update or a delete, a
+`SELECT` of every column by the `id` its `RowCheck` names, `FOR NO KEY
+UPDATE`, or `FOR UPDATE` before a delete (`text::audit_before`), decoded
+as the write's own returned row; a lifecycle's `delete` transition, which
+returns no row, reads the record again after it. `jadpo_runtime::write`
+runs that read after the transaction opens and before the write, so the
+row it locks is the one the write changes at either isolation level, and
+once the write has changed the row `audit::record` adds the entry with
+`INSERT_AUDIT`, its `seq` one past its record's last, in the same
+transaction: each field's value before and after as canonical text
+(`jadpo_value::standard::from`, a variant's name, or the field's JSON),
+only those that differ; who from the caller's parts; the outermost
+action from the frames; the request's id and the trace's. With
+subscribers, which the plan lists from `jadpo_check::events::subscribers`,
+it emits `AuditEntryRecorded` into the action's outbox, its payload the
+runtime's JSON, read back by `audit::read_payload`. `Planner::history`
+plans each audited entity's `HistoryPlan`: one `SELECT TRUE` of the
+record by `id` under its lifecycle and `read` grant, with a `Bool` per
+field whose own `policy:` narrows reading (`text::history_access`); the
+sites decode `Decoded::History`, which the interpreter's
+`Target::History` and the compiled `rt::history` run through
+`StoreOp::History`. `audit::history` asks that unless the call has no
+caller, gives an empty page with no row, then reads 26 entries newest
+first with `HISTORY_ENTRIES`, after the cursor's `seq`, the page's tag
+the entity's born name's, leaving out the fields the caller may not
+read. The retention is a `PurgeKind::Audit` plan of the entity's, after
+its others (`text::audit_purge`, by born name and `at`).
+`crates/jadpo-cli/tests/audit.rs` runs the trail through `jadpo test` and
+reads its rows, its erasure and its retention's batches; its tests run
+compiled with the interpreter's records in the gate's compiled step.
 
 **Lifecycles and purge.** `jadpo-plan`'s `Planner::access` adds an entity's
 `visible:` to every query, `get`, child include, update, delete and
@@ -3355,6 +3420,24 @@ user and kept for the rest of the operation. `Started` holds the state
 when it fails. `flag.expired` is judged at `Project::judged_on`, which
 `jadpo check` sets to today and `jadpo build` to the commit's date, or
 `SOURCE_DATE_EPOCH`'s; nothing else sets it, so no run judges a date.
+`flags::untested` walks each test's reach, as `config::test_values`
+does, through the callables it calls and the routes its `request`s go
+through (their `run:` arguments, found by `routes::flag_arguments`, and
+the action each runs, by the graph's `Runs` edge), and reports each read
+outside tests whose reaching tests leave a value out. `jadpo flags`
+(`jadpo-cli/src/flags.rs`) reads and writes `jadpo_flags` through
+`jadpo_runtime::flags::{stored, change}`: values by name, each change
+one statement that writes the row (an `INSERT … ON CONFLICT DO NOTHING`,
+or an `UPDATE` or `DELETE` held to the `set_at` it read) and its
+`jadpo_flag_changes` row, `session_user` read by the statement.
+`jadpo_check::flag_remove` rewrites the source as `setting_move` does,
+one read at a time with the file parsed again after each, the tests it
+deletes chosen from `flags::tests_reaching` and the branches their other
+flags take; then imports, formatting and `check`, undone on any error.
+`GET <prefix>/flags` is `Generating::Flags` beside the API's OpenAPI
+document (record, graph node, OpenAPI operation and `routes` listing from
+`served::flags_served`), planned as `Run::Flags` of the `client: true`
+flags' numbers and answered by the HTTP component through `Ctx::flag`.
 
 **The capability seam** (area 16). Every call that leaves the
 process goes through one exchange, `jadpo_runtime::outside::exchange`
@@ -5414,7 +5497,7 @@ workerd") share the step's test file but are a step of the `wasm32`
 group, skipped by this one, since the `wasm32` job builds the runtime
 crates for wasm32 already.
 
-**CI.** GitHub Actions on Linux runs the gate's five groups as parallel
+**CI.** GitHub Actions on Linux runs the gate's six groups as parallel
 jobs, each with the pinned toolchain and its own cargo cache: `lint`
 (formatting, clippy, the name ban, the editor grammar), `docs` (the pages
 and the teaching examples), `tests` (every test, with the live PostgreSQL
@@ -5423,7 +5506,13 @@ steps running at once on one PostgreSQL container named by
 `wasm32` (the runtime crates for wasm32, their checks under Node, the
 Workers host, a Workers deployable and the route tests under workerd,
 which its tests install into `tools/fixtures/workers/` with `npm ci` the runner's
-Node provides); `docs`, `tests`, `compiled` and `wasm32` each build and
+Node provides) and `release` (the next release rehearsed:
+`tools/release/rehearsal.py` copies the checkout, moves it to the next
+minor version as release-please would, brings the lock files into step
+as `release-please.yml` does, then builds `jadpo` with `--locked` and runs
+the docs check and the teaching examples without PostgreSQL, reusing the
+build folder's dependencies; [documentation](documentation.md),
+"Versions and releases"); `docs`, `tests`, `compiled` and `wasm32` each build and
 start their own container from `tools/fixtures/postgres/Dockerfile`, PostgreSQL 16
 with pgvector and PostGIS at pinned versions (area 21,
 "Without pgvector"), while the toolchain installs. A local run's
@@ -5433,7 +5522,7 @@ need pgvector for the vector tests and PostGIS for the geography tests
 `target/`, so the `compiled` job's cache keeps the registry crates built
 in its target folder as well as the workspace's: the cache action keeps
 every registry crate's build in each target folder it finds there. The
-`supported-language` job needs all five and passes only when each did; it
+`supported-language` job needs all six and passes only when each did; it
 is the check branch protection requires. Beside the gate, the
 `commit-type` workflow checks a pull request's Conventional Commit title
 against what it changes, rerunning alone when the title is edited, and

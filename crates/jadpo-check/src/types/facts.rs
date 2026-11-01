@@ -122,7 +122,11 @@ pub fn fact_of(node: &Node) -> Option<Fact> {
     };
     Some(match expr {
         Expr::Call { callee, .. } => match callee {
-            Callee::Entity { entity, operation } if operation == "get" => {
+            // An audited entity's `history` reads it as `get` does (area 16;
+            // chunk B11).
+            Callee::Entity { entity, operation }
+                if operation == "get" || operation == jadpo_std::audit::HISTORY =>
+            {
                 Fact::Gets(entity.name().to_string())
             }
             Callee::Query(query) => Fact::Queries(query.name().to_string()),

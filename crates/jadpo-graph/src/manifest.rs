@@ -298,6 +298,9 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             out.set("retention", retention.as_str());
             out.set_some("clears", *clears);
         }
+        Detail::Audit { kept } => {
+            out.set("kept", kept.as_str());
+        }
         Detail::Route {
             api,
             status,

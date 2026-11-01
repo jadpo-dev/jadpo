@@ -231,7 +231,14 @@ pub enum Run {
     /// route's request, which it reads as the route itself would, by the
     /// route's number.
     Confirmation(u32),
+    /// `GET <prefix>/flags` (area 16, "Flags in browsers and apps"; chunk
+    /// B10): each `client: true` flag, by its number in the flags plan,
+    /// worked out for the caller.
+    Flags(Vec<u32>),
 }
+
+/// The last segment of each API's generated `GET <prefix>/flags`.
+pub const FLAGS_PATH: &str = "flags";
 
 /// The routes `sign_in: { passkey: }` generates (area 8, "Passkeys"),
 /// each under its `path:`.

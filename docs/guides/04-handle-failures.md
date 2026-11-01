@@ -13,9 +13,7 @@ a `LoanView` output type, and a fixture that stores a book for tests;
 [Write tests](08-write-tests.md) show how to write those.
 
 ```jadpo check project=guide-failures file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```jadpo check project=guide-failures file=domains/books/entities/book.jadpo hidden

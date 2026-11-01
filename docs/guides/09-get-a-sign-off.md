@@ -14,9 +14,7 @@ committed to git, with its `BookView` sending each book's `author`. You
 work on a branch, as for any change you would open a pull request for.
 
 ```jadpo check project=guide-sign-off file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```jadpo check project=guide-sign-off file=domains/books/entities/book.jadpo hidden

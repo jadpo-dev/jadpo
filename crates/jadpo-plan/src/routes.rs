@@ -571,6 +571,49 @@ pub(crate) fn table(
             });
         }
     }
+    // Each API's `GET <prefix>/flags` while a flag has `client: true`
+    // (area 16, "Flags in browsers and apps"; chunk B10), answering each
+    // such flag by its number in the flags plan, in name order.
+    let client: Vec<u32> = jadpo_check::flags::flags(db, project)
+        .flags
+        .iter()
+        .enumerate()
+        .filter(|(_, flag)| flag.client)
+        .filter_map(|(at, _)| u32::try_from(at).ok())
+        .collect();
+    for served in jadpo_check::routes::served::flags_served(db, project) {
+        if !serving(&served.api) {
+            continue;
+        }
+        let Some(api) = out.apis.iter().position(|api| api.name == served.api) else {
+            continue;
+        };
+        out.routes.push(RoutePlan {
+            key: format!("route GET {}", served.path()),
+            method: jadpo_std::HttpMethod::Get,
+            segments: served
+                .segments
+                .iter()
+                .cloned()
+                .map(Segment::Fixed)
+                .collect(),
+            api: api as u32,
+            input: None,
+            output: None,
+            status: jadpo_std::SuccessStatus::Ok,
+            deadline_ms: jadpo_std::http::DEFAULT_DEADLINE_MS,
+            run: Run::Flags(client.clone()),
+            settle: None,
+            stream: false,
+            keys: None,
+            args: Vec::new(),
+            authentication: served.authentication,
+            caller: None,
+            confirm: false,
+            file: "generated".to_string(),
+            line: 0,
+        });
+    }
     out.codecs = codecs.codecs;
     // A deployable's routes in the APIs it serves, numbered among those.
     if pruning.is_some() {

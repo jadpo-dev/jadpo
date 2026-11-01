@@ -53,7 +53,7 @@ domain, `hello`:
 
 ```text
 todo-app/
-  app.jadpo        application { jadpo: "0.2" } and the project token
+  app.jadpo        application { jadpo: "X.Y" } and the project token
   config.jadpo     config {}, with no settings yet
   policy.jadpo     who may run greet: Access.public
   access.jadpo_record    as jadpo records update writes it
@@ -71,7 +71,7 @@ todo-app/
 ```
 
 - `app.jadpo` names the release line of the `jadpo` that ran `new`, so
-  `jadpo new` from 0.2.x writes `jadpo: "0.2"`
+  `jadpo new` from X.Y.Z writes `jadpo: "X.Y"`
   ([Which jadpo runs](#which-jadpo-runs)). It also holds the project's
   `suggestions { project_token: }`, 32 random hex digits from the
   operating system's generator ([Sharing with Jadpo
@@ -114,7 +114,7 @@ The screen is one status line, then the command to run next:
 
 ```text
 Created todo-app
-    jadpo  0.1
+    jadpo  X.Y
     route  POST /hello
     files  14 written
 
@@ -633,6 +633,7 @@ sees](12-jobs-and-events.md#what-an-operator-sees)).
 | Command | Does |
 |---|---|
 | `jadpo deliveries` | Lists, retries, dismisses, cancels and resolves schedule runs and event deliveries |
+| `jadpo flags` | Lists feature flags; `set`, `reset`, `remove` |
 | `jadpo schedules` | Lists schedules; `run`, `pause`, `resume`, `history` |
 
 ### `jadpo deliveries`
@@ -668,6 +669,51 @@ key, and the one thing to do. `retry <id> --not-done` sends again a step
 that is in doubt or failed, under its next key generation. `abandon <id>`
 gives the run up ([Several changing calls in one
 action](11-integrations.md#several-changing-calls-in-one-action)).
+
+### `jadpo flags`
+
+Changes who gets which value of a feature flag while the app runs, and
+removes a flag from the source
+([Feature flags](16-built-in-services.md#feature-flags)). `flag` is a
+synonym, and it takes `--json`.
+
+- `jadpo flags`, or `list`, is a table of each flag: everyone's value,
+  how many users are named, its shares, the day it last changed and its
+  state: `○ default` for a flag never changed, `● rolling out` while
+  callers get different values, `● true for everyone` once one value
+  holds, and `✓ ready to remove` when it has held for seven days. A
+  footer and, for the first flag ready to remove, its `remove` command
+  follow. It succeeds whatever it lists.
+- `set <flag> [<value>]` changes one part of the state and leaves the
+  rest: with no option, everyone's value; `--users <id>,…` the named
+  users'; `--percent <n>` one share, `0` removing the shares; `--split
+  <value>=<n>,…` a share for each value. A `Bool` flag's value is
+  `true` when an option is given without one. It shows what the flag
+  gave before and gives now, who made the change and that every server
+  has it within ten seconds.
+- `reset <flag>` gives everyone the `default:` again; with `--users` it
+  stops naming those users.
+- `remove <flag> --keep <value>` rewrites the source as if the flag had
+  always held that value, lists every change file by file, and checks
+  the result, undoing it when it doesn't check
+  ([Flags: changed, listed and removed](16-built-in-services.md#flags-changed-listed-and-removed)).
+
+```text
+$ jadpo flags set new_checkout --percent 10
+✓ Set `new_checkout`
+    was       false for everyone (the default)
+    now       true for 10% of users; false (the default) for everyone else
+    logged    sam · role app_owner
+    applies   within 10 s, on every server
+```
+
+Each change writes a row of `jadpo_flag_changes` in the same statement,
+with the operator's name and the database role, as `jadpo deliveries`
+does. The database is `--url`'s, the connection's setting's, or a
+running `jadpo dev`'s; there is no `--env` flag. An unknown action,
+flag, value, user or share is `cli.flags_arguments`, with the nearest,
+and a database it can't read or a flag that changed meanwhile is
+`flags.unavailable`.
 
 ### `jadpo schedules`
 
@@ -1115,7 +1161,7 @@ shell or PowerShell installer) is a whole `jadpo` that can also start
 another release, as the `go` command does. Before a command runs, it
 finds the project: the folder you run it from, walked up to `app.jadpo`,
 or else the first argument that names a file or folder in a project. It
-reads the line from `application { jadpo: "0.2" }`
+reads the line from `application { jadpo: "X.Y" }`
 ([The root](01-project-layout-and-modules.md#the-root)).
 
 When the project is on the installed `jadpo`'s own line, or names no
@@ -2987,6 +3033,7 @@ yet, or that the design notes replace.
 | `cli.dev_start_failed` | `dev` | The app couldn't start under `jadpo dev`, usually because another program is using its port, it has no database to run on, or a connection would call a provider's live API |
 | `cli.email_arguments` | `email` | A `jadpo email` command names an action it doesn't have, or a mail or link the dev inbox doesn't hold |
 | `cli.fix_arguments` | `fix` | A `jadpo fix` command names a declaration with nothing to fix, or a fix it doesn't have |
+| `cli.flags_arguments` | `flags` | A `jadpo flags` command names an action it doesn't have, a flag the project doesn't declare, or a value, user or share the flag can't take |
 | `cli.fmt_arguments` | `fmt` | A `jadpo fmt` command names a path that isn't there or isn't a `.jadpo` file |
 | `cli.help_arguments` | `help` | A `jadpo help` command names more than one command or rule |
 | `cli.incident_arguments` | `incident` | Incident command has invalid arguments |
@@ -3047,6 +3094,7 @@ against one.
 | `deliveries.not_found` | `deliveries` | The id given to `jadpo deliveries` matches no delivery or schedule run in the database |
 | `deliveries.unavailable` | `deliveries` | The app's deliveries couldn't be read from their database, because it can't be reached or has no table for them yet |
 | `deliveries.wrong_state` | `deliveries` | A delivery or schedule run was asked to do something its state rules out, such as cancelling one that has already failed |
+| `flags.unavailable` | `flags` | The flags' state couldn't be read or changed in their database, because it can't be reached, has no table for them yet, or changed while the command ran |
 | `migration.apply_failed` | `migrate apply`, `seed`, `dev`, `test` | Applying the project's migrations to a database stopped at a step that failed |
 | `migration.extension_missing` | `migrate apply`, `seed`, `dev`, `test` | The project's migrations need a PostgreSQL extension, such as pgvector, that the database server doesn't offer or that the role applying them can't create |
 | `migration.extension_outdated` | `migrate apply`, `seed`, `dev`, `test` | The database server's PostgreSQL extension, such as pgvector, is older than the project's migrations and queries need |
@@ -3069,7 +3117,7 @@ Each row says what is built and what is specified but not built yet.
 |---|---|
 | Command help | Built: every command has `--help` with examples, `jadpo help [command]` explains one, `jadpo help <rule>` prints a rule's page offline, and `jadpo help --json` describes them all. |
 | Project path | Built: every command finds the project by walking up to `app.jadpo`, so a path is optional; run from outside the project, printed paths start with the project as typed. |
-| Scaffold | Built: `jadpo new <name>` writes the fixed root on this `jadpo`'s release line with its project token, the `hello` domain (one route, its action, its policy line, its API record and a route test), `AGENTS.md`, `.gitignore` and `.gitattributes`, passing `check`, `fmt --check` and `test` as written, and refuses a folder that holds anything, with `--json`. The line an app declares is checked: `application { jadpo: "0.2" }`, with `toolchain.version_newer`, `toolchain.version_older` and `toolchain.version_invalid` ([The root](01-project-layout-and-modules.md#the-root)). |
+| Scaffold | Built: `jadpo new <name>` writes the fixed root on this `jadpo`'s release line with its project token, the `hello` domain (one route, its action, its policy line, its API record and a route test), `AGENTS.md`, `.gitignore` and `.gitattributes`, passing `check`, `fmt --check` and `test` as written, and refuses a folder that holds anything, with `--json`. The line an app declares is checked: `application { jadpo: "X.Y" }`, with `toolchain.version_newer`, `toolchain.version_older` and `toolchain.version_invalid` ([The root](01-project-layout-and-modules.md#the-root)). |
 | Which jadpo runs | Built in 0.1.0: every `jadpo` runs the release a project's line or `jadpo.lock` pin names, kept in the cache or fetched from GitHub's releases, its archive checked against its published SHA-256 and its GitHub artifact attestation (Sigstore's verifier, with the public-good trusted root carried in the binary) before it runs, and refuses with `toolchain.version_newer` or `toolchain.version_older` when it can't; `jadpo toolchain` lists, removes, pins and unpins, and `JADPO_TOOLCHAIN=local` runs everything with the `jadpo` started. The trusted root is the one this release was built with: no TUF refresh. |
 | Formatter | Built: one member per line, one blank line between declarations, and `fmt --check` counts the files it read; it keeps `use` lines at the top, sorted, fixes imports inside a project, `--layout` makes promotion moves, and it writes each file's declarations before their use, the primary declaration last. |
 | Error messages | Built: one error per mistake, in the field order [Error messages](#error-messages) gives, `impact` only when it says something, edits on the next step where one exists, and help links to each error's page on the site. |

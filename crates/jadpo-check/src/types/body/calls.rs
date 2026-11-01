@@ -323,6 +323,16 @@ impl Body<'_> {
                     let ty = self.entity_get(&head, call, span);
                     return (ty, CallKind::Effect(written), reach);
                 }
+                // An audited entity's history (area 16; chunk B11), unless
+                // an entity that keeps none names a transition `history`.
+                if rest[0] == jadpo_std::audit::HISTORY
+                    && !self.writes.write_rules(&head).is_some_and(|rules| {
+                        !rules.audited && rules.transition(jadpo_std::audit::HISTORY).is_some()
+                    })
+                {
+                    let ty = self.entity_history(&head, call, span);
+                    return (ty, CallKind::Effect(written), reach);
+                }
                 // A person's erasure (area 15; chunk P3), unless an entity
                 // that is no person names a transition `erase`.
                 if rest[0] == crate::resolve::ERASE

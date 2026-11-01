@@ -11,9 +11,7 @@ A flag that isn't one could be a typo for another, and running the command witho
 The flag is misspelt:
 
 ```jadpo check project=e-unknown-flag file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-unknown-flag expect=cli.unknown_flag

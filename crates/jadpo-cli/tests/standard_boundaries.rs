@@ -724,6 +724,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "makes a provider fake's generated default: an instant at the invocation's clock and its date, written by the type's own codec (chunk 7.2d)",
     ),
     (
+        "crates/jadpo-runtime/src/audit.rs",
+        "makes the audit entries `history` gives and `AuditEntryRecorded`, values in memory; an entry keeps each field as the contract's own text, and its event's payload ids and times as the runtime's own text and numbers (chunk B11)",
+    ),
+    (
         "crates/jadpo-runtime/src/effects.rs",
         "gives `clock.now` as an instant (chunk 7.0b)",
     ),
@@ -775,6 +779,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
     (
         "crates/jadpo-cli/src/schedules.rs",
         "shows a schedule's own times (due, started, ended) to an operator, never an app's value (chunk 6.2b)",
+    ),
+    (
+        "crates/jadpo-cli/src/flags.rs",
+        "shows when a flag's state last changed to an operator, its own time, never an app's value (chunk B10)",
     ),
     (
         "crates/jadpo-cli/src/runs.rs",

@@ -272,6 +272,37 @@ std_enum! {
 }
 
 std_enum! {
+    /// What a change an audit trail entry records did to its record (area
+    /// 16, "Audit trail"; chunk B11).
+    AuditChange: "AuditChange" {
+        /// The record was created.
+        Created: "created",
+        /// One or more of its fields changed: an update, a patch, a
+        /// counter or a lifecycle's transition, its `delete` among them.
+        Updated: "updated",
+        /// The record was deleted.
+        Deleted: "deleted",
+    }
+}
+
+std_enum! {
+    /// Who made a change an audit trail entry records (area 16, "Audit
+    /// trail"; chunk B11).
+    AuditBy: "AuditBy" {
+        /// A signed-in user: the entry's `user_id`.
+        User: "user",
+        /// A signed-in service: the entry's `service_id`.
+        Service: "service",
+        /// The application, for a schedule's run or a subscriber's
+        /// delivery: the entry's `trace` leads back to the request that
+        /// set it off.
+        Application: "application",
+        /// No one: a test's, a seed's or a tool's call without a caller.
+        NoCaller: "no_caller",
+    }
+}
+
+std_enum! {
     /// A special kind of index an entity's `indexes:` entry asks for with
     /// `kind:` (area 5, "Indexes"), where the store builds it.
     IndexKind: "IndexKind" {
@@ -788,6 +819,8 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (Generated::NAME, Generated::NAMES.to_vec()),
         (OnDelete::NAME, OnDelete::NAMES.to_vec()),
         (Erasure::NAME, Erasure::NAMES.to_vec()),
+        (AuditChange::NAME, AuditChange::NAMES.to_vec()),
+        (AuditBy::NAME, AuditBy::NAMES.to_vec()),
         (IndexKind::NAME, IndexKind::NAMES.to_vec()),
         (FieldChange::NAME, FieldChange::NAMES.to_vec()),
         (Driver::NAME, Driver::NAMES.to_vec()),
@@ -875,6 +908,8 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         Generated::NAME => position(Generated::NAMES),
         OnDelete::NAME => position(OnDelete::NAMES),
         Erasure::NAME => position(Erasure::NAMES),
+        AuditChange::NAME => position(AuditChange::NAMES),
+        AuditBy::NAME => position(AuditBy::NAMES),
         IndexKind::NAME => position(IndexKind::NAMES),
         FieldChange::NAME => position(FieldChange::NAMES),
         Driver::NAME => position(Driver::NAMES),

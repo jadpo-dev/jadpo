@@ -11,9 +11,7 @@ You start from an app with one domain, `books`, holding a type for a
 book's title.
 
 ```jadpo check project=guide-store file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 `domains/books/types/book_title.jadpo`:

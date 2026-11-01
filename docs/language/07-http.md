@@ -1018,7 +1018,8 @@ Some features generate their routes for you:
   ([Providers](08-identity.md#providers)), and `POST /auth/exchange`
   ([Identity](08-identity.md));
 - the privacy requests ([Data requests](15-personal-data.md#data-requests));
-- `GET /flags` ([Feature flags](16-built-in-services.md#feature-flags));
+- each API's `GET <prefix>/flags`, while a flag has `client: true`
+  ([Flags in browsers and apps](16-built-in-services.md#flags-in-browsers-and-apps));
 - a provider package's webhooks ([Webhooks](#webhooks));
 - each API's `GET <prefix>/openapi.json` ([OpenAPI](#openapi));
 - `<path>/confirmation` beside a route with `confirm:

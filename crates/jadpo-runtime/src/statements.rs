@@ -21,6 +21,27 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
         ),
         ("ai_budget::DEBIT", crate::ai_budget::DEBIT.to_string()),
         ("flags::READ", crate::flags::READ.to_string()),
+        ("flags::READ_STORED", crate::flags::READ_STORED.to_string()),
+        (
+            "flags::INSERT_STATE",
+            crate::flags::INSERT_STATE.to_string(),
+        ),
+        (
+            "flags::UPDATE_STATE",
+            crate::flags::UPDATE_STATE.to_string(),
+        ),
+        (
+            "flags::DELETE_STATE",
+            crate::flags::DELETE_STATE.to_string(),
+        ),
+        (
+            "audit::HISTORY_ENTRIES",
+            crate::audit::HISTORY_ENTRIES.to_string(),
+        ),
+        (
+            "audit::INSERT_AUDIT",
+            crate::audit::INSERT_AUDIT.to_string(),
+        ),
         (
             "ai_budget::OLD_DAYS",
             crate::ai_budget::OLD_DAYS.to_string(),

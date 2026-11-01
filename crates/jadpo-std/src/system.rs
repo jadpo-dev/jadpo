@@ -832,6 +832,51 @@ pub const AI_USAGE: SystemTable = SystemTable {
     indexes: &[],
 };
 
+/// An audited entity's history (area 16, "Audit trail"; chunk B11): one
+/// row per change to one of its records, written in the transaction that
+/// makes the change, in the store the entity lives in. Rows are only ever
+/// added, then deleted when their entity's `audit: { retention: }` ends
+/// or with their record when erasure deletes it.
+pub const AUDIT: SystemTable = SystemTable {
+    table: "jadpo_audit",
+    columns: &[
+        // The entity's born name, which survives a rename.
+        column("entity", SqlType::Text, false),
+        column("record_id", SqlType::Uuid, false),
+        // The change's place among the record's: 1 for its first. A change
+        // holds its record's row lock, so two never take the same place.
+        column("seq", SqlType::Int8, false),
+        // The operation's time, as `clock.now` reads it.
+        column("at", SqlType::Timestamp, false),
+        // `AuditChange`'s variant: `created`, `updated` or `deleted`.
+        column("change", SqlType::Text, false),
+        // `AuditBy`'s variant, with the signed-in user's or service's `id`.
+        column("by", SqlType::Text, false),
+        column("user_id", SqlType::Uuid, true),
+        column("service_id", SqlType::Uuid, true),
+        // The outermost action the change was made through.
+        column("action", SqlType::Text, true),
+        // The id of the request that made it, when a request did.
+        column("request", SqlType::Text, true),
+        // The W3C trace id it was made in, which a subscriber's delivery
+        // keeps from the request that emitted its event.
+        column("trace", SqlType::Text, true),
+        // Each changed field's name, and its value before and after as
+        // canonical text, server-only fields left out.
+        column("changes", SqlType::Json, false),
+        // The encoding `changes` was written in (area 19, "Changing a
+        // standard type's encoding").
+        column("encoding", SqlType::Int2, false),
+    ],
+    primary_key: &["entity", "record_id", "seq"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[SystemIndex {
+        columns: &["entity", "at"],
+        reason: "system audit trail",
+    }],
+};
+
 /// One hourly cleanup lease per store. Completion is kept separately from the
 /// lease: a failed, capped or interrupted pass is eligible on the next tick.
 pub const HOUSEKEEPING: SystemTable = SystemTable {
@@ -898,6 +943,35 @@ pub const FLAGS: SystemTable = SystemTable {
     indexes: &[],
 };
 
+/// Each change `jadpo flags set` and `reset` made to a flag (area 16,
+/// "Flags: changed, listed and removed"; chunk B10), in `flags: { store:
+/// }`, written by the statement that makes the change: when, the flag,
+/// `set` or `reset`, its state before and after as JSON (`value`, `users`
+/// and `shares`, as `jadpo_flags` holds them, `null` for no row), and who
+/// made it: the name the operator's machine gives, and the database role
+/// PostgreSQL authenticated, which the statement reads itself. Kept for
+/// good, as the flag's history.
+pub const FLAG_CHANGES: SystemTable = SystemTable {
+    table: "jadpo_flag_changes",
+    columns: &[
+        column("id", SqlType::Uuid, false),
+        column("made_at", SqlType::Timestamp, false),
+        column("flag", SqlType::Text, false),
+        column("action", SqlType::Text, false),
+        column("was", SqlType::Json, true),
+        column("now", SqlType::Json, true),
+        column("operator", SqlType::Text, false),
+        column("role", SqlType::Text, false),
+    ],
+    primary_key: &["id"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[SystemIndex {
+        columns: &["flag"],
+        reason: "system flag changes",
+    }],
+};
+
 /// What must commit with an action's own writes, in every store that
 /// holds an entity, since any of them can be written: the outbox, its
 /// deliveries, handled records and idempotency keys; the log of what
@@ -924,7 +998,7 @@ pub const BATCH_TABLES: [&SystemTable; 3] = [&BATCH_RUNS, &BATCH_PROBLEMS, &BATC
 pub const STEP_TABLES: [&SystemTable; 2] = [&STEP_RECORDS, &STEPS];
 
 /// Every system table.
-pub const ALL: [&SystemTable; 27] = [
+pub const ALL: [&SystemTable; 29] = [
     &OUTBOX,
     &DELIVERIES,
     &CIRCUIT_BREAKERS,
@@ -949,7 +1023,9 @@ pub const ALL: [&SystemTable; 27] = [
     &PARKED_MESSAGES,
     &POLLS,
     &AI_USAGE,
+    &AUDIT,
     &FLAGS,
+    &FLAG_CHANGES,
     &HOUSEKEEPING,
     &FILES,
 ];

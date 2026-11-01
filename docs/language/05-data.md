@@ -1796,6 +1796,20 @@ can't turn back into the secret.
   sign-in ([A person the app has not seen](08-identity.md#a-person-the-app-has-not-seen)).
   Only in the store the principal's user entity lives in.
 
+### The audit trail's table
+
+An audited entity's history commits with the changes it records, so it
+goes in the store the entity lives in, created when an entity there has
+an `audit:` ([Audit trail](16-built-in-services.md#audit-trail)):
+
+- `jadpo_audit`: each change to an audited record, by the entity's born
+  name, the record's `id` and its place among the record's changes; when
+  it was made, what kind of change, who made it, through which action,
+  request and trace, and each changed field before and after as text,
+  with the encoding that was written in. Rows are only ever added, then
+  deleted when the entity's audit retention ends, or with their record
+  when erasure deletes it.
+
 ### Tables for schedules and other state
 
 Schedule state, each schedule's lease included, goes in the store
@@ -1811,7 +1825,9 @@ They are created when a schedule is declared, with
 
 Other features that only keep state name their store the same way
 (`flags: { store: main }`), and with several stores a missing one is a
-compile error naming the feature. Other runtime state (multi-step call
+compile error naming the feature. The flags keep `jadpo_flags`, each
+flag's state, and `jadpo_flag_changes`, each change `jadpo flags` made
+and who made it ([Feature flags](16-built-in-services.md#feature-flags)). Other runtime state (multi-step call
 records and batch runs beside the outbox, OAuth grants, poll state, and
 webhook and queue de-duplication) follows the same rules and is always in
 a database, never a cache

@@ -301,8 +301,39 @@ jobs:
           JADPO_TEST_DATABASE_URL: postgresql://jadpo:jadpo@127.0.0.1:5432/postgres
         run: python3 tools/verify.py --group wasm32
 
+  # The next release rehearsed (tools/release/rehearsal.py): a copy of the
+  # checkout at the next minor version, its lock files brought into step
+  # as release-please.yml does it, builds `jadpo` with --locked and passes
+  # the docs check and the teaching examples, without PostgreSQL. So a
+  # change that would leave the release pull request red fails here.
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Everything rust-toolchain.toml lists, which rustup would add anyway.
+      - name: Install the pinned Rust toolchain
+        run: |
+          channel="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
+          rustup toolchain install "$channel" --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          # Only main saves: the repository's 10 GB of caches otherwise fill
+          # with each pull request's own, which evicts main's.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-on-failure: true
+      - name: The next release rehearsed
+        run: python3 tools/verify.py --group release
+      # The copy holds folders called `tests`, which the cache action takes
+      # for cargo's own and fails to clean; nothing needs them again.
+      - name: Remove the copy
+        if: always()
+        run: rm -rf target/release-rehearsal
+
   supported-language:
-    needs: [lint, docs, tests, compiled, wasm32]
+    needs: [lint, docs, tests, compiled, wasm32, release]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -311,7 +342,7 @@ jobs:
         env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
-          echo "lint, docs, tests, compiled, wasm32: $RESULTS"
+          echo "lint, docs, tests, compiled, wasm32, release: $RESULTS"
           for result in $RESULTS; do
             [ "$result" = success ] || exit 1
           done

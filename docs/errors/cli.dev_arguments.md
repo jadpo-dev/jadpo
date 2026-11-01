@@ -11,9 +11,7 @@ A `jadpo dev` command names an action it doesn't have, `token` without a user's 
 The user's id is left out:
 
 ```jadpo check project=e-dev-arguments file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-dev-arguments expect=cli.dev_arguments

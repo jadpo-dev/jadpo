@@ -156,6 +156,23 @@ A date in an example request must not pass: use one far ahead, such as
 2099, or a test's `clock:`. When the reader must use a value of their
 own, such as an id, a token or a password, say so beside it.
 
+### The release line
+
+No page writes the release Jadpo is on, which every release changes. A
+project on a page leaves `jadpo:` out of `application { }`, which
+checks it on any line. Where a page must show the line or the release
+of the reader's `jadpo`, as `jadpo new` and `jadpo --version` print
+them, it writes `X.Y` for the line and `X.Y.Z` for the release: the
+docs check prints them that way in a command's output, and compiles a
+`check` block's `jadpo: "X.Y"` as the running line. A page about other
+lines uses lines no release has: `0.0` for an earlier one, `99.0` for a
+later one. The docs check fails a Markdown file that writes the running
+`jadpo`'s line as `jadpo: "…"`, as `jadpo new`'s status line, or its
+release as `jadpo --version` prints it, and the release rehearsal
+(`tools/release/rehearsal.py`) checks the pages again with the next
+minor release, so a page that names the line fails on its pull
+request, not on release day.
+
 ### No secrets on a command line
 
 An example never puts a password or a key on a command line, where a
@@ -307,8 +324,9 @@ which the project's connection reads through
 `url: config.database_url`. The run has this checkout's `jadpo`, an empty home folder
 and nothing of the machine's environment, so it prints the same
 everywhere: the project's folder prints as `.`, the home folder as `~`,
-and a run's duration, and the clock time `jadpo dev` says it started,
-are left out. What the error needs, such as a link,
+the running line and release as `X.Y` and `X.Y.Z` ([The release
+line](#the-release-line)), and a run's duration, and the clock time
+`jadpo dev` says it started, are left out. What the error needs, such as a link,
 a read-only folder or a file that isn't UTF-8, is made by the lines
 before the command, where the reader sees it. A fix that needs the
 error's state first is shown as a plain `sh` block, without output.

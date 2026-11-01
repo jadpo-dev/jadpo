@@ -11,9 +11,7 @@ A `jadpo suggest` command names an action it doesn't have, or a suggestion the l
 Nothing has been scanned yet:
 
 ```jadpo check project=e-suggest-arguments file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-suggest-arguments expect=cli.suggest_arguments

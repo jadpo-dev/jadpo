@@ -657,9 +657,10 @@ test "a body cut into segments" {
 
 /// The projects chunk 8.4a compares: a package's action caught, and a
 /// recursion to the limits; with a `File` held to its field (chunk B1),
-/// a person's erasure (chunk P3, `crate::erasure`) and a file's bytes
+/// a person's erasure (chunk P3, `crate::erasure`), a file's bytes
 /// deleted once no record holds them, the bytes each store keeps among
-/// the records (chunk B3, `crate::file_deletes`).
+/// the records (chunk B3, `crate::file_deletes`), and the audit trail
+/// (chunk B11, `crate::audit`).
 fn parity_projects() -> Vec<(String, PathBuf)> {
     let caught: Vec<(String, String)> = PACKAGE_CAUGHT
         .iter()
@@ -690,6 +691,10 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
             "a file's bytes deleted".into(),
             corpus_project(&crate::file_deletes::files(), "compiled-file-deletes")
                 .expect("it checks"),
+        ),
+        (
+            "an audit trail".into(),
+            corpus_project(&crate::audit::files(), "compiled-audit").expect("it checks"),
         ),
     ]
 }
@@ -801,6 +806,7 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         "a key kept without key_ops",
         "an erasure",
         "a file's bytes deleted",
+        "an audit trail",
         "examples 11-cake-shop",
         "examples 12-recipe-book",
         "examples 15-parcel-tracker",

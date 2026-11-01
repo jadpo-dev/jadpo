@@ -2104,6 +2104,10 @@ record". For the `Project` under [Field restrictions](#field-restrictions):
 | `budget` | as the record | `CompanyRole.editor` | `CompanyRole.editor` | as the record |
 | `import_reference` | server only | server only | server only | as the record |
 
+An audited entity's line says how long each change is kept in its
+history, which its `history` shows to those who may read the record
+([Audit trail](16-built-in-services.md#audit-trail)).
+
 When a change alters this table, the approval review shows it in plain
 terms, such as "viewers can now read `budget`"
 ([Review and sign-off](14-tooling.md#review-and-sign-off)).

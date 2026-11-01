@@ -44,7 +44,7 @@ jadpo new todo-service
 
 ```text output
 Created todo-service
-    jadpo  0.2
+    jadpo  X.Y
     route  POST /hello
     files  14 written
 

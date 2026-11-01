@@ -39,6 +39,7 @@ pub(crate) fn plan(db: &dyn Db, project: Project, types: &mut Types) -> FlagsPla
             }),
             values: flag.values.clone(),
             default: flag.default,
+            client: flag.client,
         })
         .collect();
     FlagsPlan {
