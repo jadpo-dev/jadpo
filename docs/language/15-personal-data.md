@@ -224,10 +224,11 @@ nullable field is one whose type ends in `?`, so it can hold no value
 ([Values that may be missing](02-values-and-types.md#values-that-may-be-missing)).
 
 Erasure follows the references from every record it deletes, however
-deep, so a reference to one of the person's todos says what erasure does
-too. A record erasure keeps stays with whatever refers to it, as it does
-when an ordinary delete clears a reference. Everything goes in one
-statement, so an erasure is never left half done.
+deep, so a reference to one of the person's todos decides what erasure
+does to its record in the same way. A record erasure keeps stays with
+whatever refers to it, as it does when an ordinary delete clears a
+reference. Everything goes in one statement, so an erasure is never left
+half done.
 
 ### Deleting the person's records: `Erasure.deleted`
 

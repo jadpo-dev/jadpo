@@ -13,7 +13,7 @@
 //!   and record stay.
 //!
 //! Policy lets a member erase only themselves: another member's erasure
-//! of them is their not-found failure and changes nothing. A member who
+//! of them is their not-found failure and changes no row. A member who
 //! has left, whom the lifecycle hides, is erased too, and erasing a
 //! member who isn't there is their not-found failure.
 //!
@@ -31,7 +31,7 @@ use std::path::{Path, PathBuf};
 use jadpo_cli::{Output, run};
 use jadpo_host_native::Runtime;
 use jadpo_interp::Program;
-use jadpo_runtime::{Outcome, SqlValue};
+use jadpo_runtime::{Caller, Executor, Outcome, SqlValue};
 use jadpo_term::Environment;
 use jadpo_test::host::Harness;
 use jadpo_value::Value;
@@ -64,30 +64,30 @@ const OPEN: &str = "    policy: {
 pub(crate) fn files() -> Vec<(String, String)> {
     let action = |name: &str, uses: &str, signature: &str, body: &str| {
         (
-            format!("domains/library/actions/{name}.jadpo"),
+            format!("domains/lending/actions/{name}.jadpo"),
             format!("{uses}\n\n/// {name}.\naction {name}{signature} {{\n{body}}}\n"),
         )
     };
     let mut files: Vec<(String, String)> = vec![
         (
             "app.jadpo".to_string(),
-            "use library/entities { Member }\n\napplication {}\n\nprincipal {\n    user: {\n        subject: Member.handle\n    }\n}\n\nauthentication {\n    api_token: {}\n}\n".to_string(),
+            "use lending/entities { Member }\n\napplication {}\n\nprincipal {\n    user: {\n        subject: Member.handle\n    }\n}\n\nauthentication {\n    api_token: {}\n}\n".to_string(),
         ),
         (
             "config.jadpo".to_string(),
             "config {\n    fine_retention: Duration {\n        default: 2192d\n    }\n}\n".to_string(),
         ),
         (
-            "domains/library/types/name.jadpo".to_string(),
+            "domains/lending/types/name.jadpo".to_string(),
             "/// A name, a title or a line of text.\ntype Name = Text {\n    max_length: 80\n}\n".to_string(),
         ),
         (
-            "domains/library/failures/handle_taken.jadpo".to_string(),
+            "domains/lending/failures/handle_taken.jadpo".to_string(),
             "/// Someone has that handle already.\ntype HandleTaken = Failure {\n    kind: FailureKind.conflict\n}\n".to_string(),
         ),
         (
-            "domains/library/entities/member.jadpo".to_string(),
-            "use library/types { Name }
+            "domains/lending/entities/member.jadpo".to_string(),
+            "use lending/types { Name }
 
 /// Someone with a library card, who signs in, and may erase only
 /// themselves.
@@ -124,10 +124,10 @@ entity Member {
             .to_string(),
         ),
         (
-            "domains/library/entities/loan.jadpo".to_string(),
+            "domains/lending/entities/loan.jadpo".to_string(),
             format!(
-                "use library/entities {{ Member }}
-use library/types {{ Name }}
+                "use lending/entities {{ Member }}
+use lending/types {{ Name }}
 
 /// A book a member borrowed, hidden once it is returned, and renewed as a
 /// loan of its own.
@@ -160,10 +160,10 @@ entity Loan {{
             ),
         ),
         (
-            "domains/library/entities/loan_note.jadpo".to_string(),
+            "domains/lending/entities/loan_note.jadpo".to_string(),
             format!(
-                "use library/entities {{ Loan }}
-use library/types {{ Name }}
+                "use lending/entities {{ Loan }}
+use lending/types {{ Name }}
 
 /// A librarian's note on a loan.
 entity LoanNote {{
@@ -172,17 +172,17 @@ entity LoanNote {{
         on_delete: OnDelete.restricted
         erase: Erasure.deleted
     }}
-    text: Name
+    body: Name
 
 {OPEN}}}
 "
             ),
         ),
         (
-            "domains/library/entities/review.jadpo".to_string(),
+            "domains/lending/entities/review.jadpo".to_string(),
             format!(
-                "use library/entities {{ Member }}
-use library/types {{ Name }}
+                "use lending/entities {{ Member }}
+use lending/types {{ Name }}
 
 /// A review a member wrote, kept without them.
 entity Review {{
@@ -203,10 +203,10 @@ entity Review {{
             ),
         ),
         (
-            "domains/library/entities/fine.jadpo".to_string(),
+            "domains/lending/entities/fine.jadpo".to_string(),
             format!(
-                "use library/entities {{ Member }}
-use library/types {{ Name }}
+                "use lending/entities {{ Member }}
+use lending/types {{ Name }}
 
 /// A fine, kept for the accounts as it is.
 entity Fine {{
@@ -230,10 +230,10 @@ entity Fine {{
             ),
         ),
         (
-            "domains/library/entities/fine_line.jadpo".to_string(),
+            "domains/lending/entities/fine_line.jadpo".to_string(),
             format!(
-                "use library/entities {{ Fine }}
-use library/types {{ Name }}
+                "use lending/entities {{ Fine }}
+use lending/types {{ Name }}
 
 /// A line of a fine, which goes with it.
 entity FineLine {{
@@ -251,86 +251,107 @@ entity FineLine {{
     files.extend([
         action(
             "join",
-            "use library/entities { Member }\nuse library/failures { HandleTaken }",
+            "use lending/entities { Member }\nuse lending/failures { HandleTaken }",
             "(handle: Member.handle) fails HandleTaken -> Member",
             "    return attempt Member.create {\n        set: {\n            handle: handle\n        }\n        conflict: {\n            Member.handle: HandleTaken\n        }\n    }\n",
         ),
         action(
             "borrow",
-            "use library/entities { Loan, Member }",
+            "use lending/entities { Loan, Member }",
             "(member: Member, title: Loan.title) -> Loan",
             "    return Loan.create {\n        set: {\n            member_id: member.id\n            title: title\n            renewal_of: none\n        }\n    }\n",
         ),
         action(
             "renew",
-            "use library/entities { Loan }",
+            "use lending/entities { Loan }",
             "(loan: Loan) -> Loan",
             "    return Loan.create {\n        set: {\n            member_id: loan.member_id\n            title: loan.title\n            renewal_of: loan.id\n        }\n    }\n",
         ),
         action(
             "give_back",
-            "use library/entities { Loan, LoanNotFound }",
+            "use lending/entities { Loan, LoanNotFound }",
             "(loan_id: Loan.id) fails LoanNotFound -> Unit",
             "    attempt Loan.delete(loan_id)\n",
         ),
         action(
             "note",
-            "use library/entities { Loan, LoanNote }",
-            "(loan: Loan, text: LoanNote.text) -> LoanNote",
-            "    return LoanNote.create {\n        set: {\n            loan_id: loan.id\n            text: text\n        }\n    }\n",
+            "use lending/entities { Loan, LoanNote }",
+            "(loan: Loan, body: LoanNote.body) -> LoanNote",
+            "    return LoanNote.create {\n        set: {\n            loan_id: loan.id\n            body: body\n        }\n    }\n",
         ),
         action(
-            "review",
-            "use library/entities { Member, Review }",
+            "write_review",
+            "use lending/entities { Member, Review }",
             "(member: Member, body: Review.body, signed_as: Review.signed_as) -> Review",
             "    return Review.create {\n        set: {\n            member_id: member.id\n            body: body\n            signed_as: signed_as\n        }\n    }\n",
         ),
         action(
-            "fine",
-            "use library/entities { Fine, Member }",
+            "charge",
+            "use lending/entities { Fine, Member }",
             "(member: Member, amount: Fine.amount) -> Fine",
             "    return Fine.create {\n        set: {\n            member_id: member.id\n            amount: amount\n        }\n    }\n",
         ),
         action(
             "add_line",
-            "use library/entities { Fine, FineLine }",
+            "use lending/entities { Fine, FineLine }",
             "(fine: Fine, note: FineLine.note) -> FineLine",
             "    return FineLine.create {\n        set: {\n            fine_id: fine.id\n            note: note\n        }\n    }\n",
         ),
         action(
             "leave",
-            "use library/entities { Member, MemberNotFound }",
+            "use lending/entities { Member, MemberNotFound }",
             "(me: Principal.user) fails MemberNotFound -> Unit",
             "    attempt Member.delete(me.id)\n",
         ),
         action(
             "close_account",
-            "use library/entities { Member, MemberNotFound }",
+            "use lending/entities { Member, MemberNotFound }",
             "(me: Principal.user) fails MemberNotFound -> Unit",
             "    attempt Member.erase(me.id)\n",
         ),
         action(
             "erase_member",
-            "use library/entities { Member, MemberNotFound }",
+            "use lending/entities { Member, MemberNotFound }",
             "(member_id: Member.id, me: Principal.user) fails MemberNotFound -> Unit",
             "    attempt Member.erase(member_id)\n",
         ),
         action(
             "forget",
-            "use library/entities { Member, MemberNotFound }",
+            "use lending/entities { Member, MemberNotFound }",
             "(member_id: Member.id) fails MemberNotFound -> Unit",
             "    attempt Member.erase(member_id)\n",
         ),
     ]);
     files.push((
-        "domains/library/actions/close_account.test.jadpo".to_string(),
+        "domains/lending/actions/close_account.test.jadpo".to_string(),
         TESTS.to_string(),
     ));
     files
 }
 
-const TESTS: &str = r#"use library/entities { Fine, FineLine, Loan, LoanNote, LoanNoteNotFound, LoanNotFound, Member, MemberNotFound, Review }
-use library/actions { add_line, borrow, close_account, erase_member, fine, give_back, join, leave, note, renew, review }
+const TESTS: &str = r#"use lending/entities {
+    Fine,
+    FineLine,
+    Loan,
+    LoanNotFound,
+    LoanNote,
+    LoanNoteNotFound,
+    Member,
+    MemberNotFound,
+    Review
+}
+use lending/actions {
+    add_line,
+    borrow,
+    charge,
+    erase_member,
+    give_back,
+    join,
+    leave,
+    note,
+    renew,
+    write_review
+}
 
 test "erasing a member deletes, anonymises or keeps each record as its reference says" {
     var ada: Member = attempt join("ada")
@@ -339,8 +360,8 @@ test "erasing a member deletes, anonymises or keeps each record as its reference
     var renewed: Loan = renew(loan)
     var noted: LoanNote = note(loan, "Coffee stain")
     var bobs: Loan = borrow(bob, "Persuasion")
-    var said: Review = review(ada, "A long read", "Ada L.")
-    var owed: Fine = fine(ada, "GBP 2.50")
+    var said: Review = write_review(ada, "A long read", "Ada L.")
+    var owed: Fine = charge(ada, "GBP 2.50")
     var line: FineLine = add_line(owed, "Late by a week")
     attempt close_account(Principal.user(ada))
     assert Member.get(ada.id) fails MemberNotFound
@@ -422,11 +443,42 @@ async fn call(program: &Program, host: &Harness, action: &str, args: Vec<Value>)
     }
 }
 
-/// The outcome of `action` with `args`, whatever it is.
-async fn outcome(program: &Program, host: &Harness, action: &str, args: Vec<Value>) -> Outcome {
+/// The outcome of `action` with `args` as the member `caller`, signed
+/// in, whatever it is.
+async fn outcome_as(
+    program: &Program,
+    host: &Harness,
+    action: &str,
+    args: Vec<Value>,
+    caller: &Value,
+) -> Outcome {
     let id = program.plan().find(action).expect("the action");
     let mut ctx = host.ctx(program);
+    let member = match caller {
+        Value::Record(record) => record,
+        other => panic!("not a record: {other:?}"),
+    };
+    let signed_in = jadpo_runtime::http::identity::principal(
+        jadpo_std::http::PrincipalKind::User,
+        member.get("id").cloned().expect("an id"),
+        member.get("handle").cloned().expect("a handle"),
+    );
+    ctx.set_caller(Some(Caller {
+        value: signed_in,
+        key: "user".to_string(),
+        session: None,
+        sign_in: None,
+        multi_factor: false,
+    }));
     program.run(&mut ctx, id, args).await
+}
+
+/// Whether `outcome` is the member's not-found failure.
+fn not_found(outcome: Outcome) {
+    match outcome {
+        Outcome::Failed(failure) => assert_eq!(failure.code, "member_not_found"),
+        other => panic!("expected the not-found failure, got {other:?}"),
+    }
 }
 
 fn id_of(value: &Value) -> Value {
@@ -499,7 +551,7 @@ fn erasure_leaves_the_rows_its_references_say() {
             call(
                 &program,
                 &host,
-                "review",
+                "write_review",
                 vec![
                     member.clone(),
                     Value::text(&format!("{handle}'s review")),
@@ -510,7 +562,7 @@ fn erasure_leaves_the_rows_its_references_say() {
             let fine = call(
                 &program,
                 &host,
-                "fine",
+                "charge",
                 vec![member.clone(), Value::text(&format!("{handle}'s fine"))],
             )
             .await;
@@ -529,9 +581,44 @@ fn erasure_leaves_the_rows_its_references_say() {
         )
         .await;
 
-        // An hour on, Ada is erased.
+        let counts = || async {
+            texts(
+                &host,
+                "SELECT (SELECT count(*) FROM \"member\")::text || ' ' || (SELECT count(*) FROM \"loan\")::text || ' ' || (SELECT count(*) FROM \"loan_note\")::text || ' ' || (SELECT count(*) FROM \"review\" WHERE \"member_id\" IS NULL)::text || ' ' || (SELECT count(*) FROM \"jadpo_sessions\")::text",
+            )
+            .await
+        };
+        let before = counts().await;
+        assert_eq!(before, ["2 6 2 0 2"]);
+
+        // Bob may not erase Ada: her not-found failure, and nothing
+        // changes.
         host.set_now(T0 + HOUR);
-        call(&program, &host, "forget", vec![id_of(&members[0])]).await;
+        not_found(
+            outcome_as(
+                &program,
+                &host,
+                "forget",
+                vec![id_of(&members[0])],
+                &members[1],
+            )
+            .await,
+        );
+        assert_eq!(counts().await, before);
+
+        // An hour on, Ada erases herself.
+        match outcome_as(
+            &program,
+            &host,
+            "forget",
+            vec![id_of(&members[0])],
+            &members[0],
+        )
+        .await
+        {
+            Outcome::Value(_) => {}
+            other => panic!("expected the erasure, got {other:?}"),
+        }
 
         assert_eq!(
             texts(&host, "SELECT \"handle\" FROM \"member\" ORDER BY 1").await,
@@ -543,7 +630,7 @@ fn erasure_leaves_the_rows_its_references_say() {
             "Ada's loans go, returned and renewed ones too"
         );
         assert_eq!(
-            texts(&host, "SELECT \"text\" FROM \"loan_note\" ORDER BY 1").await,
+            texts(&host, "SELECT \"body\" FROM \"loan_note\" ORDER BY 1").await,
             ["bob's note"]
         );
         assert_eq!(
@@ -582,10 +669,16 @@ fn erasure_leaves_the_rows_its_references_say() {
         );
 
         // Erasing her again finds no one, and changes nothing.
-        match outcome(&program, &host, "forget", vec![id_of(&members[0])]).await {
-            Outcome::Failed(failure) => assert_eq!(failure.code, "member_not_found"),
-            other => panic!("expected the not-found failure, got {other:?}"),
-        }
+        not_found(
+            outcome_as(
+                &program,
+                &host,
+                "forget",
+                vec![id_of(&members[0])],
+                &members[0],
+            )
+            .await,
+        );
         assert_eq!(
             texts(&host, "SELECT \"handle\" FROM \"member\" ORDER BY 1").await,
             ["bob"]
