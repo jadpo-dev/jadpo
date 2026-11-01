@@ -313,6 +313,13 @@ fn checked_with(
         let mut surfaces = derived::surfaces(db, loaded.project);
         surfaces.extend(derived::network(db, loaded.project));
         surfaces.extend(derived::providers(db, loaded.project));
+        // Only a project with no errors: where a body doesn't check, the
+        // walk can't say what it sends.
+        if errors == 0 {
+            surfaces.extend(derived::personal_data(db, loaded.project));
+        } else {
+            derived::remove_personal_data(&loaded.root);
+        }
         let stamp = derived::stamp(db, loaded.project, &loaded.root, errors);
         match derived::write(
             &loaded.root,

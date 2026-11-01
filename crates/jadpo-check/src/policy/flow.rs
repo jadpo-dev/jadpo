@@ -28,7 +28,9 @@
 //! The walk runs again, in its own mode, for what reaches a model (area
 //! 21, "Personal data sent to a model"; chunk 5.5v5b): each prompt's
 //! placeholders and each embedded text followed back to the fields they
-//! were read or built from ([`models`]).
+//! were read or built from ([`models`]). The same walk keeps what leaves
+//! the app through each connection, for the personal-data report (area
+//! 15; chunk V5, [`exits`]).
 //!
 //! The walk follows copies (assignments, fields, objects, lists, `match`,
 //! the collection operations, and what a write sets, into the record it
@@ -66,6 +68,7 @@ use jadpo_std::http::PrincipalKind;
 use jadpo_std::read::Cardinality;
 use jadpo_std::write::WriteOp;
 
+pub mod exits;
 mod models;
 mod stores;
 mod tenants;
@@ -134,6 +137,20 @@ enum Src {
     /// read from a value the walk can't follow to a record: only the walk
     /// for what reaches a model makes these ([`models`]).
     Marked { host: String, field: String },
+    /// `host`'s field `field`, marked personal data, which the value's own
+    /// type says it is or was read from, whatever the walk followed it to:
+    /// a value of a field's type, `caller.subject` among them, or a field
+    /// read off a value of `host`'s type, a parameter's too. Only what
+    /// leaves through a connection counts these ([`exits`]), so a value
+    /// typed as personal data is never reported as not reaching a host
+    /// because nothing called the action that holds it.
+    Declared { host: String, field: String },
+    /// What a provider was sent, in its answer: nothing says what it puts
+    /// where, so every part of the answer may hold it. Only what leaves
+    /// through a connection counts these ([`exits`]), since the checks on
+    /// what a model or a field is given would otherwise hold a provider's
+    /// own ids to the marks of whatever was sent to get them.
+    Answered(Box<Src>),
 }
 
 /// Which record a [`Src::Record`] or [`Src::Field`] is, when the body
@@ -245,6 +262,7 @@ fn decided(src: Src) -> Option<Src> {
         Src::Present { .. } => Some(Src::Decided(Box::new(src))),
         Src::Decided(_) => Some(src),
         Src::Deep(inner) => decided(*inner).map(deep),
+        Src::Answered(inner) => decided(*inner).map(answered),
         other => Some(Src::Decided(Box::new(other))),
     }
 }
@@ -254,6 +272,14 @@ fn deep(src: Src) -> Src {
     match src {
         Src::Deep(_) => src,
         other => Src::Deep(Box::new(other)),
+    }
+}
+
+/// `src` as what a provider's answer may hold.
+fn answered(src: Src) -> Src {
+    match src {
+        Src::Answered(_) => src,
+        other => Src::Answered(Box::new(other)),
     }
 }
 
@@ -391,6 +417,13 @@ impl Prov {
                         out.add(deep(src));
                     }
                 }
+                // A provider's answer to what is passed.
+                Src::Answered(inner) => {
+                    let part = Prov::of((**inner).clone()).substitute(args);
+                    for src in part.flat() {
+                        out.add(answered(src));
+                    }
+                }
                 Src::Param(at, path) => {
                     if let Some(arg) = args.get(*at) {
                         out.union(&arg.at(path));
@@ -502,6 +535,16 @@ struct Summary {
     /// called against what is passed (chunk 5.5v5b): only the walk for
     /// what reaches a model fills it.
     prompted: BTreeSet<(usize, Vec<String>, String)>,
+    /// What it sends out through a connection, itself or through what it
+    /// calls (chunk V5): each holder of personal data, where it leaves and
+    /// whether it only decided what was sent. A package's own operations
+    /// leave through [`jadpo_graph::body::OWN_CONNECTION`] until an app's
+    /// call of its action names the connection. Only the walk for what
+    /// reaches a model fills it.
+    left: BTreeSet<exits::Left>,
+    /// The parts of its parameters that leave through a connection,
+    /// followed where it is called, as [`Summary::prompted`] is.
+    left_params: BTreeSet<(exits::Exit, usize, Vec<String>)>,
 }
 
 /// The summary of a callable nothing resolves to.
@@ -516,6 +559,8 @@ static NOTHING: Summary = Summary {
     fails: Vec::new(),
     batches: Vec::new(),
     prompted: BTreeSet::new(),
+    left: BTreeSet::new(),
+    left_params: BTreeSet::new(),
 };
 
 impl Summary {
@@ -544,6 +589,8 @@ impl Summary {
             }
         }
         self.prompted.extend(other.prompted.iter().cloned());
+        self.left.extend(other.left.iter().cloned());
+        self.left_params.extend(other.left_params.iter().cloned());
         self
     }
 
@@ -594,6 +641,17 @@ impl Summary {
                 .map(|(at, mut path, sink)| {
                     path.truncate(DEPTH);
                     (at, path, sink)
+                })
+                .collect(),
+            left: self.left,
+            // A part cut short stands for everything inside it, which is
+            // what a caller is then held to.
+            left_params: self
+                .left_params
+                .into_iter()
+                .map(|(exit, at, mut path)| {
+                    path.truncate(DEPTH);
+                    (exit, at, path)
                 })
                 .collect(),
         }
@@ -807,6 +865,21 @@ fn summary_of<'db>(
     }
 }
 
+/// The callable a call of `key` runs: in the walk for what reaches a model
+/// a package's own too, whose code an app's data may pass through.
+fn callable_of<'db>(
+    db: &'db dyn Db,
+    project: Project,
+    key: &Key,
+    personal: bool,
+) -> Option<Callable<'db>> {
+    resolve(db, project, key).or_else(|| {
+        personal
+            .then(|| exits::package_callable(db, project, key))
+            .flatten()
+    })
+}
+
 /// What every `emit` of each event puts in it ([`payloads`]).
 fn gathered(db: &dyn Db, project: Project, personal: bool) -> BTreeMap<Key, Prov> {
     let mut out: BTreeMap<Key, Prov> = BTreeMap::new();
@@ -815,7 +888,7 @@ fn gathered(db: &dyn Db, project: Project, personal: bool) -> BTreeMap<Key, Prov
             let Some(key) = body_facts(db, project, callable).key_of(&[Kind::Action]) else {
                 continue;
             };
-            if resolve(db, project, key) != Some(callable) {
+            if callable_of(db, project, key, personal) != Some(callable) {
                 continue;
             }
             for (event, prov) in &summary_of(db, project, callable, personal).emits {
@@ -833,7 +906,7 @@ fn gathered(db: &dyn Db, project: Project, personal: bool) -> BTreeMap<Key, Prov
             let Some(payload) = out.get(&subscriber.event).cloned() else {
                 continue;
             };
-            let Some(callable) = resolve(db, project, &subscriber.run) else {
+            let Some(callable) = callable_of(db, project, &subscriber.run, personal) else {
                 continue;
             };
             let provs: Vec<Prov> = subscriber
@@ -950,7 +1023,7 @@ struct Flow<'a> {
 impl<'a> Flow<'a> {
     /// The summary of the action or function `key`.
     fn summary(&self, key: &Key) -> &'a Summary {
-        match resolve(self.db, self.project, key) {
+        match callable_of(self.db, self.project, key, self.personal) {
             Some(callable) => summary_of(self.db, self.project, callable, self.personal),
             None => &NOTHING,
         }
@@ -1003,6 +1076,8 @@ impl<'a> Flow<'a> {
         walk.stores.clear();
         walk.emits.clear();
         walk.prompted.clear();
+        walk.left.clear();
+        walk.left_params.clear();
         walk.pc.clear();
         walk.found.clear();
         walk.block(self, &body.block);
@@ -1033,6 +1108,8 @@ impl<'a> Flow<'a> {
             fails,
             batches: walk.batches,
             prompted: walk.prompted,
+            left: walk.left,
+            left_params: walk.left_params,
         };
         let problems = if self.personal {
             walk.exposures
@@ -1160,6 +1237,10 @@ struct Walk<'b> {
     reply_named: BTreeSet<(String, Option<String>)>,
     /// The parts of its parameters that reach a model ([`Summary::prompted`]).
     prompted: BTreeSet<(usize, Vec<String>, String)>,
+    /// What it sends out through a connection ([`Summary::left`]).
+    left: BTreeSet<exits::Left>,
+    /// The parts of its parameters that do ([`Summary::left_params`]).
+    left_params: BTreeSet<(exits::Exit, usize, Vec<String>)>,
     /// What reaches a model that `ai:` doesn't allow ([`models`]).
     exposures: Vec<Diagnostic>,
     /// Where each value is and what it holds, once reported.
@@ -1225,6 +1306,8 @@ impl<'b> Walk<'b> {
             reply: false,
             reply_named: BTreeSet::new(),
             prompted: BTreeSet::new(),
+            left: BTreeSet::new(),
+            left_params: BTreeSet::new(),
             exposures: Vec::new(),
             exposed: BTreeSet::new(),
         }
@@ -1584,6 +1667,9 @@ impl Walk<'_> {
                         && let jadpo_graph::TypeRef::Node(event) = &self.body.site(value).ty
                     {
                         let event = event.clone();
+                        if self.personal {
+                            self.emailed(flow, &event, &prov);
+                        }
                         self.event_tenant(flow, &event, value, &prov);
                         self.emitted(flow, &event, prov);
                     }
@@ -2050,6 +2136,9 @@ impl Walk<'_> {
         {
             self.embedded(flow, *text, prov);
         }
+        if self.personal {
+            self.called_out(flow, callee, args, &provs);
+        }
         let all = || {
             let mut out = Prov::default();
             for prov in &provs {
@@ -2175,6 +2264,27 @@ impl Walk<'_> {
             Callee::Batch(BatchOp::Status) => self.status(flow),
             Callee::Session(_) | Callee::Batch(_) | Callee::AdvanceClock | Callee::Unknown => {
                 Prov::default()
+            }
+            // A provider's answer may hold anything it was sent, anywhere
+            // in it.
+            Callee::Provider { .. } | Callee::PackageAction { .. } if self.personal => {
+                let mut out = all();
+                for src in out.flat() {
+                    out.add(answered(src));
+                }
+                out
+            }
+            // A library's function is code nothing here follows: what it
+            // gives may hold anything it was given, in any part.
+            Callee::LibraryFunction(_) if self.personal => {
+                let mut out = Prov::default();
+                for src in all().flat() {
+                    out.add(match src {
+                        Src::Record { .. } | Src::Param(..) => deep(src),
+                        other => other,
+                    });
+                }
+                out
             }
             _ => all(),
         }
@@ -2339,6 +2449,14 @@ impl Walk<'_> {
             }
             None => Prov::default(),
         };
+        // A write's file goes to its store.
+        if self.personal
+            && write
+            && let Some(Node::Expr(Expr::Literal(jadpo_std::Literal::Text(store)))) =
+                arg(Some(0)).map(|at| self.body.site(at).node.clone())
+        {
+            self.filed(flow, &store, &rows);
+        }
         let mut fails: Vec<Src> = Vec::new();
         if let Some(call) = &each {
             let provs = self.run_args(flow, call, &item, &captured);
@@ -2546,6 +2664,7 @@ impl Walk<'_> {
         }
         if self.personal {
             self.passed_to_model(flow, key.name(), &summary.prompted, args, provs);
+            self.passed_out(flow, summary, provs);
         }
         for store in &summary.stores {
             self.passed_store(flow, site, key.name(), store, args, provs);
@@ -2647,6 +2766,9 @@ impl Walk<'_> {
                     self.output(flow, failure.name(), &field_name(key), *value, &prov);
                     let named = flow.lookup.canonical_name(failure.name());
                     self.reply_shows(flow, *value, &prov.flat(), Shown::Failure(&named));
+                    if self.personal {
+                        self.replied(flow, &prov);
+                    }
                 } else {
                     self.params_in(&prov);
                 }
@@ -3289,7 +3411,9 @@ fn unread(flow: &Flow<'_>, prov: &Prov) -> Vec<(String, String, Reached, bool)> 
             | Src::Deep(_)
             | Src::Present { .. }
             | Src::Typed { .. }
-            | Src::Marked { .. } => {}
+            | Src::Marked { .. }
+            | Src::Declared { .. }
+            | Src::Answered(_) => {}
         }
     }
     out

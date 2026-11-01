@@ -652,6 +652,43 @@ marked `personal:`, an entity that is no person and belongs to none
 (`ai_personal::marks`). Erasure walks the same references, and export
 will.
 
+**Where personal data goes** (area 15; chunk V5). The walk for what
+reaches a model (`policy::flow`'s `models`) also keeps what leaves through
+each connection (`policy::flow::exits`), so there is one flow analysis.
+Each outside call a body makes, and each email and prompt, is an `Exit`: a
+connection and how it leaves. `Walk::sends` records each holder of personal
+data at an exit, and each part of a parameter, in the summary (`left`,
+`left_params`), for callers to follow as `prompted` is. A package's own
+operation leaves through `OWN_CONNECTION` until an app's call of its action
+names the connection; everything an action is passed counts as leaving,
+under the action's name, whatever its summary says, since the package may
+be installed and cached. A package's subscribers go through each connection
+to the package. `exits::left` gathers the project's: every action's and
+function's summary, what each subscriber passes from its event, each reply
+and a magic link's address. `exits::package_left` gathers one package's for
+`jadpo package check`: its operations' declared inputs and its own
+callables' summaries.
+
+Two sources count only here, so neither changes area 21's checks:
+`Src::Declared`, a marked field the value's type says it is or was read from,
+and `Src::Answered`, what a provider was sent, in every part of its answer.
+`holders` ignores both, and `exits::hold_for_exits` reads them. A local's read
+is typed by the local (`Walk::value_type`), and a field copied from another
+counts as the one it copies (`exits::field_origin`), so `card.notes` of an
+output picking `User.notes` is `User.notes`. The marks are `ai_personal::marks`,
+which now reads a package's own object, input and output types and an email's
+as well as entities and events, by the name the tables know them by
+(`AcmePay.CustomerRequest`), so a package's mark never lands on an entity of the
+same bare name.
+
+`personal_data::report` writes the report from `sent`, naming each holder as
+it is declared; the CLI writes it only for a project with no errors and
+removes an old one otherwise. V6 reads `sent` for the connections it asks an
+`ErasureNotPossible` of, and P8 adds its sections to `report` and its JSON
+beside `connections`. Marks and exits aren't graph nodes yet: the report is
+worked out from the analysis directly until the approval review needs a diff,
+which reads the JSON twin as it does the other reports.
+
 **Retention** (area 15). An entity's `retention:` and each field's are
 read by `data::retention::read` once the entity's fields and lifecycle
 are, onto `EntityModel::retention` and `FieldModel::retention` (a

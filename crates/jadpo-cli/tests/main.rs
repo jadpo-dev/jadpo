@@ -92,6 +92,7 @@ mod package_translations;
 mod packages;
 mod passkey_tokens;
 mod passkeys;
+mod personal_data_report;
 mod policy;
 mod provider_calls;
 mod provider_fakes;

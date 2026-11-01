@@ -6,8 +6,9 @@
 //! - **Marked fields.** An entity's or event's field marked `personal:
 //!   PersonalData.<category>` (area 15) is that category, and one marked
 //!   `to_models: false` is kept from every model whatever `allowed:` lists
-//!   ([`marks`]). Both are read where the field is declared
-//!   ([`mark_problem`]).
+//!   ([`marks`]). So is an email's field, and a field of a package's own
+//!   type, which carries `personal:` alone (chunk V5). Each is read where
+//!   the field is declared ([`mark_problem`]).
 //! - **The standard types' own categories** (area 19): a value of a type
 //!   that is personal data whatever holds it (an `NhsNumber`, a
 //!   `ChatMessage`), or one built on such a type, is its category, and so
@@ -42,25 +43,70 @@ pub struct Mark {
     pub refused: bool,
 }
 
-/// Every entity's and event's marked field, by its host's name and its
-/// own.
+/// Every marked field of an entity, an event, an email or a package's own
+/// type, by its host's name and its own.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Marks {
     pub fields: BTreeMap<(String, String), Mark>,
+    /// Each type a package declares that holds a mark, by the name the
+    /// tables know it by, `AcmePay.CustomerRequest`, which is always
+    /// through its package: it is never read as an app's type of its bare
+    /// name.
+    pub packaged: BTreeSet<String>,
 }
 
-/// The `personal:` and `to_models:` of every entity's and event's field.
+impl Marks {
+    /// What `host`'s field `field` says of itself: `host` as the tables
+    /// know it, or an app's entity or event by the name it is declared
+    /// with, without the domain a contested name is read with.
+    pub fn mark(&self, host: &str, field: &str) -> Option<&Mark> {
+        let exact = self.fields.get(&(host.to_string(), field.to_string()));
+        if exact.is_some() || self.is_packaged(host) {
+            return exact;
+        }
+        let bare = host.rsplit('.').next().unwrap_or(host);
+        self.fields.get(&(bare.to_string(), field.to_string()))
+    }
+
+    /// Whether `host` is a package's own type with a marked field.
+    pub fn is_packaged(&self, host: &str) -> bool {
+        self.packaged.contains(host)
+    }
+}
+
+/// Whether a field of a type of this base, in a package or not, can carry
+/// `personal:`: an entity's, an event's and an email's anywhere, and in a
+/// package each type it sends or receives.
+pub fn holds_marks(base: FieldsBase, in_package: bool) -> bool {
+    matches!(
+        base,
+        FieldsBase::Entity | FieldsBase::Event | FieldsBase::EmailMessage
+    ) || (in_package
+        && matches!(
+            base,
+            FieldsBase::Object | FieldsBase::Input | FieldsBase::Output
+        ))
+}
+
+/// The `personal:` and `to_models:` of every field that can carry them
+/// ([`holds_marks`]).
 #[salsa::tracked(returns(ref))]
 pub fn marks(db: &dyn Db, project: Project) -> Arc<Marks> {
     let mut out = Marks::default();
     for &file in project.files(db) {
+        let location = jadpo_db::location(db, project, file);
+        let home = location.ownership.package();
         for shape in crate::types::type_shapes(db, file) {
-            let crate::types::ShapeKind::Fields {
-                base: FieldsBase::Entity | FieldsBase::Event,
-                lines,
-            } = &shape.kind
-            else {
+            let crate::types::ShapeKind::Fields { base, lines } = &shape.kind else {
                 continue;
+            };
+            if !holds_marks(*base, home.is_some()) {
+                continue;
+            }
+            // A package's names are always known through it.
+            let host = match home {
+                Some(home) => format!("{}.{}", home.through, shape.name),
+                None => shape.name.clone(),
             };
             for line in lines {
                 let crate::types::Line::Field { name, settings, .. } = line else {
@@ -75,7 +121,10 @@ pub fn marks(db: &dyn Db, project: Project) -> Arc<Marks> {
                     }
                 }
                 if mark != Mark::default() {
-                    out.fields.insert((shape.name.clone(), name.clone()), mark);
+                    if home.is_some() {
+                        out.packaged.insert(host.clone());
+                    }
+                    out.fields.insert((host.clone(), name.clone()), mark);
                 }
             }
         }
@@ -172,6 +221,24 @@ pub(crate) fn mark_problem(key: &str, value: &Const, span: Span) -> Option<Diagn
         ),
         _ => None,
     }
+}
+
+/// `personal:` on a field of a type that can't carry it: an app's own
+/// object, input or output, which holds what a marked field gave it.
+pub(crate) fn mark_refused(span: Span, field: &Ty) -> Diagnostic {
+    let host = match field {
+        Ty::Field(host, _) => host.rsplit('.').next().unwrap_or(host).to_string(),
+        other => other.to_string(),
+    };
+    Diagnostic::new(
+        &rule::TYPE_UNKNOWN_SETTING,
+        format!("`{PERSONAL}` isn't a setting of `{host}`'s fields"),
+    )
+    .at(span, "unknown setting")
+    .reason(format!(
+        "`personal:` marks a field of an entity, an event, an email or a package's own type, where Jadpo keeps or sends its value. `{host}` is none of these: a value in it is followed back to the marked field it came from, so it needs no mark of its own."
+    ))
+    .next(format!("Remove `{PERSONAL}`, and mark the field its value is read from"))
 }
 
 /// Reads `personal_data: { allowed: [PersonalData.<category>, ...] }`
@@ -350,12 +417,7 @@ pub fn field_holding(
     field: &str,
 ) -> Option<Holding> {
     let mut holding = Holding::default();
-    let bare = host.rsplit('.').next().unwrap_or(host);
-    if let Some(mark) = marks
-        .fields
-        .get(&(host.to_string(), field.to_string()))
-        .or_else(|| marks.fields.get(&(bare.to_string(), field.to_string())))
-    {
+    if let Some(mark) = marks.mark(host, field) {
         if let Some(category) = &mark.category {
             holding.categories.insert(category.clone(), None);
         }
@@ -417,7 +479,8 @@ pub fn deep(
                 Some(Def::Scalar { parent, .. }) => deep(lookup, marks, parent, out, seen),
                 Some(Def::Fields { base, fields, .. }) => {
                     for field in fields {
-                        if matches!(base, FieldsBase::Entity | FieldsBase::Event)
+                        if (matches!(base, FieldsBase::Entity | FieldsBase::Event)
+                            || marks.is_packaged(name))
                             && let Some(holding) = own_mark(marks, name, &field.name)
                         {
                             out.entry(Holder::Field {
@@ -472,11 +535,7 @@ pub fn deep(
 
 /// A field's own `personal:` and `to_models:`, as a holding.
 fn own_mark(marks: &Marks, host: &str, field: &str) -> Option<Holding> {
-    let bare = host.rsplit('.').next().unwrap_or(host);
-    let mark = marks
-        .fields
-        .get(&(host.to_string(), field.to_string()))
-        .or_else(|| marks.fields.get(&(bare.to_string(), field.to_string())))?;
+    let mark = marks.mark(host, field)?;
     let mut holding = Holding {
         categories: BTreeMap::new(),
         refused: mark.refused,
