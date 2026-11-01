@@ -115,6 +115,12 @@ pub struct Column {
     /// The comment PostgreSQL keeps on it: for a quantity, its kind and the
     /// SI unit it holds, `Length in metre (m)` (area 19, chunk 5.5w).
     pub comment: Option<String>,
+    /// For a column PostgreSQL works out from others on every write, the
+    /// expression it is generated from (`GENERATED ALWAYS AS (...)
+    /// STORED`): an entity's searchable words (area 16, "Search"; chunk
+    /// B12). Such a column holds nothing of its own, so it is dropped
+    /// rather than retired, and made again when its expression changes.
+    pub generated: Option<String>,
 }
 
 /// What a column's field allows beyond its column type: an enum's
@@ -439,6 +445,9 @@ impl Table {
             if let Some(comment) = &column.comment {
                 entry.set("comment", comment);
             }
+            if let Some(generated) = &column.generated {
+                entry.set("generated", generated);
+            }
             columns.set(name, entry);
         }
         value.set("columns", columns);
@@ -532,6 +541,10 @@ impl Table {
                         .map_err(|e| format!("column `{name}`: {e}"))?,
                     comment: entry
                         .get("comment")
+                        .and_then(Value::as_str)
+                        .map(String::from),
+                    generated: entry
+                        .get("generated")
                         .and_then(Value::as_str)
                         .map(String::from),
                 },
@@ -960,7 +973,41 @@ impl Change {
                 None => format!("column `{name}.{column}`"),
             }
         };
+        // An entity's searchable words (area 16, "Search"; chunk B12): the
+        // one generated column, read as the search it is.
+        let generated = |store: &str, name: &str, column: &str| {
+            [after, before].iter().find_map(|schema| {
+                let found = table(schema, store, name)?;
+                let column = found.columns.get(column)?;
+                match (&found.holds, &column.generated) {
+                    (Holds::Entity(entity), Some(_)) => Some(entity.clone()),
+                    _ => None,
+                }
+            })
+        };
         match self {
+            Change::AddColumn {
+                store,
+                table,
+                column,
+            }
+            | Change::RemoveColumn {
+                store,
+                table,
+                column,
+            }
+            | Change::AlterColumn {
+                store,
+                table,
+                column,
+            } if generated(store, table, column).is_some() => {
+                let entity = generated(store, table, column).unwrap_or_default();
+                match self {
+                    Change::AddColumn { .. } => format!("new search of `{entity}`"),
+                    Change::RemoveColumn { .. } => format!("search of `{entity}` removed"),
+                    _ => format!("search of `{entity}` changed"),
+                }
+            }
             Change::AddStore { store } => format!("new store `{store}`"),
             Change::AddTable { store, table } => format!("new {}", holds(store, table)),
             Change::DropTable { store, table } => format!("{} removed", holds(store, table)),
@@ -1092,6 +1139,7 @@ mod tests {
                 retired: false,
                 allows: None,
                 comment: None,
+                generated: None,
             },
         );
         if extra {
@@ -1105,6 +1153,7 @@ mod tests {
                     retired: false,
                     allows: None,
                     comment: None,
+                    generated: None,
                 },
             );
         }

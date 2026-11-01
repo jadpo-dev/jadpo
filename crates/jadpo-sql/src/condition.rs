@@ -159,6 +159,22 @@ pub enum Condition {
         call: Call,
         test: Test,
     },
+    /// `Entity matches phrase` (area 16, "Search"; chunk B12): the
+    /// record's searchable words meet what a `SearchText` asks for. It
+    /// stands on a `where:` line of its own, never under `not`, `or` or
+    /// `where_present:`.
+    Matches(Search),
+}
+
+/// An entity's search, as a `matches` condition tests it.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Search {
+    /// The fields its words come from, by name now, in `fields:` order:
+    /// what the condition tests, so policy proves each one readable.
+    pub fields: Vec<String>,
+    pub language: jadpo_std::SearchLanguage,
+    /// The `SearchText` searched for: a parameter, or a field inside one.
+    pub value: Value,
 }
 
 /// A standard operation called on one of an entity's fields, its first
@@ -308,6 +324,7 @@ impl Condition {
             | Condition::Present {
                 condition: inner, ..
             } => inner.fields(out),
+            Condition::Matches(search) => out.extend(search.fields.iter().cloned()),
         }
     }
 
@@ -424,6 +441,13 @@ pub trait Bind {
     fn distance_bound(&mut self, _bound: &Value, _strict: bool) -> Option<String> {
         None
     }
+
+    /// `$n` for what a `matches` condition searches for, the `SearchText`
+    /// `value` holds as `websearch_to_tsquery` is given it (area 16,
+    /// chunk B12). `None` when the statement can't take it.
+    fn search_phrase(&mut self, _value: &Value) -> Option<String> {
+        None
+    }
 }
 
 /// For text that takes no parameters: a partial index's predicate, which
@@ -532,6 +556,13 @@ pub fn condition(
                 }
             }
         }
+        // Never negated: the checker keeps it out from under `not`.
+        Condition::Matches(search) => {
+            if negated {
+                return None;
+            }
+            crate::search::matches(&search_query(bind, search)?)
+        }
         Condition::Present { value, condition } => {
             let ty = match condition.as_ref() {
                 Condition::Compare { field: name, .. } => entity.column(name)?.param()?,
@@ -551,6 +582,12 @@ pub fn condition(
             format!("({n} IS NULL OR {inner})")
         }
     })
+}
+
+/// What `search` asks for, as SQL: its phrase bound as a parameter.
+pub fn search_query(bind: &mut dyn Bind, search: &Search) -> Option<String> {
+    let phrase = bind.search_phrase(&search.value)?;
+    Some(crate::search::query(search.language, &phrase))
 }
 
 /// `column` among the values `value` holds: a list written out, or a

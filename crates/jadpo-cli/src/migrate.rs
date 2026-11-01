@@ -760,8 +760,16 @@ fn change_groups(
                 ChangeMark::Added,
                 vec![
                     c.clone(),
-                    column(after, c).map(|c| c.sql_type).unwrap_or_default(),
-                    "new field".into(),
+                    column(after, c)
+                        .as_ref()
+                        .map(|c| c.sql_type.clone())
+                        .unwrap_or_default(),
+                    // An entity's searchable words (area 16, chunk B12).
+                    if column(after, c).is_some_and(|c| c.generated.is_some()) {
+                        "new search".into()
+                    } else {
+                        "new field".into()
+                    },
                 ],
             ),
             Change::RemoveColumn { column: c, .. } => (
@@ -771,6 +779,11 @@ fn change_groups(
             Change::AlterColumn { column: c, .. } => {
                 let (was, now) = (column(before, c), column(after, c));
                 let what = match (&was, &now) {
+                    // An entity's searchable words, worked out again from
+                    // its fields (area 16, chunk B12).
+                    (Some(_), Some(now)) if now.generated.is_some() => {
+                        "search made again from its fields".to_string()
+                    }
                     (Some(was), Some(now)) if !was.retired && now.retired => {
                         "retired: the column and its data stay".to_string()
                     }

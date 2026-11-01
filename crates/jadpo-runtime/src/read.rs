@@ -448,6 +448,22 @@ fn bind(param: &jadpo_std::read::Param, env: &Env<'_>) -> Result<SqlValue, Probl
                 .ok_or_else(|| Problem::Defect("a distance bound that isn't a number".into()))?;
             SqlValue::Float8(found.to_bits())
         }
+        // What a search looks for, its `or` a word (area 16, chunk B12).
+        Source::SearchPhrase { index, path } => {
+            let typed = value_at(
+                &Source::Arg {
+                    index: *index,
+                    path: path.clone(),
+                },
+                env.args,
+            );
+            match &typed {
+                Some(Value::Text(text)) => SqlValue::Text(jadpo_std::search::phrase(text)),
+                _ => {
+                    return Err(Problem::Defect("a search phrase that isn't text".into()));
+                }
+            }
+        }
     })
 }
 
@@ -1310,6 +1326,12 @@ pub mod cursor {
                     bytes.extend_from_slice(&length.to_be_bytes());
                     bytes.extend_from_slice(text.as_bytes());
                 }
+                // A search's rank, by its bits, so the next page starts
+                // exactly after it (area 16, "Search"; chunk B12).
+                SqlValue::Float8(bits) => {
+                    bytes.push(8);
+                    bytes.extend_from_slice(&bits.to_be_bytes());
+                }
                 _ => return None,
             }
         }
@@ -1347,6 +1369,14 @@ pub mod cursor {
                 (7, SqlType::Numeric) => {
                     let length = u32::from_be_bytes(take(4)?.try_into().ok()?);
                     SqlValue::Numeric(String::from_utf8(take(usize::try_from(length).ok()?)?).ok()?)
+                }
+                // A rank is never `NaN` or infinite, and never below 0.
+                (8, SqlType::Float8) => {
+                    let value = f64::from_bits(u64::from_be_bytes(take(8)?.try_into().ok()?));
+                    if !value.is_finite() || value < 0.0 {
+                        return None;
+                    }
+                    SqlValue::Float8(value.to_bits())
                 }
                 _ => return None,
             };

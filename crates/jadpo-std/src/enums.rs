@@ -641,6 +641,45 @@ std_enum! {
     }
 }
 
+std_enum! {
+    /// The language an entity's `search:` reads its fields' words in
+    /// (area 16, "Search"): PostgreSQL 16's text search configuration of
+    /// the same name, which splits text into words, drops the language's
+    /// stop words and reduces each word to its stem, so "running" finds
+    /// "runs". `simple` drops nothing and stems nothing.
+    SearchLanguage: "SearchLanguage" {
+        Arabic: "arabic",
+        Armenian: "armenian",
+        Basque: "basque",
+        Catalan: "catalan",
+        Danish: "danish",
+        Dutch: "dutch",
+        English: "english",
+        Finnish: "finnish",
+        French: "french",
+        German: "german",
+        Greek: "greek",
+        Hindi: "hindi",
+        Hungarian: "hungarian",
+        Indonesian: "indonesian",
+        Irish: "irish",
+        Italian: "italian",
+        Lithuanian: "lithuanian",
+        Nepali: "nepali",
+        Norwegian: "norwegian",
+        Portuguese: "portuguese",
+        Romanian: "romanian",
+        Russian: "russian",
+        Serbian: "serbian",
+        Simple: "simple",
+        Spanish: "spanish",
+        Swedish: "swedish",
+        Tamil: "tamil",
+        Turkish: "turkish",
+        Yiddish: "yiddish",
+    }
+}
+
 impl VectorDistance {
     /// pgvector's operator for it.
     pub fn operator(self) -> &'static str {
@@ -766,6 +805,7 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (crate::CURRENCY, names(crate::CURRENCIES)),
         (CodeForm::NAME, CodeForm::NAMES.to_vec()),
         (VectorDistance::NAME, VectorDistance::NAMES.to_vec()),
+        (SearchLanguage::NAME, SearchLanguage::NAMES.to_vec()),
     ];
     // The standard enums, and the choices, whose variants carry data
     // (chunk 5.5i3).
@@ -837,6 +877,7 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         crate::CURRENCY => crate::CURRENCIES.iter().position(|(v, _)| *v == variant),
         CodeForm::NAME => position(CodeForm::NAMES),
         VectorDistance::NAME => position(VectorDistance::NAMES),
+        SearchLanguage::NAME => position(SearchLanguage::NAMES),
         other => crate::QuantityKind::of_unit_enum(other)
             .and_then(|kind| kind.units().iter().position(|unit| unit.name == variant))
             .or_else(|| {

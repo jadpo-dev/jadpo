@@ -93,6 +93,7 @@ pub mod receiving;
 mod rules;
 mod runtime_plan;
 pub mod schedule;
+pub mod search;
 pub mod sphere;
 pub mod standard;
 pub mod steps;
@@ -113,9 +114,9 @@ pub use enums::{
     CodeForm, ComponentStyle, CsvFormat, DeployTarget, Driver, Dst, FieldAccess, FieldChange,
     Generated, HttpMethod, Idempotency, IndexKind, InvalidDay, LOCALE, MembershipScope,
     MoneyDisplay, MoneyPrecision, MoneySign, Month, OnDelete, ProviderEnvironment, Rounding,
-    RouteAuthentication, ScheduleTrigger, SignInMethod, SignInRefusal, SuccessStatus, Tenancy,
-    TextDirection, TextFormat, TranslationReview, Trigger, UuidVersion, VectorDistance, Weekday,
-    ZONE, enums, variant_ordinal,
+    RouteAuthentication, ScheduleTrigger, SearchLanguage, SignInMethod, SignInRefusal,
+    SuccessStatus, Tenancy, TextDirection, TextFormat, TranslationReview, Trigger, UuidVersion,
+    VectorDistance, Weekday, ZONE, enums, variant_ordinal,
 };
 pub use format::{BuiltinFormat, Component, FormatLength, FormatPart, TimeFormatSpec};
 pub use isolation::Isolation;

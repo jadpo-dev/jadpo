@@ -204,6 +204,9 @@ impl Reader<'_> {
                             value,
                         })
                     }
+                    // `Entity matches phrase` (area 16, "Search"; chunk
+                    // B12).
+                    "matches" => self.matches_condition(scope, entity, &lhs, &rhs, &expr, optional),
                     token => {
                         let Some(compare) = compare_token(token) else {
                             self.unsupported(
@@ -559,6 +562,116 @@ impl Reader<'_> {
             .reason(reason)
             .next(next),
         );
+    }
+
+    /// `Entity matches phrase` (area 16, "Search"; chunk B12): the
+    /// records whose searchable words meet what a `SearchText` parameter
+    /// asks for. It stands on a `where:` line, alone or joined by `and`,
+    /// since a record ranks by how well it matches and no index serves a
+    /// search under `not` or `or`.
+    fn matches_condition(
+        &mut self,
+        scope: &Scope<'_>,
+        entity: &EntityModel,
+        lhs: &Expr,
+        rhs: &Expr,
+        whole: &Expr,
+        optional: bool,
+    ) -> Option<Condition> {
+        let name = &entity.name;
+        let named = match unparen(lhs) {
+            Expr::NameRef(written) => tree::name_ref_text(&written),
+            _ => None,
+        };
+        if named.as_deref() != Some(name.as_str()) {
+            let reason = match self.field_named(entity, lhs) {
+                Some(field) => format!(
+                    "`matches` searches a record's words, in every field its entity's `search:` lists, so it is written of the entity, `{name} matches <phrase>`, not of one field such as `{name}.{}`.",
+                    field.name
+                ),
+                None => format!(
+                    "`matches` searches the records of the entity the query reads by words: `{name} matches <phrase>`."
+                ),
+            };
+            self.unsupported(
+                scope,
+                whole,
+                reason,
+                format!("Write `{name} matches <phrase>`"),
+            );
+            return None;
+        }
+        if let Some(place) = self.search_refused {
+            self.unsupported(
+                scope,
+                whole,
+                format!("A search ranks the records a query reads by how well they match, so `matches` stands in a query's own `where:` lines, not in {place}."),
+                "Search in a query of its own".to_string(),
+            );
+            return None;
+        }
+        if optional || !self.under.is_empty() {
+            let (reason, next) = if optional {
+                (
+                    "A search's phrase is always given: `where_present:` is for a comparison whose value may be absent. A request whose search box may be empty calls a query without `matches` when it is.".to_string(),
+                    "Write the search in `where:`".to_string(),
+                )
+            } else {
+                (
+                    format!(
+                        "A search ranks the records it finds by how well they match, and its index finds the records that match, never those that don't, so `matches` stands on a `where:` line, alone or joined by `and`, never under `{}`.",
+                        self.under.last().copied().unwrap_or("not")
+                    ),
+                    format!("Write `where: {name} matches <phrase>` on a line of its own"),
+                )
+            };
+            self.unsupported(scope, whole, reason, next);
+            return None;
+        }
+        let Some(search) = &entity.search else {
+            if !entity.search_written {
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::SEARCH_UNDECLARED,
+                        format!("`{name}` can't be searched by words"),
+                    )
+                    .at(Self::span(scope.path, whole), "no `search:`")
+                    .reason(format!(
+                        "A query finds records by words only in the fields its entity's `search:` lists, which the compiler indexes; `{name}` has no `search:` section."
+                    ))
+                    .next(format!(
+                        "Add `search: {{ fields: [...] language: SearchLanguage.english }}` to `{name}`, listing the text fields people search by"
+                    )),
+                );
+            }
+            return None;
+        };
+        let wanted = Ty::Prim(Prim::SearchText);
+        let (value, ty) = self.value(scope, rhs, &wanted)?;
+        if self.lookup.is_nullable(&ty) {
+            self.optional_in_where(scope, rhs);
+            return None;
+        }
+        let searched = matches!(ty.strip_nullable(), Ty::Prim(Prim::SearchText))
+            || self.lookup.base_prim(&ty) == Some(Prim::SearchText);
+        if !matches!(value, Value::Param { .. }) || (!searched && !ty.has_error()) {
+            let written = shown(rhs.syntax());
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_MISMATCH,
+                    format!("`{written}` isn't a `SearchText`"),
+                )
+                .at(Self::span(scope.path, rhs), format!("a `{ty}`"))
+                .reason("`matches` searches for what someone typed into a search box, a `SearchText` parameter (or a field of one), read as words, quoted phrases and `-word`.")
+                .next("Pass a `SearchText` here, such as a parameter `search_phrase: SearchText`"),
+            );
+            return None;
+        }
+        Some(Condition::Matches(jadpo_sql::Search {
+            fields: search.fields.clone(),
+            language: search.language,
+            value,
+        }))
     }
 
     pub(super) fn optional_in_where(&mut self, scope: &Scope<'_>, value: &Expr) {

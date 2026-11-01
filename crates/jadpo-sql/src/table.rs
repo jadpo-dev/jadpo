@@ -46,6 +46,21 @@ pub fn add_column(table: &str, column: &str, sql_type: &str) -> String {
     )
 }
 
+/// Drops `column` from `table`: a generated column, which holds nothing
+/// of its own (area 16, "Search"; chunk B12).
+pub fn drop_column(table: &str, column: &str) -> String {
+    format!("ALTER TABLE {} DROP COLUMN {}", ident(table), ident(column))
+}
+
+/// `sql_type`, generated from `expression` when it is given: the type a
+/// column definition writes after the column's name.
+pub fn generated_type(sql_type: &str, expression: Option<&str>) -> String {
+    match expression {
+        Some(expression) => format!("{sql_type} GENERATED ALWAYS AS ({expression}) STORED"),
+        None => sql_type.to_string(),
+    }
+}
+
 /// Sets the comment on `column`, or removes it for `None`: what a
 /// quantity's column holds, its kind and SI unit (area 19, chunk 5.5w).
 pub fn comment_on_column(table: &str, column: &str, comment: Option<&str>) -> String {

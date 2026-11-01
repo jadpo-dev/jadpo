@@ -69,6 +69,7 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
             | Builtin::IpAddress
             | Builtin::PageCursor
             | Builtin::PageSize
+            | Builtin::SearchText
             | Builtin::ApiToken
             | Builtin::ServiceKey
             | Builtin::SignInCode
@@ -434,6 +435,7 @@ fn column(position: u32, sql_type: &str, nullable: bool) -> Column {
         retired: false,
         allows: None,
         comment: None,
+        generated: None,
     }
 }
 

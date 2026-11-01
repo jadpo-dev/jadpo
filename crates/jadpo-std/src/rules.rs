@@ -701,10 +701,21 @@ pub fn check_builtin_text(builtin: Builtin, text: &str) -> Result<(), String> {
         Builtin::SignInToken if !is_sign_in_token(text) => {
             Err("isn't a sign-in link's token, which is 64 lower-case hexadecimal digits".into())
         }
+        Builtin::SearchText if !is_search_text(text) => Err(format!(
+            "isn't what a search box takes: 1 to {} characters with no line breaks, tabs or other control characters",
+            crate::search::MOST_CHARACTERS
+        )),
         Builtin::Instant => crate::time::check_instant(text),
         Builtin::CalendarDate => crate::time::check_calendar_date(text),
         _ => Ok(()),
     }
+}
+
+/// Whether `text` is a `SearchText` (area 2): 1 to 200 characters, none
+/// of them a control character.
+pub fn is_search_text(text: &str) -> bool {
+    let count = text.chars().count() as u64;
+    (1..=crate::search::MOST_CHARACTERS).contains(&count) && !text.chars().any(char::is_control)
 }
 
 /// Whether `text` is a magic link's code (area 8): six ASCII digits.

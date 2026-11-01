@@ -105,6 +105,7 @@ mod retention;
 mod round_trips;
 mod rule_slice;
 mod schedules;
+mod search;
 mod seeds;
 mod served_openapi;
 mod settle;

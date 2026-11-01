@@ -123,6 +123,30 @@ impl VectorSearch {
     }
 }
 
+/// The searches by words (area 16, "Search"; chunk B12) among a query's
+/// lines: each a line of its own or a part of an `and`, where the checker
+/// lets one stand.
+pub fn searches(filter: &[Condition]) -> Vec<&jadpo_sql::Search> {
+    let mut out = Vec::new();
+    for line in filter {
+        match line {
+            Condition::Matches(search) => out.push(search),
+            Condition::And(parts) => out.extend(searches(parts)),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Whether `expr` holds a `matches` anywhere: a search by words, which
+/// needs no `order:` (area 16).
+fn holds_matches(expr: &Expr) -> bool {
+    expr.syntax()
+        .descendants()
+        .filter_map(ast::BinExpr::cast)
+        .any(|binary| binary.op().is_some_and(|op| op.text() == "matches"))
+}
+
 /// A count as a sentence writes it, thousands apart: `5,000`.
 pub(crate) fn grouped(n: u64) -> String {
     let digits = n.to_string();
@@ -382,6 +406,7 @@ pub fn query_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> Op
         out: Vec::new(),
         under: Vec::new(),
         layer: false,
+        search_refused: None,
     };
     let model = reader.query(symbol, &decl).map(Arc::new);
     Some(QueryRead {
@@ -466,6 +491,9 @@ struct Reader<'a> {
     /// Whether the query read is a map layer, whose properties come from
     /// its records' own fields alone (chunk 5.5u8).
     layer: bool,
+    /// Where the conditions being read stand, when `matches` can't (area
+    /// 16, "Search"; chunk B12): an include's or an aggregate's.
+    search_refused: Option<&'static str>,
 }
 
 /// The sections of one query or include block, as written.

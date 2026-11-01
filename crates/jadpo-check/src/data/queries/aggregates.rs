@@ -285,7 +285,10 @@ impl Reader<'_> {
         // an aggregate can't hold one yet.
         let mut filter = Vec::new();
         for (present, member) in &sections.filters {
-            if let Some(condition) = self.filter_line(scope, entity, member, *present) {
+            self.search_refused = Some("an aggregate query");
+            let read = self.filter_line(scope, entity, member, *present);
+            self.search_refused = None;
+            if let Some(condition) = read {
                 if condition.searches() {
                     ok = false;
                     let at = member.value().map_or_else(

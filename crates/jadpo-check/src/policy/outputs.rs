@@ -427,6 +427,23 @@ fn query(
                         format!("The order records come in shows how their `{field}` compare"),
                         format!("Order by a field every caller may read, not `{entity}.{field}`"),
                     )
+                } else if include.is_empty()
+                    && crate::data::queries::searches(&model.filter)
+                        .iter()
+                        .any(|search| search.fields.contains(&field))
+                {
+                    // A search's field (area 16, "Search"; chunk B12): which
+                    // records match, and how well, shows its words.
+                    (
+                        "searches",
+                        format!("searches `{field}`"),
+                        format!(
+                            "Which records match a search, and how well, shows the words of each one's `{field}`"
+                        ),
+                        format!(
+                            "Remove `{field}` from `{entity}`'s `search:`, or search in a query only callers who may read it can run"
+                        ),
+                    )
                 } else {
                     (
                         "filters on",
@@ -695,12 +712,16 @@ fn condition_span(
         &["where", "where_present"]
     };
     let written = format!("{entity}.{field}");
-    tree::members(list)
+    let lines: Vec<ast::Member> = tree::members(list)
         .into_iter()
         .filter(|(name, _)| {
             tree::name_text(name).is_some_and(|word| words.contains(&word.as_str()))
         })
-        .find_map(|(_, member)| {
+        .map(|(_, member)| member)
+        .collect();
+    lines
+        .iter()
+        .find_map(|member| {
             member
                 .syntax()
                 .descendants()
@@ -708,6 +729,23 @@ fn condition_span(
                     ast::FieldExpr::can_cast(node.kind()) && tree::written(node) == written
                 })
                 .map(|node| node_span(path, &node))
+        })
+        // A search's field is tested by `Entity matches phrase` (area 16,
+        // "Search"; chunk B12), which names no field.
+        .or_else(|| {
+            lines.iter().find_map(|member| {
+                member
+                    .syntax()
+                    .descendants()
+                    .filter_map(ast::BinExpr::cast)
+                    .find(|binary| {
+                        binary.op().is_some_and(|op| op.text() == "matches")
+                            && binary
+                                .lhs()
+                                .is_some_and(|lhs| tree::written(lhs.syntax()) == entity)
+                    })
+                    .map(|binary| node_span(path, binary.syntax()))
+            })
         })
 }
 

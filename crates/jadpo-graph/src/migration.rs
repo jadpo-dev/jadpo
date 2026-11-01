@@ -130,7 +130,9 @@ pub fn next_snapshot(latest: &Schema, source: &Schema) -> Schema {
                 continue;
             }
             for (column_name, column) in &table.columns {
-                if !now.columns.contains_key(column_name) {
+                // A generated column holds nothing of its own, so it is
+                // dropped, never retired (area 16, "Search").
+                if !now.columns.contains_key(column_name) && column.generated.is_none() {
                     now.columns.insert(
                         column_name.clone(),
                         Column {
@@ -177,6 +179,10 @@ pub fn decisions_needed(before: &Schema, after: &Schema) -> Vec<Needed> {
         let Some(now) = new.columns.get(column) else {
             continue;
         };
+        // PostgreSQL fills a generated column itself.
+        if now.generated.is_some() {
+            continue;
+        }
         let kind = match was {
             None if !now.nullable => NeededKind::Backfill,
             Some(was) if !was.retired && now.retired => NeededKind::Retire,
@@ -472,7 +478,11 @@ pub fn migration_sql(
                     .iter()
                     .find(|n| &n.table == table && &n.column == column);
                 plan.columns.push(Statement {
-                    sql: table::add_column(table, column, &col.sql_type),
+                    sql: table::add_column(
+                        table,
+                        column,
+                        &table::generated_type(&col.sql_type, col.generated.as_deref()),
+                    ),
                     does: "add column",
                 });
                 if let Some(comment) = &col.comment {
@@ -504,6 +514,33 @@ pub fn migration_sql(
                 ) else {
                     continue;
                 };
+                // A generated column is made again from its new
+                // expression, with the indexes on it (area 16, "Search").
+                if was.generated.is_some() || now.generated.is_some() {
+                    plan.columns.push(Statement {
+                        sql: table::drop_column(table, column),
+                        does: "drop generated column",
+                    });
+                    plan.columns.push(Statement {
+                        sql: table::add_column(
+                            table,
+                            column,
+                            &table::generated_type(&now.sql_type, now.generated.as_deref()),
+                        ),
+                        does: "add column",
+                    });
+                    if let Some(new) = new {
+                        for (name, index) in &new.indexes {
+                            let added = all.iter().any(|other| {
+                                matches!(other, Change::AddIndex { table: t, name: n, .. } if t == table && n == name)
+                            });
+                            if index.columns.contains(column) && !added {
+                                plan.indexes.push(create_index(table, name, new));
+                            }
+                        }
+                    }
+                    continue;
+                }
                 if was.comment != now.comment {
                     plan.columns.push(Statement {
                         sql: table::comment_on_column(table, column, now.comment.as_deref()),
@@ -601,6 +638,16 @@ pub fn migration_sql(
                     }),
                     None => {}
                 }
+            }
+            Change::RemoveColumn { table, column, .. }
+                if old
+                    .and_then(|t| t.columns.get(column))
+                    .is_some_and(|c| c.generated.is_some()) =>
+            {
+                plan.columns.push(Statement {
+                    sql: table::drop_column(table, column),
+                    does: "drop generated column",
+                });
             }
             Change::RemoveColumn { table, column, .. } => {
                 refusals.push(Refusal {
@@ -1053,13 +1100,23 @@ fn create_index(table: &str, name: &str, def: &Table) -> Statement {
 }
 
 fn create_table(name: &str, def: &Table) -> String {
-    let columns: Vec<table::ColumnDef<'_>> = def
+    let types: Vec<(&String, bool, String)> = def
         .ordered()
         .into_iter()
-        .map(|(column, def)| table::ColumnDef {
+        .map(|(column, def)| {
+            (
+                column,
+                def.nullable,
+                table::generated_type(&def.sql_type, def.generated.as_deref()),
+            )
+        })
+        .collect();
+    let columns: Vec<table::ColumnDef<'_>> = types
+        .iter()
+        .map(|(column, nullable, sql_type)| table::ColumnDef {
             name: column,
-            sql_type: &def.sql_type,
-            nullable: def.nullable,
+            sql_type: sql_type.as_str(),
+            nullable: *nullable,
         })
         .collect();
     table::create_table(
@@ -1099,6 +1156,7 @@ mod tests {
                     retired: *retired,
                     allows: None,
                     comment: None,
+                    generated: None,
                 },
             );
         }
@@ -1371,6 +1429,96 @@ mod tests {
         }
         let sql = migration_sql(&wider, &indexed, &|_| None).expect("sql");
         assert_eq!(sql.summary(), vec!["create index"]);
+    }
+
+    /// `Todo` with its searchable words generated from `expression`, and
+    /// their GIN index (area 16, chunk B12); none when `None`.
+    fn searched(expression: Option<&str>) -> Schema {
+        let mut out = schema(&[
+            ("id", "uuid", false, false),
+            ("title", "text", false, false),
+        ]);
+        if let (Some(expression), Some(table)) = (
+            expression,
+            out.stores
+                .get_mut("main")
+                .and_then(|s| s.tables.get_mut("todo")),
+        ) {
+            table.columns.insert(
+                "jadpo_search".into(),
+                Column {
+                    position: 2,
+                    field: None,
+                    sql_type: "tsvector".into(),
+                    nullable: true,
+                    retired: false,
+                    allows: None,
+                    comment: None,
+                    generated: Some(expression.into()),
+                },
+            );
+            table.indexes.insert(
+                "todo_jadpo_search_idx".into(),
+                Index {
+                    expression: None,
+                    columns: vec!["jadpo_search".into()],
+                    reason: "search Todo".into(),
+                    predicate: None,
+                    collate: Vec::new(),
+                    method: Some(crate::schema::IndexMethod {
+                        name: "gin".into(),
+                        operator_class: String::new(),
+                        cast: None,
+                        with: Vec::new(),
+                    }),
+                },
+            );
+        }
+        out
+    }
+
+    #[test]
+    fn a_search_is_added_made_again_and_dropped_with_no_decision() {
+        let plain = searched(None);
+        let simple = "to_tsvector('simple'::regconfig, coalesce(\"title\", ''))";
+        let english = "to_tsvector('english'::regconfig, coalesce(\"title\", ''))";
+        // Added: PostgreSQL fills it, so nothing is backfilled.
+        let added = next_snapshot(&plain, &searched(Some(simple)));
+        assert!(decisions_needed(&plain, &added).is_empty());
+        let sql = migration_sql(&plain, &added, &|_| None).expect("sql");
+        assert_eq!(
+            sql.stores["main"].iter().map(|s| s.sql.as_str()).collect::<Vec<_>>(),
+            [
+                format!("ALTER TABLE \"todo\" ADD COLUMN \"jadpo_search\" tsvector GENERATED ALWAYS AS ({simple}) STORED").as_str(),
+                "CREATE INDEX \"todo_jadpo_search_idx\" ON \"todo\" USING gin (\"jadpo_search\")",
+            ]
+        );
+        // Made again from its new expression, with its index.
+        let changed = next_snapshot(&added, &searched(Some(english)));
+        let sql = migration_sql(&added, &changed, &|_| None).expect("sql");
+        assert_eq!(
+            sql.summary(),
+            vec!["drop generated column", "add column", "create index"]
+        );
+        // Dropped, never retired: it holds nothing of its own.
+        let removed = next_snapshot(&changed, &plain);
+        assert!(
+            !removed.stores["main"].tables["todo"]
+                .columns
+                .contains_key("jadpo_search")
+        );
+        assert!(decisions_needed(&changed, &removed).is_empty());
+        let sql = migration_sql(&changed, &removed, &|_| None).expect("sql");
+        assert_eq!(
+            sql.stores["main"]
+                .iter()
+                .map(|s| s.sql.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "DROP INDEX \"todo_jadpo_search_idx\"",
+                "ALTER TABLE \"todo\" DROP COLUMN \"jadpo_search\"",
+            ]
+        );
     }
 
     /// `Todo` with a `label` stored as JSON, a `Text` of at most `max`
