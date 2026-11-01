@@ -767,6 +767,10 @@ entity Customer {
   ([`data.erase_field_required`](../errors/data.erase_field_required.md)).
   What someone [signs in with](08-identity.md) must always have a value,
   so it stays too, or holds nothing personal, as `handle` does here.
+- A column [retired](05-data.md#removing-data) on a record whose marked
+  fields erasure clears is cleared with them, since nothing says any more
+  whether it held personal data. A sealed field
+  ([Encrypted fields](#encrypted-fields)) is treated like any other.
 
 A record kept this way is hidden, as a [lifecycle](05-data.md#lifecycle)
 hides one. No query, `get` or include finds it, and no update, delete or
@@ -1620,8 +1624,9 @@ Sealing trades one risk for another, and some of what follows has no fix:
   new` refuses it, since stored values would have to be sealed or opened one
   by one with a key SQL never sees. Add a new field with the setting you
   want, copy each record's value across in an action, then retire the old
-  field. The same goes for a new required sealed field, and a narrower type
-  on one.
+  field. Its column keeps what it held, in the clear when you are turning
+  encryption on, until you [drop it](05-data.md#removing-data). The same goes
+  for a new required sealed field, and a narrower type on one.
 
 ## What this does not cover
 <!-- topic: what-this-does-not-cover -->

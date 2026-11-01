@@ -3721,6 +3721,7 @@ fn table_of(
     let table = entity.table.as_str();
     let mut out = physical::Table {
         holds: physical::Holds::Entity(entity.born.clone()),
+        retired: false,
         columns: BTreeMap::new(),
         primary_key: physical::Key {
             name: physical::object_name(&[table], "pkey"),

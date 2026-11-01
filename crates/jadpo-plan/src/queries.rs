@@ -102,6 +102,11 @@ pub(crate) struct Planner<'a> {
     /// state its store holds, each with the column holding their `id`:
     /// what a person's erasure deletes with them (area 15; chunk P3).
     pub sign_in: std::collections::BTreeMap<String, Vec<(&'static str, &'static str)>>,
+    /// Each table's retired columns, by store and table, from the latest
+    /// migration: a person's erasure clears them on a record it clears the
+    /// marked fields of, since it can't know which held personal data once
+    /// the field has left the source (area 15; chunk P4b).
+    pub retired: std::collections::BTreeMap<(String, String), Vec<String>>,
 }
 
 /// One statement being written: its parameters, deduplicated, so a value
@@ -1302,6 +1307,7 @@ pub(crate) fn plans(
         action: None,
         json,
         sign_in: Default::default(),
+        retired: Default::default(),
     };
     let mut query_plans: Vec<QueryPlan> = queries
         .queries

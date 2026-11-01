@@ -296,10 +296,10 @@ fn erasure_of(model: &DataModel, person: &str, marked: &dyn Fn(&str, &str) -> bo
                 clears.push(field.name.clone());
             }
         }
-        let through = if clears.is_empty() {
-            Vec::new()
-        } else {
+        let through = if anonymised && !entity.person {
             people_of(model, entity, &references)
+        } else {
+            Vec::new()
         };
         out.kept.push(Kept {
             entity: name,

@@ -887,6 +887,23 @@ decisions themselves are `acceptances::needs`, the same list `check` judges,
 each carrying its plain words and the callers it lets in from where its
 record is read.
 
+**Removals** (chunk V3, areas 5 and 18) are worked out from the snapshots
+alone: `jadpo_graph::migration::removals` compares a migration's snapshot with
+the one before it, and `next_snapshot` keeps a table whose entity is gone,
+flagged `retired`, without its references, as it keeps a retired column;
+a system table nothing asks for it keeps as it is. `acceptances::data` turns
+each removal into a `Need`, for a migration the before side's folder names
+don't list, and `acceptances::data::unaccepted`, which reads no git, is what
+`jadpo migrate apply`, `seed` and `dev` refuse on. A drop's statements run
+last in its store's section, so a migration that stops elsewhere has lost
+nothing, and its files are let go of after the trigger is made again, which
+holds the table against writes until they commit; for a table there is no
+trigger to touch, so it is locked first. `unexplained_removals` reads each
+migration's SQL for a `DROP` its snapshots don't show, since only the latest
+migration's SQL can be written again and compared. A deployable compares only
+the stores it has a connection to, so a store left behind with retired tables
+doesn't stop it starting.
+
 **Acceptances** (chunk A8, area 18) don't build the base. `jadpo check`
 reads the before side from git (`jadpo-cli`'s `before`): the default
 branch from the remote at its merge base, the previous commit on the
@@ -2419,7 +2436,8 @@ entity someone signs in as; and one deletes every record found of each
 entity, whatever its lifecycle, or, of an entity `Erasure::own` names,
 an `UPDATE` clearing its marked fields, setting `jadpo_erased_at` to the
 operation's time unless it holds one, and each `Generated.on_change` field
-to that time (`"own0"`). All the parts see one snapshot, and the foreign
+to that time (`"own0"`). Clearing marked fields clears the table's retired
+columns too, read from the latest migration's snapshot. All the parts see one snapshot, and the foreign
 keys are checked at the statement's end, when nothing refers to a deleted
 record. It returns the person's `id`; no row is the person's
 not-found failure, asked without policy as a delete's probe asks. It is

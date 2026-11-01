@@ -885,6 +885,23 @@ impl Planner<'_> {
                 column_type(cleared)?;
                 clears.extend(cleared.columns().into_iter().map(|(column, _)| column));
             }
+            // A retired column goes the way its field's would have, since
+            // nothing says any more whether it was marked. Another person's
+            // own record loses only the reference.
+            if !holder.person
+                && kept
+                    .references
+                    .iter()
+                    .any(|reference| reference.outcome == jadpo_std::Erasure::Anonymised)
+            {
+                clears.extend(
+                    self.retired
+                        .get(&(store.clone(), holder.table.clone()))
+                        .into_iter()
+                        .flatten()
+                        .cloned(),
+                );
+            }
             // Clearing a value changes the record, so each field generated
             // on every change takes the operation's time.
             let mut set = Vec::new();
@@ -950,6 +967,13 @@ impl Planner<'_> {
                 column_type(cleared)?;
                 clears.extend(cleared.columns().into_iter().map(|(column, _)| column));
             }
+            clears.extend(
+                self.retired
+                    .get(&(store.clone(), entity.table.clone()))
+                    .into_iter()
+                    .flatten()
+                    .cloned(),
+            );
             let now = now.as_deref()?;
             let mut set = Vec::new();
             for changed in &entity.fields {
@@ -1255,6 +1279,33 @@ fn returning(entity: &EntityModel) -> Vec<String> {
 /// with its value as SQL: one, or each of a compound type's (`Money`'s
 /// minor units and currency code, area 19). A sealed field's `sealed` is
 /// how its bytes read and where its record's `id` comes from.
+/// Each table's retired columns, by store and table, from the latest
+/// migration, leaving out a generated column, which nothing can set, and
+/// the column erasure itself notes the time in.
+fn retired_columns(
+    db: &dyn jadpo_db::Db,
+    project: jadpo_db::Project,
+) -> std::collections::BTreeMap<(String, String), Vec<String>> {
+    let schema = jadpo_check::data::migrations::migrations(db, project).latest_schema();
+    let mut out = std::collections::BTreeMap::new();
+    for (store, tables) in &schema.stores {
+        for (name, table) in &tables.tables {
+            let columns: Vec<String> = table
+                .columns
+                .iter()
+                .filter(|(column, held)| {
+                    held.retired && held.generated.is_none() && *column != jadpo_std::ERASED_AT
+                })
+                .map(|(column, _)| column.clone())
+                .collect();
+            if !columns.is_empty() {
+                out.insert((store.clone(), name.clone()), columns);
+            }
+        }
+    }
+    out
+}
+
 fn field_columns(
     writing: &mut Writing,
     entity: &EntityModel,
@@ -1347,6 +1398,7 @@ pub(crate) fn plans(
         action: None,
         json,
         sign_in: crate::purge::sign_in_state(db, project),
+        retired: retired_columns(db, project),
     };
     let mut out = Vec::new();
     let mut at = HashMap::new();

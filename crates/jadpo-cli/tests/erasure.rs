@@ -551,10 +551,10 @@ test "erasing a member lets go of every file their records held" {
 
 /// An insurer's customers, part of whose record the law makes it keep.
 pub(crate) fn kept_files() -> Vec<(String, String)> {
-    let files: [(&str, &str); 24] = [
+    let files: [(&str, &str); 26] = [
         (
             "app.jadpo",
-            "use cover/entities { Customer }\n\napplication {}\n\nprincipal {\n    user: {\n        subject: Customer.login\n    }\n}\n",
+            "use cover/entities { Customer }\n\napplication {\n    field_encryption_key: config.field_encryption_key\n}\n\nprincipal {\n    user: {\n        subject: Customer.login\n    }\n}\n",
         ),
         (
             "authentication.jadpo",
@@ -562,7 +562,7 @@ pub(crate) fn kept_files() -> Vec<(String, String)> {
         ),
         (
             "config.jadpo",
-            "config {\n    policy_retention: Duration {\n        default: 2192d\n    }\n}\n",
+            "config {\n    field_encryption_key: EncryptionKey\n    policy_retention: Duration {\n        default: 2192d\n    }\n}\n",
         ),
         (
             "domains/cover/types/line.jadpo",
@@ -574,7 +574,7 @@ pub(crate) fn kept_files() -> Vec<(String, String)> {
         ),
         (
             "domains/cover/types/kept_policy.jadpo",
-            "use cover/entities { Customer }\n\n/// What is kept of a customer once they are erased.\ntype KeptPolicy = Output {\n    pick: [Customer.id, Customer.policy_number]\n}\n",
+            "use cover/entities { Customer }\n\n/// What is kept of a customer once they are erased.\ntype KeptPolicy = Output {\n    pick: [Customer.id, Customer.policy_number, Customer.claims_reference]\n}\n",
         ),
         (
             "domains/cover/types/claim_row.jadpo",
@@ -590,7 +590,7 @@ pub(crate) fn kept_files() -> Vec<(String, String)> {
         ),
         (
             "domains/cover/entities/customer.jadpo",
-            "use cover/entities { Household }\nuse cover/types { Line }\n\n/// Someone with a policy, who signs in.\nentity Customer {\n    id: Uuid\n    login: Line {\n        unique: true\n    }\n    full_name: Line? {\n        personal: PersonalData.identifying\n    }\n    policy_number: Line {\n        personal: PersonalData.identifying\n        erase: Erasure.retained\n    }\n    plan: Line\n    ended_at: Instant?\n    household_id: Household.id? {\n        on_delete: OnDelete.cleared\n    }\n    changed_at: Instant {\n        generated: Generated.on_change\n    }\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n        update: [Access.public]\n        delete: [Access.public]\n    }\n\n    retention: {\n        after: config.policy_retention\n        since: ended_at\n    }\n\n    person: true\n}\n",
+            "use cover/entities { Household }\nuse cover/types { Line }\n\n/// Someone with a policy, who signs in.\nentity Customer {\n    id: Uuid\n    login: Line {\n        unique: true\n    }\n    full_name: Line? {\n        personal: PersonalData.identifying\n    }\n    policy_number: Line {\n        personal: PersonalData.identifying\n        erase: Erasure.retained\n    }\n    medical_note: Line? {\n        personal: PersonalData.health\n        encrypted: true\n    }\n    claims_reference: Line {\n        personal: PersonalData.identifying\n        encrypted: true\n        erase: Erasure.retained\n    }\n    plan: Line\n    ended_at: Instant?\n    household_id: Household.id? {\n        on_delete: OnDelete.cleared\n    }\n    changed_at: Instant {\n        generated: Generated.on_change\n    }\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n        update: [Access.public]\n        delete: [Access.public]\n    }\n\n    retention: {\n        after: config.policy_retention\n        since: ended_at\n    }\n\n    person: true\n}\n",
         ),
         (
             "domains/cover/entities/claim.jadpo",
@@ -599,6 +599,14 @@ pub(crate) fn kept_files() -> Vec<(String, String)> {
         (
             "domains/cover/entities/household.jadpo",
             "use cover/entities { Customer }\n\n/// A customer's household, which goes with them.\nentity Household {\n    id: Uuid\n    owner_id: Customer.id {\n        on_delete: OnDelete.cascade\n    }\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n    }\n}\n",
+        ),
+        (
+            "domains/cover/entities/complaint.jadpo",
+            "use cover/entities { Customer }\nuse cover/types { Line }\n\n/// What a customer complained of, kept without them.\nentity Complaint {\n    id: Uuid\n    customer_id: Customer.id? {\n        on_delete: OnDelete.cleared\n    }\n    detail: Line? {\n        personal: PersonalData.health\n        encrypted: true\n    }\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n    }\n}\n",
+        ),
+        (
+            "domains/cover/actions/complain.jadpo",
+            "use cover/entities { Complaint, Customer, CustomerNotFound }\nuse cover/types { Line }\n\n/// Records a complaint.\naction complain(customer_id: Customer.id, detail: Line) fails CustomerNotFound -> Complaint {\n    return attempt Complaint.create {\n        set: {\n            customer_id: customer_id\n            detail: detail\n        }\n    }\n}\n",
         ),
         (
             "domains/cover/actions/settle.jadpo",
@@ -626,7 +634,7 @@ pub(crate) fn kept_files() -> Vec<(String, String)> {
         ),
         (
             "domains/cover/actions/take_out.jadpo",
-            "use cover/entities { Customer }\nuse cover/failures { LoginTaken }\nuse cover/types { Line }\n\n/// Takes out a policy.\naction take_out(login: Line, full_name: Line, number: Line) fails LoginTaken -> Customer {\n    return attempt Customer.create {\n        set: {\n            login: login\n            full_name: full_name\n            policy_number: number\n            plan: \"home\"\n            ended_at: none\n            household_id: none\n        }\n        conflict: {\n            Customer.login: LoginTaken\n        }\n    }\n}\n",
+            "use cover/entities { Customer }\nuse cover/failures { LoginTaken }\nuse cover/types { Line }\n\n/// Takes out a policy.\naction take_out(login: Line, full_name: Line, number: Line) fails LoginTaken -> Customer {\n    return attempt Customer.create {\n        set: {\n            login: login\n            full_name: full_name\n            policy_number: number\n            medical_note: \"Asthma\"\n            claims_reference: \"C-100\"\n            plan: \"home\"\n            ended_at: none\n            household_id: none\n        }\n        conflict: {\n            Customer.login: LoginTaken\n        }\n    }\n}\n",
         ),
         (
             "domains/cover/actions/end_policy.jadpo",
@@ -652,8 +660,8 @@ pub(crate) fn kept_files() -> Vec<(String, String)> {
         .collect()
 }
 
-const KEPT_TESTS: &str = r#"use cover/entities { Claim, ClaimNotFound, Customer, CustomerNotFound }
-use cover/actions { claim_for, end_policy, take_out }
+const KEPT_TESTS: &str = r#"use cover/entities { Claim, ClaimNotFound, Complaint, Customer, CustomerNotFound }
+use cover/actions { claim_for, complain, end_policy, take_out }
 use cover/queries { claim_line, customers, kept_policies, policy_count }
 use cover/types { ClaimRow, CustomerLine, KeptPolicy, PolicyTally }
 
@@ -667,6 +675,7 @@ test "an erased customer is hidden, and what must be kept is kept" {
     assert list.map(customers(), line -> line.full_name) == ["Bob Babbage"]
     var kept: List<KeptPolicy> = kept_policies("P-100")
     assert list.map(kept, policy -> policy.policy_number) == ["P-100"]
+    assert list.map(kept, policy -> policy.claims_reference) == ["C-100"]
     var counted: PolicyTally = policy_count("P-100")
     assert counted.records == 1
 }
@@ -677,6 +686,16 @@ test "an erased customer can't be changed, and erasing them again changes nothin
     assert end_policy(ada.id) fails CustomerNotFound
     attempt forget(ada.id)
     assert list.map(kept_policies("P-100"), policy -> policy.policy_number) == ["P-100"]
+}
+
+test "a record kept without its customer loses its sealed fields" {
+    var ada: Customer = attempt take_out("ada", "Ada Lovelace", "P-100")
+    var said: Complaint = attempt complain(ada.id, "A long wait")
+    assert said.detail == "A long wait"
+    attempt forget(ada.id)
+    var kept: Complaint = attempt Complaint.get(said.id)
+    assert kept.customer_id == none
+    assert kept.detail == none
 }
 
 test "a claim made afterwards shows no erased customer" {
@@ -720,11 +739,43 @@ test "an erased customer can't sign in" {
 }
 "#;
 
+/// `root`'s program, started with a field key.
+fn kept_program(root: &Path) -> Program {
+    let loaded = jadpo_db::load(root);
+    let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+    let variables = std::collections::BTreeMap::from([(
+        "FIELD_ENCRYPTION_KEY".to_string(),
+        crate::encrypted_fields::FIRST_KEY.to_string(),
+    )]);
+    let values = program
+        .prepared()
+        .config(
+            &variables,
+            jadpo_runtime::config::Mode::Environment,
+            &|_: &mut [u8]| false,
+        )
+        .unwrap_or_else(|problems| panic!("doesn't start: {problems:?}"));
+    program.with_config(&values)
+}
+
 /// [`kept_files`], written and migrated.
 fn kept_project(name: &str) -> PathBuf {
+    kept_project_with(name, &[])
+}
+
+/// [`kept_files`] with each change made, as a file, the text in it and what
+/// takes its place, written and migrated.
+fn kept_project_with(name: &str, changes: &[(&str, &str, &str)]) -> PathBuf {
     let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("erasure-p4b-{name}"));
     let _ = fs::remove_dir_all(&root);
     for (path, text) in kept_files() {
+        let mut text = text;
+        for (file, old, new) in changes {
+            if *file == path {
+                assert!(text.contains(old), "{file}: {old}");
+                text = text.replacen(old, new, 1);
+            }
+        }
         write(&root, &path, &text);
     }
     for args in [&["migrate", "new", "initial"][..], &["records", "update"]] {
@@ -742,7 +793,131 @@ fn a_kept_record_passes_its_tests() {
     let root = kept_project("tests");
     let tested = jadpo(&root, &["test", "--seed", "1"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
-    assert!(tested.stdout.contains("5 passed"), "{}", tested.stdout);
+    assert!(tested.stdout.contains("6 passed"), "{}", tested.stdout);
+}
+
+/// What erasure does with what a migration retired (area 5, "Removing
+/// data"): a column on a record whose marked fields it clears goes with
+/// them, on the person's own record and on one kept without them, since
+/// nothing says any more whether it was marked. A retired entity is out of
+/// its reach, and refers to nothing, so it doesn't hold the erasure back.
+#[test]
+fn erasure_clears_retired_columns_and_passes_a_retired_entity() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let root = kept_project_with(
+        "retired",
+        &[
+            (
+                "domains/cover/entities/customer.jadpo",
+                "    plan: Line\n",
+                "    plan: Line\n    nickname: Line? {\n        personal: PersonalData.identifying\n    }\n",
+            ),
+            (
+                "domains/cover/entities/complaint.jadpo",
+                "    detail: Line? {",
+                "    scribble: Line? {\n        personal: PersonalData.identifying\n    }\n    detail: Line? {",
+            ),
+            (
+                "domains/cover/actions/take_out.jadpo",
+                "            household_id: none\n",
+                "            household_id: none\n            nickname: none\n",
+            ),
+            (
+                "domains/cover/actions/complain.jadpo",
+                "            detail: detail\n",
+                "            scribble: none\n            detail: detail\n",
+            ),
+        ],
+    );
+    for (path, text) in kept_files() {
+        if [
+            "domains/cover/entities/customer.jadpo",
+            "domains/cover/entities/complaint.jadpo",
+            "domains/cover/actions/take_out.jadpo",
+            "domains/cover/actions/complain.jadpo",
+        ]
+        .contains(&path.as_str())
+        {
+            write(&root, &path, &text);
+        }
+    }
+    for gone in [
+        "domains/cover/entities/claim.jadpo",
+        "domains/cover/actions/claim_for.jadpo",
+        "domains/cover/queries/claim_line.jadpo",
+        "domains/cover/types/claim_row.jadpo",
+        "domains/cover/actions/forget.test.jadpo",
+    ] {
+        fs::remove_file(root.join(gone)).expect("remove");
+    }
+    let started = jadpo(&root, &["migrate", "new", "retire"]);
+    assert_eq!(started.code, 0, "{}{}", started.stdout, started.stderr);
+    let decided = fs::read_dir(root.join("database/migrations"))
+        .expect("migrations")
+        .map(|entry| entry.expect("an entry").path().join("changes.jadpo"))
+        .find(|path| path.exists())
+        .expect("the decisions");
+    let changes = fs::read_to_string(&decided)
+        .expect("changes")
+        .replace(
+            "Customer.nickname: {}",
+            "Customer.nickname: FieldChange.retired",
+        )
+        .replace(
+            "Complaint.scribble: {}",
+            "Complaint.scribble: FieldChange.retired",
+        )
+        .replace("Claim: {}", "Claim: EntityChange.retired");
+    fs::write(&decided, changes).expect("write");
+    for args in [&["migrate", "new"][..], &["records", "update"]] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{args:?}: {}{}", done.stdout, done.stderr);
+    }
+
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    let program = kept_program(&root);
+    let databases = jadpo_test::database::TestDatabases::new(steps, false);
+    let copy = databases.acquire().expect("a test database");
+    let (_, url) = copy.stores.get("main").expect("main").clone();
+    let host = Harness::postgres(&url).at(T0).random_from(0);
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        let ada = call(
+            &program,
+            &host,
+            "take_out",
+            vec![Value::text("ada"), Value::text("Ada"), Value::text("P-100")],
+        )
+        .await;
+        call(
+            &program,
+            &host,
+            "complain",
+            vec![id_of(&ada), Value::text("A long wait")],
+        )
+        .await;
+        host.rows("UPDATE \"customer\" SET \"nickname\" = 'Addie'").await;
+        host.rows("UPDATE \"complaint\" SET \"scribble\" = 'Ada wrote this'").await;
+        host.rows(
+            "INSERT INTO \"claim\" (\"id\", \"customer_id\") SELECT gen_random_uuid(), \"id\" FROM \"customer\"",
+        )
+        .await;
+        call(&program, &host, "forget", vec![id_of(&ada)]).await;
+        assert_eq!(
+            texts(&host, "SELECT \"nickname\" FROM \"customer\"").await,
+            ["none"]
+        );
+        assert_eq!(
+            texts(&host, "SELECT \"scribble\" FROM \"complaint\"").await,
+            ["none"]
+        );
+        assert_eq!(host.count("SELECT count(*) FROM \"claim\"").await, 1);
+    });
 }
 
 /// A migration can't retire the column while a record holds a value, so an
@@ -768,7 +943,7 @@ fn no_longer_keeping_records_waits_until_none_are_kept() {
         })
     };
     run(
-        "INSERT INTO \"customer\" (\"id\", \"login\", \"policy_number\", \"plan\", \"changed_at\", \"jadpo_erased_at\") VALUES (gen_random_uuid(), 'ada', 'P-100', 'home', now(), now())",
+        "INSERT INTO \"customer\" (\"id\", \"login\", \"policy_number\", \"claims_reference\", \"plan\", \"changed_at\", \"jadpo_erased_at\") VALUES (gen_random_uuid(), 'ada', 'P-100', '\\x00', 'home', now(), now())",
     );
 
     let entity = root.join("domains/cover/entities/customer.jadpo");
@@ -827,7 +1002,7 @@ fn a_kept_record_is_left_field_by_field_until_its_retention_ends() {
     let steps = jadpo_check::data::migrations::store_steps(
         jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
     );
-    let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+    let program = kept_program(&root);
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
@@ -862,6 +1037,12 @@ fn a_kept_record_is_left_field_by_field_until_its_retention_ends() {
         assert_eq!(row("ada", "\"full_name\"").await, ["none"]);
         assert_eq!(row("ada", "\"policy_number\"").await, ["P-100"]);
         assert_eq!(row("ada", "\"plan\"").await, ["home"]);
+        assert_eq!(row("ada", "\"medical_note\"").await, ["none"]);
+        assert_ne!(
+            row("ada", "\"claims_reference\"").await,
+            ["none"],
+            "a sealed field that stays"
+        );
         assert_eq!(
             row("ada", "\"household_id\"").await,
             ["none"],

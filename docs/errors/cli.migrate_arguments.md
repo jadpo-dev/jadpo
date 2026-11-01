@@ -1,6 +1,6 @@
 # `cli.migrate_arguments`
 
-A `jadpo migrate` command names no action, one it doesn't have, or a purpose for an action that takes none.
+A `jadpo migrate` command names no action, one it doesn't have, a purpose for an action that takes none, or a `--drop` of what isn't retired.
 
 ## Why Jadpo refuses it
 

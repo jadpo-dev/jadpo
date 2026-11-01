@@ -3,7 +3,8 @@
 //! source writes: the API records and event records for `ApiChange`,
 //! `access.jadpo_record` for `PolicyChange`, `network.jadpo_record` for
 //! `NetworkChange`, `jadpo.lock` for `PackageChange`, and the domain
-//! folders for `DomainChange` (Richard, 2026-10-30).
+//! folders for `DomainChange` (Richard, 2026-10-30). `DataChange` is read
+//! from the migrations this change adds ([`super::data`]).
 //!
 //! Each comparison is of entries by heading, as a record's diff reads. A
 //! record the before side doesn't have is compared with nothing: the
@@ -47,6 +48,8 @@ pub enum Family {
     Lock,
     Domains,
     Decline,
+    /// A migration's removal, whose file is its `changes.jadpo`.
+    Data,
     /// A domain's `monitoring.jadpo`, or `app.jadpo`'s disk floors.
     Thresholds,
 }

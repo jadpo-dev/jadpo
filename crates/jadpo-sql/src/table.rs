@@ -47,9 +47,17 @@ pub fn add_column(table: &str, column: &str, sql_type: &str) -> String {
 }
 
 /// Drops `column` from `table`: a generated column, which holds nothing
-/// of its own (area 16, "Search"; chunk B12).
+/// of its own (area 16, "Search"; chunk B12), or a retired one a person
+/// accepted losing (area 5, "Migrations"; chunk V3).
 pub fn drop_column(table: &str, column: &str) -> String {
     format!("ALTER TABLE {} DROP COLUMN {}", ident(table), ident(column))
+}
+
+/// Drops `table`, retired, which a person accepted losing (area 5,
+/// "Migrations"; chunk V3). No `CASCADE`: a reference nothing expected
+/// stops the migration rather than going with it.
+pub fn drop_table(table: &str) -> String {
+    format!("DROP TABLE {}", ident(table))
 }
 
 /// `sql_type`, generated from `expression` when it is given: the type a
@@ -645,6 +653,22 @@ pub fn count_held_files(table: &str, columns: &[String]) -> String {
         .collect();
     format!(
         "INSERT INTO \"jadpo_files\" (\"store\", \"key\", \"holders\") SELECT \"held\" ->> 'store', \"held\" ->> 'key', count(*) FROM ({}) AS \"kept\" WHERE jsonb_typeof(\"held\") = 'object' GROUP BY 1, 2 ON CONFLICT (\"store\", \"key\") DO UPDATE SET \"holders\" = \"jadpo_files\".\"holders\" + EXCLUDED.\"holders\"",
+        held.join(" UNION ALL ")
+    )
+}
+
+/// Takes one holder away from each file `columns` of `table`'s rows hold,
+/// as a drop's rows let go of them with no trigger to see it (chunk V3). A
+/// file left with none is deleted by the tick, as any held by none is, so
+/// `since` is cleared, as the trigger's function does; a file being deleted
+/// or gone has a count below zero, which stays.
+pub fn release_held_files(table: &str, columns: &[String]) -> String {
+    let held: Vec<String> = columns
+        .iter()
+        .map(|column| format!("SELECT {} AS \"held\" FROM {}", ident(column), ident(table)))
+        .collect();
+    format!(
+        "UPDATE \"jadpo_files\" AS \"f\" SET \"holders\" = GREATEST(\"f\".\"holders\" - \"gone\".\"holders\", 0), \"since\" = NULL FROM (SELECT \"held\" ->> 'store' AS \"store\", \"held\" ->> 'key' AS \"key\", count(*) AS \"holders\" FROM ({}) AS \"kept\" WHERE jsonb_typeof(\"held\") = 'object' GROUP BY 1, 2) AS \"gone\" WHERE \"f\".\"store\" = \"gone\".\"store\" AND \"f\".\"key\" = \"gone\".\"key\" AND \"f\".\"holders\" > 0",
         held.join(" UNION ALL ")
     )
 }
