@@ -21,8 +21,8 @@ use jadpo_term::Environment;
 use jadpo_test::host::Harness;
 
 use crate::step_records::{
-    CUSTOMER, CUSTOMERS, HOUR, SECOND, SUBSCRIPTION, SUBSCRIPTIONS, T0, TRIES, chosen, delivery,
-    faked, jadpo, record, sent, steps,
+    CUSTOMER, CUSTOMERS, HOUR, SECOND, SUBSCRIPTION, SUBSCRIPTIONS, T0, TRIES, checkout_build,
+    chosen, delivery, faked, jadpo, record, sent, steps,
 };
 use crate::support::fake_provider::FakeProvider;
 
@@ -605,11 +605,14 @@ fn a_routes_steps_its_client_left_are_an_item_kept_thirty_days() {
     }
 }
 
-/// Before a deploy, `jadpo runs unfinished --build` lists the unfinished
-/// records the new build changes: none while the record was started under
-/// the same build; one started under another whose step shape differs
-/// stops as diverged; one whose action no longer keeps steps would send
-/// them again. A build the checkout doesn't make is refused.
+/// Before a deploy, `jadpo runs unfinished --build <build id>` lists the
+/// unfinished records the new build changes. The build id is the one a
+/// build's stamp carries, `b_` and twelve hex digits: none is listed while
+/// the record was started under that build or its shape is the same; one
+/// started under another whose step shape differs stops as diverged; one
+/// whose action no longer keeps steps would send them again. A build the
+/// checkout doesn't make is refused, naming the one it does, and so is the
+/// graph's digest, which only `jadpo dev`'s records keep.
 #[test]
 fn runs_unfinished_lists_what_a_new_build_changes() {
     let provider = FakeProvider::start();
@@ -620,7 +623,8 @@ fn runs_unfinished_lists_what_a_new_build_changes() {
     let (host, _sheets) = faked(&harness);
     let program = &loaded.program;
     let (root, url) = (loaded.root.as_path(), loaded.url.as_str());
-    let build = program.plan().build_id().to_string();
+    let digest = program.plan().build_id().to_string();
+    let build = checkout_build(root, T0);
     provider.answer(200, CUSTOMER);
     for _ in 0..TRIES {
         provider.answer(503, "");
@@ -651,11 +655,37 @@ fn runs_unfinished_lists_what_a_new_build_changes() {
             "{}",
             wrong.stderr
         );
+        assert!(
+            wrong.stderr.contains(&format!("--build {build}")),
+            "{}",
+            wrong.stderr
+        );
+        let dev = operating(root, url, at, &["runs", "unfinished", "--build", &digest]);
+        assert_eq!(dev.code, 2, "{}{}", dev.stdout, dev.stderr);
+        assert!(
+            dev.stderr.contains(&format!(
+                "The checkout makes build `{build}`, not `{digest}`"
+            )),
+            "{}",
+            dev.stderr
+        );
 
         let same = operating(root, url, at, &["runs", "unfinished", "--build", &build]);
         assert_eq!(same.code, 0, "{}{}", same.stdout, same.stderr);
         assert_eq!(
             same.stdout,
+            "✓ The build changes no unfinished run  1 unfinished run resumes\n"
+        );
+
+        // A record started under the build being deployed resumes under
+        // it, whatever its shape.
+        rt.block_on(harness.rows(&format!(
+            "UPDATE \"jadpo_step_records\" SET \"build\" = '{build}', \"shape\" = 'older'"
+        )));
+        let started = operating(root, url, at, &["runs", "unfinished", "--build", &build]);
+        assert_eq!(started.code, 0, "{}{}", started.stdout, started.stderr);
+        assert_eq!(
+            started.stdout,
             "✓ The build changes no unfinished run  1 unfinished run resumes\n"
         );
 

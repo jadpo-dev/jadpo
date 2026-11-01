@@ -441,6 +441,28 @@ pub(crate) fn jadpo(cwd: &Path, at: i64, args: &[&str]) -> Output {
     run(&args, &env.with_cwd(cwd))
 }
 
+/// The build id `jadpo check` writes in the manifest for the project's one
+/// deployable: what `jadpo build` stamps it with, and what an operator
+/// copies from the stamp.
+pub(crate) fn checkout_build(root: &Path, at: i64) -> String {
+    let checked = jadpo(root, at, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    let text = std::fs::read_to_string(root.join("build/manifest.json")).expect("manifest");
+    let manifest: serde_json::Value = serde_json::from_str(&text).expect("JSON");
+    let deployables = manifest["deployables"].as_object().expect("deployables");
+    let [(_, entry)] = deployables.iter().collect::<Vec<_>>()[..] else {
+        panic!("one deployable: {deployables:?}");
+    };
+    let build = entry["build"].as_str().expect("a build id").to_string();
+    assert!(
+        build.len() == 14
+            && build.starts_with("b_")
+            && build[2..].chars().all(|c| c.is_ascii_hexdigit()),
+        "{build}"
+    );
+    build
+}
+
 pub(crate) struct Loaded {
     pub(crate) program: Program,
     _databases: jadpo_test::database::TestDatabases,
@@ -1554,7 +1576,7 @@ fn dispatch_metadata_keeps_its_mode_through_operator_inspection_retry_and_abando
                 .await;
             (driver.sent(), shape, late, only_delivery_id(&harness).await)
         });
-        let build = loaded.program.plan().build_id();
+        let build = checkout_build(&loaded.root, late);
         let inspection = jadpo(
             &loaded.root,
             late,
@@ -1562,7 +1584,7 @@ fn dispatch_metadata_keeps_its_mode_through_operator_inspection_retry_and_abando
                 "runs",
                 "unfinished",
                 "--build",
-                build,
+                &build,
                 "--url",
                 &loaded.url,
                 "--json",
