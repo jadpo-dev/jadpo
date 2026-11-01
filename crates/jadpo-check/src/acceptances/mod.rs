@@ -17,6 +17,7 @@ pub mod access;
 pub mod compare;
 pub mod files;
 pub mod network;
+pub mod upgrades;
 pub mod words;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -47,12 +48,52 @@ pub fn needs(db: &dyn Db, project: Project) -> Vec<Need> {
     if let Some(was) = before.text(jadpo_db::LOCK) {
         let now = written(db, project, jadpo_db::LOCK).unwrap_or_default();
         compare::lock(jadpo_db::LOCK, was, &now, &mut out);
+        if was != now {
+            upgrade_needs(db, project, before, &mut out);
+        }
     }
     compare::domains(&before.domains, &domains(db, project), &mut out);
     threshold_needs(db, project, before, &mut out);
     out.sort();
     out.dedup_by(|a, b| a.subject == b.subject && a.change == b.change);
     out
+}
+
+/// What an upgrade changed of what the app uses (area 18, "Package
+/// upgrades"; chunk V4), read only when the lock moved: `jadpo check` reads
+/// the before side's sources and surfaces then.
+fn upgrade_needs(db: &dyn Db, project: Project, before: &BeforeSide, out: &mut Vec<Need>) {
+    let was = upgrades::Side::read(
+        before
+            .files
+            .iter()
+            .map(|(path, text)| (path.as_str(), text.as_str())),
+    );
+    let sources = project
+        .files(db)
+        .iter()
+        .map(|file| (file.path(db).as_str(), file.text(db).as_str()));
+    let surfaces = project.records(db).iter().filter_map(|record| {
+        let text = record.text.as_ref().ok()?;
+        Some((record.path.as_str(), text.as_str()))
+    });
+    let now = upgrades::Side::read(sources.chain(surfaces));
+    for finding in upgrades::review(&was, &now) {
+        let path = format!(
+            "{}/{}",
+            jadpo_db::package_folder(&finding.package),
+            format::SURFACE_FILE
+        );
+        out.push(Need {
+            subject: finding.subject,
+            change: finding.change,
+            family: Family::Lock,
+            path,
+            heading: finding.heading,
+            said: finding.said,
+            who: Vec::new(),
+        });
+    }
 }
 
 /// The network record on the before side. A before side with none whose
@@ -431,6 +472,38 @@ fn said(change: &str, family: &Family) -> (&'static str, &'static str) {
         "PackageChange.git_source" => (
             "a package installed from git has no verified publisher",
             "Nothing verifies who published a package from git, as the registry does.",
+        ),
+        "PackageChange.operation_removed" => (
+            "an upgrade removes an operation the app uses",
+            "The app called it, and the package no longer has it.",
+        ),
+        "PackageChange.declaration_removed" => (
+            "an upgrade removes a declaration the app uses",
+            "The app wrote its name, and the package no longer has it.",
+        ),
+        "PackageChange.operation_changed" => (
+            "an upgrade changes an operation the app uses",
+            "What it sends, what it answers or how it is asked for is no longer what the app was written against.",
+        ),
+        "PackageChange.field_removed" => (
+            "an upgrade removes a field the app uses",
+            "An operation or declaration the app uses reaches it, so what the app sends or reads no longer has it.",
+        ),
+        "PackageChange.field_retyped" => (
+            "an upgrade retypes a field the app uses",
+            "An operation or declaration the app uses reaches it, so it now holds other values.",
+        ),
+        "PackageChange.failure_added" => (
+            "a new failure on an operation the app uses needs a person",
+            "The provider can now answer in a way the app was never written to handle.",
+        ),
+        "PackageChange.host_changed" => (
+            "an upgrade changes the hosts a provider package reaches",
+            "The app's data and credential go wherever the package says, and that has moved.",
+        ),
+        "PackageChange.credential_changed" => (
+            "an upgrade changes a provider's credential scheme",
+            "The app's secret is now sent another way, and may need replacing.",
         ),
         "ThresholdChange.raised" => (
             "raising a threshold can silence its alert",

@@ -259,7 +259,9 @@ pub struct BeforeSide {
     pub commit: String,
     /// The project's records and acceptance files there, by
     /// project-relative path: `api/`, the event records, `access` and
-    /// `network`, `jadpo.lock`, the identity registry and `acceptances/`.
+    /// `network`, `jadpo.lock`, the identity registry and `acceptances/`;
+    /// when the lock moved, the app's source and installed surfaces too
+    /// ([`reviewed_when_the_lock_moves`]).
     pub files: BTreeMap<String, String>,
     /// The project's domains there, by folder name.
     pub domains: BTreeSet<String>,
@@ -301,6 +303,16 @@ pub fn compared_on_the_before_side(path: &str) -> bool {
             ]
             .contains(&kind.word)
         })
+}
+
+/// Whether a project-relative path is what an upgrade's review also reads
+/// on the before side when the lock moved (area 18, "Package upgrades";
+/// chunk V4): the app's own source, and each installed package's surface.
+pub fn reviewed_when_the_lock_moves(path: &str) -> bool {
+    if path.starts_with(&format!("{PACKAGES}/")) {
+        return record::kind_of(path).is_some_and(|(kind, _)| kind.word == record::SURFACE.word);
+    }
+    path.ends_with(".jadpo") && !path.ends_with(".test.jadpo")
 }
 
 /// The database every compiler query runs against.

@@ -800,9 +800,10 @@ in `shared/providers/<name>/<version>/`, merging your corrections.
 package to its newest release of the same major version. An installed
 folder changed by hand (`package.digest_mismatch`) is installed again
 from its source, even when its release is the newest. It lists each
-surface entry added, changed or removed, marked `used by the app` and
-`needs a person`: the review of the surface the app uses that [Records and
-manifest](18-records-and-manifest.md) describes. `remove` is refused while
+surface entry added, changed or removed, marked `used by the app`, then
+under `Needs a person` each change of what the app uses that an acceptance
+must list: the review [Records and
+manifest](18-records-and-manifest.md#package-upgrades) describes. `remove` is refused while
 the app's code has `use packages/<name>` (`install.in_use`).
 
 ### `jadpo package show`

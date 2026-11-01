@@ -220,7 +220,19 @@ pub fn read(root: &Path, with: Option<&str>, has_acceptances: bool) -> Result<Be
         .iter()
         .filter(|path| jadpo_db::compared_on_the_before_side(path))
         .collect();
-    let files = contents(&top, &base, &prefix, &wanted);
+    let mut files = contents(&top, &base, &prefix, &wanted);
+    // The lock moved: an upgrade's review compares what the app used then
+    // (area 18, "Package upgrades"), so its sources and surfaces are read.
+    let lock_now = std::fs::read_to_string(root.join(jadpo_db::LOCK)).ok();
+    if files.contains_key(jadpo_db::LOCK) && files.get(jadpo_db::LOCK) != lock_now.as_ref() {
+        let reviewed: Vec<&String> = paths
+            .iter()
+            .filter(|path| {
+                jadpo_db::reviewed_when_the_lock_moves(path) && !files.contains_key(*path)
+            })
+            .collect();
+        files.extend(contents(&top, &base, &prefix, &reviewed));
+    }
     Ok(Before::At(BeforeSide {
         commit: base.get(..7).unwrap_or(&base).to_string(),
         described,

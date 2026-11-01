@@ -382,8 +382,8 @@ and R4, where they touch different crates.
 Already built: acceptances (`jadpo acceptance new`, matching, the reason,
 history, the CODEOWNERS gate) for API and event breaks, every widening of
 who can do what (routes made public included), security declines,
-sign-in settings past their limit, new domains, new outside hosts and
-packages from git (every one, until V1). The kinds that belong to
+sign-in settings past their limit, new domains, new outside hosts, risky
+package upgrades and packages from git (every one, until V1). The kinds that belong to
 features not built yet come with those features: `ThresholdChange` with
 thresholds, a service's image with services, bot checks with bot
 protection, a domain renamed with `jadpo domain rename`.
@@ -398,12 +398,7 @@ protection, a domain renamed with `jadpo domain rename`.
   "Migrations"; area 18, `DataChange`. `jadpo migrate new`'s removals (an
   entity removed, one moved to another store, a retired column dropped),
   each refused by `check` until a `DataChange` acceptance names it.
-- [ ] **V4 Risky package upgrades need a person** `opus · high`: area 18,
-  "Package upgrades". The review compares the operations and declarations
-  the app uses, version ignored; a used operation removed, a used field
-  removed or retyped, a new failure on a used operation, or a host or
-  credential scheme changed needs a `PackageChange` acceptance; `jadpo
-  package update` prints the review.
+- [x] **V4 Risky package upgrades need a person**: area 18, "Package upgrades" and "Acceptances"; area 11, "How packages are installed and linked"; area 14, the package commands; compiler/runtime §2.3, "Acceptances".
 - [x] **V5 Where personal data goes**: area 15, "Marking personal fields"
   and "Where personal data goes"; area 14, `jadpo package check`;
   compiler/runtime §2.3, "Where personal data goes".
