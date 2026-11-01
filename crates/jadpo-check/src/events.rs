@@ -777,6 +777,37 @@ impl Reader<'_> {
             self.builtin = true;
             return Some((name.clone(), Key::from_text(key)));
         }
+        // The event each audit trail entry is also emitted as (area 16,
+        // "Sending audit entries elsewhere"; chunk B11), which only the
+        // runtime emits, as an audited entity's record changes.
+        if let Ty::Opaque(name, args) = &ty
+            && args.is_empty()
+            && name == jadpo_std::audit::AUDIT_ENTRY_RECORDED
+        {
+            let audited = crate::data::data_model(self.db, self.project)
+                .entities
+                .iter()
+                .any(|entity| entity.audit.is_some());
+            if !audited {
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::SUBSCRIBER_EVENT_INVALID,
+                        format!("Nothing publishes `{name}`"),
+                    )
+                    .at(self.span(&value), "no entity is audited")
+                    .reason(format!(
+                        "`{name}` is emitted as each change to an audited entity's record is kept in its history, so an application with no entity's `audit:` never emits it."
+                    ))
+                    .next("Give an entity an `audit:` section, or remove this subscriber"),
+                );
+                return None;
+            }
+            self.builtin = true;
+            return Some((
+                name.clone(),
+                Key::from_text(jadpo_std::audit::AUDIT_EVENT_KEY),
+            ));
+        }
         let event = match &ty {
             Ty::Named(name) if self.lookup.base(name) == Some(FieldsBase::Event) => name.clone(),
             _ => {
@@ -1148,7 +1179,9 @@ impl Reader<'_> {
             return Some((Vec::new(), Ty::Opaque(event.to_string(), Vec::new())));
         };
         let identity = crate::identity::identity(self.db, self.project);
-        let fields = crate::types::sign_in_object_fields(identity, event).unwrap_or_default();
+        let fields = crate::types::sign_in_object_fields(identity, event)
+            .or_else(|| crate::types::batch_fields(&Ty::Opaque(event.to_string(), Vec::new())))
+            .unwrap_or_default();
         let field = tree::name_ref_text(first)?;
         let Some((_, ty)) = fields.iter().find(|(name, _)| *name == field) else {
             self.out.push(

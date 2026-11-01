@@ -57,7 +57,10 @@ pub(crate) fn batch_fields(ty: &Ty) -> Option<Vec<(&'static str, Ty)>> {
     if !args.is_empty() {
         return None;
     }
-    let fields = jadpo_std::batch::object_fields(name)?;
+    // The audit trail's entries and their event (area 16; chunk B11), which
+    // only the runtime builds as it builds the batch types.
+    let fields =
+        jadpo_std::batch::object_fields(name).or_else(|| jadpo_std::audit::object_fields(name))?;
     Some(
         fields
             .iter()

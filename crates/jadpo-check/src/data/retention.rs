@@ -55,6 +55,9 @@ impl RetentionModel {
 pub(super) enum On<'a> {
     Field(&'a str),
     Entity,
+    /// An entity's `audit: { retention: }` (area 16; chunk B11): how long
+    /// each entry of its history is kept.
+    Audit,
 }
 
 const TAKES: &str = "`retention:` says how long a value or record is kept, `after:`, a `Duration` setting, counted from one of the record's `Instant` fields, `since:`.";
@@ -178,12 +181,13 @@ fn setting_name(entity: &EntityModel, on: On<'_>) -> String {
     match on {
         On::Field(field) => format!("{field}_retention"),
         On::Entity => format!("{}_retention", crate::case::to_snake(&entity.name)),
+        On::Audit => format!("{}_audit_retention", crate::case::to_snake(&entity.name)),
     }
 }
 
 /// `after:`: a `Duration` setting that isn't secret, as written and by
 /// name.
-fn period(
+pub(super) fn period(
     lookup: &dyn TypeView,
     settings: &dyn Fn(&str) -> Option<crate::config::SettingFact>,
     path: &str,
