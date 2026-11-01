@@ -12,7 +12,7 @@ A word is given after the command:
 
 ```jadpo check project=e-approval-arguments file=app.jadpo hidden
 application {
-    jadpo: "0.2"
+    jadpo: "X.Y"
 }
 ```
 
