@@ -109,17 +109,17 @@ pub(crate) fn sign_in_state(
 /// Everything the purge schedule of `entity` runs, in the order a run
 /// applies them: its `retention:`, which deletes whole records first, then
 /// its lifecycle's `purge:`, then each field's `retention:` in field
-/// order. `sign_in` are the tables of [`SIGN_IN_STATE`] its store holds,
-/// when it is someone who signs in.
+/// order. `sign_in` are, for each entity someone signs in as, the tables
+/// of [`SIGN_IN_STATE`] its store holds.
 pub(crate) fn plans(
     model: &DataModel,
     entity: &EntityModel,
     setting: &dyn Fn(&str) -> Option<u32>,
-    sign_in: &[(&str, &str)],
+    sign_in: &SignInState,
 ) -> Vec<PurgePlan> {
     let mut out = Vec::new();
     if let Some(retention) = &entity.retention
-        && let Some(found) = expired(entity, retention, setting, sign_in)
+        && let Some(found) = expired(model, entity, retention, setting, sign_in)
     {
         out.push(found);
     }
@@ -131,20 +131,52 @@ pub(crate) fn plans(
             out.push(found);
         }
     }
+    if let Some(found) = audited(entity, setting) {
+        out.push(found);
+    }
     out
+}
+
+/// For each entity someone signs in as, the tables of [`SIGN_IN_STATE`]
+/// its store holds, each with the column holding their `id`.
+pub(crate) type SignInState = std::collections::BTreeMap<String, Vec<(&'static str, &'static str)>>;
+
+/// `entity`'s `audit: { retention: }` (area 16, "Audit trail"; chunk
+/// B11): the oldest entries of its history written before the cutoff, by
+/// the entity's born name, which its entries are kept under.
+fn audited(entity: &EntityModel, setting: &dyn Fn(&str) -> Option<u32>) -> Option<PurgePlan> {
+    let retention = entity.audit.as_ref()?.retention.as_ref()?;
+    let store = entity.store.clone()?;
+    let mut purging = Purging::default();
+    let born = purging.param(
+        PurgeSource::Stored(jadpo_std::SqlValue::Text(entity.born.clone())),
+        SqlType::Text,
+    );
+    let cutoff = purging.param(PurgeSource::Cutoff, SqlType::Timestamp);
+    Some(PurgePlan {
+        entity: entity.name.clone(),
+        kind: PurgeKind::Audit,
+        store,
+        sql: text::audit_purge(&born, &cutoff, PURGE_BATCH),
+        params: purging.params,
+        after: 0,
+        after_setting: Some(setting(&retention.setting)?),
+    })
 }
 
 /// `entity`'s retention: the oldest records, hidden or not, whose `since:`
 /// field is older than the cutoff, deleted with what cascades from them,
-/// and with the rows of `sign_in` that are theirs. The check refuses a
-/// retention a `restricted` reference could hold, so none is left out
-/// here; one that did would make its batch fail on its foreign key rather
-/// than keep the record unseen.
+/// and with the sign-in state of every record deleted, or reached
+/// through a cascade (chunk P4), of an entity someone signs in as. The
+/// check refuses a retention a `restricted` reference could hold, so none
+/// is left out here; one that did would make its batch fail on its
+/// foreign key rather than keep the record unseen.
 fn expired(
+    model: &DataModel,
     entity: &EntityModel,
     retention: &RetentionModel,
     setting: &dyn Fn(&str) -> Option<u32>,
-    sign_in: &[(&str, &str)],
+    sign_in: &SignInState,
 ) -> Option<PurgePlan> {
     let store = entity.store.clone()?;
     let since = field(entity, &retention.since)?;
@@ -152,10 +184,19 @@ fn expired(
     let cutoff = purging.param(PurgeSource::Cutoff, column_type(since)?.param());
     let conditions = vec![text::less_than(&since.born, &cutoff)];
     let sql = text::purge(&entity.table, &conditions, &since.born, PURGE_BATCH);
-    let sql = if sign_in.is_empty() {
+    let (reached, cascades) = cascades_from(model, entity)?;
+    let mut removed = Vec::new();
+    for (at, name) in reached.iter().enumerate() {
+        for (table, column) in sign_in.get(name).into_iter().flatten() {
+            removed.push((at, *table, *column));
+        }
+    }
+    // Only the cascades that lead to someone who signs in are followed.
+    let leading = leading_to(&cascades, &removed);
+    let sql = if removed.is_empty() {
         sql
     } else {
-        text::with_removed(&sql, sign_in)
+        text::with_removed(&sql, &leading, &removed)
     };
     Some(PurgePlan {
         entity: entity.name.clone(),
@@ -166,6 +207,64 @@ fn expired(
         after: 0,
         after_setting: Some(setting(&retention.setting)?),
     })
+}
+
+/// The entities deleting a record of `entity` cascades to, its own first,
+/// each numbered by its place, and each cascading reference followed, as
+/// the walk of [`not_held_anywhere`] numbers them.
+fn cascades_from<'m>(
+    model: &'m DataModel,
+    entity: &EntityModel,
+) -> Option<(Vec<String>, Vec<Cascade<'m>>)> {
+    let mut reached: Vec<String> = vec![entity.name.clone()];
+    let mut cascades: Vec<Cascade<'m>> = Vec::new();
+    let mut at = 0;
+    while let Some(current) = reached.get(at).cloned() {
+        for (child, field_name, on_delete) in referring(model, &current) {
+            if on_delete != Some(OnDelete::Cascade) {
+                continue;
+            }
+            let holder = model.entity(&child)?;
+            let number = match reached.iter().position(|name| *name == child) {
+                Some(number) => number,
+                None => {
+                    reached.push(child.clone());
+                    reached.len() - 1
+                }
+            };
+            cascades.push(Cascade {
+                from: at,
+                to: number,
+                table: holder.table.as_str(),
+                column: field(holder, &field_name)?.born.as_str(),
+            });
+        }
+        at += 1;
+    }
+    Some((reached, cascades))
+}
+
+/// The cascades of `cascades` on a way to one of the entities `removed`
+/// numbers: each one whose end leads, through cascades, to one of them.
+fn leading_to<'m>(cascades: &[Cascade<'m>], removed: &[(usize, &str, &str)]) -> Vec<Cascade<'m>> {
+    let mut wanted: std::collections::BTreeSet<usize> =
+        removed.iter().map(|(entity, ..)| *entity).collect();
+    loop {
+        let before = wanted.len();
+        for cascade in cascades {
+            if wanted.contains(&cascade.to) {
+                wanted.insert(cascade.from);
+            }
+        }
+        if wanted.len() == before {
+            break;
+        }
+    }
+    cascades
+        .iter()
+        .filter(|cascade| wanted.contains(&cascade.to))
+        .cloned()
+        .collect()
 }
 
 /// `field`'s retention: its value cleared on the oldest records, hidden or

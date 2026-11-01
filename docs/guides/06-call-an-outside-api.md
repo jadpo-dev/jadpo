@@ -124,7 +124,6 @@ operation that changes something at the service also says
 
 ```jadpo check project=guide-outside-api file=app.jadpo
 application {
-    jadpo: "0.2"
     connections: {
         shelf: {
             package: OpenShelf.v1

@@ -4,10 +4,13 @@
 //! `erase:`, or what its `on_delete:` implies. A `restricted` reference
 //! into records erasure deletes must say, a reference or marked field it
 //! clears can be `none`, a record it keeps as it is has a `retention:`,
-//! and an `erase:` it never reaches is refused. What isn't built yet is
-//! refused where `erase` is called, or where the person's own field's
-//! `erase:` is written. As policy sees it, an erasure is a `delete` of the
-//! person's record, and an action erasing one runs at repeatable read.
+//! and an `erase:` it never reaches is refused. A record that belongs to
+//! several people keeps its marked fields until the last of them is
+//! erased, and another person's own record loses only the reference
+//! (chunk P4). The person's own record kept field by field isn't built
+//! yet, refused where its field's `erase:` is written. As policy sees it,
+//! an erasure is a `delete` of the person's record, and an action erasing
+//! one runs at repeatable read.
 
 use jadpo_db::{Database, Layout};
 
@@ -387,7 +390,7 @@ fn a_test_erases_through_an_action() {
 }
 
 #[test]
-fn erasing_a_file_or_another_persons_own_record_is_not_built_yet_where_erase_is_called() {
+fn erasing_a_file_or_another_persons_own_record_is_built() {
     let app = "application {\n    connections: {\n        uploads: {\n            driver: Driver.disk\n            path: \"/var/lib/todos\"\n        }\n    }\n}\n";
     let scans = "entity Scan {
     id: Uuid
@@ -400,19 +403,21 @@ fn erasing_a_file_or_another_persons_own_record_is_not_built_yet_where_erase_is_
         types: [FileType.pdf]
     }
 }
+
+entity Photo {
+    id: Uuid
+    taken_by_id: User.id? {
+        on_delete: OnDelete.cleared
+    }
+    picture: File? {
+        store: uploads
+        max_size: 5mb
+        types: [FileType.png]
+        personal: PersonalData.identifying
+    }
+}
 ";
-    let without_call = support::rules(
-        Layout::Loose,
-        &[
-            ("app.jadpo", app),
-            (
-                "main.jadpo",
-                &with_settings(&project(&[USER, RECORDS, scans])),
-            ),
-        ],
-    );
-    assert!(without_call.is_empty(), "{without_call:?}");
-    let found = support::problems(
+    let found = support::rules(
         Layout::Loose,
         &[
             ("app.jadpo", app),
@@ -422,24 +427,112 @@ fn erasing_a_file_or_another_persons_own_record_is_not_built_yet_where_erase_is_
             ),
         ],
     );
-    assert_eq!(
-        found,
-        ["main.jadpo toolchain.not_built_yet: Erasing a `User` here isn't built yet"]
-    );
+    assert_eq!(found, CLEAN, "a deleted record's file and a cleared one");
     let invited = USER.replace(
         "    person: true",
         "    invited_by_id: User.id? {\n        on_delete: OnDelete.cleared\n    }\n\n    person: true",
     );
-    assert_eq!(
-        problems(&project(&[&invited, FORGET])),
-        ["main.jadpo toolchain.not_built_yet: Erasing a `User` here isn't built yet"]
-    );
-    // Another person kept as they are, or deleted, is built.
+    assert_eq!(rules(&project(&[&invited, FORGET])), CLEAN);
     let kept = invited.replace(
         "on_delete: OnDelete.cleared",
         "on_delete: OnDelete.restricted\n        erase: Erasure.deleted",
     );
     assert_eq!(rules(&project(&[&kept, FORGET])), CLEAN);
+}
+
+/// Records a user shares with others: a letter between two users, and a
+/// reply on someone's todo.
+const SHARED: &str = "entity Letter {
+    id: Uuid
+    from_id: User.id? {
+        on_delete: OnDelete.cleared
+    }
+    to_id: User.id? {
+        on_delete: OnDelete.cleared
+    }
+    signed_as: Caption? {
+        personal: PersonalData.identifying
+    }
+}
+
+entity Reply {
+    id: Uuid
+    todo_id: Todo.id? {
+        on_delete: OnDelete.cleared
+    }
+    author_id: User.id? {
+        on_delete: OnDelete.cleared
+    }
+    signed_as: Caption? {
+        personal: PersonalData.identifying
+    }
+}
+";
+
+/// A record that belongs to several people keeps its marked fields while
+/// any other of them remains (area 15's notes, "Records that belong to
+/// more than one person"): erasure looks for another person through each
+/// of the record's references that lead to one, climbing through the
+/// records they refer to. Another person's own record loses only the
+/// reference.
+#[test]
+fn a_record_belonging_to_several_people_is_cleared_only_by_the_last() {
+    let invited = USER.replace(
+        "    person: true",
+        "    invited_by_id: User.id? {\n        on_delete: OnDelete.cleared\n    }\n\n    person: true",
+    );
+    let source = with_settings(&project(&[&invited, RECORDS, SHARED, FORGET]));
+    assert_eq!(
+        problems(&project(&[&invited, RECORDS, SHARED, FORGET])),
+        CLEAN
+    );
+    let db = Database::default();
+    let project = support::project(&db, Layout::Loose, &[("main.jadpo", &source)]);
+    let erasures = jadpo_check::erasure::erasures(&db, project);
+    let user = &erasures.people["User"];
+    let kept = |name: &str| {
+        user.kept
+            .iter()
+            .find(|kept| kept.entity == name)
+            .unwrap_or_else(|| panic!("{name} kept"))
+    };
+    // Another person's own record loses only the reference.
+    assert!(kept("User").clears.is_empty(), "{:?}", kept("User"));
+    assert!(kept("User").through.is_empty());
+    // A comment belongs to its author alone, so it is cleared with them.
+    assert_eq!(kept("Comment").clears, ["signature"]);
+    assert!(kept("Comment").through.is_empty());
+    // A letter belongs to both its users.
+    let message = kept("Letter");
+    assert_eq!(message.clears, ["signed_as"]);
+    let through: Vec<(&str, &str)> = message
+        .through
+        .iter()
+        .map(|(field, at)| (field.as_str(), message.chain[*at].entity.as_str()))
+        .collect();
+    assert_eq!(through, [("from_id", "User"), ("to_id", "User")]);
+    // A reply belongs to its author and to the todo's owner, found by
+    // climbing from the todo to its owner.
+    let reply = kept("Reply");
+    assert_eq!(reply.clears, ["signed_as"]);
+    let owner = |at: usize| &reply.chain[at];
+    let through: Vec<(&str, &str)> = reply
+        .through
+        .iter()
+        .map(|(field, at)| (field.as_str(), owner(*at).entity.as_str()))
+        .collect();
+    assert_eq!(through, [("todo_id", "Todo"), ("author_id", "User")]);
+    let todo = reply.through[0].1;
+    assert!(!owner(todo).person);
+    let climbs: Vec<(&str, &str)> = owner(todo)
+        .climbs
+        .iter()
+        .map(|(field, at)| (field.as_str(), owner(*at).entity.as_str()))
+        .collect();
+    assert_eq!(climbs, [("owner_id", "User")]);
+    let user_at = reply.through[1].1;
+    assert!(owner(user_at).person);
+    assert!(owner(user_at).climbs.is_empty(), "a person ends the search");
 }
 
 #[test]

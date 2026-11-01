@@ -123,6 +123,7 @@ fn bash_completes_commands_and_values() {
             "api",
             "records",
             "acceptance",
+            "approval",
             "declines",
             "fix",
             "suggest",

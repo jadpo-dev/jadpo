@@ -17,6 +17,7 @@ pub mod access;
 pub mod compare;
 pub mod files;
 pub mod network;
+pub mod words;
 
 use std::collections::{BTreeMap, BTreeSet};
 

@@ -43,9 +43,7 @@ which entity a signed-in caller is, and which field finds them:
 ```jadpo check project=learn-todo-10 file=app.jadpo
 use todos/entities { User }
 
-application {
-    jadpo: "0.2"
-}
+application {}
 
 principal {
     user: {

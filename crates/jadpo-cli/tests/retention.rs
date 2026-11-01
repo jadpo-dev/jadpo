@@ -8,7 +8,13 @@
 //!   counts as changed;
 //! - an invoice, whose entity has `retention:`, is deleted at the first
 //!   run after its time, with the lines that cascade from it;
-//! - a member who signs in is deleted with their sessions;
+//! - a member who signs in is deleted with their sessions, and so is one
+//!   reached through a cascade from a household whose retention ends
+//!   (chunk P4);
+//! - a visitor's badge and an invoice's scan, each a `File`, let go of
+//!   their bytes as the field is cleared or the record deleted, and the
+//!   same tick deletes them (chunk P4, through area 16's count of a
+//!   file's holders);
 //! - what isn't due yet stays, and each run's record counts what it
 //!   removed.
 //!
@@ -20,12 +26,15 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use jadpo_cli::{Output, run};
 use jadpo_host_native::Runtime;
 use jadpo_interp::Program;
+use jadpo_runtime::capability::{Capability, Faked};
+use jadpo_runtime::files::MemoryFiles;
 use jadpo_runtime::schedules::{Ran, tick};
-use jadpo_runtime::{Executor, Outcome, SqlValue};
+use jadpo_runtime::{Executor, Host, Outcome, SqlValue};
 use jadpo_term::Environment;
 use jadpo_test::host::Harness;
 use jadpo_value::Value;
@@ -55,14 +64,22 @@ const POLICY: &str = "    policy: {
 
 fn files() -> Vec<(&'static str, String)> {
     vec![
-        ("app.jadpo", "use club/entities { Member }\n\napplication {}\n\nprincipal {\n    user: {\n        subject: Member.handle\n    }\n}\n\nauthentication {\n    api_token: {}\n}\n".to_string()),
+        ("app.jadpo", "use club/entities { Member }\n\napplication {\n    connections: {\n        badges: {\n            driver: Driver.disk\n            path: \"/var/lib/club/badges\"\n        }\n    }\n}\n\nprincipal {\n    user: {\n        subject: Member.handle\n    }\n}\n\nauthentication {\n    api_token: {}\n}\n".to_string()),
         (
             "config.jadpo",
-            "config {\n    invoice_retention: Duration {\n        default: 60d\n    }\n    member_retention: Duration {\n        default: 90d\n    }\n    referrer_retention: Duration {\n        default: 30d\n    }\n    visitor_retention: Duration {\n        default: 365d\n    }\n}\n".to_string(),
+            "config {\n    household_retention: Duration {\n        default: 60d\n    }\n    invoice_retention: Duration {\n        default: 60d\n    }\n    member_retention: Duration {\n        default: 90d\n    }\n    referrer_retention: Duration {\n        default: 30d\n    }\n    visitor_retention: Duration {\n        default: 365d\n    }\n}\n".to_string(),
         ),
         (
             "domains/club/types/name.jadpo",
             "/// A name.\ntype Name = Text {\n    max_length: 80\n}\n".to_string(),
+        ),
+        (
+            "domains/club/types/scan_text.jadpo",
+            "/// What a badge or a scan holds, as text.\ntype ScanText = Text {\n    min_length: 1\n    max_length: 1000\n}\n".to_string(),
+        ),
+        (
+            "domains/club/failures/scan_not_kept.jadpo",
+            "/// The store of badges had no room.\ntype ScanNotKept = Failure {\n    kind: FailureKind.unavailable\n    message: \"There was no room to keep it.\"\n}\n".to_string(),
         ),
         (
             "domains/club/types/referrer.jadpo",
@@ -79,6 +96,16 @@ entity Visitor {{
     name: Name
     referrer: Referrer? {{
         personal: PersonalData.online
+        retention: {{
+            after: config.referrer_retention
+            since: created_at
+        }}
+    }}
+    badge: File? {{
+        store: badges
+        max_size: 1mb
+        types: [FileType.csv]
+        personal: PersonalData.identifying
         retention: {{
             after: config.referrer_retention
             since: created_at
@@ -106,10 +133,15 @@ entity Visitor {{
             format!(
                 "use club/types {{ Name }}
 
-/// An invoice, kept for 60 days after it was issued.
+/// An invoice, kept for 60 days after it was issued, with its scan.
 entity Invoice {{
     id: Uuid
     number: Name
+    scan: File? {{
+        store: badges
+        max_size: 1mb
+        types: [FileType.csv]
+    }}
     issued_at: Instant {{
         generated: Generated.on_create
     }}
@@ -144,13 +176,18 @@ entity InvoiceLine {{
         (
             "domains/club/entities/member.jadpo",
             format!(
-                "use club/types {{ Name }}
+                "use club/entities {{ Household }}
+use club/types {{ Name }}
 
-/// A member who signs in, kept for 90 days after they joined.
+/// A member who signs in, kept for 90 days after they joined, and who
+/// goes with their household.
 entity Member {{
     id: Uuid
     handle: Name {{
         unique: true
+    }}
+    household_id: Household.id? {{
+        on_delete: OnDelete.cascade
     }}
     joined_at: Instant {{
         generated: Generated.on_create
@@ -166,12 +203,50 @@ entity Member {{
             ),
         ),
         (
+            "domains/club/entities/household.jadpo",
+            format!(
+                "use club/types {{ Name }}
+
+/// Members who joined together, kept for 60 days after it started.
+entity Household {{
+    id: Uuid
+    name: Name
+    started_at: Instant {{
+        generated: Generated.on_create
+    }}
+
+    retention: {{
+        after: config.household_retention
+        since: started_at
+    }}
+
+{POLICY}}}
+"
+            ),
+        ),
+        (
+            "domains/club/actions/visit_with_badge.jadpo",
+            "use app { badges }\nuse club/entities { Visitor }\nuse club/failures { ScanNotKept }\nuse club/types { ScanText }\n\n/// Records a visitor with their badge.\naction visit_with_badge(name: Visitor.name, referrer: Visitor.referrer, badge_text: ScanText) fails ScanNotKept -> Visitor {\n    var badge: File = attempt badges.put(encoding.to_utf8(badge_text), FileType.csv) {\n        storage_full: ScanNotKept\n    }\n    return Visitor.create {\n        set: {\n            name: name\n            referrer: referrer\n            badge: badge\n        }\n    }\n}\n".to_string(),
+        ),
+        (
+            "domains/club/actions/issue_with_scan.jadpo",
+            "use app { badges }\nuse club/entities { Invoice }\nuse club/failures { ScanNotKept }\nuse club/types { ScanText }\n\n/// Issues an invoice with its scan.\naction issue_with_scan(number: Invoice.number, scan_text: ScanText) fails ScanNotKept -> Invoice {\n    var scan: File = attempt badges.put(encoding.to_utf8(scan_text), FileType.csv) {\n        storage_full: ScanNotKept\n    }\n    return Invoice.create {\n        set: {\n            number: number\n            scan: scan\n        }\n    }\n}\n".to_string(),
+        ),
+        (
+            "domains/club/actions/start_household.jadpo",
+            "use club/entities { Household }\n\n/// Starts a household.\naction start_household(name: Household.name) -> Household {\n    return Household.create {\n        set: {\n            name: name\n        }\n    }\n}\n".to_string(),
+        ),
+        (
+            "domains/club/actions/join_household.jadpo",
+            "use club/entities { Household, Member }\nuse club/failures { HandleTaken }\n\n/// Adds a member of a household.\naction join_household(household: Household, handle: Member.handle) fails HandleTaken -> Member {\n    return attempt Member.create {\n        set: {\n            handle: handle\n            household_id: household.id\n        }\n        conflict: {\n            Member.handle: HandleTaken\n        }\n    }\n}\n".to_string(),
+        ),
+        (
             "domains/club/actions/visit.jadpo",
-            "use club/entities { Visitor }\n\n/// Records a visitor.\naction visit(name: Visitor.name, referrer: Visitor.referrer) -> Visitor {\n    return Visitor.create {\n        set: {\n            name: name\n            referrer: referrer\n        }\n    }\n}\n".to_string(),
+            "use club/entities { Visitor }\n\n/// Records a visitor.\naction visit(name: Visitor.name, referrer: Visitor.referrer) -> Visitor {\n    return Visitor.create {\n        set: {\n            name: name\n            referrer: referrer\n            badge: none\n        }\n    }\n}\n".to_string(),
         ),
         (
             "domains/club/actions/issue.jadpo",
-            "use club/entities { Invoice }\n\n/// Issues an invoice.\naction issue(number: Invoice.number) -> Invoice {\n    return Invoice.create {\n        set: {\n            number: number\n        }\n    }\n}\n".to_string(),
+            "use club/entities { Invoice }\n\n/// Issues an invoice.\naction issue(number: Invoice.number) -> Invoice {\n    return Invoice.create {\n        set: {\n            number: number\n            scan: none\n        }\n    }\n}\n".to_string(),
         ),
         (
             "domains/club/actions/add_line.jadpo",
@@ -179,7 +254,7 @@ entity Member {{
         ),
         (
             "domains/club/actions/join.jadpo",
-            "use club/entities { Member }\nuse club/failures { HandleTaken }\n\n/// Adds a member.\naction join(handle: Member.handle) fails HandleTaken -> Member {\n    return attempt Member.create {\n        set: {\n            handle: handle\n        }\n        conflict: {\n            Member.handle: HandleTaken\n        }\n    }\n}\n".to_string(),
+            "use club/entities { Member }\nuse club/failures { HandleTaken }\n\n/// Adds a member.\naction join(handle: Member.handle) fails HandleTaken -> Member {\n    return attempt Member.create {\n        set: {\n            handle: handle\n            household_id: none\n        }\n        conflict: {\n            Member.handle: HandleTaken\n        }\n    }\n}\n".to_string(),
         ),
         (
             "domains/club/failures/handle_taken.jadpo",
@@ -211,6 +286,37 @@ async fn call(program: &Program, host: &Harness, action: &str, args: Vec<Value>)
     match program.run(&mut ctx, id, args).await {
         Outcome::Value(value) => value,
         other => panic!("{action}: expected a value, got {other:?}"),
+    }
+}
+
+/// Runs `action` with `args` at the harness's clock on `on`, the host
+/// giving the store of badges, as no one.
+async fn call_on(
+    program: &Program,
+    host: &Harness,
+    on: &dyn Host,
+    action: &str,
+    args: Vec<Value>,
+) -> Value {
+    let id = program.plan().find(action).expect("the action");
+    let mut ctx = host.ctx_on(program, on);
+    match program.run(&mut ctx, id, args).await {
+        Outcome::Value(value) => value,
+        other => panic!("{action}: expected a value, got {other:?}"),
+    }
+}
+
+/// The key a record's `File` field holds its bytes under.
+fn key_in(record: &Value, field: &str) -> String {
+    match record {
+        Value::Record(record) => match record.get(field) {
+            Some(Value::Record(file)) => match file.get("key") {
+                Some(Value::Text(key)) => key.to_string(),
+                other => panic!("not a key: {other:?}"),
+            },
+            other => panic!("not a file: {other:?}"),
+        },
+        other => panic!("not a record: {other:?}"),
     }
 }
 
@@ -291,10 +397,18 @@ fn values_and_records_go_at_the_first_run_after_their_time(name: &str, compiled_
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
     let host = Harness::postgres(&url).at(T0).random_from(0);
+    // The store of badges, in memory: what a tick's deletions reach.
+    let files = Rc::new(MemoryFiles::new());
+    let faked = Faked::new(&host).with("badges", Rc::clone(&files) as Rc<dyn Capability>);
     let runtime = Runtime::new().expect("runtime");
     let tick_at = |at: i64| {
         host.set_now(at);
-        runtime.block_on(tick(ticking, &host, at))
+        runtime.block_on(tick(ticking, &faked, at))
+    };
+    let held = || {
+        let mut keys = files.keys();
+        keys.sort();
+        keys
     };
     let ran = |ticked: &jadpo_runtime::schedules::Ticked, schedule: &str| -> Vec<Ran> {
         ticked
@@ -317,19 +431,36 @@ fn values_and_records_go_at_the_first_run_after_their_time(name: &str, compiled_
         })
     };
 
-    // Ada visits, an invoice with two lines is issued and Ada joins at T0;
-    // Bob does the same ten days later.
+    // Ada visits with her badge, an invoice with its scan and two lines is
+    // issued and Ada joins at T0; Bob does the same ten days later. Cy
+    // joins with a household at T0.
+    let mut badges = Vec::new();
+    let mut scans = Vec::new();
     runtime.block_on(async {
         for (at, who, number) in [(T0, "Ada", "A-1"), (T0 + 10 * DAY, "Bob", "A-2")] {
             host.set_now(at);
-            call(
+            let visitor = call_on(
                 &program,
                 &host,
-                "visit",
-                vec![Value::text(who), Value::text(&format!("{who}'s search"))],
+                &faked,
+                "visit_with_badge",
+                vec![
+                    Value::text(who),
+                    Value::text(&format!("{who}'s search")),
+                    Value::text(&format!("{who},badge")),
+                ],
             )
             .await;
-            let invoice = call(&program, &host, "issue", vec![Value::text(number)]).await;
+            badges.push(key_in(&visitor, "badge"));
+            let invoice = call_on(
+                &program,
+                &host,
+                &faked,
+                "issue_with_scan",
+                vec![Value::text(number), Value::text(&format!("{number},scan"))],
+            )
+            .await;
+            scans.push(key_in(&invoice, "scan"));
             for line in ["tea", "cake"] {
                 call(
                     &program,
@@ -341,12 +472,29 @@ fn values_and_records_go_at_the_first_run_after_their_time(name: &str, compiled_
             }
             call(&program, &host, "join", vec![Value::text(&who.to_lowercase())]).await;
         }
+        host.set_now(T0);
+        let household = call(&program, &host, "start_household", vec![Value::text("Cy's")]).await;
+        call(
+            &program,
+            &host,
+            "join_household",
+            vec![household, Value::text("cy")],
+        )
+        .await;
         // Each member holds an API token's session, ending long after.
         host.rows(
             "INSERT INTO \"jadpo_sessions\" (\"id\", \"principal_id\", \"verifier\", \"started_at\", \"ends_at\") SELECT gen_random_uuid(), \"id\", 'verifier of ' || \"handle\", TIMESTAMPTZ '2026-10-19 09:00:00+00', TIMESTAMPTZ '2030-01-01 00:00:00+00' FROM \"member\"",
         )
         .await;
     });
+    let sorted = |mut keys: Vec<String>| {
+        keys.sort();
+        keys
+    };
+    assert_eq!(
+        held(),
+        sorted(badges.iter().chain(&scans).cloned().collect())
+    );
 
     // The first tick keeps the schedules' state; an hour on, each purge
     // runs and finds nothing due.
@@ -373,14 +521,20 @@ fn values_and_records_go_at_the_first_run_after_their_time(name: &str, compiled_
         );
     });
 
-    // The next hourly run clears it, and the record counts as changed;
-    // Bob's, ten days younger, stays.
+    // The next hourly run clears it, and her badge, whose bytes the same
+    // tick deletes, and the record counts as changed; Bob's, ten days
+    // younger, stay.
     let cleared = tick_at(T0 + 30 * DAY + HOUR);
     assert_eq!(
         ran(&cleared, "Visitor.purge"),
         [Ran::Succeeded { events: 0 }]
     );
-    assert_eq!(counts(&cleared), [Some(1), Some(0), Some(0)]);
+    assert_eq!(counts(&cleared), [Some(2), Some(0), Some(0)]);
+    assert_eq!(cleared.files, 1, "{cleared:?}");
+    assert_eq!(
+        held(),
+        sorted(vec![badges[1].clone(), scans[0].clone(), scans[1].clone()])
+    );
     runtime.block_on(async {
         assert_eq!(referrers(&host).await, ["Ada none", "Bob Bob's search"]);
         let changed = texts(
@@ -391,11 +545,35 @@ fn values_and_records_go_at_the_first_run_after_their_time(name: &str, compiled_
         assert_eq!(changed, ["2026-11-18 10:00", "2026-10-29 09:00"]);
     });
 
-    // Sixty days and an hour after A-1 was issued, it goes with its lines,
-    // and Bob's referrer is past its time too.
+    // Sixty days and an hour after A-1 was issued, it goes with its lines
+    // and its scan's bytes, and Bob's referrer and badge are past their
+    // time too. Cy's household goes, and Cy, who signs in, with it and
+    // with their session.
     let invoiced = tick_at(T0 + 60 * DAY + HOUR);
-    assert_eq!(counts(&invoiced), [Some(1), Some(1), Some(0)]);
+    assert_eq!(counts(&invoiced), [Some(2), Some(1), Some(0)]);
+    assert_eq!(
+        ran(&invoiced, "Household.purge"),
+        [Ran::Succeeded { events: 0 }]
+    );
+    assert_eq!(held(), [scans[1].clone()]);
     runtime.block_on(async {
+        assert_eq!(
+            texts(
+                &host,
+                "SELECT \"handle\" FROM \"member\" ORDER BY \"handle\""
+            )
+            .await,
+            ["ada", "bob"]
+        );
+        assert_eq!(
+            texts(
+                &host,
+                "SELECT \"verifier\" FROM \"jadpo_sessions\" ORDER BY \"verifier\""
+            )
+            .await,
+            ["verifier of ada", "verifier of bob"],
+            "Cy's session goes with them"
+        );
         assert_eq!(
             texts(
                 &host,
@@ -416,9 +594,11 @@ fn values_and_records_go_at_the_first_run_after_their_time(name: &str, compiled_
     });
 
     // Ninety days and an hour after Ada joined, she goes with her session;
-    // Bob, who joined ten days later, keeps his. A-2 has gone too.
+    // Bob, who joined ten days later, keeps his. A-2 has gone too, with
+    // its scan's bytes.
     let joined = tick_at(T0 + 90 * DAY + HOUR);
     assert_eq!(counts(&joined), [Some(0), Some(1), Some(1)]);
+    assert!(held().is_empty(), "{:?}", held());
     runtime.block_on(async {
         assert_eq!(
             texts(
@@ -448,6 +628,7 @@ fn values_and_records_go_at_the_first_run_after_their_time(name: &str, compiled_
         assert_eq!(counted(&host, "Member.purge").await, [Some(1)]);
         assert_eq!(counted(&host, "Visitor.purge").await, [Some(0)]);
     });
+    drop(faked);
     drop(host);
     databases.release(copy, false);
 }
@@ -486,12 +667,14 @@ fn an_entitys_retention_and_its_fields_share_a_runs_batches() {
         kinds,
         [
             "the retention of `Visitor`",
-            "the retention of `Visitor.referrer`"
+            "the retention of `Visitor.referrer`",
+            "the retention of `Visitor.badge`"
         ],
-        "the whole record first, then the field"
+        "the whole record first, then the fields"
     );
     assert_eq!(plans[0].1, Some(365 * DAY));
     assert_eq!(plans[1].1, Some(30 * DAY));
+    assert_eq!(plans[2].1, Some(30 * DAY));
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
@@ -517,7 +700,11 @@ fn an_entitys_retention_and_its_fields_share_a_runs_batches() {
         let rest = jadpo_runtime::purge_all(&host, &plans, at, jadpo_runtime::PURGE_BATCHES)
             .await
             .expect("purge");
-        assert_eq!(rest.batches, vec![200, 300], "the last old ones, then the referrers");
+        assert_eq!(
+            rest.batches,
+            vec![200, 300, 0],
+            "the last old ones, then the referrers, then the badges, which none holds"
+        );
         assert!(rest.finished);
         let left = texts(
             &host,

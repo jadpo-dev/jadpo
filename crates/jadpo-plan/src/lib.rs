@@ -31,6 +31,7 @@
 //! and its SQL text is written by `jadpo-sql` (chunk 3.12). It is shared by
 //! every thread that runs the project.
 
+mod audit;
 mod config;
 mod connections;
 mod constant;
@@ -408,6 +409,9 @@ pub struct Plan {
     entities: Vec<EntityPlan>,
     /// Every write site's plan, in the order the callables are numbered.
     writes: Vec<WriteSitePlan>,
+    /// Every audited entity's `history` (area 16; chunk B11), by its
+    /// entity's key, in key order.
+    histories: Vec<(Key, jadpo_std::audit::HistoryPlan)>,
     /// What the runtime reads of the program (chunk 8.1a): the validator,
     /// shape and failure plans, the JSON table, every route with its
     /// codecs, the settings, subscribers, batches, schedules, purges,
@@ -763,7 +767,21 @@ impl Plan {
             number
         };
         let setting_number = |name: &str| setting_of(&config::key(registry, name));
-        let (writes, write_ids) = writes::plans(db, project, &mut types, &bodies, &json_types);
+        let (mut writes, write_ids) = writes::plans(db, project, &mut types, &bodies, &json_types);
+        // Each audited entity's entries are emitted as `AuditEntryRecorded`
+        // to its subscribers (area 16, "Sending audit entries elsewhere").
+        let audit_subscribers = audit::subscribers(db, project);
+        for write in &mut writes {
+            if let Some(audit) = &mut write.plan.audit {
+                audit.subscribers = audit_subscribers.clone();
+            }
+        }
+        let histories = audit::histories(db, project, &mut types, &json_types);
+        let history_ids: HashMap<Key, u32> = histories
+            .iter()
+            .enumerate()
+            .map(|(i, (key, _))| (key.clone(), i as u32))
+            .collect();
         let gates = policy::gates(db, project, &mut types, &json_types, &|action| {
             pruning.is_none_or(|_| {
                 found
@@ -775,15 +793,12 @@ impl Plan {
         // An entity's purge and retentions run where schedules run.
         let purges: Vec<PurgePlan> = if pruning.is_none_or(|pruning| pruning.runs().schedules) {
             // Someone who signs in goes with their sign-in state, in the
-            // tables their store holds (area 15; chunk P2).
+            // tables their store holds (area 15; chunks P2 and P4).
             let sign_in = purge::sign_in_state(db, project);
             model
                 .entities
                 .iter()
-                .flat_map(|entity| {
-                    let tables = sign_in.get(&entity.name).map_or(&[][..], Vec::as_slice);
-                    purge::plans(model, entity, &setting_number, tables)
-                })
+                .flat_map(|entity| purge::plans(model, entity, &setting_number, &sign_in))
                 .collect()
         } else {
             Vec::new()
@@ -898,6 +913,7 @@ impl Plan {
             let isolation = node.and_then(|node| node.isolation()).unwrap_or_default();
             let text = files.get(&file).map(String::as_str).unwrap_or_default();
             let entity = |key: &Key| entity_ids.get(key).copied();
+            let history = |key: &Key| history_ids.get(key).copied();
             let write = |site: u32| write_ids.get(&(key.clone(), site)).copied();
             let sites = sites::Decoder {
                 types: &mut types,
@@ -905,6 +921,7 @@ impl Plan {
                 callable: &callable_number,
                 query: &query_number,
                 entity: &entity,
+                history: &history,
                 write: &write,
                 setting: &setting_of,
                 flag: &|key: &Key| flags::number(db, project, key.name()),
@@ -1411,6 +1428,7 @@ impl Plan {
             gets: entities.iter().map(|entity| entity.get.clone()).collect(),
             writes: writes.iter().map(|write| write.plan.clone()).collect(),
             calls,
+            histories: histories.iter().map(|(_, plan)| plan.clone()).collect(),
         };
         // What the boundary needs of each action and fixture.
         let actions = callables
@@ -1467,6 +1485,7 @@ impl Plan {
             queries,
             entities,
             writes,
+            histories,
             runtime: Arc::new(runtime),
             backfills,
             migration_json,
@@ -1733,6 +1752,19 @@ impl Plan {
         self.writes.get(id as usize)
     }
 
+    /// The `history` numbered `id` (area 16; chunk B11).
+    pub fn history(&self, id: u32) -> Option<&jadpo_std::audit::HistoryPlan> {
+        self.histories.get(id as usize).map(|(_, plan)| plan)
+    }
+
+    /// The `history` of the entity called `entity`, when it is audited.
+    pub fn history_of(&self, entity: &str) -> Option<&jadpo_std::audit::HistoryPlan> {
+        self.histories
+            .iter()
+            .find(|(key, _)| key.name() == entity)
+            .map(|(_, plan)| plan)
+    }
+
     /// Every lifecycle's purge and every retention, by entity name (areas
     /// 5 and 15): what the built-in purge schedule runs (area 12).
     pub fn purges(&self) -> &[PurgePlan] {
@@ -1775,6 +1807,15 @@ impl Plan {
             .purges
             .iter()
             .find(|plan| plan.entity == entity && plan.kind == PurgeKind::Hidden)
+    }
+
+    /// The retention of the history of the entity called `entity`, when it
+    /// has one (area 16, "Audit trail").
+    pub fn audit_retention(&self, entity: &str) -> Option<&PurgePlan> {
+        self.runtime
+            .purges
+            .iter()
+            .find(|plan| plan.entity == entity && plan.kind == PurgeKind::Audit)
     }
 
     /// The retention of the entity called `entity`, or of its field

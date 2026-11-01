@@ -78,7 +78,11 @@ pub(super) fn does(node: &Node) -> Does<'_> {
             | Callee::Fixture(key)
             | Callee::PackageAction { action: key, .. } => Does::Joins(key),
             // An entity's other operations are writes, built or not.
-            Callee::Entity { operation, .. } if operation != "get" => Does::Writes,
+            Callee::Entity { operation, .. }
+                if operation != "get" && operation != jadpo_std::audit::HISTORY =>
+            {
+                Does::Writes
+            }
             Callee::Session(op) if !op.reads_only() => Does::Writes,
             // Starting a run keeps its row, and a cancel one of its own.
             Callee::Batch(op) if *op != BatchOp::Status => Does::Writes,

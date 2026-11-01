@@ -11,9 +11,7 @@ A `jadpo records` command names an action other than `update`.
 The action is misspelt:
 
 ```jadpo check project=e-records-arguments file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-records-arguments expect=cli.records_arguments

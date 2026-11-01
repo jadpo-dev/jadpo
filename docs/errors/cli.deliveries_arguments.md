@@ -11,9 +11,7 @@ A `jadpo deliveries` command names an action it doesn't have, no id for one that
 An action is given no id:
 
 ```jadpo check project=e-deliveries-arguments file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-deliveries-arguments expect=cli.deliveries_arguments

@@ -9,6 +9,7 @@ use crate::completion;
 pub use crate::acceptance::acceptance;
 pub use crate::ai::ai;
 pub use crate::api::api;
+pub use crate::approval::approval;
 pub use crate::build::build;
 pub use crate::calls::calls;
 pub use crate::check::check;

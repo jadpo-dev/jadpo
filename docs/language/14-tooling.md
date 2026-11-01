@@ -53,7 +53,7 @@ domain, `hello`:
 
 ```text
 todo-app/
-  app.jadpo        application { jadpo: "0.2" } and the project token
+  app.jadpo        application { jadpo: "X.Y" } and the project token
   config.jadpo     config {}, with no settings yet
   policy.jadpo     who may run greet: Access.public
   access.jadpo_record    as jadpo records update writes it
@@ -71,7 +71,7 @@ todo-app/
 ```
 
 - `app.jadpo` names the release line of the `jadpo` that ran `new`, so
-  `jadpo new` from 0.2.x writes `jadpo: "0.2"`
+  `jadpo new` from X.Y.Z writes `jadpo: "X.Y"`
   ([Which jadpo runs](#which-jadpo-runs)). It also holds the project's
   `suggestions { project_token: }`, 32 random hex digits from the
   operating system's generator ([Sharing with Jadpo
@@ -114,7 +114,7 @@ The screen is one status line, then the command to run next:
 
 ```text
 Created todo-app
-    jadpo  0.1
+    jadpo  X.Y
     route  POST /hello
     files  14 written
 
@@ -508,6 +508,7 @@ leaves for a person or an agent to settle.
 | `jadpo api update` | Rewrites the committed record of each public API |
 | `jadpo records` | Lists every committed record and flags any out of date |
 | `jadpo acceptance new` | Drafts a person's acceptance of the changes that need one |
+| `jadpo approval` | Writes the report a reviewer reads: what a change does, decisions first |
 | `jadpo declines list` / `clear` | Lists or removes your declines |
 | `jadpo fix` | Applies the fix you pick for a finding |
 | `jadpo suggest` | Hints where code could use a standard type or operation |
@@ -562,6 +563,21 @@ git, before the first commit) is `cli.acceptance_arguments`; a base the
 clone doesn't hold is `acceptance.base_missing`. `--before <branch or
 commit>` compares with another base, as `jadpo check`'s does.
 
+### `jadpo approval`
+
+`jadpo approval` writes `build/review/approval.md` and `.json`, the
+difference between this change and its before side: the default branch at
+its merge base, or the branch or commit `--before <ref>` names, as `jadpo
+check`'s does. It builds the before side with this compiler, once per
+commit, keeping its manifest in `build/before/<commit>/`
+([Comparing two builds](18-records-and-manifest.md#comparing-two-builds)).
+[Reviewing a change](17-debugging-and-review.md#reviewing-a-change) gives
+what it says, in that order, and what it prints. It fails only when it
+can't write the report: a source with errors (`approval not written`, each
+error shown), `cli.approval_arguments` for an argument, a `--before` git
+doesn't know or nothing to compare with, and `acceptance.base_missing` for
+a base the clone doesn't hold.
+
 ### `jadpo declines list` and `clear`
 
 A decline is a line in your code that answers a judgement-call finding
@@ -614,13 +630,7 @@ the exact payload. It sends those only with `--approve`. It stops at once
 when sharing is turned off, and an HQ that can't be reached or refuses is
 `suggest.share_failed` ([Sharing with Jadpo HQ](#sharing-with-jadpo-hq)).
 
-Not built yet:
-
-- `jadpo approval --before <ref>`, which writes the review report of what
-  changed in behaviour, policy and the API. It comes with
-  [Records and manifest](18-records-and-manifest.md); who signs off is
-  under [Review and sign-off](#review-and-sign-off).
-- Jadpo HQ itself: `share` is built against a fake of it.
+Not built yet: Jadpo HQ itself: `share` is built against a fake of it.
 
 ## Commands for background work
 <!-- topic: commands-for-background-work -->
@@ -1161,7 +1171,7 @@ shell or PowerShell installer) is a whole `jadpo` that can also start
 another release, as the `go` command does. Before a command runs, it
 finds the project: the folder you run it from, walked up to `app.jadpo`,
 or else the first argument that names a file or folder in a project. It
-reads the line from `application { jadpo: "0.2" }`
+reads the line from `application { jadpo: "X.Y" }`
 ([The root](01-project-layout-and-modules.md#the-root)).
 
 When the project is on the installed `jadpo`'s own line, or names no
@@ -1575,7 +1585,8 @@ build/
     prometheus.yaml           alerting rules for each threshold judged across requests, and each disk floor
     openslo.yaml              an OpenSLO objective for each percentile and server-failure limit
   compatibility/              public failure codes
-  approval/                   the behaviour review subject
+  before/<commit>/            the before side's manifest and declines (jadpo approval only)
+  review/                     approval.md and approval.json (jadpo approval only)
   rust/                       a deployable's Rust and cargo's builds of it (jadpo build only)
   target/                     the runnable app (jadpo build only)
 ```
@@ -2169,13 +2180,10 @@ writes a `CODEOWNERS` listing `acceptances/`, `api/`,
 its owners after; CI checks out the whole history, so the base commit is
 there to compare with.
 
-`jadpo approval --before <ref>` writes the report a reviewer reads: what
-changed in routes, policy, failures and data. Until it is built, the
-diffs of the records, `access.jadpo_record` and `network.jadpo_record`
-among them, are what a reviewer reads.
-
-Not built yet: `jadpo approval`, which comes with [Records and
-manifest](18-records-and-manifest.md).
+[`jadpo approval --before <ref>`](#jadpo-approval) writes the report a
+reviewer reads: what changed in routes, policy, failures and data, with
+each decision that needs a person first. It records nothing: the
+acceptance and the owner's approval of the pull request stay the decision.
 
 ## Errors only the running app or a build raises
 <!-- topic: errors-only-the-running-app-or-a-build-raises -->
@@ -3026,6 +3034,7 @@ yet, or that the design notes replace.
 | `cli.acceptance_arguments` | `acceptance` | A `jadpo acceptance` command names no action, one it doesn't have, or no purpose for `new` |
 | `cli.ai_arguments` | `ai` | A `jadpo ai` command names no action, one it doesn't have, or a prompt the project doesn't declare |
 | `cli.api_arguments` | `api` | A `jadpo api` command names no action, one it doesn't have, or more than `update` |
+| `cli.approval_arguments` | `approval` | A `jadpo approval` command is given an argument it doesn't take, names a `--before` git doesn't know, or has nothing to compare with |
 | `cli.build_arguments` | `build` | A `jadpo build` command names a deployable the app doesn't have, or more than one |
 | `cli.calls_arguments` | `calls` | A `jadpo calls` command names an action it doesn't have, a call the log doesn't hold, or an answer without its operation |
 | `cli.check_arguments` | `check` | A `jadpo check` command names a path that isn't there or isn't a `.jadpo` file, or a `--before` git doesn't know |
@@ -3124,7 +3133,7 @@ Each row says what is built and what is specified but not built yet.
 |---|---|
 | Command help | Built: every command has `--help` with examples, `jadpo help [command]` explains one, `jadpo help <rule>` prints a rule's page offline, and `jadpo help --json` describes them all. |
 | Project path | Built: every command finds the project by walking up to `app.jadpo`, so a path is optional; run from outside the project, printed paths start with the project as typed. |
-| Scaffold | Built: `jadpo new <name>` writes the fixed root on this `jadpo`'s release line with its project token, the `hello` domain (one route, its action, its policy line, its API record and a route test), `AGENTS.md`, `.gitignore` and `.gitattributes`, passing `check`, `fmt --check` and `test` as written, and refuses a folder that holds anything, with `--json`. The line an app declares is checked: `application { jadpo: "0.2" }`, with `toolchain.version_newer`, `toolchain.version_older` and `toolchain.version_invalid` ([The root](01-project-layout-and-modules.md#the-root)). |
+| Scaffold | Built: `jadpo new <name>` writes the fixed root on this `jadpo`'s release line with its project token, the `hello` domain (one route, its action, its policy line, its API record and a route test), `AGENTS.md`, `.gitignore` and `.gitattributes`, passing `check`, `fmt --check` and `test` as written, and refuses a folder that holds anything, with `--json`. The line an app declares is checked: `application { jadpo: "X.Y" }`, with `toolchain.version_newer`, `toolchain.version_older` and `toolchain.version_invalid` ([The root](01-project-layout-and-modules.md#the-root)). |
 | Which jadpo runs | Built in 0.1.0: every `jadpo` runs the release a project's line or `jadpo.lock` pin names, kept in the cache or fetched from GitHub's releases, its archive checked against its published SHA-256 and its GitHub artifact attestation (Sigstore's verifier, with the public-good trusted root carried in the binary) before it runs, and refuses with `toolchain.version_newer` or `toolchain.version_older` when it can't; `jadpo toolchain` lists, removes, pins and unpins, and `JADPO_TOOLCHAIN=local` runs everything with the `jadpo` started. The trusted root is the one this release was built with: no TUF refresh. |
 | Formatter | Built: one member per line, one blank line between declarations, and `fmt --check` counts the files it read; it keeps `use` lines at the top, sorted, fixes imports inside a project, `--layout` makes promotion moves, and it writes each file's declarations before their use, the primary declaration last. |
 | Error messages | Built: one error per mistake, in the field order [Error messages](#error-messages) gives, `impact` only when it says something, edits on the next step where one exists, and help links to each error's page on the site. |
@@ -3135,7 +3144,7 @@ Each row says what is built and what is specified but not built yet.
 | VS Code extension | Built: starts `jadpo lsp`, formats on save, highlights, a status item naming the `jadpo` running, "Open Generated File", and packaging and publishing on each release to the VS Code Marketplace and Open VSX, which publishes through trusted publishing. |
 | Agent tools | Partly built: the catalogues and the similar-helper check, a declinable error, are built; `migrate` is built; `impact`, `domain` and `rename` are not built yet, nor are the agent skill and generated CI. |
 | Suggestions | Built: `jadpo suggest` with its six signal kinds and taught signals, the catalogue, accepted findings, `ignore`, `found`, `share`, `suggestions { }` and the committed taught record, `share` against a fake of Jadpo HQ (HQ itself comes later). |
-| Review and sign-off | Partly built: `jadpo check` judging acceptances against the default branch at its merge base, `--before`, and `jadpo acceptance new` ([Acceptances](18-records-and-manifest.md#acceptances)). Not built yet: `jadpo approval`, which comes with [Records and manifest](18-records-and-manifest.md). |
+| Review and sign-off | Built: `jadpo check` judging acceptances against the default branch at its merge base, `--before`, `jadpo acceptance new` ([Acceptances](18-records-and-manifest.md#acceptances)) and [`jadpo approval`](#jadpo-approval). |
 | Build-only errors | Built: `jadpo build` for the one deployable an app that declares none has and for declared deployables, with their `toolchain.target_*` errors; its `settings` line, and a Worker's `secrets: { required: [ ] }`, name every setting a deployable reads, its connections' included. |
 
 ## Errors

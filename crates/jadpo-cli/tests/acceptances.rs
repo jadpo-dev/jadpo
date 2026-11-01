@@ -17,14 +17,14 @@ use jadpo_term::Environment;
 
 use crate::support;
 
-fn jadpo(cwd: &Path, args: &[&str]) -> Output {
+pub(crate) fn jadpo(cwd: &Path, args: &[&str]) -> Output {
     let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
     let mut output = run(&args, &Environment::empty().with_cwd(cwd));
     output.stdout = support::without_run_time(&output.stdout);
     output
 }
 
-fn git(cwd: &Path, args: &[&str]) {
+pub(crate) fn git(cwd: &Path, args: &[&str]) {
     let output = Command::new("git")
         .args([
             "-c",
@@ -49,13 +49,13 @@ fn git(cwd: &Path, args: &[&str]) {
     );
 }
 
-fn write(root: &Path, path: &str, text: &str) {
+pub(crate) fn write(root: &Path, path: &str, text: &str) {
     let path = root.join(path);
     fs::create_dir_all(path.parent().expect("a parent")).expect("folders");
     fs::write(path, text).expect("written");
 }
 
-fn edit(root: &Path, path: &str, from: &str, to: &str) {
+pub(crate) fn edit(root: &Path, path: &str, from: &str, to: &str) {
     let text = fs::read_to_string(root.join(path)).expect("read");
     assert_eq!(text.matches(from).count(), 1, "{from:?} in {path}");
     fs::write(root.join(path), text.replacen(from, to, 1)).expect("written");
@@ -233,7 +233,7 @@ routes Books {
 
 /// The library, committed on `main` with its records and migration, then a
 /// branch `change` checked out.
-fn library(name: &str) -> PathBuf {
+pub(crate) fn library(name: &str) -> PathBuf {
     let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("acceptances-{name}"));
     let _ = fs::remove_dir_all(&root);
     for (path, text) in BASE {
@@ -273,7 +273,7 @@ fn problems(root: &Path) -> Vec<String> {
 
 /// The agent's change: the catalogue opened to anyone, a field gone from
 /// its output, a second database, and a decline of `policy.call_ungranted`.
-fn change(root: &Path) {
+pub(crate) fn change(root: &Path) {
     edit(
         root,
         "domains/lending/routes/books.jadpo",
@@ -339,7 +339,7 @@ action borrow(book_id: Book.id, caller: Principal.user) fails BookNotFound, Memb
     assert_eq!(recorded.code, 0, "{}", recorded.stdout);
 }
 
-fn acceptance_files(root: &Path) -> Vec<PathBuf> {
+pub(crate) fn acceptance_files(root: &Path) -> Vec<PathBuf> {
     let mut found: Vec<PathBuf> = fs::read_dir(root.join("acceptances"))
         .map(|entries| entries.filter_map(|e| Some(e.ok()?.path())).collect())
         .unwrap_or_default();
@@ -529,7 +529,7 @@ fn a_clone_without_the_base_commit_says_to_fetch_it() {
 
 /// Copies the teaching example `name` into a repository of its own,
 /// committed on `main`, with a branch `change` checked out.
-fn example(name: &str) -> PathBuf {
+pub(crate) fn example(name: &str) -> PathBuf {
     let from = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../examples")
         .join(name);

@@ -763,6 +763,14 @@ impl Planner<'_> {
             Some(returned) => Some(returned?),
             None => None,
         };
+        // What it records in an audited entity's history, in the same
+        // transaction (area 16; chunk B11).
+        let audit = self.audit(
+            entity_model,
+            *op,
+            transition.is_some(),
+            row.as_ref().map(|row| row.id.clone()),
+        )?;
         Some(WriteSitePlan {
             plan: WritePlan {
                 store,
@@ -787,6 +795,7 @@ impl Planner<'_> {
                 kept_in_tenant: !kept.is_empty(),
                 row,
                 files: writing.files,
+                audit,
             },
             inputs: writing.inputs,
         })
@@ -803,8 +812,10 @@ impl Planner<'_> {
     /// policy sees it, it is a `delete` of the person's record (area 9,
     /// "Grants"); the records of theirs it reaches need no grant, as purge
     /// needs none, since an erasure that stopped short would be worse
-    /// than none. An erasure the check refuses as not built yet has no
-    /// plan.
+    /// than none. A record that belongs to several people loses its
+    /// marked fields only once none of its other references leads to a
+    /// person the erasure keeps (chunk P4). An erasure the check refuses
+    /// as not built yet has no plan.
     fn erase(&mut self, person: &EntityModel, target: SiteId) -> Option<WriteSitePlan> {
         let model: &DataModel = self.model;
         let erasure = self.lookup.erasure(&person.name)?.clone();
@@ -863,18 +874,71 @@ impl Planner<'_> {
                     set.push((changed.born.clone(), now));
                 }
             }
+            // Where the record may belong to another person too, how to
+            // look for one the erasure keeps.
+            let erased = |entity: &str| erasure.deleted.iter().position(|name| *name == entity);
+            let others = if kept.through.is_empty() || clears.is_empty() {
+                None
+            } else {
+                let mut starts = Vec::new();
+                for (name, owner) in &kept.through {
+                    starts.push(text::Start {
+                        column: field(holder, name)?.born.as_str(),
+                        owner: *owner,
+                        erased: erased(&kept.chain.get(*owner)?.entity),
+                    });
+                }
+                let mut climbs = Vec::new();
+                for (from, owner) in kept.chain.iter().enumerate() {
+                    let found = model.entity(&owner.entity)?;
+                    for (name, to) in &owner.climbs {
+                        climbs.push(text::Climbed {
+                            from,
+                            table: found.table.as_str(),
+                            column: field(found, name)?.born.as_str(),
+                            to: *to,
+                            erased: erased(&kept.chain.get(*to)?.entity),
+                        });
+                    }
+                }
+                let people = kept
+                    .chain
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, owner)| owner.person)
+                    .map(|(at, _)| at)
+                    .collect();
+                Some(text::Others {
+                    starts,
+                    climbs,
+                    people,
+                })
+            };
             keeps.push(text::Keeps {
                 table: holder.table.as_str(),
-                deleted: erasure.deleted.iter().position(|name| *name == kept.entity),
+                deleted: erased(&kept.entity),
                 references,
                 clears,
                 set,
+                others,
             });
         }
         let mut signed_in = Vec::new();
         for (at, entity) in deleted.iter().enumerate() {
             for (table, column) in self.sign_in.get(&entity.name).into_iter().flatten() {
                 signed_in.push((at, *table, *column));
+            }
+        }
+        // Each audited record it deletes takes its history with it (area 16,
+        // "Audit trail"; chunk B11).
+        let mut audited = Vec::new();
+        for (at, entity) in deleted.iter().enumerate() {
+            if entity.audit.is_some() {
+                let born = writing.param(
+                    WriteSource::Stored(jadpo_std::SqlValue::Text(entity.born.clone())),
+                    SqlType::Text,
+                );
+                audited.push((at, born));
             }
         }
         let tables: Vec<&str> = deleted.iter().map(|entity| entity.table.as_str()).collect();
@@ -886,6 +950,7 @@ impl Planner<'_> {
             &follows,
             &keeps,
             &signed_in,
+            &audited,
         );
         let (sql, unpoliced, policy) = if granted == jadpo_sql::policy::ANYONE {
             (plain, None, None)
@@ -894,7 +959,14 @@ impl Planner<'_> {
             let asked = asking.param(WriteSource::Input(record), SqlType::Uuid);
             let mut probe = text::select_one(&person.table);
             text::where_clause(&mut probe, &[text::equal("id", &asked)], "");
-            let sql = text::erase(&tables, &[by_id, granted], &follows, &keeps, &signed_in);
+            let sql = text::erase(
+                &tables,
+                &[by_id, granted],
+                &follows,
+                &keeps,
+                &signed_in,
+                &audited,
+            );
             (
                 sql,
                 Some(plain),
@@ -928,6 +1000,7 @@ impl Planner<'_> {
                 kept_in_tenant: false,
                 row: None,
                 files: Vec::new(),
+                audit: None,
             },
             inputs: writing.inputs,
         })
@@ -1068,7 +1141,7 @@ impl Planner<'_> {
     }
 
     /// The record a written row becomes: every column of the entity.
-    fn returned(&mut self, entity: &EntityModel) -> Option<Returned> {
+    pub(crate) fn returned(&mut self, entity: &EntityModel) -> Option<Returned> {
         let mut columns = Vec::new();
         let mut held = Vec::new();
         let mut fields = Vec::new();

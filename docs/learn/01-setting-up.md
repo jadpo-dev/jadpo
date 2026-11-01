@@ -75,7 +75,7 @@ jadpo --version
 ```
 
 ```text
-jadpo 0.1.0
+jadpo X.Y.Z
 ```
 
 From page 4 on, the app stores its data in PostgreSQL, so install
@@ -98,9 +98,9 @@ jadpo new todo-app
 
 ```text
 Created todo-app
-    jadpo  0.1
+    jadpo  X.Y
     route  POST /hello
-    files  12 written
+    files  14 written
 
 next: cd todo-app && jadpo dev  serves it on http://localhost:3000
 ```

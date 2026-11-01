@@ -80,6 +80,9 @@ pub(crate) enum Target {
     Query(u32),
     /// `Entity.get`, by the number of the entity's plan.
     Get(u32),
+    /// An audited entity's `history`, by the number of its plan (area 16;
+    /// chunk B11).
+    History(u32),
     /// `create`, `update` or `delete`, by the number of the write's plan.
     Write(u32),
     /// A route test's request, by the route's place in the route table;
@@ -1274,6 +1277,7 @@ impl<'p> Machine<'p> {
                     // request on the HTTP component.
                     Target::Query(_)
                     | Target::Get(_)
+                    | Target::History(_)
                     | Target::Write(_)
                     | Target::Request { .. }
                     | Target::Session(_)
@@ -2510,6 +2514,7 @@ impl<'p> Machine<'p> {
         match self.decoded(at)? {
             Decoded::Query(Some(query)) => Some(Target::Query(*query)),
             Decoded::Get(Some(entity)) => Some(Target::Get(*entity)),
+            Decoded::History(Some(history)) => Some(Target::History(*history)),
             _ => None,
         }
     }

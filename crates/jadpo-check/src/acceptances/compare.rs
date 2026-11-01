@@ -28,6 +28,13 @@ pub struct Need {
     /// starts its entry, when there is one.
     pub path: String,
     pub heading: Option<String>,
+    /// The change in plain words, who can now do what to which data, as
+    /// the approval report says it (area 17, "Reviewing a change").
+    pub said: String,
+    /// Who it lets in, as the grant lists name them (`Access.public`,
+    /// `StaffRole.admin`): where the approval report's path for it starts.
+    /// Empty for a change that lets no named caller in.
+    pub who: Vec<String>,
 }
 
 /// Which record a change was read from, which words its message uses.
@@ -53,11 +60,13 @@ fn need(
     change: &str,
 ) {
     out.push(Need {
+        said: super::words::said(&family, &subject, change),
         subject,
         change: change.to_string(),
         family,
         path: path.to_string(),
         heading: heading.map(str::to_string),
+        who: Vec::new(),
     });
 }
 
@@ -742,50 +751,92 @@ fn added<'a>(was: Option<&'a BTreeSet<String>>, now: &'a BTreeSet<String>) -> bo
 /// requirement changed at all, or its line added or removed (chunk A10).
 /// Narrowing, listing a query and a new entity of a tenant need no one.
 pub fn access_needs(path: &str, before: &str, after: &str, out: &mut Vec<Need>) {
+    use super::words::{callers, can_run, widened};
     let was = access(before);
     let now = access(after);
-    let mut add = |subject: String, change: &str, heading: Option<String>| {
+    let mut add = |subject: String,
+                   change: &str,
+                   heading: Option<String>,
+                   said: Option<String>,
+                   who: Vec<String>| {
         out.push(Need {
+            said: said.unwrap_or_else(|| super::words::said(&Family::Access, &subject, change)),
             subject,
             change: change.to_string(),
             family: Family::Access,
             path: path.to_string(),
             heading,
+            who,
         });
     };
+    // The callers `now` names that `was` didn't.
+    let new_callers = |was: Option<&BTreeSet<String>>, now: &BTreeSet<String>| -> Vec<String> {
+        now.iter()
+            .filter(|who| was.is_none_or(|was| !was.contains(*who)))
+            .cloned()
+            .collect()
+    };
     if was.tenant.is_some() && now.tenant.is_none() {
-        add("tenant".to_string(), "PolicyChange.tenancy_loosened", None);
+        add(
+            "tenant".to_string(),
+            "PolicyChange.tenancy_loosened",
+            None,
+            None,
+            Vec::new(),
+        );
     }
     for (entity, (lists, tenancy)) in &now.entities {
         let heading = Some(format!("entity {entity}"));
         let Some((old_lists, old_tenancy)) = was.entities.get(entity) else {
             if now.tenant.is_some() && tenancy.as_deref() == Some("shared") {
-                add(entity.clone(), "PolicyChange.shared_entity_added", heading);
+                add(
+                    entity.clone(),
+                    "PolicyChange.shared_entity_added",
+                    heading,
+                    None,
+                    Vec::new(),
+                );
             }
             continue;
         };
         for (effect, who) in lists {
             if added(old_lists.get(effect), who) {
+                let subject = format!("{entity}.{effect}");
+                let who = new_callers(old_lists.get(effect), who);
                 add(
-                    format!("{entity}.{effect}"),
+                    subject.clone(),
                     "PolicyChange.widened",
                     heading.clone(),
+                    Some(widened(&subject, &who)),
+                    who,
                 );
             }
         }
         if old_tenancy.as_deref().is_some_and(|t| t != "shared")
             && tenancy.as_deref() == Some("shared")
         {
-            add(entity.clone(), "PolicyChange.tenancy_loosened", heading);
+            add(
+                entity.clone(),
+                "PolicyChange.tenancy_loosened",
+                heading,
+                None,
+                Vec::new(),
+            );
         }
     }
     for (field, (server_only, lists)) in &was.fields {
         let entity = field.rsplit_once('.').map_or("", |(entity, _)| entity);
-        if !now.entities.contains_key(entity) {
+        let Some((entity_lists, _)) = now.entities.get(entity) else {
             continue;
-        }
+        };
         let Some((now_server_only, now_lists)) = now.fields.get(field) else {
-            add(field.clone(), "PolicyChange.restriction_removed", None);
+            add(
+                field.clone(),
+                "PolicyChange.restriction_removed",
+                None,
+                None,
+                Vec::new(),
+            );
             continue;
         };
         let heading = Some(format!("field {field}"));
@@ -794,52 +845,94 @@ pub fn access_needs(path: &str, before: &str, after: &str, out: &mut Vec<Need>) 
                 field.clone(),
                 "PolicyChange.restriction_removed",
                 heading.clone(),
+                None,
+                Vec::new(),
             );
             continue;
         }
         for (effect, who) in lists {
-            match now_lists.get(effect) {
-                None if !now_server_only => {
-                    add(
-                        format!("{field}.{effect}"),
-                        "PolicyChange.widened",
-                        heading.clone(),
-                    );
-                }
-                Some(now_who) if added(Some(who), now_who) => {
-                    add(
-                        format!("{field}.{effect}"),
-                        "PolicyChange.widened",
-                        heading.clone(),
-                    );
-                }
-                _ => {}
+            // A field whose own list is gone follows its record's.
+            let now_who = match now_lists.get(effect) {
+                None if !now_server_only => entity_lists.get(effect).cloned().unwrap_or_default(),
+                Some(now_who) => now_who.clone(),
+                None => continue,
+            };
+            let let_in = new_callers(Some(who), &now_who);
+            let gone_to_record = now_lists.get(effect).is_none();
+            if gone_to_record || !let_in.is_empty() {
+                let subject = format!("{field}.{effect}");
+                let said = if let_in.is_empty() {
+                    format!("`{field}` now follows its record's `{effect}` list")
+                } else {
+                    widened(&subject, &let_in)
+                };
+                add(
+                    subject,
+                    "PolicyChange.widened",
+                    heading.clone(),
+                    Some(said),
+                    let_in,
+                );
             }
         }
     }
     for (action, who) in &now.actions {
         let heading = Some(format!("action {action}"));
         match was.actions.get(action) {
-            None => add(action.clone(), "PolicyChange.listing_added", heading),
+            None => {
+                let said = format!(
+                    "{} can now make `{action}`'s writes, whatever its entities' grants say",
+                    callers(&who.iter().cloned().collect::<Vec<_>>())
+                );
+                add(
+                    action.clone(),
+                    "PolicyChange.listing_added",
+                    heading,
+                    Some(said),
+                    who.iter().cloned().collect(),
+                );
+            }
             Some(old) if added(Some(old), who) => {
-                add(action.clone(), "PolicyChange.widened", heading)
+                let who = new_callers(Some(old), who);
+                add(
+                    action.clone(),
+                    "PolicyChange.widened",
+                    heading,
+                    Some(can_run(action, &who)),
+                    who,
+                );
             }
             Some(_) => {}
         }
     }
     for action in was.actions.keys() {
         if !now.actions.contains_key(action) {
-            add(action.clone(), "PolicyChange.listing_removed", None);
+            add(
+                action.clone(),
+                "PolicyChange.listing_removed",
+                None,
+                None,
+                Vec::new(),
+            );
         }
     }
     for (query, who) in &was.queries {
         match now.queries.get(query) {
-            None => add(query.clone(), "PolicyChange.listing_removed", None),
+            None => add(
+                query.clone(),
+                "PolicyChange.listing_removed",
+                None,
+                None,
+                Vec::new(),
+            ),
             Some(now_who) if added(Some(who), now_who) => {
+                let let_in = new_callers(Some(who), now_who);
                 add(
                     query.clone(),
                     "PolicyChange.widened",
                     Some(format!("query {query}")),
+                    Some(can_run(query, &let_in)),
+                    let_in,
                 );
             }
             Some(_) => {}
@@ -850,42 +943,67 @@ pub fn access_needs(path: &str, before: &str, after: &str, out: &mut Vec<Need>) 
     // through which sign-in is as much policy as who holds it.
     let named: BTreeSet<&String> = was.roles.keys().chain(now.roles.keys()).collect();
     for role in named {
-        if was.roles.get(role) != now.roles.get(role) {
+        let (old, new) = (was.roles.get(role), now.roles.get(role));
+        if old != new {
+            let lines = |lines: Option<&BTreeSet<String>>| match lines {
+                Some(lines) if !lines.is_empty() => lines
+                    .iter()
+                    .map(|line| format!("`{line}`"))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                _ => "any sign-in".to_string(),
+            };
+            let said = format!(
+                "`{role}` now needs {}, where it needed {}",
+                lines(new),
+                lines(old)
+            );
             add(
                 role.clone(),
                 "PolicyChange.role_requirements_changed",
                 now.roles.contains_key(role).then(|| format!("role {role}")),
+                Some(said),
+                Vec::new(),
             );
         }
     }
     for (rule, subject) in &now.declines {
         if !was.declines.contains(&(rule.clone(), subject.clone())) {
             let name = rule.split_once('.').map_or(rule.as_str(), |(_, name)| name);
+            let said = if rule == "policy.call_ungranted" {
+                format!("callers no grant names can now call `{subject}`, which declines `{rule}`")
+            } else {
+                format!("`{subject}` declines the security rule `{rule}`")
+            };
             out.push(Need {
                 subject: subject.clone(),
                 change: format!("PolicyChange.{name}_declined"),
                 family: Family::Decline,
                 path: path.to_string(),
                 heading: Some(format!("decline {rule} {subject}")),
+                said,
+                who: Vec::new(),
             });
         }
     }
     for (setting, limit) in super::access::sign_in_limits() {
         let key = format!("magic_link.{setting}");
-        let Some(value) = now.sign_in.get(&key) else {
+        let Some(text) = now.sign_in.get(&key) else {
             continue;
         };
-        let (Some(value), Some(limit)) = (number(value), number(&limit)) else {
+        let (Some(value), Some(most)) = (number(text), number(&limit)) else {
             continue;
         };
         let was_value = was.sign_in.get(&key).and_then(|text| number(text));
-        if value > limit && was_value.is_none_or(|was| value > was) {
+        if value > most && was_value.is_none_or(|was| value > was) {
             out.push(Need {
+                said: format!("`{key}` is now `{text}`, past its limit of `{limit}`"),
                 subject: key,
                 change: "PolicyChange.sign_in_loosened".to_string(),
                 family: Family::Access,
                 path: path.to_string(),
                 heading: Some("sign_in magic_link".to_string()),
+                who: Vec::new(),
             });
         }
     }
@@ -914,14 +1032,25 @@ pub fn network(path: &str, before: &str, after: &str, out: &mut Vec<Need>) {
     let was = hosts(before);
     for (connection, now) in hosts(after) {
         if added(was.get(&connection), &now) {
-            need(
-                out,
-                Family::Network,
-                path,
-                Some(&format!("connection {connection}")),
-                connection.clone(),
-                "NetworkChange.host_added",
-            );
+            let new: Vec<String> = now
+                .iter()
+                .filter(|host| was.get(&connection).is_none_or(|was| !was.contains(*host)))
+                .map(|host| format!("`{host}`"))
+                .collect();
+            let hosts = match new.as_slice() {
+                [one] => one.clone(),
+                [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+                [] => "a host it couldn't".to_string(),
+            };
+            out.push(Need {
+                said: format!("connection `{connection}` can now reach {hosts}"),
+                subject: connection.clone(),
+                change: "NetworkChange.host_added".to_string(),
+                family: Family::Network,
+                path: path.to_string(),
+                heading: Some(format!("connection {connection}")),
+                who: Vec::new(),
+            });
         }
     }
 }
@@ -944,10 +1073,12 @@ pub fn lock(path: &str, before: &str, after: &str, out: &mut Vec<Need>) {
         if !was.contains(&package) {
             out.push(Need {
                 heading: Some(format!("package {package}")),
+                said: super::words::said(&Family::Lock, &package, "PackageChange.git_source"),
                 subject: package,
                 change: "PackageChange.git_source".to_string(),
                 family: Family::Lock,
                 path: path.to_string(),
+                who: Vec::new(),
             });
         }
     }

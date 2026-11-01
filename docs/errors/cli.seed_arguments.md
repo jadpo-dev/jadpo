@@ -11,9 +11,7 @@ A seed writes records into a database, so `jadpo seed` runs the one you name and
 A project with no seeds, asked to run one:
 
 ```jadpo check project=e-seed-arguments file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-seed-arguments expect=cli.seed_arguments

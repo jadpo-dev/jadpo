@@ -369,6 +369,11 @@ impl Events<'_> {
         if let Some(read) = crate::http::sign_in_events::read_payload(event, payload) {
             return read;
         }
+        // An audit trail's entry, whose payload is the runtime's too
+        // (area 16; chunk B11).
+        if let Some(read) = crate::audit::read_payload(event, payload) {
+            return read;
+        }
         let number = self
             .numbers
             .iter()

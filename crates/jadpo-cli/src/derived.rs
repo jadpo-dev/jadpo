@@ -219,7 +219,7 @@ pub fn write(
 
 /// Writes `text` to `path` under `root` through a temporary file, so a
 /// reader never sees half of it, unless it already holds those bytes.
-fn put(root: &Path, path: &str, text: &str) -> Result<(), Box<Diagnostic>> {
+pub(crate) fn put(root: &Path, path: &str, text: &str) -> Result<(), Box<Diagnostic>> {
     let target = root.join(path);
     if std::fs::read(&target).is_ok_and(|bytes| bytes == text.as_bytes()) {
         return Ok(());
