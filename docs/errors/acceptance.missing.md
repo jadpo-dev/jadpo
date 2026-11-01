@@ -85,7 +85,7 @@ Once the reason is written, `jadpo check` passes. The acceptance is
 committed with the change, and the pull request's review is where an
 owner of `acceptances/` approves it. Once merged, it is history.
 
-## A connection that can't erase what it receives
+### A connection that can't erase what it receives
 
 One kind isn't a change a branch makes. A connection that receives personal
 data and can't erase it needs a person for as long as that is so, whichever

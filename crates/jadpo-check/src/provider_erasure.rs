@@ -431,14 +431,14 @@ pub fn of_connection(db: &dyn Db, project: Project, connection: &str, sent: &[&S
         let Holder::Field { host, field } = &sent.holder else {
             continue;
         };
-        let owners: Vec<&String> = persons
+        let belonging: Vec<&String> = persons
             .people
             .iter()
             .filter(|(name, person)| *name == host || person.records.contains(host))
             .map(|(name, _)| name)
             .collect();
-        if let Some(first) = owners.first()
-            && !owners.iter().any(|owner| **owner == key.entity)
+        if let Some(first) = belonging.first()
+            && !belonging.iter().any(|person| **person == key.entity)
         {
             return Erasure::Stays(Stays::OtherPerson {
                 key: shown,
