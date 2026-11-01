@@ -98,6 +98,7 @@ mod quantities;
 mod randomness;
 mod receiving;
 mod records_measures;
+mod release;
 mod result_rules;
 mod retention;
 mod review;

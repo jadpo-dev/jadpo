@@ -354,6 +354,15 @@ pub enum Block {
         note: Option<String>,
         groups: Vec<ChangeGroup>,
     },
+    /// A change list that is a block of its own: a bold heading at column 0
+    /// and a `+ ~ -` mark and columns per line at column 2. The last column
+    /// is muted and cut to fit, unless it holds an address, which stays
+    /// whole on a line of its own when it doesn't fit, so it copies
+    /// (`+ new host  provider  https://eu.example`).
+    ChangeList {
+        heading: String,
+        rows: Vec<(ChangeMark, Vec<String>)>,
+    },
     /// Something for a person to decide: `◆ decision  <subject>` in the
     /// decision colour, where it is, and the next step with its owner.
     Decision {
@@ -849,6 +858,48 @@ fn block_lines(block: &Block, grid: &Grid, style: &Style) -> Vec<Line> {
                     }
                     lines.push(line);
                 }
+            }
+            lines
+        }
+        Block::ChangeList { heading, rows } => {
+            let columns = rows.iter().map(|(_, cells)| cells.len()).max().unwrap_or(0);
+            // A column empty on every row takes no room.
+            let widths: Vec<usize> = (0..columns)
+                .map(|i| {
+                    rows.iter()
+                        .filter_map(|(_, cells)| cells.get(i))
+                        .map(|cell| width(cell))
+                        .max()
+                        .unwrap_or(0)
+                })
+                .collect();
+            let mut lines = vec![vec![bold(heading.as_str())]];
+            for (mark, cells) in rows {
+                let mut line = vec![raw("  "), paint(mark.token(), mark.text()), raw(" ")];
+                let mut used = 4;
+                let last = cells.iter().rposition(|cell| !cell.is_empty()).unwrap_or(0);
+                let mut own_line = None;
+                for (j, cell) in cells.iter().enumerate().take(last + 1) {
+                    if j < last {
+                        used += widths[j] + 2;
+                        line.push(raw(format!("{cell:<w$}  ", w = widths[j])));
+                    } else if j == 0 {
+                        line.push(raw(cell.clone()));
+                    } else if !cell.contains("://") {
+                        let room = style.width.saturating_sub(used);
+                        line.push(paint(Token::Muted, cut(cell, room, style)));
+                    } else if used + width(cell) <= style.width {
+                        line.push(paint(Token::Muted, cell.clone()));
+                    } else {
+                        // The columns before it, without their padding.
+                        if let Some(piece) = line.last_mut() {
+                            piece.text.truncate(piece.text.trim_end().len());
+                        }
+                        own_line = Some(vec![raw("    "), paint(Token::Muted, cell.clone())]);
+                    }
+                }
+                lines.push(line);
+                lines.extend(own_line);
             }
             lines
         }

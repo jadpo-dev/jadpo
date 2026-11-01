@@ -77,6 +77,8 @@ miniz_oxide.workspace = true
 sha2.workspace = true
 
 [dev-dependencies]
+# The registry's shapes, which `jadpo package verify --json` writes.
+jadpo-registry.workspace = true
 # Local OIDC provider TLS fixtures, using the native host's test authority.
 rcgen.workspace = true
 # A test's server on this machine standing in for AWS's SNS host.

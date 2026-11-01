@@ -261,6 +261,11 @@ fn show_lists_a_package_s_messages_and_locales() {
   locales: en_gb
   folder: packages/postcodes/v2
 
+Facts
+  kind: library, pure
+  storable: none
+  failures: none
+
 Messages
   translations.postcode_hint    ()
   translations.postcodes_found  (count: PluralCount)

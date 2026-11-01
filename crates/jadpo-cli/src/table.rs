@@ -902,8 +902,11 @@ pub static COMMANDS: &[Command] = &[
                       a package's own repository, checks it as the app's own integration, runs the \
                       publishing bar (no errors, a description on every public declaration, the \
                       examples in its descriptions run as tests, its tests, a version its changes since \
-                      the last tag allow, a changelog that says why) and writes surface.jadpo_record and \
-                      CHANGELOG.md's new section. `import openapi <file>` reads an OpenAPI 3 document, \
+                      the last tag allow, a changelog that says why), prints the release's facts and change \
+                      record, and writes surface.jadpo_record and CHANGELOG.md's new section. `verify \
+                      <folder> [--previous <folder>]` runs the same bar as the registry's verifier does, on \
+                      a commit as it stands, writing nothing, and `--json` gives all a release shows. \
+                      `import openapi <file>` reads an OpenAPI 3 document, \
                       as JSON, once and offline, into the app's own integration in \
                       shared/providers/<name>/<version>/: another Jadpo application's exactly, from its \
                       x-jadpo fields, any other's by its formats, with what it leaves out listed to \
@@ -922,13 +925,13 @@ pub static COMMANDS: &[Command] = &[
         arguments: &[
             Argument {
                 name: "action",
-                description: "What to do: show, check, import, record, conform, add, update, remove, link, unlink or recipe",
+                description: "What to do: show, check, verify, import, record, conform, add, update, remove, link, unlink or recipe",
                 required: true,
                 values: Values::Fixed(crate::package::ACTIONS),
             },
             Argument {
                 name: "name",
-                description: "The package, such as holidays; for check and link, its folder; for add, its folder or <repository>@v<version>; for import, openapi; for record, the connection; for conform and recipe, the package",
+                description: "The package, such as holidays; for check, verify and link, its folder; for add, its folder or <repository>@v<version>; for import, openapi; for record, the connection; for conform and recipe, the package",
                 required: false,
                 values: Values::Path,
             },
@@ -970,6 +973,18 @@ pub static COMMANDS: &[Command] = &[
                 description: "For recipe: the domain it is copied into",
                 values: &[],
             },
+            Flag {
+                name: "--previous",
+                value: Some("folder"),
+                description: "For verify: the folder of the release before this one",
+                values: &[],
+            },
+            Flag {
+                name: "--serve",
+                value: None,
+                description: "For verify: answer the registry over HTTPS",
+                values: &[],
+            },
         ],
         examples: &[
             Example {
@@ -983,6 +998,10 @@ pub static COMMANDS: &[Command] = &[
             Example {
                 description: "Run the publishing bar in a package's own repository",
                 command: "jadpo package check",
+            },
+            Example {
+                description: "Check a release as the registry does, against the one before it",
+                command: "jadpo package verify ../holidays --previous ../holidays-2.0.0 --json",
             },
             Example {
                 description: "Import another Jadpo application's API",
@@ -1017,11 +1036,13 @@ pub static COMMANDS: &[Command] = &[
             &rule::INSTALL_IN_USE,
             &rule::INSTALL_SURFACE_MISMATCH,
             &rule::PACKAGE_NAME_TAKEN,
+            &rule::PUBLISH_BEHAVIOUR_CHANGED,
             &rule::PUBLISH_BREAKING_CHANGE,
             &rule::PUBLISH_CHANGELOG_MISSING,
             &rule::PUBLISH_DESCRIPTION_MISSING,
             &rule::PUBLISH_EXAMPLE_FAILED,
             &rule::PUBLISH_EXAMPLE_MISSING,
+            &rule::PUBLISH_STALE_FILES,
             &rule::RECORD_EDITED,
             &rule::TEST_FAILED,
             &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,

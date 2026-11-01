@@ -17,7 +17,7 @@ pub mod areas;
 mod lookup;
 mod part;
 pub(crate) mod paths;
-mod similar;
+pub(crate) mod similar;
 pub(crate) mod text;
 
 pub(crate) use lookup::callable_at;

@@ -1335,6 +1335,11 @@ diffs the same two files.
 >   jadpo     1.0
 >   folder    packages/postcodes/v2
 >
+> Facts
+>   kind      library, pure
+>   storable  EnteredPostcode, UkPostcode
+>   failures  uk.tidy: InvalidPostcode
+>
 > Functions
 >   uk.tidy          (entered: EnteredPostcode) fails InvalidPostcode -> UkPost…
 >
@@ -1472,18 +1477,27 @@ description of every public message.
 >
 > ```text
 > $ jadpo package check
+> Facts
+>   kind      library, pure
+>   storable  OutwardCode, UkPostcode, WrittenPostcode
+>   failures  uk.tidy: InvalidPostcode
+>
+> Changes since 2.0.0
+>   + added  type OutwardCode
+>
 > Publishing bar
 > ✓ compiles      passed                        no errors
 > ✓ described     passed                        every public declaration
 > ✓ examples      passed                        2 examples, every failure shown
 > ✓ tests         passed                        3 tests
+> ✓ behaviour     passed                        all 5 from 2.0.0 hold
 > ✓ version       passed                        2.1.0, 1 added since 2.0.0
 > ✓ changelog     passed                        2.1.0 says why
 > ✓ licence       passed                        mit, from Jadpo 1.0
 >
 > ✓ Wrote surface.jadpo_record and CHANGELOG.md
 >
-> ✓ package check passed  Postcodes.v2 2.1.0 · 7 passed
+> ✓ package check passed  Postcodes.v2 2.1.0 · 8 passed
 >
 > → git tag v2.1.0  tags the release once surface.jadpo_record is committed
 > ```
@@ -1642,7 +1656,8 @@ changed. The author writes only why.
 - **Behaviour the types don't show.** The verifier runs the previous
   release's examples and tests against the new code. Each one that now
   fails is a "behaviour changed" entry. A minor or patch release with one
-  is refused unless the author marks it a fix and says why.
+  is refused unless the author marks it a fix and says why, with a line
+  under the new version's list: ``Fix `uk.parse`: why it had to change``.
 
 ### Search
 
@@ -1766,6 +1781,10 @@ it can send makes a release live.
   numbers. A release's facts are the table in [What a release
   shows](#what-a-release-shows), less the Jadpo releases it works with,
   which are the release's own field since they grow after it is checked.
+  A change record's entry is its `declaration`, its `kind` (`function`,
+  `type`, `provider`), `change` (`added`, `removed`, `retyped`,
+  `new_failure`, `new_host`, `personal_data_sent`, `behaviour_changed`),
+  `detail` and `why`.
 - **Its failures** are `package_not_found`, `release_not_found`,
   `archive_not_found` and `release_request_not_found` (404), `not_in_log`
   (404, also for a release logged after the size asked about),
@@ -5491,10 +5510,11 @@ what `jadpo package check` and `jadpo package show` do.
   folder changed since the newest release, its version is that release's.
   Otherwise the surface is compared with that release's, entry by entry:
   a removed entry, or an entry whose facts changed (a new `fails`, a
-  field retyped or added, a variant added, a licence changed), breaks an
-  app and is refused; only new entries, or a new `jadpo` or locale in the
-  package's entry, is the next minor version; nothing but descriptions,
-  files, sources and recordings is the next patch. A breaking change is a
+  field retyped or added, a variant added, a licence changed, a host moved
+  or dropped), breaks an app and is refused; only new entries, a new host
+  in the provider's entry, or a new `jadpo` or locale in the package's
+  entry, is the next minor version; nothing but descriptions, files,
+  sources and recordings is the next patch. A breaking change is a
   new package (`Postcodes.v3`), not a new number. Outside git, every
   check is a first release.
 - **The bar's tests** are the package's own `.test.jadpo` files, run in
@@ -5515,6 +5535,127 @@ what `jadpo package check` and `jadpo package show` do.
 > webhooks, polls and erasure aren't in the provider's entry yet.
 > `jadpo package new` and `publish` aren't built yet: they say
 > `toolchain.not_built_yet`.
+
+## How a release's facts, change record and fingerprints are worked out
+<!-- topic: how-a-releases-facts-change-record-and-fingerprints-are-worked-out -->
+
+This is the detail behind [What a release shows](#what-a-release-shows),
+[The changelog](#the-changelog), [Search](#search) and
+[The verifier](#the-verifier): what `jadpo package check` prints above its
+bar, and what `jadpo package verify --json` writes.
+
+> **The facts cover what the code can do.** An operation of a resource the
+> package keeps to itself reaches the host and can change something there
+> as much as a public one does, so `hosts` and `changing_calls` list every
+> operation, and a hostile release can't hide a call behind a public
+> action. `hosts` are the provider's `hosts:` and each `asks` host, or "the
+> service Jadpo runs" and "the address its connection gives" where it names
+> none. Each marked field is listed for each host it reaches, with its
+> operation and categories, and `decided_only` when the value only decides
+> what is sent. `storable_types` are every public type of a library
+> package, and of a provider's only the plain values, never an object or
+> an enum. `standard_candidates` are `package.standard_candidate`'s
+> findings on the package's types, which a package that compiles has
+> declined. `last_contract_run` and the Jadpo releases it works with are
+> the registry's to add, so `verify` writes `null` for the first and leaves
+> out the second.
+>
+> **The change record.** It compares the surface with the last release's:
+> a new entry is `added`, one gone `removed`, a new `fails` line
+> `new_failure`, a new host `new_host` on `provider`, and any other change
+> to an entry's facts one `retyped`, whose `detail` says what it says now
+> and what it said (`max_length: 30, was max_length: 20`). Descriptions,
+> files, sources and recordings alone aren't changes. Comparing the two
+> releases' facts gives `personal_data_sent`, once per field and host. A
+> last release this Jadpo can't compile has no facts, so everything now
+> sent counts as new. `jadpo package check` writes `CHANGELOG.md`'s list
+> from these entries, a line each, and a first release's list is "first
+> release".
+>
+> **The previous release's examples and tests** run in a scratch app of
+> their own: the new package's files without its own tests, and the last
+> release's `.test.jadpo` files and description examples placed beside
+> them. A release at a tag is read from git; `verify` is given its folder.
+> Each one that fails is a `behaviour_changed` entry, whose `detail` is its
+> name and whose declaration is the public call it makes, on the line that
+> failed if it can tell. One that no longer compiles has failed too, so a
+> release can't hide a change by removing a helper an old test leans on.
+> Recordings aren't run again: the new package's own are, by the bar.
+>
+> **A fix** is a line beneath the new version's list in `CHANGELOG.md`,
+> ``Fix `uk.parse`: why it had to change``, naming the entry's declaration.
+> It says why as well, so it needs no other text, and its reason is the
+> entry's `why`. A mark with no reason is no mark. Without one, the bar's
+> `behaviour` row fails with `publish.behaviour_changed`. While the version
+> row itself is refused the behaviour row waits, since a breaking change
+> usually fails those examples too.
+>
+> **A new major version** is compared with the newest release of any label
+> of the package's name in code, so `Postcodes.v3`'s first release shows
+> what changed since `Postcodes.v2`'s last. Its version is still the one its
+> label names, nothing in the change record refuses it, and its behaviour
+> row says "a new major".
+>
+> **`jadpo package verify <folder> [--previous <folder>]`** is this bar on a
+> commit as it stands: it writes nothing, and reads no git tags. A
+> `surface` row checks the committed `surface.jadpo_record` against the
+> code, and the `changelog` row checks the list under the version's heading
+> against the change record, each `publish.stale_files` when it differs.
+> The previous folder's version is the one its committed surface says. With
+> no `--previous` it is a first release. Its JSON holds `package`,
+> `version`, `passed`, `bar`, `surface` (the record's text), `facts`,
+> `change_record`, `fingerprints`, `previous` (`since`, `ran`, each `failed`)
+> and `jadpo`, the release it was checked with. Its screen is `check`'s,
+> without the `Wrote` line or the hint, and its footer counts the
+> fingerprints.
+>
+> **Fingerprints.** Each public declaration has `source`, the SHA-256 of its
+> tokens as the formatter writes them, leaving out its description,
+> comments, visibility, `decline` lines and its own name. A function's or
+> action's parameters and variables are named by their position, as the
+> similar-helper check names them, so a renamed and reformatted copy has the
+> same `source`. A type's fields keep their names, since they are what it
+> is. Each operation, action and function also has `shape`: `inputs` and
+> `output` reduced to standard types and their constraints (`Text {
+> max_length: 20, min_length: 5 }`, `{ note: Text?, outward: Text }`,
+> `Enum { england, wales }`, with `…` where a type comes round to itself),
+> `failures` reduced to their kinds, `effects` (`calls`, `changes`), and a
+> `digest` of those for an exact match. A recipe has none: it isn't part of
+> the compiled package.
+>
+> What `check` prints, for a provider package with a release behind it:
+>
+> ```text
+> $ jadpo package check
+> Facts
+>   kind      provider
+>   hosts     https://api.acme-pay.example
+>             https://sandbox.acme-pay.example
+>   changes   customers.create
+>   erasure   not declared
+>   storable  CustomerId
+>   failures  none
+>   contract  1 of 2 operations confirmed
+>
+> Personal data sent
+>   to https://api.acme-pay.example
+>   to https://sandbox.acme-pay.example
+>   customers.create  CustomerRequest.notes  health, sensitive
+>
+> Changes since 1.0.0
+>   + new host       provider          https://sandbox.acme-pay.example
+>   + personal data  customers.create
+>     CustomerRequest.notes to https://sandbox.acme-pay.example
+>
+> Publishing bar
+> ...
+> ```
+>
+> A row is left out only where the package's kind can't have it, so a
+> library's block is its kind, what an app may store and what can fail, and
+> `standard` shows only when there is one. `jadpo package show` prints the
+> same block, and `--json` holds every fact whole, with each host's
+> operations.
 
 ## How packages are installed and linked
 <!-- topic: how-packages-are-installed-and-linked -->
@@ -7039,10 +7180,10 @@ package's name, as its types are.
 | Webhooks as events, replies, handshakes, queues through a package and the Cloudflare Queues driver | Built. |
 | Services (`runs:`) | Not built yet. |
 | OAuth grants | Not built yet: the application's `grants:` is `toolchain.not_built_yet` where it is written. |
-| Which personal data a package's operations send, and to which hosts, in `jadpo package check` ([Where personal data goes](15-personal-data.md#where-personal-data-goes)) | Built. The other facts under [What a release shows](#what-a-release-shows) come with the registry. |
+| A release's facts and change record in `jadpo package check` and `show`, the previous release's examples and tests run against the new code, and `jadpo package verify` with the fingerprints ([How they are worked out](#how-a-releases-facts-change-record-and-fingerprints-are-worked-out)) | Built. Not built yet: `--serve`, and the check of a fetched commit's files and size, which come with [the verifier](#the-verifier) over HTTPS. |
 | Publisher trust for third-party git packages | Built: every package from git needs an [acceptance](18-records-and-manifest.md#acceptances). Not built yet: `packages:`'s `own_sources:`, which lets your own company's repositories in without one. |
 | The registry protocol: its requests and answers, the log and its proofs, a local registry and the conformance test | Built (`jadpo-registry`). |
-| The public registry: the verifier, publishing, facts, search, advisories and compatibility runs | Not built yet. |
+| The public registry: publishing, search, advisories and compatibility runs | Not built yet. |
 | Importers other than OpenAPI | Not built yet. |
 | Choosing a provider when deploying | Not built yet. |
 | Erasure at providers | Not built yet: it comes with [Personal data](15-personal-data.md). |
@@ -7287,9 +7428,10 @@ public type SlotTaken = Failure {
 
 ### Publishing errors
 
-> `jadpo package check` reports these in a package's own repository, every
-> path relative to the package's folder; `jadpo check` never does, since
-> the app's own integrations skip the bar.
+> `jadpo package check` and `jadpo package verify` report these, every path
+> relative to the package's folder, and only `verify` reports
+> `publish.stale_files`, since `check` writes those files; `jadpo check`
+> never does, since the app's own integrations skip the bar.
 
 - [`publish.description_missing`](../errors/publish.description_missing.md)
 - [`publish.breaking_change`](../errors/publish.breaking_change.md)
@@ -7297,6 +7439,8 @@ public type SlotTaken = Failure {
 - [`publish.example_failed`](../errors/publish.example_failed.md)
 - [`publish.sample_missing`](../errors/publish.sample_missing.md)
 - [`publish.changelog_missing`](../errors/publish.changelog_missing.md)
+- [`publish.behaviour_changed`](../errors/publish.behaviour_changed.md)
+- [`publish.stale_files`](../errors/publish.stale_files.md)
 
 
 ### Connection errors

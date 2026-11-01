@@ -43,6 +43,9 @@
 //! → git tag v2.1.0  tags the release once surface.jadpo_record is committed
 //! ```
 //!
+//! A release's facts and change record come above the bar, and `verify` is
+//! this bar run as the registry runs it ([`crate::package_release`]).
+//!
 //! A provider package whose operations send personal data says which, before
 //! the bar: each operation with what it sends and its category, and the
 //! hosts it goes to (area 15; chunk V5):
@@ -66,12 +69,14 @@ use std::process::Command;
 use jadpo_check::ai_personal::Holder;
 use jadpo_check::personal_data::PackageSend;
 use jadpo_check::publishing::{self, Bump};
+use jadpo_check::release::{self, ChangeEntry};
 use jadpo_check::surface::{self, Declaration, Surface, What, first_paragraph};
 use jadpo_db::{Locked, Source};
 use jadpo_diag::{Diagnostic, nearest, rule};
 use jadpo_term::{Block, Fact, Json, Outcome, Row, RowState, Screen};
 
 use crate::fmt::project_needed;
+use crate::package_release::{self, Behaviour, Previous};
 use crate::run::{Call, Reply, either, quoted};
 use crate::table::Value;
 
@@ -84,6 +89,10 @@ pub const ACTIONS: &[Value] = &[
     Value {
         name: "check",
         description: "Run the publishing bar and write surface.jadpo_record",
+    },
+    Value {
+        name: "verify",
+        description: "Run the bar as the registry does, and write all a release shows",
     },
     Value {
         name: "import",
@@ -148,6 +157,7 @@ pub fn package(call: &Call) -> Reply {
         )),
         Some("show") => show(call),
         Some("check") => check(call),
+        Some("verify") => package_release::verify(call),
         Some("add") => crate::install::add(call),
         Some("update") => crate::install::update(call),
         Some("remove") => crate::install::remove(call),
@@ -302,7 +312,23 @@ fn show(call: &Call) -> Reply {
     }
     match call.arguments.get(2) {
         Some(name) => declaration(&surface, &home.name, name),
-        None => overview(&surface, &home.name, locked.as_ref()),
+        None => {
+            // A package with errors may hold calls that can't be followed,
+            // so its facts would say less than its code does. An installed
+            // one compiled when it was installed.
+            let prefix = format!("{}/", home.folder);
+            let clean = surface.installed
+                || !jadpo_check::check(db, project).iter().any(|problem| {
+                    problem
+                        .primary
+                        .as_ref()
+                        .is_some_and(|label| label.span.path.starts_with(&prefix))
+                });
+            let facts = clean
+                .then(|| release::facts(db, project, &home.folder))
+                .flatten();
+            overview(&surface, facts.as_ref(), &home.name, locked.as_ref())
+        }
     }
 }
 
@@ -419,7 +445,12 @@ const SECTIONS: [(&str, &str, &str); 6] = [
     ("recipe", "Recipes", "recipe"),
 ];
 
-fn overview(surface: &Surface, folder_name: &str, locked: Option<&Locked>) -> Reply {
+fn overview(
+    surface: &Surface,
+    facts: Option<&release::Facts>,
+    folder_name: &str,
+    locked: Option<&Locked>,
+) -> Reply {
     let (version, source) = source_words(surface, locked);
     let headline = surface
         .description
@@ -448,6 +479,9 @@ fn overview(surface: &Surface, folder_name: &str, locked: Option<&Locked>) -> Re
         fields.push(("guide".into(), surface::GUIDE.to_string()));
     }
     let mut screen = Screen::new().with(Block::Answer { headline, fields });
+    if let Some(facts) = facts {
+        screen.push(package_release::facts_block(facts));
+    }
     if let Some(provider) = &surface.provider {
         let rows = provider
             .facts
@@ -521,6 +555,10 @@ fn overview(surface: &Surface, folder_name: &str, locked: Option<&Locked>) -> Re
                         .map_or(Json::Null, Json::from),
                 ),
             ]),
+        ),
+        (
+            "facts",
+            facts.map_or(Json::Null, package_release::facts_json),
         ),
         (
             "provider",
@@ -1004,15 +1042,14 @@ pub(crate) fn package_files(folder: &Path) -> Vec<String> {
     out
 }
 
-fn no_package() -> Reply {
+fn no_package(command: &str) -> Reply {
     Reply::failed(arguments(
         "There is no package here".to_string(),
         format!(
-            "`jadpo package check` runs in a package's own folder, the one holding `{}`: its description, licence and the earliest Jadpo version it needs.",
+            "`jadpo {command}` runs in a package's own folder, the one holding `{}`: its description, licence and the earliest Jadpo version it needs.",
             jadpo_db::PACKAGE_INDEX
         ),
-        "Run it in the package's folder, or give the folder: `jadpo package check <folder>`"
-            .to_string(),
+        format!("Run it in the package's folder, or give the folder: `jadpo {command} <folder>`"),
     ))
 }
 
@@ -1033,6 +1070,12 @@ pub(crate) struct Compiled {
 }
 
 impl Compiled {
+    /// A path in the scratch app as the package's folder names it, when it
+    /// is in the package.
+    pub fn mount_relative<'a>(&self, path: &'a str) -> Option<&'a str> {
+        path.strip_prefix(&format!("{}/", self.mount))
+    }
+
     /// A path in the scratch app as the package's folder names it.
     pub fn relative(&self, path: &str) -> String {
         let prefix = format!("{}/", self.mount);
@@ -1159,10 +1202,33 @@ fn check(call: &Call) -> Reply {
         Some(argument) => cwd.join(argument),
         None => cwd.clone(),
     };
-    let compiled = match compile(&folder, "package check") {
+    bar(call, &folder, Mode::Check)
+}
+
+/// How the bar runs.
+pub(crate) enum Mode {
+    /// `jadpo package check`: in the author's checkout, against the git
+    /// tags, writing the surface and the changelog's new section.
+    Check,
+    /// `jadpo package verify`: on a commit as it stands, against the
+    /// release given, writing nothing.
+    Verify { previous: Option<Box<Previous>> },
+}
+
+/// Runs the publishing bar on the package in `folder`.
+pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
+    let cwd = call.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
+    let folder = folder.to_path_buf();
+    let verifying = matches!(mode, Mode::Verify { .. });
+    let command = if verifying {
+        "package verify"
+    } else {
+        "package check"
+    };
+    let compiled = match compile(&folder, command) {
         Ok(compiled) => compiled,
         Err(Some(reply)) => return reply,
-        Err(None) => return no_package(),
+        Err(None) => return no_package(command),
     };
     let (package, code, label, mount) = (
         compiled.package.clone(),
@@ -1250,52 +1316,133 @@ fn check(call: &Call) -> Reply {
         }
     }
 
-    // The version, from the last release's surface.
-    let git = Git::of(&folder);
-    let releases = git
+    // What a release shows, once it compiles: a package with errors may
+    // hold calls that can't be followed.
+    let facts = compiled_cleanly
+        .then(|| release::facts(db, project, &mount))
+        .flatten();
+
+    // The release it is compared with: the last of this major version, or
+    // the last before it for a new major version's first release.
+    let git = if verifying { None } else { Git::of(&folder) };
+    let mut releases = git
         .as_ref()
         .map(|git| git.releases(&package))
         .unwrap_or_default();
+    let mut previous: Option<Previous> = None;
+    if let Mode::Verify {
+        previous: Some(given),
+    } = mode
+    {
+        if given.package == package {
+            releases.push(Release {
+                tag: String::new(),
+                version: given.release.version.clone(),
+                surface: given.release.surface.clone(),
+            });
+        }
+        previous = Some(*given);
+    }
+    let unchanged = match (releases.first(), &git) {
+        (Some(last), Some(git)) => git.unchanged_since(&last.tag),
+        _ => false,
+    };
+    if !verifying && !unchanged && compiled_cleanly && found.is_some() {
+        let last = releases.first().map(|last| Release {
+            tag: last.tag.clone(),
+            version: last.version.clone(),
+            surface: last.surface.clone(),
+        });
+        let last = last.or_else(|| {
+            git.as_ref()
+                .and_then(|git| git.releases_of_code(&code).into_iter().next())
+        });
+        if let (Some(git), Some(last)) = (&git, last) {
+            let name = last.named();
+            previous = Some(Previous::from_tag(git, last, &name));
+        }
+    }
+    let new_major = previous
+        .as_ref()
+        .is_some_and(|given| given.package != package);
+    let since = previous.as_ref().map(|given| given.release.version.clone());
+
+    // The previous release's examples and tests against the new code. Its
+    // row goes before the version's, and waits for the changelog's marks.
+    let behaviour: Option<Behaviour> = match &previous {
+        Some(given) if compiled_cleanly && found.is_some() => match &given.compiled {
+            Some(old) => match package_release::run_previous(&folder, &compiled, old) {
+                Ok(ran) => Some(ran),
+                Err(error) => {
+                    return write_failed(
+                        command,
+                        "the scratch app the last release's tests run in",
+                        &error.to_string(),
+                    );
+                }
+            },
+            None => None,
+        },
+        _ => None,
+    };
+    let behaviour_row = items.len();
+
+    // The change record.
+    let mut record: Vec<ChangeEntry> = Vec::new();
+    if let (Some(given), Some(surface), true) = (&previous, &found, compiled_cleanly) {
+        record.extend(release::surface_changes(
+            &given.release.surface,
+            &surface.text(None),
+        ));
+        if let Some(facts) = &facts {
+            record.extend(release::personal_data_changes(given.facts.as_ref(), facts));
+        }
+        for failed in behaviour.iter().flat_map(|ran| &ran.failed) {
+            record.push(release::behaviour_changed(
+                &failed.declaration,
+                &failed.kind,
+                &failed.test,
+            ));
+        }
+    }
+
+    // The version, from the last release's surface.
     let mut version: Option<String> = None;
     let mut hint: Option<String> = None;
     // A new version's changes, as its changelog lists them; `None` when
     // the version is one already released.
     let mut listed: Option<Vec<String>> = None;
+    let record_list = || -> Vec<String> {
+        if record.is_empty() {
+            vec!["no change to what it offers".to_string()]
+        } else {
+            record.iter().map(ChangeEntry::line).collect()
+        }
+    };
     match (&found, compiled_cleanly) {
         (Some(surface), true) => {
             let now = surface.text(None);
             let outcome = match releases.first() {
-                Some(last)
-                    if git
-                        .as_ref()
-                        .is_some_and(|git| git.unchanged_since(&last.tag)) =>
-                {
-                    Ok((
-                        last.version.clone(),
-                        format!("{}, released as {}", last.version, last.tag),
-                        None,
-                    ))
-                }
+                Some(last) if unchanged => Ok((
+                    last.version.clone(),
+                    format!("{}, released as {}", last.version, last.tag),
+                    None,
+                )),
                 Some(last) => {
                     publishing::version(label.as_str(), Some((&last.version, &last.surface)), &now)
-                        .map(|bump| {
-                            let list = if bump.changes.is_empty() {
-                                vec!["no change to what it offers".to_string()]
-                            } else {
-                                bump.changes
-                                    .iter()
-                                    .map(|(word, heading)| publishing::change_item(word, heading))
-                                    .collect()
-                            };
-                            (bump.version.clone(), bump_words(&bump), Some(list))
-                        })
+                        .map(|bump| (bump.version.clone(), bump_words(&bump), Some(record_list())))
                 }
-                None => publishing::version(label.as_str(), None, &now).map(|bump| {
-                    (
+                None => publishing::version(label.as_str(), None, &now).map(|bump| match &since {
+                    Some(since) => (
+                        bump.version.clone(),
+                        format!("{}, new major since {since}", bump.version),
+                        Some(record_list()),
+                    ),
+                    None => (
                         bump.version.clone(),
                         format!("{}, the first release", bump.version),
                         Some(vec!["first release".to_string()]),
-                    )
+                    ),
                 }),
             };
             match outcome {
@@ -1333,21 +1480,97 @@ fn check(call: &Call) -> Reply {
     let log_path = folder.join(publishing::CHANGELOG);
     let old_log = std::fs::read_to_string(&log_path).ok();
     let mut wrote_log = false;
+    let mut stale_log = false;
     match (&version, &listed) {
         (Some(version), Some(list)) => {
-            let released: Vec<String> = releases.iter().map(|r| r.version.clone()).collect();
+            let released: Vec<String> = releases
+                .iter()
+                .map(|r| r.version.clone())
+                .chain(since.clone())
+                .collect();
             let log = publishing::changelog(old_log.as_deref(), version, list, &released);
             if old_log.as_deref() != Some(log.text.as_str()) {
-                if let Err(error) = std::fs::write(&log_path, &log.text) {
-                    return write_failed(
-                        "package check",
-                        publishing::CHANGELOG,
-                        &error.to_string(),
-                    );
+                if verifying {
+                    stale_log = true;
+                } else {
+                    if let Err(error) = std::fs::write(&log_path, &log.text) {
+                        return write_failed(
+                            "package check",
+                            publishing::CHANGELOG,
+                            &error.to_string(),
+                        );
+                    }
+                    wrote_log = true;
                 }
-                wrote_log = true;
             }
-            if log.why {
+            // A previous example or test that now fails needs marking a
+            // fix, within a major version.
+            let fixes = publishing::fixes(&log.text, version);
+            for entry in &mut record {
+                if entry.change == release::Change::BehaviourChanged {
+                    entry.why = fixes.get(&entry.declaration).cloned();
+                }
+            }
+            if let (Some(ran), Some(since)) = (&behaviour, &since) {
+                let refused: Vec<_> = ran
+                    .failed
+                    .iter()
+                    .filter(|failed| !new_major && !fixes.contains_key(&failed.declaration))
+                    .collect();
+                let next_major = label
+                    .strip_prefix('v')
+                    .and_then(|digits| digits.parse::<u64>().ok())
+                    .map_or_else(
+                        || "the package for the API's next version".to_string(),
+                        |major| format!("`{code}.v{}`", major + 1),
+                    );
+                for failed in &refused {
+                    diagnostics.push(package_release::behaviour_changed(
+                        failed,
+                        since,
+                        version,
+                        &next_major,
+                    ));
+                }
+                let total = ran.total;
+                let row = if ran.failed.is_empty() && total == 0 {
+                    Item::passed("behaviour", format!("nothing from {since} to run"))
+                } else if ran.failed.is_empty() && total == 1 {
+                    Item::passed("behaviour", format!("the 1 from {since} holds"))
+                } else if ran.failed.is_empty() {
+                    Item::passed("behaviour", format!("all {total} from {since} hold"))
+                } else {
+                    // Short: a row's last column fits or isn't shown. The
+                    // release it was is in the change record's heading.
+                    let count = ran.failed.len();
+                    let verb = if count == 1 { "fails" } else { "fail" };
+                    let failing = format!("{count} of {total} {verb}");
+                    if !refused.is_empty() {
+                        Item::failed("behaviour", format!("{failing}, not marked a fix"))
+                    } else if new_major {
+                        Item::passed("behaviour", format!("{failing}, a new major"))
+                    } else {
+                        Item::passed("behaviour", format!("{failing}, marked a fix"))
+                    }
+                };
+                items.insert(behaviour_row, row);
+            } else if let (Some(since), true) = (&since, compiled_cleanly) {
+                // Nothing of the last release could be read to run.
+                items.insert(
+                    behaviour_row,
+                    Item::later("behaviour", format!("{since} couldn't be read")),
+                );
+            }
+            if stale_log {
+                items.push(Item::failed(
+                    "changelog",
+                    format!("{version}'s list is out of date"),
+                ));
+                diagnostics.push(package_release::stale(
+                    publishing::CHANGELOG,
+                    &format!("The list under `## {version}` isn't what the change record gives."),
+                ));
+            } else if log.why {
                 items.push(Item::passed("changelog", format!("{version} says why")));
             } else {
                 items.push(Item::failed(
@@ -1371,30 +1594,50 @@ fn check(call: &Call) -> Reply {
                 },
             ));
         }
-        (None, _) => items.push(Item::later(
-            "changelog",
-            if compiled_cleanly && found.is_some() {
-                "waits for an allowed version"
-            } else {
-                "the package has errors"
-            },
-        )),
-    }
-    let licence = found.as_ref().and_then(|s| s.licence.clone());
-    let jadpo = found.as_ref().and_then(|s| s.jadpo.clone());
-    items.push(match (licence, jadpo) {
-        (Some(licence), Some(jadpo)) => {
-            Item::passed("licence", format!("{licence}, from Jadpo {jadpo}"))
+        (None, _) => {
+            // A breaking change usually fails the last release's examples
+            // too, so what they say waits with the version.
+            if behaviour.is_some() {
+                items.insert(
+                    behaviour_row,
+                    Item::later("behaviour", "waits for an allowed version"),
+                );
+            }
+            items.push(Item::later(
+                "changelog",
+                if compiled_cleanly && found.is_some() {
+                    "waits for an allowed version"
+                } else {
+                    "the package has errors"
+                },
+            ));
         }
-        _ => Item::failed("licence", "the index doesn't say"),
-    });
-
+    }
     let mut written: Option<(String, bool)> = None;
     if let (Some(surface), Some(version)) = (&found, &version) {
         let text = surface.text(Some(version));
         let path = folder.join(jadpo_db::record::SURFACE_FILE);
-        let same = std::fs::read_to_string(&path).is_ok_and(|old| old == text);
-        if !same && let Err(error) = std::fs::write(&path, &text) {
+        let committed = std::fs::read_to_string(&path).ok();
+        let same = committed.as_deref().is_some_and(|old| {
+            jadpo_db::record::normalise(old) == jadpo_db::record::normalise(&text)
+        });
+        if verifying {
+            if same {
+                items.push(Item::passed("surface", "matches its code"));
+            } else {
+                items.push(Item::failed("surface", "doesn't match its code"));
+                diagnostics.push(package_release::stale(
+                    jadpo_db::record::SURFACE_FILE,
+                    &if committed.is_some() {
+                        format!(
+                            "What the commit carries isn't the surface of {version}, which its code gives."
+                        )
+                    } else {
+                        "The commit carries none.".to_string()
+                    },
+                ));
+            }
+        } else if !same && let Err(error) = std::fs::write(&path, &text) {
             return write_failed(
                 "package check",
                 jadpo_db::record::SURFACE_FILE,
@@ -1403,6 +1646,15 @@ fn check(call: &Call) -> Reply {
         }
         written = Some((in_folder(&shown, jadpo_db::record::SURFACE_FILE), !same));
     }
+
+    let licence = found.as_ref().and_then(|s| s.licence.clone());
+    let jadpo = found.as_ref().and_then(|s| s.jadpo.clone());
+    items.push(match (licence, jadpo) {
+        (Some(licence), Some(jadpo)) => {
+            Item::passed("licence", format!("{licence}, from Jadpo {jadpo}"))
+        }
+        _ => Item::failed("licence", "the index doesn't say"),
+    });
 
     let mut screen = Screen::new();
     for diagnostic in &diagnostics {
@@ -1415,6 +1667,9 @@ fn check(call: &Call) -> Reply {
     for block in test_blocks {
         screen.push(block);
     }
+    if let Some(facts) = &facts {
+        screen.push(package_release::facts_block(facts));
+    }
     // Where its personal data goes (chunk V5), once it compiles: a package
     // with errors may hold calls that can't be followed.
     let sends =
@@ -1423,6 +1678,9 @@ fn check(call: &Call) -> Reply {
         && !sends.is_empty()
     {
         screen.push(personal_data_block(hosts, sends));
+    }
+    if let (Some(since), false) = (&since, record.is_empty()) {
+        screen.push(package_release::changes_block(since, &record));
     }
     let rows: Vec<Row> = items
         .iter()
@@ -1434,7 +1692,7 @@ fn check(call: &Call) -> Reply {
         .collect();
     screen.push(Block::list("Publishing bar", rows));
     let mut wrote: Vec<String> = Vec::new();
-    if let Some((path, true)) = &written {
+    if let (Some((path, true)), false) = (&written, verifying) {
         wrote.push(path.clone());
     }
     if wrote_log {
@@ -1453,25 +1711,37 @@ fn check(call: &Call) -> Reply {
         count(RowState::Done),
         count(RowState::Skipped),
     );
-    let mut facts = Vec::new();
+    let mut counts = Vec::new();
     if failed == 0 {
-        facts.push(Fact::plain(match &version {
+        counts.push(Fact::plain(match &version {
             Some(version) => format!("{package} {version}"),
             None => package.clone(),
         }));
     } else {
-        facts.push(Fact::problem(format!("{failed} failed")));
+        counts.push(Fact::problem(format!("{failed} failed")));
     }
-    facts.push(Fact::plain(format!("{passed} passed")));
+    counts.push(Fact::plain(format!("{passed} passed")));
     if later > 0 {
-        facts.push(Fact::plain(format!("{later} not checked yet")));
+        counts.push(Fact::plain(format!("{later} not checked yet")));
+    }
+    let fingerprints = if verifying && compiled_cleanly {
+        release::fingerprints(db, project, &mount)
+    } else {
+        Vec::new()
+    };
+    if !fingerprints.is_empty() {
+        counts.push(Fact::plain(plural(
+            fingerprints.len(),
+            "fingerprint",
+            "fingerprints",
+        )));
     }
     let (outcome, headline) = if failed == 0 {
-        (Outcome::Success, "package check passed")
+        (Outcome::Success, format!("{command} passed"))
     } else {
-        (Outcome::Failure, "package check failed")
+        (Outcome::Failure, format!("{command} failed"))
     };
-    screen.push(Block::summary(outcome, headline, facts));
+    screen.push(Block::summary(outcome, headline, counts));
     if failed == 0
         && let Some(version) = &hint
     {
@@ -1490,41 +1760,74 @@ fn check(call: &Call) -> Reply {
         ]),
         None => Json::Null,
     };
-    let data = Json::object([
-        ("package", Json::from(package.as_str())),
-        ("version", version.as_deref().map_or(Json::Null, Json::from)),
-        (
-            "bar",
-            Json::array(items.iter().map(|item| {
-                Json::object([
-                    ("item", Json::from(item.name)),
-                    (
-                        "state",
-                        Json::from(match item.state {
-                            RowState::Done => "passed",
-                            RowState::Failed => "failed",
-                            RowState::Skipped => "not_checked",
-                        }),
-                    ),
-                    ("detail", Json::from(item.detail.as_str())),
-                ])
-            })),
-        ),
-        (
-            "personal_data",
-            sends.as_ref().map_or(Json::Null, |(hosts, sends)| {
-                personal_data_json(hosts, sends)
-            }),
-        ),
-        ("surface", file_json(written)),
-        (
-            "changelog",
-            file_json(
-                (version.is_some() && listed.is_some())
-                    .then(|| (in_folder(&shown, publishing::CHANGELOG), wrote_log)),
+    let bar_json = Json::array(items.iter().map(|item| {
+        Json::object([
+            ("item", Json::from(item.name)),
+            (
+                "state",
+                Json::from(match item.state {
+                    RowState::Done => "passed",
+                    RowState::Failed => "failed",
+                    RowState::Skipped => "not_checked",
+                }),
             ),
-        ),
-    ]);
+            ("detail", Json::from(item.detail.as_str())),
+        ])
+    }));
+    let facts_json = facts
+        .as_ref()
+        .map_or(Json::Null, package_release::facts_json);
+    let record_json = package_release::record_json(&record);
+    let behaviour_json = match (&behaviour, &since) {
+        (Some(ran), Some(since)) => package_release::behaviour_json(since, ran),
+        _ => Json::Null,
+    };
+    let data = if verifying {
+        Json::object([
+            ("package", Json::from(package.as_str())),
+            ("version", version.as_deref().map_or(Json::Null, Json::from)),
+            ("passed", (failed == 0).into()),
+            ("bar", bar_json),
+            (
+                "surface",
+                match (&found, &version) {
+                    (Some(surface), Some(version)) => Json::from(surface.text(Some(version))),
+                    _ => Json::Null,
+                },
+            ),
+            ("facts", facts_json),
+            ("change_record", record_json),
+            (
+                "fingerprints",
+                package_release::fingerprints_json(&fingerprints),
+            ),
+            ("previous", behaviour_json),
+            ("jadpo", Json::from(crate::help::VERSION)),
+        ])
+    } else {
+        Json::object([
+            ("package", Json::from(package.as_str())),
+            ("version", version.as_deref().map_or(Json::Null, Json::from)),
+            ("bar", bar_json),
+            ("facts", facts_json),
+            (
+                "personal_data",
+                sends.as_ref().map_or(Json::Null, |(hosts, sends)| {
+                    personal_data_json(hosts, sends)
+                }),
+            ),
+            ("change_record", record_json),
+            ("previous", behaviour_json),
+            ("surface", file_json(written)),
+            (
+                "changelog",
+                file_json(
+                    (version.is_some() && listed.is_some())
+                        .then(|| (in_folder(&shown, publishing::CHANGELOG), wrote_log)),
+                ),
+            ),
+        ])
+    };
     Reply::Report {
         screen,
         data,
@@ -1536,12 +1839,7 @@ fn check(call: &Call) -> Reply {
 /// What a package's operations send, a line for each: aligned columns of
 /// the operation, what it sends and its category, after the hosts.
 fn personal_data_block(hosts: &[String], sends: &[PackageSend]) -> Block {
-    let held = |send: &PackageSend| match &send.holder {
-        Holder::Field { host, field } => {
-            format!("{}.{field}", host.rsplit('.').next().unwrap_or(host))
-        }
-        Holder::Type(ty) => ty.clone(),
-    };
+    let held = |send: &PackageSend| release::holder_name(&send.holder);
     let widest = |of: &dyn Fn(&PackageSend) -> usize| sends.iter().map(of).max().unwrap_or(0);
     let operation = widest(&|send| send.operation.len());
     let holder = widest(&|send| held(send).len());
@@ -2093,7 +2391,7 @@ fn sentence(message: &str) -> String {
 }
 
 /// The caret's label and the reason for an example's failed test.
-fn what_failed(failure: &jadpo_test::TestFailure) -> (String, String) {
+pub(crate) fn what_failed(failure: &jadpo_test::TestFailure) -> (String, String) {
     match &failure.detail {
         jadpo_test::Detail::Assertion(assertion) => {
             if let Some(fails) = &assertion.fails {
@@ -2267,6 +2565,17 @@ pub(crate) struct Release {
     pub surface: String,
 }
 
+impl Release {
+    /// The package its surface names: `Postcodes.v2`.
+    pub(crate) fn named(&self) -> String {
+        self.surface
+            .lines()
+            .find_map(|line| line.strip_prefix("package "))
+            .unwrap_or_default()
+            .to_string()
+    }
+}
+
 impl Git {
     pub(crate) fn of(folder: &Path) -> Option<Git> {
         let prefix = git(folder, &["rev-parse", "--show-prefix"])?;
@@ -2278,10 +2587,22 @@ impl Git {
 
     /// The package's releases, newest first.
     pub(crate) fn releases(&self, package: &str) -> Vec<Release> {
+        let heading = format!("package {package}");
+        self.tagged(|line| line == heading)
+    }
+
+    /// The releases of any major version of the package named `code` in
+    /// code, newest first.
+    pub(crate) fn releases_of_code(&self, code: &str) -> Vec<Release> {
+        let heading = format!("package {code}.");
+        self.tagged(|line| line.starts_with(&heading))
+    }
+
+    /// The `v<version>` tags whose surface has a line `names` accepts.
+    fn tagged(&self, names: impl Fn(&str) -> bool) -> Vec<Release> {
         let Some(tags) = git(&self.folder, &["tag", "--list", "v*"]) else {
             return Vec::new();
         };
-        let heading = format!("package {package}");
         let mut out: Vec<(Vec<u64>, Release)> = Vec::new();
         for tag in tags.lines().map(str::trim) {
             let Some(order) = semver(tag) else { continue };
@@ -2289,7 +2610,7 @@ impl Git {
             let Some(surface) = git(&self.folder, &["show", &spec]) else {
                 continue;
             };
-            if !surface.lines().any(|line| line == heading) {
+            if !surface.lines().any(&names) {
                 continue;
             }
             out.push((
@@ -2303,6 +2624,29 @@ impl Git {
         }
         out.sort_by(|a, b| b.0.cmp(&a.0));
         out.into_iter().map(|(_, release)| release).collect()
+    }
+
+    /// Writes the package's folder as it was at `tag` into `to`.
+    pub(crate) fn export(&self, tag: &str, to: &Path) -> bool {
+        let Some(files) = git(&self.folder, &["ls-tree", "-r", "--name-only", tag, "."]) else {
+            return false;
+        };
+        files.lines().all(|file| {
+            let spec = format!("{tag}:{}{file}", self.prefix);
+            let output = Command::new("git")
+                .args(["show", &spec])
+                .current_dir(&self.folder)
+                .output();
+            let path = to.join(file);
+            match output {
+                Ok(output) if output.status.success() => {
+                    path.parent()
+                        .is_none_or(|parent| std::fs::create_dir_all(parent).is_ok())
+                        && std::fs::write(path, output.stdout).is_ok()
+                }
+                _ => false,
+            }
+        })
     }
 
     /// Whether nothing in the package's folder changed since `tag`.
