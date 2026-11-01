@@ -596,7 +596,9 @@ reach it like any field ([Personal data](15-personal-data.md)), and
 `Driver.disk` keeps files on the server's own disk. It works in
 production on the native target only, and on Workers it is a compile
 error. The build manifest records that the app then runs on one server,
-since a second server wouldn't see the files.
+since a second server wouldn't see the files: each deployable that
+reaches a disk store lists those stores as its `one_server`
+([The manifest](18-records-and-manifest.md#the-manifest)).
 
 ```jadpo fragment
 // app.jadpo
@@ -611,12 +613,23 @@ application {
 }
 ```
 
+- **Where.** `path:` is the folder the store's files are kept in,
+  written in full with no `.` or `..` in it, and never inside the
+  project's own folder, where git, `jadpo build` and `jadpo dev` would
+  reach them: `jadpo check` refuses any other
+  ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)),
+  following a link that leads into the project. As a deployable starts it
+  makes the folder, readable by the app's user only, when it is missing,
+  and doesn't build a store whose folder other users can write to,
+  listing it in `runtime.started`'s `unbuilt`, since they could plant
+  files it reads; so is a store with no `path:`, answering
+  `misconfigured` when used.
 - **Files never change.** Each is kept under a key the runtime
   generates, a UUID sharded into two directory levels, never one derived
   from a file's name. The driver refuses any key that doesn't match its
-  own pattern, opens files relative to its root without following
-  symbolic links, and writes them readable by the app's user only. The
-  root must not be inside the app's source or build folders.
+  own pattern, opens each folder and file relative to the one above it
+  without following symbolic links, reads only a regular file, and
+  writes folders and files readable by the app's user only.
 - **Uploads are streamed** to a temporary file as they arrive. They are
   counted, with a `413` at the first byte over `max_size`, hashed and
   type-checked, then synced and renamed into place, and the directory is
@@ -630,9 +643,11 @@ application {
   `Content-Security-Policy: sandbox`. The client's file name only ever
   goes in `filename*` (RFC 6266).
 - **Space.** A write that runs out of space fails as `storage_full`.
-  Below `free_space_floor:`, 5% by default, new uploads are refused, so
-  imports and the database aren't starved of space. The floor is reported
-  as a monitoring threshold.
+  `free_space_floor:`, a percentage from `0%` up to, but not, `100%`, 5%
+  by default, is the share of the disk kept free: a put, an upload or a
+  join that would leave less free than it answers `storage_full` and
+  writes nothing, so imports and the database aren't starved of space.
+  The floor is reported as a monitoring threshold.
 - **Commands.** `jadpo files ls`, `show`, `get`, `put` and `copy` work
   on any store, in development or production. `jadpo files copy` moves a
   store's files to another, which is how you move off one server.
@@ -3287,7 +3302,8 @@ your machine:
   anywhere on the way.
 - A file is written to a temporary file readable by the application's
   user only, synced, and renamed into place, and its folder is synced.
-- A full disk answers `storage_full`.
+- A full disk answers `storage_full`, and so does a put below the
+  store's `free_space_floor:`, as it does in production.
 
 Its reads and writes block, a window of at most a megabyte at a time,
 on your own disk.
@@ -3403,7 +3419,7 @@ The errors this page describes are built with the feature they belong to.
 | The dev inbox and the health score | Built: the dev inbox, `jadpo email`, the health score, `email.health_problem` and `jadpo email check-domain` ([The dev inbox and the health score](#the-dev-inbox-and-the-health-score)), with SpamAssassin's rules in the score ([SpamAssassin in the health score](#spamassassin-in-the-health-score)). Not built yet: the inbox page as part of the developer console, and its link to each mail's trace, which comes with `jadpo trace`. |
 | Rate limits | Built: default rate limits with routes, and their store on Workers, Cloudflare's rate-limiting binding ([Rate limits on Workers](#rate-limits-on-workers)). Not built yet: Redis's driver, which comes with caches. Until then a deployable whose store is Redis counts in its own memory, which on Workers is the judgement call `rate_limits.counted_in_memory`. The binding's windows and the Wrangler entries aren't yet checked against the real edge. |
 | The capability seam | Built: the seam every capability's calls go through, with a delivery that hands its event to a capability, parked as `outcome_unknown` when a send without a key may have acted ([The seam every outside call goes through](#the-seam-every-outside-call-goes-through)). |
-| Files | Partly built. Built: the `files` capability's first part on that seam: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [Files: `put`, `read` and the disk driver in development](#files-put-read-and-the-disk-driver-in-development)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([Files: an export's pieces](#files-an-exports-pieces)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). Not built yet: upload slots, multipart ones included, downloads, deleting and erasing a file's bytes, the S3 driver, a deployable's disk driver at its `path:` and `free_space_floor:`, the error for a disk driver's root inside the project, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written. |
+| Files | Partly built. Built: the `files` capability's first part on that seam: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [Files: `put`, `read` and the disk driver in development](#files-put-read-and-the-disk-driver-in-development)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([Files: an export's pieces](#files-an-exports-pieces)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). Not built yet: upload slots, multipart ones included, downloads, deleting and erasing a file's bytes, the S3 driver, the floor as a monitoring threshold, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written. |
 | Flags | Not built yet. |
 | Audit | Not built yet: an entity's `audit:` is `toolchain.not_built_yet` where it is written. |
 | Search | Built on PostgreSQL: `search: { fields: language: }` with its generated column, GIN index and migrations, `matches` with a `SearchText`, the best matches first in keyset pages, and policy over every search ([Search](#search)). Not built yet: an engine's `store:`, `toolchain.not_built_yet` where it is written, and `jadpo search reindex`, which come with the `search` capability's packages; and searching a field of a sensitive category, `toolchain.not_built_yet` in `fields:` until the access records are built. |
@@ -3418,6 +3434,7 @@ The errors this page describes are built with the feature they belong to.
 
 ## Errors
 
+- [`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)
 - [`data.file_field_invalid`](../errors/data.file_field_invalid.md)
 - [`type.file_read_too_large`](../errors/type.file_read_too_large.md)
 - [`email.template_missing`](../errors/email.template_missing.md)

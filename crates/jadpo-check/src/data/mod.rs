@@ -221,10 +221,23 @@ pub fn files_connections(db: &dyn Db, project: Project) -> Vec<jadpo_std::files:
                             _ => None,
                         }
                     });
+                let floor = tree::members(entry.block())
+                    .into_iter()
+                    .find(|(setting, _)| {
+                        tree::name_text(setting).as_deref() == Some("free_space_floor")
+                    })
+                    .and_then(
+                        |(_, setting)| match setting.value().as_ref().map(Const::from_expr) {
+                            Some(Const::Percentage(written)) => crate::disk::parse_floor(&written),
+                            _ => None,
+                        },
+                    )
+                    .unwrap_or(jadpo_std::files::DEFAULT_FREE_SPACE_FLOOR);
                 out.push(jadpo_std::files::FilesConnection {
                     name,
                     driver: Driver::Disk,
                     path,
+                    floor,
                 });
             }
         }

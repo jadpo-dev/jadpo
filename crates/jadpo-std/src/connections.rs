@@ -92,8 +92,14 @@ pub enum ConnectionDriver {
     /// comes with caches.
     Redis { url: Option<u32> },
     /// `Driver.disk`, a store of files on the server's own disk (area 16,
-    /// "The disk driver"): the folder `path:` names.
-    Disk { path: Option<String> },
+    /// "The disk driver"): the folder `path:` names, and the free space,
+    /// in millionths of the disk, below which a put answers
+    /// `storage_full` (`free_space_floor:`, 5% when it gives none).
+    Disk {
+        path: Option<String>,
+        #[serde(default = "default_floor")]
+        floor: u32,
+    },
     /// `Driver.smtp`, the `email` capability's built-in driver (area 16,
     /// "Email"; chunk 7.3).
     Smtp(SmtpServer),
@@ -258,14 +264,22 @@ pub fn packages(table: &[Connection]) -> impl Iterator<Item = (u32, &str, &Conne
 }
 
 /// The stores of files in `table` (area 16): every `Driver.disk`
-/// connection, with the folder its `path:` names.
-pub fn files(table: &[Connection]) -> impl Iterator<Item = (&str, Option<&str>)> {
+/// connection, with the folder its `path:` names and its free-space
+/// floor, in millionths of the disk.
+pub fn files(table: &[Connection]) -> impl Iterator<Item = (&str, Option<&str>, u32)> {
     table
         .iter()
         .filter_map(|connection| match &connection.driver {
-            ConnectionDriver::Disk { path } => Some((connection.name.as_str(), path.as_deref())),
+            ConnectionDriver::Disk { path, floor } => {
+                Some((connection.name.as_str(), path.as_deref(), *floor))
+            }
             _ => None,
         })
+}
+
+/// A disk store's floor when the plan gives none: 5%.
+fn default_floor() -> u32 {
+    crate::files::DEFAULT_FREE_SPACE_FLOOR
 }
 
 /// The `Driver.smtp` connections in `table`, with their servers.
@@ -305,7 +319,13 @@ mod tests {
     /// Workers, everything over the network everywhere.
     #[test]
     fn each_driver_lists_the_targets_it_runs_on() {
-        let disk = Connection::new("uploads", ConnectionDriver::Disk { path: None });
+        let disk = Connection::new(
+            "uploads",
+            ConnectionDriver::Disk {
+                path: None,
+                floor: crate::files::DEFAULT_FREE_SPACE_FLOOR,
+            },
+        );
         assert_eq!(disk.targets, [Target::Native]);
         let queue = Connection::new(
             "warehouse",
@@ -373,7 +393,13 @@ mod tests {
                     tls: DatabaseTls::Authority(4),
                 },
             ),
-            Connection::new("uploads", ConnectionDriver::Disk { path: None }),
+            Connection::new(
+                "uploads",
+                ConnectionDriver::Disk {
+                    path: None,
+                    floor: crate::files::DEFAULT_FREE_SPACE_FLOOR,
+                },
+            ),
         ];
         assert_eq!(named(&table, "main").map(|(at, _)| at), Some(1));
         // A database is built from its address and the authority it
@@ -381,6 +407,9 @@ mod tests {
         assert_eq!(table[1].driver.settings(), [1, 4]);
         assert!(super::package(&table, 0).is_some() && super::package(&table, 1).is_none());
         assert_eq!(packages(&table).map(|(at, ..)| at).collect::<Vec<_>>(), [0]);
-        assert_eq!(files(&table).collect::<Vec<_>>(), [("uploads", None)]);
+        assert_eq!(
+            files(&table).collect::<Vec<_>>(),
+            [("uploads", None, crate::files::DEFAULT_FREE_SPACE_FLOOR)]
+        );
     }
 }

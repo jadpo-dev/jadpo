@@ -59,7 +59,7 @@ pub fn toolchain(call: &Call) -> Reply {
         (None, _) => list(call),
         (Some(other), _) => Reply::failed(arguments(
             format!("`{other}` isn't a toolchain action"),
-            "`jadpo toolchain` lists the kept releases, `remove` deletes one, and `pin` and `unpin` write the release a project runs with into jadpo.lock.",
+            "`jadpo toolchain` lists the kept releases, `remove` deletes one, and `pin` and `unpin` write the release a project runs with into `jadpo.lock`.",
             "Use `list`, `remove`, `pin` or `unpin`",
         )),
     }

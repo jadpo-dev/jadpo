@@ -38,6 +38,11 @@ rustls.workspace = true
 tokio-rustls.workspace = true
 webpki-roots.workspace = true
 
+# The disk driver's calls relative to a store's root, never following a
+# link, and its free space (chunk B2).
+[target.'cfg(unix)'.dependencies]
+rustix.workspace = true
+
 [[test]]
 name = "integration"
 path = "tests/main.rs"
