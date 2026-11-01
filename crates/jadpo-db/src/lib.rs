@@ -263,6 +263,9 @@ pub struct BeforeSide {
     pub files: BTreeMap<String, String>,
     /// The project's domains there, by folder name.
     pub domains: BTreeSet<String>,
+    /// The project's migrations there, by folder name: what a change
+    /// doesn't add (chunk V3).
+    pub migrations: BTreeSet<String>,
 }
 
 impl BeforeSide {

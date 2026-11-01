@@ -104,6 +104,7 @@ impl Planner<'_> {
         }
         let mut grants = Vec::new();
         let mut restricted = Vec::new();
+        let mut fields = Vec::new();
         let policy = self.access.entity(&entity.name);
         for field in &entity.fields {
             // A field no request may touch is never kept in a history.
@@ -113,6 +114,7 @@ impl Planner<'_> {
             if field.name == "id" || server_only {
                 continue;
             }
+            fields.push(field.name.clone());
             if let Some(grant) = self.field_policy(
                 &mut statement,
                 entity,
@@ -132,6 +134,7 @@ impl Planner<'_> {
             access,
             params: statement.into_params(),
             restricted,
+            fields,
             tag: tag(&Key::from_text(format!("history {}", entity.born))),
         })
     }

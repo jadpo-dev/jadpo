@@ -4,6 +4,8 @@
 //! change is read from its record, so the words carry what the record
 //! says, such as which callers a widening lets in.
 
+use jadpo_graph::migration::{Removal, RemovalKind};
+
 use super::compare::Family;
 
 /// How a caller a grant list names reads in a sentence: `Access.public`
@@ -135,6 +137,71 @@ pub fn said(family: &Family, subject: &str, change: &str) -> String {
         "DomainChange.created" => format!("new domain `{subject}`"),
         change => format!("`{subject}`: `{change}`"),
     }
+}
+
+/// Names in backticks in a sentence: `a`, `a` and `b`, `a`, `b` and `c`.
+fn names(names: &[String]) -> String {
+    let quoted: Vec<String> = names.iter().map(|name| format!("`{name}`")).collect();
+    match quoted.as_slice() {
+        [] => String::new(),
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
+}
+
+/// Exactly what a migration's removal takes (area 5, "Migrations"; area
+/// 18, `DataChange`): the store, the table and each column, and what
+/// happens to the files its rows hold and to the entries of its history.
+pub fn removal(removal: &Removal) -> String {
+    let subject = removal.subject();
+    let (store, table) = (&removal.store, &removal.table);
+    let columns: Vec<String> = removal.columns.iter().map(|(n, _)| n.clone()).collect();
+    let mut said = match &removal.kind {
+        RemovalKind::ColumnDropped => {
+            let held: Vec<String> = removal
+                .columns
+                .iter()
+                .map(|(column, ty)| format!("`{table}.{column}` (`{ty}`)"))
+                .collect();
+            let noun = if held.len() == 1 { "column" } else { "columns" };
+            let list = match held.as_slice() {
+                [one] => one.clone(),
+                [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+                [] => String::new(),
+            };
+            format!(
+                "`{subject}` is dropped for good from store `{store}`: {noun} {list} and every value in it"
+            )
+        }
+        RemovalKind::TableDropped => format!(
+            "`{subject}` is dropped for good from store `{store}`: table `{table}`, every record in it and its columns {}",
+            names(&columns)
+        ),
+        RemovalKind::EntityRemoved => format!(
+            "`{subject}` leaves the app: table `{table}` and its records stay in store `{store}`, retired, where erasure and retention no longer reach them, until a later migration drops them"
+        ),
+        RemovalKind::EntityMoved { to } => format!(
+            "`{subject}` moves from store `{store}` to `{to}`: table `{table}` starts empty there, and its records stay behind, retired, since nothing copies them"
+        ),
+    };
+    let dropped = matches!(
+        removal.kind,
+        RemovalKind::ColumnDropped | RemovalKind::TableDropped
+    );
+    if dropped && removal.files {
+        said.push_str(
+            ", letting go of the files they hold, whose bytes go once no record holds them and a `File` field still names their store",
+        );
+    }
+    if removal.history {
+        said.push_str(match removal.kind {
+            RemovalKind::ColumnDropped => {
+                "; the values `jadpo_audit` entries hold of it stay until their retention ends"
+            }
+            _ => "; any `jadpo_audit` entries of its records stay, with nothing left to purge them",
+        });
+    }
+    said
 }
 
 #[cfg(test)]

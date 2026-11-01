@@ -11,15 +11,17 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use jadpo_check::acceptances::{data as removed, words};
 use jadpo_check::data::migrations::{
-    self as records, Decide, Decision, Migration, Migrations, example_backfill, field_type,
-    read_decisions, store_steps,
+    self as records, Decide, Decision, DecisionValue, Migration, Migrations, example_backfill,
+    field_type, read_decisions, store_steps,
 };
 use jadpo_check::data::{DataModel, data_model, schema};
 use jadpo_db::Loaded;
-use jadpo_diag::{Decider, Diagnostic, rule};
+use jadpo_diag::{Decider, Diagnostic, Span, rule};
 use jadpo_graph::migration::{
-    Needed, NeededKind, Refusal, Sql, decisions_needed, migration_sql, next_snapshot,
+    Needed, NeededKind, Refusal, Removal, RemovalKind, Sql, Undroppable, decisions_needed,
+    migration_sql, next_snapshot, removals, retired, without_retired,
 };
 use jadpo_graph::schema::{Change, Holds, Schema};
 use jadpo_term::{Block, ChangeMark, Fact, Json, Outcome, Screen};
@@ -32,6 +34,13 @@ pub fn migrate(call: &Call) -> Reply {
     match call.arguments.first().map(String::as_str) {
         Some("new") => new(call),
         Some(action @ ("apply" | "status")) => {
+            if call.value("--drop").is_some() {
+                return Reply::failed(arguments(
+                    "`--drop` belongs to `jadpo migrate new`".to_string(),
+                    format!("A drop is written as a migration of its own, which `jadpo migrate {action}` doesn't do."),
+                    "Run `jadpo migrate new <purpose> --drop <name>`".to_string(),
+                ));
+            }
             if let Some(extra) = call.arguments.get(1) {
                 return Reply::failed(arguments(
                     format!("`jadpo migrate {action}` takes no purpose"),
@@ -139,6 +148,7 @@ fn new(call: &Call) -> Reply {
     let model = data_model(db, project);
     let source = schema(db, project);
     let lookup = jadpo_check::lookups::Lookup::new(db, project);
+    let drop = call.value("--drop");
     // The latest migration is finished once every decision it needs is
     // written and its SQL holds them; until then this finishes it.
     let latest = set.list.last();
@@ -166,6 +176,15 @@ fn new(call: &Call) -> Reply {
         let Some(migration) = latest else {
             return nothing(set);
         };
+        if drop.is_some() {
+            return Reply::failed(arguments(
+                format!("`{}` waits for its decisions", migration.name),
+                "A drop is a migration of its own, written once the latest is finished."
+                    .to_string(),
+                "Write its decisions and run `jadpo migrate new`, then ask for the drop"
+                    .to_string(),
+            ));
+        }
         (
             set.before_latest(),
             set.latest_schema(),
@@ -173,13 +192,18 @@ fn new(call: &Call) -> Reply {
         )
     } else {
         let latest_schema = set.latest_schema();
-        if next_snapshot(&latest_schema, source).same_but_reasons(&latest_schema) {
+        let kept = match drop.map(|name| without_retired(&latest_schema, name)) {
+            Some(Ok(kept)) => kept,
+            Some(Err(why)) => return Reply::failed(undroppable(&why)),
+            None => latest_schema.clone(),
+        };
+        let next = next_snapshot(&kept, source);
+        if next.same_but_reasons(&latest_schema) {
             return nothing(set);
         }
         let purpose = match call.arguments.get(1) {
             Some(purpose) => purpose.clone(),
             None => {
-                let next = next_snapshot(&latest_schema, source);
                 let changes = records::readable_changes(&latest_schema, &next);
                 let suggested = if set.list.is_empty() {
                     "initial".to_string()
@@ -200,14 +224,16 @@ fn new(call: &Call) -> Reply {
                 format!("Write it as `{}`", snake(&purpose)),
             ));
         }
-        (
-            latest_schema.clone(),
-            latest_schema,
-            folder_name(set, &purpose),
-        )
+        (latest_schema, kept, folder_name(set, &purpose))
     };
     let after = next_snapshot(&base, source);
     let needed = decisions_needed(&before, &after);
+    // A migration not written yet has no decisions but the drop asked for.
+    let decisions = if unfinished {
+        decisions
+    } else {
+        drop.map(dropped).into_iter().collect()
+    };
     let decisions_of = Decide {
         db,
         project,
@@ -261,6 +287,37 @@ fn new(call: &Call) -> Reply {
     )
 }
 
+/// The decision `--drop <name>` makes, as `changes.jadpo` will say it.
+fn dropped(name: &str) -> Decision {
+    Decision {
+        key: name.to_string(),
+        span: Span::new("", 0, 0),
+        value: if name.contains('.') {
+            DecisionValue::Change(jadpo_std::FieldChange::Dropped)
+        } else {
+            DecisionValue::Entity(jadpo_std::EntityChange::Dropped)
+        },
+        decl: 0,
+        member: 0,
+    }
+}
+
+/// Why `--drop` can't drop what it names.
+fn undroppable(why: &Undroppable) -> Diagnostic {
+    match why {
+        Undroppable::NotRetired(name) => arguments(
+            format!("`{name}` isn't retired"),
+            "Removing data takes two migrations: the first retires it, keeping its data while code stops using it, and a later one drops it.".to_string(),
+            format!("Remove `{name}` from the source and run `jadpo migrate new` to retire it first"),
+        ),
+        Undroppable::Unknown(name) => arguments(
+            format!("`{name}` is no retired field or entity"),
+            "`--drop` takes a retired field or entity by the name its migration's `changes.jadpo` gives it, such as `Todo.legacy_flag` or `Todo`.".to_string(),
+            "Run `jadpo migrate new` with nothing to migrate to list what is retired".to_string(),
+        ),
+    }
+}
+
 /// The decisions written in a migration's `changes.jadpo`.
 fn written_decisions(loaded: &Loaded, migration: &Migration) -> Vec<Decision> {
     let path = migration.changes_path();
@@ -306,16 +363,40 @@ fn nothing(set: &Migrations) -> Reply {
         Some(name) => format!("Nothing to migrate: the entities match {name}"),
         None => "Nothing to migrate: the project has no entities".to_string(),
     };
-    let screen = Screen::new().with(Block::Status {
+    // What still holds data no code reaches, and how it goes.
+    let waiting = retired(&set.latest_schema());
+    let mut screen = Screen::new().with(Block::Status {
         outcome: Outcome::Success,
         text,
-        rows: Vec::new(),
+        rows: waiting
+            .iter()
+            .map(|(name, entity)| {
+                (
+                    name.clone(),
+                    if *entity {
+                        "retired: its table and records stay".to_string()
+                    } else {
+                        "retired: its column and data stay".to_string()
+                    },
+                )
+            })
+            .collect(),
     });
+    if !waiting.is_empty() {
+        screen.push(Block::hint(
+            "jadpo migrate new <purpose> --drop <name>",
+            "drops one for good, once a person accepts it",
+        ));
+    }
     Reply::screen(
         screen,
         Json::object([
             ("written", Json::Null),
             ("latest", latest.map_or(Json::Null, Json::from)),
+            (
+                "retired",
+                Json::array(waiting.iter().map(|(name, _)| name.as_str())),
+            ),
         ]),
     )
 }
@@ -489,8 +570,14 @@ fn changes_file(
 ) -> (String, usize) {
     let mut open = 0;
     let mut added = String::new();
+    let mut seen: Vec<String> = Vec::new();
     for need in needed {
         let key = need.key();
+        // A table left behind in two stores is one decision.
+        if seen.contains(&key) {
+            continue;
+        }
+        seen.push(key.clone());
         // A decision that may be left out (chunk 5.9c) is said in a
         // comment, once, and never open.
         if need.kind.optional() {
@@ -518,7 +605,22 @@ fn changes_file(
             }
             continue;
         }
-        open += 1;
+        // `--drop` asked for it, so the line says it already.
+        match need.kind {
+            NeededKind::DropField => {
+                added.push_str(&format!(
+                    "    // Drops `{key}`'s column and its data for good, once a person\n    // accepts it.\n    {key}: FieldChange.dropped\n"
+                ));
+                continue;
+            }
+            NeededKind::DropEntity => {
+                added.push_str(&format!(
+                    "    // Drops `{key}`'s table and its records for good, once a person\n    // accepts it.\n    {key}: EntityChange.dropped\n"
+                ));
+                continue;
+            }
+            _ => open += 1,
+        }
         let advice = match need.kind {
             NeededKind::Backfill => {
                 let example = field_type(model, &need.entity, &need.field)
@@ -532,7 +634,10 @@ fn changes_file(
             NeededKind::Retire => format!(
                 "    // `{key}` is gone. `FieldChange.retired` keeps its column\n    // and data while code stops using it.\n    {key}: {{}}\n"
             ),
-            NeededKind::Unreadable => continue,
+            NeededKind::RetireEntity => format!(
+                "    // `{key}` is gone. `EntityChange.retired` keeps its table and\n    // records, out of the app's reach, while code stops using them.\n    {key}: {{}}\n"
+            ),
+            NeededKind::Unreadable | NeededKind::DropField | NeededKind::DropEntity => continue,
             NeededKind::Refit => {
                 let example = field_type(model, &need.entity, &need.field)
                     .and_then(|ty| example_backfill(lookup, ty))
@@ -620,6 +725,18 @@ fn screen_for_new(
                 format!("`{key}` is gone: retire its column"),
                 format!("Write `{key}: FieldChange.retired`"),
             ),
+            NeededKind::RetireEntity => (
+                format!("`{key}` is gone: retire its table"),
+                format!("Write `{key}: EntityChange.retired`"),
+            ),
+            NeededKind::DropField => (
+                format!("this migration drops `{key}`'s column"),
+                format!("Write `{key}: FieldChange.dropped`"),
+            ),
+            NeededKind::DropEntity => (
+                format!("this migration drops `{key}`'s table"),
+                format!("Write `{key}: EntityChange.dropped`"),
+            ),
             NeededKind::Unreadable => (
                 format!(
                     "existing `{}` records may hold a `{}` its type no longer reads",
@@ -670,6 +787,9 @@ fn screen_for_new(
                     NeededKind::Retire => "retire",
                     NeededKind::Refit => "refit",
                     NeededKind::Unreadable => "rewrite",
+                    NeededKind::RetireEntity => "retire_entity",
+                    NeededKind::DropField => "drop_field",
+                    NeededKind::DropEntity => "drop_entity",
                 }
                 .into(),
             ),
@@ -677,21 +797,46 @@ fn screen_for_new(
             ("line", line.map_or(Json::Null, |l| i64::from(l).into())),
         ]));
     }
-    if pending.is_empty() {
+    let removed = removals(before, after);
+    if !pending.is_empty() {
+        screen.push(Block::hint(
+            "jadpo migrate new",
+            "finishes the migration once its decisions are written",
+        ));
+    } else if removed.is_empty() {
         screen.push(Block::hint(
             "jadpo check",
             "confirms the migration matches the entities",
         ));
     } else {
-        screen.push(Block::hint(
-            "jadpo migrate new",
-            "finishes the migration once its decisions are written",
-        ));
+        // The change list above says exactly what goes; what is left is a
+        // person's.
+        screen.push(Block::Decision {
+            subject: format!(
+                "{} for a person's acceptance",
+                crate::approval::waiting_changes(removed.len())
+            ),
+            location: None,
+            next: format!(
+                "A person accepts {}: `jadpo acceptance new <purpose>` writes the draft for them.",
+                if removed.len() == 1 { "it" } else { "them" }
+            ),
+        });
     }
     let data = Json::object([
         ("migration", name.into()),
         ("folder", relative.into()),
         ("finished", pending.is_empty().into()),
+        (
+            "removes",
+            Json::array(removed.iter().map(|removal| {
+                Json::object([
+                    ("subject", removal.subject().as_str().into()),
+                    ("change", removal.change().into()),
+                    ("said", words::removal(removal).as_str().into()),
+                ])
+            })),
+        ),
         (
             "files",
             Json::array(written.files.iter().map(|(f, _)| f.as_str())),
@@ -700,6 +845,20 @@ fn screen_for_new(
         ("decisions", Json::Array(decisions)),
     ]);
     Reply::screen(screen, data)
+}
+
+/// Whether table `table`, new in `store`, is an entity's that left its table
+/// behind in another store.
+fn moved_here(before: &Schema, after: &Schema, store: &str, table: &str) -> bool {
+    let Some(Holds::Entity(entity)) = after
+        .stores
+        .get(store)
+        .and_then(|s| s.tables.get(table))
+        .map(|t| &t.holds)
+    else {
+        return false;
+    };
+    before.live_store_of(entity).is_some_and(|was| was != store)
 }
 
 /// The changes from `before` to `after`, grouped under the entity (or the
@@ -740,22 +899,43 @@ fn change_groups(
             table(schema, store, name).and_then(|t| t.columns.get(column).cloned())
         };
         let row = match &change {
-            Change::AddTable { table, .. } => (
+            Change::AddTable { table: t, .. } => (
                 ChangeMark::Added,
                 vec![
                     "table".into(),
-                    table.clone(),
+                    t.clone(),
                     if system {
                         found.holds.to_string()
+                    } else if moved_here(before, after, store, t) {
+                        format!("in `{store}`: new and empty")
                     } else {
                         "new entity".into()
                     },
                 ],
             ),
-            Change::DropTable { table, .. } => (
+            Change::DropTable { table: t, .. } => (
                 ChangeMark::Removed,
-                vec!["table".into(), table.clone(), "removed".into()],
+                vec![
+                    "table".into(),
+                    t.clone(),
+                    "dropped: the table and its records go for good".into(),
+                ],
             ),
+            Change::RetireTable { table: t, .. } => (
+                ChangeMark::Removed,
+                vec![
+                    "table".into(),
+                    t.clone(),
+                    if matches!(&found.holds, Holds::Entity(entity) if after.live_store_of(entity).is_some())
+                    {
+                        format!("in `{store}`: retired, its records stay and aren't copied")
+                    } else {
+                        "retired: the table and its records stay".into()
+                    },
+                ],
+            ),
+            // Refused before a screen is drawn.
+            Change::ReviveTable { .. } => continue,
             Change::AddColumn { column: c, .. } => (
                 ChangeMark::Added,
                 vec![
@@ -772,10 +952,21 @@ fn change_groups(
                     },
                 ],
             ),
-            Change::RemoveColumn { column: c, .. } => (
-                ChangeMark::Removed,
-                vec![c.clone(), String::new(), "dropped".into()],
-            ),
+            Change::RemoveColumn { column: c, .. } => {
+                let was = column(before, c);
+                (
+                    ChangeMark::Removed,
+                    vec![
+                        c.clone(),
+                        was.as_ref().map(|c| c.sql_type.clone()).unwrap_or_default(),
+                        if was.is_some_and(|c| c.generated.is_some()) {
+                            "search removed".into()
+                        } else {
+                            "dropped: the column and its data go for good".into()
+                        },
+                    ],
+                )
+            }
             Change::AlterColumn { column: c, .. } => {
                 let (was, now) = (column(before, c), column(after, c));
                 let what = match (&was, &now) {
@@ -1001,13 +1192,15 @@ pub(crate) fn configured_url(
     Ok(Some((store, address)))
 }
 
-/// Whether the migrations may be applied: their records read, and the
-/// latest finished. Code that doesn't check doesn't stop it.
+/// Whether the migrations may be applied: their records read, the latest
+/// finished, and each removal accepted by a person, however the project got
+/// here (chunk V3). Code that doesn't check doesn't stop it.
 fn migratable(loaded: &Loaded) -> Vec<Diagnostic> {
     jadpo_check::data::migrations::migration_problems(&loaded.db, loaded.project)
         .iter()
         .filter(|d| d.rule.id != rule::MIGRATION_OUT_OF_DATE.id)
         .cloned()
+        .chain(removed::unaccepted(&loaded.db, loaded.project))
         .collect()
 }
 
@@ -1078,7 +1271,10 @@ fn apply(call: &Call) -> Reply {
         })
     });
     match ran {
-        Ok(Ok(Ok((ran, filled)))) => applied(&store, &ran, &filled),
+        Ok(Ok(Ok((ran, filled)))) => {
+            let removes = removed::removed_by(&loaded.db, loaded.project, &store);
+            applied(&store, &ran, &filled, &removes)
+        }
         // The latest migration's backfill can't run while the code doesn't
         // check: its errors are what to fix.
         Ok(Ok(Err(
@@ -1212,9 +1408,23 @@ fn rows(n: u64) -> String {
     }
 }
 
+/// What a removal did, under its migration on `apply`'s screen.
+fn removal_word(removal: &Removal) -> &'static str {
+    match removal.kind {
+        RemovalKind::ColumnDropped | RemovalKind::TableDropped => "dropped",
+        RemovalKind::EntityRemoved => "retired",
+        RemovalKind::EntityMoved { .. } => "retired here, moved",
+    }
+}
+
 /// The screen for migrations applied: each by name, and under it each
-/// backfill it filled in batches.
-fn applied(store: &str, ran: &[String], filled: &[Filled]) -> Reply {
+/// backfill it filled in batches and what it removed.
+fn applied(
+    store: &str,
+    ran: &[String],
+    filled: &[Filled],
+    removes: &BTreeMap<String, Vec<Removal>>,
+) -> Reply {
     let text = if ran.is_empty() {
         format!("`{store}` is up to date")
     } else {
@@ -1254,6 +1464,12 @@ fn applied(store: &str, ran: &[String], filled: &[Filled]) -> Reply {
             }
             lines.push((format!("  {}", fill.field), said));
         }
+        for removal in removes.get(name).into_iter().flatten() {
+            lines.push((
+                format!("  {}", removal.subject()),
+                removal_word(removal).to_string(),
+            ));
+        }
     }
     let screen = Screen::new().with(Block::Status {
         outcome: Outcome::Success,
@@ -1285,6 +1501,18 @@ fn applied(store: &str, ran: &[String], filled: &[Filled]) -> Reply {
             ("store", store.into()),
             ("applied", Json::array(ran.iter().map(String::as_str))),
             ("backfills", Json::array(backfills)),
+            (
+                "removed",
+                Json::array(ran.iter().flat_map(|name| {
+                    removes.get(name).into_iter().flatten().map(move |removal| {
+                        Json::object([
+                            ("migration", name.as_str().into()),
+                            ("subject", removal.subject().as_str().into()),
+                            ("change", removal.change().into()),
+                        ])
+                    })
+                })),
+            ),
         ]),
     )
 }

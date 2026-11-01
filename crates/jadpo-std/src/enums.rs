@@ -329,6 +329,19 @@ std_enum! {
 }
 
 std_enum! {
+    /// A migration's decision about an entity that is gone (area 5,
+    /// "Migrations").
+    EntityChange: "EntityChange" {
+        /// Code stops using it; the table and its records stay, out of the
+        /// app's reach, until a later migration drops them.
+        Retired: "retired",
+        /// The table and its records are removed, in a later migration than
+        /// the retirement.
+        Dropped: "dropped",
+    }
+}
+
+std_enum! {
     /// The built-in drivers a connection in `app.jadpo` can name (area 11,
     /// "Capabilities").
     Driver: "Driver" {
@@ -814,6 +827,7 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (AuditBy::NAME, AuditBy::NAMES.to_vec()),
         (IndexKind::NAME, IndexKind::NAMES.to_vec()),
         (FieldChange::NAME, FieldChange::NAMES.to_vec()),
+        (EntityChange::NAME, EntityChange::NAMES.to_vec()),
         (Driver::NAME, Driver::NAMES.to_vec()),
         (DeployTarget::NAME, DeployTarget::NAMES.to_vec()),
         (Trigger::NAME, Trigger::NAMES.to_vec()),
@@ -902,6 +916,7 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         AuditBy::NAME => position(AuditBy::NAMES),
         IndexKind::NAME => position(IndexKind::NAMES),
         FieldChange::NAME => position(FieldChange::NAMES),
+        EntityChange::NAME => position(EntityChange::NAMES),
         Driver::NAME => position(Driver::NAMES),
         DeployTarget::NAME => position(DeployTarget::NAMES),
         Trigger::NAME => position(Trigger::NAMES),

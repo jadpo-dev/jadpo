@@ -396,6 +396,15 @@ decisions are written ([Migrations](05-data.md#migrations)). `apply` and
 are several. Otherwise they read it from the connection's setting, in the
 environment and then `.env.local`.
 
+`new <purpose> --drop <name>` also removes for good a retired field or
+entity, named as `changes.jadpo` names it, `Todo.legacy_flag` or `Todo`,
+one to a migration ([Removing data](05-data.md#removing-data)). It
+refuses anything not retired, and while the latest migration waits for
+its decisions. With nothing to migrate, `new` lists what is still retired.
+`apply` lists what each migration it ran removed, and refuses a project
+with a removal nobody accepted
+([`migration.drop_not_accepted`](../errors/migration.drop_not_accepted.md)).
+
 A missing purpose will be asked for at a prompt, as the [CLI design
 language](../cli-design-language.md) draws it, once prompts are built.
 Until then the command names a purpose to use.
@@ -3054,7 +3063,7 @@ yet, or that the design notes replace.
 | `cli.incident_read_failed` | `incident` | Runtime event file could not be read |
 | `cli.incident_revision_mismatch` | `incident` | Runtime event and local source revisions differ |
 | `cli.lsp_arguments` | `lsp` | A `jadpo lsp` command is given an argument, which it doesn't take |
-| `cli.migrate_arguments` | `migrate` | A `jadpo migrate` command names no action, one it doesn't have, or a purpose for an action that takes none |
+| `cli.migrate_arguments` | `migrate` | A `jadpo migrate` command names no action, one it doesn't have, a purpose for an action that takes none, or a `--drop` of what isn't retired |
 | `cli.new_arguments` | `new` | A `jadpo new` command names no project, or more than one |
 | `cli.package_arguments` | `package` | A `jadpo package` command names no action, one it doesn't have, or a package the project doesn't hold |
 | `cli.package_not_openapi` | `package import` | A file given to `jadpo package import` is JSON but not an OpenAPI 3.0 or 3.1 document |
@@ -3105,6 +3114,7 @@ against one.
 | `deliveries.wrong_state` | `deliveries` | A delivery or schedule run was asked to do something its state rules out, such as cancelling one that has already failed |
 | `flags.unavailable` | `flags` | The flags' state couldn't be read or changed in their database, because it can't be reached, has no table for them yet, or changed while the command ran |
 | `migration.apply_failed` | `migrate apply`, `seed`, `dev`, `test` | Applying the project's migrations to a database stopped at a step that failed |
+| `migration.drop_not_accepted` | `check`, `build`, `migrate apply`, `seed`, `dev` | A migration removes data, and no acceptance in the project says a person agreed to it |
 | `migration.extension_missing` | `migrate apply`, `seed`, `dev`, `test` | The project's migrations need a PostgreSQL extension, such as pgvector, that the database server doesn't offer or that the role applying them can't create |
 | `migration.extension_outdated` | `migrate apply`, `seed`, `dev`, `test` | The database server's PostgreSQL extension, such as pgvector, is older than the project's migrations and queries need |
 | `migration.store_diverged` | `migrate apply`, `seed`, `dev` | The migrations a database has applied don't match the project's: one has changed since it ran, the project doesn't have one, or one comes out of order |

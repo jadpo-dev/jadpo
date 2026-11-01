@@ -14,7 +14,7 @@ use jadpo_std::Num;
 
 use jadpo_sql::table;
 
-use crate::schema::{Allows, Change, Column, Holds, Schema, Table, changes};
+use crate::schema::{Allows, Change, Column, Holds, Schema, Store, Table, changes};
 
 /// A decision a change needs before its SQL can be written.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -45,6 +45,15 @@ pub enum NeededKind {
     /// migration checks them and refuses while one doesn't read, so the
     /// decision may be left out; a `backfill:` rewrites them instead.
     Unreadable,
+    /// A retired column this migration removes for good, as `jadpo migrate
+    /// new --drop` asks and an acceptance allows (chunk V3).
+    DropField,
+    /// An entity gone from the source (chunk V3): its table is retired,
+    /// kept with its records until a later migration drops it.
+    RetireEntity,
+    /// A retired table this migration removes for good, with its records
+    /// (chunk V3).
+    DropEntity,
 }
 
 impl NeededKind {
@@ -55,9 +64,13 @@ impl NeededKind {
 }
 
 impl Needed {
-    /// `Todo.priority`.
+    /// `Todo.priority`, or `Todo` for a decision about the whole entity.
     pub fn key(&self) -> String {
-        format!("{}.{}", self.entity, self.field)
+        if self.field.is_empty() {
+            self.entity.clone()
+        } else {
+            format!("{}.{}", self.entity, self.field)
+        }
     }
 }
 
@@ -79,6 +92,8 @@ pub enum Decided {
         code: String,
     },
     Retired,
+    /// A retired column or table goes for good, its data with it.
+    Dropped,
 }
 
 /// A change this compiler can't migrate yet, and why.
@@ -89,8 +104,11 @@ pub struct Refusal {
 }
 
 /// The snapshot the next migration records, from the latest one and the
-/// schema the source asks for: retired columns stay, and a column whose
-/// field is gone is retired (the only first step a removal has).
+/// schema the source asks for: retired columns and tables stay, a column
+/// whose field is gone is retired, and so is a table whose entity is gone
+/// from its store (the only first step a removal has). A system table
+/// nothing asks for any more stays as it is: it may hold what a person
+/// must decide about, such as an audit trail, and costs nothing.
 ///
 /// Columns stand where the database has them, since PostgreSQL can't move
 /// one: a column the latest snapshot has keeps its position, and a new
@@ -105,6 +123,14 @@ pub fn next_snapshot(latest: &Schema, source: &Schema) -> Schema {
                 .get_mut(store_name)
                 .and_then(|s| s.tables.get_mut(table_name))
             else {
+                out.stores
+                    .entry(store_name.clone())
+                    .or_insert_with(|| Store {
+                        driver: store.driver.clone(),
+                        tables: BTreeMap::new(),
+                    })
+                    .tables
+                    .insert(table_name.clone(), kept(table));
                 continue;
             };
             let written: Vec<String> = now.ordered().into_iter().map(|(n, _)| n.clone()).collect();
@@ -148,10 +174,279 @@ pub fn next_snapshot(latest: &Schema, source: &Schema) -> Schema {
     out
 }
 
+/// `table`, which nothing in the source asks for: a system table as it
+/// is, an entity's retired. A retired table refers to nothing, so its rows
+/// don't hold back a delete of what they named, and nothing can refer to
+/// it. Its keys and indexes stay for servers still running the old build.
+fn kept(table: &Table) -> Table {
+    let mut out = table.clone();
+    if matches!(table.holds, Holds::Entity(_)) {
+        out.retired = true;
+        out.foreign_keys.clear();
+    }
+    out
+}
+
+/// A copy of `latest` without the retired column or table `name` gives,
+/// `Todo.legacy_flag` or `Todo` by born names: what `jadpo migrate new
+/// --drop` works the next snapshot out from (chunk V3). `Err` says why it
+/// can't be dropped.
+pub fn without_retired(latest: &Schema, name: &str) -> Result<Schema, Undroppable> {
+    let mut out = latest.clone();
+    let holding = |entity: &str| Holds::Entity(entity.to_string());
+    let mut found = false;
+    let mut live = false;
+    match name.split_once('.') {
+        Some((entity, field)) => {
+            for table in out.stores.values_mut().flat_map(|s| s.tables.values_mut()) {
+                if table.holds != holding(entity) {
+                    continue;
+                }
+                let before = table.columns.len();
+                live |= table
+                    .columns
+                    .values()
+                    .any(|column| !column.retired && column.field.as_deref() == Some(field));
+                table.columns.retain(|_, column| {
+                    !(column.retired && column.field.as_deref() == Some(field))
+                });
+                found |= table.columns.len() != before;
+            }
+        }
+        None => {
+            for store in out.stores.values_mut() {
+                live |= store
+                    .tables
+                    .values()
+                    .any(|table| !table.retired && table.holds == holding(name));
+                let before = store.tables.len();
+                store
+                    .tables
+                    .retain(|_, table| !(table.retired && table.holds == holding(name)));
+                found |= store.tables.len() != before;
+            }
+        }
+    }
+    if found {
+        Ok(out)
+    } else if live {
+        Err(Undroppable::NotRetired(name.to_string()))
+    } else {
+        Err(Undroppable::Unknown(name.to_string()))
+    }
+}
+
+/// Why a name can't be dropped.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Undroppable {
+    /// It is still in use: it is removed from the source first.
+    NotRetired(String),
+    /// No field or entity of the latest snapshot goes by it.
+    Unknown(String),
+}
+
+/// What is retired in `schema`, each by the name `--drop` takes: entities
+/// first, then fields, each once.
+pub fn retired(schema: &Schema) -> Vec<(String, bool)> {
+    let mut entities = BTreeSet::new();
+    let mut fields = BTreeSet::new();
+    for table in schema.stores.values().flat_map(|s| s.tables.values()) {
+        let Holds::Entity(entity) = &table.holds else {
+            continue;
+        };
+        if table.retired {
+            entities.insert(entity.clone());
+        }
+        for column in table.columns.values().filter(|column| column.retired) {
+            if let Some(field) = &column.field {
+                fields.insert(format!("{entity}.{field}"));
+            }
+        }
+    }
+    entities
+        .into_iter()
+        .map(|name| (name, true))
+        .chain(fields.into_iter().map(|name| (name, false)))
+        .collect()
+}
+
+/// What a migration takes out of the app's reach or removes for good, and
+/// so needs a person's acceptance (area 18, `DataChange`; chunk V3).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Removal {
+    pub kind: RemovalKind,
+    pub store: String,
+    pub table: String,
+    /// The entity's born name; `None` for a system table.
+    pub entity: Option<String>,
+    /// The field's born name, for a column dropped.
+    pub field: Option<String>,
+    /// The columns that go, by name, each with its type: a field's own, or
+    /// every column of a table dropped.
+    pub columns: Vec<(String, String)>,
+    /// Whether any of them holds a `File`, which its rows let go of.
+    pub files: bool,
+    /// Whether the store keeps an audit trail, whose entries stay.
+    pub history: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RemovalKind {
+    /// A retired column is gone, with every value in it.
+    ColumnDropped,
+    /// A table is gone, with every record in it.
+    TableDropped,
+    /// An entity is gone from the source: its table stays, retired.
+    EntityRemoved,
+    /// An entity's table is in another store now, empty there, and its
+    /// records stay behind here, retired.
+    EntityMoved { to: String },
+}
+
+impl Removal {
+    /// As an acceptance lists it: `Todo.legacy_flag`, `Todo`, or a system
+    /// table by its store, `main.jadpo_audit`.
+    pub fn subject(&self) -> String {
+        match (&self.entity, &self.field) {
+            (Some(entity), Some(field)) => format!("{entity}.{field}"),
+            (Some(entity), None) => entity.clone(),
+            (None, _) => format!("{}.{}", self.store, self.table),
+        }
+    }
+
+    /// `DataChange.column_dropped`.
+    pub fn change(&self) -> &'static str {
+        match self.kind {
+            RemovalKind::ColumnDropped => "DataChange.column_dropped",
+            RemovalKind::TableDropped => "DataChange.table_dropped",
+            RemovalKind::EntityRemoved => "DataChange.entity_removed",
+            RemovalKind::EntityMoved { .. } => "DataChange.entity_moved",
+        }
+    }
+}
+
+/// What the migration from `before` to `after` removes.
+pub fn removals(before: &Schema, after: &Schema) -> Vec<Removal> {
+    let mut out = Vec::new();
+    for (store_name, store) in &before.stores {
+        let history = store.tables.contains_key(jadpo_std::system::AUDIT.table);
+        for (name, was) in &store.tables {
+            let entity = match &was.holds {
+                Holds::Entity(entity) => Some(entity.clone()),
+                Holds::System(_) => None,
+            };
+            let removal =
+                |kind: RemovalKind, field: Option<String>, columns: &[(&String, &Column)]| {
+                    Removal {
+                        kind,
+                        store: store_name.clone(),
+                        table: name.clone(),
+                        entity: entity.clone(),
+                        field,
+                        columns: columns
+                            .iter()
+                            .map(|(name, column)| ((*name).clone(), column.sql_type.clone()))
+                            .collect(),
+                        files: columns.iter().any(|(_, column)| holds_a_file(column)),
+                        history,
+                    }
+                };
+            // A generated column holds nothing of its own.
+            let stored: Vec<(&String, &Column)> = was
+                .ordered()
+                .into_iter()
+                .filter(|(_, column)| column.generated.is_none())
+                .collect();
+            let Some(now) = table_in(after, store_name, name) else {
+                out.push(removal(RemovalKind::TableDropped, None, &stored));
+                continue;
+            };
+            if now.retired && !was.retired {
+                let moved = entity
+                    .as_deref()
+                    .and_then(|entity| after.live_store_of(entity))
+                    .filter(|to| *to != store_name);
+                out.push(removal(
+                    match moved {
+                        Some(to) => RemovalKind::EntityMoved { to: to.to_string() },
+                        None => RemovalKind::EntityRemoved,
+                    },
+                    None,
+                    &stored,
+                ));
+            }
+            // A field held in several columns is one removal.
+            let mut fields: BTreeMap<String, Vec<(&String, &Column)>> = BTreeMap::new();
+            for (column_name, column) in stored {
+                if !now.columns.contains_key(column_name) {
+                    fields
+                        .entry(column.field.clone().unwrap_or_else(|| column_name.clone()))
+                        .or_default()
+                        .push((column_name, column));
+                }
+            }
+            for (field, columns) in fields {
+                out.push(removal(RemovalKind::ColumnDropped, Some(field), &columns));
+            }
+        }
+    }
+    out
+}
+
+/// The statements of `document`, a migration's `postgres.sql`, that remove
+/// what the migration from `before` to `after` doesn't: a hand's work, since
+/// [`migration_sql`] writes only what the snapshots say. So a migration
+/// other than the latest, whose SQL can't be written again from code that
+/// has moved on, can't drop what no acceptance was asked about.
+pub fn unexplained_removals(document: &str, before: &Schema, after: &Schema) -> Vec<String> {
+    let unquoted = |word: &str| word.trim_matches('"').to_string();
+    let mut out = Vec::new();
+    for section in sections(document) {
+        let store = section.store.as_str();
+        for line in section.sql.lines() {
+            let statement = line.trim().trim_end_matches(';');
+            let upper = statement.to_ascii_uppercase();
+            let words: Vec<&str> = statement.split_whitespace().collect();
+            let explained = if upper.starts_with("TRUNCATE ") || upper.starts_with("DELETE FROM ") {
+                false
+            } else if upper.starts_with("DROP TABLE ") {
+                let name = unquoted(words.last().copied().unwrap_or_default());
+                table_in(before, store, &name).is_some() && table_in(after, store, &name).is_none()
+            } else if upper.starts_with("ALTER TABLE ") && upper.contains(" DROP COLUMN ") {
+                let name = unquoted(words.get(2).copied().unwrap_or_default());
+                let column = unquoted(words.last().copied().unwrap_or_default());
+                let was = table_in(before, store, &name).and_then(|t| t.columns.get(&column));
+                let now = table_in(after, store, &name).and_then(|t| t.columns.get(&column));
+                was.is_some_and(|was| {
+                    now.is_none()
+                        || was.generated.is_some()
+                        || now.is_some_and(|c| c.generated.is_some())
+                })
+            } else if upper.starts_with("DROP ") {
+                upper.starts_with("DROP INDEX ") || upper.starts_with("DROP TRIGGER ")
+            } else {
+                true
+            };
+            if !explained {
+                out.push(statement.to_string());
+            }
+        }
+    }
+    out
+}
+
 /// The decisions the migration from `before` to `after` (a snapshot from
 /// [`next_snapshot`]) needs.
 pub fn decisions_needed(before: &Schema, after: &Schema) -> Vec<Needed> {
     let mut out = Vec::new();
+    let whole = |store: &str, table: &str, entity: &str, kind: NeededKind| Needed {
+        store: store.to_string(),
+        table: table.to_string(),
+        column: String::new(),
+        entity: entity.to_string(),
+        field: String::new(),
+        kind,
+    };
     for change in changes(before, after) {
         let (store, table, column) = match &change {
             Change::AddColumn {
@@ -164,6 +459,62 @@ pub fn decisions_needed(before: &Schema, after: &Schema) -> Vec<Needed> {
                 table,
                 column,
             } => (store, table, column),
+            // A table retired because its entity is gone. A move is the
+            // person's acceptance alone: there is nothing else to decide.
+            Change::RetireTable { store, table } => {
+                if let Some(Table {
+                    holds: Holds::Entity(entity),
+                    ..
+                }) = table_in(before, store, table)
+                    && after.live_store_of(entity).is_none()
+                {
+                    out.push(whole(store, table, entity, NeededKind::RetireEntity));
+                }
+                continue;
+            }
+            Change::DropTable { store, table } => {
+                if let Some(Table {
+                    holds: Holds::Entity(entity),
+                    retired: true,
+                    ..
+                }) = table_in(before, store, table)
+                {
+                    out.push(whole(store, table, entity, NeededKind::DropEntity));
+                }
+                continue;
+            }
+            Change::RemoveColumn {
+                store,
+                table,
+                column,
+            } => {
+                let was = table_in(before, store, table);
+                let (Some(Holds::Entity(entity)), Some(held)) = (
+                    was.map(|t| &t.holds),
+                    was.and_then(|t| t.columns.get(column)),
+                ) else {
+                    continue;
+                };
+                if held.retired {
+                    let needed = Needed {
+                        store: store.clone(),
+                        table: table.clone(),
+                        column: column.clone(),
+                        entity: entity.clone(),
+                        field: held.field.clone().unwrap_or_else(|| column.clone()),
+                        kind: NeededKind::DropField,
+                    };
+                    if !out.iter().any(|other: &Needed| {
+                        other.store == needed.store
+                            && other.table == needed.table
+                            && other.key() == needed.key()
+                            && other.kind == needed.kind
+                    }) {
+                        out.push(needed);
+                    }
+                }
+                continue;
+            }
             _ => continue,
         };
         let (Some(old), Some(new)) = (
@@ -463,12 +814,48 @@ pub fn migration_sql(
                     }
                 }
             }
-            Change::DropTable { table, .. } => {
-                let what = old.map_or_else(|| format!("table `{table}`"), |t| t.holds.to_string());
-                refusals.push(Refusal {
-                    change: format!("{what} removed"),
-                    reason: "Removing an entity, or moving it to another store, needs a decision whose form isn't decided yet, so this compiler can't migrate it.".into(),
+            // Nothing in the database changes: the table stays, and what
+            // it refers to goes as a reference dropped.
+            Change::RetireTable { table, .. } => {
+                let need = needed.iter().find(|n| {
+                    n.store == store && &n.table == table && n.kind == NeededKind::RetireEntity
                 });
+                if let Some(need) = need
+                    && decided(need).is_none()
+                {
+                    plan.columns.push(waiting(need));
+                }
+            }
+            Change::ReviveTable { table, .. } => {
+                refusals.push(Refusal {
+                    change: format!("retired table `{table}` comes back"),
+                    reason: format!(
+                        "An entity can't take back a retired table: its records have been out of the app's reach, and erasure's and retention's, since it was retired. Drop it first with `jadpo migrate new <purpose> --drop {}`, which needs a person's acceptance, then add the entity in a later migration.",
+                        entity_of(old)
+                    ),
+                });
+            }
+            Change::DropTable { table, .. } => {
+                let need = needed.iter().find(|n| {
+                    n.store == store && &n.table == table && n.kind == NeededKind::DropEntity
+                });
+                match need {
+                    Some(need) => match decided(need) {
+                        Some(Decided::Dropped) => plan.removals.push(Statement {
+                            sql: table::drop_table(table),
+                            does: "drop table",
+                        }),
+                        _ => plan.columns.push(waiting(need)),
+                    },
+                    None => {
+                        let what =
+                            old.map_or_else(|| format!("table `{table}`"), |t| t.holds.to_string());
+                        refusals.push(Refusal {
+                            change: format!("{what} removed"),
+                            reason: "A table is dropped only after it was retired, in an earlier migration, and only an entity's table: a system table stays, since what it holds can't be judged from here.".into(),
+                        });
+                    }
+                }
             }
             Change::AddColumn { table, column, .. } => {
                 let Some(col) = new.and_then(|t| t.columns.get(column)) else {
@@ -578,9 +965,16 @@ pub fn migration_sql(
                     continue;
                 }
                 if was.retired && !now.retired {
+                    let field = format!(
+                        "{}.{}",
+                        entity_of(old),
+                        was.field.as_deref().unwrap_or(column)
+                    );
                     refusals.push(Refusal {
                         change: format!("retired column `{table}.{column}` comes back"),
-                        reason: "A field can't take back a retired column's name until a later migration drops it, which needs acceptances (area 18).".into(),
+                        reason: format!(
+                            "A field can't take back a retired column's name: drop it first with `jadpo migrate new <purpose> --drop {field}`, which needs a person's acceptance, then add the field in a later migration."
+                        ),
                     });
                     continue;
                 }
@@ -650,10 +1044,31 @@ pub fn migration_sql(
                 });
             }
             Change::RemoveColumn { table, column, .. } => {
-                refusals.push(Refusal {
-                    change: format!("column `{table}.{column}` dropped"),
-                    reason: "A column is dropped only after it was retired, and dropping needs acceptances (area 18), which aren't built yet.".into(),
+                let was = old.and_then(|t| t.columns.get(column));
+                let need = was.filter(|was| was.retired).and_then(|was| {
+                    let field = was.field.as_deref().unwrap_or(column);
+                    needed.iter().find(|n| {
+                        n.store == store
+                            && &n.table == table
+                            && n.kind == NeededKind::DropField
+                            && n.field == field
+                    })
                 });
+                match need {
+                    Some(need) => match decided(need) {
+                        Some(Decided::Dropped) => plan.removals.push(Statement {
+                            sql: table::drop_column(table, column),
+                            does: "drop column",
+                        }),
+                        // One line for a field held in several columns.
+                        _ if &need.column == column => plan.columns.push(waiting(need)),
+                        _ => {}
+                    },
+                    None => refusals.push(Refusal {
+                        change: format!("column `{table}.{column}` dropped"),
+                        reason: "A column is dropped only after it was retired, in an earlier migration.".into(),
+                    }),
+                }
             }
             Change::DropForeignKey { table, name, .. }
             | Change::DropUnique { table, name, .. }
@@ -711,6 +1126,32 @@ pub fn migration_sql(
         }
         let had = had.unwrap_or_default();
         let has = has.unwrap_or_default();
+        // What a drop lets go of, counted before its column or table goes,
+        // since no trigger sees a row of it again: its bytes go once nothing
+        // else holds them (chunk V3). A column's trigger is made again
+        // first, which keeps writes out of the table until this commits; a
+        // table has only this statement to do so.
+        for (name, columns) in &had {
+            let kept = table_in(after, store, name);
+            let gone: Vec<String> = columns
+                .iter()
+                .filter(|column| kept.is_none_or(|table| !table.columns.contains_key(*column)))
+                .cloned()
+                .collect();
+            if gone.is_empty() {
+                continue;
+            }
+            if kept.is_none() {
+                plan.releases.push(Statement {
+                    sql: table::lock_against_writes(name),
+                    does: "lock against writes",
+                });
+            }
+            plan.releases.push(Statement {
+                sql: table::release_held_files(name, &gone),
+                does: "let go of the files its rows hold",
+            });
+        }
         for (name, columns) in &has {
             let was = had.get(name);
             if was == Some(columns) {
@@ -781,6 +1222,8 @@ pub fn migration_sql(
             .chain(plan.references)
             .chain(plan.indexes)
             .chain(plan.files)
+            .chain(plan.releases)
+            .chain(plan.removals)
             .collect();
         if !statements.is_empty() {
             out.stores.insert(store, statements);
@@ -884,6 +1327,12 @@ struct Plan {
     indexes: Vec<Statement>,
     /// What counts the holders of each stored file (chunk B3).
     files: Vec<Statement>,
+    /// What a drop lets go of, once the triggers that would count it again
+    /// are made (chunk V3).
+    releases: Vec<Statement>,
+    /// Retired columns and tables going for good, last of all, so nothing
+    /// is lost to a migration that stops on anything else (chunk V3).
+    removals: Vec<Statement>,
 }
 
 impl Plan {
@@ -1092,15 +1541,20 @@ fn backfill(
             ..Filled::default()
         },
         _ => Filled {
-            now: vec![Statement {
-                sql: table::comment(&format!(
-                    "waiting for the decision about {} in changes.jadpo",
-                    need.key()
-                )),
-                does: "decision to make",
-            }],
+            now: vec![waiting(need)],
             ..Filled::default()
         },
+    }
+}
+
+/// What stands in a migration's SQL for a decision still to make.
+fn waiting(need: &Needed) -> Statement {
+    Statement {
+        sql: table::comment(&format!(
+            "waiting for the decision about {} in changes.jadpo",
+            need.key()
+        )),
+        does: "decision to make",
     }
 }
 
@@ -1244,6 +1698,7 @@ mod tests {
     fn schema(columns: &[(&str, &str, bool, bool)]) -> Schema {
         let mut table = Table {
             holds: Holds::Entity("Todo".into()),
+            retired: false,
             columns: BTreeMap::new(),
             primary_key: Key {
                 name: "todo_pkey".into(),
@@ -1567,6 +2022,7 @@ mod tests {
                 "jadpo_files".into(),
                 Table {
                     holds: Holds::System("files".into()),
+                    retired: false,
                     columns: BTreeMap::new(),
                     primary_key: Key {
                         name: "jadpo_files_pkey".into(),
@@ -1580,6 +2036,199 @@ mod tests {
             );
         }
         out
+    }
+
+    /// An entity gone keeps its table, retired, with nothing to run but
+    /// dropping what it refers to, and no later snapshot changes it; a
+    /// system table nothing asks for stays as it is, with no migration.
+    #[test]
+    fn what_the_source_stops_asking_for_stays() {
+        let mut latest = schema(&[("id", "uuid", false, false)]);
+        let store = latest.stores.get_mut("main").expect("main");
+        let todo = store.tables.get_mut("todo").expect("todo");
+        todo.foreign_keys.insert(
+            "todo_owner_id_fkey".into(),
+            crate::schema::ForeignKey {
+                columns: vec!["owner_id".into()],
+                table: "owner".into(),
+                on_delete: crate::schema::OnDelete::Restrict,
+            },
+        );
+        let mut audit = todo.clone();
+        audit.holds = Holds::System("audit".into());
+        audit.foreign_keys.clear();
+        store.tables.insert("jadpo_audit".into(), audit);
+        let next = next_snapshot(&latest, &Schema::default());
+        let kept = &next.stores["main"].tables;
+        assert!(kept["todo"].retired && kept["todo"].foreign_keys.is_empty());
+        assert!(!kept["jadpo_audit"].retired);
+        assert_eq!(
+            next_snapshot(&next, &Schema::default()),
+            next,
+            "nothing more to migrate"
+        );
+        // The snapshot round-trips, and says so only of a retired table.
+        assert_eq!(Schema::read(&next.to_document()).expect("read"), next);
+        let needed = decisions_needed(&latest, &next);
+        assert_eq!(needed.len(), 1);
+        assert_eq!(
+            (needed[0].kind, needed[0].key().as_str()),
+            (NeededKind::RetireEntity, "Todo")
+        );
+        let waiting = migration_sql(&latest, &next, &|_| None).expect("sql");
+        assert!(waiting.summary().contains(&"decision to make"));
+        let retiring = migration_sql(&latest, &next, &|_| Some(Decided::Retired)).expect("sql");
+        assert_eq!(retiring.summary(), vec!["drop constraint"]);
+        let removed = removals(&latest, &next);
+        assert_eq!(removed.len(), 1);
+        assert_eq!(
+            (removed[0].change(), removed[0].subject().as_str()),
+            ("DataChange.entity_removed", "Todo")
+        );
+        assert!(removed[0].history, "the store keeps an audit trail");
+    }
+
+    /// Only what is retired can be dropped, and a retired table or column
+    /// asked for again is refused.
+    #[test]
+    fn only_what_is_retired_is_dropped() {
+        let mut latest = schema(&[("id", "uuid", false, false), ("old", "boolean", true, true)]);
+        assert_eq!(
+            without_retired(&latest, "Todo.id"),
+            Err(Undroppable::NotRetired("Todo.id".into()))
+        );
+        assert_eq!(
+            without_retired(&latest, "Todo"),
+            Err(Undroppable::NotRetired("Todo".into()))
+        );
+        assert_eq!(
+            without_retired(&latest, "Nope"),
+            Err(Undroppable::Unknown("Nope".into()))
+        );
+        assert_eq!(
+            retired(&latest),
+            vec![("Todo.old".to_string(), false)],
+            "what `--drop` can name"
+        );
+        let after = without_retired(&latest, "Todo.old").expect("dropped");
+        assert_eq!(
+            decisions_needed(&latest, &after)[0].kind,
+            NeededKind::DropField
+        );
+        let sql = migration_sql(&latest, &after, &|_| Some(Decided::Dropped)).expect("sql");
+        assert_eq!(sql.summary(), vec!["drop column"]);
+        assert!(unexplained_removals(&sql.to_document("x"), &latest, &after).is_empty());
+        // Not so from a snapshot that never retired it.
+        let live = schema(&[
+            ("id", "uuid", false, false),
+            ("old", "boolean", true, false),
+        ]);
+        assert!(migration_sql(&live, &after, &|_| Some(Decided::Dropped)).is_err());
+        // A table.
+        let table = latest
+            .stores
+            .get_mut("main")
+            .and_then(|store| store.tables.get_mut("todo"))
+            .expect("todo");
+        table.retired = true;
+        let gone = without_retired(&latest, "Todo").expect("dropped");
+        assert_eq!(
+            decisions_needed(&latest, &gone)[0].kind,
+            NeededKind::DropEntity
+        );
+        let sql = migration_sql(&latest, &gone, &|_| Some(Decided::Dropped)).expect("sql");
+        assert_eq!(sql.stores["main"][0].sql, "DROP TABLE \"todo\"");
+        assert!(unexplained_removals(&sql.to_document("x"), &latest, &gone).is_empty());
+        let removed = removals(&latest, &gone);
+        assert_eq!(
+            (removed[0].change(), removed[0].columns.len()),
+            ("DataChange.table_dropped", 2)
+        );
+        // A retired table an entity asks for again.
+        let back = schema(&[("id", "uuid", false, false)]);
+        let refused = migration_sql(&latest, &next_snapshot(&latest, &back), &|_| None);
+        assert!(
+            refused.is_err_and(|refusals| refusals[0].change.contains("comes back")),
+            "a retired table doesn't come back"
+        );
+    }
+
+    /// A drop lets go of its rows' files before its column or table goes,
+    /// with the trigger that would count them made again first, and comes
+    /// last, so nothing is lost to a migration that stops elsewhere.
+    #[test]
+    fn a_drop_lets_go_of_what_its_rows_hold() {
+        let mut before = filed(true);
+        let table = before
+            .stores
+            .get_mut("main")
+            .and_then(|store| store.tables.get_mut("todo"))
+            .expect("todo");
+        let copy = Column {
+            position: 2,
+            field: Some("copy".into()),
+            ..table.columns["scan"].clone()
+        };
+        table.columns.insert("copy".into(), copy);
+        table.columns.get_mut("scan").expect("scan").retired = true;
+        let after = without_retired(&before, "Todo.scan").expect("dropped");
+        let sql = migration_sql(&before, &after, &|_| Some(Decided::Dropped)).expect("sql");
+        let does: Vec<&str> = sql.stores["main"].iter().map(|s| s.does).collect();
+        assert_eq!(
+            does,
+            [
+                "drop the trigger that counts a file's holders",
+                "count a file's holders",
+                "let go of the files its rows hold",
+                "drop column",
+            ]
+        );
+        assert!(sql.stores["main"][1].sql.contains("UPDATE OF \"copy\""));
+        assert!(
+            sql.stores["main"][2]
+                .sql
+                .contains("SELECT \"scan\" AS \"held\"")
+        );
+        // A table: its rows kept from changing, as no trigger is touched.
+        let mut retired_table = before.clone();
+        let table = retired_table
+            .stores
+            .get_mut("main")
+            .and_then(|store| store.tables.get_mut("todo"))
+            .expect("todo");
+        table.retired = true;
+        let gone = without_retired(&retired_table, "Todo").expect("dropped");
+        let sql = migration_sql(&retired_table, &gone, &|_| Some(Decided::Dropped)).expect("sql");
+        let does: Vec<&str> = sql.stores["main"].iter().map(|s| s.does).collect();
+        assert_eq!(
+            does,
+            [
+                "lock against writes",
+                "let go of the files its rows hold",
+                "drop table"
+            ]
+        );
+    }
+
+    /// A statement no snapshot explains is a hand's.
+    #[test]
+    fn a_drop_the_snapshots_dont_show_is_found() {
+        let before = schema(&[("id", "uuid", false, false), ("old", "boolean", true, true)]);
+        let found = |sql: &str| {
+            unexplained_removals(
+                &format!("-- x\n\n-- store: main\n{sql}\n"),
+                &before,
+                &before,
+            )
+        };
+        assert_eq!(found("DROP TABLE \"todo\";").len(), 1);
+        assert_eq!(found("drop table todo;").len(), 1);
+        assert_eq!(found("ALTER TABLE \"todo\" DROP COLUMN \"old\";").len(), 1);
+        assert_eq!(found("TRUNCATE \"todo\";").len(), 1);
+        assert_eq!(found("DELETE FROM \"todo\";").len(), 1);
+        assert_eq!(found("DROP SCHEMA public CASCADE;").len(), 1);
+        assert!(found("DROP INDEX \"todo_idx\";").is_empty());
+        assert!(found("UPDATE \"todo\" SET \"old\" = 'DROP TABLE x';").is_empty());
     }
 
     /// A store that starts keeping its record of held files makes the

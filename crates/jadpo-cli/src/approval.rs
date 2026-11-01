@@ -335,7 +335,7 @@ fn screen(report: &Report) -> Screen {
     screen
 }
 
-fn waiting_changes(n: usize) -> String {
+pub(crate) fn waiting_changes(n: usize) -> String {
     if n == 1 {
         "1 change waits".to_string()
     } else {

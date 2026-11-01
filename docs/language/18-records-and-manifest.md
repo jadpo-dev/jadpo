@@ -585,6 +585,9 @@ costs one build per base commit.
   depth-1 checkout, is
   [`acceptance.base_missing`](../errors/acceptance.base_missing.md),
   naming `git fetch` (Richard, 2026-10-30).
+  A migration that removes data is judged all the same: with no before
+  side, it needs an acceptance with a reason anywhere in the project
+  ([`migration.drop_not_accepted`](../errors/migration.drop_not_accepted.md)).
 
 `jadpo check` reads the before side's records and acceptances from git,
 and the names of its domains, and compares them with the records today's
@@ -644,7 +647,7 @@ acceptance {
 |---|---|---|
 | A route removed, a required input field added, a rule tightened, an output field removed or retyped, a failure code changed | `ApiChange` | [The public API record](07-http.md#the-public-api-record) |
 | An event removed, or an event's field removed, retyped, newly required or its rule tightened | `ApiChange` | [The event record](12-jobs-and-events.md#the-event-record) |
-| A column or table dropped, an entity moved to another store | `DataChange` | [Migrations](05-data.md#migrations) |
+| A column or table dropped, an entity removed, an entity moved to another store | `DataChange` | [Removing data](05-data.md#removing-data) |
 | Any widening of who can do what, however it arises | `PolicyChange` | [Policy](09-policy.md) |
 | A sign-in setting loosened past its limit | `PolicyChange` | [Magic links](08-identity.md#settings) |
 | Any change to how a role must be signed in to, tighter or looser, or a role's line added or removed | `PolicyChange` | [Roles that need a way in](09-policy.md#roles-that-need-a-way-in) |
@@ -688,6 +691,10 @@ Each change the compiler reports, and the subject it names:
 | `DomainChange.created` | `billing` | A folder under `domains/` that wasn't there |
 | `NetworkChange.host_added` | `couriers` | A connection reaches a host it didn't, a new connection's included; one entry covers every new host of the connection |
 | `PackageChange.git_source` | `AcmeCouriers.v1` | A package locked from git that wasn't, from a repository under none of `packages:`'s `own_sources:` |
+| `DataChange.column_dropped` | `Todo.legacy_flag` | A migration this change adds drops a retired column, by the field's born name, as `changes.jadpo` names it |
+| `DataChange.table_dropped` | `Todo` | A migration this change adds drops a retired table, by its entity's born name |
+| `DataChange.entity_removed` | `Todo` | A migration this change adds retires an entity's table, since the entity is gone |
+| `DataChange.entity_moved` | `Todo` | A migration this change adds gives an entity a table in another store, leaving its records behind |
 
 Two records give these checks a before side, and put what changed in
 front of the reviewer: `access.jadpo_record`, who can do what, from the
@@ -903,7 +910,7 @@ that the path number can't be decoded.
 | `.jadpo_record` files | Partly built: every record in the record format, the API record without `version:`, the registry as `database/identities.jadpo_record`, the header check, `record.out_of_date`, `record.edited` and `record.format_newer`, `jadpo records` and `jadpo records update`, and the `.gitattributes` lines `jadpo new` writes. Not built yet: telling a careful hand edit of a view from a stale one, which needs `jadpo check` to build the base as `jadpo approval` does; the editor grammar and `jadpo lsp` serving records. |
 | Event records | Built: one view per domain with events, `domains/<domain>/events/events.jadpo_record`, written by `jadpo records update` and checked as the API record is; what [The event record](12-jobs-and-events.md#the-event-record) records, and its breaking changes need an [acceptance](#acceptances). |
 | Access and network records | Built: `access.jadpo_record` and `network.jadpo_record` at the root, written by `jadpo records update` and checked as the API record is ([Acceptances](#acceptances)). |
-| Acceptances | Built: `jadpo acceptance new <purpose>`, the before side read from git (`--before` on `jadpo check`), matching, the `///` reason and history, for `ApiChange` (the API and event records), `PolicyChange` (widenings, routes made public, security declines, sign-in settings past their limit), `DomainChange.created`, `NetworkChange.host_added` and `PackageChange.git_source`. The kinds for features not built yet come with them: `DataChange` with `jadpo migrate new`'s removals, `ErasureNotPossible` with personal data, `ThresholdChange` with thresholds, the other `PackageChange`s with package upgrade plans and services. A domain renamed shows as one created until `jadpo domain rename` writes the registry ([the roadmap](../roadmap.md)). |
+| Acceptances | Built: `jadpo acceptance new <purpose>`, the before side read from git (`--before` on `jadpo check`), matching, the `///` reason and history, for `ApiChange` (the API and event records), `PolicyChange` (widenings, routes made public, security declines, sign-in settings past their limit), `DomainChange.created`, `NetworkChange.host_added`, `PackageChange.git_source` and `DataChange` (read from the migrations a change adds, [Removing data](05-data.md#removing-data)). The kinds for features not built yet come with them: `ErasureNotPossible` with personal data, `ThresholdChange` with thresholds, the other `PackageChange`s with package upgrade plans and services. A domain renamed shows as one created until `jadpo domain rename` writes the registry ([the roadmap](../roadmap.md)). |
 | Lock and package surfaces | Built. The lock is a ledger read and checked like the others, and `jadpo check` holds each installed package to its line and digest ([Integrations](11-integrations.md) gives the digest), and its `jadpo version` pin to the line `app.jadpo` names. `jadpo toolchain pin` and `unpin` write the pin, and the package commands and `jadpo records update` keep it. `jadpo package add`, `update`, `remove`, `link` and `unlink` write it, each line through the ledger's writer, sorted; `git` lines record the repository as written, the tag and the tag's commit, `path` lines a folder relative to the root, and a `link` line replaces the package's line while the replaced one waits in `.jadpo/links` (git-ignored, in the lock's own format) for `unlink`. Two versions of one package are locked side by side, each on its own line, and `update` names the version while two are held. A package surface is `record surface 1`, a view written by `jadpo package check` in a package's own repository, verified at install against its package's code, and read by `jadpo package show`; installed, a surface is held by its package's digest rather than regenerated, so `jadpo records` doesn't list it, and an own integration's is written to `build/providers/` ([Integrations](11-integrations.md)). `jadpo package update` prints this page's review of the surface's changes, each entry marked `used by the app` and `needs a person`; the acceptance it calls for comes with package upgrade plans, and a package installed from git needs `PackageChange.git_source`. |
 | Build stamp | Built for native and Workers deployables: `jadpo build` writes the build id (`b_` and twelve hex digits of a SHA-256 over the deployable's program digest, the compiler, the target and `jadpo.lock`), the commit, whether the tree was modified, the compiler, the deployable and the target into the binary or module as a constant, and every event it logs carries them ([A native deployable](14-tooling.md#a-native-deployable), [A Workers deployable](14-tooling.md#a-workers-deployable)). `jadpo check` writes the manifest's `source` (`commit`, left out when git doesn't track the project, and `modified`) and `deployables`, each deployable's target, build id and the disk stores that keep it on one server (`one_server`), which digests a declared deployable's declaration too, so two deployables of one app never share one ([Declared deployables](14-tooling.md#declared-deployables)); a project with errors has none. |
 | Approval | Built: `jadpo approval` builds the before side, keeps its manifest and writes [the report](17-debugging-and-review.md#reviewing-a-change) to `build/review/`. |
@@ -917,6 +924,7 @@ that the path number can't be decoded.
 - [`acceptance.missing`](../errors/acceptance.missing.md)
 - [`acceptance.no_reason`](../errors/acceptance.no_reason.md)
 - [`acceptance.unmatched`](../errors/acceptance.unmatched.md)
+- [`migration.drop_not_accepted`](../errors/migration.drop_not_accepted.md)
 - [`record.out_of_date`](../errors/record.out_of_date.md)
 - [`record.edited`](../errors/record.edited.md)
 - [`record.format_newer`](../errors/record.format_newer.md)

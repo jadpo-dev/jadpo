@@ -871,6 +871,12 @@ pub fn serve_to(
         }
     };
     let secured = crate::database::securities(first.prepared.plan().connections(), &first.config);
+    // A database started for this session holds nothing to lose.
+    let throwaway = args.url.is_none() && disposable.is_some() && first.configured.is_empty();
+    if !throwaway && let Some(problem) = first.unaccepted.first() {
+        report_failure(&mut out, problem.clone());
+        return 1;
+    }
     let mut applied = match migrate_all(&urls, &secured, &first.steps, &first.prepared) {
         Ok(applied) => applied,
         Err(problem) => {
@@ -1167,6 +1173,11 @@ pub fn serve_to(
                     }
                 };
                 if ready.steps != current.steps {
+                    if !throwaway && let Some(problem) = ready.unaccepted.first() {
+                        rule_line(&mut out, &time, &saved, "not reloaded");
+                        report_failure(&mut out, problem.clone());
+                        continue;
+                    }
                     let secured = crate::database::securities(
                         ready.prepared.plan().connections(),
                         &ready.config,
@@ -1297,6 +1308,10 @@ pub(crate) struct Ready {
     /// The settings each provider connection reads that nothing gives
     /// (chunk 7.2d).
     pub(crate) unset: crate::dev_calls::Unset,
+    /// Each removal in its migrations that no acceptance allows, which
+    /// stops them reaching a database anyone else's data could be in
+    /// (area 5, "Migrations"; chunk V3).
+    pub(crate) unaccepted: Vec<Diagnostic>,
 }
 
 /// Loads and checks the project, writes `build/`, and prepares it to run;
@@ -1378,6 +1393,7 @@ pub(crate) fn prepare(
         config,
         configured,
         unset,
+        unaccepted: jadpo_check::acceptances::data::unaccepted(db, project),
     })
 }
 

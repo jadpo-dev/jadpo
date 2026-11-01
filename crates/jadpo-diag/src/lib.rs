@@ -181,7 +181,7 @@ rules! {
     CLI_LSP_ARGUMENTS: "cli.lsp_arguments", area 14, Error, Agent,
         "A `jadpo lsp` command is given an argument, which it doesn't take";
     CLI_MIGRATE_ARGUMENTS: "cli.migrate_arguments", area 14, Error, Agent,
-        "A `jadpo migrate` command names no action, one it doesn't have, or a purpose for an action that takes none";
+        "A `jadpo migrate` command names no action, one it doesn't have, a purpose for an action that takes none, or a `--drop` of what isn't retired";
     CLI_NEW_ARGUMENTS: "cli.new_arguments", area 14, Error, Agent,
         "A `jadpo new` command names no project, or more than one";
     CLI_PACKAGE_ARGUMENTS: "cli.package_arguments", area 14, Error, Agent,
@@ -628,6 +628,8 @@ rules! {
         "A migration needs your decision, such as a value for records already stored, and its `changes.jadpo` doesn't give one yet";
     MIGRATION_DECISION_UNKNOWN: "migration.decision_unknown", area 5, Error, Agent,
         "Migration decides about something that is not changing";
+    MIGRATION_DROP_NOT_ACCEPTED: "migration.drop_not_accepted", area 14, Error, Human,
+        "A migration removes data, and no acceptance in the project says a person agreed to it";
     MIGRATION_EXTENSION_MISSING: "migration.extension_missing", area 14, Error, Human,
         "The project's migrations need a PostgreSQL extension, such as pgvector, that the database server doesn't offer or that the role applying them can't create";
     MIGRATION_EXTENSION_OUTDATED: "migration.extension_outdated", area 14, Error, Human,

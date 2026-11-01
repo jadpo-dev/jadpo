@@ -17,9 +17,10 @@ use jadpo_db::{Db, File, Layout, Project};
 use jadpo_diag::{Diagnostic, Span, rule};
 use jadpo_graph::migration::{
     Decided, Needed, NeededKind, decisions_needed, migration_sql, next_snapshot,
+    unexplained_removals,
 };
 use jadpo_graph::schema::{self, Change, Holds, Schema};
-use jadpo_std::{Builtin, FieldChange, Num};
+use jadpo_std::{Builtin, EntityChange, FieldChange, Num};
 use jadpo_syntax::ast::{self, AstNode, Decl, Expr};
 
 use super::{DataModel, data_model};
@@ -163,6 +164,8 @@ pub enum DecisionValue {
     /// `Todo.priority: {}`, as `jadpo migrate new` leaves it to fill in.
     Pending,
     Change(FieldChange),
+    /// `Todo: EntityChange.retired`, about the whole entity (chunk V3).
+    Entity(EntityChange),
     /// `backfill:`'s value, with where it is written.
     Backfill(Const, Span),
     /// Anything else: what it is, for the error.
@@ -212,6 +215,14 @@ pub fn read_decisions(path: &str, source: &ast::SourceFile) -> (Vec<Decision>, S
                         Const::Path(p) if p.len() == 2 && p[0] == FieldChange::NAME => {
                             match FieldChange::from_name(&p[1]) {
                                 Some(change) => DecisionValue::Change(change),
+                                None => {
+                                    DecisionValue::Invalid(format!("`{}`", p.join(".")), value_span)
+                                }
+                            }
+                        }
+                        Const::Path(p) if p.len() == 2 && p[0] == EntityChange::NAME => {
+                            match EntityChange::from_name(&p[1]) {
+                                Some(change) => DecisionValue::Entity(change),
                                 None => {
                                     DecisionValue::Invalid(format!("`{}`", p.join(".")), value_span)
                                 }
@@ -616,8 +627,13 @@ impl Decide<'_> {
                 }
                 backfill_sql(field, value).map(Decided::Backfill)
             }
-            (DecisionValue::Change(FieldChange::Retired), NeededKind::Retire) => {
+            (DecisionValue::Change(FieldChange::Retired), NeededKind::Retire)
+            | (DecisionValue::Entity(EntityChange::Retired), NeededKind::RetireEntity) => {
                 Some(Decided::Retired)
+            }
+            (DecisionValue::Change(FieldChange::Dropped), NeededKind::DropField)
+            | (DecisionValue::Entity(EntityChange::Dropped), NeededKind::DropEntity) => {
+                Some(Decided::Dropped)
             }
             _ => None,
         }
@@ -1054,6 +1070,34 @@ pub fn migration_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     if !out.is_empty() {
         return out;
     }
+    // A hand's `DROP` in a migration's SQL, which no acceptance would be
+    // asked about since the snapshots don't show it (chunk V3).
+    let empty = Schema::default();
+    let mut previous = &empty;
+    for migration in &set.list {
+        let Some(schema) = migration.schema() else {
+            continue;
+        };
+        if let Some(Ok(sql)) = &migration.sql {
+            for statement in unexplained_removals(sql, previous, schema) {
+                out.push(
+                    Diagnostic::new(
+                        &rule::MIGRATION_RECORD_INVALID,
+                        format!("`{}` drops what its snapshot keeps", migration.sql_path()),
+                    )
+                    .at(file_span(&migration.sql_path()), "edited by hand")
+                    .reason(format!(
+                        "A migration's SQL is written by `jadpo migrate new` from its snapshots, and `{statement}` isn't what they say, so no person would be asked to accept what it removes."
+                    ))
+                    .next("Restore it from version control"),
+                );
+            }
+        }
+        previous = schema;
+    }
+    if !out.is_empty() {
+        return out;
+    }
     let model = data_model(db, project);
     let unknown_type = model
         .entities
@@ -1192,10 +1236,19 @@ pub fn purpose(changes: &[Change], after: &Schema) -> String {
                     .and_then(|s| s.tables.get(table))
                     .map(|t| &t.holds)
                 {
-                    return format!("add_{}", crate::case::to_snake(name));
+                    // Its table is retired in another store: it moved.
+                    let moved = after.stores.iter().any(|(other, kept)| {
+                        other != store
+                            && kept.tables.get(table).is_some_and(|t| {
+                                t.retired && t.holds == Holds::Entity(name.clone())
+                            })
+                    });
+                    let verb = if moved { "move" } else { "add" };
+                    return format!("{verb}_{}", crate::case::to_snake(name));
                 }
             }
-            Change::DropTable { table, .. } => return format!("remove_{table}"),
+            Change::RetireTable { table, .. } => return format!("remove_{table}"),
+            Change::DropTable { table, .. } => return format!("drop_{table}"),
             // An entity's search (area 16, chunk B12), by its table.
             Change::AddColumn { table, column, .. } if column == jadpo_std::search::COLUMN => {
                 return format!("search_{table}");
@@ -1207,7 +1260,7 @@ pub fn purpose(changes: &[Change], after: &Schema) -> String {
                 return format!("change_{table}_search");
             }
             Change::AddColumn { column, .. } => return format!("add_{column}"),
-            Change::RemoveColumn { column, .. } => return format!("retire_{column}"),
+            Change::RemoveColumn { column, .. } => return format!("drop_{column}"),
             Change::AlterColumn {
                 store,
                 table,
@@ -1326,6 +1379,9 @@ fn decision_problems(
                         format!("Write `{key}: {{ backfill: <value> }}` with a value of its type")
                     }
                     NeededKind::Retire => format!("Write `{key}: FieldChange.retired`"),
+                    NeededKind::DropField => format!("Write `{key}: FieldChange.dropped`"),
+                    NeededKind::RetireEntity => format!("Write `{key}: EntityChange.retired`"),
+                    NeededKind::DropEntity => format!("Write `{key}: EntityChange.dropped`"),
                 }),
             );
         }
@@ -1334,15 +1390,27 @@ fn decision_problems(
         if needed.iter().any(|n| n.key() == decision.key) {
             continue;
         }
-        if matches!(decision.value, DecisionValue::Change(FieldChange::Dropped)) {
+        // A drop isn't written by hand: the migration has to leave the
+        // column or table out of its snapshot and hold the statement.
+        if matches!(
+            decision.value,
+            DecisionValue::Change(FieldChange::Dropped)
+                | DecisionValue::Entity(EntityChange::Dropped)
+        ) {
             out.push(
                 Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    format!("Dropping `{}` isn't built yet", decision.key),
+                    &rule::MIGRATION_DECISION_UNKNOWN,
+                    format!("`{}` isn't dropped by this migration", decision.key),
                 )
-                .at(decision.span.clone(), "a drop")
-                .reason("A drop removes a retired column and its data for good, so it needs a person's explicit acceptance (area 5), which comes with acceptances (area 18).")
-                .next(format!("Keep `{}` retired for now", decision.key)),
+                .at(decision.span.clone(), "no such change")
+                .reason(format!(
+                    "`{}` still has `{}` in its snapshot, so nothing here drops it: a drop comes from a migration of its own, which writes this line, its snapshot and its SQL together.",
+                    migration.name, decision.key
+                ))
+                .next(format!(
+                    "Remove the line, then run `jadpo migrate new <purpose> --drop {}` once the migration is finished",
+                    decision.key
+                )),
             );
             continue;
         }
@@ -1353,7 +1421,7 @@ fn decision_problems(
             )
             .at(decision.span.clone(), "no such change")
             .reason(format!(
-                "A migration's `changes.jadpo` holds only the decisions its own changes need, and nothing `{}` changes about `{}` does: a decision is a value for existing rows of a required field or for rows a field no longer allows, or retiring a field that is gone.",
+                "A migration's `changes.jadpo` holds only the decisions its own changes need, and nothing `{}` changes about `{}` does: a decision is a value for existing rows of a required field or for rows a field no longer allows, retiring a field or an entity that is gone, or dropping one that is retired.",
                 migration.name, decision.key
             ))
             .next(format!("Remove `{}`", decision.key)),
@@ -1362,10 +1430,22 @@ fn decision_problems(
     if !out.is_empty() {
         return out;
     }
-    // Every decision is made: the SQL must hold them.
+    // Every decision is made: the SQL must hold them. A change no SQL is
+    // written for can't have come from `jadpo migrate new`.
     let decided = |need: &Needed| decide.decided(need);
-    let Ok(sql) = migration_sql(&before, after, &decided) else {
-        return out;
+    let sql = match migration_sql(&before, after, &decided) {
+        Ok(sql) => sql,
+        Err(refusals) => {
+            let said: Vec<String> = refusals.iter().map(|r| r.change.clone()).collect();
+            out.push(record_invalid(
+                &migration.snapshot_path(),
+                &format!(
+                    "`jadpo migrate new` writes no migration for {}",
+                    crate::and_list(&said)
+                ),
+            ));
+            return out;
+        }
     };
     let written = migration.sql.as_ref().and_then(|s| s.as_ref().ok());
     if written.map(String::as_str) != Some(sql.to_document(&migration.name).as_str()) {
@@ -1451,7 +1531,14 @@ fn misfit(
                 .and_then(|ty| backfill_problem(lookup, ty, value))
                 .map(|why| (span.clone(), format!("This value can't fill `{key}`: {why}.")))
         }
-        (DecisionValue::Change(FieldChange::Retired), NeededKind::Retire) => None,
+        (DecisionValue::Change(FieldChange::Retired), NeededKind::Retire)
+        | (DecisionValue::Change(FieldChange::Dropped), NeededKind::DropField)
+        | (DecisionValue::Entity(EntityChange::Retired), NeededKind::RetireEntity)
+        | (DecisionValue::Entity(EntityChange::Dropped), NeededKind::DropEntity) => None,
+        (DecisionValue::Entity(EntityChange::Dropped), NeededKind::RetireEntity) => Some((
+            decision.span.clone(),
+            "An entity is removed in two migrations: `EntityChange.retired` first, and `EntityChange.dropped` in a later one.".to_string(),
+        )),
         (DecisionValue::Change(FieldChange::Dropped), NeededKind::Retire) => Some((
             decision.span.clone(),
             "A field is removed in two migrations: `FieldChange.retired` first, and `FieldChange.dropped` in a later one.".to_string(),
@@ -1475,6 +1562,18 @@ fn misfit(
         (_, NeededKind::Unreadable) => Some((
             decision.span.clone(),
             format!("`{key}`'s type may not read every value stored before, so its decision, which may be left out, is `{{ backfill: <value> }}`, the value stored records it doesn't read get."),
+        )),
+        (_, NeededKind::DropField) => Some((
+            decision.span.clone(),
+            format!("This migration drops `{key}`'s column, so its decision is `FieldChange.dropped`."),
+        )),
+        (_, NeededKind::RetireEntity) => Some((
+            decision.span.clone(),
+            format!("`{key}` is gone, so its decision is `EntityChange.retired`."),
+        )),
+        (_, NeededKind::DropEntity) => Some((
+            decision.span.clone(),
+            format!("This migration drops `{key}`'s table, so its decision is `EntityChange.dropped`."),
         )),
     }
 }
@@ -1527,6 +1626,22 @@ fn required(
                 need.entity
             ),
             format!("Write `{key}: FieldChange.retired`"),
+        ),
+        NeededKind::DropField => (
+            format!("This migration drops `{key}`'s column, and its data with it, so it says so."),
+            format!("Write `{key}: FieldChange.dropped`"),
+        ),
+        NeededKind::RetireEntity => (
+            format!(
+                "`{key}` is gone. Retiring its table keeps the table and its records while code stops using them, out of the app's reach until a later migration drops them; if the entity was renamed instead, give it back its old name, since a rename that keeps the table comes with `jadpo rename`."
+            ),
+            format!("Write `{key}: EntityChange.retired`"),
+        ),
+        NeededKind::DropEntity => (
+            format!(
+                "This migration drops `{key}`'s table, and its records with it, so it says so."
+            ),
+            format!("Write `{key}: EntityChange.dropped`"),
         ),
     };
     Diagnostic::new(

@@ -148,6 +148,12 @@ pub struct HistoryPlan {
     /// The fields whose own `policy:` narrows who reads them, in the order
     /// `access` selects their grants.
     pub restricted: Vec<String>,
+    /// The fields the entity declares now that an entry may hold. An entry
+    /// also holds the fields retired or dropped since it was written, whose
+    /// grants went with them, so nobody is known to be allowed to read them:
+    /// a caller is never given one, and only a call without a caller reads
+    /// them (chunk V3).
+    pub fields: Vec<String>,
     /// The tag a cursor of this history carries, so a cursor from
     /// anything else is refused.
     pub tag: u64,
