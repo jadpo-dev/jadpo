@@ -19,7 +19,7 @@ the same way page 11 added the mail server:
 use todos/entities { User }
 
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
     display_name: "Todos"
     connections: {
         main: {

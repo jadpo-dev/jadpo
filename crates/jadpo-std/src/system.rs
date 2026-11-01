@@ -943,6 +943,35 @@ pub const FLAGS: SystemTable = SystemTable {
     indexes: &[],
 };
 
+/// Each change `jadpo flags set` and `reset` made to a flag (area 16,
+/// "Flags: changed, listed and removed"; chunk B10), in `flags: { store:
+/// }`, written by the statement that makes the change: when, the flag,
+/// `set` or `reset`, its state before and after as JSON (`value`, `users`
+/// and `shares`, as `jadpo_flags` holds them, `null` for no row), and who
+/// made it: the name the operator's machine gives, and the database role
+/// PostgreSQL authenticated, which the statement reads itself. Kept for
+/// good, as the flag's history.
+pub const FLAG_CHANGES: SystemTable = SystemTable {
+    table: "jadpo_flag_changes",
+    columns: &[
+        column("id", SqlType::Uuid, false),
+        column("made_at", SqlType::Timestamp, false),
+        column("flag", SqlType::Text, false),
+        column("action", SqlType::Text, false),
+        column("was", SqlType::Json, true),
+        column("now", SqlType::Json, true),
+        column("operator", SqlType::Text, false),
+        column("role", SqlType::Text, false),
+    ],
+    primary_key: &["id"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[SystemIndex {
+        columns: &["flag"],
+        reason: "system flag changes",
+    }],
+};
+
 /// What must commit with an action's own writes, in every store that
 /// holds an entity, since any of them can be written: the outbox, its
 /// deliveries, handled records and idempotency keys; the log of what
@@ -996,6 +1025,7 @@ pub const ALL: [&SystemTable; 28] = [
     &AI_USAGE,
     &AUDIT,
     &FLAGS,
+    &FLAG_CHANGES,
     &HOUSEKEEPING,
     &FILES,
 ];

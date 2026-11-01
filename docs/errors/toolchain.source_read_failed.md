@@ -21,7 +21,7 @@ one byte that isn't UTF-8:
 ```jadpo check project=e-source-read file=app.jadpo hidden
 // The café's ordering app.
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 
