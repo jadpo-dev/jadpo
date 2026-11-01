@@ -434,7 +434,7 @@ impl<'a> Plan<'a> {
     /// connection, by name.
     pub fn file_stores(self) -> Vec<&'a str> {
         jadpo_std::connections::files(self.connections)
-            .map(|(name, _)| name)
+            .map(|(name, _, _)| name)
             .collect()
     }
 
