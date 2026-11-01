@@ -497,6 +497,38 @@ pub enum Column {
     /// chunk B12), a `float8`: never a field, read only as the first value
     /// of a ranked page's cursor.
     Rank,
+    /// A field kept sealed in one `bytea` (area 15, "Encrypted fields";
+    /// chunk P9): opened with the application's field key, bound to `bound`
+    /// and the record's `id`, the statement's column at `id`, then read as
+    /// `form` says. A column that can't be opened is a defect naming the
+    /// field, never its bytes.
+    Sealed {
+        form: SealedForm,
+        bound: String,
+        id: u32,
+    },
+}
+
+/// What a sealed field's bytes hold once opened (area 15, "Encrypted
+/// fields"; chunk P9).
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum SealedForm {
+    /// A value of any stored type, as its contract's JSON, by the codec this
+    /// number names in the plan's JSON table.
+    Json(u32),
+    /// A secret value's text, by its standard type: `TotpSecret`,
+    /// `SecretText`.
+    Secret(String),
+    /// A key's 32 bytes, which become a key held as data.
+    Key,
+}
+
+/// What a sealed value is bound to, besides its bytes: `bound`, the
+/// column's born table and name, and the record's `id`, so a sealed value
+/// can't be moved to another field or another row, and a rename changes
+/// nothing, since tables and columns keep the names they were born with.
+pub fn sealed_context(bound: &str, id: &str) -> String {
+    format!("{bound}:{id}")
 }
 
 impl Column {

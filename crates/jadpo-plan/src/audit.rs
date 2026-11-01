@@ -48,6 +48,7 @@ impl Planner<'_> {
             fields.push(AuditedField {
                 name: field.name.clone(),
                 json: self.json_codec(entity, field),
+                sealed: field.sealed.is_some(),
             });
         }
         let columns: Vec<String> = entity

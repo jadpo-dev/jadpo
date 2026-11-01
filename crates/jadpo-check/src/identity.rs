@@ -1518,6 +1518,7 @@ impl Reader<'_> {
                 .map(|field| {
                     field.compound.is_some()
                         || field.json.is_some()
+                        || field.sealed.is_some()
                         || crate::data::sql_type(field).is_none()
                 })
             })
@@ -2744,6 +2745,19 @@ impl ActiveReader<'_, '_> {
             Some((head, rest)) if head == entity && rest.len() == 1 => {
                 let name = &rest[0];
                 if let Some(found) = self.entity.fields.iter().find(|f| &f.name == name) {
+                    // The database tests `active:`, and only the application
+                    // can open a sealed field (area 15; chunk P9).
+                    if found.sealed.is_some() {
+                        let span = self.span(&lhs);
+                        self.out.push(crate::data::sealed::used(
+                            &entity,
+                            name,
+                            "`active:`",
+                            span,
+                            format!("Test another field, or remove `encrypted:` from `{name}`"),
+                        ));
+                        return None;
+                    }
                     return Some(found.clone());
                 }
                 let names: Vec<String> = self

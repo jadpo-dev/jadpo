@@ -1185,6 +1185,37 @@ pub fn erase(
     )
 }
 
+/// One batch of a sealed column's rows sealed with the key whose identity
+/// is `$1` (area 15, "Rotating the key"; chunk P9): each row's `id` and
+/// bytes, in `id` order. A sealed value's identity is its third to sixth
+/// bytes (area 19, "The sealed format").
+pub fn reseal_select(table: &str, column: &str, batch: u32) -> String {
+    let (table, column) = (crate::ident(table), crate::ident(column));
+    format!(
+        "SELECT \"id\", {column} FROM {table} WHERE substring({column} FROM 3 FOR 4) = $1 ORDER BY \"id\" LIMIT {batch}"
+    )
+}
+
+/// Writes a batch of a sealed column back: `$1` the rows' `id`s, `$2` the
+/// bytes each held and `$3` what each now holds, leaving a row anything
+/// else has changed since. It returns each row it rewrote.
+pub fn reseal_update(table: &str, column: &str) -> String {
+    let (table, column) = (crate::ident(table), crate::ident(column));
+    format!(
+        "UPDATE {table} SET {column} = \"resealed\".\"now\" FROM unnest($1::uuid[], $2::bytea[], $3::bytea[]) AS \"resealed\"(\"id\", \"was\", \"now\") WHERE {table}.\"id\" = \"resealed\".\"id\" AND {table}.{column} = \"resealed\".\"was\" RETURNING {table}.\"id\""
+    )
+}
+
+/// How a sealed column's rows stand: `$1` the current key's identity and
+/// `$2` the previous key's or `NULL`, giving how many rows hold a value and
+/// how many of them each key sealed.
+pub fn reseal_count(table: &str, column: &str) -> String {
+    let (table, column) = (crate::ident(table), crate::ident(column));
+    format!(
+        "SELECT count(*), count(*) FILTER (WHERE substring({column} FROM 3 FOR 4) = $1), count(*) FILTER (WHERE substring({column} FROM 3 FOR 4) = $2) FROM {table} WHERE {column} IS NOT NULL"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

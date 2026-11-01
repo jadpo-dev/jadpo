@@ -170,6 +170,17 @@ impl Reader<'_> {
             );
             return None;
         };
+        // Only the application can open a sealed field (area 15; chunk P9).
+        if field.sealed.is_some() {
+            self.out.push(crate::data::sealed::used(
+                &entity.name,
+                &field.name,
+                "A query's condition",
+                Self::span(scope.path, whole),
+                "Name a geometry field that isn't encrypted".to_string(),
+            ));
+            return None;
+        }
         let field_written = format!("{}.{}", entity.name, field.name);
         let field_kind = match field.geometry {
             Some(kind) => kind,

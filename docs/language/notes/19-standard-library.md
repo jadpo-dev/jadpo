@@ -505,7 +505,7 @@ TOTP (a package), calendar files (a package).
 Nothing is left out because the language can't do it: each gap is
 either left out by design (with its reason, above and in the next table)
 or closed by a language change, with the operations it unblocks on this
-page. Only keys held as data are not built yet
+page. Only `crypto.verify_totp` and HS256 are not built yet
 ([the roadmap](../../roadmap.md)).
 
 | Gap | Fix | Owning area | Unblocks |
@@ -515,7 +515,7 @@ page. Only keys held as data are not built yet
 | Inline functions of two values | Two parameters, `(a, b) -> ...`, for standard operations only (area 3) | 3 | `list.zip_with`, `map.filter`, `map.map_values` |
 | Maths without a `Float` | Maths on `Decimal` with `scale:` and `rounding:`, deterministic everywhere; still no `Float` | 2 | 8 `decimal` operations; geospatial distance |
 | Using a secret without reading it | Opaque key settings, used only as a `crypto` call's `key:` | 10 | `crypto` |
-| Keys held as data (per device, per person) | An encrypted field of a key type, usable only as `key:`; not built yet, and comes with encrypted fields (personal data) | 10, 15 | Per-device signatures, `crypto.verify_totp`, `crypto.verify_jwt` with a shared secret (HS256), storing a `TotpSecret` or a `SecretText` |
+| Keys held as data (per device, per person) | A key-type field, kept sealed, or a `var` holding `crypto.new_key`, usable only as `key:`; built. "Code never makes a key" narrowed to "code never builds a key from a value it can see" (Richard, 2026-11-01). `crypto.verify_totp` and HS256 are the next chunk | 10, 15 | Per-device signatures, `crypto.verify_totp`, `crypto.verify_jwt` with a shared secret (HS256), storing a `TotpSecret` or a `SecretText` |
 | Randomness | Generated `random`, actions only, seeded in tests, recorded for replay | 10, 13, 17 | `random.*`, `encrypt`, `hash_password` |
 | Locale order and case | `locale:` on `list.sort_by`, `text.lower` and `text.upper`, through ICU4X's collator and case mapping (two more crates of the pinned ICU4X) | 10 | Locale sorting and case |
 | Values formatted for people in code | The contract's `text.format`, giving `PresentationText`, for every standard type | 10 | Showing numbers, money, quantities and addresses in code |
