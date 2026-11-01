@@ -220,7 +220,7 @@ value in the event it emits.
   `false`, or every variant.
 
 ```jadpo check project=feature-flags file=domains/ordering/actions/start_checkout.test.jadpo
-use ordering/types { CheckoutShown, CheckoutLayout }
+use ordering/types { CheckoutLayout, CheckoutShown }
 
 test "the three-step form is shown by default" {
     var checkout_opened: CheckoutShown = start_checkout()
