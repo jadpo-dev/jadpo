@@ -724,6 +724,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "makes a provider fake's generated default: an instant at the invocation's clock and its date, written by the type's own codec (chunk 7.2d)",
     ),
     (
+        "crates/jadpo-runtime/src/audit.rs",
+        "makes the audit entries `history` gives and `AuditEntryRecorded`, values in memory; an entry keeps each field as the contract's own text, and its event's payload ids and times as the runtime's own text and numbers (chunk B11)",
+    ),
+    (
         "crates/jadpo-runtime/src/effects.rs",
         "gives `clock.now` as an instant (chunk 7.0b)",
     ),

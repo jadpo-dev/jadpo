@@ -178,9 +178,12 @@ POSTGRES = [
     # (area 15; chunk P2); and a person's erasure through `jadpo test` and
     # in the rows it leaves: records deleted outright, hidden or not, kept
     # without the person or kept as they are, with their sessions (chunk
-    # P3).
-    ('live PostgreSQL: lifecycles, purge, retention and erasure',
-     [('jadpo-cli', 'lifecycle'), ('jadpo-cli', 'retention'), ('jadpo-cli', 'erasure')], []),
+    # P3); and the audit trail through `jadpo test` and in its rows: each
+    # change's entry in its transaction, read back through `history`,
+    # deleted with an erased record and by its retention (chunk B11).
+    ('live PostgreSQL: lifecycles, purge, retention, erasure and audit',
+     [('jadpo-cli', 'lifecycle'), ('jadpo-cli', 'retention'), ('jadpo-cli', 'erasure'),
+      ('jadpo-cli', 'audit')], []),
     # `jadpo seed`: a seed's users and memberships made through the app's
     # actions, policy for a call with a caller, a seed that stops, and a
     # database not on this machine refused (area 5, "Seeds"; chunk A5).

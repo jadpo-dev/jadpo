@@ -201,6 +201,7 @@ fn declaration(graph: &Graph, id: NodeId) -> String {
             node.name,
             if *clears { "cleared" } else { "deleted" }
         ),
+        Detail::Audit { kept } => format!("{}'s history  // each entry {kept}", node.name),
         Detail::Grant { effect, who } => {
             let entity = node.name.rsplit_once('.').map_or("", |(entity, _)| entity);
             format!("{effect}: [{}]  // `{entity}`'s grant", who.join(", "))

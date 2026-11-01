@@ -29,7 +29,6 @@ mod stores;
 mod table;
 mod ty;
 
-pub(crate) use body::sign_in_object_fields;
 pub(crate) use body::transition_key;
 pub(crate) use body::{BodyView, LocalKind, ViewLocal, members_of};
 pub use body::{
@@ -37,6 +36,7 @@ pub use body::{
     call_problems, callables_of, failure_set, failure_sets, rule_callables, template_body,
     template_reads, typed_body,
 };
+pub(crate) use body::{batch_fields, sign_in_object_fields};
 pub use connections::called_connections;
 pub use decl::type_problems;
 

@@ -1796,6 +1796,20 @@ can't turn back into the secret.
   sign-in ([A person the app has not seen](08-identity.md#a-person-the-app-has-not-seen)).
   Only in the store the principal's user entity lives in.
 
+### The audit trail's table
+
+An audited entity's history commits with the changes it records, so it
+goes in the store the entity lives in, created when an entity there has
+an `audit:` ([Audit trail](16-built-in-services.md#audit-trail)):
+
+- `jadpo_audit`: each change to an audited record, by the entity's born
+  name, the record's `id` and its place among the record's changes; when
+  it was made, what kind of change, who made it, through which action,
+  request and trace, and each changed field before and after as text,
+  with the encoding that was written in. Rows are only ever added, then
+  deleted when the entity's audit retention ends, or with their record
+  when erasure deletes it.
+
 ### Tables for schedules and other state
 
 Schedule state, each schedule's lease included, goes in the store

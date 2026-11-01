@@ -1176,7 +1176,9 @@ impl Names<'_> {
         operations.extend(symbol.transitions.iter().cloned());
         // A person's erasure (area 15, "Erasure"; chunk P3): whether the
         // entity is a person is the body's to check, with its data model.
-        if operations.contains(&name) || name == ERASE {
+        // An audited entity's history (area 16; chunk B11): whether the
+        // entity keeps one is the body's to check, with its data model.
+        if operations.contains(&name) || name == ERASE || name == jadpo_std::audit::HISTORY {
             return;
         }
         let span = self.span(operation);
