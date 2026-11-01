@@ -35,7 +35,7 @@ the one that is there, and copy the block into it.
 
 ```jadpo check project=learn-todo-02 file=app.jadpo
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 
 suggestions {

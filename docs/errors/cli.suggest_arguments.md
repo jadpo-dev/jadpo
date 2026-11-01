@@ -12,7 +12,7 @@ Nothing has been scanned yet:
 
 ```jadpo check project=e-suggest-arguments file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

@@ -44,7 +44,7 @@ which entity a signed-in caller is, and which field finds them:
 use todos/entities { User }
 
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 
 principal {

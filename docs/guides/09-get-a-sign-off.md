@@ -15,7 +15,7 @@ work on a branch, as for any change you would open a pull request for.
 
 ```jadpo check project=guide-sign-off file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

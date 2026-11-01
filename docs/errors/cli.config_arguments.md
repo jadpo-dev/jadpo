@@ -17,7 +17,7 @@ names `mail_key`:
 
 ```jadpo check project=e-config-arguments file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 
@@ -89,7 +89,7 @@ config {
 
 ```jadpo check project=e-config-arguments-declared file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

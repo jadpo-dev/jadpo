@@ -20,7 +20,7 @@ the environment nor `.env.local` sets it:
 
 ```jadpo check project=e-value-missing file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

@@ -79,12 +79,12 @@ up to that line, then name it: the major and minor numbers
 `jadpo --version` shows. In `app.jadpo`:
 
 ```jadpo fragment
-    jadpo: "0.1"
+    jadpo: "0.2"
 ```
 
 ```jadpo check project=e-version-older-fix-1 file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

@@ -295,7 +295,7 @@ needs, or use a local clone with a file-reading coding agent.
   (`.github/workflows/vscode-extension.yml`); release-please keeps its
   `package.json` version in step.
 - An app declares the release line it is written for in `app.jadpo`, as
-  `application { jadpo: "0.1" }`; the installed `jadpo` runs that line's
+  `application { jadpo: "0.2" }`; the installed `jadpo` runs that line's
   release, and a `jadpo` that can't refuses an app on another line (area
   1, "The root"; area 14, "Which jadpo runs").
 - Releases need these, set by a maintainer; each part is off until its

@@ -16,7 +16,7 @@ The port is one past the largest:
 
 ```jadpo check project=e-dev-port file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 
