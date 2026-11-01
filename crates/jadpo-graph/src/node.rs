@@ -425,6 +425,15 @@ pub enum Detail {
         variable: String,
         default: Option<String>,
     },
+    /// A flag in `flags { }` (area 16, "Feature flags"): its type, its
+    /// `default:` as `jadpo_flags` spells a value (`true`, or a variant's
+    /// name), its owner and the date it expires, `2027-01-31`.
+    Flag {
+        ty: TypeRef,
+        default: String,
+        owner: String,
+        expires: String,
+    },
     /// The application's `locales { }` (area 10): its default, the locales
     /// it supports in the order listed, and those whose translations are
     /// in progress, each as `Locale`'s variant (`en_gb`).

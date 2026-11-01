@@ -42,6 +42,8 @@ pub struct Started {
     /// order: its `after:`, or the value of the setting it reads; `None`
     /// when that holds no duration.
     purge_after: Vec<Option<i64>>,
+    /// The flags, and the state of them it last read (area 16; chunk B9).
+    flags: crate::flags::Held,
 }
 
 impl fmt::Debug for Started {
@@ -87,9 +89,11 @@ impl Started {
                 (Some(_), _, _) => None,
             })
             .collect();
+        let flags = crate::flags::Held::new(plan.flags.cloned().unwrap_or_default());
         let Some(values) = values else {
             return Started {
                 purge_after,
+                flags,
                 ..Started::default()
             };
         };
@@ -132,6 +136,7 @@ impl Started {
             )
             .unwrap_or_default(),
             purge_after,
+            flags,
         }
     }
 
@@ -165,6 +170,11 @@ impl Started {
     /// origin.
     pub fn auth(&self) -> &AuthSettings {
         &self.auth
+    }
+
+    /// The flags, and the state of them last read (area 16).
+    pub fn flags(&self) -> &crate::flags::Held {
+        &self.flags
     }
 
     /// How a request's client address is chosen.

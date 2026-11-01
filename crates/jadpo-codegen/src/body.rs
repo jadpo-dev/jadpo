@@ -784,6 +784,16 @@ impl Emitter<'_> {
                     quote!({ #defect })
                 }
             },
+            Expr::Flag { .. } => match self.decoded(id) {
+                Some(Decoded::Flag(Some(flag))) => {
+                    let flag = number(*flag);
+                    self.tri(quote!(rt::flag(cx, #flag, #at)))
+                }
+                _ => {
+                    let defect = self.defect("a flag the checker would have refused", id);
+                    quote!({ #defect })
+                }
+            },
             Expr::Now => self.tri(quote!(rt::now(cx, p, #at))),
             Expr::Unchecked => {
                 let written = match self.decoded(id) {

@@ -506,6 +506,12 @@ impl Part<'_> {
             for (_, ty) in route.params() {
                 uses.extend(type_ref(self.lookup, ty).keys().into_iter().cloned());
             }
+            // The flags its `run:` passes on (area 16).
+            for arg in &route.run.args {
+                if let crate::routes::ArgRoot::Flag(name) = &arg.root {
+                    uses.insert(self.lookup.registry().key(Kind::Flag, name, None));
+                }
+            }
             self.edges(&route.key, EdgeKind::Uses, uses);
         }
     }
@@ -801,6 +807,10 @@ impl Part<'_> {
         uses.extend(body.sites.iter().filter_map(|site| match &site.node {
             jadpo_graph::body::Node::Expr(jadpo_graph::body::Expr::Config { field }) => {
                 Some(field.clone())
+            }
+            // The flags it reads (area 16).
+            jadpo_graph::body::Node::Expr(jadpo_graph::body::Expr::Flag { flag }) => {
+                Some(flag.clone())
             }
             _ => None,
         }));

@@ -58,7 +58,7 @@ pub fn build(call: &Call) -> Reply {
     };
     let started = Instant::now();
     say("Checking");
-    let checked = match checked_before(call, &root) {
+    let checked = match checked_before(call, &root, crate::check::JudgedOn::Commit) {
         Ok(checked) => checked,
         Err(reply) => return *reply,
     };
@@ -1159,6 +1159,12 @@ fn gzipped(data: &[u8]) -> usize {
 }
 
 /// When the commit at `root` was made, in seconds since 1970.
+/// The time of the commit checked out at `root`, in seconds since
+/// 1970-01-01T00:00:00Z; `None` outside git or before the first commit.
+pub(crate) fn commit_seconds(root: &Path) -> Option<i64> {
+    commit_time(root).and_then(|seconds| i64::try_from(seconds).ok())
+}
+
 fn commit_time(root: &Path) -> Option<u64> {
     let output = Command::new("git")
         .arg("-C")

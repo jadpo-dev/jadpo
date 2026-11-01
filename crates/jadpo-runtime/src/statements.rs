@@ -20,6 +20,7 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::schedules::housekeeping::RELEASE.to_string(),
         ),
         ("ai_budget::DEBIT", crate::ai_budget::DEBIT.to_string()),
+        ("flags::READ", crate::flags::READ.to_string()),
         (
             "audit::HISTORY_ENTRIES",
             crate::audit::HISTORY_ENTRIES.to_string(),

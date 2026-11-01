@@ -148,6 +148,7 @@ pub async fn once(executor: &dyn Executor, host: &dyn Host, once: Once<'_>) -> R
     };
     let mut ctx = Ctx::of(executor, &faked, env(plan, once.key, once.callable));
     ctx.set_settings(plan.test_settings(once.callable));
+    ctx.set_test_flags(plan.test_flags(once.callable));
     // The paths its bodies take are kept with the rest of its record
     // (chunk 9.3).
     if once.record.is_some() {

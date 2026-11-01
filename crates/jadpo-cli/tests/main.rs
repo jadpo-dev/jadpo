@@ -61,6 +61,7 @@ mod field_rules_on_read;
 mod file_exports;
 mod file_imports;
 mod fix;
+mod flags;
 mod fmt;
 mod geo_layers;
 mod geo_queries;

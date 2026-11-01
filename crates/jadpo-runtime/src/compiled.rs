@@ -836,6 +836,14 @@ pub fn setting(cx: &mut Ctx<'_>, p: &Program, n: u32, at: u32) -> Ran {
     ))
 }
 
+/// `flags.<name>`, flag `n`, worked out for the caller (area 16).
+pub fn flag(cx: &mut Ctx<'_>, n: u32, at: u32) -> Ran {
+    match cx.flag(n) {
+        Some(value) => Ok(value),
+        None => Err(defect(cx, "a flag the plan doesn't hold", at)),
+    }
+}
+
 /// What the runtime refused an operation at site `at` with, as what stops
 /// the body: a condition for its call's `attempt` to map, or a fault.
 fn refused(cx: &mut Ctx<'_>, refused: Refused, at: u32) -> Stop {

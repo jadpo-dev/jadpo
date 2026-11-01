@@ -530,14 +530,15 @@ After the registry is live, in order:
      the bytes and the sign-in state deleted, retention's two
      `toolchain.not_built_yet` refusals go too: a retention reaching a
      `File`, and one cascading to someone who signs in; and erasure's,
-     where `erase` is called, of a `File`'s bytes. To settle with a
-     maintainer first: how a record in another store belongs to a
+     where `erase` is called, of a `File`'s bytes. Records shared by
+     several people keep their marked fields until the last of them is
+     erased, and anonymising another person's own record clears only
+     the reference (area 15's notes, Richard 2026-11-01): P3's refusal
+     goes and P3's clear-on-either behaviour changes to match. To settle
+     with a maintainer first: how a record in another store belongs to a
      person, since no reference crosses stores
-     (`data.reference_across_stores`), which queries "serve the retained
-     purpose", and what anonymising another person's own record does
-     (P3 refuses an erasure that would: erasing a user whom another
-     user's cleared `invited_by_id` refers to, whose marked fields are
-     that user's own). Done when an erased person leaves nothing the
+     (`data.reference_across_stores`), and which queries "serve the
+     retained purpose". Done when an erased person leaves nothing the
      page says erasure reaches, on both executors.
    - [ ] **P5 Export** `opus · high` after P4 and V5: area 15, "Export"
      and "Who may erase and export"; area 13's generated test.
@@ -696,21 +697,10 @@ After the registry is live, in order:
      with the design skills first. Done when tests read fixture files and
      see each failure on both executors, and `jadpo files copy` moves a
      disk store's files to S3.
-   - [ ] **B9 Flags declared, read and tested** `opus · xhigh`: area 16,
-     "Feature flags" (the declaration, "Changing a flag" for where values
-     live, "Who gets which value" and "What the compiler checks"); area
-     1, `flags.jadpo` and "Rules triggered by time passing"; area 5,
-     `flags: { store: }`; area 13, `flags:` in a test's settings.
-     `flags { }` of `Bool` and enum flags with their default, owner and
-     `expires:`; `flags.name` in actions and a route's `run:` arguments,
-     fixed for the operation and worked out for the caller (named users,
-     then a stable percentage, then everyone), each server holding the
-     values in memory, refreshed within ten seconds and keeping the last
-     on a failed read; `flags:` in a test; an unknown flag, and an expired
-     one (today's date in `check`, the commit's in `build`, not
-     declinable), refused. Named tenants wait for tenancy to be settled
-     for flags. Done when tests read every value of a flag on both
-     executors, with per-user and percentage values from its table.
+   - [x] **B9 Flags declared, read and tested**: area 16, "Feature flags"
+     and "Flags: declared, read and tested"; area 1, "Rules triggered by
+     time passing"; area 13, "Test settings"; compiler/runtime §2.6,
+     "Feature flags".
    - [ ] **B10 Changing and removing flags** `opus · high` after B9: area
      16, "Changing a flag", "What the compiler checks" (both values
      tested), "Removing a flag" and "Flags in browsers and apps"; area

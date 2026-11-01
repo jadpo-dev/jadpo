@@ -78,46 +78,101 @@ flag once, in the file `flags.jadpo` at the root of the project, with its
 type, its default, its owner and the date it expires. The `///` comment
 above a flag is its description, as for every declaration.
 
-```jadpo fragment
-// flags.jadpo
+```jadpo check project=feature-flags file=flags.jadpo
+use ordering/types { CheckoutLayout }
+
 flags {
     /// The one-page checkout replacing the three-step form.
     new_checkout: Bool {
         default: false
         owner: "payments"
-        expires: "2027-01-31"
+        expires: "2099-01-31"
     }
 
     /// Which layout the checkout uses while we compare two.
     checkout_layout: CheckoutLayout {
         default: CheckoutLayout.classic
         owner: "payments"
-        expires: "2026-12-15"
+        expires: "2099-12-15"
     }
 }
 ```
 
-A flag is a `Bool`, or an enum when it has more than two variants. Code
-reads it as `flags.new_checkout`, in actions and in a route's `run:`
-arguments. Functions and queries can't read a flag, so you pass them its
-value as a parameter. As with `clock.now`, the value is fixed for the
-whole operation, so one request never sees a flag change halfway through.
-
-```jadpo fragment
-// domains/ordering/actions/place_order.jadpo
-action place_order(user_id: User.id, input: PlaceOrder) -> OrderView {
-    if (flags.new_checkout) {
-        return place_order_in_one_step(user_id, input)
+```jadpo check project=feature-flags file=app.jadpo hidden
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.database_url
+        }
     }
-    ...
+}
+```
+
+```jadpo check project=feature-flags file=config.jadpo hidden
+config {
+    database_url: PostgresUrl
+}
+```
+
+```jadpo check project=feature-flags file=domains/ordering/types/checkout_layout.jadpo hidden
+/// How the checkout's form is laid out.
+type CheckoutLayout = Enum {
+    classic
+    single_column
+}
+```
+
+```jadpo check project=feature-flags file=domains/ordering/types/checkout_steps.jadpo hidden
+/// How many pages the checkout takes.
+type CheckoutSteps = Int {
+    min: 1
+    max: 3
+}
+```
+
+```jadpo check project=feature-flags file=domains/ordering/types/checkout_shown.jadpo hidden
+use ordering/types { CheckoutLayout, CheckoutSteps }
+
+/// The checkout a customer is shown.
+type CheckoutShown = Output {
+    page_count: CheckoutSteps
+    arrangement: CheckoutLayout
+}
+```
+
+A flag is a `Bool`, or an enum when it has more than two values, whose
+variants carry no data. Code reads it as `flags.new_checkout`, in actions
+and in a route's `run:` arguments. Functions and queries can't read a
+flag (`flag.read_context`), so you pass them its value as a parameter. As
+with `clock.now`, the value is fixed for the whole operation, so one
+request never sees a flag change halfway through.
+
+```jadpo check project=feature-flags file=domains/ordering/actions/start_checkout.jadpo migrate=initial
+use ordering/types { CheckoutShown }
+
+/// The checkout this customer is shown.
+action start_checkout() -> CheckoutShown {
+    if (flags.new_checkout) {
+        return CheckoutShown {
+            page_count: 1
+            arrangement: flags.checkout_layout
+        }
+    }
+    return CheckoutShown {
+        page_count: 3
+        arrangement: flags.checkout_layout
+    }
 }
 ```
 
 ### Changing a flag
 
 A flag's current state lives in your app's own database, in a table Jadpo
-owns. You change it while the app runs, with `jadpo flags` against an
-environment
+owns, `jadpo_flags`, in the database `application { flags: { store: } }`
+names, or the only one there is. With several databases and none named,
+the flags are `flag.store_required`. You change it while the app runs,
+with `jadpo flags` against an environment
 ([Commands for services, calls, email and stored data](14-tooling.md#commands-for-services-calls-email-and-stored-data)).
 Each change is logged with who made it.
 
@@ -131,7 +186,7 @@ Flags aren't a capability, and no outside flag service fills them.
 
 ```text
 jadpo flags set new_checkout --env production --users 0192... --percent 10
-jadpo flags set checkout_layout --env production --split classic=50,compact=50
+jadpo flags set checkout_layout --env production --split classic=50,single_column=50
 jadpo flags list --env production
 ```
 
@@ -155,14 +210,37 @@ value in the event it emits.
 
 ### What the compiler checks
 
-- `flags.new_chekout` is a compile error, like any unknown name.
+- `flags.new_chekout` is a compile error, `flag.unknown`, like any
+  unknown name.
 - Every flag read needs a test for each value. A test chooses the value
   with `flags: { new_checkout: true }`, beside `clock:` and `config:`
-  ([Test settings](13-testing.md#test-settings)). `jadpo check` fails
-  until the tests that reach each read cover both `true` and `false`, or
-  every variant.
-- A flag past its `expires:` date is an error naming its owner, and you
-  can't decline it. `jadpo check` judges the date against today, and
+  ([Test settings](13-testing.md#test-settings)), for every caller in
+  the test; a flag it doesn't name has its `default:`. `jadpo check`
+  fails until the tests that reach each read cover both `true` and
+  `false`, or every variant.
+
+```jadpo check project=feature-flags file=domains/ordering/actions/start_checkout.test.jadpo
+use ordering/types { CheckoutLayout, CheckoutShown }
+
+test "the three-step form is shown by default" {
+    var checkout_opened: CheckoutShown = start_checkout()
+    assert checkout_opened.page_count == 3
+    assert checkout_opened.arrangement == CheckoutLayout.classic
+}
+
+test "the new checkout takes one page, in the layout the test gives" {
+    flags: {
+        new_checkout: true
+        checkout_layout: CheckoutLayout.single_column
+    }
+    var checkout_opened: CheckoutShown = start_checkout()
+    assert checkout_opened.page_count == 1
+    assert checkout_opened.arrangement == CheckoutLayout.single_column
+}
+```
+
+- A flag past its `expires:` date is an error naming its owner,
+  `flag.expired`, and you can't decline it. `jadpo check` judges the date against today, and
   `jadpo build` against the commit's date, so rebuilding a merged
   revision is never blocked by a date passing. To keep a flag longer you
   edit the date, so keeping one is a reviewed choice.
@@ -3651,6 +3729,59 @@ A file that isn't gzip is read as it is, whatever `max_unpacked_size:`
 says, so one helper serves uploads that are packed and ones that
 aren't.
 
+## Flags: declared, read and tested
+<!-- topic: flags-declared-read-and-tested -->
+
+Each flag in `flags { }` is a `Bool` or an enum whose variants carry no
+data, with a `default:` written as a test's `flags:` writes a value, an
+`owner:` in quotes, and an `expires:` date in quotes, `"2027-01-31"`. A
+flag missing one of the three, giving one that isn't valid, of another
+type, or declared twice is `flag.declaration_invalid`. `client:` is
+`toolchain.not_built_yet` where it is written, until `GET /flags` is
+built.
+
+### Where it is read
+
+An action, a test and a route's `run:` arguments read `flags.<name>`; a
+test's read gives what its `flags:` says. A function, a constant, a rule
+or a template reading one is `flag.read_context`, and a name no flag has
+is `flag.unknown`, in code and in a test's `flags:`, with the nearest
+flag's name offered.
+
+### The state each server holds
+
+`jadpo_flags` holds a row for each flag that has been changed: everyone's
+value, `NULL` for the `default:`; the named users' values, an object of
+each user's `id` to a value; and the shares of users, an array of
+`[value, percent]` pairs in order, each a whole percentage. A value is
+`true` or `false`, or a variant's name. A flag with no row, and a value
+no variant has any more, give the `default:`.
+
+Each server reads the table at most every five seconds, as a request or
+a tick begins, so a change applies within ten seconds. A read that
+fails keeps what the server had, or nothing, which gives every flag its
+`default:`, and the next is tried five seconds later. The first flag an
+operation reads fixes the state for the rest of it, and each flag's
+value is worked out once per operation.
+
+### Who is in a share
+
+A user's place among 100 is the first eight bytes of the BLAKE3 hash of
+the flag's name, a zero byte and the user's `id` in lowercase, read as a
+little-endian number, modulo 100. A user whose place is below the first
+share's percentage gets its value, below the first two shares' sum the
+second's, and so on; anyone else gets everyone's value. A named user's
+value comes before any share. A service, a schedule's run, a
+subscriber's delivery and a request no one signed in to have no user, so
+they get everyone's value.
+
+### Judging a flag's date
+
+`jadpo check` judges `expires:` at today and `jadpo build` at the
+commit's date, both in UTC, or at `SOURCE_DATE_EPOCH` when it is set. A
+flag is past its date from the day after it, and `flag.expired` names
+its owner. Running a program or its tests judges no date.
+
 ## What is built
 <!-- topic: built-in-services-built -->
 
@@ -3666,7 +3797,7 @@ The errors this page describes are built with the feature they belong to.
 | Rate limits | Built: default rate limits with routes, and their store on Workers, Cloudflare's rate-limiting binding ([Rate limits on Workers](#rate-limits-on-workers)). Not built yet: Redis's driver, which comes with caches. Until then a deployable whose store is Redis counts in its own memory, which on Workers is the judgement call `rate_limits.counted_in_memory`. The binding's windows and the Wrangler entries aren't yet checked against the real edge. |
 | The capability seam | Built: the seam every capability's calls go through, with a delivery that hands its event to a capability, parked as `outcome_unknown` when a send without a key may have acted ([The seam every outside call goes through](#the-seam-every-outside-call-goes-through)). |
 | Files | Partly built. Built: the `files` capability's first part on that seam: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [Files: `put`, `read` and the disk driver in development](#files-put-read-and-the-disk-driver-in-development)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([Files: an export's pieces](#files-an-exports-pieces)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). Not built yet: upload slots, multipart ones included, downloads, deleting and erasing a file's bytes, the S3 driver, the floor as a monitoring threshold, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written. |
-| Flags | Not built yet. |
+| Flags | Partly built: `flags { }` of `Bool` and enum flags with their `default:`, `owner:` and `expires:`; `flags.<name>` in actions, tests and a route's `run:` arguments, worked out for the caller from `jadpo_flags` in `flags: { store: }`, held in each server's memory and fixed for the operation; a test's `flags:`; `flag.unknown`, `flag.read_context` and `flag.expired` ([Flags: declared, read and tested](#flags-declared-read-and-tested)). Not built yet: `jadpo flags set`, `list` and `remove`, the log of changes, `check` failing until both values are tested, `client: true` and `GET /flags`, and named tenants, which wait for tenancy to be settled for flags. |
 | Audit | Built: an entity's `audit:`, an entry in the same transaction as each change, `history` with the record's `read` grant and the fields the caller can read, retention by the purge schedule, entries deleted with their record by erasure, `AuditEntryRecorded` to subscribers, and the permissions report's line ([Audit trail](#audit-trail)). Not built yet: what [What the audit trail doesn't keep yet](#what-the-audit-trail-doesnt-keep-yet) lists, each `toolchain.not_built_yet` where it is written, and `publishing`, which comes with outgoing webhooks. |
 | Search | Built on PostgreSQL: `search: { fields: language: }` with its generated column, GIN index and migrations, `matches` with a `SearchText`, the best matches first in keyset pages, and policy over every search ([Search](#search)). Not built yet: an engine's `store:`, `toolchain.not_built_yet` where it is written, and `jadpo search reindex`, which come with the `search` capability's packages; and searching a field of a sensitive category, `toolchain.not_built_yet` in `fields:` until the access records are built. |
 | Documents | Not built yet: the application's `documents:` is `toolchain.not_built_yet` where it is written. |
@@ -3698,3 +3829,9 @@ The errors this page describes are built with the feature they belong to.
 - [`rate_limits.counted_in_memory`](../errors/rate_limits.counted_in_memory.md)
 - [`rate_limits.store_invalid`](../errors/rate_limits.store_invalid.md)
 - [`rate_limits.store_required`](../errors/rate_limits.store_required.md)
+- [`flag.declaration_invalid`](../errors/flag.declaration_invalid.md)
+- [`flag.expired`](../errors/flag.expired.md)
+- [`flag.read_context`](../errors/flag.read_context.md)
+- [`flag.store_invalid`](../errors/flag.store_invalid.md)
+- [`flag.store_required`](../errors/flag.store_required.md)
+- [`flag.unknown`](../errors/flag.unknown.md)

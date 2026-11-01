@@ -166,7 +166,7 @@ kinds! {
     TranslationKey: "translation_key", Services, Built, 10;
     Prompt: "prompt", Services, Built, 21;
     EmailTemplate: "email_template", Services, Reserved, 16;
-    Flag: "flag", Services, Reserved, 16;
+    Flag: "flag", Services, Built, 16;
     RateLimit: "rate_limit", Services, Built, 7;
     Threshold: "threshold", Services, Reserved, 16;
 

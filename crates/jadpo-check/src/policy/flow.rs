@@ -1619,6 +1619,7 @@ impl Walk<'_> {
             // A constant is fixed in the code (area 3).
             Expr::Literal(_)
             | Expr::Config { .. }
+            | Expr::Flag { .. }
             | Expr::Constant { .. }
             | Expr::Now
             | Expr::SentEmails
