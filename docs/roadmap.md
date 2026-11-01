@@ -584,9 +584,15 @@ After the registry is live, in order:
      indexes, filters, ordering, search and logs; a key type in an
      encrypted field, usable only as a `crypto` call's `key:`; a
      `TotpSecret` and a `SecretText` stored sealed; rotation through
-     `_PREVIOUS`; interpreted, compiled and on Workers. To settle with a
-     maintainer first: where `field_encryption_key:` is written, and how
-     a key held as data is first made, since code never makes a key.
+     `_PREVIOUS`; interpreted, compiled and on Workers. Decided (Richard, 2026-11-01): `field_encryption_key:` is written at
+     the top of `application { }` as `config.field_encryption_key`, an
+     `EncryptionKey` setting (32 random bytes), made with `jadpo config set
+     field_encryption_key --generate`, rotated through `_PREVIOUS` with a
+     generated re-seal pass and a count of rows still under the old key;
+     a key held as data is made by `crypto.new_key(as: <key type>)`,
+     actions only, usable only stored sealed or as a `crypto` call's
+     `key:`. Losing the key loses the sealed data for good: the pages say
+     so.
      Done when a sealed field round-trips through a store on both
      executors and its column holds only sealed bytes.
    - [ ] **P10 What keys held as data allow** `opus · high` after P9:
