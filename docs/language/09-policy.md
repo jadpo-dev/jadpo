@@ -2108,9 +2108,9 @@ An audited entity's line says how long each change is kept in its
 history, which its `history` shows to those who may read the record
 ([Audit trail](16-built-in-services.md#audit-trail)).
 
-When a change alters this table, the approval review shows it in plain
-terms, such as "viewers can now read `budget`"
-([Review and sign-off](14-tooling.md#review-and-sign-off)).
+When a change alters this table, the approval report shows it in plain
+terms, such as "`CompanyRole.viewer` can now read `work.Project.budget`"
+([Reviewing a change](17-debugging-and-review.md#reviewing-a-change)).
 
 Policy adds no index of its own. Every field a condition filters on is a
 reference (a user field, a role's or the tenant's reference, a
@@ -2159,8 +2159,9 @@ compares the change with the default branch at its merge base through
 Narrowing needs no one: a caller removed, a restriction added, a query
 newly listed, a new route even one anyone may call, a new entity that
 belongs to the tenant. Access also widens when an output gains a field or
-an action starts touching another entity; `jadpo approval`, not built
-yet, shows those paths ([What is built](#what-is-built)).
+an action starts touching another entity; [`jadpo
+approval`](17-debugging-and-review.md#reviewing-a-change) shows those ways
+there.
 
 Schedules and subscribers act as the system
 ([Background work](#background-work)), and what `Access.system` is granted
@@ -2713,7 +2714,7 @@ Everything on this page is built except the features below. Each is
 | Grants, user fields, membership roles, roles that need a way in (`requires:`), `Access.authenticated`, `Access.public` and `Access.system`, tenancy, `actions:` with listed queries and `policy.call_ungranted`, field restrictions, the permissions report, and the refusals under "When policy says no" | Built. |
 | `scopes:`, with the tokens issued to other applications (`oauth_token`, `external_token`) | Not built yet. Browser sessions and service keys work without them. |
 | An acceptance for a change that widens access, with `access.jadpo_record` ([Acceptances](18-records-and-manifest.md#acceptances)) | Built. |
-| The approval review that shows the report's changes in plain terms ([Review and sign-off](14-tooling.md#review-and-sign-off)) | Not built yet. Review policy changes in the diff of `access.jadpo_record` instead. |
+| The approval report that shows the report's changes in plain terms ([Reviewing a change](17-debugging-and-review.md#reviewing-a-change)) | Built. |
 
 ## Errors
 

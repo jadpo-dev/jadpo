@@ -142,6 +142,8 @@ rules! {
         "A `jadpo ai` command names no action, one it doesn't have, or a prompt the project doesn't declare";
     CLI_API_ARGUMENTS: "cli.api_arguments", area 14, Error, Agent,
         "A `jadpo api` command names no action, one it doesn't have, or more than `update`";
+    CLI_APPROVAL_ARGUMENTS: "cli.approval_arguments", area 14, Error, Agent,
+        "A `jadpo approval` command is given an argument it doesn't take, names a `--before` git doesn't know, or has nothing to compare with";
     CLI_BUILD_ARGUMENTS: "cli.build_arguments", area 14, Error, Agent,
         "A `jadpo build` command names a deployable the app doesn't have, or more than one";
     CLI_CALLS_ARGUMENTS: "cli.calls_arguments", area 14, Error, Agent,

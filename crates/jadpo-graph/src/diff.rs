@@ -12,7 +12,8 @@
 //! git; `PolicyChange` for a new kind of caller, a principal changed, and
 //! a new sign-in method or way of signing in. `ApiChange`, `DataChange`,
 //! policy's grants and `ThresholdChange` are classified by their areas as
-//! they are built, and "newly reachable" needs deployables (area 14).
+//! they are built. "Newly reachable" is the approval report's
+//! (`jadpo_check::approval`), read from the two manifests' edges.
 
 use std::collections::BTreeSet;
 

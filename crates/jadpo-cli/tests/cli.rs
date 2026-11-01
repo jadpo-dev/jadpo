@@ -80,6 +80,7 @@ Change safely
   api           Rewrite the API records       update
   records       List and update the records   update
   acceptance    Draft a person's acceptance   new
+  approval      Explain a change, decisions first
   declines      List or clear declines        list, clear
   fix           Fix a standard type's finding
   suggest       Hint where a standard type or operation fits
@@ -160,6 +161,7 @@ Change safely
   api           Rewrite the API records       update
   records       List and update the records   update
   acceptance    Draft a person's acceptance   new
+  approval      Explain a change, decisions first
   declines      List or clear declines        list · clear
   fix           Fix a standard type's finding
   suggest       Hint where a standard type or operation fits
@@ -338,6 +340,7 @@ fn help_json_is_the_whole_command_reference() {
             "api",
             "records",
             "acceptance",
+            "approval",
             "declines",
             "fix",
             "suggest",
@@ -769,6 +772,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "api\tRewrite the API records",
             "records\tList and update the records",
             "acceptance\tDraft a person's acceptance",
+            "approval\tExplain a change, decisions first",
             "declines\tList or clear declines",
             "fix\tFix a standard type's finding",
             "suggest\tHint where a standard type or operation fits",

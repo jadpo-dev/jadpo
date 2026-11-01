@@ -1956,6 +1956,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "jadpo-registry"
+version = "0.2.0"
+dependencies = [
+ "jadpo-db",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "jadpo-runtime"
 version = "0.2.0"
 dependencies = [

@@ -1212,7 +1212,7 @@ the sandbox for each one (see "Tests and fakes").
 
 Not built yet: the hosted registry; importers other than `openapi`;
 adding another Jadpo app's OpenAPI document with `jadpo package add`;
-`packages:`'s `own_sources:`; `jadpo approval`; writing an operation's output type from
+`packages:`'s `own_sources:`; writing an operation's output type from
 the sandbox's answer when it has none; and a HAR capture's operations.
 
 ## The surface
@@ -1739,21 +1739,53 @@ it can send makes a release live.
 | `GET packages/@{publisher}/{name}/releases/{version}` | One release: repository, tag, commit, digest, its `surface.jadpo_record`, facts, change record, written account, compatible Jadpo releases and its index in the log |
 | `GET archives/{digest}` | The release's files as a tar archive whose files, unpacked, have that digest, as the lock computes it |
 | `GET log/head` | The log's size and root hash |
-| `GET log/proof/{digest}` | The release's index and the hashes that prove it is in the log at the head given |
+| `GET log/proof/{digest}?size=` | The release's log entry, its index and the hashes that prove it is in the log of that size |
+| `GET log/consistency?from=&to=` | The hashes that prove the log of size `to` extends the log of size `from` |
 | `GET search?q=&from=&to=&kind=` | Ranked results, the standard library's first, each naming a package and declaration, with why it matched |
 | `POST advisories/query` | Given installed packages and versions, the advisories against them, each naming its declarations, versions and the packages carrying copies |
 | `POST releases` | Given a repository, a tag and `dry_run`, starts a release (or a dry run) and answers its id |
 | `GET releases/{id}` | Its state (`verifying`, `failed` with the bar's rows, `pending`, `cancelled`, `live`), with its facts and change record once checked |
 
-- **The log** is an append-only Merkle tree of release digests, hashed as
-  RFC 6962 does with SHA-256. `add` and `update` keep the last head they saw
-  in `.jadpo/registry_head` and refuse a head that doesn't extend it.
+- **The log** is an append-only Merkle tree of releases, hashed as RFC
+  6962 does with SHA-256. Each leaf is one line, `@acme/postcodes 2.1.0
+  sha256:…`, so a logged digest can't stand for another package's or
+  version's release. `add` and `update` keep the last head they saw in
+  `.jadpo/registry_head`, ask `log/consistency` from its size to the new
+  head's and refuse a head the proof doesn't show extends it, then ask
+  `log/proof` at the new head's size and refuse a release it doesn't show
+  is in the log. Proofs are made by RFC 6962's definitions and checked by
+  RFC 9162's algorithms; the root is never sent with a proof, since a
+  client checks it against the head it holds.
+- **A placeholder fills a whole segment**, so `{publisher}` is the handle
+  with its `@`: `GET packages/@acme/postcodes` is `packages/{publisher}/{name}`
+  with `publisher` `@acme`. Each part of a scoped name is lower-case
+  letters and digits, starting with a letter, with single `-`s between
+  them, at most 39 characters.
+- **Every answer's field is always sent**, `null` where it has no value,
+  as a Jadpo application writes an output; sizes and indexes are JSON
+  numbers. A release's facts are the table in [What a release
+  shows](#what-a-release-shows), less the Jadpo releases it works with,
+  which are the release's own field since they grow after it is checked.
+- **Its failures** are `package_not_found`, `release_not_found`,
+  `archive_not_found` and `release_request_not_found` (404), `not_in_log`
+  (404, also for a release logged after the size asked about),
+  `size_past_head` (422, a size past the head or sizes the wrong way
+  round) and `repository_refused` (422, not a repository reached over
+  HTTPS). `POST releases` answers 202, the others 200.
 - **The lock's `registry` source** records the scoped name:
   `package Postcodes.v2 version 2.1.0 registry @acme/postcodes digest
   sha256:…`.
 - **The registry application's served OpenAPI is checked against this
   table** by a conformance test in the `jadpo` repository, run against a
-  local registry built from the same table, so neither side drifts.
+  local registry built from the same table, so neither side drifts. Every
+  row must be served below `/registry/v1/` with its placeholders, query
+  members, body, status, answer and failures, open to a caller who hasn't
+  signed in, and nothing else but `openapi.json`; shapes are compared
+  through any `$ref`, and what a Jadpo application adds that the table
+  doesn't constrain (the runtime's shared failures, `x-jadpo-` keywords,
+  an `Idempotency-Key` header) is left alone. The registry application's
+  CI runs it with `JADPO_REGISTRY_OPENAPI` set to its served document
+  ([compiler/runtime §2.1](../compiler-runtime.md#21-workspace-and-crates)).
 
 ### The verifier
 
@@ -7007,7 +7039,8 @@ package's name, as its types are.
 | Services (`runs:`) | Not built yet. |
 | OAuth grants | Not built yet: the application's `grants:` is `toolchain.not_built_yet` where it is written. |
 | Publisher trust for third-party git packages | Built: every package from git needs an [acceptance](18-records-and-manifest.md#acceptances). Not built yet: `packages:`'s `own_sources:`, which lets your own company's repositories in without one. |
-| The public registry: the protocol, the verifier, publishing, facts, search, advisories and compatibility runs | Not built yet. |
+| The registry protocol: its requests and answers, the log and its proofs, a local registry and the conformance test | Built (`jadpo-registry`). |
+| The public registry: the verifier, publishing, facts, search, advisories and compatibility runs | Not built yet. |
 | Importers other than OpenAPI | Not built yet. |
 | Choosing a provider when deploying | Not built yet. |
 | Erasure at providers | Not built yet: it comes with [Personal data](15-personal-data.md). |

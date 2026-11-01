@@ -198,7 +198,7 @@ fn a_client_field_a_client_cannot_format_is_an_error() {
 
 /// A shop in English with German complete, French lacking a message, and a
 /// Canadian French still in progress, reviewed by a person.
-const SHOP: &[(&str, &str)] = &[
+pub(crate) const SHOP: &[(&str, &str)] = &[
     (
         "app.jadpo",
         "application {\n    translations: {\n        review: TranslationReview.required\n    }\n}\n\nlocales {\n    default: Locale.en_gb\n    supported: [Locale.en_gb, Locale.de_de, Locale.fr_fr, Locale.fr_ca]\n    in_progress: [Locale.fr_ca]\n}\n",

@@ -391,6 +391,25 @@ pub enum Block {
         headline: String,
         fields: Vec<(String, String)>,
     },
+    /// Things a person decides (area 17's approval report): a bold
+    /// heading, then each a `◆` line in the decision colour, or `✓` in the
+    /// success colour once decided, its state right-aligned in the same
+    /// colour, and its path below at column 4, the arrows muted. Plain
+    /// output puts the state in brackets after the sentence.
+    Decisions {
+        heading: String,
+        rows: Vec<DecisionRow>,
+    },
+}
+
+/// One decision: what it is, in a sentence, its state, and the steps of
+/// the path that makes it true.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DecisionRow {
+    pub decided: bool,
+    pub text: String,
+    pub state: String,
+    pub path: Vec<String>,
 }
 
 /// A heading and its change lines, each a mark and its columns.
@@ -749,6 +768,7 @@ fn block_lines(block: &Block, grid: &Grid, style: &Style) -> Vec<Line> {
             }
             lines
         }
+        Block::Decisions { heading, rows } => decision_rows(heading, rows, style),
         Block::Answer { headline, fields } => {
             let mut lines: Vec<Line> = wrap(headline, style.width)
                 .into_iter()
@@ -874,6 +894,76 @@ fn block_lines(block: &Block, grid: &Grid, style: &Style) -> Vec<Line> {
             }
         }
     }
+}
+
+fn decision_rows(heading: &str, rows: &[DecisionRow], style: &Style) -> Vec<Line> {
+    let mut lines = vec![vec![bold(heading)]];
+    let arrow = format!(" {} ", Symbol::Next.text(style.symbols));
+    for row in rows {
+        if rich(style) {
+            let (symbol, token) = if row.decided {
+                (Symbol::Success, Token::Success)
+            } else {
+                (Symbol::Decision, Token::Decision)
+            };
+            let room = style.width.saturating_sub(2);
+            let state = width(&row.state);
+            let text = wrap(&row.text, room);
+            let count = text.len();
+            for (i, part) in text.into_iter().enumerate() {
+                let mut line = if i == 0 {
+                    vec![
+                        paint(token, symbol.text(style.symbols)),
+                        raw(format!(" {part}")),
+                    ]
+                } else {
+                    vec![raw(format!("  {part}"))]
+                };
+                if i + 1 == count {
+                    let used = 2 + width(&part);
+                    if used + 2 + state <= style.width {
+                        line.push(raw(" ".repeat(style.width - used - state)));
+                        line.push(paint(token, row.state.as_str()));
+                        lines.push(line);
+                    } else {
+                        lines.push(line);
+                        lines.push(vec![
+                            raw(" ".repeat(style.width.saturating_sub(state))),
+                            paint(token, row.state.as_str()),
+                        ]);
+                    }
+                } else {
+                    lines.push(line);
+                }
+            }
+        } else {
+            lines.push(vec![raw(format!("  {} ({})", row.text, row.state))]);
+        }
+        if row.path.is_empty() {
+            continue;
+        }
+        // The path breaks only between steps, so no step is ever cut, and
+        // not at all in plain output, so it can be searched.
+        let mut line: Line = vec![raw("    ")];
+        let mut used = 4;
+        for (i, step) in row.path.iter().enumerate() {
+            let needed = width(step) + if i > 0 { width(&arrow) } else { 0 };
+            if i > 0 && rich(style) && used + needed > style.width {
+                lines.push(line);
+                line = vec![raw("      ")];
+                used = 6;
+                line.push(paint(Token::Muted, arrow.trim_start().to_string()));
+                used += width(arrow.trim_start());
+            } else if i > 0 {
+                line.push(paint(Token::Muted, arrow.clone()));
+                used += width(&arrow);
+            }
+            line.push(raw(step.as_str()));
+            used += width(step);
+        }
+        lines.push(line);
+    }
+    lines
 }
 
 fn rule_lines(
