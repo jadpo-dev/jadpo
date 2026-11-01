@@ -15,7 +15,7 @@ use crate::log::{Log, LogEntry};
 use crate::names::{Digest, Handle, ScopedName, Version};
 use crate::protocol::{
     ARCHIVE_NOT_FOUND, Advisory, AdvisoryAnswer, BarRow, ConsistencyProof, Facts, Failure,
-    InclusionProof, LOG_SIZE_AHEAD, Method, NOT_IN_LOG, PACKAGE_NOT_FOUND, Package, PackageKind,
+    InclusionProof, SIZE_PAST_HEAD, Method, NOT_IN_LOG, PACKAGE_NOT_FOUND, Package, PackageKind,
     Publisher, RELEASE_NOT_FOUND, RELEASE_REQUEST_NOT_FOUND, REPOSITORY_REFUSED, Refusal, Release,
     ReleaseRequest, ReleaseState, ReleaseSummary, Request, SearchAnswer, SearchResult,
     StartedRelease,
@@ -385,7 +385,7 @@ impl LocalRegistry {
             Request::LogHead => json(200, &state.log.head()),
             Request::LogProof { digest, size } => {
                 if *size > state.log.size() {
-                    return failure(LOG_SIZE_AHEAD);
+                    return failure(SIZE_PAST_HEAD);
                 }
                 let Some(index) = state.log.index_of(digest).filter(|i| i < size) else {
                     return failure(NOT_IN_LOG);
@@ -411,7 +411,7 @@ impl LocalRegistry {
                         hashes,
                     },
                 ),
-                None => failure(LOG_SIZE_AHEAD),
+                None => failure(SIZE_PAST_HEAD),
             },
             Request::Search { q, kind, .. } => {
                 let words: Vec<String> = q

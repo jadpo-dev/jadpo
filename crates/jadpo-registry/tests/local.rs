@@ -297,9 +297,9 @@ fn failures_come_in_the_failure_envelope() {
     let missing = send(&url, &Request::LogProof { digest, size: 3 });
     assert_eq!(failure(&missing), (404, "not_in_log".into()));
     let ahead = send(&url, &Request::LogConsistency { from: 1, to: 9 });
-    assert_eq!(failure(&ahead), (422, "log_size_ahead".into()));
+    assert_eq!(failure(&ahead), (422, "size_past_head".into()));
     let backwards = send(&url, &Request::LogConsistency { from: 3, to: 2 });
-    assert_eq!(failure(&backwards), (422, "log_size_ahead".into()));
+    assert_eq!(failure(&backwards), (422, "size_past_head".into()));
     let release: Release = ask(
         &url,
         &Request::Release {
@@ -314,7 +314,7 @@ fn failures_come_in_the_failure_envelope() {
             size: 9,
         },
     );
-    assert_eq!(failure(&ahead), (422, "log_size_ahead".into()));
+    assert_eq!(failure(&ahead), (422, "size_past_head".into()));
     let missing = send(
         &url,
         &Request::ReleaseRequest {

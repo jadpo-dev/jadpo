@@ -131,7 +131,7 @@ fn reason(status: u16) -> &'static str {
         405 => "Method Not Allowed",
         413 => "Content Too Large",
         422 => "Unprocessable Content",
-        _ => "Status",
+        _ => "Other",
     }
 }
 

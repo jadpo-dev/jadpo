@@ -1769,7 +1769,7 @@ it can send makes a release live.
 - **Its failures** are `package_not_found`, `release_not_found`,
   `archive_not_found` and `release_request_not_found` (404), `not_in_log`
   (404, also for a release logged after the size asked about),
-  `log_size_ahead` (422, a size past the head or sizes the wrong way
+  `size_past_head` (422, a size past the head or sizes the wrong way
   round) and `repository_refused` (422, not a repository reached over
   HTTPS). `POST releases` answers 202, the others 200.
 - **The lock's `registry` source** records the scoped name:

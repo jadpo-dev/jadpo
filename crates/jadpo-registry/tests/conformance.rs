@@ -266,7 +266,7 @@ fn statuses_failures_and_sign_in_are_checked() {
                 ["schema"];
             *schema = json!({ "type": "object" });
         },
-        "fails with `log_size_ahead` (422)",
+        "fails with `size_past_head` (422)",
     );
     drifts(
         |d| op(d, "log/head", "get")["security"] = json!([{ "session": [] }]),

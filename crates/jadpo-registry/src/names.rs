@@ -53,7 +53,7 @@ impl ScopedName {
     pub fn parse(text: &str) -> Result<Self, NameError> {
         let refused = || NameError {
             text: text.to_string(),
-            expected: "a scoped name such as `@acme/postcodes`",
+            expected: "a scoped name such as `@publisher/name`",
         };
         let rest = text.strip_prefix('@').ok_or_else(refused)?;
         let (publisher, name) = rest.split_once('/').ok_or_else(refused)?;

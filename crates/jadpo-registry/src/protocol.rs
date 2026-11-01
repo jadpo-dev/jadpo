@@ -133,9 +133,9 @@ pub const NOT_IN_LOG: Failure = Failure {
     code: "not_in_log",
     message: "No release with this digest is in the log at this size.",
 };
-pub const LOG_SIZE_AHEAD: Failure = Failure {
+pub const SIZE_PAST_HEAD: Failure = Failure {
     status: 422,
-    code: "log_size_ahead",
+    code: "size_past_head",
     message: "The log isn't that size yet, or the sizes are the wrong way round.",
 };
 pub const RELEASE_REQUEST_NOT_FOUND: Failure = Failure {
@@ -273,7 +273,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
         body: None,
         status: 200,
         answer: Answer::Json("InclusionProof"),
-        failures: &[NOT_IN_LOG, LOG_SIZE_AHEAD],
+        failures: &[NOT_IN_LOG, SIZE_PAST_HEAD],
     },
     Endpoint {
         id: "log_consistency",
@@ -296,7 +296,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
         body: None,
         status: 200,
         answer: Answer::Json("ConsistencyProof"),
-        failures: &[LOG_SIZE_AHEAD],
+        failures: &[SIZE_PAST_HEAD],
     },
     Endpoint {
         id: "search",
