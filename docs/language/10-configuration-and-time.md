@@ -105,8 +105,8 @@ config {
 ```
 
 A binding is capital letters, digits and `_`, starting with a capital
-letter, and no two settings read the same variable. A `SigningKey` setting
-also reads its variable with `_PREVIOUS` after it
+letter, and no two settings read the same variable. A `SigningKey` or an
+`EncryptionKey` setting also reads its variable with `_PREVIOUS` after it
 ([Signing keys](#signing-keys)), so no other setting may bind that name.
 
 Because the name comes from the field, renaming a field renames its
@@ -411,7 +411,9 @@ keeps it on the server:
 - an integration's `credential:`, and its webhook `secret:`
   ([Connecting in `app.jadpo`](11-integrations.md#connecting-in-appjadpo));
 - an authentication `signing_key:`
-  ([The application and revocation](08-identity.md#the-application-and-revocation)).
+  ([The application and revocation](08-identity.md#the-application-and-revocation));
+- the application's `field_encryption_key:`
+  ([Encrypted fields](15-personal-data.md#encrypted-fields)).
 
 All of these are written in `app.jadpo` or `authentication.jadpo`. The one
 other place is a `crypto` call's `key:`, written `key: config.<name>` with
@@ -568,6 +570,19 @@ It writes `.env.local` safely: only to an ordinary file, through a
 temporary file only its owner can read, only if the file hasn't changed
 since it was read, and with `.env.local` added to `.gitignore`.
 
+Nobody needs to type a key, so nobody should see one. `jadpo config set
+field_encryption_key --generate` makes 32 random bytes for a setting of a key
+type, writes them to `.env.local` the same way, and prints nothing. It needs
+no terminal, so an agent can run it, and it refuses a setting that already has
+a value, since replacing a key leaves what it sealed unreadable
+(`cli.config_generate_refused`). For anywhere else, `jadpo config generate
+field_encryption_key` writes a new key to its output and refuses a terminal,
+so it only ever goes into a pipe:
+
+```text
+$ jadpo config generate field_encryption_key | wrangler secret put FIELD_ENCRYPTION_KEY
+```
+
 ### Checking values: `jadpo config check`
 
 `jadpo config check` lists each field as `set`, `default`, `missing` or
@@ -611,6 +626,11 @@ signed with the current key, and tokens signed with either key are
 accepted. So to rotate a key, set the new one and move the old one to
 `_PREVIOUS`. Remove the old one once the longest token lifetime has passed.
 Both keys are checked when the app starts, and neither is ever printed.
+
+An `EncryptionKey` setting rotates the same way, with one difference: what it
+sealed stays sealed with it until rewritten, so `_PREVIOUS` can go only once
+nothing needs it. [Rotating the key](15-personal-data.md#rotating-the-key)
+says how the application's `field_encryption_key:` does that.
 
 ## Client addresses
 <!-- topic: client-addresses -->

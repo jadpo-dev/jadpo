@@ -532,6 +532,7 @@ fn background(db: &dyn Db, project: Project) -> (Option<String>, Option<String>)
         schedules = Some(match &schedule.run {
             crate::schedules::ScheduleRun::Action(_) => format!("the schedule `{}`", schedule.name),
             crate::schedules::ScheduleRun::Purge(entity) => format!("`{entity}`'s purge"),
+            crate::schedules::ScheduleRun::Reseal => format!("`{}`", schedule.name),
         });
     }
     if schedules.is_none()

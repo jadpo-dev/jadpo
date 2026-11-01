@@ -67,9 +67,8 @@ fn a_key_setting_is_its_setting_s_key() {
 
 #[test]
 fn a_key_read_from_a_field_is_the_field_s() {
-    // No field holds a key until encrypted fields arrive (the roadmap's
-    // chunk P9), so the checker refuses this; the
-    // plan still says where the key would come from.
+    // Only an entity's field holds a key (chunk P9), so the checker refuses
+    // an object's; the plan still says where the key would come from.
     let plan = plan(
         "type Signature = Bytes {}\n\ntype Device = Object {\n    signing_key: PrivateKey\n}\n\nfunction signed(device: Device, body: Text) -> Signature {\n    return Signature(crypto.sign(body, key: device.signing_key))\n}\n",
     );
@@ -87,4 +86,12 @@ fn a_key_from_anywhere_else_has_no_source() {
         "type Mac = Bytes {}\n\nfunction mac(body: Text, secret: Text) -> Mac {\n    return Mac(crypto.hmac(body, key: secret))\n}\n",
     );
     assert_eq!(key_of(&plan, "mac"), Decoded::Key(None));
+}
+
+#[test]
+fn a_key_held_in_a_var_is_the_var_s() {
+    let plan = plan(
+        "type Sealed = Bytes {}\n\naction seal(note: Text) -> Sealed {\n    var made: EncryptionKey = crypto.new_key(as: EncryptionKey)\n    return Sealed(crypto.encrypt(note, key: made, context: \"note\"))\n}\n",
+    );
+    assert_eq!(key_of(&plan, "seal"), Decoded::Key(Some(KeySource::Local)));
 }

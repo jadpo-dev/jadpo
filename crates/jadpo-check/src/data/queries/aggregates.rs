@@ -558,6 +558,16 @@ impl Reader<'_> {
                 return None;
             };
             let field = self.field_ref(path, entity, &field_expr)?;
+            if field.sealed.is_some() {
+                self.out.push(crate::data::sealed::used(
+                    &entity.name,
+                    &field.name,
+                    "A group",
+                    Self::span(path, &field_expr),
+                    "Group by another field".to_string(),
+                ));
+                return None;
+            }
             let ty = Ty::Field(entity.name.clone(), vec![field.name.clone()]);
             if self.lookup.representation(&ty) != Some(Prim::CalendarDate) {
                 let field_written = format!("{}.{}", entity.name, field.name);
@@ -598,6 +608,17 @@ impl Reader<'_> {
             return None;
         }
         let field = self.field_ref(path, entity, &value)?;
+        // Only the application can open a sealed field (area 15; chunk P9).
+        if field.sealed.is_some() {
+            self.out.push(crate::data::sealed::used(
+                &entity.name,
+                &field.name,
+                "A group",
+                value_span,
+                "Group by another field".to_string(),
+            ));
+            return None;
+        }
         let ty = Ty::Field(entity.name.clone(), vec![field.name.clone()]);
         let held = field.sql_type.as_deref() != Some("jsonb") && field.compound.is_none();
         let groupable = held
@@ -861,6 +882,17 @@ impl Reader<'_> {
             }
         };
         let field = self.field_ref(path, entity, &field_expr)?;
+        // Only the application can open a sealed field (area 15; chunk P9).
+        if field.sealed.is_some() {
+            self.out.push(crate::data::sealed::used(
+                &entity.name,
+                &field.name,
+                "An aggregate",
+                Self::span(path, &field_expr),
+                "Work it out in the action from the records it reads".to_string(),
+            ));
+            return None;
+        }
         let field_written = format!("{}.{}", entity.name, field.name);
         let field_ty = Ty::Field(entity.name.clone(), vec![field.name.clone()]);
         let prim = if field.sql_type.as_deref() == Some("jsonb") {

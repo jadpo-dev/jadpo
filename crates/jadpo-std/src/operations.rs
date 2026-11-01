@@ -186,6 +186,7 @@ pub enum Op {
     CryptoEncrypt,
     CryptoHashPassword,
     CryptoHmac,
+    CryptoNewKey,
     CryptoPublicKey,
     CryptoReadCertificate,
     CryptoSign,
@@ -1207,6 +1208,18 @@ pub const OPERATIONS: &[Operation] = &[
         BYTES_VALUE,
         &[],
         "crypto::hmac",
+    ),
+    // A new key held as data (area 19, "A key is never a value"; chunk P9):
+    // 32 bytes from the host's generator, never kept on a recording's tape,
+    // as the key type `as:` names. It goes only into a key-type field, kept
+    // sealed, or a `key:`.
+    crypto(
+        Op::CryptoNewKey,
+        "new_key",
+        &[param("as", Kind::Type)],
+        Kind::Any,
+        &[],
+        "crypto::new_key",
     ),
     crypto(
         Op::CryptoPublicKey,
@@ -2852,6 +2865,7 @@ impl Op {
             self,
             Op::CryptoEncrypt
                 | Op::CryptoHashPassword
+                | Op::CryptoNewKey
                 | Op::RandomCode
                 | Op::RandomInteger
                 | Op::RandomSample

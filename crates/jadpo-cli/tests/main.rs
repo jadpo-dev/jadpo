@@ -54,6 +54,7 @@ mod dev_tokens;
 mod disk_files;
 mod driver_factory;
 mod emails;
+mod encrypted_fields;
 mod erasure;
 mod erasure_not_possible;
 mod events;

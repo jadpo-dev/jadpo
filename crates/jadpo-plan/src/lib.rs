@@ -348,6 +348,8 @@ fn schedules_plan(
                     purges.iter().find(|plan| plan.entity == *entity)?;
                     jadpo_std::schedule::ScheduleRun::Purge(entity.clone())
                 }
+                // The field key's built-in re-seal (area 15; chunk P9).
+                ScheduleRun::Reseal => jadpo_std::schedule::ScheduleRun::Reseal,
             };
             Some(SchedulePlan {
                 key: model.key.as_str().to_string(),
@@ -803,6 +805,19 @@ impl Plan {
         } else {
             Vec::new()
         };
+        // The field key's re-seal runs where schedules run, and the key
+        // goes wherever a sealed field is read or written, which only a
+        // project keeping none has no need of (area 15; chunk P9).
+        let reseals = if pruning.is_none_or(|pruning| pruning.runs().schedules) {
+            purge::reseals(model)
+        } else {
+            Vec::new()
+        };
+        let field_key = jadpo_check::data::sealed::field_key(db, project)
+            .setting
+            .as_ref()
+            .filter(|_| jadpo_check::data::sealed::any_sealed(db, project))
+            .and_then(|name| setting_number(name));
         let mut constants = Vec::new();
         let mut json_types = json_types.into_inner();
         // Each prompt's entry, and the type of each field its text writes,
@@ -1477,6 +1492,8 @@ impl Plan {
             actions,
             build: build.clone(),
             steps_key,
+            field_key,
+            reseals,
             runs: jadpo_std::Runs::EVERYTHING,
             testing,
         };

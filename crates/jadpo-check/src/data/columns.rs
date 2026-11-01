@@ -433,6 +433,7 @@ fn column(position: u32, sql_type: &str, nullable: bool) -> Column {
         sql_type: sql_type.to_string(),
         nullable,
         retired: false,
+        sealed: false,
         allows: None,
         comment: None,
         generated: None,

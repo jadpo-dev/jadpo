@@ -146,6 +146,7 @@ fn the_list_is_every_section_the_area_pages_give() {
             "documents",
             "email",
             "events",
+            "field_encryption_key",
             "flags",
             "grants",
             "jadpo",

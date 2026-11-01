@@ -606,6 +606,22 @@ impl<'a> Reader<'a, '_> {
     /// `none`.
     fn value(&mut self, expr: &Expr, field: &FieldModel, set: bool) -> Option<Value> {
         let expr = unparen(expr);
+        // Only an action's write sets a sealed field, and only the
+        // application opens one (area 15; chunk P9).
+        if field.sealed.is_some() {
+            let span = self.span(&expr);
+            self.out.push(super::sealed::used(
+                &self.entity.name,
+                &field.name,
+                "A lifecycle",
+                span,
+                format!(
+                    "Remove `encrypted:` from `{}`, or use another field",
+                    field.name
+                ),
+            ));
+            return None;
+        }
         let expected = field_ty(self.entity, field);
         let constant = Const::from_expr(&expr);
         // A value stored whole as JSON is `NULL` when it is `none`, and
@@ -1089,6 +1105,16 @@ impl<'a> Reader<'a, '_> {
         };
         let name = tree::name_ref_text(&name)?;
         let field = self.field_named(&name, &span)?.clone();
+        if field.sealed.is_some() {
+            self.out.push(super::sealed::used(
+                &self.entity.name,
+                &field.name,
+                "A purge",
+                span,
+                "Name an `Instant` field that isn't encrypted".to_string(),
+            ));
+            return None;
+        }
         let ty = field_ty(self.entity, &field);
         if self.lookup.representation(&ty) != Some(Prim::Instant) {
             self.out.push(

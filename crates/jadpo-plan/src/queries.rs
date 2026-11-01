@@ -204,6 +204,13 @@ struct Columns {
     kinds: Vec<Column>,
 }
 
+/// What a sealed field's values are bound to besides their record's `id`:
+/// the column it is kept in, by the names it was born with, which never
+/// change (area 5, "Migrations").
+pub(crate) fn sealed_bound(entity: &EntityModel, field: &FieldModel) -> String {
+    format!("{}.{}", entity.table, field.born)
+}
+
 /// How a later column of a compound standard type (`Money`, area 19) is
 /// named among a statement's columns, after its field's name and before
 /// its place among the type's columns: `total#part1`.
@@ -224,7 +231,12 @@ const EF_SEARCH: u64 = 40;
 
 impl Columns {
     /// The field's column, added once; a compound type's every column.
-    fn add(&mut self, field: &str, kind: Column) -> u32 {
+    fn add(&mut self, field: &str, mut kind: Column) -> u32 {
+        // A sealed value is opened for its own record: its `id` is read
+        // with it, whatever else the read keeps (area 15; chunk P9).
+        if let Column::Sealed { id, .. } = &mut kind {
+            *id = self.add("id", Column::Uuid);
+        }
         let at = match self.names.iter().position(|n| n == field) {
             Some(at) => at,
             None => {
@@ -779,7 +791,9 @@ impl Planner<'_> {
             .iter()
             .zip(kinds)
             .map(|(name, kind)| {
-                if matches!(kind, Column::Part | Column::Json(_)) {
+                // A sealed value is what Jadpo wrote, authenticated (chunk
+                // P9), and a sealed value's JSON is read by its codec.
+                if matches!(kind, Column::Part | Column::Json(_) | Column::Sealed { .. }) {
                     return None;
                 }
                 let field = field(entity, name)?;
@@ -927,6 +941,30 @@ impl Planner<'_> {
         self.json_number(TypeRef::Field(self.types.graph().node(id).key.clone()))
     }
 
+    /// How a sealed field's bytes read once opened (area 15, "Encrypted
+    /// fields"; chunk P9): `None` for any other field.
+    pub(crate) fn sealed_form(
+        &self,
+        entity: &EntityModel,
+        field: &FieldModel,
+    ) -> Option<jadpo_std::read::SealedForm> {
+        use jadpo_check::data::sealed::Holds;
+        use jadpo_std::read::SealedForm;
+        Some(match field.sealed? {
+            Holds::Value => {
+                let id = self
+                    .types
+                    .graph()
+                    .named(Kind::Field, &format!("{}.{}", entity.name, field.name))?;
+                SealedForm::Json(
+                    self.json_number(TypeRef::Field(self.types.graph().node(id).key.clone()))?,
+                )
+            }
+            Holds::Secret(kind) => SealedForm::Secret(kind.to_string()),
+            Holds::Key => SealedForm::Key,
+        })
+    }
+
     /// `ty`'s number in the plan's JSON table, numbered once: a JSON-held
     /// field's type, or a type the runtime keeps as its contract's JSON
     /// (a passkey's `WebAuthnCredential`, chunk 5.9).
@@ -944,6 +982,15 @@ impl Planner<'_> {
 
     /// What a field's column becomes.
     pub(crate) fn column(&self, entity: &EntityModel, field: &FieldModel) -> Option<Column> {
+        // A sealed field, opened with the application's field key (chunk
+        // P9). The statement's `id` column is [`Columns::add`]'s to say.
+        if field.sealed.is_some() {
+            return Some(Column::Sealed {
+                form: self.sealed_form(entity, field)?,
+                bound: sealed_bound(entity, field),
+                id: 0,
+            });
+        }
         // A JSON-held standard value, read by the route codec (chunk
         // 5.5w2b).
         if field.json.is_some() {

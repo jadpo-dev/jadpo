@@ -32,6 +32,10 @@ pub struct Started {
     /// for one no value reached, and for a secret, which code never reads.
     settings: Vec<Option<Value>>,
     keys: Keys,
+    /// The key sealed fields are sealed with, derived once from the
+    /// setting `application { field_encryption_key: }` reads, with its
+    /// `_PREVIOUS` (area 15, "Encrypted fields"; chunk P9).
+    field_ring: Option<jadpo_value::crypto::KeyRing>,
     credentials: Credentials,
     /// The settings each connection's driver is built from, as given
     /// (chunk 8.1d): what a host's driver factory reads.
@@ -124,12 +128,18 @@ impl Started {
             })
             .unwrap_or_default();
         let routes = plan.routes;
+        let keys = plan
+            .config
+            .map(|config| Keys::read(config, values))
+            .unwrap_or_default();
+        let field_ring = plan
+            .field_key
+            .and_then(|at| keys.get(at))
+            .and_then(|ring| crate::sealed::field_ring(ring).ok());
         Started {
             settings,
-            keys: plan
-                .config
-                .map(|config| Keys::read(config, values))
-                .unwrap_or_default(),
+            keys,
+            field_ring,
             credentials: Credentials::read(plan.connections, plan.providers, values),
             drivers: DriverSettings::read(plan.connections, values),
             auth: AuthSettings::read(routes.and_then(|routes| routes.identity.as_ref()), values),
@@ -165,6 +175,13 @@ impl Started {
     /// gives it, and what a record of an action's steps is sealed with.
     pub fn keys(&self) -> &Keys {
         &self.keys
+    }
+
+    /// The key sealed fields are sealed with, derived from the setting
+    /// `application { field_encryption_key: }` reads (area 15; chunk P9);
+    /// `None` when it has no value in this run.
+    pub fn field_ring(&self) -> Option<&jadpo_value::crypto::KeyRing> {
+        self.field_ring.as_ref()
     }
 
     /// Each provider connection's credential, and each webhook's secret.

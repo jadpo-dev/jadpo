@@ -64,7 +64,7 @@ const HEADER: usize = 2 + KEY_IDENTITY + NONCE;
 /// What the associated data authenticates of the header: all but the
 /// nonce, which the construction authenticates itself.
 const BOUND_HEADER: usize = 2 + KEY_IDENTITY;
-const KEY_IDENTITY: usize = 4;
+pub const KEY_IDENTITY: usize = 4;
 const NONCE: usize = 24;
 const TAG: usize = 16;
 /// The label a key's identity is the HMAC of.
@@ -129,6 +129,21 @@ impl KeyRing {
         })
     }
 
+    /// The identity a value sealed with the current key carries, and the
+    /// one a value sealed with the previous key does, when there is one:
+    /// what the field key's re-seal tells rows apart by, which says nothing
+    /// of either key (area 15, "Rotating the key"; chunk P9).
+    pub fn identities(&self) -> Result<([u8; KEY_IDENTITY], Option<[u8; KEY_IDENTITY]>), Fault> {
+        let identity = |key: &[u8]| -> Result<[u8; KEY_IDENTITY], Fault> {
+            let key = <&[u8; KEY_SIZE]>::try_from(key).map_err(|_| Fault::Shape)?;
+            key_identity(key)
+        };
+        Ok((
+            identity(&self.current)?,
+            self.previous.as_deref().map(identity).transpose()?,
+        ))
+    }
+
     /// The current key and then the previous one.
     fn each(&self) -> impl Iterator<Item = &[u8]> {
         std::iter::once(self.current.as_slice()).chain(self.previous.as_deref())
@@ -145,9 +160,9 @@ impl KeyRing {
 /// from is the plan's decision, made once for the call's site: a key
 /// setting's key, by the setting's number, which the runtime finds among
 /// the keys the program started with; or a key held as data, read from a
-/// field (keys in encrypted fields, area 19's "Language gaps", aren't
-/// built yet), with no previous key. It has no text, no JSON form and no
-/// storage, and prints as `<key>`.
+/// key-type field, which keeps it sealed, or made by `crypto.new_key` (chunk
+/// P9), with no previous key. It has no text and no JSON form, is stored only
+/// sealed ([`seal_key`]), and prints as `<key>`.
 #[derive(Clone, Debug)]
 pub enum Key {
     /// Key setting number `at`'s key, as the program started with it.
@@ -178,6 +193,40 @@ impl Key {
             }
         }
     }
+}
+
+/// A new key held as data: `KEY_SIZE` bytes from `source` (chunk P9).
+fn new_key(source: &mut Source<'_>) -> Result<Key, Fault> {
+    let mut bytes = [0u8; KEY_SIZE];
+    fill(source, &mut bytes)?;
+    Ok(Key::held(&bytes))
+}
+
+/// `key`, a key held as data, sealed under `keys` for `context`: the one way
+/// a key's bytes leave this module, and what a key-type field keeps (area
+/// 19, "A key is never a value"; chunk P9). A key setting's key is no value
+/// to keep.
+pub fn seal_key(
+    key: &Key,
+    keys: &KeyRing,
+    context: &str,
+    source: &mut Source<'_>,
+) -> Result<Vec<u8>, Fault> {
+    match key {
+        Key::Held(held) => encrypt(&held.current, keys, context, source),
+        Key::Setting(_) => Err(Fault::Shape),
+    }
+}
+
+/// The key `sealed` holds, opened with `keys` for `context`, as
+/// [`decrypt`] opens one; `unreadable` for anything else, or bytes that
+/// aren't a key's.
+pub fn open_key(sealed: &[u8], keys: &KeyRing, context: &str) -> Result<Key, Fault> {
+    let bytes = decrypt(sealed, keys, context)?;
+    if bytes.len() != KEY_SIZE {
+        return Err(Fault::Broke(RuleKey::Unreadable));
+    }
+    Ok(Key::held(&bytes))
 }
 
 fn fill(source: &mut Source<'_>, bytes: &mut [u8]) -> Result<(), Fault> {
@@ -501,6 +550,7 @@ pub fn is_crypto(op: Op) -> bool {
             | Op::CryptoEncrypt
             | Op::CryptoHashPassword
             | Op::CryptoHmac
+            | Op::CryptoNewKey
             | Op::CryptoPublicKey
             | Op::CryptoSign
             | Op::CryptoVerifyHmac
@@ -543,6 +593,7 @@ pub fn run(
         (Op::CryptoVerifyHmac, [value, Value::Bytes(mac), _]) => {
             Ok(Value::Bool(verify_hmac(bytes_of(value)?, mac, keys()?)))
         }
+        (Op::CryptoNewKey, [_]) => Ok(Value::Key(new_key(source)?)),
         (Op::CryptoPublicKey, [_]) => Ok(Value::text(&public_key(keys()?)?)),
         (Op::CryptoSign, [value, _]) => Ok(bytes_value(&sign(bytes_of(value)?, keys()?)?)),
         (Op::CryptoVerifySignature, [value, Value::Bytes(signature), key]) => Ok(Value::Bool(
