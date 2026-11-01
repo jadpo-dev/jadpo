@@ -810,6 +810,7 @@ class ErrorFormat(unittest.TestCase):
 
 FAKE_JADPO = """#!/bin/sh
 case "$1" in
+  --version) echo 'jadpo 0.2.0';;
   fail) printf 'error: no\\n  next: Fix it (agent)\\n  rule: cli.x\\n' >&2; exit 1;;
   where) pwd; echo "$HOME"; echo "checked: 1 file in 0.3 s";;
   database) case "$DATABASE_URL" in postgresql://*) echo ok;; *) echo none;; esac;;
