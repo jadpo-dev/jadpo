@@ -170,6 +170,8 @@ rules! {
         "A `jadpo email` command names an action it doesn't have, or a mail or link the dev inbox doesn't hold";
     CLI_FIX_ARGUMENTS: "cli.fix_arguments", area 14, Error, Agent,
         "A `jadpo fix` command names a declaration with nothing to fix, or a fix it doesn't have";
+    CLI_FLAGS_ARGUMENTS: "cli.flags_arguments", area 14, Error, Agent,
+        "A `jadpo flags` command names an action it doesn't have, a flag the project doesn't declare, or a value, user or share the flag can't take";
     CLI_FMT_ARGUMENTS: "cli.fmt_arguments", area 14, Error, Agent,
         "A `jadpo fmt` command names a path that isn't there or isn't a `.jadpo` file";
     CLI_HELP_ARGUMENTS: "cli.help_arguments", area 14, Error, Agent,
@@ -564,6 +566,10 @@ rules! {
         "An app declares flags but no database named to keep their state in, because it has several databases or none";
     FLAG_UNKNOWN: "flag.unknown", area 16, Error, Agent,
         "Code or a test's `flags:` names a flag that `flags { }` doesn't declare";
+    FLAG_VALUE_UNTESTED: "flag.value_untested", area 16, Error, Agent,
+        "A flag is read where no test that reaches the read gives it one of its values";
+    FLAGS_UNAVAILABLE: "flags.unavailable", area 14, Error, Human,
+        "The flags' state couldn't be read or changed in their database, because it can't be reached, has no table for them yet, or changed while the command ran";
     FORMAT_CHANGES_REQUIRED: "format.changes_required", area 14, Error, Agent,
         "Source file is not formatted";
     FORMAT_UNSAFE: "format.unsafe", area 14, Error, Human,

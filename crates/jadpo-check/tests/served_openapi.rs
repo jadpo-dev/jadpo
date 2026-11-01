@@ -448,3 +448,87 @@ routes V1Answers {
         "{note:#?}"
     );
 }
+
+const CLIENT_FLAG: &str = r#"flags {
+    /// The one-page checkout, shown by the browser.
+    new_checkout: Bool {
+        default: false
+        owner: "payments"
+        expires: "2099-01-31"
+        client: true
+    }
+}
+"#;
+
+#[test]
+fn each_api_answers_its_client_flags_at_get_prefix_flags() {
+    let mut files = with_app(APP);
+    files.push(("flags.jadpo", CLIENT_FLAG));
+    let db = Database::default();
+    let project = support::project(&db, Layout::Project, &files);
+    let record = jadpo_check::routes::record::record_texts(&db, project);
+    let text = record.get("main").expect("a record");
+    assert!(
+        text.contains("\nGET /v1/flags\n    generated flags\n    authentication none\n    status 200\n    flag new_checkout: Bool\n"),
+        "{text}"
+    );
+    let document = jadpo_check::routes::openapi::document(&db, project, "main", "todos", "1")
+        .expect("a document");
+    let operation = at(&document, &["paths", "/v1/flags", "get"]).expect("the flags");
+    assert_eq!(operation.get("x-jadpo-generated"), Some(&Value::Bool(true)));
+    let schema = at(
+        operation,
+        &["responses", "200", "content", "application/json", "schema"],
+    )
+    .expect("a schema");
+    assert_eq!(
+        at(schema, &["properties", "new_checkout", "type"]),
+        Some(&Value::from("boolean"))
+    );
+    // A flag without `client: true` never leaves the server.
+    let quiet = CLIENT_FLAG.replace("        client: true\n", "");
+    let mut files = with_app(APP);
+    files.push(("flags.jadpo", quiet.as_str()));
+    let db = Database::default();
+    let project = support::project(&db, Layout::Project, &files);
+    let record = jadpo_check::routes::record::record_texts(&db, project);
+    assert!(!record.get("main").expect("a record").contains("flags"));
+}
+
+#[test]
+fn a_route_where_the_flags_are_answered_never_runs() {
+    let mut files = with_app(APP);
+    files.push(("flags.jadpo", CLIENT_FLAG));
+    files.push((
+        "domains/planning/queries/all_todos.jadpo",
+        r#"use planning/entities { Todo }
+use planning/types { TodoView }
+
+query all_todos() -> List<TodoView> {
+    from: Todo
+}
+"#,
+    ));
+    files.push((
+        "domains/planning/routes/v1.jadpo",
+        r#"use planning/queries { all_todos }
+use planning/types { TodoView }
+
+routes V1 {
+    prefix: /v1
+
+    GET /flags {
+        authentication: RouteAuthentication.none
+        output: List<TodoView>
+        run: all_todos()
+    }
+}
+"#,
+    ));
+    let problems = problems(&files);
+    assert!(
+        problems.iter().any(|problem| problem
+            == "domains/planning/routes/v1.jadpo route.path_overlap: `GET /v1/flags` is where API `main` answers its flags"),
+        "{problems:#?}"
+    );
+}

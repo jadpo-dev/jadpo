@@ -257,6 +257,261 @@ pub async fn refresh(executor: &dyn Executor, host: &dyn Host, now: i64) {
     }
 }
 
+// --- changing flags (chunk B10) ---------------------------------------------
+
+/// One flag's state as `jadpo flags` reads and writes it, each value by
+/// its name as `jadpo_flags` spells it, so a change made with one revision
+/// of the project reads the same with another.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Given {
+    /// Everyone's value; `None` for the flag's `default:`.
+    pub value: Option<String>,
+    /// Each named user's value, by the user's `id` in lowercase, in `id`
+    /// order.
+    pub users: Vec<(String, String)>,
+    /// Each share, in order, with its percentage.
+    pub shares: Vec<(String, u8)>,
+}
+
+impl Given {
+    /// Its named users as `jadpo_flags` keeps them: a JSON object, or
+    /// `NULL` for none.
+    fn users_column(&self) -> SqlValue {
+        if self.users.is_empty() {
+            return SqlValue::Null(jadpo_std::SqlType::Json);
+        }
+        let object: serde_json::Map<String, serde_json::Value> = self
+            .users
+            .iter()
+            .map(|(id, value)| (id.clone(), serde_json::Value::String(value.clone())))
+            .collect();
+        SqlValue::Json(serde_json::Value::Object(object).to_string())
+    }
+
+    /// Its shares as `jadpo_flags` keeps them: a JSON array of `[value,
+    /// percent]` pairs, or `NULL` for none.
+    fn shares_column(&self) -> SqlValue {
+        if self.shares.is_empty() {
+            return SqlValue::Null(jadpo_std::SqlType::Json);
+        }
+        SqlValue::Json(self.shares_json().to_string())
+    }
+
+    fn shares_json(&self) -> serde_json::Value {
+        serde_json::Value::Array(
+            self.shares
+                .iter()
+                .map(|(value, percent)| serde_json::json!([value, percent]))
+                .collect(),
+        )
+    }
+
+    /// The whole state as one JSON object, as `jadpo_flag_changes` logs
+    /// it and `--json` shows it: `value`, `users` and `shares`.
+    pub fn json(&self) -> serde_json::Value {
+        let users: serde_json::Map<String, serde_json::Value> = self
+            .users
+            .iter()
+            .map(|(id, value)| (id.clone(), serde_json::Value::String(value.clone())))
+            .collect();
+        serde_json::json!({
+            "value": self.value,
+            "users": users,
+            "shares": self.shares_json(),
+        })
+    }
+
+    /// The one value every caller gets, when there is one: each named
+    /// user's, each share's above 0% and everyone's (`default` for none)
+    /// are the same.
+    pub fn uniform<'a>(&'a self, default: &'a str) -> Option<&'a str> {
+        let everyone = self.value.as_deref().unwrap_or(default);
+        let same = self.users.iter().all(|(_, value)| value == everyone)
+            && self
+                .shares
+                .iter()
+                .all(|(value, percent)| *percent == 0 || value == everyone);
+        same.then_some(everyone)
+    }
+}
+
+/// A flag's row in `jadpo_flags`, as an operator reads it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Stored {
+    pub flag: String,
+    pub kept: Given,
+    /// When it last changed, in microseconds since 1970: what a change
+    /// made from this reading holds the row to.
+    pub set_at: i64,
+}
+
+/// Every flag's row, in name order.
+pub const READ_STORED: &str = "SELECT \"flag\", \"value\", \"users\", \"shares\", \"set_at\" FROM \"jadpo_flags\" ORDER BY \"flag\"";
+
+/// A change kept, with its log row: `INSERT` while the flag has no row.
+const INSERT_STATE: &str = "WITH \"c\" AS (INSERT INTO \"jadpo_flags\" (\"flag\", \"value\", \"users\", \"shares\", \"set_at\") VALUES ($1, $2, $3, $4, $5) ON CONFLICT (\"flag\") DO NOTHING RETURNING \"flag\") INSERT INTO \"jadpo_flag_changes\" (\"id\", \"made_at\", \"flag\", \"action\", \"was\", \"now\", \"operator\", \"role\") SELECT $6, $5, \"c\".\"flag\", $7, NULL, $8, $9, session_user FROM \"c\" RETURNING \"role\"";
+
+/// A change kept, with its log row, to the row as it was read.
+const UPDATE_STATE: &str = "WITH \"c\" AS (UPDATE \"jadpo_flags\" SET \"value\" = $2, \"users\" = $3, \"shares\" = $4, \"set_at\" = $5 WHERE \"flag\" = $1 AND \"set_at\" = $10 RETURNING \"flag\") INSERT INTO \"jadpo_flag_changes\" (\"id\", \"made_at\", \"flag\", \"action\", \"was\", \"now\", \"operator\", \"role\") SELECT $6, $5, \"c\".\"flag\", $7, $11, $8, $9, session_user FROM \"c\" RETURNING \"role\"";
+
+/// The row deleted, so everyone gets the `default:`, with its log row.
+const DELETE_STATE: &str = "WITH \"c\" AS (DELETE FROM \"jadpo_flags\" WHERE \"flag\" = $1 AND \"set_at\" = $6 RETURNING \"flag\") INSERT INTO \"jadpo_flag_changes\" (\"id\", \"made_at\", \"flag\", \"action\", \"was\", \"now\", \"operator\", \"role\") SELECT $3, $2, \"c\".\"flag\", $4, $7, NULL, $5, session_user FROM \"c\" RETURNING \"role\"";
+
+/// Every flag's row, in name order.
+pub async fn stored(database: &dyn crate::Database) -> Result<Vec<Stored>, crate::StoreError> {
+    let rows = database.query_once(READ_STORED, &[]).await?;
+    Ok(rows
+        .iter()
+        .filter_map(|row| {
+            let [
+                SqlValue::Text(flag),
+                value,
+                users,
+                shares,
+                SqlValue::Timestamp(set_at),
+                ..,
+            ] = row.as_slice()
+            else {
+                return None;
+            };
+            let mut users: Vec<(String, String)> = match json(users) {
+                Some(serde_json::Value::Object(users)) => users
+                    .into_iter()
+                    .filter_map(|(id, value)| {
+                        Some((id.to_ascii_lowercase(), value.as_str()?.to_string()))
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            };
+            users.sort();
+            let shares = match json(shares) {
+                Some(serde_json::Value::Array(shares)) => shares
+                    .iter()
+                    .filter_map(|share| {
+                        let [value, percent] = share.as_array()?.as_slice() else {
+                            return None;
+                        };
+                        Some((
+                            value.as_str()?.to_string(),
+                            u8::try_from(percent.as_u64()?.min(100)).ok()?,
+                        ))
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            };
+            Some(Stored {
+                flag: flag.clone(),
+                kept: Given {
+                    value: match value {
+                        SqlValue::Text(text) => Some(text.clone()),
+                        _ => None,
+                    },
+                    users,
+                    shares,
+                },
+                set_at: *set_at,
+            })
+        })
+        .collect())
+}
+
+/// What a change did.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Changed {
+    /// Given and logged, by the database role named.
+    Logged { role: String },
+    /// The row had changed since it was read, so nothing was.
+    Moved,
+}
+
+/// Changes flag `flag` from `was` (its row as read, `None` for none) to
+/// `now` (`None` to delete it, so everyone gets its `default:`), at `at`
+/// in milliseconds, in one statement with its row of
+/// `jadpo_flag_changes`: `action` (`set` or `reset`) and `operator`, the
+/// name the operator's machine gives. A row changed since `was` was read
+/// changes nothing.
+#[allow(clippy::too_many_arguments)]
+pub async fn change(
+    database: &dyn crate::Database,
+    host: &dyn Host,
+    flag: &str,
+    was: Option<&Stored>,
+    now: Option<&Given>,
+    action: &str,
+    operator: &str,
+    at: i64,
+) -> Result<Changed, crate::StoreError> {
+    let id = crate::ctx::random_id(host, at)
+        .ok_or_else(|| crate::StoreError::Fault("no random bytes for a log row's id".into()))?;
+    let text = |text: &Option<String>| match text {
+        Some(text) => SqlValue::Text(text.clone()),
+        None => SqlValue::Null(jadpo_std::SqlType::Text),
+    };
+    let logged = |kept: &Given| SqlValue::Json(kept.json().to_string());
+    let micros = SqlValue::Timestamp(at.saturating_mul(1000));
+    let rows = match (was, now) {
+        (None, None) => return Ok(Changed::Moved),
+        (None, Some(now)) => {
+            database
+                .query_once(
+                    INSERT_STATE,
+                    &[
+                        SqlValue::Text(flag.to_string()),
+                        text(&now.value),
+                        now.users_column(),
+                        now.shares_column(),
+                        micros,
+                        SqlValue::Uuid(id),
+                        SqlValue::Text(action.to_string()),
+                        logged(now),
+                        SqlValue::Text(operator.to_string()),
+                    ],
+                )
+                .await?
+        }
+        (Some(was), Some(now)) => {
+            database
+                .query_once(
+                    UPDATE_STATE,
+                    &[
+                        SqlValue::Text(flag.to_string()),
+                        text(&now.value),
+                        now.users_column(),
+                        now.shares_column(),
+                        micros,
+                        SqlValue::Uuid(id),
+                        SqlValue::Text(action.to_string()),
+                        logged(now),
+                        SqlValue::Text(operator.to_string()),
+                        SqlValue::Timestamp(was.set_at),
+                        logged(&was.kept),
+                    ],
+                )
+                .await?
+        }
+        (Some(was), None) => {
+            database
+                .query_once(
+                    DELETE_STATE,
+                    &[
+                        SqlValue::Text(flag.to_string()),
+                        micros,
+                        SqlValue::Uuid(id),
+                        SqlValue::Text(action.to_string()),
+                        SqlValue::Text(operator.to_string()),
+                        SqlValue::Timestamp(was.set_at),
+                        logged(&was.kept),
+                    ],
+                )
+                .await?
+        }
+    };
+    Ok(match rows.first().and_then(|row| row.first()) {
+        Some(SqlValue::Text(role)) => Changed::Logged { role: role.clone() },
+        _ => Changed::Moved,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -269,12 +524,14 @@ mod tests {
                     enum_type: Some("CheckoutLayout".into()),
                     values: vec!["classic".into(), "compact".into(), "wide".into()],
                     default: 0,
+                    client: false,
                 },
                 FlagPlan {
                     name: "new_checkout".into(),
                     enum_type: None,
                     values: vec!["false".into(), "true".into()],
                     default: 0,
+                    client: false,
                 },
             ],
             store: Some("main".into()),
@@ -424,6 +681,40 @@ mod tests {
             Value::variant("CheckoutLayout", 1, "compact", Vec::new())
         );
         assert_eq!(value(&plan.flags[1], 1), Value::Bool(true));
+    }
+
+    #[test]
+    fn a_state_is_uniform_only_when_every_caller_gets_one_value() {
+        let given = |value: Option<&str>, users: &[&str], shares: &[(&str, u8)]| Given {
+            value: value.map(str::to_string),
+            users: users
+                .iter()
+                .enumerate()
+                .map(|(n, value)| (user(n as u32), value.to_string()))
+                .collect(),
+            shares: shares
+                .iter()
+                .map(|(value, percent)| (value.to_string(), *percent))
+                .collect(),
+        };
+        assert_eq!(given(None, &[], &[]).uniform("false"), Some("false"));
+        assert_eq!(
+            given(Some("true"), &["true"], &[("true", 10)]).uniform("false"),
+            Some("true")
+        );
+        assert_eq!(given(None, &["true"], &[]).uniform("false"), None);
+        assert_eq!(
+            given(Some("true"), &[], &[("false", 10)]).uniform("false"),
+            None
+        );
+        // A share at 0% gives nobody its value.
+        assert_eq!(
+            given(Some("true"), &[], &[("false", 0)]).uniform("false"),
+            Some("true")
+        );
+        let json = given(Some("true"), &["true"], &[("true", 10)]).json();
+        assert_eq!(json["value"], "true");
+        assert_eq!(json["shares"][0][1], 10);
     }
 
     #[test]
