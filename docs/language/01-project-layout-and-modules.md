@@ -308,9 +308,12 @@ A rule triggered by time passing, such as a
 expired, is judged at today's date by `check`, so CI fails a new change. It
 is judged at the commit's date by `jadpo build`, so rebuilding a merged
 revision for a hotfix is never blocked by a date passing. It isn't
-declinable: extending the date is the reviewed choice.
+declinable: extending the date is the reviewed choice. When
+`SOURCE_DATE_EPOCH` is set, as for a reproducible build, both judge at
+its date; a build outside git, or before the first commit, judges at
+today.
 
-Not built yet: `jadpo approval`, and the rule for an expired feature flag.
+Not built yet: `jadpo approval`.
 
 ## Decided layout
 <!-- topic: decided-layout -->
@@ -1146,7 +1149,7 @@ The compiler builds the decided layout, with each rule's real output under
 | Reserved words | Built: a reserved word can't name anything. |
 | Comments | Built: `//` and `///` documentation comments. |
 | Similar helpers | Built: `library.similar_exists`, a declinable error. Not built yet: `jadpo impact`. |
-| Declinable errors | Partly built: no warning severity; the `decline <rule>: "<reason>"` line with `decline.unused`, `decline.not_declinable` and `decline.no_reason`; the catalogue's security rules, whose decline needs an [acceptance](18-records-and-manifest.md#acceptances); `jadpo declines list` and `clear`; the editor's "Decline with a reason" and "Remove decline". Not built yet: `jadpo approval` ([Records and manifest](18-records-and-manifest.md)) and the date rule for expired [feature flags](16-built-in-services.md#feature-flags). |
+| Declinable errors | Partly built: no warning severity; the `decline <rule>: "<reason>"` line with `decline.unused`, `decline.not_declinable` and `decline.no_reason`; the catalogue's security rules, whose decline needs an [acceptance](18-records-and-manifest.md#acceptances); `jadpo declines list` and `clear`; the editor's "Decline with a reason" and "Remove decline"; and the date rule for an expired [feature flag](16-built-in-services.md#feature-flags), `flag.expired`, judged at today by `check` and at the commit's date by `build`. Not built yet: `jadpo approval` ([Records and manifest](18-records-and-manifest.md)). |
 | Constants | Built: `constant` as a reserved word and a declaration placed and shared as helper functions are, a private one unique within its domain, `constant.similar_exists`, and a top-level `var` pointed at `constant` ([Constants](03-logic.md#constants)). |
 | Imports | Built: `use <folder> { Names }` and `use <domain>`, with `import.missing`, `import.unknown`, `import.unused`, `import.unneeded` and `import.duplicate`; `jadpo fmt` adds, removes and sorts imports, `jadpo fmt --layout` makes promotion moves, and go to definition works from every use of a name, a `use` line's included. |
 | A file holds only what its primary declaration uses | Built: `layout.unused_declaration` for a supporting declaration the primary declaration doesn't use, directly or through one another. |

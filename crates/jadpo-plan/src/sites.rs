@@ -99,6 +99,9 @@ pub enum Decoded {
     /// `config.<name>`: the number of the setting in the plan's settings;
     /// `None` when it has none, which the checker rules out.
     Config(Option<u32>),
+    /// `flags.<name>`: the number of the flag in the plan's flags; `None`
+    /// when it has none, which the checker rules out.
+    Flag(Option<u32>),
     /// A `crypto` call's `key:` (area 19, chunk 10.3d): where the key
     /// comes from, decided here once so neither executor tells it by the
     /// site's node; `None` for anything but a key setting or a field that
@@ -333,6 +336,8 @@ pub(crate) struct Decoder<'a> {
     pub write: &'a dyn Fn(u32) -> Option<u32>,
     /// The number of each setting, by its key (area 10).
     pub setting: &'a dyn Fn(&Key) -> Option<u32>,
+    /// The number of each flag, by its key (area 16).
+    pub flag: &'a dyn Fn(&Key) -> Option<u32>,
     /// The types `json.read` reads and `json.write` writes, numbered as
     /// they are met (area 19, "Data formats").
     pub json: &'a mut Vec<TypeRef>,
@@ -1098,6 +1103,7 @@ impl Decoder<'_> {
                 expected: self.types.name(expected).to_string(),
             },
             Node::Expr(Expr::Config { field }) => Decoded::Config((self.setting)(field)),
+            Node::Expr(Expr::Flag { flag }) => Decoded::Flag((self.flag)(flag)),
             // An amount scaled by a number rounds by its type's `rounding:`,
             // `half_even` when it declares none (area 19).
             Node::Expr(Expr::Binary {

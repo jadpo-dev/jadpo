@@ -127,6 +127,10 @@ impl Serving {
     pub async fn handle(&self, request: &Request) -> Response {
         let began = self.host.monotonic_ms();
         let program = self.program();
+        // The flags' state, read again when it is due (area 16).
+        if let Some(now) = self.host.now_ms() {
+            crate::flags::refresh(program.as_ref(), self.host.as_ref(), now).await;
+        }
         let mut response = {
             let app = program.app();
             serve_request(
@@ -170,6 +174,7 @@ impl Serving {
         Box::pin(async move {
             let now = host.now_ms()?;
             let began = host.monotonic_ms();
+            crate::flags::refresh(program.as_ref(), host.as_ref(), now).await;
             let ticked = schedules::tick(program.as_ref(), host.as_ref(), now).await;
             if let Some(observer) = observer {
                 let ms = since(host.as_ref(), began);

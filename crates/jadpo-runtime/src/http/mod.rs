@@ -1140,6 +1140,7 @@ async fn run_with_caller(
             ArgRoot::Param(at) => params.get(*at as usize).cloned().flatten(),
             ArgRoot::Input => input.clone(),
             ArgRoot::Caller => caller_value.clone(),
+            ArgRoot::Flag(at) => ctx.flag(*at),
         }
         .unwrap_or(Value::None);
         for name in &arg.path {
@@ -1682,7 +1683,7 @@ fn cursor_field(route: &RoutePlan) -> String {
             .nth(*at as usize)
             .into_iter()
             .collect(),
-        ArgRoot::Caller => return String::new(),
+        ArgRoot::Caller | ArgRoot::Flag(_) => return String::new(),
     };
     parts.extend(arg.path.iter().cloned());
     parts.extend(path.iter().cloned());

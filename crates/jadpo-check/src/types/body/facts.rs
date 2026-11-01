@@ -223,6 +223,9 @@ pub(crate) struct Facts {
     /// Each read of a setting (`config.mail_sender`), with the setting's
     /// name (area 10).
     pub settings: BTreeMap<NodeKey, String>,
+    /// Each read of a feature flag (`flags.new_checkout`), with the flag's
+    /// name (area 16).
+    pub flags: BTreeMap<NodeKey, String>,
     /// Each `format:` argument, as the format's text (area 10), and each
     /// `as:` of `text.parse`, as the name of the standard type or
     /// representation it reads (area 19): an argument written out, given

@@ -80,7 +80,7 @@ pub fn acceptance(call: &Call) -> Reply {
     let Some(root) = jadpo_db::find_root(&cwd) else {
         return project_not_found("acceptance");
     };
-    let checked = match crate::check::checked_before(call, &root) {
+    let checked = match crate::check::checked_before(call, &root, crate::check::JudgedOn::Today) {
         Ok(checked) => checked,
         Err(reply) => return *reply,
     };

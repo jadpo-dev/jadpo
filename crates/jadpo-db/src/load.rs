@@ -368,6 +368,14 @@ impl Loaded {
         }
     }
 
+    /// Sets the date rules triggered by time passing are judged at, in
+    /// days since 1970-01-01 (area 1; chunk B9).
+    pub fn set_judged_on(&mut self, day: Option<i32>) {
+        if day != self.project.judged_on(&self.db) {
+            self.project.set_judged_on(&mut self.db).to(day);
+        }
+    }
+
     pub fn set_checked(&mut self, checked: BTreeSet<String>) {
         if &checked != self.project.checked(&self.db) {
             self.project.set_checked(&mut self.db).to(checked);

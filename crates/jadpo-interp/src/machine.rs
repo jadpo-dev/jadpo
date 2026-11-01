@@ -2167,6 +2167,15 @@ impl<'p> Machine<'p> {
                 },
                 _ => return Err(self.defect(ctx, "a setting the checker would have refused", id)),
             },
+            // A flag's value for the caller, fixed for the operation (area
+            // 16).
+            Expr::Flag { .. } => match self.decoded(id) {
+                Some(Decoded::Flag(Some(flag))) => match ctx.flag(*flag) {
+                    Some(value) => self.values.push(value),
+                    None => return Err(self.defect(ctx, "a flag the plan doesn't hold", id)),
+                },
+                _ => return Err(self.defect(ctx, "a flag the checker would have refused", id)),
+            },
             // `clock.now` reads the invocation's clock, the one a query's
             // `clock.now` and generated fields read.
             Expr::Now => {

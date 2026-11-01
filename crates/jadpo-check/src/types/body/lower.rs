@@ -1303,6 +1303,14 @@ impl Lower<'_> {
         if let Some(constant) = self.constant(expr) {
             return constant;
         }
+        if let Some(name) = self.facts.flags.get(&key) {
+            return typed::Expr::Flag {
+                flag: self
+                    .names
+                    .registry()
+                    .key(jadpo_graph::Kind::Flag, name, None),
+            };
+        }
         if let Some(name) = self.facts.settings.get(&key) {
             return typed::Expr::Config {
                 field: self
