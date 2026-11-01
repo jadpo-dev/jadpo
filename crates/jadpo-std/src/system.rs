@@ -862,7 +862,7 @@ pub const FLAGS: SystemTable = SystemTable {
         column("value", SqlType::Text, true),
         column("users", SqlType::Json, true),
         column("shares", SqlType::Json, true),
-        column("changed_at", SqlType::Timestamp, false),
+        column("set_at", SqlType::Timestamp, false),
     ],
     primary_key: &["flag"],
     unique: &[],

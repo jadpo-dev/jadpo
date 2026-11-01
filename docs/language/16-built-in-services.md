@@ -119,7 +119,7 @@ config {
 /// How the checkout's form is laid out.
 type CheckoutLayout = Enum {
     classic
-    compact
+    single_column
 }
 ```
 
@@ -131,13 +131,13 @@ type CheckoutSteps = Int {
 }
 ```
 
-```jadpo check project=feature-flags file=domains/ordering/types/checkout_form.jadpo hidden
+```jadpo check project=feature-flags file=domains/ordering/types/checkout_shown.jadpo hidden
 use ordering/types { CheckoutLayout, CheckoutSteps }
 
 /// The checkout a customer is shown.
-type CheckoutForm = Output {
-    steps: CheckoutSteps
-    layout: CheckoutLayout
+type CheckoutShown = Output {
+    page_count: CheckoutSteps
+    arrangement: CheckoutLayout
 }
 ```
 
@@ -149,19 +149,19 @@ with `clock.now`, the value is fixed for the whole operation, so one
 request never sees a flag change halfway through.
 
 ```jadpo check project=feature-flags file=domains/ordering/actions/start_checkout.jadpo migrate=initial
-use ordering/types { CheckoutForm }
+use ordering/types { CheckoutShown }
 
 /// The checkout this customer is shown.
-action start_checkout() -> CheckoutForm {
+action start_checkout() -> CheckoutShown {
     if (flags.new_checkout) {
-        return CheckoutForm {
-            steps: 1
-            layout: flags.checkout_layout
+        return CheckoutShown {
+            page_count: 1
+            arrangement: flags.checkout_layout
         }
     }
-    return CheckoutForm {
-        steps: 3
-        layout: flags.checkout_layout
+    return CheckoutShown {
+        page_count: 3
+        arrangement: flags.checkout_layout
     }
 }
 ```
@@ -186,7 +186,7 @@ Flags aren't a capability, and no outside flag service fills them.
 
 ```text
 jadpo flags set new_checkout --env production --users 0192... --percent 10
-jadpo flags set checkout_layout --env production --split classic=50,compact=50
+jadpo flags set checkout_layout --env production --split classic=50,single_column=50
 jadpo flags list --env production
 ```
 
@@ -220,22 +220,22 @@ value in the event it emits.
   `false`, or every variant.
 
 ```jadpo check project=feature-flags file=domains/ordering/actions/start_checkout.test.jadpo
-use ordering/types { CheckoutForm, CheckoutLayout }
+use ordering/types { CheckoutShown, CheckoutLayout }
 
 test "the three-step form is shown by default" {
-    var form: CheckoutForm = start_checkout()
-    assert form.steps == 3
-    assert form.layout == CheckoutLayout.classic
+    var checkout_opened: CheckoutShown = start_checkout()
+    assert checkout_opened.page_count == 3
+    assert checkout_opened.arrangement == CheckoutLayout.classic
 }
 
 test "the new checkout takes one page, in the layout the test gives" {
     flags: {
         new_checkout: true
-        checkout_layout: CheckoutLayout.compact
+        checkout_layout: CheckoutLayout.single_column
     }
-    var form: CheckoutForm = start_checkout()
-    assert form.steps == 1
-    assert form.layout == CheckoutLayout.compact
+    var checkout_opened: CheckoutShown = start_checkout()
+    assert checkout_opened.page_count == 1
+    assert checkout_opened.arrangement == CheckoutLayout.single_column
 }
 ```
 

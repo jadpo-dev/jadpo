@@ -367,7 +367,7 @@ async fn set(
     };
     host.store()
         .query_once(
-            "INSERT INTO \"jadpo_flags\" (\"flag\", \"value\", \"users\", \"shares\", \"changed_at\") VALUES ($1, $2, $3, $4, now()) ON CONFLICT (\"flag\") DO UPDATE SET \"value\" = $2, \"users\" = $3, \"shares\" = $4, \"changed_at\" = now()",
+            "INSERT INTO \"jadpo_flags\" (\"flag\", \"value\", \"users\", \"shares\", \"set_at\") VALUES ($1, $2, $3, $4, now()) ON CONFLICT (\"flag\") DO UPDATE SET \"value\" = $2, \"users\" = $3, \"shares\" = $4, \"set_at\" = now()",
             &[SqlValue::Text(flag.to_string()), text(everyone), json(users.as_deref()), json(shares)],
         )
         .await

@@ -162,7 +162,7 @@ fn not_a_flag(path: &str, node: &jadpo_syntax::SyntaxNode) -> Diagnostic {
     )
     .at(node_span(path, node), "not `name: Type { }`")
     .reason("`flags { }` holds flags, each written `name: Bool { }` or with an enum as its type, its block giving `default:`, `owner:` and `expires:`.")
-    .next("Write the flag as `name: Bool { default: false owner: \"team\" expires: \"2099-01-31\" }`, or remove this line")
+    .next("Write the flag as `name: Bool { }`, its block giving `default:`, `owner:` and `expires:`, or remove this line")
 }
 
 /// The type of flag `name`, so a body or a route that reads it depends on
@@ -274,11 +274,11 @@ impl Reader<'_, '_> {
                         self.problems.push(
                             Diagnostic::new(
                                 &rule::FLAG_DECLARATION_INVALID,
-                                format!("`owner:` on `{name}` isn't a team or a person in quotes"),
+                                format!("`owner:` on `{name}` isn't who owns it, in quotes"),
                             )
                             .at(at, "not text")
                             .reason("`owner:` names who decides when the flag is removed, as text in quotes; the error a flag past its date gives names them.")
-                            .next("Write the owner in quotes, such as `owner: \"payments\"`"),
+                            .next("Write who owns the flag in quotes after `owner:`"),
                         );
                     }
                 },
@@ -691,9 +691,7 @@ fn database_list(databases: &[String]) -> String {
 /// flag and one is named or is the only database. `flags:` still being
 /// written asks for no table yet.
 pub fn store(db: &dyn Db, project: Project) -> Option<String> {
-    if flags(db, project).declared.is_none() {
-        return None;
-    }
+    flags(db, project).declared.as_ref()?;
     let settings = settings(db, project);
     if !settings.problems.is_empty() {
         return None;
