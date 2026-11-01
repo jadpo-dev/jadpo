@@ -4805,13 +4805,13 @@ store's keys, `path:` against `Project::folder` (the project's folder
 with links resolved) and `free_space_floor:`; `jadpo_cli::stamp` lists
 each deployable's reached disk stores as the manifest's `one_server`
 (chunk B2).
-Deleting a file's bytes (chunk B3): `jadpo_check::data::held::ledgers`
+Deleting a file's bytes (chunk B3): `jadpo_check::data::held::counters`
 gives each store of files the database whose entities' `File` fields
 name it, which the schema gives `jadpo_std::system::FILES`
 (`jadpo_files`: store, key, holders, since) and the plan carries as
 `EventsPlan::files` (`FilesPlan`, also on `Started`); fields naming it
 from a second database are `toolchain.not_built_yet`
-(`ledger_problems`). `jadpo_graph::migration::held_files` derives each
+(`counting_problems`). `jadpo_graph::migration::held_files` derives each
 table's `File` columns (a column whose stored JSON reads a `File`) while
 the store keeps `jadpo_files`, and `migration_sql` writes, after the
 indexes, the trigger function `jadpo_files_held` once, a `jadpo_files`

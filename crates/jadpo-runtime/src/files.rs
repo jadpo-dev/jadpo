@@ -285,14 +285,19 @@ pub async fn put(ctx: &mut Ctx<'_>, connection: &str, bytes: &Value, file_type: 
 /// Records the file a put keeps under `key` in `connection` as held by
 /// none, in the store keeping the record of its files, if one does.
 async fn keep_put(ctx: &mut Ctx<'_>, connection: &str, key: &str) -> Result<(), StoreError> {
-    let Some(ledger) = ctx.started().files().ledger(connection).map(str::to_string) else {
+    let Some(counter) = ctx
+        .started()
+        .files()
+        .counter(connection)
+        .map(str::to_string)
+    else {
         return Ok(());
     };
     let now = crate::steps::wall(ctx);
     let database = ctx
         .capabilities()
-        .database(&ledger)
-        .ok_or_else(|| StoreError::Fault(format!("no store called `{ledger}`")))?;
+        .database(&counter)
+        .ok_or_else(|| StoreError::Fault(format!("no store called `{counter}`")))?;
     database
         .query_once(
             KEEP_PUT,
@@ -394,7 +399,7 @@ pub(crate) async fn released(
 
 /// What a tick's sweep of the records of held files did.
 #[derive(Debug, Default)]
-pub struct Swept {
+pub struct Sweep {
     /// The deliveries of the events it kept, to make within the tick.
     pub deferred: Vec<crate::runner::Deferred>,
     pub problems: Vec<(String, StoreError)>,
@@ -406,21 +411,21 @@ pub struct Swept {
 /// `now` (chunk B3): at most a hundred files due their bytes' deletion in
 /// each ([`DUE`]), marked as being deleted, with the event that deletes
 /// them, in one transaction.
-pub async fn sweep(executor: &dyn Executor, budget: &crate::budget::Budget<'_>, now: i64) -> Swept {
-    let mut out = Swept::default();
+pub async fn sweep(executor: &dyn Executor, budget: &crate::budget::Budget<'_>, now: i64) -> Sweep {
+    let mut out = Sweep::default();
     let Some(events) = executor.plan().events() else {
         return out;
     };
-    let mut ledgers: Vec<&String> = events.plan.files.ledgers.values().collect();
-    ledgers.sort();
-    ledgers.dedup();
+    let mut counters: Vec<&String> = events.plan.files.counters.values().collect();
+    counters.sort();
+    counters.dedup();
     let host = budget.host();
-    for ledger in ledgers {
+    for counter in counters {
         if budget.spent() {
             break;
         }
         let mut ctx = crate::receiving::system_ctx(executor, host, now);
-        match swept(&mut ctx, ledger, now).await {
+        match sweeping(&mut ctx, counter, now).await {
             Ok(deliveries) => {
                 out.due += deliveries.len() as u64;
                 if !deliveries.is_empty() {
@@ -428,18 +433,18 @@ pub async fn sweep(executor: &dyn Executor, budget: &crate::budget::Budget<'_>, 
                         .push(crate::runner::Deferred::Deliveries(deliveries));
                 }
             }
-            Err(error) => out.problems.push((ledger.clone(), error)),
+            Err(error) => out.problems.push((counter.clone(), error)),
         }
     }
     out
 }
 
 /// One store's sweep.
-async fn swept(ctx: &mut Ctx<'_>, ledger: &str, now: i64) -> Result<Vec<Delivery>, StoreError> {
+async fn sweeping(ctx: &mut Ctx<'_>, counter: &str, now: i64) -> Result<Vec<Delivery>, StoreError> {
     let database = ctx
         .capabilities()
-        .database(ledger)
-        .ok_or_else(|| StoreError::Fault(format!("no store called `{ledger}`")))?;
+        .database(counter)
+        .ok_or_else(|| StoreError::Fault(format!("no store called `{counter}`")))?;
     let mut transaction = database.begin_at(Isolation::ReadCommitted).await?;
     let rows = match transaction
         .query(
@@ -472,7 +477,7 @@ async fn swept(ctx: &mut Ctx<'_>, ledger: &str, now: i64) -> Result<Vec<Delivery
         };
         for subscriber in &event.subscribers {
             sealed.deliveries.push(Delivery {
-                store: ledger.to_string(),
+                store: counter.to_string(),
                 id: delivery,
                 outbox,
                 subscriber: subscriber.clone(),

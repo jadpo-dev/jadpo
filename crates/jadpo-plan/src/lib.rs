@@ -279,10 +279,10 @@ fn events_plan(
     // subscriber that deletes a file's bytes once none holds it (area 16,
     // "Deleting and erasing"; chunk B3).
     let files = jadpo_std::files::FilesPlan {
-        ledgers: jadpo_check::data::held::ledgers(db, project).clone(),
+        counters: jadpo_check::data::held::counters(db, project).clone(),
     };
     let defaults = jadpo_check::events::DEFAULT_RETRY;
-    for connection in files.ledgers.keys() {
+    for connection in files.counters.keys() {
         let subscriber = SubscriberPlan {
             key: jadpo_std::files::FilesPlan::subscriber(connection),
             name: format!("delete unheld files from {connection}"),

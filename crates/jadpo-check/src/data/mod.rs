@@ -3020,7 +3020,7 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
     // The record of which files a store's records hold, beside the
     // records whose `File` fields hold them (area 16, "Deleting and
     // erasing"; chunk B3).
-    for store in held::ledgers(db, project).values() {
+    for store in held::counters(db, project).values() {
         if let Some(found) = schema.stores.get_mut(store) {
             found.tables.insert(
                 system::FILES.table.to_string(),

@@ -481,12 +481,12 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
     // without the event deleting their bytes, set out to be deleted and
     // delivered within what is left of the budget (chunk B3).
     if !budget.spent() && runs.subscribers {
-        let swept = crate::files::sweep(executor, &budget, now).await;
-        ticked.problems.extend(swept.problems);
-        ticked.files += swept.due;
+        let sweeping = crate::files::sweep(executor, &budget, now).await;
+        ticked.problems.extend(sweeping.problems);
+        ticked.files += sweeping.due;
         ticked
             .deliveries
-            .extend(runner::run_within(executor, host, &budget, swept.deferred).await);
+            .extend(runner::run_within(executor, host, &budget, sweeping.deferred).await);
     }
     // Unfinished-record metrics and alerts remain prompt; their retention
     // work belongs to hourly housekeeping (chunk 9.1b2).

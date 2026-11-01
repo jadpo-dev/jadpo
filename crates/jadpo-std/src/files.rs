@@ -166,18 +166,18 @@ pub const UNHELD_KEPT_MS: i64 = 24 * 60 * 60 * 1000;
 pub struct FilesPlan {
     /// By the files connection's name, the database store keeping its
     /// record.
-    pub ledgers: std::collections::BTreeMap<String, String>,
+    pub counters: std::collections::BTreeMap<String, String>,
 }
 
 impl FilesPlan {
     /// The database store keeping the record of `connection`'s files.
-    pub fn ledger(&self, connection: &str) -> Option<&str> {
-        self.ledgers.get(connection).map(String::as_str)
+    pub fn counter(&self, connection: &str) -> Option<&str> {
+        self.counters.get(connection).map(String::as_str)
     }
 
     /// Whether database store `store` keeps a record of files.
     pub fn keeps(&self, store: &str) -> bool {
-        self.ledgers.values().any(|ledger| ledger == store)
+        self.counters.values().any(|counter| counter == store)
     }
 
     /// The generated subscriber that deletes `connection`'s unheld bytes:
