@@ -1080,6 +1080,10 @@ the entity's name, and `record_id`, the record's `id`. A subscriber to it
 when no entity is audited is
 [`subscriber.event_invalid`](../errors/subscriber.event_invalid.md).
 
+A [sealed field](15-personal-data.md#encrypted-fields) is in a history as
+having changed, with no value before or after, so a history in clear holds
+nothing the field sealed.
+
 ### What the audit trail doesn't keep yet
 
 Each of these is `toolchain.not_built_yet` where it is written, so no

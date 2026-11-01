@@ -539,6 +539,25 @@ impl Body<'_> {
         )
     }
 
+    /// `value`, given to a failure's field, reading a record's sealed field.
+    fn sealed_in_a_failure(&mut self, value: &Expr) {
+        let Expr::FieldExpr(field) = value else {
+            return;
+        };
+        let (Some(receiver), Some(name)) = (self.receiver_type(field), field.name_ref()) else {
+            return;
+        };
+        let name = text(&name);
+        let Ty::Named(entity) = self.table.structure(receiver.strip_nullable()) else {
+            return;
+        };
+        if crate::data::sealed::is_sealed(self.db, self.project, &entity, &name) {
+            let span = self.span(value);
+            self.out
+                .push(crate::data::sealed::logged(&entity, &name, span));
+        }
+    }
+
     /// A rejected failure's fields: every one given once, none unknown,
     /// each value checked against its field (area 4, "Raising a failure").
     fn context_given(
@@ -657,6 +676,9 @@ impl Body<'_> {
             } else {
                 self.check(&value, &declared.declared.clone());
             }
+            // What a failure holds is written to the log (area 4,
+            // "Logging"), and a sealed field is kept out of logs (area 15).
+            self.sealed_in_a_failure(&value);
         }
         let missing: Vec<String> = fields
             .iter()

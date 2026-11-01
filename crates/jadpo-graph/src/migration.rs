@@ -183,9 +183,14 @@ pub fn decisions_needed(before: &Schema, after: &Schema) -> Vec<Needed> {
         if now.generated.is_some() {
             continue;
         }
+        // No SQL reads or writes a sealed column, so nothing a person could
+        // decide here would fill or fit one: [`migration_sql`] refuses it
+        // or leaves it to `SET NOT NULL` instead (area 15, "Encrypted
+        // fields"; chunk P9). Retiring one keeps its data, as any other's.
         let kind = match was {
-            None if !now.nullable => NeededKind::Backfill,
+            None if !now.nullable && !now.sealed => NeededKind::Backfill,
             Some(was) if !was.retired && now.retired => NeededKind::Retire,
+            Some(_) if now.sealed => continue,
             Some(was) if was.nullable && !now.nullable && !now.retired => NeededKind::Backfill,
             Some(was) if !now.retired && narrowed(was, now) => NeededKind::Refit,
             Some(was) if reads_less(was, now) => NeededKind::Unreadable,
@@ -474,6 +479,16 @@ pub fn migration_sql(
                 let Some(col) = new.and_then(|t| t.columns.get(column)) else {
                     continue;
                 };
+                // Existing rows would need a sealed value, which takes the
+                // application's key and each row's `id`, so no SQL makes one
+                // (area 15, "Encrypted fields"; chunk P9).
+                if col.sealed && !col.nullable {
+                    refusals.push(Refusal {
+                        change: format!("required sealed column `{table}.{column}` added"),
+                        reason: "A migration can't seal a value for the rows already there: that takes the application's key, which SQL never sees. Add the field as optional, set it on every record in an action, then make it required.".into(),
+                    });
+                    continue;
+                }
                 let need = needed
                     .iter()
                     .find(|n| &n.table == table && &n.column == column);
@@ -546,6 +561,29 @@ pub fn migration_sql(
                         sql: table::comment_on_column(table, column, now.comment.as_deref()),
                         does: "comment on column",
                     });
+                }
+                // Stored values would have to be sealed or opened one by
+                // one with the key, which SQL never sees (area 15, "Encrypted
+                // fields"; chunk P9). Retiring a field isn't a change of what
+                // its column holds.
+                if was.sealed != now.sealed && !now.retired {
+                    let word = if now.sealed { "on" } else { "off" };
+                    refusals.push(Refusal {
+                        change: format!("column `{table}.{column}` turns `encrypted:` {word}"),
+                        reason: "Turning `encrypted:` on or off needs a data migration, since stored values would have to be sealed or opened one by one with the application's key, which SQL never sees. Add a new field with the setting you want, copy each record's value across in an action, then retire the old field.".into(),
+                    });
+                    continue;
+                }
+                if now.sealed
+                    && !now.retired
+                    && was.allows.is_some()
+                    && (narrowed(was, now) || reads_less(was, now))
+                {
+                    refusals.push(Refusal {
+                        change: format!("sealed column `{table}.{column}` allows less"),
+                        reason: "No SQL finds the stored values a sealed field no longer allows, since none can read them, and reading one back would then be a defect. Add a new field with the narrower type, copy each record's value across in an action, then retire the old field.".into(),
+                    });
+                    continue;
                 }
                 if was.sql_type != now.sql_type {
                     if widens(&was.sql_type, &now.sql_type) {
@@ -636,6 +674,14 @@ pub fn migration_sql(
                         sql: table::drop_not_null(table, column),
                         does: "allow none",
                     }),
+                    // A sealed field made required: no SQL fills it, so a
+                    // record still without a value stops the migration.
+                    None if was.nullable && !now.nullable && now.sealed && !now.retired => {
+                        plan.columns.push(Statement {
+                            sql: table::set_not_null(table, column),
+                            does: "require a value",
+                        })
+                    }
                     None => {}
                 }
             }
@@ -1263,6 +1309,7 @@ mod tests {
                     sql_type: ty.to_string(),
                     nullable: *nullable,
                     retired: *retired,
+                    sealed: false,
                     allows: None,
                     comment: None,
                     generated: None,
@@ -1648,6 +1695,7 @@ mod tests {
                     sql_type: "tsvector".into(),
                     nullable: true,
                     retired: false,
+                    sealed: false,
                     allows: None,
                     comment: None,
                     generated: Some(expression.into()),

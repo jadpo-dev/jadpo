@@ -49,6 +49,8 @@ mod kiosk;
 mod newsroom;
 /// Cloudflare Queues' consumer (chunk 8.2k).
 mod queues;
+/// A sealed field and its key's rotation (chunk P9).
+mod sealed;
 
 /// `jadpo` with `args` in `root`, which must succeed.
 fn jadpo(root: &Path, args: &[&str]) -> jadpo_cli::Output {

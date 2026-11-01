@@ -774,6 +774,17 @@ pub fn membership_read<'db>(
             _ => None,
         });
         match (found, roles) {
+            // A role is read by the database, in the statement policy adds
+            // to (area 9), which can't open a sealed field (chunk P9).
+            (Some(field), Some(_)) if field.sealed.is_some() => problems.push(
+                crate::data::sealed::used(
+                    &entity.name,
+                    &field.name,
+                    "A membership's `role:`",
+                    span.clone(),
+                    format!("Remove `encrypted:` from `{}`", field.name),
+                ),
+            ),
             (Some(field), Some(roles)) => role = Some((field.name.clone(), roles)),
             _ => problems.push(binding(
                 span.clone(),

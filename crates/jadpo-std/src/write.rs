@@ -64,6 +64,16 @@ pub enum WriteSource {
     /// A literal or an enum value the statement sets or compares with, as
     /// the storage codec binds it (area 19, chunk 5.5w3b).
     Stored(crate::SqlValue),
+    /// The value from `of`, sealed with the application's field key for a
+    /// sealed field's `bytea` (area 15, "Encrypted fields"; chunk P9),
+    /// bound to `bound` and the record's `id`, from `id`: `NULL` for no
+    /// value.
+    Sealed {
+        of: Box<WriteSource>,
+        form: crate::read::SealedForm,
+        bound: String,
+        id: Box<WriteSource>,
+    },
 }
 
 /// One parameter: `$1` is the first.
@@ -291,6 +301,35 @@ pub enum PurgeKind {
     /// An audited entity's `audit: { retention: }` (area 16, "Audit
     /// trail"; chunk B11): its history's entries older than its `after:`.
     Audit,
+}
+
+/// How many rows one batch of the field key's re-seal rewrites (area 15,
+/// "Rotating the key"; chunk P9).
+pub const RESEAL_BATCH: u32 = 500;
+
+/// What the field key's re-seal reads and writes of one sealed field (area
+/// 15, "Rotating the key"; chunk P9): the compiler's own operation, outside
+/// every action and policy, which the built-in schedule
+/// `field_encryption.reseal` runs while a `_PREVIOUS` key is set, and
+/// `jadpo config rotation` counts.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct ResealPlan {
+    /// `Consultation.notes`.
+    pub field: String,
+    pub store: String,
+    /// What each value in it is bound to, besides the record's `id`.
+    pub bound: String,
+    /// One batch of the rows still sealed with the previous key, `$1` that
+    /// key's identity, in `id` order: each row's `id` and sealed bytes.
+    pub select: String,
+    /// Writes a batch back: `$1` the `id`s, `$2` the bytes each row held and
+    /// `$3` what each now holds, leaving a row anything else has changed
+    /// since; it returns each row it rewrote.
+    pub update: String,
+    /// How the rows stand: `$1` the current key's identity, `$2` the
+    /// previous key's or `NULL`, giving how many rows hold a value, and how
+    /// many of them each key sealed.
+    pub count: String,
 }
 
 /// The permanent deletion of an entity's hidden records once they have

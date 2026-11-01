@@ -1013,6 +1013,20 @@ impl Body<'_> {
         };
         let stored = by_id.then(|| entity.to_string());
         let outer = std::mem::replace(&mut self.stored, stored);
+        // A key-type field keeps a key held as data sealed (area 19; chunk
+        // P9): one of the two places it may go.
+        for (name, member) in &given {
+            let target = tree::name_text(name)
+                .and_then(|name| fields.iter().find(|field| field.name == name));
+            if let (Some(target), Some(value)) = (target, member.value())
+                && self
+                    .table
+                    .base_prim(&target.declared)
+                    .is_some_and(|prim| prim.is_key())
+            {
+                self.facts.key_sinks.insert(node_key(value.syntax()));
+            }
+        }
         self.fields_given(
             set.block(),
             entity,
@@ -1920,6 +1934,19 @@ impl Body<'_> {
                 return Some(ty);
             }
             return None;
+        }
+        // No SQL reads a sealed field, so the database can't work a value
+        // out from one (area 15; chunk P9).
+        if crate::data::sealed::is_sealed(self.db, self.project, head, &field) {
+            let span = self.span(expr);
+            self.out.push(crate::data::sealed::used(
+                head,
+                &field,
+                "A value the database works out",
+                span,
+                format!("Load the record, and read `{field}` from it in the action"),
+            ));
+            return Some(Ty::Error);
         }
         if self.stored.as_deref() == Some(head) {
             // A field this migration adds has no stored value yet (chunk

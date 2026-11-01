@@ -754,6 +754,16 @@ impl<'a> Reader<'a> {
             return None;
         }
         let field = self.field_ref(path, entity, &value)?;
+        if field.sealed.is_some() {
+            self.out.push(crate::data::sealed::used(
+                &entity.name,
+                &field.name,
+                "A map layer",
+                Self::span(path, &value),
+                "Name a geometry field that isn't encrypted".to_string(),
+            ));
+            return None;
+        }
         if g.has_error() || field.ty.has_error() {
             return None;
         }

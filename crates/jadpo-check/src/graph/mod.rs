@@ -384,6 +384,33 @@ pub fn graph(db: &dyn Db, project: Project) -> Arc<Graph> {
         builder.edge(model.key.clone(), jadpo_graph::EdgeKind::Writes, entity);
         builder.node(node);
     }
+    // The field key's built-in re-seal (area 15; chunk P9), placed at
+    // `field_encryption_key:`.
+    if let Some((model, span)) = crate::schedules::reseal_schedule(db, project) {
+        let mut node = Node::new(model.key.clone(), Kind::Schedule, model.name.clone());
+        if let Some(file) = crate::lookups::file_at(
+            db,
+            project,
+            crate::lookups::Name::new(db, span.path.clone()),
+        ) {
+            let lines = LineIndex::new(file.text(db));
+            let last = span.end.saturating_sub(1).max(span.start);
+            node.place = Some(jadpo_graph::Place {
+                file: span.path.clone(),
+                start: span.start,
+                end: span.end,
+                lines: (lines.line(span.start), lines.line(last)),
+            });
+        }
+        node.digest = Some(jadpo_graph::Digest::of([
+            model.key.as_str(),
+            &model.every_ms.to_string(),
+        ]));
+        node.detail = jadpo_graph::Detail::Schedule {
+            every_ms: model.every_ms,
+        };
+        builder.node(node);
+    }
     // Each person entity (area 15; chunk P1), placed at its `person:`.
     for node in person_nodes(db, project) {
         builder.node(node.clone());

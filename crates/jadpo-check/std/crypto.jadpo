@@ -11,7 +11,9 @@
 // that table. `T` is a value built on `Bytes`, or a `Text`, whose UTF-8 is
 // used. A password is a `Password` and a token a `Jwt`, secret values that
 // these operations alone read (chunk 5.5r2). `read_certificate` reads
-// bytes and needs no key (chunk 5.5r4).
+// bytes and needs no key (chunk 5.5r4). A key can also be held as data
+// (chunk P9): `new_key` makes one, and `key:` takes it from a `var` or a
+// key-type field of a record.
 
 public library crypto {
     /// `sealed` opened with the current key or, after a rotation, the
@@ -24,6 +26,12 @@ public library crypto {
     /// in front; `context` (a record's id) is bound to it, so it opens
     /// only for that context.
     function encrypt(value: T, key: EncryptionKey, context: Text) -> Bytes {}
+
+    /// A new key of the key type `as:` names, 32 bytes from the host's
+    /// generator (chunk P9), so it is called only in actions: opaque, kept
+    /// off a recording's tape, and good only for being stored in a
+    /// key-type field, which keeps it sealed, or given as a `key:`.
+    function new_key(as: Type) -> T {}
 
     /// The password's Argon2id hash at the release's parameters (19 MiB,
     /// 2 passes, 1 lane), as a PHC string, with a fresh random salt.

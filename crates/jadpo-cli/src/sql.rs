@@ -432,6 +432,11 @@ fn input_name(source: &WriteSource, write: &WriteSitePlan, body: &Body, text: &s
             format!("{} as JSON", input_name(of, write, body, text))
         }
         WriteSource::Stored(value) => stored(value),
+        // A sealed field's value, never readable in the statement (chunk
+        // P9).
+        WriteSource::Sealed { of, .. } => {
+            format!("{} sealed", input_name(of, write, body, text))
+        }
     }
 }
 
