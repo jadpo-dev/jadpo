@@ -166,6 +166,7 @@ Rust 1.88 or later).
 | `jadpo-test` | Test runner, PostgreSQL harness, field-by-field value diffs; the differential comparison with compiled code, natively and inside workerd | |
 | `jadpo-lsp` | Language server | |
 | `jadpo-cldr` | The CLDR data a deployable carries: ICU4X's compiled data baked again for the app's supported locales | |
+| `jadpo-registry` | The registry protocol (area 11): its table, requests and answers, the RFC 6962 log and its proofs, release archives, a local registry served on this machine and the conformance test of a served OpenAPI document | |
 | `jadpo-cli` | The `jadpo` binary: commands, help, completion | |
 
 **`jadpo-std`** decides once what both sides need: what a valid value is
@@ -240,11 +241,38 @@ whole geometry; storage itself binds a geometry without asking, because the
 checker and every reader refuse such a mix (area 20, "Altitudes are all or
 nothing").
 
-**`jadpo-term`, `jadpo-test`, `jadpo-lsp`, `jadpo-cldr` and `jadpo-cli`**
-are tooling: the CLI design language's screens, the test runner (§2.5,
-§2.7), the language server, the locale data `jadpo build` exports for a
-deployable (§2.6, "The locale data a deployable carries"), and the binary
-that nothing depends on.
+**`jadpo-term`, `jadpo-test`, `jadpo-lsp`, `jadpo-cldr`, `jadpo-registry`
+and `jadpo-cli`** are tooling: the CLI design language's screens, the test
+runner (§2.5, §2.7), the language server, the locale data `jadpo build`
+exports for a deployable (§2.6, "The locale data a deployable carries"),
+the registry protocol, and the binary that nothing depends on.
+
+**`jadpo-registry`** is what the `jadpo` tool and the registry
+application at jadpo.dev are each built against (area 11, "The registry
+protocol"). The table is `protocol::ENDPOINTS`, one row per request with
+its placeholders, query, body, status, answer and failures, and
+`shape::named` gives each answer's and body's JSON; the request and
+answer types, the local registry's router, its OpenAPI document and the
+conformance test are all read from them, and a test holds every answer
+the local registry gives to its shape. The log keeps each release's leaf
+hash; proofs are made by RFC 6962 §2.1's recursive definitions and
+verified by RFC 9162 §2.1.3.2 and §2.1.4.2, with SHA-256 from the `sha2`
+the lock uses, and are tested against RFC 6962's vectors, against a
+second recursive implementation for every pair of sizes up to 40, and
+with every byte of every hash changed and hashes dropped, added or
+swapped. An archive is ustar of regular files only, unpacked within a
+size limit and refusing links, extensions, hidden files and any path
+outside the package; its digest is `jadpo_db::package_digest`, the
+lock's. The local registry serves the table from memory over plain HTTP
+on `127.0.0.1` (`local::LocalRegistry::serve`), with its own log, for
+the `jadpo` tool's tests; its client, `http::fetch`, reaches only this
+machine. The registry application is built in another repository, so its
+CI runs the conformance test from a checkout of this one at the Jadpo
+release it targets, against its own served document:
+`JADPO_REGISTRY_OPENAPI=http://127.0.0.1:<port>/registry/v1/openapi.json
+cargo test -p jadpo-registry --test integration conformance::` (a file
+path works too); a Rust caller can use `conformance::check` as a git
+dependency.
 
 **Dependency direction.** Compiler crates never depend on runtime crates,
 except `jadpo-interp`, which links the runtime it shares with compiled
@@ -689,7 +717,9 @@ recipient, also lists them (`Kept::through`) and the entities they lead
 through to a person (`Kept::chain`, each with the references climbed
 from it), worked out from `persons`: its marked fields are cleared only
 on a record none of them still leads from to a person erasure keeps
-(chunk P4). A kept record's own children stay with it, so the walk goes
+(chunk P4). What it would reach that isn't built is `unbuilt`: a kept
+record of an audited entity, whose history would still hold the
+reference. A kept record's own children stay with it, so the walk goes
 on only through what erasure deletes; a `File` it deletes or clears is
 counted by area 16's trigger like any change. `erasure::erasure_problems` reports where each field is
 written: an `erase:` on a field that is no reference or on a reference
@@ -700,11 +730,40 @@ reference or marked field it clears that can't be `none`
 (`data.erase_field_required`), and `Erasure.retained` on an entity with
 no `retention:` (`data.erase_retention_required`). `User.erase(user_id)`
 is typed by `Body::erase`, for an entity whose `WriteRules::person`
-holds: one `id` argument, no block and the person's not-found failure.
-It lowers to
+holds: one `id` argument, no block, the person's not-found failure, and
+`toolchain.not_built_yet` where `unbuilt` names anything. It lowers to
 the body's `Write` with `erase` set, a `delete` by `id` of the person's
 record, so policy needs `delete` on it and the isolation decision reads
 it as loading a record (`Loads::Erases`), at repeatable read.
+
+**The audit trail** (area 16, "Audit trail"; chunk B11). An entity's
+`audit:` is read by `jadpo_check::data::audit::read`, once its fields
+are, onto `EntityModel::audit` (an `AuditModel`, its retention's
+`Duration` setting read by `data::retention::period` as area 15's are),
+with where it and its retention are written in `EntitySpans`; the
+retention's key places the entity's purge schedule when nothing else
+does (`schedules::purge_place`). `data::schema` gives the store of each
+audited entity `jadpo_std::system::AUDIT`, and the graph an `audit` node,
+keyed by the entity's born name, under it, its digest over how long
+entries are kept (`graph::retention_nodes`). `audit::audit_problems`
+refuses, at `audit:`, what the history can't keep or remove soundly yet
+(a marked field or one of a standard type that is personal data,
+`ai_personal::standard_personal`; a `File`; a field with its own
+retention; a person's record its own retention, its lifecycle's purge or
+another entity's cascade removes), and `WriteRules` carries `audited`,
+`person_owned` and `reaches_audited`, by which the body refuses a hard
+`delete` whose cascade or clearing changes an audited record, or that
+removes a person's audited record (`Body::audited_delete`);
+`erasure::erasures` lists an audited record erasure keeps among what it
+can't do. `Entity.history(id)` and `history(id, after:)` are typed by
+`Body::entity_history`, for an audited entity, as `Page<AuditEntry>`,
+infallible, read as `get` reads (`Fact::Gets`, a `reads` edge); the
+fields of `AuditEntry`, `AuditFieldChange` and `AuditEntryRecorded` are
+`jadpo_std::audit::object_fields`, read where the batch types' are. A
+subscriber may hear `AuditEntryRecorded`, keyed
+`jadpo.AuditEntryRecorded`, once some entity is audited
+(`events::Reader::event`); the permissions report adds an audited
+entity's line and its JSON's `audit`.
 
 A query is a node (area 6): `jadpo_check::data::queries`
 reads each declaration once into a `QueryModel` (its entity, parameters,
@@ -801,11 +860,21 @@ connection's hosts are `NetworkChange.host_added` (area 18, 2026-10-30),
 which the record comparison below gives. Every git package needs a
 person, since telling the app's own company's repository from a third
 party's needs a setting the pages don't decide; this is the conservative
-reading of area 11's "Publisher trust". The graph diff runs in tests
-until `jadpo approval` builds the base commit, read through `git cat-file
---batch` into an in-memory file set (`jadpo_db::FileSet`, loaded by
-`load_files`, §2.2, "Loading"), checked by the same compiler and cached
-in `build/before/<commit>/`.
+reading of area 11's "Publisher trust". This graph diff runs in tests.
+
+**The approval report** (chunk V2, areas 17 and 18) builds the base: `jadpo
+approval` reads the commit through `git cat-file --batch` into an in-memory
+file set (`jadpo_db::FileSet`, loaded by `load_files`, §2.2, "Loading"),
+checks it with the same compiler and keeps its manifest and its declines in
+`build/before/<commit>/`, used again while this compiler wrote them.
+`jadpo_check::approval` then reads both sides as manifests, the graph's
+canonical JSON, rather than as `Graph`s, since a kept manifest is all the
+before side has: it compares their nodes and edges for the source, the
+newly reachable callables and the other behaviour, and walks today's edges
+(else the before side's, for something gone) for each decision's path. The
+decisions themselves are `acceptances::needs`, the same list `check` judges,
+each carrying its plain words and the callers it lets in from where its
+record is read.
 
 **Acceptances** (chunk A8, area 18) don't build the base. `jadpo check`
 reads the before side from git (`jadpo-cli`'s `before`): the default
@@ -2321,12 +2390,48 @@ a deleted record. It returns the person's `id`; no row is the person's
 not-found failure, asked without policy as a delete's probe asks. It is
 a `WritePlan` of `WriteOp::Delete` by `id`, with no refusals, so both
 executors run it through the runtime's one write path unchanged.
-The commit of an erasure that deleted or cleared a `File` releases its
-bytes through area 16's count of holders (§2.6, "Files and a file's
-run"). `crates/jadpo-cli/tests/erasure.rs` runs a library's erasure
-through `jadpo test` and reads the rows and the bytes it leaves; its
-tests run compiled with the interpreter's records in the gate's compiled
-step.
+An audited entity among those it deletes adds a part deleting the
+`jadpo_audit` rows of the records found of it, by its born name
+(`text::erase`'s `audited`). The commit of an erasure that deleted or
+cleared a `File` releases its bytes through area 16's count of holders
+(§2.6, "Files and a file's run"). `crates/jadpo-cli/tests/erasure.rs`
+runs a library's erasure through `jadpo test` and reads the rows and the
+bytes it leaves; its tests run compiled with the interpreter's records
+in the gate's compiled step.
+
+**The audit trail.** `jadpo-plan`'s `Planner::audit` gives each write of
+an audited entity a `jadpo_std::audit::AuditPlan`: the fields an entry
+records (every field but `id` and the server-only ones, each with its
+JSON codec when it is JSON-held), and, for an update or a delete, a
+`SELECT` of every column by the `id` its `RowCheck` names, `FOR NO KEY
+UPDATE`, or `FOR UPDATE` before a delete (`text::audit_before`), decoded
+as the write's own returned row; a lifecycle's `delete` transition, which
+returns no row, reads the record again after it. `jadpo_runtime::write`
+runs that read after the transaction opens and before the write, so the
+row it locks is the one the write changes at either isolation level, and
+once the write has changed the row `audit::record` adds the entry with
+`INSERT_AUDIT`, its `seq` one past its record's last, in the same
+transaction: each field's value before and after as canonical text
+(`jadpo_value::standard::from`, a variant's name, or the field's JSON),
+only those that differ; who from the caller's parts; the outermost
+action from the frames; the request's id and the trace's. With
+subscribers, which the plan lists from `jadpo_check::events::subscribers`,
+it emits `AuditEntryRecorded` into the action's outbox, its payload the
+runtime's JSON, read back by `audit::read_payload`. `Planner::history`
+plans each audited entity's `HistoryPlan`: one `SELECT TRUE` of the
+record by `id` under its lifecycle and `read` grant, with a `Bool` per
+field whose own `policy:` narrows reading (`text::history_access`); the
+sites decode `Decoded::History`, which the interpreter's
+`Target::History` and the compiled `rt::history` run through
+`StoreOp::History`. `audit::history` asks that unless the call has no
+caller, gives an empty page with no row, then reads 26 entries newest
+first with `HISTORY_ENTRIES`, after the cursor's `seq`, the page's tag
+the entity's born name's, leaving out the fields the caller may not
+read. The retention is a `PurgeKind::Audit` plan of the entity's, after
+its others (`text::audit_purge`, by born name and `at`).
+`crates/jadpo-cli/tests/audit.rs` runs the trail through `jadpo test` and
+reads its rows, its erasure and its retention's batches; its tests run
+compiled with the interpreter's records in the gate's compiled step.
 
 **Lifecycles and purge.** `jadpo-plan`'s `Planner::access` adds an entity's
 `visible:` to every query, `get`, child include, update, delete and
@@ -5432,7 +5537,7 @@ workerd") share the step's test file but are a step of the `wasm32`
 group, skipped by this one, since the `wasm32` job builds the runtime
 crates for wasm32 already.
 
-**CI.** GitHub Actions on Linux runs the gate's five groups as parallel
+**CI.** GitHub Actions on Linux runs the gate's six groups as parallel
 jobs, each with the pinned toolchain and its own cargo cache: `lint`
 (formatting, clippy, the name ban, the editor grammar), `docs` (the pages
 and the teaching examples), `tests` (every test, with the live PostgreSQL
@@ -5441,7 +5546,13 @@ steps running at once on one PostgreSQL container named by
 `wasm32` (the runtime crates for wasm32, their checks under Node, the
 Workers host, a Workers deployable and the route tests under workerd,
 which its tests install into `tools/fixtures/workers/` with `npm ci` the runner's
-Node provides); `docs`, `tests`, `compiled` and `wasm32` each build and
+Node provides) and `release` (the next release rehearsed:
+`tools/release/rehearsal.py` copies the checkout, moves it to the next
+minor version as release-please would, brings the lock files into step
+as `release-please.yml` does, then builds `jadpo` with `--locked` and runs
+the docs check and the teaching examples without PostgreSQL, reusing the
+build folder's dependencies; [documentation](documentation.md),
+"Versions and releases"); `docs`, `tests`, `compiled` and `wasm32` each build and
 start their own container from `tools/fixtures/postgres/Dockerfile`, PostgreSQL 16
 with pgvector and PostGIS at pinned versions (area 21,
 "Without pgvector"), while the toolchain installs. A local run's
@@ -5451,7 +5562,7 @@ need pgvector for the vector tests and PostGIS for the geography tests
 `target/`, so the `compiled` job's cache keeps the registry crates built
 in its target folder as well as the workspace's: the cache action keeps
 every registry crate's build in each target folder it finds there. The
-`supported-language` job needs all five and passes only when each did; it
+`supported-language` job needs all six and passes only when each did; it
 is the check branch protection requires. Beside the gate, the
 `commit-type` workflow checks a pull request's Conventional Commit title
 against what it changes, rerunning alone when the title is edited, and

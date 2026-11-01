@@ -31,6 +31,8 @@ pub enum StoreOp<'a> {
     /// A `create`, `update` or `delete`, a lifecycle's transitions among
     /// them.
     Write(&'a WritePlan),
+    /// An audited entity's `history` (area 16; chunk B11).
+    History(&'a jadpo_std::audit::HistoryPlan),
 }
 
 /// How a store operation ended.
@@ -67,7 +69,7 @@ pub async fn store(
 ) -> Stored {
     // Its span (chunk 10.3c), at its site in the frame on top.
     let kind = match op {
-        StoreOp::Read(_) => crate::spans::Kind::Read,
+        StoreOp::Read(_) | StoreOp::History(_) => crate::spans::Kind::Read,
         StoreOp::Write(_) => crate::spans::Kind::Write,
     };
     let frame = ctx.span_frame(site);
@@ -92,6 +94,10 @@ fn rows(op: StoreOp<'_>, value: &Value) -> u64 {
     match op {
         // A write gives the record it wrote, `Unit` for a delete.
         StoreOp::Write(_) => 1,
+        StoreOp::History(_) => match value {
+            Value::Record(record) => record.get("items").map_or(0, count),
+            _ => 0,
+        },
         StoreOp::Read(plan) => match plan.cardinality {
             Cardinality::One => 1,
             Cardinality::Optional => u64::from(*value != Value::None),
@@ -203,6 +209,10 @@ async fn run(
         }
     }
     match op {
+        StoreOp::History(plan) => match crate::audit::history(ctx, plan, args, site).await {
+            Ok(value) => Stored::Value(value),
+            Err(stop) => interrupted(stop),
+        },
         StoreOp::Read(plan) => match read(ctx, plan, json, args, site).await {
             Ok(Found::Value(value)) => Stored::Value(value),
             // A read for exactly one record found none: the failure its

@@ -123,7 +123,6 @@ the store every entity is kept in unless it says otherwise:
 
 ```jadpo check project=guide-native file=app.jadpo
 application {
-    jadpo: "0.2"
     connections: {
         main: {
             driver: Driver.postgres

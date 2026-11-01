@@ -1,0 +1,30 @@
+[package]
+name = "jadpo-registry"
+description = "The registry protocol: its requests and answers, the Merkle log and its proofs, a local registry and the conformance test"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+# One integration-test binary: tests/main.rs.
+autotests = false
+
+# A tooling crate (docs/compiler-runtime.md §2.1; roadmap chunk R4): what
+# the `jadpo` tool and the registry application at jadpo.dev are each built
+# against (area 11, "The registry protocol"). jadpo-db for the lock's
+# package digest, so an archive's digest is the one `jadpo.lock` records;
+# sha2 for the log's RFC 6962 hashes, RustCrypto's SHA-256 that
+# `hash.sha256` and the lock already use.
+[dependencies]
+jadpo-db.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sha2.workspace = true
+
+[lints]
+workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/main.rs"

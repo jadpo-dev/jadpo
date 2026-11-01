@@ -31,10 +31,13 @@
 //!   does nothing, so it is refused.
 //! - **A `File`'s bytes** go with the records and fields erasure deletes
 //!   and clears, counted by area 16's trigger like any other change
-//!   (chunk B3). The person's own record kept field by field, with
-//!   `erase:` on its own fields, isn't built yet, and is refused where
-//!   that is written. Every record erasure reaches is in the person's
-//!   store, since no reference crosses stores.
+//!   (chunk B3). Every record erasure reaches is in the person's store,
+//!   since no reference crosses stores.
+//! - **What isn't built yet** is refused, so no erasure is ever partial:
+//!   keeping an audited record, whose history would still hold the
+//!   reference, where `User.erase` is called, and the person's own record
+//!   kept field by field, with `erase:` on its own fields, where that is
+//!   written.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -58,6 +61,9 @@ pub struct Erasure {
     /// Each entity whose records it keeps while they refer to a record it
     /// deletes, with what it clears on them.
     pub kept: Vec<Kept>,
+    /// What it would reach that isn't built yet, each as the end of a
+    /// sentence saying why: what refuses `User.erase` where it is called.
+    pub unbuilt: Vec<String>,
 }
 
 /// A reference erasure follows to records it deletes.
@@ -239,6 +245,17 @@ fn erasure_of(
         let Some(entity) = model.entity(&name) else {
             continue;
         };
+        // A kept record's history still holds what it held while it was
+        // the person's (area 16, "Audit trail"; chunk B11), which the
+        // pages don't yet say erasure rewrites.
+        if entity.audit.is_some()
+            && let Some(first) = references.first()
+        {
+            out.unbuilt.push(format!(
+                "erasing a `{person}` keeps each `{name}` whose `{}` refers to them, and the history its `audit:` keeps would still hold that reference",
+                first.field
+            ));
+        }
         let anonymised = references
             .iter()
             .any(|reference| reference.outcome == Outcome::Anonymised);

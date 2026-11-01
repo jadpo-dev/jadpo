@@ -131,12 +131,38 @@ pub(crate) fn plans(
             out.push(found);
         }
     }
+    if let Some(found) = audited(entity, setting) {
+        out.push(found);
+    }
     out
 }
 
 /// For each entity someone signs in as, the tables of [`SIGN_IN_STATE`]
 /// its store holds, each with the column holding their `id`.
 pub(crate) type SignInState = std::collections::BTreeMap<String, Vec<(&'static str, &'static str)>>;
+
+/// `entity`'s `audit: { retention: }` (area 16, "Audit trail"; chunk
+/// B11): the oldest entries of its history written before the cutoff, by
+/// the entity's born name, which its entries are kept under.
+fn audited(entity: &EntityModel, setting: &dyn Fn(&str) -> Option<u32>) -> Option<PurgePlan> {
+    let retention = entity.audit.as_ref()?.retention.as_ref()?;
+    let store = entity.store.clone()?;
+    let mut purging = Purging::default();
+    let born = purging.param(
+        PurgeSource::Stored(jadpo_std::SqlValue::Text(entity.born.clone())),
+        SqlType::Text,
+    );
+    let cutoff = purging.param(PurgeSource::Cutoff, SqlType::Timestamp);
+    Some(PurgePlan {
+        entity: entity.name.clone(),
+        kind: PurgeKind::Audit,
+        store,
+        sql: text::audit_purge(&born, &cutoff, PURGE_BATCH),
+        params: purging.params,
+        after: 0,
+        after_setting: Some(setting(&retention.setting)?),
+    })
+}
 
 /// `entity`'s retention: the oldest records, hidden or not, whose `since:`
 /// field is older than the cutoff, deleted with what cascades from them,

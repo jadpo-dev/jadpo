@@ -11,9 +11,7 @@ A `jadpo routes` command is given an argument, which it doesn't take.
 A route is named:
 
 ```jadpo check project=e-routes-arguments file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-routes-arguments expect=cli.routes_arguments

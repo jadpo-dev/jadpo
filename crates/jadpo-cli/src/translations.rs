@@ -438,7 +438,6 @@ fn items(db: &dyn Db, project: Project) -> Vec<Item> {
     let Some(plan) = &jadpo_check::locales::locales(db, project).plan else {
         return Vec::new();
     };
-    let review = sources::review(db, project).required;
     let mut out = Vec::new();
     for gap in outstanding::gaps(db, project) {
         out.push(gap_item(&gap, plan));
@@ -454,38 +453,28 @@ fn items(db: &dyn Db, project: Project) -> Vec<Item> {
             project,
             jadpo_check::lookups::Name::new(db, scope.clone()),
         );
-        for standing in &standings.list {
-            if standing.stale {
-                out.push(Item {
-                    path: standing.path.clone(),
-                    file_exists: true,
-                    locale: standing.tag.clone(),
-                    member: standing.member.clone(),
-                    state: State::Stale,
-                    note: format!("{} reworded since it was translated", standing.default_tag),
-                    error: !standing.in_progress,
-                });
-            } else if review && !standing.accepted() {
-                out.push(Item {
-                    path: standing.path.clone(),
-                    file_exists: true,
-                    locale: standing.tag.clone(),
-                    member: standing.member.clone(),
-                    state: State::Unaccepted,
-                    note: match &standing.recorded {
-                        None => "new".to_string(),
-                        Some(entry) if entry.wording != standing.wording_hash && entry.accepted => {
-                            "reworded since it was accepted".to_string()
-                        }
-                        Some(entry) if entry.wording != standing.wording_hash => {
-                            "reworded since it was recorded".to_string()
-                        }
-                        Some(_) => "waiting for acceptance".to_string(),
-                    },
-                    error: false,
-                });
-            }
+        for standing in standings.list.iter().filter(|standing| standing.stale) {
+            out.push(Item {
+                path: standing.path.clone(),
+                file_exists: true,
+                locale: standing.tag.clone(),
+                member: standing.member.clone(),
+                state: State::Stale,
+                note: format!("{} reworded since it was translated", standing.default_tag),
+                error: !standing.in_progress,
+            });
         }
+    }
+    for waiting in sources::unaccepted(db, project) {
+        out.push(Item {
+            path: waiting.path,
+            file_exists: true,
+            locale: waiting.tag,
+            member: waiting.member,
+            state: State::Unaccepted,
+            note: waiting.note.to_string(),
+            error: false,
+        });
     }
     out
 }

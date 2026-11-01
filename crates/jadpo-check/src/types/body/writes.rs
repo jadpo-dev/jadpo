@@ -121,6 +121,76 @@ struct Sets {
 }
 
 impl Body<'_> {
+    // --- history ------------------------------------------------------------
+
+    /// `Entity.history(id)` and `Entity.history(id, after: cursor)` (area
+    /// 16, "Audit trail"; chunk B11): a page of an audited record's
+    /// entries, newest first.
+    pub(super) fn entity_history(&mut self, entity: &str, call: &ast::CallExpr, span: Span) -> Ty {
+        let written = format!("{entity}.{}", jadpo_std::audit::HISTORY);
+        self.read_in_loop(span.clone(), &written);
+        let audited = self
+            .writes
+            .write_rules(entity)
+            .is_some_and(|rules| rules.audited);
+        if !audited {
+            self.args_only(call);
+            self.out.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_UNKNOWN_CALLEE,
+                    format!("`{entity}` keeps no history"),
+                )
+                .at(span, "not audited")
+                .reason(format!(
+                    "`{written}` reads the history of changes an entity's `audit:` keeps (area 16, \"Audit trail\"), and `{entity}` has no `audit:`."
+                ))
+                .next(format!(
+                    "Give `{entity}` an `audit:` section to keep a history of its changes"
+                )),
+            );
+            return Ty::Error;
+        }
+        let id = Ty::Field(entity.to_string(), vec!["id".to_string()]);
+        let args = Self::arguments(call);
+        let after = args.get(1);
+        let fits = match args.as_slice() {
+            [_] => true,
+            [_, after] => Self::arg_name(after).as_deref() == Some("after"),
+            _ => false,
+        };
+        if !fits || args.first().is_some_and(|arg| arg.name().is_some()) {
+            self.args_only(call);
+            let snake = crate::case::to_snake(entity);
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_ARGUMENT_COUNT,
+                    format!("`{written}` takes a record's `id` and, for a later page, `after:`"),
+                )
+                .at(self.span(call), "an `id`, then `after:`")
+                .reason(format!(
+                    "`{written}` reads one page of the history of the `{entity}` with the `{entity}.id` it is given, newest first; the page's `next`, given back as `after:`, reads the page after it."
+                ))
+                .next(format!(
+                    "Call `{written}({snake}_id)`, or `{written}({snake}_id, after: page.next)`"
+                )),
+            );
+            return Ty::Error;
+        }
+        if let Some(value) = args.first().and_then(|arg| arg.expr()) {
+            self.check(&value, &id);
+        }
+        if let Some(value) = after.and_then(|arg| arg.expr()) {
+            self.check(&value, &Ty::Prim(crate::types::Prim::PageCursor).nullable());
+        }
+        Ty::Opaque(
+            super::expr::PAGE.to_string(),
+            vec![Ty::Opaque(
+                jadpo_std::audit::AUDIT_ENTRY.to_string(),
+                Vec::new(),
+            )],
+        )
+    }
+
     // --- get ----------------------------------------------------------------
 
     /// `Entity.get(id)`: its type, and whether it can be called.
@@ -522,7 +592,9 @@ impl Body<'_> {
     /// the person's record and decides what happens to every record of
     /// theirs, in one statement. It takes the person's `id` and no block,
     /// needs `delete` on the person's record as policy sees it, and fails
-    /// with the person's not-found failure. Its type.
+    /// with the person's not-found failure. An erasure reaching what isn't
+    /// built yet is refused here, where it is written, so none is ever
+    /// partial. Its type.
     pub(super) fn erase(
         &mut self,
         entity: &str,
@@ -613,6 +685,29 @@ impl Body<'_> {
                 ))
                 .next(format!("Remove `{word}: ...`"))
                 .edit(removal, ""),
+            );
+        }
+        // What isn't built yet, refused where the erasure is written.
+        let unbuilt = self
+            .writes
+            .erasure(entity)
+            .map(|erasure| erasure.unbuilt.clone())
+            .unwrap_or_default();
+        if let Some(first) = unbuilt.first() {
+            let mut first = first.clone();
+            if let Some(head) = first.get(..1) {
+                first = format!("{}{}", head.to_uppercase(), &first[1..]);
+            }
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TOOLCHAIN_NOT_BUILT_YET,
+                    format!("Erasing a `{entity}` here isn't built yet"),
+                )
+                .at(head_span.clone(), "decided, not built")
+                .reason(format!(
+                    "{first}, which erasure can't do yet: accepted, the app would believe a `{entity}` erased while data of theirs remains."
+                ))
+                .next(format!("Erase a `{entity}` in an action of your own for now")),
             );
         }
         let not_found = self.not_found_of(entity, head_span, &written);
@@ -1070,6 +1165,7 @@ impl Body<'_> {
                 ),
             )
         } else {
+            self.audited_delete(entity, rules, span);
             return;
         };
         self.out.push(
@@ -1077,6 +1173,54 @@ impl Body<'_> {
                 .at(span, "a lifecycle keeps it")
                 .reason(reason)
                 .next(next),
+        );
+    }
+
+    /// A delete the audit trail can't record yet (area 16, "Audit trail";
+    /// chunk B11): one whose cascade removes or changes an audited record,
+    /// which the database does with no entry, and the removal of an
+    /// audited record of a person's, whose history would outlive it
+    /// beyond the reach of the person's erasure.
+    fn audited_delete(&mut self, entity: &str, rules: &WriteRules, span: Span) {
+        let written = format!("{entity}.delete");
+        let (reason, next) = if let Some((holder, field, cascades)) = &rules.reaches_audited {
+            let what = if *cascades {
+                format!(
+                    "Removing a `{entity}` removes the `{holder}` records whose `{field}` points at it (`on_delete: OnDelete.cascade`)"
+                )
+            } else {
+                format!(
+                    "Removing a `{entity}` clears `{field}` on the `{holder}` records that point at it (`on_delete: OnDelete.cleared`)"
+                )
+            };
+            (
+                format!(
+                    "{what}, and `{holder}` keeps a history of its changes (`audit:`), which doesn't yet record a change the database's cascade makes: accepted, the change would have no entry."
+                ),
+                format!(
+                    "Make `{holder}.{field}` `OnDelete.restricted` and change those records first in the same action, or leave `audit:` out of `{holder}` for now"
+                ),
+            )
+        } else if rules.audited && rules.person_owned {
+            (
+                format!(
+                    "A `{entity}` belongs to a person, and its history (`audit:`) would be kept after the record is removed, where erasing the person, which deletes a record's history with the record, can't reach it: accepted, data of theirs would outlive their erasure."
+                ),
+                format!(
+                    "Give `{entity}` a lifecycle with a `delete` transition, so a deleted record is kept hidden until its person is erased, or leave `audit:` out of `{entity}` for now"
+                ),
+            )
+        } else {
+            return;
+        };
+        self.out.push(
+            Diagnostic::new(
+                &rule::TOOLCHAIN_NOT_BUILT_YET,
+                format!("`{written}` isn't built yet here"),
+            )
+            .at(span, "decided, not built")
+            .reason(reason)
+            .next(next),
         );
     }
 

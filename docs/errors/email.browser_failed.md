@@ -21,9 +21,7 @@ since a mail reaches the inbox only through `jadpo dev`; the mail was
 written into `build/dev/inbox` as `jadpo dev` writes it:
 
 ```jadpo check project=e-browser-failed file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh

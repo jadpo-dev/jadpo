@@ -19,9 +19,7 @@ A project's `config.jadpo` declares a secret `mail_api_key`, and neither
 the environment nor `.env.local` sets it:
 
 ```jadpo check project=e-value-missing file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```jadpo check project=e-value-missing file=config.jadpo hidden

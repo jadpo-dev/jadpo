@@ -21,9 +21,7 @@ editor saved `.env.local` as Latin-1, so its `é` is one byte that isn't
 UTF-8:
 
 ```jadpo check project=e-local-encoding file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```jadpo check project=e-local-encoding file=config.jadpo hidden

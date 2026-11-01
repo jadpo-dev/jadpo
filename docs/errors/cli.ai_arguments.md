@@ -11,9 +11,7 @@ A `jadpo ai` command names no action, one it doesn't have, or a prompt the proje
 A project with no prompts, asked to show one:
 
 ```jadpo check project=e-ai-arguments file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-ai-arguments expect=cli.ai_arguments

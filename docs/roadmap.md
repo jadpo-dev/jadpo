@@ -371,15 +371,13 @@ time.
 ## Approvals
 
 Everything a person must approve is found by the compiler and can be
-approved (Richard, 2026-10-31). V2 is taken before A10, so 0.2.0 doesn't
-wait for A10's decision; the rest come after the A chunks above and
-before every other unticked chunk.
+approved (Richard, 2026-10-31). The chunks here come after the A chunks
+above and before every other unticked chunk.
 
-**0.2.0 is V2 alone.** When V2 has merged, the 0.2.0 release pull request
-is merged; no session merges it before then. Everything else in this
-section and the registry chunks below make **0.3.0**, released when V6
-and R6 have both merged. V1 and V3 to V5 run at the same time as each
-other and as R1 and R4, where they touch different crates.
+0.2.0 shipped without V2. **V2 is part of 0.3.0,** with everything else in
+this section and the registry chunks below, released when V6 and R6 have
+both merged. V1 and V3 to V5 run at the same time as each other and as R1
+and R4, where they touch different crates.
 
 Already built: acceptances (`jadpo acceptance new`, matching, the reason,
 history, the CODEOWNERS gate) for API and event breaks, every widening of
@@ -390,16 +388,7 @@ features not built yet come with those features: `ThresholdChange` with
 thresholds, a service's image with services, bot checks with bot
 protection, a domain renamed with `jadpo domain rename`.
 
-- [ ] **V2 The approval report** `opus · xhigh`: area 17, "Reviewing a
-  change"; area 18, "Comparing two builds". `jadpo approval --before
-  <ref>` builds the base, and writes Markdown and JSON in `build/review/`
-  in the page's order: each decision in plain words with whether its
-  acceptance exists, the path that makes it true, newly reachable
-  declarations, other behaviour (the API record, schema and migrations,
-  failures, events, integrations, the permissions report's diff, wording
-  not yet accepted) and the source by declaration. The web view stays
-  with the developer console. Screens designed with the design skills
-  first. Split here if it is larger than a session.
+- [x] **V2 The approval report**: area 17, "Reviewing a change"; area 18, "Comparing two builds"; area 14, "`jadpo approval`"; compiler/runtime §2.3, "The approval report"; `docs/errors/cli.approval_arguments.md`.
 - [ ] **V1 Your own company's git packages** `opus · high`: area 11,
   "Installing safely"; area 18, `PolicyChange.own_source_added`.
   `packages:`'s `own_sources:` in `application { }` (added to area 1's
@@ -454,11 +443,7 @@ real deploy) and, before outside authors can publish, D3 (releases).
   change record; the previous release's examples and tests run against
   the new code; `jadpo package verify --json`. Screens designed with the
   design skills first.
-- [ ] **R4 The registry protocol and a local registry** `opus · high`:
-  area 11, "The registry protocol". The protocol's requests and answers
-  as types in one crate, the Merkle log and its proofs, a local registry
-  that tests run against, and the conformance test that checks a served
-  OpenAPI document against the protocol.
+- [x] **R4 The registry protocol and a local registry**: area 11, "The registry protocol"; compiler/runtime §2.1, `jadpo-registry`.
 - [ ] **R5 The registry commands** `opus · high` after R3 and R4: area 11,
   "Installing and updating from the registry", "Developing for the
   registry"; area 14, the package commands. `add @publisher/name` with the
@@ -564,8 +549,11 @@ After the registry is live, in order:
      logged as a keyed hash of its canonical text, whatever its type and
      in a failure's context too, the same on both executors; every
      export, erasure and read of a sensitive field recorded, without
-     values, as a long-kept log event. Done when log and access-record
-     tests show both on both executors.
+     values, as a long-kept log event; and an audited entity's marked
+     field kept in its history as that hash, lifting B11's
+     `toolchain.not_built_yet` (area 16, "What the audit trail doesn't
+     keep yet"). Done when log and access-record tests show both on both
+     executors.
    - [ ] **P8 The personal-data report** `opus · high` after V5 and P7:
      area 15, "The personal-data report", "Where data is stored", "What
      this does not cover" and "What the compiler checks" (a marked field
@@ -701,23 +689,10 @@ After the registry is live, in order:
      "Removing a flag", "Flags in browsers and apps" and "Flags: changed,
      listed and removed"; area 14, `jadpo flags`; compiler/runtime §2.6,
      "Feature flags".
-   - [ ] **B11 The audit trail** `opus · xhigh` after P2: area 16, "Audit
-     trail" and "Sending audit entries elsewhere"; area 9, the history's
-     grant and field restrictions; area 5, its system table. `audit: {
-     retention: }` on an entity: an entry in the same transaction as each
-     change (the principal, or the application with the request that
-     emitted the event; the action and request; each changed field
-     before and after, server-only fields left out);
-     `Entity.history(id)`, a page of entries for a caller with `read`,
-     without the fields they can't read; entries deleted by P2's purge
-     schedule when their retention ends, and with their record when P3
-     erases it; the permissions report listing audited entities; and
-     `AuditEntryRecorded` emitted in the same transaction when something
-     subscribes. Until P7's keyed hash, an audited entity with a
-     `personal:` field stays `toolchain.not_built_yet`, so no personal
-     value is copied into its history. Done when tests change audited
-     records on both executors and read each change back through
-     `history`.
+   - [x] **B11 The audit trail**: area 16, "Audit trail" (with "Reading
+     a history", "Retention and erasure" and "What the audit trail
+     doesn't keep yet") and Decisions; area 5, "The audit trail's table";
+     compiler/runtime §2.3 and §2.6, "The audit trail".
    - [x] **B12 Search on PostgreSQL**: area 16, "Search", "How it is
      kept", "Search and policy" and "Search and personal data"; area 2,
      `SearchText`; compiler/runtime §2.6, "Search on PostgreSQL".

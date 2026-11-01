@@ -927,6 +927,52 @@ fn no_other_person(table: &str, others: &Others<'_>) -> String {
     )
 }
 
+/// The record an audited write starts from (area 16, "Audit trail"; chunk
+/// B11): every column of `table`'s row whose `id` is `$1`, locked as the
+/// write will lock it, `FOR UPDATE` before a delete and `FOR NO KEY
+/// UPDATE` before an update, so no other change comes between.
+pub fn audit_before(columns: &[String], table: &str, deleting: bool) -> String {
+    format!(
+        "SELECT {}\nFROM {}\nWHERE {} = $1\nFOR {}UPDATE",
+        idents(columns),
+        ident(table),
+        ident("id"),
+        if deleting { "" } else { "NO KEY " }
+    )
+}
+
+/// Whether a caller may read an audited record's history: one row when
+/// `table` holds the record its conditions find and the caller may read
+/// it, with whether they may read each field `grants` gives a condition
+/// for, in order.
+pub fn history_access(table: &str, grants: &[String]) -> String {
+    let mut columns = vec!["TRUE".to_string()];
+    columns.extend(
+        grants
+            .iter()
+            .map(|grant| format!("{} IS TRUE", parenthesised(grant))),
+    );
+    format!("SELECT {}\nFROM {}", columns.join(", "), ident(table))
+}
+
+/// One batch of an audit retention (area 16; chunk B11): the entries of
+/// the entity whose born name is `entity`, a parameter, written before
+/// `cutoff`, oldest first, at most `batch` of them, each returning its
+/// `seq`.
+pub fn audit_purge(entity: &str, cutoff: &str, batch: u32) -> String {
+    let key = idents(&["entity", "record_id", "seq"]);
+    format!(
+        "DELETE FROM {table}\nWHERE ({key}) IN (\n  SELECT {key}\n  FROM {table}\n  WHERE {} = {entity} AND {} < {cutoff}\n  ORDER BY {}, {}, {}\n  LIMIT {batch}\n  FOR UPDATE SKIP LOCKED\n)\nRETURNING {}",
+        ident("entity"),
+        ident("at"),
+        ident("at"),
+        ident("record_id"),
+        ident("seq"),
+        ident("seq"),
+        table = ident("jadpo_audit"),
+    )
+}
+
 /// The `id`s of the records of the entity numbered `entity` that a
 /// person's erasure deletes.
 fn erased(entity: usize) -> String {
@@ -961,6 +1007,7 @@ pub fn erase(
     follows: &[Followed<'_>],
     keeps: &[Keeps<'_>],
     signed_in: &[(usize, &str, &str)],
+    audited: &[(usize, String)],
 ) -> String {
     let mut base = format!(
         "  SELECT 0, {}.{}\n  FROM {}",
@@ -1096,6 +1143,19 @@ pub fn erase(
             ident(&format!("signed_out{}", i + 1)),
             ident(table),
             ident(column),
+            erased(*entity)
+        ));
+    }
+    // An audited record's history goes with it (area 16, "Audit trail";
+    // chunk B11): each of `audited`, the number of an entity and its born
+    // name as a parameter.
+    for (i, (entity, born)) in audited.iter().enumerate() {
+        parts.push(format!(
+            "{} AS (\n  DELETE FROM {}\n  WHERE {} = {born} AND {} IN ({})\n)",
+            ident(&format!("history{}", i + 1)),
+            ident("jadpo_audit"),
+            ident("entity"),
+            ident("record_id"),
             erased(*entity)
         ));
     }

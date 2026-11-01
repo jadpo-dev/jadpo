@@ -19,7 +19,6 @@ the same way page 11 added the mail server:
 use todos/entities { User }
 
 application {
-    jadpo: "0.2"
     display_name: "Todos"
     connections: {
         main: {
@@ -194,7 +193,7 @@ its migrations.
 ```
 
 ```text
-{"address":"0.0.0.0:8080","build":"b_eae4cf8f9e2e","commit":null,"compiler":"0.1.0","deployable":"app","event":"runtime.started","modified":true,"target":"native","trigger":"native","unbuilt":[],"workers":10}
+{"address":"0.0.0.0:8080","build":"b_eae4cf8f9e2e","commit":null,"compiler":"X.Y.Z","deployable":"app","event":"runtime.started","modified":true,"target":"native","trigger":"native","unbuilt":[],"workers":10}
 ```
 
 It writes one line of JSON for each thing worth logging. It listens on
@@ -205,7 +204,7 @@ If a setting it needs is missing, it stops at once, naming the setting
 but never printing a value. Here `DATABASE_URL` was left out:
 
 ```text
-{"build":"b_eae4cf8f9e2e","commit":null,"compiler":"0.1.0","deployable":"app","event":"runtime.startup_failed","modified":true,"problems":[{"message":"`DATABASE_URL` isn't set: `database_url` is required, so the app can't start without it.","problem":"setting_missing","setting":"database_url","variable":"DATABASE_URL"}],"target":"native"}
+{"build":"b_eae4cf8f9e2e","commit":null,"compiler":"X.Y.Z","deployable":"app","event":"runtime.startup_failed","modified":true,"problems":[{"message":"`DATABASE_URL` isn't set: `database_url` is required, so the app can't start without it.","problem":"setting_missing","setting":"database_url","variable":"DATABASE_URL"}],"target":"native"}
 ```
 
 Every deployed app answers a health check, which a load balancer or
