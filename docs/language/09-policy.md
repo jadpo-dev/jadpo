@@ -2159,7 +2159,9 @@ Schedules and subscribers act as the system
 ([Background work](#background-work)), and what `Access.system` is granted
 shows in the permissions report. The compiler's own purge of soft-deleted
 records ([The purge schedule](12-jobs-and-events.md#the-purge-schedule)) is
-the only operation outside policy.
+the only operation outside policy. Erasing a person needs `delete` on
+their record, and then reaches every record of theirs as purge does
+([Erasure](15-personal-data.md#erasure)).
 
 ## When policy says no
 <!-- topic: when-policy-says-no -->

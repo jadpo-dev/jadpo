@@ -1196,6 +1196,16 @@ pub fn purpose(changes: &[Change], after: &Schema) -> String {
                 }
             }
             Change::DropTable { table, .. } => return format!("remove_{table}"),
+            // An entity's search (area 16, chunk B12), by its table.
+            Change::AddColumn { table, column, .. } if column == jadpo_std::search::COLUMN => {
+                return format!("search_{table}");
+            }
+            Change::RemoveColumn { table, column, .. } if column == jadpo_std::search::COLUMN => {
+                return format!("unsearch_{table}");
+            }
+            Change::AlterColumn { table, column, .. } if column == jadpo_std::search::COLUMN => {
+                return format!("change_{table}_search");
+            }
             Change::AddColumn { column, .. } => return format!("add_{column}"),
             Change::RemoveColumn { column, .. } => return format!("retire_{column}"),
             Change::AlterColumn {

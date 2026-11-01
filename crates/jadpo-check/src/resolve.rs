@@ -33,6 +33,10 @@ use crate::tree::{self, dotted, node_span};
 /// The operations every entity has (area 6).
 pub(crate) const ENTITY_OPERATIONS: [&str; 4] = ["get", "create", "update", "delete"];
 
+/// A person entity's generated erasure, `User.erase(user_id)` (area 15,
+/// "Erasure"; chunk P3).
+pub(crate) const ERASE: &str = "erase";
+
 /// What a type position accepts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Want {
@@ -1170,13 +1174,15 @@ impl Names<'_> {
         let mut operations: Vec<String> =
             ENTITY_OPERATIONS.iter().map(|op| op.to_string()).collect();
         operations.extend(symbol.transitions.iter().cloned());
-        if operations.contains(&name) {
+        // A person's erasure (area 15, "Erasure"; chunk P3): whether the
+        // entity is a person is the body's to check, with its data model.
+        if operations.contains(&name) || name == ERASE {
             return;
         }
         let span = self.span(operation);
-        // A person's erasure and export (area 15), decided and not built:
-        // refused as such, so no app takes them for an operation that
-        // doesn't exist and writes its own deletion in their place unseen.
+        // A person's export (area 15), decided and not built: refused as
+        // such, so no app takes it for an operation that doesn't exist and
+        // writes its own in its place unseen.
         if let Some((what, instead)) = unbuilt_person_operation(&name) {
             out.push(
                 Diagnostic::new(
@@ -2190,13 +2196,10 @@ fn version_unneeded(code: &str, member: Option<&str>, span: Span) -> Diagnostic 
 }
 
 /// A person entity's generated operation that isn't built yet (area 15):
-/// what it does, and what an app does for now.
+/// what it does, and what an app does for now. `erase` is built (chunk
+/// P3).
 fn unbuilt_person_operation(name: &str) -> Option<(&'static str, &'static str)> {
     match name {
-        "erase" => Some((
-            "Erasing a person, with every record that belongs to them,",
-            "Delete the person's records in an action of your own for now",
-        )),
         "export" => Some((
             "Exporting everything held about a person",
             "Read the person's records with queries of your own for now",

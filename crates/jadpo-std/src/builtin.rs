@@ -44,6 +44,11 @@ pub enum Builtin {
     PageCursor,
     /// How many records a page holds: an `Int` from 1 to 100 (area 6).
     PageSize,
+    /// What someone types into a search box (area 2, "Services"; area 16,
+    /// "Search"): text of 1 to 200 characters with no control characters,
+    /// which a query's `matches` reads as words, quoted phrases and
+    /// `-word`, never as query syntax.
+    SearchText,
     /// An API token as `sessions.issue_token` gives it, once (area 8):
     /// text an `Output` can send, which no entity can keep.
     ApiToken,
@@ -127,7 +132,7 @@ static PAGE_SIZE_RULES: crate::Rules = crate::Rules {
 };
 
 impl Builtin {
-    pub const ALL: [Builtin; 48] = [
+    pub const ALL: [Builtin; 49] = [
         Builtin::Bool,
         Builtin::Int,
         Builtin::Decimal,
@@ -165,6 +170,7 @@ impl Builtin {
         Builtin::Unit,
         Builtin::PageCursor,
         Builtin::PageSize,
+        Builtin::SearchText,
         Builtin::ApiToken,
         Builtin::ServiceKey,
         Builtin::SignInCode,
@@ -199,6 +205,7 @@ impl Builtin {
             Builtin::Unit => "Unit",
             Builtin::PageCursor => "PageCursor",
             Builtin::PageSize => "PageSize",
+            Builtin::SearchText => "SearchText",
             Builtin::ApiToken => "ApiToken",
             Builtin::ServiceKey => "ServiceKey",
             Builtin::SignInCode => "SignInCode",
@@ -226,6 +233,7 @@ impl Builtin {
             | Builtin::Url
             | Builtin::IpAddress
             | Builtin::PageCursor
+            | Builtin::SearchText
             | Builtin::ApiToken
             | Builtin::ServiceKey
             | Builtin::SignInCode
@@ -252,6 +260,7 @@ impl Builtin {
                 | Builtin::Unit
                 | Builtin::PageCursor
                 | Builtin::PageSize
+                | Builtin::SearchText
                 | Builtin::ApiToken
                 | Builtin::ServiceKey
                 | Builtin::SignInCode

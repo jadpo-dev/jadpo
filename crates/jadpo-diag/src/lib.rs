@@ -137,19 +137,19 @@ rules! {
     API_SETTING_UNKNOWN: "api.setting_unknown", area 7, Error, Agent,
         "API setting is not one an API takes";
     CLI_ACCEPTANCE_ARGUMENTS: "cli.acceptance_arguments", area 14, Error, Agent,
-        "Acceptance command has invalid arguments";
+        "A `jadpo acceptance` command names no action, one it doesn't have, or no purpose for `new`";
     CLI_AI_ARGUMENTS: "cli.ai_arguments", area 14, Error, Agent,
-        "AI command has invalid arguments";
+        "A `jadpo ai` command names no action, one it doesn't have, or a prompt the project doesn't declare";
     CLI_API_ARGUMENTS: "cli.api_arguments", area 14, Error, Agent,
-        "Api command has invalid arguments";
+        "A `jadpo api` command names no action, one it doesn't have, or more than `update`";
     CLI_BUILD_ARGUMENTS: "cli.build_arguments", area 14, Error, Agent,
-        "Build command has invalid arguments";
+        "A `jadpo build` command names a deployable the app doesn't have, or more than one";
     CLI_CALLS_ARGUMENTS: "cli.calls_arguments", area 14, Error, Agent,
-        "Calls command has invalid arguments";
+        "A `jadpo calls` command names an action it doesn't have, a call the log doesn't hold, or an answer without its operation";
     CLI_CHECK_ARGUMENTS: "cli.check_arguments", area 14, Error, Agent,
-        "Check command has invalid arguments";
+        "A `jadpo check` command names a path that isn't there or isn't a `.jadpo` file, or a `--before` git doesn't know";
     CLI_COMPLETIONS_ARGUMENTS: "cli.completions_arguments", area 14, Error, Agent,
-        "Completions command has invalid arguments";
+        "A `jadpo completions` command names no shell, or one Jadpo writes no completions for";
     CLI_CONFIG_ARGUMENTS: "cli.config_arguments", area 14, Error, Agent,
         "A `jadpo config` command names no action, an action it doesn't have, or a setting `config.jadpo` doesn't declare";
     CLI_CONFIG_PROMPT_FAILED: "cli.config_prompt_failed", area 14, Error, Human,
@@ -157,65 +157,65 @@ rules! {
     CLI_CONFIG_TTY_REQUIRED: "cli.config_tty_required", area 14, Error, Human,
         "You ran `jadpo config set` where there is no terminal to type the value at, such as from a coding agent or a script";
     CLI_DECLINES_ARGUMENTS: "cli.declines_arguments", area 14, Error, Agent,
-        "Declines command has invalid arguments";
+        "A `jadpo declines` command names no action, one it doesn't have, or a rule or path that isn't the project's";
     CLI_DELIVERIES_ARGUMENTS: "cli.deliveries_arguments", area 14, Error, Agent,
-        "Deliveries command has invalid arguments";
+        "A `jadpo deliveries` command names an action it doesn't have, no id for one that needs it, or a state or page it doesn't list";
     CLI_DEV_ARGUMENTS: "cli.dev_arguments", area 14, Error, Agent,
-        "Dev command has invalid arguments";
+        "A `jadpo dev` command names an action it doesn't have, `token` without a user's id, or a `--url` the project's several stores can't share";
     CLI_DEV_PORT_INVALID: "cli.dev_port_invalid", area 14, Error, Agent,
         "Development port is invalid";
     CLI_DEV_START_FAILED: "cli.dev_start_failed", area 14, Error, Human,
         "The app couldn't start under `jadpo dev`, usually because another program is using its port, it has no database to run on, or a connection would call a provider's live API";
     CLI_EMAIL_ARGUMENTS: "cli.email_arguments", area 14, Error, Agent,
-        "Email command has invalid arguments";
+        "A `jadpo email` command names an action it doesn't have, or a mail or link the dev inbox doesn't hold";
     CLI_FIX_ARGUMENTS: "cli.fix_arguments", area 14, Error, Agent,
-        "Fix command has invalid arguments";
+        "A `jadpo fix` command names a declaration with nothing to fix, or a fix it doesn't have";
     CLI_FMT_ARGUMENTS: "cli.fmt_arguments", area 14, Error, Agent,
-        "Format command has invalid arguments";
+        "A `jadpo fmt` command names a path that isn't there or isn't a `.jadpo` file";
     CLI_HELP_ARGUMENTS: "cli.help_arguments", area 14, Error, Agent,
-        "Help command has invalid arguments";
+        "A `jadpo help` command names more than one command or rule";
     CLI_LSP_ARGUMENTS: "cli.lsp_arguments", area 14, Error, Agent,
-        "Language-server command has invalid arguments";
+        "A `jadpo lsp` command is given an argument, which it doesn't take";
     CLI_MIGRATE_ARGUMENTS: "cli.migrate_arguments", area 14, Error, Agent,
-        "Migrate command has invalid arguments";
+        "A `jadpo migrate` command names no action, one it doesn't have, or a purpose for an action that takes none";
     CLI_NEW_ARGUMENTS: "cli.new_arguments", area 14, Error, Agent,
-        "New command has invalid arguments";
+        "A `jadpo new` command names no project, or more than one";
     CLI_PACKAGE_ARGUMENTS: "cli.package_arguments", area 14, Error, Agent,
-        "Package command has invalid arguments";
+        "A `jadpo package` command names no action, one it doesn't have, or a package the project doesn't hold";
     CLI_PACKAGE_NOT_OPENAPI: "cli.package_not_openapi", area 14, Error, Agent,
         "Description to import is not an OpenAPI 3 document";
     CLI_PACKAGE_UNREADABLE: "cli.package_unreadable", area 14, Error, Agent,
         "Description to import could not be read as JSON";
     CLI_PRESENTATION_ARGUMENTS: "cli.presentation_arguments", area 14, Error, Agent,
-        "Terminal presentation option is invalid";
+        "A `--color` flag holds something other than `auto`, `always` or `never`, or nothing";
     CLI_RECORDS_ARGUMENTS: "cli.records_arguments", area 14, Error, Agent,
-        "Records command has invalid arguments";
+        "A `jadpo records` command names an action other than `update`";
     CLI_ROUTES_ARGUMENTS: "cli.routes_arguments", area 14, Error, Agent,
-        "Routes command has invalid arguments";
+        "A `jadpo routes` command is given an argument, which it doesn't take";
     CLI_RUNS_ARGUMENTS: "cli.runs_arguments", area 14, Error, Agent,
-        "Runs command has invalid arguments";
+        "A `jadpo runs` command names an action other than `unfinished`, or leaves out its `--build`";
     CLI_SCHEDULES_ARGUMENTS: "cli.schedules_arguments", area 14, Error, Agent,
-        "Schedules command has invalid arguments";
+        "A `jadpo schedules` command names an action it doesn't have, or a schedule the project doesn't declare";
     CLI_SEED_ARGUMENTS: "cli.seed_arguments", area 14, Error, Agent,
-        "Seed command has invalid arguments";
+        "A `jadpo seed` command names no seed, one the project doesn't have, or more than one";
     CLI_SQL_ARGUMENTS: "cli.sql_arguments", area 14, Error, Agent,
-        "Sql command has invalid arguments";
+        "A `jadpo sql` command names no query or action, one the project doesn't declare, or an action that writes nothing";
     CLI_SUGGEST_ARGUMENTS: "cli.suggest_arguments", area 14, Error, Agent,
-        "Suggest command has invalid arguments";
+        "A `jadpo suggest` command names an action it doesn't have, or a suggestion the last scan didn't find";
     CLI_TEST_ARGUMENTS: "cli.test_arguments", area 14, Error, Agent,
-        "Test command has invalid arguments";
+        "A `jadpo test` command names a path that isn't there, or a seed, a kind or a `--name` it can't use";
     CLI_TOOLCHAIN_ARGUMENTS: "cli.toolchain_arguments", area 14, Error, Agent,
-        "Toolchain command has invalid arguments";
+        "A `jadpo toolchain` command names an action it doesn't have, or a release that isn't kept";
     CLI_TRANSLATIONS_ARGUMENTS: "cli.translations_arguments", area 14, Error, Agent,
-        "Translations command has invalid arguments";
+        "A `jadpo translations` command names no action, one it doesn't have, or a locale the project doesn't translate into";
     CLI_UNKNOWN_COMMAND: "cli.unknown_command", area 14, Error, Agent,
-        "Unknown Jadpo command";
+        "A `jadpo` command line starts with a command Jadpo doesn't have, or asks `jadpo help` about a command or rule it doesn't have";
     CLI_UNKNOWN_FLAG: "cli.unknown_flag", area 14, Error, Agent,
-        "Unknown flag";
+        "A `jadpo` command line has a flag the command doesn't take";
     CLI_VERSION_ARGUMENTS: "cli.version_arguments", area 14, Error, Agent,
-        "Version command has invalid arguments";
+        "A `jadpo version` command is given an argument, which it doesn't take";
     CLI_WHY_ARGUMENTS: "cli.why_arguments", area 14, Error, Agent,
-        "Why command has invalid arguments";
+        "A `jadpo why` command names no schedule, one the project doesn't declare, or more than one";
     CONFIGURATION_BINDING_EMPTY: "configuration.binding_empty", area 10, Error, Agent,
         "Setting names an empty environment variable";
     CONFIGURATION_BINDING_INVALID: "configuration.binding_invalid", area 10, Error, Agent,
@@ -286,6 +286,8 @@ rules! {
         "Package's answers don't conform to its capability";
     CONFORM_REFUSED: "conform.refused", area 14, Error, Human,
         "The conformance suite wasn't sent to the provider's live API, because the app has no connection to the package, nothing sets the connection's credential or address, or `ai:` doesn't ask its models through it";
+    CONNECTION_DISK_PATH_INVALID: "connection.disk_path_invalid", area 16, Error, Human,
+        "A disk store's `path:` isn't an absolute folder outside the project";
     CONNECTION_DOMAIN_NOT_LISTED: "connection.domain_not_listed", area 11, Error, Human,
         "An action calls an outside service through a connection whose `domains:` list doesn't include the action's domain";
     CONNECTION_KEY_INVALID: "connection.key_invalid", area 11, Error, Agent,
@@ -314,6 +316,14 @@ rules! {
         "Unique rule or index repeats another";
     DATA_ENTITY_IN_FIELD: "data.entity_in_field", area 5, Error, Agent,
         "Field holds an entity instead of a reference to one";
+    DATA_ERASE_FIELD_REQUIRED: "data.erase_field_required", area 15, Error, Human,
+        "Erasing a person would clear a field that can't be `none`: a reference whose record erasure keeps, or a marked field of a record it anonymises";
+    DATA_ERASE_REQUIRED: "data.erase_required", area 15, Error, Human,
+        "A `restricted` reference into records that erasing a person deletes doesn't say what erasure does to the record holding it";
+    DATA_ERASE_RETENTION_REQUIRED: "data.erase_retention_required", area 15, Error, Human,
+        "Erasing a person keeps records with `Erasure.retained`, but their entity has no `retention:` saying when they go";
+    DATA_ERASE_UNREACHED: "data.erase_unreached", area 15, Error, Agent,
+        "A field's `erase:` is on a field erasing a person never reaches: one that isn't a reference, or a reference to records that belong to no person";
     DATA_FIELD_LIST_REQUIRED: "data.field_list_required", area 5, Error, Agent,
         "Unique rule or index is not a list of fields";
     DATA_FIELD_WITHOUT_JSON: "data.field_without_json", area 5, Error, Agent,
@@ -894,6 +904,10 @@ rules! {
         "A schedule run by hand ended in a failure, or its run on the app never ended";
     SCHEDULES_UNAVAILABLE: "schedules.unavailable", area 14, Error, Human,
         "The app's schedules couldn't be read from their database, because it can't be reached or has no table for them yet";
+    SEARCH_SETTINGS_INVALID: "search.settings_invalid", area 16, Error, Agent,
+        "An entity's `search:` holds something it doesn't take, or leaves out what it needs";
+    SEARCH_UNDECLARED: "search.undeclared", area 16, Error, Agent,
+        "A query searches an entity by words that has no `search:` section";
     SEED_FAILED: "seed.failed", area 14, Error, Agent,
         "Seed ended with a failure or a fault";
     SEED_PRODUCTION_REFUSED: "seed.production_refused", area 14, Error, Human,

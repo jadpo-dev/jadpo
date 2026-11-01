@@ -318,6 +318,10 @@ literals, enum values, lists of those, and `clock.now`. A
 value is fixed when the project is compiled. `<` and the other orderings
 take numbers, times, dates and durations, as they do in code.
 
+A search by words is a condition of its own, `where: Todo matches
+phrase`, on an entity with a `search:` section; with no `order:` it gives
+the best matches first ([Search](16-built-in-services.md#search)).
+
 A field may be passed to three kinds of operation:
 
 - **`ai.distance`**, compared with a bound
@@ -2113,7 +2117,11 @@ An action loads a record when it:
   than of its `id`;
 - runs a transition whose `when:` can refuse a visible record, since
   telling that refusal from a missing record takes a second statement,
-  which must see the first one's snapshot.
+  which must see the first one's snapshot;
+- erases a person with `User.erase`, whose statement reaches every
+  record of theirs, so a record added since its snapshot must rerun or
+  fail it rather than be left behind
+  ([Erasure](15-personal-data.md#erasure)).
 
 A create, and an update, delete or other transition by `id`, counters
 among them, loads nothing: the store checks a reference a create sets in

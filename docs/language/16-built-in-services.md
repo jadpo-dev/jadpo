@@ -674,7 +674,9 @@ reach it like any field ([Personal data](15-personal-data.md)), and
 `Driver.disk` keeps files on the server's own disk. It works in
 production on the native target only, and on Workers it is a compile
 error. The build manifest records that the app then runs on one server,
-since a second server wouldn't see the files.
+since a second server wouldn't see the files: each deployable that
+reaches a disk store lists those stores as its `one_server`
+([The manifest](18-records-and-manifest.md#the-manifest)).
 
 ```jadpo fragment
 // app.jadpo
@@ -689,12 +691,23 @@ application {
 }
 ```
 
+- **Where.** `path:` is the folder the store's files are kept in,
+  written in full with no `.` or `..` in it, and never inside the
+  project's own folder, where git, `jadpo build` and `jadpo dev` would
+  reach them: `jadpo check` refuses any other
+  ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)),
+  following a link that leads into the project. As a deployable starts it
+  makes the folder, readable by the app's user only, when it is missing,
+  and doesn't build a store whose folder other users can write to,
+  listing it in `runtime.started`'s `unbuilt`, since they could plant
+  files it reads; so is a store with no `path:`, answering
+  `misconfigured` when used.
 - **Files never change.** Each is kept under a key the runtime
   generates, a UUID sharded into two directory levels, never one derived
   from a file's name. The driver refuses any key that doesn't match its
-  own pattern, opens files relative to its root without following
-  symbolic links, and writes them readable by the app's user only. The
-  root must not be inside the app's source or build folders.
+  own pattern, opens each folder and file relative to the one above it
+  without following symbolic links, reads only a regular file, and
+  writes folders and files readable by the app's user only.
 - **Uploads are streamed** to a temporary file as they arrive. They are
   counted, with a `413` at the first byte over `max_size`, hashed and
   type-checked, then synced and renamed into place, and the directory is
@@ -708,9 +721,11 @@ application {
   `Content-Security-Policy: sandbox`. The client's file name only ever
   goes in `filename*` (RFC 6266).
 - **Space.** A write that runs out of space fails as `storage_full`.
-  Below `free_space_floor:`, 5% by default, new uploads are refused, so
-  imports and the database aren't starved of space. The floor is reported
-  as a monitoring threshold.
+  `free_space_floor:`, a percentage from `0%` up to, but not, `100%`, 5%
+  by default, is the share of the disk kept free: a put, an upload or a
+  join that would leave less free than it answers `storage_full` and
+  writes nothing, so imports and the database aren't starved of space.
+  The floor is reported as a monitoring threshold.
 - **Commands.** `jadpo files ls`, `show`, `get`, `put` and `copy` work
   on any store, in development or production. `jadpo files copy` moves a
   store's files to another, which is how you move off one server.
@@ -1899,38 +1914,463 @@ nothing else. Search is the `search` capability, so an engine's package,
 such as Meilisearch, Typesense, Algolia or OpenSearch, can fill it
 instead.
 
-```jadpo fragment
-// domains/planning/entities/todo.jadpo
+```jadpo check project=search file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=search file=domains/planning/types/todo_title.jadpo hidden
+/// A todo's title.
+type TodoTitle = Text {
+    max_length: 200
+}
+```
+
+```jadpo check project=search file=domains/planning/types/todo_notes.jadpo hidden
+/// What a todo says beyond its title.
+type TodoNotes = Text {
+    max_length: 2000
+}
+```
+
+```jadpo check project=search file=domains/planning/entities/todo.jadpo
+use planning/types { TodoNotes, TodoTitle }
+
+/// Something to do.
 entity Todo {
-    ...
+    id: Uuid
+    title: TodoTitle
+    notes: TodoNotes?
+
     search: {
         fields: [title, notes]
         language: SearchLanguage.english
     }
 }
+```
 
-// domains/planning/queries/search_todos.jadpo
-query search_todos(owner_id: User.id, search_phrase: SearchText) -> Page<TodoView> {
-    from: Todo
-    where: Todo.owner_id == owner_id
-    where: Todo matches search_phrase
+```jadpo check project=search file=domains/planning/types/todo_view.jadpo hidden
+use planning/entities { Todo }
+
+/// A todo in a list.
+type TodoView = Output {
+    pick: [Todo.id, Todo.title]
 }
 ```
 
-- Fields listed first count most when ordering results.
-- With no `order:`, the best matches come first, then by `id`, in keyset
-  pages like every other list ([Pages](06-reads-and-writes.md#pages)).
-- `search_phrase` takes what people type into search boxes: words,
-  quoted phrases and `-word`, never raw query syntax.
+```jadpo check project=search file=domains/planning/types/todo_search.jadpo
+/// What someone typed into the search box, and where its page starts.
+type TodoSearch = Input {
+    phrase: SearchText
+    page_size: PageSize {
+        default: 2
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+```
+
+```jadpo check project=search file=domains/planning/queries/search_todos.jadpo migrate=initial
+use planning/entities { Todo }
+use planning/types { TodoSearch, TodoView }
+
+/// The todos whose words match a search, best first.
+query search_todos(asked: TodoSearch) -> Page<TodoView> {
+    from: Todo
+    where: Todo matches asked.phrase
+    page: {
+        size: asked.page_size
+        after: asked.after
+    }
+}
+```
+
+```jadpo check project=search file=domains/planning/actions/add_todo.jadpo hidden
+use planning/entities { Todo }
+use planning/types { TodoNotes, TodoTitle }
+
+/// Adds a todo.
+action add_todo(title: TodoTitle, notes: TodoNotes?) -> Todo {
+    return Todo.create {
+        set: {
+            title: title
+            notes: notes
+        }
+    }
+}
+```
+
+- **The fields.** `fields:` lists text fields of the entity (a type built
+  on `Text`, kept in one text column), by name. Fields listed first count
+  most when ordering results: the first field's words weigh most, then
+  the second's and the third's, and the fourth and every field after it
+  weigh least, PostgreSQL's four weights. A field that is `none` has no
+  words.
+- **The language.** `language:` is one of `SearchLanguage`'s, PostgreSQL
+  16's text search languages: `arabic`, `armenian`, `basque`, `catalan`,
+  `danish`, `dutch`, `english`, `finnish`, `french`, `german`, `greek`,
+  `hindi`, `hungarian`, `indonesian`, `irish`, `italian`, `lithuanian`,
+  `nepali`, `norwegian`, `portuguese`, `romanian`, `russian`, `serbian`,
+  `simple`, `spanish`, `swedish`, `tamil`, `turkish` and `yiddish`. It
+  reduces each word to its stem, so "packing" finds "pack", and leaves out
+  its stop words, such as "the". `simple` stems nothing and leaves nothing
+  out. A PostgreSQL search always says its language: there is no default.
+- **The phrase.** `matches` takes a `SearchText`
+  ([Values and types](02-values-and-types.md)), what people type into
+  search boxes: 1 to 200 characters with no line breaks, tabs or other
+  control characters. It is read as words, quoted phrases and `-word`,
+  never raw query syntax: `pack "the van" -books` finds records with
+  "pack" and the phrase "the van" but not "books". Every word must match;
+  an `or` someone types is a word like any other, and a stop word in most
+  languages. A phrase of only stop words, or of no words, finds nothing.
+- **The order.** With no `order:`, the best matches come first, then by
+  `id`, in keyset pages like every other list
+  ([Pages](06-reads-and-writes.md#pages)): a page's cursor holds the last
+  record's rank and `id`. A record's rank is worked out from its own
+  words and the phrase alone. With an `order:`, the records that match
+  come in that order instead.
+- **Where `matches` stands.** On a `where:` line of a list or a page,
+  alone or joined to other conditions by `and`, once in a query. Not
+  under `not` or `or`, not in `where_present:`, an include or an
+  aggregate query, and not beside a `nearest` or `geo.distance` order
+  (`query.condition_unsupported`).
 - `search:` replaces the full-text index `kind:`
   ([Special kinds of index](05-data.md#special-kinds-of-index)): one
   declaration, not an index plus hand-written conditions.
+
+The test adds four todos and searches them a page of two at a time.
+"Pack books" matches in its title and its notes, so it comes first:
+
+```jadpo check project=search file=domains/planning/queries/search_todos.test.jadpo
+use planning/entities { Todo }
+use planning/types { TodoSearch, TodoView }
+use planning/actions { add_todo }
+
+/// Titles joined by commas.
+type TitleList = Text {}
+
+/// The titles a page holds, in order.
+function titles(page: Page<TodoView>) -> TitleList {
+    return TitleList(text.join(list.map(page.items, item -> item.title), ", "))
+}
+
+test "the best matches come first, a page at a time" {
+    var in_notes: Todo = add_todo("Call the bank", "ask about packing boxes")
+    var in_title: Todo = add_todo("Pack the van", none)
+    var in_both: Todo = add_todo("Pack books", "packing tape too")
+    var watering: Todo = add_todo("Water plants", none)
+    var first: Page<TodoView> = search_todos(
+        TodoSearch {
+            phrase: "packing"
+        }
+    )
+    assert titles(first) == "Pack books, Pack the van"
+    var second: Page<TodoView> = search_todos(
+        TodoSearch {
+            phrase: "packing"
+            after: first.next
+        }
+    )
+    assert titles(second) == "Call the bank"
+    assert second.next == none
+    assert in_notes.title == "Call the bank"
+    assert in_title.title == "Pack the van"
+    assert in_both.title == "Pack books"
+    assert watering.title == "Water plants"
+}
+
+test "a quoted phrase, a word left out, and or as a word" {
+    var van_todo: Todo = add_todo("Pack the van", none)
+    var books: Todo = add_todo("Pack books", "the van is full")
+    assert van_todo.title == "Pack the van"
+    assert books.title == "Pack books"
+    var phrase: Page<TodoView> = search_todos(
+        TodoSearch {
+            phrase: "\"pack the van\""
+            page_size: 10
+        }
+    )
+    assert titles(phrase) == "Pack the van"
+    var no_books: Page<TodoView> = search_todos(
+        TodoSearch {
+            phrase: "pack -books"
+            page_size: 10
+        }
+    )
+    assert titles(no_books) == "Pack the van"
+    var both_words: Page<TodoView> = search_todos(
+        TodoSearch {
+            phrase: "books or van"
+            page_size: 10
+        }
+    )
+    assert titles(both_words) == "Pack books"
+    var stop_words: Page<TodoView> = search_todos(
+        TodoSearch {
+            phrase: "the"
+            page_size: 10
+        }
+    )
+    assert stop_words.items == []
+}
+```
+
+### How it is kept
+
+The words are a column of the entity's table that PostgreSQL works out
+from the fields on every write, `jadpo_search`, so they can never
+disagree with the record, and a GIN index finds the records that match.
+`jadpo migrate new` writes both; the migration for the todos above holds:
+
+```sql
+CREATE TABLE "todo" (
+    "id" uuid NOT NULL,
+    "title" text NOT NULL,
+    "notes" text,
+    "jadpo_search" tsvector GENERATED ALWAYS AS (setweight(to_tsvector('english'::regconfig, coalesce("title", '')), 'A') || setweight(to_tsvector('english'::regconfig, coalesce("notes", '')), 'B')) STORED,
+    CONSTRAINT "todo_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX "todo_jadpo_search_idx" ON "todo" USING gin ("jadpo_search");
+```
+
+- **No decision to make.** Adding `search:` to an entity that already
+  has records adds the column, which PostgreSQL fills for every record
+  there, and its index. Changing `fields:` or `language:` makes the
+  column again from them, its index with it; removing `search:` drops
+  both. None needs a backfill or an acceptance, since the column holds
+  nothing that isn't in the fields.
+- **The column's name is Jadpo's.** An entity with `search:` can't have a
+  field stored as `jadpo_search`.
+- **Lifecycle.** Like every index the compiler derives, the index holds
+  only the records the entity's `visible:` lets queries see
+  ([Indexes](05-data.md#indexes)).
+
+`jadpo sql search_todos` shows the statement, the rank selected beside
+the record's fields and each page starting after the last one's rank and
+`id`:
+
+```sql
+SELECT "id", "title", ts_rank("jadpo_search", websearch_to_tsquery('english'::regconfig, $1))::float8 AS "jadpo_rank"
+FROM "todo"
+WHERE "jadpo_search" @@ websearch_to_tsquery('english'::regconfig, $1)
+  AND ($2 IS NULL OR ts_rank("jadpo_search", websearch_to_tsquery('english'::regconfig, $1))::float8 < $2 OR (ts_rank("jadpo_search", websearch_to_tsquery('english'::regconfig, $1))::float8 = $2 AND "id" > $3))
+ORDER BY "jadpo_rank" DESC, "id" ASC
+LIMIT $4
+```
+
+### Search and policy
+
+A search is a query, so policy filters its records exactly as it filters
+any query's, in the same statement and before the page is cut
+([When policy says no](09-policy.md#when-policy-says-no)). A search never
+shows a record or a field its caller can't read:
+
+- **Records.** Only the records the caller may read are searched. A
+  record's rank comes from its own words and the phrase, never from
+  other records, so a record the caller can't see never moves one they
+  can, never changes where a page ends and is never counted: a `Page`
+  holds no total.
+- **Fields.** Which records match a search, and how well, shows the
+  words of every field it lists. So each field in `fields:` must be one
+  everyone who may run the query may read, as a condition's must
+  ([What else shows a field](09-policy.md#what-else-shows-a-field));
+  otherwise `policy.output_field_unproved` names the `matches` line.
+- **No snippets.** A result is the query's output type: no highlighted
+  text from a field the output doesn't pick.
+
+Here each member reads only their own notes. Bob's note uses the word
+three times, but Ann's search never finds it, and her two notes come one
+to a page as if Bob's weren't there:
+
+```jadpo check project=search-policy file=app.jadpo hidden
+use notes/entities { Member }
+
+application {}
+
+principal {
+    user: {
+        subject: Member.handle
+    }
+}
+```
+
+```jadpo check project=search-policy file=authentication.jadpo hidden
+authentication {
+    browser_session: {
+        cookie: "notes_session"
+    }
+}
+```
+
+```jadpo check project=search-policy file=domains/notes/types/handle.jadpo hidden
+/// What a member signs in as.
+type Handle = Text {
+    min_length: 3
+    max_length: 40
+}
+```
+
+```jadpo check project=search-policy file=domains/notes/types/note_text.jadpo hidden
+/// What a note says.
+type NoteText = Text {
+    max_length: 2000
+}
+```
+
+```jadpo check project=search-policy file=domains/notes/failures/handle_taken.jadpo hidden
+/// Another member signed up with the handle first.
+type HandleTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That handle is taken."
+}
+```
+
+```jadpo check project=search-policy file=domains/notes/entities/member.jadpo hidden
+use notes/types { Handle }
+
+/// Someone who signs in.
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+    }
+}
+```
+
+```jadpo check project=search-policy file=domains/notes/entities/note.jadpo
+use notes/entities { Member }
+use notes/types { NoteText }
+
+/// A member's note, which only they may read.
+entity Note {
+    id: Uuid
+    owner_id: Member.id {
+        on_delete: OnDelete.cascade
+    }
+    body: NoteText
+
+    policy: {
+        create: [owner_id]
+        read: [owner_id]
+    }
+
+    search: {
+        fields: [body]
+        language: SearchLanguage.english
+    }
+}
+```
+
+```jadpo check project=search-policy file=domains/notes/types/note_view.jadpo hidden
+use notes/entities { Note }
+
+/// A note in a list.
+type NoteView = Output {
+    pick: [Note.id, Note.body]
+}
+```
+
+```jadpo check project=search-policy file=domains/notes/queries/search_notes.jadpo migrate=initial
+use notes/entities { Note }
+use notes/types { NoteView }
+
+/// The caller's notes that match a search, best first, one at a time.
+query search_notes(user: Principal.user, phrase: SearchText, after: PageCursor?) -> Page<NoteView> {
+    from: Note
+    where: Note matches phrase
+    page: {
+        size: 1
+        after: after
+    }
+}
+```
+
+```jadpo check project=search-policy file=domains/notes/actions/register.jadpo hidden
+use notes/entities { Member }
+use notes/types { Handle }
+use notes/failures { HandleTaken }
+
+/// Registers a member; anyone may.
+action register(handle: Handle) fails HandleTaken -> Member {
+    return attempt Member.create {
+        set: {
+            handle: handle
+        }
+        conflict: {
+            Member.handle: HandleTaken
+        }
+    }
+}
+```
+
+```jadpo check project=search-policy file=domains/notes/actions/write_note.jadpo hidden
+use notes/entities { Note }
+use notes/types { NoteText }
+
+/// Writes a note for its owner.
+action write_note(owner: Principal.user, body: NoteText) -> Note {
+    return Note.create {
+        set: {
+            owner_id: owner.id
+            body: body
+        }
+    }
+}
+```
+
+```jadpo check project=search-policy file=domains/notes/queries/search_notes.test.jadpo
+use notes/entities { Member, Note }
+use notes/types { NoteView }
+use notes/actions { register, write_note }
+
+test "a search finds only the caller's notes, and others' never move them" {
+    var ann: Member = attempt register("ann")
+    var bob: Member = attempt register("bob")
+    var budget_plan: Note = write_note(Principal.user(ann), "budget plan")
+    var budget_review: Note = write_note(
+        Principal.user(ann),
+        "budget review, and the budget after it"
+    )
+    var bobs_note: Note = write_note(Principal.user(bob), "budget budget budget")
+    assert budget_plan.body == "budget plan"
+    assert budget_review.body == "budget review, and the budget after it"
+    assert bobs_note.body == "budget budget budget"
+    var first: Page<NoteView> = search_notes(Principal.user(ann), "budget", none)
+    assert list.map(first.items, item -> item.body) == ["budget review, and the budget after it"]
+    var second: Page<NoteView> = search_notes(Principal.user(ann), "budget", first.next)
+    assert list.map(second.items, item -> item.body) == ["budget plan"]
+    assert second.next == none
+    var bobs: Page<NoteView> = search_notes(Principal.user(bob), "budget", none)
+    assert list.map(bobs.items, item -> item.body) == ["budget budget budget"]
+    assert bobs.next == none
+}
+```
+
+### Search and personal data
+
+A field marked `personal:` may be searched
+([Marking personal fields](15-personal-data.md#marking-personal-fields)).
+Its words are kept only in its record's own row, worked out from the
+field, so whatever clears or deletes the field (erasure, anonymising,
+retention) clears its words in the same statement, and nothing is copied
+anywhere else. A field of a sensitive category, such as
+`PersonalData.health`, isn't searched yet: every read of a sensitive
+field is recorded in the [access records](15-personal-data.md#access-records),
+which aren't built, so it is `toolchain.not_built_yet` in `fields:`.
+An [encrypted field](15-personal-data.md#encrypted-fields) is never
+searched.
 
 ### An engine instead of PostgreSQL
 
 `search: { fields: [...]  store: products_index }` names a connection
 whose package provides `search`. Leave `store:` out and the search is
-PostgreSQL's. The engine's package does the whole job: it upserts a
+PostgreSQL's. Not built yet: `store:` is `toolchain.not_built_yet` where
+it is written ([What is built](#what-is-built)). The engine's package does the whole job: it upserts a
 record's searchable fields, removes a record, and queries by words with
 equality filters.
 
@@ -2943,7 +3383,8 @@ your machine:
   anywhere on the way.
 - A file is written to a temporary file readable by the application's
   user only, synced, and renamed into place, and its folder is synced.
-- A full disk answers `storage_full`.
+- A full disk answers `storage_full`, and so does a put below the
+  store's `free_space_floor:`, as it does in production.
 
 Its reads and writes block, a window of at most a megabyte at a time,
 on your own disk.
@@ -3112,10 +3553,10 @@ The errors this page describes are built with the feature they belong to.
 | The dev inbox and the health score | Built: the dev inbox, `jadpo email`, the health score, `email.health_problem` and `jadpo email check-domain` ([The dev inbox and the health score](#the-dev-inbox-and-the-health-score)), with SpamAssassin's rules in the score ([SpamAssassin in the health score](#spamassassin-in-the-health-score)). Not built yet: the inbox page as part of the developer console, and its link to each mail's trace, which comes with `jadpo trace`. |
 | Rate limits | Built: default rate limits with routes, and their store on Workers, Cloudflare's rate-limiting binding ([Rate limits on Workers](#rate-limits-on-workers)). Not built yet: Redis's driver, which comes with caches. Until then a deployable whose store is Redis counts in its own memory, which on Workers is the judgement call `rate_limits.counted_in_memory`. The binding's windows and the Wrangler entries aren't yet checked against the real edge. |
 | The capability seam | Built: the seam every capability's calls go through, with a delivery that hands its event to a capability, parked as `outcome_unknown` when a send without a key may have acted ([The seam every outside call goes through](#the-seam-every-outside-call-goes-through)). |
-| Files | Partly built. Built: the `files` capability's first part on that seam: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [Files: `put`, `read` and the disk driver in development](#files-put-read-and-the-disk-driver-in-development)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([Files: an export's pieces](#files-an-exports-pieces)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). Not built yet: upload slots, multipart ones included, downloads, deleting and erasing a file's bytes, the S3 driver, a deployable's disk driver at its `path:` and `free_space_floor:`, the error for a disk driver's root inside the project, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written. |
+| Files | Partly built. Built: the `files` capability's first part on that seam: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [Files: `put`, `read` and the disk driver in development](#files-put-read-and-the-disk-driver-in-development)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([Files: an export's pieces](#files-an-exports-pieces)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). Not built yet: upload slots, multipart ones included, downloads, deleting and erasing a file's bytes, the S3 driver, the floor as a monitoring threshold, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written. |
 | Flags | Partly built: `flags { }` of `Bool` and enum flags with their `default:`, `owner:` and `expires:`; `flags.<name>` in actions, tests and a route's `run:` arguments, worked out for the caller from `jadpo_flags` in `flags: { store: }`, held in each server's memory and fixed for the operation; a test's `flags:`; `flag.unknown`, `flag.read_context` and `flag.expired` ([Flags: declared, read and tested](#flags-declared-read-and-tested)). Not built yet: `jadpo flags set`, `list` and `remove`, the log of changes, `check` failing until both values are tested, `client: true` and `GET /flags`, and named tenants, which wait for tenancy to be settled for flags. |
 | Audit | Not built yet: an entity's `audit:` is `toolchain.not_built_yet` where it is written. |
-| Search | Not built yet. |
+| Search | Built on PostgreSQL: `search: { fields: language: }` with its generated column, GIN index and migrations, `matches` with a `SearchText`, the best matches first in keyset pages, and policy over every search ([Search](#search)). Not built yet: an engine's `store:`, `toolchain.not_built_yet` where it is written, and `jadpo search reindex`, which come with the `search` capability's packages; and searching a field of a sensitive category, `toolchain.not_built_yet` in `fields:` until the access records are built. |
 | Documents | Not built yet: the application's `documents:` is `toolchain.not_built_yet` where it is written. |
 | Bot protection | Not built yet: the application's `bot_check:` and a route's are `toolchain.not_built_yet` where they are written. |
 | Outgoing webhooks | Not built yet. |
@@ -3127,6 +3568,7 @@ The errors this page describes are built with the feature they belong to.
 
 ## Errors
 
+- [`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)
 - [`data.file_field_invalid`](../errors/data.file_field_invalid.md)
 - [`type.file_read_too_large`](../errors/type.file_read_too_large.md)
 - [`email.template_missing`](../errors/email.template_missing.md)
@@ -3139,6 +3581,8 @@ The errors this page describes are built with the feature they belong to.
 - [`email.attachment_limit`](../errors/email.attachment_limit.md)
 - [`email.connection_required`](../errors/email.connection_required.md)
 - [`email.sent_context`](../errors/email.sent_context.md)
+- [`search.settings_invalid`](../errors/search.settings_invalid.md)
+- [`search.undeclared`](../errors/search.undeclared.md)
 - [`rate_limits.counted_in_memory`](../errors/rate_limits.counted_in_memory.md)
 - [`rate_limits.store_invalid`](../errors/rate_limits.store_invalid.md)
 - [`rate_limits.store_required`](../errors/rate_limits.store_required.md)

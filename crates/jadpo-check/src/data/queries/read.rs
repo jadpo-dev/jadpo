@@ -101,12 +101,20 @@ impl<'a> Reader<'a> {
             return None;
         }
 
-        // What each cardinality needs and refuses.
-        let (needs, refuses): (&[&str], &[&str]) = match cardinality {
-            Cardinality::One => (&["missing"], &["order", "limit", "page"]),
-            Cardinality::Optional => (&[], &["missing", "order", "limit", "page"]),
-            Cardinality::List => (&["order", "limit"], &["page", "missing"]),
-            Cardinality::Page => (&["order", "page"], &["limit", "missing"]),
+        // What each cardinality needs and refuses. A search by words
+        // (area 16, "Search"; chunk B12) needs no `order:`: without one,
+        // the best matches come first.
+        let with_matches = sections
+            .filters
+            .iter()
+            .any(|(_, member)| member.value().is_some_and(|value| holds_matches(&value)));
+        let (needs, refuses): (&[&str], &[&str]) = match (cardinality, with_matches) {
+            (Cardinality::One, _) => (&["missing"], &["order", "limit", "page"]),
+            (Cardinality::Optional, _) => (&[], &["missing", "order", "limit", "page"]),
+            (Cardinality::List, false) => (&["order", "limit"], &["page", "missing"]),
+            (Cardinality::List, true) => (&["limit"], &["page", "missing"]),
+            (Cardinality::Page, false) => (&["order", "page"], &["limit", "missing"]),
+            (Cardinality::Page, true) => (&["page"], &["limit", "missing"]),
         };
         let mut complete = true;
         for section in needs {
@@ -133,6 +141,41 @@ impl<'a> Reader<'a> {
         }
         if matches!(cardinality, Cardinality::One | Cardinality::Optional) {
             self.unique(path, entity, &sections, &filter, &span, &sig.result);
+        }
+        // One search a query, ordering its records by how well they match,
+        // which a nearest or distance order, or a map layer, would not.
+        let found = searches(&filter);
+        let mut search_ok = true;
+        if found.len() > 1 {
+            search_ok = false;
+            self.out.push(
+                Diagnostic::new(
+                    &rule::QUERY_CONDITION_UNSUPPORTED,
+                    format!("`{name}` searches by words twice"),
+                )
+                .at(span.clone(), "two `matches`")
+                .reason("A search ranks the records it finds by how well they match one phrase, so a query holds one `matches`; one `SearchText` takes several words, quoted phrases and `-word`.")
+                .next("Keep one `matches` line"),
+            );
+        } else if !found.is_empty()
+            && (nearest_written.is_some()
+                || sections
+                    .first
+                    .get("order")
+                    .and_then(distance_entry)
+                    .is_some()
+                || layer.is_some())
+        {
+            search_ok = false;
+            self.out.push(
+                Diagnostic::new(
+                    &rule::QUERY_CONDITION_UNSUPPORTED,
+                    format!("`{name}` searches by words and orders by nearness"),
+                )
+                .at(span.clone(), "`matches` and a nearest order")
+                .reason("A search orders its records by how well they match, or by the fields `order:` lists; a `nearest` or `geo.distance` order, or a map layer, orders them by place, and the two can't be combined.")
+                .next("Search in a query of its own"),
+            );
         }
 
         // Order, limit and page. A query ordered by `geo.distance` (area
@@ -219,7 +262,7 @@ impl<'a> Reader<'a> {
         };
 
         let element = element?;
-        if !complete || !nearest_ok || !distance_ok || !layer_ok {
+        if !complete || !nearest_ok || !distance_ok || !layer_ok || !search_ok {
             return None;
         }
         if layer.is_some() && geometry.is_none() {

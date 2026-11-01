@@ -81,6 +81,8 @@ pub struct Write {
     /// Whether it changes a record it was given, rather than one it finds
     /// by `id`, so it rests on a copy loaded earlier.
     pub given: bool,
+    /// Whether it is a person's erasure (area 15; chunk P3).
+    pub erase: bool,
 }
 
 /// Everything one callable's body does past its own values.
@@ -138,6 +140,7 @@ pub fn fact_of(node: &Node) -> Option<Fact> {
             target,
             by_id,
             set,
+            erase,
             ..
         } => Fact::Writes(Write {
             entity: entity.name().to_string(),
@@ -154,6 +157,7 @@ pub fn fact_of(node: &Node) -> Option<Fact> {
                 })
                 .collect(),
             given: target.is_some() && !by_id,
+            erase: *erase,
         }),
         _ => return None,
     })

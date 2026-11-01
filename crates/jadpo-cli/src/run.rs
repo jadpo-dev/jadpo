@@ -535,7 +535,7 @@ fn parse(args: &[String]) -> Result<Parsed, Box<Diagnostic>> {
             (name, None)
                 if let (Some(command), Some(flag)) = (command, value_flag(command, name)) =>
             {
-                return Err(Box::new(missing_value(command, flag)));
+                return Err(Box::new(missing_value(command, flag, &parsed.arguments)));
             }
             (name, _)
                 if let Some(planned) =
@@ -726,12 +726,18 @@ fn value_noun(placeholder: &str) -> String {
     match placeholder {
         "text" => "some text".to_string(),
         "n" => "a number".to_string(),
+        "url" => "a URL".to_string(),
+        "json" => "some JSON".to_string(),
         word if word.starts_with(['a', 'e', 'i', 'o', 'u']) => format!("an {word}"),
         word => format!("a {word}"),
     }
 }
 
-fn missing_value(command: &Command, flag: &Flag) -> Diagnostic {
+/// A flag that takes a value, last on the command line. The next step
+/// repeats the words before it, so `jadpo migrate apply --url` is told to
+/// run `jadpo migrate apply --url <url>`, not a command that has no
+/// `apply`.
+fn missing_value(command: &Command, flag: &Flag, arguments: &[String]) -> Diagnostic {
     let placeholder = flag.value.unwrap_or("value");
     let noun = value_noun(placeholder);
     let values: Vec<String> = flag
@@ -739,24 +745,32 @@ fn missing_value(command: &Command, flag: &Flag) -> Diagnostic {
         .iter()
         .map(|value| value.name.to_string())
         .collect();
-    let reason = if values.is_empty() {
-        format!("`{}` takes {noun}.", flag.name)
+    let takes = if values.is_empty() {
+        noun.clone()
     } else {
-        format!("`{}` takes {}.", flag.name, either(&quoted(&values)))
+        either(&quoted(&values))
     };
+    let reason = format!(
+        "`{}` takes {takes} after it, and nothing follows it.",
+        flag.name
+    );
+    let run = std::iter::once(format!("jadpo {}", command.name))
+        .chain(arguments.iter().cloned())
+        .collect::<Vec<_>>()
+        .join(" ");
     Diagnostic::new(
         command.arguments_rule,
         format!("`{}` needs {noun}", flag.name),
     )
     .reason(reason)
     .next(format!(
-        "Give it after the flag: `jadpo {} {} <{placeholder}>`",
-        command.name, flag.name
+        "Give it after the flag: `{run} {} <{placeholder}>`",
+        flag.name
     ))
 }
 
 fn color_values() -> (String, String) {
-    let names: Vec<String> = COLORS.iter().map(|value| value.name.to_string()).collect();
+    let names = quoted(COLORS.iter().map(|value| value.name));
     let flags = quoted(COLORS.iter().map(|value| format!("--color={}", value.name)));
     (either(&names), either(&flags))
 }

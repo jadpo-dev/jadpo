@@ -59,6 +59,13 @@ fn source(source: &Source) -> String {
                 path: path.clone()
             })
         ),
+        Source::SearchPhrase { index, path } => format!(
+            "search phrase of {}",
+            self::source(&Source::Arg {
+                index: *index,
+                path: path.clone()
+            })
+        ),
         Source::DistanceBound {
             index,
             path,
@@ -829,4 +836,82 @@ SELECT "id" FROM "expired""#
     );
     assert_eq!(retention.after_setting, Some(0));
     assert!(plan.purge("Member").is_none(), "no lifecycle, no purge");
+}
+
+/// A person who signs in is erased with the sign-in state their store
+/// keeps, in the statement that erases them (area 15, "Erasure"; chunk
+/// P3), whose record is found under the policy letting the caller delete
+/// it, hidden or not; and with no policy refusing, writing no row is the
+/// person's not-found failure.
+#[test]
+fn an_erasure_deletes_someone_who_signs_in_with_their_sign_in_state() {
+    let plan = planned(
+        r#"type Handle = Text {
+    max_length: 40
+}
+
+principal {
+    user: {
+        subject: Member.handle
+    }
+}
+
+authentication {
+    api_token: {}
+}
+
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
+        personal: PersonalData.identifying
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+        delete: [id]
+    }
+
+    person: true
+}
+
+action close_account(member: Principal.user) fails MemberNotFound -> Unit {
+    attempt Member.erase(member.id)
+}
+"#
+        .to_string(),
+    );
+    let mut found = None;
+    for callable in plan.callables() {
+        for site in &callable.sites {
+            if let Decoded::Write { plan: Some(id), .. } = &site.decoded {
+                found = plan.write(*id).cloned();
+            }
+        }
+    }
+    let erase = found.expect("the erasure's plan").plan;
+    assert_eq!(
+        erase.sql,
+        r#"WITH "erased" ("entity", "id") AS (
+  SELECT 0, "member"."id"
+  FROM "member"
+  WHERE "id" = $1
+    AND "member"."id" = $2
+), "signed_out1" AS (
+  DELETE FROM "jadpo_sessions"
+  WHERE "principal_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0)
+), "deleted0" AS (
+  DELETE FROM "member"
+  WHERE "id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0)
+  RETURNING "id"
+)
+SELECT "id" FROM "deleted0""#
+    );
+    assert!(erase.unpoliced.is_some(), "policy limits it");
+    assert!(
+        erase.missing.is_some(),
+        "no row: the member's not-found failure"
+    );
+    assert!(erase.refusals.is_empty(), "nothing refuses an erasure");
 }

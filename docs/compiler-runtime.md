@@ -649,7 +649,8 @@ stops making records a person's changes the node's digest and shows in a
 diff. `persons::personal_problems` reports, at an entity's first field
 marked `personal:`, an entity that is no person and belongs to none
 (`data.personal_unreachable`), read from the marks area 21's check reads
-(`ai_personal::marks`). Erasure and export will walk the same references.
+(`ai_personal::marks`). Erasure walks the same references, and export
+will.
 
 **Retention** (area 15). An entity's `retention:` and each field's are
 read by `data::retention::read` once the entity's fields and lifecycle
@@ -668,6 +669,37 @@ purge schedule (`schedules::purge_place`), and the graph a `retention`
 node, keyed `retention Visitor.signup_ip` or `retention Invoice` by born
 names, under its field or entity, its digest over its period, `since:`
 and whether it clears.
+
+**Erasure** (area 15). A field's `erase:` is read onto `FieldModel::erase`
+(an `Erasure`, with where it is written in `EntitySpans::field_erasures`),
+and `jadpo_check::erasure::outcome` gives what erasure does to a record
+holding a reference: its `erase:`, or `Erasure.deleted` for
+`OnDelete.cascade` and `Erasure.anonymised` for `OnDelete.cleared`, none
+for a `restricted` reference that doesn't say. `erasure::erasures` works
+out, once for the project, each person entity's `Erasure`: the entities
+whose records it deletes, the person's own first (`deleted`, each
+record's number its entity's place there), each reference with
+`Erasure.deleted` it follows from one of them to the records referring
+to it (`follows`), each entity it keeps while it refers to one
+(`kept`, with its references and the marked fields an anonymising one
+clears, none on another person's own record), and what it would reach
+that isn't built (`unbuilt`: a deleted record's `File`, a cleared
+`File`, another person's own record anonymised). A kept record's own
+children stay with it, so the walk goes on only through what erasure
+deletes. `erasure::erasure_problems` reports where each field is
+written: an `erase:` on a field that is no reference or on a reference
+to records no person reaches (`data.erase_unreached`), the person's own
+field's (`toolchain.not_built_yet`), a `restricted` reference into
+records erasure deletes with no `erase:` (`data.erase_required`), a
+reference or marked field it clears that can't be `none`
+(`data.erase_field_required`), and `Erasure.retained` on an entity with
+no `retention:` (`data.erase_retention_required`). `User.erase(user_id)`
+is typed by `Body::erase`, for an entity whose `WriteRules::person`
+holds: one `id` argument, no block, the person's not-found failure, and
+`toolchain.not_built_yet` where `unbuilt` names anything. It lowers to
+the body's `Write` with `erase` set, a `delete` by `id` of the person's
+record, so policy needs `delete` on it and the isolation decision reads
+it as loading a record (`Loads::Erases`), at repeatable read.
 
 A query is a node (area 6): `jadpo_check::data::queries`
 reads each declaration once into a `QueryModel` (its entity, parameters,
@@ -2136,6 +2168,29 @@ test holds it to. The checker's query reader is split by concern under
 operations, order and pages, includes, `missing:`, vectors, geospatial
 conditions and aggregates.
 
+**Search on PostgreSQL** (area 16, "Search"; chunk B12). An entity's
+`search:` is read by `jadpo_check::data::search` into a `SearchModel`
+(its fields in order and a `jadpo_std::SearchLanguage`), and the schema
+gives its table one more column, `jadpo_search`, with no field: a
+`tsvector` whose `jadpo_graph::schema::Column::generated` expression
+(`jadpo_sql::search::document`) PostgreSQL works out on every write,
+each field weighted `A` to `D` by its place; and a GIN index on it,
+partial as the lifecycle says. A generated column holds nothing of its
+own, so `jadpo_graph::migration` adds it with no backfill, drops it
+rather than retiring it, and makes it again, with its indexes, when its
+expression changes. `where: Entity matches phrase` is
+`jadpo_sql::Condition::Matches`, whose fields are the condition's for
+policy's proof, rendered as `"jadpo_search" @@ websearch_to_tsquery(...)`
+with the phrase bound from `Source::SearchPhrase`, which the runtime
+turns into what `websearch_to_tsquery` reads with each `or` quoted
+(`jadpo_std::search::phrase`). With no `order:`, `jadpo-plan` selects
+`ts_rank(...)::float8` as `jadpo_rank` (`Column::Rank`), orders by it and
+the `id`, and pages after both (`jadpo_sql::statement::after_rank`): the
+cursor carries the rank's bits (a `float8` is the cursor's eighth kind),
+so the next page starts exactly after it. `ts_rank` reads only the row's
+own words, so policy's conditions in the same `WHERE` are all a search
+needs to keep hidden records out of every result, rank and page.
+
 **Writes.** The runtime runs a write plan
 (`jadpo_std::write`, one per write site, planned in `jadpo-plan`'s
 `writes`). A create inserts every column, with a new identity and the
@@ -2234,6 +2289,29 @@ each such field's type (`Plan::migration_json`), and `Backfills::unreadable`
 reads each stored value with its codec; a refused check is
 `MigrateError::Unreadable`. A structured field's backfill is always
 `Decided::InJadpo`, its value written through the codec.
+
+**A person's erasure.** `jadpo-plan`'s `Planner::erase` writes
+`User.erase` as one statement (`jadpo_sql::statement::erase`), so it is
+all or nothing, in the action's transaction, which runs at repeatable
+read. A recursive `WITH` finds the person's record by its `id` under the
+`delete` policy, whether its lifecycle hides it or not, and every record
+each followed reference leads to from one found, tagging each with its
+entity's number; one data-modifying part per kept entity clears its
+references to the records found (a `CASE` each when it has several) and,
+where an anonymising one matched, its marked fields' columns, setting
+each `Generated.on_change` field to the operation's time, on records not
+deleted themselves; one deletes the sign-in state (§2.6's
+`SIGN_IN_STATE`, `purge::sign_in_state`) of each record found of an
+entity someone signs in as; and one deletes every record found of each
+entity, whatever its lifecycle. All the parts see one snapshot, and the
+foreign keys are checked at the statement's end, when nothing refers to
+a deleted record. It returns the person's `id`; no row is the person's
+not-found failure, asked without policy as a delete's probe asks. It is
+a `WritePlan` of `WriteOp::Delete` by `id`, with no refusals, so both
+executors run it through the runtime's one write path unchanged.
+`crates/jadpo-cli/tests/erasure.rs` runs a library's erasure through
+`jadpo test` and reads the rows it leaves; its tests run compiled with
+the interpreter's records in the gate's compiled step.
 
 **Lifecycles and purge.** `jadpo-plan`'s `Planner::access` adds an entity's
 `visible:` to every query, `get`, child include, update, delete and
@@ -4731,9 +4809,23 @@ holds the value to it before the statement is sent
 (`write::refused_file`: store, then type, then size), a mismatch the
 fault `FaultKind::FileRefused`, classified `file_refused`, the
 program's own (chunk B1).
-Drivers: `jadpo_host_native::files::DiskFiles`, which `jadpo dev` gives
-every connection under `.jadpo/files/`, and `files::MemoryFiles`, the
-fake `jadpo test`'s host and the Rust tests give. A file helper's read
+Drivers: `jadpo_host_native::files::DiskStore`, one store over one
+folder, which a native deployable keeps at its connection's `path:`
+(`files::ServerDisk`, the `Disk` that `deployable_supplies` gives the
+driver factory; `DiskStore::at` makes the folder `0700`, or refuses one
+other users can write to, which the factory lists as `Why::Invalid`) and
+`files::DiskFiles` keeps each of `jadpo dev`'s under `.jadpo/files/`,
+with the floors the plan's `ConnectionDriver::Disk { floor }` gives;
+and `files::MemoryFiles`, the fake `jadpo test`'s host and the Rust
+tests give. On Unix `DiskStore` opens every folder and file relative to
+the one above with `openat` and `O_NOFOLLOW` (through `rustix`, since
+the workspace forbids `unsafe`), and reads `fstatvfs` for the floor,
+held in millionths of the disk, which a put or a join checks against
+its own bytes before it makes a folder. `jadpo_check::disk` checks a
+store's keys, `path:` against `Project::folder` (the project's folder
+with links resolved) and `free_space_floor:`; `jadpo_cli::stamp` lists
+each deployable's reached disk stores as the manifest's `one_server`
+(chunk B2). A file helper's read
 is `BatchOp::Read(RowFormat)`, planned as a `BatchPlan` whose `from` is
 `BatchFrom::File` (the row type's JSON-table number and each field's
 column) and whose store is `jadpo_check::types::file_run_stores`'s; the
@@ -5149,7 +5241,7 @@ it), may use them.
 |---|---|
 | Code | `cargo fmt --check`, `clippy -D warnings`, `cargo test`, the dependency test, the name ban, docs `check` blocks, format idempotence over every example, wasm32 build of the runtime crates |
 | Tests | `jadpo test` over the spec corpus; a watch-mode latency test with a ceiling of the 1-second target plus a CI allowance; the teaching examples checked, formatted and tested, and the coverage test; every proved construction in the corpus checked again as it runs |
-| Live PostgreSQL (`--profile quick` skips it, and starts no server) | The driver, the test database and `jadpo migrate apply` and `status`; queries, writes, conflicts, counters, lifecycles and transitions through `jadpo test`; a concurrent change forced from a second connection; purge through its entry point. A golden SQL file per query and write shape (`crates/jadpo-plan/tests/sql/`) holds the statements for review |
+| Live PostgreSQL (`--profile quick` skips it, and starts no server) | The driver, the test database and `jadpo migrate apply` and `status`; queries, writes, conflicts, counters, lifecycles and transitions through `jadpo test`; a concurrent change forced from a second connection; purge through its entry point; retention on the tick; a person's erasure, through `jadpo test` and in the rows it leaves. A golden SQL file per query and write shape (`crates/jadpo-plan/tests/sql/`) holds the statements for review |
 | Compiled | The differential run, the `compiled` group; the Workers host's probe under workerd, in the `wasm32` group; a teaching example built for Workers by `jadpo build` and served by workerd against the run's PostgreSQL over `connect()`, in the `wasm32` group |
 | Golden todo | Every golden contract case interpreted and on native (`compiled`) and on compiled workerd (`wasm32`), plus verifier negative controls (`lint`); the strong TypeScript implementation's static and integration checks and its shared contract on Node, Bun and workerd in `tests` |
 

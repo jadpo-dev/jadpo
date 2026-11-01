@@ -175,6 +175,7 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
             transition,
             by_id,
             conflicts,
+            erase,
             ..
         }) = &found.node
         else {
@@ -183,6 +184,7 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
         let entity = entity.name().to_string();
         let operation = match transition {
             Some(key) => key.name().to_string(),
+            None if *erase => format!("{entity}.erase"),
             None => format!("{entity}.{}", op.word()),
         };
         let target = if *by_id {
@@ -191,6 +193,10 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
             format!("the {entity} loaded earlier")
         };
         let does = match (op, transition) {
+            // A person's erasure (area 15; chunk P3).
+            _ if *erase => {
+                format!("erases {target}, deleting, anonymising or keeping each record of theirs")
+            }
             (WriteOp::Create, _) => format!("creates a {entity}"),
             (WriteOp::Delete, Some(_)) => {
                 format!("runs {operation} on {target}, which keeps the record")
@@ -655,11 +661,19 @@ impl Names<'_> {
             Source::Caller(part) => caller(*part),
             Source::Keys => self.include.unwrap_or("the keys").to_string(),
             Source::Cursor(i) => {
-                let field = self
-                    .query
-                    .order
-                    .get(*i as usize)
-                    .map_or("?", |order| order.field.as_str());
+                // A search's ranked page continues after a rank and an `id`
+                // (area 16, chunk B12).
+                let ranked = self.query.order.is_empty()
+                    && !jadpo_check::data::queries::searches(&self.query.filter).is_empty();
+                let field = match (ranked, *i) {
+                    (true, 0) => "rank",
+                    (true, _) => "id",
+                    (false, i) => self
+                        .query
+                        .order
+                        .get(i as usize)
+                        .map_or("?", |order| order.field.as_str()),
+                };
                 format!("after: the cursor's {field}, or none")
             }
             Source::SizePlusOne => "the page size + 1, to see if more follow".to_string(),
@@ -691,6 +705,13 @@ impl Names<'_> {
                 });
                 let below = if *strict { "below" } else { "at most" };
                 format!("the largest double whose decimal is {below} {bound}")
+            }
+            Source::SearchPhrase { index, path } => {
+                let phrase = self.source(&Source::Arg {
+                    index: *index,
+                    path: path.clone(),
+                });
+                format!("{phrase}, its `or` a word")
             }
         }
     }

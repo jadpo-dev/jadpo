@@ -21,6 +21,7 @@
 use std::collections::HashMap;
 
 use jadpo_check::data::{DataModel, EntityModel, foreign_key, unique_constraint};
+use jadpo_check::lookups::WriteView;
 use jadpo_graph::body::{BinaryOp, Body, Callee, Expr, LocalKind, Node, SiteId, Stmt, UnaryOp};
 use jadpo_graph::schema::object_name;
 use jadpo_graph::{Key, Kind, TypeRef};
@@ -113,6 +114,7 @@ impl Planner<'_> {
             op,
             transition,
             target,
+            erase,
             by_id,
             set,
             patch,
@@ -128,6 +130,9 @@ impl Planner<'_> {
         let name = self.types.name(entity).to_string();
         let model: &DataModel = self.model;
         let entity_model = model.entity(&name)?;
+        if *erase {
+            return self.erase(entity_model, (*target)?);
+        }
         let store = entity_model.store.clone()?;
         let table = entity_model.table.as_str();
         let lifecycle = entity_model.lifecycle.as_ref();
@@ -787,6 +792,147 @@ impl Planner<'_> {
         })
     }
 
+    /// The plan of a person's erasure, `User.erase(user_id)` (area 15,
+    /// "Erasure"; chunk P3): one statement that finds the person's record
+    /// by its `id` under the policy that lets the caller delete it,
+    /// hidden or not, and every record erasure deletes with it, then
+    /// clears what each record it keeps refers to, deletes them all with
+    /// the sign-in state of anyone among them who signs in, and returns
+    /// the person's `id`. Writing no row is the person's not-found
+    /// failure, asked of the record without policy as a delete asks. As
+    /// policy sees it, it is a `delete` of the person's record (area 9,
+    /// "Grants"); the records of theirs it reaches need no grant, as purge
+    /// needs none, since an erasure that stopped short would be worse
+    /// than none. An erasure the check refuses as not built yet has no
+    /// plan.
+    fn erase(&mut self, person: &EntityModel, target: SiteId) -> Option<WriteSitePlan> {
+        let model: &DataModel = self.model;
+        let erasure = self.lookup.erasure(&person.name)?.clone();
+        if !erasure.unbuilt.is_empty() {
+            return None;
+        }
+        let store = person.store.clone()?;
+        let same_store = |entity: &EntityModel| entity.store.as_deref() == Some(store.as_str());
+        let mut deleted: Vec<&EntityModel> = Vec::new();
+        for name in &erasure.deleted {
+            let found = model.entity(name)?;
+            if !same_store(found) {
+                return None;
+            }
+            deleted.push(found);
+        }
+        let mut writing = Writing::default();
+        let record = writing.input(target, None);
+        let id = writing.param(WriteSource::Input(record), SqlType::Uuid);
+        let mut follows = Vec::new();
+        for follow in &erasure.follows {
+            let holder = deleted.get(follow.to)?;
+            follows.push(text::Followed {
+                from: follow.from,
+                to: follow.to,
+                table: holder.table.as_str(),
+                column: field(holder, &follow.field)?.born.as_str(),
+            });
+        }
+        let mut keeps = Vec::new();
+        for kept in &erasure.kept {
+            let holder = model.entity(&kept.entity)?;
+            if !same_store(holder) {
+                return None;
+            }
+            let mut references = Vec::new();
+            for reference in &kept.references {
+                references.push((
+                    field(holder, &reference.field)?.born.as_str(),
+                    reference.target,
+                    reference.outcome == jadpo_std::Erasure::Anonymised,
+                ));
+            }
+            let mut clears = Vec::new();
+            for name in &kept.clears {
+                let cleared = field(holder, name)?;
+                column_type(cleared)?;
+                clears.extend(cleared.columns().into_iter().map(|(column, _)| column));
+            }
+            // Clearing a value changes the record, so each field generated
+            // on every change takes the operation's time.
+            let mut set = Vec::new();
+            for changed in &holder.fields {
+                if changed.generated == Some(jadpo_std::Generated::OnChange) {
+                    let now = writing.param(WriteSource::Now, column_type(changed)?.param());
+                    set.push((changed.born.clone(), now));
+                }
+            }
+            keeps.push(text::Keeps {
+                table: holder.table.as_str(),
+                deleted: erasure.deleted.iter().position(|name| *name == kept.entity),
+                references,
+                clears,
+                set,
+            });
+        }
+        let mut signed_in = Vec::new();
+        for (at, entity) in deleted.iter().enumerate() {
+            for (table, column) in self.sign_in.get(&entity.name).into_iter().flatten() {
+                signed_in.push((at, *table, *column));
+            }
+        }
+        let tables: Vec<&str> = deleted.iter().map(|entity| entity.table.as_str()).collect();
+        let by_id = text::equal("id", &id);
+        let granted = self.policy(&mut writing, person, Effect::Delete, &Row::Table)?;
+        let plain = text::erase(
+            &tables,
+            std::slice::from_ref(&by_id),
+            &follows,
+            &keeps,
+            &signed_in,
+        );
+        let (sql, unpoliced, policy) = if granted == jadpo_sql::policy::ANYONE {
+            (plain, None, None)
+        } else {
+            let mut asking = Writing::default();
+            let asked = asking.param(WriteSource::Input(record), SqlType::Uuid);
+            let mut probe = text::select_one(&person.table);
+            text::where_clause(&mut probe, &[text::equal("id", &asked)], "");
+            let sql = text::erase(&tables, &[by_id, granted], &follows, &keeps, &signed_in);
+            (
+                sql,
+                Some(plain),
+                Some(PolicyRefusal::Probe {
+                    sql: probe,
+                    params: asking.params,
+                    fields: None,
+                }),
+            )
+        };
+        let missing = self.not_found(
+            person,
+            MissingValue::Arg {
+                index: 0,
+                path: Vec::new(),
+            },
+        )?;
+        Some(WriteSitePlan {
+            plan: WritePlan {
+                store,
+                op: WriteOp::Delete,
+                sql,
+                unpoliced,
+                policy,
+                params: writing.params,
+                returns: None,
+                by_id: true,
+                refusals: Vec::new(),
+                guard: None,
+                missing: Some(missing),
+                kept_in_tenant: false,
+                row: None,
+                files: Vec::new(),
+            },
+            inputs: writing.inputs,
+        })
+    }
+
     /// A value an update by `id` works out from stored fields, as SQL: a
     /// stored field is its column, `+` (`||` joining text), `-` and a
     /// construction (which the
@@ -1066,6 +1212,7 @@ pub(crate) fn plans(
         access,
         action: None,
         json,
+        sign_in: crate::purge::sign_in_state(db, project),
     };
     let mut out = Vec::new();
     let mut at = HashMap::new();

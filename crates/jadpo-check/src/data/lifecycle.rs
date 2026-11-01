@@ -95,7 +95,7 @@ pub fn reads_now(condition: &Condition) -> bool {
         Condition::Compare { value, .. } | Condition::In { value, .. } => {
             matches!(value, Value::Now)
         }
-        Condition::IsNone { .. } | Condition::Call { .. } => false,
+        Condition::IsNone { .. } | Condition::Call { .. } | Condition::Matches(_) => false,
         Condition::And(all) | Condition::Or(all) => all.iter().any(reads_now),
         Condition::Not(inner) => reads_now(inner),
         Condition::Present { condition, .. } => reads_now(condition),
@@ -887,6 +887,11 @@ impl<'a> Reader<'a, '_> {
                 Some(format!(
                     "`{}.{transition}` is already an operation every entity has, so a transition can't take its name; `delete` is the one a transition may take over.",
                     entity.name
+                ))
+            } else if entity.person && ["erase", "export"].contains(&transition.as_str()) {
+                Some(format!(
+                    "`{}` is a person, and `{}.{transition}` is the operation area 15 generates for one, so a transition can't take its name.",
+                    entity.name, entity.name
                 ))
             } else if entity.fields.iter().any(|f| f.name == transition) {
                 Some(format!(

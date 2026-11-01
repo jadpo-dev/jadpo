@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-10-31. This page is the only list of outstanding work: the
+**Updated:** 2026-11-01. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record language decisions on the [area pages](language/README.md)
 and process rules in [AGENTS.md](../AGENTS.md), not here. A finished chunk
@@ -276,18 +276,26 @@ D1 first: the site starts once D1 has merged.
 - [x] **D12 What the Learn path found**: [area 8](language/08-identity.md), "In development and tests"; [area 14](language/14-tooling.md), "What is built"; [documentation](documentation.md), "Where the content lives" and "The bundle".
 - [x] **D13a Error pages people reach first**: [writing guide](writing.md), "How an error page reads" and "What the docs check enforces"; [documentation](documentation.md), "The bundle"; `tools/docs/language_docs.py`, `error_format_problems` and `error_format_scope`; the catalogue summaries in `crates/jadpo-diag`.
 - [ ] **D13b Command errors that explain**: an umbrella, split by size
-  (2026-10-31) into D13b1, D13b2a, D13b2b1, D13b2b2, D13b2c and D13b3,
-  taken in order; tick it once all are.
+  (2026-10-31) into D13b1, D13b2a, D13b2b1, D13b2b2, D13b2c, D13b3a and
+  D13b3b, taken in order; tick it once all are.
 - [x] **D13b1 The `sh run` block, settings and `jadpo new`**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; `tools/docs/language_docs.py`, `check_runs`; the pages of `configuration.local_*`, `cli.config_*` and `toolchain.*` a run raises, and `configuration.value_invalid`.
 - [x] **D13b2a Copied output, root runs and the first person-decided pages**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; area 14, "What it compiles with"; the pages of `configuration.value_missing`, `configuration.local_changed`, `format.write_failed`, `translation.exchange_file_invalid`, `toolchain.build_failed` and `toolchain.fetch_failed`.
 - [x] **D13b2b1 A database for runs, migrations and seeds**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; area 14, "Database command errors"; `tools/docs/language_docs.py`, `Databases`; the pages of `seed.production_refused`, `seed.unavailable`, `migration.apply_failed`, `migration.store_diverged`, `migration.extension_missing` and `migration.extension_outdated`.
 - [x] **D13b2b2 Background work**: [writing guide](writing.md), "How an error page reads"; area 14, "Database command errors"; the pages of `deliveries.*`, `schedules.lease_held`, `schedules.no_tick`, `schedules.run_failed`, `schedules.unavailable`, `runs.unavailable` and `ai.usage_unavailable`.
 - [x] **D13b2c The rest a person decides**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; area 14, "Command errors"; the pages of `cli.dev_start_failed`, `conform.refused`, `recording.refused`, `suggest.share_failed`, `format.unsafe` and `test.runtime_start_failed`.
-- [ ] **D13b3 The other command errors** `opus · high`: the same for the
-  rules only a command raises that an agent decides (`cli.*_arguments`,
-  `seed.failed`, `format.changes_required` and the rest) whose page says
-  "No example yet"; then
-  `error_format_scope` stops leaving any of them out.
+- [x] **D13b3a The command line's own errors**: area 14, "Command-line errors"; `tools/docs/language_docs.py`, `error_format_scope`; the pages of `cli.*_arguments`, `cli.unknown_command` and `cli.unknown_flag`.
+- [ ] **D13b3b The other command errors** `opus · high`: the same for the
+  rest of the rules only a command raises that an agent decides and whose
+  page says "No example yet" (`cli.dev_port_invalid`,
+  `cli.package_unreadable`, `cli.package_not_openapi`,
+  `configuration.move_*`, `conform.failed`, `format.changes_required`,
+  `recording.failed`, `seed.failed`, `suggest.record_invalid`,
+  `test.failed`, `test.no_tests` and `translation.exchange_unit_unknown`);
+  then `error_format_scope` stops leaving any of them out. Still filed
+  under an `*_arguments` rule though they aren't the command line's
+  mistakes: `jadpo email open` when the browser can't start, `jadpo
+  calls script` and `jadpo config set` when the project has errors, and
+  `jadpo sql` when a query that checks makes no statement.
 - [ ] **D13c The rest of the error pages** `opus · high`: every other page
   in `docs/errors/` to the format, each rule's catalogue summary its
   page's first sentence; `error_format_scope` then covers every page.
@@ -507,20 +515,10 @@ After the registry is live, in order:
      Decisions; area 12, "The purge schedule"; compiler/runtime §2.3,
      "Retention", and §2.6, "Lifecycles and purge"; the pages of
      `data.retention_*`.
-   - [ ] **P3 Erasure in the main store** `opus · xhigh` after P2: area
-     15, "Erasure" ("Deleting the person's records" and "Keeping a
-     record without the person"), "Who may erase and export" and "What
-     the compiler checks" (erasure is complete); area 9, "Grants".
-     `erase:` on a reference, required on each restricted reference into
-     a person's records, `Erasure.anonymised` and `.retained` with the
-     nullable fields and retention they need, and `User.erase(id)`
-     deleting, anonymising or keeping each record as its reference says,
-     in one transaction, records with a lifecycle removed outright, for a
-     caller with delete on the person's record. Until P4, an erasure that
-     would reach another store, a `File` field or the person's own `erase:
-     Erasure.retained` field is `toolchain.not_built_yet`, so no erasure
-     is ever partial. Done when tests erase a person on both executors
-     and find each record gone, anonymised or kept as declared.
+   - [x] **P3 Erasure in the main store**: area 15, "Erasure", "What
+     the compiler checks", "What is built" and the design notes'
+     "Erasure, as built"; compiler/runtime §2.3, "Erasure", and §2.6, "A
+     person's erasure"; the pages of `data.erase_*`.
    - [ ] **P4 What else erasure reaches** `opus · xhigh` after P3: area
      15, "The person's own record", "What erasure reaches" and "What
      erasure doesn't rewrite"; area 16, "Files". The person's own record
@@ -531,11 +529,15 @@ After the registry is live, in order:
      restored; OAuth grants and caches join when they are built. With
      the bytes and the sign-in state deleted, retention's two
      `toolchain.not_built_yet` refusals go too: a retention reaching a
-     `File`, and one cascading to someone who signs in. To
-     settle with a maintainer first: how a record in another store
-     belongs to a person, since no reference crosses stores
-     (`data.reference_across_stores`), and which queries "serve the
-     retained purpose". Done when an erased person leaves nothing the
+     `File`, and one cascading to someone who signs in; and erasure's,
+     where `erase` is called, of a `File`'s bytes. To settle with a
+     maintainer first: how a record in another store belongs to a
+     person, since no reference crosses stores
+     (`data.reference_across_stores`), which queries "serve the retained
+     purpose", and what anonymising another person's own record does
+     (P3 refuses an erasure that would: erasing a user whom another
+     user's cleared `invited_by_id` refers to, whose marked fields are
+     that user's own). Done when an erased person leaves nothing the
      page says erasure reaches, on both executors.
    - [ ] **P5 Export** `opus · high` after P4 and V5: area 15, "Export"
      and "Who may erase and export"; area 13's generated test.
@@ -633,15 +635,9 @@ After the registry is live, in order:
    - [x] **B1 A `File` held to its field**: area 16, "What a write
      checks", "A `File` field's settings" and "What is built"; area 4,
      "Defects"; compiler/runtime §2.6, "Files and a file's run".
-   - [ ] **B2 The disk driver in production** `opus · high`: area 16,
-     "The disk driver"; area 14, "A native deployable"; area 18, "The
-     manifest". A native deployable keeps a `Driver.disk` connection's
-     files at its `path:`, which `jadpo check` refuses inside the
-     project's source or build folders; a put below `free_space_floor:`
-     (5% by default) answers `storage_full`; the manifest records that
-     the app runs on one server. Done when a native deployable puts and
-     reads a file at its `path:`, and a put below the floor answers
-     `storage_full`.
+   - [x] **B2 The disk driver in production**: area 16, "The disk
+     driver" and What is built; area 18, "What a node holds"; area 14,
+     "Starting"; compiler/runtime §2.6, "Files and a file's run".
    - [ ] **B3 Deleting a file's bytes** `opus · high`: area 16,
      "Deleting and erasing" and "Writing a file your app makes: `put`".
      The capability's `delete`; a generated subscriber deleting a file's
@@ -731,17 +727,9 @@ After the registry is live, in order:
      value is copied into its history. Done when tests change audited
      records on both executors and read each change back through
      `history`.
-   - [ ] **B12 Search on PostgreSQL** `opus · xhigh`: area 16, "Search"
-     but "An engine instead of PostgreSQL", the `search` capability of
-     item 8; area 2, `SearchText`; area 5, "Special kinds of index"; area
-     6, `matches` and "Pages". `search: { fields: language: }` on an
-     entity, with its `tsvector` column and GIN index in its migration
-     and the fields listed first weighted most; `where: Todo matches
-     search_phrase` taking words, quoted phrases and `-word`; with no
-     `order:`, the best matches first and then `id`, in keyset pages;
-     `search:` in place of the full-text index `kind:`. Done when query
-     tests find, rank and page records by words on both executors, and
-     the migration is generated.
+   - [x] **B12 Search on PostgreSQL**: area 16, "Search", "How it is
+     kept", "Search and policy" and "Search and personal data"; area 2,
+     `SearchText`; compiler/runtime §2.6, "Search on PostgreSQL".
    - [ ] **B13 Monitoring thresholds** `opus · xhigh`: area 16, "Monitoring
      thresholds"; area 1, `monitoring.jadpo`; area 18, "The manifest" and
      `ThresholdChange`. The declaration's form, which no page writes

@@ -40,9 +40,15 @@ use crate::Transport;
 /// driver"): natively the server's own, under each connection's `path:`
 /// or `jadpo dev`'s folder.
 pub trait Disk {
-    /// The driver of store of files `connection`, kept under `path`; `None`
-    /// when this disk can't keep it.
-    fn store(&self, connection: &str, path: Option<&str>) -> Option<Rc<dyn Capability>>;
+    /// The driver of store of files `connection`, kept under `path` with
+    /// `floor` millionths of the disk kept free; why not, never a secret,
+    /// when this disk can't keep it there.
+    fn store(
+        &self,
+        connection: &str,
+        path: Option<&str>,
+        floor: u32,
+    ) -> Result<Rc<dyn Capability>, String>;
 }
 
 /// What a host supplies the drivers it builds: the target it runs on, the
@@ -282,11 +288,11 @@ fn build_one(
             postgres(url, *tls, authority, supplies)
         }
         ConnectionDriver::Redis { .. } => Err(Why::NotInThisBuild),
-        ConnectionDriver::Disk { path } => {
+        ConnectionDriver::Disk { path, floor } => {
             let disk = supplies.disk.as_ref().ok_or(Why::NotSupplied("a disk"))?;
-            disk.store(&connection.name, path.as_deref())
+            disk.store(&connection.name, path.as_deref(), *floor)
                 .map(Built::Capability)
-                .ok_or(Why::NotSupplied("a disk"))
+                .map_err(Why::Invalid)
         }
         ConnectionDriver::Smtp(server) => {
             let host = match &server.host {
@@ -438,14 +444,20 @@ mod tests {
     struct OneDisk;
 
     impl Disk for OneDisk {
-        fn store(&self, _: &str, _: Option<&str>) -> Option<Rc<dyn Capability>> {
-            Some(Rc::new(crate::package::JsonHttp::new(NoHttp)))
+        fn store(&self, _: &str, _: Option<&str>, _: u32) -> Result<Rc<dyn Capability>, String> {
+            Ok(Rc::new(crate::package::JsonHttp::new(NoHttp)))
         }
     }
 
     fn table() -> Vec<Connection> {
         vec![
-            Connection::new("assets", ConnectionDriver::Disk { path: None }),
+            Connection::new(
+                "assets",
+                ConnectionDriver::Disk {
+                    path: None,
+                    floor: jadpo_std::files::DEFAULT_FREE_SPACE_FLOOR,
+                },
+            ),
             Connection::new(
                 "local_model",
                 ConnectionDriver::OpenAiCompatible {

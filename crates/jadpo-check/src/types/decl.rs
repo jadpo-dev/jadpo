@@ -1446,6 +1446,29 @@ impl Decls<'_> {
                 );
                 continue;
             }
+            // `erase:` says what erasing a person does to an entity's
+            // record (area 15, "Erasure"; chunk P3); an event or an email
+            // is sent as written, and erasure rewrites neither.
+            if let Some(field) = field.filter(|field| field.later && !field.entity)
+                && key == "erase"
+            {
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::DATA_ERASE_UNREACHED,
+                        "`erase:` is a setting of an entity's references",
+                    )
+                    .at(key_span, "not on an entity")
+                    .reason(format!(
+                        "`erase:` says what erasing a person does to a record that refers to them, so it belongs on a reference in an entity; `{}` is sent as it was written, and erasure never rewrites it.",
+                        match &field.ty {
+                            Ty::Field(host, _) => host.clone(),
+                            other => other.to_string(),
+                        }
+                    ))
+                    .next("Remove `erase:`"),
+                );
+                continue;
+            }
             if field.is_some_and(|field| field.later)
                 && LATER_FIELD_SETTINGS.contains(&key.as_str())
             {
@@ -2745,18 +2768,15 @@ struct FieldCtx {
 /// An entity's or event's field setting area 15 decides and this
 /// compiler doesn't build: what to do instead, and why it is refused
 /// rather than skipped. Accepted, it would do nothing, and the app would
-/// believe personal data expires or is erased when it never is. An
-/// entity's field's `retention:` is built (chunk P2); an event's, or an
-/// email message's, isn't.
+/// believe personal data expires when it never does. An entity's field's
+/// `retention:` is built (chunk P2); an event's, or an email message's,
+/// isn't. An entity's field's `erase:` is read by [`crate::erasure`]
+/// (chunk P3), and refused on an event's.
 fn unbuilt_field_setting(key: &str, entity: bool) -> Option<(&'static str, &'static str)> {
     match key {
         "retention" if !entity => Some((
             "Leave `retention:` out, and keep a value that must expire in an entity's field with a `retention:` of its own",
             "Only an entity's fields are cleared when their time is up: an event or an email is sent as it was written and nothing clears a value inside one, so a `retention:` on its field isn't built yet. Accepted, the value would be kept as long as the event or email is.",
-        )),
-        "erase" => Some((
-            "Leave `erase:` out for now",
-            "What erasing a person does to a reference comes with area 15's erasure, which isn't built yet: accepted, nothing would ever erase it.",
         )),
         _ => None,
     }
@@ -2766,11 +2786,12 @@ fn unbuilt_field_setting(key: &str, entity: bool) -> Option<(&'static str, &'sta
 /// policy (area 9), area 21's `to_models:` and area 15's `personal:`, and
 /// a `File` field's store, size and types (area 16). They are checked
 /// where those areas are built; `personal:` and `to_models:` are read
-/// since chunk 5.5v5b, and an entity's field's `retention:` by
-/// [`crate::data::retention`] (chunk P2). Area 15's `erase:`, and an
-/// event's `retention:`, are refused before this
-/// ([`unbuilt_field_setting`]).
-const LATER_FIELD_SETTINGS: [&str; 12] = [
+/// since chunk 5.5v5b, an entity's field's `retention:` by
+/// [`crate::data::retention`] (chunk P2), and its `erase:` by
+/// [`crate::erasure`] (chunk P3). An event's `retention:` is refused
+/// before this ([`unbuilt_field_setting`]), and its `erase:` too.
+const LATER_FIELD_SETTINGS: [&str; 13] = [
+    "erase",
     "generated",
     "immutable",
     "max_size",

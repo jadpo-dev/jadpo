@@ -15,6 +15,8 @@
 //! - [`identity`]: how callers are looked up and their credentials kept.
 //! - [`literal`]: a value written into a statement's text where it takes
 //!   no parameters, as the storage codec made it (chunk 5.5w3b).
+//! - [`search`]: an entity's searchable words, what a search asks for and
+//!   how well a record matches (area 16, "Search"; chunk B12).
 //! - [`statement`]: the reads, writes and purges the plan runs.
 //! - [`table`]: what a migration does to a store's tables.
 //!
@@ -30,11 +32,12 @@ pub mod form;
 pub mod identity;
 pub mod literal;
 pub mod policy;
+pub mod search;
 pub mod statement;
 pub mod table;
 
 pub use condition::{
-    Bind, Call, CallArg, Column, Columns, Compare, Condition, Fixed, Lowering, Test, Value,
+    Bind, Call, CallArg, Column, Columns, Compare, Condition, Fixed, Lowering, Search, Test, Value,
     condition, lowering, value,
 };
 

@@ -342,8 +342,9 @@ summary as its first sentence, an example of the error with its output,
 the marker in the standard wording, each fix as "**If …**" with its code,
 a fragment compiled by the hidden block after it, and what the fix
 changes, and at least one related topic. Pages whose rule a person
-decides, or that the user layer or a teaching example names, must have
-them; the others are being brought to the format. It reads like a user
+decides, that the user layer or a teaching example names, or that is
+about the command line itself (`cli.*`), must have them; the others are
+being brought to the format. It reads like a user
 page, so the rules below hold for it too, but for the fix's fragments.
 
 `python3 tools/docs/language_docs.py --check`, part of the gate, fails a

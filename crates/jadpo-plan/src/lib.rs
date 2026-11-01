@@ -741,32 +741,15 @@ impl Plan {
         let model = jadpo_check::data::data_model(db, project);
         // An entity's purge and retentions run where schedules run.
         let purges: Vec<PurgePlan> = if pruning.is_none_or(|pruning| pruning.runs().schedules) {
-            let identity = jadpo_check::identity::identity(db, project);
-            let schema = jadpo_check::data::schema(db, project);
+            // Someone who signs in goes with their sign-in state, in the
+            // tables their store holds (area 15; chunk P2).
+            let sign_in = purge::sign_in_state(db, project);
             model
                 .entities
                 .iter()
                 .flat_map(|entity| {
-                    // Someone who signs in goes with their sign-in state,
-                    // in the tables their store holds (area 15; chunk P2).
-                    let signs_in = identity
-                        .variants
-                        .iter()
-                        .any(|variant| variant.entity == entity.name);
-                    let sign_in: Vec<(&str, &str)> = match &entity.store {
-                        Some(store) if signs_in => purge::SIGN_IN_STATE
-                            .iter()
-                            .filter(|(table, _)| {
-                                schema
-                                    .stores
-                                    .get(store)
-                                    .is_some_and(|found| found.tables.contains_key(*table))
-                            })
-                            .copied()
-                            .collect(),
-                        _ => Vec::new(),
-                    };
-                    purge::plans(model, entity, &setting_number, &sign_in)
+                    let tables = sign_in.get(&entity.name).map_or(&[][..], Vec::as_slice);
+                    purge::plans(model, entity, &setting_number, tables)
                 })
                 .collect()
         } else {

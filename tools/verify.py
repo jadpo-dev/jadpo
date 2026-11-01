@@ -172,12 +172,15 @@ POSTGRES = [
      [('jadpo-cli', 'writes'), ('jadpo-cli', 'call_snapshots')], []),
     # Lifecycles through `jadpo test`: hidden records, transitions and
     # their guards; then purge through the runtime's entry point, with
-    # cascades, restricted references and batches (area 5); and retention
-    # on the tick, interpreted and compiled: values cleared and records
+    # cascades, restricted references and batches (area 5); retention on
+    # the tick, interpreted and compiled: values cleared and records
     # deleted, with their sign-in state, at the first run after their time
-    # (area 15; chunk P2).
-    ('live PostgreSQL: lifecycles, purge and retention',
-     [('jadpo-cli', 'lifecycle'), ('jadpo-cli', 'retention')], []),
+    # (area 15; chunk P2); and a person's erasure through `jadpo test` and
+    # in the rows it leaves: records deleted outright, hidden or not, kept
+    # without the person or kept as they are, with their sessions (chunk
+    # P3).
+    ('live PostgreSQL: lifecycles, purge, retention and erasure',
+     [('jadpo-cli', 'lifecycle'), ('jadpo-cli', 'retention'), ('jadpo-cli', 'erasure')], []),
     # `jadpo seed`: a seed's users and memberships made through the app's
     # actions, policy for a call with a caller, a seed that stops, and a
     # database not on this machine refused (area 5, "Seeds"; chunk A5).

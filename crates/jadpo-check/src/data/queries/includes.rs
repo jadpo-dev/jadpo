@@ -252,7 +252,10 @@ impl Reader<'_> {
         let mut filter = Vec::new();
         if kind != IncludeKind::Parent {
             for (present, member) in &sections.filters {
-                if let Some(condition) = self.filter_line(scope, target, member, *present) {
+                self.search_refused = Some("an include's `where:`");
+                let read = self.filter_line(scope, target, member, *present);
+                self.search_refused = None;
+                if let Some(condition) = read {
                     // An include's records aren't rechecked in code, which
                     // a `geo.` condition needs (area 20, chunk 5.5u5).
                     if condition.searches() {
