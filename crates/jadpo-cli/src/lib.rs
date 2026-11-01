@@ -31,6 +31,7 @@ mod email;
 mod exchange;
 mod failure_text;
 mod fix;
+mod flags;
 mod fmt;
 mod help;
 mod hq;

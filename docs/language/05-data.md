@@ -1811,7 +1811,9 @@ They are created when a schedule is declared, with
 
 Other features that only keep state name their store the same way
 (`flags: { store: main }`), and with several stores a missing one is a
-compile error naming the feature. Other runtime state (multi-step call
+compile error naming the feature. The flags keep `jadpo_flags`, each
+flag's state, and `jadpo_flag_changes`, each change `jadpo flags` made
+and who made it ([Feature flags](16-built-in-services.md#feature-flags)). Other runtime state (multi-step call
 records and batch runs beside the outbox, OAuth grants, poll state, and
 webhook and queue de-duplication) follows the same rules and is always in
 a database, never a cache

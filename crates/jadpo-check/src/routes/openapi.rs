@@ -274,6 +274,19 @@ pub fn document(
             served_operation(&served, &methods, &mut failure_schemas),
         );
     }
+    // Its flags (area 16; chunk B10).
+    if let Some(served) = super::served::flags_served_by(db, project, api) {
+        let entry = paths.entry(served.path()).or_insert_with(Value::object);
+        entry.set(
+            "get",
+            flags_operation(
+                crate::flags::flags(db, project),
+                &served,
+                &methods,
+                &mut failure_schemas,
+            ),
+        );
+    }
     let exchange =
         identity.exchanges() && methods.contains(&jadpo_std::AuthenticationMethod::ServiceKey);
     if exchange {
@@ -454,6 +467,70 @@ fn served_operation(
     methods: &[jadpo_std::AuthenticationMethod],
     failure_schemas: &mut BTreeMap<String, Value>,
 ) -> Value {
+    let mut document = Value::object();
+    document.set("type", "object");
+    document.set("description", "An OpenAPI 3.1 document.");
+    generated_get(
+        served,
+        methods,
+        failure_schemas,
+        "This document: the API's routes, what each takes and answers with, and how clients sign in.",
+        response("This document.", Some(document)),
+    )
+}
+
+/// The runtime's `GET <prefix>/flags` (area 16, "Flags in browsers and
+/// apps"; chunk B10): each `client: true` flag by name, worked out for the
+/// caller, a `Bool` as a boolean and an enum as its variant's name.
+fn flags_operation(
+    flags: &crate::flags::Flags,
+    served: &super::served::Served,
+    methods: &[jadpo_std::AuthenticationMethod],
+    failure_schemas: &mut BTreeMap<String, Value>,
+) -> Value {
+    let mut schema = Value::object();
+    schema.set("type", "object");
+    let mut properties = Value::object();
+    let mut required = Vec::new();
+    for flag in flags.flags.iter().filter(|flag| flag.client) {
+        let mut property = Value::object();
+        match &flag.enum_type {
+            None => property.set("type", "boolean"),
+            Some(_) => {
+                property.set("type", "string");
+                property.set(
+                    "enum",
+                    flag.values
+                        .iter()
+                        .map(|value| Value::from(value.as_str()))
+                        .collect::<Vec<_>>(),
+                );
+            }
+        }
+        properties.set(&flag.name, property);
+        required.push(Value::from(flag.name.as_str()));
+    }
+    schema.set("properties", properties);
+    schema.set("required", required);
+    schema.set("additionalProperties", false);
+    generated_get(
+        served,
+        methods,
+        failure_schemas,
+        "The flags with `client: true`, each worked out for the caller as the server works it out.",
+        response("Each flag's value for the caller.", Some(schema)),
+    )
+}
+
+/// A `GET` the runtime answers itself under the API's own default
+/// authentication: `description` and its `200` answer, `ok`.
+fn generated_get(
+    served: &super::served::Served,
+    methods: &[jadpo_std::AuthenticationMethod],
+    failure_schemas: &mut BTreeMap<String, Value>,
+    description: &str,
+    ok: Value,
+) -> Value {
     use jadpo_std::AuthenticationMethod as M;
     let mut out = Value::object();
     out.set(
@@ -468,17 +545,11 @@ fn served_operation(
                 .join("_")
         ),
     );
-    out.set(
-        "description",
-        "This document: the API's routes, what each takes and answers with, and how clients sign in.",
-    );
+    out.set("description", description);
     out.set("x-jadpo-generated", true);
     out.set("x-jadpo-changes", false);
     let mut responses = Value::object();
-    let mut document = Value::object();
-    document.set("type", "object");
-    document.set("description", "An OpenAPI 3.1 document.");
-    responses.set("200", response("This document.", Some(document)));
+    responses.set("200", ok);
     if served.authentication.needs_caller() {
         let users = methods
             .iter()

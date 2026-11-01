@@ -11,6 +11,7 @@
 //! judged at the date the project is judged on (area 1, "Rules triggered
 //! by time passing"), and never declinable ([`expired`]).
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use jadpo_db::{Db, Layout, Project};
@@ -25,7 +26,7 @@ use crate::types::{Const, Def, Prim, Ty, TypeRef, TypeView};
 /// `flags.<name>`.
 pub const FLAGS: &str = "flags";
 
-/// What a flag's block may hold. `client:` is B10's.
+/// What a flag's block may hold.
 const OPTIONS: [&str; 4] = ["default", "owner", "expires", "client"];
 
 /// One flag, as `flags { }` declares it.
@@ -49,6 +50,8 @@ pub struct Flag {
     /// Where its `expires:` date is written, which `flag.expired` points
     /// at.
     pub expires_at: Span,
+    /// `client: true`: also answered by each API's `GET /flags`.
+    pub client: bool,
 }
 
 impl Flag {
@@ -236,6 +239,7 @@ impl Reader<'_, '_> {
         let mut default: Option<(Span, ast::Member)> = None;
         let mut owner: Option<String> = None;
         let mut expires: Option<(String, i32, Span)> = None;
+        let mut client = false;
         let mut seen: Vec<(String, Span)> = Vec::new();
         for (key, option) in tree::members(options) {
             let Some(word) = name_text(&key) else {
@@ -309,19 +313,22 @@ impl Reader<'_, '_> {
                         }
                     }
                 }
-                // `client: true` comes with `GET /flags`.
-                _ => {
-                    ok = false;
-                    self.problems.push(
-                        Diagnostic::new(
-                            &rule::TOOLCHAIN_NOT_BUILT_YET,
-                            format!("`client:` on `{name}` isn't built yet"),
-                        )
-                        .at(key_span, "not built yet")
-                        .reason("A flag returned to browsers and apps through a generated `GET /flags` route isn't built yet: accepted, no client could read it.")
-                        .next(format!("Remove `client:` from `{name}`, and pass its value in what a route answers")),
-                    );
-                }
+                // `client: true` puts it in each API's `GET /flags`.
+                _ => match option.value().map(|v| Const::from_expr(&v)) {
+                    Some(Const::Bool(on)) => client = on,
+                    _ => {
+                        ok = false;
+                        self.problems.push(
+                            Diagnostic::new(
+                                &rule::FLAG_DECLARATION_INVALID,
+                                format!("`client:` on `{name}` isn't `true` or `false`"),
+                            )
+                            .at(at, "not a `Bool`")
+                            .reason("`client: true` also answers the flag, worked out for the caller, from each API's generated `GET /flags`; `false`, or no `client:`, keeps it on the server.")
+                            .next("Write `client: true` or `client: false`"),
+                        );
+                    }
+                },
             }
         }
         let missing: Vec<&str> = [
@@ -368,6 +375,7 @@ impl Reader<'_, '_> {
             expires: String::new(),
             expires_day: 0,
             expires_at: span.clone(),
+            client,
         };
         let default = match default {
             Some((key_span, option)) => match value_at(
@@ -427,15 +435,14 @@ impl Reader<'_, '_> {
     }
 
     fn unknown_option(&mut self, flag: &str, word: &str, span: &Span) {
-        // `client:` isn't built yet, so it is never suggested.
-        let near = nearest(word, ["default", "owner", "expires"]);
+        let near = nearest(word, OPTIONS);
         let problem = Diagnostic::new(
             &rule::FLAG_DECLARATION_INVALID,
             format!("`{word}` isn't an option a flag takes"),
         )
         .at(span.clone(), "unknown option")
         .reason(format!(
-            "`{flag}` can say `default:`, `owner:` and `expires:`.{}",
+            "`{flag}` can say `default:`, `owner:`, `expires:` and `client:`.{}",
             near.map_or_else(String::new, |near| format!(" Did you mean `{near}`?"))
         ));
         self.problems.push(match near {
@@ -737,6 +744,7 @@ pub fn problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         );
     }
     out.extend(expired(db, project).iter().cloned());
+    out.extend(untested(db, project).iter().cloned());
     out
 }
 
@@ -822,4 +830,256 @@ pub(crate) fn test_flags(
             Err(problem) => problems.push(*problem),
         }
     }
+}
+
+// --- both values tested (chunk B10) ------------------------------------------
+
+/// One read of a flag the tests must cover: where it is, the flag, and the
+/// values the tests that reach it give.
+struct ReadSite {
+    flag: String,
+    span: Span,
+    covered: BTreeSet<u32>,
+    reached: usize,
+}
+
+/// Where every read of a declared flag is, outside tests, and what reaches
+/// each: each test, by its file and place, with the reads it reaches.
+struct Reach {
+    reads: BTreeMap<(String, u32), ReadSite>,
+    tests: Vec<TestReach>,
+}
+
+/// One test and the reads of flags it reaches.
+pub(crate) struct TestReach {
+    pub path: String,
+    pub index: u32,
+    /// The value its `flags:` gives each flag it names.
+    pub given: Vec<(String, u32)>,
+    /// The flags whose reads it reaches, by name.
+    pub flags: BTreeSet<String>,
+    /// Where each read it reaches is, by file and offset.
+    pub reads: BTreeSet<(String, u32)>,
+    /// Whether its settings have a problem, so what it gives is unknown.
+    pub unclear: bool,
+}
+
+fn reach(db: &dyn Db, project: Project) -> Reach {
+    use jadpo_graph::Kind;
+    use jadpo_graph::body::{Expr as BodyExpr, Node};
+
+    use crate::types::{Fact, body_facts, callables_of, resolve, typed_body};
+
+    let model = flags(db, project);
+    let mut reads: BTreeMap<(String, u32), ReadSite> = BTreeMap::new();
+    let mut tests = Vec::new();
+    for &file in project.files(db) {
+        for callable in callables_of(db, file) {
+            if body_facts(db, project, callable)
+                .key_of(&[Kind::Test])
+                .is_some()
+            {
+                tests.push(callable);
+                continue;
+            }
+            let path = file.path(db).clone();
+            for site in &typed_body(db, project, callable).body.sites {
+                if let Node::Expr(BodyExpr::Flag { flag }) = &site.node
+                    && model.flag(flag.name()).is_some()
+                {
+                    reads.insert(
+                        (path.clone(), site.start),
+                        ReadSite {
+                            flag: flag.name().to_string(),
+                            span: Span::new(&path, site.start, site.end),
+                            covered: BTreeSet::new(),
+                            reached: 0,
+                        },
+                    );
+                }
+            }
+        }
+    }
+    // A route's `run:` reads, at the route.
+    let mut route_reads: BTreeMap<jadpo_graph::Key, Vec<(String, u32)>> = BTreeMap::new();
+    for (key, flag, span) in crate::routes::flag_arguments(db, project) {
+        if model.flag(&flag).is_none() {
+            continue;
+        }
+        let at = (span.path.clone(), span.start);
+        route_reads.entry(key).or_default().push(at.clone());
+        reads.insert(
+            at,
+            ReadSite {
+                flag,
+                span,
+                covered: BTreeSet::new(),
+                reached: 0,
+            },
+        );
+    }
+    let graph = crate::graph::graph(db, project);
+    let mut out = Vec::new();
+    for test in tests {
+        let mut reached: BTreeSet<(String, u32)> = BTreeSet::new();
+        let mut visited = BTreeSet::new();
+        let mut queue = vec![test];
+        while let Some(current) = queue.pop() {
+            if !visited.insert((
+                current.file(db).path(db).clone(),
+                current.index(db),
+                current.function(db),
+            )) {
+                continue;
+            }
+            let path = current.file(db).path(db).clone();
+            let checked = typed_body(db, project, current);
+            for site in &checked.body.sites {
+                if let Node::Expr(BodyExpr::Flag { .. }) = &site.node {
+                    reached.insert((path.clone(), site.start));
+                }
+            }
+            for route in checked.body.requests() {
+                if let Some(at) = route_reads.get(route) {
+                    reached.extend(at.iter().cloned());
+                }
+                if let Some(id) = graph.find(route) {
+                    for to in graph.outgoing(id, jadpo_graph::EdgeKind::Runs) {
+                        if let Some(next) = resolve(db, project, &graph.node(to).key) {
+                            queue.push(next);
+                        }
+                    }
+                }
+            }
+            for fact in &body_facts(db, project, current).facts {
+                if let Fact::Action(key) | Fact::Fixture(key) | Fact::Function(key) = fact
+                    && let Some(next) = resolve(db, project, key)
+                {
+                    queue.push(next);
+                }
+            }
+        }
+        let reached: BTreeSet<(String, u32)> = reached
+            .into_iter()
+            .filter(|at| reads.contains_key(at))
+            .collect();
+        let settings = crate::config::test_settings(db, project, test);
+        out.push(TestReach {
+            path: test.file(db).path(db).clone(),
+            index: test.index(db),
+            unclear: !settings.problems.is_empty(),
+            given: settings.flags.clone(),
+            flags: reached
+                .iter()
+                .filter_map(|at| reads.get(at).map(|read| read.flag.clone()))
+                .collect(),
+            reads: reached,
+        });
+    }
+    Reach { reads, tests: out }
+}
+
+/// Each test, by its file and place, with the flags whose reads it
+/// reaches and the values its `flags:` gives: what `jadpo flags remove`
+/// reads to know which tests tested a branch that goes.
+pub(crate) fn tests_reaching(db: &dyn Db, project: Project) -> Vec<TestReach> {
+    reach(db, project).tests
+}
+
+/// Every read of a flag that the tests reaching it don't give every value
+/// (area 16, "What the compiler checks"): `flag.value_untested`, at the
+/// read. A test reaches what its body calls, through the actions,
+/// fixtures and functions it reaches, and the routes it sends requests
+/// through, their `run:` arguments and what they run. It gives each flag
+/// its `flags:` value, or the `default:`. A test's own reads aren't
+/// counted, and the rule can't be declined.
+#[salsa::tracked(returns(ref))]
+pub fn untested(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
+    let model = flags(db, project);
+    if model.flags.is_empty() {
+        return Vec::new();
+    }
+    let Reach { mut reads, tests } = reach(db, project);
+    // A test whose `flags:` doesn't read cleanly gives values no one can
+    // know, and its mistake is reported already.
+    if tests.iter().any(|test| test.unclear) {
+        return Vec::new();
+    }
+    for test in &tests {
+        for at in &test.reads {
+            let Some(read) = reads.get_mut(at) else {
+                continue;
+            };
+            let value = test
+                .given
+                .iter()
+                .find(|(flag, _)| *flag == read.flag)
+                .map(|(_, at)| *at)
+                .or_else(|| model.flag(&read.flag).map(|flag| flag.default));
+            if let Some(value) = value {
+                read.covered.insert(value);
+                read.reached += 1;
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for read in reads.values() {
+        let Some(flag) = model.flag(&read.flag) else {
+            continue;
+        };
+        let missing: Vec<u32> = (0..flag.values.len() as u32)
+            .filter(|at| !read.covered.contains(at))
+            .collect();
+        let Some(&first) = missing.first() else {
+            continue;
+        };
+        let name = &flag.name;
+        let shown: Vec<String> = missing
+            .iter()
+            .map(|at| format!("`{}`", flag.written(*at)))
+            .collect();
+        let given: Vec<String> = read
+            .covered
+            .iter()
+            .map(|at| format!("`{}`", flag.written(*at)))
+            .collect();
+        let (message, reached) = if read.reached == 0 {
+            (
+                format!("No test reaches this read of `flags.{name}`"),
+                "No test reaches it.".to_string(),
+            )
+        } else {
+            (
+                format!(
+                    "No test that reaches `flags.{name}` gives it {}",
+                    crate::or_list(&shown)
+                ),
+                format!(
+                    "The tests that reach it give it only {}.",
+                    crate::and_list(&given)
+                ),
+            )
+        };
+        let next = if first == flag.default {
+            format!(
+                "Add a test that reaches this read and leaves `{name}` at its default, `{}`",
+                flag.written(first)
+            )
+        } else {
+            format!(
+                "Add a test that reaches this read with `flags: {{ {name}: {} }}`",
+                flag.written(first)
+            )
+        };
+        out.push(
+            Diagnostic::new(&rule::FLAG_VALUE_UNTESTED, message)
+                .at(read.span.clone(), "not tested with every value")
+                .reason(format!(
+                    "Each read of a flag is tested with every value it can have, so each branch is known to work before the flag is switched. {reached} A test that doesn't name the flag in its `flags:` gives it the `default:`, `{}`.",
+                    flag.written(flag.default)
+                ))
+                .next(next),
+        );
+    }
+    out
 }

@@ -37,6 +37,17 @@ action checkout_steps() -> CheckoutSteps {
     }
     return 3
 }
+
+test "the three-step form is shown by default" {
+    assert checkout_steps() == 3
+}
+
+test "the new checkout takes one page" {
+    flags: {
+        new_checkout: true
+    }
+    assert checkout_steps() == 1
+}
 ```
 
 ```text output
@@ -63,7 +74,9 @@ switchable for longer.
 The question for the flag's owner is whether the release is done.
 
 **If it is done**, remove the flag and the `flags:` your tests give it,
-keeping the branch that won:
+keeping the branch that won. `jadpo flags remove new_checkout --keep
+true` makes the change for you
+([Removing a flag](../language/16-built-in-services.md#removing-a-flag)):
 
 ```jadpo fragment
 action checkout_steps() -> CheckoutSteps {
@@ -115,6 +128,17 @@ action checkout_steps() -> CheckoutSteps {
         return 1
     }
     return 3
+}
+
+test "the three-step form is shown by default" {
+    assert checkout_steps() == 3
+}
+
+test "the new checkout takes one page" {
+    flags: {
+        new_checkout: true
+    }
+    assert checkout_steps() == 1
 }
 ```
 

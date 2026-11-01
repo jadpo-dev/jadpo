@@ -580,9 +580,15 @@ After the registry is live, in order:
      indexes, filters, ordering, search and logs; a key type in an
      encrypted field, usable only as a `crypto` call's `key:`; a
      `TotpSecret` and a `SecretText` stored sealed; rotation through
-     `_PREVIOUS`; interpreted, compiled and on Workers. To settle with a
-     maintainer first: where `field_encryption_key:` is written, and how
-     a key held as data is first made, since code never makes a key.
+     `_PREVIOUS`; interpreted, compiled and on Workers. Decided (Richard, 2026-11-01): `field_encryption_key:` is written at
+     the top of `application { }` as `config.field_encryption_key`, an
+     `EncryptionKey` setting (32 random bytes), made with `jadpo config set
+     field_encryption_key --generate`, rotated through `_PREVIOUS` with a
+     generated re-seal pass and a count of rows still under the old key;
+     a key held as data is made by `crypto.new_key(as: <key type>)`,
+     actions only, usable only stored sealed or as a `crypto` call's
+     `key:`. Losing the key loses the sealed data for good: the pages say
+     so.
      Done when a sealed field round-trips through a store on both
      executors and its column holds only sealed bytes.
    - [ ] **P10 What keys held as data allow** `opus · high` after P9:
@@ -686,19 +692,10 @@ After the registry is live, in order:
      and "Flags: declared, read and tested"; area 1, "Rules triggered by
      time passing"; area 13, "Test settings"; compiler/runtime §2.6,
      "Feature flags".
-   - [ ] **B10 Changing and removing flags** `opus · high` after B9: area
-     16, "Changing a flag", "What the compiler checks" (both values
-     tested), "Removing a flag" and "Flags in browsers and apps"; area
-     14, `jadpo flags`; area 7, `GET /flags`. `jadpo flags set`
-     (`--users`, `--percent`, `--split`) and `list` against an
-     environment, each change logged with who made it, a flag held at 0%
-     or 100% shown "ready to remove"; `check` failing until the tests
-     that reach each read cover every value; `jadpo flags remove --keep`
-     rewriting each read, the branch that can't run, the declaration and
-     the tests' overrides; `client: true` flags worked out for the
-     caller by a generated `GET /flags` in the OpenAPI document. Screens
-     designed with the design skills first. Done when each command's
-     tests pass and a removed flag's project checks and passes its tests.
+   - [x] **B10 Changing and removing flags**: area 16, "Changing a flag",
+     "Removing a flag", "Flags in browsers and apps" and "Flags: changed,
+     listed and removed"; area 14, `jadpo flags`; compiler/runtime §2.6,
+     "Feature flags".
    - [ ] **B11 The audit trail** `opus · xhigh` after P2: area 16, "Audit
      trail" and "Sending audit entries elsewhere"; area 9, the history's
      grant and field restrictions; area 5, its system table. `audit: {

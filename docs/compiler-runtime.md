@@ -3364,6 +3364,24 @@ user and kept for the rest of the operation. `Started` holds the state
 when it fails. `flag.expired` is judged at `Project::judged_on`, which
 `jadpo check` sets to today and `jadpo build` to the commit's date, or
 `SOURCE_DATE_EPOCH`'s; nothing else sets it, so no run judges a date.
+`flags::untested` walks each test's reach, as `config::test_values`
+does, through the callables it calls and the routes its `request`s go
+through (their `run:` arguments, found by `routes::flag_arguments`, and
+the action each runs, by the graph's `Runs` edge), and reports each read
+outside tests whose reaching tests leave a value out. `jadpo flags`
+(`jadpo-cli/src/flags.rs`) reads and writes `jadpo_flags` through
+`jadpo_runtime::flags::{stored, change}`: values by name, each change
+one statement that writes the row (an `INSERT … ON CONFLICT DO NOTHING`,
+or an `UPDATE` or `DELETE` held to the `set_at` it read) and its
+`jadpo_flag_changes` row, `session_user` read by the statement.
+`jadpo_check::flag_remove` rewrites the source as `setting_move` does,
+one read at a time with the file parsed again after each, the tests it
+deletes chosen from `flags::tests_reaching` and the branches their other
+flags take; then imports, formatting and `check`, undone on any error.
+`GET <prefix>/flags` is `Generating::Flags` beside the API's OpenAPI
+document (record, graph node, OpenAPI operation and `routes` listing from
+`served::flags_served`), planned as `Run::Flags` of the `client: true`
+flags' numbers and answered by the HTTP component through `Ctx::flag`.
 
 **The capability seam** (area 16). Every call that leaves the
 process goes through one exchange, `jadpo_runtime::outside::exchange`

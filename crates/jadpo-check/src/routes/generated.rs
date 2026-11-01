@@ -31,6 +31,9 @@ pub enum Generating {
     Provider(String),
     /// `GET <prefix>/openapi.json` (area 7, "OpenAPI").
     OpenApi(Served),
+    /// `GET <prefix>/flags` (area 16, "Flags in browsers and apps"; chunk
+    /// B10): each `client: true` flag worked out for the caller.
+    Flags(Served),
     /// A connection's webhook (area 11, "Receiving from outside").
     Webhook(Box<WebhookModel>),
 }
@@ -43,7 +46,7 @@ pub struct GeneratedRoute {
     /// Its path, a placeholder in braces: `/auth/passkey/{passkey_id}`.
     pub path: String,
     /// What generates it: `exchange`, `passkey`, `magic_link`,
-    /// `provider`, `openapi` or `webhook`.
+    /// `provider`, `openapi`, `flags` or `webhook`.
     pub generated: &'static str,
     /// Who may call it: `none`, `caller`, `service`, `user` or `signature`.
     pub authentication: &'static str,
@@ -116,6 +119,16 @@ impl Generating {
                     "none"
                 },
             }],
+            Generating::Flags(served) => vec![GeneratedRoute {
+                method: HttpMethod::Get,
+                path: served.path(),
+                generated: "flags",
+                authentication: if served.authentication.needs_caller() {
+                    "caller"
+                } else {
+                    "none"
+                },
+            }],
             Generating::Webhook(webhook) => vec![GeneratedRoute {
                 method: HttpMethod::Post,
                 path: webhook.path(),
@@ -175,6 +188,9 @@ pub fn generating(db: &dyn Db, project: Project) -> BTreeMap<String, Vec<Generat
             }
             if let Some(served) = super::served::served_by(db, project, &api) {
                 out.push(Generating::OpenApi(served));
+            }
+            if let Some(served) = super::served::flags_served_by(db, project, &api) {
+                out.push(Generating::Flags(served));
             }
             for webhook in crate::webhooks::declared_in(db, project, &api) {
                 out.push(Generating::Webhook(Box::new(webhook)));
