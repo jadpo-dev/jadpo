@@ -1404,7 +1404,7 @@ fn decision_problems(
                 )
                 .at(decision.span.clone(), "no such change")
                 .reason(format!(
-                    "`{}` still has `{}` in its snapshot, so nothing here drops it: a drop comes from a migration of its own, which writes this line, its snapshot and its SQL together.",
+                    "`{}` still has `{}` in its snapshot, so nothing here drops it: a drop comes from a migration of its own, which writes this line, its snapshot and its SQL.",
                     migration.name, decision.key
                 ))
                 .next(format!(

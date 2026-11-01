@@ -312,7 +312,7 @@ fn undroppable(why: &Undroppable) -> Diagnostic {
         ),
         Undroppable::Unknown(name) => arguments(
             format!("`{name}` is no retired field or entity"),
-            "`--drop` takes a retired field or entity by the name its migration's `changes.jadpo` gives it, such as `Todo.legacy_flag` or `Todo`.".to_string(),
+            "`--drop` takes a retired field or entity by the name its migration's `changes.jadpo` gives it: `<Entity>.<field>` or `<Entity>`.".to_string(),
             "Run `jadpo migrate new` with nothing to migrate to list what is retired".to_string(),
         ),
     }

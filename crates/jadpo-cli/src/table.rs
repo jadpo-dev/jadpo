@@ -640,7 +640,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--drop",
                 value: Some("name"),
-                description: "A retired field or entity for `new` to remove for good",
+                description: "A retired field or entity to remove",
                 values: &[],
             },
         ],
@@ -655,7 +655,7 @@ pub static COMMANDS: &[Command] = &[
             },
             Example {
                 description: "Remove a retired field and its data for good",
-                command: "jadpo migrate new drop_legacy_flag --drop Todo.legacy_flag",
+                command: "jadpo migrate new drop_rating --drop Review.rating",
             },
             Example {
                 description: "Apply the pending migrations to a database",
