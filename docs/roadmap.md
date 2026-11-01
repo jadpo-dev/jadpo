@@ -530,14 +530,15 @@ After the registry is live, in order:
      the bytes and the sign-in state deleted, retention's two
      `toolchain.not_built_yet` refusals go too: a retention reaching a
      `File`, and one cascading to someone who signs in; and erasure's,
-     where `erase` is called, of a `File`'s bytes. To settle with a
-     maintainer first: how a record in another store belongs to a
+     where `erase` is called, of a `File`'s bytes. Records shared by
+     several people keep their marked fields until the last of them is
+     erased, and anonymising another person's own record clears only
+     the reference (area 15's notes, Richard 2026-11-01): P3's refusal
+     goes and P3's clear-on-either behaviour changes to match. To settle
+     with a maintainer first: how a record in another store belongs to a
      person, since no reference crosses stores
-     (`data.reference_across_stores`), which queries "serve the retained
-     purpose", and what anonymising another person's own record does
-     (P3 refuses an erasure that would: erasing a user whom another
-     user's cleared `invited_by_id` refers to, whose marked fields are
-     that user's own). Done when an erased person leaves nothing the
+     (`data.reference_across_stores`), and which queries "serve the
+     retained purpose". Done when an erased person leaves nothing the
      page says erasure reaches, on both executors.
    - [ ] **P5 Export** `opus · high` after P4 and V5: area 15, "Export"
      and "Who may erase and export"; area 13's generated test.
