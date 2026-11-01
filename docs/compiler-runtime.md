@@ -166,6 +166,7 @@ Rust 1.88 or later).
 | `jadpo-test` | Test runner, PostgreSQL harness, field-by-field value diffs; the differential comparison with compiled code, natively and inside workerd | |
 | `jadpo-lsp` | Language server | |
 | `jadpo-cldr` | The CLDR data a deployable carries: ICU4X's compiled data baked again for the app's supported locales | |
+| `jadpo-registry` | The registry protocol (area 11): its table, requests and answers, the RFC 6962 log and its proofs, release archives, a local registry served on this machine and the conformance test of a served OpenAPI document | |
 | `jadpo-cli` | The `jadpo` binary: commands, help, completion | |
 
 **`jadpo-std`** decides once what both sides need: what a valid value is
@@ -240,11 +241,38 @@ whole geometry; storage itself binds a geometry without asking, because the
 checker and every reader refuse such a mix (area 20, "Altitudes are all or
 nothing").
 
-**`jadpo-term`, `jadpo-test`, `jadpo-lsp`, `jadpo-cldr` and `jadpo-cli`**
-are tooling: the CLI design language's screens, the test runner (§2.5,
-§2.7), the language server, the locale data `jadpo build` exports for a
-deployable (§2.6, "The locale data a deployable carries"), and the binary
-that nothing depends on.
+**`jadpo-term`, `jadpo-test`, `jadpo-lsp`, `jadpo-cldr`, `jadpo-registry`
+and `jadpo-cli`** are tooling: the CLI design language's screens, the test
+runner (§2.5, §2.7), the language server, the locale data `jadpo build`
+exports for a deployable (§2.6, "The locale data a deployable carries"),
+the registry protocol, and the binary that nothing depends on.
+
+**`jadpo-registry`** is what the `jadpo` tool and the registry
+application at jadpo.dev are each built against (area 11, "The registry
+protocol"). The table is `protocol::ENDPOINTS`, one row per request with
+its placeholders, query, body, status, answer and failures, and
+`shape::named` gives each answer's and body's JSON; the request and
+answer types, the local registry's router, its OpenAPI document and the
+conformance test are all read from them, and a test holds every answer
+the local registry gives to its shape. The log keeps each release's leaf
+hash; proofs are made by RFC 6962 §2.1's recursive definitions and
+verified by RFC 9162 §2.1.3.2 and §2.1.4.2, with SHA-256 from the `sha2`
+the lock uses, and are tested against RFC 6962's vectors, against a
+second recursive implementation for every pair of sizes up to 40, and
+with every byte of every hash changed and hashes dropped, added or
+swapped. An archive is ustar of regular files only, unpacked within a
+size limit and refusing links, extensions, hidden files and any path
+outside the package; its digest is `jadpo_db::package_digest`, the
+lock's. The local registry serves the table from memory over plain HTTP
+on `127.0.0.1` (`local::LocalRegistry::serve`), with its own log, for
+the `jadpo` tool's tests; its client, `http::fetch`, reaches only this
+machine. The registry application is built in another repository, so its
+CI runs the conformance test from a checkout of this one at the Jadpo
+release it targets, against its own served document:
+`JADPO_REGISTRY_OPENAPI=http://127.0.0.1:<port>/registry/v1/openapi.json
+cargo test -p jadpo-registry --test integration conformance::` (a file
+path works too); a Rust caller can use `conformance::check` as a git
+dependency.
 
 **Dependency direction.** Compiler crates never depend on runtime crates,
 except `jadpo-interp`, which links the runtime it shares with compiled
