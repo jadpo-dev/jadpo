@@ -672,12 +672,15 @@ fn clear(root: &Path) -> Reply {
             )
         }
         Err(error) => Reply::failed(
-            Diagnostic::new(&rule::CLI_EMAIL_ARGUMENTS, "The inbox couldn't be cleared")
-                .reason(format!(
-                    "Removing its mail from `{}` failed: {error}.",
-                    dev_inbox::INBOX
-                ))
-                .next("Check that the project's `build/` folder can be written, then run it again"),
+            Diagnostic::new(
+                &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+                "The inbox couldn't be cleared",
+            )
+            .reason(format!(
+                "Removing its mail from `{}` failed: {error}.",
+                dev_inbox::INBOX
+            ))
+            .next("Check that the project's `build/` folder can be written, then run it again"),
         ),
     }
 }

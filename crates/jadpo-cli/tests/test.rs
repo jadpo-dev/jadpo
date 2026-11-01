@@ -1109,8 +1109,8 @@ error: `pur` isn't a kind of test
         name.stderr,
         "\
 error: `--name` needs some text
-  reason: `--name` takes some text.
-  next: Give it after the flag: `jadpo test --name <text>` (agent)
+  reason: `--name` takes some text after it, and nothing follows it.
+  next: Give it after the flag: `jadpo test . --name <text>` (agent)
   rule: cli.test_arguments
   help: https://jadpo.dev/docs/errors/cli.test_arguments
 "

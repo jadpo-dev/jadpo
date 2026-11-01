@@ -49,6 +49,7 @@ mod dev_inbox;
 mod dev_provider_calls;
 mod dev_provider_sign_in;
 mod dev_tokens;
+mod disk_files;
 mod driver_factory;
 mod emails;
 mod erasure;

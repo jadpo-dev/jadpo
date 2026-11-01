@@ -508,7 +508,7 @@ fn scripted(root: &Path, written: &str, call: &str, answer: &str) -> Reply {
     if let Err(error) = dev_calls::script(root, call, answer) {
         return Reply::failed(
             Diagnostic::new(
-                &rule::CLI_CALLS_ARGUMENTS,
+                &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
                 "The answer couldn't be kept for `jadpo dev`",
             )
             .reason(format!("Writing it under `build/dev/` failed: {error}."))

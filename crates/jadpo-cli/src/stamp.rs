@@ -118,8 +118,9 @@ pub fn program(
 }
 
 /// Each of the project's deployables as the manifest lists it: the
-/// target `jadpo build` builds it for and its build id, which a project
-/// with errors, which builds nothing, has none of.
+/// target `jadpo build` builds it for, its build id, which a project with
+/// errors, which builds nothing, has none of, and the stores on the
+/// server's own disk it reaches, which keep it on one server.
 pub fn deployables(
     db: &dyn jadpo_db::Db,
     project: jadpo_db::Project,
@@ -128,12 +129,21 @@ pub fn deployables(
     lock: &[u8],
 ) -> Vec<DeployableStamp> {
     let stores = (errors == 0).then(|| stores(db, project));
+    let kinds = jadpo_check::data::connections(db, project);
+    let reaches = jadpo_check::deployables::reaches(db, project);
     jadpo_check::deployables::deployables(db, project)
         .list
         .iter()
-        .map(|deployable| DeployableStamp {
+        .zip(reaches)
+        .map(|(deployable, reached)| DeployableStamp {
             name: deployable.name.clone(),
             target: deployable.builds_for().name().to_string(),
+            one_server: reached
+                .connections
+                .keys()
+                .filter(|name| kinds.kind(name) == Some(jadpo_check::data::ConnectionKind::Files))
+                .cloned()
+                .collect(),
             build: stores.as_ref().and_then(|stores| {
                 program(db, project, deployable, compiler, lock, stores)
                     .ok()

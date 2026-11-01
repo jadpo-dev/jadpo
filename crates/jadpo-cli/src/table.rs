@@ -1418,7 +1418,10 @@ pub static COMMANDS: &[Command] = &[
             },
         ],
         arguments_rule: &rule::CLI_CALLS_ARGUMENTS,
-        raises: &[&rule::TOOLCHAIN_PROJECT_NOT_FOUND],
+        raises: &[
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+            &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+        ],
         run: commands::calls,
     },
     Command {
@@ -1496,7 +1499,10 @@ pub static COMMANDS: &[Command] = &[
             },
         ],
         arguments_rule: &rule::CLI_EMAIL_ARGUMENTS,
-        raises: &[&rule::TOOLCHAIN_PROJECT_NOT_FOUND],
+        raises: &[
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+            &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+        ],
         run: commands::email,
     },
     Command {

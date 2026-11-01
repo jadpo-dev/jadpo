@@ -21,8 +21,9 @@
 //! - [`http`]: the acceptor and its worker threads, each a current-thread
 //!   runtime answering with its own handler (chunk 4.1), the acceptor
 //!   handing them connections in turn (chunk 8.1l).
-//! - [`files`]: the disk driver, which keeps `jadpo dev`'s stores of files
-//!   under `.jadpo/files/` (chunk 6.4b).
+//! - [`files`]: the disk driver, which keeps a deployable's stores of files
+//!   at their `path:` (chunk B2) and `jadpo dev`'s under `.jadpo/files/`
+//!   (chunk 6.4b).
 //! - [`fetch`]: HTTP out of the process (chunks 7.2c and 8.1m), the
 //!   package driver's and the runtime's own: hyper's client on the
 //!   worker's thread, its connections kept per host, HTTPS through rustls.
@@ -237,14 +238,21 @@ pub fn postgres_secured(url: &str, security: Security) -> Result<Postgres, Store
 /// What a native host gives the driver factory (chunk 8.1d): tokio's
 /// sockets with rustls ([`NativeTransport`]) and HTTP with its connections
 /// kept per host ([`fetch::NativeFetch`], chunk 8.1m), one of each per
-/// worker, since each worker builds its own. It gives no disk: a deployable's disk driver
-/// at a connection's `path:` comes with the rest of the files capability,
-/// and `jadpo dev` keeps its stores of files on its own
-/// ([`NativeHost::with_files`]).
+/// worker, since each worker builds its own. It gives no disk: `jadpo dev`
+/// and `jadpo seed` keep their stores of files under `.jadpo/files/`
+/// ([`NativeHost::with_files`]), and a deployable's are at their `path:`
+/// ([`deployable_supplies`]).
 pub fn supplies() -> Supplies {
     Supplies::on(jadpo_runtime::http::address::Target::Native)
         .with_transport(Rc::new(NativeTransport))
         .with_fetch(Rc::new(fetch::NativeFetch::new()))
+}
+
+/// What a native deployable gives the driver factory: [`supplies`] and the
+/// server's own disk, each `Driver.disk` store kept at its connection's
+/// `path:` (area 16, "The disk driver"; chunk B2).
+pub fn deployable_supplies() -> Supplies {
+    supplies().with_disk(Rc::new(files::ServerDisk))
 }
 
 /// The runtime's host natively, one per worker thread: each connection's

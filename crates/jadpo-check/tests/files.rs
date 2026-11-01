@@ -354,3 +354,73 @@ fn json_reads_a_files_list_where_items_at_says_and_any_reader_unpacks() {
         Vec::<String>::new()
     );
 }
+
+/// A disk store's settings (area 16, "The disk driver"; chunk B2): `path:`
+/// an absolute folder written plainly, `free_space_floor:` a percentage
+/// below 100%, and no other key; a floor the plan carries in millionths
+/// of the disk, 5% when left out.
+#[test]
+fn a_disk_stores_settings_are_held_to_what_they_say() {
+    let app = |settings: &str| {
+        format!(
+            "application {{\n    connections: {{\n        sheets: {{\n            driver: Driver.disk\n{settings}        }}\n    }}\n}}\n"
+        )
+    };
+    let rules = |settings: &str| {
+        let app = app(settings);
+        let mut files: Vec<(&str, &str)> = vec![("app.jadpo", &app)];
+        files.extend_from_slice(BASE);
+        support::rules(Layout::Project, &files)
+            .into_iter()
+            .filter(|rule| {
+                rule != "import.unused"
+                    && rule != "layout.unused_declaration"
+                    && !rule.starts_with("migration.")
+            })
+            .collect::<Vec<_>>()
+    };
+    for settings in [
+        "            path: \"/var/lib/pantry/sheets\"\n",
+        "            path: \"/var/lib/pantry/sheets\"\n            free_space_floor: 5%\n",
+        "            path: \"/var/lib/pantry/sheets\"\n            free_space_floor: 0%\n",
+        "            path: \"/var/lib/pantry/sheets\"\n            free_space_floor: 2.5%\n",
+        // No `path:` checks: a deployable lists the store as unbuilt.
+        "",
+    ] {
+        assert_eq!(rules(settings), Vec::<String>::new(), "{settings}");
+    }
+    for (settings, expected) in [
+        (
+            "            path: \"uploads\"\n",
+            "connection.disk_path_invalid",
+        ),
+        (
+            "            path: \"./uploads\"\n",
+            "connection.disk_path_invalid",
+        ),
+        (
+            "            path: \"/var/lib/pantry/../etc\"\n",
+            "connection.disk_path_invalid",
+        ),
+        ("            path: \"\"\n", "connection.disk_path_invalid"),
+        ("            path: 5\n", "connection.value_invalid"),
+        (
+            "            path: \"/var/lib/pantry/sheets\"\n            free_space_floor: 100%\n",
+            "connection.value_invalid",
+        ),
+        (
+            "            path: \"/var/lib/pantry/sheets\"\n            free_space_floor: -1%\n",
+            "connection.value_invalid",
+        ),
+        (
+            "            path: \"/var/lib/pantry/sheets\"\n            free_space_floor: 5mb\n",
+            "connection.value_invalid",
+        ),
+        (
+            "            path: \"/var/lib/pantry/sheets\"\n            free_space: 5%\n",
+            "connection.key_invalid",
+        ),
+    ] {
+        assert_eq!(rules(settings), vec![expected.to_string()], "{settings}");
+    }
+}

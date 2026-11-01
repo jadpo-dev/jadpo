@@ -947,15 +947,24 @@ pub fn serve_to(
         // `.jadpo/files/`: only the connections the program running now
         // keeps files in.
         let stores = Arc::clone(&make_shared);
+        // Each store keeps free the share of the disk its
+        // `free_space_floor:` says, as a deployable's does (chunk B2).
+        let floors = Arc::clone(&make_shared);
+        let kept = DiskFiles::under(&files).with_floors(move |connection| {
+            let current = lock_current(&floors);
+            jadpo_std::connections::files(current.plan().connections())
+                .find(|(name, _, _)| *name == connection)
+                .map_or(0, |(_, _, floor)| floor)
+        });
         // Counting rate limits in the one table every worker shares
         // (chunk 8.1l).
         let mut native = worker
             .host()
             .with_drivers(drivers)
-            .with_files(DiskFiles::under(&files), move |connection| {
+            .with_files(kept, move |connection| {
                 let current = lock_current(&stores);
                 jadpo_std::connections::files(current.plan().connections())
-                    .any(|(name, _)| name == connection)
+                    .any(|(name, _, _)| name == connection)
             })
             .with_call_log(Rc::new(DevCalls {
                 log: crate::dev_calls::DevLog(Arc::clone(&make_log)),

@@ -276,18 +276,26 @@ D1 first: the site starts once D1 has merged.
 - [x] **D12 What the Learn path found**: [area 8](language/08-identity.md), "In development and tests"; [area 14](language/14-tooling.md), "What is built"; [documentation](documentation.md), "Where the content lives" and "The bundle".
 - [x] **D13a Error pages people reach first**: [writing guide](writing.md), "How an error page reads" and "What the docs check enforces"; [documentation](documentation.md), "The bundle"; `tools/docs/language_docs.py`, `error_format_problems` and `error_format_scope`; the catalogue summaries in `crates/jadpo-diag`.
 - [ ] **D13b Command errors that explain**: an umbrella, split by size
-  (2026-10-31) into D13b1, D13b2a, D13b2b1, D13b2b2, D13b2c and D13b3,
-  taken in order; tick it once all are.
+  (2026-10-31) into D13b1, D13b2a, D13b2b1, D13b2b2, D13b2c, D13b3a and
+  D13b3b, taken in order; tick it once all are.
 - [x] **D13b1 The `sh run` block, settings and `jadpo new`**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; `tools/docs/language_docs.py`, `check_runs`; the pages of `configuration.local_*`, `cli.config_*` and `toolchain.*` a run raises, and `configuration.value_invalid`.
 - [x] **D13b2a Copied output, root runs and the first person-decided pages**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; area 14, "What it compiles with"; the pages of `configuration.value_missing`, `configuration.local_changed`, `format.write_failed`, `translation.exchange_file_invalid`, `toolchain.build_failed` and `toolchain.fetch_failed`.
 - [x] **D13b2b1 A database for runs, migrations and seeds**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; area 14, "Database command errors"; `tools/docs/language_docs.py`, `Databases`; the pages of `seed.production_refused`, `seed.unavailable`, `migration.apply_failed`, `migration.store_diverged`, `migration.extension_missing` and `migration.extension_outdated`.
 - [x] **D13b2b2 Background work**: [writing guide](writing.md), "How an error page reads"; area 14, "Database command errors"; the pages of `deliveries.*`, `schedules.lease_held`, `schedules.no_tick`, `schedules.run_failed`, `schedules.unavailable`, `runs.unavailable` and `ai.usage_unavailable`.
 - [x] **D13b2c The rest a person decides**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; area 14, "Command errors"; the pages of `cli.dev_start_failed`, `conform.refused`, `recording.refused`, `suggest.share_failed`, `format.unsafe` and `test.runtime_start_failed`.
-- [ ] **D13b3 The other command errors** `opus · high`: the same for the
-  rules only a command raises that an agent decides (`cli.*_arguments`,
-  `seed.failed`, `format.changes_required` and the rest) whose page says
-  "No example yet"; then
-  `error_format_scope` stops leaving any of them out.
+- [x] **D13b3a The command line's own errors**: area 14, "Command-line errors"; `tools/docs/language_docs.py`, `error_format_scope`; the pages of `cli.*_arguments`, `cli.unknown_command` and `cli.unknown_flag`.
+- [ ] **D13b3b The other command errors** `opus · high`: the same for the
+  rest of the rules only a command raises that an agent decides and whose
+  page says "No example yet" (`cli.dev_port_invalid`,
+  `cli.package_unreadable`, `cli.package_not_openapi`,
+  `configuration.move_*`, `conform.failed`, `format.changes_required`,
+  `recording.failed`, `seed.failed`, `suggest.record_invalid`,
+  `test.failed`, `test.no_tests` and `translation.exchange_unit_unknown`);
+  then `error_format_scope` stops leaving any of them out. Still filed
+  under an `*_arguments` rule though they aren't the command line's
+  mistakes: `jadpo email open` when the browser can't start, `jadpo
+  calls script` and `jadpo config set` when the project has errors, and
+  `jadpo sql` when a query that checks makes no statement.
 - [ ] **D13c The rest of the error pages** `opus · high`: every other page
   in `docs/errors/` to the format, each rule's catalogue summary its
   page's first sentence; `error_format_scope` then covers every page.
@@ -627,15 +635,9 @@ After the registry is live, in order:
    - [x] **B1 A `File` held to its field**: area 16, "What a write
      checks", "A `File` field's settings" and "What is built"; area 4,
      "Defects"; compiler/runtime §2.6, "Files and a file's run".
-   - [ ] **B2 The disk driver in production** `opus · high`: area 16,
-     "The disk driver"; area 14, "A native deployable"; area 18, "The
-     manifest". A native deployable keeps a `Driver.disk` connection's
-     files at its `path:`, which `jadpo check` refuses inside the
-     project's source or build folders; a put below `free_space_floor:`
-     (5% by default) answers `storage_full`; the manifest records that
-     the app runs on one server. Done when a native deployable puts and
-     reads a file at its `path:`, and a put below the floor answers
-     `storage_full`.
+   - [x] **B2 The disk driver in production**: area 16, "The disk
+     driver" and What is built; area 18, "What a node holds"; area 14,
+     "Starting"; compiler/runtime §2.6, "Files and a file's run".
    - [ ] **B3 Deleting a file's bytes** `opus · high`: area 16,
      "Deleting and erasing" and "Writing a file your app makes: `put`".
      The capability's `delete`; a generated subscriber deleting a file's

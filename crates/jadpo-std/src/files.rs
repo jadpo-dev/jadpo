@@ -145,14 +145,23 @@ pub const STORAGE_FULL: &str = "storage_full";
 /// The failure a read answers when its store holds no bytes under the key.
 pub const NOT_FOUND: &str = "not_found";
 
+/// A disk store's free-space floor when `free_space_floor:` gives none
+/// (area 16, "The disk driver"): 5%, in millionths of the disk.
+pub const DEFAULT_FREE_SPACE_FLOOR: u32 = 50_000;
+
+/// A free-space floor's whole disk, in millionths: what 100% is.
+pub const WHOLE_DISK: u32 = 1_000_000;
+
 /// A files connection, as the plan gives the hosts: its name, its driver,
 /// and, for the disk driver, the folder it keeps files under in
-/// production (`jadpo dev` keeps them under `.jadpo/files/<name>`).
+/// production (`jadpo dev` keeps them under `.jadpo/files/<name>`) and
+/// its free-space floor, in millionths of the disk ([`WHOLE_DISK`]).
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct FilesConnection {
     pub name: String,
     pub driver: Driver,
     pub path: Option<String>,
+    pub floor: u32,
 }
 
 /// The key the bytes of a file whose new id is `id` are kept under:

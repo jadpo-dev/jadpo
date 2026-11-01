@@ -17,6 +17,7 @@ carry the weight. How to report a vulnerability is in
 | A provider, or whoever answers for it | Answers to the app's calls | One outside-call path: HTTPS only, no redirects, a size cap and timeouts, answers decoded to the operation's type; natively, names resolved and private, loopback, link-local and metadata addresses refused before connecting; on Workers, `global_fetch_strictly_public` |
 | Someone whose text reaches a call | Values in a provider's path, query or body | Placeholders escaped as one path segment each (`.`, `..` and empty refused); query and body as JSON |
 | A model | Its answers | No tool calling; data blocks escaped against closing tags in every encoding ([area 21](language/21-ai.md)) |
+| Another user on the app's server | Files and links planted on its disk | [Area 16](language/16-built-in-services.md), "The disk driver": only keys the runtime makes; every folder and file opened relative to the one above without following a link, and only a regular file read; folders `0700` and files `0600`; a store whose folder others can write to isn't built; `path:` never inside the project |
 | A package the app installs | Its own code, run inside the app's actions | [Area 11](language/11-integrations.md), "What package code may do": it calls only its own API, through the connection the app gave it, and reads none of the app's settings or keys, data or sign-in |
 
 On Workers the same runtime runs: secrets are Wrangler secrets, never

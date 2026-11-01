@@ -771,15 +771,19 @@ EXAMPLE_RULE = re.compile(r'(?:`|errors/)([a-z_]+\.[a-z_]+)(?:`|\.md)')
 # catalogue summary; a writer's own run before the compiler is rebuilt
 # turns it off.
 CHECK_SUMMARIES = True
+# The prefix of the rules about the command line itself: its commands,
+# flags and arguments.
+COMMAND_LINE = 'cli.'
 
 
 def error_format_scope(catalogue, root=ROOT):
     """The rules whose pages must have the parts docs/writing.md, "How an
     error page reads", gives them: those the primer, the Learn path, the
-    guides or a teaching example's README names, and those whose next step
-    a person decides. A rule only a command raises, whose page has no
-    example yet, waits for a ```sh run block that shows it (roadmap,
-    D13b3); every other page follows once D13c is built."""
+    guides or a teaching example's README names, those whose next step a
+    person decides, and the command line's own (`cli.*`). A rule only a
+    command raises, whose page has no example yet, waits for a ```sh run
+    block that shows it (roadmap, D13b3b); every other page follows once
+    D13c is built."""
     named = set()
     for path in [root / 'docs/primer.md', *sorted((root / 'docs/learn').glob('*.md')),
                  *sorted((root / 'docs/guides').glob('*.md'))]:
@@ -787,7 +791,8 @@ def error_format_scope(catalogue, root=ROOT):
             named |= set(RULE_NAMED.findall(path.read_text()))
     for path in sorted((root / 'examples').glob('*/README.md')):
         named |= set(EXAMPLE_RULE.findall(path.read_text()))
-    named |= {rule for rule, entry in catalogue.items() if entry.get('decides') == 'human'}
+    named |= {rule for rule, entry in catalogue.items()
+              if entry.get('decides') == 'human' or rule.startswith(COMMAND_LINE)}
     scope = set()
     for rule in named & catalogue.keys():
         page = root / 'docs/errors' / f'{rule}.md'
