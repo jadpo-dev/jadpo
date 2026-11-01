@@ -60,6 +60,10 @@ impl fmt::Display for Holds {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Table {
     pub holds: Holds,
+    /// Retired by a migration (area 5, "Migrations"): no entity holds it
+    /// any more, and it stays, with its records, until a later migration
+    /// drops it.
+    pub retired: bool,
     /// By physical name.
     pub columns: BTreeMap<String, Column>,
     pub primary_key: Key,
@@ -121,6 +125,12 @@ pub struct Column {
     /// B12). Such a column holds nothing of its own, so it is dropped
     /// rather than retired, and made again when its expression changes.
     pub generated: Option<String>,
+    /// Whether its field is kept sealed with the application's
+    /// `field_encryption_key:` (area 15, "Encrypted fields"; chunk P9): its
+    /// `bytea` holds only sealed bytes, which no SQL can read or write. A
+    /// `Bytes` field's column is `bytea` either way, so the type alone
+    /// doesn't say; a snapshot written before chunk P9 has none.
+    pub sealed: bool,
 }
 
 /// What a column's field allows beyond its column type: an enum's
@@ -416,6 +426,17 @@ impl Schema {
         Ok(schema)
     }
 
+    /// The store whose table, not retired, holds `entity` (its born name).
+    pub fn live_store_of(&self, entity: &str) -> Option<&str> {
+        self.stores.iter().find_map(|(name, store)| {
+            store
+                .tables
+                .values()
+                .any(|table| !table.retired && table.holds == Holds::Entity(entity.to_string()))
+                .then_some(name.as_str())
+        })
+    }
+
     /// The digest of the snapshot document.
     pub fn digest(&self) -> String {
         blake3::hash(self.to_document().as_bytes()).to_hex()[..16].to_string()
@@ -429,6 +450,7 @@ impl Table {
             Holds::Entity(name) => value.set("entity", name),
             Holds::System(name) => value.set("system", name),
         }
+        value.set_some("retired", self.retired);
         let mut columns = Value::object();
         for (name, column) in &self.columns {
             let mut entry = Value::object();
@@ -439,6 +461,7 @@ impl Table {
             entry.set("type", &column.sql_type);
             entry.set_some("nullable", column.nullable);
             entry.set_some("retired", column.retired);
+            entry.set_some("sealed", column.sealed);
             if let Some(allows) = &column.allows {
                 entry.set("allows", allows.to_value());
             }
@@ -534,6 +557,7 @@ impl Table {
                     sql_type: text_of(entry, "type")?,
                     nullable: flag(entry, "nullable"),
                     retired: flag(entry, "retired"),
+                    sealed: flag(entry, "sealed"),
                     allows: entry
                         .get("allows")
                         .map(Allows::from_value)
@@ -629,6 +653,7 @@ impl Table {
         }
         Ok(Table {
             holds,
+            retired: flag(value, "retired"),
             columns,
             primary_key,
             unique,
@@ -700,6 +725,17 @@ pub enum Change {
         table: String,
     },
     DropTable {
+        store: String,
+        table: String,
+    },
+    /// A table whose entity is gone, or has moved to another store: it
+    /// stays, with its records, out of the app's reach.
+    RetireTable {
+        store: String,
+        table: String,
+    },
+    /// A retired table an entity asks for again.
+    ReviveTable {
         store: String,
         table: String,
     },
@@ -808,6 +844,14 @@ fn table_changes(store: &str, table: &str, was: &Table, now: &Table, out: &mut V
     let at = |kind: fn(String, String, String) -> Change, name: &str| {
         kind(store.to_string(), table.to_string(), name.to_string())
     };
+    if was.retired != now.retired {
+        let (store, table) = (store.to_string(), table.to_string());
+        out.push(if now.retired {
+            Change::RetireTable { store, table }
+        } else {
+            Change::ReviveTable { store, table }
+        });
+    }
     for (name, column) in &now.columns {
         match was.columns.get(name) {
             None => out.push(at(add_column, name)),
@@ -922,6 +966,8 @@ impl Change {
             Change::AddStore { store } => (store, None),
             Change::AddTable { store, table }
             | Change::DropTable { store, table }
+            | Change::RetireTable { store, table }
+            | Change::ReviveTable { store, table }
             | Change::AddColumn { store, table, .. }
             | Change::RemoveColumn { store, table, .. }
             | Change::AlterColumn { store, table, .. }
@@ -1011,6 +1057,18 @@ impl Change {
             Change::AddStore { store } => format!("new store `{store}`"),
             Change::AddTable { store, table } => format!("new {}", holds(store, table)),
             Change::DropTable { store, table } => format!("{} removed", holds(store, table)),
+            Change::RetireTable { store, table } => {
+                match self::table(before, store, table).map(|t| &t.holds) {
+                    Some(Holds::Entity(entity)) => match after.live_store_of(entity) {
+                        Some(to) if to != store => {
+                            format!("entity `{entity}` moved from store `{store}` to `{to}`")
+                        }
+                        _ => format!("entity `{entity}` removed"),
+                    },
+                    _ => format!("{} removed", holds(store, table)),
+                }
+            }
+            Change::ReviveTable { table, .. } => format!("retired table `{table}` comes back"),
             Change::AddColumn {
                 store,
                 table,
@@ -1137,6 +1195,7 @@ mod tests {
                 sql_type: "uuid".into(),
                 nullable: false,
                 retired: false,
+                sealed: false,
                 allows: None,
                 comment: None,
                 generated: None,
@@ -1151,6 +1210,7 @@ mod tests {
                     sql_type: "timestamptz(3)".into(),
                     nullable: true,
                     retired: false,
+                    sealed: false,
                     allows: None,
                     comment: None,
                     generated: None,
@@ -1159,6 +1219,7 @@ mod tests {
         }
         let table = Table {
             holds: Holds::Entity("Todo".into()),
+            retired: false,
             columns,
             primary_key: Key {
                 name: "todo_pkey".into(),

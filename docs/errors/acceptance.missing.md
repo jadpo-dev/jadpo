@@ -7,7 +7,8 @@ A change could break someone else or widen who can do what, and no acceptance th
 Some changes can hurt someone outside the code: removing a field a
 client reads, opening a route to anyone, adding a caller to a grant,
 reaching a new outside host, declining a security rule, creating a
-domain, or installing a package from git. Whether such a change is safe
+domain, installing a package from git, or a migration removing data
+([Removing data](../language/05-data.md#removing-data)). Whether such a change is safe
 depends on who relies on the old behaviour, which the code can't know.
 
 So a person decides. `jadpo check` compares the change with the default

@@ -34,6 +34,7 @@ mod files;
 mod generate;
 mod identity;
 mod json;
+mod keys;
 
 pub(crate) use batches::batch_fields;
 pub(crate) use identity::sign_in_object_fields;
@@ -296,6 +297,7 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
     let syntax = target.syntax.clone();
     let rule = target.rule.is_some();
     checker.callable(target);
+    checker.keys_held(&syntax);
     let body = lower::lower(&checker, &lookup, file.text(db), &syntax);
     // A rule reads only its type's fields (area 2): anything else is the
     // one mistake in it.

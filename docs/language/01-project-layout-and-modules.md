@@ -487,6 +487,7 @@ the page that decides each:
 | `steps:` | How an action's steps are kept and sealed | [Several changing calls in one action](12-jobs-and-events.md#several-changing-calls-in-one-action) |
 | `receiving:` | The queues read into the app's events | [Events from outside](12-jobs-and-events.md#events-from-outside) |
 | `ai:` | The model connection, its models and its limits | [The `ai` capability](21-ai.md#the-ai-capability) |
+| `field_encryption_key:` | The key encrypted fields are sealed with | [Encrypted fields](15-personal-data.md#encrypted-fields) |
 
 Seven more are decided and not built yet: `bot_check:`
 ([Bot protection](16-built-in-services.md#bot-protection)), `documents:`

@@ -16,7 +16,7 @@ use crate::tree::{self, node_span};
 
 /// The sections `application { }` holds and this compiler builds, in the
 /// order the error lists them, each read by its area's check.
-pub const SECTIONS: [&str; 16] = [
+pub const SECTIONS: [&str; 17] = [
     // Area 1: the Jadpo release line.
     "jadpo",
     // Area 8: the app's name, and how long a revoked caller may act.
@@ -42,6 +42,8 @@ pub const SECTIONS: [&str; 16] = [
     "receiving",
     // Area 21: the `ai` capability.
     "ai",
+    // Area 15: the key encrypted fields are sealed with.
+    "field_encryption_key",
 ];
 
 /// The sections an area page decides that this compiler doesn't build,

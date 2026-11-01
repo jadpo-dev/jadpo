@@ -384,6 +384,8 @@ language.
 | `jadpo seed <name>` | Fills the development database from a seed |
 | `jadpo config move <constant>` | Makes a constant a setting |
 | `jadpo config set <field>` / `check` | Sets or checks your local settings in `.env.local` |
+| `jadpo config generate <field>` | Writes a new key into a pipe, never to a terminal |
+| `jadpo config rotation` | Counts the sealed rows still under the previous field key |
 | `jadpo translations missing` / `unused` / `update` / `accept` | Shows and records the state of each language's wording |
 | `jadpo translations builtin` | Lists Jadpo's own messages your app can show |
 | `jadpo translations export` / `import` | Exchanges wording with translation services |
@@ -395,6 +397,15 @@ decisions are written ([Migrations](05-data.md#migrations)). `apply` and
 `status` take the database's URL with `--url`, and `--store` when there
 are several. Otherwise they read it from the connection's setting, in the
 environment and then `.env.local`.
+
+`new <purpose> --drop <name>` also removes for good a retired field or
+entity, named as `changes.jadpo` names it, `Todo.legacy_flag` or `Todo`,
+one to a migration ([Removing data](05-data.md#removing-data)). It
+refuses anything not retired, and while the latest migration waits for
+its decisions. With nothing to migrate, `new` lists what is still retired.
+`apply` lists what each migration it ran removed, and refuses a project
+with a removal nobody accepted
+([`migration.drop_not_accepted`](../errors/migration.drop_not_accepted.md)).
 
 A missing purpose will be asked for at a prompt, as the [CLI design
 language](../cli-design-language.md) draws it, once prompts are built.
@@ -449,6 +460,27 @@ terminal. It checks the value against the setting's type, then writes
 `.env.local`: only as an ordinary file, through a private temporary file,
 and only if the file hasn't changed since it was read. It adds
 `.env.local` to `.gitignore`.
+
+`set <field> --generate` writes a new key for a setting of a key type in the
+same way, with no prompt and no terminal, and prints nothing, so no transcript
+holds it; with `--json`, a document naming the setting and never the value. A
+setting that isn't a key is `cli.config_arguments`, and one that already has a
+value, in the environment or the file, is `cli.config_generate_refused`.
+
+`generate <field>` writes a new key alone to its output, for a pipe into a
+secret manager, and keeps nothing. At a terminal, or with `--json`, it is
+`cli.config_generate_refused`.
+
+`rotation` counts each sealed field's rows against the application's
+`field_encryption_key:` and its `_PREVIOUS`, read as `check` reads them, in the
+connection's database or the one `--url` names: how many hold a value, and how
+many of them the current key, the previous key and neither sealed. It ends on
+what to do: `FIELD_ENCRYPTION_KEY_PREVIOUS can go`, `Rotation under way`, `No
+rotation under way`, or `Rows no key opens`, the only one of them it colours as
+a problem. It answers either way, exiting 0, and its `--json` holds
+`can_remove_previous`. It never prints a key
+([Rotating the key](15-personal-data.md#rotating-the-key)). A database it can't
+read is `cli.config_rotation_unavailable`.
 
 ### `jadpo translations`
 
@@ -3095,7 +3127,9 @@ yet, or that the design notes replace.
 | `cli.check_arguments` | `check` | A `jadpo check` command names a path that isn't there or isn't a `.jadpo` file, or a `--before` git doesn't know |
 | `cli.completions_arguments` | `completions` | A `jadpo completions` command names no shell, or one Jadpo writes no completions for |
 | `cli.config_arguments` | `config` | A `jadpo config` command names no action, an action it doesn't have, or a setting `config.jadpo` doesn't declare |
+| `cli.config_generate_refused` | `config` | A new key would be written where a person could read it, by `jadpo config generate`, or `--generate` would replace a key already set |
 | `cli.config_prompt_failed` | `config` | Nothing was typed at the prompt of `jadpo config set`, or the terminal couldn't hide what you type there |
+| `cli.config_rotation_unavailable` | `config` | The sealed rows `jadpo config rotation` counts couldn't be counted, because their database can't be reached or has no table for them yet |
 | `cli.config_tty_required` | `config` | You ran `jadpo config set` where there is no terminal to type the value at, such as from a coding agent or a script |
 | `cli.declines_arguments` | `declines` | A `jadpo declines` command names no action, one it doesn't have, or a rule or path that isn't the project's |
 | `cli.deliveries_arguments` | `deliveries` | A `jadpo deliveries` command names an action it doesn't have, no id for one that needs it, or a state or page it doesn't list |
@@ -3116,7 +3150,7 @@ yet, or that the design notes replace.
 | `cli.incident_read_failed` | `incident` | Runtime event file could not be read |
 | `cli.incident_revision_mismatch` | `incident` | Runtime event and local source revisions differ |
 | `cli.lsp_arguments` | `lsp` | A `jadpo lsp` command is given an argument, which it doesn't take |
-| `cli.migrate_arguments` | `migrate` | A `jadpo migrate` command names no action, one it doesn't have, or a purpose for an action that takes none |
+| `cli.migrate_arguments` | `migrate` | A `jadpo migrate` command names no action, one it doesn't have, a purpose for an action that takes none, or a `--drop` of what isn't retired |
 | `cli.new_arguments` | `new` | A `jadpo new` command names no project, or more than one |
 | `cli.package_arguments` | `package` | A `jadpo package` command names no action, one it doesn't have, or a package the project doesn't hold |
 | `cli.package_not_openapi` | `package import` | A file given to `jadpo package import` is JSON but not an OpenAPI 3.0 or 3.1 document |
@@ -3167,6 +3201,7 @@ against one.
 | `deliveries.wrong_state` | `deliveries` | A delivery or schedule run was asked to do something its state rules out, such as cancelling one that has already failed |
 | `flags.unavailable` | `flags` | The flags' state couldn't be read or changed in their database, because it can't be reached, has no table for them yet, or changed while the command ran |
 | `migration.apply_failed` | `migrate apply`, `seed`, `dev`, `test` | Applying the project's migrations to a database stopped at a step that failed |
+| `migration.drop_not_accepted` | `check`, `build`, `migrate apply`, `seed`, `dev` | A migration removes data, and no acceptance in the project says a person agreed to it |
 | `migration.extension_missing` | `migrate apply`, `seed`, `dev`, `test` | The project's migrations need a PostgreSQL extension, such as pgvector, that the database server doesn't offer or that the role applying them can't create |
 | `migration.extension_outdated` | `migrate apply`, `seed`, `dev`, `test` | The database server's PostgreSQL extension, such as pgvector, is older than the project's migrations and queries need |
 | `migration.store_diverged` | `migrate apply`, `seed`, `dev` | The migrations a database has applied don't match the project's: one has changed since it ran, the project doesn't have one, or one comes out of order |

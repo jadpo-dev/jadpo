@@ -258,6 +258,9 @@ impl Row {
 pub enum Outcome {
     Success,
     Failure,
+    /// Neither yet: work still going on, which the footer says how far has
+    /// got (`jadpo config rotation`'s rows still to move).
+    Running,
 }
 
 /// One fact in a summary footer: a count, usually. A problem count takes
@@ -798,6 +801,7 @@ fn block_lines(block: &Block, grid: &Grid, style: &Style) -> Vec<Line> {
                 let (symbol, token) = match outcome {
                     Outcome::Success => (Symbol::Success, Token::Success),
                     Outcome::Failure => (Symbol::Failure, Token::Failure),
+                    Outcome::Running => (Symbol::Running, Token::Accent),
                 };
                 lines.push(vec![
                     paint(token, symbol.text(style.symbols)),
@@ -1114,6 +1118,7 @@ fn summary_line(
     let (symbol, token) = match outcome {
         Outcome::Success => (Symbol::Success, Token::Success),
         Outcome::Failure => (Symbol::Failure, Token::Failure),
+        Outcome::Running => (Symbol::Running, Token::Accent),
     };
     let mut line = vec![strong(
         token,

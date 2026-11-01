@@ -2716,13 +2716,14 @@ impl<'p> Machine<'p> {
                 break;
             };
             // A key comes from where the plan says (chunk 10.3d): its
-            // setting's, never read as a value, or the field that holds it.
+            // setting's, never read as a value, or the field or `var` that
+            // holds it.
             if matches!(param.kind, ParamKind::Builtin(builtin) if builtin.is_key()) {
                 match self.decoded(*arg) {
                     Some(Decoded::Key(Some(KeySource::Setting(setting)))) => {
                         work.push(Task::PushKey(*setting));
                     }
-                    Some(Decoded::Key(Some(KeySource::Field { .. }))) => {
+                    Some(Decoded::Key(Some(KeySource::Field { .. } | KeySource::Local))) => {
                         work.push(Task::Expr(*arg));
                     }
                     _ => {

@@ -382,8 +382,8 @@ and R4, where they touch different crates.
 Already built: acceptances (`jadpo acceptance new`, matching, the reason,
 history, the CODEOWNERS gate) for API and event breaks, every widening of
 who can do what (routes made public included), security declines,
-sign-in settings past their limit, new domains, new outside hosts and
-packages from git (every one, until V1). The kinds that belong to
+sign-in settings past their limit, new domains, new outside hosts,
+packages from git (every one, until V1) and removing data. The kinds that belong to
 features not built yet come with those features: `ThresholdChange` with
 thresholds, a service's image with services, bot checks with bot
 protection, a domain renamed with `jadpo domain rename`.
@@ -394,10 +394,7 @@ protection, a domain renamed with `jadpo domain rename`.
   `packages:`'s `own_sources:` in `application { }` (added to area 1's
   list of sections), its `own_source` lines in `access.jadpo_record`, and
   `PackageChange.git_source` only for a repository under none of them.
-- [ ] **V3 Removing data needs a person** `opus · xhigh`: area 5,
-  "Migrations"; area 18, `DataChange`. `jadpo migrate new`'s removals (an
-  entity removed, one moved to another store, a retired column dropped),
-  each refused by `check` until a `DataChange` acceptance names it.
+- [x] **V3 Removing data needs a person**: area 5, "Removing data"; area 18, "Acceptances" and `DataChange`; area 14, "`jadpo migrate`"; area 16, "Deleting and erasing" and "Retention and erasure"; compiler/runtime §2.3, "Removals"; `docs/errors/migration.drop_not_accepted.md`.
 - [ ] **V4 Risky package upgrades need a person** `opus · high`: area 18,
   "Package upgrades". The review compares the operations and declarations
   the app uses, version ignored; a used operation removed, a used field
@@ -557,25 +554,13 @@ After the registry is live, in order:
      fields, each store's location setting and what the language covers.
      Designed with the design skills first. Done when `jadpo check`
      writes it and its JSON twin, and the approval report shows its diff.
-   - [ ] **P9 Encrypted fields and keys held as data** `opus · xhigh`:
-     area 15, "Encrypted fields"; area 19, "Encrypted fields", "A key is
-     never a value" and "How a secret is kept"; compiler/runtime §2.5,
-     "A key as a value". `encrypted: true` sealed with the application's
-     `field_encryption_key:` and opened on load, refused in unique rules,
-     indexes, filters, ordering, search and logs; a key type in an
-     encrypted field, usable only as a `crypto` call's `key:`; a
-     `TotpSecret` and a `SecretText` stored sealed; rotation through
-     `_PREVIOUS`; interpreted, compiled and on Workers. Decided (Richard, 2026-11-01): `field_encryption_key:` is written at
-     the top of `application { }` as `config.field_encryption_key`, an
-     `EncryptionKey` setting (32 random bytes), made with `jadpo config set
-     field_encryption_key --generate`, rotated through `_PREVIOUS` with a
-     generated re-seal pass and a count of rows still under the old key;
-     a key held as data is made by `crypto.new_key(as: <key type>)`,
-     actions only, usable only stored sealed or as a `crypto` call's
-     `key:`. Losing the key loses the sealed data for good: the pages say
-     so.
-     Done when a sealed field round-trips through a store on both
-     executors and its column holds only sealed bytes.
+   - [x] **P9 Encrypted fields and keys held as data**: area 15, "Encrypted
+     fields", "Rotating the key" and "What can't be undone"; area 19, "A key
+     is never a value", "Encrypted fields" and "How a secret is kept"; area
+     10, "Setting a value"; area 14, "`jadpo config set` and `jadpo config
+     check`"; compiler/runtime §2.5, "A key as a value" and "Sealed fields";
+     the pages of `data.encrypted_*`, `data.field_encryption_key_*`,
+     `type.key_as_value` and `cli.config_generate_refused`.
    - [ ] **P10 What keys held as data allow** `opus · high` after P9:
      area 19, "Hashing and cryptography" and "Signed tokens".
      `crypto.verify_totp` (RFC 6238's vectors, one step either side),

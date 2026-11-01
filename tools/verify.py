@@ -143,9 +143,11 @@ POSTGRES = [
     # `jadpo migrate apply` and `status`; computed backfills, in batches,
     # resumed, and worked out in Jadpo where SQL can't (area 5); stored
     # structured values checked or rewritten when their type reads less
-    # (chunk 5.9c).
+    # (chunk 5.9c); a drop letting go of its files and leaving the audit
+    # trail alone (chunk V3).
     ('live PostgreSQL: jadpo migrate and backfills',
-     [('jadpo-cli', 'migrate'), ('jadpo-cli', 'backfills'), ('jadpo-cli', 'json_migrations')], []),
+     [('jadpo-cli', 'migrate'), ('jadpo-cli', 'backfills'), ('jadpo-cli', 'json_migrations'),
+      ('jadpo-cli', 'removals')], []),
     # Every standard type stored and read back, its column laid out as its
     # entry says, and each literal in SQL the value the runtime binds
     # (area 19, chunks 5.5w and 5.5w3b); an application's structured
@@ -181,10 +183,12 @@ POSTGRES = [
     # without the person or kept as they are, with their sessions (chunk
     # P3); and the audit trail through `jadpo test` and in its rows: each
     # change's entry in its transaction, read back through `history`,
-    # deleted with an erased record and by its retention (chunk B11).
-    ('live PostgreSQL: lifecycles, purge, retention, erasure and audit',
+    # deleted with an erased record and by its retention (chunk B11); and
+    # encrypted fields: what goes in comes out, each column holds only sealed
+    # bytes, and a key rotates, interpreted and compiled (area 15; chunk P9).
+    ('live PostgreSQL: lifecycles, purge, retention, erasure, audit and encrypted fields',
      [('jadpo-cli', 'lifecycle'), ('jadpo-cli', 'retention'), ('jadpo-cli', 'erasure'),
-      ('jadpo-cli', 'audit')], []),
+      ('jadpo-cli', 'audit'), ('jadpo-cli', 'encrypted_fields')], []),
     # `jadpo seed`: a seed's users and memberships made through the app's
     # actions, policy for a call with a caller, a seed that stops, and a
     # database not on this machine refused (area 5, "Seeds"; chunk A5).

@@ -288,6 +288,7 @@ pub static COMMANDS: &[Command] = &[
             &rule::ACCEPTANCE_MISSING,
             &rule::ACCEPTANCE_NO_REASON,
             &rule::ACCEPTANCE_UNMATCHED,
+            &rule::MIGRATION_DROP_NOT_ACCEPTED,
         ],
         run: commands::check,
     },
@@ -474,6 +475,7 @@ pub static COMMANDS: &[Command] = &[
             &rule::CLI_DEV_PORT_INVALID,
             &rule::CLI_DEV_START_FAILED,
             &rule::MIGRATION_APPLY_FAILED,
+            &rule::MIGRATION_DROP_NOT_ACCEPTED,
             &rule::MIGRATION_EXTENSION_MISSING,
             &rule::MIGRATION_EXTENSION_OUTDATED,
             &rule::MIGRATION_STORE_DIVERGED,
@@ -603,7 +605,8 @@ pub static COMMANDS: &[Command] = &[
                       database/migrations/: the whole schema as snapshot.json, the SQL that gets there \
                       as postgres.sql, and changes.jadpo when a change needs a decision, such as a \
                       value for existing rows; once the decisions are written, `new` again finishes \
-                      it. `apply` runs a database's pending migrations, each in a transaction, and a \
+                      it. With --drop it removes a retired field or entity for good, once a person \
+                      accepts it. `apply` runs a database's pending migrations, each in a transaction, and a \
                       computed backfill in batches, each in its own, carrying on where a stopped run \
                       left off; `status` lists the migrations and, with --url, which a database has applied. \
                       Until configuration gives each connection its URL, --url names the database.",
@@ -634,6 +637,12 @@ pub static COMMANDS: &[Command] = &[
                 description: "Which store that database is",
                 values: &[],
             },
+            Flag {
+                name: "--drop",
+                value: Some("name"),
+                description: "A retired field or entity to remove",
+                values: &[],
+            },
         ],
         examples: &[
             Example {
@@ -643,6 +652,10 @@ pub static COMMANDS: &[Command] = &[
             Example {
                 description: "Finish the latest migration once its decisions are written",
                 command: "jadpo migrate new",
+            },
+            Example {
+                description: "Remove a retired field and its data for good",
+                command: "jadpo migrate new drop_rating --drop Review.rating",
             },
             Example {
                 description: "Apply the pending migrations to a database",
@@ -656,6 +669,7 @@ pub static COMMANDS: &[Command] = &[
         arguments_rule: &rule::CLI_MIGRATE_ARGUMENTS,
         raises: &[
             &rule::MIGRATION_APPLY_FAILED,
+            &rule::MIGRATION_DROP_NOT_ACCEPTED,
             &rule::MIGRATION_STORE_DIVERGED,
             &rule::MIGRATION_EXTENSION_MISSING,
             &rule::MIGRATION_EXTENSION_OUTDATED,
@@ -707,6 +721,7 @@ pub static COMMANDS: &[Command] = &[
             &rule::SEED_PRODUCTION_REFUSED,
             &rule::SEED_UNAVAILABLE,
             &rule::MIGRATION_APPLY_FAILED,
+            &rule::MIGRATION_DROP_NOT_ACCEPTED,
             &rule::MIGRATION_EXTENSION_MISSING,
             &rule::MIGRATION_EXTENSION_OUTDATED,
             &rule::MIGRATION_STORE_DIVERGED,
@@ -2078,7 +2093,11 @@ pub static COMMANDS: &[Command] = &[
                       of its name and type in `config { }` with its value as `default:`, the \
                       constant deleted and every read rewritten to `config.<name>`; it refuses, \
                       changing nothing, a type a setting can't hold, a name a setting has, and a \
-                      read in a query, an update by `id`, a backfill or another constant.",
+                      read in a query, an update by `id`, a backfill or another constant. \
+                      `set <key> --generate` stores a new key, 32 random bytes, in `.env.local` and \
+                      prints nothing; `generate <key>` writes a new key into a pipe and refuses a \
+                      terminal. `rotation` counts the sealed rows still under \
+                      `FIELD_ENCRYPTION_KEY_PREVIOUS`, so you know when it can go.",
         arguments: &[
             Argument {
                 name: "action",
@@ -2093,11 +2112,36 @@ pub static COMMANDS: &[Command] = &[
                 values: Values::Fixed(&[]),
             },
         ],
-        flags: &[],
+        flags: &[
+            Flag {
+                name: "--generate",
+                value: None,
+                description: "With `set`, make a key, printing nothing",
+                values: &[],
+            },
+            Flag {
+                name: "--url",
+                value: Some("url"),
+                description: "With `rotation`, the database to read",
+                values: &[],
+            },
+        ],
         examples: &[
             Example {
                 description: "See which settings still need a value",
                 command: "jadpo config check",
+            },
+            Example {
+                description: "Make the key encrypted fields are sealed with, seen by no one",
+                command: "jadpo config set field_encryption_key --generate",
+            },
+            Example {
+                description: "Send a new key straight to a secret manager",
+                command: "jadpo config generate field_encryption_key | wrangler secret put FIELD_ENCRYPTION_KEY",
+            },
+            Example {
+                description: "See when the previous field key can be removed",
+                command: "jadpo config rotation",
             },
             Example {
                 description: "Store a secret without typing it anywhere it is kept",

@@ -117,4 +117,7 @@ pub enum ScheduleRun {
     /// The built-in purge of the entity of this name (area 5,
     /// "Lifecycle"; chunk 6.2c), the plan's `purge` of it.
     Purge(String),
+    /// The built-in re-seal of every sealed field (area 15, "Rotating the
+    /// key"; chunk P9), the plan's `reseals`.
+    Reseal,
 }

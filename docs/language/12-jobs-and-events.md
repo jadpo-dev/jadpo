@@ -295,6 +295,15 @@ events with their delivery and handled records, or 1,000 deliveries an
 operator dealt with, with their handled records. The tick hands nothing
 on. What it doesn't reach, the next tick carries on with.
 
+### The re-seal schedule
+
+An app that keeps anything sealed with its `field_encryption_key:` gets a
+schedule that moves rows from a previous key to the current one every hour,
+`field_encryption.reseal`, written where that key is
+([Rotating the key](15-personal-data.md#rotating-the-key)). It is kept,
+recorded and watched as the purge schedule below is, and its record's `items`
+is how many rows a run moved. It does nothing while no `_PREVIOUS` is set.
+
 ### The purge schedule
 
 An entity whose [lifecycle](05-data.md#lifecycle) has `purge:`, or which

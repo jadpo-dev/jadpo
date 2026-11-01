@@ -11,10 +11,12 @@
 //!
 //! With no before side (not a git repository, no default branch, a
 //! project new since its base), nothing is compared or judged, and `jadpo
-//! check` says so in one line (Richard, 2026-10-30).
+//! check` says so in one line (Richard, 2026-10-30); only a migration that
+//! removes data is still held to an acceptance ([`data::unaccepted`]).
 
 pub mod access;
 pub mod compare;
+pub mod data;
 pub mod files;
 pub mod network;
 pub mod words;
@@ -49,6 +51,7 @@ pub fn needs(db: &dyn Db, project: Project) -> Vec<Need> {
         compare::lock(jadpo_db::LOCK, was, &now, &mut out);
     }
     compare::domains(&before.domains, &domains(db, project), &mut out);
+    data::needs(db, project, before, &mut out);
     threshold_needs(db, project, before, &mut out);
     out.sort();
     out.dedup_by(|a, b| a.subject == b.subject && a.change == b.change);
@@ -281,7 +284,13 @@ pub fn problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             out.push(base_missing(base));
             return out;
         }
-        Before::NotRead | Before::Nothing(_) => return out,
+        // With no before side, nothing says what this change added, so a
+        // removal is held to any acceptance with a reason (chunk V3).
+        Before::Nothing(_) => {
+            out.extend(data::unaccepted(db, project));
+            return out;
+        }
+        Before::NotRead => return out,
     };
     for acceptance in &all {
         if let Some(was) = before.text(&acceptance.path)
@@ -448,6 +457,22 @@ fn said(change: &str, family: &Family) -> (&'static str, &'static str) {
             "a new domain needs a person",
             "A domain is a boundary other code is shaped around.",
         ),
+        "DataChange.column_dropped" => (
+            "dropping a column removes its data for good",
+            "Every value it holds goes when the migration runs, and no build can bring it back.",
+        ),
+        "DataChange.table_dropped" => (
+            "dropping a table removes its records for good",
+            "Every record it holds goes when the migration runs, and no build can bring it back.",
+        ),
+        "DataChange.entity_removed" => (
+            "removing an entity takes its records out of the app's reach",
+            "Its table stays, retired, where no code, erasure or retention reaches its records, and only dropping the table ends that.",
+        ),
+        "DataChange.entity_moved" => (
+            "moving an entity to another store leaves its records behind",
+            "Its table starts empty in the new store, and nothing copies the records across.",
+        ),
         change if change.ends_with("_declined") => (
             "declining a security rule needs a person",
             "An agent can write a decline's reason itself, so a person accepts each decline of a security rule.",
@@ -492,6 +517,7 @@ fn missing_acceptance(
     let span = match family {
         Family::Decline => decline_span(db, project, needs[0])
             .unwrap_or_else(|| place(db, project, path, needs[0].heading.as_deref())),
+        Family::Data => data::span(db, project, needs[0]),
         Family::Thresholds => threshold_span(db, project, needs[0]),
         _ => place(db, project, path, needs[0].heading.as_deref()),
     };

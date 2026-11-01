@@ -150,6 +150,7 @@ mod report;
 pub mod rows;
 pub mod runner;
 pub mod schedules;
+pub mod sealed;
 pub mod serve;
 pub mod sigv4;
 pub mod slots;
