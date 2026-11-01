@@ -222,6 +222,17 @@ fn erasure_of(model: &DataModel, person: &str, marked: &dyn Fn(&str, &str) -> bo
         let Some(entity) = model.entity(&name) else {
             continue;
         };
+        // A kept record's history still holds what it held while it was
+        // the person's (area 16, "Audit trail"; chunk B11), which the
+        // pages don't yet say erasure rewrites.
+        if entity.audit.is_some()
+            && let Some(first) = references.first()
+        {
+            out.unbuilt.push(format!(
+                "erasing a `{person}` keeps each `{name}` whose `{}` refers to them, and the history its `audit:` keeps would still hold that reference",
+                first.field
+            ));
+        }
         let anonymised = references
             .iter()
             .filter(|reference| reference.outcome == Outcome::Anonymised)

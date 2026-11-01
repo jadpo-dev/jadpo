@@ -29,6 +29,9 @@
 # there, and `CsvFormat`, who a written CSV is for, another. `File` is a stored file and `FileContents` what `store.read`
 # gives (area 16), in `jadpo-std`'s `files`. `AiStream` is the text
 # `ai.stream` asks a model for, which only a streaming route sends (area 7).
+# `AuditEntry` and `AuditFieldChange` are what an audited entity's
+# `history` gives, and `AuditEntryRecorded` the event each entry is also
+# emitted as (area 16), their fields in `jadpo-std`'s `audit`.
 [types]
 Page Nearest
 File FileContents Principal Response Access AiStream
@@ -40,6 +43,7 @@ BatchRun BatchProgress RowProblem ImportSummary ExportSummary
 Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol
 FieldAccess OnDelete Generated FieldChange
 ApiChange PersonalData Erasure SearchLanguage RateLimitKey
+AuditEntry AuditFieldChange AuditEntryRecorded AuditChange AuditBy
 
 # Standard-library namespaces and the operations the pages name so far,
 # always called through the namespace (area 10); none waits for a stub

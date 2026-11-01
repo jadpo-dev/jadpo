@@ -93,6 +93,19 @@ pub(crate) async fn write(
     } else {
         None
     };
+    // An audited record as it was, read and locked before the write
+    // changes it (area 16, "Audit trail"; chunk B11).
+    let before = match plan
+        .audit
+        .as_ref()
+        .and_then(|audit| audit.before.as_ref().map(|b| (audit, b)))
+    {
+        Some((audit, before)) => {
+            let id = source_value(ctx, &before.id, inputs, site, now)?;
+            crate::audit::before(ctx, audit, &plan.store, id, json, site).await?
+        }
+        None => None,
+    };
     let unpoliced = ctx.unpoliced();
     let sql = match (&plan.unpoliced, unpoliced) {
         (Some(sql), true) => sql,
@@ -260,6 +273,34 @@ pub(crate) async fn write(
         ctx.checked_row(row, id);
     }
     let Some(returns) = &plan.returns else {
+        if let Some(audit) = &plan.audit {
+            let Some(before) = &before else {
+                return Err(defect(
+                    ctx,
+                    "an audited delete of a record it didn't read",
+                    site,
+                ));
+            };
+            // A lifecycle's `delete` keeps the record, as its transition
+            // left it.
+            let after = match &audit.after {
+                Some(after) => {
+                    let id = source_value(ctx, &after.id, inputs, site, now)?;
+                    crate::audit::read_record(ctx, after, &plan.store, id, json, site).await?
+                }
+                None => None,
+            };
+            crate::audit::record(
+                ctx,
+                audit,
+                &plan.store,
+                Some(before),
+                after.as_ref(),
+                json,
+                site,
+            )
+            .await?;
+        }
         return Ok(Written::Value(Value::Unit));
     };
     let mut fields = Vec::with_capacity(returns.record.fields.len());
@@ -272,7 +313,27 @@ pub(crate) async fn write(
             Err(what) => return Err(defect(ctx, &what, site)),
         }
     }
-    Ok(Written::Value(Value::record(&returns.record.ty, fields)))
+    let written = Value::record(&returns.record.ty, fields);
+    if let Some(audit) = &plan.audit {
+        if plan.op != jadpo_std::write::WriteOp::Create && before.is_none() {
+            return Err(defect(
+                ctx,
+                "an audited update of a record it didn't read",
+                site,
+            ));
+        }
+        crate::audit::record(
+            ctx,
+            audit,
+            &plan.store,
+            before.as_ref(),
+            Some(&written),
+            json,
+            site,
+        )
+        .await?;
+    }
+    Ok(Written::Value(written))
 }
 
 /// Why `file`, the value a write sets `check`'s field to, isn't one the

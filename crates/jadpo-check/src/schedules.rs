@@ -75,13 +75,15 @@ pub const PURGE_EVERY_MS: u64 = 60 * 60 * 1000;
 
 /// Where the built-in purge schedule of an entity is declared: its
 /// lifecycle's `purge:`, or else its own `retention:`, or else its first
-/// field's (area 15; chunk P2); `None` when it has none of them.
+/// field's (area 15; chunk P2), or else its audit's (area 16; chunk B11);
+/// `None` when it has none of them.
 pub fn purge_place(read: &crate::data::EntityRead) -> Option<&Span> {
     read.spans
         .purge
         .as_ref()
         .or(read.spans.retention.as_ref())
         .or(read.spans.field_retentions.first().map(|(_, span)| span))
+        .or(read.spans.audit_retention.as_ref())
 }
 
 /// The built-in purge schedule of `entity`, when its lifecycle purges or

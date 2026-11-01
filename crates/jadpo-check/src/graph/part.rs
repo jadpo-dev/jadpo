@@ -719,11 +719,14 @@ impl Part<'_> {
                 _ => None,
             }))
             .collect();
-        // An entity's `get` reads it (area 6).
+        // An entity's `get` reads it (area 6), and so does an audited one's
+        // `history` (area 16).
         let reads: BTreeSet<Key> = body
             .calls()
             .filter_map(|(_, callee)| match callee {
-                jadpo_graph::body::Callee::Entity { entity, operation } if operation == "get" => {
+                jadpo_graph::body::Callee::Entity { entity, operation }
+                    if operation == "get" || operation == jadpo_std::audit::HISTORY =>
+                {
                     Some(entity.clone())
                 }
                 _ => None,

@@ -15,6 +15,7 @@
 //! `jadpo migrate new` records and `jadpo check` compares with the latest
 //! migration ([`migrations`]).
 
+pub mod audit;
 pub mod backfill;
 mod columns;
 
@@ -55,10 +56,6 @@ pub const SECTIONS: [&str; 7] = [
     "policy",
     "membership",
 ];
-
-/// Why an entity's `audit:`, which area 16 decides and this compiler
-/// doesn't build, is refused.
-const UNBUILT_AUDIT: &str = "An entity's history of changes is area 16's audit trail, which isn't built yet: accepted, no change would be recorded.";
 
 /// What an index's `kind:` might be written as when it means a full-text
 /// index, which is an entity's `search:` instead (area 5; chunk B12).
@@ -314,6 +311,9 @@ pub struct EntityModel {
     /// Whether it has a `search:` section, read cleanly or not, so a query
     /// searching it isn't told it has none.
     pub search_written: bool,
+    /// Its `audit:` (area 16, "Audit trail"; chunk B11), when it has one
+    /// that reads: every change to its records is kept in its history.
+    pub audit: Option<audit::AuditModel>,
 }
 
 /// One field of an entity.
@@ -550,6 +550,11 @@ pub struct EntitySpans {
     /// Each field's `erase:` that reads cleanly (area 15; chunk P3), by
     /// the field's name, in field order: its key and its value.
     pub field_erasures: Vec<(String, Span, Span)>,
+    /// Its `audit:` key, when it has one that reads (area 16; chunk B11):
+    /// where its `audit` node is placed and its problems are reported.
+    pub audit: Option<Span>,
+    /// Its audit's `retention:` key, when that reads cleanly.
+    pub audit_retention: Option<Span>,
 }
 
 /// One entity read from its file: its model, where its parts are, and the
@@ -615,6 +620,8 @@ pub fn entity_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> O
             retention: None,
             field_retentions: Vec::new(),
             field_erasures: Vec::new(),
+            audit: None,
+            audit_retention: None,
         },
         retentions: Vec::new(),
         sensitive: Vec::new(),
@@ -830,11 +837,13 @@ impl Reader<'_> {
             retention: None,
             search: None,
             search_written: false,
+            audit: None,
         };
         let mut store: Option<(String, Span)> = None;
         let mut lifecycle = None;
         let mut retention: Option<(ast::Member, Span)> = None;
         let mut with_matches: Option<(ast::Member, Span)> = None;
+        let mut audited: Option<(ast::Member, Span)> = None;
         let mut unique = None;
         let mut indexes = None;
         let items: Vec<MemberItem> = decl
@@ -917,24 +926,14 @@ impl Reader<'_> {
                 {
                     with_matches = Some((member.clone(), key_span));
                 }
-                // Decided on its area page, not built: refused where it is
-                // written rather than read as a misspelling, and never
-                // accepted to do nothing. A field may still be named
-                // `audit` (`audit: Amount?`).
+                // `audit:` (area 16; chunk B11), read once every field is.
+                // A field may still be named `audit` (`audit: Amount?`).
                 "audit"
                     if !member
                         .value()
                         .is_some_and(|value| crate::types::looks_like_type(&value)) =>
                 {
-                    self.out.push(
-                        Diagnostic::new(
-                            &rule::TOOLCHAIN_NOT_BUILT_YET,
-                            "An entity's `audit:` isn't built yet",
-                        )
-                        .at(key_span, "decided, not built")
-                        .reason(UNBUILT_AUDIT)
-                        .next("Leave `audit:` out for now"),
-                    );
+                    audited = Some((member.clone(), key_span));
                 }
                 _ => match member.value() {
                     Some(value) if crate::types::looks_like_type(&value) => {
@@ -1029,6 +1028,23 @@ impl Reader<'_> {
             }
         }
         self.retentions(path, &mut entity, retention, lifecycle_span.as_ref());
+        if let Some((member, key_span)) = audited {
+            let lookup = self.lookup;
+            let settings = |name: &str| lookup.setting(name).cloned();
+            if let Some((model, retention)) = audit::read(
+                lookup,
+                &settings,
+                path,
+                &entity,
+                &member,
+                &key_span,
+                &mut self.out,
+            ) {
+                entity.audit = Some(model);
+                self.spans.audit = Some(key_span);
+                self.spans.audit_retention = retention;
+            }
+        }
         if let Some((member, key_span)) = with_matches {
             entity.search_written = true;
             entity.search = search::read(
@@ -1169,21 +1185,21 @@ impl Reader<'_> {
         entity: &str,
     ) {
         let span = node_span(path, node);
-        // `person:`, `retention:` and `search:` too, which aren't in
-        // [`SECTIONS`] so that a field may still be named any of them.
+        // `person:`, `retention:`, `search:` and `audit:` too, which aren't
+        // in [`SECTIONS`] so that a field may still be named any of them.
         let near = nearest(
             written,
             SECTIONS
                 .iter()
                 .copied()
-                .chain(["person", "retention", "search"]),
+                .chain(["person", "retention", "search", "audit"]),
         );
         let mut problem = Diagnostic::new(
             &rule::DATA_UNKNOWN_SECTION,
             format!("`{written}` isn't something an entity holds"),
         )
         .at(span.clone(), "not a field or a section");
-        let reason = "An entity's file holds only its data definition: fields (`name: Type`), and the sections `store:`, `unique:`, `indexes:`, `lifecycle:`, `caches:`, `policy:`, `membership:`, `person:`, `retention:` and `search:`. Its identity is always the field `id`; actions, queries and failures go in the domain's own folders.";
+        let reason = "An entity's file holds only its data definition: fields (`name: Type`), and the sections `store:`, `unique:`, `indexes:`, `lifecycle:`, `caches:`, `policy:`, `membership:`, `person:`, `retention:`, `search:` and `audit:`. Its identity is always the field `id`; actions, queries and failures go in the domain's own folders.";
         problem = match near {
             Some(near) if near != written => problem
                 .reason(format!("{reason} Did you mean `{near}`?"))
@@ -3172,6 +3188,20 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
                 .insert(system.table.to_string(), columns::system_table(system));
         }
     }
+    // An audited entity's history goes in its own store, so each entry
+    // commits with the change it records (area 16, "Audit trail"; chunk
+    // B11).
+    for entity in &model.entities {
+        if entity.audit.is_none() {
+            continue;
+        }
+        if let Some(store) = entity.store.as_ref().and_then(|s| schema.stores.get_mut(s)) {
+            store.tables.insert(
+                system::AUDIT.table.to_string(),
+                columns::system_table(&system::AUDIT),
+            );
+        }
+    }
     // Every schema store keeps runtime state (entities have the outbox,
     // and state-only stores hold schedules or AI usage). Add this after
     // all feature stores have been collected, including AI-only stores.
@@ -3927,6 +3957,16 @@ pub struct WriteRules {
     /// `erase` deletes their record and decides what happens to every
     /// record of theirs (area 15, "Erasure"; chunk P3).
     pub person: bool,
+    /// Whether it keeps a history of its changes, `audit:` (area 16;
+    /// chunk B11): its generated `history` reads it.
+    pub audited: bool,
+    /// Whether its records are people or belong to one (area 15, "The
+    /// person").
+    pub person_owned: bool,
+    /// A reference through which removing a record would delete or change
+    /// a record of an audited entity, a change the audit trail doesn't yet
+    /// record: the entity holding it, the field and whether it cascades.
+    pub reaches_audited: Option<(String, String, bool)>,
 }
 
 /// What one transition writes (area 5, "Lifecycle").
@@ -3974,6 +4014,8 @@ pub fn write_rules<'db>(
     let mut rules = WriteRules {
         fixed: crate::policy::fixed_fields(db, project, &found.name),
         person: found.person,
+        audited: found.audit.is_some(),
+        person_owned: crate::persons::persons(db, project).reaches(&found.name),
         ..WriteRules::default()
     };
     for field in &found.fields {
@@ -4021,6 +4063,20 @@ pub fn write_rules<'db>(
     while let Some(current) = queue.pop() {
         for referrer in &links_of(db, project, Name::new(db, current)).referrers {
             let holder = &referrer.holder;
+            // Removing the record deletes or changes one the audit trail
+            // keeps a history of, through the database's own cascade.
+            if let Some(on_delete @ (OnDelete::Cascade | OnDelete::Cleared)) = referrer.on_delete
+                && rules.reaches_audited.is_none()
+                && entity_model(db, project, Name::new(db, holder.entity.clone()))
+                    .as_deref()
+                    .is_some_and(|holding| holding.audit.is_some())
+            {
+                rules.reaches_audited = Some((
+                    holder.entity.clone(),
+                    holder.field.clone(),
+                    on_delete == OnDelete::Cascade,
+                ));
+            }
             match referrer.on_delete {
                 // A reference that doesn't say is reported where it is
                 // declared; taken as refusing, nothing here reports a

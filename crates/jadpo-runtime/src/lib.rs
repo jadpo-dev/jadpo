@@ -94,6 +94,7 @@
 
 pub mod ai;
 pub mod ai_budget;
+mod audit;
 pub mod batches;
 mod boundary;
 pub mod breaker;

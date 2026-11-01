@@ -247,6 +247,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             );
             out.extend(erasure::erasure_problems(db, project, file).iter().cloned());
             out.extend(
+                data::audit::audit_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
+            out.extend(
                 data::queries::query_problems(db, project, file)
                     .iter()
                     .cloned(),

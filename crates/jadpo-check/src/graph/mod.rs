@@ -470,7 +470,8 @@ pub fn person_nodes(db: &dyn Db, project: Project) -> Vec<Node> {
 /// name, and a field's under its field, keyed by the entity's and field's
 /// born names, placed at the `retention:` and holding its period and
 /// `since:` field, so a retention made longer, shorter or counted from
-/// another field changes the node.
+/// another field changes the node; and an audited entity's `audit` node
+/// under the entity, holding how long its history is kept (area 16).
 #[salsa::tracked(returns(ref))]
 pub fn retention_nodes(db: &dyn Db, project: Project) -> Vec<Node> {
     let registry = registry(db, project);
@@ -554,6 +555,26 @@ pub fn retention_nodes(db: &dyn Db, project: Project) -> Vec<Node> {
                 retention: shown,
                 clears,
             };
+            out.push(node);
+        }
+        // Its audit trail (area 16; chunk B11), keyed by its born name,
+        // placed at its `audit:`, so starting, stopping or changing how
+        // long its history is kept shows in a diff.
+        if let (Some(audit), Some(span)) = (&read.model.audit, &read.spans.audit) {
+            let key = Key::new(Kind::Audit, &born);
+            let mut node = Node::new(key.clone(), Kind::Audit, entity.clone());
+            let last = span.end.saturating_sub(1).max(span.start);
+            node.place = Some(jadpo_graph::Place {
+                file: span.path.clone(),
+                start: span.start,
+                end: span.end,
+                lines: (lines.line(span.start), lines.line(last)),
+            });
+            node.domain = domain.clone();
+            let kept = audit.shown();
+            node.digest = Some(jadpo_graph::Digest::of([key.as_str(), kept.as_str()]));
+            node.parent = Some(entity_key.clone());
+            node.detail = jadpo_graph::Detail::Audit { kept };
             out.push(node);
         }
     }

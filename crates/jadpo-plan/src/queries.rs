@@ -1209,7 +1209,7 @@ fn borns(entity: &EntityModel, names: &[String]) -> Vec<String> {
 
 /// Which query made a cursor: the first eight bytes of its key's digest,
 /// so a cursor survives a rename of the query but not another query.
-fn tag(key: &Key) -> u64 {
+pub(crate) fn tag(key: &Key) -> u64 {
     let digest = blake3::hash(key.as_str().as_bytes());
     let mut bytes = [0u8; 8];
     bytes.copy_from_slice(&digest.as_bytes()[..8]);
