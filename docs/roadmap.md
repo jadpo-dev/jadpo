@@ -276,8 +276,8 @@ D1 first: the site starts once D1 has merged.
 - [x] **D12 What the Learn path found**: [area 8](language/08-identity.md), "In development and tests"; [area 14](language/14-tooling.md), "What is built"; [documentation](documentation.md), "Where the content lives" and "The bundle".
 - [x] **D13a Error pages people reach first**: [writing guide](writing.md), "How an error page reads" and "What the docs check enforces"; [documentation](documentation.md), "The bundle"; `tools/docs/language_docs.py`, `error_format_problems` and `error_format_scope`; the catalogue summaries in `crates/jadpo-diag`.
 - [ ] **D13b Command errors that explain**: an umbrella, split by size
-  (2026-10-31) into D13b1, D13b2a, D13b2b1, D13b2b2, D13b2c and D13b3,
-  taken in order; tick it once all are.
+  (2026-10-31) into D13b1, D13b2a, D13b2b1, D13b2b2, D13b2c, D13b3a and
+  D13b3b, taken in order; tick it once all are.
 - [x] **D13b1 The `sh run` block, settings and `jadpo new`**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; `tools/docs/language_docs.py`, `check_runs`; the pages of `configuration.local_*`, `cli.config_*` and `toolchain.*` a run raises, and `configuration.value_invalid`.
 - [x] **D13b2a Copied output, root runs and the first person-decided pages**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; area 14, "What it compiles with"; the pages of `configuration.value_missing`, `configuration.local_changed`, `format.write_failed`, `translation.exchange_file_invalid`, `toolchain.build_failed` and `toolchain.fetch_failed`.
 - [x] **D13b2b1 A database for runs, migrations and seeds**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; area 14, "Database command errors"; `tools/docs/language_docs.py`, `Databases`; the pages of `seed.production_refused`, `seed.unavailable`, `migration.apply_failed`, `migration.store_diverged`, `migration.extension_missing` and `migration.extension_outdated`.
@@ -293,11 +293,19 @@ D1 first: the site starts once D1 has merged.
   `test.runtime_start_failed` (no memory for the test thread) at all;
   each shows output copied from a `jadpo` built with that failure forced,
   and says so.
-- [ ] **D13b3 The other command errors** `opus · high`: the same for the
-  rules only a command raises that an agent decides (`cli.*_arguments`,
-  `seed.failed`, `format.changes_required` and the rest) whose page says
-  "No example yet"; then
-  `error_format_scope` stops leaving any of them out.
+- [x] **D13b3a The command line's own errors**: area 14, "Command-line errors"; `tools/docs/language_docs.py`, `error_format_scope`; the pages of `cli.*_arguments`, `cli.unknown_command` and `cli.unknown_flag`.
+- [ ] **D13b3b The other command errors** `opus · high`: the same for the
+  rest of the rules only a command raises that an agent decides and whose
+  page says "No example yet" (`cli.dev_port_invalid`,
+  `cli.package_unreadable`, `cli.package_not_openapi`,
+  `configuration.move_*`, `conform.failed`, `format.changes_required`,
+  `recording.failed`, `seed.failed`, `suggest.record_invalid`,
+  `test.failed`, `test.no_tests` and `translation.exchange_unit_unknown`);
+  then `error_format_scope` stops leaving any of them out. Still filed
+  under an `*_arguments` rule though they aren't the command line's
+  mistakes: `jadpo email open` when the browser can't start, `jadpo
+  calls script` and `jadpo config set` when the project has errors, and
+  `jadpo sql` when a query that checks makes no statement.
 - [ ] **D13c The rest of the error pages** `opus · high`: every other page
   in `docs/errors/` to the format, each rule's catalogue summary its
   page's first sentence; `error_format_scope` then covers every page.

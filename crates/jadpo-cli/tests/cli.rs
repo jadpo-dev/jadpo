@@ -594,7 +594,7 @@ fn a_bad_color_value_lists_the_valid_ones() {
     assert_eq!(
         output.stderr,
         "error: `sometimes` isn't a colour setting
-  reason: `--color` takes auto, always or never.
+  reason: `--color` takes `auto`, `always` or `never`.
   next: Use `--color=auto`, `--color=always` or `--color=never` (agent)
   rule: cli.presentation_arguments
   help: https://jadpo.dev/docs/errors/cli.presentation_arguments
@@ -870,5 +870,24 @@ fn help_with_a_misspelt_rule_names_the_nearest() {
             .contains("next: Use `import.unused` instead of `impot.unused`"),
         "{}",
         output.stderr
+    );
+}
+
+/// A flag that needs a value, given last: the value is named in plain
+/// words ("a URL", not "an url"), and the next step repeats the action
+/// before the flag, so it names a command that exists.
+#[test]
+fn a_flag_without_its_value_names_the_whole_command() {
+    let output = jadpo(&["migrate", "apply", "--url"]);
+    assert_eq!(output.code, 2);
+    assert_eq!(
+        output.stderr,
+        "\
+error: `--url` needs a URL
+  reason: `--url` takes a URL after it, and nothing follows it.
+  next: Give it after the flag: `jadpo migrate apply --url <url>` (agent)
+  rule: cli.migrate_arguments
+  help: https://jadpo.dev/docs/errors/cli.migrate_arguments
+"
     );
 }

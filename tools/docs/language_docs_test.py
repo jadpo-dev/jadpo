@@ -779,10 +779,14 @@ class ErrorFormat(unittest.TestCase):
             (root / 'docs/learn/01-a.md').write_text('See [it](../errors/a.b.md).\n')
             (root / 'examples/one/README.md').write_text('Shows `c.d`.\n')
             (root / 'docs/errors/cli.x.md').write_text('# `cli.x`\n\nNo example yet.\n')
+            (root / 'docs/errors/cli.y.md').write_text('# `cli.y`\n\nIt ran.\n')
             catalogue = {'a.b': {'area': 3, 'decides': 'agent'}, 'c.d': {'area': 3, 'decides': 'agent'},
                          'e.f': {'area': 3, 'decides': 'human'}, 'g.h': {'area': 3, 'decides': 'agent'},
-                         'cli.x': {'area': docs.COMMAND_AREA, 'decides': 'human'}}
-            self.assertEqual(docs.error_format_scope(catalogue, root), {'a.b', 'c.d', 'e.f'})
+                         'cli.x': {'area': docs.COMMAND_AREA, 'decides': 'human'},
+                         'cli.y': {'area': docs.COMMAND_AREA, 'decides': 'agent'}}
+            # The command line's own rules are in scope once their pages
+            # have an example.
+            self.assertEqual(docs.error_format_scope(catalogue, root), {'a.b', 'c.d', 'e.f', 'cli.y'})
 
     def test_the_bundle_gives_the_summary_once(self):
         with tempfile.TemporaryDirectory() as tmp:

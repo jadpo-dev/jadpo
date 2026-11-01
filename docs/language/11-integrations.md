@@ -5779,7 +5779,7 @@ check.
 - **What it reads.** OpenAPI 3.0 and 3.1 as JSON, from a local file. YAML
   and Swagger 2.0 are refused with what to do (`cli.package_unreadable`
   and `cli.package_not_openapi`, listed under
-  [Command errors](14-tooling.md#command-errors)). Nothing is fetched.
+  [Command-line errors](14-tooling.md#command-line-errors)). Nothing is fetched.
 - **The files.** `package.jadpo` with `Licence.proprietary` (an own
   integration may use it) and `jadpo: "1.0"`; `provider.jadpo` with
   `protocol: Protocol.json_http`, `imported: { file: digest: }` (the path
