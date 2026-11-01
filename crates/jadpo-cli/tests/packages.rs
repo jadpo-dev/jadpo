@@ -126,6 +126,11 @@ fn show_prints_a_packages_description_and_public_surface() {
   folder: packages/postcodes/v2
   guide: GUIDE.md
 
+Facts
+  kind: library, pure
+  storable: UkPostcode, WrittenPostcode
+  failures: uk.parse: InvalidPostcode
+
 Functions
   uk.parse         (written: WrittenPostcode) fails InvalidPostcode -> UkPost...
 
@@ -397,6 +402,11 @@ fn check_runs_the_publishing_bar_and_writes_the_surface() {
   rule: publish.changelog_missing
   help: https://jadpo.dev/docs/errors/publish.changelog_missing
 
+Facts
+  kind: library, pure
+  storable: UkPostcode, WrittenPostcode
+  failures: uk.parse: InvalidPostcode
+
 Publishing bar
   compiles      passed                        no errors
   described     passed                        every public declaration
@@ -438,7 +448,12 @@ package Postcodes.v2
     assert_eq!(second.code, 0, "{}", second.stdout);
     assert_eq!(
         second.stdout,
-        "Publishing bar
+        "Facts
+  kind: library, pure
+  storable: UkPostcode, WrittenPostcode
+  failures: uk.parse: InvalidPostcode
+
+Publishing bar
   compiles      passed                        no errors
   described     passed                        every public declaration
   examples      passed                        1 example, every failure shown

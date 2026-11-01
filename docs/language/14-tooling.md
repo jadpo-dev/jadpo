@@ -844,8 +844,10 @@ surface, or one declaration with its file. `packages` is a synonym ([The
 surface](11-integrations.md#the-surface)).
 
 The description is in bold. The package's facts follow: its version and
-source from its lock line, or "the app's own". Then comes a list per
-section and a footer counting them. Given a declaration, it prints that in
+source from its lock line, or "the app's own". Then come [what a release
+shows](11-integrations.md#what-a-release-shows), as `jadpo package check`
+prints it and left out while the app's own integration has errors, a list
+per section and a footer counting them. Given a declaration, it prints that in
 full with its file and line and its whole description. `--guide` prints
 the package's `GUIDE.md`.
 
@@ -917,9 +919,30 @@ and publishing a package](11-integrations.md#developing-and-publishing-a-package
 - A `recipes` row compiles each recipe in the one domain of the package's
   `sample/` app (`publish.sample_missing` without one).
 
+- A `behaviour` row runs the last release's examples and tests against the
+  new code. One that fails is a change the types don't show, refused within
+  a major version unless the new version's section marks it a fix
+  (`publish.behaviour_changed`).
+
 The bar is shown a row per item: passed, failed or not checked yet. When
 the package compiles and its version is allowed, `surface.jadpo_record` is
 written, to be compared with the previous tag's.
+
+Above the bar, once the package compiles, come the release's
+[facts](11-integrations.md#what-a-release-shows) and its [change
+record](11-integrations.md#the-changelog), exactly as the registry will show
+them. `--json` gives the same as `facts` and `change_record`, and what the
+last release's examples and tests gave as `previous`:
+
+```text
+Facts
+  kind      library, pure
+  storable  OutwardCode, UkPostcode, WrittenPostcode
+  failures  uk.tidy: InvalidPostcode
+
+Changes since 2.0.0
+  + added  type OutwardCode
+```
 
 When the package compiles and sends personal data, a section before the bar
 says where: each host, then each operation with what it sends and its
@@ -933,15 +956,33 @@ Personal data sent
   customers.create  CustomerRequest.notes  health, sensitive
 ```
 
+### `jadpo package verify`
+
+The registry's verifier, which you can run yourself ([The
+verifier](11-integrations.md#the-verifier)). `verify <folder> --previous
+<folder>` runs `check`'s bar on a package as it stands, against the release
+in the second folder, and writes nothing. With no `--previous` it is a first
+release.
+
+The commit has to carry what its code gives: its `surface.jadpo_record` and
+the new version's list in `CHANGELOG.md` are compared rather than written
+(`publish.stale_files`).
+
+`--json` writes everything a release shows: the bar's rows, the surface,
+facts, change record, each public declaration's fingerprints, what the
+previous release's examples and tests gave, and the Jadpo release it was
+checked with ([How they are worked
+out](11-integrations.md#how-a-releases-facts-change-record-and-fingerprints-are-worked-out)).
+
 Not built yet:
 
 - `jadpo package new <Name> --library` or `--provider`, which writes a
   package's own repository: the package format, `recipes/`, a `sample/`
   app and `GUIDE.md`.
 - The registry's commands, `publish` (and `--dry-run`), `preview`,
-  `search`, `audit` and `verify`; `add @publisher/name` from the registry,
-  checked against its public log; `update`'s three-day wait, `--to` and
-  urgent releases; and `check` printing the facts and the change record
+  `search`, `audit` and `verify --serve`; `add @publisher/name` from the
+  registry, checked against its public log; and `update`'s three-day wait,
+  `--to` and urgent releases
   ([The public registry](11-integrations.md#the-public-registry)).
 - `jadpo package add` from the registry (in the fixed order [Where
   packages come from](11-integrations.md#where-packages-come-from)
@@ -3019,12 +3060,14 @@ its command is built.
 | `migration.sql_sqlite_renamed_table_unsupported` | `schema` | SQLite rebuild cannot target a logically renamed table |
 | `migration.sql_strategy_unsupported` | `schema` | Reviewed migration strategy has no SQL implementation |
 | `migration.sql_type_unsupported` | `schema` | Field type has no migration SQL mapping |
+| `publish.behaviour_changed` | `package check`, `package verify` | An example or test of a package's last release fails against its new version, and the change isn't marked a fix ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.breaking_change` | `package check` | A package's new version changes or removes something its last release offered, within the same major version ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.changelog_missing` | `package check` | Package's changelog doesn't say why its new version is released ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.description_missing` | `package check` | Package's public declaration has no description ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.example_failed` | `package check` | Example in a package's description doesn't compile or doesn't hold ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.example_missing` | `package check` | Package's function has no example, or a failure it raises is shown by none ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.sample_missing` | `package check` | Package's recipes have no sample app with one domain to compile in ([Publishing errors](11-integrations.md#publishing-errors)) |
+| `publish.stale_files` | `package verify` | A commit's `surface.jadpo_record` or changelog list isn't what the package's code gives ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `runtime.outcome_unknown` | the running app | Generated runtime could not confirm whether an effect committed |
 | `runtime.startup_failed` | the running app | Generated runtime failed during startup; a deployable's log event, with every problem that stopped it ([A native deployable](#a-native-deployable)) |
 | `runtime.unhandled_fault` | the running app | Generated runtime contained an unexpected fault |

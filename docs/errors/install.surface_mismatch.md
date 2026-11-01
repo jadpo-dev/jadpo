@@ -48,6 +48,11 @@ jadpo package check
 ```
 
 ```text
+Facts
+  kind: library, pure
+  storable: InwardCode, UkPostcode, WrittenPostcode
+  failures: uk.parse: InvalidPostcode
+
 Publishing bar
   compiles      passed                        no errors
   described     passed                        every public declaration

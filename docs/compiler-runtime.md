@@ -887,6 +887,21 @@ decisions themselves are `acceptances::needs`, the same list `check` judges,
 each carrying its plain words and the callers it lets in from where its
 record is read.
 
+**What a release shows** (chunk R3, area 11) is worked out by
+`jadpo_check::release`, not held in the graph, since it describes a package's
+release rather than an app. `facts` reads the surface,
+`surface::all_operations` (every resource's operations, public or not),
+`personal_data::package_sends` and the candidates `types::type_problems`
+finds. `surface_changes` and `personal_data_changes` compare a release with
+the last. `fingerprints` digests `graph::similar::normalised`, the
+similar-helper check's tokens, for each public declaration, and reduces each
+callable's types through the graph for its `Shape`. `jadpo package check` and
+`verify` are both `package::bar`, which writes in the one and compares in the
+other, and `package_release::run_previous` runs the last release's examples
+and tests in a scratch app beside the new code. The registry's `Facts` and
+`ChangeEntry` are the same shapes: `jadpo-cli`'s tests check `verify --json`
+against them.
+
 **Removals** (chunk V3, areas 5 and 18) are worked out from the snapshots
 alone: `jadpo_graph::migration::removals` compares a migration's snapshot with
 the one before it, and `next_snapshot` keeps a table whose entity is gone,

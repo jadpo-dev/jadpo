@@ -429,13 +429,7 @@ real deploy) and, before outside authors can publish, D3 (releases).
 - [x] **R1 Confirming a request with a passkey**: area 8, "Confirm one
   request with a passkey"; compiler/runtime, "Confirming one request with a
   passkey".
-- [ ] **R3 A release's facts, change record and fingerprints**
-  `opus · xhigh` after V5: area 11, "What a release shows", "The
-  changelog", "Search" (the fingerprints) and "Yanks, takedowns and
-  advisories" (copies). `jadpo package check` prints the facts and the
-  change record; the previous release's examples and tests run against
-  the new code; `jadpo package verify --json`. Screens designed with the
-  design skills first.
+- [x] **R3 A release's facts, change record and fingerprints**: area 11, "How a release's facts, change record and fingerprints are worked out"; area 14, "`jadpo package check`" and "`jadpo package verify`"; compiler/runtime §2.3, "What a release shows"; `docs/errors/publish.behaviour_changed.md`, `docs/errors/publish.stale_files.md`.
 - [x] **R4 The registry protocol and a local registry**: area 11, "The registry protocol"; compiler/runtime §2.1, `jadpo-registry`.
 - [ ] **R5 The registry commands** `opus · high` after R3 and R4: area 11,
   "Installing and updating from the registry", "Developing for the
@@ -446,7 +440,9 @@ real deploy) and, before outside authors can publish, D3 (releases).
   first.
 - [ ] **R6 The verifier** `opus · high` after R3: area 11, "The verifier".
   `jadpo package verify --serve`, fetching over git and then verifying with
-  no network, and its container image published with each release (D3).
+  no network, the check that a commit holds only Jadpo source and the
+  package's text files within the size limit, and its container image
+  published with each release (D3).
   It runs on Fly.io, reached over HTTPS (Richard, 2026-10-31); **needs a
   maintainer** for the Fly.io account before it is deployed.
 - [ ] **R7 The registry application** **needs a maintainer** to start the

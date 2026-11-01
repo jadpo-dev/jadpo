@@ -224,7 +224,13 @@ pub fn named(name: &str) -> Option<Shape> {
             field("host", plain()),
             field("operations", list(plain())),
         ]),
-        "PersonalDataFact" => object(vec![field("field", plain()), field("host", plain())]),
+        "PersonalDataFact" => object(vec![
+            field("field", plain()),
+            field("host", plain()),
+            field("operation", plain()),
+            field("categories", list(plain())),
+            field("decided_only", Bool),
+        ]),
         "FailureFact" => object(vec![
             field("declaration", plain()),
             field("failures", list(plain())),
@@ -235,7 +241,9 @@ pub fn named(name: &str) -> Option<Shape> {
         ]),
         "ChangeEntry" => object(vec![
             field("declaration", plain()),
+            field("kind", plain()),
             field("change", Named("Change")),
+            field("detail", nullable(plain())),
             field("why", nullable(plain())),
         ]),
         "Change" => Shape::Enum(crate::protocol::Change::VALUES),

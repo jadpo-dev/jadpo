@@ -154,23 +154,33 @@ pub fn similar_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
 /// `decline` lines left out.
 fn likeness(function: &ast::FunctionDecl) -> Digest {
     let own = function.name().map(|name| name.syntax().clone());
-    let mut locals: BTreeMap<String, usize> = BTreeMap::new();
-    for name in function.syntax().descendants().filter_map(ast::Name::cast) {
-        if Some(name.syntax()) == own.as_ref() {
-            continue;
-        }
-        if let Some(text) = tree::name_text(&name) {
-            let next = locals.len();
-            locals.entry(text).or_insert(next);
+    let parts = normalised(function.syntax(), own.as_ref(), true);
+    Digest::of(parts.iter().map(String::as_str))
+}
+
+/// A declaration's tokens as the formatter writes them, without its own
+/// name `own`, its visibility or its `decline` lines. With `locals`, each
+/// other name it binds, and each use of one, is named by its position.
+pub(crate) fn normalised(node: &SyntaxNode, own: Option<&SyntaxNode>, locals: bool) -> Vec<String> {
+    let mut positions: BTreeMap<String, usize> = BTreeMap::new();
+    if locals {
+        for name in node.descendants().filter_map(ast::Name::cast) {
+            if Some(name.syntax()) == own {
+                continue;
+            }
+            if let Some(text) = tree::name_text(&name) {
+                let next = positions.len();
+                positions.entry(text).or_insert(next);
+            }
         }
     }
-    let tokens = jadpo_fmt::canonical_tokens(function.syntax());
+    let tokens = jadpo_fmt::canonical_tokens(node);
     let mut parts: Vec<String> = Vec::new();
     for token in &tokens {
         let Some(parent) = token.parent() else {
             continue;
         };
-        if Some(&parent) == own.as_ref()
+        if Some(&parent) == own
             || parent.kind() == jadpo_syntax::SyntaxKind::VISIBILITY
             || parent
                 .ancestors()
@@ -180,14 +190,14 @@ fn likeness(function: &ast::FunctionDecl) -> Digest {
         }
         if token.kind() == IDENT
             && is_local_position(&parent)
-            && let Some(position) = locals.get(token.text())
+            && let Some(position) = positions.get(token.text())
         {
             parts.push(format!("${position}"));
         } else {
             parts.push(token.text().to_string());
         }
     }
-    Digest::of(parts.iter().map(String::as_str))
+    parts
 }
 
 /// Whether a name token stands for a local: a binding, or a reference that

@@ -6,6 +6,7 @@ use jadpo_registry::names::{Digest, ScopedName, Version};
 use jadpo_registry::protocol::{
     AdvisoryQuery, BASE, ENDPOINTS, Installed, Method, PackageKind, Request, StartRelease,
 };
+use jadpo_registry::shape::{Shape, check_value};
 
 fn digest() -> Digest {
     Digest::parse("sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
@@ -157,4 +158,45 @@ fn a_request_off_the_table_is_refused() {
         .is_err(),
         "an unknown member is refused"
     );
+}
+
+/// What the verifier writes (`jadpo package verify --json`) reads as the
+/// protocol's types and their shapes alike, field for field.
+#[test]
+fn a_release_s_facts_and_change_record_have_one_shape() {
+    use jadpo_registry::protocol::{ChangeEntry, Facts};
+
+    let facts = serde_json::json!({
+        "kind": "provider",
+        "pure": false,
+        "hosts": [{"host": "https://api.acme-pay.example", "operations": ["customers.create"]}],
+        "changing_calls": ["customers.create"],
+        "personal_data": [{
+            "field": "CustomerRequest.notes",
+            "host": "https://api.acme-pay.example",
+            "operation": "customers.create",
+            "categories": ["health"],
+            "decided_only": false,
+        }],
+        "erasure": false,
+        "storable_types": ["CustomerId"],
+        "failures": [{"declaration": "customers.create", "failures": ["CardDeclined"]}],
+        "confirmed_operations": [],
+        "last_contract_run": null,
+        "standard_candidates": [{"declaration": "Customer.created", "standard": "Instant"}],
+    });
+    check_value(&Shape::Named("Facts"), &facts).expect("the shape");
+    let read: Facts = serde_json::from_value(facts.clone()).expect("the type");
+    assert_eq!(serde_json::to_value(read).expect("writes"), facts);
+
+    let entry = serde_json::json!({
+        "declaration": "uk.parse",
+        "kind": "function",
+        "change": "behaviour_changed",
+        "detail": "example of uk.parse",
+        "why": "Upper case broke the courier's lookup.",
+    });
+    check_value(&Shape::Named("ChangeEntry"), &entry).expect("the shape");
+    let read: ChangeEntry = serde_json::from_value(entry.clone()).expect("the type");
+    assert_eq!(serde_json::to_value(read).expect("writes"), entry);
 }

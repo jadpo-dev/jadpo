@@ -760,6 +760,8 @@ rules! {
         "A prompt's type has a field that its prompt file never writes";
     PROMPT_SECTION_MISSING: "prompt.section_missing", area 21, Error, Agent,
         "A prompt and its file don't make its two sections, each once and in order";
+    PUBLISH_BEHAVIOUR_CHANGED: "publish.behaviour_changed", area 14, Error, Human,
+        "An example or test of a package's last release fails against its new version, and the change isn't marked a fix";
     PUBLISH_BREAKING_CHANGE: "publish.breaking_change", area 14, Error, Human,
         "A package's new version changes or removes something its last release offered, within the same major version";
     PUBLISH_CHANGELOG_MISSING: "publish.changelog_missing", area 14, Error, Agent,
@@ -772,6 +774,8 @@ rules! {
         "Package's function has no example, or a failure it raises is shown by none";
     PUBLISH_SAMPLE_MISSING: "publish.sample_missing", area 14, Error, Agent,
         "Package's recipes have no sample app with one domain to compile in";
+    PUBLISH_STALE_FILES: "publish.stale_files", area 14, Error, Agent,
+        "A commit's `surface.jadpo_record` or changelog list isn't what the package's code gives";
     QUERY_AGGREGATE_ARGUMENT: "query.aggregate_argument", area 6, Error, Agent,
         "Aggregate is given the wrong arguments";
     QUERY_AGGREGATE_FIELD: "query.aggregate_field", area 6, Error, Agent,
