@@ -16,9 +16,7 @@ A project's `config.jadpo` declares `mail_api_key`, and the command
 names `mail_key`:
 
 ```jadpo check project=e-config-arguments file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```jadpo check project=e-config-arguments file=config.jadpo hidden
@@ -88,9 +86,7 @@ config {
 ```
 
 ```jadpo check project=e-config-arguments-declared file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 `jadpo config set mail_key` then asks for `MAIL_KEY`, and `jadpo config

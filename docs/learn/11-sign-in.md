@@ -70,7 +70,6 @@ through it:
 use todos/entities { User }
 
 application {
-    jadpo: "0.2"
     display_name: "Todos"
     connections: {
         mail: {

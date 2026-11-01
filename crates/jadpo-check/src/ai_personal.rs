@@ -569,6 +569,14 @@ pub fn shallow(lookup: &dyn TypeView, ty: &TypeRef) -> Vec<(String, String)> {
     out
 }
 
+/// [`shallow`] for a type as the checker holds it: what an audited
+/// entity's field is checked by (area 16; chunk B11).
+pub fn standard_personal(lookup: &dyn TypeView, ty: &Ty) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    shallow_ty(lookup, ty, &mut out, 0);
+    out
+}
+
 fn shallow_ref(lookup: &dyn TypeView, ty: &TypeRef, out: &mut Vec<(String, String)>, depth: usize) {
     if depth > 16 {
         return;

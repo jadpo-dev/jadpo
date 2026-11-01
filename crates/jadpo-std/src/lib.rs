@@ -57,6 +57,7 @@
 
 pub mod across;
 pub mod ai;
+pub mod audit;
 pub mod batch;
 mod builtin;
 pub mod canonical;
@@ -111,9 +112,9 @@ mod zones;
 pub use builtin::{Builtin, KEY_SIZE, SIGNING_KEY_MIN};
 pub use constant::{Constant, Hidden};
 pub use enums::{
-    Access, AuthenticationMethod, AuthenticationStrength, BatchState, ClientAddressSource,
-    CodeForm, ComponentStyle, CsvFormat, DeployTarget, Driver, Dst, Erasure, FieldAccess,
-    FieldChange, Generated, HttpMethod, Idempotency, IndexKind, InvalidDay, LOCALE,
+    Access, AuditBy, AuditChange, AuthenticationMethod, AuthenticationStrength, BatchState,
+    ClientAddressSource, CodeForm, ComponentStyle, CsvFormat, DeployTarget, Driver, Dst, Erasure,
+    FieldAccess, FieldChange, Generated, HttpMethod, Idempotency, IndexKind, InvalidDay, LOCALE,
     MembershipScope, MoneyDisplay, MoneyPrecision, MoneySign, Month, OnDelete, ProviderEnvironment,
     Rounding, RouteAuthentication, ScheduleTrigger, SearchLanguage, SignInMethod, SignInRefusal,
     SuccessStatus, Tenancy, TextDirection, TextFormat, TranslationReview, Trigger, UuidVersion,

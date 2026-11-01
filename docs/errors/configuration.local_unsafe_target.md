@@ -21,9 +21,7 @@ A project's `config.jadpo` declares a secret `mail_api_key`, and
 Storing a value at the prompt:
 
 ```jadpo check project=e-local-link file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```jadpo check project=e-local-link file=config.jadpo hidden

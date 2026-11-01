@@ -567,9 +567,7 @@ lists the ways to sign in.
 ```jadpo check project=tool-share file=app.jadpo
 use lending/entities { Member }
 
-application {
-    jadpo: "0.2"
-}
+application {}
 
 principal {
     user: {
@@ -802,6 +800,6 @@ A feature that isn't built is the error `toolchain.not_built_yet` where
 you use it. Not built yet, among others: seeds and `jadpo seed`; `jadpo rename`; entities and
 caches in Redis; failure logging; sign-in with OAuth providers, and OAuth
 grants; token scopes; most of personal data, and of the debugging and
-review tools; data builders and `assert emitted` in tests; flags, audit,
-search and documents; and installers, so `jadpo` is built from its
+review tools; data builders and `assert emitted` in tests; flags and
+documents; and installers, so `jadpo` is built from its
 source with `cargo build --release -p jadpo-cli`.

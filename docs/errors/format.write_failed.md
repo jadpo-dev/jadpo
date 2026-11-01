@@ -20,9 +20,7 @@ A project's `config.jadpo` is indented with two spaces, and the file is
 read-only:
 
 ```jadpo check project=e-format-write file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-format-write expect=format.write_failed

@@ -11,9 +11,7 @@ An acceptance's file is named after the decision it records, so `acceptances/` r
 The purpose is left out:
 
 ```jadpo check project=e-acceptance-arguments file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-acceptance-arguments expect=cli.acceptance_arguments

@@ -11,9 +11,7 @@ A `jadpo calls` command names an action it doesn't have, a call the log doesn't 
 Nothing has run `jadpo dev` yet, so the log is empty, and the command asks for a call:
 
 ```jadpo check project=e-calls-arguments file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-calls-arguments expect=cli.calls_arguments

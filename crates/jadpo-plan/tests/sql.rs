@@ -373,6 +373,7 @@ fn every_query_shape_matches_its_golden_sql() {
             PurgeKind::Hidden => format!("{entity}_purge"),
             PurgeKind::Retention => format!("{entity}_retention"),
             PurgeKind::FieldRetention(field) => format!("{entity}_{field}_retention"),
+            PurgeKind::Audit => format!("{entity}_audit_retention"),
         };
         written.push((name, purge(plan)));
     }
@@ -914,4 +915,128 @@ SELECT "id" FROM "deleted0""#
         "no row: the member's not-found failure"
     );
     assert!(erase.refusals.is_empty(), "nothing refuses an erasure");
+}
+
+/// An audited entity's statements (area 16, "Audit trail"; chunk B11):
+/// each update and delete reads and locks its record first, as the write
+/// will; `history` asks whether the caller may read the record, with a
+/// column for the field whose own `policy:` narrows reading; and the
+/// audit retention deletes the oldest entries by the entity's born name.
+#[test]
+fn an_audited_entitys_writes_read_their_record_first_and_its_history_asks_its_grants() {
+    let plan = planned(
+        r#"type Note = Text {
+    max_length: 80
+}
+
+config {
+    audit_retention: Duration {
+        default: 2557d
+    }
+}
+
+principal {
+    user: {
+        subject: Clerk.handle
+    }
+}
+
+authentication {
+    api_token: {}
+}
+
+entity Clerk {
+    id: Uuid
+    handle: Note {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+}
+
+entity Invoice {
+    id: Uuid
+    clerk_id: Clerk.id {
+        on_delete: OnDelete.restricted
+    }
+    note: Note?
+    discount: Int {
+        policy: {
+            read: [clerk_id]
+            update: [clerk_id]
+        }
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.authenticated]
+        update: [Access.public]
+        delete: [Access.public]
+    }
+
+    audit: {
+        retention: {
+            after: config.audit_retention
+        }
+    }
+}
+
+action annotate(invoice_id: Invoice.id, note: Note) fails InvoiceNotFound -> Invoice {
+    return attempt Invoice.update(invoice_id) {
+        set: {
+            note: note
+        }
+    }
+}
+
+action cancel(invoice_id: Invoice.id) fails InvoiceNotFound -> Unit {
+    attempt Invoice.delete(invoice_id)
+}
+"#
+        .to_string(),
+    );
+    let audits: Vec<&jadpo_std::audit::AuditPlan> = plan
+        .writes()
+        .iter()
+        .filter_map(|write| write.plan.audit.as_ref())
+        .collect();
+    assert_eq!(audits.len(), 2, "the update and the delete");
+    let befores: Vec<&str> = audits
+        .iter()
+        .map(|audit| {
+            audit
+                .before
+                .as_ref()
+                .expect("its record first")
+                .sql
+                .as_str()
+        })
+        .collect();
+    assert_eq!(
+        befores,
+        [
+            "SELECT \"id\", \"clerk_id\", \"note\", \"discount\"\nFROM \"invoice\"\nWHERE \"id\" = $1\nFOR NO KEY UPDATE",
+            "SELECT \"id\", \"clerk_id\", \"note\", \"discount\"\nFROM \"invoice\"\nWHERE \"id\" = $1\nFOR UPDATE",
+        ]
+    );
+    let fields: Vec<&str> = audits[0].fields.iter().map(|f| f.name.as_str()).collect();
+    assert_eq!(fields, ["clerk_id", "note", "discount"]);
+    let history = plan.history_of("Invoice").expect("its history");
+    assert_eq!(history.restricted, ["discount"]);
+    assert_eq!(
+        history.access,
+        "SELECT TRUE, (\"invoice\".\"clerk_id\" = $3) IS TRUE\nFROM \"invoice\"\nWHERE \"id\" = $1\n  AND $2"
+    );
+    let retention = plan.audit_retention("Invoice").expect("its retention");
+    assert_eq!(
+        retention.sql,
+        "DELETE FROM \"jadpo_audit\"\nWHERE (\"entity\", \"record_id\", \"seq\") IN (\n  SELECT \"entity\", \"record_id\", \"seq\"\n  FROM \"jadpo_audit\"\n  WHERE \"entity\" = $1 AND \"at\" < $2\n  ORDER BY \"at\", \"record_id\", \"seq\"\n  LIMIT 500\n  FOR UPDATE SKIP LOCKED\n)\nRETURNING \"seq\""
+    );
+    assert!(
+        plan.history_of("Clerk").is_none(),
+        "an unaudited entity has none"
+    );
 }

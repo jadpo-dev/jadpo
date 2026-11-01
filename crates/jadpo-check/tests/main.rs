@@ -18,6 +18,7 @@ mod ai_providers;
 mod ai_stream;
 mod application_sections;
 mod at_the_cause;
+mod audit;
 mod batches;
 mod bodies;
 mod calendar;

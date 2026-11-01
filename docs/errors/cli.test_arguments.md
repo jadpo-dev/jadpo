@@ -11,9 +11,7 @@ A `jadpo test` command names a path that isn't there, or a seed, a kind or a `--
 The seed isn't a number:
 
 ```jadpo check project=e-test-arguments file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-test-arguments expect=cli.test_arguments

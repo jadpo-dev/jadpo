@@ -15,9 +15,7 @@ calls. Nothing is written.
 The provider's document is Swagger 2.0:
 
 ```jadpo check project=e-package-not-openapi file=app.jadpo hidden
-application {
-    jadpo: "0.2"
-}
+application {}
 ```
 
 ```sh run project=e-package-not-openapi expect=cli.package_not_openapi
