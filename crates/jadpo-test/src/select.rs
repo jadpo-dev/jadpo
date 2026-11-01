@@ -223,19 +223,17 @@ pub(crate) fn choose(
         chosen.retain(|test| test.name.to_lowercase().contains(&wanted));
         if chosen.is_empty() {
             let near = nearest(name, before.iter().map(|test| test.name.as_str()));
+            let none = match before.len() {
+                1 => "The one test's name doesn't contain this text.".to_string(),
+                n => format!("None of the {n} tests' names contains this text."),
+            };
             let (reason, next) = match near {
                 Some(near) => (
-                    format!(
-                        "None of the {} contains this text. Did you mean `{near}`?",
-                        count(before.len(), "test's name", "tests' names")
-                    ),
+                    format!("{none} Did you mean `{near}`?"),
                     format!("Use `--name \"{near}\"`"),
                 ),
                 None => (
-                    format!(
-                        "None of the {} contains this text.",
-                        count(before.len(), "test's name", "tests' names")
-                    ),
+                    none,
                     "Check the spelling, or leave out `--name` to run every test".to_string(),
                 ),
             };

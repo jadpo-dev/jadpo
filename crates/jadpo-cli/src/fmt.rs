@@ -461,7 +461,11 @@ fn report(
         (Outcome::Success, "nothing to format")
     } else if failed {
         if unchanged > 0 {
-            let what = if check { "formatted" } else { "unchanged" };
+            let what = if check {
+                "already formatted"
+            } else {
+                "unchanged"
+            };
             facts.push(Fact::plain(count(unchanged, what)));
         }
         (Outcome::Failure, "fmt failed")

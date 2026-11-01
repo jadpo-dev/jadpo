@@ -330,6 +330,40 @@ fn a_recording_without_the_cut_off_mark_fails_its_cases() {
     );
 }
 
+/// A package of the app's own runs the suite as it is, and with no
+/// recording to answer from, the usage case, which reads the typed
+/// answer's, says to fix that case first rather than the mapping.
+#[test]
+fn a_package_without_its_recording_says_which_case_to_fix_first() {
+    // The app's own copy of the package, in `shared/providers/`, which the
+    // suite's app holds as its own too.
+    let root = app("unrecorded", "anthropic", &package("anthropic"), true);
+    let own = root.join("shared/providers/anthropic/v1");
+    fs::create_dir_all(own.parent().expect("parent")).expect("folders");
+    fs::rename(root.join("packages/anthropic/v1"), &own).expect("moved");
+    fs::remove_file(root.join("jadpo.lock")).expect("unlocked");
+    fs::remove_file(own.join("recordings/messages.create.json")).expect("removed");
+    jadpo(&root, &["records", "update"]);
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    let plain = jadpo(&root, &["package", "conform", "anthropic", "ai"]);
+    assert_eq!(plain.code, 1, "{}{}", plain.stdout, plain.stderr);
+    assert!(
+        plain
+            .stdout
+            .contains("`Anthropic.v1`'s usage doesn't conform to `ai`"),
+        "{}",
+        plain.stdout
+    );
+    assert!(
+        plain
+            .stdout
+            .contains("  next: Fix the typed answer's case first, then run it again (agent)\n"),
+        "{}",
+        plain.stdout
+    );
+}
+
 #[test]
 fn a_capability_the_package_doesnt_fill_or_a_package_the_app_doesnt_hold_is_named() {
     let root = app("arguments", "openai", &package("openai"), true);

@@ -792,7 +792,7 @@ impl Reader<'_> {
         let structure = self.lookup.structure(ty);
         match &structure {
             Ty::List(_) | Ty::Set(_) | Ty::Map(..) => {
-                Err("A list is one value in many variables or one variable holding a format; split it into settings.".to_string())
+                Err("A list holds any number of values, and a variable holds one; make each value a setting of its own.".to_string())
             }
             // A model, read from its text, `openai/gpt-4.1-mini`: what
             // `ai: { models: }` names (area 21; chunk 5.5v3).

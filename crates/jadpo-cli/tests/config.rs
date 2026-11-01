@@ -962,7 +962,7 @@ fn move_refuses_a_name_a_setting_has_and_changes_nothing() {
 5 |     constant max_login_attempts: LoginAttempts = 5
   |              ^^^^^^^^^^^^^^^^^^ a setting has this name
   reason: `config { }` declares `max_login_attempts` already, so `security.max_login_attempts` can't become `config.max_login_attempts` without two settings of one name.
-  next: Rename the constant or the setting `max_login_attempts`, then run `jadpo config move` again (agent)
+  next: Rename the constant or the setting `max_login_attempts`, then run `jadpo config move` on the constant again (agent)
   rule: configuration.move_name_taken
   help: https://jadpo.dev/docs/errors/configuration.move_name_taken
 
