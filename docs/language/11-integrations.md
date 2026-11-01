@@ -1212,7 +1212,7 @@ the sandbox for each one (see "Tests and fakes").
 
 Not built yet: the hosted registry; importers other than `openapi`;
 adding another Jadpo app's OpenAPI document with `jadpo package add`;
-`packages:`'s `own_sources:`; `jadpo approval`; writing an operation's output type from
+`packages:`'s `own_sources:`; writing an operation's output type from
 the sandbox's answer when it has none; and a HAR capture's operations.
 
 ## The surface

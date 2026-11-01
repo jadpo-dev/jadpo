@@ -1116,6 +1116,47 @@ pub static COMMANDS: &[Command] = &[
         run: commands::acceptance,
     },
     Command {
+        name: "approval",
+        synonyms: &[],
+        group: "Change safely",
+        summary: "Explain a change, decisions first",
+        description: "Writes the approval report a reviewer reads (area 17): build/review/approval.md \
+                      and approval.json, the difference between this change and its before side, the \
+                      default branch at its merge base, or the branch or commit --before names. It \
+                      builds the before side with this compiler and keeps its manifest in \
+                      build/before/<commit>/, so each base is built once. First each change that \
+                      needs a person, in plain words, with whether its acceptance exists and the path \
+                      that makes it true; then the declarations newly reachable; then the other \
+                      behaviour: the API record, schema and migrations, failures, events and \
+                      subscribers, integrations, who can do what and wording not yet accepted; then \
+                      the source by declaration. `jadpo check` is what fails until each decision has \
+                      its acceptance.",
+        arguments: &[],
+        flags: &[Flag {
+            name: "--before",
+            value: Some("ref"),
+            description: "The branch or commit to compare with",
+            values: &[],
+        }],
+        examples: &[
+            Example {
+                description: "Explain this branch's change against the default branch",
+                command: "jadpo approval",
+            },
+            Example {
+                description: "Explain what changed since a deployed commit",
+                command: "jadpo approval --before 8d113e6",
+            },
+        ],
+        arguments_rule: &rule::CLI_APPROVAL_ARGUMENTS,
+        raises: &[
+            &rule::ACCEPTANCE_BASE_MISSING,
+            &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::approval,
+    },
+    Command {
         name: "schedules",
         synonyms: &[],
         group: "Production",

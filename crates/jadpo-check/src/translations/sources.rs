@@ -873,3 +873,56 @@ fn fresh(standing: &Standing) -> Entry {
         accepted: false,
     }
 }
+
+/// One translation whose wording waits for a person's acceptance.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Unaccepted {
+    /// The locale's language file.
+    pub path: String,
+    pub tag: String,
+    pub member: String,
+    /// Why it waits: `new`, `reworded since it was accepted`, `reworded
+    /// since it was recorded` or `waiting for acceptance`.
+    pub note: &'static str,
+}
+
+/// With `translations: { review: TranslationReview.required }`, every
+/// translation whose wording no `jadpo translations accept` has accepted
+/// yet, by scope (area 10, "Tooling for translations"): what `jadpo
+/// translations missing` marks unaccepted and the approval report lists.
+/// A stale translation is left out: it waits to be reworded, not accepted.
+/// Empty when review isn't required.
+pub fn unaccepted(db: &dyn Db, project: Project) -> Vec<Unaccepted> {
+    if !review(db, project).required {
+        return Vec::new();
+    }
+    let mut all: std::collections::BTreeSet<String> =
+        super::declared::scopes(db, project).into_iter().collect();
+    all.extend(super::failures::failure_scopes(db, project));
+    all.insert(ROOT.to_string());
+    let mut out = Vec::new();
+    for scope in all {
+        let standings = standings(db, project, Name::new(db, scope));
+        for standing in &standings.list {
+            if standing.stale || standing.accepted() {
+                continue;
+            }
+            out.push(Unaccepted {
+                path: standing.path.clone(),
+                tag: standing.tag.clone(),
+                member: standing.member.clone(),
+                note: match &standing.recorded {
+                    None => "new",
+                    Some(entry) if entry.wording != standing.wording_hash && entry.accepted => {
+                        "reworded since it was accepted"
+                    }
+                    Some(entry) if entry.wording != standing.wording_hash => {
+                        "reworded since it was recorded"
+                    }
+                    Some(_) => "waiting for acceptance",
+                },
+            });
+        }
+    }
+    out
+}

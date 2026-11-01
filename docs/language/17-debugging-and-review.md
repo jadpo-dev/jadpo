@@ -553,36 +553,77 @@ machine.
 
 When an agent hands you a change, you should see it in the order it
 matters. `jadpo approval --before <ref>` writes a report in that order, as
-Markdown and JSON, and a static web view of the same report:
+Markdown and JSON in `build/review/`, and a static web view of the same
+report:
 
 1. **Decisions that need a person.** Each change that needs an acceptance,
    a file in `acceptances/` in which a person accepts it
    ([Acceptances](18-records-and-manifest.md#acceptances)). Each is said in
-   plain words, who can now do what to which data ("viewers can now read
-   `Project.budget`"), with whether its acceptance file exists.
-2. **Paths.** For each decision, the path that makes it true: actor →
-   route → action or query → field → output. You can open it to see what
-   surrounds it.
+   plain words, who can now do what to which data ("`CompanyRole.viewer`
+   can now read `work.Project.budget`"), with whether its acceptance file
+   exists: `acceptance missing`, `reason missing` while one lists it with
+   no `///` reason yet, or `accepted`, with the reason.
+2. **Paths.** Under each decision, the path that makes it true: actor →
+   route → action or query → field → output. A path starts only with
+   callers who can take it: `anyone` only through a route anyone may call,
+   and a query or action listed under `actions:` only for those on its line
+   ([Listing a query](09-policy.md#listing-a-query)). A decision with no
+   such way says none was found; the source and the records still hold it.
 3. **Newly reachable code.** Declarations that didn't change but are now
    reached from a new place, which a line diff never shows.
 4. **Other behaviour.** Changes to the
    [public API record](07-http.md#the-public-api-record), the schema and
    [migrations](05-data.md#migrations), failures, events and subscribers,
    integrations, and the differences in the
-   [permissions report](09-policy.md#the-permissions-report) and the
-   [personal-data report](15-personal-data.md#the-personal-data-report).
-5. **Source,** grouped by declaration rather than by file.
+   [permissions report](09-policy.md#the-permissions-report), as
+   `access.jadpo_record` holds it, and the
+   [personal-data report](15-personal-data.md#the-personal-data-report). A
+   record's changes are shown as a diff of its entries. Beside them: what
+   widens access with no grant changed, an output gaining a field or an
+   action reading or writing another entity; every
+   [decline](01-project-layout-and-modules.md#declining-a-judgement-call)
+   the change adds or edits, with its reason; each prompt that changed; the
+   imported types and the calls that ship unreviewed or unconfirmed
+   ([Mapping imported types](11-integrations.md#mapping-imported-types-to-standard-types));
+   and [wording not yet accepted](#wording-not-yet-accepted).
+5. **Source,** grouped by declaration rather than by file, by domain, each
+   with whether it was added, changed or removed and where it is.
+
+The terminal says the decisions in full, with each one's first path, and
+counts the rest. Exit code 0 means the report was written, whatever it
+says: `jadpo check` is what fails until each decision has its acceptance.
 
 ```text
 $ jadpo approval --before main
 1 decision needs a person
-  viewers can now read Project.budget          acceptance missing
-    viewer → GET /projects/{id} → project_detail → ProjectView.budget
-2 declarations newly reachable
-  budgets.convert_currency   now reached from GET /projects/{id}
-Other changes: 1 route added, 1 migration, no failure codes changed
-Source: 6 declarations in 4 files
+◆ `CompanyRole.viewer` can now read `work.Project.budget`     acceptance missing
+    CompanyRole.viewer → GET /projects/{id} → work.project_detail
+      → ProjectView.budget
+
+1 declaration newly reachable
+  budgets.convert_currency  now reached from GET /projects/{id}
+
+  before    main at 1a2b3c4
+  api       1 route added
+  schema    1 migration added
+  access    1 field's grants changed
+  source    6 declarations in 4 files
+
+✓ Wrote build/review/approval.md
+
+◆ decision  1 change waits for a person's acceptance
+  next      A person accepts them: `jadpo acceptance new <purpose>` writes the
+            draft for them. (human)
 ```
+
+With `--json`, `data` holds the same report as `build/review/approval.json`
+and the `file` it was written to. A source with errors writes no report:
+what changed can only be worked out from a source that reads
+(`approval not written`, with each error). An argument, a `--before` git
+doesn't know, or nothing to compare with is
+[`cli.approval_arguments`](../errors/cli.approval_arguments.md); a base the
+clone doesn't hold is
+[`acceptance.base_missing`](../errors/acceptance.base_missing.md).
 
 ### Packages and services that need a person
 
@@ -610,8 +651,8 @@ changed and hasn't been accepted with
 ### The web view
 
 The web view adds what text can't: the graph of the change, the
-differences between an agent's successive revisions of it, and links from
-every line to its source. It is a file in `build/review/`, which you open
+differences between an agent's successive revisions of it, each path opened
+to see what surrounds it, and links from every line to its source. It is a file in `build/review/`, which you open
 on your machine or CI publishes beside the pull request. It holds no
 accounts and records no approvals. Acceptances stay files, reviewed on the
 git host like any other change.
@@ -703,6 +744,7 @@ personal value in a report follows the rules for
 | `jadpo calls`, `calls show` and `calls script` | Built. |
 | Each step a request's action reached, as a trace line in `jadpo dev` | Built. Until the timelines are built, each step is a line under its request's line in `jadpo dev`, and a delivery whose action reached steps gets a line of its own ([design notes for jobs and events](notes/12-jobs-and-events.md)). |
 | `jadpo why <schedule>` | Built: it answers why a schedule didn't run ([Watching schedules](12-jobs-and-events.md#watching-schedules)). |
-| Mapped `.jadpo` stacks, `jadpo incident`, the other forms of `why`, timelines, `test new --from`, `call` and the approval report | Not built yet: these come first ([the roadmap](../roadmap.md)). Until `jadpo approval` is built, `jadpo translations missing` lists wording not yet accepted. |
+| `jadpo approval` | Built: the report in `build/review/` in [this page's order](#reviewing-a-change), the before side built from git and its manifest kept in `build/before/<commit>/`. The personal-data report's difference comes with connections in that report, and a package's service and a bot check with those features. |
+| Mapped `.jadpo` stacks, `jadpo incident`, the other forms of `why`, timelines, `test new --from` and `call` | Not built yet: these come first ([the roadmap](../roadmap.md)). |
 | The developer console, MCP and the review web view | Not built yet: they come after those, as product work. |
 | `jadpo traces`, `metrics`, `logs` and `watch`; path coverage, production counts in review, replay and query cost | Not built yet. |

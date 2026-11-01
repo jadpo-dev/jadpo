@@ -101,6 +101,17 @@ pub(crate) fn checked_before(
     target: &std::path::Path,
     on: JudgedOn,
 ) -> Result<Checked, Box<Reply>> {
+    checked_before_as(call, target, on, &rule::CLI_CHECK_ARGUMENTS)
+}
+
+/// [`checked_before`], refusing a `--before` git doesn't know with the
+/// arguments rule of the command that runs it, `arguments`.
+pub(crate) fn checked_before_as(
+    call: &Call,
+    target: &std::path::Path,
+    on: JudgedOn,
+    arguments: &'static jadpo_diag::Rule,
+) -> Result<Checked, Box<Reply>> {
     let with = call
         .values
         .iter()
@@ -124,7 +135,7 @@ pub(crate) fn checked_before(
             }
             Err(crate::before::UnknownRef(reference)) => Err(Box::new(Reply::failed(
                 Diagnostic::new(
-                    &rule::CLI_CHECK_ARGUMENTS,
+                    arguments,
                     format!("`{reference}` isn't a branch or commit"),
                 )
                 .reason("`--before` names the branch or commit the change is compared with, and git knows none by this name.")

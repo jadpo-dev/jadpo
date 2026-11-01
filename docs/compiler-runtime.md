@@ -890,11 +890,21 @@ connection's hosts are `NetworkChange.host_added` (area 18, 2026-10-30),
 which the record comparison below gives. Every git package needs a
 person, since telling the app's own company's repository from a third
 party's needs a setting the pages don't decide; this is the conservative
-reading of area 11's "Publisher trust". The graph diff runs in tests
-until `jadpo approval` builds the base commit, read through `git cat-file
---batch` into an in-memory file set (`jadpo_db::FileSet`, loaded by
-`load_files`, §2.2, "Loading"), checked by the same compiler and cached
-in `build/before/<commit>/`.
+reading of area 11's "Publisher trust". This graph diff runs in tests.
+
+**The approval report** (chunk V2, areas 17 and 18) builds the base: `jadpo
+approval` reads the commit through `git cat-file --batch` into an in-memory
+file set (`jadpo_db::FileSet`, loaded by `load_files`, §2.2, "Loading"),
+checks it with the same compiler and keeps its manifest and its declines in
+`build/before/<commit>/`, used again while this compiler wrote them.
+`jadpo_check::approval` then reads both sides as manifests, the graph's
+canonical JSON, rather than as `Graph`s, since a kept manifest is all the
+before side has: it compares their nodes and edges for the source, the
+newly reachable callables and the other behaviour, and walks today's edges
+(else the before side's, for something gone) for each decision's path. The
+decisions themselves are `acceptances::needs`, the same list `check` judges,
+each carrying its plain words and the callers it lets in from where its
+record is read.
 
 **Acceptances** (chunk A8, area 18) don't build the base. `jadpo check`
 reads the before side from git (`jadpo-cli`'s `before`): the default
