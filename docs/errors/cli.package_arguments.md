@@ -12,7 +12,7 @@ A project with no packages, asked to show one:
 
 ```jadpo check project=e-package-arguments file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

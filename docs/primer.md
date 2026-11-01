@@ -568,7 +568,7 @@ lists the ways to sign in.
 use lending/entities { Member }
 
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 
 principal {

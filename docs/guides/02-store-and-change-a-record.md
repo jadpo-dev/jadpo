@@ -12,7 +12,7 @@ book's title.
 
 ```jadpo check project=guide-store file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

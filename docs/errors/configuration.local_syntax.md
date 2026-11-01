@@ -24,7 +24,7 @@ A project's `config.jadpo` declares a secret `mail_api_key`, and
 
 ```jadpo check project=e-local-syntax file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

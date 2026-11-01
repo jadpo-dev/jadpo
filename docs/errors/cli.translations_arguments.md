@@ -12,7 +12,7 @@ A project that supports only its default locale, asked to accept French:
 
 ```jadpo check project=e-translations-arguments file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

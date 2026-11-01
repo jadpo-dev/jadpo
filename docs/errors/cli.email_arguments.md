@@ -12,7 +12,7 @@ Nothing has run `jadpo dev` yet, so the inbox is empty:
 
 ```jadpo check project=e-email-arguments file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

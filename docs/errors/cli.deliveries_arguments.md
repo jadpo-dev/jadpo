@@ -12,7 +12,7 @@ An action is given no id:
 
 ```jadpo check project=e-deliveries-arguments file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

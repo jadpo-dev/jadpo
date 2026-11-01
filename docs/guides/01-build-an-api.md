@@ -14,7 +14,7 @@ stores one, and a query `book_by_id` that reads one.
 
 ```jadpo check project=guide-api file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

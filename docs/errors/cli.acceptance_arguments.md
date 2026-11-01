@@ -12,7 +12,7 @@ The purpose is left out:
 
 ```jadpo check project=e-acceptance-arguments file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

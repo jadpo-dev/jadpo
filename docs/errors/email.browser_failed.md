@@ -22,7 +22,7 @@ written into `build/dev/inbox` as `jadpo dev` writes it:
 
 ```jadpo check project=e-browser-failed file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 

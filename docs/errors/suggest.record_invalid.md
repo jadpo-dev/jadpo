@@ -18,7 +18,7 @@ conflict markers in the record:
 
 ```jadpo check project=e-suggest-record file=app.jadpo hidden
 application {
-    jadpo: "0.1"
+    jadpo: "0.2"
 }
 ```
 
