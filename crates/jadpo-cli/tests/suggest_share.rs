@@ -693,6 +693,34 @@ fn a_teammates_checkout_picks_up_taught_patterns() {
         "{}",
         output.stderr
     );
+    assert!(
+        output
+            .stderr
+            .contains("Restore `taught_suggestions.jadpo_record` from git"),
+        "{}",
+        output.stderr
+    );
+    // A merge's conflict markers are said to be them, and both sides kept.
+    write(
+        &theirs,
+        "taught_suggestions.jadpo_record",
+        &format!("{record}<<<<<<< HEAD\n=======\n>>>>>>> pricing\n"),
+    );
+    let output = jadpo(&theirs, &hq, &["suggest"]);
+    assert!(
+        output
+            .stderr
+            .contains("is a marker git leaves when two branches both changed the record"),
+        "{}",
+        output.stderr
+    );
+    assert!(
+        output
+            .stderr
+            .contains("next: Keep the entries of both sides, delete the marker lines"),
+        "{}",
+        output.stderr
+    );
     assert!(hq.requests().is_empty());
 }
 

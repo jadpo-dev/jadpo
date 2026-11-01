@@ -391,7 +391,7 @@ fn failed_summary() -> Screen {
         "fmt failed",
         [
             Fact::problem("2 not formatted"),
-            Fact::plain("12 formatted"),
+            Fact::plain("12 already formatted"),
         ],
     ))
 }
@@ -400,7 +400,7 @@ fn failed_summary() -> Screen {
 fn a_summary_footer_leads_with_the_outcome() {
     assert_eq!(
         failed_summary().render(&rich()),
-        "✗ fmt failed  2 not formatted · 12 formatted\n"
+        "✗ fmt failed  2 not formatted · 12 already formatted\n"
     );
     assert_eq!(
         Screen::new()
@@ -418,7 +418,7 @@ fn a_summary_footer_leads_with_the_outcome() {
 fn a_plain_summary_reads_outcome_colon_facts() {
     assert_eq!(
         failed_summary().render(&Style::new(Mode::Plain)),
-        "fmt failed: 2 not formatted, 12 formatted\n"
+        "fmt failed: 2 not formatted, 12 already formatted\n"
     );
 }
 
@@ -430,7 +430,7 @@ fn summary_colour_is_on_the_outcome_and_problem_counts() {
     };
     assert_eq!(
         failed_summary().render(&style),
-        "\x1b[1;31m✗ fmt failed\x1b[0m  \x1b[31m2 not formatted\x1b[0m\x1b[2m · 12 formatted\x1b[0m\n"
+        "\x1b[1;31m✗ fmt failed\x1b[0m  \x1b[31m2 not formatted\x1b[0m\x1b[2m · 12 already formatted\x1b[0m\n"
     );
 }
 
