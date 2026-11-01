@@ -349,13 +349,13 @@ pub struct Stored {
 pub const READ_STORED: &str = "SELECT \"flag\", \"value\", \"users\", \"shares\", \"set_at\" FROM \"jadpo_flags\" ORDER BY \"flag\"";
 
 /// A change kept, with its log row: `INSERT` while the flag has no row.
-const INSERT_STATE: &str = "WITH \"c\" AS (INSERT INTO \"jadpo_flags\" (\"flag\", \"value\", \"users\", \"shares\", \"set_at\") VALUES ($1, $2, $3, $4, $5) ON CONFLICT (\"flag\") DO NOTHING RETURNING \"flag\") INSERT INTO \"jadpo_flag_changes\" (\"id\", \"made_at\", \"flag\", \"action\", \"was\", \"now\", \"operator\", \"role\") SELECT $6, $5, \"c\".\"flag\", $7, NULL, $8, $9, session_user FROM \"c\" RETURNING \"role\"";
+pub const INSERT_STATE: &str = "WITH \"c\" AS (INSERT INTO \"jadpo_flags\" (\"flag\", \"value\", \"users\", \"shares\", \"set_at\") VALUES ($1, $2, $3, $4, $5) ON CONFLICT (\"flag\") DO NOTHING RETURNING \"flag\") INSERT INTO \"jadpo_flag_changes\" (\"id\", \"made_at\", \"flag\", \"action\", \"was\", \"now\", \"operator\", \"role\") SELECT $6, $5, \"c\".\"flag\", $7, NULL, $8, $9, session_user FROM \"c\" RETURNING \"role\"";
 
 /// A change kept, with its log row, to the row as it was read.
-const UPDATE_STATE: &str = "WITH \"c\" AS (UPDATE \"jadpo_flags\" SET \"value\" = $2, \"users\" = $3, \"shares\" = $4, \"set_at\" = $5 WHERE \"flag\" = $1 AND \"set_at\" = $10 RETURNING \"flag\") INSERT INTO \"jadpo_flag_changes\" (\"id\", \"made_at\", \"flag\", \"action\", \"was\", \"now\", \"operator\", \"role\") SELECT $6, $5, \"c\".\"flag\", $7, $11, $8, $9, session_user FROM \"c\" RETURNING \"role\"";
+pub const UPDATE_STATE: &str = "WITH \"c\" AS (UPDATE \"jadpo_flags\" SET \"value\" = $2, \"users\" = $3, \"shares\" = $4, \"set_at\" = $5 WHERE \"flag\" = $1 AND \"set_at\" = $10 RETURNING \"flag\") INSERT INTO \"jadpo_flag_changes\" (\"id\", \"made_at\", \"flag\", \"action\", \"was\", \"now\", \"operator\", \"role\") SELECT $6, $5, \"c\".\"flag\", $7, $11, $8, $9, session_user FROM \"c\" RETURNING \"role\"";
 
 /// The row deleted, so everyone gets the `default:`, with its log row.
-const DELETE_STATE: &str = "WITH \"c\" AS (DELETE FROM \"jadpo_flags\" WHERE \"flag\" = $1 AND \"set_at\" = $6 RETURNING \"flag\") INSERT INTO \"jadpo_flag_changes\" (\"id\", \"made_at\", \"flag\", \"action\", \"was\", \"now\", \"operator\", \"role\") SELECT $3, $2, \"c\".\"flag\", $4, $7, NULL, $5, session_user FROM \"c\" RETURNING \"role\"";
+pub const DELETE_STATE: &str = "WITH \"c\" AS (DELETE FROM \"jadpo_flags\" WHERE \"flag\" = $1 AND \"set_at\" = $6 RETURNING \"flag\") INSERT INTO \"jadpo_flag_changes\" (\"id\", \"made_at\", \"flag\", \"action\", \"was\", \"now\", \"operator\", \"role\") SELECT $3, $2, \"c\".\"flag\", $4, $7, NULL, $5, session_user FROM \"c\" RETURNING \"role\"";
 
 /// Every flag's row, in name order.
 pub async fn stored(database: &dyn crate::Database) -> Result<Vec<Stored>, crate::StoreError> {

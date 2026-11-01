@@ -1193,7 +1193,7 @@ pub static COMMANDS: &[Command] = &[
         name: "flags",
         synonyms: &["flag"],
         group: "Production",
-        summary: "List, change and remove feature flags",
+        summary: "Change and remove flags",
         description: "Each flag's state is kept in the database `flags: { store: }` names (area 16). \
                       `jadpo flags` lists each flag with everyone's value, how many users are named, \
                       its shares, when it last changed, and whether it is ready to remove: every \
@@ -1242,7 +1242,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--percent",
                 value: Some("n"),
-                description: "The share of users given the value, from 0 to 100",
+                description: "The share of users given it, 0 to 100",
                 values: &[],
             },
             Flag {
@@ -1254,7 +1254,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--keep",
                 value: Some("value"),
-                description: "The value `remove` keeps everywhere the flag is read",
+                description: "The value `remove` keeps wherever it is read",
                 values: &[],
             },
         ],
