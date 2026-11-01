@@ -278,7 +278,13 @@ fn jadpo(cwd: &Path, args: &[&str]) -> Output {
     run(&args, &env.with_cwd(cwd))
 }
 
+/// The clinic in `root`, which a deployable's test keeps between runs for
+/// its build: its sources and migration are written again, so none is left
+/// from an earlier form of it.
 pub(crate) fn project_at(root: &Path, application: &str) {
+    for folder in ["database", "domains"] {
+        let _ = fs::remove_dir_all(root.join(folder));
+    }
     for (path, text) in files(application) {
         write(root, &path, &text);
     }
@@ -286,9 +292,6 @@ pub(crate) fn project_at(root: &Path, application: &str) {
         &["migrate", "new", "initial"][..],
         &["records", "update"][..],
     ] {
-        if args[0] == "migrate" && root.join("database").exists() {
-            continue;
-        }
         let output = jadpo(root, args);
         assert_eq!(output.code, 0, "{}{}", output.stdout, output.stderr);
     }

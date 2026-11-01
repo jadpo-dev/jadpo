@@ -3,7 +3,7 @@
 //! required secrets, seals what `POST /consultations` is given into a column
 //! holding only sealed bytes, opens it for `GET`, and once its key is rotated
 //! through `FIELD_ENCRYPTION_KEY_PREVIOUS` still reads it, the cron's re-seal
-//! moving the row to the new key.
+//! moving the row to the new key on a run `jadpo schedules run` asks for.
 
 use std::path::{Path, PathBuf};
 
@@ -112,10 +112,28 @@ fn a_sealed_field_round_trips_on_workers_and_its_key_rotates() {
     );
     let (status, body) = rotated.send("GET", &format!("/consultations/{id}"), &[], "");
     assert_eq!(status, 200, "{body}\n{}", rotated.log());
-    let hour = 3_600_000;
-    let at = now_ms();
-    assert_eq!(rotated.scheduled(at), "ok", "{}", rotated.log());
-    assert_eq!(rotated.scheduled(at + 2 * hour), "ok", "{}", rotated.log());
+    // Its first tick gives the schedule its state; a run asked for by hand,
+    // as `jadpo config rotation` suggests, doesn't wait for the hour.
+    assert_eq!(rotated.scheduled(now_ms()), "ok", "{}", rotated.log());
+    std::thread::scope(|scope| {
+        let asked = scope.spawn(|| {
+            jadpo(
+                &root,
+                &[
+                    "schedules",
+                    "run",
+                    "field_encryption.reseal",
+                    "--url",
+                    &database.native,
+                ],
+            )
+        });
+        while !asked.is_finished() {
+            assert_eq!(rotated.scheduled(now_ms()), "ok", "{}", rotated.log());
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+        asked.join().expect("the run was asked for");
+    });
     let moved = rows(
         &database.native,
         "SELECT encode(\"notes\", 'hex') FROM \"consultation\"",
