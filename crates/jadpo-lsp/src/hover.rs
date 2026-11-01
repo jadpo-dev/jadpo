@@ -348,6 +348,27 @@ fn declaration(graph: &Graph, id: NodeId) -> String {
             node.name,
             ty.render(&name)
         ),
+        Detail::Threshold {
+            watches,
+            per_request,
+            across_requests,
+            within,
+        } => {
+            let limits: Vec<String> = per_request
+                .iter()
+                .chain(across_requests)
+                .map(|(limit, value)| format!("{limit}: {value}"))
+                .collect();
+            let within = within
+                .as_deref()
+                .map(|within| format!(" within: {within}"))
+                .unwrap_or_default();
+            format!(
+                "threshold {}: watches a {watches}, {}{within}",
+                node.name,
+                limits.join(" ")
+            )
+        }
         Detail::LocaleSet {
             default, supported, ..
         } => format!(

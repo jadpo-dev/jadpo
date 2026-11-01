@@ -49,6 +49,7 @@ pub fn needs(db: &dyn Db, project: Project) -> Vec<Need> {
         compare::lock(jadpo_db::LOCK, was, &now, &mut out);
     }
     compare::domains(&before.domains, &domains(db, project), &mut out);
+    threshold_needs(db, project, before, &mut out);
     out.sort();
     out.dedup_by(|a, b| a.subject == b.subject && a.change == b.change);
     out
@@ -166,6 +167,72 @@ fn event_needs(db: &dyn Db, project: Project, before: &BeforeSide, out: &mut Vec
             out,
         );
     }
+}
+
+/// Each threshold raised or removed, and each disk floor lowered, since
+/// the before side (area 16, "Setting and changing them"; chunk B13): the
+/// monitoring files are compared by threshold name, read as text on both
+/// sides, once today's thresholds check.
+fn threshold_needs(db: &dyn Db, project: Project, before: &BeforeSide, out: &mut Vec<Need>) {
+    use crate::thresholds;
+    if !thresholds::clean(db, project) {
+        return;
+    }
+    for (path, was) in &before.files {
+        let Some(domain) = thresholds::domain_of(path) else {
+            continue;
+        };
+        let Some(was) = thresholds::written(was) else {
+            continue;
+        };
+        let now = thresholds::written(&texts(db, project, path)).unwrap_or_default();
+        for (subject, change) in thresholds::loosened(Some(domain), &was, &now) {
+            out.push(Need {
+                said: words::said(&Family::Thresholds, &subject, change),
+                subject,
+                change: change.to_string(),
+                family: Family::Thresholds,
+                path: path.clone(),
+                heading: None,
+                who: Vec::new(),
+            });
+        }
+    }
+    if let Some(was) = before.text(jadpo_db::PROJECT_FILE) {
+        let now = texts(db, project, jadpo_db::PROJECT_FILE);
+        for subject in
+            thresholds::floors_lowered(&thresholds::floors(was), &thresholds::floors(&now))
+        {
+            out.push(Need {
+                said: words::said(&Family::Thresholds, &subject, thresholds::LOWERED),
+                subject,
+                change: thresholds::LOWERED.to_string(),
+                family: Family::Thresholds,
+                path: jadpo_db::PROJECT_FILE.to_string(),
+                heading: None,
+                who: Vec::new(),
+            });
+        }
+    }
+}
+
+/// Where a threshold's change shows: the threshold's name when it is
+/// still there, else the file.
+fn threshold_span(db: &dyn Db, project: Project, need: &Need) -> Span {
+    crate::thresholds::thresholds(db, project)
+        .thresholds
+        .iter()
+        .find(|threshold| {
+            need.subject == threshold.subject
+                || need
+                    .subject
+                    .strip_prefix(&threshold.subject)
+                    .is_some_and(|rest| rest.starts_with('.'))
+        })
+        .map_or_else(
+            || crate::tree::file_span(&need.path),
+            |threshold| threshold.at.clone(),
+        )
 }
 
 /// The added acceptances: those the before side doesn't have.
@@ -321,6 +388,10 @@ fn said(change: &str, family: &Family) -> (&'static str, &'static str) {
             "opening a route to anyone widens who can call it",
             "Anyone at all may now call it, without signing in.",
         ),
+        "PolicyChange.confirmation_removed" => (
+            "no longer confirming a route with a passkey lets a stolen session through",
+            "A signed-in session alone now runs a request that needed the person's own passkey.",
+        ),
         "PolicyChange.widened" => (
             "widening who can do what needs a person",
             "Callers who were refused are now let in.",
@@ -360,6 +431,18 @@ fn said(change: &str, family: &Family) -> (&'static str, &'static str) {
         "PackageChange.git_source" => (
             "a package installed from git has no verified publisher",
             "Nothing verifies who published a package from git, as the registry does.",
+        ),
+        "ThresholdChange.raised" => (
+            "raising a threshold can silence its alert",
+            "What went past the old limit no longer goes past this one, so no one is told when it gets worse.",
+        ),
+        "ThresholdChange.removed" => (
+            "removing a threshold can silence its alert",
+            "What it watched is no longer judged against it, so no one is told when it gets worse.",
+        ),
+        "ThresholdChange.lowered" => (
+            "lowering a disk store's floor fills more of its disk",
+            "Puts go on until less of the disk is free, and the alert on the floor comes later.",
         ),
         "DomainChange.created" => (
             "a new domain needs a person",
@@ -406,11 +489,11 @@ fn missing_acceptance(
 ) -> Diagnostic {
     let (what, why) = said(change, family);
     let subjects: Vec<String> = needs.iter().map(|need| need.subject.clone()).collect();
-    let span = if *family == Family::Decline {
-        decline_span(db, project, needs[0])
-            .unwrap_or_else(|| place(db, project, path, needs[0].heading.as_deref()))
-    } else {
-        place(db, project, path, needs[0].heading.as_deref())
+    let span = match family {
+        Family::Decline => decline_span(db, project, needs[0])
+            .unwrap_or_else(|| place(db, project, path, needs[0].heading.as_deref())),
+        Family::Thresholds => threshold_span(db, project, needs[0]),
+        _ => place(db, project, path, needs[0].heading.as_deref()),
     };
     Diagnostic::new(
         &rule::ACCEPTANCE_MISSING,

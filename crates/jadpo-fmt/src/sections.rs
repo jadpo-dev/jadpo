@@ -19,6 +19,7 @@ const FAILURE: &[&str] = &["kind", "code", "message", "client", "internal"];
 /// A route entry, `GET /path { ... }` (area 7).
 const ROUTE: &[&str] = &[
     "authentication",
+    "confirm",
     "rate_limit",
     "input",
     "output",

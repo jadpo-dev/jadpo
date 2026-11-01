@@ -2860,6 +2860,25 @@ test signs in with, on `p256`, its keys and ids drawn from its seed and
 its signatures RFC 6979's, so it needs no generator:
 `SoftwareAuthenticators` is `jadpo test`'s host's and a test Worker's.
 
+**Confirming one request with a passkey** (area 8, "Confirm one request
+with a passkey"; chunk R1). `RouteModel::confirm` becomes `RoutePlan::confirm`,
+and the plan appends a `RoutePlan` with `Run::Confirmation(<route>)` at
+`<path>/confirmation` for each, with the route's method
+(`http::confirmation_method`); `routes::generated` lists it, so the
+record, the graph (`generated_route`, parented on the route) and OpenAPI
+agree, and `jadpo routes` shows it. `http::confirmation` answers it after
+signing in, reading the request with `read_request` under the confirmed
+route's number, and keeps the challenge through `http::passkeys` for two
+minutes, bound to the person and `idempotency::digest` of the route and
+input. `run_with_caller` calls `confirmation::check` after reading the
+input and before the idempotency claim, so a replay under a key confirms
+again and nothing runs unconfirmed. The ceremony is `Passkeys::start_confirmation`
+and `finish_confirmation`, `webauthn-rs`'s passkey authentication behind the
+same seam on every host, native and Workers alike. A route test arms
+`Ctx::confirming` with `test_passkeys.confirm`; `http::route_test` takes it
+for the next request to a confirmed route and answers through the route's
+`…/confirmation` with the test host's authenticator.
+
 **Magic links** (area 8, "Magic links"). The identity
 reads `sign_in: { magic_link: }` into `Identity::magic_link` and
 `on_first_sign_in:` into `Identity::first_sign_in`, whose action
@@ -3515,6 +3534,20 @@ flags take; then imports, formatting and `check`, undone on any error.
 document (record, graph node, OpenAPI operation and `routes` listing from
 `served::flags_served`), planned as `Run::Flags` of the `client: true`
 flags' numbers and answered by the HTTP component through `Ctx::flag`.
+
+**Monitoring thresholds** (area 16, "Monitoring thresholds: checked and
+generated"). `jadpo_check::thresholds` reads each domain's `thresholds {
+}` twice: `written` as text alone, which the before side's monitoring
+files from git are read with too, and `thresholds` against the project,
+resolving each subject to its node's key. The acceptances compare the
+two readings by threshold name (`loosened`), and `app.jadpo`'s disk
+floors (`floors_lowered`), into `ThresholdChange` needs. The graph gets a
+`threshold` node for each threshold and floor; the plan carries the
+per-request limits as `RuntimePlan::thresholds`
+(`jadpo_std::thresholds::ThresholdPlan`, keyed by what each watches, with
+`limits_exceeded` for the telemetry that will judge requests by them); and `jadpo
+check` and `jadpo dev` write `rules`' Prometheus and OpenSLO files to
+`build/monitoring/`, removing one that has nothing left to say.
 
 **The capability seam** (area 16). Every call that leaves the
 process goes through one exchange, `jadpo_runtime::outside::exchange`

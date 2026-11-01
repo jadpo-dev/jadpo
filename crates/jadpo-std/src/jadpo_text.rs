@@ -51,6 +51,9 @@ pub enum Feature {
     /// Sign-in providers (area 8, "Providers"; chunk A7b): the failure of
     /// a sign-in through one, and those it shares with magic links.
     Providers,
+    /// A route's `confirm: Confirmation.passkey` (area 8, "Confirm one
+    /// request with a passkey"): the failure of a request not confirmed.
+    Confirmation,
 }
 
 impl Feature {
@@ -69,6 +72,7 @@ impl Feature {
             Feature::Passkey => "Passkeys",
             Feature::MagicLinkRoutes => "Magic-link routes",
             Feature::Providers => "Sign-in providers",
+            Feature::Confirmation => "Confirming a request",
         }
     }
 
@@ -86,6 +90,7 @@ impl Feature {
             Feature::Passkey => "passkey",
             Feature::MagicLinkRoutes => "magic_link_routes",
             Feature::Providers => "providers",
+            Feature::Confirmation => "confirmation",
         }
     }
 
@@ -103,10 +108,11 @@ impl Feature {
             Feature::Passkey => "the application signs users in with passkeys",
             Feature::MagicLinkRoutes => "the application writes its own magic-link routes",
             Feature::Providers => "the application signs users in through a provider",
+            Feature::Confirmation => "a route asks for a passkey's confirmation",
         }
     }
 
-    pub const ALL: [Feature; 11] = [
+    pub const ALL: [Feature; 12] = [
         Feature::Requests,
         Feature::SignIn,
         Feature::UserSignIn,
@@ -118,6 +124,7 @@ impl Feature {
         Feature::Passkey,
         Feature::MagicLinkRoutes,
         Feature::Providers,
+        Feature::Confirmation,
     ];
 }
 
@@ -252,7 +259,7 @@ impl Message {
 }
 
 /// Every message, in the order `jadpo translations builtin` lists a feature's.
-pub static MESSAGES: [Message; 39] = [
+pub static MESSAGES: [Message; 40] = [
     failure(
         "invalid_request",
         Feature::Requests,
@@ -497,6 +504,12 @@ pub static MESSAGES: [Message; 39] = [
         Feature::Passkey,
         "No passkey of the signed-in person has the id given.",
         "That passkey isn't on your account.",
+    ),
+    failure(
+        "confirmation_required",
+        Feature::Confirmation,
+        "A request that needs the person's passkey came without one of theirs, for another request, used already or too late.",
+        "Confirm this with your passkey to go on.",
     ),
 ];
 

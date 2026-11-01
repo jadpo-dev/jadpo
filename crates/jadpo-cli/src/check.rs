@@ -331,6 +331,11 @@ fn checked_with(
         } else {
             derived::remove_personal_data(&loaded.root);
         }
+        let monitoring = derived::monitoring(db, loaded.project);
+        if let Some(rules) = &monitoring {
+            derived::remove_stale_monitoring(&loaded.root, rules);
+            surfaces.extend(rules.iter().cloned());
+        }
         let stamp = derived::stamp(db, loaded.project, &loaded.root, errors);
         match derived::write(
             &loaded.root,

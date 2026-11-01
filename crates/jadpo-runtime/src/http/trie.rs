@@ -429,6 +429,7 @@ mod tests {
             args: Vec::new(),
             authentication: Authentication::Public,
             caller: None,
+            confirm: false,
             file: "routes.jadpo".into(),
             line: 1,
         }

@@ -265,6 +265,27 @@ pub fn document(
             .or_insert_with(|| group.doc.clone());
         let entry = paths.entry(route.path()).or_insert_with(Value::object);
         entry.set(&route.method.word().to_ascii_lowercase(), operation);
+        // Its `…/confirmation`, which the runtime answers (area 8).
+        if route.confirm {
+            let mut confirmation = confirmation_operation(
+                &wire,
+                &lookup,
+                route,
+                &methods,
+                &mut refs,
+                &mut failure_schemas,
+            );
+            confirmation.set("tags", vec![Value::from(group.name.as_str())]);
+            let entry = paths
+                .entry(super::generated::confirmation_path(route))
+                .or_insert_with(Value::object);
+            entry.set(
+                &jadpo_std::http::confirmation_method(route.method)
+                    .word()
+                    .to_ascii_lowercase(),
+                confirmation,
+            );
+        }
     }
     // Its own document (area 7, "OpenAPI").
     if let Some(served) = super::served::served_by(db, project, api) {
@@ -1634,27 +1655,16 @@ fn envelope(code: &str, description: &str, details: Option<Value>) -> Value {
     outer
 }
 
-#[allow(clippy::too_many_arguments)]
-fn operation(
+/// A route's placeholders and its input's header and query fields, as
+/// OpenAPI parameters, with its body's schema set on `out` when it reads
+/// one: the same for the route and its `…/confirmation` (area 8).
+fn inputs(
     wire: &Wire<'_>,
     lookup: &Lookup<'_>,
     route: &RouteModel,
-    key_required: bool,
-    facts: &Facts,
-    methods: &[jadpo_std::AuthenticationMethod],
     refs: &mut BTreeSet<Key>,
-    failure_schemas: &mut BTreeMap<String, Value>,
-) -> Value {
-    let mut out = Value::object();
-    let id: Vec<String> = std::iter::once(route.method.word().to_ascii_lowercase())
-        .chain(route.segments.iter().map(|segment| match segment {
-            Segment::Fixed(text) => text.replace('-', "_"),
-            Segment::Param { name, .. } => format!("by_{name}"),
-        }))
-        .collect();
-    out.set("operationId", id.join("_"));
-    out.set_some("description", route.doc.as_deref());
-
+    out: &mut Value,
+) -> Vec<Value> {
     let mut parameters = Vec::new();
     for (name, ty) in route.params() {
         let mut parameter = Value::object();
@@ -1703,6 +1713,169 @@ fn operation(
             out.set("requestBody", body);
             refs.insert(key.clone());
         }
+    }
+    parameters
+}
+
+/// The schema name of a confirmed route's refusal (area 8).
+const CONFIRMATION_REQUIRED: &str = "ConfirmationRequired";
+
+/// When a confirmed route answers `confirmation_required`.
+const CONFIRMATION_REQUIRED_WHEN: &str = "The request came without the device's answer for it, with one that doesn't check or isn't from one of the signed-in person's own passkeys, or with one used already or older than two minutes.";
+
+/// A confirmed route's generated `<path>/confirmation` (area 8, "Confirm
+/// one request with a passkey"), asked with its method: it reads the
+/// route's own input and answers with the options for
+/// `navigator.credentials.get()`.
+fn confirmation_operation(
+    wire: &Wire<'_>,
+    lookup: &Lookup<'_>,
+    route: &RouteModel,
+    methods: &[jadpo_std::AuthenticationMethod],
+    refs: &mut BTreeSet<Key>,
+    failure_schemas: &mut BTreeMap<String, Value>,
+) -> Value {
+    let mut out = Value::object();
+    let id: Vec<String> = std::iter::once(route.method.word().to_ascii_lowercase())
+        .chain(route.segments.iter().map(|segment| match segment {
+            Segment::Fixed(text) => text.replace('-', "_"),
+            Segment::Param { name, .. } => format!("by_{name}"),
+        }))
+        .chain(std::iter::once(
+            jadpo_std::http::CONFIRMATION_SEGMENT.to_string(),
+        ))
+        .collect();
+    out.set("operationId", id.join("_"));
+    out.set(
+        "description",
+        format!(
+            "Gives the options for `navigator.credentials.get()` that confirm one request to `{}` with this input, listing the signed-in person's passkeys and bound to them, the route and a digest of the input; the challenge is used once and expires after two minutes.",
+            route.label()
+        ),
+    );
+    out.set("x-jadpo-generated", true);
+    out.set("x-jadpo-changes", true);
+    let parameters = inputs(wire, lookup, route, refs, &mut out);
+    out.set_some("parameters", parameters);
+    let mut responses = Value::object();
+    let mut options = Value::object();
+    options.set("type", "object");
+    options.set(
+        "description",
+        "`{ publicKey }`, as `PublicKeyCredential.parseRequestOptionsFromJSON()` reads `publicKey`.",
+    );
+    responses.set(
+        "200",
+        response(
+            "WebAuthn's request options under `publicKey`.",
+            Some(options),
+        ),
+    );
+    let mut failures: Vec<(&str, &str, &str, &str)> = vec![(
+        "403",
+        CONFIRMATION_REQUIRED,
+        jadpo_std::http::CONFIRMATION_REQUIRED,
+        "The signed-in person has no passkey to confirm the request with.",
+    )];
+    use jadpo_std::AuthenticationMethod as M;
+    let users = methods
+        .iter()
+        .any(|method| matches!(method, M::BrowserSession | M::ApiToken | M::ExternalToken));
+    for (status, name, code, description, when) in SIGN_IN {
+        let answers = match when {
+            When::Always | When::Users => true,
+            When::CookieWrite => methods.contains(&M::BrowserSession),
+            When::External => methods.contains(&M::ExternalToken),
+            When::OtherKind => methods.contains(&M::ServiceKey) && users,
+            When::Services => false,
+        };
+        if answers {
+            failures.push((status, name, code, description));
+        }
+    }
+    let mut by_status: BTreeMap<&str, Vec<(&str, &str)>> = BTreeMap::new();
+    for (status, name, code, description) in failures {
+        if name != CONFIRMATION_REQUIRED {
+            failure_schemas.insert(name.to_string(), envelope(code, description, None));
+        } else {
+            failure_schemas
+                .entry(name.to_string())
+                .or_insert_with(|| envelope(code, CONFIRMATION_REQUIRED_WHEN, None));
+        }
+        by_status.entry(status).or_default().push((code, name));
+    }
+    for (status, mut failures) in by_status {
+        failures.sort();
+        failures.dedup();
+        let mut schemas: Vec<Value> = failures.iter().map(|(_, name)| reference(name)).collect();
+        let codes: Vec<String> = failures
+            .iter()
+            .map(|(code, _)| format!("`{code}`"))
+            .collect();
+        let schema = if schemas.len() == 1 {
+            schemas.remove(0)
+        } else {
+            let mut any = Value::object();
+            any.set("oneOf", schemas);
+            any
+        };
+        responses.set(
+            status,
+            response(
+                &format!("Fails with {}.", crate::and_list(&codes)),
+                Some(schema),
+            ),
+        );
+    }
+    responses.set("400", shared_response("InvalidRequest"));
+    responses.set("413", shared_response("RequestTooLarge"));
+    responses.set("422", shared_response("InvalidInput"));
+    responses.set("429", shared_response("RateLimited"));
+    responses.set("500", shared_response("InternalFault"));
+    responses.set("503", shared_response("Unavailable"));
+    responses.set("504", shared_response("DeadlineExceeded"));
+    out.set("responses", responses);
+    out
+}
+
+#[allow(clippy::too_many_arguments)]
+fn operation(
+    wire: &Wire<'_>,
+    lookup: &Lookup<'_>,
+    route: &RouteModel,
+    key_required: bool,
+    facts: &Facts,
+    methods: &[jadpo_std::AuthenticationMethod],
+    refs: &mut BTreeSet<Key>,
+    failure_schemas: &mut BTreeMap<String, Value>,
+) -> Value {
+    let mut out = Value::object();
+    let id: Vec<String> = std::iter::once(route.method.word().to_ascii_lowercase())
+        .chain(route.segments.iter().map(|segment| match segment {
+            Segment::Fixed(text) => text.replace('-', "_"),
+            Segment::Param { name, .. } => format!("by_{name}"),
+        }))
+        .collect();
+    out.set("operationId", id.join("_"));
+    out.set_some("description", route.doc.as_deref());
+
+    let mut parameters = inputs(wire, lookup, route, refs, &mut out);
+    // A person confirms it with a passkey (area 8, "Confirm one request
+    // with a passkey"): the device's answer comes in a header.
+    if route.confirm {
+        let mut parameter = Value::object();
+        parameter.set("name", jadpo_std::http::CONFIRMATION_HEADER);
+        parameter.set("in", "header");
+        parameter.set(
+            "description",
+            "The device's answer to the options `<path>/confirmation` gave for this request, as WebAuthn's `PublicKeyCredential.toJSON()` writes it, in base64: used once, within two minutes, by one of the signed-in person's own passkeys.",
+        );
+        parameter.set("required", true);
+        let mut schema = Value::object();
+        schema.set("type", "string");
+        parameter.set("schema", schema);
+        parameters.push(parameter);
+        out.set("x-jadpo-confirm", jadpo_std::Confirmation::Passkey.name());
     }
     // Every write honours an `Idempotency-Key` (area 7, "Idempotent writes").
     let writes = route.method != jadpo_std::HttpMethod::Get;
@@ -1879,6 +2052,21 @@ fn operation(
             .entry("403".to_string())
             .or_default()
             .push(("not_permitted".to_string(), "PolicyRefused".to_string()));
+    }
+    // A request a person didn't confirm with their passkey (area 8).
+    if route.confirm {
+        failure_schemas.insert(
+            CONFIRMATION_REQUIRED.to_string(),
+            envelope(
+                jadpo_std::http::CONFIRMATION_REQUIRED,
+                CONFIRMATION_REQUIRED_WHEN,
+                None,
+            ),
+        );
+        by_status.entry("403".to_string()).or_default().push((
+            jadpo_std::http::CONFIRMATION_REQUIRED.to_string(),
+            CONFIRMATION_REQUIRED.to_string(),
+        ));
     }
     // A store that can't answer, or a change found as the action commits
     // more times than the budget allows.

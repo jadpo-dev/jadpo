@@ -111,6 +111,18 @@ pub fn said(family: &Family, subject: &str, change: &str) -> String {
                 format!("anyone can now call `{route}` of API `{api}`, without signing in")
             }
         }
+        "PolicyChange.confirmation_removed" => {
+            let (api, route) = route(subject);
+            if api == "main" || api.is_empty() {
+                format!(
+                    "a signed-in session alone can now run `{route}`, without the person's passkey"
+                )
+            } else {
+                format!(
+                    "a signed-in session alone can now run `{route}` of API `{api}`, without the person's passkey"
+                )
+            }
+        }
         "PolicyChange.restriction_removed" => format!(
             "`{subject}` no longer has a restriction of its own, so it follows its record's grants"
         ),
@@ -133,6 +145,15 @@ pub fn said(family: &Family, subject: &str, change: &str) -> String {
             "`{subject}` is installed from git, where no registry verifies who published it"
         ),
         "DomainChange.created" => format!("new domain `{subject}`"),
+        "ThresholdChange.raised" => {
+            format!("threshold `{subject}` is raised, so its alert goes off later")
+        }
+        "ThresholdChange.removed" => {
+            format!("threshold `{subject}` is gone, so nothing alerts on it")
+        }
+        "ThresholdChange.lowered" => format!(
+            "`{subject}` is lowered, so the disk fills further before writes are refused and its alert goes off"
+        ),
         change => format!("`{subject}`: `{change}`"),
     }
 }
@@ -142,6 +163,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_route_no_longer_confirmed_says_what_is_enough_now() {
+        assert_eq!(
+            said(
+                &Family::Api,
+                "\"main POST /todos\"",
+                "PolicyChange.confirmation_removed"
+            ),
+            "a signed-in session alone can now run `POST /todos`, without the person's passkey"
+        );
+    }
+
+    #[test]
     fn callers_read_as_people() {
         assert_eq!(caller("Access.public"), "anyone");
         assert_eq!(caller("StaffRole.admin"), "`StaffRole.admin`");
@@ -149,6 +182,34 @@ mod tests {
         assert_eq!(
             callers(&["Access.authenticated".into(), "StaffRole.admin".into()]),
             "anyone signed in and `StaffRole.admin`"
+        );
+    }
+
+    #[test]
+    fn a_loosened_threshold_says_what_stops_alerting() {
+        assert_eq!(
+            said(
+                &Family::Thresholds,
+                "hello.greeting_route.p95",
+                "ThresholdChange.raised"
+            ),
+            "threshold `hello.greeting_route.p95` is raised, so its alert goes off later"
+        );
+        assert_eq!(
+            said(
+                &Family::Thresholds,
+                "hello.greeting",
+                "ThresholdChange.removed"
+            ),
+            "threshold `hello.greeting` is gone, so nothing alerts on it"
+        );
+        assert_eq!(
+            said(
+                &Family::Thresholds,
+                "uploads.free_space_floor",
+                "ThresholdChange.lowered"
+            ),
+            "`uploads.free_space_floor` is lowered, so the disk fills further before writes are refused and its alert goes off"
         );
     }
 

@@ -50,6 +50,10 @@ pub fn api_features(db: &dyn Db, project: Project, api: &str) -> BTreeSet<Featur
         return out;
     }
     out.insert(Feature::Requests);
+    // A route a person confirms with a passkey (area 8).
+    if routes.iter().any(|route| route.confirm) {
+        out.insert(Feature::Confirmation);
+    }
     let methods = crate::routes::apis::accepted_methods(db, project, api);
     let users = methods
         .iter()
