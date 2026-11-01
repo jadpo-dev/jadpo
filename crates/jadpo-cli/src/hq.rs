@@ -199,6 +199,32 @@ fn refusal(answer: &Answer) -> Failure {
     }
 }
 
+/// Why a connection wasn't made, in words that read the same on every
+/// system: the operating system's own error number differs between macOS
+/// and Linux, so it is left out.
+pub(crate) fn not_connected(error: &std::io::Error, waited: Duration) -> String {
+    use std::io::ErrorKind;
+    match error.kind() {
+        ErrorKind::ConnectionRefused => "nothing is listening there".to_string(),
+        ErrorKind::TimedOut | ErrorKind::WouldBlock => {
+            format!("it didn't answer within {} seconds", waited.as_secs())
+        }
+        ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted => {
+            "the connection was dropped".to_string()
+        }
+        ErrorKind::HostUnreachable | ErrorKind::NetworkUnreachable => {
+            "the network can't reach it".to_string()
+        }
+        _ => {
+            let said = error.to_string();
+            match said.rfind(" (os error ") {
+                Some(at) if said.ends_with(')') => said[..at].to_string(),
+                _ => said,
+            }
+        }
+    }
+}
+
 /// One try: connect, send, read the whole answer.
 fn once(address: &Address, path: &str, body: &str) -> Result<Answer, String> {
     let host = address.host.trim_start_matches('[').trim_end_matches(']');
@@ -213,10 +239,15 @@ fn once(address: &Address, path: &str, body: &str) -> Result<Answer, String> {
                 stream = Some(connected);
                 break;
             }
-            Err(error) => last = error.to_string(),
+            Err(error) => last = not_connected(&error, CONNECT),
         }
     }
-    let stream = stream.ok_or_else(|| format!("No connection to `{}`: {last}.", address.host))?;
+    let stream = stream.ok_or_else(|| {
+        format!(
+            "No connection to `{}:{}`: {last}.",
+            address.host, address.port
+        )
+    })?;
     stream
         .set_read_timeout(Some(ANSWER))
         .and_then(|()| stream.set_write_timeout(Some(ANSWER)))
@@ -344,6 +375,34 @@ fn unchunk(mut rest: &[u8]) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A failed connection reads the same on macOS and Linux, whose error
+    /// numbers for it differ, so the docs can check it (roadmap D13b2c).
+    #[test]
+    fn a_failed_connection_says_why_without_the_systems_number() {
+        use std::io::{Error, ErrorKind};
+        let refused = Error::from_raw_os_error(if cfg!(target_os = "linux") { 111 } else { 61 });
+        assert_eq!(refused.kind(), ErrorKind::ConnectionRefused);
+        assert_eq!(
+            not_connected(&refused, CONNECT),
+            "nothing is listening there"
+        );
+        assert_eq!(
+            not_connected(&Error::from(ErrorKind::TimedOut), CONNECT),
+            "it didn't answer within 5 seconds"
+        );
+        let other = not_connected(&Error::from_raw_os_error(13), CONNECT);
+        assert!(!other.contains("os error"), "{other}");
+        // Nothing listens on port 1 of this machine.
+        let address = address("http://127.0.0.1:1").expect("an address");
+        let said = once(&address, "/v1/suggestions/hashes", "{}")
+            .err()
+            .expect("no connection");
+        assert_eq!(
+            said,
+            "No connection to `127.0.0.1:1`: nothing is listening there."
+        );
+    }
 
     #[test]
     fn an_address_is_https_or_on_this_machine() {

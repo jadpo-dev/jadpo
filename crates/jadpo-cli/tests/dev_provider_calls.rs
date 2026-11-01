@@ -356,6 +356,12 @@ fn named_operations_go_to_the_sandbox_never_live() {
         ),
         "{shown}"
     );
+    assert!(
+        shown.contains(
+            "`jadpo dev` lets the operations `development: { sandbox: }` and `--sandbox` name through to the provider's sandbox"
+        ),
+        "{shown}"
+    );
     assert_eq!(provider.requests().len(), 1);
 }
 

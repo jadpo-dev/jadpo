@@ -480,6 +480,23 @@ fn jadpo_package_record_refuses_live_and_missing_credentials() {
         "{}",
         live.stderr
     );
+    // With nothing choosing the environment, that setting is set to
+    // `sandbox`, and the key to the sandbox's own.
+    write(
+        &root,
+        "config.jadpo",
+        "config {\n    couriers_api_key: Text {\n        secret: true\n    }\n    couriers_environment: ProviderEnvironment\n}\n",
+    );
+    std::fs::remove_file(root.join(".env.local")).expect("removed");
+    let neither = record(&root, &[]);
+    assert_eq!(neither.code, 1, "{}{}", neither.stdout, neither.stderr);
+    assert!(
+        neither.stderr.contains(
+            "next: Set `COURIERS_API_KEY` to the sandbox's and `COURIERS_ENVIRONMENT` to `sandbox` in `.env.local`, then run it again (human)"
+        ),
+        "{}",
+        neither.stderr
+    );
     assert!(sandbox.requests().is_empty());
     assert!(!root.join(PACKAGE).join("recordings").exists());
 }
