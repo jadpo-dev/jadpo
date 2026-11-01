@@ -188,11 +188,13 @@ fn threshold_needs(db: &dyn Db, project: Project, before: &BeforeSide, out: &mut
         let now = thresholds::written(&texts(db, project, path)).unwrap_or_default();
         for (subject, change) in thresholds::loosened(Some(domain), &was, &now) {
             out.push(Need {
+                said: words::said(&Family::Thresholds, &subject, change),
                 subject,
                 change: change.to_string(),
                 family: Family::Thresholds,
                 path: path.clone(),
                 heading: None,
+                who: Vec::new(),
             });
         }
     }
@@ -202,11 +204,13 @@ fn threshold_needs(db: &dyn Db, project: Project, before: &BeforeSide, out: &mut
             thresholds::floors_lowered(&thresholds::floors(was), &thresholds::floors(&now))
         {
             out.push(Need {
+                said: words::said(&Family::Thresholds, &subject, thresholds::LOWERED),
                 subject,
                 change: thresholds::LOWERED.to_string(),
                 family: Family::Thresholds,
                 path: jadpo_db::PROJECT_FILE.to_string(),
                 heading: None,
+                who: Vec::new(),
             });
         }
     }

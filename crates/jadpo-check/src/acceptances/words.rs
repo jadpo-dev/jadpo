@@ -133,6 +133,15 @@ pub fn said(family: &Family, subject: &str, change: &str) -> String {
             "`{subject}` is installed from git, where no registry verifies who published it"
         ),
         "DomainChange.created" => format!("new domain `{subject}`"),
+        "ThresholdChange.raised" => {
+            format!("threshold `{subject}` is raised, so its alert goes off later")
+        }
+        "ThresholdChange.removed" => {
+            format!("threshold `{subject}` is gone, so nothing alerts on it")
+        }
+        "ThresholdChange.lowered" => format!(
+            "`{subject}` is lowered, so the disk fills further before writes are refused and its alert goes off"
+        ),
         change => format!("`{subject}`: `{change}`"),
     }
 }
@@ -149,6 +158,34 @@ mod tests {
         assert_eq!(
             callers(&["Access.authenticated".into(), "StaffRole.admin".into()]),
             "anyone signed in and `StaffRole.admin`"
+        );
+    }
+
+    #[test]
+    fn a_loosened_threshold_says_what_stops_alerting() {
+        assert_eq!(
+            said(
+                &Family::Thresholds,
+                "hello.greeting_route.p95",
+                "ThresholdChange.raised"
+            ),
+            "threshold `hello.greeting_route.p95` is raised, so its alert goes off later"
+        );
+        assert_eq!(
+            said(
+                &Family::Thresholds,
+                "hello.greeting",
+                "ThresholdChange.removed"
+            ),
+            "threshold `hello.greeting` is gone, so nothing alerts on it"
+        );
+        assert_eq!(
+            said(
+                &Family::Thresholds,
+                "uploads.free_space_floor",
+                "ThresholdChange.lowered"
+            ),
+            "`uploads.free_space_floor` is lowered, so the disk fills further before writes are refused and its alert goes off"
         );
     }
 
