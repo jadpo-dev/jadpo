@@ -1824,6 +1824,12 @@ usage, also keeps `jadpo_housekeeping`: the owner, lease and last completed
 hourly cleanup pass ([Jobs and events](12-jobs-and-events.md)). It is
 generated and migrated with the other system tables.
 
+A store whose entities have `File` fields keeps `jadpo_files`, how many
+fields hold each stored file, which a trigger on each table with a `File`
+column keeps as rows change; it is how a file's bytes are deleted once no
+record holds them ([Deleting and erasing](16-built-in-services.md#deleting-and-erasing)).
+Its migration makes the trigger, and counts the files existing rows hold.
+
 The manifest holds a `system_table` node for each.
 `jadpo_migrations`, which `jadpo migrate apply` keeps, is the runtime's
 own and in no snapshot.

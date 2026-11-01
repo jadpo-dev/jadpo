@@ -498,14 +498,17 @@ impl TestHost {
     /// The rows its stores hold now, when the test used one.
     async fn rows(&self) -> Vec<String> {
         if !self.used.get() {
-            return Vec::new();
+            return self.caught.files_kept();
         }
-        test_run::all_rows(
+        let mut rows = test_run::all_rows(
             self.stores
                 .iter()
                 .map(|(name, store)| (name.as_str(), store.raw())),
         )
-        .await
+        .await;
+        // The bytes its stores of files keep, after the rows (chunk B3).
+        rows.extend(self.caught.files_kept());
+        rows
     }
 }
 

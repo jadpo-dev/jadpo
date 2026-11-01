@@ -75,6 +75,13 @@ pub(crate) async fn write(
     if let Err(error) = ctx.transaction(&plan.store).await {
         return Err(refused(ctx, error, site));
     }
+    // An update or a delete may leave a stored file held by none, whose
+    // bytes its commit sets out to delete (chunk B3).
+    if plan.op != jadpo_std::write::WriteOp::Create
+        && let Some(boundary) = ctx.boundary_mut()
+    {
+        boundary.may_release();
+    }
     let versioned = if let Some(row) = plan.row.as_ref().filter(|_| ctx.loaded_before_call()) {
         let id = source_value(ctx, &row.id, inputs, site, now)?;
         let id = to_sql(&id, SqlType::Uuid).map_err(|what| defect(ctx, &what, site))?;

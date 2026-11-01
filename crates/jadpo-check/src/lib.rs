@@ -329,6 +329,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(prompts::prompt_problems(db, project).iter().cloned());
         out.extend(emails::email_problems(db, project).iter().cloned());
         out.extend(disk::disk_problems(db, project).iter().cloned());
+        out.extend(data::held::counting_problems(db, project).iter().cloned());
         out.extend(ai::ai_problems(db, project).iter().cloned());
         out.extend(routes::api_problems(db, project).iter().cloned());
         out.extend(

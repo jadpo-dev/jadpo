@@ -4843,7 +4843,38 @@ its own bytes before it makes a folder. `jadpo_check::disk` checks a
 store's keys, `path:` against `Project::folder` (the project's folder
 with links resolved) and `free_space_floor:`; `jadpo_cli::stamp` lists
 each deployable's reached disk stores as the manifest's `one_server`
-(chunk B2). A file helper's read
+(chunk B2).
+Deleting a file's bytes (chunk B3): `jadpo_check::data::held::counters`
+gives each store of files the database whose entities' `File` fields
+name it, which the schema gives `jadpo_std::system::FILES`
+(`jadpo_files`: store, key, holders, since) and the plan carries as
+`EventsPlan::files` (`FilesPlan`, also on `Started`); fields naming it
+from a second database are `toolchain.not_built_yet`
+(`counting_problems`). `jadpo_graph::migration::held_files` derives each
+table's `File` columns (a column whose stored JSON reads a `File`) while
+the store keeps `jadpo_files`, and `migration_sql` writes, after the
+indexes, the trigger function `jadpo_files_held` once, a `jadpo_files`
+trigger on each such table (`AFTER INSERT OR UPDATE OF <columns> OR
+DELETE`, its columns as arguments) and a count of the files rows already
+hold (`jadpo_sql::table::count_held_files`). The function counts one
+holder more for a file a row now holds, refusing a file whose holders are
+`-1` (being deleted) or `-2` (gone), and one fewer for a file it no longer
+holds, clearing `since`. `files::put` records its file at none
+(`KEEP_PUT`) before sending. A write that updates or deletes marks the
+boundary (`Boundary::may_release`), and `boundary::seal` then runs
+`files::RELEASED` in the transaction, marking each file held by none and
+not yet seen as `-1` and adding a `jadpo.FileReleased` event for the
+generated subscriber `files <store>` (`Target::Files`; its payload read
+by `files::read_released`). `runner::attempt_delivery` sends that
+subscriber's keyed `delete` through the seam, then `GONE` marks it `-2`.
+`files::sweep`, on the tick where subscribers run, takes at most 100 due
+files a store (`DUE`: held by none since a day ago, released by a commit
+that left no event, or being deleted for a day), marks them and keeps
+their events in one transaction. `MemoryFiles` and `DiskStore` answer
+`delete` (`unlinkat` on the name under the key, then `fsync` of its
+folder); a test's record keeps the bytes each store of files holds after
+its rows (`test_run::Caught::files_kept`), so the compiled run is seen to
+keep and delete the same bytes. A file helper's read
 is `BatchOp::Read(RowFormat)`, planned as a `BatchPlan` whose `from` is
 `BatchFrom::File` (the row type's JSON-table number and each field's
 column) and whose store is `jadpo_check::types::file_run_stores`'s; the
