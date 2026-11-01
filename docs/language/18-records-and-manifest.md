@@ -671,7 +671,7 @@ Each change the compiler reports, and the subject it names:
 | `ApiChange.failure_changed` | `main.todo_locked` | A failure code is gone, or its status changed |
 | `ApiChange.event_removed` | `planning.TodoCompleted` | An event is gone from its domain's event record |
 | `PolicyChange.route_public` | `"main GET /books"` | A route that needed a signed-in caller is open to anyone |
-| `PolicyChange.confirmation_removed` | `"main POST /releases/{release_id: Uuid}/confirm"` | A route that needed the person's passkey no longer asks for it ([Confirm one request with a passkey](08-identity.md#confirm-one-request-with-a-passkey-confirm-confirmationpasskey)) |
+| `PolicyChange.confirmation_removed` | `"main POST /payouts/{payout_id: Uuid}/send"` | A route that needed the person's passkey no longer asks for it ([Confirm one request with a passkey](08-identity.md#confirm-one-request-with-a-passkey-confirm-confirmationpasskey)) |
 | `PolicyChange.widened` | `library.Book.read`, `library.Book.cost.read`, `lending.borrow` | A caller is added to an entity's or a field's grant, or to a listed action's or query's line; or a field's own list now follows its record's |
 | `PolicyChange.restriction_removed` | `library.Book.cost` | A field's own row, or its `server_only`, is gone |
 | `PolicyChange.tenancy_loosened` | `library.Book`, or `tenant` | An entity that belonged to the tenant is shared by every tenant, or the app's tenant is gone |

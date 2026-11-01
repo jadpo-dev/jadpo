@@ -2151,7 +2151,7 @@ compares the change with the default branch at its merge base through
 - a route that needed a signed-in caller made open to anyone
   (`"main GET /books": PolicyChange.route_public`);
 - a route that needed the person's passkey no longer asking for it
-  (`"main POST /releases/{release_id: Uuid}/confirm":
+  (`"main POST /payouts/{payout_id: Uuid}/send":
   PolicyChange.confirmation_removed`);
 - a decline of `policy.call_ungranted`, a security rule
   (`PolicyChange.call_ungranted_declined`).

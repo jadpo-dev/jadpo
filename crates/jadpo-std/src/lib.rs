@@ -114,12 +114,11 @@ pub use constant::{Constant, Hidden};
 pub use enums::{
     Access, AuditBy, AuditChange, AuthenticationMethod, AuthenticationStrength, BatchState,
     ClientAddressSource, CodeForm, ComponentStyle, Confirmation, CsvFormat, DeployTarget, Driver,
-    Dst, Erasure,
-    FieldAccess, FieldChange, Generated, HttpMethod, Idempotency, IndexKind, InvalidDay, LOCALE,
-    MembershipScope, MoneyDisplay, MoneyPrecision, MoneySign, Month, OnDelete, ProviderEnvironment,
-    Rounding, RouteAuthentication, ScheduleTrigger, SearchLanguage, SignInMethod, SignInRefusal,
-    SuccessStatus, Tenancy, TextDirection, TextFormat, TranslationReview, Trigger, UuidVersion,
-    VectorDistance, Weekday, ZONE, enums, variant_ordinal,
+    Dst, Erasure, FieldAccess, FieldChange, Generated, HttpMethod, Idempotency, IndexKind,
+    InvalidDay, LOCALE, MembershipScope, MoneyDisplay, MoneyPrecision, MoneySign, Month, OnDelete,
+    ProviderEnvironment, Rounding, RouteAuthentication, ScheduleTrigger, SearchLanguage,
+    SignInMethod, SignInRefusal, SuccessStatus, Tenancy, TextDirection, TextFormat,
+    TranslationReview, Trigger, UuidVersion, VectorDistance, Weekday, ZONE, enums, variant_ordinal,
 };
 pub use format::{BuiltinFormat, Component, FormatLength, FormatPart, TimeFormatSpec};
 pub use isolation::Isolation;

@@ -203,10 +203,7 @@ pub(super) async fn confirming(
     request: &mut Request,
     (device, at): (u32, u32),
 ) -> Result<(), Box<Fault>> {
-    let fault = |ctx: &mut Ctx<'_>, what: &str| match defect(ctx, what, at) {
-        Stored::Fault(fault) => fault,
-        _ => unreachable!("a defect is a fault"),
-    };
+    let fault = |ctx: &mut Ctx<'_>, what: &str| ctx.fault(FaultKind::Defect(what.to_string()), at);
     let found = app
         .table
         .routes

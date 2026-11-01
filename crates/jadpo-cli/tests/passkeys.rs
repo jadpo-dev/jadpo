@@ -1612,6 +1612,51 @@ fn a_confirmation_is_for_that_request_alone() {
     refused(&unread, 422, "invalid_input");
 }
 
+/// An `Idempotency-Key` skips no confirmation: a repeat asks for one of its
+/// own, and then gets the first answer without running again.
+#[test]
+fn a_repeat_under_its_key_confirms_again() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let live = Live::new("confirm_key");
+    let (browser, mut device) = live.with_passkey("ada@example.com");
+    let keyed = |mut request: Request, key: &str| {
+        request
+            .headers
+            .push(("idempotency-key".to_string(), key.to_string()));
+        request
+    };
+    let answer = live.confirmation(&browser, &mut device, "/account/handle", COUNTESS);
+    let first = live.send(&keyed(
+        confirmed(&browser, "POST", "/account/handle", COUNTESS, &answer),
+        "first",
+    ));
+    assert_eq!(first.status, 204, "{}", text(&first));
+    // Changed since, so a repeat that ran again would change it back.
+    let answer = live.confirmation(&browser, &mut device, "/account/handle", LOVELACE);
+    let second = live.send(&keyed(
+        confirmed(&browser, "POST", "/account/handle", LOVELACE, &answer),
+        "second",
+    ));
+    assert_eq!(second.status, 204, "{}", text(&second));
+    assert_eq!(live.handle_of("ada@example.com"), "lovelace");
+    // The key alone is refused, however it was answered before.
+    let bare = live.send(&keyed(
+        browser.write("POST", "/account/handle", COUNTESS),
+        "first",
+    ));
+    refused(&bare, 403, "confirmation_required");
+    // Confirmed again, it gets the first answer, and nothing runs.
+    let answer = live.confirmation(&browser, &mut device, "/account/handle", COUNTESS);
+    let repeat = live.send(&keyed(
+        confirmed(&browser, "POST", "/account/handle", COUNTESS, &answer),
+        "first",
+    ));
+    assert_eq!(repeat.status, 204, "{}", text(&repeat));
+    assert_eq!(live.handle_of("ada@example.com"), "lovelace");
+}
+
 #[test]
 fn a_confirmation_lasts_two_minutes() {
     if !jadpo_test::live() {

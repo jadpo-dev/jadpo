@@ -987,7 +987,7 @@ fn a_route_tests_spans_are_in_its_record() {
 /// next line, and its fixtures. Teaching example 27, the guest house,
 /// registers and signs in with `test_passkeys` there, the test
 /// authenticator and the passkey ceremonies built for wasm32 (area 8,
-/// "Passkeys"), and area 8's release is confirmed with one.
+/// "Passkeys"), and area 8's payout is confirmed with one.
 #[test]
 fn route_tests_on_workerd_give_the_interpreters_records() {
     if !jadpo_test::live() {
@@ -1015,7 +1015,7 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
     // session. Its three tests sign in through the provider alone, and
     // each is a route test (chunk A6).
     let google_staff = page("docs/language/08-identity.md google-staff");
-    // Area 8's release a publisher confirms with a passkey (chunk R1): the
+    // Area 8's payout a treasurer confirms with a passkey (chunk R1): the
     // route's `…/confirmation`, the ceremony built for wasm32 and the
     // challenge taken once, each refusal with the interpreter's record.
     let confirmation = page("docs/language/08-identity.md confirmation");
@@ -1049,7 +1049,7 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
             corpus_project(&google_staff, "workerd-google-staff"),
         ),
         (
-            "area 8's release confirmed with a passkey",
+            "area 8's payout confirmed with a passkey",
             corpus_project(&confirmation, "workerd-confirmation"),
         ),
     ];

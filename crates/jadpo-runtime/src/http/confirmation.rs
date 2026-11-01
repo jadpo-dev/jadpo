@@ -45,12 +45,12 @@ pub(crate) const REQUIRED: (u16, &str, &str) = (
 const CONFIRM: &str = "confirm";
 
 /// One of the person's passkeys, by its credential ID.
-const OWN: &str = "SELECT \"id\", \"credential\", \"encoding\", \"user_handle\" FROM \"jadpo_passkeys\" WHERE \"credential_id\" = $1 AND \"principal_id\" = $2";
+pub(crate) const OWN: &str = "SELECT \"id\", \"credential\", \"encoding\", \"user_handle\" FROM \"jadpo_passkeys\" WHERE \"credential_id\" = $1 AND \"principal_id\" = $2";
 
 /// Writes a passkey after it confirmed a request, in this release's
 /// encoding, if its counter is still the one read: a second answer racing
 /// it changes nothing.
-const USED: &str = "UPDATE \"jadpo_passkeys\" SET \"credential\" = $3, \"encoding\" = $4 WHERE \"id\" = $1 AND \"principal_id\" = $5 AND \"credential\" ->> 'sign_count' = $2 RETURNING \"id\"";
+pub(crate) const USED: &str = "UPDATE \"jadpo_passkeys\" SET \"credential\" = $3, \"encoding\" = $4 WHERE \"id\" = $1 AND \"principal_id\" = $5 AND \"credential\" ->> 'sign_count' = $2 RETURNING \"id\"";
 
 /// What a confirmation's challenge is bound to: the person, and the digest
 /// of the route and the request's input.
@@ -348,6 +348,27 @@ mod tests {
             answer_text(&jadpo_value::encoding::to_base64url(b"[1]")),
             None
         );
+    }
+
+    /// Only a person can confirm: a service's `id` is never taken for one.
+    #[test]
+    fn only_a_person_confirms() {
+        let caller = |key: &str| Caller {
+            value: Value::record(
+                "Principal.user",
+                vec![(
+                    "id".into(),
+                    Value::Uuid(std::rc::Rc::from("01010101-0101-0101-0101-010101010101")),
+                )],
+            ),
+            key: key.to_string(),
+            session: None,
+            sign_in: None,
+            multi_factor: false,
+        };
+        assert_eq!(person(Some(&caller("user 1"))), Some([1; 16]));
+        assert_eq!(person(Some(&caller("service 1"))), None);
+        assert_eq!(person(None), None);
     }
 
     #[test]

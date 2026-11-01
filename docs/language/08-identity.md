@@ -3179,17 +3179,17 @@ Use it where a stolen session or token must not be enough, such as
 releasing a package, moving money or deleting an account. The signed-in
 person approves this one request with one of their own passkeys.
 
-```jadpo check project=confirmation file=domains/registry/routes/releases.jadpo
-use registry/entities { Release }
-use registry/actions { confirm_release }
+```jadpo check project=confirmation file=domains/payouts/routes/payouts.jadpo
+use payouts/entities { Payout }
+use payouts/actions { send_payout }
 
-routes Releases {
-    prefix: /releases
+routes Payouts {
+    prefix: /payouts
 
-    POST /{release_id: Release.id}/confirm {
+    POST /{payout_id: Payout.id}/send {
         confirm: Confirmation.passkey
         status: SuccessStatus.no_content
-        run: confirm_release(release_id)
+        run: send_payout(payout_id)
     }
 }
 ```
@@ -3203,10 +3203,10 @@ for the options to give `navigator.credentials.get()`
 holds):
 
 ```text
-POST /releases/0192d3c4-.../confirm/confirmation
+POST /payouts/0192d3c4-.../send/confirmation
 
 200 OK
-{ "publicKey": { "challenge": "Vh3q...", "rpId": "registry.example", "allowCredentials": [{ "type": "public-key", "id": "AQID..." }], "userVerification": "required", "timeout": 120000 } }
+{ "publicKey": { "challenge": "Vh3q...", "rpId": "payouts.example", "allowCredentials": [{ "type": "public-key", "id": "AQID..." }], "userVerification": "required", "timeout": 120000 } }
 ```
 
 The browser has the person present a passkey, and the request itself
@@ -3214,7 +3214,7 @@ carries the device's answer in `X-Jadpo-Confirmation`, the JSON WebAuthn's
 `toJSON()` writes, in base64 (`btoa(JSON.stringify(credential))`):
 
 ```text
-POST /releases/0192d3c4-.../confirm
+POST /payouts/0192d3c4-.../send
 X-Jadpo-Confirmation: eyJpZCI6IkFRSUQi...
 
 204 No Content
@@ -3272,7 +3272,7 @@ X-Jadpo-Confirmation: eyJpZCI6IkFRSUQi...
 ```jadpo check project=confirmation file=config.jadpo hidden
 config {
     browser_origin: Url {
-        test: "https://registry.example"
+        test: "https://payouts.example"
     }
     mail_sender: Email
     smtp_host: Hostname
@@ -3280,10 +3280,10 @@ config {
 ```
 
 ```jadpo check project=confirmation file=app.jadpo hidden
-use registry/entities { Publisher }
+use payouts/entities { Treasurer }
 
 application {
-    display_name: "Registry"
+    display_name: "Payouts"
     connections: {
         mail: {
             driver: Driver.smtp
@@ -3298,7 +3298,7 @@ application {
 
 principal {
     user: {
-        subject: Publisher.email
+        subject: Treasurer.email
     }
 }
 ```
@@ -3306,7 +3306,7 @@ principal {
 ```jadpo check project=confirmation file=authentication.jadpo hidden
 authentication {
     browser_session: {
-        cookie: "registry_session"
+        cookie: "payouts_session"
         origin: config.browser_origin
     }
     sign_in: {
@@ -3318,8 +3318,8 @@ authentication {
 }
 ```
 
-```jadpo check project=confirmation file=domains/registry/entities/publisher.jadpo hidden
-entity Publisher {
+```jadpo check project=confirmation file=domains/payouts/entities/treasurer.jadpo hidden
+entity Treasurer {
     id: Uuid
     email: Email {
         unique: true
@@ -3332,159 +3332,159 @@ entity Publisher {
 }
 ```
 
-```jadpo check project=confirmation file=domains/registry/entities/release.jadpo hidden
-use registry/entities { Publisher }
+```jadpo check project=confirmation file=domains/payouts/entities/payout.jadpo hidden
+use payouts/entities { Treasurer }
 
-entity Release {
+entity Payout {
     id: Uuid
-    publisher_id: Publisher.id {
+    treasurer_id: Treasurer.id {
         on_delete: OnDelete.restricted
     }
-    confirmed: Bool
+    paid: Bool
 
     policy: {
-        create: [publisher_id]
-        read: [publisher_id]
-        update: [publisher_id]
+        create: [treasurer_id]
+        read: [treasurer_id]
+        update: [treasurer_id]
     }
 }
 ```
 
-```jadpo check project=confirmation file=domains/registry/failures/email_taken.jadpo hidden
+```jadpo check project=confirmation file=domains/payouts/failures/email_taken.jadpo hidden
 /// The address has an account already.
 type EmailTaken = Failure {
     kind: FailureKind.conflict
 }
 ```
 
-```jadpo check project=confirmation file=domains/registry/failures/release_not_found.jadpo hidden
-/// No such release.
-type ReleaseNotFound = Failure {
+```jadpo check project=confirmation file=domains/payouts/failures/payout_not_found.jadpo hidden
+/// No such payout.
+type PayoutNotFound = Failure {
     kind: FailureKind.not_found
 }
 ```
 
-```jadpo check project=confirmation file=domains/registry/types/enrolment.jadpo hidden
+```jadpo check project=confirmation file=domains/payouts/types/enrolment.jadpo hidden
 type Enrolment = Input {
     email: Email
 }
 ```
 
-```jadpo check project=confirmation file=domains/registry/actions/enrol_publisher.jadpo hidden
-use registry/entities { Publisher }
-use registry/types { Enrolment }
-use registry/failures { EmailTaken }
+```jadpo check project=confirmation file=domains/payouts/actions/enrol_treasurer.jadpo hidden
+use payouts/entities { Treasurer }
+use payouts/types { Enrolment }
+use payouts/failures { EmailTaken }
 
-/// Adds a publisher with an address.
-action enrol_publisher(input: Enrolment) fails EmailTaken -> Publisher {
-    return attempt Publisher.create {
+/// Adds a treasurer with an address.
+action enrol_treasurer(input: Enrolment) fails EmailTaken -> Treasurer {
+    return attempt Treasurer.create {
         set: {
             email: input.email
         }
         conflict: {
-            Publisher.email: EmailTaken
+            Treasurer.email: EmailTaken
         }
     }
 }
 ```
 
-```jadpo check project=confirmation file=domains/registry/actions/draft_release.jadpo hidden
-use registry/entities { Release }
+```jadpo check project=confirmation file=domains/payouts/actions/draft_payout.jadpo hidden
+use payouts/entities { Payout }
 
-/// Starts a release nobody has confirmed.
-action draft_release(publisher: Principal.user) -> Release {
-    return Release.create {
+/// Starts a payout nobody has sent.
+action draft_payout(treasurer: Principal.user) -> Payout {
+    return Payout.create {
         set: {
-            publisher_id: publisher.id
-            confirmed: false
+            treasurer_id: treasurer.id
+            paid: false
         }
     }
 }
 ```
 
-```jadpo check project=confirmation file=domains/registry/actions/confirm_release.jadpo hidden
-use registry/entities { Release }
-use registry/failures { ReleaseNotFound }
+```jadpo check project=confirmation file=domains/payouts/actions/send_payout.jadpo hidden
+use payouts/entities { Payout }
+use payouts/failures { PayoutNotFound }
 
-/// Sends a release out.
-action confirm_release(release_id: Release.id) fails ReleaseNotFound -> Unit {
-    var confirmed: Release = attempt Release.update(release_id) {
+/// Sends a payout out.
+action send_payout(payout_id: Payout.id) fails PayoutNotFound -> Unit {
+    var sent: Payout = attempt Payout.update(payout_id) {
         set: {
-            confirmed: true
+            paid: true
         }
     }
-    assert confirmed.confirmed
+    assert sent.paid
 }
 ```
 
 ```jadpo check project=confirmation file=policy.jadpo hidden
-use registry
+use payouts
 
 policy {
     actions: {
-        registry.enrol_publisher: [Access.public]
+        payouts.enrol_treasurer: [Access.public]
     }
 }
 ```
 
-```jadpo check project=confirmation file=domains/registry/fixtures/publisher_called.jadpo hidden
-use registry/entities { Publisher }
-use registry/types { Enrolment }
-use registry/actions { enrol_publisher }
+```jadpo check project=confirmation file=domains/payouts/fixtures/treasurer_called.jadpo hidden
+use payouts/entities { Treasurer }
+use payouts/types { Enrolment }
+use payouts/actions { enrol_treasurer }
 
-/// A publisher with `address`, with no passkey.
-fixture publisher_called(address: Email) -> Principal.user {
-    var publisher: Publisher = attempt enrol_publisher(
+/// A treasurer with `address`, with no passkey.
+fixture treasurer_called(address: Email) -> Principal.user {
+    var treasurer: Treasurer = attempt enrol_treasurer(
         Enrolment {
             email: address
         }
     )
-    return Principal.user(publisher)
+    return Principal.user(treasurer)
 }
 ```
 
-```jadpo check project=confirmation file=domains/registry/fixtures/drafted_by.jadpo hidden migrate=initial
-use registry/entities { Release }
-use registry/actions { draft_release }
+```jadpo check project=confirmation file=domains/payouts/fixtures/drafted_by.jadpo hidden migrate=initial
+use payouts/entities { Payout }
+use payouts/actions { draft_payout }
 
-/// A release of `publisher`'s that nobody has confirmed.
-fixture drafted_by(publisher: Principal.user) -> Release {
-    return draft_release(publisher)
+/// A payout of `treasurer`'s that nobody has sent.
+fixture drafted_by(treasurer: Principal.user) -> Payout {
+    return draft_payout(treasurer)
 }
 ```
 
 A route test confirms the next request with a test passkey. Without it,
 or with another person's, nothing runs:
 
-```jadpo check project=confirmation file=domains/registry/routes/releases.test.jadpo
-use registry/entities { Release }
-use registry/fixtures { drafted_by, publisher_called }
+```jadpo check project=confirmation file=domains/payouts/routes/payouts.test.jadpo
+use payouts/entities { Payout }
+use payouts/fixtures { drafted_by, treasurer_called }
 
-test "a release goes out once its publisher confirms it with a passkey" {
-    var ada: Principal.user = publisher_called("ada@example.com")
+test "a payout goes out once its treasurer confirms it with a passkey" {
+    var ada: Principal.user = treasurer_called("ada@example.com")
     var phone: TestPasskey = test_passkeys.register(ada, "Phone")
-    var release: Release = drafted_by(ada)
+    var payout: Payout = drafted_by(ada)
     test_passkeys.confirm(phone)
     var response: Response = request {
         method: HttpMethod.post
-        path: "/releases/{release_id}/confirm"
+        path: "/payouts/{payout_id}/send"
         params: {
-            release_id: release.id
+            payout_id: payout.id
         }
         as: ada
     }
     assert response.status == 204
 }
 
-test "a stolen session alone sends nothing out" {
-    var ada: Principal.user = publisher_called("ada@example.com")
+test "a stolen session alone sends nothing" {
+    var ada: Principal.user = treasurer_called("ada@example.com")
     var phone: TestPasskey = test_passkeys.register(ada, "Phone")
-    var release: Release = drafted_by(ada)
+    var payout: Payout = drafted_by(ada)
     var response: Response = request {
         method: HttpMethod.post
-        path: "/releases/{release_id}/confirm"
+        path: "/payouts/{payout_id}/send"
         params: {
-            release_id: release.id
+            payout_id: payout.id
         }
         as: ada
     }
@@ -3495,17 +3495,17 @@ test "a stolen session alone sends nothing out" {
 }
 
 test "another person's passkey confirms nothing" {
-    var ada: Principal.user = publisher_called("ada@example.com")
-    var mallory: Principal.user = publisher_called("mallory@example.com")
+    var ada: Principal.user = treasurer_called("ada@example.com")
+    var mallory: Principal.user = treasurer_called("mallory@example.com")
     var ada_phone: TestPasskey = test_passkeys.register(ada, "Phone")
     var mallory_phone: TestPasskey = test_passkeys.register(mallory, "Phone")
-    var release: Release = drafted_by(ada)
+    var payout: Payout = drafted_by(ada)
     test_passkeys.confirm(mallory_phone)
     var response: Response = request {
         method: HttpMethod.post
-        path: "/releases/{release_id}/confirm"
+        path: "/payouts/{payout_id}/send"
         params: {
-            release_id: release.id
+            payout_id: payout.id
         }
         as: ada
     }
@@ -3520,12 +3520,12 @@ The API record says the route asks for a passkey, and lists the route Jadpo
 answers beside it:
 
 ```text
-POST /releases/{release_id: Uuid}/confirm
+POST /payouts/{payout_id: Uuid}/send
     confirm passkey
     status 204
-    fails release_not_found
+    fails payout_not_found
 
-POST /releases/{release_id: Uuid}/confirm/confirmation
+POST /payouts/{payout_id: Uuid}/send/confirmation
     generated confirmation
     caller user
     output PasskeyRequestOptions

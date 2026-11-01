@@ -1655,7 +1655,6 @@ fn envelope(code: &str, description: &str, details: Option<Value>) -> Value {
     outer
 }
 
-#[allow(clippy::too_many_arguments)]
 /// A route's placeholders and its input's header and query fields, as
 /// OpenAPI parameters, with its body's schema set on `out` when it reads
 /// one: the same for the route and its `…/confirmation` (area 8).
@@ -1839,6 +1838,7 @@ fn confirmation_operation(
     out
 }
 
+#[allow(clippy::too_many_arguments)]
 fn operation(
     wire: &Wire<'_>,
     lookup: &Lookup<'_>,
