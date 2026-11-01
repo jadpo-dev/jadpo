@@ -812,11 +812,11 @@ impl Planner<'_> {
             return None;
         }
         let store = person.store.clone()?;
-        let in_store = |entity: &EntityModel| entity.store.as_deref() == Some(store.as_str());
+        let same_store = |entity: &EntityModel| entity.store.as_deref() == Some(store.as_str());
         let mut deleted: Vec<&EntityModel> = Vec::new();
         for name in &erasure.deleted {
             let found = model.entity(name)?;
-            if !in_store(found) {
+            if !same_store(found) {
                 return None;
             }
             deleted.push(found);
@@ -837,7 +837,7 @@ impl Planner<'_> {
         let mut keeps = Vec::new();
         for kept in &erasure.kept {
             let holder = model.entity(&kept.entity)?;
-            if !in_store(holder) {
+            if !same_store(holder) {
                 return None;
             }
             let mut references = Vec::new();

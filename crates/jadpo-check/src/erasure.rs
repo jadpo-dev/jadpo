@@ -304,7 +304,7 @@ pub fn erasure_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
                 .find(|(name, ..)| *name == field.name)
                 .map(|(_, key, value)| (key.clone(), value.clone()));
             if let (Some(erase), Some((key, _))) = (field.erase, &written)
-                && let Some(problem) = unreached(entity, field, erase, key, &people)
+                && let Some(problem) = unreached(entity, field, erase, key, people)
             {
                 out.push(problem);
                 continue;
@@ -435,7 +435,7 @@ fn required(entity: &EntityModel, field: &FieldModel, person: &str, at: &Span) -
         .as_ref()
         .map_or("", |reference| reference.target.as_str());
     let one = words(name);
-    let a = article(&one);
+    let a = an_or_a(&one);
     let deletes = if target == person {
         format!(
             "Erasing a `{person}` deletes their record, and decides what happens to every record that refers to it"
@@ -531,7 +531,7 @@ fn retention_required(
 ) -> Diagnostic {
     let (name, field_name) = (&entity.name, &field.name);
     let one = words(name);
-    let a = article(&one);
+    let a = an_or_a(&one);
     Diagnostic::new(
         &rule::DATA_ERASE_RETENTION_REQUIRED,
         format!("`{name}` has no retention, so {a} {one} kept after erasure would never go"),
@@ -550,8 +550,8 @@ fn words(entity: &str) -> String {
     crate::case::to_snake(entity).replace('_', " ")
 }
 
-/// The article before `words`.
-fn article(words: &str) -> &'static str {
+/// The indefinite article before `words`: `a` or `an`.
+fn an_or_a(words: &str) -> &'static str {
     if words.starts_with(['a', 'e', 'i', 'o', 'u']) {
         "an"
     } else {

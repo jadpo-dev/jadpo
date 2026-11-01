@@ -454,9 +454,9 @@ test "closing an account deletes the todos and keeps the invoices" {
     attempt close_account(me)
     assert User.get(ada.id) fails UserNotFound
     assert Todo.get(todo.id) fails TodoNotFound
-    var kept: Invoice = attempt Invoice.get(invoice.id)
-    assert kept.customer_id == none
-    assert kept.billing_name == "Ada Lovelace"
+    var still_billed: Invoice = attempt Invoice.get(invoice.id)
+    assert still_billed.customer_id == none
+    assert still_billed.billing_name == "Ada Lovelace"
 }
 ```
 

@@ -327,19 +327,15 @@ fn an_events_marked_field_needs_no_person() {
 /// Erasure is built (chunk P3, `tests/erasure.rs`); export isn't yet.
 #[test]
 fn export_is_not_built_yet() {
-    for (operation, body) in [("export", "    User.export(user_id)\n")] {
-        let source = format!(
-            "{USER}
+    let source = format!(
+        "{USER}
 action forget(user_id: User.id) -> Unit {{
-{body}}}
+    User.export(user_id)
+}}
 "
-        );
-        assert_eq!(
-            problems(&source),
-            [format!(
-                "main.jadpo toolchain.not_built_yet: `User.{operation}` isn't built yet"
-            )],
-            "{operation}"
-        );
-    }
+    );
+    assert_eq!(
+        problems(&source),
+        ["main.jadpo toolchain.not_built_yet: `User.export` isn't built yet"]
+    );
 }

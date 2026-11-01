@@ -1461,7 +1461,7 @@ impl Decls<'_> {
                     .reason(format!(
                         "`erase:` says what erasing a person does to a record that refers to them, so it belongs on a reference in an entity; `{}` is sent as it was written, and erasure never rewrites it.",
                         match &field.ty {
-                            Ty::Field(owner, _) => owner.clone(),
+                            Ty::Field(host, _) => host.clone(),
                             other => other.to_string(),
                         }
                     ))
