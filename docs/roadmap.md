@@ -738,17 +738,9 @@ After the registry is live, in order:
      value is copied into its history. Done when tests change audited
      records on both executors and read each change back through
      `history`.
-   - [ ] **B12 Search on PostgreSQL** `opus · xhigh`: area 16, "Search"
-     but "An engine instead of PostgreSQL", the `search` capability of
-     item 8; area 2, `SearchText`; area 5, "Special kinds of index"; area
-     6, `matches` and "Pages". `search: { fields: language: }` on an
-     entity, with its `tsvector` column and GIN index in its migration
-     and the fields listed first weighted most; `where: Todo matches
-     search_phrase` taking words, quoted phrases and `-word`; with no
-     `order:`, the best matches first and then `id`, in keyset pages;
-     `search:` in place of the full-text index `kind:`. Done when query
-     tests find, rank and page records by words on both executors, and
-     the migration is generated.
+   - [x] **B12 Search on PostgreSQL**: area 16, "Search", "How it is
+     kept", "Search and policy" and "Search and personal data"; area 2,
+     `SearchText`; compiler/runtime §2.6, "Search on PostgreSQL".
    - [ ] **B13 Monitoring thresholds** `opus · xhigh`: area 16, "Monitoring
      thresholds"; area 1, `monitoring.jadpo`; area 18, "The manifest" and
      `ThresholdChange`. The declaration's form, which no page writes

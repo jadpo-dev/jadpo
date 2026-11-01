@@ -58,6 +58,50 @@ fn parenthesised(condition: &str) -> String {
     }
 }
 
+/// The column a search's ranked read selects its rank as (area 16,
+/// "Search"; chunk B12).
+pub const RANK: &str = "jadpo_rank";
+
+/// A search's read with no `order:` (area 16, "Search"; chunk B12):
+/// `columns` of `table` and the `rank` expression as [`RANK`], where
+/// `conditions` hold, the best matches first, then by `tie` (the `id`),
+/// at most `limit`.
+pub fn ranked<S: AsRef<str>>(
+    columns: &[S],
+    table: &str,
+    rank: &str,
+    conditions: &[String],
+    limit: Option<&str>,
+    tie: &str,
+) -> String {
+    let mut sql = format!(
+        "SELECT {}, {rank} AS {}\nFROM {}",
+        idents(columns),
+        ident(RANK),
+        ident(table)
+    );
+    where_clause(&mut sql, conditions, "");
+    sql.push_str(&format!(
+        "\nORDER BY {} DESC, {} ASC",
+        ident(RANK),
+        ident(tie)
+    ));
+    if let Some(limit) = limit {
+        self::limit(&mut sql, limit, "");
+    }
+    sql
+}
+
+/// The condition that starts a ranked page after its cursor: the records
+/// ranked below the last one's `rank_param`, or ranked the same with a
+/// greater `tie`; every record when there is no cursor.
+pub fn after_rank(rank: &str, rank_param: &str, tie: &str, tie_param: &str) -> String {
+    let tie = ident(tie);
+    format!(
+        "({rank_param} IS NULL OR {rank} < {rank_param} OR ({rank} = {rank_param} AND {tie} > {tie_param}))"
+    )
+}
+
 /// The column a nearest-neighbour read selects its distance as.
 pub const DISTANCE: &str = "jadpo_distance";
 

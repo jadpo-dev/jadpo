@@ -306,6 +306,8 @@ fn built() -> BTreeSet<String> {
             "geo",
             // A standard operation with an exact SQL form (chunk 6.3b).
             "operation",
+            // A search by words (area 16, chunk B12).
+            "search",
         ]
         .iter()
         .map(|c| format!("query condition {c}")),
@@ -1452,6 +1454,7 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
                         | jadpo_std::Op::GeoIntersects => "geo",
                         _ => "operation",
                     },
+                    Condition::Matches(_) => "search",
                 };
                 used.insert(format!("query condition {word}"));
                 match condition {

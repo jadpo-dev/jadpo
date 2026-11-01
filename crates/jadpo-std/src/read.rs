@@ -377,6 +377,11 @@ pub enum Source {
         path: Vec<String>,
         strict: bool,
     },
+    /// What a `matches` condition searches for (area 16, "Search"; chunk
+    /// B12): the `SearchText` the read's argument at `index` (or a field
+    /// inside it, `path`) holds, as `websearch_to_tsquery` is given it
+    /// ([`crate::search::phrase`]), so `or` is a word, never an operator.
+    SearchPhrase { index: u32, path: Vec<String> },
 }
 
 /// The sides of the two envelopes a `BoundingBox` filter searches, in
@@ -487,6 +492,11 @@ pub enum Column {
     /// (area 20, chunk 5.5u5), a `float8` in metres: never a field, read
     /// only by the [`Recheck`] to know when it has fetched enough.
     Measured,
+    /// How well a record matches a search, as `ts_rank` works it out from
+    /// the record's own words and the phrase alone (area 16, "Search";
+    /// chunk B12), a `float8`: never a field, read only as the first value
+    /// of a ranked page's cursor.
+    Rank,
 }
 
 impl Column {

@@ -103,6 +103,7 @@ mod routes;
 mod scale;
 mod schedule_checks;
 mod schedules;
+mod search;
 mod secrets;
 mod security_records;
 mod served_openapi;

@@ -762,7 +762,11 @@ it:
   with `m:` and `ef_construction:` for tuning
   ([The vector index](21-ai.md#the-vector-index) under AI).
 
-Full-text and JSON indexes are kinds too.
+A full-text index isn't a kind: it is the entity's `search:` section,
+which gives the index, its column of words and its migration from one
+declaration ([Search](16-built-in-services.md#search)), and
+`kind: IndexKind.full_text` says so (`type.setting_value`). JSON indexes
+are a kind too.
 
 Not built yet: index kinds other than geographic and HNSW.
 

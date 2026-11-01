@@ -164,6 +164,21 @@ impl Bind for Statement {
         ))
     }
 
+    /// What a `matches` condition searches for, its `or` a word (area 16,
+    /// "Search"; chunk B12).
+    fn search_phrase(&mut self, value: &Value) -> Option<String> {
+        let Value::Param { index, path } = value else {
+            return None;
+        };
+        Some(self.param(
+            Source::SearchPhrase {
+                index: *index,
+                path: path.clone(),
+            },
+            SqlType::Text,
+        ))
+    }
+
     /// The double an `ai.distance` condition compares with, worked out
     /// from its bound when the read runs (chunk 5.8c).
     fn distance_bound(&mut self, bound: &Value, strict: bool) -> Option<String> {
@@ -352,6 +367,21 @@ impl Planner<'_> {
             None => None,
         };
         let rechecked = !checks.is_empty() || by_distance.is_some();
+        // A search with no `order:` (area 16, "Search"; chunk B12): the best
+        // matches first, then by `id`, a page continuing after the last
+        // record's rank and `id`.
+        let ranked = match model::searches(&query.filter).first() {
+            Some(search)
+                if query.order.is_empty()
+                    && matches!(cardinality, Cardinality::List | Cardinality::Page) =>
+            {
+                let id = field(entity, "id")?;
+                let id_at = columns.add(&id.name, self.column(entity, id)?);
+                let asked = jadpo_sql::condition::search_query(&mut statement, search)?;
+                Some((jadpo_sql::search::rank(&asked), id_at))
+            }
+            _ => None,
+        };
         let mut cursor = Vec::new();
         if page {
             for order in &query.order {
@@ -380,7 +410,16 @@ impl Planner<'_> {
             None => None,
         };
         if page {
-            conditions.push(self.after(&mut statement, entity, &query.order)?);
+            match &ranked {
+                Some((rank, id_at)) => {
+                    let rank_at = u32::try_from(columns.kinds.len()).ok()?;
+                    let rank_param = statement.param(Source::Cursor(0), SqlType::Float8);
+                    let id_param = statement.param(Source::Cursor(1), SqlType::Uuid);
+                    conditions.push(text::after_rank(rank, &rank_param, "id", &id_param));
+                    cursor = vec![(rank_at, SqlType::Float8), (*id_at, SqlType::Uuid)];
+                }
+                None => conditions.push(self.after(&mut statement, entity, &query.order)?),
+            }
         }
         let order = if query.order.is_empty() {
             None
@@ -405,6 +444,16 @@ impl Planner<'_> {
         // The statement with its policy, and without, which a test's call
         // without a caller runs.
         let write = |conditions: &[String]| {
+            if let Some((rank, _)) = &ranked {
+                return text::ranked(
+                    &borns(entity, &columns.names),
+                    &entity.table,
+                    rank,
+                    conditions,
+                    limit.as_deref(),
+                    "id",
+                );
+            }
             if let (Some((measured, ..)), Some(n)) = (&by_distance, &limit) {
                 return text::by_distance(
                     &borns(entity, &columns.names),
@@ -469,6 +518,9 @@ impl Planner<'_> {
         let mut kinds = columns.kinds.clone();
         if nearest.is_some() {
             kinds.push(Column::Distance);
+        }
+        if ranked.is_some() {
+            kinds.push(Column::Rank);
         }
         if by_distance.is_some() {
             kinds.push(Column::Measured);

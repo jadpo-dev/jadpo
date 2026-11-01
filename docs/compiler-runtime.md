@@ -2167,6 +2167,29 @@ test holds it to. The checker's query reader is split by concern under
 operations, order and pages, includes, `missing:`, vectors, geospatial
 conditions and aggregates.
 
+**Search on PostgreSQL** (area 16, "Search"; chunk B12). An entity's
+`search:` is read by `jadpo_check::data::search` into a `SearchModel`
+(its fields in order and a `jadpo_std::SearchLanguage`), and the schema
+gives its table one more column, `jadpo_search`, with no field: a
+`tsvector` whose `jadpo_graph::schema::Column::generated` expression
+(`jadpo_sql::search::document`) PostgreSQL works out on every write,
+each field weighted `A` to `D` by its place; and a GIN index on it,
+partial as the lifecycle says. A generated column holds nothing of its
+own, so `jadpo_graph::migration` adds it with no backfill, drops it
+rather than retiring it, and makes it again, with its indexes, when its
+expression changes. `where: Entity matches phrase` is
+`jadpo_sql::Condition::Matches`, whose fields are the condition's for
+policy's proof, rendered as `"jadpo_search" @@ websearch_to_tsquery(...)`
+with the phrase bound from `Source::SearchPhrase`, which the runtime
+turns into what `websearch_to_tsquery` reads with each `or` quoted
+(`jadpo_std::search::phrase`). With no `order:`, `jadpo-plan` selects
+`ts_rank(...)::float8` as `jadpo_rank` (`Column::Rank`), orders by it and
+the `id`, and pages after both (`jadpo_sql::statement::after_rank`): the
+cursor carries the rank's bits (a `float8` is the cursor's eighth kind),
+so the next page starts exactly after it. `ts_rank` reads only the row's
+own words, so policy's conditions in the same `WHERE` are all a search
+needs to keep hidden records out of every result, rank and page.
+
 **Writes.** The runtime runs a write plan
 (`jadpo_std::write`, one per write site, planned in `jadpo-plan`'s
 `writes`). A create inserts every column, with a new identity and the

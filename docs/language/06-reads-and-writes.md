@@ -318,6 +318,10 @@ literals, enum values, lists of those, and `clock.now`. A
 value is fixed when the project is compiled. `<` and the other orderings
 take numbers, times, dates and durations, as they do in code.
 
+A search by words is a condition of its own, `where: Todo matches
+phrase`, on an entity with a `search:` section; with no `order:` it gives
+the best matches first ([Search](16-built-in-services.md#search)).
+
 A field may be passed to three kinds of operation:
 
 - **`ai.distance`**, compared with a bound

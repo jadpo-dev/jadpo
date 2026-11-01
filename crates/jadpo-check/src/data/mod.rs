@@ -23,6 +23,7 @@ pub mod lifecycle;
 pub mod migrations;
 pub mod queries;
 pub mod retention;
+pub mod search;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -58,6 +59,10 @@ pub const SECTIONS: [&str; 7] = [
 /// Why an entity's `audit:`, which area 16 decides and this compiler
 /// doesn't build, is refused.
 const UNBUILT_AUDIT: &str = "An entity's history of changes is area 16's audit trail, which isn't built yet: accepted, no change would be recorded.";
+
+/// What an index's `kind:` might be written as when it means a full-text
+/// index, which is an entity's `search:` instead (area 5; chunk B12).
+const FULL_TEXT: [&str; 6] = ["full_text", "fulltext", "text", "gin", "tsvector", "search"];
 
 /// The store an entity lives in when its file names none (area 5, "Stores").
 pub const MAIN: &str = "main";
@@ -303,6 +308,12 @@ pub struct EntityModel {
     /// that reads cleanly: each record is deleted, with what cascades from
     /// it, once its time is up.
     pub retention: Option<retention::RetentionModel>,
+    /// Its `search:` (area 16, "Search"; chunk B12), when it has one that
+    /// reads cleanly: the text fields people search its records by.
+    pub search: Option<search::SearchModel>,
+    /// Whether it has a `search:` section, read cleanly or not, so a query
+    /// searching it isn't told it has none.
+    pub search_written: bool,
 }
 
 /// One field of an entity.
@@ -606,6 +617,7 @@ pub fn entity_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> O
             field_erasures: Vec::new(),
         },
         retentions: Vec::new(),
+        sensitive: Vec::new(),
         out: Vec::new(),
     };
     let model = reader.entity(&symbol.path, &decl)?;
@@ -790,6 +802,9 @@ struct Reader<'a> {
     /// (area 15; chunk P2): the field's name, the key's place, the block,
     /// and whether the field is a `File`.
     retentions: Vec<(String, Span, ast::Member, bool)>,
+    /// Each field marked with a sensitive category of personal data (area
+    /// 15), with the category, which a search can't read yet (chunk B12).
+    sensitive: Vec<(String, String)>,
     out: Vec<Diagnostic>,
 }
 
@@ -813,10 +828,13 @@ impl Reader<'_> {
             lifecycle: None,
             person: false,
             retention: None,
+            search: None,
+            search_written: false,
         };
         let mut store: Option<(String, Span)> = None;
         let mut lifecycle = None;
         let mut retention: Option<(ast::Member, Span)> = None;
+        let mut with_matches: Option<(ast::Member, Span)> = None;
         let mut unique = None;
         let mut indexes = None;
         let items: Vec<MemberItem> = decl
@@ -889,6 +907,15 @@ impl Reader<'_> {
                         .is_some_and(|value| crate::types::looks_like_type(&value)) =>
                 {
                     retention = Some((member.clone(), key_span));
+                }
+                // `search:` (area 16; chunk B12), read once every field
+                // is. A field may still be named `search`.
+                "search"
+                    if !member
+                        .value()
+                        .is_some_and(|value| crate::types::looks_like_type(&value)) =>
+                {
+                    with_matches = Some((member.clone(), key_span));
                 }
                 // Decided on its area page, not built: refused where it is
                 // written rather than read as a misspelling, and never
@@ -1002,6 +1029,18 @@ impl Reader<'_> {
             }
         }
         self.retentions(path, &mut entity, retention, lifecycle_span.as_ref());
+        if let Some((member, key_span)) = with_matches {
+            entity.search_written = true;
+            entity.search = search::read(
+                self.lookup,
+                path,
+                &entity,
+                &self.sensitive,
+                &member,
+                &key_span,
+                &mut self.out,
+            );
+        }
         // Names the database keeps (area 5, "Storage types").
         if table.starts_with("jadpo_") {
             self.out.push(
@@ -1130,18 +1169,21 @@ impl Reader<'_> {
         entity: &str,
     ) {
         let span = node_span(path, node);
-        // `person:` and `retention:` too, which aren't in [`SECTIONS`] so
-        // that a field may still be named either.
+        // `person:`, `retention:` and `search:` too, which aren't in
+        // [`SECTIONS`] so that a field may still be named any of them.
         let near = nearest(
             written,
-            SECTIONS.iter().copied().chain(["person", "retention"]),
+            SECTIONS
+                .iter()
+                .copied()
+                .chain(["person", "retention", "search"]),
         );
         let mut problem = Diagnostic::new(
             &rule::DATA_UNKNOWN_SECTION,
             format!("`{written}` isn't something an entity holds"),
         )
         .at(span.clone(), "not a field or a section");
-        let reason = "An entity's file holds only its data definition: fields (`name: Type`), and the sections `store:`, `unique:`, `indexes:`, `lifecycle:`, `caches:`, `policy:`, `membership:`, `person:` and `retention:`. Its identity is always the field `id`; actions, queries and failures go in the domain's own folders.";
+        let reason = "An entity's file holds only its data definition: fields (`name: Type`), and the sections `store:`, `unique:`, `indexes:`, `lifecycle:`, `caches:`, `policy:`, `membership:`, `person:`, `retention:` and `search:`. Its identity is always the field `id`; actions, queries and failures go in the domain's own folders.";
         problem = match near {
             Some(near) if near != written => problem
                 .reason(format!("{reason} Did you mean `{near}`?"))
@@ -1642,6 +1684,17 @@ impl Reader<'_> {
                 // A field's own grants narrow its entity's (area 9, "Field
                 // restrictions"), read by `crate::policy`.
                 "policy" => {}
+                // A sensitive category, which a search can't read yet
+                // (area 15; chunk B12). The category itself is checked
+                // where `crate::ai_personal` reads it.
+                "personal" => {
+                    if let [host, category] = names.as_slice()
+                        && host == jadpo_std::ai::PERSONAL_DATA_ENUM
+                        && crate::ai_personal::is_sensitive(category)
+                    {
+                        self.sensitive.push((name.to_string(), category.clone()));
+                    }
+                }
                 // Read once every field is (area 15; chunk P2).
                 "retention" => {
                     self.retentions
@@ -2197,6 +2250,24 @@ impl Reader<'_> {
                                         && IndexKind::from_name(variant).is_some() =>
                                 {
                                     kind = IndexKind::from_name(variant).map(|k| (k, value_span));
+                                }
+                                // A full-text index is the entity's
+                                // `search:` (area 5, "Special kinds of
+                                // index"; area 16, chunk B12).
+                                [host, variant]
+                                    if host == IndexKind::NAME
+                                        && FULL_TEXT.contains(&variant.as_str()) =>
+                                {
+                                    broken = true;
+                                    self.out.push(
+                                        Diagnostic::new(
+                                            &rule::TYPE_SETTING_VALUE,
+                                            "A full-text index is the entity's `search:`",
+                                        )
+                                        .at(value_span, "not an index kind")
+                                        .reason("Searching records by words is one declaration, the entity's `search:` section, which gives the index, keeps it up to date, writes its migration and lets a query find records with `matches` (area 16, \"Search\"), rather than an index and conditions written by hand.")
+                                        .next(format!("Remove this index, and add `search: {{ fields: [...] language: SearchLanguage.english }}` to `{}`", entity.name)),
+                                    );
                                 }
                                 _ => {
                                     broken = true;
@@ -3475,7 +3546,7 @@ fn nearest_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &
         else {
             continue;
         };
-        // Over 4,000 dimensions it is searched exactly, with no index
+        // Over 4,000 dimensions it is with_matches exactly, with no index
         // (chunk 5.5v1c).
         if nearest.search == queries::VectorSearch::Exact {
             continue;
@@ -3629,6 +3700,7 @@ fn table_of(
                         Some(entry) => entry.part_comment(at),
                         None => field.comment.clone(),
                     },
+                    generated: None,
                 },
             );
             position += 1;
@@ -3722,6 +3794,56 @@ fn table_of(
                         .hnsw
                         .as_ref()
                         .map(|hnsw| hnsw_method(hnsw.metric, hnsw.dimensions, hnsw.with.clone())),
+                }),
+            },
+        );
+    }
+    // The searchable words (area 16, "Search"; chunk B12): a `tsvector`
+    // PostgreSQL works out from the fields on every write, after every
+    // field's column, and its GIN index, holding only the records the
+    // lifecycle's `visible:` lets queries see, as every derived index.
+    if let Some(search) = &entity.search {
+        let columns: Vec<String> = search
+            .fields
+            .iter()
+            .filter_map(|name| entity.fields.iter().find(|f| &f.name == name))
+            .map(|f| f.born.clone())
+            .collect();
+        let column = jadpo_std::search::COLUMN;
+        out.columns.insert(
+            column.to_string(),
+            physical::Column {
+                position,
+                field: None,
+                sql_type: "tsvector".to_string(),
+                nullable: true,
+                retired: false,
+                allows: None,
+                comment: None,
+                generated: Some(jadpo_sql::search::document(search.language, &columns)),
+            },
+        );
+        let predicate = entity
+            .lifecycle
+            .as_ref()
+            .and_then(|lifecycle| lifecycle.visible.as_ref())
+            .filter(|visible| !lifecycle::reads_now(visible))
+            .and_then(|visible| {
+                jadpo_sql::condition(&mut jadpo_sql::Fixed, entity, visible, false)
+            });
+        out.indexes.insert(
+            physical::object_name(&[table, column], "idx"),
+            physical::Index {
+                expression: None,
+                columns: vec![column.to_string()],
+                reason: format!("search {}", entity.born),
+                predicate,
+                collate: Vec::new(),
+                method: Some(physical::IndexMethod {
+                    name: "gin".into(),
+                    operator_class: String::new(),
+                    cast: None,
+                    with: Vec::new(),
                 }),
             },
         );

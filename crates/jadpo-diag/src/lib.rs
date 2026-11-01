@@ -892,6 +892,10 @@ rules! {
         "A schedule run by hand ended in a failure, or its run on the app never ended";
     SCHEDULES_UNAVAILABLE: "schedules.unavailable", area 14, Error, Human,
         "The app's schedules couldn't be read from their database, because it can't be reached or has no table for them yet";
+    SEARCH_SETTINGS_INVALID: "search.settings_invalid", area 16, Error, Agent,
+        "An entity's `search:` holds something it doesn't take, or leaves out what it needs";
+    SEARCH_UNDECLARED: "search.undeclared", area 16, Error, Agent,
+        "A query searches an entity by words that has no `search:` section";
     SEED_FAILED: "seed.failed", area 14, Error, Agent,
         "Seed ended with a failure or a fault";
     SEED_PRODUCTION_REFUSED: "seed.production_refused", area 14, Error, Human,

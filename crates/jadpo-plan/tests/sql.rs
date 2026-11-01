@@ -59,6 +59,13 @@ fn source(source: &Source) -> String {
                 path: path.clone()
             })
         ),
+        Source::SearchPhrase { index, path } => format!(
+            "search phrase of {}",
+            self::source(&Source::Arg {
+                index: *index,
+                path: path.clone()
+            })
+        ),
         Source::DistanceBound {
             index,
             path,
