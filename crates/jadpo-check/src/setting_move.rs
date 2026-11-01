@@ -390,7 +390,7 @@ pub fn plan(db: &dyn Db, project: Project, id: &ConstantId) -> Result<Plan, Vec<
                 "`config {{ }}` declares `{name}` already, so `{shown}` can't become `config.{name}` without two settings of one name."
             ))
             .next(format!(
-                "Rename the constant or the setting `{name}`, then run `jadpo config move` again"
+                "Rename the constant or the setting `{name}`, then run `jadpo config move` on the constant again"
             )),
         );
     }

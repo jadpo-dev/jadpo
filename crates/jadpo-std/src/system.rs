@@ -893,6 +893,34 @@ pub const HOUSEKEEPING: SystemTable = SystemTable {
     indexes: &[],
 };
 
+/// Which stored files a store's records hold (area 16, "Deleting and
+/// erasing"; chunk B3), in the store whose entities' `File` fields name
+/// the store of files: a row for each file, by its store of files and
+/// key, counting the fields that hold it. Triggers on each entity table
+/// with a `File` column count them in the same transaction as the row
+/// changes, cascades and purges included; a put adds its file at none
+/// before its bytes are sent. `holders` is the count, `-1` once its
+/// bytes are being deleted and `-2` once they are gone, which no field
+/// may then hold; `since` is when it was last held by none, `NULL`
+/// while held, or released by a commit that hasn't yet left the event
+/// that deletes its bytes.
+pub const FILES: SystemTable = SystemTable {
+    table: "jadpo_files",
+    columns: &[
+        column("store", SqlType::Text, false),
+        column("key", SqlType::Text, false),
+        column("holders", SqlType::Int4, false),
+        column("since", SqlType::Timestamp, true),
+    ],
+    primary_key: &["store", "key"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[SystemIndex {
+        columns: &["holders", "since"],
+        reason: "system files",
+    }],
+};
+
 /// Each feature flag's current state (area 16, "Changing a flag"; chunk
 /// B9), in `flags: { store: }`: the value everyone gets, `NULL` for the
 /// flag's `default:`; the named users' fixed values, a JSON object of
@@ -969,6 +997,7 @@ pub const ALL: [&SystemTable; 27] = [
     &AUDIT,
     &FLAGS,
     &HOUSEKEEPING,
+    &FILES,
 ];
 
 /// The system table called `name`, without its prefix; `None` for a name

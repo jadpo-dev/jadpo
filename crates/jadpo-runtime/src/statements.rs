@@ -67,6 +67,10 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::batches::UNFINISHED.to_string(),
         ),
         ("batches::WAITING", crate::batches::WAITING.to_string()),
+        ("files::DUE", crate::files::DUE.to_string()),
+        ("files::GONE", crate::files::GONE.to_string()),
+        ("files::KEEP_PUT", crate::files::KEEP_PUT.to_string()),
+        ("files::RELEASED", crate::files::RELEASED.to_string()),
         ("breaker::FAILED", crate::breaker::FAILED.to_string()),
         ("breaker::HOLD", crate::breaker::HOLD.to_string()),
         (

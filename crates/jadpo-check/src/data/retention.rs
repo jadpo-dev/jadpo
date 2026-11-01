@@ -555,7 +555,7 @@ fn indefinite(entity: &str) -> &'static str {
 }
 
 /// Where `entity.field` is written.
-fn field_span(db: &dyn Db, project: Project, entity: &str, field: &str) -> Option<Span> {
+pub(crate) fn field_span(db: &dyn Db, project: Project, entity: &str, field: &str) -> Option<Span> {
     let read = entity_read(db, project, Name::new(db, entity.to_string())).as_ref()?;
     let at = read.model.fields.iter().position(|f| f.name == field)?;
     read.spans.fields.get(at).cloned()

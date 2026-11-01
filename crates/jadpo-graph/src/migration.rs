@@ -692,6 +692,66 @@ pub fn migration_sql(
     if !refusals.is_empty() {
         return Err(refusals);
     }
+    // Each store that keeps a record of which files its records hold
+    // counts them with a trigger on each table with a `File` column
+    // (area 16, "Deleting and erasing"; chunk B3).
+    let stores: BTreeSet<&String> = before.stores.keys().chain(after.stores.keys()).collect();
+    for store in stores {
+        let had = held_files(before, store);
+        let has = held_files(after, store);
+        if had == has {
+            continue;
+        }
+        let plan = plans.entry(store.clone()).or_default();
+        if had.is_none() && has.is_some() {
+            plan.files.push(Statement {
+                sql: table::create_files_function(),
+                does: "create the function that counts a file's holders",
+            });
+        }
+        let had = had.unwrap_or_default();
+        let has = has.unwrap_or_default();
+        for (name, columns) in &has {
+            let was = had.get(name);
+            if was == Some(columns) {
+                continue;
+            }
+            if was.is_some() {
+                plan.files.push(Statement {
+                    sql: table::drop_files_trigger(name),
+                    does: "drop the trigger that counts a file's holders",
+                });
+            }
+            plan.files.push(Statement {
+                sql: table::create_files_trigger(name, columns),
+                does: "count a file's holders",
+            });
+            // The files rows already hold, in columns no trigger counted.
+            let stored: Vec<String> = columns
+                .iter()
+                .filter(|column| {
+                    was.is_none_or(|was| !was.contains(column))
+                        && table_in(before, store, name)
+                            .is_some_and(|table| table.columns.contains_key(*column))
+                })
+                .cloned()
+                .collect();
+            if !stored.is_empty() {
+                plan.files.push(Statement {
+                    sql: table::count_held_files(name, &stored),
+                    does: "count the files stored rows hold",
+                });
+            }
+        }
+        for name in had.keys() {
+            if !has.contains_key(name) && table_in(after, store, name).is_some() {
+                plan.files.push(Statement {
+                    sql: table::drop_files_trigger(name),
+                    does: "drop the trigger that counts a file's holders",
+                });
+            }
+        }
+    }
     let mut out = Sql::default();
     for (store, mut plan) in plans {
         // An extension the store's columns need now and didn't before,
@@ -720,12 +780,59 @@ pub fn migration_sql(
             .chain(plan.constraints)
             .chain(plan.references)
             .chain(plan.indexes)
+            .chain(plan.files)
             .collect();
         if !statements.is_empty() {
             out.stores.insert(store, statements);
         }
     }
     Ok(out)
+}
+
+/// The `File` columns of each entity table of `store` in `schema`, by
+/// table, in the order the table's columns stand, when the store keeps a
+/// record of which files its records hold (`jadpo_files`; area 16,
+/// "Deleting and erasing"; chunk B3): what its tables' triggers count.
+/// A retired column is still counted, since its rows still hold their
+/// files. `None` for a store that keeps none.
+pub fn held_files(schema: &Schema, store: &str) -> Option<BTreeMap<String, Vec<String>>> {
+    let store = schema.stores.get(store)?;
+    if !store.tables.contains_key(jadpo_std::system::FILES.table) {
+        return None;
+    }
+    let mut out = BTreeMap::new();
+    for (name, table) in &store.tables {
+        if !matches!(table.holds, Holds::Entity(_)) {
+            continue;
+        }
+        let columns: Vec<String> = table
+            .ordered()
+            .into_iter()
+            .filter(|(_, column)| holds_a_file(column))
+            .map(|(name, _)| name.clone())
+            .collect();
+        if !columns.is_empty() {
+            out.insert(name.clone(), columns);
+        }
+    }
+    Some(out)
+}
+
+/// Whether `column` keeps a `File` as its JSON.
+fn holds_a_file(column: &Column) -> bool {
+    use crate::stored_json::Shape;
+    let Some(reads) = column
+        .allows
+        .as_ref()
+        .and_then(|allows| allows.json.as_ref())
+    else {
+        return false;
+    };
+    let file = |shape: &Shape| matches!(shape, Shape::Value(scalar) if scalar.ty == jadpo_std::files::FILE);
+    match &reads.shape {
+        Shape::Optional(inner) => file(inner),
+        shape => file(shape),
+    }
 }
 
 /// The PostgreSQL extensions `store`'s columns need in `schema`: pgvector's
@@ -775,6 +882,8 @@ struct Plan {
     constraints: Vec<Statement>,
     references: Vec<Statement>,
     indexes: Vec<Statement>,
+    /// What counts the holders of each stored file (chunk B3).
+    files: Vec<Statement>,
 }
 
 impl Plan {
@@ -1429,6 +1538,93 @@ mod tests {
         }
         let sql = migration_sql(&wider, &indexed, &|_| None).expect("sql");
         assert_eq!(sql.summary(), vec!["create index"]);
+    }
+
+    /// `Todo` with a `File` column, `scan`, and, when `ledger`, the store's
+    /// record of held files (chunk B3).
+    fn filed(ledger: bool) -> Schema {
+        use crate::stored_json::{Reads, Scalar, Shape};
+        let mut out = schema(&[("id", "uuid", false, false), ("scan", "jsonb", true, false)]);
+        let store = out.stores.get_mut("main").expect("main");
+        if let Some(scan) = store
+            .tables
+            .get_mut("todo")
+            .and_then(|table| table.columns.get_mut("scan"))
+        {
+            scan.allows = Some(Allows {
+                json: Some(Reads {
+                    shape: Shape::Value(Scalar {
+                        ty: "File".into(),
+                        ..Scalar::default()
+                    }),
+                    ..Reads::default()
+                }),
+                ..Allows::default()
+            });
+        }
+        if ledger {
+            store.tables.insert(
+                "jadpo_files".into(),
+                Table {
+                    holds: Holds::System("files".into()),
+                    columns: BTreeMap::new(),
+                    primary_key: Key {
+                        name: "jadpo_files_pkey".into(),
+                        columns: vec!["store".into(), "key".into()],
+                    },
+                    unique: BTreeMap::new(),
+                    foreign_keys: BTreeMap::new(),
+                    indexes: BTreeMap::new(),
+                    checks: BTreeMap::new(),
+                },
+            );
+        }
+        out
+    }
+
+    /// A store that starts keeping its record of held files makes the
+    /// function counting a file's holders, a trigger on each table with a
+    /// `File` column, and counts the files its rows hold already; a store
+    /// keeping one already makes nothing again, and one keeping none has
+    /// no trigger.
+    #[test]
+    fn a_stores_record_of_held_files_counts_each_files_holders() {
+        assert_eq!(held_files(&filed(false), "main"), None);
+        assert_eq!(
+            held_files(&filed(true), "main"),
+            Some(BTreeMap::from([(
+                "todo".to_string(),
+                vec!["scan".to_string()]
+            )]))
+        );
+        let sql = migration_sql(&filed(false), &filed(true), &|_| None).expect("sql");
+        let statements = &sql.stores["main"];
+        let files: Vec<&str> = statements
+            .iter()
+            .filter(|statement| {
+                statement.sql.contains("jadpo_files_held") || statement.sql.contains("count(*)")
+            })
+            .map(|statement| statement.does)
+            .collect();
+        assert_eq!(
+            files,
+            [
+                "create the function that counts a file's holders",
+                "count a file's holders",
+                "count the files stored rows hold",
+            ]
+        );
+        assert!(statements.iter().any(|statement| statement.sql
+            == "CREATE TRIGGER \"jadpo_files\" AFTER INSERT OR UPDATE OF \"scan\" OR DELETE ON \"todo\" FOR EACH ROW EXECUTE FUNCTION \"jadpo_files_held\"('scan')"));
+        // A new table's rows hold nothing yet, so none are counted.
+        let made = migration_sql(&Schema::default(), &filed(true), &|_| None).expect("sql");
+        assert!(
+            !made.stores["main"]
+                .iter()
+                .any(|statement| statement.sql.contains("count(*)"))
+        );
+        let again = migration_sql(&filed(true), &filed(true), &|_| None).expect("sql");
+        assert!(again.stores.is_empty(), "{:?}", again.stores);
     }
 
     /// `Todo` with its searchable words generated from `expression`, and

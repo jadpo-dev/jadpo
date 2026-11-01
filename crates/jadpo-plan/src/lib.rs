@@ -277,6 +277,38 @@ fn events_plan(
     }
     // Each email's delivery (area 16; chunk 7.3).
     subscribers.extend(sending);
+    // Each store of files whose records' holders are counted, with the
+    // subscriber that deletes a file's bytes once none holds it (area 16,
+    // "Deleting and erasing"; chunk B3).
+    let files = jadpo_std::files::FilesPlan {
+        counters: jadpo_check::data::held::counters(db, project).clone(),
+    };
+    let defaults = jadpo_check::events::DEFAULT_RETRY;
+    for connection in files.counters.keys() {
+        let subscriber = SubscriberPlan {
+            key: jadpo_std::files::FilesPlan::subscriber(connection),
+            name: format!("delete unheld files from {connection}"),
+            event: jadpo_std::files::FILE_RELEASED.to_string(),
+            target: Target::Files {
+                connection: connection.clone(),
+            },
+            attempts: defaults.attempts,
+            within_ms: defaults.within_ms,
+            // It reaches no tenant's records: only the record of which
+            // files are held, and the store of files.
+            tenant: TenantFrom::Nowhere,
+            store: None,
+            connections: Vec::new(),
+            through: None,
+            file: "app.jadpo".to_string(),
+            line: 1,
+        };
+        subscribers.push(if running {
+            subscriber
+        } else {
+            subscriber.elsewhere()
+        });
+    }
     subscribers.sort_by(|a, b| a.key.cmp(&b.key));
     jadpo_std::subscriber::EventsPlan {
         subscribers,
@@ -284,6 +316,7 @@ fn events_plan(
             .store
             .clone(),
         emails,
+        files,
     }
 }
 

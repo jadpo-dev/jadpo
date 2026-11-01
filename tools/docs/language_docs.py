@@ -774,16 +774,35 @@ CHECK_SUMMARIES = True
 # The prefix of the rules about the command line itself: its commands,
 # flags and arguments.
 COMMAND_LINE = 'cli.'
+# The command that checks source; a rule it raises is shown by a check
+# block, not a command's run.
+CHECK_COMMAND = 'check'
+# Command errors whose pages are still a copied transcript, brought to the
+# format by roadmap chunk D13b3c, which empties this.
+FORMAT_WAITS = frozenset({
+    'install.in_use', 'publish.changelog_missing', 'publish.description_missing',
+    'publish.example_failed', 'publish.example_missing',
+})
 
 
-def error_format_scope(catalogue, root=ROOT):
+def command_errors(catalogue, commands):
+    """The rules only a command raises: those of area 14 that a command
+    lists among the rules it raises (`jadpo help --json`), but for those
+    `jadpo check` lists."""
+    listed = {rule for command in commands for rule in command.get('rules', [])}
+    checked = {rule for command in commands if command.get('name') == CHECK_COMMAND
+               for rule in command.get('rules', [])}
+    return {rule for rule, entry in catalogue.items()
+            if entry.get('area') == COMMAND_AREA and rule in listed - checked}
+
+
+def error_format_scope(catalogue, root=ROOT, commands=()):
     """The rules whose pages must have the parts docs/writing.md, "How an
     error page reads", gives them: those the primer, the Learn path, the
     guides or a teaching example's README names, those whose next step a
-    person decides, and the command line's own (`cli.*`). A rule only a
-    command raises, whose page has no example yet, waits for a ```sh run
-    block that shows it (roadmap, D13b3b); every other page follows once
-    D13c is built."""
+    person decides, the command line's own (`cli.*`), and every other rule
+    only a command raises, but for FORMAT_WAITS. Every other page follows
+    once D13c is built."""
     named = set()
     for path in [root / 'docs/primer.md', *sorted((root / 'docs/learn').glob('*.md')),
                  *sorted((root / 'docs/guides').glob('*.md'))]:
@@ -793,13 +812,8 @@ def error_format_scope(catalogue, root=ROOT):
         named |= set(EXAMPLE_RULE.findall(path.read_text()))
     named |= {rule for rule, entry in catalogue.items()
               if entry.get('decides') == 'human' or rule.startswith(COMMAND_LINE)}
-    scope = set()
-    for rule in named & catalogue.keys():
-        page = root / 'docs/errors' / f'{rule}.md'
-        if catalogue[rule].get('area') == COMMAND_AREA and page.exists() and NO_EXAMPLE in page.read_text():
-            continue
-        scope.add(rule)
-    return scope
+    named |= command_errors(catalogue, commands) - FORMAT_WAITS
+    return named & catalogue.keys()
 
 
 def prose_paragraphs(lines, start, end):
@@ -2761,14 +2775,15 @@ def time_limit(what):
         signal.signal(signal.SIGALRM, previous)
 
 
-def load_pages(catalogue, root=ROOT):
+def load_pages(catalogue, root=ROOT, commands=()):
     """The area pages, their design notes by page name, and the error
-    pages."""
+    pages; `commands`, `jadpo help --json`'s, say which rules only a
+    command raises."""
     docs = root / 'docs/language'
     pages = [Page(p, catalogue) for p in sorted(docs.glob('[0-9][0-9]-*.md'))]
     notes = {p.name: Notes(p, catalogue) for p in sorted((docs / 'notes').glob('[0-9][0-9]-*.md'))}
     errors = [ErrorPage(p, catalogue) for p in sorted((root / 'docs/errors').glob('*.md'))]
-    scope = error_format_scope(catalogue, root)
+    scope = error_format_scope(catalogue, root, commands)
     for page in errors:
         page.format_required = page.rule in scope
     return pages, notes, errors
@@ -2786,7 +2801,7 @@ def main():
     args = parser.parse_args()
     help_data = load_help()
     catalogue = {rule['id']: rule for rule in help_data['rules']}
-    pages, notes, errors = load_pages(catalogue)
+    pages, notes, errors = load_pages(catalogue, commands=help_data.get('commands', []))
     learn = load_learn(catalogue)
     guides = load_guides(catalogue)
     failed = False

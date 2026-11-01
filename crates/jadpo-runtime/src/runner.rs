@@ -741,6 +741,36 @@ async fn attempt(
             );
             send(ctx, call, budget, within).await
         }
+        // A file held by no record (area 16, "Deleting and erasing";
+        // chunk B3): its bytes deleted under its key, which a repeat sends
+        // again safely, then recorded gone, so none may hold it again.
+        Target::Files { connection } => match crate::files::released_parts(&delivery.value) {
+            Some((store, key)) if store == *connection => {
+                let call = crate::files::delete_call(connection, &key);
+                let sent = send(ctx, call, budget, within).await;
+                if matches!(sent, Ok(Outcome::Value(_))) {
+                    let gone = database
+                        .query_once(
+                            crate::files::GONE,
+                            &[SqlValue::Text(store), SqlValue::Text(key)],
+                        )
+                        .await;
+                    // Its bytes are gone either way; a record that didn't
+                    // keep that is swept again after a day.
+                    if gone.is_err() {
+                        Ok(Outcome::Failed(Box::new(crate::unavailable())))
+                    } else {
+                        sent
+                    }
+                } else {
+                    sent
+                }
+            }
+            _ => Ok(Outcome::Fault(ctx.fault(
+                FaultKind::Defect("a released file's event that names no file of its store".into()),
+                Frame::ENTRY,
+            ))),
+        },
         // An email, rendered whole and sent with no key (area 16; chunk
         // 7.3): what can't be rendered is settled as a subscriber's
         // outcome is, before anything goes out.

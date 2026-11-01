@@ -42,6 +42,9 @@ pub struct Started {
     /// order: its `after:`, or the value of the setting it reads; `None`
     /// when that holds no duration.
     purge_after: Vec<Option<i64>>,
+    /// Where each store of files keeps its record of which files are held
+    /// (area 16, "Deleting and erasing"; chunk B3).
+    files: jadpo_std::files::FilesPlan,
     /// The flags, and the state of them it last read (area 16; chunk B9).
     flags: crate::flags::Held,
 }
@@ -89,10 +92,15 @@ impl Started {
                 (Some(_), _, _) => None,
             })
             .collect();
+        let files = plan
+            .events
+            .map(|events| events.files.clone())
+            .unwrap_or_default();
         let flags = crate::flags::Held::new(plan.flags.cloned().unwrap_or_default());
         let Some(values) = values else {
             return Started {
                 purge_after,
+                files,
                 flags,
                 ..Started::default()
             };
@@ -136,8 +144,14 @@ impl Started {
             )
             .unwrap_or_default(),
             purge_after,
+            files,
             flags,
         }
+    }
+
+    /// Where each store of files keeps its record of which files are held.
+    pub fn files(&self) -> &jadpo_std::files::FilesPlan {
+        &self.files
     }
 
     /// The value the program started with for setting number `at`: its

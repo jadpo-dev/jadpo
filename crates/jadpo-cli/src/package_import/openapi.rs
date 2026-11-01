@@ -66,17 +66,20 @@ pub fn read(
         .get("openapi")
         .and_then(Value::as_str)
         .ok_or_else(|| {
-            Invalid("it has no `openapi` version, so it isn't an OpenAPI document".to_string())
+            Invalid(match document.get("swagger").and_then(Value::as_str) {
+                Some(swagger) => {
+                    format!("this is a Swagger {swagger} document, the version before OpenAPI 3")
+                }
+                None => "this has no `openapi` field saying which version it is".to_string(),
+            })
         })?;
     if !declared.starts_with("3.") {
-        return Err(Invalid(format!(
-            "it is OpenAPI {declared}, and the importer reads OpenAPI 3.0 and 3.1"
-        )));
+        return Err(Invalid(format!("this says it is OpenAPI {declared}")));
     }
     let paths = document
         .get("paths")
         .and_then(Value::as_object)
-        .ok_or_else(|| Invalid("it has no `paths`".to_string()))?;
+        .ok_or_else(|| Invalid("this has no `paths`".to_string()))?;
     let exact = paths
         .values()
         .filter_map(Value::as_object)

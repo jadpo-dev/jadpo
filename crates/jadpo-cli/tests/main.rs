@@ -58,6 +58,7 @@ mod events;
 mod external_first_sign_in;
 mod external_tokens;
 mod field_rules_on_read;
+mod file_deletes;
 mod file_exports;
 mod file_imports;
 mod fix;

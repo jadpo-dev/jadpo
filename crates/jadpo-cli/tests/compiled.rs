@@ -657,7 +657,9 @@ test "a body cut into segments" {
 
 /// The projects chunk 8.4a compares: a package's action caught, and a
 /// recursion to the limits; with a `File` held to its field (chunk B1),
-/// a person's erasure (chunk P3, `crate::erasure`) and the audit trail
+/// a person's erasure (chunk P3, `crate::erasure`), a file's bytes
+/// deleted once no record holds them, the bytes each store keeps among
+/// the records (chunk B3, `crate::file_deletes`), and the audit trail
 /// (chunk B11, `crate::audit`).
 fn parity_projects() -> Vec<(String, PathBuf)> {
     let caught: Vec<(String, String)> = PACKAGE_CAUGHT
@@ -684,6 +686,11 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
         (
             "an erasure".into(),
             corpus_project(&crate::erasure::files(), "compiled-erasure").expect("it checks"),
+        ),
+        (
+            "a file's bytes deleted".into(),
+            corpus_project(&crate::file_deletes::files(), "compiled-file-deletes")
+                .expect("it checks"),
         ),
         (
             "an audit trail".into(),
@@ -797,6 +804,7 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         "docs/language/21-ai.md ai-embed",
         "a key kept without key_ops",
         "an erasure",
+        "a file's bytes deleted",
         "an audit trail",
         "examples 11-cake-shop",
         "examples 12-recipe-book",
@@ -848,6 +856,9 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
     // A sheet that fits is kept; each setting broken is a fault (chunk
     // B1).
     assert_eq!(counted("a file held to its field"), Some((4, 1)));
+    // Each way a file's bytes go, and bytes kept while a record holds
+    // them, the bytes left compared too (chunk B3).
+    assert_eq!(counted("a file's bytes deleted"), Some((6, 6)));
     assert_eq!(counted("each kind of choice's paths"), Some((2, 2)));
     // Every fuzzed body's tests compared (chunk 9.3).
     for (name, _) in &fuzzed {

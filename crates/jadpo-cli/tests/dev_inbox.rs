@@ -329,6 +329,24 @@ fn a_mail_the_app_sends_in_dev_is_caught_listed_shown_opened_and_cleared() {
     eventually("the browser is started", || {
         std::fs::read_to_string(&opened).is_ok_and(|text| text == "http://localhost:5173")
     });
+    // A browser that can't be started is said to be one, not an
+    // argument's mistake, and without the system's error number.
+    let missing = run(
+        &args,
+        &Environment::empty()
+            .with_var("BROWSER", "no-such-browser")
+            .with_cwd(&root),
+    );
+    assert_eq!(missing.code, 1, "{}{}", missing.stdout, missing.stderr);
+    let said = format!("{}{}", missing.stdout, missing.stderr);
+    assert!(said.contains("rule: email.browser_failed"), "{said}");
+    assert!(
+        said.contains(
+            "`BROWSER` names `no-such-browser` as the browser, and there's no program of that name."
+        ),
+        "{said}"
+    );
+    assert!(!said.contains("os error"), "{said}");
     let cleared = json(&root, &["email", "clear"]);
     assert_eq!(cleared["cleared"], 1);
     assert_eq!(json(&root, &["email"])["mails"], serde_json::json!([]));
