@@ -307,7 +307,9 @@ D1 first: the site starts once D1 has merged.
   and in TypeScript, several runs each, with hidden acceptance tests.
   Measures correctness, attempts and tokens to green, where each mistake
   was caught (check, test or escaped), how easily a person reviews the
-  diff, and how often a tempting unsafe shortcut gets through. The agent
+  diff, and how often a tempting unsafe shortcut gets through. It also counts how
+  often a person is asked to sign off per change, and splits each session's
+  tokens between reading docs, reading and writing code, and command output. The agent
   gets the docs as [documentation](documentation.md) delivers them, primer
   first, since no model has seen Jadpo; the results
   also say whether task guides are needed beyond the primer. The method is designed at the start of the chunk; its
@@ -430,6 +432,25 @@ a new agent can't find a type without them (Richard, 2026-11-03).
 - [ ] **A16 Run the sign-in half again** **needs a maintainer** after 0.3.0: the
   same brief as 0.1's run, sign-in, roles and reminders included, the only way
   to judge A7, A10 and A11. Until then, no public claim that sign-in is fixed.
+
+What the Reddit thread found (Richard, 2026-11-03):
+
+- [ ] **A17 `jadpo inspect` and `jadpo impact`** `opus · high`: area 14. An
+  agent can ask for the project map and for what a change to a name reaches,
+  rather than reading files to work it out. `jadpo impact` moves here from
+  "Tooling completeness".
+- [ ] **A18 Leaving Jadpo** `opus · medium`: a short page saying what a
+  project keeps if it stops using Jadpo: what its tables look like to anyone
+  else, its OpenAPI, the licence, and where the runtime comes from. It claims
+  only what a test or a check shows.
+- [ ] **A19 Typed holes, to decide** `opus · high`: whether an agent can write
+  a hole and have the compiler say what type belongs there and what is in
+  scope. A language decision, so it goes to Richard with a recommendation and
+  what it would save, measured against the PersonName detour in the 0.2.0 run.
+
+Not scheduled: a way to write a query the language can't express. Richard
+will work through it and other solutions later; don't design or build one
+until then.
 
 ## Approvals
 
@@ -748,8 +769,7 @@ After the registry is live, in order:
    `call`.
 6. Records and acceptances: moved to "Approvals" (2026-10-31).
 7. Tooling completeness (area 14): interactive tests, `rename` (refusing a
-   name already in use, 2026-10-16), `impact`,
-   full completion.
+   name already in use, 2026-10-16), full completion.
 8. Packages and capabilities after the first build (decided 2026-10-16):
    services run by Jadpo (`runs:`, Docker or Podman hidden behind
    `jadpo services`); the `documents` capability; OAuth grants per owner;
