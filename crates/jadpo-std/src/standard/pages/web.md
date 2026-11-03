@@ -155,7 +155,7 @@ UserAgent("curl/8.7.1")
 An HTTP API's error body, as other APIs often send one.
 
 Use it to read errors from an outside service. In your own routes, declare failures
-instead, since Jadpo sends them in its own form.
+instead.
 
 ```jadpo
 ProblemDetails {
@@ -225,7 +225,7 @@ name, use `Hostname`.
 IpAddress("192.0.2.1")
 ```
 
-- It is personal data in most uses, so mark the field `personal: PersonalData.online`.
+- When it identifies a person, mark the field that holds it `personal: PersonalData.online`.
 
 # Cidr
 

@@ -48,7 +48,7 @@ area page lists it under `## Errors`.
 | One page per compiler error | `docs/errors/<rule.id>.md` (examples), with the rule's summary from the compiler's catalogue (`jadpo help --json`) |
 | Why the language is the way it is | each area's design notes, `docs/language/notes/NN-*.md`, kept apart from what an app author reads |
 | Commands | generated from `jadpo help --json` |
-| Standard types | generated from the compiler's contract data (`jadpo help --json`'s `types` and `operations`) and each type's golden file |
+| Standard types | each type's own words in `crates/jadpo-std/src/standard/pages/`, with its shape, JSON, storage and operations from the compiler's data and its golden file, rendered by the compiler (`jadpo help <Type>`, `jadpo help types --json`) |
 | Teaching projects | `examples/` |
 | The agent skill: how a coding agent writes Jadpo apps | `docs/agent-skill/SKILL.md` |
 
@@ -117,7 +117,7 @@ bundle/
 `index.json` is `{ "version": "<jadpo's version>", "pages": [...] }`, in
 the order above: the primer, the Learn path in reading order, the
 guides in their index's order, topics in the areas' order, the standard
-types' index then each type in its group's order, errors, commands. Each
+types' index then each type from A to Z, errors, commands. Each
 entry has `id`, `kind`
 (`primer`, `learn`, `guide`, `topic`, `type`, `error`, `command`), `title`, a one-line
 `summary` (a page's first sentence, a rule's catalogue summary, a
@@ -159,29 +159,33 @@ The primer, the Learn path and the guides also keep the
 [writing guide](writing.md)'s mechanical rules.
 
 A standard type's page is generated on every docs build, so it lists
-exactly what is built. Its facts come from `jadpo help --json`: each
-type's entry under `types` (its group, its stub's description, what it
-holds, its fields or variants, its rules across parts, whether it has a
-text form, its JSON and storage, the options `text.format` takes,
-whether it is ordered, the release that added it, and its examples), the
-operations that take or give one under `operations`, and the forms its
-examples take from its golden file in
-`crates/jadpo-interp/tests/goldens/standard/`, which the golden test holds
-to the codecs. The page is titled with the type's name and has, in
-order: what it is, its group (linking the index), whether it is ordered,
-any personal data category and the release; `## Make one`, how to build
-one, `text.parse` with text it refuses, the operations that give one and
-its rules; `## Fields` or `## Variants`; `## Text, JSON and storage`,
-each example's text and JSON and the columns it is stored in; `## Shown
-to people`, the options `text.format` takes and each example as `en_gb`
-shows it; and `## Operations`, each with its signature and description,
-then the contract's own. The index lists every type by group, each with
-the first sentence of what it is, and links [the standard
-types](language/19-standard-library.md#the-standard-types) for the
-explanation. The groups are the compiler's
-(`crates/jadpo-std/src/standard/groups.rs`); the docs check fails the
-Standard library page's table of types by group where it lists another
-group, or a type under a group the compiler doesn't give it.
+exactly what is built. The compiler renders it, and `jadpo help <Type>` prints
+the same page offline, so the two can't differ (`crates/jadpo-cli/src/type_page.rs`).
+What a person wrote is in `crates/jadpo-std/src/standard/pages/`, one file for
+each type group: what it is, when to use it and what to use instead, a working
+example, and what is good to know. The rest comes from the compiler: each
+type's entry under `jadpo help --json`'s `types` (its group, what it holds, its
+fields or variants with which are required, its rules across parts, its text
+form, its JSON and storage, the options `text.format` takes, whether `<` takes
+it, the release that added it), the operations that take or give one under
+`operations`, and each form its examples take from its golden file in
+`crates/jadpo-interp/tests/goldens/standard/`, which the golden test holds to
+the codecs. Its parts are in the order [the writing
+guide](writing.md#how-a-standard-types-page-reads) sets. A test in `jadpo-std`
+fails when a type has no entry, and the docs check compiles and runs every
+example with `jadpo test`, and fails a page using a word the writing guide
+rules out.
+
+The index lists every type from A to Z, with its group as a column and the
+line saying what it is, since a reader looks for a name. `jadpo help types` is the same list,
+and with `--json` each type's page, which the bundle publishes. Every type's
+name in the guides, the Learn path, the primer, [The standard
+types](language/19-standard-library.md#the-standard-types) and [Built-in
+types](language/02-values-and-types.md#built-in-types) links its page in the
+bundle. The groups are the compiler's
+(`crates/jadpo-std/src/standard/groups.rs`); the docs check fails the tables of
+types on those two topics where they give another count, group or list than
+the compiler does.
 
 `python3 tools/docs/language_docs.py --bundle <dir>` builds it; the gate builds
 it into `build/docs-bundle/`, and on `main` CI keeps that folder as the

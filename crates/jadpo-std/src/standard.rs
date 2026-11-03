@@ -59,6 +59,7 @@ pub mod storage;
 pub mod web;
 
 pub use codes::isbn_from_isbn10;
+
 pub use contact::{LINE_MAX, LINE_PATTERN};
 pub use places::{ClosedList, closed_list, retired, subdivision_name};
 pub use signals::{

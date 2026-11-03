@@ -16,8 +16,9 @@ money.from_minor(1050, Currency.gbp)
 - A percentage scales it: `price * 120%` adds 20%. To share it out, use
   `money.split`, which loses nothing: £10.00 three ways is £3.34, £3.33 and
   £3.33. `price / 3` is refused.
-- `<` compares two amounts in one currency. Comparing two currencies stops with
-  an error.
+- `<` compares two amounts in one currency. With two different currencies the
+  compiler refuses it, or, if a currency is only known while running, it fails with
+  `currency_mismatch`.
 - A narrower type is often better: `type Sterling = Money { currency: Currency.gbp min: 0 }`.
 
 # Currency
@@ -272,8 +273,7 @@ Use it beside a `UkSortCode`. For the two together, use `BankAccount`.
 UkAccountNumber("66374958")
 ```
 
-- It must have all eight digits. Some banks print fewer, so ask the person for
-  their full number.
+- It must have all eight digits, so keep any leading zeros.
 
 # BankAccount
 
@@ -289,7 +289,6 @@ BankAccount.uk { sort_code: "089999" account_number: "66374958" }
 - The others are `BankAccount.iban { iban: ... }` and `BankAccount.other { country:
   ... bank_code: ... account_number: ... }`.
 - `text.format` shows only the last four digits, `•••• 4958`.
-- It counts as financial personal data, so mark the field holding one `personal:`.
 
 # AbaRoutingNumber
 

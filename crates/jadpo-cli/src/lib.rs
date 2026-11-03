@@ -69,6 +69,7 @@ mod test;
 mod toolchain;
 mod toolchains;
 mod translations;
+mod type_page;
 mod type_reference;
 pub mod verifier;
 pub mod watch;

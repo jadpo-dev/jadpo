@@ -42,8 +42,8 @@ from an `Instant`.
 temporal.in_zone(Instant("2026-10-25T09:30:00Z"), Zone.europe_london)
 ```
 
-- Adding a day keeps the clock time across a daylight saving change, which adding
-  24 hours to an `Instant` doesn't.
+- `temporal.add_days` keeps the clock time across a daylight saving change, which
+  adding 24 hours to an `Instant` doesn't.
 
 # Duration
 

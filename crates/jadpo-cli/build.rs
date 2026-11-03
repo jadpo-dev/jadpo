@@ -86,6 +86,44 @@ fn main() {
     .expect("the packed runtime");
     scaffold(&manifest.join("scaffold"), &out);
     error_pages(&root.join("docs").join("errors"), &out);
+    type_goldens(
+        &root
+            .join("crates")
+            .join("jadpo-interp")
+            .join("tests")
+            .join("goldens")
+            .join("standard"),
+        &out,
+    );
+}
+
+/// Every standard type's golden file, for its page (`src/type_page.rs`):
+/// its name and text, packed as `errors.deflate` is.
+fn type_goldens(folder: &Path, out: &Path) {
+    println!("cargo::rerun-if-changed={}", folder.display());
+    let mut files = Vec::new();
+    walk(folder, &mut files);
+    files.sort();
+    let mut packed = Vec::new();
+    for file in files {
+        let Some(name) = file
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.strip_suffix(".golden"))
+        else {
+            continue;
+        };
+        let text = std::fs::read(&file).expect("a golden file");
+        packed.extend_from_slice(&(name.len() as u32).to_le_bytes());
+        packed.extend_from_slice(name.as_bytes());
+        packed.extend_from_slice(&(text.len() as u32).to_le_bytes());
+        packed.extend_from_slice(&text);
+    }
+    std::fs::write(
+        out.join("goldens.deflate"),
+        miniz_oxide::deflate::compress_to_vec(&packed, 9),
+    )
+    .expect("the packed golden files");
 }
 
 /// Every rule's page, `docs/errors/<rule>.md`, for `jadpo help <rule>`

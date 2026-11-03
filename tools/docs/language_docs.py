@@ -290,7 +290,12 @@ def load_help():
     code, out = jadpo(['help', '--json'])
     if code:
         sys.exit(f'jadpo help --json failed:\n{out}')
-    return json.loads(out)['data']
+    data = json.loads(out)['data']
+    code, out = jadpo(['help', 'types', '--json'])
+    if code:
+        sys.exit(f'jadpo help types --json failed:\n{out}')
+    data['type_pages'] = json.loads(out)['data']
+    return data
 
 
 def load_catalogue():
@@ -1644,22 +1649,10 @@ JSON_OUTPUT = (
 
 
 # The standard type reference (docs/documentation.md, "Standard types"):
-# a page per standard type, rendered from `jadpo help --json`'s `types` and
-# `operations`, which are the compiler's own contract data, and from each
-# type's golden file, which pins every form its examples take.
-GOLDENS = Path('crates/jadpo-interp/tests/goldens/standard')
 # A standard type's page ID is this and its name in kebab case; their index
 # is TYPES_INDEX.
 TYPE_PREFIX = 'type-'
 TYPES_INDEX = 'types'
-# The area page topics a type's page links: the contract every type keeps,
-# and the list it explains.
-CONTRACT_TOPIC = 'every-standard-type-meets-one-contract'
-STANDARD_TYPES_TOPIC = 'the-standard-types'
-# An enum with more variants than this lists them in a paragraph, not a
-# table, and one with more than VARIANTS_LISTED names only a few.
-VARIANTS_IN_TABLE = 40
-VARIANTS_LISTED = 500
 # The area a type's description cites first: `(area 19, ISO 13616)`.
 CITED_AREA = re.compile(r'\(area (\d+)')
 
@@ -1671,410 +1664,139 @@ def type_id(name):
     return TYPE_PREFIX + words.lower()
 
 
-def without_area_numbers(text):
-    """A stub's description as a reader sees it: the area it cites by
-    number left out, the standard it names kept, `(ISO 13616)`."""
-    text = re.sub(r';\s*area \d+, "[^"]*"', '', text)
-    text = re.sub(r'\s*\(area \d+(?:\'s [^)]*)?\)', '', text)
-    text = re.sub(r'\s*\(area \d+, "[^"]*"\)', '', text)
-    return re.sub(r'\(area \d+, ', '(', text)
-
-
-def read_golden(path):
-    """A standard type's golden file: its columns, each (suffix, type,
-    comment), the suffix '' for a type stored in one column, and each
-    example's forms, its text ('none' where it has none), its JSON and each
-    column's value as SQL, by suffix."""
-    lines = path.read_text().split('\n')
-    columns, examples = [], []
-    for line in lines[1:]:
-        if line.startswith('column '):
-            rest, _, comment = line[len('column '):].partition(' -- ')
-            columns.append((rest, comment or None))
-        elif line.startswith('example '):
-            examples.append({'example': line[len('example '):], 'text': None, 'json': None, 'stored': []})
-        elif examples and line.startswith('text '):
-            examples[-1]['text'] = line[len('text '):]
-        elif examples and line.startswith('json '):
-            examples[-1]['json'] = line[len('json '):]
-        elif examples and line.startswith('stored '):
-            examples[-1]['stored'].append(line[len('stored '):])
-    # One column is the field's own, unsuffixed; several each have one.
-    single = len(columns) == 1
-    named = []
-    for rest, comment in columns:
-        suffix, ty = ('', rest) if single else rest.split(' ', 1)
-        named.append((suffix, ty, comment))
-    for example in examples:
-        stored = example['stored']
-        if stored == ['never']:
-            example['stored'] = []
-        elif single:
-            example['stored'] = [('', stored[0])] if stored else []
-        else:
-            example['stored'] = [tuple(value.split(' ', 1)) for value in stored]
-    return {'columns': named, 'examples': examples}
-
-
-def cell(text):
-    """`text` as code in a table's cell; text with a line break or a tab
-    as a JSON string, `"two\\nlines"`, so the cell stays one line."""
-    if re.search(r'[\x00-\x1f]', text):
-        text = json.dumps(text, ensure_ascii=False)
-    text = text.replace('|', '\\|')
-    fence = '``' if '`' in text else '`'
-    pad = ' ' if fence == '``' else ''
-    return f'{fence}{pad}{text}{pad}{fence}' if text else '`""`'
-
-
-def code(text):
-    return cell(text).replace('\\|', '|')
-
-
-def joined(items, last='and'):
-    items = list(items)
-    if len(items) <= 1:
-        return ''.join(items)
-    return ', '.join(items[:-1]) + f' {last} ' + items[-1]
-
-
-def first_sentence(text):
-    return re.split(r'(?<=[.!?])\s+(?=[A-Z`*])', text)[0] if text else ''
+def type_page_links(markdown):
+    """The IDs a generated page links: each `name.md` its links name."""
+    return {m.group(1) for m in re.finditer(r'\]\((?:[^)\s]*/)?([^)/\s#]+)\.md(?:#[^)\s]*)?\)', markdown)}
 
 
 class TypeReference:
-    """The standard type pages (docs/documentation.md, "Standard types"):
-    one per entry of `jadpo help --json`'s `types`, in its groups' order,
-    and their index."""
+    """The standard type pages and their index (docs/documentation.md,
+    "Standard types"): the compiler renders them, as `jadpo help <Type>`
+    prints them, and `jadpo help types --json` gives each one."""
 
     def __init__(self, help_data, root=ROOT):
         self.root = root
-        self.types = list(help_data.get('types', []))
-        self.operations = {op['name']: op for op in help_data.get('operations', [])}
-        self.by_name = {entry['name']: entry for entry in self.types}
-        self.groups = []
-        for entry in self.types:
-            if entry.get('group') not in self.groups:
-                self.groups.append(entry.get('group'))
+        pages = help_data.get('type_pages') or {}
+        self.index = pages.get('index', '')
+        self.pages = list(pages.get('types', []))
+        self.area_of = {entry['name']: self.area(entry) for entry in help_data.get('types', [])}
         self.problems = []
-
-    def in_order(self):
-        """The types in their groups' order, as `jadpo help --json` gives
-        them."""
-        return self.types
-
-    def summary(self, entry):
-        text = without_area_numbers(entry.get('summary') or '')
-        if re.search(r'\barea \d+|\bquestion \d+', text):
-            self.problems.append(f'{entry["name"]}: its description in std/standard.jadpo names an area or question '
-                                 f'by number in a way the type reference can\'t leave out')
-        return text
+        for entry in self.pages:
+            if entry['id'] != type_id(entry['name']):
+                self.problems.append(f'{entry["name"]}: the compiler gives it the page {entry["id"]}, '
+                                     f'not {type_id(entry["name"])}')
 
     def area(self, entry):
         cited = CITED_AREA.search(entry.get('summary') or '')
         return int(cited.group(1)) if cited else 19
 
-    def golden(self, entry):
-        path = self.root / GOLDENS / f'{entry["name"]}.golden'
-        if not path.exists():
-            self.problems.append(f'{entry["name"]} has no golden file, {GOLDENS / (entry["name"] + ".golden")}')
-            return {'columns': [], 'examples': []}
-        return read_golden(path)
-
-    def type_link(self, written, linked):
-        """A type as written, `List<Money>?`, with each standard type in it
-        linking its page."""
-        def one(match):
-            name = match.group(0)
-            if name in self.by_name:
-                linked.add(type_id(name))
-                return f'[`{name}`]({type_id(name)}.md)'
-            return f'`{name}`'
-        parts = re.split(r'([A-Za-z][A-Za-z0-9_.]*)', written)
-        out = []
-        for part in parts:
-            if re.fullmatch(r'[A-Za-z][A-Za-z0-9_.]*', part or ''):
-                out.append(re.sub(r'.+', one, part))
-            elif part:
-                out.append(f'`{part}`')
-        return ''.join(out).replace('``', '')
-
-    def written_name(self, entry):
-        """The type as a program names it: `Range<CalendarDate>` for `Range`,
-        with the type its examples hold."""
-        if entry['holds'] == 'range' and entry.get('examples', {}).get('of'):
-            return f'{entry["name"]}<{entry["examples"]["of"]}>'
-        return entry['name']
-
-    def signature(self, name):
-        operation = self.operations.get(name, {})
-        params = ', '.join(f'{p["name"]}: {p["type"]}{"?" if p.get("optional") else ""}'
-                           for p in operation.get('params', []))
-        return f'{name}({params}) -> {operation.get("result", "")}'
-
-    def make_one(self, entry):
-        name, holds = entry['name'], entry['holds']
-        valid = entry.get('examples', {}).get('valid', [])
-        out = []
-        fields = [f['name'] for f in entry.get('fields', []) if not f.get('optional')] or \
-                 [f['name'] for f in entry.get('fields', [])]
-        if holds == 'text' and entry.get('text') == 'secret':
-            out.append('It comes from outside your code, a secret value that never appears in it.')
-        elif holds == 'text':
-            sample = valid[0]['text'] if valid else 'raw'
-            out.append(f'Build one from its text, `{name}("{sample}")`, which checks it: text that isn\'t '
-                       f'one breaks `format`.')
-        elif holds == 'whole':
-            sample = valid[0]['text'] if valid else entry.get('min')
-            out.append(f'Build one from a whole number from {entry.get("min")} to {entry.get("max")}, '
-                       f'`{name}({sample})`; a number outside them breaks `min` or `max`.')
-        elif holds == 'bounded':
-            base = entry.get('base')
-            out.append(f'It is a `{base}` with bounds of its own: build one as you build a `{base}`, '
-                       f'and a value outside its bounds breaks `min` or `max`.')
-        elif holds == 'enum':
-            variants = entry.get('variants', [])
-            if variants:
-                out.append(f'Pick one of its variants, `{name}.{variants[0]["name"]}`.')
-        elif holds == 'choice':
-            variants = entry.get('variants', [])
-            if variants:
-                first = variants[0]
-                given = '  '.join(f'{f["name"]}: ...' for f in first.get('fields', []))
-                out.append(f'Pick one of its variants and give its fields, '
-                           f'`{name}.{first["name"]} {{ {given} }}`.' if given else
-                           f'Pick one of its variants, `{name}.{first["name"]}`.')
-        elif holds in ('object', 'range', 'feature', 'featureCollection'):
-            shown = self.written_name(entry)
-            given = '  '.join(f'{field}: ...' for field in fields[:3])
-            out.append(f'Build one from its fields, `{shown} {{ {given} }}`.')
-        elif holds == 'list':
-            item = (entry.get('arguments') or ['its item'])[0]
-            out.append(f'It is a list of `{item}`: build one from a list of them, as you build a named list '
-                       f'type of your own.')
-        elif holds == 'map':
-            key, value = (entry.get('arguments') or ['K', 'V'])[:2]
-            out.append(f'It maps `{key}` to `{value}`: build one from a map of them, as you build a named map '
-                       f'type of your own.')
-        elif holds == 'bytes':
-            out.append(f'Build one from `Bytes`, `{name}(bytes)`, which checks them: bytes that aren\'t one '
-                       f'break `format`.')
-        if entry.get('text') in ('canonical', 'secret'):
-            # A few short ones: a long token says little in a sentence.
-            malformed = [m for m in entry.get('examples', {}).get('malformed', []) if len(m) <= 40][:3]
-            such = f', such as {joined((code(m) for m in malformed), "or")}' if malformed else ''
-            out.append(f'`text.parse(raw, as: {self.written_name(entry)})` reads one from its text; text that '
-                       f'isn\'t one at all fails `malformed`{such}.')
-        gives = [op['name'] for op in entry.get('operations', []) if op.get('gives')]
-        if gives:
-            out.append(f'{"This operation gives" if len(gives) == 1 else "These operations give"} one: '
-                       f'{joined(f"`{g}`" for g in gives)}.')
-        rules = entry.get('rules', [])
-        text = '\n\n'.join(out)
-        if rules:
-            text += ('\n\nIts parts keep these rules; a value that breaks one fails with the rule\'s name:\n\n' +
-                     '\n'.join(f'- `{r["name"]}`: `{r["written"]}`' for r in rules))
-        return text
-
-    def members(self, entry, linked):
-        """Its fields, or its variants, as a section."""
-        out = []
-        if entry.get('fields'):
-            out += ['## Fields', '', '| Field | Type |', '|---|---|']
-            for field in entry['fields']:
-                ty = field['type'] + ('?' if field.get('optional') else '')
-                out.append(f'| `{field["name"]}` | {self.type_link(ty, linked)} |')
-            out.append('')
-        variants = entry.get('variants', [])
-        if entry['holds'] == 'choice' and variants:
-            out += ['## Variants', '', '| Variant | Fields |', '|---|---|']
-            for variant in variants:
-                given = ', '.join(f'`{f["name"]}`: {self.type_link(f["type"] + ("?" if f.get("optional") else ""), linked)}'
-                                  for f in variant.get('fields', [])) or 'none'
-                out.append(f'| `{variant["name"]}` | {given} |')
-            out.append('')
-        elif entry['holds'] == 'enum' and variants:
-            same = all(v['name'] == v['code'] for v in variants)
-            out += ['## Variants', '']
-            if same:
-                out += [f'{len(variants)} variants, each written as its own name: '
-                        f'{", ".join(f"`{v["name"]}`" for v in variants)}.', '']
-            elif len(variants) <= VARIANTS_IN_TABLE:
-                out += ['| Variant | Written |', '|---|---|']
-                out += [f'| `{v["name"]}` | {cell(v["code"])} |' for v in variants]
-                out.append('')
-            elif all(v['name'] == re.sub(r'[^a-z0-9]+', '_', v['code'].lower()).strip('_') for v in variants):
-                sample = variants[0]
-                out.append(f'{len(variants)} variants. Each is its code in lower case, with `_` for every other '
-                           f'character: `{entry["name"]}.{sample["name"]}` is written {code(sample["code"])}.')
-                if len(variants) <= VARIANTS_LISTED:
-                    out[-1] += f' The codes: {", ".join(code(v["code"]) for v in variants)}.'
-                else:
-                    out[-1] += (f' The first {VARIANTS_IN_TABLE}: '
-                                f'{", ".join(code(v["code"]) for v in variants[:VARIANTS_IN_TABLE])}.')
-                out.append('')
-            else:
-                shown = variants if len(variants) <= VARIANTS_LISTED else variants[:VARIANTS_IN_TABLE]
-                more = '' if shown is variants else f' The first {len(shown)}:'
-                out += [f'{len(variants)} variants, each with the code its text is written in.{more} '
-                        f'{", ".join(f"`{v["name"]}` ({code(v["code"])})" for v in shown)}.', '']
-        return out
-
-    def forms(self, entry, golden):
-        """How its values are written, sent and stored, from its golden
-        file."""
-        name = entry['name']
-        examples = golden['examples']
-        out = ['## Text, JSON and storage', '']
-        if entry.get('text') == 'secret':
-            out += [f'`text.parse` reads one from its text, as it is typed. Nothing writes it: `text.from` and '
-                    f'`text.format` don\'t take it, JSON writes it as {code(examples[0]["json"]) if examples else "redacted"}, '
-                    f'and it is never stored.', '']
-            return out
-        if entry.get('text') == 'canonical':
-            out += [f'`text.from` writes its canonical text, the one form `text.parse` reads back. JSON sends '
-                    f'{self.json_words(entry)}.', '']
-            out += ['| Text | JSON |', '|---|---|']
-            out += [f'| {cell(e["text"])} | {cell(e["json"])} |' for e in examples]
-        else:
-            out += [f'It has no single text form, so `text.from` and `text.parse` don\'t take it. JSON sends '
-                    f'{self.json_words(entry)}.', '']
-            out += ['| JSON |', '|---|']
-            out += [f'| {cell(e["json"])} |' for e in examples]
-        out.append('')
-        columns = golden['columns']
-        # The middle example: the first is often an edge, such as zero.
-        first = examples[len(examples) // 2] if examples else None
-        written = (first['text'] if first and first['text'] != 'none' else first['json']) if first else ''
-        if not columns:
-            out += ['It is never stored.', '']
-        elif len(columns) == 1:
-            _, ty, comment = columns[0]
-            what = f', holding the {comment[0].lower() + comment[1:]}' if comment else ''
-            out.append(f'It is stored in one column named for the field, of type `{ty}`{what}.')
-            if first and first['stored']:
-                out[-1] += f' {code(written)} is stored as {code(first["stored"][0][1])}.'
-            out.append('')
-        else:
-            out += [f'It is stored in {len(columns)} columns, each named for the field, `_` and its suffix. '
-                    f'This is {code(written)}:', '']
-            values = dict(first['stored']) if first else {}
-            out += ['| Column | Type | Holds |', '|---|---|---|']
-            for suffix, ty, _ in columns:
-                out.append(f'| `<field>_{suffix}` | `{ty}` | {cell(values.get(suffix, ""))} |')
-            out.append('')
-        return out
-
-    def json_words(self, entry):
-        return {
-            'text': 'its canonical text as a string',
-            'object': 'an object of its parts',
-            'tagged': 'an object of its variant\'s name, as `tag`, and the variant\'s fields',
-            'number': 'it as a number',
-            'array': 'an array of its items',
-            'keyed': 'an object of its entries, each key written as its text',
-            'geojson': 'a GeoJSON geometry, its positions longitude first',
-            'feature': 'a GeoJSON object of its geometry and properties',
-            'secret': 'it redacted',
-        }.get(entry.get('json'), 'one shape')
-
-    def shown(self, entry):
-        out = ['## Shown to people', '']
-        name = entry['name']
-        if entry.get('text') == 'secret':
-            return out + [f'`text.format` doesn\'t take it: a `{name}` is never shown.', '']
-        options = entry.get('format', {}).get('options', [])
-        needed = [f'`{o["name"]}:`' for o in options if o.get('needed')]
-        optional = [f'`{o["name"]}:`' for o in options if not o.get('needed')]
-        sentence = '`text.format(value, locale:)` shows it to people in their locale.'
-        if needed:
-            sentence += f' A call also gives {joined(needed)}.'
-        if optional:
-            sentence += f' A call may also give {joined(optional, "or")}.'
-        out += [sentence, '']
-        valid = entry.get('examples', {}).get('valid', [])
-        if valid:
-            given = ['`locale: Locale.en_gb`']
-            if any(o['name'] == 'zone' for o in options):
-                given.append('`zone: Zone.europe_london`')
-            if entry.get('examples', {}).get('format'):
-                given.append(f'`format: TimeFormat.{entry["examples"]["format"]}`')
-            out += [f'With {joined(given)}:', '', '| Value | Shown |', '|---|---|']
-            out += [f'| {cell(e["text"])} | {cell(e["shown"])} |' for e in valid]
-            out.append('')
-        return out
-
-    def operations_section(self, entry, linked):
-        out = ['## Operations', '']
-        related = [op['name'] for op in entry.get('operations', [])]
-        for op in related:
-            summary = (self.operations.get(op) or {}).get('summary') or ''
-            out.append(f'- `{self.signature(op)}`' + (f': {summary}' if summary else ''))
-        if related:
-            out.append('')
-        baseline = []
-        if entry.get('text') in ('canonical', 'secret'):
-            baseline.append('`text.parse`')
-        if entry.get('text') == 'canonical':
-            baseline.append('`text.from`')
-        if entry.get('text') != 'secret':
-            baseline.append('`text.format`')
-        baseline += ['`json.read`', '`json.write`', '`==`']
-        linked.add(CONTRACT_TOPIC)
-        lead = 'Like every standard type, it also has' if related else 'It has'
-        order = ('It is ordered, so `<` and sorting take it.' if entry.get('ordered') else
-                 'It isn\'t ordered, so `<` and sorting don\'t take it.')
-        out += [f'{lead} the contract\'s own operations: {joined(baseline)}. {order} '
-                f'[Every standard type meets one contract](../topics/{CONTRACT_TOPIC}.md) says how they work.', '']
-        return out
-
-    def type_markdown(self, entry, linked):
-        golden = self.golden(entry)
-        group = entry.get('group') or 'Standard types'
-        linked.add(TYPES_INDEX)
-        facts = [f'[{group}]({TYPES_INDEX}.md#{github_slug(group, {})})']
-        facts.append('ordered' if entry.get('ordered') else 'not ordered')
-        if entry.get('personal'):
-            facts.append(f'personal data ({entry["personal"]})')
-        facts.append(f'since Jadpo {entry.get("release")}')
-        out = [f'# `{entry["name"]}`', '', self.summary(entry), '', '; '.join(facts) + '.', '',
-               '## Make one', '', self.make_one(entry), '']
-        out += self.members(entry, linked)
-        out += self.forms(entry, golden)
-        out += self.shown(entry)
-        out += self.operations_section(entry, linked)
-        return '\n'.join(out).rstrip('\n') + '\n'
-
-    def index_markdown(self, linked):
-        linked.add(STANDARD_TYPES_TOPIC)
-        out = ['# Standard types', '',
-               f'Every standard type Jadpo has, {len(self.types)} in all, by group. Each page says how to make one '
-               f'and how it is written, sent as JSON, stored and shown to people, with its examples. '
-               f'[The standard types](../topics/{STANDARD_TYPES_TOPIC}.md) explains the list.', '']
-        for group in self.groups:
-            out += [f'## {group}', '', '| Type | What it is |', '|---|---|']
-            for entry in self.in_order():
-                if entry.get('group') == group:
-                    linked.add(type_id(entry['name']))
-                    out.append(f'| [`{entry["name"]}`]({type_id(entry["name"])}.md) | '
-                               f'{first_sentence(self.summary(entry)).replace("|", chr(92) + "|")} |')
-            out.append('')
-        return '\n'.join(out).rstrip('\n') + '\n'
-
     def build(self):
-        """The index, then each type's page, as (kind, id, path, title,
-        area, markdown, the IDs it links)."""
-        if not self.types:
+        """The index, then each type's page from A to Z, as (kind, id, path,
+        title, area, markdown, the IDs it links)."""
+        if not self.pages:
             return []
-        linked = set()
         built = [('type', TYPES_INDEX, f'types/{TYPES_INDEX}.md', 'Standard types', 19,
-                  self.index_markdown(linked), linked)]
-        for entry in self.in_order():
-            linked = set()
-            text = self.type_markdown(entry, linked)
-            built.append(('type', type_id(entry['name']), f'types/{type_id(entry["name"])}.md', entry['name'],
-                          self.area(entry), text, linked))
+                  self.index, type_page_links(self.index))]
+        for entry in self.pages:
+            built.append(('type', entry['id'], f'types/{entry["id"]}.md', entry['name'],
+                          self.area_of.get(entry['name'], 19), entry['page'], type_page_links(entry['page'])))
         return built
+
+
+# A type's name in code, not already a link's text: `Money`, `Range<T>`.
+TYPE_IN_CODE = re.compile(r'(?<!\[)`([A-Z][A-Za-z0-9]*)(<[^`]*>)?`(?!\]\()')
+# The topics that list the standard types, each name of which links its page;
+# the guides, the Learn path and the primer link theirs too.
+TOPICS_LINKING_TYPES = {'the-standard-types', 'built-in-types'}
+# The words a type's page never uses (docs/writing.md, "How a standard type's
+# page reads"), outside code and a link's address.
+WORDS_TYPE_PAGES_AVOID = ('contract', 'baseline', 'not ordered')
+
+
+def link_type_names(text, names, linked, prefix='../types/'):
+    """`text` with each standard type's name in code linking its page,
+    outside fences and headings."""
+    def one(match):
+        if match.group(1) not in names:
+            return match.group(0)
+        page = type_id(match.group(1))
+        linked.add(page)
+        return f'[{match.group(0)}]({prefix}{page}.md)'
+    out, fenced = [], False
+    for line in text.split('\n'):
+        if line.startswith('```'):
+            fenced = not fenced
+        out.append(line if fenced or line.startswith('#') else TYPE_IN_CODE.sub(one, line))
+    return '\n'.join(out)
+
+
+def type_page_word_problems(types):
+    """Where a type's page uses a word the page's template rules out."""
+    problems = []
+    for entry in types:
+        prose = re.sub(r'`[^`\n]*`', '', re.sub(r'\]\([^)]*\)', ']', entry.get('page', ''))).lower()
+        for word in WORDS_TYPE_PAGES_AVOID:
+            if word in prose:
+                problems.append(f'{entry["name"]}\'s page says "{word}": say what a reader can do instead '
+                                f'(docs/writing.md, "How a standard type\'s page reads")')
+    return problems
+
+
+def split_type_example(code):
+    """A type's example as the declarations it needs and the code that makes
+    one."""
+    declarations, rest = [], []
+    for part in code.split('\n\n'):
+        (declarations if re.match(r'type \w+ =', part) else rest).append(part)
+    return declarations, '\n\n'.join(rest)
+
+
+def type_example_test(name, code):
+    """The test that compiles and runs a type's example: its statements as
+    they are, or a value of the type it names."""
+    _, body = split_type_example(code)
+    if re.match(r'(var|assert) ', body):
+        lines = body
+    else:
+        lines = f'var example: {name} = {body}\nassert example == example'
+    indented = '\n'.join(f'    {line}' if line else '' for line in lines.split('\n'))
+    return f'test "{name}" {{\n{indented}\n}}\n'
+
+
+def run_type_examples(examples):
+    """Runs `jadpo test` over one project holding `examples`, by name: every
+    problem it reports, each one's rule and message."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        declarations = [d for code in examples.values() for d in split_type_example(code)[0]]
+        (root / 'main.jadpo').write_text('\n\n'.join(declarations) + '\n')
+        (root / 'main.test.jadpo').write_text('\n'.join(type_example_test(name, code)
+                                                        for name, code in examples.items()))
+        code, out = jadpo(['test', '.', '--json', '--seed', TEST_SEED], cwd=tmp)
+    try:
+        report = json.loads(out)
+    except ValueError:
+        return [out.strip()[:400] or f'jadpo test exited {code}']
+    problems = [f'{d.get("rule")}: {d.get("message")}' for d in report.get('diagnostics', [])
+                if d.get('rule') != 'test.failed']
+    problems += [f'test.fault: {test.get("name")} {test.get("outcome")}'
+                 for test in (report.get('data') or {}).get('tests', []) if test.get('outcome') != 'passed']
+    return problems
+
+
+def type_example_problems(types):
+    """Every type's example compiles and runs, as the page shows it: one
+    project for them all, then one for each if that fails, to name which."""
+    examples = {entry['name']: entry.get('example', '') for entry in types}
+    missing = [f'{name}: its page has no example' for name, code in examples.items() if not code]
+    written = {name: code for name, code in examples.items() if code}
+    if not written or not run_type_examples(written):
+        return missing
+    problems = list(missing)
+    with ThreadPoolExecutor(WORKERS) as pool:
+        for name, found in zip(written, pool.map(lambda item: run_type_examples({item[0]: item[1]}), written.items())):
+            problems += [f'{name}: its example: {problem}' for problem in found]
+    return problems or ['the standard types\' examples fail together, though each passes alone']
 
 
 class Bundle:
@@ -2311,8 +2033,13 @@ class Bundle:
                           COMMAND_AREA, self.command_markdown(command, linked), linked))
         # Every page's fences keep only their language (docs/documentation.md,
         # "The bundle").
-        return [(kind, page_id, path, title, area, bare_fences(text), linked)
-                for kind, page_id, path, title, area, text, linked in built]
+        names = {entry['name'] for entry in self.types.pages}
+        linked_types = []
+        for kind, page_id, path, title, area, text, linked in built:
+            if kind in ('guide', 'learn', 'primer') or page_id in TOPICS_LINKING_TYPES:
+                text = link_type_names(text, names, linked, 'types/' if kind == 'primer' else '../types/')
+            linked_types.append((kind, page_id, path, title, area, bare_fences(text), linked))
+        return linked_types
 
     def index(self, built):
         areas = {area: title for kind, page_id, _, title, area, _, _ in built
@@ -2487,33 +2214,53 @@ def check_skill(root=ROOT):
 
 
 def type_table_problems(pages, types):
-    """Where the table of standard types on the Standard library page
-    disagrees with the compiler's groups (`jadpo help --json`'s `types`): a
-    group the data doesn't have, or in another order, or a type listed in a
-    group the data puts it outside."""
-    page = next((p for p in pages if p.area() == 19), None)
-    if page is None or not types:
+    """Where a page's table of the standard types disagrees with the
+    compiler's groups (`jadpo help --json`'s `types`): how many there are, a
+    group the data doesn't have, or in another order, or of another size, a
+    type the table leaves out, names under another group or that isn't one."""
+    if not types:
         return []
     group_of = {entry['name']: entry.get('group') for entry in types}
     groups = list(dict.fromkeys(entry.get('group') for entry in types))
-    lines = page.body.split('\n')
-    start = next((i for i, line in enumerate(lines) if line.startswith('| Group | Types |')), None)
-    if start is None:
-        return [f'{page.path.name}: no table of the standard types by group (`| Group | Types |`)']
-    problems, listed = [], []
-    for line in lines[start + 2:]:
-        if not line.startswith('|'):
-            break
-        cells = line.split('|')
-        group = re.sub(r'\s*\(.*\)$', '', cells[1].strip())
-        listed.append(group)
-        for name in re.findall(r'\*\*`([^`<]+)(?:<[^`]*>)?`\*\*', cells[2]):
-            if name in group_of and group_of[name] != group:
-                problems.append(f'{page.path.name}: `{name}` is listed under "{group}", but the compiler groups it '
-                                f'under "{group_of[name]}" (crates/jadpo-std/src/standard/groups.rs)')
-    if listed != groups:
-        problems.append(f'{page.path.name}: the standard types\' groups are {listed}, but the compiler\'s are '
-                        f'{groups} (crates/jadpo-std/src/standard/groups.rs)')
+    problems = []
+    for area in (2, 19):
+        page = next((p for p in pages if p.area() == area), None)
+        if page is None:
+            continue
+        lines = page.body.split('\n')
+        count = re.search(r'There are (\d+) standard types', page.body)
+        if not count or int(count.group(1)) != len(types):
+            problems.append(f'{page.path.name}: says "There are {count.group(1) if count else "?"} standard types", '
+                            f'but the compiler has {len(types)}')
+        start = next((i for i, line in enumerate(lines) if line.startswith('| Group | Types |')), None)
+        if start is None:
+            problems.append(f'{page.path.name}: no table of the standard types by group (`| Group | Types |`)')
+            continue
+        listed, seen = [], set()
+        for line in lines[start + 2:]:
+            if not line.startswith('|'):
+                break
+            cells = line.split('|')
+            size = re.search(r'\((\d+)\)$', cells[1].strip())
+            group = re.sub(r'\s*\(.*\)$', '', cells[1].strip())
+            listed.append(group)
+            names = re.findall(r'`([A-Z][A-Za-z0-9]*)(?:<[^`]*>)?`', cells[2])
+            seen.update(names)
+            for name in names:
+                if name not in group_of:
+                    problems.append(f'{page.path.name}: lists `{name}`, which isn\'t a standard type')
+                elif group_of[name] != group:
+                    problems.append(f'{page.path.name}: `{name}` is listed under "{group}", but the compiler groups '
+                                    f'it under "{group_of[name]}" (crates/jadpo-std/src/standard/groups.rs)')
+            if not size or int(size.group(1)) != sum(1 for g in group_of.values() if g == group):
+                problems.append(f'{page.path.name}: the group "{group}" should say how many it has, '
+                                f'({sum(1 for g in group_of.values() if g == group)})')
+        if listed != groups:
+            problems.append(f'{page.path.name}: the standard types\' groups are {listed}, but the compiler\'s are '
+                            f'{groups} (crates/jadpo-std/src/standard/groups.rs)')
+        for name in group_of:
+            if name not in seen:
+                problems.append(f'{page.path.name}: the table of standard types leaves out `{name}`')
     return problems
 
 
@@ -3059,6 +2806,12 @@ def main():
                                    guides=guides, help_data=help_data):
         failed = True
         print(f'  FAIL {problem}')
+    type_pages = help_data.get('type_pages', {}).get('types', [])
+    for problem in type_page_word_problems(type_pages) + (type_example_problems(type_pages) if compile_examples else []):
+        failed = True
+        print(f'  FAIL {problem}')
+    if compile_examples:
+        print(f'{len(type_pages)} standard type page(s); every example compiled and run')
     for problem in check_skill():
         failed = True
         print(f'  FAIL {problem}')

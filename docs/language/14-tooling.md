@@ -1113,6 +1113,8 @@ Not built yet:
 | `jadpo lsp` | Runs the language server for editors |
 | `jadpo help [command]` | Help for one command; `--help` works everywhere |
 | `jadpo help <rule>` | A rule's page, offline, by the id on an error's `rule:` line |
+| `jadpo help <Type>` | A standard type's page, offline: what it is, its shape and an example. `--json` gives its shape as data |
+| `jadpo help types` | Every standard type from A to Z |
 | `jadpo completions <shell>` | Prints the Tab-completion script for zsh, bash or fish |
 | `jadpo version` | Prints the version |
 | `jadpo toolchain` | Lists, removes and pins the Jadpo releases kept for projects |

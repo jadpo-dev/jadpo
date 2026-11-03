@@ -2,8 +2,7 @@
 
 A person's blood group: `O-`, `AB+` and so on.
 
-Use it in medical records. It is health data, so mark the field that holds it
-`personal: PersonalData.health`.
+Use it in medical records, or wherever else someone's blood group is recorded.
 
 ```jadpo
 BloodType.o_negative

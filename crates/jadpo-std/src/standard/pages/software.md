@@ -154,7 +154,7 @@ checked when you compile, and suits a fixed rule better.
 RegularExpression("[A-Z]{2}[0-9]{2}")
 ```
 
-- Backreferences such as `\1` are refused, since patterns always run in linear time.
+- Backreferences such as `\1` are refused, which keeps every pattern quick to run.
 
 # ContainerImage
 

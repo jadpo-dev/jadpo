@@ -47,7 +47,7 @@ your project: it finds the project by looking upwards for `app.jadpo`.
 | `jadpo migrate new <purpose>` | Writes the next database migration from your entities |
 | `jadpo api update` | Updates the committed record of your API after you change a route |
 | `jadpo dev` | Runs the app on `http://127.0.0.1:3000` and reloads it when you save |
-| `jadpo help <command>` | Explains a command |
+| `jadpo help <name>` | Explains a command, an error's rule, or a standard type such as `Money` |
 
 ## Reading an error
 
@@ -200,10 +200,10 @@ function sticker(parcel: Parcel) -> Label {
 Representation is not meaning. A tool's name and a person's email are both
 text, but they are different types, and the compiler never converts
 between them silently. The built-in representations are `Bool`, `Int`,
-`Decimal`, `Text`, `Bytes` and `Uuid`. About 250 standard types cover the
+`Decimal`, `Text`, `Bytes` and `Uuid`. About 260 standard types cover the
 rest (`Email`, `Money`, `Instant`, `Duration`, `Url`, `PostalAddress` and
-more), so look in the [standard library](language/19-standard-library.md)
-before inventing one.
+more), so look in [their A-to-Z list](https://jadpo.dev/docs/types) before inventing one.
+`jadpo help PersonName` prints one type's page, with its shape and an example.
 
 ```jadpo check project=tool-share file=domains/lending/types/tool_name.jadpo
 /// What a tool is called, as its owner wrote it.

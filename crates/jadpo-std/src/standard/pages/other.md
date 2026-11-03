@@ -68,8 +68,8 @@ EpcRating.c
 
 How land in England and Wales is held: `freehold`, `leasehold` or `commonhold`.
 
-Use it for a property listing. A share of a freehold is `leasehold` here, with your own field
-for the share.
+Use it for a property listing. Land elsewhere is held in other ways, so this list only fits
+England and Wales.
 
 ```jadpo
 Tenure.freehold
@@ -110,3 +110,5 @@ ModelId { provider: "openai" name: "gpt-4o" }
 ```
 
 - As text it needs its provider, so `gpt-4o` alone is refused.
+- A model an app calls comes from a `ModelId` setting rather than a name in the code, so
+  changing it is a reviewed change.

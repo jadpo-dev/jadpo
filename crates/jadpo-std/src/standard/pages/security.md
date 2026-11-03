@@ -154,8 +154,8 @@ PublicKey("11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo")
 
 An X.509 certificate, the kind that secures a website.
 
-Use it to read a certificate's subject, issuer and dates. `crypto.read_certificate` and
-`text.parse` read one from its PEM text. For a signing key alone, use `PublicKey`.
+Use it to read a certificate's subject, issuer and dates. `text.parse` reads one from its PEM
+text, and `crypto.read_certificate` from its DER bytes. For a signing key alone, use `PublicKey`.
 
 ```jadpo
 type NotACertificate = Failure {
@@ -186,7 +186,7 @@ value. For the six digits a person types, use `OneTimeCode`.
 TotpSecret("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ")
 ```
 
-- It is never sent, logged or shown, and stored only once keys held as data arrive.
+- It is never sent, logged or shown.
 
 # OneTimeCode
 
@@ -218,7 +218,7 @@ ApiKey("example_key_0123456789abcdef")
 
 Any other secret text, up to 8,192 characters.
 
-Use it for a value a type below doesn't fit, such as a webhook's signing secret. For a
+Use it for a secret no other type fits, such as a webhook's signing secret. For a
 password, use `Password`, and for a key, use `ApiKey`.
 
 ```jadpo
@@ -289,17 +289,10 @@ type NotAPasskey = Failure {
     message: "That isn't a passkey."
 }
 
-var example: WebAuthnCredential = attempt WebAuthnCredential {
-    credential_id: encoding.to_utf8("id")
-    public_key: encoding.to_utf8("key")
-    sign_count: 0
-    transports: []
-    backup_eligible: false
-    backed_up: false
-    name: "Work phone"
-    registered_at: "2026-10-18T10:00:00Z"
-    last_used_at: none
-} {
+var example: WebAuthnCredential = attempt json.read(
+    "{\"credential_id\":\"AAECAwQFBgcICQoLDA0ODw==\",\"public_key\":\"pQECAyYgASFYIGXtpaEld8K66ClDf+M4cBoQqqN14btbXeEI3kOcCFUdIlggHlLtdXARY/f55A3fnzQbPcm6hgr34Mp8p+nuzQCE0Zw=\",\"sign_count\":0,\"transports\":[\"internal\",\"hybrid\"],\"backup_eligible\":true,\"backed_up\":true,\"name\":\"Work phone\",\"registered_at\":\"2026-10-18T09:00:00Z\",\"last_used_at\":\"2026-10-18T09:05:00Z\"}",
+    as: WebAuthnCredential
+) {
     invalid: NotAPasskey
 }
 assert example == example

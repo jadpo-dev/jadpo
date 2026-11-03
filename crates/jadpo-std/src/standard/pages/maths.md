@@ -87,8 +87,7 @@ Use it for similarity search. To keep the numbers with the model that made them,
 `Embedding`. For a fixed length, build your own type with `dimensions:`.
 
 ```jadpo
-var example: Vector = [0.5, -0.25, 1.0]
-assert ai.distance(example, example) == ai.distance(example, example)
+[0.5, -0.25, 1.0]
 ```
 
 - It holds from 1 to 16,000 numbers.
