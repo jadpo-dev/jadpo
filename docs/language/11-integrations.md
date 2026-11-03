@@ -5823,9 +5823,9 @@ each refuses.
   It prints the review
   [Package upgrades](18-records-and-manifest.md#package-upgrades)
   describes: each surface entry added, changed or removed, `used by the
-  app` when the app's code writes its name through the package
-  (`Postcodes.uk.tidy`), and `needs a person` for a changed or removed
-  one the app uses. A linked package is unlinked first. An installed
+  app` when the app's code writes it or reaches it, through the package
+  (`Postcodes.uk.tidy`) or a connection to it, and under `Needs a person`
+  each change an acceptance must list. A linked package is unlinked first. An installed
   folder changed by hand (`package.digest_mismatch`) is installed again
   from its source, at the release the lock names when there is none
   newer, so `update` is also how a changed package is put back.
@@ -5876,10 +5876,8 @@ each refuses.
   (`publish.changelog_missing`); an already released one passes.
 
 > Not built yet: adding another Jadpo app's folder, or a package by bare
-> name from the registry, says `toolchain.not_built_yet`. Accepting an
-> update's changes waits for package upgrade plans
-> ([Package upgrades](18-records-and-manifest.md#package-upgrades)).
-> Outside CI, `jadpo build` still builds against a link.
+> name from the registry, says `toolchain.not_built_yet`. Outside CI,
+> `jadpo build` still builds against a link.
 
 ## How connections to packages are read
 <!-- topic: how-connections-to-packages-are-read -->

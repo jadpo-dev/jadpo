@@ -952,8 +952,13 @@ for `PolicyChange` (its `own_source` lines read as empty when the before
 side has no record), `network.jadpo_record` for `NetworkChange`,
 `jadpo.lock` for `PackageChange.git_source` (read as empty when the before
 side has none), the domain folders for
-`DomainChange.created`. Each acceptance a change adds is matched against
-that list; one the before side has is history, compared byte for byte.
+`DomainChange.created`. When the lock moved, the before side also reads the
+app's source and the installed surfaces, and `acceptances::upgrades`
+compares what the app wrote there with the packages now, matched with the
+version ignored, for an upgrade's `PackageChange`s; `jadpo package update`
+prints the same review from the tree. Each acceptance a change adds is
+matched against that list; one the before side has is history, compared
+byte for byte.
 The acceptance rules don't stop `jadpo test` or `jadpo dev`, as records
 out of date don't.
 

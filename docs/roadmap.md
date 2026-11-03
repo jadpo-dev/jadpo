@@ -307,7 +307,9 @@ D1 first: the site starts once D1 has merged.
   and in TypeScript, several runs each, with hidden acceptance tests.
   Measures correctness, attempts and tokens to green, where each mistake
   was caught (check, test or escaped), how easily a person reviews the
-  diff, and how often a tempting unsafe shortcut gets through. The agent
+  diff, and how often a tempting unsafe shortcut gets through. It also counts how
+  often a person is asked to sign off per change, and splits each session's
+  tokens between reading docs, reading and writing code, and command output. The agent
   gets the docs as [documentation](documentation.md) delivers them, primer
   first, since no model has seen Jadpo; the results
   also say whether task guides are needed beyond the primer. The method is designed at the start of the chunk; its
@@ -368,22 +370,105 @@ time.
 - [x] **A10 Staff only through their provider**: area 9, "Roles that need a way in" and Decisions; area 8, "How a session started", "How strongly a person signed in", "Company accounts" and Decisions; area 13, "Signing in for a route test"; area 18, "Acceptances" and Decisions; compiler/runtime §2.6, "Roles that need a way in"; `examples/29-lending-desk/README.md`.
 - [x] **A11 Route tests keep their session**: area 13, "Signing in for a route test", "What is built" and Decisions; `examples/29-lending-desk/README.md`.
 
+## What the 0.2.0 run found
+
+An outside agent's second run (inventory, checkout and return only, so the
+sign-in fixes stay unmeasured). Each is small; D15 and D16 come first, since
+a new agent can't find a type without them (Richard, 2026-11-03).
+
+- [ ] **D15 Links that can't break** `opus · high`: on jadpo.dev the raw
+  `.md` index pages (`/docs/types.md`, `/guides.md`) are served one folder
+  above where their relative links expect, so every link on them is a 404
+  (the HTML pages rewrite links; the Markdown doesn't). In the site's
+  repository: the `.md` routes write links through the same `rewriteLink` as
+  the HTML, and the build fails on any internal link in `dist/`, HTML or
+  Markdown, that doesn't resolve, versioned paths included. Here: the bundle
+  check keeps holding every link to a page in the bundle, and a test holds
+  `index.json`'s kinds to the paths in documentation.md, "What the site
+  serves". Done when a broken link fails a build on either side.
+- [ ] **D16 Standard type pages that teach** `opus · high`: every type
+  already has its own page (`/docs/types/type-<name>`, F2). Each gains: what
+  it represents and when to use it, and what to use instead, written once
+  beside the type in `crates/jadpo-std` and held by a test so no type lacks
+  it; its shape as a table saying which parts are required and which
+  optional, with each part's type; and a Jadpo example compiled by the gate.
+  The index lists every type A to Z with its group as a column, since a
+  reader looks for a name. Every type's name on area 19's "The standard
+  types", area 2's "Built-in types" and in the guides links to its page:
+  today those pages list names with no way through, and say 247 types where
+  the reference says 259. `jadpo help <Type>` prints the same page offline,
+  and `--json` gives the shape, so one call answers what shape a type has.
+  Every page reads in this order, a rule the chunk adds to the writing guide
+  (Richard, 2026-11-03): what it is; when to use it and what to use instead;
+  its shape, with a Required? column; a working example; gotchas in plain
+  words, leading with what you can do, with no "contract", "baseline" or "not
+  ordered"; its JSON; then storage and operations in a collapsed Details
+  section. The Markdown keeps every fact, in that order.
+  259 types: split by group here if larger than a session. Designed with
+  the design skills first.
+- [ ] **A12 What a new agent reads first** `opus · high`: the primer and
+  Learn page 1 say there is no installer and the primer lists seeds as not
+  built: both are wrong, so generate such claims from release facts rather
+  than prose. The generated `AGENTS.md` links examples at the release, not
+  `tree/main`, and says "check after each connected change", with how to
+  stage a supporting type, since checking after every file refuses a type
+  written before its user (`layout.unused_declaration`).
+- [ ] **A13 A broken test environment says so once** `opus · high`: a
+  PostgreSQL that can't start (a sandbox's shared memory) is one environment
+  diagnostic marked `(human)` at the top level, not five `internal_fault`s
+  under a `test.failed` an agent is told to fix.
+- [ ] **A14 Small diagnostics from the run** `opus · high`: a domain renamed
+  in a project with no commits is the agent's to do, since no one depends on
+  it yet; the first `type.mismatch` shows the expected shape and its edit;
+  area 1 says a failure may live in its action's file while the compiler
+  refuses it, so the page changes to match (Richard's call on recommendation,
+  2026-11-03); `--json` results carry the command's duration, and repeated
+  output is shortened.
+- [ ] **A15 Public writes in a new app** `opus · high`: a first commit has
+  nothing to compare with, so a new project's public create, update or delete
+  passes unseen. The first `access.jadpo_record` holding a public write gives
+  a notice marked `(human)`, and the approval report leads with it. A
+  decision, not a vulnerability: an app may mean it.
+- [ ] **A16 Run the sign-in half again** **needs a maintainer** after 0.3.0: the
+  same brief as 0.1's run, sign-in, roles and reminders included, the only way
+  to judge A7, A10 and A11. Until then, no public claim that sign-in is fixed.
+
+What the Reddit thread found (Richard, 2026-11-03):
+
+- [ ] **A17 `jadpo inspect` and `jadpo impact`** `opus · high`: area 14. An
+  agent can ask for the project map and for what a change to a name reaches,
+  rather than reading files to work it out. `jadpo impact` moves here from
+  "Tooling completeness".
+- [ ] **A18 Leaving Jadpo** `opus · medium`: a short page saying what a
+  project keeps if it stops using Jadpo: what its tables look like to anyone
+  else, its OpenAPI, the licence, and where the runtime comes from. It claims
+  only what a test or a check shows.
+- [ ] **A19 Typed holes, to decide** `opus · high`: whether an agent can write
+  a hole and have the compiler say what type belongs there and what is in
+  scope. A language decision, so it goes to Richard with a recommendation and
+  what it would save, measured against the PersonName detour in the 0.2.0 run.
+
+Not scheduled: a way to write a query the language can't express. Richard
+will work through it and other solutions later; don't design or build one
+until then.
+
 ## Approvals
 
 Everything a person must approve is found by the compiler and can be
 approved (Richard, 2026-10-31). The chunks here come after the A chunks
 above and before every other unticked chunk.
 
-0.2.0 shipped without V2. **V2 is part of 0.3.0,** with everything else in
-this section and the registry chunks below, released when V6 and R6 have
-both merged. V1 and V3 to V5 run at the same time as each other and as R1
+0.2.0 shipped without V2. **0.3.0 holds** everything in this section, R1 to
+R6, everything the registry application (R7) needs from `jadpo`, the real
+deploy (8.2n) and what it finds, and D15, D16 and A12 to A15 (Richard,
+2026-11-03). It is released when those have merged. V1 and V3 to V5 run at the same time as each other and as R1
 and R4, where they touch different crates.
 
 Already built: acceptances (`jadpo acceptance new`, matching, the reason,
 history, the CODEOWNERS gate) for API and event breaks, every widening of
 who can do what (routes made public included), security declines,
-sign-in settings past their limit, new domains, new outside hosts,
-third parties' packages from git and removing data. The kinds that belong to
+sign-in settings past their limit, new domains, new outside hosts, risky
+package upgrades, third parties' packages from git and removing data. The kinds that belong to
 features not built yet come with those features: `ThresholdChange` with
 thresholds, a service's image with services, bot checks with bot
 protection, a domain renamed with `jadpo domain rename`.
@@ -391,12 +476,7 @@ protection, a domain renamed with `jadpo domain rename`.
 - [x] **V2 The approval report**: area 17, "Reviewing a change"; area 18, "Comparing two builds"; area 14, "`jadpo approval`"; compiler/runtime §2.3, "The approval report"; `docs/errors/cli.approval_arguments.md`.
 - [x] **V1 Your own company's git packages**: area 11, "Installing safely"; area 18, "Acceptances"; area 1, "What `application { }` holds"; compiler/runtime §2.3; `docs/errors/package.own_source_invalid.md`.
 - [x] **V3 Removing data needs a person**: area 5, "Removing data"; area 18, "Acceptances" and `DataChange`; area 14, "`jadpo migrate`"; area 16, "Deleting and erasing" and "Retention and erasure"; compiler/runtime §2.3, "Removals"; `docs/errors/migration.drop_not_accepted.md`.
-- [ ] **V4 Risky package upgrades need a person** `opus · high`: area 18,
-  "Package upgrades". The review compares the operations and declarations
-  the app uses, version ignored; a used operation removed, a used field
-  removed or retyped, a new failure on a used operation, or a host or
-  credential scheme changed needs a `PackageChange` acceptance; `jadpo
-  package update` prints the review.
+- [x] **V4 Risky package upgrades need a person**: area 18, "Package upgrades" and "Acceptances"; area 11, "How packages are installed and linked"; area 14, the package commands; compiler/runtime §2.3, "Acceptances".
 - [x] **V5 Where personal data goes**: area 15, "Marking personal fields"
   and "Where personal data goes"; area 14, `jadpo package check`;
   compiler/runtime §2.3, "Where personal data goes".
@@ -410,8 +490,9 @@ protection, a domain renamed with `jadpo domain rename`.
 
 The registry at jadpo.dev ([External services](language/11-integrations.md#the-public-registry)).
 These chunks are taken after V2 and before every other unticked chunk,
-beside the other approval chunks, and R1 to R6 are part of 0.3.0
-(Richard, 2026-10-31). The chunks here build the `jadpo`
+beside the other approval chunks, and 0.3.0 holds R1 to R6 and everything R7
+needs from `jadpo` (Richard, 2026-11-03), so R7 starts from a release. The
+chunks here build the `jadpo`
 side; the registry application itself is built in the jadpo.dev
 repository against [the registry protocol](language/11-integrations.md#the-registry-protocol).
 R1 and R4 touch different crates and run at the same time.
@@ -679,8 +760,7 @@ After the registry is live, in order:
    `call`.
 6. Records and acceptances: moved to "Approvals" (2026-10-31).
 7. Tooling completeness (area 14): interactive tests, `rename` (refusing a
-   name already in use, 2026-10-16), `impact`,
-   full completion.
+   name already in use, 2026-10-16), full completion.
 8. Packages and capabilities after the first build (decided 2026-10-16):
    services run by Jadpo (`runs:`, Docker or Podman hidden behind
    `jadpo services`); the `documents` capability; OAuth grants per owner;

@@ -175,6 +175,11 @@ fn target(view: &View<'_>, need: &Need) -> Option<Target> {
         "PackageChange.git_source" => Some(Target::Package {
             name: subject.to_string(),
         }),
+        // An upgrade's subject ignores the version: every connection to
+        // the package, `AcmeCouriers.bookings.get`.
+        change if change.starts_with("PackageChange.") => Some(Target::Package {
+            name: subject.split('.').next()?.to_string(),
+        }),
         // Who reached the records that leave the app's reach. A dropped
         // table or column was retired by an earlier change: no path has
         // gone through it since.
@@ -598,10 +603,15 @@ pub fn paths(view: &View<'_>, need: &Need, public: &Public) -> Paths {
         }
         Target::Package { name } => {
             let package = format!("package {name}");
+            let versions = format!("{package}.");
             let connections: Vec<&Node<'_>> = view
                 .of_kind("connection")
                 .into_iter()
-                .filter(|node| node.edges("uses").contains(&package.as_str()))
+                .filter(|node| {
+                    node.edges("uses")
+                        .iter()
+                        .any(|used| *used == package || used.starts_with(&versions))
+                })
                 .collect();
             for connection in connections {
                 let through = |node: &Node<'_>| node.edges("uses").contains(&connection.id);
