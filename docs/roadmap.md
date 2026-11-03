@@ -459,8 +459,9 @@ approved (Richard, 2026-10-31). The chunks here come after the A chunks
 above and before every other unticked chunk.
 
 0.2.0 shipped without V2. **0.3.0 holds** everything in this section, R1 to
-R6, everything the registry application (R7) needs from `jadpo`, and D15, D16
-and A12 to A15 (Richard, 2026-11-03). It is released when those have merged. V1 and V3 to V5 run at the same time as each other and as R1
+R6, everything the registry application (R7) needs from `jadpo`, the real
+deploy (8.2n) and what it finds, and D15, D16 and A12 to A15 (Richard,
+2026-11-03). It is released when those have merged. V1 and V3 to V5 run at the same time as each other and as R1
 and R4, where they touch different crates.
 
 Already built: acceptances (`jadpo acceptance new`, matching, the reason,
