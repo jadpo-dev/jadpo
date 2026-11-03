@@ -39,9 +39,8 @@ the fix itself.
 
 ## How to fix it
 
-**Fix what the row names**, and check it with the same Jadpo release the
-package declares. Then release a new version, because a tag that moves is
-refused:
+**If a row of the bar failed**, fix what it names and release a new version,
+because a tag that moves is refused:
 
 ```sh
 jadpo package check
@@ -49,6 +48,9 @@ git add -A && git commit -m "fix: read postcodes in upper case"
 git tag v2.1.1 && git push origin v2.1.1
 jadpo package publish --dry-run
 ```
+
+The dry run then checks the new tag's commit as the release will be, and
+publishes nothing.
 
 ## Related
 

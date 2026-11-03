@@ -185,7 +185,7 @@ fn named_types(graph: &Graph) -> BTreeMap<String, Key> {
 /// The names a type in the project can be written with, for saying which
 /// one was meant.
 pub fn type_names(db: &dyn Db, project: Project) -> Vec<String> {
-    named_types(&crate::graph::graph(db, project))
+    named_types(crate::graph::graph(db, project))
         .into_keys()
         .collect()
 }
@@ -196,7 +196,7 @@ pub fn type_names(db: &dyn Db, project: Project) -> Vec<String> {
 /// the project has no such type.
 pub fn type_shape(db: &dyn Db, project: Project, written: &str) -> Option<String> {
     let graph = crate::graph::graph(db, project);
-    let types = named_types(&graph);
+    let types = named_types(graph);
     let inner = written
         .trim_end_matches('?')
         .trim_start_matches("List<")
@@ -204,7 +204,7 @@ pub fn type_shape(db: &dyn Db, project: Project, written: &str) -> Option<String
         .trim_end_matches('>');
     types.contains_key(inner).then(|| {
         Reducer {
-            graph: &graph,
+            graph,
             types: &types,
         }
         .written(written)

@@ -30,20 +30,26 @@ error: The registry can't publish from `http://git.acme.example/postcodes.git`
 The same rule says when the repository has no `origin`, and when the
 registry refuses the address it was sent.
 
-`(human)` at the end of the `next:` line tells your coding agent to stop
-and ask you, because where your package is public is your choice to make.
+`(human)` at the end of the `next:` line tells your coding agent to stop and ask you which fix you want, because the choice is yours to make: it decides where your package is public.
 
 ## How to fix it
 
-**Point `origin` at its HTTPS address**:
+**If `origin` isn't its HTTPS address**, point it there:
 
 ```sh
 git remote set-url origin https://github.com/acme/postcodes
 ```
 
-**If the repository is private**, it can't go to the public registry.
-Private packages come from git: `jadpo package add
-github.com/acme/postcodes@v2.1.0`.
+The registry can then fetch the tag itself.
+
+**If the repository is private**, it can't go to the public registry. Install
+it from git instead, with your own access:
+
+```sh
+jadpo package add github.com/acme/postcodes@v2.1.0
+```
+
+An app locks it at that tag's commit, and nothing goes through the registry.
 
 ## Related
 

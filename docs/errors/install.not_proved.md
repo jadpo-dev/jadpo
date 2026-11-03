@@ -40,19 +40,22 @@ prove`, with a head that doesn't extend the one this project saw or a
 proof that doesn't hold; or `isn't what the registry says it is`, when the
 files name another package or version.
 
-`(human)` at the end of the `next:` line tells your coding agent to stop
-and ask you, because nothing it can change makes this right.
+`(human)` at the end of the `next:` line tells your coding agent to stop and ask you which fix you want, because the choice is yours to make: nothing an agent can change makes this right.
 
 ## How to fix it
 
-**Don't work around it.** Don't delete `.jadpo/registry_head` to make the
-message go away: it is the record of what this project has already been
-told. Try again from another network, in case something on yours is
-changing the answers, and report it to Jadpo with the output if it stays:
-see [SECURITY.md](../../SECURITY.md).
+**If it happened once on this network**, try from another one, in case
+something on yours is changing the answers:
 
-**If you need the package now**, keep the version you have installed. Apps
-never go online to run a package they already hold.
+```sh
+jadpo package add @acme/postcodes
+```
+
+If the log then proves the release, it installs as usual. Don't delete
+`.jadpo/registry_head` to make the message go away: it is the record of what
+this project has already been told. If it stays, report it to Jadpo with this
+output ([Security](../security.md)), and keep the version you have installed:
+apps never go online to run a package they already hold.
 
 ## Related
 

@@ -47,15 +47,25 @@ git tag v2.1.0
 git push origin main v2.1.0
 ```
 
-**If the checkout has moved on**, go back to the tag, or release what you
-have as a new version:
+The registry can then fetch the tag, and the commit it fetches is the one the
+bar runs on here.
+
+**If the checkout has moved on**, go back to the tag:
 
 ```sh
 git checkout v2.1.0
 ```
 
-**If the tag moved**, release a new version. The registry refuses a tag
-that points at another commit than it did.
+Or release what you have as a new version, which is then the tag's commit.
+
+**If the tag moved**, release a new version, since the registry refuses a tag
+that points at another commit than it did:
+
+```sh
+git tag v2.1.1 && git push origin v2.1.1
+```
+
+The new tag is a new release, and the old one stays as it was.
 
 ## Related
 

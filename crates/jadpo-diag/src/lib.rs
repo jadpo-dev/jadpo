@@ -672,7 +672,7 @@ rules! {
         "Name does not survive conversion to its file name";
     PACKAGE_ACTION_INVALID: "package.action_invalid", area 11, Error, Agent,
         "Package action does what package code may not";
-    PACKAGE_ADVISORY: "package.advisory", area 11, Error, Human,
+    PACKAGE_ADVISORY: "package.advisory", area 14, Error, Human,
         "An advisory is against a declaration of an installed package that the app reaches";
     PACKAGE_DIGEST_MISMATCH: "package.digest_mismatch", area 11, Error, Human,
         "The files of an installed package in `packages/` have been changed, added or removed since it was installed";
@@ -786,12 +786,12 @@ rules! {
         "Package's function has no example, or a failure it raises is shown by none";
     PUBLISH_FAILED: "publish.failed", area 14, Error, Agent,
         "The registry's verifier refused the release";
+    PUBLISH_FILE_NOT_ALLOWED: "publish.file_not_allowed", area 14, Error, Agent,
+        "A commit holds a file a release can't: anything but Jadpo source and the package's text files";
     PUBLISH_NOT_AT_TAG: "publish.not_at_tag", area 14, Error, Agent,
         "What `jadpo package publish` would ask for isn't a pushed `v<version>` tag whose commit is the one checked out";
     PUBLISH_REPOSITORY_REFUSED: "publish.repository_refused", area 14, Error, Human,
         "The package's repository isn't one the registry can fetch: a public git repository reached over HTTPS";
-    PUBLISH_FILE_NOT_ALLOWED: "publish.file_not_allowed", area 14, Error, Agent,
-        "A commit holds a file a release can't: anything but Jadpo source and the package's text files";
     PUBLISH_SAMPLE_MISSING: "publish.sample_missing", area 14, Error, Agent,
         "Package's recipes have no sample app with one domain to compile in";
     PUBLISH_STALE_FILES: "publish.stale_files", area 14, Error, Agent,

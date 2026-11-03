@@ -1029,7 +1029,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--to",
                 value: Some("version"),
-                description: "For add and update: take that release at once; for search: the type a function gives",
+                description: "The release to take; for search, a type given",
                 values: &[],
             },
             Flag {
@@ -1047,7 +1047,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--dry-run",
                 value: None,
-                description: "For publish: run the registry's verifier and publish nothing",
+                description: "For publish: check, and publish nothing",
                 values: &[],
             },
         ],

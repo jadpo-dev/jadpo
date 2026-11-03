@@ -25,23 +25,26 @@ error: `@acme/postcodes` 2.1.0 has been yanked
   help: https://jadpo.dev/docs/errors/install.yanked
 ```
 
-`(human)` at the end of the `next:` line tells your coding agent to stop
-and ask you, because which release your app runs is your choice to make.
+`(human)` at the end of the `next:` line tells your coding agent to stop and ask you which fix you want, because the choice is yours to make: it decides which release your app runs.
 
 ## How to fix it
 
-**Take the newest good release**, by leaving out `--to`:
+**If you named the release**, take the newest good one by leaving out `--to`:
 
 ```sh
 jadpo package add @acme/postcodes
 ```
 
-**If you have it installed**, look for what replaced it:
+The newest release that isn't yanked or a pre-release is installed instead.
+
+**If you have it installed**, see whether an advisory touches it and move on:
 
 ```sh
 jadpo package audit
 jadpo package update postcodes
 ```
+
+The app keeps working until you do, and then runs the newer release.
 
 ## Related
 

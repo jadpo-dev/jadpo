@@ -26,28 +26,30 @@ error: The registry has no package `@acme/postcode`
   help: https://jadpo.dev/docs/errors/install.not_in_registry
 ```
 
-`(human)` at the end of the `next:` line tells your coding agent to stop
-and ask you, because the choice is yours to make: it decides whose code
-your app runs.
+`(human)` at the end of the `next:` line tells your coding agent to stop and ask you which fix you want, because the choice is yours to make: it decides whose code your app runs.
 
 With a release the package doesn't have, the error says `` `@acme/postcodes`
 has no release 9.0.0 `` and its reason lists the releases it has.
 
 ## How to fix it
 
-**If the name was mistyped**, give the package's whole name, as its page
-or `jadpo package search` writes it:
+**If the name was mistyped**, look for the package and give its whole name:
 
 ```sh
 jadpo package search "uk postcodes"
 jadpo package add @acme/postcodes
 ```
 
+The package is installed under that name, and the lock records it, so every
+machine then installs the same one.
+
 **If the release was mistyped**, give one the error lists:
 
 ```sh
 jadpo package add @acme/postcodes --to 2.1.0
 ```
+
+That release is installed at once, whatever its age.
 
 ## Related
 

@@ -31,17 +31,20 @@ error: The registry couldn't be read
   help: https://jadpo.dev/docs/errors/registry.unreachable
 ```
 
-`(human)` at the end of the `next:` line tells your coding agent to stop
-and ask you, because it can't change your network.
+`(human)` at the end of the `next:` line tells your coding agent to stop and ask you which fix you want, because the choice is yours to make: an agent can't change your network.
 
 ## How to fix it
 
-**Check your connection** and run the command again. If `JADPO_REGISTRY` is
-set, check it's an address ending in `/registry/v1/`:
+**If the network is down**, or the address is wrong, fix that and run the
+command again. Check `JADPO_REGISTRY` if it is set, which has to end in
+`/registry/v1/`:
 
 ```sh
 env | grep JADPO_REGISTRY
 ```
+
+The command then reads the registry as it would have, and nothing was changed
+in the meantime.
 
 ## Related
 

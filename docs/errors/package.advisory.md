@@ -32,13 +32,11 @@ error: `Postcodes.uk.parse` has an advisory: ADV-7
   help: https://jadpo.dev/docs/errors/package.advisory
 ```
 
-`(human)` at the end of the `next:` line tells your coding agent to stop
-and ask you, because taking a new release of someone else's code is your
-choice to make.
+`(human)` at the end of the `next:` line tells your coding agent to stop and ask you which fix you want, because the choice is yours to make: it decides whose code your app runs.
 
 ## How to fix it
 
-**Take a release that fixes it.** A release marked urgent is taken at once;
+**If a release fixes it**, take it. One marked urgent is taken at once, and
 any other waits its three days unless you name it:
 
 ```sh
@@ -46,9 +44,18 @@ jadpo package update postcodes
 jadpo package update postcodes --to 2.1.3
 ```
 
-**If no release fixes it yet**, stop using the declaration, or copy the
-package into `shared/providers/` and fix it there: an installed package is in
-the format of the app's own integrations.
+The next `jadpo package audit` no longer lists it, since the advisory is
+against the versions before the fix.
+
+**If no release fixes it yet**, copy the package into your own integrations,
+in the same format, and fix it there:
+
+```sh
+cp -R packages/postcodes shared/providers/postcodes
+jadpo package remove postcodes
+```
+
+It is then the app's own code, and yours to change.
 
 ## Related
 
