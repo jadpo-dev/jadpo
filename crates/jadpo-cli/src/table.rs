@@ -920,7 +920,8 @@ pub static COMMANDS: &[Command] = &[
                       the last tag allow, a changelog that says why), prints the release's facts and change \
                       record, and writes surface.jadpo_record and CHANGELOG.md's new section. `verify \
                       <folder> [--previous <folder>]` runs the same bar as the registry's verifier does, on \
-                      a commit as it stands, writing nothing, and `--json` gives all a release shows. \
+                      a commit as it stands, writing nothing, and `--json` gives all a release shows; \
+                      `--serve` answers the registry, in a sandbox with no network. \
                       `import openapi <file>` reads an OpenAPI 3 document, \
                       as JSON, once and offline, into the app's own integration in \
                       shared/providers/<name>/<version>/: another Jadpo application's exactly, from its \
@@ -1004,7 +1005,25 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--serve",
                 value: None,
-                description: "For verify: answer the registry over HTTPS",
+                description: "For verify: answer the registry",
+                values: &[],
+            },
+            Flag {
+                name: "--listen",
+                value: Some("address"),
+                description: "For --serve: where to listen",
+                values: &[],
+            },
+            Flag {
+                name: "--registry",
+                value: Some("url"),
+                description: "For --serve: where old archives come from",
+                values: &[],
+            },
+            Flag {
+                name: "--no-run",
+                value: None,
+                description: "For verify: run none of the package's code",
                 values: &[],
             },
             Flag {

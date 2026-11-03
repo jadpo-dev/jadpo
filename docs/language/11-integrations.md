@@ -1842,22 +1842,121 @@ it can send makes a release live.
   CI runs it with `JADPO_REGISTRY_OPENAPI` set to its served document
   ([compiler/runtime §2.1](../compiler-runtime.md#21-workspace-and-crates)).
 
-### The verifier
+## The verifier
+<!-- topic: the-verifier -->
 
 The verifier is `jadpo package verify`, the same tool authors run, in a
-container image published with each Jadpo release.
+container image published with each Jadpo release. A package's tests and
+examples are code from anyone, so the verifier is built around where that
+code runs and what can come back from it.
 
 - **`jadpo package verify <folder> --previous <folder> --json`** runs the
   publishing bar and writes everything a release shows: the bar's rows,
   surface, facts, change record, the fingerprints of every public function
   and declaration, the previous release's examples and tests run against
   the new code, and the Jadpo release it was checked with.
-- **`--serve`** answers the registry over HTTPS with a credential the
-  registry holds. Each request names a repository, a commit and the
+- **`--serve`** answers the registry, reached over HTTPS with a credential
+  the registry holds. Each request names a repository, a commit and the
   previous release's digest. It fetches over git with network to the git
   host only, then verifies in a process with no network at all.
 - It is reached from the registry as an ordinary connection to a
   provider package, so the registry needs no feature an app doesn't have.
+  Verifying takes longer than a call may, so a verification is started and
+  asked after.
+
+| Request | Answers |
+|---|---|
+| `GET /health` | `{ "status": "ok" }`, the only answer with no credential |
+| `POST /v1/resolve` | Given `repository` and `tag`, the `commit` it points at, for a tag being published and to tell when one moved |
+| `POST /v1/verifications` | Given `repository`, `commit` and `previous_digest` (`null` for a first release), starts one and answers 202 with its `id`. The same three name the same one |
+| `GET /v1/verifications/{id}` | Its `state` (`verifying`, `checked`, `could_not_check`), its `result` once checked and its `failure`'s `code` and `message` if it couldn't be |
+| `GET /v1/verifications/{id}/source` | For a release that passed, what a model reads to write [its account](#what-a-release-shows): `files`, each with its `path` and `text`, and `truncated` |
+| `GET /v1/verifications/{id}/diff` | For a release that passed, what a model reads for what the facts can't show: `diff`, as `git diff` writes it against the previous release, `null` for a first release, and `truncated` |
+
+`result` has every field, `null` or empty where it has no value: `passed`,
+`package`, `version`, `bar`, `problems`, `surface`, `facts`, `change_record`,
+`fingerprints`, `previous`, `jadpo`, `checked_with`, `left_out`, and for a
+release that passed its `digest` and `archive`: the tar archive of
+[`GET archives/{digest}`](#the-registry-protocol), in base64, which is how
+the registry comes to hold a release's files. A release whose whole answer
+wouldn't fit that 10 MiB fails too, rather than pass and never arrive. The
+source and the diff are asked for on their own, since neither would fit
+beside the archive; each is at most 8 MiB of its answer, past which
+`truncated` says some was left out. They are what the package's author wrote,
+so a model reads them as data. `could_not_check` says nothing
+of the release and can be asked for again: `repository_refused`,
+`commit_not_fetched`, `previous_not_found`, `previous_digest_mismatch` or
+`verifier_failed`. Its other failures, in the [failure
+envelope](07-http.md), are `unauthorized` (401), `repository_refused`,
+`commit_refused`, `tag_refused`, `digest_refused` and `invalid_body` (422),
+`tag_not_found` and `verification_not_found` (404), `repository_unreachable`
+(502) and `verifier_busy` (503, when 16 are waiting).
+
+**What a commit may hold** is decided from its tree's listing, before any of
+it is written anywhere. A release holds `.jadpo` source, `.jadpo_record`
+records, `GUIDE.md` and `CHANGELOG.md` at its root, `.json` files under a
+`recordings/` folder and a `jadpo.lock` in a folder such as `sample/`, all of
+them text, whose archive comes to at most 7 MB and 10,000 files, since the
+registry, a Jadpo application, receives it in base64 in an answer of at most
+10 MiB. Any other file, a
+symbolic link or a submodule refuses the commit
+([`publish.file_not_allowed`](../errors/publish.file_not_allowed.md),
+[`publish.too_large`](../errors/publish.too_large.md)). What a repository
+needs for itself, hidden files and folders and a root `README`, `LICENSE`,
+`LICENCE` or `COPYING`, is left out instead: it isn't in the archive or the
+digest, and `left_out` lists it. `jadpo package verify <folder>` has the
+same `files` row, so a local pass is a pass here.
+
+**Where its code runs.** Each pass runs in a sandbox of its own, sharing
+nothing with another pass or another verification:
+
+| | |
+|---|---|
+| Network | None: a network namespace of its own |
+| The machine | Nothing but the system's programs, read-only, and the release's folders, read-only |
+| Its own files | A temporary folder of at most 512 MB, in memory, gone when it ends |
+| The verifier | None of its variables, the credential included, and no sight of its process |
+| Limits | 300 seconds of CPU, 600 seconds, 3 GB of memory, 256 MB in one file, 4,096 processes, 1,024 open files, 32 MB of output |
+
+One verification runs at a time, so one package can't take another's time or
+memory. A run stopped at a limit fails the release with the bar's `limits`
+row.
+
+**What it can't choose.** `jadpo package verify` runs twice: first with
+`--no-run`, which runs none of the package's code and gives the surface,
+facts, fingerprints, version and the change record from its source; then
+whole, for what running shows, the examples, tests, recipes, decoders and the
+previous release's. A row the first decided is taken from the first, and
+if the second says anything else about what the first decided, the release
+fails with the bar's `agreement` row, so code that took over its own process
+still can't change what the release shows. The digest and archive are the
+verifier's own work, from the commit's files.
+
+**Reaching a repository.** A repository is an `https://` address at a host
+name, on the default port, with no credential. Every address the host has
+must be public: this machine, private networks, Fly.io's own and a cloud's
+metadata service are refused, and `git` is handed the address that was
+checked, so a name that changes afterwards reaches nothing else. It follows
+no redirect and runs no hook, filter or submodule, and a commit is read from
+the object store, never checked out. A previous release comes from the
+registry's `GET archives/{digest}` and is used only once its files have that
+digest.
+
+**Which Jadpo.** It checks with the release its image carries, which is the
+newest once deployed. When the package's `jadpo:` names another line, it also
+runs the bar with that line's newest release, fetched and checked as a
+project's own `jadpo` is, as the bar's `declared jadpo` row and an entry in
+`checked_with`. A release too old to have `verify` can't say, and the row
+says so. What a release shows always comes from the newest.
+
+**Running it.** `jadpo package verify --serve [--listen <address>]
+[--registry <url>]` needs the credential in `JADPO_VERIFIER_TOKEN`, of at
+least 32 characters, and serves only on Linux with
+[bubblewrap](https://github.com/containers/bubblewrap); it confirms a program
+in its sandbox has no network before it listens, and otherwise refuses with
+[`cli.verifier_start_failed`](../errors/cli.verifier_start_failed.md). It
+speaks HTTP on `127.0.0.1:8080` unless told otherwise: HTTPS is what stands in
+front of it, Fly.io's edge in `deploy/verifier/fly.toml`.
 
 ## Connecting in `app.jadpo`
 <!-- topic: connecting-in-app-jadpo -->
@@ -7383,7 +7482,8 @@ package's name, as its types are.
 | Webhooks as events, replies, handshakes, queues through a package and the Cloudflare Queues driver | Built. |
 | Services (`runs:`) | Not built yet. |
 | OAuth grants | Not built yet: the application's `grants:` is `toolchain.not_built_yet` where it is written. |
-| A release's facts and change record in `jadpo package check` and `show`, the previous release's examples and tests run against the new code, and `jadpo package verify` with the fingerprints ([How they are worked out](#how-a-releases-facts-change-record-and-fingerprints-are-worked-out)) | Built. Not built yet: `--serve`, and the check of a fetched commit's files and size, which come with [the verifier](#the-verifier) over HTTPS. |
+| A release's facts and change record in `jadpo package check` and `show`, the previous release's examples and tests run against the new code, and `jadpo package verify` with the fingerprints ([How they are worked out](#how-a-releases-facts-change-record-and-fingerprints-are-worked-out)) | Built. |
+| [The verifier](#the-verifier): `jadpo package verify --serve`, its sandbox, the check of a commit's files and size, its container image and Fly.io configuration | Built. Not deployed yet: its image is published, and it runs on Fly.io, once a maintainer has switched them on ([documentation](../documentation.md#versions-and-releases)). |
 | Publisher trust for third-party git packages | Built: a package from a git repository under none of `packages:`'s `own_sources:` needs an [acceptance](18-records-and-manifest.md#acceptances), as does adding or widening an entry; an entry is `package.own_source_invalid` unless it is a host and a path ending in `/`. |
 | The registry protocol: its requests and answers, the log and its proofs, a local registry and the conformance test | Built (`jadpo-registry`). |
 | The `jadpo` tool's side of the public registry: `add` and `update` checked against the log, `search`, `audit`, `publish` and `preview` ([How the registry commands work](#how-the-registry-commands-work)) | Built, against the local registry. |
@@ -7646,6 +7746,8 @@ public type SlotTaken = Failure {
 - [`publish.changelog_missing`](../errors/publish.changelog_missing.md)
 - [`publish.behaviour_changed`](../errors/publish.behaviour_changed.md)
 - [`publish.stale_files`](../errors/publish.stale_files.md)
+- [`publish.file_not_allowed`](../errors/publish.file_not_allowed.md)
+- [`publish.too_large`](../errors/publish.too_large.md)
 
 
 ### Connection errors

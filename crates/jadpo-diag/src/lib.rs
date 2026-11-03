@@ -220,6 +220,8 @@ rules! {
         "A `jadpo` command line starts with a command Jadpo doesn't have, or asks `jadpo help` about a command or rule it doesn't have";
     CLI_UNKNOWN_FLAG: "cli.unknown_flag", area 14, Error, Agent,
         "A `jadpo` command line has a flag the command doesn't take";
+    CLI_VERIFIER_START_FAILED: "cli.verifier_start_failed", area 14, Error, Human,
+        "The verifier won't start, for want of its credential or a sandbox to run packages in, or because it can't listen";
     CLI_VERSION_ARGUMENTS: "cli.version_arguments", area 14, Error, Agent,
         "A `jadpo version` command is given an argument, which it doesn't take";
     CLI_WHY_ARGUMENTS: "cli.why_arguments", area 14, Error, Agent,
@@ -788,10 +790,14 @@ rules! {
         "What `jadpo package publish` would ask for isn't a pushed `v<version>` tag whose commit is the one checked out";
     PUBLISH_REPOSITORY_REFUSED: "publish.repository_refused", area 14, Error, Human,
         "The package's repository isn't one the registry can fetch: a public git repository reached over HTTPS";
+    PUBLISH_FILE_NOT_ALLOWED: "publish.file_not_allowed", area 14, Error, Agent,
+        "A commit holds a file a release can't: anything but Jadpo source and the package's text files";
     PUBLISH_SAMPLE_MISSING: "publish.sample_missing", area 14, Error, Agent,
         "Package's recipes have no sample app with one domain to compile in";
     PUBLISH_STALE_FILES: "publish.stale_files", area 14, Error, Agent,
         "A commit's `surface.jadpo_record` or changelog list isn't what the package's code gives";
+    PUBLISH_TOO_LARGE: "publish.too_large", area 14, Error, Human,
+        "A commit's release is past the size limit";
     QUERY_AGGREGATE_ARGUMENT: "query.aggregate_argument", area 6, Error, Agent,
         "Aggregate is given the wrong arguments";
     QUERY_AGGREGATE_FIELD: "query.aggregate_field", area 6, Error, Agent,

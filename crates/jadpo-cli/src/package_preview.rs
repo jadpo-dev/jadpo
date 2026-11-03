@@ -206,6 +206,7 @@ fn page(folder: &Path) -> String {
         folder,
         Mode::Verify {
             previous: crate::package_publish::previous_release(folder, &name, &tag).map(Box::new),
+            run: true,
         },
     );
     let (data, problems): (Value, Vec<Diagnostic>) = match reply {

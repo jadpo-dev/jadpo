@@ -48,6 +48,8 @@ jadpo-syntax.workspace = true
 jadpo-term.workspace = true
 jadpo-test.workspace = true
 jadpo-value.workspace = true
+# `jadpo package verify --serve` (area 11, "The verifier"; chunk R6).
+jadpo-verifier.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

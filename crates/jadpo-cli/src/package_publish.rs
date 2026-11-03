@@ -79,6 +79,7 @@ pub(crate) fn publish(call: &Call) -> Reply {
         &folder,
         Mode::Verify {
             previous: previous_release(&folder, &package, &tag).map(Box::new),
+            run: true,
         },
     ) {
         Reply::Report { diagnostics, .. } if diagnostics.is_empty() => {}

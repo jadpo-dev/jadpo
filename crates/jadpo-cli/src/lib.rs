@@ -75,6 +75,7 @@ mod toolchain;
 mod toolchains;
 mod translations;
 mod type_reference;
+pub mod verifier;
 pub mod watch;
 
 pub use run::{Output, Session, run, spinner};

@@ -38,6 +38,8 @@ pub enum Session {
     ConfigSet(Box<crate::config::SetArgs>),
     /// `jadpo package preview`, until it is stopped.
     Preview(Box<crate::package_preview::PreviewArgs>),
+    /// `jadpo package verify --serve`, until it is stopped.
+    Verifier(Box<crate::verifier::VerifierArgs>),
 }
 
 /// Everything a command's `run` function receives.
@@ -256,6 +258,16 @@ pub(crate) fn finish(
                 stderr: String::new(),
                 code: 0,
                 session: Some(Session::Dev(args)),
+            };
+        }
+        Reply::Session(Session::Verifier(mut args)) => {
+            args.json = json;
+            args.choice = choice;
+            return Output {
+                stdout: String::new(),
+                stderr: String::new(),
+                code: 0,
+                session: Some(Session::Verifier(args)),
             };
         }
         Reply::Session(session) => {

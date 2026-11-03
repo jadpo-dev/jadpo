@@ -500,13 +500,11 @@ real deploy) and, before outside authors can publish, D3 (releases).
 - [x] **R3 A release's facts, change record and fingerprints**: area 11, "How a release's facts, change record and fingerprints are worked out"; area 14, "`jadpo package check`" and "`jadpo package verify`"; compiler/runtime §2.3, "What a release shows"; `docs/errors/publish.behaviour_changed.md`, `docs/errors/publish.stale_files.md`.
 - [x] **R4 The registry protocol and a local registry**: area 11, "The registry protocol"; compiler/runtime §2.1, `jadpo-registry`.
 - [x] **R5 The registry commands**: area 11, "How the registry commands work"; area 14, the package commands; compiler/runtime §2.1, "The registry commands"; the pages of `install.not_in_registry`, `install.not_proved`, `install.yanked`, `package.advisory`, `publish.failed`, `publish.not_at_tag`, `publish.repository_refused` and `registry.unreachable`.
-- [ ] **R6 The verifier** `opus · high` after R3: area 11, "The verifier".
-  `jadpo package verify --serve`, fetching over git and then verifying with
-  no network, the check that a commit holds only Jadpo source and the
-  package's text files within the size limit, and its container image
-  published with each release (D3).
-  It runs on Fly.io, reached over HTTPS (Richard, 2026-10-31); **needs a
-  maintainer** for the Fly.io account before it is deployed.
+- [x] **R6 The verifier**: area 11, "The verifier" and "Publishing errors"; area 14, "`jadpo package verify`"; compiler/runtime §2.1, `jadpo-verifier`; `deploy/verifier/`; `.github/workflows/verifier-image.yml`; documentation, "Versions and releases".
+- [ ] **R6b The verifier deployed** **needs a maintainer**: the Fly.io
+  account and the steps in [documentation](documentation.md#versions-and-releases):
+  the repository variable `JADPO_VERIFIER_IMAGE` set to `on`, the app and its
+  credential on Fly.io, then the image deployed. Before R7 can reach it.
 - [ ] **R7 The registry application** **needs a maintainer** to start the
   jadpo.dev session, after R1, R4 and R6: built against the protocol and
   passing R4's conformance test. Until the S3 driver its archives are kept

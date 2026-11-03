@@ -1,0 +1,36 @@
+# The verifier on Fly.io (docs/language/11-integrations.md, "The verifier"):
+# `fly deploy --config deploy/verifier/fly.toml --image ghcr.io/jadpo-dev/verifier:<version>`,
+# with the registry's credential set once by `fly secrets set
+# JADPO_VERIFIER_TOKEN=...`. HTTPS ends at Fly's edge, which alone reaches
+# the machine's port; plain HTTP is redirected before a credential is read.
+#
+# A verification lives in the machine's memory while the registry asks after
+# it, so the machine isn't stopped between requests.
+app = "jadpo-verifier"
+primary_region = "lhr"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  # Bounds what strangers can hold open; the registry asks a few at a time.
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 20
+    hard_limit = 25
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/health"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+
+# Holds the sandbox's limits together: 3 GB of memory and a 512 MB temporary
+# folder for one verification at a time, and this process.
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "4gb"
