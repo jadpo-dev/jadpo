@@ -351,7 +351,47 @@ fn a_key_on_one_person_does_not_erase_another() {
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 1, "{}", checked.stdout);
     assert!(
-        checked.stdout.contains("its `erasure:` key `User.pay_customer_id` can't erase `Employee.full_name`, which belongs to `Employee`"),
+        checked.stdout.contains("its `erasure:` key `User.pay_customer_id` can't erase `Employee.full_name`, which goes with `Employee`"),
+        "{}",
+        checked.stdout
+    );
+}
+
+/// A record erasure reaches through another counts as that person's too,
+/// though it belongs to no one directly.
+#[test]
+fn a_key_on_one_person_does_not_erase_what_goes_with_another() {
+    let root = project("erasure-other-person-far", "user.plan", ERASURE, KEY);
+    branch(&root, "scans");
+    write(
+        &root,
+        "domains/billing/entities/employee.jadpo",
+        "/// Someone who works here.\nentity Employee {\n    id: Uuid\n    person: true\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n    }\n}\n",
+    );
+    write(
+        &root,
+        "domains/billing/entities/badge.jadpo",
+        "use billing/entities { Employee }\n\n/// An employee's badge.\nentity Badge {\n    id: Uuid\n    employee_id: Employee.id {\n        on_delete: OnDelete.cascade\n    }\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n    }\n}\n",
+    );
+    write(
+        &root,
+        "domains/billing/entities/scan.jadpo",
+        "use billing/entities { Badge }\nuse shared/providers/acme_pay\n\n/// Where a badge was scanned.\nentity Scan {\n    id: Uuid\n    badge_id: Badge.id {\n        on_delete: OnDelete.cascade\n    }\n    place: AcmePay.Words {\n        personal: PersonalData.location\n    }\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n    }\n}\n",
+    );
+    write(
+        &root,
+        SEND,
+        "use app { pay }\nuse billing/entities { Scan, ScanNotFound }\nuse shared/providers/acme_pay\n\n/// Sends where a badge was scanned to Acme Pay.\naction send(scan_id: Scan.id) fails ScanNotFound -> AcmePay.CustomerReply {\n    var scan: Scan = attempt Scan.get(scan_id)\n    return pay.customers.create(AcmePay.CustomerRequest {\n        name: scan.place\n    })\n}\n",
+    );
+    let migrated = jadpo(&root, &["migrate", "new", "scans"]);
+    assert_eq!(migrated.code, 0, "{}", migrated.stdout);
+    assert_eq!(jadpo(&root, &["records", "update"]).code, 0);
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 1, "{}", checked.stdout);
+    assert!(
+        checked
+            .stdout
+            .contains("can't erase `Scan.place`, which goes with `Employee`"),
         "{}",
         checked.stdout
     );

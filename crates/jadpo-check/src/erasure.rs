@@ -180,6 +180,24 @@ impl Erasures {
             })
     }
 
+    /// The person entities whose erasure can find the records of `entity`,
+    /// by name: [`Self::reaches`], person by person.
+    pub fn finding(&self, entity: &EntityModel) -> Vec<&str> {
+        self.people
+            .iter()
+            .filter(|(_, erasure)| {
+                erasure.reach.contains(&entity.name)
+                    || entity.fields.iter().any(|field| {
+                        field
+                            .reference
+                            .as_ref()
+                            .is_some_and(|reference| erasure.reach.contains(&reference.target))
+                    })
+            })
+            .map(|(person, _)| person.as_str())
+            .collect()
+    }
+
     /// Whether an erasure deletes records of the entity called `name`, or
     /// would once each `restricted` reference that doesn't say has answered.
     fn finds(&self, name: &str) -> bool {

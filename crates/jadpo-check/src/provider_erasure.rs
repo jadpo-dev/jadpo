@@ -382,7 +382,7 @@ impl Stays {
                 "`{package}` declares `erasure:`, and the connection names no `erasure: {{ key: }}`"
             ),
             Stays::OtherPerson { key, field, person } => format!(
-                "its `erasure:` key `{key}` can't erase `{field}`, which belongs to `{person}`"
+                "its `erasure:` key `{key}` can't erase `{field}`, which goes with `{person}`"
             ),
         }
     }
@@ -425,25 +425,24 @@ pub fn of_connection(db: &dyn Db, project: Project, connection: &str, sent: &[&S
             package: read.package.clone(),
         });
     };
-    let persons = crate::persons::persons(db, project);
+    let erasures = crate::erasure::erasures(db, project);
+    let entities = &crate::data::data_model(db, project).entities;
     let shown = format!("{}.{}", key.entity, key.field);
     for sent in sent {
         let Holder::Field { host, field } = &sent.holder else {
             continue;
         };
-        let belonging: Vec<&String> = persons
-            .people
-            .iter()
-            .filter(|(name, person)| *name == host || person.records.contains(host))
-            .map(|(name, _)| name)
-            .collect();
-        if let Some(first) = belonging.first()
-            && !belonging.iter().any(|person| **person == key.entity)
+        let Some(entity) = entities.iter().find(|entity| entity.name == *host) else {
+            continue;
+        };
+        let finding = erasures.finding(entity);
+        if let Some(first) = finding.first()
+            && !finding.contains(&key.entity.as_str())
         {
             return Erasure::Stays(Stays::OtherPerson {
                 key: shown,
                 field: format!("{host}.{field}"),
-                person: (*first).clone(),
+                person: (*first).to_string(),
             });
         }
     }
