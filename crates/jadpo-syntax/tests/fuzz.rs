@@ -196,7 +196,10 @@ fn hostile_input_is_survived() {
     inputs.push("type E = Object {\n    a = Text?, b: c\n}\n".to_string());
     // A line of `;` after a whole library, one error a round without the
     // run read as one (found by the coverage-guided fuzzer).
-    inputs.push(format!("library {{\n    version: \"1.0.0\"\n}}\n{}", ";".repeat(15)));
+    inputs.push(format!(
+        "library {{\n    version: \"1.0.0\"\n}}\n{}",
+        ";".repeat(15)
+    ));
     // A clean habit many times on a line, which takes a round each.
     inputs.push(format!(
         "function f(a: Flag) -> Flag {{\n    return {}a\n}}\n",
