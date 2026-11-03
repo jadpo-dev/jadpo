@@ -753,7 +753,21 @@ with it, so the walk goes on only through what erasure deletes; a `File`
 it deletes or clears is counted by area 16's trigger like any change.
 `Erasure::reach` is the same walk counting a `restricted` reference that
 doesn't say as one that deletes, so one missing `erase:` is reported once,
-and `Erasures::reaches` is what `personal_problems` asks. A person entity
+and `Erasures::reaches` is what `personal_problems` asks. A reference to a
+person may cross stores when it says `erase:` and no `on_delete:`
+(`Reference::crosses_for_erasure`): `entity_links` lists it as `erased_across`
+on the person rather than among `referrers`, so nothing treats it as a foreign
+key, and `table_of` indexes it with no key. The walk counts it like any other,
+for the checks, and `Erasure::stores` holds the walk again for each store, one
+that stays in it, the person's place always first, which is what a statement
+is written from. `erasure::removal_problems` and `write_rules`'
+`removes_across` refuse whatever else would delete such a person
+(`data.person_removal_across_stores`). `jadpo_check::privacy` reads `privacy:
+{ erasure_log: }` (`data.erasure_log_store`), `Body::erase` asks that it is
+written (`data.erasure_log_required`), and `schema` adds `jadpo_erasure_log` to
+a database it names, one that may hold no entity. A subscriber's `on:
+PersonErased` is the built-in event's key, its fields in
+`jadpo_std::erasure`. A person entity
 one of whose fields that isn't a reference says `Erasure.retained`
 (`EntityModel::keeps_erased`) is listed in `Erasure::own` with the fields it
 keeps and the marked fields it clears, and its table has a column for
@@ -2432,7 +2446,8 @@ reads each stored value with its codec; a refused check is
 `Decided::InJadpo`, its value written through the codec.
 
 **A person's erasure.** `jadpo-plan`'s `Planner::erase` writes
-`User.erase` as one statement (`jadpo_sql::statement::erase`), so it is
+`User.erase` as one statement (`jadpo_sql::statement::erase`, from
+`writes::erase_parts` of `Erasure::stores`' share for their store), so it is
 all or nothing, in the action's transaction, which runs at repeatable
 read. A recursive `WITH` finds the person's record by its `id` under the
 `delete` policy, whether its lifecycle hides it or not, and every record
@@ -2454,10 +2469,15 @@ operation's time unless it holds one, and each `Generated.on_change` field
 to that time (`"own0"`). Clearing marked fields clears the table's retired
 columns too, read from the latest migration's snapshot. All the parts see one snapshot, and the foreign
 keys are checked at the statement's end, when nothing refers to a deleted
-record. It returns the person's `id`; no row is the person's
+record. It returns a row for each person it erased, their entity's number and
+their `id`; no row is the person's
 not-found failure, asked without policy as a delete's probe asks. It is
 a `WritePlan` of `WriteOp::Delete` by `id`, with no refusals, so both
-executors run it through the runtime's one write path unchanged.
+executors run it through the runtime's one write path, where
+`WritePlan::erased` says what its rows name and `jadpo_runtime::erasure::emit`
+queues a `PersonErased` for each, its payload the runtime's JSON (`entity`,
+`id`, `erased_at`), which commits with it.
+
 An audited entity among those it deletes adds a part deleting the
 `jadpo_audit` rows of the records found of it, by its born name
 (`text::erase`'s `audited`). The commit of an erasure that deleted or
@@ -2466,6 +2486,46 @@ cleared a `File` releases its bytes through area 16's count of holders
 runs a library's erasure through `jadpo test` and reads the rows and the
 bytes it leaves; its tests run compiled with the interpreter's records
 in the gate's compiled step.
+
+**Past the person's transaction** (area 15, "Records in another store" and
+"What erasure doesn't rewrite"; chunk P4c). `writes::erasure_plan` gives
+`EventsPlan::erasure`: for each person entity a `StoreErasure` for their own
+store, without policy, and one for each other store with a record that refers
+to them, whose statement starts from the `id` as a parameter
+(`EraseRoot::Given`) and whose first table names nothing, each with `present`,
+which of an array of `id`s that store holds anything of; and the log. Each
+such store has a generated subscriber, `erasure in <store>`
+(`Target::ErasureIn`), and the log one, `erasure log` (`Target::ErasureLog`),
+tried for a month (`jadpo_std::erasure::{ATTEMPTS, WITHIN_MS}`), then `failed`,
+so `jadpo deliveries` shows them as any other. `erasure::apply_delivery` runs
+the statement in a transaction of its own at repeatable read, at the time the
+person was erased, with the `PersonErased` of anyone else it erased and the
+`FileReleased` of each file it let go of in that store's outbox; finding nothing
+on a repeat, it keeps no handled record. A store it can't work in is
+`unavailable`, which the delivery settles as `pending` with its backoff.
+
+The log's entry is `INSERT_LOG` in `jadpo_erasure_log`, or a file in a store of
+files under `jadpo_std::erasure::log_key` (`erasure-log/<born>/<id>`), which a
+driver takes beside the keys `files::key_for` makes for `put` and `read` only,
+and a new operation of the capability, `files::LIST`, finds. Each keeps the
+entity's born name. `erasure::replay` reads the log a page at a time
+(`LOG_PAGE`, `REPLAY_PAGE`), asks each store it has a database for which of each
+person entity's entries it holds anything of (`present`), and runs `apply` for
+those, at the time logged, leaving what that emits for the sweep; an entity no
+longer declared has nothing to erase. `deployable::replay_erasures` calls it and
+logs `runtime.erasures_replayed` when it found anyone. It runs before anything
+is served: in `jadpo_host_native::deployable::start` after `check_stores`,
+waiting for a store that can't be reached and stopping the start on anything
+else, in its `tick`, in `jadpo dev` after its migrations, and on Workers in
+`ready`, each isolate once, answering 503 until it has. `deployables::reach`
+counts the log's connection as reached by every deployable (`Via::ErasureLog`),
+so one on `Driver.disk` is refused on Workers.
+`crates/jadpo-cli/tests/erasure_stores.rs` runs a club's erasure across stores
+through `jadpo test`, reads the rows it leaves, keeps a store down to see the
+delivery retried, shown and retried by an operator, and restores each store to
+see the replay erase again and a second one find nothing; its tests run compiled
+with the interpreter's records in the gate's compiled step, and a deployable's
+start in `deployable.rs`.
 
 **The audit trail.** `jadpo-plan`'s `Planner::audit` gives each write of
 an audited entity a `jadpo_std::audit::AuditPlan`: the fields an entry

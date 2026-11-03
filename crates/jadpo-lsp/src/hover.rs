@@ -164,6 +164,13 @@ fn declaration(graph: &Graph, id: NodeId) -> String {
             fields.join(", ")
         ),
         Detail::Reference {
+            target, on_delete, ..
+        } if on_delete.is_empty() => format!(
+            "{}: {}.id  // in another store, applied by erasure",
+            node.name,
+            name(target)
+        ),
+        Detail::Reference {
             target,
             on_delete,
             constraint,

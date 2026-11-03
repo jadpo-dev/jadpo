@@ -710,6 +710,9 @@ pub enum Via {
     /// It counts its routes' rate limits there, the store `rate_limits:`
     /// names (area 16; chunk 8.2m2).
     RateLimits,
+    /// It keeps or replays the erasure log there, the connection `privacy:
+    /// { erasure_log: }` names (area 15; chunk P4c).
+    ErasureLog,
 }
 
 impl Via {
@@ -723,6 +726,7 @@ impl Via {
             Via::Email => "by sending the app's email".to_string(),
             Via::Batches => "in the batch runs it carries on".to_string(),
             Via::RateLimits => "by counting its routes' rate limits there".to_string(),
+            Via::ErasureLog => "by keeping the erasure log there".to_string(),
         }
     }
 }
@@ -897,6 +901,11 @@ fn reach(
         }
     }
     roots.extend(named_by_the_runtime(db, project, deployable));
+    // Every start replays the erasure log, whatever it serves or runs, and
+    // a deployable running subscribers keeps it (area 15; chunk P4c).
+    if let Some((log, _)) = &crate::privacy::privacy(db, project).log {
+        connection(&mut out, log, Via::ErasureLog);
+    }
     let ai = crate::ai::settings(db, project).connection.clone();
     let files = crate::data::connections(db, project).files();
     let mut pending = roots;

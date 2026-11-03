@@ -112,6 +112,7 @@ pub mod deployable;
 pub mod effects;
 pub mod email;
 pub mod embed;
+pub mod erasure;
 mod env;
 mod executor;
 mod failure;
@@ -171,6 +172,7 @@ pub mod webauthn;
 pub mod webhooks;
 mod write;
 
+pub(crate) use boundary::committed as boundary_committed;
 pub use boundary::{
     ActionBody, RERUN_ATTEMPTS, RERUN_WINDOW_MS, action, commit_held, misconfigured,
     outcome_unknown, unavailable,

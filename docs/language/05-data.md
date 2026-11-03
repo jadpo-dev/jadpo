@@ -526,7 +526,10 @@ tenancy reference too
 
 Any field typed `X.id` is a reference to a record of `X`. The database
 gets a foreign key and an index for it. Its block must say what happens
-when the record it refers to is deleted; there is no default.
+when the record it refers to is deleted; there is no default. The one
+exception is a reference to a person in another store, which says what erasure
+does instead and isn't a foreign key ([Records in another
+store](15-personal-data.md#records-in-another-store)).
 
 ```jadpo check project=references
 entity User {

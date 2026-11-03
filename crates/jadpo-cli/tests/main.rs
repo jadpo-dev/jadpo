@@ -56,6 +56,7 @@ mod driver_factory;
 mod emails;
 mod encrypted_fields;
 mod erasure;
+mod erasure_stores;
 mod events;
 mod external_first_sign_in;
 mod external_tokens;

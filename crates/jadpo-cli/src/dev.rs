@@ -14,7 +14,8 @@
 //! whose address no variable gives gets a database on a disposable
 //! PostgreSQL started for the session, as `jadpo test` starts one; its
 //! pending migrations are applied when it starts and after each save that
-//! adds one. With `--no-run` it only checks on every save and writes
+//! adds one, and the erasure log is replayed as it starts. With `--no-run` it
+//! only checks on every save and writes
 //! `build/`.
 //!
 //! The screen follows the CLI design language: a command header, a status
@@ -884,6 +885,12 @@ pub fn serve_to(
             return 1;
         }
     };
+    // The erasure log replayed, before anything is served (area 15; chunk
+    // P4c).
+    if let Err(problem) = replay_erasures(&first.prepared, &urls, &secured, &root.join(DEV_FILES)) {
+        report_failure(&mut out, *problem);
+        return 1;
+    }
     // The listener.
     let listener = match TcpListener::bind(("127.0.0.1", args.port)) {
         Ok(listener) => listener,
@@ -1648,6 +1655,54 @@ fn listen_failed(port: u16, error: &std::io::Error) -> Diagnostic {
     )
     .reason(format!("Listening failed: {error}."))
     .next("Choose another port with `--port`")
+}
+
+/// Replays the erasure log on this machine's stores before anything is
+/// served, as a deployable does as it starts (area 15, "What erasure doesn't
+/// rewrite"; chunk P4c).
+fn replay_erasures(
+    prepared: &Arc<Prepared>,
+    urls: &BTreeMap<String, String>,
+    secured: &BTreeMap<String, jadpo_host_native::Security>,
+    files: &Path,
+) -> Result<(), Box<Diagnostic>> {
+    let plan = prepared.plan();
+    let events = plan.events();
+    if events.erasure.log.is_none() {
+        return Ok(());
+    }
+    let failed = |why: String| {
+        Box::new(
+            Diagnostic::new(
+                &rule::CLI_DEV_START_FAILED,
+                "The erasure log couldn't be replayed",
+            )
+            .reason(why)
+            .next("Check that each store can be reached, then run `jadpo dev` again"),
+        )
+    };
+    let runtime = Runtime::new().map_err(|error| failed(format!("Starting it failed: {error}.")))?;
+    let mut host = jadpo_host_native::NativeHost::new();
+    for (store, url) in urls {
+        let security = secured.get(store).cloned().unwrap_or_default();
+        if let Ok(database) = postgres_secured(url, security) {
+            host = host.with_store(store.clone(), database);
+        }
+    }
+    let kept: Vec<String> = jadpo_std::connections::files(plan.connections())
+        .map(|(name, _, _)| name.to_string())
+        .collect();
+    let host = host.with_files(DiskFiles::under(files), move |connection| {
+        kept.iter().any(|name| name == connection)
+    });
+    runtime
+        .block_on(jadpo_runtime::erasure::replay(
+            &host,
+            &events.erasure,
+            &events.files,
+        ))
+        .map(|_| ())
+        .map_err(|stopped| failed(format!("In `{}`: {}.", stopped.store, stopped.why)))
 }
 
 /// Applies each store's pending migrations, working out in Jadpo with

@@ -877,6 +877,25 @@ pub const AUDIT: SystemTable = SystemTable {
     }],
 };
 
+/// The erasure log (area 15, "What erasure doesn't rewrite"; chunk P4c): one
+/// row per person erased, written after their erasure commits, in a store
+/// that holds no person's records, so restoring a person's database can't
+/// take it back. Every start reads it and erases again anyone logged who is
+/// still there. It holds nothing personal.
+pub const ERASURE_LOG: SystemTable = SystemTable {
+    table: "jadpo_erasure_log",
+    columns: &[
+        // The person entity's born name, which survives a rename.
+        column("entity", SqlType::Text, false),
+        column("person_id", SqlType::Uuid, false),
+        column("erased_at", SqlType::Timestamp, false),
+    ],
+    primary_key: &["entity", "person_id"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[],
+};
+
 /// One hourly cleanup lease per store. Completion is kept separately from the
 /// lease: a failed, capped or interrupted pass is eligible on the next tick.
 pub const HOUSEKEEPING: SystemTable = SystemTable {
@@ -998,7 +1017,7 @@ pub const BATCH_TABLES: [&SystemTable; 3] = [&BATCH_RUNS, &BATCH_PROBLEMS, &BATC
 pub const STEP_TABLES: [&SystemTable; 2] = [&STEP_RECORDS, &STEPS];
 
 /// Every system table.
-pub const ALL: [&SystemTable; 29] = [
+pub const ALL: [&SystemTable; 30] = [
     &OUTBOX,
     &DELIVERIES,
     &CIRCUIT_BREAKERS,
@@ -1024,6 +1043,7 @@ pub const ALL: [&SystemTable; 29] = [
     &POLLS,
     &AI_USAGE,
     &AUDIT,
+    &ERASURE_LOG,
     &FLAGS,
     &FLAG_CHANGES,
     &HOUSEKEEPING,

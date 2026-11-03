@@ -87,7 +87,7 @@ pub(crate) fn files() -> Vec<(String, String)> {
     let mut files: Vec<(String, String)> = vec![
         (
             "app.jadpo".to_string(),
-            "use lending/entities { Member }\n\napplication {\n    connections: {\n        scans: {\n            driver: Driver.disk\n            path: \"/var/lib/library/scans\"\n        }\n    }\n}\n\nprincipal {\n    user: {\n        subject: Member.handle\n    }\n}\n\nauthentication {\n    api_token: {}\n}\n".to_string(),
+            "use lending/entities { Member }\n\napplication {\n    connections: {\n        scans: {\n            driver: Driver.disk\n            path: \"/var/lib/library/scans\"\n        }\n    }\n    privacy: {\n        erasure_log: {\n            store: scans\n        }\n    }\n}\n\nprincipal {\n    user: {\n        subject: Member.handle\n    }\n}\n\nauthentication {\n    api_token: {}\n}\n".to_string(),
         ),
         (
             "config.jadpo".to_string(),
@@ -554,7 +554,7 @@ pub(crate) fn kept_files() -> Vec<(String, String)> {
     let files: [(&str, &str); 26] = [
         (
             "app.jadpo",
-            "use cover/entities { Customer }\n\napplication {\n    field_encryption_key: config.field_encryption_key\n}\n\nprincipal {\n    user: {\n        subject: Customer.login\n    }\n}\n",
+            "use cover/entities { Customer }\n\napplication {\n    connections: {\n        erasures: {\n            driver: Driver.disk\n            path: \"/var/lib/cover/erasures\"\n        }\n    }\n    field_encryption_key: config.field_encryption_key\n    privacy: {\n        erasure_log: {\n            store: erasures\n        }\n    }\n}\n\nprincipal {\n    user: {\n        subject: Customer.login\n    }\n}\n",
         ),
         (
             "authentication.jadpo",
@@ -1549,7 +1549,13 @@ fn erasure_keeps_what_others_share_and_lets_go_of_its_files() {
             ["bob true", "cat true"],
             "the member Ada invited keeps their record without her"
         );
-        let mut left = files.keys();
+        // The log's own files stay in the store beside them.
+        let held_files = || {
+            let mut keys = files.keys();
+            keys.retain(|key| jadpo_std::files::is_key(key));
+            keys
+        };
+        let mut left = held_files();
         left.sort();
         let mut bobs = held[1].to_vec();
         bobs.sort();
@@ -1578,7 +1584,7 @@ fn erasure_keeps_what_others_share_and_lets_go_of_its_files() {
                 "Hi from none to none signed none",
             ]
         );
-        assert!(files.keys().is_empty(), "{:?}", files.keys());
+        assert!(held_files().is_empty(), "{:?}", files.keys());
     });
     drop(harness);
     databases.release(copy, false);

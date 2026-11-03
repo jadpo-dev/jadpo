@@ -142,6 +142,10 @@ pub struct WritePlan {
     /// transaction (area 16, "Audit trail"; chunk B11). A person's erasure
     /// records none; it deletes the entries of every record it deletes.
     pub audit: Option<crate::audit::AuditPlan>,
+    /// A person's erasure (area 15; chunk P4c): by the first column of each
+    /// row its statement returns, the person entity's name, each row a
+    /// person whose `PersonErased` commits with it.
+    pub erased: Vec<(i32, String)>,
 }
 
 /// A `File` field a write sets, and what the file it is given must be

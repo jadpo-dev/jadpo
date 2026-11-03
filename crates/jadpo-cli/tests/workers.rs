@@ -42,6 +42,8 @@ use crate::deployable::{apply, migrations, rows};
 /// The Workers cron (chunk 8.2f).
 mod ai_accounting;
 mod depot;
+/// A person's erasure and the replay of its log (chunk P4c).
+mod erased;
 mod external;
 /// Teaching example 23's kiosk (chunks 8.2b, 8.2d, 8.2i and 8.4f).
 mod kiosk;

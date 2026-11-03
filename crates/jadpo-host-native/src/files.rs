@@ -303,14 +303,70 @@ impl DiskStore {
         }
     }
 
+    /// Every key of the erasure log kept here (area 15, "What erasure
+    /// doesn't rewrite"; chunk P4c), in order: a real folder for each
+    /// entity's and a regular file for each person, anything else, a
+    /// `put`'s temporary file or a link among them, named by no key. Nothing
+    /// kept yet is an empty list.
+    fn list(&self) -> Answer {
+        let top = self.root.join(jadpo_std::erasure::LOG_FOLDER);
+        let entities = match std::fs::symlink_metadata(&top) {
+            Ok(meta) if meta.is_dir() => match std::fs::read_dir(&top) {
+                Ok(entries) => entries,
+                Err(_) => return Answer::Unavailable,
+            },
+            Ok(_) => return Answer::Value(Value::list(Vec::new())),
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                return Answer::Value(Value::list(Vec::new()));
+            }
+            Err(_) => return Answer::Unavailable,
+        };
+        let mut keys: Vec<String> = Vec::new();
+        for entity in entities {
+            let Ok(entity) = entity else {
+                return Answer::Unavailable;
+            };
+            if !entity.file_type().is_ok_and(|kind| kind.is_dir()) {
+                continue;
+            }
+            let Ok(people) = std::fs::read_dir(entity.path()) else {
+                return Answer::Unavailable;
+            };
+            for person in people {
+                let Ok(person) = person else {
+                    return Answer::Unavailable;
+                };
+                if !person.file_type().is_ok_and(|kind| kind.is_file()) {
+                    continue;
+                }
+                let key = jadpo_std::erasure::log_key(
+                    &entity.file_name().to_string_lossy(),
+                    &person.file_name().to_string_lossy(),
+                );
+                if jadpo_std::erasure::log_key_parts(&key).is_some() {
+                    keys.push(key);
+                }
+            }
+        }
+        keys.sort();
+        Answer::Value(Value::list(
+            keys.iter().map(|key| Value::text(key)).collect(),
+        ))
+    }
+
     fn answer(&self, call: &Call) -> Answer {
         let Value::Record(input) = &call.input else {
             return Answer::Misconfigured;
         };
+        if call.operation == jadpo_std::files::LIST {
+            return self.list();
+        }
         let Some(Value::Text(key)) = input.get("key") else {
             return Answer::Misconfigured;
         };
-        if !is_key(key) {
+        let logged = jadpo_std::erasure::log_key_parts(key).is_some()
+            && matches!(call.operation.as_str(), PUT | READ);
+        if !is_key(key) && !logged {
             return Answer::Failed(NOT_FOUND.into());
         }
         match call.operation.as_str() {
@@ -672,6 +728,80 @@ mod tests {
             ),
             Repeat::Keyed,
         )
+    }
+
+    /// The erasure log's files (area 15; chunk P4c): `put` and `read` take
+    /// a key of the log's, `list` finds each in order, and nothing else in
+    /// the store is listed, no temporary file and no link; a store with none
+    /// lists nothing; and no other operation takes such a key, nor `put` one
+    /// that isn't a person's.
+    #[test]
+    fn the_erasure_log_is_kept_listed_and_read_as_files() {
+        let store = DiskStore::made_at(root("log"), 0);
+        let list = || {
+            let call = Call::new(
+                "imports",
+                jadpo_std::files::LIST,
+                Value::record("FileList", Vec::new()),
+                Repeat::Safe,
+            );
+            match store.answer(&call) {
+                Answer::Value(Value::List(keys)) => keys
+                    .iter()
+                    .map(|key| match key {
+                        Value::Text(text) => text.to_string(),
+                        other => panic!("not a key: {other:?}"),
+                    })
+                    .collect::<Vec<_>>(),
+                other => panic!("not a list: {other:?}"),
+            }
+        };
+        assert_eq!(list(), Vec::<String>::new(), "nothing kept yet");
+        let first = jadpo_std::erasure::log_key("User", "0190a2b3-c4d5-7e6f-8a9b-0c1d2e3f4a5b");
+        let second = jadpo_std::erasure::log_key("Patient", "0190a2b3-c4d5-7e6f-8a9b-0c1d2e3f4a5c");
+        for key in [&first, &second] {
+            assert!(matches!(store.answer(&put(key, b"{}")), Answer::Value(_)));
+        }
+        // A file of the store's own stays out of it.
+        let file = jadpo_std::files::key_for(&[7; 16]);
+        assert!(matches!(store.answer(&put(&file, b"csv")), Answer::Value(_)));
+        assert_eq!(list(), [second.clone(), first.clone()]);
+        assert!(matches!(
+            store.answer(&read(&first, 0, 10)),
+            Answer::Value(Value::Bytes(bytes)) if &*bytes == b"{}"
+        ));
+        // What isn't a person's isn't listed, a link among them.
+        let folder = store.root.join(jadpo_std::erasure::LOG_FOLDER).join("User");
+        fs::write(folder.join("0190a2b3.part"), b"half").expect("written");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(
+            store.root.join("elsewhere"),
+            folder.join("0190a2b3-c4d5-7e6f-8a9b-0c1d2e3f4a5d"),
+        )
+        .expect("linked");
+        assert_eq!(list(), [second, first.clone()]);
+        // No key but a person's names a place in the log.
+        for wrong in [
+            "erasure-log/User/../../../etc/passwd",
+            "erasure-log/../secret",
+        ] {
+            assert!(
+                matches!(store.answer(&put(wrong, b"x")), Answer::Failed(code) if code == NOT_FOUND),
+                "{wrong}"
+            );
+        }
+        // Only `put` and `read` take a key of the log's: a log's entries stay.
+        let delete = Call::new(
+            "imports",
+            DELETE,
+            Value::record("FileDelete", vec![(Rc::from("key"), Value::text(&first))]),
+            Repeat::Keyed,
+        );
+        assert!(matches!(store.answer(&delete), Answer::Failed(code) if code == NOT_FOUND));
+        assert!(matches!(
+            store.answer(&read(&first, 0, 10)),
+            Answer::Value(_)
+        ));
     }
 
     fn read(key: &str, from: i64, length: i64) -> Call {

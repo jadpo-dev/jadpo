@@ -49,6 +49,9 @@ pub struct Started {
     /// Where each store of files keeps its record of which files are held
     /// (area 16, "Deleting and erasing"; chunk B3).
     files: jadpo_std::files::FilesPlan,
+    /// Each person entity's erasure past its statement, and where the log
+    /// is kept (area 15; chunk P4c).
+    erasure: jadpo_std::erasure::ErasurePlan,
     /// The flags, and the state of them it last read (area 16; chunk B9).
     flags: crate::flags::Held,
 }
@@ -100,11 +103,16 @@ impl Started {
             .events
             .map(|events| events.files.clone())
             .unwrap_or_default();
+        let erasure = plan
+            .events
+            .map(|events| events.erasure.clone())
+            .unwrap_or_default();
         let flags = crate::flags::Held::new(plan.flags.cloned().unwrap_or_default());
         let Some(values) = values else {
             return Started {
                 purge_after,
                 files,
+                erasure,
                 flags,
                 ..Started::default()
             };
@@ -155,6 +163,7 @@ impl Started {
             .unwrap_or_default(),
             purge_after,
             files,
+            erasure,
             flags,
         }
     }
@@ -162,6 +171,12 @@ impl Started {
     /// Where each store of files keeps its record of which files are held.
     pub fn files(&self) -> &jadpo_std::files::FilesPlan {
         &self.files
+    }
+
+    /// Each person entity's erasure past its statement, and where the log
+    /// is kept.
+    pub fn erasure(&self) -> &jadpo_std::erasure::ErasurePlan {
+        &self.erasure
     }
 
     /// The value the program started with for setting number `at`: its

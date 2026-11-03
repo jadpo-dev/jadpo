@@ -710,6 +710,20 @@ impl Body<'_> {
                 .next(format!("Erase a `{entity}` in an action of your own for now")),
             );
         }
+        // An entry in the log is what keeps them erased after a restore.
+        if !self.writes.names_an_erasure_log() {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::DATA_ERASURE_LOG_REQUIRED,
+                    format!("Erasing a `{entity}` needs an erasure log, and the application names none"),
+                )
+                .at(head_span.clone(), "leaves an entry in the log")
+                .reason(
+                    "Restoring a backup would bring back everyone erased since it was taken. The log is what erases them again as the app starts, so it is kept where the restore can't take it back: a database that holds no person's records, or a store of files.",
+                )
+                .next("Add `privacy: { erasure_log: { store: <connection> } }` to `application { }`, naming a connection for it"),
+            );
+        }
         let not_found = self.not_found_of(entity, head_span, &written);
         self.facts.writes.insert(
             node_key(call.syntax()),
@@ -1178,6 +1192,23 @@ impl Body<'_> {
                     "Give `{entity}` a lifecycle with a `delete` transition, or change `{holder}.{field}`'s `on_delete:`"
                 ),
             )
+        } else if let Some((person, holder, field)) = &rules.removes_across {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::DATA_PERSON_REMOVAL_ACROSS_STORES,
+                    format!(
+                        "`{written}` would delete a `{person}` that `{holder}.{field}` refers to from another store"
+                    ),
+                )
+                .at(span, "deletes outside erasure")
+                .reason(format!(
+                    "`{holder}.{field}` isn't a foreign key: only erasing a `{person}` applies what its `erase:` says, after the commit, in its store. Deleted any other way, the `{person}` would be gone and the `{holder}` records would stay, out of reach of any erasure."
+                ))
+                .next(format!(
+                    "Call `{person}.erase`, or give `{person}` a lifecycle whose `delete` transition hides them"
+                )),
+            );
+            return;
         } else {
             self.audited_delete(entity, rules, span);
             return;

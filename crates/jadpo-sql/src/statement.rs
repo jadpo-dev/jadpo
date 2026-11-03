@@ -843,7 +843,7 @@ pub struct Own<'a> {
     /// since the record stays and what it refers to may not.
     pub references: Vec<(&'a str, usize)>,
     /// The operation's time, as SQL: when they were erased, the first time.
-    pub now: &'a str,
+    pub now: String,
     /// Each column set on the record, to the SQL beside it: a
     /// `Generated.on_change` field, to the operation's time.
     pub set: Vec<(String, String)>,
@@ -928,40 +928,76 @@ fn erased(entity: usize) -> String {
     )
 }
 
-/// One person's erasure (area 15, "Erasure"; chunk P3), as one statement,
-/// so it is all or nothing. A recursive query finds the person's record
-/// in `tables[0]` meeting `person` (the `id` and the policy that lets the
-/// caller delete it, hidden or not) and every record each of `follows`
-/// leads to from one already found, tagging each with its entity's
-/// number in `tables`, each record once, so a loop in the data ends too.
-/// Then each of `keeps` clears its references to them, and its marked
-/// fields where an anonymising reference matched and, for a record that
-/// may belong to someone else too, none of its own references holds a
-/// person the erasure keeps (`"last"`); every record found is deleted,
-/// whether a lifecycle hides it or not, or, of an entity `own` names, kept
-/// with its marked fields cleared and the time noted; and each of
-/// `signed_in`, a table and the column holding the `id` of a record of the
-/// entity numbered beside it, loses its rows for the records found. Every
-/// part sees the same snapshot, and the foreign keys are checked once at
-/// its end, when nothing refers to a deleted record. It returns the
-/// person's `id`, or no row when the record isn't there or policy
-/// refuses the caller.
-pub fn erase(
-    tables: &[&str],
-    person: &[String],
-    follows: &[Followed<'_>],
-    keeps: &[Keeps<'_>],
-    signed_in: &[(usize, &str, &str)],
-    audited: &[(usize, String)],
-    own: &[Own<'_>],
-) -> String {
-    let mut base = format!(
-        "  SELECT 0, {}.{}\n  FROM {}",
-        ident(tables[0]),
-        ident("id"),
-        ident(tables[0])
-    );
-    where_clause(&mut base, person, "  ");
+/// Who an erasure starts from (chunk P4c).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EraseRoot<'a> {
+    /// The person's record, in `tables[0]` meeting these conditions (the
+    /// `id` and the policy that lets the caller delete it, hidden or not):
+    /// the erasure in their own store.
+    Found(&'a [String]),
+    /// A person whose table is in another store, whose `id` is this
+    /// parameter: the erasure in a store whose records refer to them.
+    /// `tables[0]` names nothing.
+    Given(&'a str),
+}
+
+/// What [`erase`] writes.
+#[derive(Clone, Copy, Debug)]
+pub struct Erase<'a> {
+    pub root: EraseRoot<'a>,
+    pub tables: &'a [&'a str],
+    pub follows: &'a [Followed<'a>],
+    pub keeps: &'a [Keeps<'a>],
+    pub signed_in: &'a [(usize, &'a str, &'a str)],
+    pub audited: &'a [(usize, String)],
+    pub own: &'a [Own<'a>],
+    /// The numbers in `tables` of the entities that are people, whose
+    /// records it returns.
+    pub people: &'a [usize],
+}
+
+/// One person's erasure in one store (area 15, "Erasure"; chunks P3 and
+/// P4c), as one statement, so it is all or nothing. A recursive query finds
+/// the person (see [`EraseRoot`]) and every record each of `follows` leads
+/// to from one already found, tagging each with its entity's number in
+/// `tables`, each record once, so a loop in the data ends too. Then each of
+/// `keeps` clears its references to them, and its marked fields where an
+/// anonymising reference matched and, for a record that may belong to
+/// someone else too, none of its own references holds a person the erasure
+/// keeps (`"last"`); every record found is deleted, whether a lifecycle
+/// hides it or not, or, of an entity `own` names, kept with its marked
+/// fields cleared and the time noted; and each of `signed_in`, a table and
+/// the column holding the `id` of a record of the entity numbered beside
+/// it, loses its rows for the records found. Every part sees the same
+/// snapshot, and the foreign keys are checked once at its end, when nothing
+/// refers to a deleted record. It returns a row for each person it erased
+/// here, whose first column is their entity's number and whose second is
+/// their `id`; none when the person isn't there or policy refuses the
+/// caller, or, in another store, when no other person was reached.
+pub fn erase(erasure: Erase<'_>) -> String {
+    let Erase {
+        root,
+        tables,
+        follows,
+        keeps,
+        signed_in,
+        audited,
+        own,
+        people,
+    } = erasure;
+    let base = match root {
+        EraseRoot::Found(person) => {
+            let mut base = format!(
+                "  SELECT 0, {}.{}\n  FROM {}",
+                ident(tables[0]),
+                ident("id"),
+                ident(tables[0])
+            );
+            where_clause(&mut base, person, "  ");
+            base
+        }
+        EraseRoot::Given(id) => format!("  SELECT 0, {id}::uuid"),
+    };
     let found = if follows.is_empty() {
         base
     } else {
@@ -1106,59 +1142,113 @@ pub fn erase(
         ));
     }
     // Every record found goes, or stays with its marked fields cleared,
-    // the person's own last, so the statement returns their `id`.
+    // the person's own last, and those of a person say so.
     let kept = |entity: usize| own.iter().find(|own| own.entity == entity);
-    let end = |entity: usize, table: &str, returning: &str| match kept(entity) {
-        Some(own) => {
-            let mut set: Vec<String> = own
-                .clears
-                .iter()
-                .map(|column| format!("{} = NULL", ident(column)))
-                .collect();
-            set.extend(own.references.iter().map(|(column, entity)| {
-                let matched = format!("{} IN ({})", ident(column), erased(*entity));
-                set_when(column, &matched, "NULL")
-            }));
-            let at = ident(jadpo_std::ERASED_AT);
-            set.push(format!("{at} = COALESCE({at}, {})", own.now));
-            set.extend(
-                own.set
+    let part = |entity: usize| {
+        ident(&format!(
+            "{}{entity}",
+            if kept(entity).is_some() {
+                "own"
+            } else {
+                "deleted"
+            }
+        ))
+    };
+    let end = |entity: usize, table: &str| {
+        let returning = if people.contains(&entity) {
+            format!("\n  RETURNING {}", ident("id"))
+        } else {
+            String::new()
+        };
+        match kept(entity) {
+            Some(own) => {
+                let mut set: Vec<String> = own
+                    .clears
                     .iter()
-                    .map(|(column, value)| format!("{} = {value}", ident(column))),
-            );
-            format!(
-                "{} AS (\n  UPDATE {}\n  SET {}\n  WHERE {} IN ({}){returning}\n)",
-                ident(&format!("own{entity}")),
+                    .map(|column| format!("{} = NULL", ident(column)))
+                    .collect();
+                set.extend(own.references.iter().map(|(column, entity)| {
+                    let matched = format!("{} IN ({})", ident(column), erased(*entity));
+                    set_when(column, &matched, "NULL")
+                }));
+                let at = ident(jadpo_std::ERASED_AT);
+                set.push(format!("{at} = COALESCE({at}, {})", own.now));
+                set.extend(
+                    own.set
+                        .iter()
+                        .map(|(column, value)| format!("{} = {value}", ident(column))),
+                );
+                format!(
+                    "{} AS (\n  UPDATE {}\n  SET {}\n  WHERE {} IN ({}){returning}\n)",
+                    part(entity),
+                    ident(table),
+                    set.join(",\n    "),
+                    ident("id"),
+                    erased(entity)
+                )
+            }
+            None => format!(
+                "{} AS (\n  DELETE FROM {}\n  WHERE {} IN ({}){returning}\n)",
+                part(entity),
                 ident(table),
-                set.join(",\n    "),
                 ident("id"),
                 erased(entity)
-            )
+            ),
         }
-        None => format!(
-            "{} AS (\n  DELETE FROM {}\n  WHERE {} IN ({}){returning}\n)",
-            ident(&format!("deleted{entity}")),
-            ident(table),
-            ident("id"),
-            erased(entity)
-        ),
     };
     for (entity, table) in tables.iter().enumerate().skip(1) {
-        parts.push(end(entity, table, ""));
+        parts.push(end(entity, table));
     }
-    let returning = format!("\n  RETURNING {}", ident("id"));
-    parts.push(end(0, tables[0], &returning));
+    if matches!(root, EraseRoot::Found(_)) {
+        parts.push(end(0, tables[0]));
+    }
+    let rows: Vec<String> = people
+        .iter()
+        .map(|entity| format!("SELECT {entity}, {} FROM {}", ident("id"), part(*entity)))
+        .collect();
     format!(
-        "WITH{} {}\nSELECT {} FROM {}",
+        "WITH{} {}\n{}",
         if follows.is_empty() { "" } else { " RECURSIVE" },
         parts.join(", "),
-        ident("id"),
-        ident(if kept(0).is_some() {
-            "own0"
+        if rows.is_empty() {
+            "SELECT 0, NULL::uuid WHERE FALSE".to_string()
         } else {
-            "deleted0"
-        })
+            rows.join("\nUNION ALL\n")
+        }
     )
+}
+
+/// Which of `$1`'s `id`s are in `table` (chunk P4c): a person's record, not
+/// yet erased when `kept` says their records stay field by field. What an
+/// erasure's replay asks of their own store.
+pub fn erase_present(table: &str, kept: bool) -> String {
+    let (table, id) = (ident(table), ident("id"));
+    let not_erased = if kept {
+        format!(" AND {}", not_erased())
+    } else {
+        String::new()
+    };
+    format!("SELECT {id} FROM {table} WHERE {id} = ANY($1::uuid[]){not_erased}")
+}
+
+/// Which of `$1`'s `id`s each of `references`, a table and a column, holds
+/// (chunk P4c): what an erasure's replay asks of a store whose records
+/// refer to a person across stores. No row when they hold none.
+pub fn erase_referring(references: &[(&str, &str)]) -> String {
+    if references.is_empty() {
+        return "SELECT NULL::uuid WHERE FALSE".to_string();
+    }
+    references
+        .iter()
+        .map(|(table, column)| {
+            let column = ident(column);
+            format!(
+                "SELECT {column} FROM {} WHERE {column} = ANY($1::uuid[])",
+                ident(table)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" UNION ")
 }
 
 /// One batch of a sealed column's rows sealed with the key whose identity

@@ -649,6 +649,43 @@ pub async fn compare_stores<'d, U: NotBuilt>(
     stores
 }
 
+/// Replays the erasure log before a deployable serves anything (area 15,
+/// "What erasure doesn't rewrite"; chunk P4c): `runtime.erasures_replayed`
+/// when it found anyone logged still there, since a restored backup is
+/// worth saying so. Why it couldn't finish.
+pub async fn replay_erasures(
+    host: &dyn crate::Host,
+    plan: crate::Plan<'_>,
+    log: &Log,
+) -> Result<(), crate::erasure::ReplayStopped> {
+    let Some(events) = plan.events() else {
+        return Ok(());
+    };
+    let replayed =
+        crate::erasure::replay(host, &events.plan.erasure, &events.plan.files).await?;
+    if replayed.erased > 0 {
+        log.event(
+            "runtime.erasures_replayed",
+            [
+                ("logged", Value::from(replayed.logged)),
+                ("erased", Value::from(replayed.erased)),
+            ],
+        );
+    }
+    Ok(())
+}
+
+/// The problem a replay that can't finish is, once trying again won't help.
+pub fn replay_problem(stopped: &crate::erasure::ReplayStopped) -> Value {
+    problem(
+        "erasure_replay_failed",
+        format!(
+            "The erasure log couldn't be replayed in `{}`: {}. The app doesn't serve until it has been, or a restored backup could bring someone back.",
+            stopped.store, stopped.why
+        ),
+    )
+}
+
 /// Logs `runtime.waiting` for store `store`, which can't be reached yet:
 /// the deployable serves once it can check the database's migrations,
 /// `then` saying when it tries again.

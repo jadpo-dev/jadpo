@@ -23,7 +23,9 @@
 //! the build's migrations and found current, which then holds for the
 //! isolate, the request compares them first and, finding one behind,
 //! ahead or out of reach, logs it and answers 503, so a migration applied
-//! after the deploy is picked up by the next request. Served, it goes
+//! after the deploy is picked up by the next request. It replays the erasure
+//! log once they are, before it serves or ticks anything, answering 503
+//! until it has (area 15; chunk P4c). Served, it goes
 //! through the runtime's `Serving`, the client's address read from
 //! `CF-Connecting-IP` (`Target::Workers`), what it leaves run in
 //! `waitUntil`, sharing the isolate's `Worker`, its rate limits counted in
@@ -246,6 +248,28 @@ async fn ready(deployable: &Deployable, host: &WorkersHost, isolate: &Isolate) -
         return true;
     }
     if !stores_current(deployable, host, &isolate.log).await {
+        return false;
+    }
+    // A restored backup is erased before the isolate serves anything (area
+    // 15; chunk P4c), each isolate replaying the log as it starts.
+    if let Err(stopped) = jadpo_runtime::deployable::replay_erasures(
+        host,
+        isolate.program.plan(),
+        &isolate.log,
+    )
+    .await
+    {
+        if stopped.waiting {
+            waiting(&isolate.log, &stopped.store, Then::NextRequest);
+        } else {
+            isolate.log.event(
+                "runtime.startup_failed",
+                [(
+                    "problems",
+                    Value::Array(vec![jadpo_runtime::deployable::replay_problem(&stopped)]),
+                )],
+            );
+        }
         return false;
     }
     if !isolate.current.replace(true) {

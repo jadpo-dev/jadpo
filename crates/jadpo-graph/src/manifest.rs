@@ -280,8 +280,12 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             constraint,
         } => {
             out.set("target", target.as_str());
-            out.set("onDelete", on_delete.as_str());
-            out.set("constraint", constraint.as_str());
+            // One to a person in another store has neither (area 15; chunk
+            // P4c): only what erasure does.
+            if !on_delete.is_empty() {
+                out.set("onDelete", on_delete.as_str());
+                out.set("constraint", constraint.as_str());
+            }
         }
         Detail::Placement { store } => out.set("store", store.as_str()),
         Detail::Lifecycle { visible, purge } => {

@@ -1057,7 +1057,7 @@ action forget(member_id: Member.id) fails MemberNotFound -> Unit {
   WHERE "id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0)
   RETURNING "id"
 )
-SELECT "id" FROM "deleted0""#
+SELECT 0, "id" FROM "deleted0""#
     );
 }
 
@@ -1245,7 +1245,7 @@ action forget(holder_id: Holder.id) fails HolderNotFound -> Unit {
   WHERE "id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0)
   RETURNING "id"
 )
-SELECT "id" FROM "own0""#
+SELECT 0, "id" FROM "own0""#
     );
     // Their record is hidden wherever it is reached...
     let erased = "\"jadpo_erased_at\" IS NULL";
@@ -1360,7 +1360,7 @@ action close_account(member: Principal.user) fails MemberNotFound -> Unit {
   WHERE "id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0)
   RETURNING "id"
 )
-SELECT "id" FROM "deleted0""#
+SELECT 0, "id" FROM "deleted0""#
     );
     assert!(erase.unpoliced.is_some(), "policy limits it");
     assert!(
@@ -1492,4 +1492,180 @@ action cancel(invoice_id: Invoice.id) fails InvoiceNotFound -> Unit {
         plan.history_of("Clerk").is_none(),
         "an unaudited entity has none"
     );
+}
+
+/// A person's erasure in a store whose records refer to them (area 15,
+/// "Records in another store"; chunk P4c): it starts from the `id` it is
+/// given, with no person's table, and deletes and keeps as it would in their
+/// own, asking which of many people it holds anything of through the
+/// references to them. Each person it deletes there it returns, so they are
+/// erased in their own right. No foreign key holds any of it.
+#[test]
+fn an_erasure_in_another_store_starts_from_the_id_it_is_given() {
+    let db = Database::default();
+    let project = project_of(&db, &[
+        (
+            "app.jadpo",
+            "application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+        archive: {
+            driver: Driver.postgres
+        }
+        erasures: {
+            driver: Driver.postgres
+        }
+    }
+    privacy: {
+        erasure_log: {
+            store: erasures
+        }
+    }
+}
+",
+        ),
+        (
+            "domains/club/entities/member.jadpo",
+            "entity Member {
+    id: Uuid
+    handle: Email {
+        personal: PersonalData.identifying
+    }
+
+    person: true
+}
+",
+        ),
+        (
+            "domains/club/entities/old_todo.jadpo",
+            "use club/entities { Member }
+
+entity OldTodo {
+    id: Uuid
+    owner_id: Member.id {
+        erase: Erasure.deleted
+    }
+
+    store: archive
+}
+",
+        ),
+        (
+            "domains/club/entities/old_review.jadpo",
+            "use club/entities { Member }
+
+entity OldReview {
+    id: Uuid
+    author_id: Member.id? {
+        erase: Erasure.anonymised
+    }
+    signed_as: Email? {
+        personal: PersonalData.identifying
+    }
+
+    store: archive
+}
+",
+        ),
+        (
+            "domains/club/entities/patient.jadpo",
+            "use club/entities { Member }
+
+entity Patient {
+    id: Uuid
+    guardian_id: Member.id {
+        erase: Erasure.deleted
+    }
+
+    person: true
+
+    store: archive
+}
+",
+        ),
+    ]);
+    let plan = Plan::build(&db, project);
+    let erasure = &plan.events().erasure;
+    assert_eq!(
+        erasure.log,
+        Some(jadpo_std::erasure::ErasureLog::Database {
+            store: "erasures".to_string()
+        })
+    );
+    let member = erasure.person("Member").expect("a member's erasure");
+    assert_eq!(
+        member.subscribers,
+        ["erasure in archive", "erasure log"],
+        "{member:?}"
+    );
+    assert_eq!(member.own.store, "main");
+    assert_eq!(
+        member.own.present,
+        r#"SELECT "id" FROM "member" WHERE "id" = ANY($1::uuid[])"#
+    );
+    assert_eq!(member.own.people, [(0, "Member".to_string())]);
+    let [archive] = member.elsewhere.as_slice() else {
+        panic!("one other store: {member:?}");
+    };
+    assert_eq!(archive.store, "archive");
+    assert_eq!(
+        archive.sql,
+        r#"WITH RECURSIVE "erased" ("entity", "id") AS (
+  SELECT 0, $1::uuid
+  UNION
+  SELECT "edge"."entity", "edge"."id"
+  FROM "erased"
+  JOIN (
+    SELECT 0 AS "parent", "edge1"."owner_id" AS "parent_id", 1 AS "entity", "edge1"."id" AS "id" FROM "old_todo" AS "edge1"
+    UNION ALL
+    SELECT 0 AS "parent", "edge2"."guardian_id" AS "parent_id", 2 AS "entity", "edge2"."id" AS "id" FROM "patient" AS "edge2"
+  ) AS "edge" ON "edge"."parent" = "erased"."entity" AND "edge"."parent_id" = "erased"."id"
+), "kept1" AS (
+  UPDATE "old_review"
+  SET "author_id" = NULL,
+    "signed_as" = NULL
+  WHERE "author_id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0)
+), "deleted1" AS (
+  DELETE FROM "old_todo"
+  WHERE "id" IN (SELECT "id" FROM "erased" WHERE "entity" = 1)
+), "deleted2" AS (
+  DELETE FROM "patient"
+  WHERE "id" IN (SELECT "id" FROM "erased" WHERE "entity" = 2)
+  RETURNING "id"
+)
+SELECT 2, "id" FROM "deleted2""#
+    );
+    assert_eq!(archive.people, [(2, "Patient".to_string())]);
+    assert!(
+        archive.present.contains(r#"FROM "old_todo""#)
+            && archive.present.contains(r#"FROM "patient""#)
+            && archive.present.contains(r#"FROM "old_review""#),
+        "{}",
+        archive.present
+    );
+    let patient = erasure.person("Patient").expect("a patient's erasure");
+    assert_eq!(patient.own.store, "archive");
+    assert!(patient.elsewhere.is_empty());
+    assert_eq!(patient.subscribers, ["erasure log"]);
+    // Nothing else asked, and no statement in the plan names a person's
+    // table in the wrong store.
+    assert!(!archive.sql.contains(r#""member""#), "{}", archive.sql);
+}
+
+/// A project in the layout of an application, of these files.
+fn project_of(db: &Database, files: &[(&str, &str)]) -> Project {
+    let inputs = files
+        .iter()
+        .map(|(path, text)| File::new(db, (*path).to_string(), (*text).to_string()))
+        .collect();
+    Project::new(
+        db,
+        inputs,
+        Vec::new(),
+        Layout::Project,
+        Default::default(),
+        Vec::new(),
+    )
 }

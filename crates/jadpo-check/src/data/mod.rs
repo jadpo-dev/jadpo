@@ -473,8 +473,18 @@ pub fn holds_vector(field: &FieldModel) -> bool {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Reference {
     pub target: String,
-    /// `None` when the field doesn't say, which is an error.
+    /// `None` when the field doesn't say, which is an error unless it is a
+    /// reference to a person in another store ([`DataModel::across`]).
     pub on_delete: Option<OnDelete>,
+}
+
+impl Reference {
+    /// Whether `field`, this reference, may cross to `target` in another
+    /// store: `target` is a person, and it says `erase:` and no
+    /// `on_delete:` (area 15, "What erasure reaches"; chunk P4c).
+    pub fn crosses_for_erasure(&self, field: &FieldModel, target: &EntityModel) -> bool {
+        target.person && self.on_delete.is_none() && field.erase.is_some()
+    }
 }
 
 /// A compound unique rule or a declared index.
@@ -943,7 +953,7 @@ impl Reader<'_> {
                 }
                 _ => match member.value() {
                     Some(value) if crate::types::looks_like_type(&value) => {
-                        if let Some(field) = self.field(path, &name, &word, &key_span, &value) {
+                        if let Some(field) = self.field(path, &name, &word, &value) {
                             entity.fields.push(field);
                             self.spans.fields.push(key_span.clone());
                         }
@@ -1334,7 +1344,6 @@ impl Reader<'_> {
         path: &str,
         entity: &str,
         name: &str,
-        span: &Span,
         value: &Expr,
     ) -> Option<FieldModel> {
         let written = TypeRef::from_expr(value);
@@ -1812,17 +1821,9 @@ impl Reader<'_> {
             }
         }
         match (&target, &on_delete) {
-            (Some(target), None) => self.out.push(
-                Diagnostic::new(
-                    &rule::DATA_ON_DELETE_REQUIRED,
-                    format!("`{entity}.{name}` doesn't say what deleting its `{target}` does"),
-                )
-                .at(span.clone(), format!("refers to a `{target}`"))
-                .reason(format!(
-                    "Any field typed `{target}.id` is a reference with a foreign key, and its block must say what happens when the `{target}` is deleted: `OnDelete.restricted` refuses the delete, `OnDelete.cascade` deletes this record too, and `OnDelete.cleared` sets an optional reference to `none`. There is no default."
-                ))
-                .next(format!("Add `on_delete:` to `{name}`'s block")),
-            ),
+            // A reference that says nothing is reported with its links
+            // (`link_problems`), since one to a person in another store
+            // isn't asked for an `on_delete:`.
             (None, Some((_, at))) => self.out.push(
                 Diagnostic::new(
                     &rule::DATA_ON_DELETE_NOT_REFERENCE,
@@ -2637,7 +2638,9 @@ pub struct Referrer {
     pub lifecycle: bool,
 }
 
-/// A reference to an entity in another store.
+/// A reference to an entity in another store that isn't allowed there: it
+/// says `on_delete:`, doesn't say `erase:`, or refers to something that
+/// isn't a person.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Across {
     pub field: FieldAt,
@@ -2654,8 +2657,16 @@ pub struct EntityLinks {
     /// The references to it, in the holders' name order, then their
     /// fields' order.
     pub referrers: Vec<Referrer>,
-    /// Its references to an entity in another store.
+    /// Its references to an entity in another store that aren't allowed.
     pub across: Vec<Across>,
+    /// The references to it from another store that are allowed: each a
+    /// person's, saying `erase:` and no `on_delete:`, which aren't foreign
+    /// keys and which only erasure applies (area 15, "What erasure
+    /// reaches"; chunk P4c). They aren't among `referrers`.
+    pub erased_across: Vec<FieldAt>,
+    /// Its references that say nothing about deleting what they refer to,
+    /// and aren't across stores (`data.on_delete_required`).
+    pub saying_nothing: Vec<FieldAt>,
     /// The cycles of required references reported at it, each as the
     /// fields it passes through, starting with one of its own.
     pub cycles: Vec<Vec<FieldAt>>,
@@ -2679,30 +2690,42 @@ pub fn entity_links(db: &dyn Db, project: Project) -> BTreeMap<String, EntityLin
                 field: field.name.clone(),
                 index,
             };
-            out.entry(reference.target.clone())
-                .or_default()
-                .referrers
-                .push(Referrer {
-                    holder: at.clone(),
-                    on_delete: reference.on_delete,
-                    lifecycle: entity.lifecycle.is_some(),
-                });
-            let Some(target) = by_name.get(reference.target.as_str()) else {
-                continue;
-            };
-            if let (Some(here), Some(there)) = (&entity.store, &target.store)
-                && here != there
-            {
+            let target = by_name.get(reference.target.as_str());
+            let stores = target.and_then(|target| {
+                let (here, there) = (entity.store.as_ref()?, target.store.as_ref()?);
+                (here != there).then_some((here, there))
+            });
+            if let (Some((here, there)), Some(target)) = (stores, target) {
+                if reference.crosses_for_erasure(field, target) {
+                    out.entry(reference.target.clone())
+                        .or_default()
+                        .erased_across
+                        .push(at);
+                    continue;
+                }
                 out.entry(entity.name.clone())
                     .or_default()
                     .across
                     .push(Across {
-                        field: at,
+                        field: at.clone(),
                         target: target.name.clone(),
                         here: here.clone(),
                         there: there.clone(),
                     });
+            } else if reference.on_delete.is_none() {
+                out.entry(entity.name.clone())
+                    .or_default()
+                    .saying_nothing
+                    .push(at.clone());
             }
+            out.entry(reference.target.clone())
+                .or_default()
+                .referrers
+                .push(Referrer {
+                    holder: at,
+                    on_delete: reference.on_delete,
+                    lifecycle: entity.lifecycle.is_some(),
+                });
         }
     }
     // Required references between entities, in name order, for a cycle
@@ -2751,6 +2774,14 @@ pub fn entity_links(db: &dyn Db, project: Project) -> BTreeMap<String, EntityLin
     out
 }
 
+/// What to do about a reference across stores that isn't allowed.
+fn across_next(entity: &EntityModel, across: &Across) -> String {
+    format!(
+        "Keep `{}` and `{}` in one store, or store the id as a plain `Uuid`",
+        entity.name, across.target
+    )
+}
+
 /// The entity called `name`'s links: what its references to others, and
 /// theirs to it, mean for it.
 #[salsa::tracked(returns(ref))]
@@ -2782,6 +2813,28 @@ fn link_problems(
         |at: &FieldAt| -> Option<Span> { spans(&at.entity)?.fields.get(at.index).cloned() };
     let entity = &read.model;
     let mut out = Vec::new();
+    for silent in &links.saying_nothing {
+        let Some(at) = field_span(silent) else {
+            continue;
+        };
+        let name = &silent.field;
+        let target = entity
+            .fields
+            .get(silent.index)
+            .and_then(|field| field.reference.as_ref())
+            .map_or("", |reference| reference.target.as_str());
+        out.push(
+            Diagnostic::new(
+                &rule::DATA_ON_DELETE_REQUIRED,
+                format!("`{}.{name}` doesn't say what deleting its `{target}` does", entity.name),
+            )
+            .at(at, format!("refers to a `{target}`"))
+            .reason(format!(
+                "Any field typed `{target}.id` is a reference with a foreign key, and its block must say what happens when the `{target}` is deleted: `OnDelete.restricted` refuses the delete, `OnDelete.cascade` deletes this record too, and `OnDelete.cleared` sets an optional reference to `none`. There is no default."
+            ))
+            .next(format!("Add `on_delete:` to `{name}`'s block")),
+        );
+    }
     for across in &links.across {
         let (Some(at), here, there) = (field_span(&across.field), &across.here, &across.there)
         else {
@@ -2803,8 +2856,8 @@ fn link_problems(
         }
         out.push(
             problem
-                .reason("A reference is a foreign key, which a database keeps only between its own tables; an action writes one store, and work across stores goes through an event and a subscriber.")
-                .next(format!("Keep `{}` and `{}` in one store, or store the id as a plain `Uuid`", entity.name, across.target)),
+                .reason("A reference is a foreign key, which a database keeps only between its own tables; an action writes one store, and work across stores goes through an event and a subscriber. Only a reference to a person may cross, one that says `erase:` and no `on_delete:`, which isn't a foreign key: erasure applies it in this store after the person's commits.")
+                .next(across_next(entity, across)),
         );
     }
     for cycle in &links.cycles {
@@ -3275,6 +3328,24 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
                 columns::system_table(&system::AUDIT),
             );
         }
+    }
+    // The erasure log goes in the database `privacy: { erasure_log: }`
+    // names, which may hold no entity (area 15; chunk P4c).
+    if let Some((store, crate::data::ConnectionKind::Postgres)) =
+        &crate::privacy::privacy(db, project).log
+    {
+        schema
+            .stores
+            .entry(store.clone())
+            .or_insert_with(|| physical::Store {
+                driver: Driver::Postgres.name().to_string(),
+                tables: BTreeMap::new(),
+            })
+            .tables
+            .insert(
+                system::ERASURE_LOG.table.to_string(),
+                columns::system_table(&system::ERASURE_LOG),
+            );
     }
     // Flags' state goes in `flags: { store: }`, or the only database
     // (area 16; chunk B9).
@@ -3843,21 +3914,26 @@ fn table_of(
             );
         }
         if let Some(reference) = &field.reference
-            && let (Some(on_delete), Some(target)) =
-                (reference.on_delete, by_name.get(reference.target.as_str()))
+            && let Some(target) = by_name.get(reference.target.as_str())
+            && (reference.on_delete.is_some() || reference.crosses_for_erasure(field, target))
         {
-            out.foreign_keys.insert(
-                physical::object_name(&[table, &field.born], "fkey"),
-                physical::ForeignKey {
-                    columns: vec![field.born.clone()],
-                    table: target.table.clone(),
-                    on_delete: match on_delete {
-                        OnDelete::Restricted => physical::OnDelete::Restrict,
-                        OnDelete::Cascade => physical::OnDelete::Cascade,
-                        OnDelete::Cleared => physical::OnDelete::SetNull,
+            // One to a person in another store is no foreign key (area 15,
+            // "What erasure reaches"; chunk P4c), and is indexed all the
+            // same, since erasure finds its records by it.
+            if let Some(on_delete) = reference.on_delete {
+                out.foreign_keys.insert(
+                    physical::object_name(&[table, &field.born], "fkey"),
+                    physical::ForeignKey {
+                        columns: vec![field.born.clone()],
+                        table: target.table.clone(),
+                        on_delete: match on_delete {
+                            OnDelete::Restricted => physical::OnDelete::Restrict,
+                            OnDelete::Cascade => physical::OnDelete::Cascade,
+                            OnDelete::Cleared => physical::OnDelete::SetNull,
+                        },
                     },
-                },
-            );
+                );
+            }
             // A reference is indexed (area 5), unless a unique rule
             // starting with it already gives one.
             let covered = field.unique
@@ -4093,6 +4169,11 @@ pub struct WriteRules {
     /// a record of an audited entity, a change the audit trail doesn't yet
     /// record: the entity holding it, the field and whether it cascades.
     pub reaches_audited: Option<(String, String, bool)>,
+    /// A reference from another store to a person a delete would remove,
+    /// the record's own or through a cascade: the person it would remove,
+    /// the entity holding it and the field (area 15, "What erasure
+    /// reaches"; chunk P4c). No foreign key would apply it.
+    pub removes_across: Option<(String, String, String)>,
 }
 
 /// What one transition writes (area 5, "Lifecycle").
@@ -4156,9 +4237,17 @@ pub fn write_rules<'db>(
             });
         }
         if let Some(reference) = &field.reference {
-            rules
-                .references
-                .push((field.name.clone(), reference.target.clone()));
+            // One to a person in another store is no foreign key, so
+            // nothing refuses a write for what it names (chunk P4c).
+            let across = reference.on_delete.is_none()
+                && entity_model(db, project, Name::new(db, reference.target.clone()))
+                    .as_deref()
+                    .is_some_and(|target| target.store != found.store);
+            if !across {
+                rules
+                    .references
+                    .push((field.name.clone(), reference.target.clone()));
+            }
         }
     }
     for rule in &found.unique {
@@ -4187,7 +4276,13 @@ pub fn write_rules<'db>(
     let mut queue: Vec<String> = vec![found.name.clone()];
     let mut restricting = BTreeSet::new();
     while let Some(current) = queue.pop() {
-        for referrer in &links_of(db, project, Name::new(db, current)).referrers {
+        let links = links_of(db, project, Name::new(db, current.clone()));
+        if rules.removes_across.is_none()
+            && let Some(holder) = links.erased_across.first()
+        {
+            rules.removes_across = Some((current, holder.entity.clone(), holder.field.clone()));
+        }
+        for referrer in &links.referrers {
             let holder = &referrer.holder;
             // Removing the record deletes or changes one the audit trail
             // keeps a history of, through the database's own cascade.
