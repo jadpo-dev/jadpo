@@ -43,8 +43,17 @@ operation confirms its types; a second of the same shape adds nothing:
 git rm recordings/payment_intents.create.2.json
 ```
 
+The release comes to less, and the `files` row passes once it is within the
+limit.
+
 **If it covers a whole API that large**, split it into packages by what apps
-use together, each its own release.
+use together, and verify each from its own folder:
+
+```sh
+jadpo package verify ../stripe-billing
+```
+
+Each is then its own release, within the limit on its own.
 
 ## Related
 
