@@ -319,8 +319,8 @@ fn bubblewrap(bwrap: &Path, prlimit: &Path, job: &Job) -> Command {
         "--clearenv",
     ]);
     // The system's programs and libraries, and nothing else of the host.
-    command.args(["--ro-bind", "/usr", "/usr"]);
-    for folder in ["/bin", "/sbin", "/lib", "/lib64"] {
+    const SYSTEM: [&str; 5] = ["/usr", "/bin", "/sbin", "/lib", "/lib64"];
+    for folder in SYSTEM {
         command.args(["--ro-bind-try", folder, folder]);
     }
     if job.network {
@@ -335,7 +335,11 @@ fn bubblewrap(bwrap: &Path, prlimit: &Path, job: &Job) -> Command {
     let mut bind = |flag: &str, path: &Path| {
         command.arg(flag).arg(path).arg(path);
     };
-    bind("--ro-bind", &job.program);
+    // What is among the system's programs is there already, and may be a
+    // link, which can't be mounted over.
+    if !SYSTEM.iter().any(|folder| job.program.starts_with(folder)) {
+        bind("--ro-bind", &job.program);
+    }
     for path in &job.read_only {
         bind("--ro-bind", path);
     }
