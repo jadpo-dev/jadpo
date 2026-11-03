@@ -188,10 +188,10 @@ fn declaration(graph: &Graph, id: NodeId) -> String {
                 lines.join("\n    ")
             )
         }
-        Detail::Person { through } if through.is_empty() => {
+        Detail::Person { through, .. } if through.is_empty() => {
             format!("{} is a person  // person: true", node.name)
         }
-        Detail::Person { through } => format!(
+        Detail::Person { through, .. } => format!(
             "{} is a person  // its records belong through {}",
             node.name,
             through.join(", ")

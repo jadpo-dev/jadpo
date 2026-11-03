@@ -65,6 +65,9 @@ pub struct Provider {
     /// The record's lines after its file: `protocol json_http`,
     /// `host live https://…`.
     pub facts: Vec<String>,
+    /// Whether it declares an `erasure:` call (area 15), a fact of a
+    /// release's that isn't in the record yet.
+    pub erasure: bool,
 }
 
 /// One public declaration of a package.
@@ -485,7 +488,7 @@ pub fn surface(db: &dyn Db, project: Project, folder: &str) -> Option<Surface> {
         if jadpo_db::location(db, project, file).place
             == jadpo_db::Place::Folder(jadpo_db::Folder::Resources)
         {
-            operations(db, file, relative, &data, &mut declarations);
+            operations(db, file, relative, &data, false, &mut declarations);
         }
     }
     let lines: BTreeMap<String, LineIndex> = files
@@ -657,7 +660,7 @@ fn name_of(graph: &Graph, key: &Key) -> String {
 }
 
 /// A rule's value as the surface writes it: a pattern as a Jadpo string.
-fn rule_pairs(rules: &jadpo_std::Rules) -> Vec<(String, String)> {
+pub(crate) fn rule_pairs(rules: &jadpo_std::Rules) -> Vec<(String, String)> {
     jadpo_graph::rule_pairs(rules)
         .into_iter()
         .map(|(name, value)| {
@@ -784,6 +787,7 @@ fn read_provider(db: &dyn Db, file: jadpo_db::File) -> Option<Provider> {
         description: doc(decl.syntax()),
         line: Some(index.line(u32::from(decl.syntax().text_range().start()))),
         facts: Vec::new(),
+        erasure: false,
     };
     let value = |member: &ast::Member| {
         member
@@ -823,6 +827,7 @@ fn read_provider(db: &dyn Db, file: jadpo_db::File) -> Option<Provider> {
                     }
                 }
             }
+            Some("erasure") => provider.erasure = true,
             Some("credential") => {
                 let written = value(&member);
                 let word = written
@@ -868,12 +873,41 @@ fn read_provider(db: &dyn Db, file: jadpo_db::File) -> Option<Provider> {
     Some(provider)
 }
 
-/// A public resource's operations, from its file.
+/// Every operation of the package in `folder`, those of a resource it keeps
+/// to itself too, by name: what a release's facts cover (area 11, "What a
+/// release shows"), which the surface doesn't list.
+pub fn all_operations(db: &dyn Db, project: Project, folder: &str) -> Vec<Declaration> {
+    let prefix = format!("{folder}/");
+    let data: Vec<&str> = project
+        .records(db)
+        .iter()
+        .filter_map(|record| record.path.strip_prefix(&prefix))
+        .collect();
+    let mut out = Vec::new();
+    for &file in project.files(db) {
+        let path = file.path(db);
+        let Some(relative) = path.strip_prefix(&prefix) else {
+            continue;
+        };
+        if !relative.ends_with(".test.jadpo")
+            && jadpo_db::location(db, project, file).place
+                == jadpo_db::Place::Folder(jadpo_db::Folder::Resources)
+        {
+            operations(db, file, relative, &data, true, &mut out);
+        }
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
+
+/// A resource's operations, from its file: only a public resource's unless
+/// `private` says otherwise.
 fn operations(
     db: &dyn Db,
     file: jadpo_db::File,
     relative: &str,
     data: &[&str],
+    private: bool,
     out: &mut Vec<Declaration>,
 ) {
     let Some(source) = tree::source(db, file) else {
@@ -884,7 +918,7 @@ fn operations(
         let Decl::ResourceDecl(resource) = decl else {
             continue;
         };
-        if resource.visibility().is_none() {
+        if resource.visibility().is_none() && !private {
             continue;
         }
         let Some(resource_name) = resource.name().as_ref().and_then(tree::name_text) else {

@@ -230,7 +230,7 @@ struct Verified {
 }
 
 /// The version a committed surface names in its package entry.
-fn surface_version(text: &str) -> Option<String> {
+pub(crate) fn surface_version(text: &str) -> Option<String> {
     text.lines()
         .find_map(|line| line.strip_prefix("    version "))
         .map(str::to_string)

@@ -420,6 +420,7 @@ impl Reader<'_> {
                 order: order.unwrap_or_default(),
             }),
             geometry: None,
+            include_erased: false,
         })
     }
 

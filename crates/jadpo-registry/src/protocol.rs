@@ -471,6 +471,11 @@ pub struct HostFact {
 pub struct PersonalDataFact {
     pub field: String,
     pub host: String,
+    /// The operation that sends it.
+    pub operation: String,
+    pub categories: Vec<String>,
+    /// The value only decides what is sent, and isn't itself sent.
+    pub decided_only: bool,
 }
 
 /// An operation or function and the failures it can give.
@@ -541,7 +546,12 @@ impl Change {
 #[serde(deny_unknown_fields)]
 pub struct ChangeEntry {
     pub declaration: String,
+    /// What the declaration is: `function`, `type`, `provider`.
+    pub kind: String,
     pub change: Change,
+    /// What changed about it: the failure, the host, the field and where
+    /// it now goes, the new facts and the old, or the example that failed.
+    pub detail: Option<String>,
     /// The author's reason, where they gave one.
     pub why: Option<String>,
 }

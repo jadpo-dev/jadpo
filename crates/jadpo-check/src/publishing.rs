@@ -11,6 +11,8 @@
 //! The bar applies only to what is published: the app's own integrations
 //! and libraries skip it.
 
+use std::collections::BTreeMap;
+
 use jadpo_db::record::{self as format, Entry};
 use jadpo_db::{Db, ItemKind, Project, item_tree};
 use jadpo_diag::{Diagnostic, rule};
@@ -161,6 +163,14 @@ pub fn version(
                         .find(|fact| fact.starts_with("licence "))
                         .cloned()
                 };
+                // A provider reaching one more host doesn't stop what an
+                // app calls from working: it is an entry in the change
+                // record (area 11, "The changelog"), and a person's to
+                // accept in the app (area 18). Moving or dropping one does.
+                if entry.heading == "provider" && only_new_hosts(&old_facts, &new_facts) {
+                    additions.push(("new host".to_string(), entry.heading.clone()));
+                    continue;
+                }
                 let package = entry.heading.starts_with("package ");
                 // A locale a library package no longer words leaves an app
                 // that shows it with nothing to show (area 10).
@@ -219,6 +229,15 @@ pub fn version(
     })
 }
 
+/// Whether a provider's entry only gained hosts.
+fn only_new_hosts(old: &[String], new: &[String]) -> bool {
+    old.iter().all(|fact| new.contains(fact))
+        && new
+            .iter()
+            .filter(|fact| !old.contains(fact))
+            .all(|fact| fact.starts_with("host ") || fact.starts_with("runs asks "))
+}
+
 /// How a package's surface changed from `before` to `now`, entry by
 /// entry, as an upgrade's review lists it (area 18, "Package upgrades"):
 /// `("added" | "changed" | "removed", heading)` in the record's order, a
@@ -260,7 +279,7 @@ pub fn changes(before: &str, now: &str) -> Vec<(String, String)> {
 /// An entry's lines an app relies on: everything but its description, its
 /// file, where it is confirmed from and, for the package, its version and
 /// guide.
-fn significant(entry: &Entry) -> Vec<String> {
+pub(crate) fn significant(entry: &Entry) -> Vec<String> {
     const LOOSE: [&str; 6] = [
         "///",
         "file ",
@@ -387,15 +406,6 @@ pub struct Changelog {
     pub line: u32,
 }
 
-/// One change of a version, as its changelog lists it: `added type
-/// \`OutwardCode\``, from `("added", "type OutwardCode")`.
-pub fn change_item(word: &str, heading: &str) -> String {
-    match heading.split_once(' ') {
-        Some((kind, name)) => format!("{word} {kind} `{name}`"),
-        None => format!("{word} `{heading}`"),
-    }
-}
-
 /// `old` (the changelog as it is, if there is one) with a `## <version>`
 /// section at the top holding `changes` as a list, and the author's text
 /// beneath it kept: the top section is rewritten while its version isn't
@@ -472,6 +482,34 @@ pub fn changelog(
 /// Whether the section for `version` in `text` has the author's text
 /// beneath its list.
 pub fn says_why(text: &str, version: &str) -> bool {
+    section_why(text, version)
+        .iter()
+        .any(|line| !line.trim().is_empty())
+}
+
+/// What the section for `version` in `text` marks a fix, by declaration: a
+/// line beneath its list, ``Fix `uk.parse`: why it had to change``. A
+/// release whose previous examples or tests now fail is refused within its
+/// major version unless each is marked (area 11, "The changelog"), and a
+/// mark with no reason is no mark.
+pub fn fixes(text: &str, version: &str) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    for line in section_why(text, version) {
+        let Some((name, why)) = line
+            .strip_prefix("Fix `")
+            .and_then(|rest| rest.split_once("`:"))
+        else {
+            continue;
+        };
+        if !why.trim().is_empty() {
+            out.insert(name.to_string(), why.trim().to_string());
+        }
+    }
+    out
+}
+
+/// The section for `version`'s text beneath its list.
+fn section_why(text: &str, version: &str) -> Vec<String> {
     let mut body: Vec<String> = Vec::new();
     let mut inside = false;
     for line in text.lines() {
@@ -486,7 +524,7 @@ pub fn says_why(text: &str, version: &str) -> bool {
             body.push(line.to_string());
         }
     }
-    why_text(&body).iter().any(|line| !line.trim().is_empty())
+    why_text(&body)
 }
 
 /// A section's text beneath the list Jadpo writes, the first list under
@@ -567,7 +605,7 @@ mod tests {
         let next = changelog(
             Some(&written),
             "2.1.0",
-            &[change_item("added", "type OutwardCode")],
+            &["added type `OutwardCode`".into()],
             &["2.0.0".into()],
         );
         assert_eq!(
@@ -584,7 +622,7 @@ mod tests {
                     .replace("## 2.0.1\n", "## 2.0.1\n\nFixes a description.\n"),
             ),
             "2.1.0",
-            &[change_item("added", "type OutwardCode")],
+            &["added type `OutwardCode`".into()],
             &["2.0.0".into()],
         );
         assert!(minor.text.starts_with("# Changelog\n\n## 2.1.0\n\n- added type `OutwardCode`\n\nFixes a description.\n\n## 2.0.0\n"), "{}", minor.text);
