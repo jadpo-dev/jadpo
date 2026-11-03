@@ -55,10 +55,11 @@ once it has one at all. On areas
 compiler can check.
 
 The bundle also holds a page per standard type and their index
-(TypeReference), rendered from `jadpo help --json`'s `types` and
-`operations` and each type's golden file, so the reference lists exactly
-what the compiler builds; the Standard library page's table of types by
-group must agree with the compiler's groups (type_table_problems).
+(TypeReference), which the compiler renders (`jadpo help types --json`), the
+same pages `jadpo help <Type>` prints; every example is compiled and run
+(type_example_problems), and the tables of types by group on the Standard
+library and Values and types pages must agree with the compiler's groups
+(type_table_problems).
 
 The Learn path (docs/learn/) is checked the same way, each page's
 project built on the pages before it (LearnPage). The guides
@@ -2296,7 +2297,8 @@ def check_structure(pages, errors, catalogue, commands=(), root=ROOT, learn=(), 
         if rule not in pages_by_rule:
             problems.append(f'{rule} (area {entry.get("area")}) has no page: add docs/errors/{rule}.md')
     bundle = Bundle(pages, errors, {'rules': list(catalogue.values()), 'commands': list(commands), 'types': types,
-                                    'operations': (help_data or {}).get('operations', [])}, root,
+                                    'operations': (help_data or {}).get('operations', []),
+                                    'type_pages': (help_data or {}).get('type_pages')}, root,
                     primer=root / 'docs/primer.md', learn=learn, guides=guides)
     built = bundle.build()
     for kind, page_id, _, _, _, text, _ in built:

@@ -166,17 +166,17 @@ fn type_link(written: &str, names: &[&str]) -> String {
 }
 
 /// What a golden file says of one example.
-struct GoldenExample {
+struct FormExample {
     text: String,
     json: String,
     stored: Vec<(String, String)>,
 }
 
-struct Golden {
+struct Forms {
     /// Each column: its suffix (`""` for a type in one column), type and
     /// what it holds, if it says.
     columns: Vec<(String, String, Option<String>)>,
-    examples: Vec<GoldenExample>,
+    examples: Vec<FormExample>,
 }
 
 fn unpack(name: &str) -> Option<String> {
@@ -199,7 +199,7 @@ fn unpack(name: &str) -> Option<String> {
     None
 }
 
-fn read_golden(name: &str) -> Golden {
+fn read_forms(name: &str) -> Forms {
     let source = unpack(name).unwrap_or_default();
     let mut columns: Vec<(String, Option<String>)> = Vec::new();
     let mut raw: Vec<(String, String, Vec<String>)> = Vec::new();
@@ -254,10 +254,10 @@ fn read_golden(name: &str) -> Golden {
                     })
                     .collect()
             };
-            GoldenExample { text, json, stored }
+            FormExample { text, json, stored }
         })
         .collect();
-    Golden {
+    Forms {
         columns: named,
         examples,
     }
@@ -299,7 +299,7 @@ impl Reference {
     pub fn page(&self, entry: &Json) -> String {
         let name = text(entry, "name").unwrap_or_default();
         let names = self.names();
-        let golden = read_golden(name);
+        let forms = read_forms(name);
         let prose = self.prose.iter().find(|page| page.name == name);
         let words = |written: &str| linked_prose(written, name, &names);
         let mut out = vec![format!("# `{name}`"), String::new()];
@@ -328,14 +328,14 @@ impl Reference {
         out.extend(standing_notes(entry));
         out.push(String::new());
         out.extend(["## In JSON".to_string(), String::new()]);
-        out.extend(in_json(entry, &golden));
+        out.extend(in_json(entry, &forms));
         out.extend(["## Details".to_string(), String::new()]);
         out.extend([
             "<details>".to_string(),
             "<summary>Text form, storage, how it is shown, and operations</summary>".to_string(),
             String::new(),
         ]);
-        out.extend(self.details(entry, &golden));
+        out.extend(self.details(entry, &forms));
         out.extend(["</details>".to_string()]);
         out.join("\n") + "\n"
     }
@@ -458,7 +458,7 @@ impl Reference {
         out
     }
 
-    fn details(&self, entry: &Json, golden: &Golden) -> Vec<String> {
+    fn details(&self, entry: &Json, forms: &Forms) -> Vec<String> {
         let name = text(entry, "name").unwrap_or_default();
         let group = text(entry, "group").unwrap_or_default();
         let release = text(entry, "release").unwrap_or_default();
@@ -467,8 +467,8 @@ impl Reference {
             String::new(),
         ];
         out.extend(all_values(entry));
-        out.extend(text_form(entry, golden));
-        out.extend(stored(entry, golden));
+        out.extend(text_form(entry, forms));
+        out.extend(stored(entry, forms));
         out.extend(shown(entry));
         out.extend(self.operations_section(entry));
         out
@@ -828,7 +828,7 @@ fn standing_notes(entry: &Json) -> Vec<String> {
     out
 }
 
-fn in_json(entry: &Json, golden: &Golden) -> Vec<String> {
+fn in_json(entry: &Json, forms: &Forms) -> Vec<String> {
     let words = match text(entry, "json").unwrap_or_default() {
         "text" => "A string".to_string(),
         "object" => "An object of its parts".to_string(),
@@ -848,7 +848,7 @@ fn in_json(entry: &Json, golden: &Golden) -> Vec<String> {
         String::new(),
     ];
     let mut shown: Vec<&str> = Vec::new();
-    for example in &golden.examples {
+    for example in &forms.examples {
         if shown.len() < JSON_SHOWN && !shown.contains(&example.json.as_str()) {
             shown.push(&example.json);
         }
@@ -871,7 +871,7 @@ fn in_json(entry: &Json, golden: &Golden) -> Vec<String> {
     out
 }
 
-fn text_form(entry: &Json, golden: &Golden) -> Vec<String> {
+fn text_form(entry: &Json, forms: &Forms) -> Vec<String> {
     let mut out = vec!["### Text form".to_string(), String::new()];
     match text(entry, "text") {
         Some("secret") => out.extend([
@@ -879,7 +879,7 @@ fn text_form(entry: &Json, golden: &Golden) -> Vec<String> {
             String::new(),
         ]),
         Some(_) => {
-            let shown: Vec<String> = golden
+            let shown: Vec<String> = forms
                 .examples
                 .iter()
                 .filter(|example| example.text != "none")
@@ -902,14 +902,14 @@ fn text_form(entry: &Json, golden: &Golden) -> Vec<String> {
     out
 }
 
-fn stored(entry: &Json, golden: &Golden) -> Vec<String> {
+fn stored(entry: &Json, forms: &Forms) -> Vec<String> {
     let mut out = vec!["### How it is stored".to_string(), String::new()];
-    if text(entry, "text") == Some("secret") && golden.columns.is_empty() {
+    if text(entry, "text") == Some("secret") && forms.columns.is_empty() {
         out.extend(["It is never stored.".to_string(), String::new()]);
         return out;
     }
-    let middle = golden.examples.get(golden.examples.len() / 2);
-    let written = middle
+    let sample = forms.examples.get(forms.examples.len() / 2);
+    let written = sample
         .map(|example| {
             if example.text != "none" && !example.text.is_empty() {
                 example.text.clone()
@@ -918,7 +918,7 @@ fn stored(entry: &Json, golden: &Golden) -> Vec<String> {
             }
         })
         .unwrap_or_default();
-    match golden.columns.as_slice() {
+    match forms.columns.as_slice() {
         [] => out.extend(["It is never stored.".to_string(), String::new()]),
         [(_, ty, comment)] => {
             let what = comment
@@ -934,7 +934,7 @@ fn stored(entry: &Json, golden: &Golden) -> Vec<String> {
                 .unwrap_or_default();
             let mut sentence =
                 format!("It is stored in one column named for the field, of type `{ty}`{what}.");
-            if let Some((_, value)) = middle.and_then(|example| example.stored.first()) {
+            if let Some((_, value)) = sample.and_then(|example| example.stored.first()) {
                 sentence.push_str(&format!(
                     " {} is stored as {}.",
                     cell(&written),
@@ -955,7 +955,7 @@ fn stored(entry: &Json, golden: &Golden) -> Vec<String> {
                 "|---|---|---|".to_string(),
             ]);
             for (suffix, ty, _) in columns {
-                let value = middle
+                let value = sample
                     .and_then(|example| example.stored.iter().find(|(name, _)| name == suffix))
                     .map(|(_, value)| cell(value))
                     .unwrap_or_default();
@@ -1388,7 +1388,7 @@ mod tests {
     }
 
     #[test]
-    fn every_type_has_a_golden_file_packed() {
+    fn every_type_has_a_forms_file_packed() {
         for entry in jadpo_std::standard::STANDARD_TYPES {
             assert!(
                 unpack(entry.name).is_some(),

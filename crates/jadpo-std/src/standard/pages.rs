@@ -90,7 +90,7 @@ fn entries(file: &'static str) -> Vec<TypePage> {
         let mut current = String::new();
         let mut example = String::new();
         let mut notes: Vec<String> = Vec::new();
-        let mut in_notes = false;
+        let mut listing_notes = false;
         while let Some(line) = lines.peek().copied() {
             if line.starts_with("# ") {
                 break;
@@ -105,9 +105,9 @@ fn entries(file: &'static str) -> Vec<TypePage> {
                     example.push('\n');
                 }
             } else if let Some(note) = line.strip_prefix("- ") {
-                in_notes = true;
+                listing_notes = true;
                 notes.push(note.to_string());
-            } else if in_notes && line.starts_with("  ") {
+            } else if listing_notes && line.starts_with("  ") {
                 if let Some(note) = notes.last_mut() {
                     note.push(' ');
                     note.push_str(line.trim());
