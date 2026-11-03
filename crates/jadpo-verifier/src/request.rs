@@ -58,7 +58,7 @@ impl Repository {
 
     /// A repository at an address the caller vouches for, which only
     /// [`crate::git::GitPolicy::local_for_tests`] makes.
-    pub(crate) fn vouched(url: String) -> Repository {
+    pub(crate) fn given_by_tests(url: String) -> Repository {
         Repository {
             host: String::new(),
             url,

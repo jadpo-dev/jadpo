@@ -25,8 +25,9 @@ pub const SHORTEST_TOKEN: usize = 32;
 /// How many verifications may wait.
 pub const WAITING: usize = 16;
 
-/// How many finished verifications are kept to be asked after.
-const KEPT: usize = 64;
+/// How many finished verifications are kept to be asked after: each holds
+/// an archive, in a machine whose memory the next run needs.
+const KEPT: usize = 8;
 
 /// What the service does beside the verifier.
 #[derive(Clone)]

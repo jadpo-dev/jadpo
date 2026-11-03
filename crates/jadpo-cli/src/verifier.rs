@@ -54,34 +54,34 @@ fn start_failed(message: &str, reason: String, next: &str) -> Diagnostic {
 }
 
 /// The credential and the sandbox, or why it can't serve.
-fn ready(env: &Environment) -> Result<(String, Sandbox), Diagnostic> {
+fn ready(env: &Environment) -> Result<(String, Sandbox), Box<Diagnostic>> {
     let Some(token) = env.var(TOKEN).filter(|token| token.len() >= SHORTEST_TOKEN) else {
-        return Err(start_failed(
+        return Err(Box::new(start_failed(
             "`jadpo package verify --serve` has no credential",
             format!(
                 "It answers only the registry, which proves itself with a credential in `{TOKEN}`, of at least {SHORTEST_TOKEN} characters."
             ),
             "Set JADPO_VERIFIER_TOKEN to the secret the registry holds",
-        ));
+        )));
     };
     let sandbox = Sandbox::detect().map_err(|why| {
-        start_failed(
+        Box::new(start_failed(
             "`jadpo package verify --serve` has no sandbox to run packages in",
             format!(
                 "A package's tests are code from anyone, and they run only in a sandbox with no network: {why}."
             ),
             "Run it from its container image, which has bubblewrap, or install bubblewrap on Linux",
-        )
+        ))
     })?;
     if !sandbox.is_isolating() {
-        return Err(start_failed(
+        return Err(Box::new(start_failed(
             "`jadpo package verify --serve` serves only on Linux",
             format!(
                 "A package's tests are code from anyone, and {} here shares this machine's processes and can't limit their memory.",
                 sandbox.name()
             ),
             "Run it from its container image",
-        ));
+        )));
     }
     Ok((token.to_string(), sandbox))
 }
@@ -113,7 +113,7 @@ pub(crate) fn reply(call: &Call) -> Reply {
         ));
     }
     if let Err(diagnostic) = ready(&call.environment) {
-        return Reply::Failed(Box::new(diagnostic));
+        return Reply::Failed(diagnostic);
     }
     Reply::Session(Session::Verifier(Box::new(VerifierArgs {
         listen: call.value("--listen").unwrap_or(LISTEN).to_string(),
@@ -125,10 +125,10 @@ pub(crate) fn reply(call: &Call) -> Reply {
 
 /// Serves until the process is stopped.
 pub fn serve(args: &VerifierArgs, env: &Environment) -> u8 {
-    let refuse = |diagnostic: Diagnostic| -> u8 {
+    let refuse = |diagnostic: Box<Diagnostic>| -> u8 {
         let output = finish(
             Some("package"),
-            Reply::Failed(Box::new(diagnostic)),
+            Reply::Failed(diagnostic),
             env,
             args.json,
             args.choice,
@@ -144,11 +144,11 @@ pub fn serve(args: &VerifierArgs, env: &Environment) -> u8 {
     let jadpo = match std::env::current_exe().and_then(std::fs::canonicalize) {
         Ok(jadpo) => jadpo,
         Err(error) => {
-            return refuse(start_failed(
+            return refuse(Box::new(start_failed(
                 "`jadpo package verify --serve` can't find its own `jadpo`",
                 format!("It runs itself in the sandbox: {error}."),
                 "Run it from its container image",
-            ));
+            )));
         }
     };
     let name = sandbox.name();
@@ -159,7 +159,7 @@ pub fn serve(args: &VerifierArgs, env: &Environment) -> u8 {
         scratch: std::env::temp_dir(),
         limits: CHECKS,
         archives: archives(args.registry.clone()),
-        releases: lowest_release(env),
+        releases: declared_release(env),
     };
     let options = Options {
         log: Arc::new(|line: String| {
@@ -170,11 +170,11 @@ pub fn serve(args: &VerifierArgs, env: &Environment) -> u8 {
     let service = match Service::start(&args.listen, &token, verifier, options) {
         Ok(service) => service,
         Err(why) => {
-            return refuse(start_failed(
+            return refuse(Box::new(start_failed(
                 "`jadpo package verify --serve` couldn't start",
                 format!("Listening failed: {why}."),
                 "Give another address with `--listen`, or stop what holds that one",
-            ));
+            )));
         }
     };
     let address = service.address().to_string();
@@ -223,7 +223,7 @@ impl Report for Quiet {
 
 /// The newest release of a line, fetched and checked as a project's own
 /// `jadpo` would be.
-fn lowest_release(env: &Environment) -> jadpo_verifier::verification::Releases {
+fn declared_release(env: &Environment) -> jadpo_verifier::verification::Releases {
     let home: Option<PathBuf> =
         crate::package_cache::home(env).map(|home| std::path::absolute(&home).unwrap_or(home));
     Arc::new(move |line| {

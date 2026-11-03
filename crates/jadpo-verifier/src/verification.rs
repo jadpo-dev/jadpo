@@ -308,7 +308,7 @@ impl Verifier {
         {
             bar.insert(0, row("files", "passed", &judged.summary()));
         }
-        self.with_lowest(
+        self.with_declared(
             &work,
             &source,
             &ran,
@@ -405,11 +405,11 @@ impl Verifier {
         Ok(Report::of(&done))
     }
 
-    /// Checks with the lowest Jadpo release the package declares, when that
+    /// Checks with the Jadpo release the package declares, when that
     /// isn't the release already checked with: a row of the bar, the whole
     /// bar for that release passing or failing it. Its report says nothing
     /// else: what a release shows comes from the newest.
-    fn with_lowest(
+    fn with_declared(
         &self,
         work: &Workspace,
         source: &Report,
@@ -434,14 +434,14 @@ impl Verifier {
         if own == line || own.starts_with(&format!("{line}.")) {
             return Ok(());
         }
-        let mut lowest = row(
-            "lowest jadpo",
+        let mut declared = row(
+            "declared jadpo",
             "not_checked",
             &format!("no release of {line} to check with"),
         );
         if let Some(binary) = (self.releases)(line) {
-            let report = self.report(work, &binary, "lowest", new, previous, false)?;
-            lowest = match &report {
+            let report = self.report(work, &binary, "declared", new, previous, false)?;
+            declared = match &report {
                 Report::Answered {
                     data: Some(data), ..
                 } if data["passed"].is_boolean() => {
@@ -450,23 +450,27 @@ impl Verifier {
                         list.push(json!(release));
                     }
                     if data["passed"] == true {
-                        row("lowest jadpo", "passed", &format!("passes with {release}"))
+                        row(
+                            "declared jadpo",
+                            "passed",
+                            &format!("passes with {release}"),
+                        )
                     } else {
                         checked["passed"] = json!(false);
-                        row("lowest jadpo", "failed", &format!("fails with {release}"))
+                        row("declared jadpo", "failed", &format!("fails with {release}"))
                     }
                 }
                 // Too old to have `verify`, or stopped by its limits on a
                 // release this one doesn't run with.
                 _ => row(
-                    "lowest jadpo",
+                    "declared jadpo",
                     "not_checked",
                     &format!("{line}'s release can't check it"),
                 ),
             };
         }
         if let Some(bar) = checked["bar"].as_array_mut() {
-            bar.push(lowest);
+            bar.push(declared);
         }
         Ok(())
     }

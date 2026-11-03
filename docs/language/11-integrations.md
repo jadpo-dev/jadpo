@@ -1807,6 +1807,7 @@ it can send makes a release live.
   ([compiler/runtime §2.1](../compiler-runtime.md#21-workspace-and-crates)).
 
 ### The verifier
+<!-- topic: the-verifier -->
 
 The verifier is `jadpo package verify`, the same tool authors run, in a
 container image published with each Jadpo release. A package's tests and
@@ -1899,7 +1900,7 @@ digest.
 **Which Jadpo.** It checks with the release its image carries, which is the
 newest once deployed. When the package's `jadpo:` names another line, it also
 runs the bar with that line's newest release, fetched and checked as a
-project's own `jadpo` is, as the bar's `lowest jadpo` row and an entry in
+project's own `jadpo` is, as the bar's `declared jadpo` row and an entry in
 `checked_with`. A release too old to have `verify` can't say, and the row
 says so. What a release shows always comes from the newest.
 

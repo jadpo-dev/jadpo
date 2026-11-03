@@ -93,7 +93,7 @@ impl GitPolicy {
         if let Some(root) = &self.local_root {
             let url = format!("file://{}/", root.display());
             if text.starts_with(&url) && !text.contains("/../") {
-                return Ok(Repository::vouched(text.to_string()));
+                return Ok(Repository::given_by_tests(text.to_string()));
             }
         }
         Repository::parse(text)

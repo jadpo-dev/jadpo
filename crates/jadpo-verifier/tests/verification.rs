@@ -507,9 +507,9 @@ fn the_previous_release_is_what_its_digest_says() {
 }
 
 #[test]
-fn it_checks_with_the_lowest_release_declared() {
+fn it_checks_with_the_release_declared() {
     let Some(sandbox) = sandbox() else { return };
-    let set = set("verify-lowest");
+    let set = set("verify-declared");
     let (url, commit) = set.repository(PACKAGE);
     let facts = json!({ "kind": "library" });
     let declared = ("jadpo_declared", json!("0.2"));
@@ -527,7 +527,7 @@ fn it_checks_with_the_lowest_release_declared() {
 
     // No release of that line to be had: the row says so, and it passes.
     let answer = checked(base.verify(&request));
-    assert_eq!(row(&answer, "lowest jadpo")["state"], "not_checked");
+    assert_eq!(row(&answer, "declared jadpo")["state"], "not_checked");
     assert_eq!(answer["passed"], true);
 
     let older = |passed: bool, name: &str| {
@@ -540,14 +540,14 @@ fn it_checks_with_the_lowest_release_declared() {
         Some(passing.clone())
     });
     let answer = checked(base.verify(&request));
-    assert_eq!(row(&answer, "lowest jadpo")["state"], "passed");
+    assert_eq!(row(&answer, "declared jadpo")["state"], "passed");
     assert_eq!(answer["checked_with"], json!(["0.3.0", "0.2.5"]));
     assert_eq!(answer["passed"], true);
 
     let failing = older(false, "older-failing");
     base.releases = Arc::new(move |_| Some(failing.clone()));
     let answer = checked(base.verify(&request));
-    assert_eq!(row(&answer, "lowest jadpo")["state"], "failed");
+    assert_eq!(row(&answer, "declared jadpo")["state"], "failed");
     assert_eq!(answer["passed"], false);
     assert_eq!(answer["digest"], Value::Null);
 
@@ -555,7 +555,7 @@ fn it_checks_with_the_lowest_release_declared() {
     let too_old = script(set.tools.path(), "older-old", "echo unknown; exit 2");
     base.releases = Arc::new(move |_| Some(too_old.clone()));
     let answer = checked(base.verify(&request));
-    assert_eq!(row(&answer, "lowest jadpo")["state"], "not_checked");
+    assert_eq!(row(&answer, "declared jadpo")["state"], "not_checked");
     assert_eq!(answer["passed"], true);
 }
 
