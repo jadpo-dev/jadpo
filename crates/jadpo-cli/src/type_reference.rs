@@ -68,10 +68,7 @@ pub fn types_json() -> Json {
             ),
             ("min", bound(entry.holds, true)),
             ("max", bound(entry.holds, false)),
-            (
-                "personal",
-                entry.personal().map_or(Json::Null, Json::from),
-            ),
+            ("personal", entry.personal().map_or(Json::Null, Json::from)),
             ("text", text_word(entry.text).map_or(Json::Null, Json::from)),
             ("json", json_word(entry.json).into()),
             ("storage", storage_word(entry.storage).into()),

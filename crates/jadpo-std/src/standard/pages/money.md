@@ -98,7 +98,7 @@ TaxRate(20%)
 An amount off a price, or a percentage off it.
 
 Use it for promotions and vouchers. `money.apply_discount` takes one off a
-`Price`. For a price itself, use `Price`.
+`Price`.
 
 ```jadpo
 Discount.percentage_off { percentage: 20% }

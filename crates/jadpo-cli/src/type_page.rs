@@ -28,7 +28,8 @@ pub fn type_id(name: &str) -> String {
     let chars: Vec<char> = name.chars().collect();
     let mut id = String::from("type-");
     for (i, c) in chars.iter().enumerate() {
-        let after_word = i > 0 && (chars[i - 1].is_ascii_lowercase() || chars[i - 1].is_ascii_digit());
+        let after_word =
+            i > 0 && (chars[i - 1].is_ascii_lowercase() || chars[i - 1].is_ascii_digit());
         let starts_word = i > 0
             && chars[i - 1].is_ascii_uppercase()
             && chars.get(i + 1).is_some_and(char::is_ascii_lowercase);
@@ -346,12 +347,13 @@ impl Reference {
         let fields = items(entry, "fields");
         let variants = items(entry, "variants");
         let mut out = Vec::new();
-        let field_type = |field: &Json| {
-            type_link(text(field, "type").unwrap_or_default(), &names)
-        };
+        let field_type = |field: &Json| type_link(text(field, "type").unwrap_or_default(), &names);
         let required = |field: &Json| if flag(field, "optional") { "No" } else { "Yes" };
         if !fields.is_empty() {
-            out.extend(["| Field | Type | Required? |".to_string(), "|---|---|---|".to_string()]);
+            out.extend([
+                "| Field | Type | Required? |".to_string(),
+                "|---|---|---|".to_string(),
+            ]);
             for field in fields {
                 out.push(format!(
                     "| `{}` | {} | {} |",
@@ -403,7 +405,10 @@ impl Reference {
             let sentence = match holds {
                 "text" | "bytes" => match text(entry, "text") {
                     Some("secret") => "One secret value, with no parts.".to_string(),
-                    _ => format!("One value, held as text in one set form, with no parts: {}.", code(&sample)),
+                    _ => format!(
+                        "One value, held as text in one set form, with no parts: {}.",
+                        code(&sample)
+                    ),
                 },
                 "whole" => format!(
                     "One whole number from {} to {}.",
@@ -428,7 +433,10 @@ impl Reference {
                     type_link(argument(entry, 0).unwrap_or("K"), &names),
                     type_link(argument(entry, 1).unwrap_or("V"), &names)
                 ),
-                _ => format!("One value, with no fields to fill in. As text it reads {}.", code(&sample)),
+                _ => format!(
+                    "One value, with no fields to fill in. As text it reads {}.",
+                    code(&sample)
+                ),
             };
             out.extend([sentence, String::new()]);
         }
@@ -516,7 +524,11 @@ impl Reference {
         if text(entry, "text") != Some("secret") {
             always.push("`text.format`".to_string());
         }
-        always.extend(["`json.read`".to_string(), "`json.write`".to_string(), "`==`".to_string()]);
+        always.extend([
+            "`json.read`".to_string(),
+            "`json.write`".to_string(),
+            "`==`".to_string(),
+        ]);
         if !items(entry, "operations").is_empty() {
             out.push(String::new());
         }
@@ -602,7 +614,11 @@ fn without_area(summary: &str) -> String {
                 out.replace_range(open..=open + len, &replaced);
             }
             _ => {
-                let start = if out[..open].ends_with(' ') { open - 1 } else { open };
+                let start = if out[..open].ends_with(' ') {
+                    open - 1
+                } else {
+                    open
+                };
                 out.replace_range(start..=open + len, "");
             }
         }
@@ -634,7 +650,11 @@ fn enum_shape(entry: &Json) -> Vec<String> {
         format!("One of these {} values:", variants.len()),
         String::new(),
     ];
-    if variants.iter().map(pair).all(|(name, written)| name == written) {
+    if variants
+        .iter()
+        .map(pair)
+        .all(|(name, written)| name == written)
+    {
         out.extend([
             variants
                 .iter()
@@ -665,7 +685,11 @@ fn all_values(entry: &Json) -> Vec<String> {
         return Vec::new();
     }
     let name = text(entry, "name").unwrap_or_default();
-    let shown = variants.len().min(if variants.len() > LISTED { IN_SHAPE } else { LISTED });
+    let shown = variants.len().min(if variants.len() > LISTED {
+        IN_SHAPE
+    } else {
+        LISTED
+    });
     let listed: Vec<String> = variants[..shown]
         .iter()
         .map(|variant| {
@@ -731,7 +755,9 @@ fn make_one(entry: &Json) -> Vec<String> {
             .unwrap_or_default()
             .iter()
             .filter_map(|bad| match bad {
-                Json::Str(bad) if !bad.is_empty() && bad.len() <= 40 && !bad.chars().any(char::is_control) => {
+                Json::Str(bad)
+                    if !bad.is_empty() && bad.len() <= 40 && !bad.chars().any(char::is_control) =>
+                {
                     Some(code(bad))
                 }
                 _ => None,
@@ -756,7 +782,11 @@ fn make_one(entry: &Json) -> Vec<String> {
     if !gives.is_empty() {
         out.push(format!(
             "{} one: {}.",
-            if gives.len() == 1 { "This operation gives" } else { "These operations give" },
+            if gives.len() == 1 {
+                "This operation gives"
+            } else {
+                "These operations give"
+            },
             joined(&gives, "and")
         ));
     }
@@ -802,24 +832,39 @@ fn in_json(entry: &Json, golden: &Golden) -> Vec<String> {
     let words = match text(entry, "json").unwrap_or_default() {
         "text" => "A string".to_string(),
         "object" => "An object of its parts".to_string(),
-        "tagged" => "An object of its variant's name, as `tag`, and the variant's fields".to_string(),
+        "tagged" => {
+            "An object of its variant's name, as `tag`, and the variant's fields".to_string()
+        }
         "number" => "A number".to_string(),
         "array" => "An array of its items".to_string(),
         "keyed" => "An object of its entries, each key written as its text".to_string(),
         "geojson" => "A GeoJSON geometry, with each position's longitude first".to_string(),
         "feature" => "A GeoJSON object of its geometry and properties".to_string(),
-        "secret" => "Never its value: it is written redacted".to_string(),
+        "secret" => "A string when it arrives, and written redacted when it leaves".to_string(),
         _ => "One shape".to_string(),
     };
-    let mut out = vec![format!("{words}, in a request, a response or `json.write`:"), String::new()];
-    if !golden.examples.is_empty() {
+    let mut out = vec![
+        format!("{words}, in a request, a response or `json.write`:"),
+        String::new(),
+    ];
+    let mut shown: Vec<&str> = Vec::new();
+    for example in &golden.examples {
+        if shown.len() < JSON_SHOWN && !shown.contains(&example.json.as_str()) {
+            shown.push(&example.json);
+        }
+    }
+    if !shown.is_empty() {
         out.push("```json".to_string());
-        out.extend(golden.examples.iter().take(JSON_SHOWN).map(|example| example.json.clone()));
+        out.extend(shown.iter().map(|json| json.to_string()));
         out.extend(["```".to_string(), String::new()]);
     }
-    if items(entry, "fields").iter().any(|field| flag(field, "optional")) {
+    if items(entry, "fields")
+        .iter()
+        .any(|field| flag(field, "optional"))
+    {
         out.extend([
-            "When you read one, a field that isn't required may be left out, or sent as `null`.".to_string(),
+            "When you read one, a field that isn't required may be left out, or sent as `null`."
+                .to_string(),
             String::new(),
         ]);
     }
@@ -880,13 +925,21 @@ fn stored(entry: &Json, golden: &Golden) -> Vec<String> {
                 .as_ref()
                 .map(|comment| {
                     let mut chars = comment.chars();
-                    let first = chars.next().map(|c| c.to_ascii_lowercase()).unwrap_or_default();
+                    let first = chars
+                        .next()
+                        .map(|c| c.to_ascii_lowercase())
+                        .unwrap_or_default();
                     format!(", holding the {first}{}", chars.as_str())
                 })
                 .unwrap_or_default();
-            let mut sentence = format!("It is stored in one column named for the field, of type `{ty}`{what}.");
+            let mut sentence =
+                format!("It is stored in one column named for the field, of type `{ty}`{what}.");
             if let Some((_, value)) = middle.and_then(|example| example.stored.first()) {
-                sentence.push_str(&format!(" {} is stored as {}.", cell(&written), cell(value)));
+                sentence.push_str(&format!(
+                    " {} is stored as {}.",
+                    cell(&written),
+                    cell(value)
+                ));
             }
             out.extend([sentence, String::new()]);
         }
@@ -918,10 +971,15 @@ fn shown(entry: &Json) -> Vec<String> {
     let name = text(entry, "name").unwrap_or_default();
     let mut out = vec!["### How it is shown to people".to_string(), String::new()];
     if text(entry, "text") == Some("secret") {
-        out.extend([format!("`text.format` doesn't take it: a `{name}` is never shown."), String::new()]);
+        out.extend([
+            format!("`text.format` doesn't take it: a `{name}` is never shown."),
+            String::new(),
+        ]);
         return out;
     }
-    let options = get(entry, "format").map(|format| items(format, "options")).unwrap_or_default();
+    let options = get(entry, "format")
+        .map(|format| items(format, "options"))
+        .unwrap_or_default();
     let of = |needed: bool| -> Vec<String> {
         options
             .iter()
@@ -930,19 +988,28 @@ fn shown(entry: &Json) -> Vec<String> {
             .map(|option| format!("`{option}:`"))
             .collect()
     };
-    let mut sentence = "`text.format(value, locale:)` shows it to people in their locale.".to_string();
+    let mut sentence =
+        "`text.format(value, locale:)` shows it to people in their locale.".to_string();
     if !of(true).is_empty() {
         sentence.push_str(&format!(" A call also gives {}.", joined(&of(true), "and")));
     }
     if !of(false).is_empty() {
-        sentence.push_str(&format!(" A call may also give {}.", joined(&of(false), "or")));
+        sentence.push_str(&format!(
+            " A call may also give {}.",
+            joined(&of(false), "or")
+        ));
     }
     out.extend([sentence, String::new()]);
     let examples = get(entry, "examples");
-    let valid = examples.map(|examples| items(examples, "valid")).unwrap_or_default();
+    let valid = examples
+        .map(|examples| items(examples, "valid"))
+        .unwrap_or_default();
     if !valid.is_empty() {
         let mut given = vec!["`locale: Locale.en_gb`".to_string()];
-        if options.iter().any(|option| text(option, "name") == Some("zone")) {
+        if options
+            .iter()
+            .any(|option| text(option, "name") == Some("zone"))
+        {
             given.push("`zone: Zone.europe_london`".to_string());
         }
         if let Some(format) = examples.and_then(|examples| text(examples, "format")) {
@@ -984,7 +1051,10 @@ fn page_blocks(page: &str) -> Vec<Block> {
         .peekable();
     // The header holds the meaning, so it isn't printed twice.
     lines.next();
-    let flush_prose = |paragraph: &mut String, prose: &mut Vec<String>, heading: &mut Option<String>, blocks: &mut Vec<Block>| {
+    let flush_prose = |paragraph: &mut String,
+                       prose: &mut Vec<String>,
+                       heading: &mut Option<String>,
+                       blocks: &mut Vec<Block>| {
         if !paragraph.is_empty() {
             prose.push(plain_links(&std::mem::take(paragraph)));
         }
@@ -1021,10 +1091,16 @@ fn page_blocks(page: &str) -> Vec<Block> {
                     rows.push(table_cells(next));
                 }
             }
-            blocks.push(Block::section(heading.take().unwrap_or_default(), aligned(rows)));
+            blocks.push(Block::section(
+                heading.take().unwrap_or_default(),
+                aligned(rows),
+            ));
             continue;
         }
-        if let Some(title) = line.strip_prefix("## ").or_else(|| line.strip_prefix("### ")) {
+        if let Some(title) = line
+            .strip_prefix("## ")
+            .or_else(|| line.strip_prefix("### "))
+        {
             flush_prose(&mut paragraph, &mut prose, &mut heading, &mut blocks);
             if let Some(empty) = heading.take() {
                 blocks.push(Block::section(empty, Vec::<String>::new()));
@@ -1053,7 +1129,11 @@ fn page_blocks(page: &str) -> Vec<Block> {
 fn table_cells(line: &str) -> Vec<String> {
     line.trim_matches('|')
         .split(" | ")
-        .map(|cell| plain_links(cell.trim()).replace('`', "").replace("\\|", "|"))
+        .map(|cell| {
+            plain_links(cell.trim())
+                .replace('`', "")
+                .replace("\\|", "|")
+        })
         .collect()
 }
 
@@ -1164,8 +1244,14 @@ pub fn index_help() -> Reply {
         })
         .collect();
     let screen = Screen::new()
-        .with(Block::list(format!("Standard types ({})", rows.len()), rows))
-        .with(Block::hint("jadpo help Money", "shows one type's shape and an example"));
+        .with(Block::list(
+            format!("Standard types ({})", rows.len()),
+            rows,
+        ))
+        .with(Block::hint(
+            "jadpo help Money",
+            "shows one type's shape and an example",
+        ));
     let data = Json::object([
         ("index", Json::from(reference.index())),
         (
@@ -1175,7 +1261,10 @@ pub fn index_help() -> Reply {
                 Json::object([
                     ("name", Json::from(name)),
                     ("id", Json::from(type_id(name))),
-                    ("group", Json::from(text(entry, "group").unwrap_or_default())),
+                    (
+                        "group",
+                        Json::from(text(entry, "group").unwrap_or_default()),
+                    ),
                     ("meaning", Json::from(meaning(name))),
                     (
                         "example",
@@ -1240,7 +1329,13 @@ mod tests {
             let name = text(entry, "name").unwrap_or_default();
             let page = page(name);
             let mut from = 0;
-            for heading in ["## Shape", "## Example", "## Good to know", "## In JSON", "## Details"] {
+            for heading in [
+                "## Shape",
+                "## Example",
+                "## Good to know",
+                "## In JSON",
+                "## Details",
+            ] {
                 let Some(at) = page[from..].find(heading) else {
                     panic!("{name}: {heading} is missing or out of order:\n{page}");
                 };
@@ -1252,12 +1347,27 @@ mod tests {
     #[test]
     fn person_name_shows_what_the_agreed_sample_shows() {
         let page = page("PersonName");
-        assert!(page.starts_with("# `PersonName`\n\nA person's name"), "{page}");
+        assert!(
+            page.starts_with("# `PersonName`\n\nA person's name"),
+            "{page}"
+        );
         assert!(page.contains("| Field | Type | Required? |"), "{page}");
-        assert!(page.contains("| `given` | [`GivenName`](type-given-name.md) | Yes |"), "{page}");
-        assert!(page.contains("| `family` | [`FamilyName`](type-family-name.md) | No |"), "{page}");
-        assert!(page.contains("PersonName { given: \"Mary\" family: \"Somerville\" }"), "{page}");
-        assert!(page.contains("{\"given\":\"Mary\",\"family\":\"Somerville\"}"), "{page}");
+        assert!(
+            page.contains("| `given` | [`GivenName`](type-given-name.md) | Yes |"),
+            "{page}"
+        );
+        assert!(
+            page.contains("| `family` | [`FamilyName`](type-family-name.md) | No |"),
+            "{page}"
+        );
+        assert!(
+            page.contains("PersonName { given: \"Mary\" family: \"Somerville\" }"),
+            "{page}"
+        );
+        assert!(
+            page.contains("{\"given\":\"Mary\",\"family\":\"Somerville\"}"),
+            "{page}"
+        );
         assert!(page.contains("<details>"), "{page}");
     }
 
@@ -1280,7 +1390,11 @@ mod tests {
     #[test]
     fn every_type_has_a_golden_file_packed() {
         for entry in jadpo_std::standard::STANDARD_TYPES {
-            assert!(unpack(entry.name).is_some(), "{} has no golden file", entry.name);
+            assert!(
+                unpack(entry.name).is_some(),
+                "{} has no golden file",
+                entry.name
+            );
         }
     }
 

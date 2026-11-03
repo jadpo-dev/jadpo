@@ -175,7 +175,7 @@ HsCode("090111")
 
 A rule saying who pays for what in international shipping: `FOB`, `DDP` and so on.
 
-Use it on a trade contract or a shipping order. These are the Incoterms 2020 rules.
+Use it on a trade deal or a shipping order. These are the Incoterms 2020 rules.
 
 ```jadpo
 Incoterm.fob

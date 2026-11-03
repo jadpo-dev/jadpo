@@ -1136,6 +1136,13 @@ standard type's contract under `types` and every standard-library
 operation under `operations`, which the docs' type reference is built
 from, and the schemas of the manifest and of `jadpo test --json`.
 
+`jadpo help <Type>` prints a standard type's page offline, the same page as
+on the site: what it is, when to use it and what to use instead, its shape, an
+example, what is good to know, its JSON and its details (`jadpo help PersonName`).
+With `--json` it gives the type's fields, which are required, and the page. Any
+spelling finds it, so `personname` and `person_name` do too. `jadpo help types`
+lists every standard type from A to Z.
+
 `jadpo help <rule>`, with the id an error's `rule:` line gives
 (`jadpo help import.unused`), prints the rule's page offline, the page its
 `help:` link opens: the rule, its area, whether it is declinable and who

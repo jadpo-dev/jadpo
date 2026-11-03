@@ -44,7 +44,10 @@ const FILES: &[(&str, &str)] = &[
     ("Places", include_str!("pages/places.md")),
     ("Geospatial", include_str!("pages/geospatial.md")),
     ("Money and banking", include_str!("pages/money.md")),
-    ("Tax and identity numbers", include_str!("pages/identity.md")),
+    (
+        "Tax and identity numbers",
+        include_str!("pages/identity.md"),
+    ),
     ("Commerce and logistics", include_str!("pages/commerce.md")),
     ("Time and calendar", include_str!("pages/time.md")),
     ("Physical quantities", include_str!("pages/quantities.md")),
@@ -56,23 +59,21 @@ const FILES: &[(&str, &str)] = &[
     ("Text formats", include_str!("pages/text_formats.md")),
     ("Security", include_str!("pages/security.md")),
     ("Travel", include_str!("pages/travel.md")),
-    ("Other with a published standard", include_str!("pages/other.md")),
+    (
+        "Other with a published standard",
+        include_str!("pages/other.md"),
+    ),
     ("AI", include_str!("pages/ai.md")),
 ];
 
 /// Every type's entry, each file's in the order it writes them.
 pub fn all() -> Vec<TypePage> {
-    FILES
-        .iter()
-        .flat_map(|(_, file)| entries(file))
-        .collect()
+    FILES.iter().flat_map(|(_, file)| entries(file)).collect()
 }
 
 /// `name`'s entry.
 pub fn of(name: &str) -> Option<TypePage> {
-    let (group, _) = GROUPS
-        .iter()
-        .find(|(_, names)| names.contains(&name))?;
+    let (group, _) = GROUPS.iter().find(|(_, names)| names.contains(&name))?;
     let (_, file) = FILES.iter().find(|(written, _)| written == group)?;
     entries(file).into_iter().find(|page| page.name == name)
 }

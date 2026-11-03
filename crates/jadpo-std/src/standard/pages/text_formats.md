@@ -1,6 +1,6 @@
 # Markdown
 
-Text written in Markdown: `Fresh **soup** daily.`
+Text written in Markdown, the plain-text format for bold, headings and lists.
 
 Use it for content people write. `markup.to_html` turns it into `Html` to show. For
 structured documents, use `RichText`. For plain text, use `Text`.
