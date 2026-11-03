@@ -216,6 +216,13 @@ pub fn read(root: &Path, with: Option<&str>, has_acceptances: bool) -> Result<Be
             Some(rest.split_once('/')?.0.to_string())
         })
         .collect();
+    let migrations: BTreeSet<String> = paths
+        .iter()
+        .filter_map(|path| {
+            let rest = path.strip_prefix("database/migrations/")?;
+            Some(rest.split_once('/')?.0.to_string())
+        })
+        .collect();
     let wanted: Vec<&String> = paths
         .iter()
         .filter(|path| jadpo_db::compared_on_the_before_side(path))
@@ -226,6 +233,7 @@ pub fn read(root: &Path, with: Option<&str>, has_acceptances: bool) -> Result<Be
         described,
         files,
         domains,
+        migrations,
     }))
 }
 

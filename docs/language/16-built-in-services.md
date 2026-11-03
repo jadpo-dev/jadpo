@@ -712,6 +712,12 @@ that let go of them has committed:
 - **Never held again.** Once its bytes are being deleted, a `File` can't
   be kept in a record: a write that tries stops with a fault, keeping
   nothing.
+- **A column or table dropped.** A retired `File` column's rows, and a
+  retired table's, still hold their files. A migration that drops the
+  column or table lets go of each in the same transaction, and the tick
+  deletes the bytes no record holds any more, as long as a `File` field
+  still names their store of files
+  ([Removing data](05-data.md#removing-data)).
 - **One database per store of files.** The holders are counted in the
   database whose records hold the files. Fields naming one store of files
   in entities of two databases are `toolchain.not_built_yet`, since one
@@ -1062,6 +1068,13 @@ A person's erasure deletes the history of every record it deletes, in
 the same statement ([Erasure](15-personal-data.md#erasure)). The
 permissions report lists which entities are audited
 ([The permissions report](09-policy.md#the-permissions-report)).
+
+A migration never removes an entry
+([Removing data](05-data.md#removing-data)). What an entry holds of a
+field retired or dropped since stays until its retention ends, and
+`history` leaves it out for every caller, since the field's grants went
+with it. The entries of an entity that is gone stay with nothing left to
+purge them, so a person accepting its removal is told.
 
 The audit trail records changes to data. Who exported or erased a
 person, and who read sensitive fields, is kept as log events instead

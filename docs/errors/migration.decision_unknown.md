@@ -41,7 +41,7 @@ error: Nothing about `Note.body` needs a decision
   |
 5 |     Note.body: FieldChange.retired
   |     ^^^^^^^^^ no such change
-  reason: A migration's `changes.jadpo` holds only the decisions its own changes need, and nothing `20261020T1401_add_stars` changes about `Note.body` does: a decision is a value for existing rows of a required field or for rows a field no longer allows, or retiring a field that is gone.
+  reason: A migration's `changes.jadpo` holds only the decisions its own changes need, and nothing `20261020T1401_add_stars` changes about `Note.body` does: a decision is a value for existing rows of a required field or for rows a field no longer allows, retiring a field or an entity that is gone, or dropping one that is retired.
   next: Remove `Note.body` (agent)
   rule: migration.decision_unknown
   help: https://jadpo.dev/docs/errors/migration.decision_unknown

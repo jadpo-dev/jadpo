@@ -127,6 +127,11 @@ std_enum! {
     }
 }
 
+/// The column a person's record keeps the time they were erased in, on an
+/// entity that keeps their record field by field (area 15, "The person's
+/// own record"; chunk P4b). A record holding a value is hidden.
+pub const ERASED_AT: &str = "jadpo_erased_at";
+
 std_enum! {
     /// The way a locale's text runs (area 10, "Locales"): what `locale.direction`
     /// gives. Its wording, for a template's `dir=` attribute, is `ltr` and
@@ -324,6 +329,19 @@ std_enum! {
         /// the old build.
         Retired: "retired",
         /// The column is removed, in a later migration than the retirement.
+        Dropped: "dropped",
+    }
+}
+
+std_enum! {
+    /// A migration's decision about an entity that is gone (area 5,
+    /// "Migrations").
+    EntityChange: "EntityChange" {
+        /// Code stops using it; the table and its records stay, out of the
+        /// app's reach, until a later migration drops them.
+        Retired: "retired",
+        /// The table and its records are removed, in a later migration than
+        /// the retirement.
         Dropped: "dropped",
     }
 }
@@ -823,6 +841,7 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (AuditBy::NAME, AuditBy::NAMES.to_vec()),
         (IndexKind::NAME, IndexKind::NAMES.to_vec()),
         (FieldChange::NAME, FieldChange::NAMES.to_vec()),
+        (EntityChange::NAME, EntityChange::NAMES.to_vec()),
         (Driver::NAME, Driver::NAMES.to_vec()),
         (DeployTarget::NAME, DeployTarget::NAMES.to_vec()),
         (Trigger::NAME, Trigger::NAMES.to_vec()),
@@ -912,6 +931,7 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         AuditBy::NAME => position(AuditBy::NAMES),
         IndexKind::NAME => position(IndexKind::NAMES),
         FieldChange::NAME => position(FieldChange::NAMES),
+        EntityChange::NAME => position(EntityChange::NAMES),
         Driver::NAME => position(Driver::NAMES),
         DeployTarget::NAME => position(DeployTarget::NAMES),
         Trigger::NAME => position(Trigger::NAMES),

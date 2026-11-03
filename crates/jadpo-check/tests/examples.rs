@@ -62,7 +62,7 @@ use jadpo_graph::body::{
 use jadpo_graph::{Base, Detail, EdgeKind, Kind, Status, TypeRef};
 use jadpo_std::batch::BatchOp;
 use jadpo_std::write::WriteOp;
-use jadpo_std::{Builtin, FieldChange, Generated, OPERATIONS, OnDelete, Rules};
+use jadpo_std::{Builtin, EntityChange, FieldChange, Generated, OPERATIONS, OnDelete, Rules};
 use jadpo_syntax::SyntaxKind;
 use jadpo_syntax::ast::{self, AstNode};
 
@@ -83,9 +83,19 @@ const EXEMPT: &[(&str, &str)] = &[
         "`...` marks code left out of documentation",
     ),
     // Later areas' declarations and the syntax only they use.
+    // No teaching example removes data: each needs a person's acceptance
+    // and git around it, so the CLI's `removals` tests and area 5 show them.
     (
         "data migration decision FieldChange.dropped",
-        "not built: a drop needs a person's acceptance (area 18)",
+        "shown by the CLI's `removals` tests, with a person's acceptance",
+    ),
+    (
+        "data migration decision EntityChange.retired",
+        "shown by the CLI's `removals` tests, with a person's acceptance",
+    ),
+    (
+        "data migration decision EntityChange.dropped",
+        "shown by the CLI's `removals` tests, with a person's acceptance",
     ),
     // Later areas' graph kinds and edges are reserved or declared only
     // for their own areas, so they aren't listed as built here.
@@ -355,6 +365,11 @@ fn built() -> BTreeSet<String> {
         FieldChange::NAMES
             .iter()
             .map(|v| format!("data migration decision FieldChange.{v}")),
+    );
+    out.extend(
+        EntityChange::NAMES
+            .iter()
+            .map(|v| format!("data migration decision EntityChange.{v}")),
     );
     out
 }
@@ -1519,6 +1534,9 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
                 DecisionValue::Backfill(..) => "data migration decision backfill".to_string(),
                 DecisionValue::Change(change) => {
                     format!("data migration decision FieldChange.{}", change.name())
+                }
+                DecisionValue::Entity(change) => {
+                    format!("data migration decision EntityChange.{}", change.name())
                 }
                 DecisionValue::Invalid(..) | DecisionValue::Pending => continue,
             });

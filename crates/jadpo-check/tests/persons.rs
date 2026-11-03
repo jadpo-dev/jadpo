@@ -1,10 +1,9 @@
-//! Area 15, "The person" and "What the compiler checks" (chunk P1): an
-//! entity marked `person: true` is a person, a record that refers to one,
-//! directly or through a chain of references, belongs to them, and a field
-//! marked `personal:` on an entity that is no person and belongs to none is
-//! `data.personal_unreachable`, since erasing a person could never find it.
+//! Area 15, "The person" and "What the compiler checks" (chunks P1 and
+//! P4b): an entity marked `person: true` is a person, a record that refers
+//! to one directly belongs to them, and a field marked `personal:` on an
+//! entity erasing a person never reaches is `data.personal_unreachable`.
 //! The graph holds a `person` node for each person entity, listing the
-//! references its records belong through.
+//! references its records belong through, and what erasure keeps of it.
 
 use jadpo_db::{Database, Layout};
 use jadpo_graph::{Detail, Key, Kind, Status};
@@ -34,8 +33,8 @@ entity User {
 }
 ";
 
-/// A user's todos and their attachments: an attachment belongs to the
-/// user through its todo.
+/// A user's todos and their attachments: a todo belongs to the user, and
+/// an attachment, which refers to no person, is deleted with its todo.
 const TODOS: &str = "entity Todo {
     id: Uuid
     owner_id: User.id {
@@ -69,7 +68,7 @@ fn person(source: &str, entity: &str) -> (jadpo_graph::Node, Vec<String>) {
         .unwrap_or_else(|| panic!("person {entity} is missing"));
     let node = graph.node(id).clone();
     let through = match &node.detail {
-        Detail::Person { through } => through.clone(),
+        Detail::Person { through, .. } => through.clone(),
         other => panic!("{other:?}"),
     };
     (node, through)
@@ -114,11 +113,13 @@ fn a_marked_field_on_no_person_is_refused() {
 }
 
 #[test]
-fn records_belong_through_a_chain_of_references() {
+fn a_record_belongs_only_to_the_people_it_refers_to() {
+    // An attachment's caption is found by erasure, which deletes it with
+    // its todo, but it doesn't belong to the todo's owner.
     let source = format!("{USER}\n{TODOS}");
     assert_eq!(problems(&source), NONE);
     let (node, through) = person(&source, "User");
-    assert_eq!(through, ["Attachment.todo_id", "Todo.owner_id"]);
+    assert_eq!(through, ["Todo.owner_id"]);
     assert_eq!(
         node.parent.as_ref().map(|key| key.to_string()).as_deref(),
         Some("entity User")
@@ -206,10 +207,61 @@ entity Appointment {{
     assert_eq!(patient, ["Appointment.patient_id"]);
 }
 
+/// Erasure walks on only through what it deletes, so a marked field past
+/// a record it keeps is out of reach, whatever the references say.
 #[test]
-fn a_chain_that_comes_back_to_its_own_entity_ends() {
-    // A folder inside a folder belongs to the user who owns the outer one,
-    // and a user who invited another is one of their records too.
+fn a_marked_field_past_a_record_erasure_keeps_is_refused() {
+    let source = format!(
+        "{USER}
+entity Comment {{
+    id: Uuid
+    author_id: User.id? {{
+        on_delete: OnDelete.cleared
+    }}
+}}
+
+entity Reaction {{
+    id: Uuid
+    comment_id: Comment.id? {{
+        on_delete: OnDelete.cleared
+    }}
+    signed_as: Caption? {{
+        personal: PersonalData.identifying
+    }}
+}}
+"
+    );
+    assert_eq!(
+        problems(&source),
+        ["main.jadpo data.personal_unreachable: Erasing a person can't find `Reaction.signed_as`"]
+    );
+}
+
+/// A marked field on a record kept when something it refers to is erased
+/// is found: the record refers to no person, and loses its marked fields
+/// when erasure deletes what it refers to.
+#[test]
+fn a_marked_field_beside_a_reference_erasure_clears_is_reached() {
+    let source = format!(
+        "{USER}\n{TODOS}
+entity GuestNote {{
+    id: Uuid
+    todo_id: Todo.id? {{
+        on_delete: OnDelete.cleared
+    }}
+    signed_as: Caption? {{
+        personal: PersonalData.identifying
+    }}
+}}
+"
+    );
+    assert_eq!(problems(&source), NONE);
+}
+
+#[test]
+fn a_reference_to_another_of_their_records_is_no_way_of_belonging() {
+    // A folder inside a folder belongs to its own owner, and a user someone
+    // invited refers to them directly.
     let source = format!(
         "{}
 entity Folder {{
@@ -231,10 +283,7 @@ entity Folder {{
         )
     );
     let (_, through) = person(&source, "User");
-    assert_eq!(
-        through,
-        ["Folder.owner_id", "Folder.parent_id", "User.invited_by"]
-    );
+    assert_eq!(through, ["Folder.owner_id", "User.invited_by"]);
 }
 
 #[test]

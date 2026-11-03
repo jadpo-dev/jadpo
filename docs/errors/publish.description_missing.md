@@ -15,16 +15,25 @@ error: Public type `OutwardCode` has no description
   rule: publish.description_missing
   help: https://jadpo.dev/docs/errors/publish.description_missing
 
+Facts
+  kind: library, pure
+  storable: OutwardCode, UkPostcode, WrittenPostcode
+  failures: uk.parse: InvalidPostcode
+
+Changes since 2.0.0
+  + added  type OutwardCode
+
 Publishing bar
   compiles      passed                        no errors
   described     failed                        1 has no description
   examples      passed                        1 example, every failure shown
   tests         passed                        no tests
+  behaviour     passed                        the 1 from 2.0.0 holds
   version       passed                        2.1.0, 1 added since 2.0.0
   changelog     passed                        2.1.0 says why
   licence       passed                        mit, from Jadpo 1.0
 
 Wrote surface.jadpo_record
 
-package check failed: 1 failed, 6 passed
+package check failed: 1 failed, 7 passed
 ```

@@ -278,10 +278,14 @@ pub enum Detail {
         purge: Option<String>,
     },
     /// A person entity (area 15, "The person"): each reference a record
-    /// belongs to the person through, `Entity.field`, in name order. A
-    /// record belongs to the person when it refers to them, directly or
-    /// through these references.
-    Person { through: Vec<String> },
+    /// belongs to the person through, `Entity.field`, in name order: a
+    /// record belongs to the person when it refers to them directly.
+    Person {
+        through: Vec<String>,
+        /// The fields erasure keeps of their record (area 15, "The
+        /// person's own record"), which is deleted when there are none.
+        retained: Vec<String>,
+    },
     /// A retention (area 15, "Retention"): how long a field's value or an
     /// entity's records are kept (`after config.signup_ip_retention since
     /// created_at`), and whether it clears a field's value rather than

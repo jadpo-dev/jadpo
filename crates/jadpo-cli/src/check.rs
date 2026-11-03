@@ -127,7 +127,8 @@ pub(crate) fn checked_before_as(
             .project
             .files(&loaded.db)
             .iter()
-            .any(|file| jadpo_check::acceptances::files::is_acceptance(file.path(&loaded.db)));
+            .any(|file| jadpo_check::acceptances::files::is_acceptance(file.path(&loaded.db)))
+            || jadpo_check::acceptances::data::removes_data(&loaded.db, loaded.project);
         match crate::before::read(&loaded.root, with, has_acceptances) {
             Ok(before) => {
                 loaded.set_before(before);

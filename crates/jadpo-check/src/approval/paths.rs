@@ -175,6 +175,13 @@ fn target(view: &View<'_>, need: &Need) -> Option<Target> {
         "PackageChange.git_source" => Some(Target::Package {
             name: subject.to_string(),
         }),
+        // Who reached the records that leave the app's reach. A dropped
+        // table or column was retired by an earlier change: no path has
+        // gone through it since.
+        "DataChange.entity_removed" | "DataChange.entity_moved" => Some(Target::Reads {
+            entity: subject.to_string(),
+            field: None,
+        }),
         _ if need.family == Family::Events => {
             let mut parts = subject.splitn(3, '.');
             let _domain = parts.next();

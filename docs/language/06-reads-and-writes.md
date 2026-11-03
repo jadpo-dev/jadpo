@@ -184,7 +184,9 @@ handles. Instead, read into a type with the same fields and no rule, then
 build the type with the rule from it in code, inside an `attempt`.
 
 Records the entity's [lifecycle](05-data.md#lifecycle) hides, such as
-soft-deleted todos, are left out of every query.
+soft-deleted todos, are left out of every query. So is the record kept of
+a person who has been erased, unless the query says `include_erased: true`
+([The person's own record](15-personal-data.md#the-persons-own-record)).
 
 A query writes nothing and calls no actions
 ([Functions and actions](03-logic.md#functions-and-actions)). Call it by

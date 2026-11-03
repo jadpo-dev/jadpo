@@ -382,18 +382,15 @@ and R4, where they touch different crates.
 Already built: acceptances (`jadpo acceptance new`, matching, the reason,
 history, the CODEOWNERS gate) for API and event breaks, every widening of
 who can do what (routes made public included), security declines,
-sign-in settings past their limit, new domains, new outside hosts and
-third parties' packages from git. The kinds that belong to
+sign-in settings past their limit, new domains, new outside hosts,
+third parties' packages from git and removing data. The kinds that belong to
 features not built yet come with those features: `ThresholdChange` with
 thresholds, a service's image with services, bot checks with bot
 protection, a domain renamed with `jadpo domain rename`.
 
 - [x] **V2 The approval report**: area 17, "Reviewing a change"; area 18, "Comparing two builds"; area 14, "`jadpo approval`"; compiler/runtime §2.3, "The approval report"; `docs/errors/cli.approval_arguments.md`.
 - [x] **V1 Your own company's git packages**: area 11, "Installing safely"; area 18, "Acceptances"; area 1, "What `application { }` holds"; compiler/runtime §2.3; `docs/errors/package.own_source_invalid.md`.
-- [ ] **V3 Removing data needs a person** `opus · xhigh`: area 5,
-  "Migrations"; area 18, `DataChange`. `jadpo migrate new`'s removals (an
-  entity removed, one moved to another store, a retired column dropped),
-  each refused by `check` until a `DataChange` acceptance names it.
+- [x] **V3 Removing data needs a person**: area 5, "Removing data"; area 18, "Acceptances" and `DataChange`; area 14, "`jadpo migrate`"; area 16, "Deleting and erasing" and "Retention and erasure"; compiler/runtime §2.3, "Removals"; `docs/errors/migration.drop_not_accepted.md`.
 - [ ] **V4 Risky package upgrades need a person** `opus · high`: area 18,
   "Package upgrades". The review compares the operations and declarations
   the app uses, version ignored; a used operation removed, a used field
@@ -428,13 +425,7 @@ real deploy) and, before outside authors can publish, D3 (releases).
 - [x] **R1 Confirming a request with a passkey**: area 8, "Confirm one
   request with a passkey"; compiler/runtime, "Confirming one request with a
   passkey".
-- [ ] **R3 A release's facts, change record and fingerprints**
-  `opus · xhigh` after V5: area 11, "What a release shows", "The
-  changelog", "Search" (the fingerprints) and "Yanks, takedowns and
-  advisories" (copies). `jadpo package check` prints the facts and the
-  change record; the previous release's examples and tests run against
-  the new code; `jadpo package verify --json`. Screens designed with the
-  design skills first.
+- [x] **R3 A release's facts, change record and fingerprints**: area 11, "How a release's facts, change record and fingerprints are worked out"; area 14, "`jadpo package check`" and "`jadpo package verify`"; compiler/runtime §2.3, "What a release shows"; `docs/errors/publish.behaviour_changed.md`, `docs/errors/publish.stale_files.md`.
 - [x] **R4 The registry protocol and a local registry**: area 11, "The registry protocol"; compiler/runtime §2.1, `jadpo-registry`.
 - [ ] **R5 The registry commands** `opus · high` after R3 and R4: area 11,
   "Installing and updating from the registry", "Developing for the
@@ -445,7 +436,9 @@ real deploy) and, before outside authors can publish, D3 (releases).
   first.
 - [ ] **R6 The verifier** `opus · high` after R3: area 11, "The verifier".
   `jadpo package verify --serve`, fetching over git and then verifying with
-  no network, and its container image published with each release (D3).
+  no network, the check that a commit holds only Jadpo source and the
+  package's text files within the size limit, and its container image
+  published with each release (D3).
   It runs on Fly.io, reached over HTTPS (Richard, 2026-10-31); **needs a
   maintainer** for the Fly.io account before it is deployed.
 - [ ] **R7 The registry application** **needs a maintainer** to start the
@@ -499,32 +492,36 @@ After the registry is live, in order:
      retention, as built (chunk P4)"; compiler/runtime §2.3, "Erasure"
      and "Retention", and §2.6, "A person's erasure" and "Lifecycles and
      purge".
-   - [ ] **P4b The person's own record, other stores and the erasure
-     log** `opus · xhigh` after P4, **needs a maintainer** before it
-     starts: area 15, "The person's own record", "What erasure reaches"
-     and "What erasure doesn't rewrite". The person's own record kept
-     field by field (an erased person can't sign in, receives nothing
-     and is left out of queries), records in another store erased by a
-     generated subscriber, `PersonErased`, and the erasure log replayed
-     when a backup is restored; OAuth grants and caches join when they
-     are built. The pages leave four questions open: how a record in
-     another store belongs to a person, since no reference crosses
-     stores (`data.reference_across_stores`); which queries "serve the
-     retained purpose"; what `PersonErased` carries; and where the
-     erasure log is kept, so that restoring a store's backup doesn't
-     take it back too, and when it is replayed. Done when an erased
-     person leaves nothing the page says erasure reaches, on both
-     executors.
-   - [ ] **P5 Export** `opus · high` after P4b and V5: area 15, "Export"
+   - [x] **P4b The person's own record and who a record belongs to**:
+     area 15, "The person", "Records that belong to several people", "The
+     person's own record" and "What is built", and the design notes'
+     "Belonging", "Kept records" and "The person's own record, as built
+     (chunk P4b)"; compiler/runtime §2.3, "A person's records" and
+     "Erasure", and §2.6, "A person's erasure".
+   - [ ] **P4c Other stores, `PersonErased` and the erasure log** `opus ·
+     xhigh` after P4b: area 15, "What erasure reaches" and "What erasure
+     doesn't rewrite"; the design notes' "Records in another store",
+     "`PersonErased`" and "Backups", as decided. A reference to a person
+     across stores with `erase:` and no `on_delete:`, each outcome applied
+     by a generated subscriber in that store after the main commit;
+     `PersonErased` emitted in the erasure's transaction with the entity's
+     name, the `id` and the time; and `privacy: { erasure_log: { store: } }`
+     (only that part of `privacy:`), a store that holds no person's records
+     or a store of files, written after the commit and replayed at every
+     start. OAuth grants and caches join when they are built. Done when
+     an erased person leaves nothing the page says erasure reaches, on
+     both executors.
+   - [ ] **P5 Export** `opus · high` after P4c and V5: area 15, "Export"
      and "Who may erase and export"; area 13's generated test.
-     `User.export(id)` as a `PersonalDataExport`: the person's record
-     and every record that belongs to them as JSON, one list per entity
+     `User.export(id)` as a `PersonalDataExport`: the person's record,
+     every record that belongs to them and those erasure deletes with
+     them, as JSON, one list per entity
      with the API's field names, credentials left out, a `File` field as
      a link, with each kind's retention and the companies that receive
      it, for a caller with read on the person's record; and the test
      generated for each person entity that after `erase`, `export`
      returns nothing. Done when export tests pass on both executors.
-   - [ ] **P6 Erasure at providers** `opus · high` after P4b and V6: area
+   - [ ] **P6 Erasure at providers** `opus · high` after P4c and V6: area
      15, "Erasure at providers"; area 11, "Erasure at providers". Each
      connection's key copied into `PersonErased` before the person's
      records go, a generated subscriber calling the package's `erasure:`
@@ -552,7 +549,8 @@ After the registry is live, in order:
      nothing reads, declinable). V5 starts the report with the
      connections a marked field reaches; this adds, for each person
      entity, every marked field with its category, store and who may
-     read it, its retention or "kept until erased", what erasure does to
+     read it, the queries that say `include_erased: true`, its retention
+     or "kept until erased", what erasure does to
      each record, keys waiting in the outbox, step records, sensitive
      fields, each store's location setting and what the language covers.
      Designed with the design skills first. Done when `jadpo check`

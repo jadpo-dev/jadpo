@@ -256,7 +256,7 @@ fn unknown(word: &str, span: Span, takes: &[&str], what: &str, out: &mut Vec<Dia
 pub fn audit_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     let path = file.path(db);
     let model = super::data_model(db, project);
-    let persons = crate::persons::persons(db, project);
+    let erasures = crate::erasure::erasures(db, project);
     let marks = crate::ai_personal::marks(db, project);
     let lookup = crate::lookups::Lookup::for_file(db, project, file);
     let mut out = Vec::new();
@@ -381,7 +381,7 @@ pub fn audit_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
         }
         // A person's record whose history would outlive it beyond the
         // reach of their erasure.
-        if !persons.reaches(name) {
+        if !erasures.reaches(entity) {
             continue;
         }
         let one = format!("{} {}", indefinite(name), words(name));
