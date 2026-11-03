@@ -37,7 +37,7 @@ ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE = ROOT / 'crates/jadpo-cli/scaffold/AGENTS.md.tmpl'
 LLMS = ROOT / 'llms.txt'
 
-TOPICS = 'https://jadpo.dev/docs/topics/'
+TOPICS = 'https://jadpo.dev/docs/'
 GITHUB_TREE = 'https://github.com/jadpo-dev/jadpo/tree/main/examples/{folder}'
 RAW_README = 'https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/{folder}/README.md'
 

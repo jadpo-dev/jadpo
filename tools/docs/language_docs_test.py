@@ -294,6 +294,204 @@ The end.
 """
 
 
+class BundleLinks(unittest.TestCase):
+    """Every link on a built page reaches a page in the bundle, and its
+    anchor a heading of that page (docs/documentation.md, "The bundle")."""
+
+    AREA = """---
+title: One
+area: 1
+---
+
+# One
+<!-- topic: one -->
+
+See [the wrapped
+part](02-two.md#the-part), [Later](#later), [the first Example](#example) and
+[the second Example](#example-1).
+
+## Shown
+<!-- topic: shown -->
+
+### Example
+
+### Later
+
+## Other
+<!-- topic: other -->
+
+### Example
+
+## Errors
+
+### Rules for one
+
+- [`a.b`](../errors/a.b.md)
+"""
+
+    def build(self, one=None, two=AREA_TWO):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalogue, pages, errors = tree(root, one=one or self.AREA, two=two)
+            bundle = docs.Bundle(pages, errors, {'version': '0.1.0', 'rules': list(catalogue.values()),
+                                                 'commands': COMMANDS}, root)
+            return bundle, bundle.build()
+
+    def page(self, built, path):
+        return next(text for _, _, at, _, _, text, _ in built if at == path)
+
+    def test_a_link_wrapped_over_two_lines_is_written_by_id(self):
+        _, built = self.build()
+        self.assertIn('[the wrapped\npart](twos-part.md#the-part)', self.page(built, 'topics/one.md'))
+
+    def test_a_wrapped_link_is_found_at_its_line(self):
+        self.assertEqual(list(docs.links_in('one\n\ntwo [a\nb](c.md) `[d\ne](f.md)`\n')), [(3, 'c.md')])
+
+    def test_an_anchor_is_the_one_the_topics_own_page_gives(self):
+        # The second "Example" on the area page is `example-1`; on its own
+        # topic's page it is the first.
+        _, built = self.build()
+        one = self.page(built, 'topics/one.md')
+        self.assertIn('[Later](shown.md#later)', one)
+        self.assertIn('[the first Example](shown.md#example)', one)
+        self.assertIn('[the second Example](other.md#example)', one)
+        self.assertEqual(docs.bundle_link_problems(built), [])
+
+    def test_a_link_to_a_section_no_page_keeps_goes_to_the_page(self):
+        # `## Errors` is left out of every topic's page, and what is under it.
+        for anchor in ('errors', 'rules-for-one'):
+            area = self.AREA.replace('## Other', f'See [the errors](#{anchor}).\n\n## Other')
+            _, built = self.build(one=area)
+            self.assertIn('[the errors](one.md)', self.page(built, 'topics/shown.md'))
+            self.assertEqual(docs.bundle_link_problems(built), [])
+
+    def test_a_link_to_a_page_outside_the_bundle_is_a_problem(self):
+        built = [('topic', 'one', 'topics/one.md', 'One', 1, '# One\n\n[gone](gone.md) [far](https://example.com/x.md)\n', set())]
+        problems = docs.bundle_link_problems(built)
+        self.assertEqual(len(problems), 1)
+        self.assertIn('topics/one.md:3', problems[0])
+        self.assertIn('gone.md', problems[0])
+
+    def test_a_link_to_a_heading_its_page_lacks_is_a_problem(self):
+        built = [('topic', 'one', 'topics/one.md', 'One', 1, '# One\n\n[a](two.md#here) [b](two.md#gone)\n', set()),
+                 ('topic', 'two', 'topics/two.md', 'Two', 1, '# Two\n\n## Here\n', set())]
+        problems = docs.bundle_link_problems(built)
+        self.assertEqual(len(problems), 1)
+        self.assertIn('two.md#gone', problems[0])
+
+    def test_a_link_between_folders_is_followed(self):
+        built = [('error', 'a.b', 'errors/a.b.md', 'a.b', 1, '[one](../topics/one.md) [p](../primer.md)\n', set()),
+                 ('topic', 'one', 'topics/one.md', 'One', 1, '# One\n', set()),
+                 ('primer', 'primer', 'primer.md', 'Primer', None, '# Primer\n', set())]
+        self.assertEqual(docs.bundle_link_problems(built), [])
+
+    def test_a_link_in_code_is_not_a_link(self):
+        built = [('topic', 'one', 'topics/one.md', 'One', 1, '`[a](gone.md)`\n\n```text\n[b](gone.md)\n```\n', set())]
+        self.assertEqual(docs.bundle_link_problems(built), [])
+
+
+class WhatTheSiteServes(unittest.TestCase):
+    """index.json's kinds, each at a path docs/documentation.md's "What the
+    site serves" gives: the site builds its addresses from that table."""
+
+    KINDS = {'primer', 'learn', 'guide', 'topic', 'type', 'error', 'command'}
+
+    def test_every_kind_has_its_path_and_the_table_says_so(self):
+        self.assertEqual(docs.site_path_problems(), [])
+
+    def test_the_kinds_are_the_ones_the_bundle_writes(self):
+        self.assertEqual(set(docs.SITE_PATHS), self.KINDS)
+        documented = (docs.ROOT / 'docs/documentation.md').read_text()
+        self.assertIn('(`primer`, `learn`, `guide`, `topic`, `type`, `error`, `command`)', documented)
+
+    def test_a_built_kind_without_a_path_is_a_problem(self):
+        problems = docs.site_path_problems(kinds={'topic', 'recipe'})
+        self.assertEqual(len(problems), 1)
+        self.assertIn('recipe', problems[0])
+
+    def test_a_kind_the_table_doesnt_name_is_a_problem(self):
+        table = '## What the site serves\n\n| Path | What |\n|---|---|\n| `/docs/<id>` | A topic |\n\n## Next\n'
+        problems = docs.site_path_problems(kinds={'topic', 'command'}, documented=table)
+        self.assertEqual(len(problems), 1)
+        self.assertIn('command', problems[0])
+
+    def test_a_path_the_table_doesnt_give_is_a_problem(self):
+        table = '## What the site serves\n\n| Path | What |\n|---|---|\n| `/guides/<id>` | A guide |\n\n## Next\n'
+        problems = docs.site_path_problems(kinds={'topic'}, documented=table)
+        self.assertEqual(len(problems), 1)
+        self.assertIn('/docs/<id>', problems[0])
+
+    def test_a_page_the_table_gives_that_no_kind_claims_is_a_problem(self):
+        table = ('## What the site serves\n\n| Path | What |\n|---|---|\n| `/docs/<id>` | A topic |\n'
+                 '| `/recipes/<id>`, `.md` | A recipe |\n\n## Next\n')
+        problems = docs.site_path_problems(kinds={'topic'}, documented=table)
+        self.assertEqual(len(problems), 1)
+        self.assertIn('/recipes/<id>', problems[0])
+
+
+class WhatAnAgentIsToldToRead(unittest.TestCase):
+    """llms.txt, the AGENTS.md `jadpo new` writes and the agent skill point
+    at the site's split pages, never at a whole area page."""
+
+    def write(self, root, llms='', agents='', skill=''):
+        (root / 'crates/jadpo-cli/scaffold').mkdir(parents=True)
+        (root / 'docs/agent-skill').mkdir(parents=True)
+        (root / 'llms.txt').write_text(llms)
+        (root / 'crates/jadpo-cli/scaffold/AGENTS.md.tmpl').write_text(agents)
+        (root / 'docs/agent-skill/SKILL.md').write_text(skill)
+
+    def problems(self, **files):
+        built = [('topic', 'one', 'topics/one.md', 'One', 1, '# One\n', set()),
+                 ('type', 'types', 'types/types.md', 'Types', None, '# Types\n', set()),
+                 ('type', 'type-money', 'types/type-money.md', 'Money', 19, '# Money\n', set()),
+                 ('error', 'a.b', 'errors/a.b.md', 'a.b', 1, '# a.b\n', set())]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.write(root, **files)
+            return docs.agent_reading_problems(built, root)
+
+    def test_the_repositorys_own_files_pass(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in docs.AGENT_READS:
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
+                (root / name).write_text((docs.ROOT / name).read_text())
+            found = docs.agent_reading_problems([], root)
+        # With no pages built only the addresses are left to fail.
+        self.assertEqual([p for p in found if 'whole area page' in p], [])
+
+    def test_split_pages_pass(self):
+        self.assertEqual(self.problems(llms='[One](https://jadpo.dev/docs/one.md) https://jadpo.dev/docs/types/type-money.md',
+                                       agents='https://jadpo.dev/docs/errors/a.b https://jadpo.dev/docs/types.md',
+                                       skill='https://jadpo.dev/docs/primer.md and https://jadpo.dev/docs/index.json'), [])
+
+    def test_a_whole_area_page_is_a_problem_however_it_is_written(self):
+        for url in ('https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/19-standard-library.md',
+                    'https://github.com/jadpo-dev/jadpo/blob/main/docs/language/19-standard-library.md#money',
+                    'docs/language/19-standard-library.md'):
+            problems = self.problems(llms=f'Read [the library]({url}).\n')
+            self.assertEqual(len(problems), 1, url)
+            self.assertIn('llms.txt', problems[0])
+            self.assertIn('whole area page', problems[0])
+
+    def test_a_design_note_isnt_an_area_page(self):
+        self.assertEqual(self.problems(llms='docs/language/notes/19-standard-library.md\n'), [])
+
+    def test_a_page_the_site_doesnt_serve_is_a_problem(self):
+        problems = self.problems(agents='https://jadpo.dev/docs/gone.md\n')
+        self.assertEqual(len(problems), 1)
+        self.assertIn('gone', problems[0])
+
+    def test_the_old_topics_folder_is_a_problem(self):
+        # /docs/topics/<id> only redirects: the table's path is /docs/<id>.
+        problems = self.problems(agents='https://jadpo.dev/docs/topics/one.md\n')
+        self.assertEqual(len(problems), 1)
+        self.assertIn('topics/one', problems[0])
+
+    def test_a_pattern_in_an_address_is_not_a_page(self):
+        self.assertEqual(self.problems(skill='https://jadpo.dev/docs/errors/<rule>.md, https://jadpo.dev/v/<version>/docs/index.json\n'), [])
+
+
 class Primer(unittest.TestCase):
     def test_the_bundle_leads_with_the_primer(self):
         with tempfile.TemporaryDirectory() as tmp:

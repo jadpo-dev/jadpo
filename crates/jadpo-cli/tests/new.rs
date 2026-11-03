@@ -150,7 +150,7 @@ fn agents_md_gives_a_working_method_what_is_built_and_the_examples() {
         "## The closest example for each feature",
         "https://github.com/jadpo-dev/jadpo/tree/main/examples/29-lending-desk",
         "## What isn't built yet",
-        "https://jadpo.dev/docs/topics/identity-built.md",
+        "https://jadpo.dev/docs/identity-built.md",
     ] {
         assert!(agents.contains(phrase), "{phrase:?} in:\n{agents}");
     }
