@@ -346,10 +346,7 @@ use metering/entities { Meter, MeterNotFound }
 use metering/types { LeftAsked, LeftView }
 use metering/failures { PastTheEnd }
 
-action room_left(
-    meter_id: Meter.id,
-    asked: LeftAsked
-) fails MeterNotFound, PastTheEnd -> LeftView {
+action room_left(meter_id: Meter.id, asked: LeftAsked) fails MeterNotFound, PastTheEnd -> LeftView {
     var meter: Meter = attempt Meter.get(meter_id)
     if (asked.used > meter.capacity) {
         reject PastTheEnd {}
@@ -391,8 +388,8 @@ fixture a_meter() -> Meter {
 
 ```jadpo check project=get-action file=domains/metering/routes/meters.test.jadpo hidden
 use metering/entities { Meter }
-use metering/fixtures { a_meter }
 use metering/types { LeftAsked, LeftView }
+use metering/fixtures { a_meter }
 
 test "a meter says what is left" {
     var meter: Meter = a_meter()
