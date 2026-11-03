@@ -167,6 +167,7 @@ Rust 1.88 or later).
 | `jadpo-lsp` | Language server | |
 | `jadpo-cldr` | The CLDR data a deployable carries: ICU4X's compiled data baked again for the app's supported locales | |
 | `jadpo-registry` | The registry protocol (area 11): its table, requests and answers, the RFC 6962 log and its proofs, release archives, a local registry served on this machine and the conformance test of a served OpenAPI document | |
+| `jadpo-verifier` | The registry's verifier (area 11): which of a commit's files a release may hold, fetching one commit with `git` at a checked address, the sandbox, the two runs of `jadpo package verify` and the service that answers the registry | |
 | `jadpo-cli` | The `jadpo` binary: commands, help, completion | |
 
 **`jadpo-std`** decides once what both sides need: what a valid value is
@@ -241,11 +242,24 @@ whole geometry; storage itself binds a geometry without asking, because the
 checker and every reader refuse such a mix (area 20, "Altitudes are all or
 nothing").
 
-**`jadpo-term`, `jadpo-test`, `jadpo-lsp`, `jadpo-cldr`, `jadpo-registry`
-and `jadpo-cli`** are tooling: the CLI design language's screens, the test
-runner (§2.5, §2.7), the language server, the locale data `jadpo build`
-exports for a deployable (§2.6, "The locale data a deployable carries"),
-the registry protocol, and the binary that nothing depends on.
+**`jadpo-term`, `jadpo-test`, `jadpo-lsp`, `jadpo-cldr`, `jadpo-registry`,
+`jadpo-verifier` and `jadpo-cli`** are tooling: the CLI design language's
+screens, the test runner (§2.5, §2.7), the language server, the locale data
+`jadpo build` exports for a deployable (§2.6, "The locale data a deployable
+carries"), the registry protocol, the verifier, and the binary that nothing
+depends on.
+
+**`jadpo-verifier`** runs nothing of a package itself and links no compiler:
+it starts `jadpo` in a sandbox and reads what comes back, so a bug a
+package's code can reach is in a process that has nothing to take. The
+sandbox is bubblewrap under `prlimit`, started as programs, since the
+workspace forbids `unsafe`; a Mac's `sandbox-exec` lets a contributor run the
+same isolation tests, and is never served with. No seccomp filter is set:
+what limits a package's code that got out of the interpreter is the
+namespaces, and the machine Fly.io gives the verifier alone. CI's `tests`
+job installs bubblewrap and sets `JADPO_REQUIRE_SANDBOX`, so those tests can't
+silently skip, and `.github/workflows/verifier-image.yml` starts the image
+and uses it before anything is published (`deploy/verifier/smoke.py`).
 
 **`jadpo-registry`** is what the `jadpo` tool and the registry
 application at jadpo.dev are each built against (area 11, "The registry

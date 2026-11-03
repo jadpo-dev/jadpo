@@ -1,0 +1,28 @@
+[package]
+name = "jadpo-verifier"
+description = "The registry's verifier: fetching a commit over git, then checking it in a sandbox with no network, and the service that answers the registry"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+# One integration-test binary: tests/main.rs.
+autotests = false
+
+# A tooling crate (docs/compiler-runtime.md §2.1; roadmap chunk R6): what
+# `jadpo package verify --serve` runs. It runs nothing of a package itself:
+# it starts `jadpo` in a sandbox and reads what comes back, so it needs no
+# compiler. jadpo-registry for release archives, digests and the small HTTP
+# server; sha2 for comparing the credential and naming a verification.
+[dependencies]
+jadpo-registry.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+
+[lints]
+workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/main.rs"

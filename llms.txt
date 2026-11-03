@@ -2,18 +2,17 @@
 
 > An experimental, statically typed programming language for web backends written mainly by LLMs and reviewed by people. The compiler and runtime are written in Rust, with interpreted development and compiled native and WebAssembly deployables.
 
-This is a reading index, not the language specification or a guarantee of automatic retrieval. Follow the linked area pages for rules, current decisions, amendments and implementation status. Decided does not mean built. Do not infer the language from the README or a small example alone.
+This is a reading index, not the language specification or a guarantee of automatic retrieval. Follow the linked pages for rules and implementation status. Decided does not mean built. Do not infer the language from the README or a small example alone.
 
-The public project home is https://github.com/jadpo-dev/jadpo. Links below track main; use a single checkout or replace main with one commit SHA throughout when a consistent snapshot matters. A URL tool may require every relevant link explicitly. GitHub and the assistant's tools determine access; this file changes no crawler permissions.
+The public project home is https://github.com/jadpo-dev/jadpo. Links to jadpo.dev are the newest docs, and `https://jadpo.dev/v/<version>/` holds the same paths for one release. Links to GitHub track main; use a single checkout or replace main with one commit SHA throughout when a consistent snapshot matters. A URL tool may require every relevant link explicitly. GitHub and the assistant's tools determine access; this file changes no crawler permissions.
 
 ## Start here
 
-- [Primer](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/primer.md): Read this first before writing an app: layout, syntax, the constructs nearly every app uses, what is built and where to look next; 3,000 to 5,000 tokens, every example compiled.
-- [Learn Jadpo](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/learn/README.md): A todo app with sign-in, built a page at a time from an empty folder to a deployed server, for a newcomer; every page's project compiled and tested.
-- [Guides](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/guides/README.md): One common job each, start to finish: build an API, store, query, failures, sign-in, outside APIs, background work, tests, sign-off and deploying; every guide's project compiled and tested.
-- [Agent skill](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/agent-skill/SKILL.md): The skill for a coding agent that writes Jadpo apps: read the primer, find pages, run `jadpo check --json` and `jadpo test --json`, and report a Jadpo bug through the user.
+- [Primer](https://jadpo.dev/docs/primer.md): Read this first before writing an app: layout, syntax, the constructs nearly every app uses, what is built and where to look next; 3,000 to 5,000 tokens, every example compiled.
+- [Learn Jadpo](https://jadpo.dev/learn.md): A todo app with sign-in, built a page at a time from an empty folder to a deployed server, for a newcomer; every page's project compiled and tested.
+- [Guides](https://jadpo.dev/guides.md): One common job each, start to finish: build an API, store, query, failures, sign-in, outside APIs, background work, tests, sign-off and deploying; every guide's project compiled and tested.
+- [Agent skill](https://jadpo.dev/.well-known/agent-skills/jadpo/SKILL.md): The skill for a coding agent that writes Jadpo apps: read the primer, find pages, run `jadpo check --json` and `jadpo test --json`, and report a Jadpo bug through the user.
 - [Project README](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/README.md): Purpose, a compiler error example, status and how to build from source.
-- [Language map](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/README.md): Task-based reading paths and all 21 specification areas.
 - [Examples](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/README.md): Every complete teaching project, with comments and tests, and the closest one for each feature.
 - [Vision](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/vision.md): Why Jadpo exists and how responsibility is divided.
 - [Roadmap](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/roadmap.md): The only implementation tracker; separates outstanding work from completion.
@@ -21,30 +20,31 @@ The public project home is https://github.com/jadpo-dev/jadpo. Links below track
 
 ## Language specification
 
-Each area page holds what an app author reads; its design notes, the reasons and decisions, are in docs/language/notes/. Each compiler error has its own page, `docs/errors/<rule.id>.md` (for example https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/errors/failure.kind_required.md), and the error's `help:` line prints its address on the site, `https://jadpo.dev/docs/errors/<rule.id>`. Start with areas 1–4. For a data-backed authenticated API, add 5–9 and 13. For integrations and background work, add 10–12, starting with area 11's "How packages, connections, capabilities and services fit together". For AI features, read 21 and its linked rules. For design review, read 9 and 15–18, keeping their planned features distinct from implemented checks.
+The language is split on the site into one page per topic. Each link below is an area's first topic; https://jadpo.dev/docs/index.json lists every topic with its title and summary, so fetch only the `.md` pages a task needs. Each compiler error has its own page, `https://jadpo.dev/docs/errors/<rule.id>.md` (for example https://jadpo.dev/docs/errors/failure.kind_required.md), and the error's `help:` line prints its address on the site, `https://jadpo.dev/docs/errors/<rule.id>`. Start with areas 1–4. For a data-backed authenticated API, add 5–9 and 13. For integrations and background work, add 10–12, starting with area 11's "How packages, connections, capabilities and services fit together". For AI features, read 21 and its linked rules. For design review, read 9 and 15–18, keeping their planned features distinct from implemented checks.
 
-- [1. Project layout and modules](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/01-project-layout-and-modules.md): Domains, paths, visibility, imports and naming.
-- [2. Values and types](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/02-values-and-types.md): Named types, validation, refinements, objects, enums and collections.
-- [3. Logic](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/03-logic.md): Functions, actions, expressions, control flow and effects.
-- [4. Failures](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/04-failures.md): Declared failures, handling, propagation and runtime faults.
-- [5. Data](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/05-data.md): Entities, relationships, storage and migrations.
-- [6. Reads and writes](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/06-reads-and-writes.md): Queries, pagination, aggregates, transactions and concurrency.
-- [7. HTTP](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/07-http.md): Routes, contracts, API records and OpenAPI.
-- [8. Identity](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/08-identity.md): Principals, sessions, tokens, keys, magic links and passkeys.
-- [9. Policy](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/09-policy.md): Ownership, grants, roles, tenancy and field access.
-- [10. Configuration and time](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/10-configuration-and-time.md): Settings, secrets, connections, time and translations.
-- [11. Integrations](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/11-integrations.md): Provider packages, connections, capabilities, webhooks and recordings.
-- [How packages, connections, capabilities and services fit together](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/11-integrations.md#how-packages-connections-capabilities-and-services-fit-together): What a package, provider, connection, driver, capability, built-in service and service run by Jadpo each are, where each runs in development, tests, native and Workers deployables, and what is built; Docker or Podman is used only for a service run by Jadpo (`runs:`), which is not built yet. Read this before areas 10, 11 and 16.
-- [12. Jobs and events](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/12-jobs-and-events.md): Events, outbox delivery, subscribers, schedules and batches.
-- [13. Testing](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/13-testing.md): Test kinds, fixtures, databases, fakes and controlled clocks.
-- [14. Tooling](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/14-tooling.md): CLI commands and implementation status, formatting, editor support and deployables.
-- [15. Personal data](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/15-personal-data.md): Export, erasure, retention and privacy reporting; largely planned.
-- [16. Built-in services](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/16-built-in-services.md): Email, files, rate limits, search, audit and telemetry; status varies.
-- [17. Debugging and review](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/17-debugging-and-review.md): Source-level evidence, request explanations and behaviour review; planned.
-- [18. Records and manifest](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/18-records-and-manifest.md): Committed contracts, generated manifests and planned approvals.
-- [19. Standard library](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/19-standard-library.md): Vocabulary types and operations, money, units, text and formats.
-- [20. Geospatial](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/20-geospatial.md): Geometry, geodesic operations, PostGIS and map layers.
-- [21. AI](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/21-ai.md): Prompts, typed model calls, streaming, embeddings, budgets and personal-data flow.
+- [1. Project layout and modules](https://jadpo.dev/docs/project-layout-and-modules.md): Domains, paths, visibility, imports and naming.
+- [2. Values and types](https://jadpo.dev/docs/values-and-types.md): Named types, validation, refinements, objects, enums and collections.
+- [3. Logic](https://jadpo.dev/docs/logic.md): Functions, actions, expressions, control flow and effects.
+- [4. Failures](https://jadpo.dev/docs/failures.md): Declared failures, handling, propagation and runtime faults.
+- [5. Data](https://jadpo.dev/docs/data.md): Entities, relationships, storage and migrations.
+- [6. Reads and writes](https://jadpo.dev/docs/reads-and-writes.md): Queries, pagination, aggregates, transactions and concurrency.
+- [7. HTTP](https://jadpo.dev/docs/http.md): Routes, contracts, API records and OpenAPI.
+- [8. Identity](https://jadpo.dev/docs/identity.md): Principals, sessions, tokens, keys, magic links and passkeys.
+- [9. Policy](https://jadpo.dev/docs/policy.md): Ownership, grants, roles, tenancy and field access.
+- [10. Configuration and time](https://jadpo.dev/docs/configuration-and-time.md): Settings, secrets, connections, time and translations.
+- [11. Integrations](https://jadpo.dev/docs/external-services.md): Provider packages, connections, capabilities, webhooks and recordings.
+- [How packages, connections, capabilities and services fit together](https://jadpo.dev/docs/how-integrations-fit-together.md): What a package, provider, connection, driver, capability, built-in service and service run by Jadpo each are, where each runs in development, tests, native and Workers deployables, and what is built; Docker or Podman is used only for a service run by Jadpo (`runs:`), which is not built yet. Read this before areas 10, 11 and 16.
+- [12. Jobs and events](https://jadpo.dev/docs/jobs-and-events.md): Events, outbox delivery, subscribers, schedules and batches.
+- [13. Testing](https://jadpo.dev/docs/testing.md): Test kinds, fixtures, databases, fakes and controlled clocks.
+- [14. Tooling](https://jadpo.dev/docs/tooling.md): CLI commands and implementation status, formatting, editor support and deployables.
+- [15. Personal data](https://jadpo.dev/docs/personal-data.md): Export, erasure, retention and privacy reporting; largely planned.
+- [16. Built-in services](https://jadpo.dev/docs/built-in-services.md): Email, files, rate limits, search, audit and telemetry; status varies.
+- [17. Debugging and review](https://jadpo.dev/docs/debugging-and-review.md): Source-level evidence, request explanations and behaviour review; planned.
+- [18. Records and manifest](https://jadpo.dev/docs/records-and-manifest.md): Committed contracts, generated manifests and planned approvals.
+- [19. Standard library](https://jadpo.dev/docs/standard-library.md): Vocabulary types and operations, money, units, text and formats.
+- [20. Geospatial](https://jadpo.dev/docs/geospatial.md): Geometry, geodesic operations, PostGIS and map layers.
+- [21. AI](https://jadpo.dev/docs/ai.md): Prompts, typed model calls, streaming, embeddings, budgets and personal-data flow.
+- [Standard types](https://jadpo.dev/docs/types.md): Every standard type by group, with a page for each.
 
 ## Complete application examples
 
@@ -120,6 +120,7 @@ If the compiler crashes, rejects code the docs say is valid, accepts code the do
 
 ## Contributing to the compiler
 
+- [Language map](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/language/README.md): The whole area pages and their design notes, for changing the language. One can be over 100,000 tokens; to write an app, use the topics above.
 - [Contributor guide](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/CONTRIBUTING.md): Build prerequisites, verification and contribution workflow.
 - [Repository instructions](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/AGENTS.md): Working rules for changes to this compiler repository.
 - [Documentation index](https://raw.githubusercontent.com/jadpo-dev/jadpo/main/docs/README.md): Architecture, decisions and design context.

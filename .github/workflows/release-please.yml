@@ -158,3 +158,18 @@ jobs:
     steps:
       - name: Package and publish the extension for the tag
         run: gh workflow run vscode-extension.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG" -f tag="$TAG"
+
+  # The verifier's image at the release's version, started as dist's is. It
+  # waits for dist's archive, and publishes only while its variable is on.
+  verifier-image:
+    needs: [release-please, installers]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    env:
+      TAG: ${{ needs.release-please.outputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Build, test and publish the image for the tag
+        run: gh workflow run verifier-image.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG" -f tag="$TAG"

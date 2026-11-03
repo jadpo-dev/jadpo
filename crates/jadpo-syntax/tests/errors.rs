@@ -595,3 +595,94 @@ fn a_block_stops_at_its_first_expected_name() {
     assert_eq!(error.rule.id, "syntax.expected_name");
     assert_eq!(covered, ":");
 }
+
+#[test]
+fn a_nullable_type_before_a_member_on_its_line_is_not_a_ternary() {
+    // Two members may share a line until the formatter parts them, so the
+    // `?` of a type's field is that type's, whatever comes after it.
+    for value in [
+        "Text? b: Text",
+        "Text?    b: List<Tag>",
+        "Text ? b : Text",
+        "Order.id? b: Text",
+        "billing.Invoice? b: Text",
+        "List<Tag>? b: Text",
+        "Text?? b: Text",
+        "Text? b.c: Text",
+        "Text?? ",
+    ] {
+        let text = format!("type E = Object {{\n    a: {value}\n}}\n");
+        let parse = parse_file(&text);
+        assert!(parse.errors().is_empty(), "{text}\n{:#?}", parse.errors());
+    }
+    let nested = parse_file("type E = Object {\n    a: Inner { b: Text? c: Text }\n}\n");
+    assert!(nested.errors().is_empty(), "{:#?}", nested.errors());
+}
+
+#[test]
+fn a_ternary_in_a_value_is_still_a_ternary() {
+    // A lower-case name is a value (area 1), and a type is never followed
+    // by a value on its line, so these are choices from another language.
+    for text in [
+        "function f() -> T {\n    return big ? a : b\n}\n",
+        "function f() -> T {\n    return Big ? a : b\n}\n",
+        "function f() -> T {\n    return g(c: big ? a : b)\n}\n",
+        "function f() -> T {\n    return Foo { c: big ? a : b }\n}\n",
+        "function f() -> T {\n    return Foo { c: Big ? 1 : 2 }\n}\n",
+        "type E = Object {\n    c: big ? a : b\n}\n",
+    ] {
+        let (error, covered) = one_error(text);
+        assert_eq!(error.rule.id, "syntax.ternary_operator", "{text}");
+        assert_eq!(covered, "?", "{text}");
+    }
+}
+
+#[test]
+fn a_ternary_stops_at_a_comma_on_its_line() {
+    // `b, c: d` is no `? :`: the `:` belongs to the member after the comma.
+    let parse = parse_file("type E = Object {\n    a: Text? b, c: d\n}\n");
+    assert_eq!(parse.errors().len(), 1, "{:#?}", parse.errors());
+    assert_eq!(parse.errors()[0].rule.id, "syntax.unexpected_token");
+}
+
+#[test]
+fn a_comma_between_members_on_a_line_parts_them() {
+    // Each member is on its own line, so the edit puts it there: a `?` at
+    // the end of one member never meets the next one's key.
+    let text = "type E = Object {\n    a: text?,    b: Text\n}\n";
+    let (error, covered) = one_error(text);
+    assert_eq!(error.rule.id, "syntax.member_comma");
+    assert_eq!(covered, ",");
+    assert_eq!(
+        fixed_by_edits(text, &error),
+        "type E = Object {\n    a: text?\n    b: Text\n}\n"
+    );
+    let text = "type E = Object { a: x,b: y }\n";
+    let (error, _) = one_error(text);
+    assert_eq!(
+        fixed_by_edits(text, &error),
+        "type E = Object { a: x\n    b: y }\n"
+    );
+    let text = "type E = Object {\n    a: x ,  /* why */ b: y\n}\n";
+    let parse = parse_file(text);
+    let edit = &parse.errors()[0].edits[0];
+    assert_eq!(&text[edit.start as usize..edit.end as usize], " ,  ");
+}
+
+#[test]
+fn a_run_of_semicolons_is_one_error_with_one_edit() {
+    // One error a line would take one `;` a round.
+    let text = "type A = Int {}\n;;;; ;;\n";
+    let (error, covered) = one_error(text);
+    assert_eq!(error.rule.id, "syntax.semicolon");
+    assert_eq!(covered, ";;;; ;;");
+    assert!(error.clean);
+    assert_eq!(fixed_by_edits(text, &error), "type A = Int {}\n\n");
+    let text = "function f() -> Unit {\n    a();;; b()\n}\n";
+    let (error, _) = one_error(text);
+    assert!(error.clean);
+    assert_eq!(
+        fixed_by_edits(text, &error),
+        "function f() -> Unit {\n    a()\n    b()\n}\n"
+    );
+}

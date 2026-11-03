@@ -22,7 +22,7 @@ fn json(cwd: &Path, args: &[&str]) -> (serde_json::Value, serde_json::Value, u8)
 }
 
 /// The package's first release, tagged.
-fn released(name: &str) -> (tempdir::Dir, std::path::PathBuf) {
+pub(super) fn released(name: &str) -> (tempdir::Dir, std::path::PathBuf) {
     let (dir, root) = repository(name);
     plain(&root, &["package", "check"]);
     let log = std::fs::read_to_string(root.join("CHANGELOG.md")).expect("changelog");
@@ -540,7 +540,7 @@ fn a_new_major_versions_first_release_shows_what_it_broke() {
 /// The package as a commit carries it, with `surface.jadpo_record` and its
 /// changelog written, in a folder of its own, and its first release beside
 /// it.
-fn two_releases(name: &str) -> (tempdir::Dir, std::path::PathBuf, std::path::PathBuf) {
+pub(super) fn two_releases(name: &str) -> (tempdir::Dir, std::path::PathBuf, std::path::PathBuf) {
     let (dir, root) = released(name);
     let first = dir.path().join("first");
     copy(&root, &first);
@@ -604,6 +604,7 @@ fn verify_writes_everything_a_release_shows() {
     assert_eq!(
         rows,
         [
+            "files",
             "compiles",
             "described",
             "examples",
@@ -672,7 +673,7 @@ fn verify_prints_the_same_screen_and_writes_nothing() {
     assert!(
         verified
             .stdout
-            .ends_with("package verify passed: Postcodes.v2 2.1.0, 9 passed, 5 fingerprints\n"),
+            .ends_with("package verify passed: Postcodes.v2 2.1.0, 10 passed, 5 fingerprints\n"),
         "{}",
         verified.stdout
     );
@@ -801,15 +802,6 @@ fn verify_says_what_it_needs() {
             .contains("`jadpo package verify` needs a package's folder"),
         "{}",
         none.stderr
-    );
-    let serve = plain(dir.path(), &["package", "verify", "--serve"]);
-    assert_eq!(serve.code, 1, "{}", serve.stderr);
-    assert!(
-        serve
-            .stderr
-            .contains("`jadpo package verify --serve` isn't built yet"),
-        "{}",
-        serve.stderr
     );
     // Another package's release can't stand in as the one before it, which
     // would pass as a new major version.

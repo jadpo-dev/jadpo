@@ -1794,6 +1794,7 @@ dependencies = [
  "jadpo-term",
  "jadpo-test",
  "jadpo-value",
+ "jadpo-verifier",
  "miniz_oxide",
  "openssl",
  "p256",
@@ -2080,6 +2081,15 @@ dependencies = [
  "subtle",
  "writeable",
  "x509-parser 0.16.0",
+]
+
+[[package]]
+name = "jadpo-verifier"
+version = "0.2.0"
+dependencies = [
+ "jadpo-registry",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]
