@@ -930,7 +930,8 @@ refuses with its own failure before it calls `User.erase`. Restricting use
 of someone's data while a complaint is open (Article 18) works the same
 way.
 
-### Erasure at providers
+## Erasure at providers
+<!-- topic: erasure-at-providers -->
 
 When your app sends a person's data to another company, such as a payment
 provider, erasing the person also asks that provider to erase them. Two
