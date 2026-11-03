@@ -376,16 +376,7 @@ An outside agent's second run (inventory, checkout and return only, so the
 sign-in fixes stay unmeasured). Each is small; D15 and D16 come first, since
 a new agent can't find a type without them (Richard, 2026-11-03).
 
-- [ ] **D15 Links that can't break** `opus · high`: on jadpo.dev the raw
-  `.md` index pages (`/docs/types.md`, `/guides.md`) are served one folder
-  above where their relative links expect, so every link on them is a 404
-  (the HTML pages rewrite links; the Markdown doesn't). In the site's
-  repository: the `.md` routes write links through the same `rewriteLink` as
-  the HTML, and the build fails on any internal link in `dist/`, HTML or
-  Markdown, that doesn't resolve, versioned paths included. Here: the bundle
-  check keeps holding every link to a page in the bundle, and a test holds
-  `index.json`'s kinds to the paths in documentation.md, "What the site
-  serves". Done when a broken link fails a build on either side.
+- [x] **D15 Links that can't break**: documentation.md, "The bundle" and "What the site serves"; `bundle_link_problems`, `site_path_problems` and `agent_reading_problems` in `tools/docs/language_docs.py`; the site's `scripts/check-links.mjs`.
 - [ ] **D16 Standard type pages that teach** `opus · high`: every type
   already has its own page (`/docs/types/type-<name>`, F2). Each gains: what
   it represents and when to use it, and what to use instead, written once
