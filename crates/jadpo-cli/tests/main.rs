@@ -84,6 +84,7 @@ mod migrate;
 mod new;
 mod operation_conditions;
 mod outside_calls;
+mod own_sources;
 mod package_actions;
 mod package_conform;
 mod package_import;
