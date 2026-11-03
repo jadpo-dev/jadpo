@@ -86,3 +86,10 @@ error: `Delivry` in `reviewed:` isn't one of the package's types
 
 check failed: 1 error, 4 files
 ```
+
+`erasure: { call: customers.delete  by: CustomerId }` names the operation that
+erases a person and the type of the key it takes. So `call:` is one of the
+package's operations with `changes: true`, and `by:` the type of exactly one
+field of its input, any other optional. Each of these is this error, such as
+`` `erasure:` can't call `customers.delete` with only a `Words` ``
+([Erasure at providers](../language/15-personal-data.md#erasure-at-providers)).
