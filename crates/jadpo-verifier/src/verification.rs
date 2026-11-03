@@ -419,7 +419,7 @@ impl Verifier {
         let text = String::from_utf8_lossy(&done.stdout)
             .replace(&format!("{}/", trimmed(previous)), "")
             .replace(&format!("{}/", trimmed(new)), "");
-        let (diff, shortened) = cut_to_limit(&text);
+        let (diff, shortened) = within_limit(&text);
         json!({ "diff": diff, "truncated": cut || shortened })
     }
 
@@ -584,7 +584,7 @@ fn json_length(text: &str) -> usize {
 }
 
 /// `text` cut to fit [`READING_LIMIT`], and whether it had to be.
-fn cut_to_limit(text: &str) -> (String, bool) {
+fn within_limit(text: &str) -> (String, bool) {
     let mut end = text.len();
     let mut length = json_length(text);
     if length <= READING_LIMIT {
