@@ -506,13 +506,11 @@ real deploy) and, before outside authors can publish, D3 (releases).
   wait, `--to` and urgent releases, `search`, `audit`, `publish` and
   `--dry-run`, `preview`. Every screen designed with the design skills
   first.
-- [ ] **R6 The verifier** `opus · high` after R3: area 11, "The verifier".
-  `jadpo package verify --serve`, fetching over git and then verifying with
-  no network, the check that a commit holds only Jadpo source and the
-  package's text files within the size limit, and its container image
-  published with each release (D3).
-  It runs on Fly.io, reached over HTTPS (Richard, 2026-10-31); **needs a
-  maintainer** for the Fly.io account before it is deployed.
+- [x] **R6 The verifier**: area 11, "The verifier" and "Publishing errors"; area 14, "`jadpo package verify`"; compiler/runtime §2.1, `jadpo-verifier`; `deploy/verifier/`; `.github/workflows/verifier-image.yml`; documentation, "Versions and releases".
+- [ ] **R6b The verifier deployed** **needs a maintainer**: the Fly.io
+  account and the steps in [documentation](documentation.md#versions-and-releases):
+  the repository variable `JADPO_VERIFIER_IMAGE` set to `on`, the app and its
+  credential on Fly.io, then the image deployed. Before R7 can reach it.
 - [ ] **R7 The registry application** **needs a maintainer** to start the
   jadpo.dev session, after R1, R4 and R6: built against the protocol and
   passing R4's conformance test. Until the S3 driver its archives are kept

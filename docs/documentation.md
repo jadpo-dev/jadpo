@@ -336,6 +336,14 @@ needs, or use a local clone with a file-reading coding agent.
     stores, which needs no token: the Marketplace publisher `jadpo` has a
     trusted publishing policy for `vscode-extension.yml`, and the Open VSX
     namespace `jadpo` a trusted publisher for it.
+  - The verifier's container image (`deploy/verifier/`) is built and tested
+    on each release, and pushed to `ghcr.io/jadpo-dev/verifier` while the
+    repository variable `JADPO_VERIFIER_IMAGE` is `on`, with the workflow's
+    own token. It reaches the registry from Fly.io, which a maintainer sets
+    up once: `fly apps create jadpo-verifier`, `fly secrets set
+    JADPO_VERIFIER_TOKEN=...` with the credential the registry also holds,
+    and `fly deploy --config deploy/verifier/fly.toml --image
+    ghcr.io/jadpo-dev/verifier:<version>` for each release.
 
 ## Installing
 
