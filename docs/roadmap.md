@@ -376,16 +376,7 @@ An outside agent's second run (inventory, checkout and return only, so the
 sign-in fixes stay unmeasured). Each is small; D15 and D16 come first, since
 a new agent can't find a type without them (Richard, 2026-11-03).
 
-- [ ] **D15 Links that can't break** `opus · high`: on jadpo.dev the raw
-  `.md` index pages (`/docs/types.md`, `/guides.md`) are served one folder
-  above where their relative links expect, so every link on them is a 404
-  (the HTML pages rewrite links; the Markdown doesn't). In the site's
-  repository: the `.md` routes write links through the same `rewriteLink` as
-  the HTML, and the build fails on any internal link in `dist/`, HTML or
-  Markdown, that doesn't resolve, versioned paths included. Here: the bundle
-  check keeps holding every link to a page in the bundle, and a test holds
-  `index.json`'s kinds to the paths in documentation.md, "What the site
-  serves". Done when a broken link fails a build on either side.
+- [x] **D15 Links that can't break**: documentation.md, "The bundle" and "What the site serves"; `bundle_link_problems`, `site_path_problems` and `agent_reading_problems` in `tools/docs/language_docs.py`; the site's `scripts/check-links.mjs`.
 - [ ] **D16 Standard type pages that teach** `opus · high`: every type
   already has its own page (`/docs/types/type-<name>`, F2). Each gains: what
   it represents and when to use it, and what to use instead, written once
@@ -467,8 +458,8 @@ and R4, where they touch different crates.
 Already built: acceptances (`jadpo acceptance new`, matching, the reason,
 history, the CODEOWNERS gate) for API and event breaks, every widening of
 who can do what (routes made public included), security declines,
-sign-in settings past their limit, new domains, new outside hosts,
-third parties' packages from git and removing data. The kinds that belong to
+sign-in settings past their limit, new domains, new outside hosts, risky
+package upgrades, third parties' packages from git and removing data. The kinds that belong to
 features not built yet come with those features: `ThresholdChange` with
 thresholds, a service's image with services, bot checks with bot
 protection, a domain renamed with `jadpo domain rename`.
@@ -476,12 +467,7 @@ protection, a domain renamed with `jadpo domain rename`.
 - [x] **V2 The approval report**: area 17, "Reviewing a change"; area 18, "Comparing two builds"; area 14, "`jadpo approval`"; compiler/runtime §2.3, "The approval report"; `docs/errors/cli.approval_arguments.md`.
 - [x] **V1 Your own company's git packages**: area 11, "Installing safely"; area 18, "Acceptances"; area 1, "What `application { }` holds"; compiler/runtime §2.3; `docs/errors/package.own_source_invalid.md`.
 - [x] **V3 Removing data needs a person**: area 5, "Removing data"; area 18, "Acceptances" and `DataChange`; area 14, "`jadpo migrate`"; area 16, "Deleting and erasing" and "Retention and erasure"; compiler/runtime §2.3, "Removals"; `docs/errors/migration.drop_not_accepted.md`.
-- [ ] **V4 Risky package upgrades need a person** `opus · high`: area 18,
-  "Package upgrades". The review compares the operations and declarations
-  the app uses, version ignored; a used operation removed, a used field
-  removed or retyped, a new failure on a used operation, or a host or
-  credential scheme changed needs a `PackageChange` acceptance; `jadpo
-  package update` prints the review.
+- [x] **V4 Risky package upgrades need a person**: area 18, "Package upgrades" and "Acceptances"; area 11, "How packages are installed and linked"; area 14, the package commands; compiler/runtime §2.3, "Acceptances".
 - [x] **V5 Where personal data goes**: area 15, "Marking personal fields"
   and "Where personal data goes"; area 14, `jadpo package check`;
   compiler/runtime §2.3, "Where personal data goes".

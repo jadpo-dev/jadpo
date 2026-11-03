@@ -32,6 +32,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use jadpo_check::acceptances::upgrades;
 use jadpo_check::publishing;
 use jadpo_check::surface::Surface;
 use jadpo_db::{Locked, Source};
@@ -987,7 +988,7 @@ pub fn update(call: &Call) -> Reply {
     // installed again from its source, even at the same release.
     let intact = digest_of_source(&line.source)
         .is_none_or(|digest| folder_digest(&root.join(&folder)).as_deref() == Some(digest));
-    let mut review: Option<registry::Notes> = None;
+    let mut registry_notes: Option<registry::Notes> = None;
     let (verified, source, _clone) = match &line.source {
         Source::Link { path } => {
             return Reply::failed(arguments(
@@ -1032,7 +1033,7 @@ pub fn update(call: &Call) -> Reply {
                 name: fetched.name.to_string(),
                 digest: verified.digest.clone(),
             };
-            review = Some(notes);
+            registry_notes = Some(notes);
             (verified, source, None)
         }
         Source::Path { path, digest, .. } => {
@@ -1132,6 +1133,7 @@ pub fn update(call: &Call) -> Reply {
             ),
         ));
     }
+    let was = review_side(&root);
     if let Err(reply) = install(&root, &verified, "package update") {
         return reply;
     }
@@ -1143,29 +1145,44 @@ pub fn update(call: &Call) -> Reply {
         return reply;
     }
     // Area 18's review of the change: what the app uses and a person
-    // decides.
-    let used = used_names(&root, &line.package, held_beside(&lines, &line.package));
+    // decides, the same list `jadpo check` then asks an acceptance for.
+    let used = was.used(&line.package);
+    let review = upgrades::review(&was, &review_side(&root));
     let changes = publishing::changes(&before, &verified.surface_text);
+    let in_use = |heading: &str| {
+        heading
+            .split_once(' ')
+            .is_some_and(|(_, name)| used.contains(name))
+    };
     let mut rows: Vec<(ChangeMark, Vec<String>)> = Vec::new();
-    let mut decide = 0;
     for (word, heading) in &changes {
         let mark = match word.as_str() {
             "added" => ChangeMark::Added,
             "removed" => ChangeMark::Removed,
             _ => ChangeMark::Changed,
         };
-        let declaration = heading.split_once(' ').map_or(heading.as_str(), |(_, n)| n);
-        let in_use = used.iter().any(|name| name == declaration);
         let mut columns = vec![heading.clone()];
-        if in_use {
+        if in_use(heading) {
             columns.push("used by the app".to_string());
-            if mark != ChangeMark::Added {
-                decide += 1;
-                columns.push("needs a person".to_string());
-            }
         }
         rows.push((mark, columns));
     }
+    let decide = review.len();
+    let needs: Vec<(ChangeMark, Vec<String>)> = review
+        .iter()
+        .map(|finding| {
+            let mark = match finding.mark() {
+                '+' => ChangeMark::Added,
+                '-' => ChangeMark::Removed,
+                _ => ChangeMark::Changed,
+            };
+            let mut columns = vec![finding.through.clone(), finding.what.clone()];
+            if !finding.detail.is_empty() {
+                columns.push(finding.detail.clone());
+            }
+            (mark, columns)
+        })
+        .collect();
     let old_version = version_of(&line.source).unwrap_or("").to_string();
     // The release the lock already names, put back over a changed copy.
     let again = !intact && digest_of_source(&line.source) == Some(verified.digest.as_str());
@@ -1187,7 +1204,7 @@ pub fn update(call: &Call) -> Reply {
                 ("folder".to_string(), folder.clone()),
                 ("source".to_string(), source_words(&source)),
             ];
-            if let Some(notes) = &review {
+            if let Some(notes) = &registry_notes {
                 if !notes.released.is_empty() {
                     status.push(("released".to_string(), notes.released.clone()));
                 }
@@ -1199,12 +1216,15 @@ pub fn update(call: &Call) -> Reply {
             status
         },
     });
-    if review.is_some()
+    if registry_notes.is_some()
         && let Some(facts) = &verified.facts
     {
         screen.push(crate::package_release::facts_block(facts));
     }
-    if let Some((was, now)) = review.as_ref().and_then(|notes| notes.moved.as_ref()) {
+    if let Some((was, now)) = registry_notes
+        .as_ref()
+        .and_then(|notes| notes.moved.as_ref())
+    {
         screen.push(Block::Changes {
             note: None,
             groups: vec![(
@@ -1222,7 +1242,13 @@ pub fn update(call: &Call) -> Reply {
             groups: vec![(format!("Changes since {old_version}"), rows)],
         });
     }
-    if let Some(notes) = &review {
+    if !needs.is_empty() {
+        screen.push(Block::Changes {
+            note: None,
+            groups: vec![("Needs a person".to_string(), needs)],
+        });
+    }
+    if let Some(notes) = &registry_notes {
         if !notes.record.is_empty() {
             screen.push(registry::record_block(
                 format!("Change record, {} to {}", notes.from, notes.to),
@@ -1266,10 +1292,17 @@ pub fn update(call: &Call) -> Reply {
         },
         facts,
     ));
-    screen.push(Block::hint(
-        "jadpo check",
-        format!("checks the app against {}", verified.version),
-    ));
+    screen.push(if decide > 0 {
+        Block::hint(
+            format!("jadpo acceptance new upgrade_{name}"),
+            "writes these up for a person's reason",
+        )
+    } else {
+        Block::hint(
+            "jadpo check",
+            format!("checks the app against {}", verified.version),
+        )
+    });
     let mut data = vec![
         ("package", Json::from(line.package.as_str())),
         ("from", Json::from(old_version.as_str())),
@@ -1278,16 +1311,26 @@ pub fn update(call: &Call) -> Reply {
         (
             "changes",
             Json::array(changes.iter().map(|(word, heading)| {
-                let declaration = heading.split_once(' ').map_or(heading.as_str(), |(_, n)| n);
                 Json::object([
                     ("change", Json::from(word.as_str())),
                     ("entry", Json::from(heading.as_str())),
-                    ("used", used.iter().any(|name| name == declaration).into()),
+                    ("used", in_use(heading).into()),
+                ])
+            })),
+        ),
+        (
+            "review",
+            Json::array(review.iter().map(|finding| {
+                Json::object([
+                    ("subject", Json::from(finding.subject.as_str())),
+                    ("change", Json::from(finding.change.as_str())),
+                    ("through", Json::from(finding.through.as_str())),
+                    ("said", Json::from(finding.said.as_str())),
                 ])
             })),
         ),
     ];
-    if let Some(notes) = &review {
+    if let Some(notes) = &registry_notes {
         data.extend([
             (
                 "facts",
@@ -1408,6 +1451,19 @@ fn up_to_date_in_registry(
     )
 }
 
+/// What an upgrade's review reads of the project as it stands.
+fn review_side(root: &Path) -> upgrades::Side {
+    let files: Vec<(String, String)> = jadpo_db::files_under(root, true)
+        .into_iter()
+        .filter(|path| upgrades::read_for_a_review(path))
+        .filter_map(|path| {
+            let text = std::fs::read_to_string(root.join(&path)).ok()?;
+            Some((path, text))
+        })
+        .collect();
+    upgrades::Side::read(files.iter().map(|(p, t)| (p.as_str(), t.as_str())))
+}
+
 /// The digest the lock gives a package's source.
 fn digest_of_source(source: &Source) -> Option<&str> {
     match source {
@@ -1496,40 +1552,6 @@ fn writes_word(text: &str, word: &str) -> bool {
         let after = text[at + word.len()..].chars().next();
         !before.is_some_and(|c| part(c) || c == '.') && !after.is_some_and(part)
     })
-}
-
-/// The package's names the app writes, after its name: `uk.parse`,
-/// `UkPostcode`; after its name and version, `Postcodes.v3.uk.parse`,
-/// while another version is held beside it (chunk 7.1c2).
-fn used_names(root: &Path, package: &str, beside: bool) -> Vec<String> {
-    let (code, _) = package.rsplit_once('.').unwrap_or((package, ""));
-    let lead = if beside {
-        format!("{package}.")
-    } else {
-        format!("{code}.")
-    };
-    let mut out: Vec<String> = Vec::new();
-    for (_, text) in app_sources(root) {
-        for (at, _) in text.match_indices(&lead) {
-            if text[..at]
-                .chars()
-                .next_back()
-                .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '.')
-            {
-                continue;
-            }
-            let rest = &text[at + lead.len()..];
-            let name: String = rest
-                .chars()
-                .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '.')
-                .collect();
-            let name = name.trim_end_matches('.').to_string();
-            if !name.is_empty() && !out.contains(&name) {
-                out.push(name);
-            }
-        }
-    }
-    out
 }
 
 // --- remove ----------------------------------------------------------------
