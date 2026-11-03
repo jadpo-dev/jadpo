@@ -39,6 +39,7 @@ pub mod media;
 pub mod modulus;
 pub mod named;
 pub mod opening_hours;
+pub mod pages;
 pub mod person_names_data;
 pub mod phones;
 mod phones_data;
