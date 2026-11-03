@@ -5,7 +5,7 @@
 //!
 //! ```text
 //! package AcmeCouriers.v1 version 1.4.0 git github.com/acme/acme-couriers tag v1.4.0 commit 9c2f…a1 digest sha256:5be1…c0
-//! package Postcodes.v2 version 2.1.0 registry digest sha256:e3b0…55
+//! package Postcodes.v2 version 2.1.0 registry @acme/postcodes digest sha256:e3b0…55
 //! package Tables.v1 version 1.0.0 path ../tables digest sha256:0c1d…9e
 //! package AcmePricing.v2 link ../acme-pricing
 //! ```
@@ -40,6 +40,8 @@ pub struct Locked {
 pub enum Source {
     Registry {
         version: String,
+        /// Its scoped name, `@acme/postcodes`.
+        name: String,
         digest: String,
     },
     Git {
@@ -64,9 +66,11 @@ impl Locked {
     pub fn line(&self) -> String {
         let package = &self.package;
         match &self.source {
-            Source::Registry { version, digest } => {
-                format!("package {package} version {version} registry digest {digest}")
-            }
+            Source::Registry {
+                version,
+                name,
+                digest,
+            } => format!("package {package} version {version} registry {name} digest {digest}"),
             Source::Git {
                 version,
                 repository,
@@ -276,10 +280,18 @@ fn parse_line(line: &str) -> Result<Locked, String> {
             };
             let version = version.to_string();
             match rest {
-                ["registry", "digest", d] => Source::Registry {
-                    version,
-                    digest: digest(d)?,
-                },
+                ["registry", name, "digest", d] => {
+                    if !is_scoped_name(name) {
+                        return Err(format!(
+                            "`{name}` isn't a registry name, such as `@acme/postcodes`"
+                        ));
+                    }
+                    Source::Registry {
+                        version,
+                        name: name.to_string(),
+                        digest: digest(d)?,
+                    }
+                }
                 ["git", repository, "tag", tag, "commit", commit, "digest", d]
                     if !repository.is_empty() && !tag.is_empty() =>
                 {
@@ -315,6 +327,26 @@ fn parse_line(line: &str) -> Result<Locked, String> {
 fn is_hex(text: &str) -> bool {
     text.bytes()
         .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// `@acme/postcodes`: each part lower-case letters and digits, starting
+/// with a letter, with single `-`s between them, at most 39 characters
+/// (area 11, "The registry protocol").
+fn is_scoped_name(text: &str) -> bool {
+    let part = |part: &str| {
+        let bytes = part.as_bytes();
+        !bytes.is_empty()
+            && bytes.len() <= 39
+            && bytes[0].is_ascii_lowercase()
+            && bytes[bytes.len() - 1] != b'-'
+            && !part.contains("--")
+            && bytes
+                .iter()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'-')
+    };
+    text.strip_prefix('@')
+        .and_then(|rest| rest.split_once('/'))
+        .is_some_and(|(publisher, name)| part(publisher) && part(name))
 }
 
 fn is_digest(text: &str) -> bool {
@@ -391,6 +423,7 @@ mod tests {
                 package: "Postcodes.v2".into(),
                 source: Source::Registry {
                     version: "2.1.0".into(),
+                    name: "@acme/postcodes".into(),
                     digest: digest('e'),
                 },
             },
@@ -445,7 +478,9 @@ mod tests {
                 .starts_with("package AcmePricing.v2 version 2.0.0-beta.1 path ../pricing digest")
         );
         assert_eq!(lines[5], "package AcmePricing.v10 link ../acme-pricing");
-        assert!(lines[6].starts_with("package Postcodes.v2 version 2.1.0 registry digest sha256:"));
+        assert!(lines[6].starts_with(
+            "package Postcodes.v2 version 2.1.0 registry @acme/postcodes digest sha256:"
+        ));
         let mut sorted = packages();
         sorted.sort_by_key(Locked::order);
         assert_eq!(parse_lock(&text), Ok(sorted));

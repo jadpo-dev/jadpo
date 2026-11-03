@@ -110,6 +110,7 @@ mod queries;
 mod receiving;
 mod recordings;
 mod records;
+mod registry_commands;
 mod released;
 mod removals;
 mod retention;

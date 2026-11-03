@@ -130,14 +130,27 @@ pub const ACTIONS: &[Value] = &[
         name: "recipe",
         description: "Copy one of a package's recipes into a domain",
     },
+    Value {
+        name: "search",
+        description: "Find packages and standard-library functions for a need",
+    },
+    Value {
+        name: "audit",
+        description: "List the advisories against the app's packages",
+    },
+    Value {
+        name: "publish",
+        description: "Ask the registry to release the package from a tag",
+    },
+    Value {
+        name: "preview",
+        description: "Serve the package's registry page locally",
+    },
 ];
 
 /// What the language decides `jadpo package` does, not built yet, and the
 /// work that brings each.
-const LATER: &[(&str, &str)] = &[
-    ("new", "package repositories"),
-    ("publish", "the hosted registry"),
-];
+const LATER: &[(&str, &str)] = &[("new", "package repositories")];
 
 pub fn package(call: &Call) -> Reply {
     let names: Vec<&str> = ACTIONS.iter().map(|action| action.name).collect();
@@ -147,6 +160,30 @@ pub fn package(call: &Call) -> Reply {
             "`--guide` goes with `jadpo package show`".to_string(),
             "`--guide` prints a package's `GUIDE.md`, which only `show` does.".to_string(),
             "Run `jadpo package show <name> --guide`".to_string(),
+        ));
+    }
+    for (flag, goes_with, with) in [
+        (
+            "--to",
+            &["add", "update", "search"][..],
+            "`add`, `update` and `search`",
+        ),
+        ("--from", &["search"][..], "`search`"),
+        ("--kind", &["search"][..], "`search`"),
+    ] {
+        if call.value(flag).is_some() && !action.is_some_and(|action| goes_with.contains(&action)) {
+            return Reply::failed(arguments(
+                format!("`{flag}` goes with {with}"),
+                "No other action of `jadpo package` reads it.".to_string(),
+                format!("Run `jadpo package {} ... {flag} <value>`", goes_with[0]),
+            ));
+        }
+    }
+    if call.flag("--dry-run") && action != Some("publish") {
+        return Reply::failed(arguments(
+            "`--dry-run` goes with `jadpo package publish`".to_string(),
+            "It runs the registry's verifier on the pushed tag and publishes nothing, which only `publish` does.".to_string(),
+            "Run `jadpo package publish --dry-run`".to_string(),
         ));
     }
     match action {
@@ -167,6 +204,10 @@ pub fn package(call: &Call) -> Reply {
         Some("record") => crate::package_record::record(call),
         Some("conform") => crate::package_conform::conform(call),
         Some("recipe") => crate::package_recipe::recipe(call),
+        Some("search") => crate::package_search::search(call),
+        Some("audit") => crate::package_audit::audit(call),
+        Some("publish") => crate::package_publish::publish(call),
+        Some("preview") => crate::package_preview::preview(call),
         Some(later) if LATER.iter().any(|(name, _)| *name == later) => {
             let comes = LATER
                 .iter()
@@ -359,8 +400,8 @@ fn source_words(surface: &Surface, locked: Option<&Locked>) -> (Option<String>, 
             tag,
             ..
         }) => (Some(version.clone()), format!("git {repository} tag {tag}")),
-        Some(Source::Registry { version, .. }) => {
-            (Some(version.clone()), "the registry".to_string())
+        Some(Source::Registry { version, name, .. }) => {
+            (Some(version.clone()), format!("registry {name}"))
         }
         Some(Source::Link { path }) => (None, format!("a link to {path}")),
         None => (None, "not in jadpo.lock".to_string()),
@@ -1042,7 +1083,7 @@ pub(crate) fn package_files(folder: &Path) -> Vec<String> {
     out
 }
 
-fn no_package(command: &str) -> Reply {
+pub(crate) fn no_package(command: &str) -> Reply {
     Reply::failed(arguments(
         "There is no package here".to_string(),
         format!(
