@@ -250,7 +250,19 @@ Numbered as the questions they settled, which other pages cite.
     `own_sources:` (Richard, 2026-10-31), so they install without
     `PackageChange.git_source`; adding one is itself a `PolicyChange`,
     because a list an agent could extend freely would let any repository
-    in.
+    in. Matching fails closed, since a wrong "yes" lets a stranger's code
+    in and a wrong "no" costs one acceptance: by a host's name (no case)
+    and whole path parts (exact case, as many servers tell them apart),
+    strictly below the entry; a port is part of the server; only
+    `https://`, `ssh://` with no account or `git`, `git@host:` and a bare
+    address count, and any other account, an escape or a `..` makes an
+    address under nothing. An entry below one already there lets nothing
+    new in, so it needs no acceptance, and narrowing is the same. A
+    package moved to another repository is new code from someone new, so
+    it needs `PackageChange.git_source` unless the new one is under an
+    entry; and a before side with no `jadpo.lock` or no
+    `access.jadpo_record` had no packages or no list, so its first of
+    either needs a person like any other (2026-11-01).
 16. **Package names** are UpperCamelCase with the package's own version
     label: `Stripe.v2024_06_20`, `AcmeCouriers.v1`, `Postcodes.v2`. Types,
     failures and events are named through the package without the version
