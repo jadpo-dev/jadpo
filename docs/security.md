@@ -94,6 +94,9 @@ and keeps the input.
 - A pull request from a fork gets a read-only token and no secrets; the
   secrets (release-please's token, the extension's publishing tokens) are
   read only on a push to `main` or a release started by hand.
+- The verifier's image runs code from anyone's repository, so the job that
+  starts it holds a read-only token; publishing is a separate job that never
+  runs it.
 - dist builds the installers on each release, installed itself from its
   own release archive checked against a SHA-256 pinned in
   `.github/install-dist.sh`, and writes a SHA-256 beside each archive.

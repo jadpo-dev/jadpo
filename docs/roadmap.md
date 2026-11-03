@@ -376,16 +376,7 @@ An outside agent's second run (inventory, checkout and return only, so the
 sign-in fixes stay unmeasured). Each is small; D15 and D16 come first, since
 a new agent can't find a type without them (Richard, 2026-11-03).
 
-- [ ] **D15 Links that can't break** `opus · high`: on jadpo.dev the raw
-  `.md` index pages (`/docs/types.md`, `/guides.md`) are served one folder
-  above where their relative links expect, so every link on them is a 404
-  (the HTML pages rewrite links; the Markdown doesn't). In the site's
-  repository: the `.md` routes write links through the same `rewriteLink` as
-  the HTML, and the build fails on any internal link in `dist/`, HTML or
-  Markdown, that doesn't resolve, versioned paths included. Here: the bundle
-  check keeps holding every link to a page in the bundle, and a test holds
-  `index.json`'s kinds to the paths in documentation.md, "What the site
-  serves". Done when a broken link fails a build on either side.
+- [x] **D15 Links that can't break**: documentation.md, "The bundle" and "What the site serves"; `bundle_link_problems`, `site_path_problems` and `agent_reading_problems` in `tools/docs/language_docs.py`; the site's `scripts/check-links.mjs`.
 - [ ] **D16 Standard type pages that teach** `opus · high`: every type
   already has its own page (`/docs/types/type-<name>`, F2). Each gains: what
   it represents and when to use it, and what to use instead, written once
@@ -515,13 +506,11 @@ real deploy) and, before outside authors can publish, D3 (releases).
   wait, `--to` and urgent releases, `search`, `audit`, `publish` and
   `--dry-run`, `preview`. Every screen designed with the design skills
   first.
-- [ ] **R6 The verifier** `opus · high` after R3: area 11, "The verifier".
-  `jadpo package verify --serve`, fetching over git and then verifying with
-  no network, the check that a commit holds only Jadpo source and the
-  package's text files within the size limit, and its container image
-  published with each release (D3).
-  It runs on Fly.io, reached over HTTPS (Richard, 2026-10-31); **needs a
-  maintainer** for the Fly.io account before it is deployed.
+- [x] **R6 The verifier**: area 11, "The verifier" and "Publishing errors"; area 14, "`jadpo package verify`"; compiler/runtime §2.1, `jadpo-verifier`; `deploy/verifier/`; `.github/workflows/verifier-image.yml`; documentation, "Versions and releases".
+- [ ] **R6b The verifier deployed** **needs a maintainer**: the Fly.io
+  account and the steps in [documentation](documentation.md#versions-and-releases):
+  the repository variable `JADPO_VERIFIER_IMAGE` set to `on`, the app and its
+  credential on Fly.io, then the image deployed. Before R7 can reach it.
 - [ ] **G1 Reserved words as names** `opus · high`: area 2 and area 1,
   "Reserved words". Inside a type body a reserved word may name a field or an
   enum variant, where `package: Text` and `Kind.library` are unambiguous
@@ -544,7 +533,7 @@ real deploy) and, before outside authors can publish, D3 (releases).
   command that runs R4's conformance test against a document, so R7's CI needs
   no Rust; `bytes.concat`.
 - [ ] **R7 The registry application** **needs a maintainer** to start the
-  jadpo.dev session, after R1, R4, R6, 8.2n and G1 to G5: built against the
+  jadpo.dev session, after R1, R4, R6, R6b, 8.2n and G1 to G5: built against the
   protocol and passing R4's conformance test. Until the S3 driver its archives
   are kept in PostgreSQL, and its database must offer pgvector 0.8. Word search
   is `search:` with `matches`.
