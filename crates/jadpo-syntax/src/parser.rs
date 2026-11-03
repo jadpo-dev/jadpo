@@ -110,6 +110,9 @@ pub(crate) struct Parser<'a> {
     /// Whether an error was dropped because another starts at the same
     /// place: the tree then holds more than one mistake there.
     pub(crate) suppressed: bool,
+    /// Whether a reserved word read as a name went unreported: the tree
+    /// is whole, but an edit would bring that error to light.
+    pub(crate) name_suppressed: bool,
 }
 
 impl std::fmt::Debug for Parser<'_> {
@@ -138,6 +141,7 @@ impl<'a> Parser<'a> {
             too_deep: false,
             error_starts: std::collections::HashSet::new(),
             suppressed: false,
+            name_suppressed: false,
         }
     }
 
@@ -424,8 +428,7 @@ impl<'a> Parser<'a> {
             return;
         }
         if !self.error_starts.insert(error.start) {
-            // A clean habit left unreported still reads as its Jadpo form.
-            self.suppressed |= !(error.clean || error.reads_as_name);
+            self.leave_unreported(&error);
             return;
         }
         self.errors.push(error);
@@ -447,9 +450,15 @@ impl<'a> Parser<'a> {
         let dropped: Vec<SyntaxError> = self.errors.drain(n + first + 1..).collect();
         for error in dropped {
             self.error_starts.remove(&error.start);
-            // A clean habit left unreported still reads as its Jadpo form.
-            self.suppressed |= !(error.clean || error.reads_as_name);
+            self.leave_unreported(&error);
         }
+    }
+
+    /// Notes what an error nobody will see means for the parse. A clean
+    /// habit left unreported still reads as its Jadpo form.
+    pub(crate) fn leave_unreported(&mut self, error: &SyntaxError) {
+        self.suppressed |= !(error.clean || error.reads_as_name);
+        self.name_suppressed |= error.reads_as_name;
     }
 
     /// Records `error` in place of the errors already found from `start`
