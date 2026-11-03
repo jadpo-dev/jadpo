@@ -6040,8 +6040,8 @@ check.
   what to do, each `(agent)`, with `--json` for agents.
 - **Field and variant names on the wire.** A field or variant is the
   provider's name in `lower_snake_case`; where that differs (`collectAt`,
-  `after-noon`, or `type` written `type_value` to avoid a reserved word),
-  the importer writes the provider's spelling as the field's or variant's
+  `after-noon`, or a variant `none` written `none_value`, which no variant
+  can be called), the importer writes the provider's spelling as the field's or variant's
   `wire_name:` ([Decoding](#decoding)).
 
 > Importing Smithy, Postman, HAR and `.d.ts` isn't built yet: each is

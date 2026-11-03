@@ -610,8 +610,7 @@ fn declaration_words_never_name_anything() {
         "function test(n: Name) -> Name {\n    return n\n}\n",
         "function f(package: Name) -> Name {\n    return package\n}\n",
         "function f(n: Name) -> Name {\n    var seed: Name = n\n    return seed\n}\n",
-        "type Thing = Object {\n    resource: Name\n}\n",
-        "type Thing = Object {\n    type: Name\n}\n",
+        "action f(n: Name) -> Name {\n    var type: Name = n\n    return n\n}\n",
     ] {
         assert_eq!(
             check(&format!("{name}{source}")),
@@ -682,5 +681,51 @@ fn a_type_may_share_its_folded_name_with_the_callable_in_its_file() {
             ]
         ),
         ["naming.folded_collision"]
+    );
+}
+
+#[test]
+fn reserved_words_name_fields_and_variants_and_nothing_else() {
+    let name = "type Name = Text {}\n\n";
+    // A field, read and built, and a variant, built and matched.
+    assert_eq!(
+        check(&format!(
+            "{name}type Kind = Enum {{\n    library\n    package: {{\n        type: Name\n    }}\n    type\n}}\n\ntype Thing = Object {{\n    resource: Name\n    type: Name\n    kind: Kind\n}}\n\nfunction read(thing: Thing) -> Name {{\n    return match thing.kind {{\n        Kind.library -> thing.type\n        Kind.package(package) -> package.type\n        Kind.type -> thing.resource\n    }}\n}}\n\nfunction build(n: Name) -> Thing {{\n    return Thing {{\n        resource: n\n        type: n\n        kind: Kind.package {{\n            type: n\n        }}\n    }}\n}}\n"
+        )),
+        CLEAN
+    );
+    // Values can't be variants; they can be fields.
+    for word in ["true", "false", "none"] {
+        assert_eq!(
+            check(&format!("type Kind = Enum {{\n    a\n    {word}\n}}\n")),
+            ["type.reserved_variant_name"],
+            "{word}"
+        );
+        assert_eq!(
+            check(&format!(
+                "{name}type Thing = Object {{\n    {word}: Name\n}}\n\nfunction read(thing: Thing) -> Name {{\n    return Thing {{\n        {word}: thing.{word}\n    }}.{word}\n}}\n"
+            )),
+            CLEAN,
+            "{word}"
+        );
+    }
+    // A field that doesn't exist is the usual error, reserved word or not.
+    assert_eq!(
+        check(&format!(
+            "{name}type Thing = Object {{\n    a: Name\n}}\n\nfunction build(n: Name) -> Thing {{\n    return Thing {{\n        a: n\n        if: n\n    }}\n}}\n"
+        )),
+        ["type.unknown_field"]
+    );
+    // A setting on another base isn't a field, and is refused as one.
+    assert_ne!(
+        check("type Name = Text {\n    if: 1\n}\n"),
+        CLEAN
+    );
+    // A list item that names nothing.
+    assert_ne!(
+        check(&format!(
+            "{name}function f(n: Name) -> List<Name> {{\n    return [type, n]\n}}\n"
+        )),
+        CLEAN
     );
 }

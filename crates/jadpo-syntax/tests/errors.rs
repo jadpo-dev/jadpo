@@ -104,12 +104,210 @@ fn expected_name() {
     assert_eq!(covered, ":");
 }
 
+/// Every reserved word (area 1, "Reserved words").
+const RESERVED_WORDS: [&str; 39] = [
+    "action",
+    "and",
+    "assert",
+    "attempt",
+    "constant",
+    "decline",
+    "else",
+    "emit",
+    "entity",
+    "fails",
+    "false",
+    "fixture",
+    "for",
+    "function",
+    "if",
+    "in",
+    "library",
+    "match",
+    "mut",
+    "none",
+    "not",
+    "or",
+    "package",
+    "propagate",
+    "provide",
+    "public",
+    "query",
+    "reject",
+    "resource",
+    "return",
+    "routes",
+    "schedule",
+    "seed",
+    "subscriber",
+    "test",
+    "true",
+    "type",
+    "use",
+    "var",
+];
+
+fn no_errors(text: &str) {
+    let parse = parse_file(text);
+    assert!(
+        parse.errors().is_empty(),
+        "{text}\n{:#?}",
+        parse
+            .errors()
+            .iter()
+            .map(|e| (&e.message, e.rule.id, e.start))
+            .collect::<Vec<_>>()
+    );
+    // The tree holds every byte, whatever the word was read as.
+    assert_eq!(parse.syntax_node().text().to_string(), text);
+}
+
 #[test]
-fn reserved_word_as_a_name() {
-    let (error, covered) = one_error("type Pair = Object {\n    match: Count\n}\n");
-    assert_eq!(error.rule.id, "syntax.expected_name");
-    assert_eq!(error.message, "`match` is a reserved word");
-    assert_eq!(covered, "match");
+fn a_reserved_word_names_a_field_in_a_type_or_entity() {
+    for word in RESERVED_WORDS {
+        for body in ["Object", "Input", "Output", "Failure", "Event"] {
+            no_errors(&format!(
+                "type Thing = {body} {{\n    first: Text\n    {word}: Text\n    last: Text\n}}\n"
+            ));
+        }
+        no_errors(&format!(
+            "entity Thing {{\n    id: Uuid\n    {word}: Text {{\n        max_length: 9\n    }}\n}}\n"
+        ));
+        // Its block, and members sharing a line.
+        no_errors(&format!(
+            "type Thing = Object {{\n    {word}: Text {{\n        max_length: 9\n    }}\n}}\n"
+        ));
+        no_errors(&format!("type Thing = Object {{ a: Text {word}: Text }}\n"));
+    }
+}
+
+#[test]
+fn a_reserved_word_names_a_variant() {
+    for word in RESERVED_WORDS {
+        no_errors(&format!(
+            "type Kind = Enum {{\n    first\n    {word}\n    last\n}}\n"
+        ));
+        no_errors(&format!("type Kind = Enum {{\n    {word}\n}}\n"));
+        no_errors(&format!("type Kind = Enum {{ {word} }}\n"));
+        no_errors(&format!(
+            "type Kind = Enum {{\n    {word}: {{\n        {word}: Text\n    }}\n    last\n}}\n"
+        ));
+    }
+}
+
+#[test]
+fn a_reserved_word_is_read_and_built_as_a_field() {
+    for word in RESERVED_WORDS {
+        no_errors(&format!(
+            "function f(thing: Thing) -> Text {{\n    return thing.{word}\n}}\n"
+        ));
+        no_errors(&format!(
+            "function f(text: Text) -> Thing {{\n    return Thing {{\n        {word}: text\n    }}\n}}\n"
+        ));
+        no_errors(&format!(
+            "function f(a: Text, b: Text) -> Thing {{\n    return Thing {{ a: a {word}: b }}\n}}\n"
+        ));
+        no_errors(&format!("type View = Output {{\n    a: Thing.{word}\n}}\n"));
+        // A variant, built and matched.
+        no_errors(&format!(
+            "function f(kind: Kind) -> Bool {{\n    return match kind {{\n        Kind.{word} -> true\n        Kind.{word}(x) -> x.{word}\n        _ -> Kind.{word} == kind\n    }}\n}}\n"
+        ));
+        // A query's result fields, and the field it filters and orders by.
+        no_errors(&format!(
+            "query q(a: Text) -> List<View> {{\n    from: Thing\n    where: Thing.{word} == a\n    group: {{\n        {word}: Thing.{word}\n    }}\n    aggregate: {{\n        {word}: count()\n    }}\n    order: [Thing.{word} asc]\n}}\n"
+        ));
+    }
+}
+
+#[test]
+fn a_reserved_word_is_a_field_as_a_whole_list_item() {
+    for word in RESERVED_WORDS {
+        if ["true", "false", "none"].contains(&word) {
+            continue;
+        }
+        no_errors(&format!(
+            "entity Thing {{\n    id: Uuid\n    {word}: Text\n    unique: {{\n        both: [id, {word}]\n    }}\n    policy: {{\n        read: [{word}]\n    }}\n}}\n"
+        ));
+        no_errors(&format!(
+            "query q() -> List<V> {{\n    from: T\n    order: [{word} desc, id asc]\n}}\n"
+        ));
+    }
+}
+
+#[test]
+fn a_reserved_word_never_names_anything_else() {
+    for (text, word) in [
+        (
+            "function f(match: Count) -> Count {\n    return 1\n}\n",
+            "match",
+        ),
+        ("function match() -> Count {\n    return 1\n}\n", "match"),
+        ("type match = Object {}\n", "match"),
+        ("entity package {\n    id: Uuid\n}\n", "package"),
+        (
+            "function f() -> Count {\n    var type: Count = 1\n    return 1\n}\n",
+            "type",
+        ),
+        // A query's or a declaration's own settings.
+        ("query q() -> List<View> {\n    type: Thing\n}\n", "type"),
+        ("schedule s {\n    if: true\n}\n", "if"),
+        // Block settings inside a type's body.
+        (
+            "entity Thing {\n    id: Uuid\n    unique: {\n        type: [Thing.id]\n    }\n}\n",
+            "type",
+        ),
+    ] {
+        let (error, covered) = one_error(text);
+        assert_eq!(error.rule.id, "syntax.expected_name", "{text}");
+        assert_eq!(
+            error.message,
+            format!("`{word}` is a reserved word"),
+            "{text}"
+        );
+        assert_eq!(covered, word, "{text}");
+    }
+}
+
+#[test]
+fn a_reserved_word_is_never_read_as_a_value_on_its_own() {
+    for (text, covered_word) in [
+        // A rule names its fields alone, so it can't read this one.
+        (
+            "type T = Object {\n    type: Text\n    a: Text\n    rule r: type == a\n}\n",
+            "type",
+        ),
+        (
+            "type T = Object {\n    package: Text\n    a: Text\n    rule r: a == public\n}\n",
+            "public",
+        ),
+        ("function f() -> Text {\n    return type\n}\n", "type"),
+    ] {
+        let (error, covered) = one_error(text);
+        assert_eq!(error.rule.id, "syntax.expected_name", "{text}");
+        assert_eq!(
+            error.message,
+            format!("`{covered_word}` is a reserved word"),
+            "{text}"
+        );
+        assert!(
+            error.reason.contains(&format!("`thing.{covered_word}`")),
+            "{text}"
+        );
+        assert_eq!(covered, covered_word, "{text}");
+    }
+}
+
+#[test]
+fn a_type_body_still_ends_at_the_next_declaration() {
+    // No `}`: the next declaration isn't read as a field or variant, since
+    // only `word:` and a word alone on its line name one.
+    for text in [
+        "type Kind = Enum {\n    a\n\ntype Other = Object {}\n",
+        "type T = Object {\n    a: Text\n\nfunction f() -> Text {\n    return \"a\"\n}\n",
+    ] {
+        let (error, _) = one_error(text);
+        assert_eq!(error.rule.id, "syntax.unexpected_token", "{text}");
+    }
 }
 
 #[test]

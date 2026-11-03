@@ -1026,6 +1026,9 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
     // route's `…/confirmation`, the ceremony built for wasm32 and the
     // challenge taken once, each refusal with the interpreter's record.
     let confirmation = page("docs/language/08-identity.md confirmation");
+    // Area 2's fields and variants named with reserved words, over the wire
+    // and in the database (chunk G1).
+    let reserved_names = page("docs/language/02-values-and-types.md reserved-names");
     let projects = [
         ("area 7's todos", corpus_project(&files, "workerd-todos")),
         (
@@ -1059,6 +1062,10 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
             "area 8's payout confirmed with a passkey",
             corpus_project(&confirmation, "workerd-confirmation"),
         ),
+        (
+            "area 2's names from reserved words",
+            corpus_project(&reserved_names, "workerd-reserved-names"),
+        ),
     ];
     let folders: Vec<PathBuf> = projects
         .iter()
@@ -1084,6 +1091,7 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
             (1, 1),
             (5, 5),
             (1, 1),
+            (3, 3),
             (3, 3),
             (3, 3)
         ]

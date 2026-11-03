@@ -24,7 +24,8 @@
 //!   one renamed `<Name>Type` where it would take a built-in type's name;
 //!   an object inside one is a type of its own, `<Parent><Field>`. A field
 //!   or variant is `lower_snake_case`; where that isn't the provider's own
-//!   name, or a reserved word had to be avoided, it is listed.
+//!   name, or a variant had to avoid a word that can't name one, it is
+//!   listed.
 //! - **Area 11's exact mappings** (its first layer): `date-time` is
 //!   `Instant`, `date` `CalendarDate`, `email` `Email`, `uri` `Url`, `uuid`
 //!   `Uuid`, `ipv4` and `ipv6` `IpAddress`, `byte` `Bytes`, `duration`
@@ -358,8 +359,8 @@ fn whole(read: &Read) -> String {
     format!("{}_{}", read.method, segments.join("_"))
 }
 
-/// `name` made a Jadpo name: a reserved word, or one that doesn't start
-/// with a letter, gets `_value` or `n_`.
+/// `name` made an operation's name: one that can't be, or doesn't start with
+/// a letter, gets `_value` or `n_`.
 fn safe_name(name: &str) -> String {
     let name = if name.is_empty() {
         "value".to_string()
@@ -368,11 +369,19 @@ fn safe_name(name: &str) -> String {
     } else {
         name.to_string()
     };
-    if fits_as_field(&name) {
+    if fits_as_operation(&name) {
         name
     } else {
         format!("{name}_value")
     }
+}
+
+/// Whether `name` reads as an operation's name, which a reserved word never
+/// does: it is a resource's setting, and only a type's body lets one name a
+/// field.
+fn fits_as_operation(name: &str) -> bool {
+    let text = format!("resource R {{\n    {name}: {{}}\n}}\n");
+    !jadpo_syntax::parse_file(&text).has_errors()
 }
 
 /// Whether `name` reads as a field's name.
@@ -382,10 +391,13 @@ fn fits_as_field(name: &str) -> bool {
 }
 
 /// Whether `name` reads as a variant's name; `all` is the enum's own list
-/// (area 19, "Closed value sets are enums").
+/// (area 19, "Closed value sets are enums"), and `true`, `false` and `none`
+/// are values (area 2, "Enums").
 fn fits_as_variant(name: &str) -> bool {
     let text = format!("type T = Enum {{\n    {name}\n}}\n");
-    name != "all" && !jadpo_syntax::parse_file(&text).has_errors()
+    name != "all"
+        && !jadpo_syntax::VALUE_WORDS.contains(&name)
+        && !jadpo_syntax::parse_file(&text).has_errors()
 }
 
 /// A type's name that would take a built-in or standard type's.
