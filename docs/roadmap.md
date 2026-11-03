@@ -396,6 +396,12 @@ a new agent can't find a type without them (Richard, 2026-11-03).
   today those pages list names with no way through, and say 247 types where
   the reference says 259. `jadpo help <Type>` prints the same page offline,
   and `--json` gives the shape, so one call answers what shape a type has.
+  Every page reads in this order, a rule the chunk adds to the writing guide
+  (Richard, 2026-11-03): what it is; when to use it and what to use instead;
+  its shape, with a Required? column; a working example; gotchas in plain
+  words, leading with what you can do, with no "contract", "baseline" or "not
+  ordered"; its JSON; then storage and operations in a collapsed Details
+  section. The Markdown keeps every fact, in that order.
   259 types: split by group here if larger than a session. Designed with
   the design skills first.
 - [ ] **A12 What a new agent reads first** `opus · high`: the primer and
