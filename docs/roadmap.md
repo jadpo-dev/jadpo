@@ -368,6 +368,59 @@ time.
 - [x] **A10 Staff only through their provider**: area 9, "Roles that need a way in" and Decisions; area 8, "How a session started", "How strongly a person signed in", "Company accounts" and Decisions; area 13, "Signing in for a route test"; area 18, "Acceptances" and Decisions; compiler/runtime §2.6, "Roles that need a way in"; `examples/29-lending-desk/README.md`.
 - [x] **A11 Route tests keep their session**: area 13, "Signing in for a route test", "What is built" and Decisions; `examples/29-lending-desk/README.md`.
 
+## What the 0.2.0 run found
+
+An outside agent's second run (inventory, checkout and return only, so the
+sign-in fixes stay unmeasured). Each is small; D15 and D16 come first, since
+a new agent can't find a type without them (Richard, 2026-11-03).
+
+- [ ] **D15 Links that can't break** `opus · high`: on jadpo.dev the raw
+  `.md` index pages (`/docs/types.md`, `/guides.md`) are served one folder
+  above where their relative links expect, so every link on them is a 404
+  (the HTML pages rewrite links; the Markdown doesn't). In the site's
+  repository: the `.md` routes write links through the same `rewriteLink` as
+  the HTML, and the build fails on any internal link in `dist/`, HTML or
+  Markdown, that doesn't resolve, versioned paths included. Here: the bundle
+  check keeps holding every link to a page in the bundle, and a test holds
+  `index.json`'s kinds to the paths in documentation.md, "What the site
+  serves". Done when a broken link fails a build on either side.
+- [ ] **D16 Standard type pages that teach** `opus · high`: every type
+  already has its own page (`/docs/types/type-<name>`, F2). Each gains: what
+  it represents and when to use it, and what to use instead, written once
+  beside the type in `crates/jadpo-std` and held by a test so no type lacks
+  it; its shape as a table saying which parts are required and which
+  optional, with each part's type; and a Jadpo example compiled by the gate.
+  The index lists every type A to Z with its group as a column, since a
+  reader looks for a name. `jadpo help <Type>` prints the same page offline.
+  259 types: split by group here if larger than a session. Designed with
+  the design skills first.
+- [ ] **A12 What a new agent reads first** `opus · high`: the primer and
+  Learn page 1 say there is no installer and the primer lists seeds as not
+  built: both are wrong, so generate such claims from release facts rather
+  than prose. The generated `AGENTS.md` links examples at the release, not
+  `tree/main`, and says "check after each connected change", with how to
+  stage a supporting type, since checking after every file refuses a type
+  written before its user (`layout.unused_declaration`).
+- [ ] **A13 A broken test environment says so once** `opus · high`: a
+  PostgreSQL that can't start (a sandbox's shared memory) is one environment
+  diagnostic marked `(human)` at the top level, not five `internal_fault`s
+  under a `test.failed` an agent is told to fix.
+- [ ] **A14 Small diagnostics from the run** `opus · high`: a domain renamed
+  in a project with no commits is the agent's to do, since no one depends on
+  it yet; the first `type.mismatch` shows the expected shape and its edit;
+  area 1 says a failure may live in its action's file while the compiler
+  refuses it, so the page changes to match (Richard's call on recommendation,
+  2026-11-03); `--json` results carry the command's duration, and repeated
+  output is shortened.
+- [ ] **A15 Public writes in a new app** `opus · high`: a first commit has
+  nothing to compare with, so a new project's public create, update or delete
+  passes unseen. The first `access.jadpo_record` holding a public write gives
+  a notice marked `(human)`, and the approval report leads with it. A
+  decision, not a vulnerability: an app may mean it.
+- [ ] **A16 Run the sign-in half again** **needs a maintainer** after 0.3.0: the
+  same brief as 0.1's run, sign-in, roles and reminders included, the only way
+  to judge A7, A10 and A11. Until then, no public claim that sign-in is fixed.
+
 ## Approvals
 
 Everything a person must approve is found by the compiler and can be
