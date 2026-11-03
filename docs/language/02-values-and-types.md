@@ -1102,6 +1102,10 @@ type Kind = Enum {
     package
     type
 }
+```
+
+```jadpo check project=reserved-names file=domains/registry/types/source.jadpo
+use registry/types { PackageName }
 
 type Source = Enum {
     public
@@ -1127,6 +1131,17 @@ entity Release {
 }
 ```
 
+```jadpo check project=reserved-names file=domains/registry/types/release_view.jadpo
+use registry/entities { Release }
+use registry/types { Kind }
+
+/// A release as clients see it.
+type ReleaseView = Output {
+    pick: [Release.package, Release.in]
+    type: Kind
+}
+```
+
 ```jadpo check project=reserved-names file=domains/registry/queries/releases_of.jadpo
 use registry/entities { Release }
 use registry/types { Kind, ReleaseView }
@@ -1140,30 +1155,15 @@ query releases_of(name: Release.package, wanted: Kind) -> List<ReleaseView> {
 }
 ```
 
-```jadpo check project=reserved-names file=domains/registry/types/release_view.jadpo
-use registry/entities { Release }
-use registry/types { Source }
-
-/// A release as clients see it.
-type ReleaseView = Output {
-    pick: [Release.package, Release.type]
-    return: Release.in
-}
-
-type Published = Object {
-    if: Release.package
-    source: Source
-}
-```
-
 ```jadpo check project=reserved-names file=domains/registry/actions/publish.jadpo
 use registry/entities { Release }
-use registry/types { Kind, PackageName, Published, ReleaseView, Source }
+use registry/types { Kind, Published, ReleaseView, Source }
+use registry/libraries { labels }
 
 /// What publishing a release takes.
 type Publish = Input {
     package: Release.package
-    type: Release.type
+    type: Kind
 }
 
 action publish(input: Publish) -> ReleaseView {
@@ -1171,39 +1171,42 @@ action publish(input: Publish) -> ReleaseView {
         set: {
             package: input.package
             type: input.type
-            in: none
+            in: labels.label(
+                Published {
+                    if: input.package
+                    source: Source.public
+                }
+            )
         }
     }
     return ReleaseView {
         package: release.package
         type: release.type
-        return: release.in
+        in: release.in
     }
 }
+```
 
-function label(source: Source) -> PackageName {
-    return match source {
-        Source.public -> "everyone"
-        Source.test(test) -> test.for
-    }
+```jadpo check project=reserved-names file=domains/registry/types/published.jadpo
+use registry/types { PackageName, Source }
+
+type Published = Object {
+    if: PackageName
+    source: Source
 }
+```
 
-function is_a_package(kind: Kind) -> Bool {
-    return kind == Kind.package
-}
+```jadpo check project=reserved-names file=domains/registry/libraries/labels.jadpo
+use registry/types { PackageName, Published, Source }
 
-test "a field and a variant named with reserved words" {
-    var published: Published = Published {
-        if: "left-pad"
-        source: Source.test {
-            for: "the registry"
+library labels {
+    /// Who a release is for.
+    function label(published: Published) -> PackageName {
+        return match published.source {
+            Source.public -> published.if
+            Source.test(details) -> details.for
         }
     }
-    assert published.if == "left-pad"
-    assert label(published.source) == "the registry"
-    assert label(Source.public) == "everyone"
-    assert is_a_package(Kind.package)
-    assert not is_a_package(Kind.type)
 }
 ```
 
@@ -1240,21 +1243,26 @@ POST /releases
     output ReleaseView
     status 201
 
+enum Kind
+    variant library
+    variant package
+    variant type
+
 input Publish
     package: Text { min_length: 1, max_length: 80 }
-    type: enum Kind { library, package, type }
+    type: Kind
 
 output ReleaseView
+    in: Text { min_length: 1, max_length: 80 }?
     package: Text { min_length: 1, max_length: 80 }
-    return: Text? { min_length: 1, max_length: 80 }
-    type: enum Kind { library, package, type }
+    type: Kind
 ```
 
 ```jadpo check project=reserved-names file=domains/registry/routes/releases.test.jadpo hidden
-use registry/entities { Release }
-use registry/types { Kind, ReleaseView }
+use registry/types { Kind, Published, ReleaseView, Source }
 use registry/actions { Publish, publish }
 use registry/queries { releases_of }
+use registry/libraries { labels }
 
 test "a release goes over the wire with the names it was given" {
     var response: Response = request {
@@ -1269,7 +1277,7 @@ test "a release goes over the wire with the names it was given" {
     assert response.output == ReleaseView {
         package: "left-pad"
         type: Kind.package
-        return: none
+        in: "left-pad"
     }
 }
 
@@ -1280,7 +1288,7 @@ test "a query filters on a field named with a reserved word" {
             type: Kind.library
         }
     )
-    publish(
+    var other: ReleaseView = publish(
         Publish {
             package: "left-pad"
             type: Kind.type
@@ -1288,6 +1296,17 @@ test "a query filters on a field named with a reserved word" {
     )
     var found: List<ReleaseView> = releases_of("left-pad", Kind.library)
     assert found == [kept]
+    assert other.type == Kind.type
+}
+
+test "a variant named with a reserved word is matched" {
+    var published: Published = Published {
+        if: "left-pad"
+        source: Source.test {
+            for: "the registry"
+        }
+    }
+    assert labels.label(published) == "the registry"
 }
 ```
 

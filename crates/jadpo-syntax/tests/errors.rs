@@ -159,7 +159,7 @@ fn no_errors(text: &str) {
             .collect::<Vec<_>>()
     );
     // The tree holds every byte, whatever the word was read as.
-    assert_eq!(parse.syntax_node().text().to_string(), text);
+    assert_eq!(parse.syntax().text().to_string(), text);
 }
 
 #[test]
@@ -178,6 +178,7 @@ fn a_reserved_word_names_a_field_in_a_type_or_entity() {
             "type Thing = Object {{\n    {word}: Text {{\n        max_length: 9\n    }}\n}}\n"
         ));
         no_errors(&format!("type Thing = Object {{ a: Text {word}: Text }}\n"));
+        no_errors(&format!("type Thing = Object {{ a: Text? {word}: Text }}\n"));
     }
 }
 

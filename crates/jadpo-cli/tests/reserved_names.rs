@@ -25,23 +25,23 @@ const FILES: &[(&str, &str)] = &[
     ),
     (
         "domains/registry/types/kind.jadpo",
-        "type Kind = Enum {\n    library\n    package\n    type\n    in\n    public\n    use\n    test: {\n        for: Name\n    }\n}\n",
+        "use registry/types { Name }\n\ntype Kind = Enum {\n    library\n    package\n    type\n    in\n    public\n    use\n    test: {\n        for: Name\n    }\n}\n",
     ),
     (
         "domains/registry/entities/release.jadpo",
-        "use registry/types { Kind, Name }\n\nentity Release {\n    id: Uuid\n    package: Name\n    type: Kind\n    in: Name?\n    true: Name?\n    select: Name?\n\n    unique: {\n        one_of_each: [package, type]\n    }\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n    }\n}\n",
+        "use registry/types { Name }\n\nentity Release {\n    id: Uuid\n    package: Name\n    type: Name\n    in: Name?\n    true: Name?\n    select: Name?\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n    }\n\n    unique: {\n        one_of_each: [package, type]\n    }\n}\n",
     ),
     (
-        "domains/registry/types/echo.jadpo",
-        "use registry/types { Kind, Name }\n\ntype Echo = Input {\n    type: Name\n    if: Name?\n    kind: Kind\n}\n\ntype Echoed = Output {\n    type: Name\n    if: Name?\n    match: Kind\n    none: Name?\n    true: Name\n    package: Name\n}\n",
+        "domains/registry/types/echoed.jadpo",
+        "use registry/types { Kind, Name }\n\ntype Echoed = Output {\n    type: Name\n    if: Name?\n    match: Kind\n    none: Name?\n    true: Name\n    package: Name\n}\n",
     ),
     (
         "domains/registry/actions/echo.jadpo",
-        "use registry/types { Echo, Echoed }\n\naction echo(input: Echo) -> Echoed {\n    return Echoed {\n        type: input.type\n        if: input.if\n        match: input.kind\n        none: none\n        true: input.type\n        package: input.type\n    }\n}\n",
+        "use registry/types { Echoed, Kind, Name }\n\ntype Echo = Input {\n    type: Name\n    if: Name?\n    kind: Kind\n}\n\naction echo(input: Echo) -> Echoed {\n    return Echoed {\n        type: input.type\n        if: input.if\n        match: input.kind\n        none: none\n        true: input.type\n        package: input.type\n    }\n}\n",
     ),
     (
-        "domains/registry/routes/echo.jadpo",
-        "use registry/types { Echo, Echoed }\nuse registry/actions { echo }\n\nroutes Echoes {\n    prefix: /echo\n\n    POST / {\n        authentication: RouteAuthentication.none\n        input: Echo\n        output: Echoed\n        run: echo(input)\n    }\n}\n",
+        "domains/registry/routes/echoes.jadpo",
+        "use registry/types { Echoed }\nuse registry/actions { Echo, echo }\n\nroutes Echoes {\n    prefix: /echoes\n\n    POST / {\n        authentication: RouteAuthentication.none\n        input: Echo\n        output: Echoed\n        run: echo(input)\n    }\n}\n",
     ),
     (
         "policy.jadpo",
@@ -106,7 +106,7 @@ fn the_wire_has_the_names_as_written() {
     let (_dir, root) = project();
     let response = post(
         &root,
-        "/echo",
+        "/echoes",
         r#"{"type":"a","if":"b","kind":{"tag":"test","for":"c"}}"#,
     );
     assert_eq!(
@@ -123,12 +123,12 @@ fn the_wire_has_the_names_as_written() {
     assert_eq!(body["true"], "a");
     assert_eq!(body["package"], "a");
     // A plain variant is its name; `in` is no operator on the way in.
-    let response = post(&root, "/echo", r#"{"type":"a","kind":"in"}"#);
+    let response = post(&root, "/echoes", r#"{"type":"a","if":null,"kind":"in"}"#);
     assert_eq!(response.status, 200);
     let body: Value = serde_json::from_slice(&response.body).expect("JSON");
     assert_eq!(body["match"], "in");
     // A variant the enum doesn't have is still refused by name.
-    let response = post(&root, "/echo", r#"{"type":"a","kind":"if"}"#);
+    let response = post(&root, "/echoes", r#"{"type":"a","if":null,"kind":"if"}"#);
     assert_eq!(response.status, 422);
 }
 
@@ -137,8 +137,10 @@ fn the_record_and_openapi_have_the_names_as_written() {
     let (_dir, root) = project();
     let record = fs::read_to_string(root.join("api/main.jadpo_record")).expect("the record");
     assert!(record.contains("    type: Text"), "{record}");
-    assert!(record.contains("    if: Text?"), "{record}");
-    assert!(record.contains("library"), "{record}");
+    assert!(record.contains("    if: Text"), "{record}");
+    assert!(record.contains("    match: Kind"), "{record}");
+    assert!(record.contains("    variant library"), "{record}");
+    assert!(record.contains("    variant type"), "{record}");
     let document = fs::read_to_string(root.join("build/openapi/main.json")).expect("the document");
     let document: Value = serde_json::from_str(&document).expect("JSON");
     let schemas = &document["components"]["schemas"];
@@ -155,17 +157,52 @@ fn the_record_and_openapi_have_the_names_as_written() {
 #[test]
 fn a_column_is_quoted_and_the_formatter_keeps_the_names() {
     let (_dir, root) = project();
-    let migrations = root.join("migrations");
     let mut sql = String::new();
-    for entry in fs::read_dir(&migrations).expect("migrations") {
-        let path = entry.expect("an entry").path();
-        if let Ok(text) = fs::read_to_string(&path) {
-            sql.push_str(&text);
-        }
+    for entry in fs::read_dir(root.join("database/migrations")).expect("migrations") {
+        let path = entry.expect("an entry").path().join("postgres.sql");
+        sql.push_str(&fs::read_to_string(path).expect("its statements"));
     }
     for column in ["\"package\"", "\"type\"", "\"in\"", "\"true\"", "\"select\""] {
         assert!(sql.contains(column), "{column}:\n{sql}");
     }
     let formatted = jadpo(&root, &["fmt", "--check"]);
     assert_eq!(formatted.code, 0, "{}", formatted.stdout);
+}
+
+#[test]
+fn a_policy_line_and_a_search_name_the_field() {
+    let dir = tempdir::Dir::new("reserved-policy");
+    let root = dir.path().join("notes");
+    for (path, text) in [
+        (
+            "app.jadpo",
+            "use notes/entities { Member }\n\napplication {}\n\nprincipal {\n    user: {\n        subject: Member.use\n    }\n}\n",
+        ),
+        (
+            "authentication.jadpo",
+            "authentication {\n    browser_session: {\n        cookie: \"notes_session\"\n    }\n}\n",
+        ),
+        (
+            "domains/notes/types/handle.jadpo",
+            "type Handle = Text {\n    min_length: 1\n    max_length: 80\n}\n",
+        ),
+        (
+            "domains/notes/entities/member.jadpo",
+            "use notes/types { Handle }\n\nentity Member {\n    id: Uuid\n    use: Handle {\n        unique: true\n    }\n\n    policy: {\n        create: [Access.public]\n        read: [id]\n    }\n}\n",
+        ),
+        (
+            "domains/notes/entities/note.jadpo",
+            "use notes/entities { Member }\nuse notes/types { Handle }\n\nentity Note {\n    id: Uuid\n    for: Member.id {\n        on_delete: OnDelete.cascade\n    }\n    in: Handle\n\n    policy: {\n        create: [for]\n        read: [for]\n    }\n\n    search: {\n        fields: [in]\n        language: SearchLanguage.english\n    }\n}\n",
+        ),
+    ] {
+        write(&root, path, text);
+    }
+    let made = jadpo(&root, &["migrate", "new", "initial"]);
+    assert_eq!(made.code, 0, "{}", made.stdout);
+    let updated = jadpo(&root, &["records", "update"]);
+    assert_eq!(updated.code, 0, "{}", updated.stdout);
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}", checked.stdout);
+    let access = fs::read_to_string(root.join("access.jadpo_record")).expect("the record");
+    assert!(access.contains("for"), "{access}");
 }

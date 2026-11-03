@@ -561,3 +561,17 @@ fn nothing_is_offered_in_a_comment_or_a_string() {
     );
     assert!(items.is_empty(), "{:?}", labels(&items));
 }
+
+#[test]
+fn a_field_and_a_variant_named_with_reserved_words_are_offered() {
+    let items = complete_file(
+        "reserved-field",
+        "/// What a release is.\ntype Kind = Enum {\n    library\n    type\n}\n\n/// A release.\ntype Thing = Object {\n    type: Text\n    kind: Kind\n}\n\nfunction read(thing: Thing) -> Text {\n    return thing.|\n}\n",
+    );
+    has(&items, &["type", "kind"]);
+    let items = complete_file(
+        "reserved-variant",
+        "/// What a release is.\ntype Kind = Enum {\n    library\n    type\n}\n\nfunction read() -> Kind {\n    return Kind.|\n}\n",
+    );
+    has(&items, &["library", "type"]);
+}

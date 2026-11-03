@@ -1174,7 +1174,8 @@ fn reserved_word(p: &mut Parser<'_>) {
         .label("can't be a name")
         .reason(
             "Control-flow and declaration words are reserved, so they can't name a \
-             declaration, field, parameter or variable.",
+             declaration, parameter or variable; only a field or variant, in its type's body, \
+             may take one.",
         )
         .next(format!("Choose another name than `{word}`"));
     p.push_error(error);
@@ -1522,6 +1523,10 @@ fn member_key_len(p: &Parser<'_>) -> Option<usize> {
 
 /// [`member_key_len`], `n` tokens ahead.
 fn member_key_len_at(p: &Parser<'_>, n: usize) -> Option<usize> {
+    if p.nth(n).is_keyword() && p.nth(n + 1) == COLON {
+        // A field named with a reserved word (area 2).
+        return Some(1);
+    }
     if p.nth(n) != IDENT {
         return None;
     }
@@ -1554,7 +1559,7 @@ fn member_item(p: &mut Parser<'_>, context: Members) {
         _ if context == Members::Variants && at_reserved_variant(p) => {
             bare_member(p, context);
             if p.at(COMMA) && !p.on_new_line() {
-                habits::member_comma(p, true);
+                habits::member_comma(p);
             }
         }
         DECLINE_KW if p.nth(1) != COLON => declined(p, |p| {

@@ -690,7 +690,7 @@ fn reserved_words_name_fields_and_variants_and_nothing_else() {
     // A field, read and built, and a variant, built and matched.
     assert_eq!(
         check(&format!(
-            "{name}type Kind = Enum {{\n    library\n    package: {{\n        type: Name\n    }}\n    type\n}}\n\ntype Thing = Object {{\n    resource: Name\n    type: Name\n    kind: Kind\n}}\n\nfunction read(thing: Thing) -> Name {{\n    return match thing.kind {{\n        Kind.library -> thing.type\n        Kind.package(package) -> package.type\n        Kind.type -> thing.resource\n    }}\n}}\n\nfunction build(n: Name) -> Thing {{\n    return Thing {{\n        resource: n\n        type: n\n        kind: Kind.package {{\n            type: n\n        }}\n    }}\n}}\n"
+            "{name}type Kind = Enum {{\n    library\n    package: {{\n        type: Name\n    }}\n    type\n}}\n\ntype Thing = Object {{\n    resource: Name\n    type: Name\n    kind: Kind\n}}\n\nfunction read(thing: Thing) -> Name {{\n    return match thing.kind {{\n        Kind.library -> thing.type\n        Kind.package(held) -> held.type\n        Kind.type -> thing.resource\n    }}\n}}\n\nfunction build(n: Name) -> Thing {{\n    return Thing {{\n        resource: n\n        type: n\n        kind: Kind.package {{\n            type: n\n        }}\n    }}\n}}\n"
         )),
         CLEAN
     );
