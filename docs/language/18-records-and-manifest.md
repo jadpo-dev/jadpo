@@ -699,6 +699,14 @@ Each change the compiler reports, and the subject it names:
 | `DataChange.table_dropped` | `Todo` | A migration this change adds drops a retired table, by its entity's born name |
 | `DataChange.entity_removed` | `Todo` | A migration this change adds retires an entity's table, since the entity is gone |
 | `DataChange.entity_moved` | `Todo` | A migration this change adds gives an entity a table in another store, leaving its records behind |
+| `PackageChange.operation_removed` | `AcmeCouriers.bookings.get` | An operation, action or library function the app used is gone ([Package upgrades](#package-upgrades)) |
+| `PackageChange.declaration_removed` | `Postcodes.UkPostcode` | A type, failure or message the app wrote is gone |
+| `PackageChange.operation_changed` | `AcmeCouriers.bookings.get` | A used operation's request, input, output or what it changes, or a used function's or action's signature, is different |
+| `PackageChange.field_removed` | `AcmeCouriers.Booking.driver_phone` | A field or enum variant of a type the app uses is gone |
+| `PackageChange.field_retyped` | `AcmeCouriers.Booking.weight`, or `Postcodes.UkPostcode` | A field of a type the app uses has another type or rules; or a used refined type's base or rules, or a used failure's code or kind, changed |
+| `PackageChange.failure_added` | `AcmeCouriers.bookings.create.address_unverifiable` | A used operation, action or function can fail in a new way, named by the failure's code |
+| `PackageChange.host_changed` | `AcmeCouriers.host` | A connected provider package's `hosts:` changed; one entry covers them all |
+| `PackageChange.credential_changed` | `AcmeCouriers.credential` | A connected provider package's credential scheme changed |
 | `ThresholdChange.raised` | `planning.todo_list.p95`, `planning.todo_list.within` | A threshold's limit is higher than the same-named threshold's on the before side, or its `within:` longer |
 | `ThresholdChange.removed` | `planning.todo_list.p95`, or `planning.todo_list` | A limit is gone from a threshold; or the threshold is gone, or watches something else |
 | `ThresholdChange.lowered` | `uploads.free_space_floor` | A disk store's `free_space_floor:` is lower than it was |
@@ -780,9 +788,27 @@ listed as removed and added.
   unless its repository is under one of `packages:`'s `own_sources:`
   ([Installing safely](11-integrations.md#installing-safely)).
 
-`jadpo package update <name>` prints this part of the review. It is the
-same output as the upgrade plan [Integrations](11-integrations.md)
-refers to, not a separate format.
+**What counts as used** is read on the before side, since the agent has
+usually fixed the compile error by the time `jadpo check` is judged: the
+app's code, outside tests and comments, writing a name through the package
+(`Postcodes.uk.parse`) or through a connection to it
+(`couriers.bookings.get`), and the types and failures those reach through
+their inputs, outputs and fields. A connection the code never writes, or
+that `application { }` names elsewhere (`email: { connection: mail }`),
+serves the app through a capability, so all its operations count as used.
+A provider's hosts and credential scheme count once a connection reaches
+the package. A package removed altogether isn't an upgrade.
+
+Each change has its entry in [Acceptances](#acceptances), its subject
+without the version. A new required input field, a new enum variant, a
+failure no longer listed and a changed failure message need nobody: the
+compiler stops what they would break, or nothing relied on them
+(2026-11-01).
+
+`jadpo package update <name>` prints this part of the review, and the
+[approval report](17-debugging-and-review.md#reviewing-a-change) says each
+in plain words. It is the same output as the upgrade plan
+[Integrations](11-integrations.md) refers to, not a separate format.
 
 ## Production builds
 <!-- topic: production-builds -->
@@ -869,17 +895,36 @@ the default branch the acceptance is now history.
 ### A provider package upgrade
 
 ```text
-$ jadpo package update couriers
-couriers  AcmeCouriers.v1 → v2   jadpo.lock updated
-  bookings.create   new failure  address_unverifiable           needs a person
-  bookings.get      field removed  Booking.driver_phone         needs a person
-  host              api.acme.example → api.eu.acme.example      needs a person
+$ jadpo package update acme_couriers
+✓ Updated AcmeCouriers.v2 from 2.3.0 to 2.4.0
+    folder   packages/acme_couriers/v2
+    source   git github.com/acme/couriers tag v2.4.0
+    surface  matches its code
+
+Changes since 2.3.0
+  ~ operation bookings.create  used by the app
+  ~ type Booking               used by the app
+  ~ provider
+
+Needs a person
+  + bookings.create  new failure    address_unverifiable
+  - bookings.get     field removed  Booking.driver_phone
+  ~ host             changed        https://api.acme.example → https://api.eu.acme.example
+
+✓ package updated  AcmeCouriers.v2 2.4.0 · 3 changed · 3 need a person
+
+→ jadpo acceptance new upgrade_acme_couriers  writes these up for a person's reason
 ```
 
 The removed field is also a compile error in `delivery_view`, which the
 agent fixes first. The agent then runs
-`jadpo acceptance new upgrade_couriers_v2` and hands over. A person
+`jadpo acceptance new upgrade_acme_couriers` and hands over. A person
 writes one reason covering all three changes, and the owner approves.
+
+A new major version is a new package beside the old one ([Integrations](11-integrations.md)),
+so `update` refuses it: the agent adds it, moves the calls across and removes
+the old one, and `jadpo check` compares what the app used of the old
+version with the new one in the same way.
 
 ### A production incident traced to source
 
@@ -917,8 +962,8 @@ that the path number can't be decoded.
 | `.jadpo_record` files | Partly built: every record in the record format, the API record without `version:`, the registry as `database/identities.jadpo_record`, the header check, `record.out_of_date`, `record.edited` and `record.format_newer`, `jadpo records` and `jadpo records update`, and the `.gitattributes` lines `jadpo new` writes. Not built yet: telling a careful hand edit of a view from a stale one, which needs `jadpo check` to build the base as `jadpo approval` does; the editor grammar and `jadpo lsp` serving records. |
 | Event records | Built: one view per domain with events, `domains/<domain>/events/events.jadpo_record`, written by `jadpo records update` and checked as the API record is; what [The event record](12-jobs-and-events.md#the-event-record) records, and its breaking changes need an [acceptance](#acceptances). |
 | Access and network records | Built: `access.jadpo_record` and `network.jadpo_record` at the root, written by `jadpo records update` and checked as the API record is ([Acceptances](#acceptances)). |
-| Acceptances | Built: `jadpo acceptance new <purpose>`, the before side read from git (`--before` on `jadpo check`), matching, the `///` reason and history, for `ApiChange` (the API and event records), `PolicyChange` (widenings, routes made public, security declines, sign-in settings past their limit), `DomainChange.created`, `NetworkChange.host_added`, `PackageChange.git_source`, `ThresholdChange` (each domain's `monitoring.jadpo` and `app.jadpo`'s disk floors read from git) and `DataChange` (read from the migrations a change adds, [Removing data](05-data.md#removing-data)). The kinds for features not built yet come with them: `ErasureNotPossible` with personal data, the other `PackageChange`s with package upgrade plans and services. A domain renamed shows as one created until `jadpo domain rename` writes the registry ([the roadmap](../roadmap.md)). |
-| Lock and package surfaces | Built. The lock is a ledger read and checked like the others, and `jadpo check` holds each installed package to its line and digest ([Integrations](11-integrations.md) gives the digest), and its `jadpo version` pin to the line `app.jadpo` names. `jadpo toolchain pin` and `unpin` write the pin, and the package commands and `jadpo records update` keep it. `jadpo package add`, `update`, `remove`, `link` and `unlink` write it, each line through the ledger's writer, sorted; `git` lines record the repository as written, the tag and the tag's commit, `path` lines a folder relative to the root, and a `link` line replaces the package's line while the replaced one waits in `.jadpo/links` (git-ignored, in the lock's own format) for `unlink`. Two versions of one package are locked side by side, each on its own line, and `update` names the version while two are held. A package surface is `record surface 1`, a view written by `jadpo package check` in a package's own repository, verified at install against its package's code, and read by `jadpo package show`; installed, a surface is held by its package's digest rather than regenerated, so `jadpo records` doesn't list it, and an own integration's is written to `build/providers/` ([Integrations](11-integrations.md)). `jadpo package update` prints this page's review of the surface's changes, each entry marked `used by the app` and `needs a person`; the acceptance it calls for comes with package upgrade plans, and a package installed from git needs `PackageChange.git_source`. |
+| Acceptances | Built: `jadpo acceptance new <purpose>`, the before side read from git (`--before` on `jadpo check`), matching, the `///` reason and history, for `ApiChange` (the API and event records), `PolicyChange` (widenings, routes made public, security declines, sign-in settings past their limit), `DomainChange.created`, `NetworkChange.host_added`, `PackageChange.git_source`, an upgrade's `PackageChange`s ([Package upgrades](#package-upgrades)), `ThresholdChange` (each domain's `monitoring.jadpo` and `app.jadpo`'s disk floors read from git) and `DataChange` (read from the migrations a change adds, [Removing data](05-data.md#removing-data)). The kinds for features not built yet come with them: `ErasureNotPossible` with personal data, `PackageChange.service_image` with services. A domain renamed shows as one created until `jadpo domain rename` writes the registry ([the roadmap](../roadmap.md)). |
+| Lock and package surfaces | Built. The lock is a ledger read and checked like the others, and `jadpo check` holds each installed package to its line and digest ([Integrations](11-integrations.md) gives the digest), and its `jadpo version` pin to the line `app.jadpo` names. `jadpo toolchain pin` and `unpin` write the pin, and the package commands and `jadpo records update` keep it. `jadpo package add`, `update`, `remove`, `link` and `unlink` write it, each line through the ledger's writer, sorted; `git` lines record the repository as written, the tag and the tag's commit, `path` lines a folder relative to the root, and a `link` line replaces the package's line while the replaced one waits in `.jadpo/links` (git-ignored, in the lock's own format) for `unlink`. Two versions of one package are locked side by side, each on its own line, and `update` names the version while two are held. A package surface is `record surface 1`, a view written by `jadpo package check` in a package's own repository, verified at install against its package's code, and read by `jadpo package show`; installed, a surface is held by its package's digest rather than regenerated, so `jadpo records` doesn't list it, and an own integration's is written to `build/providers/` ([Integrations](11-integrations.md)). `jadpo package update` prints the surface's changes, each entry the app uses marked `used by the app`, and this page's review under `Needs a person`, the same list `jadpo check` asks an acceptance for; a package installed from git needs `PackageChange.git_source`. |
 | Build stamp | Built for native and Workers deployables: `jadpo build` writes the build id (`b_` and twelve hex digits of a SHA-256 over the deployable's program digest, the compiler, the target and `jadpo.lock`), the commit, whether the tree was modified, the compiler, the deployable and the target into the binary or module as a constant, and every event it logs carries them ([A native deployable](14-tooling.md#a-native-deployable), [A Workers deployable](14-tooling.md#a-workers-deployable)). `jadpo check` writes the manifest's `source` (`commit`, left out when git doesn't track the project, and `modified`) and `deployables`, each deployable's target, build id and the disk stores that keep it on one server (`one_server`), which digests a declared deployable's declaration too, so two deployables of one app never share one ([Declared deployables](14-tooling.md#declared-deployables)); a project with errors has none. |
 | Approval | Built: `jadpo approval` builds the before side, keeps its manifest and writes [the report](17-debugging-and-review.md#reviewing-a-change) to `build/review/`. |
 | Package upgrade plans, `jadpo incident` | Not built yet; see [the roadmap](../roadmap.md). |

@@ -94,6 +94,7 @@ mod package_release;
 mod package_subscribers;
 mod package_translation_versions;
 mod package_translations;
+mod package_upgrades;
 mod packages;
 mod passkey_tokens;
 mod passkeys;
