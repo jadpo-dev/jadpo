@@ -515,11 +515,7 @@ real deploy) and, before outside authors can publish, D3 (releases).
   "Reserved words". Inside a type body a reserved word may name a field or an
   enum variant, where `package: Text` and `Kind.library` are unambiguous
   (Richard, 2026-11-03). An `Output` with a `type` field works in any app.
-- [ ] **G2 A `GET` that runs a read-only action** `opus · high` after G1: area
-  7, "What a route runs"; area 3. A `GET` still runs a named query, or an
-  action the graph proves writes nothing, emits nothing and makes no changing
-  call (Richard, 2026-11-03), so it can work a value out, raise several
-  failures and call `ai.embed`.
+- [x] **G2 A `GET` that runs a read-only action**: area 7, "A `GET` that runs an action"; area 3, "Functions and actions"; `docs/errors/route.run_kind.md`; compiler/runtime, "An action on a `GET`".
 - [ ] **G3 A route that sends raw bytes** `opus · high` after G2: area 7,
   "Output and status" and OpenAPI; area 18, the API record. `sends:
   "application/x-tar"` on an `Output` with exactly one `Bytes` field; that
