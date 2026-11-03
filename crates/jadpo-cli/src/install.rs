@@ -934,7 +934,7 @@ pub fn add(call: &Call) -> Reply {
                     .map_or(Json::Null, |first| Json::from(first.released_at.as_str())),
             ),
             ("log_index", Json::from(fetched.logged.index as i64)),
-            ("log_size", Json::from(fetched.logged.size as i64)),
+            ("log_entries", Json::from(fetched.logged.size as i64)),
             (
                 "facts",
                 verified

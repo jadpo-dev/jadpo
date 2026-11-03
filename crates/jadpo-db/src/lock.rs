@@ -283,7 +283,7 @@ fn parse_line(line: &str) -> Result<Locked, String> {
                 ["registry", name, "digest", d] => {
                     if !is_scoped_name(name) {
                         return Err(format!(
-                            "`{name}` isn't a registry name, such as `@acme/postcodes`"
+                            "`{name}` isn't a registry name: `@<publisher>/<name>`"
                         ));
                     }
                     Source::Registry {

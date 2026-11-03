@@ -581,7 +581,7 @@ fn body(folder: &Path, name: &str, data: &Value, problems: &[Diagnostic]) -> Str
         });
     }
     main.push_str(
-        "<section class=\"later\"><h2>What the registry adds</h2><p>At release it writes a model's account of the package, labelled as one, and adds its publisher, the Jadpo releases it works with and the last contract run. Those can't be shown from here.</p></section>",
+        "<section class=\"later\"><h2>What the registry adds</h2><p>At release it writes a model's account of the package, marked as one, and adds its publisher, the Jadpo releases it works with and the last contract run. Those can't be shown from here.</p></section>",
     );
     format!("<main>{main}</main>")
 }
@@ -643,5 +643,5 @@ tr:last-child>td,tr:last-child>th{border-bottom:0}
 .prose pre{margin:0 0 10px}
 .absent{color:var(--muted)}
 section.later p{margin:0;color:var(--muted)}
-@media (max-width:560px){main{padding:24px 16px 48px}.bar{padding:10px 16px}.facts{grid-template-columns:minmax(0,1fr);gap:2px 0}.facts dd{margin-bottom:10px}.bar-rows th{white-space:normal}h1{font-size:22px}}
+@media (max-width:560px){main{padding:24px 16px 48px}.bar{padding:10px 16px}.facts{grid-template-columns:minmax(0,1fr);gap:2px 0}.facts dd{margin-bottom:10px}h1{font-size:22px}}
 "#;

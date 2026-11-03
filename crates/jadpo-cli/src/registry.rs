@@ -267,7 +267,7 @@ fn prove(root: &Path, client: &Client, entry: &LogEntry, command: &str) -> Resul
                 })?;
             check_extends(&seen, &head, &proof).map_err(|why| {
                 refused(format!(
-                    "Its head isn't the one this project saw, grown: {why}."
+                    "Its head doesn't extend the one this project saw: {why}."
                 ))
             })?;
         }
@@ -532,7 +532,7 @@ pub(crate) fn name_to_add(written: &str) -> Option<Result<ScopedName, Reply>> {
             Reply::failed(crate::package::arguments(
                 format!("`{written}` isn't a registry name"),
                 "A registry name is `@publisher/name`: each part lower-case letters and digits, starting with a letter, with single `-`s between them.".to_string(),
-                "Give the package's whole name, such as `@acme/postcodes`".to_string(),
+                "Give the package's whole name: `@<publisher>/<name>`".to_string(),
             ))
         }));
     }
@@ -543,7 +543,7 @@ pub(crate) fn name_to_add(written: &str) -> Option<Result<ScopedName, Reply>> {
         Reply::failed(crate::package::arguments(
             format!("`{written}` isn't a package's folder or a registry name"),
             "A name with no publisher means Jadpo's own, in lower-case letters, digits and single `-`s.".to_string(),
-            "Give the package's whole name, such as `@acme/postcodes`".to_string(),
+            "Give the package's whole name: `@<publisher>/<name>`".to_string(),
         ))
     }))
 }
