@@ -668,3 +668,21 @@ fn a_comma_between_members_on_a_line_parts_them() {
     let edit = &parse.errors()[0].edits[0];
     assert_eq!(&text[edit.start as usize..edit.end as usize], " ,  ");
 }
+
+#[test]
+fn a_run_of_semicolons_is_one_error_with_one_edit() {
+    // One error a line would take one `;` a round.
+    let text = "type A = Int {}\n;;;; ;;\n";
+    let (error, covered) = one_error(text);
+    assert_eq!(error.rule.id, "syntax.semicolon");
+    assert_eq!(covered, ";;;; ;;");
+    assert!(error.clean);
+    assert_eq!(fixed_by_edits(text, &error), "type A = Int {}\n\n");
+    let text = "function f() -> Unit {\n    a();;; b()\n}\n";
+    let (error, _) = one_error(text);
+    assert!(error.clean);
+    assert_eq!(
+        fixed_by_edits(text, &error),
+        "function f() -> Unit {\n    a()\n    b()\n}\n"
+    );
+}
