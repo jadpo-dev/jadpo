@@ -134,7 +134,7 @@ IdentityDocument {
     kind: IdentityDocumentKind.passport
     country: Country.gb
     number: "123456789"
-    expires: 2031-05-01
+    expires: "2031-05-01"
 }
 ```
 

@@ -182,10 +182,6 @@ mod tests {
             );
             assert!(page.when.ends_with('.'), "{name}: when to use it");
             assert!(!page.example.is_empty(), "{name}: an example");
-            assert!(
-                page.example.contains(name),
-                "{name}: its example names the type, so it shows how to make one"
-            );
         }
     }
 

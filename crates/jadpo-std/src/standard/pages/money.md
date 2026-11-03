@@ -8,7 +8,7 @@ with whether tax is included, use `Price`. To fix the currency, build your own
 type on it.
 
 ```jadpo
-money.from_minor(1050, Currency.gbp) == Money("GBP 10.50")
+money.from_minor(1050, Currency.gbp)
 ```
 
 - `money.from_minor(1050, Currency.gbp)` is £10.50, since it takes pence.
@@ -44,7 +44,7 @@ Use it to record the rate you were given and to convert: `money.convert` applies
 one. Jadpo doesn't fetch rates, so your app gets them from a provider.
 
 ```jadpo
-ExchangeRate { from: Currency.gbp to: Currency.eur rate: 1.17 at: 2026-10-18T09:00:00Z }
+ExchangeRate { from: Currency.gbp to: Currency.eur rate: 1.17 at: "2026-10-18T09:00:00Z" }
 ```
 
 - It holds when the rate applied, so keep it with what you converted to show
@@ -59,7 +59,7 @@ without. For a plain amount, such as a refund or a balance, use `Money`. For a
 price per kilo, use `UnitPrice`.
 
 ```jadpo
-Price { amount: Money("GBP 10.50") includes_tax: true }
+Price { amount: money.from_minor(1050, Currency.gbp) includes_tax: true }
 ```
 
 - The amount can't be below zero.
@@ -74,7 +74,7 @@ Use it for goods sold by weight, volume, length or area, as UK shelf labels show
 them. For the price of a thing you count, use `Price`.
 
 ```jadpo
-UnitPrice.per_mass { price: Money("GBP 2.50") per: 1kg }
+UnitPrice.per_mass { price: money.from_minor(250, Currency.gbp) per: 1kg }
 ```
 
 - Pick the variant by what you measure: `per_mass`, `per_volume`, `per_length`

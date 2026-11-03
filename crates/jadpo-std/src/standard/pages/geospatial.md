@@ -283,12 +283,11 @@ type StopInfo = Object {
     name: Text
 }
 
-function stop() -> Feature<Point, StopInfo> {
-    return Feature<Point, StopInfo> {
-        geometry: Point { latitude: 51.5072 longitude: -0.1276 altitude: none }
-        properties: StopInfo { name: "Charing Cross" }
-    }
+var stop: Feature<Point, StopInfo> = Feature {
+    geometry: Point { latitude: 51.5072 longitude: -0.1276 altitude: none }
+    properties: StopInfo { name: "Charing Cross" }
 }
+assert stop.properties.name == "Charing Cross"
 ```
 
 - Name both types when you use it, the geometry and the properties:
@@ -304,15 +303,12 @@ Use it to send many shapes to a map library in one response. For one shape, use
 `Feature`.
 
 ```jadpo
-type StopInfo2 = Object {
+type LayerStop = Object {
     name: Text
 }
 
-function layer() -> FeatureCollection<Point, StopInfo2> {
-    return FeatureCollection<Point, StopInfo2> {
-        features: []
-    }
-}
+var layer: FeatureCollection<Point, LayerStop> = FeatureCollection { features: [] }
+assert layer.features == []
 ```
 
-- Name both types when you use it: `FeatureCollection<Point, StopInfo2>`.
+- Name both types when you use it: `FeatureCollection<Point, LayerStop>`.
