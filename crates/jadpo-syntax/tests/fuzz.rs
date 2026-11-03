@@ -213,6 +213,10 @@ fn hostile_input_is_survived() {
         "type E = Object {{ {} }}\n",
         "a: Text, ".repeat(40)
     ));
+    // A reserved word behind a clean habit on its line: the edit brought
+    // to light an error no edit makes (found by the coverage-guided fuzzer).
+    inputs
+        .push("use library\n\naction lend_book() -> Unit {\n!   library.borrow()\n}\n".to_string());
     for input in inputs {
         check(&input);
     }
