@@ -391,7 +391,11 @@ a new agent can't find a type without them (Richard, 2026-11-03).
   it; its shape as a table saying which parts are required and which
   optional, with each part's type; and a Jadpo example compiled by the gate.
   The index lists every type A to Z with its group as a column, since a
-  reader looks for a name. `jadpo help <Type>` prints the same page offline.
+  reader looks for a name. Every type's name on area 19's "The standard
+  types", area 2's "Built-in types" and in the guides links to its page:
+  today those pages list names with no way through, and say 247 types where
+  the reference says 259. `jadpo help <Type>` prints the same page offline,
+  and `--json` gives the shape, so one call answers what shape a type has.
   259 types: split by group here if larger than a session. Designed with
   the design skills first.
 - [ ] **A12 What a new agent reads first** `opus · high`: the primer and
