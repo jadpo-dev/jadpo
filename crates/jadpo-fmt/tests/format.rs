@@ -24,6 +24,14 @@ fn one_member_per_line_and_one_blank_line_between_declarations() {
 }
 
 #[test]
+fn a_nullable_type_with_a_member_after_it_on_the_line_parts_from_it() {
+    assert_eq!(
+        fmt("type Email = Object {\n    text: Text?    attachments: List<Tag>?    more: Text\n}\n"),
+        "type Email = Object {\n    text: Text?\n    attachments: List<Tag>?\n    more: Text\n}\n"
+    );
+}
+
+#[test]
 fn blank_lines_are_never_doubled_and_never_open_or_close_a_body() {
     assert_eq!(
         fmt(

@@ -1517,14 +1517,19 @@ fn at_route_entry(p: &Parser<'_>) -> bool {
 /// The number of tokens in a member key (`name`, `Todo.priority`) when one
 /// followed by `:` starts here.
 fn member_key_len(p: &Parser<'_>) -> Option<usize> {
-    if p.current() != IDENT {
+    member_key_len_at(p, 0)
+}
+
+/// [`member_key_len`], `n` tokens ahead.
+fn member_key_len_at(p: &Parser<'_>, n: usize) -> Option<usize> {
+    if p.nth(n) != IDENT {
         return None;
     }
-    let mut i = 1;
+    let mut i = n + 1;
     while p.nth(i) == DOT && (p.nth(i + 1) == IDENT || p.nth(i + 1).is_keyword()) {
         i += 2;
     }
-    (p.nth(i) == COLON).then_some(i)
+    (p.nth(i) == COLON).then_some(i - n)
 }
 
 /// [`member_key_len`] for a key whose first word is reserved:
@@ -1576,7 +1581,7 @@ fn member_item(p: &mut Parser<'_>, context: Members) {
             } else if p.nth_on_new_line(1) || matches!(p.nth(1), R_BRACE | EOF | COMMA) {
                 bare_member(p, context);
                 if p.at(COMMA) && !p.on_new_line() {
-                    habits::member_comma(p, true);
+                    habits::member_comma(p);
                 }
             } else {
                 member_without_colon(p, context);
@@ -1731,7 +1736,37 @@ fn member_value(p: &mut Parser<'_>, context: Members) {
         p.push_error(error);
         return;
     }
+    p.member_value_start = Some(p.range().0);
     expr(p);
+}
+
+/// Whether the `?` here, after `lhs` from `start`, belongs to the type a
+/// member's value names rather than opening an expression: a value starts
+/// lower-case and a type doesn't (area 1), and the line then ends the
+/// member or goes on to the next one. A value after the `?` still reads as
+/// a choice from another language, `CONFIG ? 1 : 2`, since a member's type
+/// is never followed by one.
+fn nullable_member_type(p: &Parser<'_>, lhs: SyntaxKind, start: u32) -> bool {
+    if p.member_value_start != Some(start)
+        || !matches!(lhs, NAME_REF | FIELD_EXPR | GENERIC_EXPR | NULLABLE_EXPR)
+    {
+        return false;
+    }
+    let written = &p.text()[start as usize..p.prev_end() as usize];
+    let names_a_type = lhs == GENERIC_EXPR
+        || written
+            .split('.')
+            .any(|part| part.starts_with(char::is_uppercase));
+    if !names_a_type {
+        return false;
+    }
+    let mut after = 1;
+    while p.nth(after) == QUESTION && !p.nth_on_new_line(after) {
+        after += 1;
+    }
+    p.nth_on_new_line(after)
+        || matches!(p.nth(after), R_BRACE | EOF)
+        || member_key_len_at(p, after).is_some()
 }
 
 /// The key text of the member being parsed, for messages.
@@ -1752,7 +1787,7 @@ fn member_key_before_colon(p: &Parser<'_>) -> String {
 fn member_end(p: &mut Parser<'_>) {
     if p.at(COMMA) && !p.on_new_line() {
         // Commas between members, from JSON and most languages.
-        habits::member_comma(p, false);
+        habits::member_comma(p);
     }
     if p.at_eof() || p.at(R_BRACE) || p.on_new_line() || p.at(DOT3) {
         return;
@@ -2877,11 +2912,14 @@ fn postfix_levels(
                 m.complete(p, GENERIC_EXPR)
             }
             // `Name?` as a type, unless the `?` starts `??`, `?:` or a
-            // ternary from another language.
+            // ternary from another language. A member's type is always
+            // the first: the next member may follow it on the line, which
+            // looks like the arms of a ternary.
             QUESTION
                 if !p.on_new_line()
-                    && !(p.nth_adjacent(1) && matches!(p.nth(1), QUESTION | COLON))
-                    && !habits::ternary_ahead(p) =>
+                    && (start.is_some_and(|at| nullable_member_type(p, lhs.kind(), at))
+                        || (!(p.nth_adjacent(1) && matches!(p.nth(1), QUESTION | COLON))
+                            && !habits::ternary_ahead(p))) =>
             {
                 let m = lhs.precede(p);
                 p.bump(QUESTION);

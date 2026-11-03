@@ -78,7 +78,7 @@ class WhatIsBuilt(unittest.TestCase):
         area = AREA.replace("| `sign_in:`'s `providers:` ([Integrations](11-integrations.md)) | Not built yet. |\n", '')
         area = area.replace('| Scope declarations, in [Policy](09-policy.md) | Partly built: the rest. |\n', '')
         table = guidance.built_table(guidance.not_built(project(area=area)))
-        self.assertIn('| [Identity](https://jadpo.dev/docs/topics/identity-built.md) | All of it |', table)
+        self.assertIn('| [Identity](https://jadpo.dev/docs/identity-built.md) | All of it |', table)
 
 
 class Examples(unittest.TestCase):

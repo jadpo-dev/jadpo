@@ -17,3 +17,7 @@ function check(title: Title) -> Title fails TitleBlank {  // error: syntax.fails
     var label: Label = "a\qb"  // error: syntax.invalid_escape
     return title
 }
+
+type OutgoingEmail = Object {
+    text: Text?,    attachments: List<OutgoingAttachment>  // error: syntax.member_comma
+}
