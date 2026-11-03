@@ -231,7 +231,9 @@ fn a_get_reads_around_a_model_s_call_and_its_budget_is_counted_beside_it() {
     assert!(operation["responses"]["503"].is_object(), "{operation}");
     let parameters = operation["parameters"].as_array().expect("its input");
     assert!(
-        parameters.iter().all(|one| one["name"] != "Idempotency-Key"),
+        parameters
+            .iter()
+            .all(|one| one["name"] != "Idempotency-Key"),
         "{operation}"
     );
 }
@@ -250,7 +252,9 @@ fn postgresql_refuses_a_write_in_a_read_only_transaction() {
             let mut transaction = store.begin_read_only(isolation).await.expect("begins");
             let read = transaction.query("SELECT 1", &[]).await.expect("reads");
             assert_eq!(read.len(), 1);
-            let refused = transaction.batch("CREATE TABLE \"nope\" (\"id\" int)").await;
+            let refused = transaction
+                .batch("CREATE TABLE \"nope\" (\"id\" int)")
+                .await;
             assert!(refused.is_err(), "{refused:?}");
             let _ = transaction.rollback().await;
         });

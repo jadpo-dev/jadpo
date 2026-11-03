@@ -1,7 +1,6 @@
 # `route.run_kind`
 
-A `GET` route runs an action that isn't read-only, or a route of another
-method runs a query.
+A `GET` route runs an action that isn't read-only, or a route of another method runs a query.
 
 ## Why Jadpo refuses it
 
@@ -235,6 +234,17 @@ read.
 doing what changes something. An action like this one, which reads and
 calculates, has nothing to refuse:
 
+```jadpo fragment
+action check_memo(input: MemoInput) fails TooShort -> MemoView {
+    if (text.length(input.text) < 3) {
+        reject TooShort {}
+    }
+    return MemoView {
+        text: input.text
+    }
+}
+```
+
 ```jadpo check project=e-run-kind-action hidden
 type Memo = Text {
     max_length: 200
@@ -280,16 +290,8 @@ policy {
 }
 ```
 
-```jadpo fragment
-action check_memo(input: MemoInput) fails TooShort -> MemoView {
-    if (text.length(input.text) < 3) {
-        reject TooShort {}
-    }
-    return MemoView {
-        text: input.text
-    }
-}
-```
+`GET /memos` now answers with the memo, or 422 `too_short`, and repeating it
+changes nothing.
 
 ## Related
 

@@ -36,8 +36,8 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use jadpo_db::{Db, File, ItemKind, Project, item_tree};
 use jadpo_diag::{Diagnostic, Span, rule};
-use jadpo_graph::body::{Body, Node, SiteId, Stmt};
 use jadpo_graph::Key;
+use jadpo_graph::body::{Body, Node, SiteId, Stmt};
 use jadpo_std::HttpMethod;
 
 use super::outside::{Does, Names, bodies, does};
@@ -110,7 +110,10 @@ fn change_of(
     let node = &body.site(id).node;
     if let Node::Stmt(Stmt::Emit { value }) = node {
         let value = (*value)?;
-        return Some((Change::Emits(names.name(body, value)), names.span(body, value)));
+        return Some((
+            Change::Emits(names.name(body, value)),
+            names.span(body, value),
+        ));
     }
     let name = || names.name(body, id);
     match does(node) {

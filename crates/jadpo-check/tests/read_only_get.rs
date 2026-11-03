@@ -331,11 +331,15 @@ fn starting_or_cancelling_a_run_writes_and_its_status_reads() {
     let cancelled = with_call("batches.cancel(sweep.run)");
     let status = with_call("var progress: BatchProgress = batches.status(sweep.run)");
     assert!(
-        cancelled.iter().any(|problem| problem.contains("which writes with `batches.cancel`")),
+        cancelled
+            .iter()
+            .any(|problem| problem.contains("which writes with `batches.cancel`")),
         "{cancelled:#?}"
     );
     assert!(
-        !status.iter().any(|problem| problem.contains(" route.run_kind:")),
+        !status
+            .iter()
+            .any(|problem| problem.contains(" route.run_kind:")),
         "{status:#?}"
     );
 }
@@ -346,7 +350,9 @@ fn a_write_inside_an_inline_function_counts() {
         "    var made: List<Shelf> = list.map(open_shelves(), shelf -> add_shelf(shelf.note))\n",
     )));
     assert!(
-        found.iter().any(|problem| problem.contains(" route.run_kind:")),
+        found
+            .iter()
+            .any(|problem| problem.contains(" route.run_kind:")),
         "{found:#?}"
     );
 }
@@ -461,4 +467,3 @@ fn a_read_only_action_sets_off_nothing_to_settle() {
         "{found:#?}"
     );
 }
-

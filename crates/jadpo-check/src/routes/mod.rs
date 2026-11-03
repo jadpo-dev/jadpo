@@ -1647,9 +1647,15 @@ impl Reader<'_> {
 
         // What it waits for: then what comes out is what `answer:` gives.
         let settle = match items.get("settle") {
-            Some(member) => {
-                Some(self.settle(member, method, &run, &sig.result, status, deadline_ms, &label)?)
-            }
+            Some(member) => Some(self.settle(
+                member,
+                method,
+                &run,
+                &sig.result,
+                status,
+                deadline_ms,
+                &label,
+            )?),
             None => None,
         };
         let sig = match &settle {
@@ -2115,6 +2121,7 @@ impl Reader<'_> {
     /// answers with once the work its action set off has settled, its
     /// result type and its failures. An action route only, answering with
     /// a body, and waiting less than its deadline.
+    #[allow(clippy::too_many_arguments)]
     fn settle(
         &mut self,
         member: &ast::Member,
@@ -2148,7 +2155,9 @@ impl Reader<'_> {
         if method == HttpMethod::Get {
             self.out.push(invalid(
                 key_span,
-                format!("`{label}` runs an action that only reads, which sets off no work to wait for"),
+                format!(
+                    "`{label}` runs an action that only reads, which sets off no work to wait for"
+                ),
                 "nothing to wait for",
                 "Remove `settle:`; an action that only reads answers at once",
             ));

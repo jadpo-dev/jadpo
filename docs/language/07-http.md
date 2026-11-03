@@ -291,27 +291,27 @@ compiler can prove the action only reads. It proves that from the graph:
 the action writes nothing, emits nothing and makes no changing call, itself
 and through every action it calls.
 
-Here `GET /meters/{meter_id}/left` works out what is left on a meter. It can
-fail two ways, so it answers 404 for a meter that isn't there and 422 for a
+Here `GET /meters/{meter_id}/left` works out whether a meter has room left. It
+can fail two ways, so it answers 404 for a meter that isn't there and 422 for a
 reading past the meter's end:
 
 ```jadpo check project=get-action file=app.jadpo hidden
 application {}
 ```
 
-```jadpo check project=get-action file=domains/metering/types/units.jadpo hidden
-type Units = Int {
+```jadpo check project=get-action file=domains/metering/types/litres.jadpo hidden
+type Litres = Int {
     min: 0
     max: 1000000
 }
 ```
 
 ```jadpo check project=get-action file=domains/metering/entities/meter.jadpo hidden migrate=initial
-use metering/types { Units }
+use metering/types { Litres }
 
 entity Meter {
     id: Uuid
-    units: Units
+    litres: Litres
 
     policy: {
         create: [Access.public]
@@ -321,18 +321,16 @@ entity Meter {
 ```
 
 ```jadpo check project=get-action file=domains/metering/types/left_asked.jadpo hidden
-use metering/types { Units }
+use metering/types { Litres }
 
 type LeftAsked = Input {
-    used: Units
+    used: Litres
 }
 ```
 
 ```jadpo check project=get-action file=domains/metering/types/left_view.jadpo hidden
-use metering/types { Units }
-
 type LeftView = Output {
-    left: Units
+    enough: Bool
 }
 ```
 
@@ -343,26 +341,29 @@ type PastTheEnd = Failure {
 }
 ```
 
-```jadpo check project=get-action file=domains/metering/actions/units_left.jadpo
+```jadpo check project=get-action file=domains/metering/actions/litres_left.jadpo
 use metering/entities { Meter, MeterNotFound }
+use metering/types { LeftAsked, LeftView }
 use metering/failures { PastTheEnd }
-use metering/types { LeftAsked, LeftView, Units }
 
-action units_left(meter_id: Meter.id, asked: LeftAsked) fails MeterNotFound, PastTheEnd -> LeftView {
+action litres_left(
+    meter_id: Meter.id,
+    asked: LeftAsked
+) fails MeterNotFound, PastTheEnd -> LeftView {
     var meter: Meter = attempt Meter.get(meter_id)
-    if (asked.used > meter.units) {
+    if (asked.used > meter.litres) {
         reject PastTheEnd {}
     }
     return LeftView {
-        left: Units(meter.units - asked.used)
+        enough: asked.used < meter.litres
     }
 }
 ```
 
 ```jadpo check project=get-action file=domains/metering/routes/meters.jadpo
-use metering/actions { units_left }
 use metering/entities { Meter }
 use metering/types { LeftAsked, LeftView }
+use metering/actions { litres_left }
 
 routes Meters {
     prefix: /meters
@@ -371,21 +372,30 @@ routes Meters {
         authentication: RouteAuthentication.none
         input: LeftAsked
         output: LeftView
-        run: units_left(meter_id, input)
+        run: litres_left(meter_id, input)
+    }
+}
+```
+
+```jadpo check project=get-action file=domains/metering/fixtures/a_meter.jadpo hidden
+use metering/entities { Meter }
+
+fixture a_meter() -> Meter {
+    return Meter.create {
+        set: {
+            litres: 10
+        }
     }
 }
 ```
 
 ```jadpo check project=get-action file=domains/metering/routes/meters.test.jadpo hidden
 use metering/entities { Meter }
+use metering/fixtures { a_meter }
 use metering/types { LeftAsked, LeftView }
 
 test "a meter says what is left" {
-    var meter: Meter = Meter.create {
-        set: {
-            units: 10
-        }
-    }
+    var meter: Meter = a_meter()
     var response: Response = request {
         method: HttpMethod.get
         path: "/meters/{meter_id}/left"
@@ -398,16 +408,12 @@ test "a meter says what is left" {
     }
     assert response.status == 200
     assert response.output == LeftView {
-        left: 6
+        enough: true
     }
 }
 
 test "a reading past the end is rejected" {
-    var meter: Meter = Meter.create {
-        set: {
-            units: 10
-        }
-    }
+    var meter: Meter = a_meter()
     var response: Response = request {
         method: HttpMethod.get
         path: "/meters/{meter_id}/left"
