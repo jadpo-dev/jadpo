@@ -459,7 +459,7 @@ approved (Richard, 2026-10-31). The chunks here come after the A chunks
 above and before every other unticked chunk.
 
 0.2.0 shipped without V2. **0.3.0 holds** everything in this section, R1 to
-R6, everything the registry application (R7) needs from `jadpo`, the real
+R6, G1 to G5 (what the registry application, R7, needs from `jadpo`), the real
 deploy (8.2n) and what it finds, and D15, D16 and A12 to A15 (Richard,
 2026-11-03). It is released when those have merged. V1 and V3 to V5 run at the same time as each other and as R1
 and R4, where they touch different crates.
@@ -522,11 +522,32 @@ real deploy) and, before outside authors can publish, D3 (releases).
   published with each release (D3).
   It runs on Fly.io, reached over HTTPS (Richard, 2026-10-31); **needs a
   maintainer** for the Fly.io account before it is deployed.
+- [ ] **G1 Reserved words as names** `opus · high`: area 2 and area 1,
+  "Reserved words". Inside a type body a reserved word may name a field or an
+  enum variant, where `package: Text` and `Kind.library` are unambiguous
+  (Richard, 2026-11-03). An `Output` with a `type` field works in any app.
+- [ ] **G2 A `GET` that runs a read-only action** `opus · high` after G1: area
+  7, "What a route runs"; area 3. A `GET` still runs a named query, or an
+  action the graph proves writes nothing, emits nothing and makes no changing
+  call (Richard, 2026-11-03), so it can work a value out, raise several
+  failures and call `ai.embed`.
+- [ ] **G3 A route that sends raw bytes** `opus · high` after G2: area 7,
+  "Output and status" and OpenAPI; area 18, the API record. `sends:
+  "application/x-tar"` on an `Output` with exactly one `Bytes` field; that
+  field is the body, and failures stay JSON (Richard, 2026-11-03). Also `cache:
+  immutable`, for an answer that never changes.
+- [ ] **G4 A route's `rate_limit:`** `opus · high`: area 16's route limits. The
+  registry's `POST releases` is anonymous and starts verifications, and the
+  default 120 a minute per address doesn't fit it.
+- [ ] **G5 Small gaps the registry found** `opus · high`: `authentication: []`
+  honoured on `openapi.json`, which is accepted and ignored today; a `jadpo`
+  command that runs R4's conformance test against a document, so R7's CI needs
+  no Rust; `bytes.concat`.
 - [ ] **R7 The registry application** **needs a maintainer** to start the
-  jadpo.dev session, after R1, R4 and R6: built against the protocol and
-  passing R4's conformance test. Until the S3 driver its archives are kept
-  in PostgreSQL; until the search capability its word search is its own
-  queries over each package's written account.
+  jadpo.dev session, after R1, R4, R6, 8.2n and G1 to G5: built against the
+  protocol and passing R4's conformance test. Until the S3 driver its archives
+  are kept in PostgreSQL, and its database must offer pgvector 0.8. Word search
+  is `search:` with `matches`.
 
 After the registry is live, in order:
 
