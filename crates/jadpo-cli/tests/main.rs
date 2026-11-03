@@ -108,6 +108,7 @@ mod provider_sign_in;
 mod provider_wire;
 mod purge_schedule;
 mod queries;
+mod read_only_get;
 mod receiving;
 mod recordings;
 mod records;

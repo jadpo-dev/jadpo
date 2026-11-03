@@ -84,6 +84,10 @@ pub async fn files(
     // The call's span names the site it is at (chunk 10.3c).
     ctx.at(at);
     let done = match (op, args) {
+        // What a `GET` runs was proved to make no changing call (chunk G2).
+        (FilesOp::Put, _) if ctx.running_read_only() => Done::Fault(FaultKind::Defect(
+            crate::boundary::READ_ONLY_CHANGE.into(),
+        )),
         (FilesOp::Put, [bytes, file_type]) => files::put(ctx, connection, bytes, file_type).await,
         (FilesOp::Read, [file]) => files::read_whole(ctx, file).await,
         _ => Done::Fault(FaultKind::Defect(format!(
