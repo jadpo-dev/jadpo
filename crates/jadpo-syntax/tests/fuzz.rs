@@ -179,6 +179,19 @@ fn hostile_input_is_survived() {
     // is cut from the text at a character's boundary (found by the
     // coverage-guided fuzzer).
     inputs.push("x {\n    a: \u{7a1}ttps://e\n}\n".to_string());
+    // A comma after a nullable field with another field on its line: with
+    // the comma gone the `?` met the next key, which read as a ternary, so
+    // a clean edit left a file with an error that isn't (found by the
+    // coverage-guided fuzzer).
+    inputs.push(
+        "/// One email to send.\npublic type OutgoingEmail = Object {\n    from: Text\n    to: Text\n    subject: Text\n    html: Text?\n    text: Text?,    attachments: List<OutgoingAttachment>\n}\n"
+            .to_string(),
+    );
+    // The same with a lower-case name, in a declaration and in a record,
+    // and after `=` read as `:`.
+    inputs.push("type E = Object {\n    a: text?, b: c\n}\n".to_string());
+    inputs.push("function f() -> T {\n    return Foo { a: x?, b: y }\n}\n".to_string());
+    inputs.push("type E = Object {\n    a = Text?, b: c\n}\n".to_string());
     for input in inputs {
         check(&input);
     }
