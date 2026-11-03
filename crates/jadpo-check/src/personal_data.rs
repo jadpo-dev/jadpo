@@ -283,8 +283,8 @@ pub struct PackageSend {
 
 /// What the package in `folder` sends through its operations, by operation
 /// and holder ([`crate::policy::flow::exits::package_left`]), and the
-/// hosts it sends them to: `jadpo package check`'s facts, the data R3's
-/// facts print and the registry shows.
+/// hosts it sends them to: `jadpo package check`'s section, and a release's
+/// facts ([`crate::release::facts`]).
 pub fn package_sends(
     db: &dyn Db,
     project: Project,

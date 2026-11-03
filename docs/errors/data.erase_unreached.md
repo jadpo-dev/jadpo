@@ -1,17 +1,17 @@
 # `data.erase_unreached`
 
-A field's `erase:` is on a field erasing a person never reaches: one that isn't a reference, or a reference to records that belong to no person.
+A field's `erase:` is on a field erasing a person never reaches: one that isn't a reference, or a reference to records erasure never deletes.
 
 ## Why Jadpo refuses it
 
 `erase:` says what erasing a person does to a record when erasure
 deletes the record it refers to: deletes it too, keeps it without the
-person, or keeps it as it is. Erasure deletes only the person's record
-and the records that belong to them, so an `erase:` on a reference to
-records that belong to no person, or on a field that is no reference at
-all, would never be used. Accepted, it would look like a decision about
-erasure that does nothing. Here a tag refers to a category, which is
-neither a person nor anyone's.
+person, or keeps it as it is. Erasure deletes only the person's record and
+what their references say goes with it, so an `erase:` on a reference to
+records erasure never deletes, or on a field that is no reference at all,
+would never be used. Accepted, it would look like a decision about erasure
+that does nothing. Here a tag refers to a category, which is neither a
+person nor anyone's.
 
 ## What it looks like
 
@@ -41,8 +41,8 @@ error: Erasing a person never reaches `Tag.category_id`
  --> main.jadpo:13:9
    |
 13 |         erase: Erasure.deleted
-   |         ^^^^^ `Category` belongs to no person
-  reason: `erase:` says what erasing a person does to a `Tag` when erasure deletes the `Category` it refers to. `Category` isn't a person (`person: true`) and none of its references leads to one, so erasure never deletes one.
+   |         ^^^^^ erasing a person never deletes a `Category`
+  reason: `erase:` says what erasing a person does to a `Tag` when erasure deletes the `Category` it refers to. Erasure deletes a person's record and what its references say goes with it, and a `Category` isn't either, so it never deletes one.
   next: Remove `erase:` from `category_id` (agent)
   rule: data.erase_unreached
   help: https://jadpo.dev/docs/errors/data.erase_unreached
@@ -54,8 +54,11 @@ check failed: 1 error, 1 file
 the fix itself.
 
 An `erase:` on a field that isn't a reference, such as `label`, is
-refused the same way, and so is one on an event's field: an event is
-sent as it was written, and erasure never rewrites it.
+refused the same way, and so is one on a reference to a record erasure
+keeps, whose own references stay with it, and one on an event's field: an
+event is sent as it was written, and erasure never rewrites it. On a field
+of a person's own record that isn't a reference, it means something else
+([`data.erase_own_field`](data.erase_own_field.md)).
 
 ## How to fix it
 

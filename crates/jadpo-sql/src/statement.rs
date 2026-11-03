@@ -814,117 +814,61 @@ pub struct Keeps<'a> {
     /// Each column set on every record it changes, to the SQL beside it:
     /// a `Generated.on_change` field, to the operation's time.
     pub set: Vec<(String, String)>,
-    /// When a record may belong to another person too, how to look for
-    /// one the erasure keeps: its marked fields are cleared only on a
-    /// record none of these lead from to such a person (chunk P4).
-    pub others: Option<Others<'a>>,
+    /// When a record may belong to another person too, its own references
+    /// to a person: its marked fields are cleared only on a record none of
+    /// these holds one the erasure keeps (chunks P4 and P4b).
+    pub others: Vec<Other<'a>>,
 }
 
-/// How a person's erasure looks for another person a record it keeps
-/// belongs to (area 15, "Records that belong to several people"; chunk
-/// P4): from each of the record's references that leads to a person,
-/// through the records they refer to, each numbered by its owner, an
-/// entity looked through, until it reaches a person's record. A
-/// reference to a record the erasure deletes leads nowhere, since it is
-/// cleared.
+/// One of a kept record's own references to a person (area 15, "Records
+/// that belong to several people"): its column, and, when the erasure
+/// deletes records of that person's entity, the entity's number among
+/// them.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Others<'a> {
-    pub starts: Vec<Start<'a>>,
-    pub climbs: Vec<Climbed<'a>>,
-    /// The owners that are person entities, whose records end the search.
-    pub people: Vec<usize>,
-}
-
-/// One of a kept record's references that leads to a person: its column,
-/// the owner it refers to, and, when the erasure deletes records of that
-/// owner's entity, the entity's number among them.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Start<'a> {
+pub struct Other<'a> {
     pub column: &'a str,
-    pub owner: usize,
     pub erased: Option<usize>,
 }
 
-/// A reference climbed from a record of the owner `from`, in `table`, by
-/// its `column`, to a record of the owner `to`, whose entity's number
-/// among those the erasure deletes is `erased`.
+/// A person entity whose records a person's erasure keeps field by field
+/// rather than deleting (area 15, "The person's own record"; chunk P4b).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Climbed<'a> {
-    pub from: usize,
-    pub table: &'a str,
-    pub column: &'a str,
-    pub to: usize,
-    pub erased: Option<usize>,
+pub struct Own<'a> {
+    /// Its number among those erasure deletes records of.
+    pub entity: usize,
+    /// The columns of the marked fields it clears.
+    pub clears: Vec<String>,
+    /// Each reference it clears where it refers to a record of the entity
+    /// numbered beside it, as it does on a record it keeps of anyone else,
+    /// since the record stays and what it refers to may not.
+    pub references: Vec<(&'a str, usize)>,
+    /// The operation's time, as SQL: when they were erased, the first time.
+    pub now: &'a str,
+    /// Each column set on the record, to the SQL beside it: a
+    /// `Generated.on_change` field, to the operation's time.
+    pub set: Vec<(String, String)>,
 }
 
-/// Whether `column`, which refers to a record numbered `erased` among
-/// those a person's erasure deletes when it is one, leads on: it holds a
-/// value, and not one of those.
-fn leads(column: &str, erased_entity: Option<usize>) -> String {
-    match erased_entity {
-        Some(entity) => format!(
-            "{column} IS NOT NULL AND {column} NOT IN ({})",
-            erased(entity)
-        ),
-        None => format!("{column} IS NOT NULL"),
-    }
+/// The condition, on a record of `table`, that none of `others` holds a
+/// person the erasure keeps.
+fn no_other_person(table: &str, others: &[Other<'_>]) -> String {
+    others
+        .iter()
+        .map(|other| {
+            let at = format!("{}.{}", ident(table), ident(other.column));
+            match other.erased {
+                Some(entity) => format!("({at} IS NULL OR {at} IN ({}))", erased(entity)),
+                None => format!("{at} IS NULL"),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n    AND ")
 }
 
-/// The condition, on a record of `table`, that none of `others` leads to
-/// a person the erasure keeps. With every start a person's, it asks each
-/// reference directly; otherwise a recursive query climbs from the
-/// record's references, each record once, so a loop in the data ends too.
-fn no_other_person(table: &str, others: &Others<'_>) -> String {
-    let column = |name: &str| format!("{}.{}", ident(table), ident(name));
-    if others.climbs.is_empty() {
-        return others
-            .starts
-            .iter()
-            .map(|start| {
-                let at = column(start.column);
-                match start.erased {
-                    Some(entity) => format!("({at} IS NULL OR {at} IN ({}))", erased(entity)),
-                    None => format!("{at} IS NULL"),
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n    AND ");
-    }
-    let starts: Vec<String> = others
-        .starts
-        .iter()
-        .map(|start| {
-            let at = column(start.column);
-            format!(
-                "SELECT {}, {at} WHERE {}",
-                start.owner,
-                leads(&at, start.erased)
-            )
-        })
-        .collect();
-    let climbs: Vec<String> = others
-        .climbs
-        .iter()
-        .enumerate()
-        .map(|(i, up)| {
-            let alias = ident(&format!("up{}", i + 1));
-            let at = format!("{alias}.{}", ident(up.column));
-            format!(
-                "SELECT {} AS \"from\", {alias}.\"id\" AS \"from_id\", {} AS \"entity\", {at} AS \"id\" FROM {} AS {alias} WHERE {}",
-                up.from,
-                up.to,
-                ident(up.table),
-                leads(&at, up.erased)
-            )
-        })
-        .collect();
-    let people: Vec<String> = others.people.iter().map(usize::to_string).collect();
-    format!(
-        "NOT EXISTS (\n      WITH RECURSIVE \"owner\" (\"entity\", \"id\") AS (\n        {}\n        UNION\n        SELECT \"up\".\"entity\", \"up\".\"id\"\n        FROM \"owner\"\n        JOIN (\n          {}\n        ) AS \"up\" ON \"up\".\"from\" = \"owner\".\"entity\" AND \"up\".\"from_id\" = \"owner\".\"id\"\n      )\n      SELECT 1 FROM \"owner\" WHERE \"owner\".\"entity\" IN ({})\n    )",
-        starts.join("\n        UNION ALL\n        "),
-        climbs.join("\n          UNION ALL\n          "),
-        people.join(", ")
-    )
+/// The condition that hides a person's record erasure kept (area 15, "The
+/// person's own record"; chunk P4b), as a lifecycle hides one.
+pub fn not_erased() -> String {
+    format!("{} IS NULL", ident(jadpo_std::ERASED_AT))
 }
 
 /// The record an audited write starts from (area 16, "Audit trail"; chunk
@@ -992,11 +936,12 @@ fn erased(entity: usize) -> String {
 /// number in `tables`, each record once, so a loop in the data ends too.
 /// Then each of `keeps` clears its references to them, and its marked
 /// fields where an anonymising reference matched and, for a record that
-/// may belong to someone else too, none of its other references leads to
-/// a person the erasure keeps (`"last"`); every record found is
-/// deleted, whether a lifecycle hides it or not; and each of `signed_in`,
-/// a table and the column holding the `id` of a record of the entity
-/// numbered beside it, loses its rows for the records deleted. Every
+/// may belong to someone else too, none of its own references holds a
+/// person the erasure keeps (`"last"`); every record found is deleted,
+/// whether a lifecycle hides it or not, or, of an entity `own` names, kept
+/// with its marked fields cleared and the time noted; and each of
+/// `signed_in`, a table and the column holding the `id` of a record of the
+/// entity numbered beside it, loses its rows for the records found. Every
 /// part sees the same snapshot, and the foreign keys are checked once at
 /// its end, when nothing refers to a deleted record. It returns the
 /// person's `id`, or no row when the record isn't there or policy
@@ -1008,6 +953,7 @@ pub fn erase(
     keeps: &[Keeps<'_>],
     signed_in: &[(usize, &str, &str)],
     audited: &[(usize, String)],
+    own: &[Own<'_>],
 ) -> String {
     let mut base = format!(
         "  SELECT 0, {}.{}\n  FROM {}",
@@ -1068,8 +1014,8 @@ pub fn erase(
         let every = anonymising.len() == keep.references.len();
         // A record that may belong to someone else too: the records
         // whose marked fields go, those whose last person this is.
-        let last = match &keep.others {
-            Some(others) if !keep.clears.is_empty() => {
+        let last = match keep.others.as_slice() {
+            others if !others.is_empty() && !keep.clears.is_empty() => {
                 let name = format!("last{}", i + 1);
                 let mut found = format!(
                     "  SELECT {}.{}\n  FROM {}",
@@ -1159,29 +1105,59 @@ pub fn erase(
             erased(*entity)
         ));
     }
-    for (entity, table) in tables.iter().enumerate().skip(1) {
-        parts.push(format!(
-            "{} AS (\n  DELETE FROM {}\n  WHERE {} IN ({})\n)",
+    // Every record found goes, or stays with its marked fields cleared,
+    // the person's own last, so the statement returns their `id`.
+    let kept = |entity: usize| own.iter().find(|own| own.entity == entity);
+    let end = |entity: usize, table: &str, returning: &str| match kept(entity) {
+        Some(own) => {
+            let mut set: Vec<String> = own
+                .clears
+                .iter()
+                .map(|column| format!("{} = NULL", ident(column)))
+                .collect();
+            set.extend(own.references.iter().map(|(column, entity)| {
+                let matched = format!("{} IN ({})", ident(column), erased(*entity));
+                set_when(column, &matched, "NULL")
+            }));
+            let at = ident(jadpo_std::ERASED_AT);
+            set.push(format!("{at} = COALESCE({at}, {})", own.now));
+            set.extend(
+                own.set
+                    .iter()
+                    .map(|(column, value)| format!("{} = {value}", ident(column))),
+            );
+            format!(
+                "{} AS (\n  UPDATE {}\n  SET {}\n  WHERE {} IN ({}){returning}\n)",
+                ident(&format!("own{entity}")),
+                ident(table),
+                set.join(",\n    "),
+                ident("id"),
+                erased(entity)
+            )
+        }
+        None => format!(
+            "{} AS (\n  DELETE FROM {}\n  WHERE {} IN ({}){returning}\n)",
             ident(&format!("deleted{entity}")),
             ident(table),
             ident("id"),
             erased(entity)
-        ));
+        ),
+    };
+    for (entity, table) in tables.iter().enumerate().skip(1) {
+        parts.push(end(entity, table, ""));
     }
-    parts.push(format!(
-        "{} AS (\n  DELETE FROM {}\n  WHERE {} IN ({})\n  RETURNING {}\n)",
-        ident("deleted0"),
-        ident(tables[0]),
-        ident("id"),
-        erased(0),
-        ident("id")
-    ));
+    let returning = format!("\n  RETURNING {}", ident("id"));
+    parts.push(end(0, tables[0], &returning));
     format!(
         "WITH{} {}\nSELECT {} FROM {}",
         if follows.is_empty() { "" } else { " RECURSIVE" },
         parts.join(", "),
         ident("id"),
-        ident("deleted0")
+        ident(if kept(0).is_some() {
+            "own0"
+        } else {
+            "deleted0"
+        })
     )
 }
 

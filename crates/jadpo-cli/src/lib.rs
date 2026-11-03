@@ -48,6 +48,7 @@ mod package_conform;
 mod package_import;
 mod package_recipe;
 mod package_record;
+mod package_release;
 mod provider_review;
 mod records;
 mod releases;

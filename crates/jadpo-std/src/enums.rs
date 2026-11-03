@@ -127,6 +127,11 @@ std_enum! {
     }
 }
 
+/// The column a person's record keeps the time they were erased in, on an
+/// entity that keeps their record field by field (area 15, "The person's
+/// own record"; chunk P4b). A record holding a value is hidden.
+pub const ERASED_AT: &str = "jadpo_erased_at";
+
 std_enum! {
     /// The way a locale's text runs (area 10, "Locales"): what `locale.direction`
     /// gives. Its wording, for a template's `dir=` attribute, is `ltr` and

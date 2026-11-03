@@ -1,6 +1,6 @@
 # `data.erase_retention_required`
 
-Erasing a person keeps records with `Erasure.retained`, but their entity has no `retention:` saying when they go.
+Erasing a person keeps records with `Erasure.retained`, their own or others', but their entity has no `retention:` saying when they go.
 
 ## Why Jadpo refuses it
 
@@ -9,7 +9,9 @@ is erased, clearing only the reference. It is for records the law makes
 you keep, such as invoices, which tax law requires for several years.
 A record kept that way still holds personal data, its own copy of the
 billing name, so it needs an end date of its own. Without a
-`retention:` on its entity it would be kept for ever.
+`retention:` on its entity it would be kept for ever. A person's own field
+that says `erase: Erasure.retained` keeps their record the same way, and
+needs the same.
 
 Jadpo won't choose for you: how long a kept record stays is a legal
 decision about your records.

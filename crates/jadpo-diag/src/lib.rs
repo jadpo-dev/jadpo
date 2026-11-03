@@ -329,13 +329,15 @@ rules! {
     DATA_ENTITY_IN_FIELD: "data.entity_in_field", area 5, Error, Agent,
         "Field holds an entity instead of a reference to one";
     DATA_ERASE_FIELD_REQUIRED: "data.erase_field_required", area 15, Error, Human,
-        "Erasing a person would clear a field that can't be `none`: a reference whose record erasure keeps, or a marked field of a record it anonymises";
+        "Erasing a person would clear a field that can't be `none`: a reference whose record erasure keeps, a marked field of a record it anonymises, or a marked field of the person's own record it keeps";
+    DATA_ERASE_OWN_FIELD: "data.erase_own_field", area 15, Error, Human,
+        "A person's own record says something about erasure it can't: `erase:` on a field with anything but `Erasure.retained` or with no `personal:`, a reference that deletes a record that must stay, or a field named as the column erasure keeps";
     DATA_ERASE_REQUIRED: "data.erase_required", area 15, Error, Human,
         "A `restricted` reference into records that erasing a person deletes doesn't say what erasure does to the record holding it";
     DATA_ERASE_RETENTION_REQUIRED: "data.erase_retention_required", area 15, Error, Human,
-        "Erasing a person keeps records with `Erasure.retained`, but their entity has no `retention:` saying when they go";
+        "Erasing a person keeps records with `Erasure.retained`, their own or others', but their entity has no `retention:` saying when they go";
     DATA_ERASE_UNREACHED: "data.erase_unreached", area 15, Error, Agent,
-        "A field's `erase:` is on a field erasing a person never reaches: one that isn't a reference, or a reference to records that belong to no person";
+        "A field's `erase:` is on a field erasing a person never reaches: one that isn't a reference, or a reference to records erasure never deletes";
     DATA_FIELD_ENCRYPTION_KEY_INVALID: "data.field_encryption_key_invalid", area 15, Error, Agent,
         "The application's `field_encryption_key:` reads something other than an `EncryptionKey` setting";
     DATA_FIELD_ENCRYPTION_KEY_REQUIRED: "data.field_encryption_key_required", area 15, Error, Human,
@@ -389,7 +391,7 @@ rules! {
     DATA_PATCH_OVERLAP: "data.patch_overlap", area 6, Error, Agent,
         "Supplied-field block sets a field the patch already sets";
     DATA_PERSONAL_UNREACHABLE: "data.personal_unreachable", area 15, Error, Human,
-        "A field marked as personal data is on an entity that isn't a person and doesn't refer to one, so erasing a person could never find it";
+        "A field marked as personal data is on an entity erasing a person never reaches, so it could never be found";
     DATA_READ_IN_LOOP: "data.read_in_loop", area 6, Error, Agent,
         "Query or `get` inside a `for` loop";
     DATA_REFERENCE_ACROSS_STORES: "data.reference_across_stores", area 5, Error, Human,
@@ -758,6 +760,8 @@ rules! {
         "A prompt's type has a field that its prompt file never writes";
     PROMPT_SECTION_MISSING: "prompt.section_missing", area 21, Error, Agent,
         "A prompt and its file don't make its two sections, each once and in order";
+    PUBLISH_BEHAVIOUR_CHANGED: "publish.behaviour_changed", area 14, Error, Human,
+        "An example or test of a package's last release fails against its new version, and the change isn't marked a fix";
     PUBLISH_BREAKING_CHANGE: "publish.breaking_change", area 14, Error, Human,
         "A package's new version changes or removes something its last release offered, within the same major version";
     PUBLISH_CHANGELOG_MISSING: "publish.changelog_missing", area 14, Error, Agent,
@@ -770,6 +774,8 @@ rules! {
         "Package's function has no example, or a failure it raises is shown by none";
     PUBLISH_SAMPLE_MISSING: "publish.sample_missing", area 14, Error, Agent,
         "Package's recipes have no sample app with one domain to compile in";
+    PUBLISH_STALE_FILES: "publish.stale_files", area 14, Error, Agent,
+        "A commit's `surface.jadpo_record` or changelog list isn't what the package's code gives";
     QUERY_AGGREGATE_ARGUMENT: "query.aggregate_argument", area 6, Error, Agent,
         "Aggregate is given the wrong arguments";
     QUERY_AGGREGATE_FIELD: "query.aggregate_field", area 6, Error, Agent,
@@ -786,6 +792,10 @@ rules! {
         "Records cannot be grouped by this";
     QUERY_INCLUDE_DEPTH: "query.include_depth", area 6, Error, Human,
         "A query's includes nest more than two levels deep: records inside records inside records";
+    QUERY_INCLUDE_ERASED_READS: "query.include_erased_reads", area 15, Error, Human,
+        "A query that finds erased people reads more than their `id` and the fields erasure keeps of them";
+    QUERY_INCLUDE_ERASED_UNUSED: "query.include_erased_unused", area 15, Error, Agent,
+        "A query says `include_erased: true` on an entity that keeps nothing of an erased person";
     QUERY_INCLUDE_RESULT: "query.include_result", area 6, Error, Agent,
         "Result type has no field of the right shape for an include";
     QUERY_INCLUDE_UNKNOWN: "query.include_unknown", area 6, Error, Agent,

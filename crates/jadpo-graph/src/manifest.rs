@@ -288,11 +288,17 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             out.set_some("visible", visible.as_deref());
             out.set_some("purge", purge.as_deref());
         }
-        Detail::Person { through } => {
+        Detail::Person { through, retained } => {
             out.set(
                 "through",
                 through.iter().map(Value::from).collect::<Vec<_>>(),
             );
+            if !retained.is_empty() {
+                out.set(
+                    "retained",
+                    retained.iter().map(Value::from).collect::<Vec<_>>(),
+                );
+            }
         }
         Detail::Retention { retention, clears } => {
             out.set("retention", retention.as_str());
@@ -633,6 +639,10 @@ const NODE_FIELDS: &[(&str, &str)] = &[
     (
         "through",
         "A person entity's references that its records belong to the person through, each `Entity.field`",
+    ),
+    (
+        "retained",
+        "The fields erasing a person keeps of their record, which is deleted when there are none",
     ),
     (
         "retention",

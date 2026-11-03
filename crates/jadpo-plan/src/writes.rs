@@ -885,6 +885,23 @@ impl Planner<'_> {
                 column_type(cleared)?;
                 clears.extend(cleared.columns().into_iter().map(|(column, _)| column));
             }
+            // A retired column goes the way its field's would have, since
+            // nothing says any more whether it was marked. Another person's
+            // own record loses only the reference.
+            if !holder.person
+                && kept
+                    .references
+                    .iter()
+                    .any(|reference| reference.outcome == jadpo_std::Erasure::Anonymised)
+            {
+                clears.extend(
+                    self.retired
+                        .get(&(store.clone(), holder.table.clone()))
+                        .into_iter()
+                        .flatten()
+                        .cloned(),
+                );
+            }
             // Clearing a value changes the record, so each field generated
             // on every change takes the operation's time.
             let mut set = Vec::new();
@@ -894,46 +911,19 @@ impl Planner<'_> {
                     set.push((changed.born.clone(), now));
                 }
             }
-            // Where the record may belong to another person too, how to
-            // look for one the erasure keeps.
+            // Where the record may belong to another person too, its own
+            // references to one, each asked whether it holds one the erasure
+            // keeps.
             let erased = |entity: &str| erasure.deleted.iter().position(|name| *name == entity);
-            let others = if kept.through.is_empty() || clears.is_empty() {
-                None
-            } else {
-                let mut starts = Vec::new();
-                for (name, owner) in &kept.through {
-                    starts.push(text::Start {
+            let mut others = Vec::new();
+            if !clears.is_empty() {
+                for (name, person) in &kept.through {
+                    others.push(text::Other {
                         column: field(holder, name)?.born.as_str(),
-                        owner: *owner,
-                        erased: erased(&kept.chain.get(*owner)?.entity),
+                        erased: erased(person),
                     });
                 }
-                let mut climbs = Vec::new();
-                for (from, owner) in kept.chain.iter().enumerate() {
-                    let found = model.entity(&owner.entity)?;
-                    for (name, to) in &owner.climbs {
-                        climbs.push(text::Climbed {
-                            from,
-                            table: found.table.as_str(),
-                            column: field(found, name)?.born.as_str(),
-                            to: *to,
-                            erased: erased(&kept.chain.get(*to)?.entity),
-                        });
-                    }
-                }
-                let people = kept
-                    .chain
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, owner)| owner.person)
-                    .map(|(at, _)| at)
-                    .collect();
-                Some(text::Others {
-                    starts,
-                    climbs,
-                    people,
-                })
-            };
+            }
             keeps.push(text::Keeps {
                 table: holder.table.as_str(),
                 deleted: erased(&kept.entity),
@@ -961,6 +951,53 @@ impl Planner<'_> {
                 audited.push((at, born));
             }
         }
+        // A person entity whose field says it stays keeps each record of
+        // its, with every other marked field cleared and the time noted.
+        let now = if erasure.own.is_empty() {
+            None
+        } else {
+            Some(writing.param(WriteSource::Now, SqlType::Timestamp))
+        };
+        let mut own = Vec::new();
+        for kept in &erasure.own {
+            let entity = deleted.get(kept.entity)?;
+            let mut clears = Vec::new();
+            for name in &kept.clears {
+                let cleared = field(entity, name)?;
+                column_type(cleared)?;
+                clears.extend(cleared.columns().into_iter().map(|(column, _)| column));
+            }
+            clears.extend(
+                self.retired
+                    .get(&(store.clone(), entity.table.clone()))
+                    .into_iter()
+                    .flatten()
+                    .cloned(),
+            );
+            let now = now.as_deref()?;
+            let mut set = Vec::new();
+            for changed in &entity.fields {
+                if changed.generated == Some(jadpo_std::Generated::OnChange) {
+                    set.push((changed.born.clone(), now.to_string()));
+                }
+            }
+            // What it refers to may go, and it stays.
+            let mut references = Vec::new();
+            let referring = erasure.kept.iter().find(|held| held.entity == entity.name);
+            for reference in referring.iter().flat_map(|held| &held.references) {
+                let column = field(entity, &reference.field)?.born.as_str();
+                if !clears.iter().any(|cleared| cleared == column) {
+                    references.push((column, reference.target));
+                }
+            }
+            own.push(text::Own {
+                entity: kept.entity,
+                clears,
+                references,
+                now,
+                set,
+            });
+        }
         let tables: Vec<&str> = deleted.iter().map(|entity| entity.table.as_str()).collect();
         let by_id = text::equal("id", &id);
         let granted = self.policy(&mut writing, person, Effect::Delete, &Row::Table)?;
@@ -971,6 +1008,7 @@ impl Planner<'_> {
             &keeps,
             &signed_in,
             &audited,
+            &own,
         );
         let (sql, unpoliced, policy) = if granted == jadpo_sql::policy::ANYONE {
             (plain, None, None)
@@ -986,6 +1024,7 @@ impl Planner<'_> {
                 &keeps,
                 &signed_in,
                 &audited,
+                &own,
             );
             (
                 sql,
@@ -1240,6 +1279,33 @@ fn returning(entity: &EntityModel) -> Vec<String> {
 /// with its value as SQL: one, or each of a compound type's (`Money`'s
 /// minor units and currency code, area 19). A sealed field's `sealed` is
 /// how its bytes read and where its record's `id` comes from.
+/// Each table's retired columns, by store and table, from the latest
+/// migration, leaving out a generated column, which nothing can set, and
+/// the column erasure itself notes the time in.
+fn retired_columns(
+    db: &dyn jadpo_db::Db,
+    project: jadpo_db::Project,
+) -> std::collections::BTreeMap<(String, String), Vec<String>> {
+    let schema = jadpo_check::data::migrations::migrations(db, project).latest_schema();
+    let mut out = std::collections::BTreeMap::new();
+    for (store, tables) in &schema.stores {
+        for (name, table) in &tables.tables {
+            let columns: Vec<String> = table
+                .columns
+                .iter()
+                .filter(|(column, held)| {
+                    held.retired && held.generated.is_none() && *column != jadpo_std::ERASED_AT
+                })
+                .map(|(column, _)| column.clone())
+                .collect();
+            if !columns.is_empty() {
+                out.insert((store.clone(), name.clone()), columns);
+            }
+        }
+    }
+    out
+}
+
 fn field_columns(
     writing: &mut Writing,
     entity: &EntityModel,
@@ -1332,6 +1398,7 @@ pub(crate) fn plans(
         action: None,
         json,
         sign_in: crate::purge::sign_in_state(db, project),
+        retired: retired_columns(db, project),
     };
     let mut out = Vec::new();
     let mut at = HashMap::new();

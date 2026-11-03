@@ -481,6 +481,25 @@ kept moved here. Nothing in this list changed a rule.
   `semantic.duplicate_declaration` (question 17).
 - **How a version is worked out** compares a package's surface with its
   newest release's entry by entry, as Elm's `bump` does.
+- **Marking a fix** is a line in the new version's section of `CHANGELOG.md`,
+  ``Fix `uk.parse`: why``, rather than a `decline` in the source: it belongs
+  to one release and says why, which is the only thing the author writes
+  there, while a `decline` would stay in the code after the release it
+  answered.
+- **A previous example or test that no longer compiles has failed.** Only
+  counting those that run would let a release hide a change by removing a
+  helper an old test leans on. The cost is one `Fix` line for a harmless
+  removal.
+- **A new host is a new minor version.** The pages let a release add a host
+  without being a new major ("Routine releases may release themselves"), and
+  an app's calls keep working; it is reviewed as a `NetworkChange` in the app.
+  Moving or dropping a host still breaks.
+- **`kind` and `detail` on a change record's entry.** The page's entries name
+  a declaration and what happened to it. `detail` holds the rest, the failure,
+  the host or the old and new facts, which `CHANGELOG.md` and `jadpo package
+  update --plan` both need. A package's or provider's own entry changing, such
+  as a raised `jadpo`, is `retyped`, written "changed package" in the list,
+  rather than an eighth kind of change.
 - **Why the importer writes `wire_name:` per field** rather than a
   provider-wide naming setting: most APIs other than Stripe's are
   camelCase, and a provider-wide setting would hide the exceptions.
