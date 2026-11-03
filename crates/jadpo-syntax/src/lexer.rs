@@ -488,10 +488,10 @@ impl Lexer<'_> {
         matches!(self.last, Some((IDENT | R_PAREN | R_BRACK | STRING | INT_NUMBER, _, end)) if end == self.pos)
     }
 
-    /// `;`, which Jadpo doesn't have: read as nothing. At the end of a line
-    /// (or before the `}` that closes a one-line block) the line then reads
-    /// as meant; with more on the line, what follows goes on a line of its
-    /// own.
+    /// `;`, which Jadpo doesn't have: read as nothing, a run of them as one.
+    /// At the end of a line (or before the `}` that closes a one-line
+    /// block) the line then reads as meant; with more on the line, what
+    /// follows goes on a line of its own.
     fn semicolon(&mut self) {
         let start = self.pos;
         // Splitting the line is only the fix when what comes before the `;`
@@ -524,10 +524,20 @@ impl Lexer<'_> {
             && !matches!(self.last, Some((IDENT, from, to))
                 if crate::grammar::RESERVED_NAMES.contains(&&self.text[from..to]));
         self.pos += 1;
+        // One error a line would take one `;` a round, so the run is one
+        // token with one edit.
+        loop {
+            let rest = &self.text[self.pos..];
+            let spaced = rest.trim_start_matches([' ', '\t']);
+            if !spaced.starts_with(';') {
+                break;
+            }
+            self.pos += rest.len() - spaced.len() + 1;
+        }
         self.push(SKIPPED, start);
         let after = self.rest_of_line(self.pos);
         let code = after.split("//").next().unwrap_or("").trim();
-        let ends = code.is_empty() || code.starts_with('}') || code.chars().all(|c| c == ';');
+        let ends = code.is_empty() || code.starts_with('}');
         // And only before what can start a line: a word, a number, text or
         // a prefix operator. Never a `.` or a `/` (a field access, or the
         // rest of a path: `use bakery;/actions`), a `{`, a `(` or a `[`
