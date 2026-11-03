@@ -30,7 +30,7 @@ use serde_json::{Value, json};
 use crate::files::{self, Judgement};
 use crate::git::{self, GitError, GitPolicy};
 use crate::request::Repository;
-use crate::sandbox::{Ended, Finished, Job, Limits, Sandbox};
+use crate::sandbox::{Ended, Finished, Job, Limits, Sandbox, tool};
 
 /// What running a package's own checks may use: enough for any real
 /// package's tests on the machine `fly.toml` names, whose memory holds this
@@ -45,6 +45,17 @@ pub const CHECKS: Limits = Limits {
     open_files: 1024,
     output_bytes: 32 << 20,
 };
+
+/// The most a whole answer may be, as a provider's answer reaches a Jadpo
+/// application (`MOST_ANSWER`, jadpo-runtime), less room for what surrounds
+/// the result: past it, a release would pass here and never reach the
+/// registry.
+pub const ANSWER_LIMIT: usize = (10 << 20) - 4096;
+
+/// The most that the source or the diff of a release may be, in its answer.
+/// What a model reads of a release is far less: past this, the answer says
+/// `truncated`.
+pub const READING_LIMIT: usize = 8 << 20;
 
 /// Fetches a release's archive by its digest.
 pub type Archives = Arc<dyn Fn(&str) -> Result<Vec<u8>, String> + Send + Sync>;
@@ -324,8 +335,92 @@ impl Verifier {
                 .collect();
             checked["digest"] = json!(Digest::of_files(&view).as_str());
             checked["archive"] = json!(base64(&packed));
+            let length = serde_json::to_vec(&checked).map_or(usize::MAX, |bytes| bytes.len());
+            if length > ANSWER_LIMIT {
+                checked["passed"] = json!(false);
+                checked["digest"] = Value::Null;
+                checked["archive"] = Value::Null;
+                let detail = format!("its answer is past {} MB", ANSWER_LIMIT / 1_000_000);
+                if let Some(bar) = checked["bar"].as_array_mut() {
+                    bar.retain(|row| row["item"] != "files");
+                    bar.insert(0, row("files", "failed", &detail));
+                }
+                if let Some(problems) = checked["problems"].as_array_mut() {
+                    problems.push(problem(
+                        "publish.too_large",
+                        format!("What the release shows, with its archive: {detail}"),
+                    ));
+                }
+            } else {
+                checked["reading"] = json!({
+                    "source": reading_source(&read),
+                    "diff": self.reading_diff(&work, previous.as_deref(), &new),
+                });
+            }
         }
         Ok(Outcome::Checked(checked))
+    }
+
+    /// How the release differs from the last one, as `git diff` writes it,
+    /// with paths from the package's folder. Worked out with no network, and
+    /// no attribute or configuration of the package's can reach it. `None`
+    /// for a first release, or when it can't be had: the account is written
+    /// from the source then.
+    fn reading_diff(&self, work: &Workspace, previous: Option<&Path>, new: &Path) -> Value {
+        let Some(previous) = previous else {
+            return json!({ "diff": null, "truncated": false });
+        };
+        let tmp = work.folder("tmp-diff");
+        let (Ok(tmp), Some(program)) = (tmp, tool("git")) else {
+            return json!({ "diff": null, "truncated": false });
+        };
+        let job = Job {
+            program,
+            args: [
+                "diff".into(),
+                "--no-index".into(),
+                "--no-ext-diff".into(),
+                "--no-textconv".into(),
+                "--no-color".into(),
+                "--no-renames".into(),
+                "--".into(),
+                OsString::from(previous),
+                OsString::from(new),
+            ]
+            .to_vec(),
+            env: [
+                ("PATH", "/usr/bin:/bin"),
+                ("LC_ALL", "C"),
+                ("GIT_CONFIG_NOSYSTEM", "1"),
+                ("GIT_CONFIG_GLOBAL", "/dev/null"),
+                ("GIT_ATTR_NOSYSTEM", "1"),
+            ]
+            .iter()
+            .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
+            .collect(),
+            read_only: vec![previous.to_path_buf(), new.to_path_buf()],
+            writable: Vec::new(),
+            tmp,
+            network: false,
+            stdin: None,
+            limits: Limits {
+                output_bytes: 2 * READING_LIMIT,
+                ..self.limits
+            },
+        };
+        let Ok(done) = self.sandbox.run(&job) else {
+            return json!({ "diff": null, "truncated": false });
+        };
+        // 0 when they are the same, 1 when they differ; too long is cut.
+        let cut = done.ended == Ended::OutputTooLarge;
+        if !cut && !matches!(done.ended, Ended::Exited(0 | 1)) {
+            return json!({ "diff": null, "truncated": false });
+        }
+        let text = String::from_utf8_lossy(&done.stdout)
+            .replace(&format!("{}/", trimmed(previous)), "")
+            .replace(&format!("{}/", trimmed(new)), "");
+        let (diff, shortened) = fitted(&text);
+        json!({ "diff": diff, "truncated": cut || shortened })
     }
 
     /// The previous release's files in `folder`, once they are what its
@@ -474,6 +569,54 @@ impl Verifier {
         }
         Ok(())
     }
+}
+
+/// A folder's path without its leading `/`, as `git diff` writes it after
+/// `a/` and `b/`.
+fn trimmed(folder: &Path) -> String {
+    let text = folder.display().to_string();
+    text.strip_prefix('/').unwrap_or(&text).to_string()
+}
+
+/// How long `text` comes to in a JSON answer.
+fn json_length(text: &str) -> usize {
+    serde_json::to_string(text).map_or(usize::MAX, |json| json.len())
+}
+
+/// `text` cut to fit [`READING_LIMIT`], and whether it had to be.
+fn fitted(text: &str) -> (String, bool) {
+    let mut end = text.len();
+    let mut length = json_length(text);
+    if length <= READING_LIMIT {
+        return (text.to_string(), false);
+    }
+    while length > READING_LIMIT {
+        end = end / 10 * 9;
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        length = json_length(&text[..end]);
+    }
+    (text[..end].to_string(), true)
+}
+
+/// A release's files as text, in path order, as many whole ones as fit.
+fn reading_source(files: &[(String, Vec<u8>)]) -> Value {
+    let mut listed = Vec::new();
+    let mut length = 0;
+    let mut truncated = false;
+    for (path, bytes) in files {
+        // Every file was held to be text before it got here.
+        let text = String::from_utf8_lossy(bytes);
+        let size = json_length(&text) + path.len() + 32;
+        if length + size > READING_LIMIT {
+            truncated = true;
+            continue;
+        }
+        length += size;
+        listed.push(json!({ "path": path, "text": text }));
+    }
+    json!({ "files": listed, "truncated": truncated })
 }
 
 /// Writes files at their paths under `folder`; their paths have been held

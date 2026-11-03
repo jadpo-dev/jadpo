@@ -554,8 +554,15 @@ Decided while building it (chunk R6), on recommendations Richard authorised:
   is a Worker and can't run git, and "a tag that moves" needs asking again.
 - **The answer carries the archive.** The registry can't fetch the commit, and
   it has to come to hold what it serves.
-- **16 MB and 10,000 files** is the size limit: the answer has to fit in a
-  Worker's memory in base64. Raising it later breaks nobody; lowering it would.
+- **7 MB of archive and 10,000 files** is the size limit. The registry is a
+  Jadpo application and receives the archive in base64 in a provider's answer,
+  capped at 10 MiB (`MOST_ANSWER`): tested, 7,000,000 bytes was stored and
+  served, and 7,900,000 answered 503 and was never stored, so a release past it
+  would pass verification and never go live. Raising it later, with S3 or a
+  larger cap, breaks nobody.
+- **The source and the diff come on their own requests,** since the registry
+  writes a package's account from them and neither fits beside the archive.
+  Base64 and tar aren't things a Jadpo application can read.
 - **A repository's own files are left out, not refused.** Read literally,
   "only Jadpo source and text files" would refuse every repository with a
   `.gitignore` or a `LICENSE`. Leaving them out keeps the guarantee, since no

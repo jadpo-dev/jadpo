@@ -11,9 +11,15 @@ use std::path::Path;
 
 use jadpo_registry::archive::is_package_path;
 
-/// The most a release's files may come to, whose archive the registry
-/// keeps and whose answer it has to hold in a Worker's memory.
-pub const SIZE_LIMIT: u64 = 16 * 1024 * 1024;
+/// The most a release's archive may come to. The registry is a Jadpo
+/// application, and receives the archive in base64 in a provider's answer,
+/// which is at most 10 MiB (`MOST_ANSWER`, jadpo-runtime): 7,000,000 bytes
+/// fit with the rest of the answer, and a release past that would pass here
+/// and never go live.
+pub const SIZE_LIMIT: u64 = 7_000_000;
+
+/// A tar header, and the unit its contents are padded to.
+const BLOCK: u64 = 512;
 
 /// The most files a release may hold.
 pub const COUNT_LIMIT: usize = 10_000;
@@ -84,7 +90,8 @@ pub struct Judgement {
     pub left_out: Vec<String>,
     /// Each file refused, with why.
     pub refused: Vec<(String, String)>,
-    /// What the release's files come to.
+    /// What the release's archive comes to, as
+    /// [`jadpo_registry::archive::pack`] writes it.
     pub size: u64,
 }
 
@@ -123,12 +130,16 @@ impl Judgement {
 }
 
 fn megabytes(bytes: u64) -> String {
-    format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    format!("{:.2} MB", bytes as f64 / 1_000_000.0)
 }
 
 /// Judges every file of a tree.
 pub fn judge_tree(entries: Vec<Entry>) -> Judgement {
-    let mut judged = Judgement::default();
+    // An archive ends in two empty blocks.
+    let mut judged = Judgement {
+        size: 2 * BLOCK,
+        ..Judgement::default()
+    };
     for entry in entries {
         match judge(&entry.path) {
             Judged::LeftOut => judged.left_out.push(entry.path),
@@ -138,7 +149,12 @@ pub fn judge_tree(entries: Vec<Entry>) -> Judgement {
             )),
             Judged::Release => match entry.mode.as_str() {
                 "100644" | "100755" => {
-                    judged.size = judged.size.saturating_add(entry.size.unwrap_or(0));
+                    let contents = entry
+                        .size
+                        .unwrap_or(0)
+                        .div_ceil(BLOCK)
+                        .saturating_mul(BLOCK);
+                    judged.size = judged.size.saturating_add(BLOCK).saturating_add(contents);
                     judged.release.push(entry);
                 }
                 "120000" => judged

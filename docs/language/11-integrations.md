@@ -1857,13 +1857,20 @@ code runs and what can come back from it.
 | `POST /v1/resolve` | Given `repository` and `tag`, the `commit` it points at, for a tag being published and to tell when one moved |
 | `POST /v1/verifications` | Given `repository`, `commit` and `previous_digest` (`null` for a first release), starts one and answers 202 with its `id`. The same three name the same one |
 | `GET /v1/verifications/{id}` | Its `state` (`verifying`, `checked`, `could_not_check`), its `result` once checked and its `failure`'s `code` and `message` if it couldn't be |
+| `GET /v1/verifications/{id}/source` | For a release that passed, what a model reads to write [its account](#what-a-release-shows): `files`, each with its `path` and `text`, and `truncated` |
+| `GET /v1/verifications/{id}/diff` | For a release that passed, what a model reads for what the facts can't show: `diff`, as `git diff` writes it against the previous release, `null` for a first release, and `truncated` |
 
 `result` has every field, `null` or empty where it has no value: `passed`,
 `package`, `version`, `bar`, `problems`, `surface`, `facts`, `change_record`,
 `fingerprints`, `previous`, `jadpo`, `checked_with`, `left_out`, and for a
 release that passed its `digest` and `archive`: the tar archive of
 [`GET archives/{digest}`](#the-registry-protocol), in base64, which is how
-the registry comes to hold a release's files. `could_not_check` says nothing
+the registry comes to hold a release's files. A release whose whole answer
+wouldn't fit that 10 MiB fails too, rather than pass and never arrive. The
+source and the diff are asked for on their own, since neither would fit
+beside the archive; each is at most 8 MiB of its answer, past which
+`truncated` says some was left out. They are what the package's author wrote,
+so a model reads them as data. `could_not_check` says nothing
 of the release and can be asked for again: `repository_refused`,
 `commit_not_fetched`, `previous_not_found`, `previous_digest_mismatch` or
 `verifier_failed`. Its other failures, in the [failure
@@ -1876,7 +1883,9 @@ envelope](07-http.md), are `unauthorized` (401), `repository_refused`,
 it is written anywhere. A release holds `.jadpo` source, `.jadpo_record`
 records, `GUIDE.md` and `CHANGELOG.md` at its root, `.json` files under a
 `recordings/` folder and a `jadpo.lock` in a folder such as `sample/`, all of
-them text, coming to at most 16 MB and 10,000 files. Any other file, a
+them text, whose archive comes to at most 7 MB and 10,000 files, since the
+registry, a Jadpo application, receives it in base64 in an answer of at most
+10 MiB. Any other file, a
 symbolic link or a submodule refuses the commit
 ([`publish.file_not_allowed`](../errors/publish.file_not_allowed.md),
 [`publish.too_large`](../errors/publish.too_large.md)). What a repository

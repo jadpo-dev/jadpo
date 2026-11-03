@@ -97,14 +97,31 @@ fn a_link_among_what_is_left_out_changes_nothing() {
 #[test]
 fn the_size_limit_counts_only_the_release() {
     let judged = judge_tree(vec![
-        entry("package.jadpo", SIZE_LIMIT),
+        entry("package.jadpo", SIZE_LIMIT / 2),
         entry(".github/large", SIZE_LIMIT * 4),
     ]);
-    assert_eq!(judged.size, SIZE_LIMIT);
+    assert!(judged.size < SIZE_LIMIT);
     assert!(!judged.too_large());
     let judged = judge_tree(vec![
         entry("package.jadpo", SIZE_LIMIT),
         entry("types/uk.jadpo", 1),
     ]);
     assert!(judged.too_large());
+}
+
+#[test]
+fn the_size_is_the_archives_to_the_byte() {
+    // Headers count: ten thousand small files are far larger as an archive.
+    let files: Vec<(String, Vec<u8>)> = vec![
+        ("package.jadpo".to_string(), vec![b'x'; 1]),
+        ("types/a.jadpo".to_string(), vec![b'x'; 512]),
+        ("types/b.jadpo".to_string(), vec![b'x'; 513]),
+        ("types/c.jadpo".to_string(), Vec::new()),
+    ];
+    let entries = files
+        .iter()
+        .map(|(path, bytes)| entry(path, bytes.len() as u64))
+        .collect();
+    let packed = jadpo_registry::archive::pack(&files).expect("it packs");
+    assert_eq!(judge_tree(entries).size, packed.len() as u64);
 }

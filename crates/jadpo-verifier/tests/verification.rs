@@ -144,6 +144,16 @@ impl Set {
     }
 }
 
+/// `answer`'s file at `path`, in what a model reads.
+fn source_of(answer: &Value, path: &str) -> Option<String> {
+    answer["reading"]["source"]["files"]
+        .as_array()?
+        .iter()
+        .find(|file| file["path"] == path)
+        .and_then(|file| file["text"].as_str())
+        .map(str::to_string)
+}
+
 fn checked(outcome: Outcome) -> Value {
     match outcome {
         Outcome::Checked(answer) => answer,
@@ -312,6 +322,129 @@ fn a_release_past_the_size_limit_is_refused() {
     });
     if !answer.is_null() {
         assert_eq!(answer["problems"][0]["rule"], "publish.too_large");
+    }
+}
+
+#[test]
+fn a_release_just_within_the_limit_passes() {
+    let Some(sandbox) = sandbox() else { return };
+    let set = set("verify-size-fits");
+    let large = "x".repeat(usize::try_from(SIZE_LIMIT).expect("a size") - 16 * 1024);
+    let mut files = PACKAGE.to_vec();
+    files.push(("libraries/large.jadpo", large.as_str()));
+    let (url, commit) = set.repository(&files);
+    let verifier = verifier(
+        sandbox,
+        set.repositories.path(),
+        set.scratch.path(),
+        honest(set.tools.path()),
+    );
+    let answer = checked(verifier.verify(&set.request(&url, &commit, &verifier, None)));
+    assert_eq!(answer["passed"], true, "{}", row(&answer, "files"));
+    let archive = unbase64(answer["archive"].as_str().expect("an archive"));
+    assert!(archive.len() as u64 <= SIZE_LIMIT, "{}", archive.len());
+    // What the registry receives fits what a provider's answer may be.
+    assert!(answer["archive"].as_str().expect("an archive").len() < 10 << 20);
+}
+
+#[test]
+fn a_release_whose_whole_answer_wouldnt_reach_the_registry_fails() {
+    let Some(sandbox) = sandbox() else { return };
+    let set = set("verify-answer-size");
+    let large = "x".repeat(usize::try_from(SIZE_LIMIT).expect("a size") - 16 * 1024);
+    let mut files = PACKAGE.to_vec();
+    files.push(("libraries/large.jadpo", large.as_str()));
+    let (url, commit) = set.repository(&files);
+    // Facts and fingerprints enough to take it past 10 MiB with the archive.
+    let facts = json!({ "kind": "library", "notes": "y".repeat(2 << 20) });
+    let jadpo = stand_in(
+        set.tools.path(),
+        &report(true, &facts, &[]),
+        &says(&report(true, &facts, &[("bar", ran_bar())])),
+    );
+    let mut verifier = verifier(sandbox, set.repositories.path(), set.scratch.path(), jadpo);
+    verifier.limits.output_bytes = 8 << 20;
+    let answer = checked(verifier.verify(&set.request(&url, &commit, &verifier, None)));
+    assert_eq!(
+        answer["passed"], false,
+        "a release that can't arrive doesn't pass"
+    );
+    assert_eq!(answer["digest"], Value::Null);
+    assert_eq!(answer["archive"], Value::Null);
+    let files = row(&answer, "files")["detail"].as_str().expect("words");
+    assert!(files.contains("answer"), "{files}");
+    assert_eq!(
+        answer["problems"][0]["rule"], "publish.too_large",
+        "{}",
+        answer["problems"]
+    );
+    assert_eq!(answer["reading"], Value::Null);
+}
+
+#[test]
+fn what_passes_comes_with_its_source_and_its_diff() {
+    let Some(sandbox) = sandbox() else { return };
+    let set = set("verify-reading");
+    let (url, commit) = set.repository(PACKAGE);
+    let old: Vec<(String, Vec<u8>)> = vec![
+        (
+            "package.jadpo".to_string(),
+            b"package Postcodes.v1 {}\n".to_vec(),
+        ),
+        (
+            "libraries/gone.jadpo".to_string(),
+            b"library gone {}\n".to_vec(),
+        ),
+    ];
+    let view: Vec<(&str, &[u8])> = old
+        .iter()
+        .map(|(path, bytes)| (path.as_str(), bytes.as_slice()))
+        .collect();
+    let digest = Digest::of_files(&view);
+    let packed = archive::pack(&old).expect("it packs");
+    let mut verifier = verifier(
+        sandbox,
+        set.repositories.path(),
+        set.scratch.path(),
+        honest(set.tools.path()),
+    );
+
+    // A first release has its source and no diff.
+    let answer = checked(verifier.verify(&set.request(&url, &commit, &verifier, None)));
+    assert_eq!(
+        source_of(&answer, "libraries/uk.jadpo").as_deref(),
+        Some("public library uk {}\n")
+    );
+    assert_eq!(answer["reading"]["source"]["truncated"], false);
+    assert_eq!(
+        source_of(&answer, ".gitignore"),
+        None,
+        "what's left out isn't there"
+    );
+    assert_eq!(answer["reading"]["diff"]["diff"], Value::Null);
+
+    // A later one has both, by the package's own paths.
+    verifier.archives = Arc::new(move |_| Ok(packed.clone()));
+    let request = set.request(&url, &commit, &verifier, Some(digest.as_str()));
+    let answer = checked(verifier.verify(&request));
+    let diff = answer["reading"]["diff"]["diff"].as_str().expect("a diff");
+    assert!(diff.contains("-package Postcodes.v1 {}"), "{diff}");
+    assert!(diff.contains("+package Postcodes.v2 {}"), "{diff}");
+    assert!(diff.contains("-library gone {}"), "{diff}");
+    assert!(diff.contains("a/package.jadpo b/package.jadpo"), "{diff}");
+    assert!(
+        !diff.contains("jadpo-verifier-"),
+        "no scratch folder shows: {diff}"
+    );
+}
+
+#[test]
+fn a_release_that_fails_has_nothing_to_read() {
+    let answer = refused_row("verify-no-reading", PACKAGE, |root| {
+        write(root, "payload.sh", "x\n");
+    });
+    if !answer.is_null() {
+        assert_eq!(answer["reading"], Value::Null);
     }
 }
 

@@ -129,10 +129,10 @@ pub(crate) fn files_row(
                 ),
             )
             .reason(format!(
-                "A release's files come to at most {} MB and {} files, since every app that installs it commits them; this one's come to {:.1} MB.",
-                files::SIZE_LIMIT / (1024 * 1024),
+                "A release's archive comes to at most {} MB and {} files, since the registry has to receive it whole in one answer; this one's comes to {:.2} MB.",
+                files::SIZE_LIMIT / 1_000_000,
                 files::COUNT_LIMIT,
-                judged.size as f64 / (1024.0 * 1024.0),
+                judged.size as f64 / 1_000_000.0,
             ))
             .next_for(
                 "Split the package, or remove recordings it doesn't need",

@@ -58,7 +58,9 @@ impl Default for Options {
 #[derive(Clone, Debug)]
 enum Job {
     Waiting,
-    Finished(Outcome),
+    /// With what a model reads of a release that passed, which is asked for
+    /// on its own since it wouldn't fit in the same answer as the archive.
+    Finished(Outcome, Option<Value>),
 }
 
 #[derive(Debug, Default)]
@@ -166,7 +168,7 @@ fn work(verifier: &Verifier, shared: &Shared, log: &(dyn Fn(String) + Send + Syn
             }
         };
         // A bug here fails that verification and leaves the next to run.
-        let outcome =
+        let mut outcome =
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| verifier.verify(&request)))
                 .unwrap_or_else(|_| Outcome::CouldNotCheck {
                     code: "verifier_failed",
@@ -182,8 +184,13 @@ fn work(verifier: &Verifier, shared: &Shared, log: &(dyn Fn(String) + Send + Syn
                 Outcome::CouldNotCheck { code, .. } => code,
             }
         ));
+        let reading = match &mut outcome {
+            Outcome::Checked(Value::Object(answer)) => answer.remove("reading"),
+            _ => None,
+        };
         let mut jobs = locked(shared);
-        jobs.jobs.insert(id.clone(), Job::Finished(outcome));
+        jobs.jobs
+            .insert(id.clone(), Job::Finished(outcome, reading));
         jobs.finished.push_back(id);
         while jobs.finished.len() > KEPT {
             if let Some(oldest) = jobs.finished.pop_front() {
@@ -240,7 +247,11 @@ fn handler(token: [u8; 32], verifier: Arc<Verifier>, shared: Shared, waiting: us
             ("POST", "/v1/resolve") => resolve(&verifier, &incoming.body),
             ("POST", "/v1/verifications") => start(&verifier, &shared, waiting, &incoming.body),
             ("GET", _) => match path.strip_prefix("/v1/verifications/") {
-                Some(id) => asked(&shared, id),
+                Some(rest) => match rest.split_once('/') {
+                    None => asked(&shared, rest),
+                    Some((id, part @ ("source" | "diff"))) => reading(&shared, id, part),
+                    Some(_) => failure(404, "not_found", "There is nothing here."),
+                },
                 None => failure(404, "not_found", "There is nothing here."),
             },
             _ => failure(404, "not_found", "There is nothing here."),
@@ -321,7 +332,7 @@ fn start(verifier: &Verifier, shared: &Shared, waiting: usize, body: &[u8]) -> F
     let mut jobs = locked(shared);
     let again = matches!(
         jobs.jobs.get(&id),
-        None | Some(Job::Finished(Outcome::CouldNotCheck { .. }))
+        None | Some(Job::Finished(Outcome::CouldNotCheck { .. }, _))
     );
     if again {
         if jobs.queue.len() >= waiting {
@@ -359,11 +370,11 @@ fn asked(shared: &Shared, id: &str) -> Fetched {
             200,
             &json!({ "id": id, "state": "verifying", "result": null, "failure": null }),
         ),
-        Some(Job::Finished(Outcome::Checked(result))) => json_answer(
+        Some(Job::Finished(Outcome::Checked(result), _)) => json_answer(
             200,
             &json!({ "id": id, "state": "checked", "result": result, "failure": null }),
         ),
-        Some(Job::Finished(Outcome::CouldNotCheck { code, message })) => json_answer(
+        Some(Job::Finished(Outcome::CouldNotCheck { code, message }, _)) => json_answer(
             200,
             &json!({
                 "id": id,
@@ -371,6 +382,20 @@ fn asked(shared: &Shared, id: &str) -> Fetched {
                 "result": null,
                 "failure": { "code": code, "message": message },
             }),
+        ),
+    }
+}
+
+/// `GET /v1/verifications/{id}/source` and `/diff`: what a model reads of a
+/// release that passed.
+fn reading(shared: &Shared, id: &str, part: &str) -> Fetched {
+    let jobs = locked(shared);
+    match jobs.jobs.get(id) {
+        Some(Job::Finished(_, Some(reading))) => json_answer(200, &reading[part]),
+        _ => failure(
+            404,
+            "verification_not_found",
+            "There is no release that passed with that id.",
         ),
     }
 }

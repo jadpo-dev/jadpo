@@ -4,10 +4,11 @@ A commit's release is past the size limit.
 
 ## Why Jadpo refuses it
 
-Every app that installs a package commits its files, so a release's size is
-paid for by everyone who uses it. A release's files come to at most 16 MB
-and 10,000 files. What is left out of a release, such as `.github/`, doesn't
-count.
+The registry is itself a Jadpo application, and it receives a release's
+archive whole, in one answer from the verifier. That answer has a limit, so
+a larger release would pass every check and never go live. A release's
+archive comes to at most 7 MB and 10,000 files, counting a small header for
+each file. What is left out of a release, such as `.github/`, doesn't count.
 
 Jadpo won't choose what to remove, because what a package offers is its
 publisher's to decide.
@@ -22,13 +23,13 @@ jadpo package verify .
 
 ```text
 error: The release holds 412 files, past what one may
-  reason: A release's files come to at most 16 MB and 10000 files, since every app that installs it commits them; this one's come to 21.4 MB.
+  reason: A release's archive comes to at most 7 MB and 10000 files, since the registry has to receive it whole in one answer; this one's comes to 21.40 MB.
   next: Split the package, or remove recordings it doesn't need (human)
   rule: publish.too_large
   help: https://jadpo.dev/docs/errors/publish.too_large
 ```
 
-The publishing bar's `files` row fails with "21.4 MB over the 16.0 MB limit".
+The publishing bar's `files` row fails with "21.40 MB over the 7.00 MB limit".
 
 `(human)` at the end of the `next:` line tells your coding agent to stop and
 ask you which fix you want, because the choice is yours to make: it decides

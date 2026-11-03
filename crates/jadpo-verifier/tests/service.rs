@@ -241,6 +241,44 @@ fn a_verification_is_started_and_asked_after() {
             .starts_with("sha256:")
     );
 
+    // What a model reads comes on its own, not in the result.
+    assert_eq!(result["reading"], Value::Null);
+    let source = call(
+        service,
+        Method::Get,
+        &format!("/v1/verifications/{id}/source"),
+        None,
+        Some(TOKEN),
+    );
+    assert_eq!(source.status, 200);
+    assert_eq!(body(&source)["files"][0]["path"], "package.jadpo");
+    assert_eq!(body(&source)["files"][0]["text"], "package P.v1 {}\n");
+    let diff = call(
+        service,
+        Method::Get,
+        &format!("/v1/verifications/{id}/diff"),
+        None,
+        Some(TOKEN),
+    );
+    assert_eq!(body(&diff)["diff"], Value::Null);
+    assert_eq!(body(&diff)["truncated"], false);
+    let unknown = call(
+        service,
+        Method::Get,
+        "/v1/verifications/none/source",
+        None,
+        Some(TOKEN),
+    );
+    assert_eq!(unknown.status, 404);
+    let refused = call(
+        service,
+        Method::Get,
+        &format!("/v1/verifications/{id}/source"),
+        None,
+        None,
+    );
+    assert_eq!(refused.status, 401);
+
     // Asking again names the same one and runs nothing twice.
     let again = call(
         service,
