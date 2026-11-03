@@ -998,19 +998,19 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--serve",
                 value: None,
-                description: "For verify: answer the registry, behind HTTPS",
+                description: "For verify: answer the registry",
                 values: &[],
             },
             Flag {
                 name: "--listen",
                 value: Some("address"),
-                description: "For verify --serve: where to listen, 127.0.0.1:8080 unless given",
+                description: "For --serve: where to listen",
                 values: &[],
             },
             Flag {
                 name: "--registry",
                 value: Some("url"),
-                description: "For verify --serve: where previous releases' archives are fetched from",
+                description: "For --serve: where old archives come from",
                 values: &[],
             },
             Flag {

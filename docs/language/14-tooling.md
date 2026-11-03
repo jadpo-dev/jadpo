@@ -3200,7 +3200,7 @@ yet, or that the design notes replace.
 | `cli.watch_arguments` | `watch` | Watch command has invalid arguments |
 | `cli.watch_input_read_failed` | `watch` | Watched project inputs could not be read |
 | `cli.watch_output_failed` | `watch` | Watch lifecycle event could not be written |
-| `cli.verifier_start_failed` | `package verify` | `jadpo package verify --serve` won't start, for want of its credential or a sandbox to run packages in, or because it can't listen |
+| `cli.verifier_start_failed` | `package verify` | The verifier won't start, for want of its credential or a sandbox to run packages in, or because it can't listen |
 | `cli.why_arguments` | `why` | A `jadpo why` command names no schedule, one the project doesn't declare, or more than one |
 
 ## Database command errors

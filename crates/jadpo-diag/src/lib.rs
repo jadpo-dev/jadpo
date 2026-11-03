@@ -221,7 +221,7 @@ rules! {
     CLI_UNKNOWN_FLAG: "cli.unknown_flag", area 14, Error, Agent,
         "A `jadpo` command line has a flag the command doesn't take";
     CLI_VERIFIER_START_FAILED: "cli.verifier_start_failed", area 14, Error, Human,
-        "`jadpo package verify --serve` won't start, for want of its credential or a sandbox to run packages in, or because it can't listen";
+        "The verifier won't start, for want of its credential or a sandbox to run packages in, or because it can't listen";
     CLI_VERSION_ARGUMENTS: "cli.version_arguments", area 14, Error, Agent,
         "A `jadpo version` command is given an argument, which it doesn't take";
     CLI_WHY_ARGUMENTS: "cli.why_arguments", area 14, Error, Agent,

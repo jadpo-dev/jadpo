@@ -1,6 +1,6 @@
 # `cli.verifier_start_failed`
 
-`jadpo package verify --serve` won't start, for want of its credential or a sandbox to run packages in, or because it can't listen.
+The verifier won't start, for want of its credential or a sandbox to run packages in, or because it can't listen.
 
 ## Why Jadpo refuses it
 
