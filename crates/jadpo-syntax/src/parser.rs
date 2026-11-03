@@ -101,6 +101,9 @@ pub(crate) struct Parser<'a> {
     /// Where the current statement's value starts, so Rust's `call()?`
     /// can be rewritten as `attempt call()`.
     pub(crate) stmt_value_start: Option<u32>,
+    /// Where the current member's value starts, so the `?` of a type
+    /// written there isn't read as a ternary.
+    pub(crate) member_value_start: Option<u32>,
     depth: u32,
     too_deep: bool,
     error_starts: std::collections::HashSet<u32>,
@@ -130,6 +133,7 @@ impl<'a> Parser<'a> {
             snippet,
             assigning: false,
             stmt_value_start: None,
+            member_value_start: None,
             depth: 0,
             too_deep: false,
             error_starts: std::collections::HashSet::new(),

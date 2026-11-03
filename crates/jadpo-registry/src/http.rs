@@ -28,6 +28,8 @@ const TIMEOUT: Duration = Duration::from_secs(30);
 pub struct Incoming {
     pub method: String,
     pub target: String,
+    /// Its `authorization` header, as sent.
+    pub authorization: Option<String>,
     pub body: Vec<u8>,
 }
 
@@ -53,7 +55,12 @@ pub struct Server {
 impl Server {
     /// Serves `handler` on a port the system picks.
     pub fn start(handler: Handler) -> std::io::Result<Self> {
-        let listener = TcpListener::bind("127.0.0.1:0")?;
+        Self::start_on("127.0.0.1:0", handler)
+    }
+
+    /// Serves `handler` at `address`.
+    pub fn start_on(address: &str, handler: Handler) -> std::io::Result<Self> {
+        let listener = TcpListener::bind(address)?;
         let address = listener.local_addr()?;
         let stop = Arc::new(AtomicBool::new(false));
         let stopping = stop.clone();
@@ -78,6 +85,13 @@ impl Server {
 
     pub fn address(&self) -> SocketAddr {
         self.address
+    }
+
+    /// Waits for as long as the server runs.
+    pub fn wait(mut self) {
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
     }
 }
 
@@ -127,10 +141,14 @@ fn reason(status: u16) -> &'static str {
         200 => "OK",
         202 => "Accepted",
         400 => "Bad Request",
+        401 => "Unauthorized",
         404 => "Not Found",
         405 => "Method Not Allowed",
         413 => "Content Too Large",
         422 => "Unprocessable Content",
+        500 => "Internal Server Error",
+        502 => "Bad Gateway",
+        503 => "Service Unavailable",
         _ => "Other",
     }
 }
@@ -193,6 +211,7 @@ fn read_request(reader: &mut impl BufRead) -> Result<Incoming, String> {
     Ok(Incoming {
         method: method.to_string(),
         target: target.to_string(),
+        authorization: header(&lines, "authorization").map(str::to_string),
         body,
     })
 }
@@ -200,6 +219,16 @@ fn read_request(reader: &mut impl BufRead) -> Result<Incoming, String> {
 /// Sends `method` to an `http://` address on this machine and reads the
 /// answer.
 pub fn fetch(method: Method, url: &str, body: Option<&[u8]>) -> Result<Fetched, String> {
+    fetch_authorized(method, url, body, None)
+}
+
+/// [`fetch`], sending `authorization` as that header.
+pub fn fetch_authorized(
+    method: Method,
+    url: &str,
+    body: Option<&[u8]>,
+    authorization: Option<&str>,
+) -> Result<Fetched, String> {
     let rest = url
         .strip_prefix("http://")
         .ok_or_else(|| format!("`{url}` isn't an http:// address on this machine"))?;
@@ -230,6 +259,9 @@ pub fn fetch(method: Method, url: &str, body: Option<&[u8]>) -> Result<Fetched, 
     );
     if !body.is_empty() {
         request.push_str("content-type: application/json\r\n");
+    }
+    if let Some(authorization) = authorization {
+        request.push_str(&format!("authorization: {authorization}\r\n"));
     }
     request.push_str("\r\n");
     stream
