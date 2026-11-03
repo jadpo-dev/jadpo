@@ -1212,7 +1212,12 @@ pub(crate) enum Mode {
     Check,
     /// `jadpo package verify`: on a commit as it stands, against the
     /// release given, writing nothing.
-    Verify { previous: Option<Box<Previous>> },
+    /// With `run` false, none of the package's code runs: the verifier's
+    /// first pass, whose facts its code can't touch.
+    Verify {
+        previous: Option<Box<Previous>>,
+        run: bool,
+    },
 }
 
 /// Runs the publishing bar on the package in `folder`.
@@ -1220,6 +1225,7 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
     let cwd = call.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
     let folder = folder.to_path_buf();
     let verifying = matches!(mode, Mode::Verify { .. });
+    let running = !matches!(mode, Mode::Verify { run: false, .. });
     let command = if verifying {
         "package verify"
     } else {
@@ -1239,6 +1245,7 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
     // Another name would pass as a new major version, which nothing refuses.
     if let Mode::Verify {
         previous: Some(given),
+        ..
     } = &mode
         && given
             .package
@@ -1260,6 +1267,22 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
 
     let mut items: Vec<Item> = Vec::new();
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
+    // Which files a commit may hold: the registry refuses the rest before
+    // anything is run.
+    if verifying {
+        match package_release::files_row(&folder) {
+            Ok((row, refused)) => {
+                items.push(match row {
+                    Ok(detail) => Item::passed("files", detail),
+                    Err(detail) => Item::failed("files", detail),
+                });
+                diagnostics.extend(refused);
+            }
+            Err(error) => {
+                return write_failed(command, "the package's files", &error.to_string());
+            }
+        }
+    }
     let compiled_cleanly = compile.is_empty();
     items.push(if compiled_cleanly {
         Item::passed("compiles", "no errors")
@@ -1290,6 +1313,10 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
     let mut test_blocks: Vec<Block> = Vec::new();
     let mut decoders: Option<Item> = None;
     match (&found, compiled_cleanly) {
+        (Some(_), true) if !running => {
+            items.push(Item::later("examples", "not run"));
+            items.push(Item::later("tests", "not run"));
+        }
         (Some(surface), true) => {
             let ran = examples_and_tests(&compiled, surface, &sources);
             items.push(ran.examples);
@@ -1311,11 +1338,19 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
     } else if found.as_ref().is_some_and(|s| s.kind == "provider")
         && data_files.iter().any(|f| f.starts_with("recordings/"))
     {
-        items.push(Item::later("decoders", "the package has errors"));
+        items.push(Item::later(
+            "decoders",
+            if compiled_cleanly {
+                "not run"
+            } else {
+                "the package has errors"
+            },
+        ));
     }
     // Each recipe compiled in the package's `sample/` app (chunk 7.6b).
     if data_files.iter().any(|f| f.starts_with("recipes/")) {
         match (&found, compiled_cleanly) {
+            (Some(_), true) if !running => items.push(Item::later("recipes", "not run")),
             (Some(_), true) => {
                 if let Some(ran) = crate::package_recipe::in_sample(&folder, &compiled) {
                     items.push(if ran.passed {
@@ -1347,6 +1382,7 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
     let mut previous: Option<Previous> = None;
     if let Mode::Verify {
         previous: Some(given),
+        ..
     } = mode
     {
         if given.package == package {
@@ -1385,7 +1421,7 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
     // The previous release's examples and tests against the new code. Its
     // row goes before the version's, and waits for the changelog's marks.
     let behaviour: Option<Behaviour> = match &previous {
-        Some(given) if compiled_cleanly && found.is_some() => match &given.compiled {
+        Some(given) if running && compiled_cleanly && found.is_some() => match &given.compiled {
             Some(old) => match package_release::run_previous(&folder, &compiled, old) {
                 Ok(ran) => Some(ran),
                 Err(error) => {
@@ -1573,10 +1609,20 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
                 // Nothing of the last release could be read to run.
                 items.insert(
                     behaviour_row,
-                    Item::later("behaviour", format!("{since} couldn't be read")),
+                    Item::later(
+                        "behaviour",
+                        if running {
+                            format!("{since} couldn't be read")
+                        } else {
+                            "not run".to_string()
+                        },
+                    ),
                 );
             }
-            if stale_log {
+            if !running {
+                // What its list holds depends on what running shows.
+                items.push(Item::later("changelog", "not run"));
+            } else if stale_log {
                 items.push(Item::failed(
                     "changelog",
                     format!("{version}'s list is out of date"),
@@ -1664,6 +1710,7 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
 
     let licence = found.as_ref().and_then(|s| s.licence.clone());
     let jadpo = found.as_ref().and_then(|s| s.jadpo.clone());
+    let declared = jadpo.clone();
     items.push(match (licence, jadpo) {
         (Some(licence), Some(jadpo)) => {
             Item::passed("licence", format!("{licence}, from Jadpo {jadpo}"))
@@ -1818,6 +1865,10 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
             ),
             ("previous", behaviour_json),
             ("jadpo", Json::from(crate::help::VERSION)),
+            (
+                "jadpo_declared",
+                declared.as_deref().map_or(Json::Null, Json::from),
+            ),
         ])
     } else {
         Json::object([

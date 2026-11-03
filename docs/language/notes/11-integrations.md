@@ -531,3 +531,31 @@ kept moved here. Nothing in this list changed a rule.
 - **"Errors still to build"** is now the "Mistakes not reported yet"
   section of the area page's "What is built", and its topic ID,
   `errors-still-to-build`, an old ID of `external-services-built`.
+
+## The verifier
+
+Decided while building it (chunk R6), on recommendations Richard authorised:
+
+- **A verification is started and asked after,** since a connection's call
+  has seconds and a run has minutes.
+- **The tag is resolved by the verifier** (`POST /v1/resolve`): the registry
+  is a Worker and can't run git, and "a tag that moves" needs asking again.
+- **The answer carries the archive.** The registry can't fetch the commit, and
+  it has to come to hold what it serves.
+- **16 MB and 10,000 files** is the size limit: the answer has to fit in a
+  Worker's memory in base64. Raising it later breaks nobody; lowering it would.
+- **A repository's own files are left out, not refused.** Read literally,
+  "only Jadpo source and text files" would refuse every repository with a
+  `.gitignore` or a `LICENSE`. Leaving them out keeps the guarantee, since no
+  one receives them and they aren't in the digest.
+- **Two runs rather than one.** A single process running the package's code
+  could write any report it liked, were the interpreter ever got out of. A
+  report from a process that ran none of it costs a second compile.
+- **The previous release comes from the registry by digest,** not from its
+  repository: the digest proves it, and a repository can change.
+- **HTTPS ends at Fly's edge,** rather than the process holding a certificate.
+- **Bubblewrap rather than our own namespace code,** since the workspace
+  forbids `unsafe` and it is far better reviewed.
+- **No seccomp filter yet.** Worth adding if a package's code is ever found to
+  have left the interpreter: the namespaces and Fly's per-app machine are what
+  hold today.

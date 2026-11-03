@@ -149,6 +149,7 @@ mod translation_jadpo;
 mod translation_tooling;
 mod translations;
 mod vectors;
+mod verifier;
 mod watch;
 mod webhook_replies;
 mod webhooks;

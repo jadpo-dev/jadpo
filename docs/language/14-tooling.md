@@ -804,7 +804,7 @@ connection or operation is `cli.package_arguments`, with the nearest.
 | `jadpo package preview` | Serves the package's registry page locally |
 | `jadpo package search <words> [--from <type>] [--to <type>]` | Finds packages and standard-library functions for a need |
 | `jadpo package audit` | Lists the advisories against the app's packages, and whether the app reaches each |
-| `jadpo package verify <folder> [--previous <folder>] [--serve]` | The registry's verifier: the bar, facts, change record and fingerprints |
+| `jadpo package verify <folder> [--previous <folder>] [--no-run]`, `jadpo package verify --serve` | The registry's verifier: the bar, facts, change record and fingerprints, and the service that answers the registry |
 
 ### `jadpo package add`
 
@@ -971,8 +971,23 @@ the new version's list in `CHANGELOG.md` are compared rather than written
 `--json` writes everything a release shows: the bar's rows, the surface,
 facts, change record, each public declaration's fingerprints, what the
 previous release's examples and tests gave, and the Jadpo release it was
-checked with ([How they are worked
+checked with and the one its `jadpo:` declares ([How they are worked
 out](11-integrations.md#how-a-releases-facts-change-record-and-fingerprints-are-worked-out)).
+
+Its first row, `files`, holds a commit to what a release may hold: only Jadpo
+source and the package's text files, within the size limit
+(`publish.file_not_allowed`, `publish.too_large`).
+
+`--no-run` runs none of the package's code: the rows that need it say
+`not run`, and everything worked out from its source is as it would be. It is
+how the verifier gets a release's facts from a process the package's code
+never ran in.
+
+`--serve` is that verifier, answering the registry: `--listen` says where,
+`127.0.0.1:8080` unless given, and `--registry` where previous releases'
+archives come from. It needs `JADPO_VERIFIER_TOKEN` and a sandbox, and serves
+only on Linux, from its container image (`cli.verifier_start_failed`; [The
+verifier](11-integrations.md#the-verifier)).
 
 Not built yet:
 
@@ -980,7 +995,7 @@ Not built yet:
   package's own repository: the package format, `recipes/`, a `sample/`
   app and `GUIDE.md`.
 - The registry's commands, `publish` (and `--dry-run`), `preview`,
-  `search`, `audit` and `verify --serve`; `add @publisher/name` from the
+  `search` and `audit`; `add @publisher/name` from the
   registry, checked against its public log; and `update`'s three-day wait,
   `--to` and urgent releases
   ([The public registry](11-integrations.md#the-public-registry)).
@@ -3066,8 +3081,10 @@ its command is built.
 | `publish.description_missing` | `package check` | Package's public declaration has no description ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.example_failed` | `package check` | Example in a package's description doesn't compile or doesn't hold ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.example_missing` | `package check` | Package's function has no example, or a failure it raises is shown by none ([Publishing errors](11-integrations.md#publishing-errors)) |
+| `publish.file_not_allowed` | `package verify` | A commit holds a file a release can't: anything but Jadpo source and the package's text files ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.sample_missing` | `package check` | Package's recipes have no sample app with one domain to compile in ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.stale_files` | `package verify` | A commit's `surface.jadpo_record` or changelog list isn't what the package's code gives ([Publishing errors](11-integrations.md#publishing-errors)) |
+| `publish.too_large` | `package verify` | A commit's release is past the size limit ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `runtime.outcome_unknown` | the running app | Generated runtime could not confirm whether an effect committed |
 | `runtime.startup_failed` | the running app | Generated runtime failed during startup; a deployable's log event, with every problem that stopped it ([A native deployable](#a-native-deployable)) |
 | `runtime.unhandled_fault` | the running app | Generated runtime contained an unexpected fault |
@@ -3183,6 +3200,7 @@ yet, or that the design notes replace.
 | `cli.watch_arguments` | `watch` | Watch command has invalid arguments |
 | `cli.watch_input_read_failed` | `watch` | Watched project inputs could not be read |
 | `cli.watch_output_failed` | `watch` | Watch lifecycle event could not be written |
+| `cli.verifier_start_failed` | `package verify` | `jadpo package verify --serve` won't start, for want of its credential or a sandbox to run packages in, or because it can't listen |
 | `cli.why_arguments` | `why` | A `jadpo why` command names no schedule, one the project doesn't declare, or more than one |
 
 ## Database command errors
