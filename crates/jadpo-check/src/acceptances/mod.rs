@@ -24,6 +24,7 @@ pub mod compare;
 pub mod data;
 pub mod files;
 pub mod network;
+pub mod upgrades;
 pub mod words;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -45,15 +46,30 @@ pub fn needs(db: &dyn Db, project: Project) -> Vec<Need> {
     let mut out = Vec::new();
     api_needs(db, project, before, &mut out);
     event_needs(db, project, before, &mut out);
-    if let (Some(was), Some(now)) = (before.text(access::PATH), access::record_text(db, project)) {
-        compare::access_needs(access::PATH, was, now.as_deref().unwrap_or(""), &mut out);
+    if let Some(now) = access::record_text(db, project) {
+        let now = now.as_deref().unwrap_or("");
+        let was = before.text(access::PATH);
+        if let Some(was) = was {
+            compare::access_needs(access::PATH, was, now, &mut out);
+        }
+        compare::own_source_needs(access::PATH, was.unwrap_or(""), now, &mut out);
     }
     if let (Some(was), Some(now)) = (network_before(before), network::record_text(db, project)) {
         compare::network(network::PATH, was, now.as_deref().unwrap_or(""), &mut out);
     }
-    if let Some(was) = before.text(jadpo_db::LOCK) {
-        let now = written(db, project, jadpo_db::LOCK).unwrap_or_default();
-        compare::lock(jadpo_db::LOCK, was, &now, &mut out);
+    let now = written(db, project, jadpo_db::LOCK).unwrap_or_default();
+    let own = &crate::own_sources::own_sources(db, project).entries;
+    compare::lock(
+        jadpo_db::LOCK,
+        before.text(jadpo_db::LOCK).unwrap_or(""),
+        &now,
+        own,
+        &mut out,
+    );
+    if let Some(was) = before.text(jadpo_db::LOCK)
+        && was != now
+    {
+        upgrade_needs(db, project, before, &mut out);
     }
     compare::domains(&before.domains, &domains(db, project), &mut out);
     data::needs(db, project, before, &mut out);
@@ -62,6 +78,43 @@ pub fn needs(db: &dyn Db, project: Project) -> Vec<Need> {
     out.sort();
     out.dedup_by(|a, b| a.subject == b.subject && a.change == b.change);
     out
+}
+
+/// What an upgrade changed of what the app uses (area 18, "Package
+/// upgrades"; chunk V4), read only when the lock moved: `jadpo check` reads
+/// the before side's sources and surfaces then.
+fn upgrade_needs(db: &dyn Db, project: Project, before: &BeforeSide, out: &mut Vec<Need>) {
+    let was = upgrades::Side::read(
+        before
+            .files
+            .iter()
+            .map(|(path, text)| (path.as_str(), text.as_str())),
+    );
+    let sources = project
+        .files(db)
+        .iter()
+        .map(|file| (file.path(db).as_str(), file.text(db).as_str()));
+    let surfaces = project.records(db).iter().filter_map(|record| {
+        let text = record.text.as_ref().ok()?;
+        Some((record.path.as_str(), text.as_str()))
+    });
+    let now = upgrades::Side::read(sources.chain(surfaces));
+    for finding in upgrades::review(&was, &now) {
+        let path = format!(
+            "{}/{}",
+            jadpo_db::package_folder(&finding.package),
+            format::SURFACE_FILE
+        );
+        out.push(Need {
+            subject: finding.subject,
+            change: finding.change,
+            family: Family::Lock,
+            path,
+            heading: finding.heading,
+            said: finding.said,
+            who: Vec::new(),
+        });
+    }
 }
 
 /// The network record on the before side. A before side with none whose
@@ -475,6 +528,10 @@ fn said(change: &str, family: &Family) -> (&'static str, &'static str) {
             "changing how a role must be signed in to needs a person",
             "Who keeps the role, and where their access is revoked, follows from it, whether it is tighter or looser.",
         ),
+        "PolicyChange.own_source_added" => (
+            "a new own source lets its repositories in without a person",
+            "A package from a repository under it installs without `PackageChange.git_source`, and an agent could use that to let in a stranger's code.",
+        ),
         "NetworkChange.host_added" => (
             "a new outside host the app can send data to needs a person",
             "Data the app holds can now leave for a host it couldn't reach before.",
@@ -486,6 +543,38 @@ fn said(change: &str, family: &Family) -> (&'static str, &'static str) {
         crate::provider_erasure::DATA_STAYS => (
             "a connection that can't erase the personal data it receives needs a person",
             "Erasing a person asks each provider that holds their data to erase it, and this one can't be asked.",
+        ),
+        "PackageChange.operation_removed" => (
+            "an upgrade removes an operation the app uses",
+            "The app called it, and the package no longer has it.",
+        ),
+        "PackageChange.declaration_removed" => (
+            "an upgrade removes a declaration the app uses",
+            "The app wrote its name, and the package no longer has it.",
+        ),
+        "PackageChange.operation_changed" => (
+            "an upgrade changes an operation the app uses",
+            "What it sends, what it answers or how it is asked for is no longer what the app was written against.",
+        ),
+        "PackageChange.field_removed" => (
+            "an upgrade removes a field the app uses",
+            "An operation or declaration the app uses reaches it, so what the app sends or reads no longer has it.",
+        ),
+        "PackageChange.field_retyped" => (
+            "an upgrade retypes a field the app uses",
+            "An operation or declaration the app uses reaches it, so it now holds other values.",
+        ),
+        "PackageChange.failure_added" => (
+            "a new failure on an operation the app uses needs a person",
+            "The provider can now answer in a way the app was never written to handle.",
+        ),
+        "PackageChange.host_changed" => (
+            "an upgrade changes the hosts a provider package reaches",
+            "The app's data and credential go wherever the package says, and that has moved.",
+        ),
+        "PackageChange.credential_changed" => (
+            "an upgrade changes a provider's credential scheme",
+            "The app's secret is now sent another way, and may need replacing.",
         ),
         "ThresholdChange.raised" => (
             "raising a threshold can silence its alert",

@@ -832,9 +832,10 @@ in `shared/providers/<name>/<version>/`, merging your corrections.
 package to its newest release of the same major version. An installed
 folder changed by hand (`package.digest_mismatch`) is installed again
 from its source, even when its release is the newest. It lists each
-surface entry added, changed or removed, marked `used by the app` and
-`needs a person`: the review of the surface the app uses that [Records and
-manifest](18-records-and-manifest.md) describes. `remove` is refused while
+surface entry added, changed or removed, marked `used by the app`, then
+under `Needs a person` each change of what the app uses that an acceptance
+must list: the review [Records and
+manifest](18-records-and-manifest.md#package-upgrades) describes. `remove` is refused while
 the app's code has `use packages/<name>` (`install.in_use`).
 
 ### `jadpo package show`
@@ -990,7 +991,8 @@ Not built yet:
   `../orders`), or from a URL serving an OpenAPI document. A registry name
   and another app's folder say `toolchain.not_built_yet` until the
   registry and the importer. A package from git needs a person's
-  acceptance once installed (`PackageChange.git_source`).
+  acceptance once installed (`PackageChange.git_source`), unless its
+  repository is under one of `packages:`'s `own_sources:`.
 - `jadpo package import` for `smithy`, `postman`, `har` and `dts`. They
   are `toolchain.not_built_yet` until first needed.
 - `jadpo package conform` for any capability but `ai`, which is

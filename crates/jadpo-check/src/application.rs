@@ -16,14 +16,15 @@ use crate::tree::{self, node_span};
 
 /// The sections `application { }` holds and this compiler builds, in the
 /// order the error lists them, each read by its area's check.
-pub const SECTIONS: [&str; 17] = [
+pub const SECTIONS: [&str; 18] = [
     // Area 1: the Jadpo release line.
     "jadpo",
     // Area 8: the app's name, and how long a revoked caller may act.
     "display_name",
     "revocation_delay",
-    // Area 11: every connection.
+    // Area 11: every connection, and your own company's repositories.
     "connections",
+    "packages",
     // Area 14: the deployables.
     "deployables",
     // Area 7: the APIs and their versions.

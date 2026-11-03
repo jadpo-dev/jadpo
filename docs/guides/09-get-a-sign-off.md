@@ -248,9 +248,10 @@ history, so it judges the acceptances against the same base.
 |---|---|
 | A route removed, a required input field added, a rule tightened, an output field removed or retyped, a failure code changed; an event removed or its fields changed the same ways | `ApiChange` |
 | Anyone added to who may read or change something, a route opened to callers who aren't signed in, a sign-in setting loosened past its limit | `PolicyChange` |
+| A git location added to, or widened in, `packages:`'s `own_sources:` | `PolicyChange` |
 | A new domain | `DomainChange` |
 | A connection reaching an outside host it didn't | `NetworkChange` |
-| A package installed from git | `PackageChange` |
+| A third party's package installed from git | `PackageChange` |
 
 Changes that only add need none: a new route, a new optional input
 field, a new output field, or tighter policy. The record diffs still
