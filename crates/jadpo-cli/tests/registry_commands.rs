@@ -462,6 +462,41 @@ fn nothing_is_installed_that_the_log_doesnt_prove() {
 }
 
 #[test]
+fn an_archive_is_read_as_raw_bytes_up_to_a_releases_limit() {
+    let (dir, package, app) = workspace("registry-large");
+    write(&package, "GUIDE.md", &"A long guide.\n".repeat(490_000));
+    let files = snapshot(&package);
+    let packed = jadpo_registry::archive::pack(&files).unwrap();
+    assert!(
+        (6_000_000..=7_000_000).contains(&packed.len()),
+        "{}",
+        packed.len()
+    );
+    let registry = LocalRegistry::new();
+    registry.publisher("@acme", true, false);
+    seed(&registry, &package, "2.0.0", &days_ago(9), Vec::new());
+    // However it is labelled, and however the registry sends it.
+    let (_held, url, _) = stand_in(&registry, |incoming, answer| {
+        if incoming.target.contains("/archives/") {
+            return Fetched {
+                content_type: Some("application/octet-stream".into()),
+                ..answer
+            };
+        }
+        answer
+    });
+    let added = with(&url, &app, &["package", "add", "@acme/postcodes"]);
+    assert_eq!(added.code, 0, "{}{}", added.stdout, added.stderr);
+    assert_eq!(
+        std::fs::read(app.join("packages/postcodes/v2/GUIDE.md"))
+            .unwrap()
+            .len(),
+        "A long guide.\n".len() * 490_000
+    );
+    drop(dir);
+}
+
+#[test]
 fn a_registry_out_of_reach_is_said_as_that() {
     let (dir, _package, app) = workspace("registry-out-of-reach");
     let closed = with(

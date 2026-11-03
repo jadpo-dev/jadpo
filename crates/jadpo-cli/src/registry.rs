@@ -45,8 +45,10 @@ const DAY: i64 = 86_400;
 /// The most a JSON answer may be.
 const LONGEST_ANSWER: usize = 16 << 20;
 
-/// The most an archive may be: what one unpacks to at most, and its headers.
-const LONGEST_ARCHIVE: usize = 2 * archive::LIMIT;
+/// The most an archive may be: twice what the verifier lets a release come
+/// to, so a registry can't make a client hold more than a release could be,
+/// and one that raises its limit doesn't strand this one at once.
+const LONGEST_ARCHIVE: usize = 2 * jadpo_verifier::files::SIZE_LIMIT as usize;
 
 // --- asking ----------------------------------------------------------------
 
