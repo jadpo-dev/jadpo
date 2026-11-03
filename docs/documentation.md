@@ -140,7 +140,10 @@ language (`jadpo`, `text`), the docs check's attributes after it
 shows the fence as it is, and its relative links are by ID (`passkeys.md`,
 `../errors/failure.kind_required.md`), keeping an anchor within the page;
 a link to anything else, design notes included, names the file on GitHub's
-`main`. An error page leads with its rule's summary, area and who usually
+`main`. The docs check holds every relative link to a page in the bundle and
+its anchor to a heading of that page; a link into a section no page keeps,
+such as `## Errors`, goes to the page. The site's build fails on any internal
+link that doesn't resolve, so a broken link stops a build on either side. An error page leads with its rule's summary, area and who usually
 decides the next step, and leaves out the page's first sentence when it is
 that summary; a command's page is its usage, arguments, flags,
 examples, the flags every command takes and what `--json` gives (the
@@ -193,16 +196,19 @@ Release.
 | `/docs/primer`, `/docs/primer.md` | The primer, as HTML and as markdown |
 | `/learn`, `/learn/<id>`, `.md` | The Learn path: the outline, then each page, with previous and next in the index's order |
 | `/guides`, `/guides/<id>`, `.md` | The guides: their index, then each guide |
-| `/docs/<id>`, `/docs/<id>.md` | A topic |
+| `/docs/<id>`, `/docs/<id>.md` | A topic or a command |
 | `/docs/<old-id>`, `.md` | A permanent redirect to the topic whose `aliases` hold it |
 | `/docs/types`, `/docs/types/<id>`, `.md` | The standard types: their index, then each type |
 | `/docs/errors/<rule.id>`, `.md` | An error's page; reached from a compiler error, not listed in navigation |
 | `/docs/index.json` | The bundle's index |
 | `/.well-known/agent-skills/jadpo/SKILL.md`, `/.well-known/agent-skills/index.json` | The agent skill, and the index that lists it |
-| `/v/<version>/…` | The same paths for one release; immutable, cached for good |
+| `/v/<version>/…` | The same paths for one release, its links staying under `/v/<version>/`; immutable, cached for good |
 | `/…` without `/v/` | The latest release; short cache, `ETag` from the page's hash |
 
-The markdown copy is the bundle's file served as `text/markdown`. There is
+The markdown copy is the bundle's file served as `text/markdown`, with its
+relative links written as the site's addresses (`/docs/passkeys.md`), as the
+HTML's are, so each resolves from where the copy is served. A page's `hash`
+is of the bundle's file. There is
 no single file of all the docs: no agent can use a million tokens. A
 newcomer is sent to the Learn path first; the area pages are the
 reference, in the areas' order. The guides come from the bundle too,
@@ -330,6 +336,14 @@ needs, or use a local clone with a file-reading coding agent.
     stores, which needs no token: the Marketplace publisher `jadpo` has a
     trusted publishing policy for `vscode-extension.yml`, and the Open VSX
     namespace `jadpo` a trusted publisher for it.
+  - The verifier's container image (`deploy/verifier/`) is built and tested
+    on each release, and pushed to `ghcr.io/jadpo-dev/verifier` while the
+    repository variable `JADPO_VERIFIER_IMAGE` is `on`, with the workflow's
+    own token. It reaches the registry from Fly.io, which a maintainer sets
+    up once: `fly apps create jadpo-verifier`, `fly secrets set
+    JADPO_VERIFIER_TOKEN=...` with the credential the registry also holds,
+    and `fly deploy --config deploy/verifier/fly.toml --image
+    ghcr.io/jadpo-dev/verifier:<version>` for each release.
 
 ## Installing
 

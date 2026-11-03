@@ -62,7 +62,9 @@ fn one_error_a_line(text: &str, parse: &Parse) {
 /// their edits are made, a round at a time (a line shows one at a time).
 fn clean_edits_converge(text: &str) {
     let mut current = text.to_string();
-    for _ in 0..12 {
+    // A line shows one error a round, so a line takes a round for each
+    // habit on it: only edits that undo each other outlast the text's length.
+    for _ in 0..text.len() + 12 {
         let parse = parse_file(&current);
         if !parse.checkable() {
             assert_eq!(
@@ -179,6 +181,38 @@ fn hostile_input_is_survived() {
     // is cut from the text at a character's boundary (found by the
     // coverage-guided fuzzer).
     inputs.push("x {\n    a: \u{7a1}ttps://e\n}\n".to_string());
+    // A comma after a nullable field with another field on its line: with
+    // the comma gone the `?` met the next key, which read as a ternary, so
+    // a clean edit left a file with an error that isn't (found by the
+    // coverage-guided fuzzer).
+    inputs.push(
+        "/// One email to send.\npublic type OutgoingEmail = Object {\n    from: Text\n    to: Text\n    subject: Text\n    html: Text?\n    text: Text?,    attachments: List<OutgoingAttachment>\n}\n"
+            .to_string(),
+    );
+    // The same with a lower-case name, in a declaration and in a record,
+    // and after `=` read as `:`.
+    inputs.push("type E = Object {\n    a: text?, b: c\n}\n".to_string());
+    inputs.push("function f() -> T {\n    return Foo { a: x?, b: y }\n}\n".to_string());
+    inputs.push("type E = Object {\n    a = Text?, b: c\n}\n".to_string());
+    // A line of `;` after a whole library, one error a round without the
+    // run read as one (found by the coverage-guided fuzzer).
+    inputs.push(format!(
+        "library {{\n    version: \"1.0.0\"\n}}\n{}",
+        ";".repeat(15)
+    ));
+    // A clean habit many times on a line, which takes a round each.
+    inputs.push(format!(
+        "function f(a: Flag) -> Flag {{\n    return {}a\n}}\n",
+        "!".repeat(40)
+    ));
+    inputs.push(format!(
+        "function f(a: Flag) -> Flag {{\n    return a{}\n}}\n",
+        " && a".repeat(40)
+    ));
+    inputs.push(format!(
+        "type E = Object {{ {} }}\n",
+        "a: Text, ".repeat(40)
+    ));
     for input in inputs {
         check(&input);
     }

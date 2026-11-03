@@ -76,7 +76,12 @@ names no area or question by number (numbered_references): on areas 1 to
 NUMBERED_FAILS_THROUGH, which is every area, that fails. Every relative
 link in the repository's Markdown and llms.txt resolves, to a file and, for
 Markdown, a heading GitHub gives that anchor; every area-page anchor the
-compiler prints (`help_at`) names a heading of that page.
+compiler prints (`help_at`) names a heading of that page. Every link on a
+page the bundle builds reaches a page in the bundle, its anchor a heading of
+that page (bundle_link_problems). index.json's kinds keep to the paths
+docs/documentation.md gives them (site_path_problems), and what an agent is
+told to read first names those paths, never a whole area page
+(agent_reading_problems).
 """
 
 import argparse
@@ -1433,17 +1438,36 @@ def anchors_of(text):
     return found | set(re.findall(r'<a (?:id|name)="([^"]+)"', text))
 
 
+def prose_blocks(text):
+    """`text` as (first line's index, its lines joined, whether it is prose):
+    a fence's line or a blank line on its own, and each run of lines between
+    them, which is as far as a link wrapped over lines can reach."""
+    run, start = [], 0
+    for i, line, fenced in body_lines(text.split('\n')):
+        if fenced or not line.strip():
+            if run:
+                yield start, '\n'.join(run), True
+                run = []
+            yield i, line, False
+        else:
+            if not run:
+                start = i
+            run.append(line)
+    if run:
+        yield start, '\n'.join(run), True
+
+
 def map_links(text, change):
     """`text` with each link's target outside code passed through
     `change(target)`; returns the new text."""
     out = []
-    for _, line, fenced in body_lines(text.split('\n')):
-        if fenced:
-            out.append(line)
+    for _, block, prose in prose_blocks(text):
+        if not prose:
+            out.append(block)
             continue
-        spans = code_spans(line)
+        spans = code_spans(block)
         out.append(LINK.sub(lambda m: m.group(0) if in_code(m.start(), spans)
-                            else f'[{m.group(1)}]({change(m.group(2))})', line))
+                            else f'[{m.group(1)}]({change(m.group(2))})', block))
     return '\n'.join(out)
 
 
@@ -1456,14 +1480,14 @@ def in_code(at, spans):
 
 
 def links_in(text):
-    """(line number, target) of each link outside code; a link's text may
-    hold code."""
-    for i, line, fenced in body_lines(text.split('\n')):
-        if not fenced:
-            spans = code_spans(line)
-            for m in LINK.finditer(line):
+    """(line number, target) of each link outside code, the line its text
+    starts on; a link's text may hold code and wrap over lines."""
+    for start, block, prose in prose_blocks(text):
+        if prose:
+            spans = code_spans(block)
+            for m in LINK.finditer(block):
                 if not in_code(m.start(), spans):
-                    yield i + 1, m.group(2)
+                    yield start + block.count('\n', 0, m.start()) + 1, m.group(2)
 
 
 def markdown_files(root=ROOT):
@@ -2078,8 +2102,10 @@ class Bundle:
         self.problems = []
         # A renamed topic's ID -> the IDs it had before, which still reach it.
         self.aliases = {t['id']: t['aliases'] for page in pages for t in page.topics() if t['aliases']}
-        # Where each anchor of an area page went: (page, anchor) -> topic ID.
-        self.topic_of, self.overview = {}, {}
+        # Where each anchor of an area page went: (page, anchor) -> topic ID,
+        # and the anchor on that topic's own page, for a heading one keeps
+        # (`## Errors` and what is under it are on none).
+        self.topic_of, self.anchor_on_topic, self.overview = {}, {}, {}
         for page in pages:
             topics = page.topics()
             if not topics:
@@ -2087,9 +2113,12 @@ class Bundle:
             path = page.path.resolve()
             self.overview[path] = topics[0]['id']
             spans = [(t['start'], t['end'], t['id']) for t in topics]
-            for line, _, _, anchor in headings_of(page.body):
-                owner = next((tid for start, end, tid in spans if start <= line < end), topics[0]['id'])
-                self.topic_of[(path, anchor)] = owner
+            seen = {t['id']: {} for t in topics}
+            for line, _, title, anchor in headings_of(page.body):
+                owner = next((tid for start, end, tid in spans if start <= line < end), None)
+                self.topic_of[(path, anchor)] = owner or topics[0]['id']
+                if owner:
+                    self.anchor_on_topic[(path, anchor)] = github_slug(title, seen[owner])
 
     def link(self, source, target, here, linked):
         """`target`, written in `source`, as a bundle page in folder `here`
@@ -2098,12 +2127,11 @@ class Bundle:
             return target
         name, _, fragment = target.partition('#')
         resolved = (source.parent / name).resolve() if name else source.resolve()
-        tail = f'#{fragment}' if fragment else ''
 
-        def to(folder, page_id, keep=True):
+        def to(folder, page_id, anchor=fragment):
             linked.add(page_id)
             path = f'{folder}/{page_id}.md' if folder else f'{page_id}.md'
-            return os.path.relpath(path, here or '.') + (tail if keep else '')
+            return os.path.relpath(path, here or '.') + (f'#{anchor}' if anchor else '')
 
         if resolved in self.learn_of:
             return to('learn', self.learn_of[resolved])
@@ -2114,8 +2142,8 @@ class Bundle:
             if topic is None:
                 self.problems.append(f'{source.relative_to(self.root)}: no topic holds {target}')
                 topic = self.overview[resolved]
-            own = fragment and github_slug(self.title_of(topic), {}) == fragment
-            return to('topics', topic, keep=bool(fragment) and not own)
+            anchor = self.anchor_on_topic.get((resolved, fragment))
+            return to('topics', topic, None if anchor == github_slug(self.title_of(topic), {}) else anchor)
         if resolved.parent == (self.root / 'docs/errors').resolve() and resolved.suffix == '.md':
             return to('errors', resolved.stem)
         if self.primer is not None and resolved == self.primer.resolve():
@@ -2124,7 +2152,7 @@ class Bundle:
             relative = resolved.relative_to(self.root.resolve())
         except ValueError:
             return target
-        return REPO_URL + str(relative) + tail
+        return REPO_URL + str(relative) + (f'#{fragment}' if fragment else '')
 
     def title_of(self, topic_id):
         for page in self.pages:
@@ -2328,6 +2356,117 @@ class Bundle:
         return built
 
 
+def bundle_link_problems(built):
+    """Problems with the links on `Bundle.build()`'s pages: each relative
+    link reaches a page in the bundle and its anchor a heading of that page,
+    as the page's own file holds them."""
+    texts = {path: text for _, _, path, _, _, text, _ in built}
+    anchors, problems = {}, []
+    for _, _, path, _, _, text, _ in built:
+        for number, target in links_in(text):
+            if re.match(r'^[a-z][a-z0-9+.-]*:', target):
+                continue
+            name, _, fragment = target.partition('#')
+            resolved = os.path.normpath(os.path.join(os.path.dirname(path), name)) if name else path
+            if resolved not in texts:
+                problems.append(f'bundle {path}:{number}: links to {target}, which is no page in the bundle')
+            elif fragment:
+                if resolved not in anchors:
+                    anchors[resolved] = anchors_of(texts[resolved])
+                if fragment not in anchors[resolved]:
+                    problems.append(f'bundle {path}:{number}: links to {target}, but {resolved} has no heading '
+                                    f'with that anchor')
+    return problems
+
+
+# Where the site serves each kind of page in index.json, by its ID, an
+# index's path first (docs/documentation.md, "What the site serves"), and
+# the word that page's row uses for it.
+SITE_PATHS = {
+    'primer': (('/docs/primer',), 'primer'),
+    'learn': (('/learn', '/learn/<id>'), 'learn'),
+    'guide': (('/guides', '/guides/<id>'), 'guide'),
+    'topic': (('/docs/<id>',), 'topic'),
+    'command': (('/docs/<id>',), 'command'),
+    'type': (('/docs/types', '/docs/types/<id>'), 'standard type'),
+    'error': (('/docs/errors/<rule.id>',), 'error'),
+}
+SITE_INDEXES = {'learn', 'guides', 'types'}
+SITE_DOC = 'docs/documentation.md'
+SITE_HEADING = '## What the site serves'
+
+
+def site_path(kind, page_id):
+    """The address of a page in index.json, with no `.md`."""
+    paths = SITE_PATHS[kind][0]
+    if len(paths) > 1 and page_id in SITE_INDEXES:
+        return paths[0]
+    return paths[-1].replace('<id>', page_id).replace('<rule.id>', page_id)
+
+
+def site_path_problems(kinds=None, documented=None):
+    """Problems with the page kinds against "What the site serves": each
+    kind the bundle writes has its paths in a row that names it, and no
+    row gives a page by ID that no kind claims."""
+    documented = (ROOT / SITE_DOC).read_text() if documented is None else documented
+    section = documented.split(f'{SITE_HEADING}\n', 1)[-1].split('\n## ', 1)[0]
+    rows = {}
+    for line in section.split('\n'):
+        cells = line.strip().strip('|').split('|')
+        if line.startswith('|') and len(cells) == 2:
+            for path in re.findall(r'`(/[^`]*)`', cells[0]):
+                rows[path] = cells[1].lower()
+    problems = []
+    for kind in sorted(SITE_PATHS if kinds is None else kinds):
+        if kind not in SITE_PATHS:
+            problems.append(f'index.json has pages of kind {kind}, which SITE_PATHS and {SITE_DOC}, '
+                            f'"{SITE_HEADING[3:]}", give no path')
+            continue
+        paths, word = SITE_PATHS[kind]
+        for path in paths:
+            if path not in rows:
+                problems.append(f'{SITE_DOC}, "{SITE_HEADING[3:]}", gives no {path} for pages of kind {kind}')
+            elif word not in rows[path]:
+                problems.append(f'{SITE_DOC}, "{SITE_HEADING[3:]}": the row for {path} doesn\'t name pages of '
+                                f'kind {kind} ("{word}")')
+    claimed = {path for paths, _ in SITE_PATHS.values() for path in paths}
+    for path in sorted(rows):
+        if re.search(r'<(id|rule\.id)>', path) and path.removesuffix('.md') not in claimed:
+            problems.append(f'{SITE_DOC}, "{SITE_HEADING[3:]}", gives {path}, which no kind in index.json claims')
+    return problems
+
+
+# What tells an agent where to read, before it has read anything else.
+AGENT_READS = ('llms.txt', 'crates/jadpo-cli/scaffold/AGENTS.md.tmpl', 'docs/agent-skill/SKILL.md')
+AREA_PAGE = re.compile(r'docs/language/[0-9][0-9]-[^\s)#`]*\.md')
+SITE_URL = re.compile(r'https://jadpo\.dev(/[^\s)\]`\'",]*)')
+# Pages the site writes itself, under the folders the bundle's pages are in.
+SITE_OWN = {'/docs/index.json', '/docs/errors', '/docs/errors/'}
+
+
+def agent_reading_problems(built, root=ROOT):
+    """Problems with what AGENT_READS sends an agent to: a whole area page
+    (the standard library's is about 134,000 tokens) instead of its topics,
+    or an address on the site that no page in the bundle has."""
+    pages = {site_path(kind, page_id) for kind, page_id, *_ in built if kind in SITE_PATHS and page_id}
+    pages.add('/docs/primer')
+    problems = []
+    for name in AGENT_READS:
+        if not (root / name).exists():
+            continue
+        for number, line in enumerate((root / name).read_text().split('\n'), 1):
+            for m in AREA_PAGE.finditer(line):
+                problems.append(f'{name}:{number}: sends an agent to a whole area page, {m.group(0)}; '
+                                f'link its topic on the site, https://jadpo.dev/docs/<id>.md')
+            for m in SITE_URL.finditer(line):
+                path = m.group(1).split('#')[0].rstrip('.:;')
+                if '<' in path or '{' in path or path in SITE_OWN or not re.match(r'/(docs|learn|guides)(/|\.md$|$)', path):
+                    continue
+                if path != '/docs' and path.removesuffix('.md') not in pages:
+                    problems.append(f'{name}:{number}: sends an agent to {m.group(0)}, which the site doesn\'t serve')
+    return problems
+
+
 def check_skill(root=ROOT):
     """Problems with the agent skill (docs/documentation.md, "The agent
     skill"): it exists, and its front matter has a `name` that is its
@@ -2412,10 +2551,14 @@ def check_structure(pages, errors, catalogue, commands=(), root=ROOT, learn=(), 
     bundle = Bundle(pages, errors, {'rules': list(catalogue.values()), 'commands': list(commands), 'types': types,
                                     'operations': (help_data or {}).get('operations', [])}, root,
                     primer=root / 'docs/primer.md', learn=learn, guides=guides)
-    for kind, page_id, _, _, _, text, _ in bundle.build():
+    built = bundle.build()
+    for kind, page_id, _, _, _, text, _ in built:
         if kind in ('topic', 'learn', 'guide') and words(text) > TOPIC_WORDS:
             problems.append(f'topic "{page_id}" is {words(text)} words, over {TOPIC_WORDS}: split it')
     problems += bundle.problems
+    problems += bundle_link_problems(built)
+    problems += site_path_problems({kind for kind, *_ in built})
+    problems += agent_reading_problems(built, root)
     files = markdown_files(root)
     problems += check_links(files, root)
     problems += check_help_lines(files, catalogue, root)

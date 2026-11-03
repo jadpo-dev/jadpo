@@ -1015,7 +1015,22 @@ fn a_write_past_its_deadline_commits_nothing_and_answers_504() {
             )
         })
     };
-    std::thread::sleep(Duration::from_millis(300));
+    // The repeat is told the first is running only once the first holds
+    // the key; before that it would claim the key and run itself.
+    let waited = Instant::now();
+    while query(
+        &dev.url,
+        "SELECT 1 FROM \"jadpo_idempotency_keys\" WHERE \"key\" = 'edit-1'",
+        Vec::new(),
+    )
+    .is_empty()
+    {
+        assert!(
+            waited.elapsed() < Duration::from_secs(60),
+            "the first write never claimed its key"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
     let busy = dev.send("PUT", &path, &key, r#"{"text":"late"}"#);
     assert_eq!(busy.status, 409, "{busy:?}");
     assert_eq!(busy.json()["error"]["code"], "conflict");

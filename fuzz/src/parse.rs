@@ -55,7 +55,9 @@ fn one_error_a_line(text: &str, parse: &Parse) {
 /// their edits are made, a round at a time.
 fn clean_edits_converge(text: &str) {
     let mut current = text.to_string();
-    for _ in 0..12 {
+    // A line shows one error a round, so a line takes a round for each
+    // habit on it: only edits that undo each other outlast the text's length.
+    for _ in 0..text.len() + 12 {
         let parse = parse_file(&current);
         if !parse.checkable() {
             assert_eq!(
