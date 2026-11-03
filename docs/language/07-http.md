@@ -299,19 +299,19 @@ reading past the meter's end:
 application {}
 ```
 
-```jadpo check project=get-action file=domains/metering/types/litres.jadpo hidden
-type Litres = Int {
+```jadpo check project=get-action file=domains/metering/types/capacity.jadpo hidden
+type Capacity = Int {
     min: 0
     max: 1000000
 }
 ```
 
 ```jadpo check project=get-action file=domains/metering/entities/meter.jadpo hidden migrate=initial
-use metering/types { Litres }
+use metering/types { Capacity }
 
 entity Meter {
     id: Uuid
-    litres: Litres
+    capacity: Capacity
 
     policy: {
         create: [Access.public]
@@ -321,10 +321,10 @@ entity Meter {
 ```
 
 ```jadpo check project=get-action file=domains/metering/types/left_asked.jadpo hidden
-use metering/types { Litres }
+use metering/types { Capacity }
 
 type LeftAsked = Input {
-    used: Litres
+    used: Capacity
 }
 ```
 
@@ -341,21 +341,21 @@ type PastTheEnd = Failure {
 }
 ```
 
-```jadpo check project=get-action file=domains/metering/actions/litres_left.jadpo
+```jadpo check project=get-action file=domains/metering/actions/room_left.jadpo
 use metering/entities { Meter, MeterNotFound }
 use metering/types { LeftAsked, LeftView }
 use metering/failures { PastTheEnd }
 
-action litres_left(
+action room_left(
     meter_id: Meter.id,
     asked: LeftAsked
 ) fails MeterNotFound, PastTheEnd -> LeftView {
     var meter: Meter = attempt Meter.get(meter_id)
-    if (asked.used > meter.litres) {
+    if (asked.used > meter.capacity) {
         reject PastTheEnd {}
     }
     return LeftView {
-        enough: asked.used < meter.litres
+        enough: asked.used < meter.capacity
     }
 }
 ```
@@ -363,7 +363,7 @@ action litres_left(
 ```jadpo check project=get-action file=domains/metering/routes/meters.jadpo
 use metering/entities { Meter }
 use metering/types { LeftAsked, LeftView }
-use metering/actions { litres_left }
+use metering/actions { room_left }
 
 routes Meters {
     prefix: /meters
@@ -372,7 +372,7 @@ routes Meters {
         authentication: RouteAuthentication.none
         input: LeftAsked
         output: LeftView
-        run: litres_left(meter_id, input)
+        run: room_left(meter_id, input)
     }
 }
 ```
@@ -383,7 +383,7 @@ use metering/entities { Meter }
 fixture a_meter() -> Meter {
     return Meter.create {
         set: {
-            litres: 10
+            capacity: 10
         }
     }
 }
