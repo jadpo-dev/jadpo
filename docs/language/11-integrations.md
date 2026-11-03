@@ -1806,7 +1806,7 @@ it can send makes a release live.
   CI runs it with `JADPO_REGISTRY_OPENAPI` set to its served document
   ([compiler/runtime §2.1](../compiler-runtime.md#21-workspace-and-crates)).
 
-### The verifier
+## The verifier
 <!-- topic: the-verifier -->
 
 The verifier is `jadpo package verify`, the same tool authors run, in a

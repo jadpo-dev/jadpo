@@ -49,6 +49,9 @@ least 32 characters:
 fly secrets set JADPO_VERIFIER_TOKEN="$(openssl rand -hex 32)"
 ```
 
+The verifier then starts and answers only a caller that sends the same
+secret, so give the registry the same value.
+
 **If it has no sandbox**, run it from its container image, which brings
 bubblewrap, `prlimit` and `git`. In a plain Docker container the sandbox
 needs its namespaces allowed:
@@ -57,8 +60,15 @@ needs its namespaces allowed:
 docker run --security-opt seccomp=unconfined --security-opt apparmor=unconfined --security-opt systempaths=unconfined -e JADPO_VERIFIER_TOKEN -p 8080:8080 ghcr.io/jadpo-dev/verifier
 ```
 
-**If it can't listen**, give another address with `--listen`, or stop what
-holds that one.
+It checks a program in its sandbox has no network, then listens on port 8080.
+
+**If it can't listen**, give another address, or stop what holds that one:
+
+```sh
+jadpo package verify --serve --listen 127.0.0.1:8081
+```
+
+It then answers at that address instead.
 
 ## Related
 

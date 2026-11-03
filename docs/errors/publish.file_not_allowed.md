@@ -50,8 +50,14 @@ git mv scripts/fetch.sh .github/fetch.sh
 It stays in the repository and is left out of the release. The `files` row
 then passes, with how many files the release holds and how large it is.
 
-**If it was meant for apps to use**, write it in Jadpo, or describe it in
-`GUIDE.md`.
+**If nothing needs the file**, remove it:
+
+```sh
+git rm scripts/fetch.sh
+```
+
+The `files` row then passes the same way. What it did for apps, if anything,
+belongs in Jadpo source or in `GUIDE.md`.
 
 ## Related
 
