@@ -753,9 +753,9 @@ personal value in a report follows the rules for
 | Feature | Status |
 |---|---|
 | `jadpo calls`, `calls show` and `calls script` | Built. |
-| Each step a request's action reached, as a trace line in `jadpo dev` | Built. Until the timelines are built, each step is a line under its request's line in `jadpo dev`, and a delivery whose action reached steps gets a line of its own ([design notes for jobs and events](notes/12-jobs-and-events.md)). |
+| Each step a request's action reached, as a trace line in `jadpo dev` | Built: each step is a line under its request's line in `jadpo dev`, and a delivery whose action reached steps gets a line of its own ([design notes for jobs and events](notes/12-jobs-and-events.md)). |
 | `jadpo why <schedule>` | Built: it answers why a schedule didn't run ([Watching schedules](12-jobs-and-events.md#watching-schedules)). |
-| `jadpo approval` | Built: the report in `build/review/` in [this page's order](#reviewing-a-change), the before side built from git and its manifest kept in `build/before/<commit>/`. The personal-data report's difference comes with connections in that report, and a package's service and a bot check with those features. |
+| `jadpo approval` | Partly built: the report in `build/review/` in [this page's order](#reviewing-a-change), the before side built from git and its manifest kept in `build/before/<commit>/`, and the personal-data report's difference, a connection at a time. Not built yet: the rest of that difference, which comes with the rest of that report, and a package's service and a bot check, which come with those features. |
 | Mapped `.jadpo` stacks, `jadpo incident`, the other forms of `why`, timelines, `test new --from` and `call` | Not built yet: these come first ([the roadmap](../roadmap.md)). |
 | The developer console, MCP and the review web view | Not built yet: they come after those, as product work. |
 | `jadpo traces`, `metrics`, `logs` and `watch`; path coverage, production counts in review, replay and query cost | Not built yet. |

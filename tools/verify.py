@@ -377,6 +377,9 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
         # The docs renderer finishes every page, and its list parser's
         # cases, each under a time limit (tools/docs/language_docs_test.py).
         Step('docs renderer', 'lint', [python, 'tools/docs/language_docs_test.py']),
+        # How the reference is grouped, and the check that places every topic
+        # (docs/documentation.md, "The reference's manifest").
+        Step('reference manifest', 'lint', [python, 'tools/docs/reference_manifest_test.py']),
         # What an agent reads first (roadmap chunk A6): the AGENTS.md
         # `jadpo new` writes and llms.txt, their examples and what isn't
         # built generated from examples/README.md and each area's "What is
