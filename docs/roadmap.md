@@ -396,9 +396,7 @@ What the Reddit thread found (Richard, 2026-11-03):
   says so at its top, in its Markdown too.
 - [ ] **D17f Search that finds the docs** `opus · medium`: "deploy" and "send
   email" find a guide or topic first, not error pages.
-- [ ] **D17g What an agent reads first** `opus · high`: nothing tells an agent
-  to read all of `index.json`, 173,000 tokens; about 9,000 once and under
-  1,000 per lookup.
+- [x] **D17g What an agent reads first**: [documentation guide](documentation.md), "How an agent uses it"; `llms.txt`, the skill and the AGENTS.md `jadpo new` writes; `whole_index_problems` and `read_once_problems` in `tools/docs/agent_guidance.py`.
 - [ ] **D17h Standard types under Values and types** `opus · high`: one
   generated list, in the sidebar, not two hand tables at the bottom of the
   reference home.
