@@ -440,9 +440,7 @@ impl<'p> Made<'p> {
         let mut reads = Vec::new();
         let mut declared = Vec::new();
         for (slot, (field, codec)) in plan.fields.iter().zip(fields).enumerate() {
-            let member = field.wire.clone().unwrap_or_else(|| {
-                jadpo_std::standard::wire_name(&plan.ty, &field.name).to_string()
-            });
+            let member = field.wire.clone().unwrap_or_else(|| field.name.to_string());
             let raw = self.codec(codec.0);
             let nullable = matches!(raw, Some(Codec::Nullable(_)));
             let list = match raw {
@@ -676,9 +674,7 @@ impl<'p> Made<'p> {
         let mut writes = Vec::new();
         for (at, ((field, codec), value)) in plan.fields.iter().zip(fields).zip(&values).enumerate()
         {
-            let member = field.wire.clone().unwrap_or_else(|| {
-                jadpo_std::standard::wire_name(&plan.ty, &field.name).to_string()
-            });
+            let member = field.wire.clone().unwrap_or_else(|| field.name.to_string());
             let written = member_name(&member);
             let writer = format_ident!("w{}", self.contract(codec.0));
             let place = number(u32::try_from(at).unwrap_or(u32::MAX));
@@ -740,9 +736,8 @@ impl<'p> Made<'p> {
                     let opening = written_text(&tag, &variant.wire);
                     let fields = plan.fields.iter().zip(codecs).zip(&values).map(
                         |((field, codec), value)| {
-                            let member = field.wire.clone().unwrap_or_else(|| {
-                                jadpo_std::standard::wire_name(&plan.ty, &field.name).to_string()
-                            });
+                            let member =
+                                field.wire.clone().unwrap_or_else(|| field.name.to_string());
                             let written = member_name(&member);
                             let writer = format_ident!("w{}", self.contract(codec.0));
                             quote! {

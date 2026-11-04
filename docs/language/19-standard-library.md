@@ -6818,7 +6818,7 @@ secret value ([Secret values](#secret-values)), never shown.
 
 **`Jwk`** holds one public key and never a secret. Its parts are `kty`,
 `crv`, `x`, `y`, `n`, `e`, `kid` (1 to 256 printable ASCII characters),
-`alg`, `use_` (`sig`, sent as RFC 7517's `use`), `key_ops` and `x5c`,
+`alg`, `use` (`sig`), `key_ops` and `x5c`,
 each but `kty` optional. Three rules across them hold a key to its kind:
 `parts_of_its_kty` (its kind's parts and no other's),
 `algorithm_of_its_kty` (an `alg`, where given, is its kind's) and
@@ -9369,7 +9369,7 @@ function worth_retrying(status: HttpStatus) -> YesNo {
 /// The problem a sold-out item is reported with.
 function sold_out(item_page: ShopLink) -> ProblemDetails {
     return ProblemDetails {
-        type_: "https://tea.example/problems/sold-out"
+        type: "https://tea.example/problems/sold-out"
         status: 409
         title: "Sold out"
         detail: "Nothing is left of this item."
@@ -9572,10 +9572,7 @@ detail:
   name the others holds the method as text.
 - A **`ProblemDetails`** is RFC 9457's object for reporting an API
   failure: its five members, each of which may be `none`, as the RFC
-  allows. `type` is a reserved word, so code writes `type_`, and the wire
-  has `type`. That is the trailing `_` a closed list's code takes when it
-  is a reserved word, used here for a standard object's part
-  (`jadpo_std::standard::wire_name`).
+  allows.
 - Its `type` and `instance` are absolute `Url`s. The RFC allows relative
   references; resolve one with `web.resolve` first. Its `title` is a line
   and its `detail` a paragraph.
@@ -10258,8 +10255,7 @@ number.
 
 **`IdentityDocument`** is its `kind`, its `country`, its `number`, and
 the day it `expires`, which may be `none`, as Spain's DNI for someone
-over 70 never expires. The part is called `kind` because `type` is a
-reserved word. The kind is `IdentityDocumentKind`, a standard enum of
+over 70 never expires. The kind is `IdentityDocumentKind`, a standard enum of
 `passport`, `identity_card`, `driving_licence` and `residence_permit`,
 each its own code, shown as its code.
 
@@ -10372,7 +10368,7 @@ test "a closed list reads its codes and its other code systems" {
     var made_in: Country = attempt supplier_country("gbr")
     assert made_in == Country.gb
     assert supplier_country("UK") fails UnknownCountry
-    assert text.from(Country.in_) == "IN"
+    assert text.from(Country.in) == "IN"
     assert text.from(Country.gb, form: CodeForm.numeric) == "826"
     assert text.format(Country.gb, locale: Locale.fr_fr) == "Royaume-Uni"
     assert text.format(Language.ja, locale: Locale.en_gb) == "Japanese"
@@ -10443,12 +10439,12 @@ test "a name and an address are kept part by part" {
             postal_code: "75004"
             country: Country.fr
         },
-        Nationality.in_
+        Nationality.in
     )
     var kept_record: Recipient = attempt Recipient.get(enrolled.id)
     assert kept_record.name == enrolled.name
     assert kept_record.ship_to == enrolled.ship_to
-    assert kept_record.citizen_of == Nationality.in_
+    assert kept_record.citizen_of == Nationality.in
     var readdressed: Recipient = readdress(
         kept_record,
         PostalAddress {
@@ -10523,8 +10519,9 @@ import needs it.
 
 A variant is its code in lower case with `_` for `-`:
 `CountrySubdivision.gb_eng`, as `Locale` writes its variants. A code that
-is a [reserved word](01-project-layout-and-modules.md#naming), or is
-`all`, takes a trailing `_`: `Country.in_`, `Language.or_`.
+is `all`, which lists the variants, takes a trailing `_`: `Currency.all_`,
+as `true`, `false` or `none` would, which no variant takes. Any other
+reserved word is a variant as it is: `Country.in`, `Language.or`.
 
 **`.all`** lists an enum's variants in its order, a closed list's by
 code, as a `List` of the enum. Retired codes are left out, because a
@@ -10550,7 +10547,7 @@ is.
 
 `text.parse` reads a form's code ignoring case. Where a retired variant
 shares a code with a current one, the code reads as the current one:
-`ind` is `Language.id`, not `Language.in_`.
+`ind` is `Language.id`, not `Language.in`.
 
 At a boundary, such as a request, JSON, a CSV cell or a setting, a
 standard enum's code is read ignoring case and written back in its
@@ -10561,7 +10558,7 @@ rule `variant`. Spaces and other spellings are still refused.
 ### Stored and shown
 
 **Stored:** a closed list's column holds its code, as `Currency`'s does:
-`GB`, and `IN` rather than `in_`. An object is stored as a column per
+`GB`, and `IN` rather than `in`. An object is stored as a column per
 part, named `<field>_<part>`. A part that may be `none` is a column that
 may be `NULL`. A `PostalAddress`'s lines are a `text[]` column, and its
 country is its code.

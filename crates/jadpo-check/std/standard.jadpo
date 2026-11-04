@@ -222,7 +222,7 @@ public type Continent = Enum {
 
 /// A country (area 19, ISO 3166-1), written as its alpha-2 code, `GB`;
 /// `form: CodeForm.alpha3` writes `GBR` and `CodeForm.numeric` `826`. A
-/// code that is a reserved word takes a trailing `_`: `Country.in_` is
+/// code that is `all`, `true`, `false` or `none` takes a trailing `_`: `Country.in` is
 /// India. A withdrawn code, `YU`, is only read.
 public type Country = Enum {}
 
@@ -557,7 +557,7 @@ public type JsonPointer = Text {}
 /// bits; or `EC`, a P-256 key, `crv` `P-256`, `x` and `y`, a point on the
 /// curve; each in unpadded Base64url, used with one algorithm, `EdDSA`,
 /// `RS256` or `ES256`, with an optional key id and certificates (`x5c`,
-/// each standard Base64 DER); `use_` is sent as `use`, and `key_ops` holds
+/// each standard Base64 DER); `key_ops` holds
 /// the operations it may be used for, a key without `verify` checking no
 /// token. Never a private key or a shared secret; members it doesn't hold
 /// are ignored.
@@ -570,7 +570,7 @@ public type Jwk = Object {
     e: Text?
     kid: Text?
     alg: Text?
-    use_: Text?
+    use: Text?
     key_ops: Set<Text>?
     x5c: List<Text>?
 }
@@ -596,7 +596,7 @@ public type JwtClaims = Object {
 }
 
 /// A language (area 19, ISO 639-1), written as its code, `en`; `form:
-/// CodeForm.alpha3` writes ISO 639-2's `eng`. `Language.or_` is Odia.
+/// CodeForm.alpha3` writes ISO 639-2's `eng`. `Language.or` is Odia.
 public type Language = Enum {}
 
 /// A lawful basis for processing personal data (area 19, GDPR Article
@@ -927,9 +927,9 @@ public type Price = Object {
 /// An HTTP API's error body (area 19, RFC 9457): what kind of problem it
 /// is (`about:blank` when `none`), the status, a short title, a detail
 /// for people and the URL of this occurrence, each of which may be
-/// `none`. `type_` is sent as `type`, a reserved word in code.
+/// `none`.
 public type ProblemDetails = Object {
-    type_: Url?
+    type: Url?
     status: HttpStatus?
     title: Text?
     detail: Text?

@@ -34,10 +34,10 @@ operation messages.stream
     confirmed recordings/messages.stream.json
 
 type ContentBlock = Object
-    /// One block of a message's content: its kind (`text`, `thinking` and others), and the text of a `text` block.
+    /// One block of a message's content: its type (`text`, `thinking` and others), and the text of a `text` block.
     file types/content_block.jadpo
-    kind: Text
     text: Text?
+    type: Text
 
 type MessageParam = Object
     /// One turn of the conversation: `user` or `assistant`, and what it says.
@@ -58,25 +58,25 @@ type MessageResponse = Object
     file types/message_response.jadpo
     content: List<ContentBlock>
     id: Text
-    kind: Text
     model: Text
     role: Text
     stop_reason: Text?
+    type: Text
     usage: MessageUsage
 
 type MessageStreamDelta = Object
     /// What an event adds: a `text_delta`'s text, or, in `message_delta`, why the model stopped.
     file types/message_stream_delta.jadpo
-    kind: Text?
     stop_reason: Text?
     text: Text?
+    type: Text?
 
 type MessageStreamEvent = Object
-    /// One event of a streamed message, a server-sent event's data: its kind (`message_start`, `content_block_start`, `content_block_delta`, `content_block_stop`, `message_delta`, `message_stop`, `ping`), the block it adds to, and what it adds.
+    /// One event of a streamed message, a server-sent event's data: its type (`message_start`, `content_block_start`, `content_block_delta`, `content_block_stop`, `message_delta`, `message_stop`, `ping`), the block it adds to, and what it adds.
     file types/message_stream_event.jadpo
     delta: MessageStreamDelta?
     index: Int { min: 0, max: 1000000 }?
-    kind: Text
+    type: Text
 
 type MessageUsage = Object
     /// The tokens a message took: its input apart from the prompt cache's, its output, and the input read from and written to the cache.
