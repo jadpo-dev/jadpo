@@ -52,6 +52,9 @@ pub enum Family {
     Data,
     /// A domain's `monitoring.jadpo`, or `app.jadpo`'s disk floors.
     Thresholds,
+    /// What leaves through a connection that can't erase it, which is judged
+    /// as things stand rather than against the before side's records.
+    Erasure,
 }
 
 fn need(

@@ -887,3 +887,30 @@ fn a_run_of_semicolons_is_one_error_with_one_edit() {
         "function f() -> Unit {\n    a()\n    b()\n}\n"
     );
 }
+
+#[test]
+fn a_reserved_word_hidden_behind_a_clean_habit_is_not_checkable() {
+    // One error a line shows the habit first, and the word only once its
+    // edit is made, so the file can't be promised to come out clean: it
+    // can only be checked reading the word as the name it stands for.
+    for line in [
+        "!library.borrow()",
+        "!   library.borrow()",
+        "a && library.borrow()",
+        "a || library.borrow()",
+        "a === library.borrow()",
+        "a != library.borrow()",
+        "a AND library.borrow()",
+        "a OR library.borrow()",
+        "NOT library.borrow()",
+        "var x = library.borrow();",
+    ] {
+        let text = format!("action f() -> Unit {{\n    {line}\n}}\n");
+        let parse = parse_file(&text);
+        assert!(parse.has_errors(), "{text}");
+        assert!(!parse.checkable(), "{text}\n{:#?}", parse.errors());
+    }
+    let hidden = parse_file("action f() -> Unit {\n    !library.borrow()\n}\n");
+    assert!(hidden.checkable_reading_names(), "{:#?}", hidden.errors());
+    assert_eq!(hidden.errors()[0].rule.id, "syntax.logical_operator");
+}

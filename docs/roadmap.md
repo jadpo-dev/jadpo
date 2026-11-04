@@ -471,11 +471,9 @@ protection, a domain renamed with `jadpo domain rename`.
 - [x] **V5 Where personal data goes**: area 15, "Marking personal fields"
   and "Where personal data goes"; area 14, `jadpo package check`;
   compiler/runtime §2.3, "Where personal data goes".
-- [ ] **V6 Personal data a connection can't erase** `opus · high` after V5:
-  area 15, "Erasure at providers"; area 18, `ErasureNotPossible`. A
-  connection that receives a marked field, whose package declares no
-  `erasure:`, needs an `ErasureNotPossible` acceptance with the reason the
-  data stays; the approval report shows the personal-data report's diff.
+- [x] **V6 Personal data a connection can't erase**: area 15, "Erasure at
+  providers"; area 18, `ErasureNotPossible`; area 17, "Reviewing a change";
+  compiler/runtime §2.3, "Erasure at providers".
 
 ## The public registry
 
@@ -615,8 +613,10 @@ After the registry is live, in order:
      records go, a generated subscriber calling the package's `erasure:`
      operation after commit and retrying until it confirms, a delivery
      that gives up parked and shown, and a key that is personal data
-     kept only in the outbox until it is delivered. V6 reads the
-     declarations and builds `ErasureNotPossible`. Done when a test
+     kept only in the outbox until it is delivered. V6 read the
+     declarations and built `ErasureNotPossible`; this takes away the
+     personal-data report's line saying Jadpo doesn't call a provider's
+     `erasure:` yet. Done when a test
      erasing a person sees each fake provider's erasure called once,
      after the commit.
    - [ ] **P7 Marked fields in logs and access records** `opus · high`

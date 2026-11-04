@@ -544,7 +544,7 @@ struct Summary {
     left: BTreeSet<exits::Left>,
     /// The parts of its parameters that leave through a connection,
     /// followed where it is called, as [`Summary::prompted`] is.
-    left_params: BTreeSet<(exits::Exit, usize, Vec<String>)>,
+    left_params: BTreeSet<(exits::Exit, usize, Vec<String>, bool)>,
 }
 
 /// The summary of a callable nothing resolves to.
@@ -649,9 +649,9 @@ impl Summary {
             left_params: self
                 .left_params
                 .into_iter()
-                .map(|(exit, at, mut path)| {
+                .map(|(exit, at, mut path, answered)| {
                     path.truncate(DEPTH);
-                    (exit, at, path)
+                    (exit, at, path, answered)
                 })
                 .collect(),
         }
@@ -1240,7 +1240,7 @@ struct Walk<'b> {
     /// What it sends out through a connection ([`Summary::left`]).
     left: BTreeSet<exits::Left>,
     /// The parts of its parameters that do ([`Summary::left_params`]).
-    left_params: BTreeSet<(exits::Exit, usize, Vec<String>)>,
+    left_params: BTreeSet<(exits::Exit, usize, Vec<String>, bool)>,
     /// What reaches a model that `ai:` doesn't allow ([`models`]).
     exposures: Vec<Diagnostic>,
     /// Where each value is and what it holds, once reported.

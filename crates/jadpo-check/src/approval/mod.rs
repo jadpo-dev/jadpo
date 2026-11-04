@@ -10,7 +10,8 @@
 //! 3. The other behaviour: the API record, the schema and migrations,
 //!    failures, events and subscribers, integrations, who can do what
 //!    (the permissions report's difference, as `access.jadpo_record`
-//!    holds it) and wording not yet accepted.
+//!    holds it), the personal-data report's difference and wording not yet
+//!    accepted.
 //! 4. The source, by declaration rather than by file.
 //!
 //! `jadpo approval` builds the before side, caches its manifest, and
@@ -303,6 +304,7 @@ pub fn report(
     base: Base,
     before: &Value,
     before_declines: &Value,
+    before_personal: &Value,
     after: &Value,
 ) -> Report {
     let was = View::of(before);
@@ -366,6 +368,7 @@ pub fn report(
             section.lines = new_reach(&was, &now);
             section
         },
+        personal_data(db, project, before_personal),
         declines(db, project, before_declines),
         prompts(&was, &now),
         wording(db, project),
@@ -1048,6 +1051,65 @@ pub fn declines_json(db: &dyn Db, project: Project) -> Value {
             .collect::<Vec<_>>(),
     );
     out
+}
+
+/// The before side's personal-data report, for [`report`]: its JSON twin,
+/// or how many errors kept it from being worked out, as `jadpo check` writes
+/// no report for a project with errors.
+pub fn personal_json(db: &dyn Db, project: Project, errors: usize) -> Value {
+    if errors == 0 {
+        return crate::personal_data::report(db, project).json;
+    }
+    let mut out = Value::object();
+    out.set("errors", errors as i64);
+    out
+}
+
+/// Where the personal-data report is, as the review names it.
+const PERSONAL_REPORT: &str = "build/report/personal-data.md";
+
+/// The personal-data report's difference, a connection at a time (area 15,
+/// "The personal-data report"): what starts reaching whom, and whether its
+/// copy is erased, read from both sides' JSON twins.
+fn personal_data(db: &dyn Db, project: Project, before: &Value) -> Section {
+    let mut section = Section::new("personal_data", "Personal data");
+    if before.get("errors").is_some() {
+        section.note = Some(format!(
+            "The before side has errors, so it has no report to compare with. Today's is `{PERSONAL_REPORT}`."
+        ));
+        return section;
+    }
+    let was = crate::personal_data::entries(before);
+    let now = crate::personal_data::entries(&crate::personal_data::report(db, project).json);
+    let headings: BTreeSet<&String> = was.keys().chain(now.keys()).collect();
+    for heading in headings {
+        let (before, after) = (was.get(heading), now.get(heading));
+        let mut lines: Vec<(Mark, String)> = Vec::new();
+        for line in before.into_iter().flatten() {
+            if !after.is_some_and(|after| after.contains(line)) {
+                lines.push((Mark::Removed, line.clone()));
+            }
+        }
+        for line in after.into_iter().flatten() {
+            if !before.is_some_and(|before| before.contains(line)) {
+                lines.push((Mark::Added, line.clone()));
+            }
+        }
+        if lines.is_empty() {
+            continue;
+        }
+        section.entries.push(EntryDiff {
+            record: PERSONAL_REPORT.to_string(),
+            heading: heading.clone(),
+            mark: match (before, after) {
+                (None, _) => Mark::Added,
+                (_, None) => Mark::Removed,
+                _ => Mark::Changed,
+            },
+            lines,
+        });
+    }
+    section
 }
 
 /// What a decline stands above, with its domain, or its file when it
