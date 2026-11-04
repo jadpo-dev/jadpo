@@ -361,13 +361,13 @@ that covers the feature.
 | Containers | `List<T>`, `Set<T>`, `Map<K, V>` | Described below. |
 | Translation | `PluralCount`, `TextDirection`, `TranslationReview` | `PluralCount` is a whole number that picks a message's plural form, used directly as a `Message` field; `TextDirection` is a locale's direction, `.left_to_right` or `.right_to_left`, which `locale.direction(value)` gives; `TranslationReview` is `.none` or `.required`, the `review:` of `translations:` in `application { }` ([What the compiler checks of translations](10-configuration-and-time.md#what-the-compiler-checks-of-translations)). |
 | Files | `File`, `FileUpload`, `UploadSlot`, `FileContents` | A stored file (its key, name, size and type) as an entity field; the token of a finished upload in an `Input`; the signed address, or addresses for each part, an upload goes to; and what `store.read` returns, a file's bytes for passing on (to a provider, a PDF service, an email), which the format helpers do not accept ([Files](16-built-in-services.md#files)). |
-| Batches | `BatchRun`, `BatchProgress`, `RowProblem`, `ImportSummary`, `ExportSummary`, `CsvFormat` | A batch run, as the batch helpers return it and as an entity field can store it; its progress from `batches.status`; one bad row or failed item, without its value; what `finished:` receives after reading (or `batches.each`) and after writing, the latter holding the stored `File`; and who a CSV is written for, `CsvFormat.spreadsheet` or `.standard` ([Batches](12-jobs-and-events.md#batches-work-over-many-items)). |
+| Batches | `BatchRun`, `BatchProgress`, `RowProblem`, `ImportSummary`, `ExportSummary`, `CsvFormat` | A batch run, as the batch helpers return it and as an entity field can store it; its progress from `batches.status`; one bad row or failed item, without its value; what `finished:` receives after reading (or `batches.each`) and after writing, the latter holding the stored `File`; and who a CSV is written for, `CsvFormat.spreadsheet` or `.standard` ([Batches](12-jobs-and-events.md#batches)). |
 | Services | `SearchText`, `OAuthGrant`, `AnyObject` | What people type into a search box, 1 to 200 characters with no line breaks, tabs or other control characters, which a query's `matches` reads as words, quoted phrases and `-word` ([Search](16-built-in-services.md#search)); a connection's credential held for each owner record, `OAuthGrant { owner: ... }`, written only in a connection's `credential:` and never readable by code ([Acting for each user: OAuth grants](11-integrations.md#acting-for-each-user-oauth-grants)); and, only as a package operation's input field, any of the app's object types, sent in its JSON form (Postmark's template variables, Stripe's metadata). |
 | Bases | `Object`, `Enum`, `Input`, `Output` | Used only after `=` in a `type` declaration. Other features add bases the same way: `Failure` ([Failures](04-failures.md)), `Event` ([Declaring an event](12-jobs-and-events.md#declaring-an-event)), `EmailMessage` ([Email](16-built-in-services.md#email)), `Document`, a template rendered to HTML or PDF ([Documents](16-built-in-services.md#documents)), and `Message`, a translated message whose fields are its placeholders ([Translations as messages](10-configuration-and-time.md#translations-as-messages)). |
 | Decoding | `DecodeProblem` | `field: Text`, a field's path with list positions as numbers, and `rule: Text`; never the value. It is what a failure mapped from `json.read`'s `mismatch` receives in its `problem` field, and only the runtime builds one. |
 | Nothing | `Unit` | What an action returns when it returns nothing. |
 
-The batch types' fields, as [Batches](12-jobs-and-events.md#batches-work-over-many-items)
+The batch types' fields, as [Batches](12-jobs-and-events.md#batches)
 uses them:
 
 | Type | Fields |
@@ -462,7 +462,7 @@ The same rules hold for the settings on the fields of every type with
 fields, entities and events included. The settings that only an entity's or
 an event's fields take (`generated`, `on_delete`, `unique`, `immutable`,
 `role`, `personal`, `erase`, `retention`) are described with those
-features, starting at [Data](05-data.md).
+features, starting at [Entities, stores and migrations](05-data.md).
 
 An exact number holds at most 38 digits, and a number literal with more is
 `type.invalid_literal`.
@@ -911,7 +911,7 @@ Every type is declared the same way, `type Name = Base { ... }`. The base
 says what the type is built from, and the block holds the details: rules for
 a number or text, fields for an object, variants for an enum. An `entity` is
 declared on its own, because it is more than a type: it is stored, and it has
-actions, queries and policy ([Data](05-data.md)).
+actions, queries and policy ([Entities, stores and migrations](05-data.md)).
 
 ```jadpo check project=one-form file=names.jadpo hidden
 type ReceiptId = Uuid {}
@@ -1470,7 +1470,7 @@ test "a booking that ends before it starts is refused" {
   request's body or query string, the output a route test reads,
   `text.parse` of a standard type's text, and a read from the store. Jadpo
   never stores a value that breaks a rule, so one read back from the store
-  is a defect ([Data](05-data.md)).
+  is a defect ([Entities, stores and migrations](05-data.md)).
 - **One rule is reported.** The field rules run first, then each rule in the
   order written, and the first one broken is the one reported, so a report
   never depends on more than one rule.

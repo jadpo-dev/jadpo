@@ -842,7 +842,7 @@ starts with `CREATE EXTENSION IF NOT EXISTS postgis;`, in the migration's
 transaction like the rest. An application with no geometry column or
 index never creates the extension and never needs PostGIS on its server,
 as an application with no entity needs no database
-([Data](05-data.md)). [A store with no PostGIS](#a-store-with-no-postgis)
+([Entities, stores and migrations](05-data.md)). [A store with no PostGIS](#a-store-with-no-postgis)
 says what happens when the server can't create it.
 
 ### One `geography` column, with a check

@@ -239,7 +239,11 @@ standard is the topic "Routes: signed in by default" on the
   is. Where the plain version would change what a rule means, keep the
   rule's wording.
 - **Build status** is in the page's "What is built" section, or one note
-  at the end of the topic, never in its first lines.
+  at the end of the topic. A topic wholly or partly unbuilt also opens with a
+  status line, since an agent stops reading at the first thing that answers it.
+  The bundle writes that line from the [reference's
+  manifest](documentation.md#landing-pages-and-status-lines); never write it in
+  a topic.
 - **A status word** in "What is built" is Built only of a row wholly built.
   Something it lacks makes the row Partly built, saying what, or gets a row
   of its own; `tools/docs/agent_guidance.py` fails a Built row that says

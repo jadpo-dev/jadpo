@@ -11,14 +11,17 @@ A node is a group, a page or a section, each holding the next. It gives a
 - `topics`, `details`: topics in reading order, usage then exact rules.
 - `built`: its "What is built" topics, which stay out of the sidebar.
 - `types`: a group of the compiler's standard types, listed after its topics.
-- `commands`: true on the one node that lists every command.
+- `commands`: the commands it lists, by name, each in one place.
 - `status`: the "What is built" rows it reports, as `<area file>: <the start of
   the row's first cell>`, and `missing`, what a partly built one lacks.
+- `status_column`: the word for its rows, on a landing table with a column for
+  each row's status.
 - `href`: only for a page the site writes itself.
 
-`[topic_status]` gives a topic the rows of its own. Nothing here parses a
-page: Bundle reads the pages and hands this module its index entries, each with
-`id`, `kind`, `title` and `summary`.
+`[topic_status]` gives a topic the rows of its own, and `[topic_summary]` the
+line a topic's first sentence doesn't manage. Nothing here parses a page: Bundle
+reads the pages and hands this module its index entries, each with `id`, `kind`,
+`title` and `summary`.
 
 The manifest gives index.json each placed page's `group`, `page` and `status`,
 and the bundle's nav.json.
@@ -44,8 +47,9 @@ TYPES_INDEX = 'types'
 BUILT, PARTLY, NOT_BUILT = 'built', 'partly built', 'not built'
 STATUS_WORDS = (('Partly built', PARTLY), ('Not built', NOT_BUILT), ('Built', BUILT))
 BUILT_TITLE = 'What is built'
-NODE_KEYS = {'id', 'title', 'summary', 'href', 'status', 'missing', 'topics', 'details', 'built', 'types', 'commands'}
-TOP_KEYS = {'group', 'topic_status'}
+NODE_KEYS = {'id', 'title', 'summary', 'href', 'status', 'missing', 'status_column', 'topics', 'details', 'built',
+             'types', 'commands'}
+TOP_KEYS = {'group', 'topic_status', 'topic_summary'}
 
 
 def status_rows(root):
@@ -90,8 +94,14 @@ def children_of(node):
 
 
 def is_landing(page):
-    """Whether a page may be a node's own: a topic, or the types' index."""
-    return page is not None and (page['kind'] == 'topic' or page['id'] == TYPES_INDEX)
+    """Whether a page may be a node's own: a topic, a landing page, or the
+    types' index."""
+    return page is not None and (page['kind'] in ('topic', 'landing') or page['id'] == TYPES_INDEX)
+
+
+def command_id(name):
+    """A command's page ID, from its name."""
+    return 'jadpo-' + re.sub(r'[^a-z0-9]+', '-', name)
 
 
 def landing_of(node, pages):
@@ -104,6 +114,7 @@ class Reference:
     def __init__(self, data, rows, error=None):
         self.data, self.rows, self.error = data, rows, error
         self.topic_status = dict(data.get('topic_status', {}))
+        self.topic_summary = dict(data.get('topic_summary', {}))
 
     def walk(self):
         """Every node, parents first, with its trail of titles."""
@@ -146,9 +157,13 @@ class Reference:
     def listed(self, node, pages, type_groups):
         """A node's `topics`, then what it generates, as the IDs with pages."""
         ids = list(node.get('topics', [])) + list(self.type_ids(node, type_groups))
-        if node.get('commands'):
-            ids += [page['id'] for page in pages.values() if page['kind'] == 'command']
+        ids += [command_id(name) for name in node.get('commands', [])]
         return [page_id for page_id in ids if page_id in pages]
+
+    def landings_to_make(self, pages):
+        """The nodes whose `id` no page has, with what such a page needs."""
+        return [node for node, _ in self.walk()
+                if node.get('id') and node['id'] not in pages and node.get('summary') and not node.get('href')]
 
     def entry_status(self, page_id, node_status, gone, stands_for):
         """A page's status: its own rows; else nothing on a page not built is
@@ -191,6 +206,38 @@ class Reference:
             visit(group, (group.get('title'),), False)
         return places
 
+    def unfinished(self, pages, type_groups):
+        """`{page id: {'status', 'missing', 'area'}}` for each page not wholly
+        built: its status as `places` gives it, what a partly built page lacks,
+        and the area page whose "What is built" table says so."""
+        found = {}
+
+        def area_of(specs):
+            return specs[0].partition(': ')[0] if specs else None
+
+        def visit(node, gone):
+            status = self.status(node.get('status', []))
+            specs = node.get('status', [])
+            if status == NOT_BUILT and gone is None:
+                gone = specs
+            listed = self.listed(node, pages, type_groups)
+            stands_for = self.stands_for(node, listed, pages)
+            ids = listed + [i for i in node.get('details', []) if i in pages]
+            if landing_of(node, pages):
+                ids.insert(0, node['id'])
+            for page_id in ids:
+                own = self.topic_status.get(page_id)
+                page_status = self.entry_status(page_id, status, gone is not None, stands_for)
+                if page_status in (PARTLY, NOT_BUILT) and page_id not in found:
+                    missing = node.get('missing') if page_status == PARTLY and page_id == stands_for else None
+                    found[page_id] = {'status': page_status, 'missing': missing,
+                                      'area': area_of(own or gone or specs)}
+            for child in children_of(node):
+                visit(child, gone)
+        for group in self.data.get('group', []):
+            visit(group, None)
+        return found
+
     def nav(self, pages, type_groups, path_of, version):
         """The tree nav.json holds, every address worked out, so the site reads
         neither this manifest nor the tables."""
@@ -215,6 +262,7 @@ class Reference:
             summary = node.get('summary') or (own['summary'] if own else first['summary'] if first else None)
             return {'id': node.get('id'), 'title': node.get('title'), 'summary': summary, 'href': href,
                     'status': status, 'missing': node.get('missing') if status == PARTLY else None,
+                    'status_column': node.get('status_column'),
                     'topics': topics, 'details': details, 'built': built, 'children': children}
 
         return {'version': version, 'groups': [tree(group, False) for group in self.data.get('group', [])]}
@@ -227,7 +275,7 @@ class Reference:
         there is no compiler data to compare."""
         if self.error:
             return [f'{MANIFEST}: {self.error}']
-        found, places, ids, groups, commands = [], {}, {}, {}, []
+        found, places, ids, groups, commands = [], {}, {}, {}, {}
 
         def at(where, message):
             found.append(f'{MANIFEST}, {where}: {message}')
@@ -261,7 +309,10 @@ class Reference:
                 if not KEBAB.match(node_id):
                     at(where, f'its id "{node_id}" isn\'t kebab case')
                 page = pages.get(node_id)
-                if page is None:
+                if node_id in aliases:
+                    at(where, f'its id "{node_id}" is an old ID of "{aliases[node_id]}", which {node_id}\'s address '
+                              f'redirects to')
+                elif page is None:
                     if not node.get('summary'):
                         at(where, f'no page is "{node_id}", so a landing page will be made, which needs a `summary`')
                 elif not is_landing(page):
@@ -277,8 +328,12 @@ class Reference:
                 place(where, page_id, built=True)
             if node.get('types') is not None:
                 groups.setdefault(node['types'], []).append(where)
-            if node.get('commands'):
-                commands.append(where)
+            listed_commands = node.get('commands', [])
+            if not isinstance(listed_commands, list):
+                at(where, '`commands` lists commands by name')
+                listed_commands = []
+            for name in listed_commands:
+                commands.setdefault(command_id(name), []).append((where, name))
             problems = [self.row(spec)[1] for spec in node.get('status', [])]
             for problem in filter(None, problems):
                 at(where, problem)
@@ -313,8 +368,18 @@ class Reference:
                     found.append(f'{MANIFEST}, {wheres[0]}: the compiler has no type group "{name}"')
                 if len(wheres) > 1:
                     found.append(f'{MANIFEST}: the type group "{name}" is on {" and ".join(wheres)}')
-        if not commands and any(page['kind'] == 'command' for page in pages.values()):
-            found.append(f'{MANIFEST}: the commands have no place: give one page `commands = true`')
-        if len(commands) > 1:
-            found.append(f'{MANIFEST}: `commands = true` is on {" and ".join(commands)}, and belongs on one')
+        has_commands = any(page['kind'] == 'command' for page in pages.values())
+        for page_id, page in pages.items():
+            if page['kind'] == 'command' and page_id not in commands:
+                found.append(f'{MANIFEST}: `{page["title"]}` has no place: add it to a section\'s `commands`')
+        for page_id, wheres in sorted(commands.items()):
+            where, name = wheres[0]
+            if has_commands and (page_id not in pages or pages[page_id]['kind'] != 'command'):
+                found.append(f'{MANIFEST}, {where}: there is no command `jadpo {name}`')
+            if len(wheres) > 1:
+                found.append(f'{MANIFEST}: `jadpo {name}` is in more than one place: '
+                             f'{" and ".join(w for w, _ in wheres)}')
+        for page_id in self.topic_summary:
+            if page_id not in places:
+                found.append(f'{MANIFEST}, [topic_summary]: "{page_id}" is no topic placed here')
         return found

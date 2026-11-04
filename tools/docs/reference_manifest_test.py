@@ -68,7 +68,7 @@ summary = "The command."
 id = "commands"
 title = "Commands"
 summary = "Every command."
-commands = true
+commands = ["check", "test"]
 topics = ["the-command"]
 
 [[group]]
@@ -216,12 +216,30 @@ class TheCheck(unittest.TestCase):
     def test_with_no_compiler_data_type_groups_arent_compared(self):
         self.assertEqual(problems(type_groups=None), [])
 
-    def test_commands_have_one_place(self):
-        found = problems(SMALL.replace('commands = true\n', ''))
+    def test_every_command_has_one_place(self):
+        found = problems(SMALL.replace('commands = ["check", "test"]\n', 'commands = ["check"]\n'))
         self.assertEqual(len(found), 1, found)
-        self.assertIn('commands = true', found[0])
-        twice = problems(SMALL.replace('title = "Logic"', 'title = "Logic"\ncommands = true'))
-        self.assertTrue(any('commands' in p and 'Language › Logic' in p for p in twice), twice)
+        self.assertIn('`jadpo test` has no place', found[0])
+        twice = problems(SMALL.replace('title = "Logic"', 'title = "Logic"\ncommands = ["check"]'))
+        self.assertTrue(any('`jadpo check` is in more than one place' in p and 'Language › Logic' in p for p in twice), twice)
+
+    def test_a_command_there_is_no_page_for_is_a_problem(self):
+        found = problems(SMALL.replace('commands = ["check", "test"]', 'commands = ["check", "test", "nope"]'))
+        self.assertEqual(len(found), 1, found)
+        self.assertIn('no command `jadpo nope`', found[0])
+
+    def test_commands_are_listed_by_name(self):
+        found = problems(SMALL.replace('commands = ["check", "test"]', 'commands = true'))
+        self.assertTrue(any('lists commands by name' in p for p in found), found)
+
+    def test_a_landing_cannot_take_an_old_id(self):
+        found = problems(SMALL.replace('id = "commands"', 'id = "old-commands"'), aliases={'old-commands': 'the-command'})
+        self.assertTrue(any('old ID of "the-command"' in p for p in found), found)
+
+    def test_a_topic_summary_names_a_placed_topic(self):
+        found = problems(SMALL + '\n[topic_summary]\nnope = "A line."\n')
+        self.assertEqual(len(found), 1, found)
+        self.assertIn('"nope" is no topic placed here', found[0])
 
     def test_a_landing_to_be_made_says_what_it_holds(self):
         found = problems(SMALL.replace('summary = "How a program is written."\n', ''))
@@ -327,6 +345,16 @@ class ThePlaces(unittest.TestCase):
         self.assertEqual(self.places['types'], {'group': 'Language', 'page': 'Logic', 'status': None})
         self.assertEqual(self.places['jadpo-test'], {'group': 'Tools', 'page': 'Commands', 'status': None})
 
+    def test_a_page_not_wholly_built_says_which_area_says_so(self):
+        unfinished = reference().unfinished(pages(), TYPE_GROUPS)
+        self.assertEqual(unfinished['files'], {'status': 'partly built', 'missing': 'uploads and downloads',
+                                               'area': '16-services'})
+        self.assertEqual(unfinished['documents'], {'status': 'not built', 'missing': None, 'area': '16-services'})
+        self.assertEqual(unfinished['document-privacy']['status'], 'not built')
+        self.assertEqual(unfinished['logic'], {'status': 'not built', 'missing': None, 'area': '03-logic'})
+        self.assertNotIn('email', unfinished)
+        self.assertNotIn('reading-gzip', unfinished)
+
     def test_what_is_outside_the_reference_has_none(self):
         self.assertNotIn('a.b', self.places)
         self.assertNotIn('the-page-nobody-has', self.places)
@@ -347,7 +375,8 @@ class TheTree(unittest.TestCase):
         self.assertEqual([g['title'] for g in self.nav['groups']], ['Language', 'Services', 'Tools', 'Errors'])
 
     def test_every_node_has_the_same_keys(self):
-        keys = ['id', 'title', 'summary', 'href', 'status', 'missing', 'topics', 'details', 'built', 'children']
+        keys = ['id', 'title', 'summary', 'href', 'status', 'missing', 'status_column', 'topics', 'details', 'built',
+                'children']
 
         def walk(node):
             self.assertEqual(sorted(node), sorted(keys), node['title'])
