@@ -2856,7 +2856,9 @@ stops short.
   loopback binding `ctx.exports` gives its own `JadpoHandOn` entrypoint,
   naming each piece by its record. The fresh invocation reads the pieces
   back and runs them in its own `waitUntil`, within what is left of its
-  own 30 seconds, counted from its start
+  own 30 seconds, counted from its start. With no cron to help, 160 summaries
+  of 2 seconds each were kept over 89 seconds, the largest gap 3.8 seconds, and
+  a Worker deployed under `--env` carried 40 on for 81 seconds (measured once, from one location (London, LHR), on 2026-11-04)
   ([design notes](notes/12-jobs-and-events.md), "Work handed on, on
   Workers"). A hand-on the platform refuses, for example past its limit
   on how many invocations one request may chain, leaves the work in the

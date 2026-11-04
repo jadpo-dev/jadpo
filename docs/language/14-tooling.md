@@ -2634,10 +2634,14 @@ with the stamp's fields (`build`, `commit`, `modified`, `compiler`,
   its outcome, `deliveries`, `received`, `polled`, `deleted`, `alerts`,
   `problems`, each store it couldn't work in, `unbuilt` and `ms`;
 - `operation.failed`, for a fault behind a 500, with its classification,
-  route, `request_id` and `.jadpo` frames ([Failures](04-failures.md),
-  [Debugging and review](17-debugging-and-review.md)). When the fault is a
-  bug in Jadpo, `bug_in_jadpo` is `true` and `report` holds the issue
-  form's address; otherwise they are `false` and `null`;
+  `cause`, route, `request_id` and `.jadpo` frames ([Failures](04-failures.md),
+  [Debugging and review](17-debugging-and-review.md)). `cause` is what the
+  runtime or a driver said went wrong, naming a field or a statement's problem
+  and never a value, or `null` when the classification says it all. When the
+  fault is a bug in Jadpo, `bug_in_jadpo` is `true` and `report` holds the issue
+  form's address; otherwise they are `false` and `null`. A 500 with no fault
+  behind it, such as `misconfigured`, is logged too, with its code as its
+  classification and the connection whose call failed;
 - `runtime.stopped`.
 
 The rest of a deployable's log comes with telemetry ([Built-in
@@ -2965,7 +2969,20 @@ Worker that handed it on, whatever name `wrangler deploy --name` or
 
 Wrangler's own `deploy --dry-run`, at the version Jadpo pins, accepts the
 file with no account and no warning, in tests run with every network
-connection refused.
+connection refused. A real `wrangler deploy` accepted it too, queue and
+dead-letter consumers, cron, Hyperdrive and rate limits, measured once, from one location (London, LHR), on 2026-11-04.
+
+`wrangler deploy --env <name>` on this file, which has no such section,
+warns that there is none but deploys, keeping the file's bindings, as a Worker
+named `<name in the file>-<name given>`. That Worker also claims the file's
+queues, and a queue has one consumer, so take the `queues` out of a copy
+of the file before deploying a second Worker beside the first.
+
+**A Worker in the same account.** A call from a Worker to another Worker's
+`workers.dev` address in the same account is refused unless the calling Worker
+has Cloudflare's `global_fetch_strictly_public` compatibility flag, which the
+file doesn't set, so a real provider isn't affected. A model reached this way
+answers `500 misconfigured`, and `operation.failed` logs it.
 
 ### The build stamp
 
@@ -3002,6 +3019,15 @@ The `--json` data gives `wrangler`; the module's `path`, `bytes` and
 `gzip_bytes`; `hyperdrive`, each binding and its `id` or null; `binary`
 null; and every deployable's `per_instance`, each `connection` and its
 `max_concurrent`, empty except on a Worker that reaches a cap.
+
+The upload and the start, measured once, from one location (London, LHR), on 2026-11-04, against Cloudflare's limits of 10 MB
+compressed on its paid plan and 1 second to start:
+
+| Worker | Upload | Gzipped | Start |
+|---|---|---|---|
+| A teaching project with a cron and a queue | 7,577 KiB | 2,818 KiB | 7 ms |
+| The same with an AI connection and more routes | 7,828 KiB | 2,903 KiB | 7 ms |
+| A Worker that only serves a few routes | 7,283 KiB | 2,728 KiB | 4 ms |
 
 ### Starting
 

@@ -566,3 +566,34 @@ fn what_cant_be_kept_now_is_retried_after_a_delay() {
         assert_eq!(host.count("SELECT count(*) FROM \"jadpo_outbox\"").await, 0);
     });
 }
+
+/// An installed package a project no longer connects to still has its
+/// capability mappings checked, against its own operations rather than none:
+/// moving a queue from a package to this driver and leaving the package
+/// installed said `messages.receive_message` was no operation of its own
+/// (chunk 8.2n).
+#[test]
+fn a_package_no_connection_reaches_still_finds_its_own_operations() {
+    let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("queue-package-left-installed");
+    let _ = fs::remove_dir_all(&root);
+    crate::deployable::copy_folder(&examples.join("26-delivery-desk"), &root);
+    let app = fs::read_to_string(root.join("app.jadpo")).expect("the app");
+    let start = app.find("        depot_scans: {").expect("the connection");
+    let end = app.find("        mail: {").expect("the next connection");
+    let moved = format!(
+        "{}        depot_scans: {{\n            driver: Driver.cloudflare_queues\n            queue: \"depot-scans\"\n            dead_letter_queue: \"depot-scans-dead\"\n        }}\n{}",
+        &app[..start],
+        &app[end..]
+    );
+    fs::write(root.join("app.jadpo"), moved).expect("written");
+    let output = run(
+        &["check".to_string()],
+        &Environment::empty().with_cwd(&root),
+    );
+    let text = format!("{}{}", output.stdout, output.stderr);
+    assert!(
+        !text.contains("isn't one of the package's operations"),
+        "{text}"
+    );
+}

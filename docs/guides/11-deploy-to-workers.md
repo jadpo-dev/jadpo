@@ -233,6 +233,11 @@ Apply the migrations to the database first:
 (set -a; . ~/books-app.env; jadpo migrate apply)
 ```
 
+A hosted provider's address often ends in settings such as
+`?sslmode=require`. Remove them: Jadpo refuses an address that sets TLS
+itself, since its connection decides, and it always uses TLS to a database
+on another machine. Use the provider's direct address, not its pooled one.
+
 Then deploy from the Worker's folder:
 
 ```sh
@@ -243,7 +248,9 @@ npx wrangler deploy
 On Workers, settings are the Worker's variables and secrets, which
 Cloudflare keeps. Store a secret with `npx wrangler secret put <NAME>`,
 which asks for the value at a prompt, and give other settings as
-`--var NAME:value` to `npx wrangler deploy`. Wrangler prints the
+`--var NAME:value` to `npx wrangler deploy`. Any setting with no `default:`
+is listed as a secret the Worker needs, even one that isn't secret, so
+store it with `secret put` too. Wrangler prints the
 Worker's address, which answers the same routes and health check as
 the server program.
 
@@ -252,9 +259,3 @@ the server program.
 [A Workers deployable](../language/14-tooling.md#a-workers-deployable),
 [Declared deployables](../language/14-tooling.md#declared-deployables)
 and [Rate limits on Workers](../language/16-built-in-services.md#rate-limits-on-workers).
-
-## Not built yet
-
-The limits Jadpo writes for Cloudflare's rate-limiting binding haven't
-yet been checked against Cloudflare's network, only against its local
-runtime.

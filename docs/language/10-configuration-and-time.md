@@ -746,7 +746,8 @@ On Workers there is no connection address to fall back to. Cloudflare sets
 caller sent. So `cloudflare` is the only source accepted there, and it is
 what a Workers deployable uses when there is no `client_address:`. An
 address Cloudflare didn't give is unknown there, and requests with no known
-address share one allowance.
+address share one allowance. Asked with a `CF-Connecting-IP` of its own, Cloudflare answered 403 without
+reaching the Worker (measured once, from one location (London, LHR), on 2026-11-04), so a client can't choose its address that way.
 
 Any other source is refused when the project is built for Workers. `jadpo
 check` refuses it for each deployable with `target: Target.wasm`
