@@ -50,11 +50,8 @@ pub fn reached(db: &dyn Db, project: Project) -> BTreeSet<String> {
         }
     }
     let mut out = BTreeSet::new();
-    if connected.is_empty() {
-        return out;
-    }
     for &file in files {
-        if location(db, project, file).ownership.package().is_some() {
+        if connected.is_empty() || location(db, project, file).ownership.package().is_some() {
             continue;
         }
         let tokens: Vec<_> = parse(db, file)
@@ -75,18 +72,21 @@ pub fn reached(db: &dyn Db, project: Project) -> BTreeSet<String> {
             }
         }
     }
-    // A connected package's capability mappings call its own operations,
+    // A package's capability mappings call its own operations,
     // `call: <resource>.<operation>`, so those resources are reached too
-    // (chunk 7.7c), as are those its polls call (chunk 7.6c).
-    let folders: BTreeSet<&String> = connected.values().collect();
+    // (chunk 7.7c), as are those its polls call (chunk 7.6c). Every
+    // installed package's are, connected or not, since its mappings are
+    // checked either way and each would otherwise call no such operation
+    // (chunk 8.2n).
     for &file in files {
         let path = file.path(db);
-        let Some(folder) = folders.iter().find(|folder| {
-            path.starts_with(&format!("{folder}/provides/"))
-                || *path == format!("{folder}/{}", crate::PROVIDER_FILE)
-        }) else {
+        let Some((home, rest)) = package_at(path) else {
             continue;
         };
+        if !home.installed || !matches!(rest.as_slice(), ["provides", _] | [crate::PROVIDER_FILE]) {
+            continue;
+        }
+        let folder = home.folder;
         let tokens: Vec<_> = parse(db, file)
             .syntax()
             .descendants_with_tokens()

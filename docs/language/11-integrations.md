@@ -7016,7 +7016,9 @@ connections: {
   tick keeps a fetched one ("How queues are received"), and answered in the
   batch's order: acknowledged once its event and id commit, as a repeat,
   or once parked; retried when the store can't take it now, after 10
-  seconds doubled for each earlier attempt, at most an hour. The host
+  seconds doubled for each earlier attempt, at most an hour; Cloudflare kept
+  to that, the gaps between retries measuring 10.9, 20.9 and 40.7 seconds
+  (measured once, from one location (London, LHR), on 2026-11-04). The host
   answers each message on its own, never the batch whole, then runs the
   kept events' deliveries after answering, in `waitUntil` and handed on
   past its 30 seconds. Each batch with a message retried logs

@@ -8,11 +8,14 @@
 //! (`query_typed`), with each parameter's type taken from its
 //! [`SqlValue`](jadpo_runtime::SqlValue), and each transaction sets its
 //! own isolation level in its `BEGIN`: read committed for an action that
-//! loads no record, repeatable read for every other (area 6).
+//! loads no record, repeatable read for every other (area 6). Nor does
+//! tokio-postgres name one of its own to look up a type ([`extension_types`]).
 
 mod classify;
 #[cfg(feature = "postgres")]
 mod driver;
+#[cfg(feature = "postgres")]
+mod extension_types;
 #[cfg(any(feature = "postgres", test))]
 mod wire;
 

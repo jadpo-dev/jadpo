@@ -280,6 +280,30 @@ fn apply_and_status_need_a_database() {
 
 // --- against a live database --------------------------------------------------
 
+/// `status` only reads, so a database it can't reach didn't migrate anything
+/// or roll anything back, and it doesn't say so (chunk 8.2n).
+#[test]
+fn a_status_that_cant_reach_its_database_says_it_changed_nothing() {
+    let root = project("status_unreached");
+    jadpo(&root, &["migrate", "new", "first"]);
+    jadpo(&root, &["records", "update"]);
+    let status = jadpo(
+        &root,
+        &[
+            "migrate",
+            "status",
+            "--url",
+            "postgresql://localhost:1/none",
+        ],
+    );
+    assert_ne!(status.code, 0);
+    let text = format!("{}{}", status.stdout, status.stderr);
+    assert!(text.contains("Couldn't read `main`'s migrations"), "{text}");
+    assert!(text.contains("Nothing was changed."), "{text}");
+    assert!(!text.contains("Migrating"), "{text}");
+    assert!(!text.contains("rolled back"), "{text}");
+}
+
 #[test]
 fn apply_runs_pending_migrations_once_and_status_shows_them() {
     if !jadpo_test::live() {

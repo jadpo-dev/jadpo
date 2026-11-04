@@ -629,6 +629,7 @@ with `internal_fault`, undo its writes, and log which one happened:
   "classification": "int_overflow",
   "operation": "action:price_line",
   "site": "domains/ordering/actions/price_line.jadpo:4",
+  "cause": null,
   "request_id": "req_0b1e…"
 }
 ```
@@ -649,8 +650,8 @@ app. The client gets the same `500 internal_fault` as for any defect, and
 nothing about Jadpo, the version or the cause is in the response. The
 operator's `operation.failed` line adds `bug_in_jadpo: true` and `report`,
 the address of the issue form, beside the build's version, the
-`request_id` and the `.jadpo` frames. It never holds a request body, a
-header or a setting value. A fault that is your own code's, such as an
+`request_id`, the `.jadpo` frames and `cause`, what went wrong in a few words.
+It never holds a request body, a header or a setting value. A fault that is your own code's, such as an
 overflow, has `bug_in_jadpo: false` and `report: null`.
 
 The `jadpo` command, `jadpo dev` and `jadpo test` aren't deployed apps. A

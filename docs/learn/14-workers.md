@@ -165,10 +165,17 @@ Apply the migrations to the database, as on page 13:
 (set -a; . ~/todo-app.env; jadpo migrate apply)
 ```
 
+A hosted provider's address often ends in settings such as
+`?sslmode=require`. Remove them: Jadpo refuses an address that sets TLS
+itself, since its connection decides, and it always uses TLS to a database
+on another machine. Use the provider's direct address, not its pooled one.
+
 On Workers, settings are the Worker's variables and secrets, which
 Cloudflare keeps. Store the secret with Wrangler, which asks for the
 value at a prompt rather than taking it on the command line, then
-deploy, giving the other settings as variables:
+deploy, giving the other settings as variables. Any setting with no
+`default:` is listed as a secret the Worker needs, even one that isn't
+secret, so store it with `secret put` too:
 
 ```sh
 cd build/target/web
@@ -198,9 +205,3 @@ the rest: background work, other services, money, time zones and more.
 Read more in the reference: [A Workers deployable](../language/14-tooling.md#a-workers-deployable),
 [Declared deployables](../language/14-tooling.md#declared-deployables)
 and [Rate limits on Workers](../language/16-built-in-services.md#rate-limits-on-workers).
-
-## Not built yet
-
-- The limits Jadpo writes for Cloudflare's rate-limiting binding haven't
-  yet been checked against Cloudflare's network, only against its local
-  runtime.
