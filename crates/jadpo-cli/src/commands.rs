@@ -44,7 +44,11 @@ pub fn help(call: &Call) -> Reply {
         Some(word) => match (table::find(word), jadpo_diag::find(word)) {
             (Some(command), _) => help::command(command),
             (None, Some(rule)) => help::rule(rule),
-            (None, None) => Reply::failed(unknown_topic(word)),
+            (None, None) if word == "types" => crate::type_page::index_help(),
+            (None, None) => match crate::type_page::find(word) {
+                Some(name) => crate::type_page::type_help(name),
+                None => Reply::failed(unknown_topic(word)),
+            },
         },
     }
 }

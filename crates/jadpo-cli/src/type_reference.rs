@@ -68,10 +68,7 @@ pub fn types_json() -> Json {
             ),
             ("min", bound(entry.holds, true)),
             ("max", bound(entry.holds, false)),
-            (
-                "personal",
-                personal(entry.holds).map_or(Json::Null, Json::from),
-            ),
+            ("personal", entry.personal().map_or(Json::Null, Json::from)),
             ("text", text_word(entry.text).map_or(Json::Null, Json::from)),
             ("json", json_word(entry.json).into()),
             ("storage", storage_word(entry.storage).into()),
@@ -304,13 +301,6 @@ fn variants_json(entry: &StandardType, stub: Option<&jadpo_check::StandardStub>)
 fn pattern(holds: Holds) -> Option<&'static str> {
     match holds {
         Holds::Text { pattern, .. } => Some(pattern),
-        _ => None,
-    }
-}
-
-fn personal(holds: Holds) -> Option<&'static str> {
-    match holds {
-        Holds::Text { personal, .. } => personal,
         _ => None,
     }
 }
