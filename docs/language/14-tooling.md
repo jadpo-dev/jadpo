@@ -1154,6 +1154,8 @@ Not built yet:
 | `jadpo lsp` | Runs the language server for editors |
 | `jadpo help [command]` | Help for one command; `--help` works everywhere |
 | `jadpo help <rule>` | A rule's page, offline, by the id on an error's `rule:` line |
+| `jadpo help <Type>` | A standard type's page, offline: what it is, its shape and an example. `--json` gives its shape as data |
+| `jadpo help types` | Every standard type from A to Z |
 | `jadpo completions <shell>` | Prints the Tab-completion script for zsh, bash or fish |
 | `jadpo version` | Prints the version |
 | `jadpo toolchain` | Lists, removes and pins the Jadpo releases kept for projects |
@@ -1174,6 +1176,13 @@ with examples, and `jadpo help --json` gives the rule catalogue, every
 standard type's contract under `types` and every standard-library
 operation under `operations`, which the docs' type reference is built
 from, and the schemas of the manifest and of `jadpo test --json`.
+
+`jadpo help <Type>` prints a standard type's page offline, the same page as
+on the site: what it is, when to use it and what to use instead, its shape, an
+example, what is good to know, its JSON and its details (`jadpo help PersonName`).
+With `--json` it gives the type's fields, which are required, and the page. Any
+spelling finds it, so `personname` and `person_name` do too. `jadpo help types`
+lists every standard type from A to Z.
 
 `jadpo help <rule>`, with the id an error's `rule:` line gives
 (`jadpo help import.unused`), prints the rule's page offline, the page its

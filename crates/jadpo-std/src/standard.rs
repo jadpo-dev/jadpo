@@ -39,6 +39,7 @@ pub mod media;
 pub mod modulus;
 pub mod named;
 pub mod opening_hours;
+pub mod pages;
 pub mod person_names_data;
 pub mod phones;
 mod phones_data;
@@ -58,6 +59,7 @@ pub mod storage;
 pub mod web;
 
 pub use codes::isbn_from_isbn10;
+
 pub use contact::{LINE_MAX, LINE_PATTERN};
 pub use places::{ClosedList, closed_list, retired, subdivision_name};
 pub use signals::{

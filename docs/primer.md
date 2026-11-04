@@ -2,8 +2,7 @@
 
 Read this once before you write a Jadpo app. It shows how a project is
 laid out, the syntax, and the parts nearly every app uses, and it ends
-with a small app you can run on your own machine. Every example on this
-page is compiled and tested, so you can copy it.
+with a small app you can run. Every example here is compiled and tested.
 
 ## What Jadpo is
 
@@ -42,13 +41,13 @@ your project: it finds the project by looking upwards for `app.jadpo`.
 | Command | What it does |
 |---|---|
 | `jadpo new <name>` | Starts a project in a new folder, with a starter route and its test |
-| `jadpo check` | Checks the whole project. It's quick, because it builds nothing |
+| `jadpo check` | Checks the whole project quickly, building nothing |
 | `jadpo fmt` | Formats your files, and adds, removes and sorts their `use` lines |
 | `jadpo test` | Runs the tests. Tests that use the database need PostgreSQL installed |
 | `jadpo migrate new <purpose>` | Writes the next database migration from your entities |
 | `jadpo api update` | Updates the committed record of your API after you change a route |
 | `jadpo dev` | Runs the app on `http://127.0.0.1:3000` and reloads it when you save |
-| `jadpo help <command>` | Explains a command |
+| `jadpo help <name>` | Explains a command, a rule or a standard type |
 
 ## Reading an error
 
@@ -201,10 +200,10 @@ function sticker(parcel: Parcel) -> Label {
 Representation is not meaning. A tool's name and a person's email are both
 text, but they are different types, and the compiler never converts
 between them silently. The built-in representations are `Bool`, `Int`,
-`Decimal`, `Text`, `Bytes` and `Uuid`. About 250 standard types cover the
-rest (`Email`, `Money`, `Instant`, `Duration`, `Url`, `PostalAddress` and
-more), so look in the [standard library](language/19-standard-library.md)
-before inventing one.
+`Decimal`, `Text`, `Bytes` and `Uuid`. About 260 standard types cover the
+rest (`Email`, `Money`, `Instant`, `PostalAddress` and more), so look in
+[their A-to-Z list](https://jadpo.dev/docs/types) before inventing one.
+`jadpo help Money` prints one's shape and an example.
 
 ```jadpo check project=tool-share file=domains/lending/types/tool_name.jadpo
 /// What a tool is called, as its owner wrote it.
