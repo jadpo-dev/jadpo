@@ -123,6 +123,7 @@ mod rule_slice;
 mod schedules;
 mod search;
 mod seeds;
+mod sends;
 mod served_openapi;
 mod settle;
 mod side_by_side;

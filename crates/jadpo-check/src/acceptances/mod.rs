@@ -480,6 +480,10 @@ fn said(change: &str, family: &Family) -> (&'static str, &'static str) {
             "retyping an event's field can break its subscribers",
             "Subscribers read what an event carries, and events in the outbox were written with the old type.",
         ),
+        "ApiChange.media_type_changed" => (
+            "changing what a route sends can break clients",
+            "Clients read its body as the media type it had.",
+        ),
         "ApiChange.failure_changed" => (
             "changing a failure code can break clients",
             "Clients that handle the failure by its code or status no longer recognise it.",
