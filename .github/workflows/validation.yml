@@ -142,6 +142,10 @@ jobs:
       # disposable servers local runs start have it (docs/compiler-runtime.md
       # §2.7); a service container can't be built or given the settings. It
       # builds and starts in the background while the toolchain installs.
+      # The tests build enough to fill the runner's disk, so make room first;
+      # nothing here uses these toolchains.
+      - name: Free the runner's disk
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
       - name: Start PostgreSQL
         run: |
           (docker build --quiet --tag jadpo-postgres tools/fixtures/postgres &&
