@@ -3,8 +3,8 @@
 //! the event or its fields; `emit` is an action's, of an event; an action
 //! that emits keeps its events in the store it writes, or the one
 //! `events: { store: }` names; and a subscriber, which runs as the
-//! system, reaching what only `Access.public` grants is refused (area 9,
-//! decided 2026-10-19).
+//! system, reaching what only `Access.public` grants (area 9, decided
+//! 2026-10-19) or what no list grants anyone (chunk A22) is refused.
 
 use crate::support;
 
@@ -339,6 +339,128 @@ subscriber mark_added {
     assert!(
         found.contains(&"subscriber.run_invalid".to_string()),
         "{found:?}"
+    );
+}
+
+/// What the run does to `Todo`, with `Todo` granting it through no list:
+/// the delivery could only ever fail, so it fails at check (chunk A22).
+#[test]
+fn a_subscriber_reaching_what_no_list_grants_is_refused() {
+    let run = |effect: &str, body: &str, fails: &str| {
+        let todo = TODO.replace(&format!("        {effect}: [Access.system]\n"), "");
+        let todo = if effect == "create" {
+            todo.replace("        create: [Access.authenticated]\n", "")
+        } else if effect == "read" {
+            todo.replace("        read: [Access.authenticated, Access.system]\n", "")
+        } else {
+            todo
+        };
+        let mark = format!(
+            "use planning/entities {{ Todo{fails} }}\n\naction mark(todo_id: Todo.id){} -> Unit {{\n{body}\n}}\n",
+            if fails.is_empty() {
+                ""
+            } else {
+                " fails TodoNotFound"
+            }
+        );
+        problems(&[
+            ("domains/planning/entities/todo.jadpo", todo.as_str()),
+            ("domains/planning/actions/mark.jadpo", mark.as_str()),
+        ])
+    };
+    let subscriber = "domains/planning/subscribers/mark_added.jadpo policy.system_grant_missing";
+    assert_eq!(
+        run(
+            "update",
+            "    attempt Todo.update(todo_id) {\n        set: {\n            done: true\n        }\n    }",
+            ", TodoNotFound",
+        ),
+        [format!(
+            "{subscriber}: `mark_added` runs as the system, which nothing lets update `Todo`"
+        )]
+    );
+    assert_eq!(
+        run(
+            "delete",
+            "    attempt Todo.delete(todo_id)",
+            ", TodoNotFound",
+        ),
+        [format!(
+            "{subscriber}: `mark_added` runs as the system, which nothing lets delete `Todo`"
+        )]
+    );
+    assert_eq!(
+        run(
+            "read",
+            "    var found: Todo = attempt Todo.get(todo_id)\n    assert found.done == true",
+            ", TodoNotFound",
+        ),
+        [format!(
+            "{subscriber}: `mark_added` runs as the system, which nothing lets read `Todo`"
+        )]
+    );
+}
+
+/// The report this came from: a record created, through an action the
+/// subscriber's own action calls, on an entity with no `create:`.
+#[test]
+fn a_subscribers_create_with_no_list_is_refused_however_deep() {
+    let line = "/// A line of the log.\nentity Line {\n    id: Uuid\n    done: Bool\n\n    policy: {\n        read: [Access.system]\n    }\n}\n";
+    let write = "use planning/entities { Line }\n\naction write_line() -> Line {\n    return Line.create {\n        set: {\n            done: true\n        }\n    }\n}\n";
+    let mark = "use planning/actions { write_line }\nuse planning/entities { Line, Todo }\n\naction mark(todo_id: Todo.id) -> Line {\n    return write_line()\n}\n";
+    let db = Database::default();
+    let project = support::project(
+        &db,
+        Layout::Project,
+        &files(&[
+            ("domains/planning/entities/line.jadpo", line),
+            ("domains/planning/actions/write_line.jadpo", write),
+            ("domains/planning/actions/mark.jadpo", mark),
+        ]),
+    );
+    let found = jadpo_check::check(&db, project);
+    let refused: Vec<_> = found
+        .iter()
+        .filter(|d| d.rule.id == "policy.system_grant_missing")
+        .collect();
+    let [refused] = refused.as_slice() else {
+        panic!("one refusal: {found:?}");
+    };
+    assert_eq!(
+        refused.message,
+        "`mark_added` runs as the system, which nothing lets create `Line`"
+    );
+    assert_eq!(
+        refused.reason.as_deref(),
+        Some(
+            "A subscriber runs as the system, which an entity grants background work by naming `Access.system`; `Line`'s policy grants nobody `create`, so every run would be refused with `not_permitted`."
+        )
+    );
+    assert_eq!(
+        refused.next.as_ref().map(|next| next.text.as_str()),
+        Some("Add `create: [Access.system]` to `Line`'s `policy:`")
+    );
+}
+
+/// A list naming only people may sit on a branch the system never takes,
+/// in an action a route runs too, and such a program works; whether the
+/// check refuses it anyway is Richard's to decide (chunk A22). A
+/// `FieldAccess.server_only` field waits on the same: area 9 says area 12
+/// says how background work writes one, and it doesn't.
+#[test]
+fn a_list_naming_only_people_and_a_server_only_field_are_not_refused_yet() {
+    let people = TODO.replace("update: [Access.system]", "update: [Access.authenticated]");
+    assert_eq!(
+        problems(&[("domains/planning/entities/todo.jadpo", people.as_str())]),
+        Vec::<String>::new()
+    );
+    let server_only = TODO.replace(
+        "    done: Bool\n",
+        "    done: Bool {\n        policy: FieldAccess.server_only\n    }\n",
+    );
+    assert!(
+        !rules(&[("domains/planning/entities/todo.jadpo", server_only.as_str())])
+            .contains(&"policy.system_grant_missing".to_string())
     );
 }
 
