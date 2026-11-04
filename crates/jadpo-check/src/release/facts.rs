@@ -17,6 +17,8 @@ use crate::surface::{self, Surface, What};
 pub struct Facts {
     /// `library` or `provider`.
     pub kind: &'static str,
+    /// Who publishes it, `@acme`, when its index names one.
+    pub publisher: Option<String>,
     /// A library package is pure by the rules it compiles under: no
     /// network, no entities, no routes.
     pub pure: bool,
@@ -111,6 +113,7 @@ pub fn facts(db: &dyn Db, project: Project, folder: &str) -> Option<Facts> {
     let library = surface.provider.is_none();
     Some(Facts {
         kind: surface.kind,
+        publisher: surface.publisher.clone(),
         pure: library,
         hosts,
         changing_calls: named(|what| matches!(what, What::Operation { changes: true, .. })),

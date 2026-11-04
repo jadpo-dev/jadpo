@@ -38,7 +38,7 @@ error: The archive of `@acme/postcodes` 2.1.0 isn't the release the log holds
 Other messages say which check failed: `The registry's public log doesn't
 prove`, with a head that doesn't extend the one this project saw or a
 proof that doesn't hold; or `isn't what the registry says it is`, when the
-files name another package or version.
+files name another package, publisher or version.
 
 `(human)` at the end of the `next:` line tells your coding agent to stop and ask you which fix you want, because the choice is yours to make: nothing an agent can change makes this right.
 

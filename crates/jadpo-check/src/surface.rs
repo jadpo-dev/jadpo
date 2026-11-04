@@ -43,6 +43,8 @@ pub struct Surface {
     /// Its index's `///` description, whole.
     pub description: Option<String>,
     /// `mit`, from `Licence.mit`.
+    /// Who publishes it, `@acme`, when its index names one.
+    pub publisher: Option<String>,
     pub licence: Option<String>,
     /// The earliest Jadpo version it needs, `1.0`.
     pub jadpo: Option<String>,
@@ -359,6 +361,9 @@ impl Surface {
         if let Some(version) = version {
             package.push(format!("version {version}"));
         }
+        if let Some(publisher) = &self.publisher {
+            package.push(format!("publisher {publisher}"));
+        }
         if let Some(licence) = &self.licence {
             package.push(format!("licence {licence}"));
         }
@@ -455,6 +460,7 @@ pub fn surface(db: &dyn Db, project: Project, folder: &str) -> Option<Surface> {
         },
         installed: home.installed,
         description: None,
+        publisher: None,
         licence: None,
         jadpo: None,
         guide: data.contains(&GUIDE),
@@ -741,7 +747,7 @@ fn variants(graph: &Graph, node: &Node) -> Vec<(String, Vec<(String, String)>)> 
     out
 }
 
-/// The index's description, licence and Jadpo version.
+/// The index's description, publisher, licence and Jadpo version.
 fn read_index(db: &dyn Db, file: jadpo_db::File, surface: &mut Surface) {
     let Some(source) = tree::source(db, file) else {
         return;
@@ -761,6 +767,10 @@ fn read_index(db: &dyn Db, file: jadpo_db::File, surface: &mut Surface) {
         match tree::name_text(&name).as_deref() {
             Some("licence") => {
                 surface.licence = value.strip_prefix("Licence.").map(str::to_string);
+            }
+            Some("publisher") => {
+                let handle = unescape(&value);
+                surface.publisher = crate::packages::is_publisher_handle(&handle).then_some(handle);
             }
             Some("jadpo") => surface.jadpo = Some(unescape(&value)),
             _ => {}

@@ -79,6 +79,7 @@ fn request(verifier: &Verifier, root: &Path, commit: &str, previous: Option<&str
             .expect("a repository"),
         commit: commit.to_string(),
         previous: previous.map(str::to_string),
+        publisher: None,
     }
 }
 

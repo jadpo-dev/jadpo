@@ -8,7 +8,7 @@ use jadpo_registry::archive::unpack;
 use jadpo_registry::http::{Fetched, fetch};
 use jadpo_registry::local::{LocalRegistry, ReleaseSeed};
 use jadpo_registry::log::{LogEntry, LogError, check_extends, check_included};
-use jadpo_registry::names::{Digest, ScopedName, Version};
+use jadpo_registry::names::{Digest, Handle, ScopedName, Version};
 use jadpo_registry::protocol::{
     Advisory, AdvisoryAnswer, ConsistencyProof, InclusionProof, LogHead, Method, Package,
     PackageKind, Release, ReleaseRequest, ReleaseState, Request, SearchAnswer, StartedRelease,
@@ -484,4 +484,136 @@ fn yanked_and_urgent_releases_say_so() {
         },
     );
     assert_eq!(answer.status, 200);
+}
+
+// --- whose release it is ----------------------------------------------------
+
+fn started_at(registry: &LocalRegistry, repository: &str) -> String {
+    let url = registry.serve().unwrap();
+    let started: StartedRelease = ask(
+        &url.url(),
+        &Request::StartRelease(jadpo_registry::protocol::StartRelease {
+            repository: repository.into(),
+            tag: "v2.3.0".into(),
+            dry_run: false,
+        }),
+    );
+    started.id
+}
+
+fn facts_of(publisher: Option<&str>) -> jadpo_registry::protocol::Facts {
+    let mut facts = ReleaseSeed::new(
+        ScopedName::parse("@acme/postcodes").unwrap(),
+        Version::parse("2.3.0").unwrap(),
+        Vec::new(),
+    )
+    .facts;
+    facts.publisher = publisher.map(|handle| Handle::parse(handle).unwrap());
+    facts
+}
+
+fn publisher_row(registry: &LocalRegistry, id: &str) -> (ReleaseState, Option<String>) {
+    let served = registry.serve().unwrap();
+    let state: ReleaseRequest = ask(
+        &served.url(),
+        &Request::ReleaseRequest { id: id.to_string() },
+    );
+    let row = state
+        .bar
+        .iter()
+        .find(|row| row.check == "publisher" && !row.passed)
+        .map(|row| row.detail.clone());
+    (state.state, row)
+}
+
+/// A registry holding `@acme/postcodes`, released from its own repository.
+fn holding_acme() -> LocalRegistry {
+    let registry = LocalRegistry::new();
+    let mut seed = ReleaseSeed::new(
+        ScopedName::parse("@acme/postcodes").unwrap(),
+        Version::parse("2.2.0").unwrap(),
+        vec![(
+            "package.jadpo".to_string(),
+            b"package Postcodes.v2 {}\n".to_vec(),
+        )],
+    );
+    seed.repository = "https://github.com/acme/postcodes".into();
+    registry.release(seed);
+    registry
+}
+
+const ROWS: fn() -> Vec<(String, bool, String)> =
+    || vec![("tests".to_string(), true, "3 tests".to_string())];
+
+#[test]
+fn a_release_under_its_own_publisher_goes_on_to_a_releaser() {
+    let registry = holding_acme();
+    let id = started_at(&registry, "https://github.com/acme/postcodes");
+    registry.checked(&id, "Postcodes", facts_of(Some("@acme")), ROWS());
+    assert_eq!(publisher_row(&registry, &id), (ReleaseState::Pending, None));
+
+    // A first release from a repository no package has: its publisher's
+    // releasers are the only ones who can confirm it.
+    let id = started_at(&registry, "https://github.com/other/tides");
+    registry.checked(&id, "Tides", facts_of(Some("@other")), ROWS());
+    assert_eq!(publisher_row(&registry, &id), (ReleaseState::Pending, None));
+    let served = registry.serve().unwrap();
+    let state: ReleaseRequest = ask(&served.url(), &Request::ReleaseRequest { id });
+    assert_eq!(
+        state.facts.and_then(|facts| facts.publisher),
+        Some(Handle::parse("@other").unwrap())
+    );
+}
+
+#[test]
+fn a_fork_can_t_be_released_as_the_original() {
+    let registry = holding_acme();
+    // A fork that still names the original.
+    let id = started_at(&registry, "https://github.com/mallory/postcodes");
+    registry.checked(&id, "Postcodes", facts_of(Some("@acme")), ROWS());
+    let (state, row) = publisher_row(&registry, &id);
+    assert_eq!(state, ReleaseState::Failed);
+    let row = row.expect("a failed row");
+    assert!(row.contains("@acme/postcodes"), "{row}");
+    assert!(row.contains("https://github.com/acme/postcodes"), "{row}");
+
+    // A fork under its own name, from its own repository, is its own package.
+    let id = started_at(&registry, "https://github.com/mallory/postcodes");
+    registry.checked(&id, "Postcodes", facts_of(Some("@mallory")), ROWS());
+    assert_eq!(publisher_row(&registry, &id), (ReleaseState::Pending, None));
+}
+
+#[test]
+fn a_repository_s_release_can_t_name_another_publisher() {
+    let registry = holding_acme();
+    let id = started_at(&registry, "https://github.com/acme/postcodes");
+    registry.checked(&id, "Postcodes", facts_of(Some("@mallory")), ROWS());
+    let (state, row) = publisher_row(&registry, &id);
+    assert_eq!(state, ReleaseState::Failed);
+    let row = row.expect("a failed row");
+    assert!(row.contains("@mallory"), "{row}");
+    assert!(row.contains("@acme"), "{row}");
+}
+
+#[test]
+fn a_release_with_no_publisher_is_refused() {
+    let registry = holding_acme();
+    let id = started_at(&registry, "https://github.com/other/tides");
+    registry.checked(&id, "Tides", facts_of(None), ROWS());
+    let (state, row) = publisher_row(&registry, &id);
+    assert_eq!(state, ReleaseState::Failed);
+    assert!(row.expect("a failed row").contains("names no publisher"));
+}
+
+#[test]
+fn a_failing_bar_fails_whoever_it_is_from() {
+    let registry = holding_acme();
+    let id = started_at(&registry, "https://github.com/acme/postcodes");
+    registry.checked(
+        &id,
+        "Postcodes",
+        facts_of(Some("@acme")),
+        vec![("tests".to_string(), false, "1 of 3 fails".to_string())],
+    );
+    assert_eq!(publisher_row(&registry, &id), (ReleaseState::Failed, None));
 }
