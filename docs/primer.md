@@ -35,7 +35,8 @@ compiler catches most of them and shows you the Jadpo way:
 
 ## The commands
 
-Everything goes through one command, `jadpo`. Run it anywhere inside
+Everything goes through one command, `jadpo`
+([install it](learn/01-setting-up.md#install-it)). Run it anywhere inside
 your project: it finds the project by looking upwards for `app.jadpo`.
 
 | Command | What it does |
@@ -799,9 +800,8 @@ Read only what a task needs.
 ## Not built yet
 
 A feature that isn't built is the error `toolchain.not_built_yet` where
-you use it. Not built yet, among others: seeds and `jadpo seed`; `jadpo rename`; entities and
-caches in Redis; failure logging; sign-in with OAuth providers, and OAuth
-grants; token scopes; most of personal data, and of the debugging and
-review tools; data builders and `assert emitted` in tests; flags and
-documents; and installers, so `jadpo` is built from its
-source with `cargo build --release -p jadpo-cli`.
+you use it. Not built yet, among others: `jadpo rename`; entities and
+caches in Redis; failure logging; sign-in with GitHub, Apple or your own
+OAuth provider; OAuth grants; token scopes; most of personal data; the
+developer console and MCP; data builders and `assert emitted` in tests;
+and documents. Each area's `What is built` topic has the rest.

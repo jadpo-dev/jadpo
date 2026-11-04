@@ -22,8 +22,12 @@ change what.
    may do what, then background work. Get each one checking and tested
    before you start the next; a broad rewrite turns a few mistakes into a
    hundred errors.
-2. **Run `jadpo check` after each file you write**, not after several.
-   Fix the first error first: the ones after it often follow from it.
+2. **Run `jadpo check` after each connected change**: a declaration and
+   the first thing that uses it, not one file at a time and not several
+   changes at once. A supporting type or helper is refused until something
+   uses it (`layout.unused_declaration`), so write it and its first user,
+   then check. Fix the first error first: the ones after it often follow
+   from it.
 3. **Read one topic, not a whole page.** Pick it by its title from
    https://jadpo.dev/docs/index.json and read only its `.md`. Each
    `##` section of a language page is one topic.
@@ -52,35 +56,35 @@ names before you write the feature yourself.
 
 | Feature | Example |
 |---|---|
-| Project layout, domains, `use` lines, functions and actions | [01-first-project](https://github.com/jadpo-dev/jadpo/tree/main/examples/01-first-project) |
-| Named types, refinements and conversions | [02-named-types](https://github.com/jadpo-dev/jadpo/tree/main/examples/02-named-types) |
-| Objects, inputs, outputs, enums and tagged unions | [03-objects-and-enums](https://github.com/jadpo-dev/jadpo/tree/main/examples/03-objects-and-enums) |
-| Lists, sets, loops and the `collection` operations | [04-lists-and-loops](https://github.com/jadpo-dev/jadpo/tree/main/examples/04-lists-and-loops) |
-| Failures, `reject` and `attempt` | [06-failures](https://github.com/jadpo-dev/jadpo/tree/main/examples/06-failures) |
-| Tests, fixtures and asserting failures | [07-testing](https://github.com/jadpo-dev/jadpo/tree/main/examples/07-testing) |
-| Several domains, `public` and `shared/` | [08-domains-and-sharing](https://github.com/jadpo-dev/jadpo/tree/main/examples/08-domains-and-sharing) |
-| Entities, migrations, queries and writes | [10-library-loans](https://github.com/jadpo-dev/jadpo/tree/main/examples/10-library-loans) |
-| Routes, API records, browser sessions, API tokens and service keys | [11-cake-shop](https://github.com/jadpo-dev/jadpo/tree/main/examples/11-cake-shop) |
-| Tenancy and membership roles | [12-recipe-book](https://github.com/jadpo-dev/jadpo/tree/main/examples/12-recipe-book) |
-| Settings, secrets and keys | [13-lettings-office](https://github.com/jadpo-dev/jadpo/tree/main/examples/13-lettings-office) |
-| Time, zones and calendars | [14-studio-timetable](https://github.com/jadpo-dev/jadpo/tree/main/examples/14-studio-timetable) |
-| Translations | [15-parcel-tracker](https://github.com/jadpo-dev/jadpo/tree/main/examples/15-parcel-tracker) |
-| Money | [16-market-hall](https://github.com/jadpo-dev/jadpo/tree/main/examples/16-market-hall) |
-| Physical quantities and units | [17-ebike-hire](https://github.com/jadpo-dev/jadpo/tree/main/examples/17-ebike-hire) |
-| Text, Markdown, links and encodings | [18-village-newsletter](https://github.com/jadpo-dev/jadpo/tree/main/examples/18-village-newsletter) |
-| Geometry in code; stored places | [20-fell-race](https://github.com/jadpo-dev/jadpo/tree/main/examples/20-fell-race), [21-veg-box-rounds](https://github.com/jadpo-dev/jadpo/tree/main/examples/21-veg-box-rounds) |
-| Vectors and prompts | [22-plant-helpline](https://github.com/jadpo-dev/jadpo/tree/main/examples/22-plant-helpline) |
-| Events, subscribers and the outbox | [23-repair-cafe](https://github.com/jadpo-dev/jadpo/tree/main/examples/23-repair-cafe) |
-| Batches over many items | [24-seed-library](https://github.com/jadpo-dev/jadpo/tree/main/examples/24-seed-library) |
-| Schedules, and background work with tenants | [25-allotment-rents](https://github.com/jadpo-dev/jadpo/tree/main/examples/25-allotment-rents) |
-| Packages, provider APIs and webhooks | [26-delivery-desk](https://github.com/jadpo-dev/jadpo/tree/main/examples/26-delivery-desk) |
-| Email, magic links and passkeys | [27-guest-house](https://github.com/jadpo-dev/jadpo/tree/main/examples/27-guest-house) |
-| AI: typed model calls, embeddings and streaming | [28-lost-property](https://github.com/jadpo-dev/jadpo/tree/main/examples/28-lost-property) |
-| Sign-in with Google through a provider; customers and staff in one app | [29-lending-desk](https://github.com/jadpo-dev/jadpo/tree/main/examples/29-lending-desk) |
-| Staff roles across the whole app, and a listed query with role-restricted fields | [29-lending-desk](https://github.com/jadpo-dev/jadpo/tree/main/examples/29-lending-desk) |
-| Roles that count only through a provider (`requires:`), and a provider kept to one company's accounts (`organisation:`) | [29-lending-desk](https://github.com/jadpo-dev/jadpo/tree/main/examples/29-lending-desk) |
-| Seeds (`jadpo seed`) | [29-lending-desk](https://github.com/jadpo-dev/jadpo/tree/main/examples/29-lending-desk) |
-| A schedule that starts a batch, tested to the end | [29-lending-desk](https://github.com/jadpo-dev/jadpo/tree/main/examples/29-lending-desk) |
+| Project layout, domains, `use` lines, functions and actions | [01-first-project](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/01-first-project) |
+| Named types, refinements and conversions | [02-named-types](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/02-named-types) |
+| Objects, inputs, outputs, enums and tagged unions | [03-objects-and-enums](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/03-objects-and-enums) |
+| Lists, sets, loops and the `collection` operations | [04-lists-and-loops](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/04-lists-and-loops) |
+| Failures, `reject` and `attempt` | [06-failures](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/06-failures) |
+| Tests, fixtures and asserting failures | [07-testing](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/07-testing) |
+| Several domains, `public` and `shared/` | [08-domains-and-sharing](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/08-domains-and-sharing) |
+| Entities, migrations, queries and writes | [10-library-loans](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/10-library-loans) |
+| Routes, API records, browser sessions, API tokens and service keys | [11-cake-shop](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/11-cake-shop) |
+| Tenancy and membership roles | [12-recipe-book](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/12-recipe-book) |
+| Settings, secrets and keys | [13-lettings-office](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/13-lettings-office) |
+| Time, zones and calendars | [14-studio-timetable](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/14-studio-timetable) |
+| Translations | [15-parcel-tracker](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/15-parcel-tracker) |
+| Money | [16-market-hall](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/16-market-hall) |
+| Physical quantities and units | [17-ebike-hire](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/17-ebike-hire) |
+| Text, Markdown, links and encodings | [18-village-newsletter](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/18-village-newsletter) |
+| Geometry in code; stored places | [20-fell-race](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/20-fell-race), [21-veg-box-rounds](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/21-veg-box-rounds) |
+| Vectors and prompts | [22-plant-helpline](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/22-plant-helpline) |
+| Events, subscribers and the outbox | [23-repair-cafe](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/23-repair-cafe) |
+| Batches over many items | [24-seed-library](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/24-seed-library) |
+| Schedules, and background work with tenants | [25-allotment-rents](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/25-allotment-rents) |
+| Packages, provider APIs and webhooks | [26-delivery-desk](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/26-delivery-desk) |
+| Email, magic links and passkeys | [27-guest-house](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/27-guest-house) |
+| AI: typed model calls, embeddings and streaming | [28-lost-property](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/28-lost-property) |
+| Sign-in with Google through a provider; customers and staff in one app | [29-lending-desk](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/29-lending-desk) |
+| Staff roles across the whole app, and a listed query with role-restricted fields | [29-lending-desk](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/29-lending-desk) |
+| Roles that count only through a provider (`requires:`), and a provider kept to one company's accounts (`organisation:`) | [29-lending-desk](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/29-lending-desk) |
+| Seeds (`jadpo seed`) | [29-lending-desk](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/29-lending-desk) |
+| A schedule that starts a batch, tested to the end | [29-lending-desk](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/29-lending-desk) |
 
 ## What isn't built yet
 

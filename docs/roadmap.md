@@ -397,13 +397,7 @@ a new agent can't find a type without them (Richard, 2026-11-03).
   section. The Markdown keeps every fact, in that order.
   259 types: split by group here if larger than a session. Designed with
   the design skills first.
-- [ ] **A12 What a new agent reads first** `opus · high`: the primer and
-  Learn page 1 say there is no installer and the primer lists seeds as not
-  built: both are wrong, so generate such claims from release facts rather
-  than prose. The generated `AGENTS.md` links examples at the release, not
-  `tree/main`, and says "check after each connected change", with how to
-  stage a supporting type, since checking after every file refuses a type
-  written before its user (`layout.unused_declaration`).
+- [x] **A12 What a new agent reads first**: documentation.md, "The bundle" and "How an agent uses it"; area 14, `jadpo new`; `tools/docs/agent_guidance.py`.
 - [ ] **A13 A broken test environment says so once** `opus · high`: a
   PostgreSQL that can't start (a sandbox's shared memory) is one environment
   diagnostic marked `(human)` at the top level, not five `internal_fault`s
