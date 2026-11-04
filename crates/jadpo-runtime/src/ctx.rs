@@ -200,6 +200,9 @@ pub struct Ctx<'p> {
     actions: u32,
     /// The next action to open a boundary of its own holds its commit.
     hold: bool,
+    /// The next action to open a boundary of its own runs what a `GET` runs
+    /// ([`Ctx::read_only`]).
+    read_only: bool,
     /// What a held boundary left open.
     held: Option<Held>,
     /// The signed-in caller of the request being answered (area 8).
@@ -346,6 +349,7 @@ impl<'p> Ctx<'p> {
             boundary: None,
             actions: 0,
             hold: false,
+            read_only: false,
             held: None,
             caller: None,
             client: None,
@@ -1601,10 +1605,28 @@ impl<'p> Ctx<'p> {
         self.hold = true;
     }
 
+    /// Asks the next action that opens a boundary of its own to run as a
+    /// `GET` runs (area 7, "What a route runs"; chunk G2): its transaction
+    /// begun `READ ONLY`, and a write, an emit or a changing call a fault,
+    /// on top of the graph's proof that none is made.
+    pub fn read_only(&mut self) {
+        self.read_only = true;
+    }
+
+    pub(crate) fn take_read_only(&mut self) -> bool {
+        std::mem::take(&mut self.read_only)
+    }
+
+    /// Whether what is running runs as a `GET` runs.
+    pub(crate) fn running_read_only(&self) -> bool {
+        self.boundary.as_ref().is_some_and(Boundary::read_only)
+    }
+
     /// What the held boundary left open, once; `None` when no action held
     /// one, or it didn't succeed.
     pub fn take_held(&mut self) -> Option<Held> {
         self.hold = false;
+        self.read_only = false;
         self.held.take()
     }
 
@@ -1616,6 +1638,7 @@ impl<'p> Ctx<'p> {
         self.boundary = None;
         self.held = None;
         self.hold = false;
+        self.read_only = false;
         self.frames.clear();
         self.recording = None;
     }

@@ -277,6 +277,9 @@ pub struct GroupRead {
     /// Each route that read cleanly: its label and where its method and
     /// path are written, for problems found across groups.
     pub spans: Vec<(String, Span)>,
+    /// Each route that read cleanly: its label and where its `run:` names
+    /// what it runs, for what that action is found to do (chunk G2).
+    pub run_spans: Vec<(String, Span)>,
     pub problems: Vec<Diagnostic>,
 }
 
@@ -413,12 +416,14 @@ pub fn group_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> Op
         path: &symbol.path,
         out: Vec::new(),
         spans: Vec::new(),
+        run_spans: Vec::new(),
     };
     let model = reader.group(&symbol, &decl).map(Arc::new);
     Some(GroupRead {
         path: symbol.path.clone(),
         model,
         spans: reader.spans,
+        run_spans: reader.run_spans,
         problems: reader.out,
     })
 }
@@ -1000,6 +1005,7 @@ struct Reader<'a> {
     path: &'a str,
     out: Vec<Diagnostic>,
     spans: Vec<(String, Span)>,
+    run_spans: Vec<(String, Span)>,
 }
 
 /// What a route's call returns and the failures it can raise.
@@ -1604,7 +1610,7 @@ impl Reader<'_> {
             self.out.push(
                 Diagnostic::new(&rule::ROUTE_RUN_REQUIRED, format!("`{label}` doesn't say what it runs"))
                     .at(head_span, "no `run:`")
-                    .reason("A route runs one named action, or a named query for a `GET`, with `run:`; the logic lives there, not in the route.")
+                    .reason("A route runs one named action with `run:`, or for a `GET` a named query or an action that only reads; the logic lives there, not in the route.")
                     .next(if method == HttpMethod::Get {
                         "Add `run: <query>(...)`"
                     } else {
@@ -1641,9 +1647,15 @@ impl Reader<'_> {
 
         // What it waits for: then what comes out is what `answer:` gives.
         let settle = match items.get("settle") {
-            Some(member) => {
-                Some(self.settle(member, &run, &sig.result, status, deadline_ms, &label)?)
-            }
+            Some(member) => Some(self.settle(
+                member,
+                method,
+                &run,
+                &sig.result,
+                status,
+                deadline_ms,
+                &label,
+            )?),
             None => None,
         };
         let sig = match &settle {
@@ -1798,6 +1810,8 @@ impl Reader<'_> {
         if self.out.len() > before {
             return None;
         }
+        self.run_spans
+            .push((label.clone(), self.run_span(run_member)));
         self.spans.push((label, head_span));
         let key = self.lookup.registry().key(
             Kind::Route,
@@ -2107,9 +2121,11 @@ impl Reader<'_> {
     /// answers with once the work its action set off has settled, its
     /// result type and its failures. An action route only, answering with
     /// a body, and waiting less than its deadline.
+    #[allow(clippy::too_many_arguments)]
     fn settle(
         &mut self,
         member: &ast::Member,
+        method: HttpMethod,
         run: &Run,
         result: &Ty,
         status: SuccessStatus,
@@ -2131,6 +2147,19 @@ impl Reader<'_> {
                 format!("`{label}` runs a query, which sets off no work to wait for"),
                 "nothing to wait for",
                 "Remove `settle:`; a query answers at once",
+            ));
+            return None;
+        }
+        // The action a `GET` runs is read-only (`route.run_kind`), so it
+        // emits nothing that could be waited for.
+        if method == HttpMethod::Get {
+            self.out.push(invalid(
+                key_span,
+                format!(
+                    "`{label}` runs an action that only reads, which sets off no work to wait for"
+                ),
+                "nothing to wait for",
+                "Remove `settle:`; an action that only reads answers at once",
             ));
             return None;
         }
@@ -2425,7 +2454,7 @@ impl Reader<'_> {
             self.out.push(
                 Diagnostic::new(&rule::ROUTE_RUN_INVALID, format!("`run: {written}` isn't a call"))
                     .at(span, "not a call")
-                    .reason("`run:` calls one named action, or a named query for a `GET`, passing the route's placeholders and `input`; there is no inline action in a route.")
+                    .reason("`run:` calls one named action, or for a `GET` a named query or an action that only reads, passing the route's placeholders and `input`; there is no inline action in a route.")
                     .next("Write `run: <name>(...)`, moving any logic into an action"),
             );
             return None;
@@ -2461,35 +2490,25 @@ impl Reader<'_> {
                         format!("`{name}` is {}", kind.with_a()),
                     )
                     .at(callee_span, format!("{} here", kind.with_a()))
-                    .reason("A route runs a named action, or a named query for a `GET`; a function is called from those, so the route stays a thin door.")
+                    .reason("A route runs a named action, or for a `GET` a named query or an action that only reads; a function is called from those, so the route stays a thin door.")
                     .next(format!("Call `{name}` from an action, and run that")),
                 );
                 return None;
             }
         };
-        match (method == HttpMethod::Get, is_query) {
-            (true, false) => {
-                self.out.push(
-                    Diagnostic::new(&rule::ROUTE_RUN_KIND, format!("`{label}` runs action `{name}`"))
-                        .at(callee_span, "an action")
-                        .reason("A `GET` is safe to repeat and never writes, so it runs a named query; every other method runs an action.")
-                        .next(format!("Run a query here, or answer `{}` with another method", path_text(segments))),
-                );
-                return None;
-            }
-            (false, true) => {
-                self.out.push(
-                    Diagnostic::new(&rule::ROUTE_RUN_KIND, format!("`{label}` runs query `{name}`"))
-                        .at(callee_span, "a query")
-                        .reason(format!(
-                            "A `{}` route runs a named action, which owns the writes and the transaction; a query only reads, and answers a `GET`.",
-                            method.word()
-                        ))
-                        .next("Run an action here, or make the route a `GET`"),
-                );
-                return None;
-            }
-            _ => {}
+        // A `GET` may run an action the graph proves read-only, which is
+        // worked out once the routes are read (`types::read_only_problems`).
+        if method != HttpMethod::Get && is_query {
+            self.out.push(
+                Diagnostic::new(&rule::ROUTE_RUN_KIND, format!("`{label}` runs query `{name}`"))
+                    .at(callee_span, "a query")
+                    .reason(format!(
+                        "A `{}` route runs a named action, which owns the writes and the transaction; a query only reads, and answers a `GET`.",
+                        method.word()
+                    ))
+                    .next("Run an action here, or make the route a `GET`"),
+            );
+            return None;
         }
         let sig = self.lookup.signature(&name)?.clone();
 
@@ -2563,7 +2582,7 @@ impl Reader<'_> {
                 )
                 .at(callee_span, "a generated write")
                 .reason(format!(
-                    "A route runs a named action, or a named query for a `GET`, and may run the generated listings `sessions.tokens` and the service entity's `keys` itself; `{written}` writes {keeps} the runtime keeps, in the transaction of the action that calls it."
+                    "A route runs a named action, or for a `GET` a named query or an action that only reads, and may run the generated listings `sessions.tokens` and the service entity's `keys` itself; `{written}` writes {keeps} the runtime keeps, in the transaction of the action that calls it."
                 ))
                 .next(format!("Call `{written}` in an action, and run that")),
             );
