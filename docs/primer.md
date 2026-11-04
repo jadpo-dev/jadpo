@@ -768,10 +768,9 @@ Read only what a task needs.
   [`migrations`](language/05-data.md#migrations) and
   [`kinds-of-test`](language/13-testing.md#kinds-of-test). The IDs never
   change.
-- **The index.** The docs are published with `index.json`, one entry per
-  page with its `id`, `kind`, `title`, a one-line `summary` and its
-  `tokens`. Read it, pick pages by title and summary, and fetch only
-  those.
+- **Finding a topic.** The site's `llms.txt` lists the guides and the
+  reference's groups. Open the guide or the group's page for your task,
+  and fetch only the topic it leads to.
 - **Outside services.** Packages, providers, connections, drivers and
   capabilities are explained together in
   [`how-integrations-fit-together`](language/11-integrations.md#how-packages-connections-capabilities-and-services-fit-together).

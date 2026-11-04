@@ -438,14 +438,14 @@ value on each line, and `json.write` one JSON list, and neither takes a `format:
 if your page shows a progress bar.
 
 To send the file on, give an email a `File` field, which attaches it when the email is
-sent. [Email](../language/16-built-in-services.md#email) shows how to send one.
+sent. [Send an email](12-send-an-email.md) shows how to send one.
 
 ## Read more
 
 [Files](../language/16-built-in-services.md#files),
 [Data formats](../language/19-standard-library.md#data-formats-json-csv-tsv-and-json-lines),
 [Batches](../language/12-jobs-and-events.md#batches) and
-[Files: an export's pieces](../language/16-built-in-services.md#files-an-exports-pieces).
+[How an export writes its file](../language/16-built-in-services.md#how-an-export-writes-its-file).
 
 ## Not built yet
 

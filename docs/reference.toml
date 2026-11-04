@@ -665,7 +665,7 @@ topics = [
   "the-ai-capability",
   "typed-output",
   "prompts-as-files",
-  "streaming",
+  "streaming-from-a-model",
   "embeddings-and-search",
   "asking-for-an-embedding",
   "keeping-embeddings-current",
@@ -745,6 +745,7 @@ topics = [
 [[group]]
 id = "external-services"
 title = "External services"
+summary = "Another company's API from your app: connecting to it, calling it, receiving from it, and using packages."
 topics = [
   "how-integrations-fit-together",
 ]
@@ -772,7 +773,7 @@ details = [
   "how-provider-calls-are-made",
   "wire-encodings-decoders-and-retries",
   "fakes-and-the-development-call-log",
-  "the-seam-every-outside-call-goes-through",
+  "how-outside-calls-are-made-safe",
 ]
 
 [[group.page]]
@@ -881,6 +882,7 @@ details = [
 [[group]]
 id = "testing"
 title = "Testing"
+summary = "How your tests run your real application against a real database: kinds of test, fixtures and fakes."
 topics = [
   "where-tests-live",
   "writing-a-test",
@@ -904,7 +906,7 @@ built = [
 [[group]]
 id = "tooling"
 title = "Tools"
-summary = "The jadpo command, your editor, building and deploying, and working with an agent."
+summary = "The jadpo command, your editor, building and deploying, and what a coding agent can look up."
 built = [
   "tooling-built",
 ]
@@ -1082,7 +1084,9 @@ what-the-graph-and-production-evidence-add = ["17-debugging-and-review: `jadpo t
 
 # A topic whose first sentence doesn't say what it is, or runs too long for a row.
 [topic_summary]
-email = "Most apps send a handful of emails: confirm your address, an invoice, a welcome."
+email = "Emails as typed values: templates the compiler checks, sent after your action commits, caught in tests and in a dev inbox."
+files = "A `File` field on a record, with the bytes kept in a store of files."
+caches = "Copies of records and query results kept in Redis, so busy pages read them quickly."
 feature-flags = "A feature flag lets you ship code switched off, then turn it on for some users, a share of users, or everyone, without a deploy."
 rate-limits = "A rate limit caps how many requests a caller may make in a period."
 search = "Give an entity a `search:` section and people can search its records by words."

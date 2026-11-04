@@ -970,7 +970,7 @@ its `File`, so a resumed run reads the same one.
 ### Read before the transaction
 
 No outside call goes out while a transaction is open
-([The seam every outside call goes through](16-built-in-services.md#the-seam-every-outside-call-goes-through)),
+([How every outside call is made safe](16-built-in-services.md#how-every-outside-call-is-made-safe)),
 and an item's action runs
 inside its batch's transaction. So each batch's rows are read from the
 store first, through the `files` capability, in windows of at most a
@@ -1118,7 +1118,7 @@ As for `batches.each`: in the store `from:`'s query reads, which
 ### Each page is stored after its page commits
 
 No outside call goes out while a transaction is open
-([The seam every outside call goes through](16-built-in-services.md#the-seam-every-outside-call-goes-through)),
+([How every outside call is made safe](16-built-in-services.md#how-every-outside-call-is-made-safe)),
 so each page goes in three steps:
 
 1. A transaction locks the run's row and reads, as the system, the page
