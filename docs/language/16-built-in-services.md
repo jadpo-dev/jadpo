@@ -838,9 +838,11 @@ application {
   join that would leave less free than it answers `storage_full` and
   writes nothing, so imports and the database aren't starved of space.
   The floor is a [monitoring threshold](#thresholds-across-requests).
-- **Commands.** `jadpo files ls`, `show`, `get`, `put` and `copy` work
-  on any store, in development or production. `jadpo files copy` moves a
-  store's files to another, which is how you move off one server.
+- **Commands.** Not built yet: `jadpo files ls`, `show`, `get`, `put` and
+  `copy`, which will work on any store, in development or production.
+  `jadpo files copy` will move a store's files to another, which is how
+  you move off one server. Until then, `jadpo files` is
+  `cli.unknown_command`.
 
 A deployable built for Workers that uses `Driver.disk` is refused
 ([`deployable.target_unsupported`](../errors/deployable.target_unsupported.md)).
@@ -1309,11 +1311,11 @@ one.
 ### In development
 
 `jadpo dev` exports nothing unless you give it `--export-telemetry`. The
-traces, metrics and logs stay on your machine, and you read them from the
-command line with `jadpo traces`, `jadpo metrics` and `jadpo logs`,
+traces, metrics and logs stay on your machine, and you will read them from
+the command line with `jadpo traces`, `jadpo metrics` and `jadpo logs`,
 filtering and watching them as you do the development call log
 ([Traces, metrics and logs in development](17-debugging-and-review.md#traces-metrics-and-logs-in-development)),
-and in the developer console.
+and in the developer console. None of those commands is built yet.
 
 ## Path IDs
 <!-- topic: path-ids -->
@@ -1328,8 +1330,8 @@ than described. You write nothing for this.
 `path` is a number that decodes against that build's graph. It uses
 Ball–Larus path numbering, which gives each path without loops through a
 callable its own small integer, at little cost to record.
-`jadpo path <build> <path>` draws the route from the number alone, with
-no recorded data.
+`jadpo path <build> <path>`, not built yet, will draw the route from the
+number alone, with no recorded data.
 
 ### `path_key`
 
@@ -2925,8 +2927,8 @@ entity Product {
   like any delivery
   ([Delivery: at least once, safe to repeat](12-jobs-and-events.md#delivery-at-least-once-safe-to-repeat)).
   Erasing a person removes their records from the index
-  ([Erasure](15-personal-data.md#erasure)). `jadpo search reindex <entity>`
-  rebuilds the index.
+  ([Erasure](15-personal-data.md#erasure)). `jadpo search reindex <entity>`,
+  not built yet, will rebuild the index.
 - **Engine features** (synonyms, ranking rules, typo tolerance settings)
   are the package's own operations, called from a domain the connection
   lists.
@@ -4309,15 +4311,15 @@ The errors this page describes are built with the feature they belong to.
 | The dev inbox and the health score | Partly built: the dev inbox, `jadpo email`, the health score, `email.health_problem` and `jadpo email check-domain` ([The dev inbox and the health score](#the-dev-inbox-and-the-health-score)), with SpamAssassin's rules in the score ([SpamAssassin in the health score](#spamassassin-in-the-health-score)). Not built yet: the inbox page as part of the developer console, and its link to each mail's trace, which comes with `jadpo trace`. |
 | Rate limits | Partly built: default rate limits with routes, a route's and an API's own `rate_limit:`, and their store on Workers, Cloudflare's rate-limiting binding ([Rate limits on Workers](#rate-limits-on-workers)). Not built yet: Redis's driver, which comes with caches. Until then a deployable whose store is Redis counts in its own memory, which on Workers is the judgement call `rate_limits.counted_in_memory`. Not built: turning a limit off, which the design notes say needs an acceptance and which has no syntax yet; `requests:` and `within:` can only loosen it. A generated route's own limits don't appear in OpenAPI's `x-jadpo-rate-limit` or `jadpo routes`, and a magic-link refusal gives `Retry-After` without the `RateLimit` headers. The binding's windows, the Wrangler entries and what its documentation says of locations and accuracy aren't yet checked against the real edge. |
 | The capability seam | Built: the seam every capability's calls go through, with a delivery that hands its event to a capability, parked as `outcome_unknown` when a send without a key may have acted ([The seam every outside call goes through](#the-seam-every-outside-call-goes-through)). |
-| Files | Partly built. Built: the `files` capability's first part on that seam: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [Files: `put`, `read` and the disk driver in development](#files-put-read-and-the-disk-driver-in-development)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([Files: an export's pieces](#files-an-exports-pieces)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). A file's bytes are deleted once no record holds it, after the change commits, through the generated subscriber `files <store>`, and a day after a `put` when no record ever held them, a person's erasure and retention included ([Deleting and erasing](#deleting-and-erasing)). The floor is a monitoring threshold ([Monitoring](#monitoring)). Not built yet: upload slots, multipart ones included, downloads, fields naming one store of files in entities of two databases, the S3 driver, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written. |
+| Files | Partly built. Built: the `files` capability's first part on that seam: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [Files: `put`, `read` and the disk driver in development](#files-put-read-and-the-disk-driver-in-development)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([Files: an export's pieces](#files-an-exports-pieces)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). A file's bytes are deleted once no record holds it, after the change commits, through the generated subscriber `files <store>`, and a day after a `put` when no record ever held them, a person's erasure and retention included ([Deleting and erasing](#deleting-and-erasing)). The floor is a monitoring threshold ([Monitoring](#monitoring)). Not built yet: upload slots, multipart ones included, downloads, fields naming one store of files in entities of two databases, the S3 driver, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written; and the `jadpo files` commands (`ls`, `show`, `get`, `put` and `copy`). |
 | Flags | Partly built: `flags { }` of `Bool` and enum flags with their `default:`, `owner:` and `expires:`; `flags.<name>` in actions, tests and a route's `run:` arguments, worked out for the caller from `jadpo_flags` in `flags: { store: }`, held in each server's memory and fixed for the operation; a test's `flags:`; `flag.unknown`, `flag.read_context` and `flag.expired` ([Flags: declared, read and tested](#flags-declared-read-and-tested)). `jadpo flags list`, `set`, `reset` and `remove`, each change logged in `jadpo_flag_changes`; `flag.value_untested`; and `client: true` with each API's `GET /flags` ([Flags: changed, listed and removed](#flags-changed-listed-and-removed)). Not built yet: named tenants, which wait for tenancy to be settled for flags; and a user's erasure reaching their `id` in `jadpo_flags` and `jadpo_flag_changes`, which comes with erasures. |
 | Audit | Partly built: an entity's `audit:`, an entry in the same transaction as each change, `history` with the record's `read` grant and the fields the caller can read, retention by the purge schedule, entries deleted with their record by erasure, `AuditEntryRecorded` to subscribers, and the permissions report's line ([Audit trail](#audit-trail)). Not built yet: what [What the audit trail doesn't keep yet](#what-the-audit-trail-doesnt-keep-yet) lists, each `toolchain.not_built_yet` where it is written, and `publishing`, which comes with outgoing webhooks. |
 | Search | Partly built: on PostgreSQL, `search: { fields: language: }` with its generated column, GIN index and migrations, `matches` with a `SearchText`, the best matches first in keyset pages, and policy over every search ([Search](#search)). Not built yet: an engine's `store:`, `toolchain.not_built_yet` where it is written, and `jadpo search reindex`, which come with the `search` capability's packages; and searching a field of a sensitive category, `toolchain.not_built_yet` in `fields:` until the access records are built. |
 | Documents | Not built yet: the application's `documents:` is `toolchain.not_built_yet` where it is written. |
 | Bot protection | Not built yet: the application's `bot_check:` and a route's are `toolchain.not_built_yet` where they are written. |
 | Outgoing webhooks | Not built yet. |
-| The `telemetry:` section | Not built yet: it is `toolchain.not_built_yet` where it is written. Nor is telemetry in the developer console. |
-| Path IDs | Not built yet for requests. Each body's ways are numbered, and the differential run compares the paths each test's bodies took, but no request carries a `path` or a `path_key`. |
+| The `telemetry:` section | Not built yet: it is `toolchain.not_built_yet` where it is written. Nor is telemetry in the developer console, or `jadpo traces`, `jadpo metrics` and `jadpo logs`, which read it in development. |
+| Path IDs | Not built yet for requests. Each body's ways are numbered, and the differential run compares the paths each test's bodies took, but no request carries a `path` or a `path_key`, and `jadpo path` isn't built. |
 | Monitoring thresholds | Partly built: `thresholds { }` in each domain's `monitoring.jadpo`, each threshold checked to watch a route, action, query, schedule or subscriber of its domain with limits that apply to it; the per-request limits in the runtime's plan, the across-request limits and the disk floors written to `build/monitoring/` as Prometheus and OpenSLO rules and carried in the manifest; and a limit raised or removed, or a floor lowered, refused by `check` until a `ThresholdChange` acceptance names it ([Monitoring thresholds: checked and generated](#monitoring-thresholds-checked-and-generated)). Not built yet: acting on the per-request limits, which comes with the `telemetry:` section, starting values from the query report and production, and an agent's proposals through MCP. |
 
 [The roadmap](../roadmap.md) says when.
