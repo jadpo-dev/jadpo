@@ -64,6 +64,7 @@ mod field_rules_on_read;
 mod file_deletes;
 mod file_exports;
 mod file_imports;
+mod first_records;
 mod fix;
 mod flags;
 mod fmt;

@@ -1251,13 +1251,18 @@ and no purge is listed in the report as "kept until erased".
 - **What leaves can be erased.** A connection that receives personal data
   and can't erase it needs a person's acceptance
   ([Erasure at providers](#erasure-at-providers),
-  [`acceptance.missing`](../errors/acceptance.missing.md)).
+  [`acceptance.missing`](../errors/acceptance.missing.md)). A project's first
+  commit has nothing to compare with, so there it is a notice for a person,
+  and the next change is refused until one accepts it
+  ([What a first record holds](18-records-and-manifest.md#what-a-first-record-holds)).
 - **Sensitive fields stay out of caches.** A cache on an entity that holds
   one leaves those fields out.
-- **A public cache keeps nothing marked.** A route saying `cache: immutable`
-  can't give a marked field, sensitive or not, directly or through what it
+- **A public cache keeps no personal data.** A route saying `cache: immutable`
+  can't give a marked field, sensitive or not, or a standard type that is
+  personal data, such as `PhoneNumber`, marked or not, directly or through what it
   calls ([`route.cache_invalid`](../errors/route.cache_invalid.md)), since no
-  erasure reaches a copy a CDN holds.
+  erasure reaches a copy a CDN holds. It counts what
+  [the report](#where-personal-data-goes) counts.
 - **Retention can be carried out.** A field's retention clears a field
   that can be `none` and that no lifecycle owns or reads, an entity's
   deletes records nothing `restricted` holds, and every period is a
