@@ -232,7 +232,7 @@ fn page_parts(page: &str, summary: &str) -> Vec<Part> {
 }
 
 /// `[text](target)` read as `text`, so a page reads whole offline.
-fn link_text(paragraph: &str) -> String {
+pub(crate) fn link_text(paragraph: &str) -> String {
     let mut out = String::new();
     let mut rest = paragraph;
     while let Some(open) = rest.find('[') {

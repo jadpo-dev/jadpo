@@ -377,26 +377,7 @@ sign-in fixes stay unmeasured). Each is small; D15 and D16 come first, since
 a new agent can't find a type without them (Richard, 2026-11-03).
 
 - [x] **D15 Links that can't break**: documentation.md, "The bundle" and "What the site serves"; `bundle_link_problems`, `site_path_problems` and `agent_reading_problems` in `tools/docs/language_docs.py`; the site's `scripts/check-links.mjs`.
-- [ ] **D16 Standard type pages that teach** `opus · high`: every type
-  already has its own page (`/docs/types/type-<name>`, F2). Each gains: what
-  it represents and when to use it, and what to use instead, written once
-  beside the type in `crates/jadpo-std` and held by a test so no type lacks
-  it; its shape as a table saying which parts are required and which
-  optional, with each part's type; and a Jadpo example compiled by the gate.
-  The index lists every type A to Z with its group as a column, since a
-  reader looks for a name. Every type's name on area 19's "The standard
-  types", area 2's "Built-in types" and in the guides links to its page:
-  today those pages list names with no way through, and say 247 types where
-  the reference says 259. `jadpo help <Type>` prints the same page offline,
-  and `--json` gives the shape, so one call answers what shape a type has.
-  Every page reads in this order, a rule the chunk adds to the writing guide
-  (Richard, 2026-11-03): what it is; when to use it and what to use instead;
-  its shape, with a Required? column; a working example; gotchas in plain
-  words, leading with what you can do, with no "contract", "baseline" or "not
-  ordered"; its JSON; then storage and operations in a collapsed Details
-  section. The Markdown keeps every fact, in that order.
-  259 types: split by group here if larger than a session. Designed with
-  the design skills first.
+- [x] **D16 Standard type pages that teach**: writing.md, "How a standard type's page reads"; documentation.md, "The bundle"; area 14, "`jadpo help`"; `crates/jadpo-std/src/standard/pages/` and `crates/jadpo-cli/src/type_page.rs`.
 - [ ] **A12 What a new agent reads first** `opus · high`: the primer and
   Learn page 1 say there is no installer and the primer lists seeds as not
   built: both are wrong, so generate such claims from release facts rather

@@ -256,6 +256,40 @@ Every page that explains an error's `next:` line uses the same words:
 The marker is guidance that agents follow, and nothing enforces it yet.
 The primer says so once; other pages don't repeat it.
 
+## How a standard type's page reads
+
+A reader arrives at a type's page with a name and one question: what is
+this, and how do I make one? Every page in `/docs/types/` answers in the
+same order, so a reader always knows where to look:
+
+1. **What it is**, under the title, in one line a newcomer understands.
+2. **When to use it and what to use instead**, in a paragraph: the job it
+   does, then the type to reach for when this one is wrong, with its name.
+3. **`## Shape`**: a table of its parts with a `Required?` column and each
+   part's type, or the text or the list of values it holds.
+4. **`## Example`**: a working example, compiled and run by the docs check.
+5. **`## Good to know`**: the surprises, in plain words, each leading with
+   what you can do. Write "`==` tells you whether two are the same", then
+   what `<` won't take. Never "contract", "baseline" or "not ordered". A
+   type with nothing surprising leaves its own notes out.
+6. **`## In JSON`**: what a route sends and receives, with its examples.
+7. **`## Details`**: how it is stored, its text form, how it is shown to
+   people and its operations, collapsed for a reader on the site. The
+   Markdown keeps every fact, in this same order.
+
+> Bad: "`PersonName`. People and contact; not ordered; personal data
+> (identifying); since Jadpo 0.1.0. Make one: build one from its fields."
+>
+> Good: "A person's name: a given name and, if they have one, a family
+> name. Use it wherever you store or show what someone is called."
+
+The first, second, fourth and fifth parts are written by hand, once for
+each type, in `crates/jadpo-std/src/standard/pages/`, one file for each of
+the type groups. The rest comes from the compiler's data, so it can't
+disagree with what is built. Name another type in backticks and the page
+links it. A test fails when a type has no entry, and the docs check fails
+a page that uses the words above or an example that doesn't compile.
+
 ## How an error page reads
 
 A page in `docs/errors/` is reached from a compiler error, by someone in

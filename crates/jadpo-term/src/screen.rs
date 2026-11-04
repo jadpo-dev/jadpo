@@ -715,7 +715,10 @@ fn block_lines(block: &Block, grid: &Grid, style: &Style) -> Vec<Line> {
             heading,
             lines: body,
         } => {
-            let mut lines = vec![vec![bold(heading.as_str())]];
+            let mut lines = Vec::new();
+            if !heading.is_empty() {
+                lines.push(vec![bold(heading.as_str())]);
+            }
             lines.extend(body.iter().map(|line| vec![raw(format!("  {line}"))]));
             lines
         }
