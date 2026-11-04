@@ -612,8 +612,14 @@ rules! {
         "Package to remove is still used by the app";
     INSTALL_LINK_REFUSED: "install.link_refused", area 14, Error, Agent,
         "Linked package in a CI or production build";
+    INSTALL_NOT_IN_REGISTRY: "install.not_in_registry", area 14, Error, Human,
+        "The registry has no package of the name you gave, or no such release of it";
+    INSTALL_NOT_PROVED: "install.not_proved", area 14, Error, Human,
+        "The registry's answers don't prove the release is the one in its public log";
     INSTALL_SURFACE_MISMATCH: "install.surface_mismatch", area 14, Error, Human,
         "The package you are installing has code that offers something different from its committed `surface.jadpo_record`";
+    INSTALL_YANKED: "install.yanked", area 14, Error, Human,
+        "The release you asked for has been yanked, so it can't be newly installed";
     LAYOUT_CALL_DIRECTION: "layout.call_direction", area 1, Error, Human,
         "Code in `shared/` uses a declaration that belongs to one domain";
     LAYOUT_FILE_NAME_MISMATCH: "layout.file_name_mismatch", area 1, Error, Agent,
@@ -666,6 +672,8 @@ rules! {
         "Name does not survive conversion to its file name";
     PACKAGE_ACTION_INVALID: "package.action_invalid", area 11, Error, Agent,
         "Package action does what package code may not";
+    PACKAGE_ADVISORY: "package.advisory", area 14, Error, Human,
+        "An advisory is against a declaration of an installed package that the app reaches";
     PACKAGE_DIGEST_MISMATCH: "package.digest_mismatch", area 11, Error, Human,
         "The files of an installed package in `packages/` have been changed, added or removed since it was installed";
     PACKAGE_EMAILS_FOLDER: "package.emails_folder", area 11, Error, Agent,
@@ -776,8 +784,14 @@ rules! {
         "Example in a package's description doesn't compile or doesn't hold";
     PUBLISH_EXAMPLE_MISSING: "publish.example_missing", area 14, Error, Agent,
         "Package's function has no example, or a failure it raises is shown by none";
+    PUBLISH_FAILED: "publish.failed", area 14, Error, Agent,
+        "The registry's verifier refused the release";
     PUBLISH_FILE_NOT_ALLOWED: "publish.file_not_allowed", area 14, Error, Agent,
         "A commit holds a file a release can't: anything but Jadpo source and the package's text files";
+    PUBLISH_NOT_AT_TAG: "publish.not_at_tag", area 14, Error, Agent,
+        "What `jadpo package publish` would ask for isn't a pushed `v<version>` tag whose commit is the one checked out";
+    PUBLISH_REPOSITORY_REFUSED: "publish.repository_refused", area 14, Error, Human,
+        "The package's repository isn't one the registry can fetch: a public git repository reached over HTTPS";
     PUBLISH_SAMPLE_MISSING: "publish.sample_missing", area 14, Error, Agent,
         "Package's recipes have no sample app with one domain to compile in";
     PUBLISH_STALE_FILES: "publish.stale_files", area 14, Error, Agent,
@@ -870,6 +884,8 @@ rules! {
         "A recording by `jadpo package record` or `jadpo ai record` got no answer worth keeping from the sandbox or the model, or its call couldn't be made";
     RECORDING_REFUSED: "recording.refused", area 14, Error, Human,
         "A recording was refused before anything was sent, because its connection would call a live API or has nothing set for its sandbox, its package is installed, or there is nothing to ask its prompt with";
+    REGISTRY_UNREACHABLE: "registry.unreachable", area 14, Error, Human,
+        "The registry couldn't be reached, or answered in a way that can't be read";
     ROUTE_API_UNKNOWN: "route.api_unknown", area 7, Error, Agent,
         "Route group names an API the application doesn't declare";
     ROUTE_ARGUMENT_INVALID: "route.argument_invalid", area 7, Error, Agent,
@@ -878,6 +894,8 @@ rules! {
         "A route's `authentication:` line holds something other than `RouteAuthentication.none` or `RouteAuthentication.fresh`";
     ROUTE_BINDING_UNUSED: "route.binding_unused", area 7, Error, Agent,
         "Route reads a placeholder or input it never passes on";
+    ROUTE_CACHE_INVALID: "route.cache_invalid", area 7, Error, Agent,
+        "Route's `cache:` isn't `immutable`, or it keeps an answer a public cache may not hold";
     ROUTE_CALLS_PAST_DEADLINE: "route.calls_past_deadline", area 11, Error, Agent,
         "The outside calls a route makes could, at their slowest, take longer than the route is allowed to run";
     ROUTE_CONFIRM_INVALID: "route.confirm_invalid", area 8, Error, Agent,
@@ -926,6 +944,8 @@ rules! {
         "A `GET` route runs an action that isn't read-only, or a route of another method runs a query";
     ROUTE_RUN_REQUIRED: "route.run_required", area 7, Error, Agent,
         "Route does not say what it runs";
+    ROUTE_SENDS_INVALID: "route.sends_invalid", area 7, Error, Agent,
+        "Route's `sends:` isn't a media type, or its `Output` isn't exactly one `Bytes` field";
     ROUTE_SETTLE_INVALID: "route.settle_invalid", area 7, Error, Agent,
         "Route `settle:` is not an answer query and a wait inside its deadline";
     ROUTE_STATUS_INVALID: "route.status_invalid", area 7, Error, Agent,

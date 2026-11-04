@@ -1802,6 +1802,7 @@ dependencies = [
  "rcgen",
  "regex",
  "rustls",
+ "serde",
  "serde_json",
  "sha2",
  "sigstore-crypto",

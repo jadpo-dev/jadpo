@@ -922,6 +922,16 @@ decisions themselves are `acceptances::needs`, the same list `check` judges,
 each carrying its plain words and the callers it lets in from where its
 record is read.
 
+**The registry commands** (chunk R5, area 11, "How the registry commands
+work") are `jadpo-cli`'s `registry` (asking the protocol over `download`,
+each answer held to the table's shapes; the log check; which release `update`
+takes), `install` (where a release from the registry joins `add` and `update`
+at the same `verify`), `package_search`, `package_audit`, `package_publish` and
+`package_preview`. `jadpo_check::release::reached` follows the graph's calls,
+uses and raises from the app's own code, and `type_shape` reduces a type as a
+fingerprint does. Tests run them against `jadpo-registry`'s local registry, and
+a stand-in in front of it that changes its answers.
+
 **What a release shows** (chunk R3, area 11) is worked out by
 `jadpo_check::release`, not held in the graph, since it describes a package's
 release rather than an app. `facts` reads the surface,
@@ -3077,6 +3087,19 @@ record's grants (`FieldProbe`) to tell a field's refusal, 403
 field a row and `fields` in its JSON, and `graph::policy_nodes` adds
 `grant`, `field_restriction`, `tenancy` and `action_exception` nodes with
 `grants` and `scopes` edges.
+
+**A route that sends raw bytes** (area 7, "Sending raw bytes" and "Answers that
+never change"; chunk G3). `routes::Reader::sends` and `cache` read the two items
+into `RoutePlan::sends` and `immutable`, and `RoutePlan::output` stays the
+`Output`'s codec. `http::answer` is the one place a success is made, for either
+executor, so both hosts and both executors send it alike: `sent_raw` takes the
+field, and sets `Content-Length` itself because a `HEAD` clears the body after
+that. Compiled code gets no writer for the route. A route test wraps the body in
+the field's JSON and reads it through the codec. `idempotency::store_params`
+keeps a body whose type isn't JSON as base64 with its type, since a kept
+response is a JSON column. `policy::flow::cached_personal_problems` reports a
+marked field in a kept answer once the routes are read, for the reason the
+proof below does, walking in the mode that follows values to a model.
 
 **An action on a `GET`** (area 7, "A `GET` that runs an action"; chunk G2).
 `routes::Reader::run` lets a `GET` name an action, and

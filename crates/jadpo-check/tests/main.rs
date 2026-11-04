@@ -114,6 +114,7 @@ mod schedules;
 mod search;
 mod secrets;
 mod security_records;
+mod sends;
 mod served_openapi;
 mod sets_maps;
 mod setting_move;

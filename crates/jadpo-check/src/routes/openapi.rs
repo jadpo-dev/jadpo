@@ -1593,6 +1593,56 @@ fn stream_response() -> Value {
     out
 }
 
+/// `headers` with what `cache: immutable` writes (area 7, "Answers that
+/// never change").
+fn kept_headers(mut headers: Value) -> Value {
+    let mut schema = Value::object();
+    schema.set("type", "string");
+    schema.set("const", jadpo_std::http::CACHE_IMMUTABLE);
+    let mut header = Value::object();
+    header.set(
+        "description",
+        "The answer never changes, so any cache may keep it for a year.",
+    );
+    header.set("schema", schema);
+    headers.set("Cache-Control", header);
+    headers
+}
+
+/// A `sends:` route's success (area 7, "Sending raw bytes"): its media type
+/// with no schema, as OpenAPI 3.1 writes a binary body, its length, and in
+/// `x-jadpo-sends` the `Output` field it is.
+fn sends_response(output: String, sends: &jadpo_std::http::Sends, kept: bool) -> Value {
+    let mut marked = Value::object();
+    marked.set("output", output);
+    marked.set("field", sends.field.as_str());
+    let mut media = Value::object();
+    media.set("x-jadpo-sends", marked);
+    let mut content = Value::object();
+    content.set(&sends.media_type, media);
+    let mut length_schema = Value::object();
+    length_schema.set("type", "integer");
+    let mut length = Value::object();
+    length.set("description", "The body's size in bytes.");
+    length.set("schema", length_schema);
+    let mut headers = Value::object();
+    headers.set("Content-Length", length);
+    let mut out = Value::object();
+    out.set(
+        "description",
+        format!(
+            "Success: the body is raw bytes, the `{}` field.",
+            sends.field
+        ),
+    );
+    out.set("content", content);
+    out.set(
+        "headers",
+        if kept { kept_headers(headers) } else { headers },
+    );
+    out
+}
+
 fn shared_response(name: &str) -> Value {
     let mut out = Value::object();
     out.set("$ref", format!("#/components/responses/{name}"));
@@ -1919,11 +1969,22 @@ fn operation(
         );
     }
     out.set("x-jadpo-changes", writes);
+    if route.immutable {
+        out.set("x-jadpo-cache", "immutable");
+    }
     out.set_some("parameters", parameters);
 
     let mut responses = Value::object();
     let success = route.status.code().to_string();
     match (&route.output, &route.settle) {
+        // Raw bytes for a body (area 7, "Sending raw bytes"), which no
+        // schema describes; `sends:` never goes with `settle:`.
+        (Some(output), _) if route.sends.is_some() => {
+            if let Some(sends) = &route.sends {
+                let name = wire.render(&type_ref(lookup, output), &mut BTreeSet::new());
+                responses.set(&success, sends_response(name, sends, route.immutable));
+            }
+        }
         // A route that waits for its work answers `answer:`'s result
         // either way, and 202 when the work hadn't settled in time (area
         // 7, "Waiting for follow-on work").
@@ -1954,13 +2015,16 @@ fn operation(
         (Some(output), None) if super::streams(output) => {
             responses.set(&success, stream_response());
         }
-        (Some(output), None) => responses.set(
-            &success,
-            response(
+        (Some(output), None) => {
+            let mut answer = response(
                 "Success.",
                 Some(constrained(wire, &type_ref(lookup, output), refs)),
-            ),
-        ),
+            );
+            if route.immutable {
+                answer.set("headers", kept_headers(Value::object()));
+            }
+            responses.set(&success, answer);
+        }
         (None, _) => responses.set(&success, response("Success, with no content.", None)),
     }
     // Declared failures, under their statuses.

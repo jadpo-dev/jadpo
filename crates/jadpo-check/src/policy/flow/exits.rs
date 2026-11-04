@@ -623,7 +623,7 @@ pub(super) fn package_callable<'db>(
         .rfind(|callable| body_facts(db, project, *callable).key.as_ref() == Some(key))
 }
 
-fn flow_of<'a>(db: &'a dyn Db, project: Project) -> Flow<'a> {
+pub(super) fn flow_of<'a>(db: &'a dyn Db, project: Project) -> Flow<'a> {
     Flow {
         db,
         project,

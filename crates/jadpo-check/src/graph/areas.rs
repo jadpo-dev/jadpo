@@ -301,10 +301,14 @@ fn lock_entries(db: &dyn Db, project: Project) -> Vec<Node> {
             .get(&locked.folder())
             .map(|home| registry.key(Kind::Package, &home.through, None));
         let (version, source, location, tag, commit, digest) = match &locked.source {
-            Source::Registry { version, digest } => (
+            Source::Registry {
+                version,
+                name,
+                digest,
+            } => (
                 Some(version.clone()),
                 "registry",
-                None,
+                Some(name.clone()),
                 None,
                 None,
                 Some(digest.clone()),

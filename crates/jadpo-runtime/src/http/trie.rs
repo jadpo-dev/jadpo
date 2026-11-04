@@ -425,6 +425,8 @@ mod tests {
             run: Run::Action(0),
             settle: None,
             stream: false,
+            sends: None,
+            immutable: false,
             keys: None,
             args: Vec::new(),
             authentication: Authentication::Public,

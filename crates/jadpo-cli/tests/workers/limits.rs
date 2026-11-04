@@ -61,7 +61,7 @@ fn a_routes_limit_is_counted_in_its_own_binding_on_workers() {
     let worker = Workerd::start(&out, &wrangler, &[]);
     let from = [("CF-Connecting-IP", "203.0.113.9")];
     answers_as_every_host_does(|method, path| {
-        let (status, head, _) = worker.answered(method, path, &from, "");
+        let (status, head, _) = worker.exchange(method, path, &from, "");
         (status, head)
     });
     let log = worker.log();
@@ -86,7 +86,7 @@ fn a_routes_limit_is_counted_in_its_own_binding_on_workers() {
     // The binding answered, so nothing fell back to the isolate's memory.
     assert!(!log.contains("rate_limits.fallback"), "{log}");
     // Another address has its own allowance.
-    let (status, _, _) = worker.answered(
+    let (status, _, _) = worker.exchange(
         "POST",
         "/releases",
         &[("CF-Connecting-IP", "198.51.100.4")],

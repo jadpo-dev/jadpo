@@ -101,6 +101,10 @@ pub fn said(family: &Family, subject: &str, change: &str) -> String {
         "ApiChange.output_field_retyped" => {
             format!("clients can now get other values in `{subject}`")
         }
+        "ApiChange.media_type_changed" => {
+            let (api, route) = route(subject);
+            format!("`{route}` in API `{api}` now sends another kind of body")
+        }
         "ApiChange.failure_changed" => {
             format!("failure `{subject}` is gone, or answers with another status")
         }

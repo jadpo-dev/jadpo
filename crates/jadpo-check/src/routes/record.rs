@@ -566,7 +566,16 @@ fn write(
                 ));
             }
         }
+        // Raw bytes for a body (area 7, "Sending raw bytes"): another media
+        // type breaks whoever reads it, which a reviewer must see.
+        if let Some(sends) = &route.sends {
+            entry.push(format!("sends {}", sends.media_type));
+        }
         entry.push(format!("status {}", route.status.code()));
+        // An answer any cache may keep (area 7, "Answers that never change").
+        if route.immutable {
+            entry.push("cache immutable");
+        }
         // A route that waits for its work answers 202 when it hadn't
         // settled in time (area 7, "Waiting for follow-on work").
         if let Some(settle) = &route.settle {

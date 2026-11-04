@@ -502,13 +502,7 @@ real deploy) and, before outside authors can publish, D3 (releases).
   passkey".
 - [x] **R3 A release's facts, change record and fingerprints**: area 11, "How a release's facts, change record and fingerprints are worked out"; area 14, "`jadpo package check`" and "`jadpo package verify`"; compiler/runtime §2.3, "What a release shows"; `docs/errors/publish.behaviour_changed.md`, `docs/errors/publish.stale_files.md`.
 - [x] **R4 The registry protocol and a local registry**: area 11, "The registry protocol"; compiler/runtime §2.1, `jadpo-registry`.
-- [ ] **R5 The registry commands** `opus · high` after R3 and R4: area 11,
-  "Installing and updating from the registry", "Developing for the
-  registry"; area 14, the package commands. `add @publisher/name` with the
-  log check and the lock's scoped `registry` line, `update`'s three-day
-  wait, `--to` and urgent releases, `search`, `audit`, `publish` and
-  `--dry-run`, `preview`. Every screen designed with the design skills
-  first.
+- [x] **R5 The registry commands**: area 11, "How the registry commands work"; area 14, the package commands; compiler/runtime §2.1, "The registry commands"; the pages of `install.not_in_registry`, `install.not_proved`, `install.yanked`, `package.advisory`, `publish.failed`, `publish.not_at_tag`, `publish.repository_refused` and `registry.unreachable`.
 - [x] **R6 The verifier**: area 11, "The verifier" and "Publishing errors"; area 14, "`jadpo package verify`"; compiler/runtime §2.1, `jadpo-verifier`; `deploy/verifier/`; `.github/workflows/verifier-image.yml`; documentation, "Versions and releases".
 - [ ] **R6b The verifier deployed** **needs a maintainer**: the Fly.io
   account and the steps in [documentation](documentation.md#versions-and-releases):
@@ -519,14 +513,9 @@ real deploy) and, before outside authors can publish, D3 (releases).
   enum variant, where `package: Text` and `Kind.library` are unambiguous
   (Richard, 2026-11-03). An `Output` with a `type` field works in any app.
 - [x] **G2 A `GET` that runs a read-only action**: area 7, "A `GET` that runs an action"; area 3, "Functions and actions"; `docs/errors/route.run_kind.md`; compiler/runtime, "An action on a `GET`".
-- [ ] **G3 A route that sends raw bytes** `opus · high` after G2: area 7,
-  "Output and status" and OpenAPI; area 18, the API record. `sends:
-  "application/x-tar"` on an `Output` with exactly one `Bytes` field; that
-  field is the body, and failures stay JSON (Richard, 2026-11-03). Also `cache:
-  immutable`, for an answer that never changes.
+- [x] **G3 A route that sends raw bytes**: area 7, "Sending raw bytes", "Answers that never change" and "The public API record"; area 18, "Acceptances"; `docs/errors/route.sends_invalid.md`, `docs/errors/route.cache_invalid.md`; compiler/runtime, "A route that sends raw bytes".
 - [x] **G4 A route's `rate_limit:`**: area 16, "Rate limits" and "What the
-  binding promises"; §2.6; area 16's
-  Decisions.
+  binding promises"; §2.6; area 16's Decisions.
 - [ ] **G5 Small gaps the registry found** `opus · high`: `authentication: []`
   honoured on `openapi.json`, which is accepted and ignored today; a `jadpo`
   command that runs R4's conformance test against a document, so R7's CI needs

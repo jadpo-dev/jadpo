@@ -706,6 +706,10 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
             corpus_project(&crate::read_only_get::files(), "compiled-read-only-get")
                 .expect("it checks"),
         ),
+        (
+            "a route sending raw bytes".into(),
+            corpus_project(&crate::sends::files(), "compiled-sends").expect("it checks"),
+        ),
     ]
 }
 
@@ -1064,6 +1068,10 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
             "area 8's payout confirmed with a passkey",
             corpus_project(&confirmation, "workerd-confirmation"),
         ),
+        (
+            "a route sending raw bytes",
+            corpus_project(&crate::sends::files(), "workerd-sends"),
+        ),
     ];
     let folders: Vec<PathBuf> = projects
         .iter()
@@ -1090,7 +1098,8 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
             (5, 5),
             (1, 1),
             (3, 3),
-            (3, 3)
+            (3, 3),
+            (2, 2)
         ]
     );
     println!(
