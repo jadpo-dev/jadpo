@@ -12,7 +12,8 @@ Jadpo gives your app some common backend features itself, so you don't
 install a library or write your own. Each is part of Jadpo's runtime and runs
 inside your app's process, never as a separate container. Some reach an outside
 service, such as a mail provider, through a connection you declare in
-`app.jadpo`.
+`app.jadpo`. Each has one page: what it's for and how to use it, then its exact
+rules last.
 [How packages, connections, capabilities and services fit together](11-integrations.md#how-packages-connections-capabilities-and-services-fit-together)
 says how the pieces relate.
 
@@ -50,6 +51,11 @@ section ([Telemetry](#telemetry)). Each capability has a local driver for
 development, one fake for tests
 ([Provider calls and capabilities in tests](13-testing.md#provider-calls-and-capabilities-in-tests))
 and a conformance suite that a package filling it must pass.
+
+The table gives each capability's whole job, and not all of it works yet.
+`documents`, `bot_check`, `scanning` and `publishing` aren't built, and `files`
+has only its disk driver, with no signed links or upload slots
+([What is built](#what-is-built)).
 
 ## Feature flags
 <!-- topic: feature-flags -->
@@ -286,22 +292,87 @@ routes open to anyone. A refused request gets the built-in
 `rate_limited` failure: a 429 with a `Retry-After` header
 ([Rate-limited requests](07-http.md#rate-limited-requests)).
 
-You change a limit with `rate_limit:`, on an API in `app.jadpo` (the
-default for its routes) or on one route. Here a public form allows five
-requests an hour from each address:
+You change a limit with `rate_limit:`, on one route or on an API in
+`app.jadpo`, where it is the default for the API's routes. Here a public
+form allows five requests an hour from each address.
 
-```jadpo fragment
-// domains/sales/routes/demo_requests.jadpo
-POST / {
-    authentication: RouteAuthentication.none
-    rate_limit: {
-        requests: 5
-        within: 1h
-        by: RateLimitKey.ip
+```jadpo check project=rate-limits file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=rate-limits file=domains/sales/entities/demo_request.jadpo hidden
+/// Someone asking to see the product.
+entity DemoRequest {
+    id: Uuid
+    company: Text {
+        min_length: 1
+        max_length: 100
     }
-    input: RequestDemo
-    status: SuccessStatus.no_content
-    run: request_demo(input)
+
+    policy: {
+        create: [Access.public]
+    }
+}
+```
+
+```jadpo check project=rate-limits file=domains/sales/types/demo_form.jadpo hidden
+use sales/entities { DemoRequest }
+
+/// What someone sends to ask for a demo.
+type DemoForm = Input {
+    company: DemoRequest.company
+}
+```
+
+```jadpo check project=rate-limits file=domains/sales/types/demo_received.jadpo hidden
+use sales/entities { DemoRequest }
+
+/// What someone gets back for asking.
+type DemoReceived = Output {
+    pick: [DemoRequest.id]
+}
+```
+
+```jadpo check project=rate-limits file=domains/sales/actions/request_demo.jadpo hidden
+use sales/entities { DemoRequest }
+use sales/types { DemoForm, DemoReceived }
+
+/// Keeps a request for a demo.
+action request_demo(input: DemoForm) -> DemoReceived {
+    var demo_request: DemoRequest = DemoRequest.create {
+        set: {
+            company: input.company
+        }
+    }
+    return DemoReceived {
+        id: demo_request.id
+    }
+}
+```
+
+`domains/sales/routes/demo_requests.jadpo`:
+
+```jadpo check project=rate-limits file=domains/sales/routes/demo_requests.jadpo migrate=initial
+use sales/types { DemoForm, DemoReceived }
+use sales/actions { request_demo }
+
+/// Requests for a demo.
+routes DemoRequests {
+    prefix: /demo-requests
+
+    /// Asks for a demo, five times an hour from each address.
+    POST / {
+        authentication: RouteAuthentication.none
+        rate_limit: {
+            requests: 5
+            within: 1h
+            by: RateLimitKey.ip
+        }
+        input: DemoForm
+        output: DemoReceived
+        status: SuccessStatus.created
+        run: request_demo(input)
+    }
 }
 ```
 
@@ -310,7 +381,7 @@ from `1s` to `24h`; a longer allowance is a plan's limit, which is your
 app's data ([What isn't built in](#what-isnt-built-in)). Anything else
 is `route.rate_limit_invalid`.
 
-An API's limit is written the same way:
+An API's limit is written the same way, in `app.jadpo`:
 
 ```jadpo check project=rate-limits-on-an-api file=app.jadpo
 application {
@@ -325,6 +396,16 @@ application {
     }
 }
 ```
+
+### What a client sees
+
+A refused request gets a `429` with `Retry-After` and the standard
+`RateLimit` headers, its wording from translations like any failure's
+([Rate-limited requests](07-http.md#rate-limited-requests)). Each route you
+write shows what it is limited to, its own limit or the default one, in its
+OpenAPI entry (`x-jadpo-rate-limit`) and in `jadpo routes`. A route test's
+host counts nothing, so a route test never gets a 429; a limit is seen on
+`jadpo dev` and in a deployable.
 
 ### What a limit you write changes
 
@@ -364,37 +445,16 @@ The magic-link routes Jadpo generates
 ([Magic links](08-identity.md#magic-links)) are limited by address
 without you writing anything.
 
-### What a limit doesn't promise
-
-A limit is per caller or per address. It doesn't cap what everyone does
-between them: `by:` has no value that counts all callers together, so a
-client with many addresses gets the allowance many times. A limit makes an
-expensive anonymous route more costly to abuse, but it isn't a budget. A
-route that starts expensive work, or calls a model and spends money each
-time, needs a cap of its own as well: a limit on the work waiting, kept in
-your data, or for a model the AI budget's `over_budget`
-([Budgets](21-ai.md#budgets)).
-
-What else falls short depends on where the counts are kept:
-
-- **In memory, the native host's default.** Each server has its own counts,
-  so several servers each give the whole allowance. A restart starts every
-  count again, so a long window is only as good as the server's uptime. When
-  the 16 MB allowance runs out, the counters whose windows end soonest are
-  dropped first, so enough different addresses can win some of them a fresh
-  count.
-- **In Cloudflare's binding, on Workers.** Counts are per Cloudflare location
-  and rough: a limit of 5 let 24 through when measured
-  ([What the binding promises](#what-the-binding-promises)).
-
 ### Where the counts are kept: `rate_limits: { store: }`
 
-With no store named, each server counts in its own memory. To share the
-counts between servers, name a Redis connection as the store, with
-`rate_limits: { store: cache }` in `app.jadpo`'s `application { }`
-block. If the store can't be reached, each server counts in its own
-memory, so limits stay roughly right and no request fails. Caches follow
-the same rule ([Caches](05-data.md#caches)).
+With no store named, each server counts in its own memory. A store shared
+between servers is named with `rate_limits: { store: cache }` in
+`app.jadpo`'s `application { }` block. Redis is the store for that, and
+its driver isn't built yet, so for now a Redis store counts in each
+server's memory too ([What is built](#what-is-built)). If a store can't be
+reached, each server counts in its own memory, so limits stay roughly
+right and no request fails. Caches follow the same rule
+([Caches](05-data.md#caches)).
 
 The store must be a connection with `driver: Driver.redis` or
 `driver: Driver.cloudflare_rate_limits`; anything else is a compile
@@ -409,16 +469,6 @@ On Cloudflare Workers, a Worker's instances share no memory, so a
 deployable built for Workers that serves an API must name a store, or
 the compiler refuses it (`rate_limits.store_required`). The next section
 shows the store Workers uses.
-
-### What a client sees
-
-A refused request gets a `429` with `Retry-After` and the standard
-`RateLimit` headers, its wording from translations like any failure's
-([Rate-limited requests](07-http.md#rate-limited-requests)). Each route you
-write shows what it is limited to, its own limit or the default one, in its
-OpenAPI entry (`x-jadpo-rate-limit`) and in `jadpo routes`. A route test's
-host counts nothing, so a route test never gets a 429; a limit is seen on
-`jadpo dev` and in a deployable.
 
 ### Counting on Workers
 
@@ -473,12 +523,36 @@ logged once for each instance, and no request fails for it.
 [Rate limits on Workers](#rate-limits-on-workers) has the details.
 [What is built](#what-is-built) says how a Redis store counts.
 
-## Caches: drivers and what they hold
+### What a limit doesn't promise
+
+A limit is per caller or per address. It doesn't cap what everyone does
+between them: `by:` has no value that counts all callers together, so a
+client with many addresses gets the allowance many times. A limit makes an
+expensive anonymous route more costly to abuse, but it isn't a budget. A
+route that starts expensive work, or calls a model and spends money each
+time, needs a cap of its own as well: a limit on the work waiting, kept in
+your data, or for a model the AI budget's `over_budget`
+([Budgets](21-ai.md#budgets)).
+
+What else falls short depends on where the counts are kept:
+
+- **In memory, the native host's default.** Each server has its own counts,
+  so several servers each give the whole allowance. A restart starts every
+  count again, so a long window is only as good as the server's uptime. When
+  the 16 MB allowance runs out, the counters whose windows end soonest are
+  dropped first, so enough different addresses can win some of them a fresh
+  count.
+- **In Cloudflare's binding, on Workers.** Counts are per Cloudflare location
+  and rough: a limit of 5 let 24 through when measured
+  ([What the binding promises](#what-the-binding-promises)).
+
+## Cache drivers and what a cache may hold
 <!-- topic: caches-drivers-and-what-they-hold -->
 
-Nothing is cached unless you add it. [Caches](05-data.md#caches) says how
-you add a cache and how its copies stay current. This topic says which
-services can hold a cache and what a cache may hold.
+A cache lives in a Redis-compatible service and holds only what is harmless to
+lose. [Caches](05-data.md#caches) says how you add one and how its copies stay
+current. This topic says which services can hold a cache and what a cache may
+hold.
 
 ### Redis-compatible services
 
@@ -518,80 +592,14 @@ of them is a compile error naming the feature.
 
 [Export records to a file](../guides/18-export-records-to-a-file.md) writes a file your app makes, start to finish.
 
-To store a file, such as a user's avatar, give an entity a field of type
-`File`. The record holds the file's key, name, size and type. The bytes
-live in a connection that provides the `files` capability: the built-in
-S3 driver for any S3-compatible service, or the built-in disk driver on
-the native target. Here an avatar is kept in a Cloudflare R2 bucket:
+To keep a file, such as a price sheet a supplier sends, give an entity a
+field of type `File`. The record holds the file's key, name, size and
+type, and the bytes live in a store of files. A store is a connection that
+provides the `files` capability, which today is the built-in disk driver,
+on the native target ([The disk driver](#the-disk-driver)).
 
-```jadpo fragment
-// app.jadpo
-application {
-    connections: {
-        avatars: {
-            driver: Driver.s3
-            host: config.r2_host
-            region: "auto"
-            bucket: "avatars"
-            credential: {
-                key_id: config.r2_key_id
-                secret: config.r2_secret
-            }
-        }
-    }
-}
-
-// domains/accounts/entities/user.jadpo
-entity User {
-    ...
-    avatar: File? {
-        store: avatars
-        max_size: 5mb
-        types: [FileType.png, FileType.jpeg, FileType.webp]
-    }
-}
-```
-
-The field's settings:
-
-- `store:` names the connection, as it does for entities and caches. Two
-  buckets are two connections.
-- `max_size:` is the largest file the field accepts.
-- `types:` lists the file types it accepts.
-
-A file is kept in the field only when it fits all three, which every
-write checks ([What a write checks](#what-a-write-checks)).
-
-Cloudflare R2, Amazon S3, Backblaze B2, DigitalOcean Spaces and MinIO all
-use the S3 driver, each with its own host and settings, listed on the
-driver's page. No package wraps the driver with presets.
-
-### Files in development and tests
-
-In `jadpo dev` and tests, files go to local disk with locally signed
-links, so nothing leaves your machine. That local driver doesn't exist in
-production builds. An app whose production store is the disk driver uses
-the same driver in development, at a folder under `.jadpo/`, so upload
-slots, ranges and signed links behave as they will in production.
-
-### Writing a file your app makes: `put`
-
-A file your app makes itself, such as a generated PDF, is written with
-`attempt avatars.put(bytes, FileType.pdf)`, which returns a `File` to
-store in a field. `put` is an outside call, so you make it before the
-action's writes, while no transaction is open
-([Outside calls hold no transaction](06-reads-and-writes.md#outside-calls-hold-no-transaction)).
-In an action with several changing calls it is a keyed step, like a
-provider call, and its key is derived as any step's is, so a rerun writes
-the same object again
-([Several changing calls in one action](12-jobs-and-events.md#several-changing-calls-in-one-action)).
-Bytes that are never attached to a record are deleted after a day, like
-abandoned uploads.
-
-A bakery keeps the price sheets its suppliers send. `sheets.put` keeps
-the bytes before the action reads or writes anything, and gives the
-`File` that the record keeps. A store with no room answers
-`storage_full`, which only a failure of kind `unavailable` can map:
+A bakery keeps its price sheets in a folder on its server. `app.jadpo`
+names the store:
 
 ```jadpo check project=files-put file=app.jadpo
 application {
@@ -601,6 +609,63 @@ application {
             path: "/var/lib/bakery/sheets"
         }
     }
+}
+```
+
+`domains/bakery/entities/price_sheet.jadpo` keeps a file in that store:
+
+```jadpo check project=files-put file=domains/bakery/entities/price_sheet.jadpo
+use bakery/types { SupplierName }
+
+/// A supplier's price sheet, kept as it was sent.
+entity PriceSheet {
+    id: Uuid
+    supplier: SupplierName
+    sheet: File {
+        store: sheets
+        max_size: 5mb
+        types: [FileType.csv]
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+    }
+}
+```
+
+The field's settings:
+
+- `store:` names the connection, as it does for entities and caches. Two
+  folders are two connections.
+- `max_size:` is the largest file the field accepts. You must write it.
+- `types:` lists the file types it accepts. Leave it out and any type goes.
+
+A file is kept in the field only when it fits all three, which every
+write checks ([What a write checks](#what-a-write-checks)).
+
+### Writing a file your app makes: `put`
+
+Your app writes a file with `attempt sheets.put(bytes, FileType.csv)`,
+which returns a `File` to store in a field. `put` is an outside call, so you make it before the
+action's writes, while no transaction is open
+([Outside calls hold no transaction](06-reads-and-writes.md#outside-calls-hold-no-transaction)).
+In an action with several changing calls it is a keyed step, like a
+provider call, and its key is derived as any step's is, so a rerun writes
+the same object again
+([Several changing calls in one action](12-jobs-and-events.md#several-changing-calls-in-one-action)).
+Bytes that are never attached to a record are deleted after a day, like
+abandoned uploads.
+
+Here `sheets.put` keeps the bytes before the action reads or writes
+anything, and gives the `File` that the record keeps. A store with no room
+answers `storage_full`, which only a failure of kind `unavailable` can map.
+
+```jadpo check project=files-put file=domains/bakery/types/supplier_name.jadpo hidden
+/// Who sent a price sheet.
+type SupplierName = Text {
+    min_length: 1
+    max_length: 80
 }
 ```
 
@@ -620,39 +685,38 @@ type SheetNotKept = Failure {
 }
 ```
 
-```jadpo check project=files-put file=domains/bakery/entities/price_sheet.jadpo
-/// A supplier's price sheet, kept as it was sent.
-entity PriceSheet {
-    id: Uuid
-    sheet: File {
-        store: sheets
-        max_size: 5mb
-        types: [FileType.csv]
-    }
-
-    policy: {
-        create: [Access.public]
-        read: [Access.public, Access.system]
-    }
-}
-```
+`domains/bakery/actions/keep_prices.jadpo`:
 
 ```jadpo check project=files-put file=domains/bakery/actions/keep_prices.jadpo migrate=initial
 use app { sheets }
 use bakery/entities { PriceSheet }
-use bakery/types { SheetText }
+use bakery/types { SheetText, SupplierName }
 use bakery/failures { SheetNotKept }
 
 /// Keeps a price sheet as it was sent.
-action keep_prices(sheet_text: SheetText) fails SheetNotKept -> PriceSheet {
+action keep_prices(supplier: SupplierName, sheet_text: SheetText) fails SheetNotKept -> PriceSheet {
     var sheet: File = attempt sheets.put(encoding.to_utf8(sheet_text), FileType.csv) {
         storage_full: SheetNotKept
     }
     return PriceSheet.create {
         set: {
+            supplier: supplier
             sheet: sheet
         }
     }
+}
+```
+
+A test runs it against an in-memory store, so nothing touches the disk.
+
+`domains/bakery/actions/keep_prices.test.jadpo`:
+
+```jadpo check project=files-put file=domains/bakery/actions/keep_prices.test.jadpo
+use bakery/entities { PriceSheet }
+
+test "a supplier's sheet is kept on its record" {
+    var kept: PriceSheet = attempt keep_prices("Millers", "flour,1.20\nrye,2.40\n")
+    assert kept.supplier == "Millers"
 }
 ```
 
@@ -664,8 +728,8 @@ back, whatever store the bytes came from. Your code joins the two:
 
 - `attempt store.read(file)` returns the file's contents as
   `FileContents` ([Other built-in types](02-values-and-types.md#other-built-in-types)),
-  for passing the bytes on: to a provider as an upload, to a PDF service,
-  or as an email attachment. The format helpers don't accept it. It reads
+  for passing the bytes on: to a provider as an upload, or as an email
+  attachment. The format helpers don't accept it. It reads
   the whole file into memory, so it is capped: reading a field whose
   `max_size` is over the whole-read limit of 10 MB is a compile error
   pointing at the format helpers or `batches.each`.
@@ -685,62 +749,12 @@ You call them through their own operations and pure functions, such as
 one that builds a transformation URL, because they can't do the whole
 `files` job.
 
-### Uploading
+### Files in development and tests
 
-Files go straight from the client to the store, not through your app, so
-the 1 MB limit on a request body ([What is refused](07-http.md#what-is-refused))
-isn't in the way:
-
-1. An action calls the generated `User.avatar_upload()`, which returns an
-   `UploadSlot`: a signed address valid for 15 minutes that accepts only
-   `max_size` bytes.
-2. The client sends the file to that address.
-3. The client sends the slot's token in an ordinary create or update, in
-   an `Input` field of type `FileUpload`. Before the write commits, the
-   runtime checks that the file is there, its size, and its type from its
-   first bytes rather than what the client claimed. A mismatch is
-   `invalid_value`.
-
-Asking for a slot needs the `create` or `update` grant on the entity
-([Grants](09-policy.md#grants)). Uploads that are never attached are
-deleted after a day.
-
-### Large uploads go in parts
-
-A field whose `max_size` is over 100 MB gets a multipart slot instead of
-a single address, the same shape on S3, R2 and disk. The slot names a
-part size, with equal parts as R2 requires, and gives an address for each
-part: a signed `UploadPart` address on S3 and R2, and
-`PUT /files/<store>/uploads/<slot>/parts/<n>` on disk. The client sends
-the parts, and may resend any part after a dropped connection. Attaching
-the `FileUpload` completes the upload and runs the same size and type
-checks. A generated client helper hides the parts.
-
-```text
-POST /imports/slot                          an app route calling CustomerImport.sheet_upload()
-<- 200 { "token": "upl_…", "part_size": 16777216, "parts_url": "/files/uploads/upl_…/parts" }
-PUT /files/uploads/upl_…/parts/1            16 MiB
-<- 204
-PUT /files/uploads/upl_…/parts/2            the connection drops; the client resends part 2
-<- 204
-POST /imports { "sheet": "upl_…" }          the ordinary create joins the parts, checks size and type
-<- 201
-```
-
-### Compressed uploads
-
-An upload sent with a `Content-Encoding` is refused. A gzip file, such as
-`.csv.gz`, is read only by a batch helper given `max_unpacked_size:`, and
-going past that size fails the file, so a small upload can't unpack to
-gigabytes ([Reading gzip](#reading-gzip)). Jadpo unpacks no other
-compression and no archives, such as zip.
-
-### Downloading
-
-An `Output` that picks a `File` field sends a signed link valid for five
-minutes, with the file's name, size and type. The read has already passed
-policy, field restrictions included, so there is no separate download
-operation to protect.
+`jadpo dev` keeps every store's files in a folder under `.jadpo/files/`,
+whatever the store's driver, so nothing leaves your machine. A test keeps
+them in memory
+([The disk driver in `jadpo dev`](#the-disk-driver-in-jadpo-dev)).
 
 ### Deleting and erasing
 
@@ -748,8 +762,7 @@ Deleting the record, or clearing the field, deletes the bytes after the
 change commits, through a generated subscriber, because an action writes
 only one store ([One store per action](06-reads-and-writes.md#one-store-per-action)).
 A `File` field can be marked `personal:`. Erasure and retention then
-reach it like any field ([Personal data](15-personal-data.md)), and
-`User.export` includes it as a link.
+reach it like any field ([Personal data](15-personal-data.md)).
 
 Bytes go only once no record holds them, and never before the change
 that let go of them has committed:
@@ -790,8 +803,7 @@ since a second server wouldn't see the files: each deployable that
 reaches a disk store lists those stores as its `one_server`
 ([The manifest](18-records-and-manifest.md#the-manifest)).
 
-```jadpo fragment
-// app.jadpo
+```jadpo check project=files-disk-driver file=app.jadpo
 application {
     connections: {
         uploads: {
@@ -820,33 +832,112 @@ application {
   own pattern, opens each folder and file relative to the one above it
   without following symbolic links, reads only a regular file, and
   writes folders and files readable by the app's user only.
-- **Uploads are streamed** to a temporary file as they arrive. They are
-  counted, with a `413` at the first byte over `max_size`, hashed and
-  type-checked, then synced and renamed into place, and the directory is
-  synced.
-- **Your app serves downloads** from its own origin. It answers
-  single-range `Range` requests and `If-Range`, with an ETag from the
-  file's hash, and reads in fixed sizes, so a 2 GB download uses the
-  memory a 2 KB one does. Because the origin is your app's own, every
-  download is sent with `Content-Disposition: attachment` (except for an
-  allow-list of image types), `X-Content-Type-Options: nosniff` and
-  `Content-Security-Policy: sandbox`. The client's file name only ever
-  goes in `filename*` (RFC 6266).
 - **Space.** A write that runs out of space fails as `storage_full`.
   `free_space_floor:`, a percentage from `0%` up to, but not, `100%`, 5%
   by default, is the share of the disk kept free: a put, an upload or a
   join that would leave less free than it answers `storage_full` and
   writes nothing, so imports and the database aren't starved of space.
   The floor is a [monitoring threshold](#thresholds-across-requests).
-- **Commands.** `jadpo files ls`, `show`, `get`, `put` and `copy` work
-  on any store, in development or production. `jadpo files copy` moves a
-  store's files to another, which is how you move off one server.
+- **Commands.** `jadpo files ls`, `show`, `get`, `put` and `copy` aren't
+  built yet. `jadpo files copy` will move a store's files to another, which
+  is how you will move off one server.
 
 A deployable built for Workers that uses `Driver.disk` is refused
 ([`deployable.target_unsupported`](../errors/deployable.target_unsupported.md)).
 `jadpo dev`'s disk driver answers a full disk with `storage_full`.
 
-### Image variants and scanning
+### Not built yet
+
+The rest of this topic is the design for what comes next, and none of it
+works today. Today your app writes files with `put` and keeps them on the disk
+driver. A client's file can reach your app only inside a request, within the
+1 MB limit on a request body ([What is refused](07-http.md#what-is-refused)),
+and a client can't fetch a file back.
+
+#### The S3 driver
+
+`driver: Driver.s3` is the built-in driver for any S3-compatible service. A
+`File` field naming one today is `data.file_field_invalid`, since it keeps no
+files yet. Cloudflare R2, Amazon S3, Backblaze B2, DigitalOcean Spaces and MinIO will
+all use it, each with its own host and settings, listed on the driver's
+page. No package wraps the driver with presets.
+
+#### Uploading
+
+Files go straight from the client to the store, not through your app, so
+the 1 MB limit on a request body ([What is refused](07-http.md#what-is-refused))
+isn't in the way:
+
+1. An action calls the generated `User.avatar_upload()`, which returns an
+   `UploadSlot`: a signed address valid for 15 minutes that accepts only
+   `max_size` bytes.
+2. The client sends the file to that address.
+3. The client sends the slot's token in an ordinary create or update, in
+   an `Input` field of type `FileUpload`. Before the write commits, the
+   runtime checks that the file is there, its size, and its type from its
+   first bytes rather than what the client claimed. A mismatch is
+   `invalid_value`.
+
+Asking for a slot needs the `create` or `update` grant on the entity
+([Grants](09-policy.md#grants)). Uploads that are never attached are
+deleted after a day.
+
+On the disk driver, an upload is streamed to a temporary file as it
+arrives. It is counted, with a `413` at the first byte over `max_size`,
+hashed and type-checked, then synced and renamed into place, and the
+directory is synced.
+
+#### Large uploads go in parts
+
+A field whose `max_size` is over 100 MB gets a multipart slot instead of
+a single address, the same shape on S3, R2 and disk. The slot names a
+part size, with equal parts as R2 requires, and gives an address for each
+part: a signed `UploadPart` address on S3 and R2, and
+`PUT /files/<store>/uploads/<slot>/parts/<n>` on disk. The client sends
+the parts, and may resend any part after a dropped connection. Attaching
+the `FileUpload` completes the upload and runs the same size and type
+checks. A generated client helper hides the parts.
+
+```text
+POST /imports/slot                          an app route calling CustomerImport.sheet_upload()
+<- 200 { "token": "upl_…", "part_size": 16777216, "parts_url": "/files/uploads/upl_…/parts" }
+PUT /files/uploads/upl_…/parts/1            16 MiB
+<- 204
+PUT /files/uploads/upl_…/parts/2            the connection drops; the client resends part 2
+<- 204
+POST /imports { "sheet": "upl_…" }          the ordinary create joins the parts, checks size and type
+<- 201
+```
+
+#### Compressed uploads
+
+An upload sent with a `Content-Encoding` is refused. A gzip file, such as
+`.csv.gz`, is read only by a batch helper given `max_unpacked_size:`, and
+going past that size fails the file, so a small upload can't unpack to
+gigabytes. That reading is built ([Reading gzip](#reading-gzip)). Jadpo
+unpacks no other compression and no archives, such as zip.
+
+#### Downloading
+
+An `Output` that picks a `File` field sends a signed link valid for five
+minutes, with the file's name, size and type. The read has already passed
+policy, field restrictions included, so there is no separate download
+operation to protect.
+
+Don't pick a `File` field in an `Output` yet. It isn't refused, but the route
+answers with the file's store and key rather than a link, and nothing serves
+the bytes.
+
+On the disk driver your app serves downloads from its own origin. It
+answers single-range `Range` requests and `If-Range`, with an ETag from the
+file's hash, and reads in fixed sizes, so a 2 GB download uses the memory a
+2 KB one does. Because the origin is your app's own, every download is sent
+with `Content-Disposition: attachment` (except for an allow-list of image
+types), `X-Content-Type-Options: nosniff` and
+`Content-Security-Policy: sandbox`. The client's file name only ever goes in
+`filename*` (RFC 6266).
+
+#### Image variants and scanning
 
 Both come when an app needs them.
 
@@ -1142,12 +1233,13 @@ person, and who read sensitive fields, is kept as log events instead
 
 ### Sending audit entries elsewhere
 
-When something subscribes to the built-in `AuditEntryRecorded` event, or
-`publishing` names it, each entry is also emitted as that event, in the
-same transaction, and travels through the outbox like any event
+When something subscribes to the built-in `AuditEntryRecorded` event, each
+entry is also emitted as that event, in the same transaction, and travels
+through the outbox like any event
 ([Delivery: at least once, safe to repeat](12-jobs-and-events.md#delivery-at-least-once-safe-to-repeat)).
-A SIEM or log archive receives it through `publishing`. With nothing
-listening the event is never emitted. The database stays the record of
+A SIEM or log archive will receive it through `publishing`, which isn't built
+yet ([Where events travel](12-jobs-and-events.md#where-events-travel)). With
+nothing listening the event is never emitted. The database stays the record of
 truth; the event is a copy. It holds an entry's fields after `entity`,
 the entity's name, and `record_id`, the record's `id`. A subscriber to it
 when no entity is audited is
@@ -1368,8 +1460,12 @@ A threshold says when something your app does is too slow, too frequent
 or failing too often, such as a route's p95 duration. You declare
 thresholds in your app's source, in a monitoring file for each domain, so
 they are reviewed with the code and versioned with each build rather
-than configured in a monitoring tool. There are two kinds, because only
-one can be judged by a single process.
+than configured in a monitoring tool.
+
+`jadpo check` holds each threshold to what it watches and writes rules for
+your monitoring tool. Nothing sends those metrics yet, since `telemetry:`
+isn't built ([Telemetry](#telemetry)), so a threshold today is checked, reviewed
+and turned into rules, and doesn't yet raise an alert by itself.
 
 ### Writing a threshold
 
@@ -1492,9 +1588,10 @@ watches, is
 
 ### Thresholds per request
 
-These judge one request: its duration, its number of queries, whether
-it failed. The runtime keeps each request's spans in memory until the
-request ends, then sends:
+These judge one request: its duration and its number of queries. They are
+checked and kept in the runtime's plan, and nothing reads them yet. They come
+into use with `telemetry:`, when the runtime will keep each request's spans in
+memory until the request ends, then send:
 
 - the full trace when a threshold was crossed, the request failed or
   faulted, or its path is new to this process;
@@ -1513,11 +1610,23 @@ per-path metrics can't grow without bound.
 
 These judge many requests together: a p95 over a window, an error rate,
 the oldest waiting delivery. One instance can't judge them for a fleet,
-so the compiler generates rules for your monitoring tool into
-`build/monitoring/`: OpenSLO and Prometheus rules, and other tools' only
-when asked. The build manifest carries the same thresholds, so a tool
-that reads it needs no generated rules. The rules are applied when you
-deploy, and a change made in the tool is overwritten, as with Terraform.
+so `jadpo check` writes rules for your monitoring tool into
+`build/monitoring/`: `prometheus.yaml` and `openslo.yaml`. The build manifest
+carries the same thresholds, so a tool that reads it needs no generated rules.
+You load the files into your tool yourself. They are generated, so a change
+belongs in the thresholds, not in the file.
+
+The `p99:` above becomes this rule in `build/monitoring/prometheus.yaml`:
+
+```yaml
+- alert: hello_greeting_p99
+  expr: "histogram_quantile(0.99, sum by (le) (rate(jadpo_run_duration_seconds_bucket{jadpo_kind=\"action\", jadpo_name=\"hello.greet\"}[5m]))) > 0.05"
+  labels:
+    jadpo_threshold: "hello.greeting.p99"
+  annotations:
+    summary: "Working out a greeting stays quick."
+    description: "hello.greet p99 above 50ms within 5m"
+```
 
 A disk store's `free_space_floor:` ([The disk driver](#the-disk-driver))
 is one of these too: the rules raise an alert when the store's disk has
@@ -1525,14 +1634,6 @@ less free than its floor, as puts start answering `storage_full`.
 
 ### Setting and changing them
 
-- **Starting values** come from what the compiler knows, such as the
-  queries on each path from the query report, then from production once
-  the app has run. Local timings aren't production timings, so locally
-  the compiler reports change on the same fixtures: "30% slower",
-  "2 more queries".
-- **An agent proposes changes** from observed data as an ordinary
-  change to the source, through the MCP server
-  ([The developer console and MCP](17-debugging-and-review.md#the-developer-console-and-mcp)).
 - **Loosening needs a person.** Raising or removing a threshold is how
   an agent would silence an alert, so it needs an
   [acceptance](18-records-and-manifest.md#acceptances) and appears in
@@ -1545,11 +1646,12 @@ less free than its floor, as puts start answering `storage_full`.
   disk store's floor lowered is `uploads.free_space_floor:
   ThresholdChange.lowered`. A new threshold, a lower limit and a higher
   floor need nothing.
-- **Per build and per flag value.** Thresholds belong to a build. Each
-  flag value takes its own branch, so it has its own path and metrics,
-  with no extra tagging.
+- **Per build.** Thresholds belong to a build.
 
-OpenTelemetry stays the transport; only what is sent changes.
+Not built yet: starting values worked out from the query report and from
+production, an agent proposing changes from what it observes through the MCP
+server ([The developer console and MCP](17-debugging-and-review.md#the-developer-console-and-mcp)),
+and metrics for each flag value's path ([Path IDs](#path-ids)).
 
 ## Email
 <!-- topic: email -->
@@ -1569,9 +1671,9 @@ A template calls `{{ translations.<domain>.<message>(...) }}`, which
 takes the email's locale, and the compiler checks every call and
 placeholder against the message types and the email's fields.
 
-Here is a welcome email, from its type to the action that sends it. The
-app sends mail over SMTP, its settings and `User` entity are hidden, and
-the email's type is:
+Here is a welcome email, from its type to the action that sends it, with the
+app's settings and its `User` entity left out. The app sends mail over SMTP.
+The email's type, in `domains/accounts/emails/welcome_email.jadpo`:
 
 ```jadpo check project=email-welcome file=app.jadpo hidden
 application {
@@ -1672,7 +1774,8 @@ translations {
 ```
 
 The `.html` template, `domains/accounts/emails/welcome_email.html`, sits
-beside the type:
+beside the type. Its `include` brings in a piece several emails share
+([Partials](#partials-pieces-several-emails-share)):
 
 ```jadpo check project=email-welcome file=domains/accounts/emails/welcome_email.html
 <html dir="{{ locale.direction }}">
@@ -1686,97 +1789,6 @@ beside the type:
 
 {{ include button(label: translations.accounts.sign_in(), url: sign_in_link) }}
 ```
-
-### Templates
-
-An email has an `.html` template, a `.txt` one or both, named after its
-type. An email with neither is `email.template_missing`, and so is a
-template that no email type is named after.
-
-Inside `{{ }}` a template writes Jadpo's own expressions:
-
-- its email's fields, `to` and `locale` among them;
-- `{{ if (...) }} ... {{ else if (...) }} ... {{ else }} ... {{ end }}`
-  on a `Bool`;
-- `{{ for item in list }} ... {{ end }}`;
-- translations and `text.format`, both written in the email's locale
-  without a `locale:`;
-- `{{ locale.direction }}`, the locale's text direction in Jadpo's
-  wording, `ltr` or `rtl`, for a `dir=` attribute.
-
-### What a template may not do
-
-Templates are strict. Each of these is a compile error:
-
-- a name that isn't a field of the email's type;
-- a message that doesn't exist, or a placeholder that is missing or of
-  the wrong type;
-- a partial that doesn't exist or is given the wrong fields;
-- `if` on something that isn't a `Bool`, and `for` over something that
-  isn't a list;
-- any call other than translations and formatting, and arithmetic or
-  building a value (`email.template_not_allowed`).
-
-A field that no template reads, and no wording of the subject writes, is
-`email.field_unused`. It is a judgement call, so a `decline` line above
-the field answers it
-([Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)).
-
-### Partials: pieces several emails share
-
-A partial is a piece several emails share, such as a button or a
-signature. You declare it as `type Name = EmailPartial { ... }`, with its
-`.html` and `.txt` beside it as an email's are:
-
-- in `shared/emails/`, where every domain's emails may include it;
-- or in a domain's own `emails/`, where only that domain's emails may.
-
-A template includes one as `{{ include name(field: value, ...) }}`,
-giving each of its fields once, by name. An HTML template includes the
-partial's `.html`, and a text one its `.txt`. The partial is written in
-the locale of the template that includes it, which it gets as its
-`locale`. Its templates follow the same strict rules, and may include
-other partials, but never lead back to themselves. A partial that
-doesn't exist, can't be reached, lacks the template it is included from,
-or is given the wrong fields is `email.partial_invalid`.
-
-Here is the button the welcome email includes:
-
-```jadpo check project=email-welcome file=shared/emails/button.jadpo
-/// A link set as a button, in every email that asks the reader to act.
-type Button = EmailPartial {
-    label: PresentationText
-    url: Url
-}
-```
-
-```jadpo check project=email-welcome file=shared/emails/button.html
-<a href="{{ url }}" style="display:inline-block;padding:12px 24px;background-color:#1f2937;color:#ffffff;text-decoration:none;">{{ label }}</a>
-```
-
-```jadpo check project=email-welcome file=shared/emails/button.txt hidden
-{{ label }}: {{ url }}
-```
-
-### What a template writes out
-
-Only text and numbers are written out, in templates as in placeholders.
-`{{ value }}` takes `Text`, `PresentationText`, `Int` or `Decimal`, with
-numbers written the locale's way, or an enum whose values have wording
-([Enums with wording](10-configuration-and-time.md#enums-with-wording)).
-Writing anything else out is a compile error that says how to format it
-(`email.template_value_invalid`):
-
-- an `Instant` or `Money`, with `text.format`
-  ([Every standard type meets one contract](19-standard-library.md#every-standard-type-meets-one-contract));
-- a `Bool`, as a condition for `if`;
-- a list, walked with `for`;
-- an object, by writing its fields one by one;
-- an enum without wording, by adding wording.
-
-Values are escaped. HTML goes in unescaped only as the safe-HTML type
-`Html` ([Text formats](19-standard-library.md#text-formats)), which is
-safe because of how it is built.
 
 ### Sending
 
@@ -1817,61 +1829,6 @@ the email's locale, and each `File` field is read from its store as an
 attachment. The connection is handed that message, and the delivery's
 record alone says it went.
 
-### Where it goes: `email:`
-
-Mail goes through the `email` capability
-([Capabilities](11-integrations.md#capabilities)).
-`email: { connection: postmark  from: config.mail_sender }` in
-`application { }` names a connection, and every email goes through it,
-your app's and Jadpo's own ([Built-in emails](#built-in-emails)).
-
-- **SMTP** is a built-in driver, `driver: Driver.smtp`
-  ([The SMTP driver](#the-smtp-driver)). On Cloudflare Workers it uses
-  port 587, since Workers blocks port 25.
-- **A mail package**, such as Postmark, Amazon SES or Resend, is the
-  other way.
-
-The `EmailMessage` types, the translations and `emit` are the same
-whichever you choose, so changing provider changes only `app.jadpo`.
-
-### Attachments
-
-A `File` field on an `EmailMessage` is an attachment. It is read from
-its store when the email is sent, and checked against the size limit the
-mail package declares. Through a mail package, each `File` field needs a
-`max_size:`, and an email whose fields' sizes add up to more than the
-package's `limits: { attachments: }` is `email.attachment_limit`. A
-provider that can't send attachments can still be an ordinary package,
-but can't be the `email:` connection.
-
-### What belongs to the mail package
-
-Everything specific to one provider is the package's own:
-
-- Per-send values, such as Postmark's message streams or SES
-  configuration sets, are typed settings on the connection.
-- Hosted templates with variables
-  (`postmark.email.send_with_template(...)`), suppression lists and
-  marketing sends are the package's operations. You call them from an
-  action or subscriber in a domain the connection lists. One connection
-  serves both: `email:` uses it, and the listed domains call it. Mail
-  sent from a hosted template gets no dev inbox entry, no health score
-  and no automatic template check, though your app can add a contract
-  case.
-- Bounces and complaints are the package's own webhook events, which you
-  subscribe to like any package event. There are no standard
-  `EmailBounced` and `EmailComplained` events, so moving to another
-  provider means rewriting the bounce subscribers.
-
-### A send whose outcome is unknown
-
-Postmark, SES, SendGrid and Mailgun take no idempotency key, so a send
-that may or may not have gone out can't safely be repeated. Such a send
-is parked for an operator and never resent blindly, since a duplicate
-receipt isn't harmless
-([Retries and giving up](12-jobs-and-events.md#retries-and-giving-up)).
-`jadpo deliveries` can resend in bulk.
-
 ### Email in tests
 
 Tests catch mail instead of sending it. `jadpo test` catches every
@@ -1899,6 +1856,23 @@ test "signing up welcomes the new user, with a link to sign in" {
 }
 ```
 
+### Where it goes: `email:`
+
+Mail goes through the `email` capability
+([Capabilities](11-integrations.md#capabilities)).
+`email: { connection: postmark  from: config.mail_sender }` in
+`application { }` names a connection, and every email goes through it,
+your app's and Jadpo's own ([Built-in emails](#built-in-emails)).
+
+- **SMTP** is a built-in driver, `driver: Driver.smtp`
+  ([The SMTP driver](#the-smtp-driver)). On Cloudflare Workers it uses
+  port 587, since Workers blocks port 25.
+- **A mail package**, such as Postmark, Amazon SES or Resend, is the
+  other way.
+
+The `EmailMessage` types, the translations and `emit` are the same
+whichever you choose, so changing provider changes only `app.jadpo`.
+
 ### Email in development: the dev inbox
 
 `jadpo dev` catches every email in a local inbox, so nothing leaves your
@@ -1914,14 +1888,114 @@ An agent uses the same inbox from the command line, with
 follow a sign-up or a privacy request from start to finish.
 `jadpo email clear` empties the inbox.
 
+### Templates
+
+An email has an `.html` template, a `.txt` one or both, named after its
+type. An email with neither is `email.template_missing`, and so is a
+template that no email type is named after.
+
+Inside `{{ }}` a template writes Jadpo's own expressions:
+
+- its email's fields, `to` and `locale` among them;
+- `{{ if (...) }} ... {{ else if (...) }} ... {{ else }} ... {{ end }}`
+  on a `Bool`;
+- `{{ for item in list }} ... {{ end }}`;
+- translations and `text.format`, both written in the email's locale
+  without a `locale:`;
+- `{{ locale.direction }}`, the locale's text direction in Jadpo's
+  wording, `ltr` or `rtl`, for a `dir=` attribute.
+
+### What a template may not do
+
+Templates are strict. Each of these is a compile error:
+
+- a name that isn't a field of the email's type;
+- a message that doesn't exist, or a placeholder that is missing or of
+  the wrong type;
+- a partial that doesn't exist or is given the wrong fields;
+- `if` on something that isn't a `Bool`, and `for` over something that
+  isn't a list;
+- any call other than translations and formatting, and arithmetic or
+  building a value (`email.template_not_allowed`).
+
+A field that no template reads, and no wording of the subject writes, is
+`email.field_unused`. It is a judgement call, so a `decline` line above
+the field answers it
+([Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)).
+
+### What a template writes out
+
+Only text and numbers are written out, in templates as in placeholders.
+`{{ value }}` takes `Text`, `PresentationText`, `Int` or `Decimal`, with
+numbers written the locale's way, or an enum whose values have wording
+([Enums with wording](10-configuration-and-time.md#enums-with-wording)).
+Writing anything else out is a compile error that says how to format it
+(`email.template_value_invalid`):
+
+- an `Instant` or `Money`, with `text.format`
+  ([Every standard type meets one contract](19-standard-library.md#every-standard-type-meets-one-contract));
+- a `Bool`, as a condition for `if`;
+- a list, walked with `for`;
+- an object, by writing its fields one by one;
+- an enum without wording, by adding wording.
+
+Values are escaped. HTML goes in unescaped only as the safe-HTML type
+`Html` ([Text formats](19-standard-library.md#text-formats)), which is
+safe because of how it is built.
+
+### Partials: pieces several emails share
+
+A partial is a piece several emails share, such as a button or a
+signature. You declare it as `type Name = EmailPartial { ... }`, with its
+`.html` and `.txt` beside it as an email's are:
+
+- in `shared/emails/`, where every domain's emails may include it;
+- or in a domain's own `emails/`, where only that domain's emails may.
+
+A template includes one as `{{ include name(field: value, ...) }}`,
+giving each of its fields once, by name. An HTML template includes the
+partial's `.html`, and a text one its `.txt`. The partial is written in
+the locale of the template that includes it, which it gets as its
+`locale`. Its templates follow the same strict rules, and may include
+other partials, but never lead back to themselves. A partial that
+doesn't exist, can't be reached, lacks the template it is included from,
+or is given the wrong fields is `email.partial_invalid`.
+
+Here is the button the welcome email includes:
+
+```jadpo check project=email-welcome file=shared/emails/button.jadpo
+/// A link set as a button, in every email that asks the reader to act.
+type Button = EmailPartial {
+    label: PresentationText
+    url: Url
+}
+```
+
+```jadpo check project=email-welcome file=shared/emails/button.html
+<a href="{{ url }}" style="display:inline-block;padding:12px 24px;background-color:#1f2937;color:#ffffff;text-decoration:none;">{{ label }}</a>
+```
+
+```jadpo check project=email-welcome file=shared/emails/button.txt hidden
+{{ label }}: {{ url }}
+```
+
+### Attachments
+
+A `File` field on an `EmailMessage` is an attachment. It is read from
+its store when the email is sent, and checked against the size limit the
+mail package declares. Through a mail package, each `File` field needs a
+`max_size:`, and an email whose fields' sizes add up to more than the
+package's `limits: { attachments: }` is `email.attachment_limit`. A
+provider that can't send attachments can still be an ordinary package,
+but can't be the `email:` connection.
+
 ### The mail health score
 
 Every mail in the dev inbox, and `jadpo email show <id>`, shows what
 Jadpo's own checks found and how to fix each problem: no plain-text
 part, content that is only images, broken HTML, links that aren't
-absolute HTTPS, link shorteners, a subject in capitals, a missing
-unsubscribe header on bulk mail, and more than 102 KB, where Gmail clips
-a mail. `jadpo check` reports templates that would fail as
+absolute HTTPS, link shorteners, a subject in capitals, and more than
+102 KB, where Gmail clips a mail. `jadpo check` reports templates that would fail as
 [`email.health_problem`](../errors/email.health_problem.md), an error
 you can decline
 ([Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)).
@@ -1937,6 +2011,35 @@ and the sender's history, which change constantly. A clean score means
 the common mistakes are absent, nothing more, so don't rely on it.
 Testing where mail really lands needs seed-account services outside
 Jadpo.
+
+### What belongs to the mail package
+
+Everything specific to one provider is the package's own:
+
+- Per-send values, such as Postmark's message streams or SES
+  configuration sets, are typed settings on the connection.
+- Hosted templates with variables
+  (`postmark.email.send_with_template(...)`), suppression lists and
+  marketing sends are the package's operations. You call them from an
+  action or subscriber in a domain the connection lists. One connection
+  serves both: `email:` uses it, and the listed domains call it. Mail
+  sent from a hosted template gets no dev inbox entry, no health score
+  and no automatic template check, though your app can add a contract
+  case.
+- Bounces and complaints are the package's own webhook events, which you
+  subscribe to like any package event. There are no standard
+  `EmailBounced` and `EmailComplained` events, so moving to another
+  provider means rewriting the bounce subscribers.
+
+### A send whose outcome is unknown
+
+Postmark, SES, SendGrid and Mailgun take no idempotency key, so a send
+that may or may not have gone out can't safely be repeated. Such a send
+is parked for an operator and never resent blindly, since a duplicate
+receipt isn't harmless
+([Retries and giving up](12-jobs-and-events.md#retries-and-giving-up)).
+`jadpo deliveries resolve` settles one once the provider shows whether it
+went.
 
 ### Email and personal data
 
@@ -2018,7 +2121,7 @@ adds the `Message-ID:`, as RFC 6409 says a submission server does.
 ### When a send goes wrong
 
 The driver classifies what happened as every driver does
-([The seam every outside call goes through](#the-seam-every-outside-call-goes-through)):
+([How every outside call is made safe](#how-every-outside-call-is-made-safe)):
 
 - A server that can't be reached, refuses for now (`4xx`), or drops the
   connection before the end of the message went out surely took nothing,
@@ -2037,7 +2140,8 @@ Jadpo sends some emails itself: the magic-link email
 ([Magic links](08-identity.md#magic-links)) and the privacy emails
 ([Data requests](15-personal-data.md#data-requests)). Each works with
 nothing written, and your app can change as much of it as it needs, in
-five levels. Each level keeps the ones below it.
+five levels. Each level keeps the ones below it. The privacy emails aren't
+built yet; they come with data requests.
 
 Every email, built in or your app's own, goes through your app's one
 `email:` setting in `application { }`. It names a connection that
@@ -2427,6 +2531,11 @@ var file: File = attempt invoices.put(pdf, FileType.pdf)
   rendered HTML
   ([Provider calls and capabilities in tests](13-testing.md#provider-calls-and-capabilities-in-tests)).
 
+Until this is built, `documents:` is `toolchain.not_built_yet`. An app that
+must make a PDF today describes a rendering service as a package
+([Call an outside API](../guides/06-call-an-outside-api.md)), calls it from an
+action, and keeps the bytes it answers with `put` ([Files](#files)).
+
 ## Search
 <!-- topic: search -->
 
@@ -2434,11 +2543,8 @@ var file: File = attempt invoices.put(pdf, FileType.pdf)
 
 Give an entity a `search:` section and people can search its records by
 words. The compiler generates the index, keeps it up to date and
-generates its migration, and a query finds records with `matches`. By
-default the search runs on PostgreSQL's full-text search, so you need
-nothing else. Search is the `search` capability, so an engine's package,
-such as Meilisearch, Typesense, Algolia or OpenSearch, can fill it
-instead.
+generates its migration, and a query finds records with `matches`. The
+search runs on PostgreSQL's full-text search, so you need nothing else.
 
 ```jadpo check project=search file=app.jadpo hidden
 application {}
@@ -2893,12 +2999,16 @@ searched.
 
 ### An engine instead of PostgreSQL
 
-`search: { fields: [...]  store: products_index }` names a connection
-whose package provides `search`. Leave `store:` out and the search is
-PostgreSQL's. Not built yet: `store:` is `toolchain.not_built_yet` where
-it is written ([What is built](#what-is-built)). The engine's package does the whole job: it upserts a
-record's searchable fields, removes a record, and queries by words with
-equality filters.
+Not built yet: `store:` is `toolchain.not_built_yet` where it is written
+([What is built](#what-is-built)), so every search today is PostgreSQL's.
+What follows is the design.
+
+Search is the `search` capability, so an engine's package, such as
+Meilisearch, Typesense, Algolia or OpenSearch, can fill it.
+`search: { fields: [...]  store: products_index }` names a connection whose
+package provides `search`. The engine's package does the whole job: it
+upserts a record's searchable fields, removes a record, and queries by words
+with equality filters.
 
 ```jadpo fragment
 // domains/catalogue/entities/product.jadpo
@@ -2988,6 +3098,13 @@ POST / {
 - `bot_check: true` with no `bot_check:` connection is a compile error
   naming the setting to add.
 
+Until this is built, `bot_check:` is `toolchain.not_built_yet`. An app that
+needs a check today takes the widget's token in the route's input, describes
+the challenge service as a package
+([Call an outside API](../guides/06-call-an-outside-api.md)), and calls it first
+in the action. Every public route already has a [rate limit](#rate-limits),
+which slows a script but does not stop one.
+
 ## Outgoing webhooks
 <!-- topic: outgoing-webhooks -->
 
@@ -3011,7 +3128,10 @@ The exception is listed once in the network report
 else in your app, a package included, can reach an address that isn't a
 declared connection.
 
-Outgoing webhooks aren't built yet ([What is built](#what-is-built)).
+Outgoing webhooks aren't built yet ([What is built](#what-is-built)), and nothing
+stands in for them: your app reaches only the connections it declares, so it
+can't send to an address a customer gives it. Receiving a webhook is built
+([Receive a webhook](../guides/17-receive-a-webhook.md)).
 
 ## What isn't built in
 <!-- topic: not-built-in -->
@@ -3032,18 +3152,21 @@ app's own data and packages, or they come later:
 
 ### Why each service is built in
 
+This is why each is here and where you set it up.
+[Built-in services](#built-in-services) says how much of each works today.
+
 | Feature | Native? | Why | Where it lives |
 |---|---|---|---|
 | Feature flags | Yes | Misspelt flags are errors; both branches tested; expired flags reported; one-step removal | Root `flags.jadpo`; read as `flags.name`; state in the app's database, not a capability |
-| Rate limits | Yes | The route knows the caller; 429 is already a failure kind; limits appear in OpenAPI | `rate_limit:` on an API or route; counted in the cache store, or Cloudflare's binding on Workers |
-| Files | Yes, through the `files` capability | Size and type checked; policy and erasure reach the bytes; signed links generated | `File` fields; a `files` connection in `app.jadpo`: the S3 driver, or the disk driver on native |
-| Audit trail | Yes | The compiler sees every write and its caller; personal fields hashed | `audit:` section on an entity; `AuditEntryRecorded` when something listens |
+| Rate limits | Yes | The route knows the caller; 429 is already a failure kind; limits appear in OpenAPI | `rate_limit:` on an API or route; counted in each server's memory, or Cloudflare's binding on Workers |
+| Files | Yes, through the `files` capability | Size and type checked; policy and erasure reach the bytes | `File` fields; a `files` connection in `app.jadpo`: the disk driver, on native |
+| Audit trail | Yes | The compiler sees every write and its caller | `audit:` section on an entity; `AuditEntryRecorded` when something listens |
 | Telemetry | Yes, with one settings section | Every route, query, action, job and provider call is known | `telemetry:` in `application { }`; custom metrics in a domain's `monitoring.jadpo` |
 | Path IDs and monitoring thresholds | Yes | Every path is known, so it can be named, sampled and given limits | Generated runtime; a monitoring file per domain |
-| Caches | Yes ([Caches](05-data.md#caches)) | What may be cached, and what never is, is the language's | Redis-compatible connections; [Caches: drivers and what they hold](#caches-drivers-and-what-they-hold) |
+| Caches | Yes ([Caches](05-data.md#caches)) | What may be cached, and what never is, is the language's | Redis-compatible connections; [Cache drivers and what a cache may hold](#cache-drivers-and-what-a-cache-may-hold) |
 | Email | Yes, through the `email` capability | Templates typed against translations; delivered after commit; any provider without code changes | `type X = EmailMessage` in `emails/`; an `email` connection in `app.jadpo` |
 | Documents | Yes, through the `documents` capability | Templates typed and translated as email's; rendered in subscribers | `type X = Document` in `documents/`; a `documents:` connection in `app.jadpo` |
-| Search | Yes, through the `search` capability | Index, query and migration generated from one declaration; results always pass policy | `search:` section on an entity; PostgreSQL unless it names an engine |
+| Search | Yes, through the `search` capability | Index, query and migration generated from one declaration; results always pass policy | `search:` section on an entity; PostgreSQL |
 | Bot protection | Yes, through the `bot_check` capability | Jadpo's own public endpoints need it; the token never enters a route's input | `bot_check:` in `application { }`, `bot_check: true` on a route or feature |
 | Outgoing webhooks | Yes | Payloads typed from events; signing and retries generated; one guarded network exception | Later, through `publishing` |
 | Field encryption | Yes | Encrypted fields kept out of logs, indexes and filters | [Encrypted fields](15-personal-data.md#encrypted-fields) |
@@ -3348,9 +3471,10 @@ installing for them.
 ## Mail packages, partials and `email.sent`
 <!-- topic: mail-packages-partials-and-email-sent -->
 
-This topic has the exact rules for partials, for `email.sent` in tests,
-and for a mail package that fills the `email` capability
-([Email](#email) has the overview).
+Partials, `email.sent` in tests and a mail package that fills the `email`
+capability each have rules of their own. This topic has them, for when you
+write a mail package or a test of your mail surprises you ([Email](#email) has
+how to write and send one).
 
 ### A partial's locale goes with it
 
@@ -3560,11 +3684,13 @@ tried as an email is. Its outbox payload is the address, the locale and
 the sign-in request's id, never the link or the code, which are made as
 it is sent ([Magic links](08-identity.md#magic-links)).
 
-## Email templates and sending
+## Email rules: templates and sending
 <!-- topic: email-templates-and-sending -->
 
-This topic has the exact rules for how an email's templates are checked
-and how the email is sent ([Email](#email) has the overview).
+An email's templates are checked when you compile and rendered when the
+email is sent. This topic has the exact rules for both, for when a template is
+refused or a mail doesn't read as you expected ([Email](#email) has how to
+write and send one).
 
 ### Rendered when it is sent
 
@@ -3668,12 +3794,13 @@ declared in `shared/emails/` or a domain's `emails/`, with its `.html`
 and `.txt` beside it as an email's are, and called with its fields by
 name.
 
-## The seam every outside call goes through
-<!-- topic: the-seam-every-outside-call-goes-through -->
+## How every outside call is made safe
+<!-- topic: how-outside-calls-are-made-safe (was the-seam-every-outside-call-goes-through) -->
 
 Every call that leaves your app's process, to a capability or to a
-provider, goes through one entry point in the runtime: the seam. This
-topic is how the seam carries out
+provider, goes through one entry point in the runtime, so that it is logged,
+faked in tests and never repeated when repeating isn't safe. That entry point
+is the seam. This topic is how it carries out
 [Capabilities the built-in services use](#capabilities-the-built-in-services-use),
 [A send whose outcome is unknown](#a-send-whose-outcome-is-unknown) and
 [Outside calls hold no transaction](06-reads-and-writes.md#outside-calls-hold-no-transaction).
@@ -3775,12 +3902,13 @@ A test runs on it, and `jadpo dev`'s host gives a package's fake the
 same way. The runtime's Rust tests share one test host, which fakes wrap
 the same way.
 
-## Files: `put`, `read` and the disk driver in development
+## File fields, `put`, `read` and the disk driver
 <!-- topic: files-put-read-and-the-disk-driver-in-development -->
 
-This topic has the exact rules for `File` fields, `store.put`,
-`store.read`, and the store `jadpo dev` and tests keep files in
-([Files](#files) has the overview).
+A `File` field, `store.put` and `store.read` each refuse what doesn't fit.
+This topic has the exact rules, and where `jadpo dev` and tests keep files, for
+when a write is refused or a read is too large ([Files](#files) has how to use
+them).
 
 ### What a `File` holds
 
@@ -3789,8 +3917,10 @@ for them, its name (none for one `store.put` made), its size and its
 `FileType`. It is kept as its JSON in a `jsonb` column.
 
 Only the runtime builds one: `File { ... }` is `type.not_record`. No
-request carries a `File`, and no output sends one, since an output's
-signed link comes with downloads. A program reads none of its parts yet.
+request carries a `File`. An output's signed link comes with downloads, so an
+output that picks one sends its store and key instead, and shouldn't be
+written yet ([Downloading](#downloading)). A program reads none of its parts
+yet.
 
 ### A `File` field's settings
 
@@ -3988,7 +4118,7 @@ and a file helper's run reads two rows a batch. `fixture_file`, and
 telling the store to fail from a test's source, come with the testing
 fakes ([What is built](#what-is-built)).
 
-## Files: an export's pieces
+## How an export writes its file
 <!-- topic: export-file-pieces (was files-an-export-s-pieces) -->
 
 A large export is written a page of rows at a time, and each page is a
@@ -4077,8 +4207,12 @@ A file that isn't gzip is read as it is, whatever `max_unpacked_size:`
 says, so one helper serves uploads that are packed and ones that
 aren't.
 
-## Flags: declared, read and tested
+## Flag rules: declaring, reading, testing
 <!-- topic: flags-declared-read-and-tested -->
+
+This topic has the exact rules for declaring a flag, reading it and covering it
+in tests, for when `jadpo check` refuses one
+([Feature flags](#feature-flags) has how to use them).
 
 Each flag in `flags { }` is a `Bool` or an enum whose variants carry no
 data, with a `default:` written as a test's `flags:` writes a value, an
@@ -4130,8 +4264,12 @@ commit's date, both in UTC, or at `SOURCE_DATE_EPOCH` when it is set. A
 flag is past its date from the day after it, and `flag.expired` names
 its owner. Running a program or its tests judges no date.
 
-## Flags: changed, listed and removed
+## Flag rules: changing, listing, removing
 <!-- topic: flags-changed-listed-and-removed -->
+
+This topic has the exact rules for changing a flag while your app runs, what
+each change logs, and how `remove` rewrites your source
+([Feature flags](#feature-flags) has how to use them).
 
 `jadpo flags` reads and changes `jadpo_flags` in the flags' store, found
 as `jadpo schedules` finds its database, and runs none of the app's code
@@ -4231,11 +4369,13 @@ out for the caller as an action's read is, with `cache-control:
 no-store`. The OpenAPI document gives its schema, the enum's values
 listed. A route the app writes at that path is `route.path_overlap`.
 
-## Monitoring thresholds: checked and generated
+## What Jadpo generates from thresholds
 <!-- topic: monitoring-thresholds-generated -->
 
-How `jadpo check` reads a domain's thresholds and what it writes from
-them (chunk B13; the form of a threshold decided 2026-11-01).
+`jadpo check` reads each domain's thresholds and writes rules a monitoring tool
+can load. This topic has the exact rules and what it writes, for when a
+threshold is refused or you connect the rules to a tool
+([Monitoring](#monitoring) has how to write one).
 
 ### Where they are read
 
@@ -4302,15 +4442,15 @@ The errors this page describes are built with the feature they belong to.
 
 | Feature | Status |
 |---|---|
-| Email | Built: email's templates, the shared layout, `email:`, sending after commit through the SMTP driver, attachments and parking ([Email templates and sending](#email-templates-and-sending)). The SMTP conversation runs in the driver, over the host's transport and its TLS upgrade ([How it is built](../compiler-runtime.md), "TLS through the transport"). |
+| Email | Built: email's templates, the shared layout, `email:`, sending after commit through the SMTP driver, attachments and parking ([Email rules: templates and sending](#email-rules-templates-and-sending)). The SMTP conversation runs in the driver, over the host's transport and its TLS upgrade ([How it is built](../compiler-runtime.md), "TLS through the transport"). |
 | Jadpo's own magic-link email | Built: at all five levels, worded by Jadpo or reworded by the app, wrapped in the app's layout, the app's own email filled with the link and the code, or the app's own sending given them ([Jadpo's own magic-link email](#jadpos-own-magic-link-email), [Your own magic-link email](#your-own-magic-link-email)). |
 | The privacy emails | Not built yet. They come with data requests ([Data requests](15-personal-data.md#data-requests)). |
 | Mail packages | Built: a mail package as the connection, partials and `email.sent` ([Mail packages, partials and `email.sent`](#mail-packages-partials-and-emailsent)). |
 | The dev inbox and the health score | Partly built: the dev inbox, `jadpo email`, the health score, `email.health_problem` and `jadpo email check-domain` ([The dev inbox and the health score](#the-dev-inbox-and-the-health-score)), with SpamAssassin's rules in the score ([SpamAssassin in the health score](#spamassassin-in-the-health-score)). Not built yet: the inbox page as part of the developer console, and its link to each mail's trace, which comes with `jadpo trace`. |
 | Rate limits | Partly built: default rate limits with routes, a route's and an API's own `rate_limit:`, and their store on Workers, Cloudflare's rate-limiting binding ([Rate limits on Workers](#rate-limits-on-workers)). Not built yet: Redis's driver, which comes with caches. Until then a deployable whose store is Redis counts in its own memory, which on Workers is the judgement call `rate_limits.counted_in_memory`. Not built: turning a limit off, which the design notes say needs an acceptance and which has no syntax yet; `requests:` and `within:` can only loosen it. A generated route's own limits don't appear in OpenAPI's `x-jadpo-rate-limit` or `jadpo routes`, and a magic-link refusal gives `Retry-After` without the `RateLimit` headers. The binding's windows, the Wrangler entries and what its documentation says of locations and accuracy aren't yet checked against the real edge. |
-| The capability seam | Built: the seam every capability's calls go through, with a delivery that hands its event to a capability, parked as `outcome_unknown` when a send without a key may have acted ([The seam every outside call goes through](#the-seam-every-outside-call-goes-through)). |
-| Files | Partly built. Built: the `files` capability's first part on that seam: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [Files: `put`, `read` and the disk driver in development](#files-put-read-and-the-disk-driver-in-development)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([Files: an export's pieces](#files-an-exports-pieces)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). A file's bytes are deleted once no record holds it, after the change commits, through the generated subscriber `files <store>`, and a day after a `put` when no record ever held them, a person's erasure and retention included ([Deleting and erasing](#deleting-and-erasing)). The floor is a monitoring threshold ([Monitoring](#monitoring)). Not built yet: upload slots, multipart ones included, downloads, fields naming one store of files in entities of two databases, the S3 driver, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written. |
-| Flags | Partly built: `flags { }` of `Bool` and enum flags with their `default:`, `owner:` and `expires:`; `flags.<name>` in actions, tests and a route's `run:` arguments, worked out for the caller from `jadpo_flags` in `flags: { store: }`, held in each server's memory and fixed for the operation; a test's `flags:`; `flag.unknown`, `flag.read_context` and `flag.expired` ([Flags: declared, read and tested](#flags-declared-read-and-tested)). `jadpo flags list`, `set`, `reset` and `remove`, each change logged in `jadpo_flag_changes`; `flag.value_untested`; and `client: true` with each API's `GET /flags` ([Flags: changed, listed and removed](#flags-changed-listed-and-removed)). Not built yet: named tenants, which wait for tenancy to be settled for flags; and a user's erasure reaching their `id` in `jadpo_flags` and `jadpo_flag_changes`, which comes with erasures. |
+| The capability seam | Built: the seam every capability's calls go through, with a delivery that hands its event to a capability, parked as `outcome_unknown` when a send without a key may have acted ([How every outside call is made safe](#how-every-outside-call-is-made-safe)). |
+| Files | Partly built. Built: the `files` capability's first part on that seam: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [File fields, `put`, `read` and the disk driver](#file-fields-put-read-and-the-disk-driver)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([How an export writes its file](#how-an-export-writes-its-file)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). A file's bytes are deleted once no record holds it, after the change commits, through the generated subscriber `files <store>`, and a day after a `put` when no record ever held them, a person's erasure and retention included ([Deleting and erasing](#deleting-and-erasing)). The floor is a monitoring threshold ([Monitoring](#monitoring)). Not built yet: upload slots, multipart ones included, downloads, fields naming one store of files in entities of two databases, the S3 driver, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written. |
+| Flags | Partly built: `flags { }` of `Bool` and enum flags with their `default:`, `owner:` and `expires:`; `flags.<name>` in actions, tests and a route's `run:` arguments, worked out for the caller from `jadpo_flags` in `flags: { store: }`, held in each server's memory and fixed for the operation; a test's `flags:`; `flag.unknown`, `flag.read_context` and `flag.expired` ([Flag rules: declaring, reading, testing](#flag-rules-declaring-reading-testing)). `jadpo flags list`, `set`, `reset` and `remove`, each change logged in `jadpo_flag_changes`; `flag.value_untested`; and `client: true` with each API's `GET /flags` ([Flag rules: changing, listing, removing](#flag-rules-changing-listing-removing)). Not built yet: named tenants, which wait for tenancy to be settled for flags; and a user's erasure reaching their `id` in `jadpo_flags` and `jadpo_flag_changes`, which comes with erasures. |
 | Audit | Partly built: an entity's `audit:`, an entry in the same transaction as each change, `history` with the record's `read` grant and the fields the caller can read, retention by the purge schedule, entries deleted with their record by erasure, `AuditEntryRecorded` to subscribers, and the permissions report's line ([Audit trail](#audit-trail)). Not built yet: what [What the audit trail doesn't keep yet](#what-the-audit-trail-doesnt-keep-yet) lists, each `toolchain.not_built_yet` where it is written, and `publishing`, which comes with outgoing webhooks. |
 | Search | Partly built: on PostgreSQL, `search: { fields: language: }` with its generated column, GIN index and migrations, `matches` with a `SearchText`, the best matches first in keyset pages, and policy over every search ([Search](#search)). Not built yet: an engine's `store:`, `toolchain.not_built_yet` where it is written, and `jadpo search reindex`, which come with the `search` capability's packages; and searching a field of a sensitive category, `toolchain.not_built_yet` in `fields:` until the access records are built. |
 | Documents | Not built yet: the application's `documents:` is `toolchain.not_built_yet` where it is written. |
@@ -4318,7 +4458,7 @@ The errors this page describes are built with the feature they belong to.
 | Outgoing webhooks | Not built yet. |
 | The `telemetry:` section | Not built yet: it is `toolchain.not_built_yet` where it is written. Nor is telemetry in the developer console. |
 | Path IDs | Not built yet for requests. Each body's ways are numbered, and the differential run compares the paths each test's bodies took, but no request carries a `path` or a `path_key`. |
-| Monitoring thresholds | Partly built: `thresholds { }` in each domain's `monitoring.jadpo`, each threshold checked to watch a route, action, query, schedule or subscriber of its domain with limits that apply to it; the per-request limits in the runtime's plan, the across-request limits and the disk floors written to `build/monitoring/` as Prometheus and OpenSLO rules and carried in the manifest; and a limit raised or removed, or a floor lowered, refused by `check` until a `ThresholdChange` acceptance names it ([Monitoring thresholds: checked and generated](#monitoring-thresholds-checked-and-generated)). Not built yet: acting on the per-request limits, which comes with the `telemetry:` section, starting values from the query report and production, and an agent's proposals through MCP. |
+| Monitoring thresholds | Partly built: `thresholds { }` in each domain's `monitoring.jadpo`, each threshold checked to watch a route, action, query, schedule or subscriber of its domain with limits that apply to it; the per-request limits in the runtime's plan, the across-request limits and the disk floors written to `build/monitoring/` as Prometheus and OpenSLO rules and carried in the manifest; and a limit raised or removed, or a floor lowered, refused by `check` until a `ThresholdChange` acceptance names it ([What Jadpo generates from thresholds](#what-jadpo-generates-from-thresholds)). Not built yet: acting on the per-request limits, which comes with the `telemetry:` section, starting values from the query report and production, and an agent's proposals through MCP. |
 
 [The roadmap](../roadmap.md) says when.
 
