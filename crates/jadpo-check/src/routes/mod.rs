@@ -2580,6 +2580,19 @@ impl Reader<'_> {
         if ty.has_error() {
             return None;
         }
+        // A `File` goes out as a signed link, which comes with downloads
+        // (area 16, "Downloading").
+        // One with no field to name isn't an `Output`, refused below.
+        if let Some(held) = crate::types::decl::held_file(self.lookup, &ty, &mut Vec::new())
+            && held.contains('.')
+        {
+            self.out.push(crate::types::decl::file_sent(
+                &format!("`{ty}`"),
+                &held,
+                span,
+            ));
+            return None;
+        }
         if let Ty::Opaque(name, args) = &ty
             && name == jadpo_std::standard::geo::FEATURE_COLLECTION
             && let [_, properties] = args.as_slice()

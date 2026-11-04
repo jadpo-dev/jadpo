@@ -6,7 +6,8 @@ an `Input`, read from a body or a query string, and a route's placeholder
 may not hold a `BatchRun`, a `BatchProgress`, a `RowProblem` or an
 `ImportSummary`, however deep. A run comes from
 `batches.each`, or from a field the caller may read where the
-application kept it:
+application kept it. No request carries a `File` either, since it would name
+any file's store and key; take the `id` of the record that keeps it instead:
 
 ```jadpo check project=e-batch-input file=stock.jadpo hidden
 type ShelfCode = Text {

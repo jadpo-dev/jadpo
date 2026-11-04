@@ -386,6 +386,7 @@ What the Reddit thread found (Richard, 2026-11-03):
   what it would save, measured against the PersonName detour in the 0.2.0 run.
 - [x] **A20 An email address is personal data**: area 15, "Contact details and names need no mark" and "What the compiler checks"; area 18, "What a first record holds"; compiler/runtime §2.3, "Contact details and names need no mark"; notes for areas 15 and 18.
 - [x] **A21 Phone numbers, names and addresses are cleared as an email is**: area 15, "Contact details and names need no mark" and "Erasure"; `data.erase_field_required`; compiler/runtime §2.3, "Contact details and names need no mark"; notes for area 15.
+- [x] **A24 A `File` isn't sent or taken by a route until downloads are built**: area 16, "What a `File` holds" and "Downloading"; `toolchain.not_built_yet` and `type.batch_input`; notes for area 16.
 - [x] **D17a Honest status words**: each area's "What is built" table; [writing guide](writing.md), "A status word"; `status_word_problems` in `tools/docs/agent_guidance.py`.
 - [x] **D17b The reference's manifest**: `docs/reference.toml` and its check; docs/documentation.md, "The reference's manifest".
 - [x] **D17c The navigation designed**: `design/docs-nav.html` in jadpo-website.
@@ -423,7 +424,7 @@ above and before every other unticked chunk.
 
 0.2.0 shipped without V2. **0.3.0 holds** everything in this section, R1 to
 R6, G1 to G7 (what the registry application, R7, needs from `jadpo`), the real
-deploy (8.2n) and what it finds, and D15, D16, D17, A12 to A15, A20 and A21 (Richard,
+deploy (8.2n) and what it finds, and D15, D16, D17, A12 to A15, A20, A21 and A24 (Richard,
 2026-11-03). It is released when those have merged. V1 and V3 to V5 run at the same time as each other and as R1
 and R4, where they touch different crates.
 
