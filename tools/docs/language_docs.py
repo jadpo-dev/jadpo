@@ -103,6 +103,8 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
 
+import reference_manifest
+
 ROOT = Path(__file__).resolve().parents[2]
 DOCS = ROOT / 'docs/language'
 # One page per compiler rule, its examples (docs/documentation.md).
@@ -1822,6 +1824,15 @@ class Bundle:
         self.primer = primer
         # The standard type reference, from the compiler's contract data.
         self.types = TypeReference(help_data, root)
+        # How the reference is grouped, and the compiler's groups of types in
+        # its order, None when there is no compiler data to compare.
+        self.reference = reference_manifest.load(root)
+        self.type_groups = None
+        if help_data.get('types'):
+            groups = {}
+            for entry in help_data['types']:
+                groups.setdefault(entry.get('group'), []).append(type_id(entry['name']))
+            self.type_groups = list(groups.items())
         self.problems = []
         # A renamed topic's ID -> the IDs it had before, which still reach it.
         self.aliases = {t['id']: t['aliases'] for page in pages for t in page.topics() if t['aliases']}
@@ -2063,7 +2074,20 @@ class Bundle:
                 # Only a renamed topic has them: its old IDs, which still reach it.
                 **({'aliases': list(aliases)} if aliases else {}),
             })
+        if self.reference is not None:
+            # Where the reference's manifest places the page, for pages it places.
+            places = self.reference.places({e['id']: e for e in entries}, self.type_groups)
+            for entry in entries:
+                entry.update(places.get(entry['id'], {}))
         return {'version': self.version, 'pages': entries}
+
+    def reference_problems(self, built):
+        """What's wrong with the reference's manifest against these pages."""
+        if self.reference is None:
+            return [f'{reference_manifest.MANIFEST} is missing: every topic has its place there']
+        old_ids = {old: new for new, olds in self.aliases.items() for old in olds}
+        entries = {entry['id']: entry for entry in self.index(built)['pages']}
+        return self.reference.problems(entries, old_ids, self.type_groups)
 
     def write(self, out):
         """Writes the bundle into `out`, replacing what was there."""
@@ -2075,7 +2099,12 @@ class Bundle:
             target = out / path
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(text)
-        (out / 'index.json').write_text(json.dumps(self.index(built), indent=2, ensure_ascii=False) + '\n')
+        index = self.index(built)
+        (out / 'index.json').write_text(json.dumps(index, indent=2, ensure_ascii=False) + '\n')
+        if self.reference is not None:
+            nav = self.reference.nav({entry['id']: entry for entry in index['pages']}, self.type_groups,
+                                     site_path, self.version)
+            (out / 'nav.json').write_text(json.dumps(nav, indent=2, ensure_ascii=False) + '\n')
         # The agent skill goes in byte for byte, outside the index.
         skill = self.root / SKILL
         if skill.exists():
@@ -2306,6 +2335,7 @@ def check_structure(pages, errors, catalogue, commands=(), root=ROOT, learn=(), 
             problems.append(f'topic "{page_id}" is {words(text)} words, over {TOPIC_WORDS}: split it')
     problems += bundle.problems
     problems += bundle_link_problems(built)
+    problems += bundle.reference_problems(built)
     problems += site_path_problems({kind for kind, *_ in built})
     problems += agent_reading_problems(built, root)
     files = markdown_files(root)

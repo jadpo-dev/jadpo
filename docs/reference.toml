@@ -1,0 +1,1014 @@
+# How the reference is grouped for a reader; topic text stays on its area page.
+# Every topic has one place here, which the docs check holds, so a new topic
+# adds its line. docs/documentation.md, "The reference's manifest", is what each
+# key means. An area's "What is built" topic goes under `built`, out of the
+# sidebar. A topic's title is its heading's: there is one name for a page.
+
+[[group]]
+id = "language"
+title = "Language"
+summary = "How a Jadpo program is laid out and written: its types, logic, failures and standard library."
+
+[[group.page]]
+title = "Project layout and modules"
+topics = [
+  "project-layout-and-modules",
+  "project-layout",
+  "source-files",
+  "domains-instead-of-modules",
+  "the-root",
+  "application-sections",
+  "domains",
+  "files-and-names",
+  "sharing-and-promotion",
+  "ownership-and-calls-replace-modules",
+  "imports",
+  "naming",
+  "comments",
+  "database",
+  "what-it-looks-like-in-code",
+]
+details = [
+  "decided-layout",
+  "decided-in-later-areas",
+]
+built = [
+  "project-layout-and-modules-built",
+]
+
+[[group.page]]
+title = "Values and types"
+topics = [
+  "values-and-types",
+  "built-in-types",
+  "named-types",
+  "creating-values",
+  "validating-in-the-middle-of-a-program",
+  "one-form-for-every-type",
+  "signatures-use-named-types",
+  "objects",
+  "building-a-type-from-other-types",
+  "absent-values",
+  "enums",
+  "collections",
+  "when-one-type-can-stand-in-for-another",
+  "values-never-change",
+]
+built = [
+  "values-and-types-built",
+]
+
+[[group.page.section]]
+title = "Dates and times"
+topics = [
+  "time-types",
+  "durations",
+  "the-current-time-clock-now",
+  "arithmetic-and-comparison",
+  "zones-and-local-times",
+  "showing-dates-and-times-to-people",
+]
+
+[[group.page.section]]
+id = "types"
+title = "Standard types"
+summary = "Every standard type from A to Z, and what all of them can do."
+topics = [
+  "the-standard-types",
+  "every-standard-type-meets-one-contract",
+  "every-boundary-through-the-contract",
+  "packages-use-the-standard-types",
+  "standard-type-encodings",
+  "standard-type-clashes",
+]
+details = [
+  "shared-vocabulary-types",
+]
+
+[[group.page.section.section]]
+id = "types-people-and-contact"
+title = "People and contact"
+summary = "Names, email addresses, phone numbers and postal addresses."
+types = "People and contact"
+topics = [
+  "names-addresses-and-countries",
+  "phone-numbers-and-postal-codes",
+]
+
+[[group.page.section.section]]
+id = "types-places"
+title = "Places"
+summary = "Countries, languages, locales, time zones and the codes for them."
+types = "Places"
+
+[[group.page.section.section]]
+id = "types-geospatial"
+title = "Geospatial"
+summary = "Points, lines, shapes and the coordinates and map features built from them."
+types = "Geospatial"
+topics = [
+  "geospatial-types",
+]
+
+[[group.page.section.section]]
+id = "types-money-and-banking"
+title = "Money and banking"
+summary = "Amounts of money, prices, rates, cards and bank accounts."
+types = "Money and banking"
+topics = [
+  "money-and-payments",
+  "prices-discounts-and-rates",
+  "exchange-rates",
+  "bank-accounts",
+]
+
+[[group.page.section.section]]
+id = "types-tax-and-identity-numbers"
+title = "Tax and identity numbers"
+summary = "Tax numbers, company numbers and identity documents."
+types = "Tax and identity numbers"
+topics = [
+  "cards-and-identity-documents",
+  "groups-with-the-baseline-only",
+]
+
+[[group.page.section.section]]
+id = "types-commerce-and-logistics"
+title = "Commerce and logistics"
+summary = "Product codes, sizes, shipping terms, tracking numbers and vehicles."
+types = "Commerce and logistics"
+topics = [
+  "commerce-travel-and-health-codes",
+  "records-and-health-measures",
+]
+
+[[group.page.section.section]]
+id = "types-time-and-calendar"
+title = "Time and calendar"
+summary = "Instants, dates, durations, recurring rules and calendar events."
+types = "Time and calendar"
+topics = [
+  "time-and-calendar-additions",
+  "recurrences-and-opening-hours",
+  "calendar-events",
+]
+
+[[group.page.section.section]]
+id = "types-physical-quantities"
+title = "Physical quantities"
+summary = "Length, mass, temperature, energy and other measured amounts."
+types = "Physical quantities"
+topics = [
+  "physical-quantities",
+]
+
+[[group.page.section.section]]
+id = "types-maths-and-data"
+title = "Maths and data"
+summary = "Percentages, ratios, ranges, data sizes and vectors."
+types = "Maths and data"
+
+[[group.page.section.section]]
+id = "types-health"
+title = "Health"
+summary = "Clinical codes, doses, blood measures and allergens."
+types = "Health"
+
+[[group.page.section.section]]
+id = "types-media-and-visual"
+title = "Media and visual"
+summary = "Colours, image and page sizes, video and audio formats and subtitles."
+types = "Media and visual"
+topics = [
+  "colour",
+  "media",
+]
+
+[[group.page.section.section]]
+id = "types-web-and-network"
+title = "Web and network"
+summary = "URLs, domain names, HTTP values, IP addresses and network identifiers."
+types = "Web and network"
+topics = [
+  "web-and-software",
+]
+
+[[group.page.section.section]]
+id = "types-software"
+title = "Software"
+summary = "Versions, package and licence identifiers, traces, file names and unique IDs."
+types = "Software"
+topics = [
+  "software-types",
+]
+
+[[group.page.section.section]]
+id = "types-text-formats"
+title = "Text formats"
+summary = "Markdown, HTML, rich text and text held in several languages."
+types = "Text formats"
+topics = [
+  "text-formats",
+]
+
+[[group.page.section.section]]
+id = "types-security"
+title = "Security"
+summary = "Passwords, hashes, tokens, keys and credentials."
+types = "Security"
+topics = [
+  "security-records",
+  "secret-values",
+]
+
+[[group.page.section.section]]
+id = "types-travel"
+title = "Travel"
+summary = "Airport and airline codes, flight numbers, cabin classes and bookings."
+types = "Travel"
+
+[[group.page.section.section]]
+id = "types-other-with-a-published-standard"
+title = "Other with a published standard"
+summary = "Other values a published standard defines, from UN numbers to energy ratings."
+types = "Other with a published standard"
+
+[[group.page.section.section]]
+id = "types-ai"
+title = "AI"
+summary = "Token counts, token usage and the messages of a chat with a model."
+types = "AI"
+topics = [
+  "ai-types",
+]
+
+[[group.page]]
+title = "Logic"
+topics = [
+  "logic",
+  "functions-and-actions",
+  "variables",
+  "constants",
+  "statements",
+  "expressions-and-operators",
+  "match",
+  "attempt",
+  "loops",
+  "passing-functions",
+  "recursion",
+  "generic-code",
+]
+built = [
+  "logic-built",
+]
+
+[[group.page]]
+title = "Failures"
+topics = [
+  "failures",
+  "declaring-a-failure",
+  "kinds",
+  "saying-what-can-fail-fails",
+  "raising-a-failure-reject",
+  "passing-a-failure-on-attempt",
+  "turning-one-failure-into-another",
+  "handling-a-failure-in-match",
+  "what-the-client-sees",
+  "faults",
+  "concealing-records",
+  "logging",
+  "messages-and-languages",
+]
+built = [
+  "failures-built",
+]
+
+[[group.page]]
+title = "Standard library"
+topics = [
+  "standard-library",
+  "what-every-operation-follows",
+  "standard-library-operations",
+  "the-standard-operator-table",
+  "lists",
+  "sets",
+  "maps",
+  "ranges",
+  "numbers",
+  "money-operations",
+  "text",
+  "bytes",
+  "encodings",
+  "hashing-and-cryptography",
+  "signed-tokens",
+  "randomness",
+  "data-formats-json-csv-tsv-and-json-lines",
+  "json",
+  "logic-and-bits",
+]
+details = [
+  "sql-forms",
+  "how-the-five-languages-compare",
+  "language-gaps-this-page-depends-on",
+  "scenario-applications",
+]
+built = [
+  "standard-library-built",
+]
+
+[[group]]
+id = "storing-data"
+title = "Data"
+summary = "What an app stores and how it reads and writes it: entities, migrations, queries, personal data and location."
+
+[[group.page]]
+title = "Entities, stores and migrations"
+topics = [
+  "data",
+  "entities-and-the-id",
+  "fields-and-their-settings",
+  "unique-rules",
+  "references-and-on-delete",
+  "children",
+  "lifecycle",
+  "stores",
+  "structured-values",
+  "storage-types",
+  "indexes",
+  "migrations",
+  "computed-backfills",
+  "seeds",
+  "entities-in-redis",
+  "where-things-live",
+]
+details = [
+  "system-tables",
+]
+built = [
+  "data-built",
+]
+
+[[group.page]]
+title = "Reads and writes"
+topics = [
+  "reads-and-writes",
+  "named-queries",
+  "filters",
+  "order-and-pages",
+  "counts-sums-and-groups",
+  "children-and-parents",
+  "a-query-giving-a-map-layer",
+  "the-operations-every-entity-gets",
+  "when-a-write-is-refused",
+  "all-or-nothing-actions-and-concurrent-changes",
+  "counters-and-other-one-step-updates",
+  "reading-in-a-loop",
+  "one-store-per-action",
+  "where-a-read-comes-from",
+  "reads-across-domains",
+  "queries-on-entities-in-redis",
+]
+built = [
+  "reads-and-writes-built",
+]
+
+[[group.page]]
+title = "Personal data"
+status = [
+  "15-personal-data: `User.erase(id)`",
+  "15-personal-data: `User.export(id)`",
+  "15-personal-data: `privacy:` in",
+  "15-personal-data: The personal-data report",
+]
+missing = "exporting a person's data, `privacy:` and most of the report"
+topics = [
+  "personal-data",
+  "marking-personal-fields",
+  "person-entities",
+  "encrypted-fields",
+  "retention",
+  "erasure",
+  "erasure-at-providers",
+  "personal-data-export",
+  "data-requests",
+  "access-records",
+  "where-data-is-stored",
+  "the-personal-data-report",
+  "what-this-does-not-cover",
+]
+details = [
+  "personal-data-checks",
+]
+built = [
+  "personal-data-built",
+]
+
+[[group.page]]
+title = "Geospatial"
+topics = [
+  "geospatial",
+  "what-every-geospatial-operation-follows",
+  "geometry-operations",
+  "predicates-and-shapes",
+  "geospatial-storage",
+  "geospatial-queries",
+  "geospatial-interop",
+  "geospatial-left-out",
+]
+details = [
+  "precision-and-determinism",
+]
+built = [
+  "geospatial-built",
+]
+
+[[group]]
+id = "apis"
+title = "APIs"
+summary = "What an app answers: its routes, who is calling them and what each caller may do."
+
+[[group.page]]
+title = "HTTP"
+topics = [
+  "http",
+  "route-groups",
+  "paths-and-placeholders",
+  "one-input",
+  "output-and-status",
+  "what-a-route-runs",
+  "time-limits",
+  "waiting-for-follow-on-work",
+  "streaming-a-model-s-answer",
+  "how-failures-reach-the-client",
+  "idempotent-writes",
+  "generated-routes",
+  "health",
+  "apis-and-versions",
+  "openapi",
+  "the-public-api-record",
+  "write-revisions",
+  "webhooks",
+]
+built = [
+  "http-built",
+]
+
+[[group.page]]
+title = "Sign-in and identity"
+topics = [
+  "identity",
+  "the-principal",
+  "who-is-calling-current-principal",
+  "ways-to-sign-in",
+  "checking-the-person-sign-in",
+  "magic-links",
+  "passkeys",
+  "a-person-the-app-has-not-seen",
+  "signing-in-from-code-the-app-writes",
+  "routes-signed-in-by-default",
+  "starting-and-ending-a-session",
+  "service-credentials",
+  "the-application-and-revocation",
+  "in-development-and-tests",
+  "events",
+  "identity-failures",
+]
+details = [
+  "what-the-compiler-checks-of-sign-in",
+]
+built = [
+  "identity-built",
+]
+
+[[group.page]]
+title = "Policy"
+topics = [
+  "policy",
+  "grants",
+  "a-user-field-on-the-record",
+  "a-membership-role",
+  "anyone-signed-in-or-anyone",
+  "tenancy",
+  "actions",
+  "field-restrictions",
+  "background-work",
+  "the-permissions-report",
+  "protecting-policy",
+  "when-policy-says-no",
+]
+built = [
+  "policy-built",
+]
+
+[[group]]
+id = "jobs-and-events"
+title = "Background work"
+summary = "What runs outside a request: schedules, batches, events, and what happens when a delivery fails."
+built = [
+  "jobs-and-events-built",
+]
+
+[[group.page]]
+title = "Schedules"
+topics = [
+  "schedules",
+]
+
+[[group.page]]
+title = "Batches"
+topics = [
+  "batches-work-over-many-items",
+  "batch-work-keeps-its-progress",
+  "batches-tenants-and-grants",
+  "what-a-run-reaches-under-policy",
+]
+details = [
+  "how-a-run-is-kept",
+  "file-batch-runs",
+  "export-batch-runs",
+]
+
+[[group.page]]
+title = "Events"
+topics = [
+  "declaring-an-event",
+  "emitting-an-event",
+  "subscribers",
+  "background-work-and-tenants",
+  "reacting-in-another-domain",
+  "long-running-coordination",
+  "where-events-travel",
+  "events-from-outside",
+]
+
+[[group.page]]
+title = "Delivery and failure"
+topics = [
+  "delivery-at-least-once-safe-to-repeat",
+  "retries-and-giving-up",
+  "several-changing-calls-in-one-action",
+  "what-an-operator-sees",
+  "limits-and-runtime-faults",
+]
+
+[[group]]
+id = "built-in-services"
+title = "Built-in services"
+summary = "What Jadpo gives an app without a package: email, files, flags, rate limits, search, audit, AI and more."
+built = [
+  "built-in-services-built",
+]
+
+[[group.page]]
+title = "Email"
+status = [
+  "16-built-in-services: Email",
+  "16-built-in-services: Jadpo's own magic-link email",
+  "16-built-in-services: Mail packages",
+]
+topics = [
+  "email",
+  "email-templates-and-sending",
+  "email-subjects",
+  "built-in-emails",
+  "the-dev-inbox-and-the-health-score",
+  "the-smtp-driver",
+]
+details = [
+  "mail-packages-partials-and-email-sent",
+  "default-magic-link-email",
+  "custom-magic-link-email",
+  "spamassassin-in-the-health-score",
+]
+
+[[group.page]]
+title = "Files"
+status = ["16-built-in-services: Files"]
+missing = "uploads, downloads and the S3 driver"
+topics = [
+  "files",
+]
+details = [
+  "files-put-read-and-the-disk-driver-in-development",
+  "export-file-pieces",
+  "reading-gzip",
+]
+
+[[group.page]]
+title = "Feature flags"
+status = ["16-built-in-services: Flags"]
+missing = "turning a flag on for a named tenant; erasing a person from the flag tables"
+topics = [
+  "feature-flags",
+]
+details = [
+  "flags-declared-read-and-tested",
+  "flags-changed-listed-and-removed",
+]
+
+[[group.page]]
+title = "Rate limits"
+status = [
+  "16-built-in-services: Rate limits",
+  "07-http: The Redis store for rate limits",
+]
+missing = "the Redis store; turning a limit off"
+topics = [
+  "rate-limits",
+  "rate-limited-requests",
+]
+details = [
+  "rate-limits-on-workers",
+]
+
+[[group.page]]
+title = "Search"
+status = ["16-built-in-services: Search"]
+missing = "outside search engines, jadpo search reindex and sensitive fields"
+topics = [
+  "search",
+]
+
+[[group.page]]
+title = "Audit trail"
+status = ["16-built-in-services: Audit"]
+missing = "what its topic says it does not keep yet; publishing"
+topics = [
+  "audit-trail",
+]
+
+[[group.page]]
+title = "AI"
+status = [
+  "21-ai: Everything else on this page",
+  "21-ai: Keeping prompts and answers in production",
+  "21-ai: A package's `embed:` with a `batch:` below 100",
+]
+missing = "keep_content: and embed: batches below 100"
+topics = [
+  "ai",
+  "the-ai-capability",
+  "typed-output",
+  "prompts-as-files",
+  "streaming",
+  "embeddings-and-search",
+  "asking-for-an-embedding",
+  "keeping-embeddings-current",
+  "vector-index",
+  "without-pgvector",
+  "safety-and-privacy",
+  "ai-tests",
+  "recording-an-answer",
+  "ai-left-out",
+]
+details = [
+  "generating-its-fake-and-the-local-driver",
+  "how-budgets-are-counted",
+  "following-personal-data",
+  "embeddings-and-recordings",
+  "a-package-filling-ai",
+  "streams-embeddings-and-the-openai-and-anthropic-packages",
+  "the-conformance-suite",
+]
+built = [
+  "ai-built",
+]
+
+[[group.page]]
+title = "Monitoring"
+status = [
+  "16-built-in-services: Monitoring thresholds",
+  "16-built-in-services: The `telemetry:` section",
+  "16-built-in-services: Path IDs",
+]
+missing = "telemetry and path IDs"
+topics = [
+  "monitoring-thresholds",
+  "telemetry",
+  "path-ids",
+]
+details = [
+  "monitoring-thresholds-generated",
+]
+
+[[group.page]]
+title = "Caches"
+status = ["05-data: Entities in Redis and record caches"]
+topics = [
+  "caches",
+  "caches-drivers-and-what-they-hold",
+  "caches-and-personal-data",
+]
+
+[[group.page]]
+title = "Documents"
+status = ["16-built-in-services: Documents"]
+topics = [
+  "documents",
+]
+
+[[group.page]]
+title = "Bot protection"
+status = ["16-built-in-services: Bot protection"]
+topics = [
+  "bot-protection",
+]
+
+[[group.page]]
+title = "Outgoing webhooks"
+status = ["16-built-in-services: Outgoing webhooks"]
+topics = [
+  "outgoing-webhooks",
+]
+
+[[group.page]]
+title = "What isn't built in"
+topics = [
+  "not-built-in",
+]
+
+[[group]]
+id = "external-services"
+title = "External services"
+topics = [
+  "how-integrations-fit-together",
+]
+built = [
+  "external-services-built",
+]
+
+[[group.page]]
+title = "Connecting and calling"
+topics = [
+  "connecting-in-app-jadpo",
+  "calling",
+  "decoding",
+  "several-changing-provider-calls",
+  "packages-from-other-jadpo-apps",
+  "acting-for-each-user-oauth-grants",
+  "acting-for-a-user-at-another-service-oauth-grants",
+  "provider-calls-in-development",
+  "tests-and-fakes",
+]
+details = [
+  "how-connections-to-packages-are-read",
+  "how-provider-calls-are-made",
+  "wire-encodings-decoders-and-retries",
+  "fakes-and-the-development-call-log",
+  "the-seam-every-outside-call-goes-through",
+]
+
+[[group.page]]
+title = "Receiving from outside"
+topics = [
+  "receiving-from-outside",
+  "the-cloudflare-queues-driver",
+]
+details = [
+  "how-webhooks-are-received",
+  "webhook-replies-handshakes-and-further-signature-schemes",
+  "how-queues-are-received",
+  "how-polls-and-max-concurrent-run",
+]
+
+[[group.page]]
+title = "Capabilities"
+topics = [
+  "capabilities",
+  "built-in-service-capabilities",
+]
+
+[[group.page]]
+title = "Using packages"
+topics = [
+  "kinds-of-package",
+  "where-packages-live",
+  "where-packages-come-from",
+  "the-surface",
+  "what-package-code-may-do",
+  "what-reviewers-see",
+  "compile-time",
+  "enum-values-and-failures-through-a-package",
+]
+details = [
+  "how-packages-are-installed-and-linked",
+  "package-names-and-linked-checkouts",
+  "two-versions-side-by-side-lazy-loading-and-the-package-cache",
+  "how-the-openapi-importer-reads-a-document",
+  "shape-and-name-detection",
+  "the-scoped-review-and-unconfirmed-operations",
+]
+
+[[group.page]]
+title = "Writing and publishing packages"
+topics = [
+  "the-package-format",
+  "developing-and-publishing-a-package",
+  "the-public-registry",
+  "the-verifier",
+]
+details = [
+  "how-the-package-format-is-read",
+  "how-the-surface-and-the-publishing-bar-work",
+  "how-a-releases-facts-change-record-and-fingerprints-are-worked-out",
+  "how-the-registry-commands-work",
+  "package-actions-and-recipes",
+  "package-subscribers-and-recipes-in-sample",
+  "recordings",
+]
+
+[[group]]
+id = "configuration-and-time"
+title = "Configuration"
+summary = "Settings, secrets, and the languages an app speaks."
+built = [
+  "configuration-and-time-built",
+]
+
+[[group.page]]
+title = "Settings and secrets"
+topics = [
+  "settings-config-jadpo",
+  "secrets",
+  "database-and-other-connection-urls",
+  "values-on-your-machine-and-in-production",
+  "signing-keys",
+  "client-addresses",
+  "checking-values-before-the-app-starts",
+  "retention-periods",
+]
+
+[[group.page]]
+title = "Languages and translations"
+topics = [
+  "locales",
+  "translations-as-messages",
+  "enums-with-wording",
+  "failures-for-client-apps",
+  "packages-text-in-an-app",
+  "tooling-for-translations",
+  "exchanging-translations",
+]
+details = [
+  "what-the-compiler-checks-of-translations",
+]
+
+[[group]]
+id = "testing"
+title = "Testing"
+topics = [
+  "where-tests-live",
+  "writing-a-test",
+  "kinds-of-test",
+  "test-settings",
+  "acting-as-a-user",
+  "controlling-time",
+  "configuration-in-tests",
+  "fakes-for-integrations",
+  "shared-test-data-fixtures",
+  "assertions",
+  "running-tests",
+  "running-tests-from-the-command-line",
+  "the-test-database",
+  "caches-and-events",
+]
+built = [
+  "testing-built",
+]
+
+[[group]]
+id = "tooling"
+title = "Tools"
+summary = "The jadpo command, your editor, building and deploying, and working with an agent."
+built = [
+  "tooling-built",
+]
+
+[[group.page]]
+id = "commands"
+title = "Commands"
+summary = "Every jadpo command, what it does and how to run it."
+commands = true
+topics = [
+  "the-jadpo-command",
+  "commands-for-looking-into-and-changing-code",
+  "commands-for-the-database-settings-and-translations",
+  "commands-for-records-findings-and-review",
+  "commands-for-background-work",
+  "commands-for-packages",
+  "commands-for-services-calls-email-and-stored-data",
+  "commands-for-debugging-editors-and-help",
+]
+
+[[group.page]]
+title = "Formatter and editors"
+topics = [
+  "formatting",
+  "editor-support",
+]
+
+[[group.page]]
+title = "Building and deploying"
+topics = [
+  "a-native-deployable",
+  "a-workers-deployable",
+  "declared-deployables",
+  "the-build-folder",
+  "which-jadpo-runs",
+]
+
+[[group.page]]
+title = "Tools for agents"
+topics = [
+  "tools-for-agents",
+  "everything-as-json",
+  "what-an-agent-runs",
+]
+
+[[group.page]]
+title = "Suggestions"
+topics = [
+  "suggestions",
+  "signals",
+  "snippets-and-their-canonical-form",
+  "the-report",
+  "ignoring-a-suggestion",
+  "teaching-a-miss",
+  "what-is-kept-and-where",
+  "sharing-with-jadpo-hq",
+]
+
+[[group.page]]
+title = "Debugging"
+topics = [
+  "debugging-and-review",
+  "errors-point-at-the-jadpo-line",
+  "the-request-timeline-in-jadpo-dev",
+  "watching-code-run-jadpo-watch",
+  "provider-calls-in-development-jadpo-calls",
+  "traces-metrics-and-logs-in-development",
+  "capturing-a-failing-request-as-a-test",
+  "running-a-query-or-action-jadpo-call",
+  "explain-a-decision",
+  "production-incidents-after-the-code-has-changed",
+  "breakpoints-and-stepping",
+  "the-developer-console-and-mcp",
+  "what-the-graph-and-production-evidence-add",
+]
+built = [
+  "debugging-and-review-built",
+]
+
+[[group.page]]
+title = "Review and records"
+topics = [
+  "records-and-manifest",
+  "reviewing-a-change",
+  "review-and-sign-off",
+  "what-is-committed-and-why",
+  "acceptances",
+  "comparing-two-builds",
+  "package-upgrades",
+  "records-worked-examples",
+  "the-manifest",
+  "stable-identity",
+  "production-builds",
+]
+built = [
+  "records-and-manifest-built",
+]
+
+[[group]]
+id = "errors"
+title = "Errors"
+summary = "What each error means and how to fix it."
+href = "/docs/errors"
+topics = [
+  "error-messages",
+  "every-error-has-the-same-shape",
+  "declining-a-judgement-call",
+  "errors-only-the-running-app-or-a-build-raises",
+  "command-line-errors",
+  "command-errors",
+  "database-command-errors",
+]
+
+# A topic whose rows are its own: wholly unbuilt, or a different story from its page.
+[topic_status]
+logging = ["04-failures: Logging"]
+entities-in-redis = ["05-data: Entities in Redis and record caches"]
+queries-on-entities-in-redis = ["06-reads-and-writes: Caches and entities in Redis"]
+personal-data-export = ["15-personal-data: `User.export(id)`"]
+data-requests = ["15-personal-data: `privacy:` in `application { }`"]
+write-revisions = ["07-http: The `Jadpo-Revision` header"]
+the-dev-inbox-and-the-health-score = ["16-built-in-services: The dev inbox and the health score"]
+monitoring-thresholds = ["16-built-in-services: Monitoring thresholds"]
+telemetry = ["16-built-in-services: The `telemetry:` section"]
+path-ids = ["16-built-in-services: Path IDs"]
+acting-for-each-user-oauth-grants = ["11-integrations: OAuth grants"]
+acting-for-a-user-at-another-service-oauth-grants = ["08-identity: OAuth grants"]
+watching-code-run-jadpo-watch = ["17-debugging-and-review: `jadpo traces`, `metrics`, `logs` and `watch`"]
+traces-metrics-and-logs-in-development = ["17-debugging-and-review: `jadpo traces`, `metrics`, `logs` and `watch`"]
+production-incidents-after-the-code-has-changed = ["17-debugging-and-review: Mapped `.jadpo` stacks"]
+the-developer-console-and-mcp = ["17-debugging-and-review: The developer console"]
+what-the-graph-and-production-evidence-add = ["17-debugging-and-review: `jadpo traces`, `metrics`, `logs` and `watch`"]

@@ -386,11 +386,7 @@ What the Reddit thread found (Richard, 2026-11-03):
   what it would save, measured against the PersonName detour in the 0.2.0 run.
 - [x] **A20 An email address is personal data**: area 15, "An email address needs no mark" and "What the compiler checks"; area 18, "What a first record holds"; compiler/runtime §2.3, "An email address is personal data"; notes for areas 15 and 18.
 - [x] **D17a Honest status words**: each area's "What is built" table; [writing guide](writing.md), "A status word"; `status_word_problems` in `tools/docs/agent_guidance.py`.
-- [ ] **D17b The reference's manifest** `opus · high`: one file in the
-  language repository places every topic in ten groups (Language, Data,
-  APIs, Background work, Built-in services, External services,
-  Configuration, Testing, Tools, Errors) and builds the sidebar, landing
-  pages and `llms.txt`. Area files and numbers stay; old addresses redirect.
+- [x] **D17b The reference's manifest**: `docs/reference.toml` and its check; docs/documentation.md, "The reference's manifest".
 - [ ] **D17c The navigation designed** `opus · high` **needs a maintainer**
   to look at the canvas once: sidebar, mobile menu, status marks, landing
   pages, reference home, types index, guides index, search results.
