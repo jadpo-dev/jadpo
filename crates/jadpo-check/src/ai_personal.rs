@@ -591,14 +591,39 @@ fn builtin_category(prim: Prim) -> Option<(&'static str, &'static str)> {
     Some((entry.name, entry.personal()?))
 }
 
-/// Whether a field of `ty` counts as marked `personal:` without saying so,
-/// for what erasure clears (area 15, "Marking personal fields"): it holds an
-/// email address. The other standard types that are personal data are hashed
-/// and followed as marked ones are, and are cleared only when marked.
-pub fn counts_as_marked(lookup: &dyn TypeView, ty: &Ty) -> bool {
+/// The standard types erasure clears with no `personal:`, and what each is in
+/// a refusal (area 15, "Contact details and names need no mark"). The other
+/// standard types that are personal data are hashed and followed as marked
+/// ones are, and are cleared only when marked.
+const CLEARED_WITH_NO_MARK: &[(&str, &str)] = &[
+    ("Email", "an email address"),
+    ("EmailWithName", "an email address"),
+    ("FamilyName", "a person's name"),
+    ("GivenName", "a person's name"),
+    ("PersonName", "a person's name"),
+    ("PhoneNumber", "a phone number"),
+    ("PostalAddress", "a postal address"),
+];
+
+/// What a field of `ty` holds that makes it count as marked `personal:`
+/// without saying so, for what erasure clears: `is a phone number, which
+/// counts as `PersonalData.contact``.
+pub fn counted_as_marked(lookup: &dyn TypeView, ty: &Ty) -> Option<String> {
     standard_personal(lookup, ty)
         .iter()
-        .any(|(name, _)| name == "Email" || name == "EmailWithName")
+        .find_map(|(name, category)| {
+            let (_, what) = CLEARED_WITH_NO_MARK.iter().find(|(held, _)| held == name)?;
+            Some(format!(
+                "is {what}, which counts as `{}.{category}`",
+                jadpo_std::ai::PERSONAL_DATA_ENUM
+            ))
+        })
+}
+
+/// Whether a field of `ty` counts as marked `personal:` without saying so,
+/// for what erasure clears ([`counted_as_marked`]).
+pub fn counts_as_marked(lookup: &dyn TypeView, ty: &Ty) -> bool {
+    counted_as_marked(lookup, ty).is_some()
 }
 
 /// The standard types a value of `ty` is that are personal data whatever

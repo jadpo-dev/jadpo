@@ -72,6 +72,8 @@ and a conformance suite that a package filling it must pass.
 ## Feature flags
 <!-- topic: feature-flags -->
 
+[Ship a change behind a flag](../guides/13-ship-a-change-behind-a-flag.md) does the whole job, start to finish.
+
 A feature flag lets you ship code switched off, then turn it on for some
 users, a share of users, or everyone, without a deploy. You declare every
 flag once, in the file `flags.jadpo` at the root of the project, with its
@@ -292,6 +294,8 @@ environments is configuration
 
 ## Rate limits
 <!-- topic: rate-limits -->
+
+[Limit how often a route is called](../guides/14-limit-how-often-a-route-is-called.md) does the whole job, start to finish.
 
 A rate limit caps how many requests a caller may make in a period. Every
 route has limits by default, so you write nothing to get them: 600 a
@@ -529,6 +533,8 @@ of them is a compile error naming the feature.
 
 ## Files
 <!-- topic: files -->
+
+[Export records to a file](../guides/18-export-records-to-a-file.md) writes a file your app makes, start to finish.
 
 To store a file, such as a user's avatar, give an entity a field of type
 `File`. The record holds the file's key, name, size and type. The bytes
@@ -878,6 +884,8 @@ Both come when an app needs them.
 
 ## Audit trail
 <!-- topic: audit-trail -->
+
+[Keep a record of who changed what](../guides/16-keep-a-record-of-who-changed-what.md) does the whole job, start to finish.
 
 An entity keeps no history of its changes unless you ask. Give it an
 `audit:` section and it keeps a history of every change: who made it,
@@ -1563,6 +1571,8 @@ OpenTelemetry stays the transport; only what is sent changes.
 
 ## Email
 <!-- topic: email -->
+
+[Send an email](../guides/12-send-an-email.md) does the whole job, start to finish.
 
 Most apps send a handful of emails: confirm your address, an invoice, a
 welcome. Each is a type, `type X = EmailMessage`, whose fields are the
@@ -2437,6 +2447,8 @@ var file: File = attempt invoices.put(pdf, FileType.pdf)
 
 ## Search
 <!-- topic: search -->
+
+[Add search to a list](../guides/15-add-search-to-a-list.md) does the whole job, start to finish.
 
 Give an entity a `search:` section and people can search its records by
 words. The compiler generates the index, keeps it up to date and
