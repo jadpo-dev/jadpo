@@ -18,6 +18,7 @@ instead.
 | [Query records](03-query-records.md) | a query for one record, and a list a caller narrows and pages through |
 | [Add search to a list](15-add-search-to-a-list.md) | a searchable entity, its migration, and a route giving the best matches first, a page at a time |
 | [Handle failures](04-handle-failures.md) | a failure of your own, refused with the right status, handled where a caller wants to |
+| [Translate your app's text](19-translate-your-apps-text.md) | typed messages in two languages, chosen from the browser's header, with stale translations caught by `jadpo check` |
 | [Add sign-in](05-add-sign-in.md) | sign-in by emailed link and with Google, and routes that know who is calling |
 | [Call an outside API](06-call-an-outside-api.md) | a typed description of another service, called through a connection and faked in tests |
 | [Receive a webhook](17-receive-a-webhook.md) | a sender described as a package, its signed requests checked and de-duplicated, and a subscriber keeping each event |
