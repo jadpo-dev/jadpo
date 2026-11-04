@@ -183,17 +183,22 @@ fn the_route_checks_wait_for_the_routes_to_read_cleanly() {
     ok: Bool
 }
 
-action health() -> Health {
-    return Health {
-        ok: true
-    }
+entity Probe {
+    id: Uuid
+    ok: Bool
+}
+
+query health() -> List<Health> {
+    from: Probe
+    order: [Probe.id asc]
+    limit: 1
 }
 
 routes Monitoring {
     prefix: /health
 
-    GET / {
-        output: Health
+    POST / {
+        output: List<Health>
         run: health()
     }
 }

@@ -44,7 +44,7 @@ The language is split on the site into one page per topic. Each link below is an
 - [19. Standard library](https://jadpo.dev/docs/standard-library.md): Vocabulary types and operations, money, units, text and formats.
 - [20. Geospatial](https://jadpo.dev/docs/geospatial.md): Geometry, geodesic operations, PostGIS and map layers.
 - [21. AI](https://jadpo.dev/docs/ai.md): Prompts, typed model calls, streaming, embeddings, budgets and personal-data flow.
-- [Standard types](https://jadpo.dev/docs/types.md): Every standard type by group, with a page for each.
+- [Standard types](https://jadpo.dev/docs/types.md): Every standard type from A to Z, with a page for each.
 
 ## Complete application examples
 

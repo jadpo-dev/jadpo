@@ -832,6 +832,115 @@ pub fn model_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
     out
 }
 
+/// A marked field among `prov`'s sources, as `host.field` (`Scan.tar`): what
+/// [`cached_personal_problems`] refuses. What only decided the value isn't
+/// in it, and a parameter is what the request itself sent.
+fn holds_marked(flow: &Flow<'_>, prov: &Prov) -> Option<String> {
+    let marks = crate::ai_personal::marks(flow.db, flow.project);
+    let marked = |host: &str, field: &str| {
+        let (host, field) = exits::field_origin(flow, host, field);
+        marks
+            .mark(&host, &field)
+            .is_some_and(|mark| mark.category.is_some())
+            .then(|| format!("{host}.{field}"))
+    };
+    fn each(
+        src: Src,
+        marked: &dyn Fn(&str, &str) -> Option<String>,
+        flow: &Flow<'_>,
+    ) -> Option<String> {
+        match src {
+            Src::Field { entity, field, .. } => marked(&entity, &field),
+            Src::Marked { host, field } | Src::Declared { host, field } => marked(&host, &field),
+            Src::Record { entity, given, .. } => {
+                flow.lookup.fields(&entity)?.iter().find_map(|field| {
+                    (!given.contains(&field.name))
+                        .then(|| marked(&entity, &field.name))
+                        .flatten()
+                })
+            }
+            Src::Deep(inner) | Src::Answered(inner) => each(*inner, marked, flow),
+            _ => None,
+        }
+    }
+    prov.flat()
+        .into_iter()
+        .find_map(|src| each(src, &marked, flow))
+}
+
+/// `cache: immutable` on what can give a field marked `personal:` (area 7,
+/// "Answers that never change"; chunk G3): no erasure reaches a public
+/// cache, so it would keep a copy nothing can find (area 15, "What the
+/// compiler checks"). It follows what the route runs as the walk for what
+/// reaches a model does: through variables, calls and what is built from
+/// them.
+#[salsa::tracked(returns(ref))]
+pub fn cached_personal_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
+    use crate::routes::{CACHE_REASON, group_read};
+    if !super::policy_clean(db, project) {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let flow = exits::flow_of(db, project);
+    let mut seen = BTreeSet::new();
+    for item in &jadpo_db::item_tree(db, file).items {
+        if item.kind != jadpo_db::ItemKind::Routes || !seen.insert(item.name.as_str()) {
+            continue;
+        }
+        let Some(read) = group_read(db, project, Name::new(db, item.name.clone())) else {
+            continue;
+        };
+        let Some(model) = read.model.as_ref().filter(|_| read.path == *file.path(db)) else {
+            continue;
+        };
+        for route in model.routes.iter().filter(|route| route.immutable) {
+            let given = if route.run.query {
+                crate::data::queries::query_model(
+                    db,
+                    project,
+                    Name::new(db, route.run.name.clone()),
+                )
+                .as_ref()
+                .map(|model| {
+                    element(
+                        &flow,
+                        &model.entity,
+                        &model.element,
+                        &model.includes,
+                        &flow.prover.read(&model.entity),
+                        None,
+                        &|reached| reached,
+                    )
+                })
+            } else {
+                crate::graph::declaration_key(&flow.lookup, &route.run.name)
+                    .and_then(|key| resolve(db, project, &key))
+                    .map(|callable| model_summary(db, project, callable).returns.clone())
+            };
+            let Some(field) = given.and_then(|given| holds_marked(&flow, &given)) else {
+                continue;
+            };
+            let label = route.label();
+            let Some((_, span)) = read.run_spans.iter().find(|(run, _)| *run == label) else {
+                continue;
+            };
+            out.push(
+                Diagnostic::new(
+                    &rule::ROUTE_CACHE_INVALID,
+                    format!(
+                        "`{label}` says `cache: immutable`, but `{}` gives `{field}`, marked `personal:`",
+                        route.run.name
+                    ),
+                )
+                .at(span.clone(), format!("gives `{field}`"))
+                .reason(CACHE_REASON)
+                .next("Remove `cache:`, or send something that isn't marked"),
+            );
+        }
+    }
+    out
+}
+
 /// What every `emit` of each event puts in it, by the event's key (area 9,
 /// "Events and stores"; chunk 6.1c): each action's own `emit`s and those
 /// of the actions it calls, in its terms, so what a parameter holds is

@@ -377,26 +377,7 @@ sign-in fixes stay unmeasured). Each is small; D15 and D16 come first, since
 a new agent can't find a type without them (Richard, 2026-11-03).
 
 - [x] **D15 Links that can't break**: documentation.md, "The bundle" and "What the site serves"; `bundle_link_problems`, `site_path_problems` and `agent_reading_problems` in `tools/docs/language_docs.py`; the site's `scripts/check-links.mjs`.
-- [ ] **D16 Standard type pages that teach** `opus · high`: every type
-  already has its own page (`/docs/types/type-<name>`, F2). Each gains: what
-  it represents and when to use it, and what to use instead, written once
-  beside the type in `crates/jadpo-std` and held by a test so no type lacks
-  it; its shape as a table saying which parts are required and which
-  optional, with each part's type; and a Jadpo example compiled by the gate.
-  The index lists every type A to Z with its group as a column, since a
-  reader looks for a name. Every type's name on area 19's "The standard
-  types", area 2's "Built-in types" and in the guides links to its page:
-  today those pages list names with no way through, and say 247 types where
-  the reference says 259. `jadpo help <Type>` prints the same page offline,
-  and `--json` gives the shape, so one call answers what shape a type has.
-  Every page reads in this order, a rule the chunk adds to the writing guide
-  (Richard, 2026-11-03): what it is; when to use it and what to use instead;
-  its shape, with a Required? column; a working example; gotchas in plain
-  words, leading with what you can do, with no "contract", "baseline" or "not
-  ordered"; its JSON; then storage and operations in a collapsed Details
-  section. The Markdown keeps every fact, in that order.
-  259 types: split by group here if larger than a session. Designed with
-  the design skills first.
+- [x] **D16 Standard type pages that teach**: writing.md, "How a standard type's page reads"; documentation.md, "The bundle"; area 14, "`jadpo help`"; `crates/jadpo-std/src/standard/pages/` and `crates/jadpo-cli/src/type_page.rs`.
 - [ ] **A12 What a new agent reads first** `opus · high`: the primer and
   Learn page 1 say there is no installer and the primer lists seeds as not
   built: both are wrong, so generate such claims from release facts rather
@@ -497,13 +478,7 @@ real deploy) and, before outside authors can publish, D3 (releases).
   passkey".
 - [x] **R3 A release's facts, change record and fingerprints**: area 11, "How a release's facts, change record and fingerprints are worked out"; area 14, "`jadpo package check`" and "`jadpo package verify`"; compiler/runtime §2.3, "What a release shows"; `docs/errors/publish.behaviour_changed.md`, `docs/errors/publish.stale_files.md`.
 - [x] **R4 The registry protocol and a local registry**: area 11, "The registry protocol"; compiler/runtime §2.1, `jadpo-registry`.
-- [ ] **R5 The registry commands** `opus · high` after R3 and R4: area 11,
-  "Installing and updating from the registry", "Developing for the
-  registry"; area 14, the package commands. `add @publisher/name` with the
-  log check and the lock's scoped `registry` line, `update`'s three-day
-  wait, `--to` and urgent releases, `search`, `audit`, `publish` and
-  `--dry-run`, `preview`. Every screen designed with the design skills
-  first.
+- [x] **R5 The registry commands**: area 11, "How the registry commands work"; area 14, the package commands; compiler/runtime §2.1, "The registry commands"; the pages of `install.not_in_registry`, `install.not_proved`, `install.yanked`, `package.advisory`, `publish.failed`, `publish.not_at_tag`, `publish.repository_refused` and `registry.unreachable`.
 - [x] **R6 The verifier**: area 11, "The verifier" and "Publishing errors"; area 14, "`jadpo package verify`"; compiler/runtime §2.1, `jadpo-verifier`; `deploy/verifier/`; `.github/workflows/verifier-image.yml`; documentation, "Versions and releases".
 - [ ] **R6b The verifier deployed** **needs a maintainer**: the Fly.io
   account and the steps in [documentation](documentation.md#versions-and-releases):
@@ -513,16 +488,8 @@ real deploy) and, before outside authors can publish, D3 (releases).
   "Reserved words". Inside a type body a reserved word may name a field or an
   enum variant, where `package: Text` and `Kind.library` are unambiguous
   (Richard, 2026-11-03). An `Output` with a `type` field works in any app.
-- [ ] **G2 A `GET` that runs a read-only action** `opus · high` after G1: area
-  7, "What a route runs"; area 3. A `GET` still runs a named query, or an
-  action the graph proves writes nothing, emits nothing and makes no changing
-  call (Richard, 2026-11-03), so it can work a value out, raise several
-  failures and call `ai.embed`.
-- [ ] **G3 A route that sends raw bytes** `opus · high` after G2: area 7,
-  "Output and status" and OpenAPI; area 18, the API record. `sends:
-  "application/x-tar"` on an `Output` with exactly one `Bytes` field; that
-  field is the body, and failures stay JSON (Richard, 2026-11-03). Also `cache:
-  immutable`, for an answer that never changes.
+- [x] **G2 A `GET` that runs a read-only action**: area 7, "A `GET` that runs an action"; area 3, "Functions and actions"; `docs/errors/route.run_kind.md`; compiler/runtime, "An action on a `GET`".
+- [x] **G3 A route that sends raw bytes**: area 7, "Sending raw bytes", "Answers that never change" and "The public API record"; area 18, "Acceptances"; `docs/errors/route.sends_invalid.md`, `docs/errors/route.cache_invalid.md`; compiler/runtime, "A route that sends raw bytes".
 - [ ] **G4 A route's `rate_limit:`** `opus · high`: area 16's route limits. The
   registry's `POST releases` is anonymous and starts verifications, and the
   default 120 a minute per address doesn't fit it.

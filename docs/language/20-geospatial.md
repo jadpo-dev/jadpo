@@ -1677,9 +1677,9 @@ test "the map fetches its pins as GeoJSON" {
 }
 ```
 
-This route answers `POST`, since an action builds its layer. A layer of
-stored records comes from a query, which a `GET` route runs, so a mapping
-library fetches it from the route's address
+This route answers `POST`, which any action can do. A layer of stored
+records comes from a query, which a `GET` route runs, so a mapping library
+fetches it from the route's address
 ([A query giving a map layer](06-reads-and-writes.md#a-query-giving-a-map-layer)).
 
 ### WKT and EWKT

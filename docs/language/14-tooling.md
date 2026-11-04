@@ -802,17 +802,27 @@ connection or operation is `cli.package_arguments`, with the nearest.
 | `jadpo package protocol <document>` | Checks a registry's OpenAPI document against the registry protocol |
 | `jadpo package check` | Runs the publishing bar on a package |
 | `jadpo package publish [--dry-run]` | Asks the registry to release the package from a tag |
-| `jadpo package preview` | Serves the package's registry page locally |
-| `jadpo package search <words> [--from <type>] [--to <type>]` | Finds packages and standard-library functions for a need |
+| `jadpo package preview [<folder>]` | Serves the package's registry page locally |
+| `jadpo package search <words> [--from <type>] [--to <type>] [--kind <kind>]` | Finds packages and standard-library functions for a need |
 | `jadpo package audit` | Lists the advisories against the app's packages, and whether the app reaches each |
 | `jadpo package verify <folder> [--previous <folder>] [--no-run]`, `jadpo package verify --serve` | The registry's verifier: the bar, facts, change record and fingerprints, and the service that answers the registry |
 
 ### `jadpo package add`
 
 Installs a package into `packages/<name>/<version>/` and `jadpo.lock`. It
-installs from a folder or a git repository's tag, such as
+installs from the registry by its exact name, `@acme/postcodes`, from a
+folder, or from a git repository's tag, such as
 `github.com/acme/acme-pricing@v2.1.0` ([Where packages come
-from](11-integrations.md#where-packages-come-from)).
+from](11-integrations.md#where-packages-come-from)). A bare name means Jadpo's
+own package.
+
+From the registry it takes the newest release that isn't yanked or a
+pre-release, or the one `--to <version>` names, once the registry's public log
+proves it (`install.not_proved`). It shows the publisher, whether they are
+verified, the package's age and its facts. A name or release the registry
+doesn't have is `install.not_in_registry`, a yanked release `install.yanked`,
+and a registry it can't read `registry.unreachable` ([How the registry commands
+work](11-integrations.md#how-the-registry-commands-work)).
 
 The package is compiled as the app's own integration, and its surface (the
 names it makes public) is checked byte for byte against its committed
@@ -829,8 +839,11 @@ in `shared/providers/<name>/<version>/`, merging your corrections.
 
 ### `jadpo package update` and `remove`
 
-`update` moves a folder's package to what the folder holds, and a git
-package to its newest release of the same major version. An installed
+`update` moves a folder's package to what the folder holds, a git package
+to its newest release of the same major version, and a package from the
+registry to its newest release of that major version at least three days old,
+or one marked urgent, naming the newer ones it skipped; `--to <version>` takes
+that release at once. An installed
 folder changed by hand (`package.digest_mismatch`) is installed again
 from its source, even when its release is the newest. It lists each
 surface entry added, changed or removed, marked `used by the app`, then
@@ -978,6 +991,39 @@ Personal data sent
   customers.create  CustomerRequest.notes  health, sensitive
 ```
 
+### `jadpo package search`
+
+`search <words> [--from <type>] [--to <type>] [--kind <library or provider>]`
+asks the registry for what answers a need, the standard library's first, each
+result naming the function and why it matched ([Search](11-integrations.md#search)).
+`--from` and `--to` read a standard type, or a type of the app here, and send
+its shape, never its name or source.
+
+### `jadpo package audit`
+
+Lists the advisories against the app's packages from the registry, and says
+whether the app reaches each declaration they name. One it reaches is
+`package.advisory`, which fails the command, so CI stops on it; one it doesn't
+is listed, and the command passes. It is the one check that goes online
+([Yanks, takedowns and advisories](11-integrations.md#yanks-takedowns-and-advisories)).
+
+### `jadpo package publish`
+
+Asks the registry to release the package in this repository from its tag,
+sending only the repository and the tag, with no sign-in: a releaser confirms
+it with a passkey on jadpo.dev ([Releasing](11-integrations.md#releasing)). The
+tag has to be pushed and the checkout that commit, unchanged
+(`publish.not_at_tag`), and the repository reached over HTTPS
+(`publish.repository_refused`). It holds the package to the bar here first, then
+shows what the registry's verifier found; a refusal is `publish.failed`.
+`--dry-run` runs the verifier and publishes nothing.
+
+### `jadpo package preview`
+
+Serves the package's registry page on this machine, read-only, until it is
+stopped: `preview [<folder>]`. It runs the bar as `verify` does and writes
+nothing ([Developing for the registry](11-integrations.md#developing-for-the-registry)).
+
 ### `jadpo package verify`
 
 The registry's verifier, which you can run yourself ([The
@@ -1016,17 +1062,9 @@ Not built yet:
 - `jadpo package new <Name> --library` or `--provider`, which writes a
   package's own repository: the package format, `recipes/`, a `sample/`
   app and `GUIDE.md`.
-- The registry's commands, `publish` (and `--dry-run`), `preview`,
-  `search` and `audit`; `add @publisher/name` from the
-  registry, checked against its public log; and `update`'s three-day wait,
-  `--to` and urgent releases
-  ([The public registry](11-integrations.md#the-public-registry)).
-- `jadpo package add` from the registry (in the fixed order [Where
-  packages come from](11-integrations.md#where-packages-come-from)
-  gives), from another Jadpo app's folder (its OpenAPI, such as
-  `../orders`), or from a URL serving an OpenAPI document. A registry name
-  and another app's folder say `toolchain.not_built_yet` until the
-  registry and the importer. A package from git needs a person's
+- `jadpo package add` from another Jadpo app's folder (its OpenAPI, such as
+  `../orders`), or from a URL serving an OpenAPI document. Another app's
+  folder says `toolchain.not_built_yet` until the importer. A package from git needs a person's
   acceptance once installed (`PackageChange.git_source`), unless its
   repository is under one of `packages:`'s `own_sources:`.
 - `jadpo package import` for `smithy`, `postman`, `har` and `dts`. They
@@ -1134,6 +1172,8 @@ Not built yet:
 | `jadpo lsp` | Runs the language server for editors |
 | `jadpo help [command]` | Help for one command; `--help` works everywhere |
 | `jadpo help <rule>` | A rule's page, offline, by the id on an error's `rule:` line |
+| `jadpo help <Type>` | A standard type's page, offline: what it is, its shape and an example. `--json` gives its shape as data |
+| `jadpo help types` | Every standard type from A to Z |
 | `jadpo completions <shell>` | Prints the Tab-completion script for zsh, bash or fish |
 | `jadpo version` | Prints the version |
 | `jadpo toolchain` | Lists, removes and pins the Jadpo releases kept for projects |
@@ -1154,6 +1194,13 @@ with examples, and `jadpo help --json` gives the rule catalogue, every
 standard type's contract under `types` and every standard-library
 operation under `operations`, which the docs' type reference is built
 from, and the schemas of the manifest and of `jadpo test --json`.
+
+`jadpo help <Type>` prints a standard type's page offline, the same page as
+on the site: what it is, when to use it and what to use instead, its shape, an
+example, what is good to know, its JSON and its details (`jadpo help PersonName`).
+With `--json` it gives the type's fields, which are required, and the page. Any
+spelling finds it, so `personname` and `person_name` do too. `jadpo help types`
+lists every standard type from A to Z.
 
 `jadpo help <rule>`, with the id an error's `rule:` line gives
 (`jadpo help import.unused`), prints the rule's page offline, the page its
@@ -1229,7 +1276,7 @@ The sections inside a declaration go in one order:
 
 - a failure's `kind`, `code`, `message`, `client`, `internal`;
 - a route's `authentication`, `confirm`, `rate_limit`, `input`, `output`,
-  `status`, `deadline`, `run`;
+  `sends`, `status`, `cache`, `deadline`, `run`;
 - an entity's fields, then `identity`, `persistence`, `lifecycle`,
   `membership`, `policy`, `freshness`, `guard`, `person`.
 

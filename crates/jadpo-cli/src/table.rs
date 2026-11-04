@@ -939,17 +939,24 @@ pub static COMMANDS: &[Command] = &[
                       longer uses; `link` compiles the app against a package's live checkout, which CI \
                       refuses, and `unlink` goes back to the installed version. `recipe <package> \
                       <recipe> --into <domain>` copies one of a package's recipes into a domain, \
-                      where it becomes the app's own code, never writing over a file it has.",
+                      where it becomes the app's own code, never writing over a file it has. `add \
+                      @<publisher>/<name>` installs that exact name from the registry, checked against \
+                      its public log; `update` then takes the newest release at least three days old, \
+                      or an urgent one at once, and `--to <version>` takes that release at once. \
+                      `search <words>` finds packages and standard-library functions for a need, `audit` \
+                      lists the advisories against the app's packages and whether the app reaches each, \
+                      `publish [--dry-run]` asks the registry to release the package from its pushed tag, \
+                      and `preview` serves the package's registry page on this machine.",
         arguments: &[
             Argument {
                 name: "action",
-                description: "What to do: show, check, verify, import, record, conform, protocol, add, update, remove, link, unlink or recipe",
+                description: "What to do: show, check, verify, import, record, conform, protocol, add, update, remove, link, unlink, recipe, search, audit, publish or preview",
                 required: true,
                 values: Values::Fixed(crate::package::ACTIONS),
             },
             Argument {
                 name: "name",
-                description: "The package, such as holidays; for check, verify and link, its folder; for add, its folder or <repository>@v<version>; for import, openapi; for record, the connection; for conform and recipe, the package; for protocol, the registry's OpenAPI document, a file or an address",
+                description: "The package, such as holidays; for check, verify, link and preview, its folder; for add, @<publisher>/<name>, its folder or <repository>@v<version>; for search, the words; for import, openapi; for record, the connection; for conform and recipe, the package; for protocol, the registry's OpenAPI document, a file or an address",
                 required: false,
                 values: Values::Path,
             },
@@ -1021,6 +1028,30 @@ pub static COMMANDS: &[Command] = &[
                 description: "For verify: run none of the package's code",
                 values: &[],
             },
+            Flag {
+                name: "--to",
+                value: Some("version"),
+                description: "The release to take; for search, a type",
+                values: &[],
+            },
+            Flag {
+                name: "--from",
+                value: Some("type"),
+                description: "For search: the type a function takes",
+                values: &[],
+            },
+            Flag {
+                name: "--kind",
+                value: Some("kind"),
+                description: "For search: library or provider",
+                values: &[],
+            },
+            Flag {
+                name: "--dry-run",
+                value: None,
+                description: "For publish: check, and publish nothing",
+                values: &[],
+            },
         ],
         examples: &[
             Example {
@@ -1042,6 +1073,30 @@ pub static COMMANDS: &[Command] = &[
             Example {
                 description: "Import another Jadpo application's API",
                 command: "jadpo package import openapi ../orders/build/openapi/main.json",
+            },
+            Example {
+                description: "Install a package from the registry",
+                command: "jadpo package add @acme/holidays",
+            },
+            Example {
+                description: "Take a release before its three days are up",
+                command: "jadpo package update holidays --to 2.1.0",
+            },
+            Example {
+                description: "Find what answers a need",
+                command: "jadpo package search \"uk bank holidays\"",
+            },
+            Example {
+                description: "See whether an advisory touches what the app reaches",
+                command: "jadpo package audit",
+            },
+            Example {
+                description: "Run the registry's verifier on the pushed tag, publishing nothing",
+                command: "jadpo package publish --dry-run",
+            },
+            Example {
+                description: "See the package's registry page before publishing",
+                command: "jadpo package preview",
             },
             Example {
                 description: "Install a package from its git repository at a release",
@@ -1070,7 +1125,11 @@ pub static COMMANDS: &[Command] = &[
             &rule::CONFORM_REFUSED,
             &rule::INSTALL_FETCH_FAILED,
             &rule::INSTALL_IN_USE,
+            &rule::INSTALL_NOT_IN_REGISTRY,
+            &rule::INSTALL_NOT_PROVED,
             &rule::INSTALL_SURFACE_MISMATCH,
+            &rule::INSTALL_YANKED,
+            &rule::PACKAGE_ADVISORY,
             &rule::PACKAGE_NAME_TAKEN,
             &rule::PUBLISH_BEHAVIOUR_CHANGED,
             &rule::PUBLISH_BREAKING_CHANGE,
@@ -1078,7 +1137,11 @@ pub static COMMANDS: &[Command] = &[
             &rule::PUBLISH_DESCRIPTION_MISSING,
             &rule::PUBLISH_EXAMPLE_FAILED,
             &rule::PUBLISH_EXAMPLE_MISSING,
+            &rule::PUBLISH_FAILED,
+            &rule::PUBLISH_NOT_AT_TAG,
+            &rule::PUBLISH_REPOSITORY_REFUSED,
             &rule::PUBLISH_STALE_FILES,
+            &rule::REGISTRY_UNREACHABLE,
             &rule::RECORD_EDITED,
             &rule::TEST_FAILED,
             &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
@@ -2311,11 +2374,13 @@ pub static COMMANDS: &[Command] = &[
         group: "Help",
         summary: "Show commands, flags and examples",
         description: "Show every command grouped by job, or one command's arguments, flags and examples, \
-                      or a rule's page by the id on an error's rule: line, offline. \
-                      With --json, print the whole command reference and the rule catalogue as data.",
+                      a rule's page by the id on an error's rule: line, or a standard type's page by its name, offline. \
+                      `jadpo help types` lists every standard type. \
+                      With --json, print the whole command reference and the rule catalogue as data, \
+                      or one type's shape.",
         arguments: &[Argument {
             name: "command",
-            description: "The command or rule to explain",
+            description: "The command, rule or standard type to explain",
             required: false,
             values: Values::Commands,
         }],
@@ -2332,6 +2397,14 @@ pub static COMMANDS: &[Command] = &[
             Example {
                 description: "Read a rule's page, from an error's rule: line",
                 command: "jadpo help import.unused",
+            },
+            Example {
+                description: "Read a standard type's page: its shape and an example",
+                command: "jadpo help PersonName",
+            },
+            Example {
+                description: "List every standard type from A to Z",
+                command: "jadpo help types",
             },
             Example {
                 description: "Print the command reference and rule catalogue for tools",

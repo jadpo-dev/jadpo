@@ -99,7 +99,7 @@ type TodoView = Output {
 
 The other built-in types are `Bool`, `Int` for whole numbers, `Decimal`
 for exact decimal numbers, `Text`, `Bytes` and `Uuid`. Beyond those,
-Jadpo has about 250 standard types for common things, such as `Email`,
+Jadpo has about 260 standard types for common things, such as `Email`,
 `Url`, `Money` and `Duration`, each with its rules already written. Use
 one when it fits, rather than declaring your own.
 

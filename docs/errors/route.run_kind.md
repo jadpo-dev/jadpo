@@ -1,19 +1,25 @@
 # `route.run_kind`
 
-A `GET` route runs an action, or a route of another method runs a query.
+A `GET` route runs an action that isn't read-only, or a route of another method runs a query.
 
 ## Why Jadpo refuses it
 
 HTTP promises that a `GET` only reads, so a browser, a cache or a client
-library may send one again without asking. Jadpo keeps that promise by
-what a route runs. A query can only read, so a `GET` runs a named query.
-An action can write, so `POST`, `PUT`, `PATCH` and `DELETE` run one.
+library may send one again without asking. Jadpo keeps that promise by what
+a route runs. A query can only read, so a `GET` can run one. An action can
+write, so a `GET` runs one only when the compiler can prove it writes
+nothing, emits nothing and makes no changing call, itself and through every
+action it calls. `POST`, `PUT`, `PATCH` and `DELETE` run an action, which owns
+the writes and the transaction, and never a query.
 
-A `GET` that runs an action could change something each time it is
-repeated, and Jadpo can't know whether you meant the route to read or to
-write.
+A `GET` running an action that changes something could change it again each
+time it is repeated, and nothing can show whether you meant the route to read
+or to write. The message names what the action does and where, following the
+calls, so you can see which it is.
 
 ## What it looks like
+
+Here the action adds a note, so it can't answer a `GET`:
 
 main.jadpo:
 
@@ -21,8 +27,6 @@ main.jadpo:
 type Memo = Text {
     max_length: 200
 }
-
-type MemoId = Uuid {}
 
 type AddMemo = Input {
     text: Memo
@@ -32,9 +36,24 @@ type MemoView = Output {
     text: Memo
 }
 
+entity Note {
+    id: Uuid
+    text: Memo
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+}
+
 action add_memo(input: AddMemo) -> MemoView {
+    var note: Note = Note.create {
+        set: {
+            text: input.text
+        }
+    }
     return MemoView {
-        text: input.text
+        text: note.text
     }
 }
 
@@ -42,6 +61,7 @@ routes Memos {
     prefix: /memos
 
     GET / {
+        authentication: RouteAuthentication.none
         input: AddMemo
         output: MemoView
         run: add_memo(input)
@@ -50,13 +70,15 @@ routes Memos {
 ```
 
 ```text output
-error: `GET /memos` runs action `add_memo`
- --> main.jadpo:27:14
+error: `GET /memos` runs action `add_memo`, which writes with `Note.create`
+ --> main.jadpo:41:14
    |
-27 |         run: add_memo(input)
-   |              ^^^^^^^^ an action
-  reason: A `GET` is safe to repeat and never writes, so it runs a named query; every other method runs an action.
-  next: Run a query here, or answer `/memos` with another method (agent)
+24 |     var note: Note = Note.create {
+   |                      ----------- here
+41 |         run: add_memo(input)
+   |              ^^^^^^^^ not read-only
+  reason: A `GET` is safe to repeat, so it runs a named query, or an action the graph proves writes nothing, emits nothing and makes no changing call; `add_memo` writes with `Note.create`.
+  next: Answer `/memos` with another method, or leave `Note.create` out of what `add_memo` does (agent)
   rule: route.run_kind
   help: https://jadpo.dev/docs/errors/route.run_kind
 
@@ -75,6 +97,7 @@ method, here `POST`, which reads its input from the JSON body:
 
 ```jadpo fragment
     POST / {
+        authentication: RouteAuthentication.none
         input: AddMemo
         output: MemoView
         run: add_memo(input)
@@ -82,32 +105,9 @@ method, here `POST`, which reads its input from the JSON body:
 ```
 
 ```jadpo check project=e-run-kind-post hidden
-type Handle = Text {
-    max_length: 40
-}
-
-entity User {
-    id: Uuid
-    handle: Handle {
-        unique: true
-    }
-}
-
-principal {
-    user: {
-        subject: User.handle
-    }
-}
-
-authentication {
-    api_token: {}
-}
-
 type Memo = Text {
     max_length: 200
 }
-
-type MemoId = Uuid {}
 
 type AddMemo = Input {
     text: Memo
@@ -117,9 +117,24 @@ type MemoView = Output {
     text: Memo
 }
 
+entity Note {
+    id: Uuid
+    text: Memo
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+}
+
 action add_memo(input: AddMemo) -> MemoView {
+    var note: Note = Note.create {
+        set: {
+            text: input.text
+        }
+    }
     return MemoView {
-        text: input.text
+        text: note.text
     }
 }
 
@@ -127,26 +142,19 @@ routes Memos {
     prefix: /memos
 
     POST / {
+        authentication: RouteAuthentication.none
         input: AddMemo
         output: MemoView
         run: add_memo(input)
     }
 }
-
-policy {
-    actions: {
-        add_memo: [Access.authenticated]
-    }
-}
 ```
 
-`POST /memos` runs `add_memo`, and a client sends the memo as JSON. The
-route needs a signed-in caller, so the checked project also signs people
-in, and lists `add_memo`, which reaches no stored record, for anyone
-signed in under `actions:`.
+`POST /memos` runs `add_memo`, and a client sends the memo as JSON.
 
-**If the route only reads**, run a query that reads what it shows. Here
-the memos are stored as `Note` records, and the route lists them:
+**If the route only reads**, run a query that reads what it shows, or
+leave what changes something out of the action. Here the memos are stored as
+`Note` records, and the route lists them:
 
 ```jadpo fragment
 query recent_notes() -> List<MemoView> {
@@ -222,8 +230,72 @@ routes Memos {
 it is safe. A signed-in caller sees the notes `Note`'s `read:` lets them
 read.
 
+**An action that works something out** can stay on the `GET`, once it stops
+doing what changes something. An action like this one, which reads and
+calculates, has nothing to refuse:
+
+```jadpo fragment
+action check_memo(input: MemoInput) fails TooShort -> MemoView {
+    if (text.length(input.text) < 3) {
+        reject TooShort {}
+    }
+    return MemoView {
+        text: input.text
+    }
+}
+```
+
+```jadpo check project=e-run-kind-action hidden
+type Memo = Text {
+    max_length: 200
+}
+
+type MemoInput = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+type TooShort = Failure {
+    kind: FailureKind.rejected
+    message: "That memo is too short."
+}
+
+action check_memo(input: MemoInput) fails TooShort -> MemoView {
+    if (text.length(input.text) < 3) {
+        reject TooShort {}
+    }
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    GET / {
+        authentication: RouteAuthentication.none
+        input: MemoInput
+        output: MemoView
+        run: check_memo(input)
+    }
+}
+
+policy {
+    actions: {
+        check_memo: [Access.public]
+    }
+}
+```
+
+`GET /memos` now answers with the memo, or 422 `too_short`, and repeating it
+changes nothing.
+
 ## Related
 
 - [What a route runs](../language/07-http.md#what-a-route-runs)
+- [A `GET` that runs an action](../language/07-http.md#a-get-that-runs-an-action)
 - [One input](../language/07-http.md#one-input)
 - [Routes: signed in by default](../language/08-identity.md#routes-signed-in-by-default)

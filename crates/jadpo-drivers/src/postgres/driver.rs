@@ -101,6 +101,15 @@ fn begin_sql(isolation: Isolation) -> &'static str {
     }
 }
 
+/// The `BEGIN` of a transaction at `isolation` that PostgreSQL itself keeps
+/// from writing: what a `GET` runs in (area 7, "What a route runs").
+fn begin_read_only_sql(isolation: Isolation) -> &'static str {
+    match isolation {
+        Isolation::ReadCommitted => "BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY",
+        Isolation::RepeatableRead => "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY",
+    }
+}
+
 /// How a store's connections are secured (area 5, "PostgreSQL over TLS";
 /// chunk 8.1n): its connection in `app.jadpo` decides, never its address.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -662,6 +671,22 @@ impl Database for Postgres {
                 conn: Some(conn),
                 pool: Rc::clone(&self.pool),
                 begin: Some(begin_sql(isolation)),
+                failed: None,
+                saved: Vec::new(),
+            }) as Box<dyn Transaction>)
+        })
+    }
+
+    fn begin_read_only(
+        &self,
+        isolation: Isolation,
+    ) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
+        Box::pin(async move {
+            let conn = self.pool.take().await?;
+            Ok(Box::new(PgTransaction {
+                conn: Some(conn),
+                pool: Rc::clone(&self.pool),
+                begin: Some(begin_read_only_sql(isolation)),
                 failed: None,
                 saved: Vec::new(),
             }) as Box<dyn Transaction>)

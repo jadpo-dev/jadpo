@@ -9,9 +9,11 @@
 mod changes;
 mod facts;
 mod fingerprints;
+mod reach;
 
 pub use changes::{Change, ChangeEntry, behaviour_changed, personal_data_changes, surface_changes};
 pub use facts::{
     Facts, FailureFact, HostFact, PersonalDataFact, StandardCandidate, facts, named_holder,
 };
-pub use fingerprints::{Fingerprint, Shape, fingerprints};
+pub use fingerprints::{Fingerprint, Shape, fingerprints, type_names, type_shape};
+pub use reach::reached;

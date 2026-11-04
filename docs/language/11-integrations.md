@@ -1233,7 +1233,7 @@ the sandbox for each one (see "Tests and fakes").
 > → jadpo check  checks the app against 2.1.0
 > ```
 
-Not built yet: the hosted registry; importers other than `openapi`;
+Not built yet: importers other than `openapi`;
 adding another Jadpo app's OpenAPI document with `jadpo package add`;
 writing an operation's output type from the sandbox's answer when it has
 none; and a HAR capture's operations.
@@ -1707,20 +1707,29 @@ The rules in [Installing safely](#installing-safely) all apply.
 
 - **`jadpo package add @acme/postcodes` installs that exact name or
   stops.** It never picks a near match, and it shows the publisher,
-  whether they are verified, the package's age and its facts.
+  whether they are verified, the package's age and its facts. It takes the
+  newest release that isn't yanked or a pre-release, at once, or the one
+  `--to` names. A bare `jadpo package add postcodes` means Jadpo's own,
+  `@jadpo/postcodes`, or nothing (`install.not_in_registry`).
 - **Every digest is checked against the public log**, so the registry
   can't give one app different code from another.
 - **Releases are available as soon as they are live.** `jadpo package
-  update <name>` with no version takes the newest release at least three
-  days old, and names the newer ones it skipped. `--to <version>` takes
-  that release at once, after showing its facts.
+  update <name>` with no version takes the newest release of its major
+  version at least three days old, and names the newer ones it skipped.
+  `--to <version>` takes that release at once, after showing its facts.
+  The wait is the client's, so CI and a laptop agree on it.
 - **Urgent releases skip the wait.** A releaser marks a release urgent, with
   a reason and a passkey, even under automatic release. The registry
   publishes an advisory against the versions it fixes, and `update` takes
-  it at once and says why. The urgent mark is shown on the release.
+  it at once and says why. The urgent mark is shown on the release. Under a
+  new publisher an urgent mark doesn't skip the wait, since a mark that
+  publisher made can't be what lets its first release through.
 - **Before an update** the review ([Package upgrades](18-records-and-manifest.md#package-upgrades))
   also shows a new publisher or owner since the installed version, and the
-  change record.
+  change record. A package handed to another publisher goes on under its
+  own name there (`successor` in the protocol), and `update` follows it:
+  each of its releases has its own time, so the three days start again, and
+  the lock's `registry` line moves to the new name.
 - **An app can always fix a package itself**: an installed package is in
   the format of the app's own integrations, so it can be copied into
   `shared/providers/` and changed there.
@@ -1735,7 +1744,8 @@ The rules in [Installing safely](#installing-safely) all apply.
   2.0.0 to 2.1.2), not just a package. `jadpo package audit` lists the
   advisories against the app's packages and says whether the app reaches
   each affected declaration. It is the one check that goes online; `jadpo
-  check` and `build` never do. Run it in CI.
+  check` and `build` never do. Run it in CI: an advisory the app reaches
+  fails it (`package.advisory`), and one it doesn't is only listed.
 - **Copies are tracked.** Packages copy code instead of depending on each
   other, so the verifier fingerprints every public declaration's
   normalised source. An advisory also names the packages carrying a copy,
@@ -1759,7 +1769,10 @@ Publishing should hold no surprises:
   gives and the change record, exactly as the registry will show them.
 - `jadpo package preview` serves the package's registry page locally.
 - `jadpo package publish --dry-run` runs the verifier on the pushed tag's
-  commit and publishes nothing.
+  commit and publishes nothing. Like `publish`, it first holds the package
+  to the bar here, and needs the checkout to be the tag's commit, unchanged,
+  with the same tag on `origin` (`publish.not_at_tag`), so the bar runs on
+  what the registry will fetch.
 - The verifier checks with the Jadpo release the package declares and the
   newest, so a local pass with either is a pass at the registry.
 
@@ -5782,6 +5795,173 @@ bar, and what `jadpo package verify --json` writes.
 > same block, and `--json` holds every fact whole, with each host's
 > operations.
 
+## How the registry commands work
+<!-- topic: how-the-registry-commands-work -->
+
+This is the detail behind [Installing and updating from the
+registry](#installing-and-updating-from-the-registry), [Yanks, takedowns and
+advisories](#yanks-takedowns-and-advisories), [Search](#search) and
+[Developing for the registry](#developing-for-the-registry): what each
+command does and shows. The registry is `https://jadpo.dev/registry/v1/`;
+`JADPO_REGISTRY` names a stand-in, over HTTPS or on this machine.
+
+> **`add` and `update` take a release in this order**, and stop at the first
+> that fails (`install.not_proved`), leaving the lock and `packages/` as they
+> were: the release's details; the log's head, which has to extend the last
+> one kept in `.jadpo/registry_head`, by `log/consistency`; `log/proof` at
+> that head; the head kept; the archive, whose files have to have the digest
+> the log holds; then the checks for a package from anywhere, compiling it
+> and comparing its surface with its code; and lastly that the files are what
+> the registry said: its name in code, its version, its digest and the
+> surface it shows. The facts on the screen are worked out from those files,
+> not taken from the registry.
+>
+> ```text
+> $ jadpo package add @acme/postcodes
+> ✓ Added Postcodes.v2 2.1.0
+>     folder     packages/postcodes/v2
+>     source     registry @acme/postcodes
+>     publisher  @acme, verified
+>     age        first released 2026-08-14, 81 days ago
+>     log        entry 412 of 1024
+>     surface    matches its code
+>
+> Facts
+>   kind      library, pure
+>   storable  OutwardCode, UkPostcode, WrittenPostcode
+>   failures  uk.tidy: InvalidPostcode
+>
+> ✓ package added  Postcodes.v2 2.1.0 · 1 function · 3 types · 1 failure
+>
+> → jadpo package show postcodes  shows what it offers
+> ```
+>
+> The lock's line is `package Postcodes.v2 version 2.1.0 registry
+> @acme/postcodes digest sha256:…`. A yanked release is `install.yanked`, even
+> named with `--to`; a pre-release is taken only when named.
+>
+> **`update`** chooses among the installed major version's releases that
+> aren't yanked or pre-releases: the newest at least three days old or marked
+> urgent. A time that can't be read, or one still to come, is never old enough.
+> It never goes down, and a new major is named and left, since it is a new
+> package beside the old (`jadpo package add`). What it leaves is listed:
+>
+> ```text
+> $ jadpo package update postcodes
+> Newer, not taken
+>   2.2.0  1 day old, taken from 2026-11-05
+>   3.0.0  a new major, added beside this one with `jadpo package add`
+>
+> ✓ Postcodes.v2 is up to date  2.1.0 · registry @acme/postcodes · 2 newer
+>
+> → jadpo package update postcodes --to 2.2.0  takes it now, after showing its facts
+> ```
+>
+> When it takes one, it shows when that was released, the facts, a new
+> publisher, the surface's changes and every change record entry since the
+> installed version. An urgent release says why, from the advisory against
+> what is installed:
+>
+> ```text
+> $ jadpo package update postcodes
+> ✓ Updated Postcodes.v2 from 2.0.0 to 2.0.1
+>     folder    packages/postcodes/v2
+>     source    registry @acme/postcodes
+>     released  2026-11-03, today
+>     urgent    ADV-7: Reads the wrong outward code.
+>     surface   matches its code
+>
+> Facts
+>   kind      library, pure
+>   storable  UkPostcode, WrittenPostcode
+>   failures  uk.tidy: InvalidPostcode
+>
+> Change record, 2.0.0 to 2.0.1
+>   ~ behaviour changed  uk.parse  a fix: it read the wrong outward code
+>
+> ✓ package updated  Postcodes.v2 2.0.1
+>
+> → jadpo check  checks the app against 2.0.1
+> ```
+>
+> **`search <words>`** sends the words, and `--kind`. `--from` and `--to` read
+> a standard type as it is, or a type of the app in this folder, whose shape is
+> what goes: `Text { max_length: 12 }`, never a name or source of the app's.
+> Results keep the registry's order, the standard library's first:
+>
+> ```text
+> $ jadpo package search uk postcode
+> Standard library
+>   text.upper                Its account mentions postcode.
+>
+> Packages
+>   @acme/postcodes uk.parse  Its account mentions uk, postcode.
+>
+> ✓ 2 found  1 in the standard library · 1 in a package
+>
+> → jadpo package add @acme/postcodes  installs the first package found
+> ```
+>
+> **`audit`** asks about the lock's `registry` lines and sends nothing when
+> there are none, and the others are counted as not checked. A declaration is
+> reached when the graph's calls, uses and raises lead to it from anything of
+> the app's own, tests left out. An app with errors has holes in its graph, so
+> every advisory against it counts as reached.
+>
+> ```text
+> $ jadpo package audit
+> error: `Postcodes.uk.parse` has an advisory: ADV-7
+>   reason: Reads the wrong outward code. It is against 2.0.0 to 2.1.2, and the app has 2.0.0 and reaches it.
+>   next: Run `jadpo package update postcodes`, or give `--to` a release that fixes it (human)
+>   rule: package.advisory
+>
+> Not reached
+>   ADV-9  Postcodes.OutwardCode, 2.0.0 to 2.1.2: Too short for some codes.
+>
+> ✗ advisories the app reaches  1 reached · 1 not reached · 1 package
+>
+> → jadpo package update postcodes  takes a release that fixes it
+> ```
+>
+> **`publish [--dry-run]`** runs in the package's own repository, with the
+> package at its root. The tag is `v` and the version its committed surface
+> says, and the repository is `origin`'s address, an ssh one as the same
+> repository's `https://` address. It stops with `publish.not_at_tag` unless
+> the checkout is that tag's commit, unchanged, and `origin` has the tag at the
+> same commit, then runs the bar as `verify` does against the tag before, then
+> asks the registry and waits up to 20 minutes for its verifier. A dry run
+> passes in any state but `failed` or `cancelled`, and nothing it does is
+> published.
+>
+> ```text
+> $ jadpo package publish
+> ✓ Asked the registry to release Postcodes.v2 2.1.0
+>     repository  https://github.com/acme/postcodes
+>     tag         v2.1.0
+>     state       pending
+>
+> Registry's bar
+> ✓ compiles  no errors
+> ✓ tests     3 tests
+>
+> ● release pending  Postcodes.v2 2.1.0 · a releaser confirms it with a passkey on jadpo.dev
+> ```
+>
+> **`preview [<folder>]`** serves one read-only page on this machine, on a port
+> the system picks, until it is stopped: the verdict, its facts, its changes
+> since the last tag, the publishing bar, its surface, changelog and guide, by
+> the same run of the bar as `verify`, which writes nothing. It runs the bar
+> again only when the package's files have changed. What only the registry can
+> add, the written account, its publisher, the Jadpo releases it works with and
+> the last contract run, is named and not imitated.
+>
+> ```text
+> $ jadpo package preview
+> jadpo package preview  Postcodes.v2 · nothing is published · ctrl-c stops it
+>
+>   page  http://127.0.0.1:50321/
+> ```
+
 ## How packages are installed and linked
 <!-- topic: how-packages-are-installed-and-linked -->
 
@@ -5877,8 +6057,9 @@ each refuses.
   section has no text of the author's fails the bar
   (`publish.changelog_missing`); an already released one passes.
 
-> Not built yet: adding another Jadpo app's folder, or a package by bare
-> name from the registry, says `toolchain.not_built_yet`. Outside CI,
+> A registry name or a bare one goes to the registry ([How the registry
+> commands work](#how-the-registry-commands-work)). Not built yet: adding
+> another Jadpo app's folder says `toolchain.not_built_yet`. Outside CI,
 > `jadpo build` still builds against a link.
 
 ## How connections to packages are read
@@ -7307,7 +7488,8 @@ package's name, as its types are.
 | [The verifier](#the-verifier): `jadpo package verify --serve`, its sandbox, the check of a commit's files and size, its container image and Fly.io configuration | Built. Not deployed yet: its image is published, and it runs on Fly.io, once a maintainer has switched them on ([documentation](../documentation.md#versions-and-releases)). |
 | Publisher trust for third-party git packages | Built: a package from a git repository under none of `packages:`'s `own_sources:` needs an [acceptance](18-records-and-manifest.md#acceptances), as does adding or widening an entry; an entry is `package.own_source_invalid` unless it is a host and a path ending in `/`. |
 | The registry protocol: its requests and answers, the log and its proofs, a local registry and the conformance test | Built (`jadpo-registry`). |
-| The public registry: publishing, search, advisories and compatibility runs | Not built yet. |
+| The `jadpo` tool's side of the public registry: `add` and `update` checked against the log, `search`, `audit`, `publish` and `preview` ([How the registry commands work](#how-the-registry-commands-work)) | Built, against the local registry. |
+| The registry at jadpo.dev: publishing, search, advisories and compatibility runs | Not built yet. A package's `package.jadpo` doesn't name its publisher yet ([Names and publishers](#names-and-publishers)). |
 | Importers other than OpenAPI | Not built yet. |
 | Choosing a provider when deploying | Not built yet. |
 | Erasure at providers | Partly built: the package's and the connection's `erasure:` are read and checked, and a connection that can't erase what it receives needs an `ErasureNotPossible` acceptance ([Erasure at providers](15-personal-data.md#erasure-at-providers)). Not built yet: calling the provider. |

@@ -48,13 +48,15 @@ const OUTPUT_ONLY: &str = "A route returns only an `Output` type (area 2), a `Li
 
 /// What a route entry may hold, in the order `jadpo fmt` writes them
 /// (area 14, "Formatting").
-pub const ROUTE_ITEMS: [&str; 9] = [
+pub const ROUTE_ITEMS: [&str; 11] = [
     "authentication",
     "confirm",
     "rate_limit",
     "input",
     "output",
+    "sends",
     "status",
+    "cache",
     "deadline",
     "run",
     "settle",
@@ -101,6 +103,12 @@ pub fn keys_store(db: &dyn Db, project: Project, key: &Key) -> Option<String> {
 pub fn streams(ty: &Ty) -> bool {
     matches!(ty, Ty::Opaque(name, args) if name == jadpo_std::ai::AI_STREAM && args.is_empty())
 }
+
+/// Why `sends:` is what it is (`route.sends_invalid`).
+const SENDS_REASON: &str = "`sends:` names the media type of a body of raw bytes: the `Output`'s one field, which is `Bytes`. There is no JSON around it to hold anything else, and a failure still answers in the JSON envelope.";
+
+/// Why `cache: immutable` is what it is (`route.cache_invalid`).
+pub(crate) const CACHE_REASON: &str = "`cache: immutable` promises the answer never changes, so any cache on the way may keep it for a year: a `GET` anyone may call, answering 200, with nothing marked `personal:` in it, since no erasure reaches a public cache.";
 
 /// What `settle:` holds (`route.settle_invalid`).
 const SETTLE_REASON: &str = "`settle:` holds `answer:`, a named query given `result` (what the action returns) or fields read through it, and `within:`, how long the route waits for the work its action set off, a duration shorter than the route's `deadline:`.";
@@ -214,6 +222,11 @@ pub struct RouteModel {
     /// What it waits for before it answers, with `settle:`; its `output:`
     /// is then what `answer:` gives.
     pub settle: Option<Settle>,
+    /// With `sends:`, the media type its success's body is sent as and
+    /// the field that body is (area 7, "Sending raw bytes"; chunk G3).
+    pub sends: Option<jadpo_std::http::Sends>,
+    /// `cache: immutable` (area 7, "Answers that never change"; chunk G3).
+    pub immutable: bool,
     /// The failures what it runs can produce, its `fails` list, in order,
     /// then those of `settle:`'s `answer:`.
     pub fails: Vec<String>,
@@ -277,6 +290,9 @@ pub struct GroupRead {
     /// Each route that read cleanly: its label and where its method and
     /// path are written, for problems found across groups.
     pub spans: Vec<(String, Span)>,
+    /// Each route that read cleanly: its label and where its `run:` names
+    /// what it runs, for what that action is found to do (chunk G2).
+    pub run_spans: Vec<(String, Span)>,
     pub problems: Vec<Diagnostic>,
 }
 
@@ -413,12 +429,14 @@ pub fn group_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> Op
         path: &symbol.path,
         out: Vec::new(),
         spans: Vec::new(),
+        run_spans: Vec::new(),
     };
     let model = reader.group(&symbol, &decl).map(Arc::new);
     Some(GroupRead {
         path: symbol.path.clone(),
         model,
         spans: reader.spans,
+        run_spans: reader.run_spans,
         problems: reader.out,
     })
 }
@@ -1028,6 +1046,7 @@ struct Reader<'a> {
     path: &'a str,
     out: Vec<Diagnostic>,
     spans: Vec<(String, Span)>,
+    run_spans: Vec<(String, Span)>,
 }
 
 /// What a route's call returns and the failures it can raise.
@@ -1632,7 +1651,7 @@ impl Reader<'_> {
             self.out.push(
                 Diagnostic::new(&rule::ROUTE_RUN_REQUIRED, format!("`{label}` doesn't say what it runs"))
                     .at(head_span, "no `run:`")
-                    .reason("A route runs one named action, or a named query for a `GET`, with `run:`; the logic lives there, not in the route.")
+                    .reason("A route runs one named action with `run:`, or for a `GET` a named query or an action that only reads; the logic lives there, not in the route.")
                     .next(if method == HttpMethod::Get {
                         "Add `run: <query>(...)`"
                     } else {
@@ -1669,9 +1688,15 @@ impl Reader<'_> {
 
         // What it waits for: then what comes out is what `answer:` gives.
         let settle = match items.get("settle") {
-            Some(member) => {
-                Some(self.settle(member, &run, &sig.result, status, deadline_ms, &label)?)
-            }
+            Some(member) => Some(self.settle(
+                member,
+                method,
+                &run,
+                &sig.result,
+                status,
+                deadline_ms,
+                &label,
+            )?),
             None => None,
         };
         let sig = match &settle {
@@ -1815,6 +1840,15 @@ impl Reader<'_> {
                 return None;
             }
         }
+        // Raw bytes for a body (chunk G3).
+        let sends = match items.get("sends") {
+            Some(member) => self.sends(member, &sig.result, settle.is_some(), &label),
+            None => None,
+        };
+        // An answer that never changes (chunk G3).
+        let immutable = items
+            .get("cache")
+            .is_some_and(|member| self.cache(member, method, status, &label));
         let output = match status {
             SuccessStatus::NoContent => None,
             _ => Some(sig.result.clone()),
@@ -1826,6 +1860,8 @@ impl Reader<'_> {
         if self.out.len() > before {
             return None;
         }
+        self.run_spans
+            .push((label.clone(), self.run_span(run_member)));
         self.spans.push((label, head_span));
         let key = self.lookup.registry().key(
             Kind::Route,
@@ -1846,6 +1882,8 @@ impl Reader<'_> {
             confirm,
             run,
             settle: settle.map(|(settle, _, _)| settle),
+            sends,
+            immutable,
             fails: sig.fails.clone(),
             doc: crate::graph::text::doc(entry.syntax()),
         })
@@ -2135,9 +2173,11 @@ impl Reader<'_> {
     /// answers with once the work its action set off has settled, its
     /// result type and its failures. An action route only, answering with
     /// a body, and waiting less than its deadline.
+    #[allow(clippy::too_many_arguments)]
     fn settle(
         &mut self,
         member: &ast::Member,
+        method: HttpMethod,
         run: &Run,
         result: &Ty,
         status: SuccessStatus,
@@ -2159,6 +2199,19 @@ impl Reader<'_> {
                 format!("`{label}` runs a query, which sets off no work to wait for"),
                 "nothing to wait for",
                 "Remove `settle:`; a query answers at once",
+            ));
+            return None;
+        }
+        // The action a `GET` runs is read-only (`route.run_kind`), so it
+        // emits nothing that could be waited for.
+        if method == HttpMethod::Get {
+            self.out.push(invalid(
+                key_span,
+                format!(
+                    "`{label}` runs an action that only reads, which sets off no work to wait for"
+                ),
+                "nothing to wait for",
+                "Remove `settle:`; an action that only reads answers at once",
             ));
             return None;
         }
@@ -2343,6 +2396,172 @@ impl Reader<'_> {
         ))
     }
 
+    /// `sends: "application/x-tar"` (area 7, "Sending raw bytes"): a media
+    /// type, on what gives an `Output` of exactly one `Bytes` field, which
+    /// is then the body. `None` when it is wrong, which is reported.
+    fn sends(
+        &mut self,
+        member: &ast::Member,
+        result: &Ty,
+        settling: bool,
+        label: &str,
+    ) -> Option<jadpo_std::http::Sends> {
+        let value = member.value();
+        let span = value
+            .as_ref()
+            .map_or_else(|| self.span(member), |value| self.span(value));
+        let refuse = |this: &mut Self, message: String, at: String, next: String| {
+            this.out.push(
+                Diagnostic::new(&rule::ROUTE_SENDS_INVALID, message)
+                    .at(span.clone(), at)
+                    .reason(SENDS_REASON)
+                    .next(next),
+            );
+        };
+        let media_type = match value.as_ref().map(crate::types::Const::from_expr) {
+            Some(crate::types::Const::Str(text)) => text,
+            _ => {
+                refuse(
+                    self,
+                    format!("`{label}` gives `sends:` something other than text"),
+                    "not a media type".to_string(),
+                    "Write `sends: \"application/x-tar\"`".to_string(),
+                );
+                return None;
+            }
+        };
+        if let Err(why) = jadpo_std::http::media_type_problem(&media_type) {
+            refuse(
+                self,
+                format!("`{media_type}` isn't a media type `{label}` can send"),
+                why.to_string(),
+                "Write a lowercase `type/subtype`, as in `sends: \"application/x-tar\"`"
+                    .to_string(),
+            );
+            return None;
+        }
+        if settling {
+            refuse(
+                self,
+                format!("`{label}` sends raw bytes and waits with `settle:`"),
+                "waits for its work".to_string(),
+                "Remove `settle:` or `sends:`; a body of raw bytes can't say how far the work has got"
+                    .to_string(),
+            );
+            return None;
+        }
+        let shown = result.to_string();
+        let fields = match result {
+            Ty::Named(name) if self.lookup.base(name) == Some(FieldsBase::Output) => {
+                let table: &dyn TypeView = self.lookup;
+                table.fields(name)
+            }
+            _ => None,
+        };
+        let Some(fields) = fields else {
+            refuse(
+                self,
+                format!("`{label}` sends raw bytes, but `{shown}` isn't an `Output`"),
+                format!("`{shown}` has no field to send"),
+                "Return an `Output` with one `Bytes` field".to_string(),
+            );
+            return None;
+        };
+        let table: &dyn TypeView = self.lookup;
+        let one = match fields {
+            [one] => Some(one),
+            _ => None,
+        };
+        let Some(one) = one.filter(|field| {
+            !table.is_nullable(&field.declared)
+                && !field.optional
+                && table.base_prim(&field.declared) == Some(Prim::Bytes)
+        }) else {
+            let count = fields.len();
+            refuse(
+                self,
+                format!("`{label}` sends raw bytes, but `{shown}` isn't exactly one `Bytes` field"),
+                format!(
+                    "`{shown}` holds {count} field{}",
+                    if count == 1 {
+                        " that isn't `Bytes`"
+                    } else {
+                        "s"
+                    }
+                ),
+                format!("Give `{shown}` one field of type `Bytes`, or remove `sends:`"),
+            );
+            return None;
+        };
+        Some(jadpo_std::http::Sends {
+            media_type,
+            field: one.name.clone(),
+        })
+    }
+
+    /// `cache: immutable` (area 7, "Answers that never change"): `false`
+    /// when it is wrong, which is reported.
+    fn cache(
+        &mut self,
+        member: &ast::Member,
+        method: HttpMethod,
+        status: SuccessStatus,
+        label: &str,
+    ) -> bool {
+        let value = member.value();
+        let word = match value.as_ref() {
+            Some(Expr::NameRef(word)) => tree::name_ref_text(word),
+            _ => None,
+        };
+        let problem = if word.as_deref() != Some("immutable") {
+            let written = value
+                .as_ref()
+                .map(|value| tree::written(value.syntax()))
+                .unwrap_or_default();
+            Some((
+                format!("`{written}` isn't something a route's `cache:` says"),
+                "not `immutable`".to_string(),
+                "Write `cache: immutable`, or leave `cache:` out".to_string(),
+            ))
+        } else if method != HttpMethod::Get {
+            Some((
+                format!("`{label}` keeps its answer with `cache: immutable`"),
+                "not a `GET`".to_string(),
+                "Remove `cache:`; only a `GET`'s answer can be kept".to_string(),
+            ))
+        } else if self.authentication.needs_caller() {
+            Some((
+                format!("`{label}` needs a signed-in caller, but says `cache: immutable`"),
+                "a public cache would hand it to anyone".to_string(),
+                "Remove `cache:`, or say `authentication: RouteAuthentication.none`".to_string(),
+            ))
+        } else if status != SuccessStatus::Ok {
+            Some((
+                format!(
+                    "`{label}` answers `SuccessStatus.{}`, but says `cache: immutable`",
+                    status.name()
+                ),
+                "not an answer of 200".to_string(),
+                "Remove `cache:` or `status:`".to_string(),
+            ))
+        } else {
+            None
+        };
+        let Some((message, at, next)) = problem else {
+            return true;
+        };
+        let span = member
+            .member_key()
+            .map_or_else(|| self.span(member), |key| self.span(&key));
+        self.out.push(
+            Diagnostic::new(&rule::ROUTE_CACHE_INVALID, message)
+                .at(span, at)
+                .reason(CACHE_REASON)
+                .next(next),
+        );
+        false
+    }
+
     /// `output:`: an `Output`, or a list or page of one, as a query returns
     /// them, or a map layer, a `FeatureCollection<G, P>` sent bare (area 7,
     /// "A map layer as output", chunk 5.5u7). `Some(None)` when it is
@@ -2453,7 +2672,7 @@ impl Reader<'_> {
             self.out.push(
                 Diagnostic::new(&rule::ROUTE_RUN_INVALID, format!("`run: {written}` isn't a call"))
                     .at(span, "not a call")
-                    .reason("`run:` calls one named action, or a named query for a `GET`, passing the route's placeholders and `input`; there is no inline action in a route.")
+                    .reason("`run:` calls one named action, or for a `GET` a named query or an action that only reads, passing the route's placeholders and `input`; there is no inline action in a route.")
                     .next("Write `run: <name>(...)`, moving any logic into an action"),
             );
             return None;
@@ -2489,35 +2708,25 @@ impl Reader<'_> {
                         format!("`{name}` is {}", kind.with_a()),
                     )
                     .at(callee_span, format!("{} here", kind.with_a()))
-                    .reason("A route runs a named action, or a named query for a `GET`; a function is called from those, so the route stays a thin door.")
+                    .reason("A route runs a named action, or for a `GET` a named query or an action that only reads; a function is called from those, so the route stays a thin door.")
                     .next(format!("Call `{name}` from an action, and run that")),
                 );
                 return None;
             }
         };
-        match (method == HttpMethod::Get, is_query) {
-            (true, false) => {
-                self.out.push(
-                    Diagnostic::new(&rule::ROUTE_RUN_KIND, format!("`{label}` runs action `{name}`"))
-                        .at(callee_span, "an action")
-                        .reason("A `GET` is safe to repeat and never writes, so it runs a named query; every other method runs an action.")
-                        .next(format!("Run a query here, or answer `{}` with another method", path_text(segments))),
-                );
-                return None;
-            }
-            (false, true) => {
-                self.out.push(
-                    Diagnostic::new(&rule::ROUTE_RUN_KIND, format!("`{label}` runs query `{name}`"))
-                        .at(callee_span, "a query")
-                        .reason(format!(
-                            "A `{}` route runs a named action, which owns the writes and the transaction; a query only reads, and answers a `GET`.",
-                            method.word()
-                        ))
-                        .next("Run an action here, or make the route a `GET`"),
-                );
-                return None;
-            }
-            _ => {}
+        // A `GET` may run an action the graph proves read-only, which is
+        // worked out once the routes are read (`types::read_only_problems`).
+        if method != HttpMethod::Get && is_query {
+            self.out.push(
+                Diagnostic::new(&rule::ROUTE_RUN_KIND, format!("`{label}` runs query `{name}`"))
+                    .at(callee_span, "a query")
+                    .reason(format!(
+                        "A `{}` route runs a named action, which owns the writes and the transaction; a query only reads, and answers a `GET`.",
+                        method.word()
+                    ))
+                    .next("Run an action here, or make the route a `GET`"),
+            );
+            return None;
         }
         let sig = self.lookup.signature(&name)?.clone();
 
@@ -2591,7 +2800,7 @@ impl Reader<'_> {
                 )
                 .at(callee_span, "a generated write")
                 .reason(format!(
-                    "A route runs a named action, or a named query for a `GET`, and may run the generated listings `sessions.tokens` and the service entity's `keys` itself; `{written}` writes {keeps} the runtime keeps, in the transaction of the action that calls it."
+                    "A route runs a named action, or for a `GET` a named query or an action that only reads, and may run the generated listings `sessions.tokens` and the service entity's `keys` itself; `{written}` writes {keeps} the runtime keeps, in the transaction of the action that calls it."
                 ))
                 .next(format!("Call `{written}` in an action, and run that")),
             );
