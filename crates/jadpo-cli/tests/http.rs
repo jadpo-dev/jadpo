@@ -472,6 +472,8 @@ pub(super) struct Reply {
     pub(super) status: u16,
     headers: Vec<(String, String)>,
     body: String,
+    /// Its body as it came: what isn't text stays as it was (chunk G3).
+    raw: Vec<u8>,
 }
 
 impl Reply {
@@ -502,6 +504,11 @@ impl Reply {
 
     pub(super) fn body(&self) -> &str {
         &self.body
+    }
+
+    /// Its body's bytes, as they came.
+    pub(super) fn bytes(&self) -> &[u8] {
+        &self.raw
     }
 }
 
@@ -548,10 +555,15 @@ fn send_raw(port: u16, request: &[u8]) -> Reply {
         .filter_map(|line| line.split_once(": "))
         .map(|(name, value)| (name.to_string(), value.to_string()))
         .collect();
+    let raw = raw
+        .windows(4)
+        .position(|end| end == b"\r\n\r\n")
+        .map_or_else(Vec::new, |at| raw[at + 4..].to_vec());
     Reply {
         status,
         headers,
         body: body.to_string(),
+        raw,
     }
 }
 

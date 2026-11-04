@@ -73,6 +73,7 @@ pub const API: Kind = Kind {
     ],
     facts: &[
         "authentication",
+        "cache",
         "caller",
         "confirm",
         "fails",
@@ -82,6 +83,7 @@ pub const API: Kind = Kind {
         "message",
         "output",
         "redirect",
+        "sends",
         "settle",
         "status",
         "variant",

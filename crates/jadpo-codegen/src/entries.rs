@@ -242,7 +242,8 @@ impl<'p> Made<'p> {
                 quote!(Some(#input))
             })
         });
-        let output = route.output.map(|codec| {
+        // What `sends:` sends isn't written as JSON (chunk G3).
+        let output = route.output.filter(|_| route.sends.is_none()).map(|codec| {
             let id = self.contract(codec.0);
             self.write(id);
             let output = format_ident!("w{}", id);
