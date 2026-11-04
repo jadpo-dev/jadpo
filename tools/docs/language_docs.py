@@ -105,6 +105,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
 
+import agent_guidance
 import reference_manifest
 import reference_pages
 
@@ -2345,6 +2346,14 @@ def agent_reading_problems(built, root=ROOT):
     return problems
 
 
+def read_once_problems(built, root=ROOT):
+    """What an agent reads once, the primer as the bundle gives it and the
+    repository's llms.txt, over its budget."""
+    primer = next((text for kind, _, _, _, _, text, _ in built if kind == 'primer'), '')
+    path = root / 'llms.txt'
+    return agent_guidance.read_once_problems(primer, path.read_text() if path.exists() else '')
+
+
 def check_skill(root=ROOT):
     """Problems with the agent skill (docs/documentation.md, "The agent
     skill"): it exists, and its front matter has a `name` that is its
@@ -2462,6 +2471,7 @@ def check_structure(pages, errors, catalogue, commands=(), root=ROOT, learn=(), 
     problems += bundle.status_line_problems(built)
     problems += site_path_problems({kind for kind, *_ in built})
     problems += agent_reading_problems(built, root)
+    problems += read_once_problems(built, root)
     files = markdown_files(root)
     problems += check_links(files, root)
     problems += check_help_lines(files, catalogue, root)

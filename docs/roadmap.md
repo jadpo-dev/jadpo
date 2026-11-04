@@ -392,9 +392,7 @@ What the Reddit thread found (Richard, 2026-11-03):
 - [x] **D17d The site built from the manifest**: `src/lib/nav.ts` and `src/components/docs/` in jadpo-website; its `DESIGN.md`.
 - [x] **D17e Landing pages and status lines**: `tools/docs/reference_pages.py`; docs/documentation.md, "Landing pages and status lines"; `docs/reference.toml`.
 - [x] **D17f Search that finds the docs**: `src/lib/search.ts` and `scripts/search.test.mjs` in jadpo-website.
-- [ ] **D17g What an agent reads first** `opus · high`: nothing tells an agent
-  to read all of `index.json`, 173,000 tokens; about 9,000 once and under
-  1,000 per lookup.
+- [x] **D17g What an agent reads first**: [documentation guide](documentation.md), "How an agent uses it"; `llms.txt`, the skill and the AGENTS.md `jadpo new` writes; `whole_index_problems` and `read_once_problems` in `tools/docs/agent_guidance.py`.
 - [ ] **D17h Standard types under Values and types** `opus · high`: one
   generated list, in the sidebar, not two hand tables at the bottom of the
   reference home.
