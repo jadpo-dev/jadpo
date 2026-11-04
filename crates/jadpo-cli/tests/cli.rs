@@ -105,7 +105,7 @@ Help
 
 On every command
   --json        Print data for tools instead of text
-  --full        Show everything a report shortens, repeats included
+  --full        Show everything a report shortens
   --help        Show every flag, with examples
   --color       Choose when to use colour     auto, always, never
 
@@ -187,7 +187,7 @@ Help
 
 On every command
   --json        Print data for tools instead of text
-  --full        Show everything a report shortens, repeats included
+  --full        Show everything a report shortens
   --help        Show every flag, with examples
   --color       Choose when to use colour     auto · always · never
 
@@ -237,7 +237,7 @@ Arguments
 
 On every command
   --json        Print data for tools instead of text
-  --full        Show everything a report shortens, repeats included
+  --full        Show everything a report shortens
   --help        Show every flag, with examples
   --color       Choose when to use colour     auto, always, never
 
@@ -813,7 +813,7 @@ fn tab_completes_flags_with_descriptions_and_values() {
         complete(&["help", "--"]),
         [
             "--json\tPrint data for tools instead of text",
-            "--full\tShow everything a report shortens, repeats included",
+            "--full\tShow everything a report shortens",
             "--help\tShow every flag, with examples",
             "--color\tChoose when to use colour",
         ]

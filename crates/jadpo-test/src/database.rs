@@ -1223,7 +1223,7 @@ fn what_it_said(detail: &str) -> String {
     };
     let said = marked("FATAL:")
         .or_else(|| marked("ERROR:"))
-        .or_else(|| lines().last().map(str::to_string))
+        .or_else(|| lines().next_back().map(str::to_string))
         .unwrap_or_else(|| "it gave no reason".to_string());
     let said = said.trim_end_matches('.');
     match said.char_indices().nth(SAID_LENGTH) {

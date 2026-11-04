@@ -167,7 +167,7 @@ pub static GLOBAL_FLAGS: &[Flag] = &[
     Flag {
         name: "--full",
         value: None,
-        description: "Show everything a report shortens, repeats included",
+        description: "Show everything a report shortens",
         values: &[],
     },
     Flag {

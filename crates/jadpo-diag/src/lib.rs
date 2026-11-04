@@ -1226,7 +1226,7 @@ rules! {
         "Variable has no type";
     TEST_ASSERTION_FAILED: "test.assertion_failed", area 13, Error, Agent,
         "A test's `assert` doesn't hold: its condition is false, or a call checked with `assert … fails` returned or failed differently";
-    TEST_DATABASE_UNAVAILABLE: "test.database_unavailable", area 13, Error, Human,
+    TEST_DATABASE_UNAVAILABLE: "test.database_unavailable", area 14, Error, Human,
         "The tests that need a database couldn't run, because PostgreSQL for the tests couldn't be started or reached";
     TEST_FAILED: "test.failed", area 14, Error, Agent,
         "A test failed under `jadpo test`, or among a package's own tests under `jadpo package check`";

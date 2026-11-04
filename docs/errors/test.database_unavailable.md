@@ -29,9 +29,10 @@ error: PostgreSQL for the tests couldn't start
 ```
 
 `(human)` at the end of the `next:` line tells your coding agent to stop
-and ask you. With `--json` this is the one diagnostic in the document, so
-an agent reading only the top level sees it. `jadpo test --full` gives
-everything PostgreSQL printed.
+and ask you which fix you want, because the choice is yours to make: it
+decides what may run on your machine and where. With `--json` this is the
+one diagnostic in the document, so an agent reading only the top level sees
+it. `jadpo test --full` gives everything PostgreSQL printed.
 
 The other two forms differ in what they ask of you. On a machine with no
 PostgreSQL, the error is `No PostgreSQL for the tests`, and its next step
@@ -51,14 +52,25 @@ that `jadpo test --kind pure` still runs them.
 jadpo test
 ```
 
+PostgreSQL can make its shared memory there, so the server starts and the
+tests run.
+
 **If you want the tests on a server of your own**, name it:
 
 ```sh
 JADPO_TEST_DATABASE_URL=postgresql://postgres@localhost:5432/postgres jadpo test
 ```
 
-**If PostgreSQL isn't installed**, install it, so that `initdb` and
-`pg_ctl` are on your `PATH`.
+The tests' databases are made on that server, so `jadpo test` starts none.
+
+**If PostgreSQL isn't installed**, install it, then check that its tools
+are on your `PATH`:
+
+```sh
+initdb --version
+```
+
+`jadpo test` starts its disposable server from those tools.
 
 Your last run's failures are left as they were, so `jadpo test --failed`
 still reruns them.

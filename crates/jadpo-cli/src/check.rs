@@ -234,8 +234,7 @@ pub(crate) fn reported(
         &paths,
         loaded.unreadable.len(),
         (layout, written, reviews, &per_instance),
-        (elapsed, failed, before, not_judged),
-        full,
+        (elapsed, failed, before, not_judged, full),
     )
 }
 
@@ -384,8 +383,13 @@ fn report(
         &[jadpo_check::review::ProviderReview],
         &[PerInstance],
     ),
-    (elapsed, failed, before, not_judged): (Duration, &str, Option<Json>, Option<String>),
-    full: bool,
+    (elapsed, failed, before, not_judged, full): (
+        Duration,
+        &str,
+        Option<Json>,
+        Option<String>,
+        bool,
+    ),
 ) -> Reply {
     let errors = diagnostics.len();
     let mut facts = Vec::new();
