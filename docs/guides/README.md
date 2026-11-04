@@ -14,6 +14,7 @@ instead.
 | [Build an API](01-build-an-api.md) | routes with typed input and output, the committed API record, and the OpenAPI document |
 | [Limit how often a route is called](14-limit-how-often-a-route-is-called.md) | a public form limited to five requests an hour, an API's own limit, and clients counted properly behind a proxy |
 | [Store and change a record](02-store-and-change-a-record.md) | an entity, its migration, and actions that add, change and delete records |
+| [Keep a record of who changed what](16-keep-a-record-of-who-changed-what.md) | an audited entity, its history read back with what each caller may see, and a route that sends it |
 | [Query records](03-query-records.md) | a query for one record, and a list a caller narrows and pages through |
 | [Add search to a list](15-add-search-to-a-list.md) | a searchable entity, its migration, and a route giving the best matches first, a page at a time |
 | [Handle failures](04-handle-failures.md) | a failure of your own, refused with the right status, handled where a caller wants to |
