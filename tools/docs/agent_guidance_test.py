@@ -95,7 +95,7 @@ class Examples(unittest.TestCase):
     def test_the_feature_table_links_each_example_where_it_is_read(self):
         features = guidance.closest_examples(project())
         self.assertEqual(features, [('Project layout', ['01-first-project']), ('Named types', ['02-named-types'])])
-        self.assertIn('[01-first-project](https://github.com/jadpo-dev/jadpo/tree/main/examples/01-first-project)',
+        self.assertIn('[01-first-project](https://github.com/jadpo-dev/jadpo/tree/v{release}/examples/01-first-project)',
                       guidance.feature_table(features, guidance.GITHUB_TREE))
 
 
@@ -110,9 +110,139 @@ class InStep(unittest.TestCase):
 
     def test_the_agents_template_keeps_its_working_method(self):
         text = guidance.TEMPLATE.read_text()
-        for phrase in ['`jadpo check` after each file', '`jadpo help <rule>`', '`jadpo acceptance new',
-                       'one topic', 'Not built yet']:
+        for phrase in ['`jadpo check` after each connected change', '`layout.unused_declaration`',
+                       '`jadpo help <rule>`', '`jadpo acceptance new', 'one topic', 'Not built yet']:
             self.assertIn(phrase, text)
+
+    def test_the_agents_template_links_examples_at_the_release_that_wrote_it(self):
+        text = guidance.TEMPLATE.read_text()
+        self.assertIn('/tree/v{release}/examples/', text)
+        self.assertNotIn('/tree/main/', text)
+
+
+CARGO = """[workspace.package]
+repository = "https://github.com/acme/tool"
+"""
+
+CLI = """[package.metadata.dist]
+formula = "tool"
+npm-package = "tool"
+"""
+
+DIST = """[dist]
+installers = ["shell", "powershell", "homebrew", "npm"]
+npm-scope = "@acme"
+tap = "acme/homebrew-tap"
+"""
+
+
+def released(root, dist=DIST):
+    (root / 'Cargo.toml').write_text(CARGO)
+    (root / 'crates/jadpo-cli').mkdir(parents=True)
+    (root / 'crates/jadpo-cli/Cargo.toml').write_text(CLI)
+    (root / 'dist-workspace.toml').write_text(dist)
+    return root
+
+
+class ReleaseFacts(unittest.TestCase):
+    def test_the_install_commands_are_what_dist_ships(self):
+        commands = dict(guidance.install_commands(released(project())))
+        self.assertEqual(commands, {
+            'On macOS or Linux:': "curl --proto '=https' --tlsv1.2 -LsSf "
+                                  'https://github.com/acme/tool/releases/latest/download/jadpo-cli-installer.sh | sh',
+            'On Windows, in PowerShell:': 'powershell -c "irm '
+                                          'https://github.com/acme/tool/releases/latest/download/jadpo-cli-installer.ps1 | iex"',
+            'With Homebrew:': 'brew install acme/tap/tool',
+            'With npm:': 'npm install -g @acme/tool',
+        })
+
+    def test_an_installer_dist_drops_leaves_the_page(self):
+        dist = DIST.replace('"shell", "powershell", "homebrew", "npm"', '"homebrew"')
+        section = guidance.learn_install(released(project(), dist))
+        self.assertIn('brew install acme/tap/tool', section)
+        self.assertNotIn('curl', section)
+        self.assertNotIn('npm', section)
+
+    def test_an_installer_the_page_has_no_words_for_is_a_problem(self):
+        dist = DIST.replace('"npm"', '"msi"')
+        self.assertEqual(guidance.install_problems(released(project(), dist)),
+                         ['dist-workspace.toml ships the installer "msi", which tools/docs/agent_guidance.py has no command for'])
+
+    def test_the_first_learn_page_installs_with_what_the_release_ships(self):
+        page = (guidance.ROOT / 'docs/learn/01-setting-up.md').read_text()
+        for command in ('jadpo-cli-installer.sh | sh', 'jadpo-cli-installer.ps1 | iex',
+                        'brew install jadpo-dev/tap/jadpo', 'npm install -g @jadpo/jadpo'):
+            self.assertIn(command, page)
+        self.assertNotIn('cargo build', page)
+        self.assertNotIn('## Not built yet', page)
+
+    def test_a_first_page_that_says_to_build_from_source_is_a_problem(self):
+        root = project()
+        (root / 'docs/learn').mkdir(parents=True)
+        (root / 'docs/primer.md').write_text('# Primer\n\nThere is no installer yet.\n')
+        (root / 'docs/learn/02-next.md').write_text('# Next\n\nRun cargo build first.\n')
+        self.assertEqual(guidance.install_claim_problems(root), [
+            'docs/learn/02-next.md:3: says how to get `jadpo` by hand (`cargo build`); '
+            "the first Learn page's `## Install it` is generated from what a release ships, so link it",
+            'docs/primer.md:3: says how to get `jadpo` by hand (`no installer`); '
+            "the first Learn page's `## Install it` is generated from what a release ships, so link it",
+        ])
+
+
+PICKS = (('08-identity', '`Driver.github`', 'GitHub sign-in'),
+         ('08-identity', 'OAuth grants', 'OAuth grants'),
+         ('08-identity', 'Scope declarations', 'token scopes'),
+         ('08-identity', 'Passkeys', 'passkeys'))
+
+IDENTITY = """# Identity
+<!-- topic: identity -->
+
+## What is built
+<!-- topic: identity-built -->
+
+| Feature | Status |
+|---|---|
+| Passkeys | Built. |
+| `Driver.github` and `oauth_provider:` | Not built yet. |
+| Scope declarations, in [Policy](09-policy.md) | Partly built: the rest. |
+| OAuth grants: `OAuthGrant` credentials | Not built yet. |
+"""
+
+
+class PrimerNotBuilt(unittest.TestCase):
+    def test_it_lists_a_feature_only_while_its_area_says_it_is_not_built(self):
+        section = guidance.primer_not_built(project(area=IDENTITY), PICKS)
+        self.assertIn('GitHub sign-in; OAuth grants; and token scopes.', ' '.join(section.split()))
+        self.assertNotIn('passkeys', section)
+
+    def test_a_feature_built_since_leaves_the_list(self):
+        area = IDENTITY.replace('| OAuth grants: `OAuthGrant` credentials | Not built yet. |',
+                                '| OAuth grants: `OAuthGrant` credentials | Built. |')
+        section = guidance.primer_not_built(project(area=area), PICKS)
+        self.assertNotIn('OAuth grants', section)
+
+    def test_one_left_reads_as_a_sentence_and_none_left_leaves_the_rule(self):
+        built = IDENTITY.replace('Not built yet.', 'Built.').replace('Partly built: the rest.', 'Built.')
+        none = guidance.primer_not_built(project(area=built), PICKS)
+        self.assertIn('toolchain.not_built_yet', none)
+        self.assertNotIn('among others', none)
+        one = built.replace('| Passkeys | Built. |', '| Passkeys | Not built yet. |')
+        self.assertIn('among others: passkeys. Each', ' '.join(guidance.primer_not_built(project(area=one), PICKS).split()))
+
+    def test_a_row_its_area_no_longer_has_is_a_problem(self):
+        area = IDENTITY.replace('| Passkeys | Built. |\n', '')
+        self.assertEqual(guidance.primer_pick_problems(project(area=area), PICKS), [
+            'the primer\'s list reads "Passkeys" in docs/language/08-identity.md, whose "What is built" table '
+            'has no such row: change PRIMER_NOT_BUILT in tools/docs/agent_guidance.py'])
+
+    def test_the_real_primer_lists_neither_seeds_nor_installers(self):
+        page = (guidance.ROOT / 'docs/primer.md').read_text()
+        built = page[page.index('\n## Not built yet\n'):]
+        for word in ('seed', 'install', 'cargo', 'flags'):
+            self.assertNotIn(word, built)
+
+    def test_the_real_primer_links_how_to_install_it(self):
+        self.assertIn('(learn/01-setting-up.md#install-it)', (guidance.ROOT / 'docs/primer.md').read_text())
 
 
 if __name__ == '__main__':

@@ -77,3 +77,25 @@ test "the top shelf is turned down" {
     assert set_oven(top_shelf()) == 190
 }
 ```
+
+A type written ahead of what will use it is refused the same way. Write it
+and its first user as one change, then check:
+
+```jadpo check project=e-unused-staged file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-unused-staged file=domains/planning/types/due_window.jadpo
+type DueWindow = Int {
+    min: 1
+}
+```
+
+```jadpo check project=e-unused-staged file=domains/planning/actions/next_due.jadpo
+use planning/types { DueWindow }
+
+/// The window a reminder waits, as it was asked for.
+action next_due(days: DueWindow) -> DueWindow {
+    return days
+}
+```
