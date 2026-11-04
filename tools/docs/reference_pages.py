@@ -44,11 +44,12 @@ def walk(tree):
 
 def cell(text):
     """Text for a table's cell. A summary cut short can leave a code span open,
-    which would swallow the cell, so it stops before that span."""
+    which would swallow the cell, so it stops before that span, and a sentence
+    that led into a list ends here."""
     text = (text or '').replace('|', '\\|').replace('\n', ' ').strip()
     if text.count('`') % 2:
         text = text[:text.rfind('`')].rstrip(' ,;:') + '…'
-    return text
+    return text[:-1] + '.' if text.endswith(':') else text
 
 
 def capital(text):

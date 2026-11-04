@@ -391,9 +391,7 @@ What the Reddit thread found (Richard, 2026-11-03):
 - [x] **D17c The navigation designed**: `design/docs-nav.html` in jadpo-website.
 - [ ] **D17d The site built from the manifest** `opus · high` **needs a
   maintainer**, since merging deploys to jadpo.dev.
-- [ ] **D17e Landing pages and status lines** `opus · high`: each group has
-  a landing page that links everything in it, and a page not fully built
-  says so at its top, in its Markdown too.
+- [x] **D17e Landing pages and status lines**: `tools/docs/reference_pages.py`; docs/documentation.md, "Landing pages and status lines"; `docs/reference.toml`.
 - [ ] **D17f Search that finds the docs** `opus · medium`: "deploy" and "send
   email" find a guide or topic first, not error pages.
 - [ ] **D17g What an agent reads first** `opus · high`: nothing tells an agent
