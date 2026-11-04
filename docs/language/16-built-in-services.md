@@ -654,8 +654,7 @@ In an action with several changing calls it is a keyed step, like a
 provider call, and its key is derived as any step's is, so a rerun writes
 the same object again
 ([Several changing calls in one action](12-jobs-and-events.md#several-changing-calls-in-one-action)).
-Bytes that are never attached to a record are deleted after a day, like
-abandoned uploads.
+Bytes that are never attached to a record are deleted after a day.
 
 Here `sheets.put` keeps the bytes before the action reads or writes
 anything, and gives the `File` that the record keeps. A store with no room
@@ -715,8 +714,8 @@ A test runs it against an in-memory store, so nothing touches the disk.
 use bakery/entities { PriceSheet }
 
 test "a supplier's sheet is kept on its record" {
-    var kept: PriceSheet = attempt keep_prices("Millers", "flour,1.20\nrye,2.40\n")
-    assert kept.supplier == "Millers"
+    var price_sheet: PriceSheet = attempt keep_prices("Millers", "flour,1.20\nrye,2.40\n")
+    assert price_sheet.supplier == "Millers"
 }
 ```
 
