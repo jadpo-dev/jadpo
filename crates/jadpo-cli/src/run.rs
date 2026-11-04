@@ -702,6 +702,9 @@ pub fn unknown_command(word: &str) -> Diagnostic {
 /// (`import.unused`), whose page it prints. A word with a `.` is taken
 /// for a rule.
 pub fn unknown_topic(word: &str) -> Diagnostic {
+    if word.starts_with(|c: char| c.is_ascii_uppercase()) {
+        return unknown_type(word);
+    }
     if !word.contains('.') {
         return unknown_command(word);
     }
@@ -718,6 +721,34 @@ pub fn unknown_topic(word: &str) -> Diagnostic {
         None => diagnostic
             .reason("`jadpo help` explains a command, or a rule by the id on an error's `rule:` line.")
             .next("Copy the id from the error's `rule:` line"),
+    }
+}
+
+/// A word that looks like a type's name but isn't a standard type's.
+fn unknown_type(word: &str) -> Diagnostic {
+    let diagnostic = Diagnostic::new(
+        &rule::CLI_UNKNOWN_COMMAND,
+        format!("`{word}` isn't a jadpo command, rule or standard type"),
+    );
+    if matches!(word, "Bool" | "Int" | "Decimal" | "Text" | "Bytes") {
+        return diagnostic
+            .reason(format!(
+                "`{word}` is built into the language and is what you build your own types from, so it has no page of its own."
+            ))
+            .next("Read https://jadpo.dev/docs/built-in-types");
+    }
+    let names = jadpo_std::standard::STANDARD_TYPES
+        .iter()
+        .map(|entry| entry.name);
+    match nearest(word, names) {
+        Some(near) => diagnostic
+            .reason(format!(
+                "`jadpo help` explains a command, a rule or a standard type. Did you mean `{near}`?"
+            ))
+            .next(format!("Use `{near}` instead of `{word}`")),
+        None => diagnostic
+            .reason("`jadpo help` explains a command, a rule or a standard type.")
+            .next("Run `jadpo help types` to list every standard type"),
     }
 }
 

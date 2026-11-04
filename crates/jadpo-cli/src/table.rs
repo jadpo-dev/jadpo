@@ -2380,11 +2380,13 @@ pub static COMMANDS: &[Command] = &[
         group: "Help",
         summary: "Show commands, flags and examples",
         description: "Show every command grouped by job, or one command's arguments, flags and examples, \
-                      or a rule's page by the id on an error's rule: line, offline. \
-                      With --json, print the whole command reference and the rule catalogue as data.",
+                      a rule's page by the id on an error's rule: line, or a standard type's page by its name, offline. \
+                      `jadpo help types` lists every standard type. \
+                      With --json, print the whole command reference and the rule catalogue as data, \
+                      or one type's shape.",
         arguments: &[Argument {
             name: "command",
-            description: "The command or rule to explain",
+            description: "The command, rule or standard type to explain",
             required: false,
             values: Values::Commands,
         }],
@@ -2401,6 +2403,14 @@ pub static COMMANDS: &[Command] = &[
             Example {
                 description: "Read a rule's page, from an error's rule: line",
                 command: "jadpo help import.unused",
+            },
+            Example {
+                description: "Read a standard type's page: its shape and an example",
+                command: "jadpo help PersonName",
+            },
+            Example {
+                description: "List every standard type from A to Z",
+                command: "jadpo help types",
             },
             Example {
                 description: "Print the command reference and rule catalogue for tools",

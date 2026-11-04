@@ -1138,75 +1138,31 @@ class Commands(unittest.TestCase):
         self.assertEqual(self.page(text).problems, [])
 
 
-MONEY = {
-    'name': 'Money', 'group': 'Money and banking',
-    'summary': 'An amount of money (area 19): its minor units and its `Currency`, written `GBP 10.50`.',
-    'holds': 'builtin', 'base': 'Money', 'arguments': [], 'fields': [], 'variants': [], 'pattern': None,
-    'min': None, 'max': None, 'personal': None, 'text': 'canonical', 'json': 'object', 'storage': 'columns',
-    'format': {'options': [{'name': 'precision', 'needed': False}]}, 'ordered': True, 'release': '0.1.0',
-    'rules': [], 'examples': {'valid': [{'text': 'GBP 0.05', 'shown': '£0.05'}, {'text': 'GBP 10.50', 'shown': '£10.50'}],
-                              'format': None, 'of': None, 'malformed': ['10.50', '']},
-    'operations': [{'name': 'money.of', 'gives': True}, {'name': 'money.minor', 'gives': False}],
+MONEY = {'name': 'Money', 'group': 'Money and banking', 'summary': 'An amount of money (area 19).'}
+ADDRESS = {'name': 'PostalAddress', 'group': 'People and contact', 'summary': 'A postal address (area 19).'}
+TYPE_PAGES = {
+    'index': '# Standard types\n\nEvery one.\n\n| Type | Group | What it is |\n|---|---|---|\n'
+             '| [`Money`](type-money.md) | Money and banking | An amount of money. |\n'
+             '| [`PostalAddress`](type-postal-address.md) | People and contact | A postal address. |\n',
+    'types': [
+        {'name': 'Money', 'id': 'type-money', 'group': 'Money and banking', 'meaning': 'An amount of money.',
+         'example': 'money.from_minor(1050, Currency.gbp)',
+         'page': '# `Money`\n\nAn amount of money.\n\nSee [`PostalAddress`](type-postal-address.md).\n'},
+        {'name': 'PostalAddress', 'id': 'type-postal-address', 'group': 'People and contact',
+         'meaning': 'A postal address.', 'example': 'PostalAddress { }',
+         'page': '# `PostalAddress`\n\nA postal address.\n'},
+    ],
 }
-ADDRESS = {
-    'name': 'PostalAddress', 'group': 'People and contact',
-    'summary': 'A postal address (area 19, UPU S42): its lines and country.',
-    'holds': 'object', 'base': 'Object', 'arguments': [],
-    'fields': [{'name': 'lines', 'type': 'List<Text>', 'optional': False},
-               {'name': 'country', 'type': 'Country', 'optional': True}],
-    'variants': [], 'pattern': None, 'min': None, 'max': None, 'personal': None, 'text': None, 'json': 'object',
-    'storage': 'columns', 'format': {'options': []}, 'ordered': False, 'release': '0.1.0',
-    'rules': [{'name': 'postal_code_of_country', 'written': 'postal_code fits'}],
-    'examples': {'valid': [{'text': '{"lines":["A"]}', 'shown': 'A\nLondon'}], 'format': None, 'of': None,
-                 'malformed': []},
-    'operations': [],
-}
-OPERATIONS = [
-    {'name': 'money.of', 'params': [{'name': 'amount', 'type': 'Decimal', 'optional': False},
-                                    {'name': 'currency', 'type': 'Currency', 'optional': False}],
-     'result': 'Money', 'summary': 'An amount of a currency.'},
-    {'name': 'money.minor', 'params': [{'name': 'value', 'type': 'Money', 'optional': False}],
-     'result': 'Int', 'summary': 'Its minor units.'},
-]
-GOLDEN_MONEY = """Money: every form its examples take (area 19, "Changing a standard type's encoding")
-encoding 1
-column amount bigint
-column currency char(3)
-
-example GBP 0.05
-text GBP 0.05
-json {"amount":5,"currency":"GBP"}
-stored amount 5
-stored currency 'GBP'
-
-example GBP 10.50
-text GBP 10.50
-json {"amount":1050,"currency":"GBP"}
-stored amount 1050
-stored currency 'GBP'
-"""
-GOLDEN_ADDRESS = """PostalAddress: every form its examples take
-encoding 1
-column numeric(38, 6) -- Length in metres (m)
-
-example {"lines":["A"]}
-text none
-json {"lines":["A"]}
-stored 1.5
-"""
 
 
 class TypeReference(unittest.TestCase):
-    def build(self, types=(MONEY, ADDRESS)):
+    def build(self, type_pages=TYPE_PAGES):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             catalogue, pages, errors = tree(root)
-            (root / docs.GOLDENS).mkdir(parents=True)
-            (root / docs.GOLDENS / 'Money.golden').write_text(GOLDEN_MONEY)
-            (root / docs.GOLDENS / 'PostalAddress.golden').write_text(GOLDEN_ADDRESS)
             bundle = docs.Bundle(pages, errors, {'version': '0.1.0', 'rules': list(catalogue.values()),
-                                                 'commands': COMMANDS, 'types': list(types),
-                                                 'operations': OPERATIONS}, root)
+                                                 'commands': COMMANDS, 'types': [MONEY, ADDRESS], 'operations': [],
+                                                 'type_pages': type_pages}, root)
             bundle.write(root / 'bundle')
             files = {str(p.relative_to(root / 'bundle')): p.read_text()
                      for p in (root / 'bundle').rglob('*') if p.is_file()}
@@ -1218,7 +1174,7 @@ class TypeReference(unittest.TestCase):
         self.assertEqual(docs.type_id('Ean13'), 'type-ean13')
         self.assertEqual(docs.type_id('Money'), 'type-money')
 
-    def test_the_types_follow_the_topics_index_first(self):
+    def test_the_types_follow_the_topics_index_first_then_a_to_z(self):
         index, files, bundle = self.build()
         kinds = [(e['kind'], e['id']) for e in index['pages']]
         self.assertEqual(kinds[kinds.index(('type', 'types')) - 1][0], 'topic')
@@ -1229,63 +1185,65 @@ class TypeReference(unittest.TestCase):
         by_id = {e['id']: e for e in index['pages']}
         self.assertEqual(by_id['type-money']['title'], 'Money')
         self.assertEqual(by_id['type-money']['area'], 19)
-        self.assertEqual(by_id['type-money']['summary'],
-                         'An amount of money: its minor units and its `Currency`, written `GBP 10.50`.')
+        self.assertEqual(by_id['type-money']['summary'], 'An amount of money.')
+        self.assertEqual(by_id['type-money']['links'], ['type-postal-address'])
+        self.assertEqual(by_id['types']['links'], ['type-money', 'type-postal-address'])
         self.assertEqual(bundle.problems, [])
 
-    def test_a_type_page_says_how_to_make_write_store_and_show_one(self):
-        _, files, _ = self.build()
-        money = files['types/type-money.md']
-        self.assertTrue(money.startswith('# `Money`\n\nAn amount of money: its minor units'), money)
-        self.assertNotIn('area 19', money)
-        self.assertIn('[Money and banking](types.md#money-and-banking); ordered; since Jadpo 0.1.0.', money)
-        self.assertIn('`text.parse(raw, as: Money)` reads one', money)
-        self.assertIn('such as `10.50` or `""`', money)
-        self.assertIn('This operation gives one: `money.of`.', money)
-        self.assertIn('| `GBP 10.50` | `{"amount":1050,"currency":"GBP"}` |', money)
-        self.assertIn('| `<field>_amount` | `bigint` | `1050` |', money)
-        self.assertIn('| `GBP 10.50` | `£10.50` |', money)
-        self.assertIn('A call may also give `precision:`.', money)
-        self.assertIn('- `money.of(amount: Decimal, currency: Currency) -> Money`: An amount of a currency.', money)
-        self.assertIn('- `money.minor(value: Money) -> Int`: Its minor units.', money)
-        self.assertIn('It is ordered, so `<` and sorting take it.', money)
-        self.assertIn('](../topics/every-standard-type-meets-one-contract.md)', money)
+    def test_a_page_with_another_id_than_ours_is_a_problem(self):
+        pages = {'index': '# Types\n', 'types': [dict(TYPE_PAGES['types'][0], id='type-cash')]}
+        _, _, bundle = self.build(pages)
+        self.assertTrue(any('type-cash' in p for p in bundle.problems), bundle.problems)
 
-    def test_an_object_gives_its_fields_rules_and_one_column(self):
-        _, files, _ = self.build()
-        address = files['types/type-postal-address.md']
-        self.assertIn('(UPU S42)', address)
-        self.assertIn('`PostalAddress { lines: ... }`', address)
-        self.assertIn('- `postal_code_of_country`: `postal_code fits`', address)
-        self.assertIn('| `country` | `Country?` |', address)
-        self.assertIn('no single text form', address)
-        self.assertIn('of type `numeric(38, 6)`, holding the length in metres (m)', address)
-        # A line break stays inside its cell.
-        self.assertIn('`"A\\nLondon"`', address)
+    def test_a_type_name_in_code_links_its_page(self):
+        linked = set()
+        names = {'Money', 'Range'}
+        text = ('Use `Money` and `Range<T>`, not `Other`.\n\n## `Money` stays a heading\n\n'
+                '```jadpo\n`Money`\n```\n\nAlready [`Money`](x.md).\n')
+        out = docs.link_type_names(text, names, linked)
+        self.assertIn('Use [`Money`](../types/type-money.md) and [`Range<T>`](../types/type-range.md), not `Other`.', out)
+        self.assertIn('## `Money` stays a heading', out)
+        self.assertIn('```jadpo\n`Money`\n```', out)
+        self.assertIn('Already [`Money`](x.md).', out)
+        self.assertEqual(linked, {'type-money', 'type-range'})
+        self.assertIn('[`Money`](types/type-money.md)',
+                      docs.link_type_names('`Money`', names, set(), 'types/'))
 
-    def test_the_index_lists_each_group_and_links_each_page(self):
-        index, files, _ = self.build()
-        listing = files['types/types.md']
-        self.assertTrue(listing.startswith('# Standard types\n\nEvery standard type Jadpo has, 2 in all'), listing)
-        self.assertIn('## Money and banking\n\n| Type | What it is |', listing)
-        self.assertIn('| [`Money`](type-money.md) | An amount of money: its minor units', listing)
-        by_id = {e['id']: e for e in index['pages']}
-        self.assertEqual(by_id['types']['links'], ['the-standard-types', 'type-money', 'type-postal-address'])
+    def test_a_page_keeps_to_plain_words(self):
+        fine = {'name': 'A', 'page': 'See [this](../topics/one-contract.md), `LawfulBasis.contract`.'}
+        self.assertEqual(docs.type_page_word_problems([fine]), [])
+        bad = {'name': 'B', 'page': 'It is not ordered, under the baseline contract.'}
+        self.assertEqual(len(docs.type_page_word_problems([bad])), 3)
 
-    def test_a_type_without_a_golden_file_is_a_problem(self):
-        _, _, bundle = self.build(types=(MONEY, dict(ADDRESS, name='Uprn')))
-        self.assertTrue(any('Uprn has no golden file' in p for p in bundle.problems), bundle.problems)
+    def test_an_example_is_a_value_of_its_type_or_its_own_statements(self):
+        self.assertEqual(docs.type_example_test('Email', 'Email("a@example.com")'),
+                         'test "Email" {\n    var example: Email = Email("a@example.com")\n'
+                         '    assert example == example\n}\n')
+        self.assertEqual(docs.type_example_test('Range', 'var a: Range<Year> = b\nassert a == a'),
+                         'test "Range" {\n    var a: Range<Year> = b\n    assert a == a\n}\n')
+        self.assertEqual(docs.split_type_example('type A = Object {\n    b: Text\n}\n\nvar c: A = d'),
+                         (['type A = Object {\n    b: Text\n}'], 'var c: A = d'))
 
-    def test_the_group_table_must_match_the_compiler(self):
-        page = SimpleNamespace(area=lambda: 19, path=Path('19-standard-library.md'), body=(
-            '| Group | Types | Extras in |\n|---|---|---|\n'
-            '| People and contact (1) | **`PostalAddress`** | |\n'
-            '| Money and banking (1) | **`Money`**, **`Range<T>`** | |\n'))
-        self.assertEqual(docs.type_table_problems([page], [ADDRESS, MONEY]), [])
-        problems = docs.type_table_problems([page], [MONEY, ADDRESS])
-        self.assertEqual(len(problems), 1, problems)
-        moved = docs.type_table_problems([page], [ADDRESS, dict(MONEY, group='People and contact')])
+    def test_the_group_tables_must_match_the_compiler(self):
+        def page(area, count=2):
+            return SimpleNamespace(area=lambda: area, path=Path(f'{area}.md'), body=(
+                f'There are {count} standard types, listed here.\n\n'
+                '| Group | Types | Extras in |\n|---|---|---|\n'
+                '| People and contact (1) | **`PostalAddress`** | `web` |\n'
+                '| Money and banking (1) | **`Money`** (enum) | `Money` |\n'))
+        self.assertEqual(docs.type_table_problems([page(19)], [ADDRESS, MONEY]), [])
+        self.assertEqual(docs.type_table_problems([page(2)], [ADDRESS, MONEY]), [])
+        wrong_order = docs.type_table_problems([page(19)], [MONEY, ADDRESS])
+        self.assertEqual(len(wrong_order), 1, wrong_order)
+        moved = docs.type_table_problems([page(19)], [ADDRESS, dict(MONEY, group='People and contact')])
         self.assertTrue(any('`Money` is listed under' in p for p in moved), moved)
+        count = docs.type_table_problems([page(19, count=247)], [ADDRESS, MONEY])
+        self.assertTrue(any('There are 247' in p and '2' in p for p in count), count)
+        left_out = docs.type_table_problems([page(19)], [ADDRESS, MONEY, dict(MONEY, name='Iban')])
+        self.assertTrue(any('leaves out `Iban`' in p for p in left_out), left_out)
+        self.assertTrue(any('should say how many' in p for p in left_out), left_out)
+        extra = docs.type_table_problems([page(19)], [ADDRESS])
+        self.assertTrue(any('`Money`, which isn\'t a standard type' in p for p in extra), extra)
 
 
 class ReleaseLine(unittest.TestCase):
