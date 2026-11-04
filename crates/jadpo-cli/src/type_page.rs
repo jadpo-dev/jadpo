@@ -76,7 +76,7 @@ fn bound(value: &Json, key: &str) -> Option<String> {
     match get(value, key) {
         Some(Json::Str(text)) => Some(text.clone()),
         Some(Json::Null) | None => None,
-        Some(other) => Some(other.to_line()),
+        Some(other) => Some(other.to_line().trim_end().to_string()),
     }
 }
 
@@ -84,7 +84,7 @@ fn bound(value: &Json, key: &str) -> Option<String> {
 /// string so the cell stays one line.
 fn cell(written: &str) -> String {
     let flat = if written.chars().any(char::is_control) {
-        Json::from(written).to_line()
+        Json::from(written).to_line().trim_end().to_string()
     } else {
         written.to_string()
     };
@@ -272,7 +272,7 @@ pub struct Reference {
 }
 
 impl Reference {
-    pub fn new() -> Reference {
+    pub fn load() -> Reference {
         let Json::Array(types) = crate::type_reference::types_json() else {
             unreachable!("types is a list");
         };
@@ -336,7 +336,7 @@ impl Reference {
             String::new(),
         ]);
         out.extend(self.details(entry, &forms));
-        out.extend(["</details>".to_string()]);
+        out.push("</details>".to_string());
         out.join("\n") + "\n"
     }
 
@@ -403,13 +403,17 @@ impl Reference {
         } else {
             let sample = sample_text(entry);
             let sentence = match holds {
-                "text" | "bytes" => match text(entry, "text") {
+                "text" => match text(entry, "text") {
                     Some("secret") => "One secret value, with no parts.".to_string(),
                     _ => format!(
                         "One value, held as text in one set form, with no parts: {}.",
                         code(&sample)
                     ),
                 },
+                "bytes" => format!(
+                    "One value, held as bytes, with no parts. As text it reads {}.",
+                    code(&sample)
+                ),
                 "whole" => format!(
                     "One whole number from {} to {}.",
                     bound(entry, "min").unwrap_or_default(),
@@ -418,6 +422,11 @@ impl Reference {
                 "bounded" => {
                     let base = text(entry, "base").unwrap_or_default();
                     match (bound(entry, "min"), bound(entry, "max")) {
+                        // A quantity's limits are in the unit it is held in,
+                        // which its own words give.
+                        _ if !matches!(base, "Decimal" | "Percentage") => {
+                            format!("One `{base}`, with limits of its own.")
+                        }
                         (Some(low), Some(high)) => format!("One `{base}` from {low} to {high}."),
                         (Some(low), None) => format!("One `{base}`, never below {low}."),
                         (None, Some(high)) => format!("One `{base}`, never above {high}."),
@@ -737,9 +746,7 @@ fn make_one(entry: &Json) -> Vec<String> {
         ("whole", _) => out.push(format!(
             "`{name}(number)` checks the number, and one outside its limits breaks `min` or `max`."
         )),
-        ("bounded", _) => out.push(format!(
-            "A value outside its limits breaks `min` or `max`."
-        )),
+        ("bounded", _) => out.push("A value outside its limits breaks `min` or `max`.".to_string()),
         ("bytes", _) => out.push(format!(
             "`{name}(bytes)` checks them, and bytes that aren't one break the `format` rule."
         )),
@@ -1190,7 +1197,7 @@ pub fn find(word: &str) -> Option<&'static str> {
 /// `jadpo help <Type>`: its page. With `--json`, the same data as `jadpo help
 /// --json` gives it, its page and its own words, which is its shape in one call.
 pub fn type_help(name: &str) -> Reply {
-    let reference = Reference::new();
+    let reference = Reference::load();
     let Some(entry) = reference
         .types
         .iter()
@@ -1225,7 +1232,7 @@ pub fn type_help(name: &str) -> Reply {
 /// `jadpo help types`: every standard type from A to Z. With `--json`, each
 /// one's page too, which the docs bundle publishes.
 pub fn index_help() -> Reply {
-    let reference = Reference::new();
+    let reference = Reference::load();
     let mut named: Vec<&Json> = reference.types.iter().collect();
     named.sort_by_key(|entry| text(entry, "name").unwrap_or_default().to_lowercase());
     let meaning = |name: &str| {
@@ -1305,7 +1312,7 @@ mod tests {
     use super::*;
 
     fn page(name: &str) -> String {
-        let reference = Reference::new();
+        let reference = Reference::load();
         let entry = reference
             .types
             .iter()
@@ -1325,7 +1332,7 @@ mod tests {
 
     #[test]
     fn a_page_reads_in_the_agreed_order() {
-        for entry in Reference::new().types.iter() {
+        for entry in Reference::load().types.iter() {
             let name = text(entry, "name").unwrap_or_default();
             let page = page(name);
             let mut from = 0;
@@ -1373,7 +1380,7 @@ mod tests {
 
     #[test]
     fn no_page_uses_the_words_the_template_rules_out() {
-        for entry in Reference::new().types.iter() {
+        for entry in Reference::load().types.iter() {
             let name = text(entry, "name").unwrap_or_default();
             let page = page(name);
             let plain = page.replace(&format!("../topics/{ALL_TYPES_TOPIC}.md"), "");
@@ -1400,7 +1407,7 @@ mod tests {
 
     #[test]
     fn the_index_runs_a_to_z_with_a_group_column() {
-        let index = Reference::new().index();
+        let index = Reference::load().index();
         assert!(index.contains("| Type | Group | What it is |"), "{index}");
         let names: Vec<&str> = index
             .lines()
