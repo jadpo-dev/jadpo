@@ -13,12 +13,15 @@ languages. The docs are the only source, and the compiler is the check.
 1. Read the primer once per session: https://jadpo.dev/docs/primer.md. It
    covers the project layout, the syntax and the constructs nearly every
    app uses.
-2. For the task, read the bundle's index, https://jadpo.dev/docs/index.json
-   (or the shorter https://jadpo.dev/llms.txt), pick pages by `title` and
-   `summary`, and fetch only their `.md`. The app declares its version in
-   `app.jadpo`; use `https://jadpo.dev/v/<version>/docs/index.json` and the
-   same prefix on every page to read the docs for that version.
-3. Don't fetch everything. There is no single file of all the docs.
+2. Read https://jadpo.dev/llms.txt once too. It lists the guides, one for
+   each common job, and the reference's groups.
+3. For a task, follow its guide if it has one. Otherwise open its group's
+   page, which lists what is in the group, and fetch only the topics you
+   need, each at `https://jadpo.dev/docs/<id>.md`.
+4. The app declares its version in `app.jadpo`. Use the same addresses
+   under `https://jadpo.dev/v/<version>/` to read the docs for that version.
+5. Don't fetch everything. There is no single file of all the docs, and
+   `docs/index.json` is a list for tools: never read it whole.
 
 ## Check your work
 

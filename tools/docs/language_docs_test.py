@@ -575,6 +575,25 @@ class WhatAnAgentIsToldToRead(unittest.TestCase):
         self.assertEqual(self.problems(skill='https://jadpo.dev/docs/errors/<rule>.md, https://jadpo.dev/v/<version>/docs/index.json\n'), [])
 
 
+class WhatAnAgentReadsOnce(unittest.TestCase):
+    """The primer as the bundle gives it, and the repository's llms.txt, stay
+    inside the budget (agent_guidance.READ_ONCE_TOKENS)."""
+
+    def problems(self, primer, llms):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'llms.txt').write_text(llms)
+            return docs.read_once_problems([('primer', 'primer', 'primer.md', 'Primer', None, primer, set())], root)
+
+    def test_inside_the_budget_passes(self):
+        self.assertEqual(self.problems('p' * 100, 'l' * 100), [])
+
+    def test_over_it_fails_on_the_page_as_the_bundle_gives_it(self):
+        found = self.problems('p' * 40_000, 'l' * 100)
+        self.assertEqual(len(found), 1)
+        self.assertIn('read once', found[0])
+
+
 class Primer(unittest.TestCase):
     def test_the_bundle_leads_with_the_primer(self):
         with tempfile.TemporaryDirectory() as tmp:

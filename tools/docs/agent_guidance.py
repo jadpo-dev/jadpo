@@ -8,8 +8,7 @@ Four files carry it (roadmap chunks A6 and A12):
   by hand, and everything from its "The closest example for each feature"
   heading on is generated here, its examples linked at `{release}`, which
   `jadpo new` fills with its own version;
-- llms.txt, whose "Complete application examples" section is generated
-  here;
+- llms.txt, whose "Reference" section is generated here;
 - docs/primer.md, whose final "Not built yet" section is generated here;
 - docs/learn/01-setting-up.md, whose "Install it" section is generated
   here.
@@ -24,13 +23,17 @@ What they generate from, so none can drift from what it summarises:
   table;
 - what a release ships: dist-workspace.toml's installers and tap, the npm
   package and formula in crates/jadpo-cli/Cargo.toml, and the repository
-  in Cargo.toml.
+  in Cargo.toml;
+- docs/reference.toml: the reference's groups, which llms.txt lists.
 
 A status in those tables starts Built, Partly built or Not built, and a row
 that says Built says nothing of its own isn't built: what it lacks makes it
 Partly built, or has a row of its own.
 
-No other line of the primer or the Learn path says how to get `jadpo` by
+What an agent has to read before its first lookup, the primer and llms.txt,
+stays inside READ_ONCE_TOKENS, and nothing that tells an agent what to read
+sends it to the whole of index.json (docs/documentation.md, "How an agent uses
+it"). No other line of the primer or the Learn path says how to get `jadpo` by
 hand. Every teaching example (a folder of examples/ holding app.jadpo) must be
 in the reading order, and every example the feature table names must
 exist.
@@ -52,15 +55,15 @@ TEMPLATE = ROOT / 'crates/jadpo-cli/scaffold/AGENTS.md.tmpl'
 LLMS = ROOT / 'llms.txt'
 PRIMER = ROOT / 'docs/primer.md'
 LEARN_SETUP = ROOT / 'docs/learn/01-setting-up.md'
+REFERENCE = ROOT / 'docs/reference.toml'
 
 TOPICS = 'https://jadpo.dev/docs/'
 # `{release}` is left for `jadpo new`, which writes its own version there,
 # so a project's examples are the ones its release was tested with.
 GITHUB_TREE = 'https://github.com/jadpo-dev/jadpo/tree/v{{release}}/examples/{folder}'
-RAW_README = 'https://raw.githubusercontent.com/jadpo-dev/jadpo/main/examples/{folder}/README.md'
 
 FEATURES_HEADING = '## The closest example for each feature'
-LLMS_HEADING = '## Complete application examples'
+REFERENCE_HEADING = '## Reference'
 NOT_BUILT_HEADING = '## Not built yet'
 INSTALL_HEADING = '## Install it'
 
@@ -81,6 +84,25 @@ PRIMER_NOT_BUILT = (
     ('13-testing', 'Data builders', 'data builders and `assert emitted` in tests'),
     ('16-built-in-services', 'Documents', 'documents'),
 )
+
+# What an agent reads once before its first lookup, the primer as the bundle
+# gives it and llms.txt, in the bundle's tokens: a quarter of the characters.
+READ_ONCE_TOKENS = 9_000
+# Every place that tells an agent what to read, which never sends it to the
+# whole of index.json. Of the contract, only what it says an agent does.
+AGENT_GUIDANCE = ('llms.txt', 'README.md', 'AGENTS.md', 'crates/jadpo-cli/scaffold/AGENTS.md.tmpl',
+                  'docs/agent-skill/SKILL.md', 'docs/primer.md', 'docs/writing.md', 'docs/language/README.md',
+                  'benchmarks/agent-changes/agents/jadpo-AGENTS.md')
+AGENT_GUIDANCE_GLOBS = ('docs/learn/*.md', 'docs/guides/*.md', 'docs/language/[0-9][0-9]-*.md')
+CONTRACT = 'docs/documentation.md'
+CONTRACT_HEADINGS = ('## The agent skill', '## How an agent uses it')
+WHOLE_INDEX = 'index.json'
+# The agent skills' own small index isn't the bundle's.
+WHOLE_INDEX_MENTION = re.compile(r'(?<!agent-skills/)index\.json')
+# Where a sentence ends: not the dot in "index.json". A blank line or a new
+# list item ends one too, and a row of a table.
+SENTENCE_END = re.compile(r'(?<=[.!?])\s+|\n\s*\n|\n(?=\s*(?:[-*|]|\d+\.)\s)')
+NOT_WHOLE = re.compile(r"\b(?:never|not|don't)\b.*\b(?:whole|all of)\b", re.IGNORECASE | re.DOTALL)
 
 # The words a status starts with, and what a row that says Built can't also
 # say. An error's name (`toolchain.not_built_yet`) and a link's address aren't
@@ -161,6 +183,56 @@ def area_rows(path: Path) -> list[tuple[str, str]]:
     """An area page's "What is built" table: each feature and its status."""
     built = section(path.read_text(), '## What is built') if path.is_file() else None
     return [(plain(row[0]), row[-1]) for row in first_table(built or '')]
+
+
+def tokens(text: str) -> int:
+    """A page's length as the bundle's index gives it: a quarter of its
+    characters."""
+    return (len(text) + 3) // 4
+
+
+def read_once_problems(primer: str, llms: str) -> list[str]:
+    """What an agent reads once, over its budget."""
+    total = tokens(primer) + tokens(llms)
+    if total <= READ_ONCE_TOKENS:
+        return []
+    return [f'the primer and llms.txt, which an agent has to read once, are {total:,} tokens, over {READ_ONCE_TOKENS:,} '
+            f'(the primer {tokens(primer):,}, llms.txt {tokens(llms):,}): shorten one, since an agent pays this '
+            'before its first lookup']
+
+
+def whole_index_in(text: str, name: str, first_line: int = 1) -> list[str]:
+    """Each sentence of `text` naming index.json without telling the reader
+    not to read it whole."""
+    found = []
+    ends = [(m.start(), m.end()) for m in SENTENCE_END.finditer(text)]
+    for mention in WHOLE_INDEX_MENTION.finditer(text):
+        start = max((end for _, end in ends if end <= mention.start()), default=0)
+        stop = min((begin for begin, _ in ends if begin >= mention.end()), default=len(text))
+        if not NOT_WHOLE.search(text[start:stop]):
+            line = first_line + text.count('\n', 0, mention.start())
+            found.append(f'{name}:{line}: sends an agent to {WHOLE_INDEX}, which is far too long to read: send it to '
+                         "llms.txt's groups, or say never to read the file whole")
+    return found
+
+
+def whole_index_problems(root: Path = ROOT) -> list[str]:
+    """What tells an agent to read the whole of index.json."""
+    paths = [root / name for name in AGENT_GUIDANCE]
+    for pattern in AGENT_GUIDANCE_GLOBS:
+        paths += sorted(root.glob(pattern))
+    found = []
+    for path in paths:
+        if path.is_file():
+            found += whole_index_in(path.read_text(), str(path.relative_to(root)))
+    contract = root / CONTRACT
+    text = contract.read_text() if contract.is_file() else ''
+    for heading in CONTRACT_HEADINGS:
+        body = section(text, heading)
+        if body is not None:
+            line = 1 + text.count('\n', 0, text.index(f'\n{heading}\n') + len(heading) + 2)
+            found += whole_index_in(body, CONTRACT, line)
+    return found
 
 
 def primer_not_built(root: Path = ROOT, picks=PRIMER_NOT_BUILT) -> str:
@@ -339,18 +411,44 @@ Each area links to its "What is built" topic, which says more.
 """
 
 
-def llms_section(root: Path = ROOT) -> str:
-    listed = '\n'.join(f'- [{folder}]({RAW_README.format(folder=folder)}): {text}'
-                       for folder, text in examples(root))
-    return f"""{LLMS_HEADING}
+def first_topic(node: dict, topics: set[str]) -> str | None:
+    """The topic a node of the manifest opens on: its own, or its first."""
+    if node.get('id') in topics:
+        return node['id']
+    listed = [*node.get('topics', []), *node.get('details', [])]
+    if listed:
+        return listed[0]
+    for child in [*node.get('page', []), *node.get('section', [])]:
+        found = first_topic(child, topics)
+        if found:
+            return found
+    return None
 
-Every teaching project in examples/, in reading order. Read each README, then the source files and tests it lists.
+
+def reference_groups(root: Path = ROOT) -> list[tuple[str, str, str]]:
+    """Each group of the reference with a Markdown page: its title, the page's
+    address and its summary. A group the site writes itself has none, and a
+    group the manifest names no topic of its ID opens on its first."""
+    topics = set()
+    for path in sorted((root / 'docs/language').glob('[0-9][0-9]-*.md')):
+        topics |= {m.group(1) for m in map(TOPIC.match, path.read_text().split('\n')) if m}
+    groups = []
+    for group in tomllib.loads((root / REFERENCE.relative_to(ROOT)).read_text()).get('group', []):
+        topic = None if group.get('href') else first_topic(group, topics)
+        if topic:
+            groups.append((group['title'], f'{TOPICS}{topic}.md', group.get('summary', '')))
+    return groups
+
+
+def llms_reference(root: Path = ROOT) -> str:
+    listed = '\n'.join(f'- [{title}]({address}): {summary}' for title, address, summary in reference_groups(root))
+    return f"""{REFERENCE_HEADING}
+
+The reference is on the site, one page per topic, in these groups. Open the page of the group a task belongs to, which lists what is in the group. Then fetch only the `.md` pages the task needs.
 
 {listed}
 
-The closest example for each feature:
-
-{feature_table(closest_examples(root), RAW_README)}
+Each compiler error has its own page, `{TOPICS}errors/<rule.id>.md`, such as {TOPICS}errors/failure.kind_required.md, and the error's `help:` line prints its address. Each standard type has one too, such as {TOPICS}types/type-money.md, and `jadpo help <Type>` prints the same page.
 """
 
 
@@ -359,13 +457,9 @@ def written(root: Path = ROOT) -> dict[Path, str]:
     template = (root / TEMPLATE.relative_to(ROOT)).read_text()
     head = template.split(f'\n{FEATURES_HEADING}\n')[0].rstrip('\n')
     llms = (root / LLMS.relative_to(ROOT)).read_text()
-    start = llms.index(f'\n{LLMS_HEADING}\n')
-    rest = llms[start + 1:]
-    end = rest.find('\n## ')
-    after = '' if end < 0 else rest[end:]
     files = {
         root / TEMPLATE.relative_to(ROOT): f'{head}\n\n{agents_tail(root)}',
-        root / LLMS.relative_to(ROOT): f'{llms[:start + 1]}{llms_section(root)}{after}',
+        root / LLMS.relative_to(ROOT): with_section(llms, REFERENCE_HEADING, llms_reference(root)),
     }
     primer = root / PRIMER.relative_to(ROOT)
     files[primer] = with_section(primer.read_text(), NOT_BUILT_HEADING, primer_not_built(root))
@@ -385,9 +479,9 @@ def problems(root: Path = ROOT) -> list[str]:
         for folder in folders:
             if folder not in teaching:
                 found.append(f'the feature table names examples/{folder} for "{feature}", which isn\'t a teaching example')
-    found += install_claim_problems(root) + status_word_problems(root)
+    found += install_claim_problems(root) + status_word_problems(root) + whole_index_problems(root)
     # A folder holding only the examples and the areas, as a test builds.
-    if all((root / path.relative_to(ROOT)).is_file() for path in (TEMPLATE, LLMS, PRIMER, LEARN_SETUP)):
+    if all((root / path.relative_to(ROOT)).is_file() for path in (TEMPLATE, LLMS, PRIMER, LEARN_SETUP, REFERENCE)):
         found += primer_pick_problems(root) + install_problems(root)
         for path, text in written(root).items():
             if path.read_text() != text:

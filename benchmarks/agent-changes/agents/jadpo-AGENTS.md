@@ -9,8 +9,8 @@ The documentation for this version is in `../docs/`:
 
 1. Read `../docs/primer.md` once before you change anything: the layout,
    the syntax, the constructs nearly every app uses and where to look next.
-2. For a task, read `../docs/index.json`, pick the topics by title and
-   summary, and read only their pages, `../docs/topics/<id>.md`.
+2. For a task, find its topics with `grep -il <word> ../docs/topics/*.md`
+   and read only those pages. Never read `../docs/index.json` whole.
 3. A compiler error names its rule; read `../docs/errors/<rule>.md` only if
    the error's own reason and fix are not enough.
 4. Commands are in `../docs/commands/jadpo-<command>.md`, and `jadpo help`
