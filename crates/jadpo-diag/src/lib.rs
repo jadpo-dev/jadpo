@@ -788,10 +788,10 @@ rules! {
         "The registry's verifier refused the release";
     PUBLISH_FILE_NOT_ALLOWED: "publish.file_not_allowed", area 14, Error, Agent,
         "A commit holds a file a release can't: anything but Jadpo source and the package's text files";
-    PUBLISH_NOT_AT_TAG: "publish.not_at_tag", area 14, Error, Agent,
-        "What `jadpo package publish` would ask for isn't a pushed `v<version>` tag whose commit is the one checked out";
     PUBLISH_LICENCE_PROPRIETARY: "publish.licence_proprietary", area 14, Error, Human,
         "A package's licence is `Licence.proprietary`, which the public registry refuses";
+    PUBLISH_NOT_AT_TAG: "publish.not_at_tag", area 14, Error, Agent,
+        "What `jadpo package publish` would ask for isn't a pushed `v<version>` tag whose commit is the one checked out";
     PUBLISH_PUBLISHER_MISMATCH: "publish.publisher_mismatch", area 14, Error, Human,
         "A release names another publisher than the one asked to publish it";
     PUBLISH_PUBLISHER_MISSING: "publish.publisher_missing", area 14, Error, Human,
