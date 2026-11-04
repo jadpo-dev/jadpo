@@ -159,15 +159,13 @@ instead.
 
 ```jadpo
 ProblemDetails {
-    type_: none
+    type: none
     status: 404
     title: "Not Found"
     detail: none
     instance: none
 }
 ```
-
-- `type_` is written `type` in JSON, since `type` is a reserved word in code.
 
 # JsonPointer
 

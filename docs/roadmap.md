@@ -483,10 +483,7 @@ real deploy) and, before outside authors can publish, D3 (releases).
   account and the steps in [documentation](documentation.md#versions-and-releases):
   the repository variable `JADPO_VERIFIER_IMAGE` set to `on`, the app and its
   credential on Fly.io, then the image deployed. Before R7 can reach it.
-- [ ] **G1 Reserved words as names** `opus · high`: area 2 and area 1,
-  "Reserved words". Inside a type body a reserved word may name a field or an
-  enum variant, where `package: Text` and `Kind.library` are unambiguous
-  (Richard, 2026-11-03). An `Output` with a `type` field works in any app.
+- [x] **G1 Reserved words as names**: area 2, "Names from reserved words"; area 1, "Reserved words"; `docs/errors/syntax.expected_name.md`, `docs/errors/type.reserved_variant_name.md`.
 - [x] **G2 A `GET` that runs a read-only action**: area 7, "A `GET` that runs an action"; area 3, "Functions and actions"; `docs/errors/route.run_kind.md`; compiler/runtime, "An action on a `GET`".
 - [x] **G3 A route that sends raw bytes**: area 7, "Sending raw bytes", "Answers that never change" and "The public API record"; area 18, "Acceptances"; `docs/errors/route.sends_invalid.md`, `docs/errors/route.cache_invalid.md`; compiler/runtime, "A route that sends raw bytes".
 - [x] **G4 A route's `rate_limit:`**: area 16, "Rate limits" and "What the

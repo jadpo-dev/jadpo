@@ -642,7 +642,6 @@ fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
                 // A part that may be `none` is `null` too (chunk 5.5l).
                 if let Holds::Object(parts) = entry.holds {
                     for (field, part) in parts {
-                        let field = jadpo_std::standard::wire_name(name, field);
                         let schema = properties.get(field).expect("a property");
                         assert_eq!(
                             schema.get("anyOf").is_some(),
