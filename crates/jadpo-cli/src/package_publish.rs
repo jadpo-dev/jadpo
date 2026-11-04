@@ -333,10 +333,8 @@ pub(crate) fn https_address(remote: &str) -> Option<String> {
         rest.split_once('/')?
     } else if let Some(rest) = remote.strip_prefix("ssh://git@") {
         rest.split_once('/')?
-    } else if let Some(rest) = remote.strip_prefix("git@") {
-        rest.split_once(':')?
     } else {
-        return None;
+        remote.strip_prefix("git@")?.split_once(':')?
     };
     let path = path.trim_end_matches('/').trim_end_matches(".git");
     if host.is_empty() || host.contains('@') || path.is_empty() {

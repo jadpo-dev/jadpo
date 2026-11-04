@@ -1029,7 +1029,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--to",
                 value: Some("version"),
-                description: "The release to take; for search, a type given",
+                description: "The release to take; for search, a type",
                 values: &[],
             },
             Flag {

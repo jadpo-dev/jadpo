@@ -53,8 +53,8 @@ jadpo package add @acme/postcodes
 
 If the log then proves the release, it installs as usual. Don't delete
 `.jadpo/registry_head` to make the message go away: it is the record of what
-this project has already been told. If it stays, report it to Jadpo with this
-output ([Security](../security.md)), and keep the version you have installed:
+this project has already been told. If it stays, report it to Jadpo privately with
+this output, and keep the version you have installed:
 apps never go online to run a package they already hold.
 
 ## Related

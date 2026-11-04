@@ -145,7 +145,7 @@ impl Client {
         }
         let json: serde_json::Value =
             serde_json::from_slice(&answer.body).map_err(|error| unread(error.to_string()))?;
-        protocol::check_answer(endpoint, &json).map_err(&unread)?;
+        protocol::check_answer(endpoint, &json).map_err(unread)?;
         serde_json::from_value(json).map_err(|error| unread(error.to_string()))
     }
 
@@ -599,7 +599,7 @@ pub(crate) fn for_add(
                     && !package.releases.is_empty() =>
                 {
                     let last = package.releases.last().map(|r| r.version.clone());
-                    return Err(yanked(name, &last.unwrap_or_else(|| version_zero())));
+                    return Err(yanked(name, &last.unwrap_or_else(version_zero)));
                 }
                 None => {
                     return Err(not_in_registry(

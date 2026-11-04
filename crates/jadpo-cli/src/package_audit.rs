@@ -32,8 +32,11 @@ use crate::package::{arguments, plural};
 use crate::registry::{Asked, Client};
 use crate::run::{Call, Reply};
 
+/// A lock line from the registry, with its name and version read.
+type FromRegistry<'a> = (&'a Locked, ScopedName, Version);
+
 /// The lock's lines from the registry, and how many it has from elsewhere.
-fn from_registry(lines: &[Locked]) -> Result<(Vec<(&Locked, ScopedName, Version)>, usize), Reply> {
+fn from_registry(lines: &[Locked]) -> Result<(Vec<FromRegistry<'_>>, usize), Reply> {
     let mut found = Vec::new();
     for line in lines {
         if let Source::Registry { version, name, .. } = &line.source {
@@ -128,7 +131,7 @@ struct Found<'a> {
 
 fn report(
     root: &Path,
-    installed: &[(&Locked, ScopedName, Version)],
+    installed: &[FromRegistry<'_>],
     advisories: &[Advisory],
     elsewhere: Option<Fact>,
     others: usize,
