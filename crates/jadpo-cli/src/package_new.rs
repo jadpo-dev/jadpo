@@ -99,7 +99,7 @@ pub(crate) fn new(call: &Call) -> Reply {
         [_] => {
             return Reply::failed(arguments(
                 "`jadpo package new` needs a name for the package".to_string(),
-                "A package is named in UpperCamelCase, such as `AcmeCouriers`, and it makes a folder for it.".to_string(),
+                "A package is named in UpperCamelCase, such as `TidePool`, and it makes a folder for it.".to_string(),
                 USAGE.to_string(),
             ));
         }
@@ -134,7 +134,7 @@ pub(crate) fn new(call: &Call) -> Reply {
     let Some(folder) = folder_of(code) else {
         return Reply::failed(arguments(
             format!("`{code}` isn't a package's name"),
-            "A package is named in UpperCamelCase, words of a capital and lower-case letters and digits, such as `AcmeCouriers`, in at most 39 letters and dashes as the registry writes it. It starts at `v1`, so the name goes without a version.".to_string(),
+            "A package is named in UpperCamelCase, words of a capital and lower-case letters and digits, such as `TidePool`, in at most 39 letters and dashes as the registry writes it. It starts at `v1`, so the name goes without a version.".to_string(),
             USAGE.to_string(),
         ));
     };

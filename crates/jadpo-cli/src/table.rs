@@ -1009,7 +1009,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--publisher",
                 value: Some("handle"),
-                description: "For verify: who the release is for; for new: who publishes it",
+                description: "For verify and new: who publishes it",
                 values: &[],
             },
             Flag {
@@ -1076,7 +1076,7 @@ pub static COMMANDS: &[Command] = &[
         examples: &[
             Example {
                 description: "Start a library package in its own repository",
-                command: "jadpo package new Postcodes --library --publisher @acme",
+                command: "jadpo package new TidePool --library --publisher @acme",
             },
             Example {
                 description: "See what the holidays package offers",
