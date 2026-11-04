@@ -1087,6 +1087,26 @@ GUIDE_INDEX = """# Guides
 [Count things](01-count.md).
 """
 
+GROUPED_GUIDE_INDEX = """# Guides
+<!-- topic: guides -->
+
+Each guide does one job.
+
+## Naming
+
+Giving things names.
+
+| Guide | You end with |
+|---|---|
+| [Name things](02-name.md) | a name |
+
+## Counting
+
+| Guide | You end with |
+|---|---|
+| [Count things](01-count.md) | a count |
+"""
+
 GUIDE_ONE = """# Count things
 <!-- topic: guide-count -->
 
@@ -1156,6 +1176,46 @@ class Guides(unittest.TestCase):
         self.assertIn('[one](../topics/one.md)', one)
         self.assertIn('[the path](../learn/learn.md)', one)
         self.assertNotIn('topic:', one)
+
+    def test_the_index_sets_the_guides_order_and_group(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalogue, pages, errors = tree(root)
+            guides_dir = root / 'docs/guides'
+            guides_dir.mkdir(parents=True)
+            (guides_dir / 'README.md').write_text(GROUPED_GUIDE_INDEX)
+            (guides_dir / '01-count.md').write_text(GUIDE_ONE)
+            (guides_dir / '02-name.md').write_text(GUIDE_TWO)
+            guides = docs.load_guides({}, root)
+            for page in guides:
+                page.collect_blocks()
+            bundle = docs.Bundle(pages, errors, {'version': '0.1.0', 'rules': list(catalogue.values()),
+                                                 'commands': []}, root, guides=guides)
+            bundle.write(root / 'bundle')
+            index = json.loads((root / 'bundle/index.json').read_text())
+            written = (root / 'bundle/guides/guides.md').read_text()
+            self.assertEqual(docs.guide_index_problems(guides), [])
+        entries = [(e['id'], e.get('group')) for e in index['pages'] if e['kind'] == 'guide']
+        self.assertEqual(entries, [('guides', None), ('guide-name', 'Naming'), ('guide-count', 'Counting')])
+        self.assertIn('## Naming', written)
+
+    def test_every_guide_sits_under_one_heading_of_the_index(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            guides_dir = root / 'docs/guides'
+            guides_dir.mkdir(parents=True)
+            (guides_dir / 'README.md').write_text(
+                '# Guides\n<!-- topic: guides -->\n\n'
+                '| Guide | You end with |\n|---|---|\n| [Count things](01-count.md) | a count |\n\n'
+                '## Naming\n\n| Guide | You end with |\n|---|---|\n| [Count things](01-count.md) | a count |\n')
+            (guides_dir / '01-count.md').write_text(GUIDE_ONE)
+            (guides_dir / '02-name.md').write_text(GUIDE_TWO)
+            problems = docs.guide_index_problems(docs.load_guides({}, root))
+        self.assertEqual(problems, [
+            'README.md lists 01-count.md twice: a guide has one place on the index',
+            'README.md lists 01-count.md under no heading: a guide sits under one',
+            'README.md has no row for 02-name.md: every guide has one',
+        ])
 
     def test_a_guide_may_link_another_guide(self):
         with tempfile.TemporaryDirectory() as tmp:

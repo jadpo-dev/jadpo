@@ -438,7 +438,7 @@ value on each line, and `json.write` one JSON list, and neither takes a `format:
 if your page shows a progress bar.
 
 To send the file on, give an email a `File` field, which attaches it when the email is
-sent. [Email](../language/16-built-in-services.md#email) shows how to send one.
+sent. [Send an email](12-send-an-email.md) shows how to send one.
 
 ## Read more
 
