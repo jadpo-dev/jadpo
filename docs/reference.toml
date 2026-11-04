@@ -319,7 +319,7 @@ built = [
 [[group]]
 id = "storing-data"
 title = "Data"
-summary = "What an app stores and how it reads and writes it: entities, migrations, queries, personal data and places."
+summary = "What an app stores and how it reads and writes it: entities, migrations, queries, personal data and location."
 
 [[group.page]]
 title = "Entities, stores and migrations"
@@ -374,6 +374,13 @@ built = [
 
 [[group.page]]
 title = "Personal data"
+status = [
+  "15-personal-data: `User.erase(id)`",
+  "15-personal-data: `User.export(id)`",
+  "15-personal-data: `privacy:` in",
+  "15-personal-data: The personal-data report",
+]
+missing = "exporting a person's data, `privacy:` and most of the report"
 topics = [
   "personal-data",
   "marking-personal-fields",
@@ -496,6 +503,7 @@ built = [
 [[group]]
 id = "jobs-and-events"
 title = "Background work"
+summary = "What runs outside a request: schedules, batches, events, and what happens when a delivery fails."
 built = [
   "jobs-and-events-built",
 ]
@@ -546,6 +554,7 @@ topics = [
 [[group]]
 id = "built-in-services"
 title = "Built-in services"
+summary = "What Jadpo gives an app without a package: email, files, flags, rate limits, search, audit, AI and more."
 built = [
   "built-in-services-built",
 ]
@@ -588,7 +597,7 @@ details = [
 [[group.page]]
 title = "Feature flags"
 status = ["16-built-in-services: Flags"]
-missing = "named tenants; erasure reaching flag records"
+missing = "turning a flag on for a named tenant; erasing a person from the flag tables"
 topics = [
   "feature-flags",
 ]
@@ -672,7 +681,7 @@ status = [
   "16-built-in-services: The `telemetry:` section",
   "16-built-in-services: Path IDs",
 ]
-missing = "thresholds work; telemetry and path IDs do not"
+missing = "telemetry and path IDs"
 topics = [
   "monitoring-thresholds",
   "telemetry",
@@ -811,6 +820,7 @@ details = [
 [[group]]
 id = "configuration-and-time"
 title = "Configuration"
+summary = "Settings, secrets, and the languages an app speaks."
 built = [
   "configuration-and-time-built",
 ]
@@ -869,6 +879,7 @@ built = [
 [[group]]
 id = "tooling"
 title = "Tools"
+summary = "The jadpo command, your editor, building and deploying, and working with an agent."
 built = [
   "tooling-built",
 ]
