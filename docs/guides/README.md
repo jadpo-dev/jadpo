@@ -21,6 +21,8 @@ From a route to stored records, sign-in and customers kept apart.
 | [Handle failures](04-handle-failures.md) | a failure of your own, refused with the right status, handled where a caller wants to |
 | [Add sign-in](05-add-sign-in.md) | sign-in by emailed link and with Google, and routes that know who is calling |
 | [Run background work](07-run-background-work.md) | a schedule that starts a batch, an event with its subscriber, and a test of the whole run |
+| [Keep customers' data apart](21-keep-customers-data-apart.md) | a tenant named once, memberships and roles, and tests proving one company can't reach another's records |
+| [Translate your app's text](19-translate-your-apps-text.md) | typed messages in two languages, chosen from the browser's header, with stale translations caught by `jadpo check` |
 
 ## Services
 
@@ -34,6 +36,7 @@ Using what Jadpo has built in.
 | [Add search to a list](15-add-search-to-a-list.md) | a searchable entity, its migration, and a route giving the best matches first, a page at a time |
 | [Keep a record of who changed what](16-keep-a-record-of-who-changed-what.md) | an audited entity, its history read back with what each caller may see, and a route that sends it |
 | [Export records to a file](18-export-records-to-a-file.md) | a query's records written to a spreadsheet-safe CSV in the background, with its run tracked on a record |
+| [Ask a model for a typed answer](20-ask-a-model-for-a-typed-answer.md) | a checked prompt, a decoded answer with every failure named, a daily budget, and tests that never reach a model |
 
 ## Reaching outside
 
