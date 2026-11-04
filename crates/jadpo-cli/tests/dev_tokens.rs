@@ -171,10 +171,19 @@ routes Staff {
 ];
 
 fn project() -> (tempdir::Dir, PathBuf) {
+    project_with("")
+}
+
+/// The project, `GET /staff/me` holding `limit` too.
+fn project_with(limit: &str) -> (tempdir::Dir, PathBuf) {
     let dir = tempdir::Dir::new("dev-tokens");
     let root = dir.path().join("desk");
     for (path, text) in FILES {
-        write(&root, path, text);
+        write(
+            &root,
+            path,
+            &text.replace("    GET /me {\n", &format!("    GET /me {{\n{limit}")),
+        );
     }
     for args in [
         &["migrate", "new", "initial"][..],
@@ -221,6 +230,40 @@ fn dev_command(root: &Path, args: &[&str]) -> jadpo_cli::Output {
 
 fn token(root: &Path, url: &str, id: &str) -> jadpo_cli::Output {
     dev_command(root, &["token", id, "--url", url])
+}
+
+/// A route's own limit by caller (area 16, "Rate limits"; chunk G4): on a
+/// `GET` that needs signing in, each signed-in caller has their own count,
+/// from one address, and a token that doesn't sign in uses none of it.
+#[test]
+fn a_routes_limit_counts_each_signed_in_caller_apart() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let (_dir, root) = project_with(
+        "        rate_limit: {\n            requests: 2\n            within: 1m\n            by: RateLimitKey.caller\n        }\n",
+    );
+    let dev = Dev::start(&root);
+    let bearer = |id: &str| {
+        let printed = token(&root, dev.url(), id);
+        assert_eq!(printed.code, 0, "{}{}", printed.stdout, printed.stderr);
+        format!("Bearer {}", printed.stdout.trim_end())
+    };
+    let ann = bearer(&librarian(dev.url(), "google-ann", true));
+    let carol = bearer(&librarian(dev.url(), "google-carol", true));
+    let me =
+        |authorization: &str| dev.send("GET", "/staff/me", &[("authorization", authorization)], "");
+    assert_eq!(me("Bearer nothing").status, 401);
+    assert_eq!(me(&ann).status, 200);
+    assert_eq!(me(&ann).status, 200);
+    let refused = me(&ann);
+    assert_eq!(refused.status, 429, "{refused:?}");
+    assert_eq!(refused.json()["error"]["code"], "rate_limited");
+    assert_eq!(
+        refused.header("ratelimit-policy"),
+        Some("\"default\";q=2;w=60")
+    );
+    assert_eq!(me(&carol).status, 200, "another caller counts alone");
 }
 
 #[test]

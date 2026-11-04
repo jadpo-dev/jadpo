@@ -463,6 +463,18 @@ std_enum! {
     }
 }
 
+std_enum! {
+    /// What a rate limit counts requests by (area 16, "Who is counted:
+    /// `by:`").
+    RateLimitKey: "RateLimitKey" {
+        /// Each signed-in caller, or each address when the caller isn't
+        /// signed in.
+        Caller: "caller",
+        /// Each address.
+        Ip: "ip",
+    }
+}
+
 impl SuccessStatus {
     /// The HTTP status it answers with.
     pub fn code(self) -> u16 {
@@ -886,6 +898,7 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (CodeForm::NAME, CodeForm::NAMES.to_vec()),
         (VectorDistance::NAME, VectorDistance::NAMES.to_vec()),
         (SearchLanguage::NAME, SearchLanguage::NAMES.to_vec()),
+        (RateLimitKey::NAME, RateLimitKey::NAMES.to_vec()),
     ];
     // The standard enums, and the choices, whose variants carry data
     // (chunk 5.5i3).
@@ -963,6 +976,7 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         CodeForm::NAME => position(CodeForm::NAMES),
         VectorDistance::NAME => position(VectorDistance::NAMES),
         SearchLanguage::NAME => position(SearchLanguage::NAMES),
+        RateLimitKey::NAME => position(RateLimitKey::NAMES),
         other => crate::QuantityKind::of_unit_enum(other)
             .and_then(|kind| kind.units().iter().position(|unit| unit.name == variant))
             .or_else(|| {

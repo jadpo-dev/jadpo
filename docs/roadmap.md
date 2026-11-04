@@ -172,6 +172,11 @@ a finished chunk is in git history.
   From 8.4b: the hand-on reaching the Worker through `ctx.exports` on the
   edge, under the file's name and under `wrangler deploy --env`, and the
   dead-letter queue's consumer accepted beside the queue's.
+  From G4: a route's own binding (`LIMITS_<n>_PER_<period>S`) accepted by
+  `wrangler deploy` at 10 and 60 seconds and refusing at about its limit;
+  how far past its limit a burst gets, whether two locations really count
+  apart, as Cloudflare's documentation says, and how an address behaves as
+  a key; two deployables sharing a `namespace_id` sharing their counts.
 
 - [x] **8.3 Performance spike**: §2.11.
 
@@ -490,9 +495,8 @@ real deploy) and, before outside authors can publish, D3 (releases).
   (Richard, 2026-11-03). An `Output` with a `type` field works in any app.
 - [x] **G2 A `GET` that runs a read-only action**: area 7, "A `GET` that runs an action"; area 3, "Functions and actions"; `docs/errors/route.run_kind.md`; compiler/runtime, "An action on a `GET`".
 - [x] **G3 A route that sends raw bytes**: area 7, "Sending raw bytes", "Answers that never change" and "The public API record"; area 18, "Acceptances"; `docs/errors/route.sends_invalid.md`, `docs/errors/route.cache_invalid.md`; compiler/runtime, "A route that sends raw bytes".
-- [ ] **G4 A route's `rate_limit:`** `opus · high`: area 16's route limits. The
-  registry's `POST releases` is anonymous and starts verifications, and the
-  default 120 a minute per address doesn't fit it.
+- [x] **G4 A route's `rate_limit:`**: area 16, "Rate limits" and "What the
+  binding promises"; §2.6; area 16's Decisions.
 - [x] **G5 Small gaps the registry found**: area 7, "Serving the document"; area 14, "`jadpo package protocol`"; area 19, "Bytes"; area 2, "A record names its type alone"; `docs/errors/api.route_needs_sign_in.md`, `docs/errors/protocol.mismatch.md`, `docs/errors/protocol.unreadable.md`, `docs/errors/type.record_type_arguments.md`.
 - [x] **G6 A package names its publisher**: area 11, "The index: `package.jadpo`", "Names and publishers", "Releasing" and "The verifier"; area 14, `jadpo package verify`; compiler/runtime §2.1, "A package's publisher"; `docs/errors/publish.publisher_missing.md`, `docs/errors/publish.publisher_mismatch.md`.
 - [ ] **R7 The registry application** **needs a maintainer** to start the
