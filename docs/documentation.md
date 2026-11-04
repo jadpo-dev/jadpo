@@ -270,11 +270,11 @@ Markdown as on the site, and a page wholly built has none:
 ```markdown
 **Partly built.** Missing: uploads, downloads and the S3 driver. See [What is built](built-in-services-built.md).
 
-**Not built.** This is the design; the compiler doesn't do it yet. See [What is built](built-in-services-built.md).
+**Not built.** This page is the design; Jadpo doesn't do this yet. See [What is built](built-in-services-built.md).
 ```
 
 `missing` goes on the page that opens the node. Elsewhere on a partly built node
-a page with rows of its own says "Some of this isn't in the compiler yet."
+a page with rows of its own says "Some of this isn't built yet."
 
 The docs check fails a node with no page, a node's page not linking something
 directly in the node (`landing_problems`), a page not wholly built without its

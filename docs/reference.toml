@@ -549,7 +549,7 @@ topics = [
 [[group.page]]
 id = "delivery-and-failure"
 title = "Delivery and failure"
-summary = "How an event reaches its subscribers, what happens when one fails, and what an operator sees."
+summary = "How an event reaches its subscribers, what happens when a subscriber fails, and what the person running the app sees."
 topics = [
   "delivery-at-least-once-safe-to-repeat",
   "retries-and-giving-up",
@@ -689,7 +689,7 @@ status = [
   "16-built-in-services: The `telemetry:` section",
   "16-built-in-services: Path IDs",
 ]
-missing = "telemetry and path IDs"
+missing = "telemetry, and recording the path each request takes"
 topics = [
   "monitoring-thresholds",
   "telemetry",
@@ -748,7 +748,7 @@ built = [
 [[group.page]]
 id = "connecting-and-calling"
 title = "Connecting and calling"
-summary = "How an app connects to a package and calls a provider through it, in development, in tests and in production."
+summary = "How an app reaches an outside service, such as a courier's API, in development, in tests and in production."
 topics = [
   "connecting-in-app-jadpo",
   "calling",
@@ -791,7 +791,7 @@ topics = [
 [[group.page]]
 id = "using-packages"
 title = "Using packages"
-summary = "The kinds of package, where they come from, and what one may do in your app."
+summary = "The kinds of package, where they come from, and what a package may do in your app."
 topics = [
   "kinds-of-package",
   "where-packages-live",
@@ -959,7 +959,7 @@ topics = [
 [[group.page]]
 id = "building-and-deploying"
 title = "Building and deploying"
-summary = "What `jadpo build` writes, for a server of your own or for Cloudflare Workers, and which `jadpo` runs it."
+summary = "What `jadpo build` writes, for a server of your own or for Cloudflare Workers, and which version of `jadpo` a project runs."
 topics = [
   "a-native-deployable",
   "a-workers-deployable",

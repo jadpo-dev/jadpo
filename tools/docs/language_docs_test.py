@@ -391,7 +391,7 @@ class WhatTheManifestWrites(unittest.TestCase):
         page = text['files']
         self.assertLess(page.index('Keep one.'), page.index('## Its parts'))
         self.assertLess(page.index('## Its parts'), page.index('## Details'))
-        self.assertIn('The exact rules, for when you are debugging a corner.', page)
+        self.assertIn('The exact rules, for when you hit an edge case.', page)
         self.assertIn('[Reading gzip](reading-gzip.md)', page[page.index('## Details'):])
         email = text['services']
         self.assertLess(email.index('What services are.'), email.index('| Service |'))

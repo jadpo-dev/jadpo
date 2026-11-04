@@ -19,7 +19,7 @@ STATUS_WORDS = {PARTLY: 'Partly built', NOT_BUILT: 'Not built'}
 # A row's status where it stands beside a name, or in a column of its own.
 MARKS = {PARTLY: '▲ partly', NOT_BUILT: '○ not built'}
 COLUMN = {'built': '✓ built', **MARKS}
-DETAILS_LINE = 'The exact rules, for when you are debugging a corner.'
+DETAILS_LINE = 'The exact rules, for when you hit an edge case.'
 ALL_OF_IT = 'All of it'
 
 
@@ -182,10 +182,10 @@ class Writer:
         see = f' See {self.link("What is built", built, here)}.' if built else ''
         words = f'**{STATUS_WORDS[info["status"]]}.** '
         if info['status'] == NOT_BUILT:
-            return f"{words}This is the design; the compiler doesn't do it yet.{see}"
+            return f"{words}This page is the design; Jadpo doesn't do this yet.{see}"
         if info['missing']:
             return f'{words}Missing: {info["missing"]}.{see}'
-        return f"{words}Some of this isn't in the compiler yet.{see}"
+        return f"{words}Some of this isn't built yet.{see}"
 
 
 def intro_end(lines, table_ends=False):
