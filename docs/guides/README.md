@@ -13,6 +13,7 @@ instead.
 |---|---|
 | [Build an API](01-build-an-api.md) | routes with typed input and output, the committed API record, and the OpenAPI document |
 | [Store and change a record](02-store-and-change-a-record.md) | an entity, its migration, and actions that add, change and delete records |
+| [Keep a record of who changed what](16-keep-a-record-of-who-changed-what.md) | an audited entity, its history read back with what each caller may see, and a route that sends it |
 | [Query records](03-query-records.md) | a query for one record, and a list a caller narrows and pages through |
 | [Handle failures](04-handle-failures.md) | a failure of your own, refused with the right status, handled where a caller wants to |
 | [Add sign-in](05-add-sign-in.md) | sign-in by emailed link and with Google, and routes that know who is calling |
