@@ -428,13 +428,13 @@ def first_topic(node: dict, topics: set[str]) -> str | None:
 def reference_groups(root: Path = ROOT) -> list[tuple[str, str, str]]:
     """Each group of the reference with a Markdown page: its title, the page's
     address and its summary. A group the site writes itself has none, and a
-    group the manifest names no topic of its ID opens on its first."""
+    group with no ID opens on its first topic."""
     topics = set()
     for path in sorted((root / 'docs/language').glob('[0-9][0-9]-*.md')):
         topics |= {m.group(1) for m in map(TOPIC.match, path.read_text().split('\n')) if m}
     groups = []
     for group in tomllib.loads((root / REFERENCE.relative_to(ROOT)).read_text()).get('group', []):
-        topic = None if group.get('href') else first_topic(group, topics)
+        topic = None if group.get('href') else group.get('id') or first_topic(group, topics)
         if topic:
             groups.append((group['title'], f'{TOPICS}{topic}.md', group.get('summary', '')))
     return groups

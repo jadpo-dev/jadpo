@@ -93,5 +93,5 @@ domain's own `monitoring.jadpo`.
 
 ## Related
 
-- [Monitoring thresholds](../language/16-built-in-services.md#monitoring-thresholds)
+- [Monitoring](../language/16-built-in-services.md#monitoring)
 - [Writing a threshold](../language/16-built-in-services.md#writing-a-threshold)

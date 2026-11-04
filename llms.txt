@@ -22,9 +22,9 @@ The public project home is https://github.com/jadpo-dev/jadpo. Links to jadpo.de
 
 The reference is on the site, one page per topic, in these groups. Open the page of the group a task belongs to, which lists what is in the group. Then fetch only the `.md` pages the task needs.
 
-- [Language](https://jadpo.dev/docs/project-layout-and-modules.md): How a Jadpo program is laid out and written: its types, logic, failures and standard library.
-- [Data](https://jadpo.dev/docs/data.md): What an app stores and how it reads and writes it: entities, migrations, queries, personal data and location.
-- [APIs](https://jadpo.dev/docs/http.md): What an app answers: its routes, who is calling them and what each caller may do.
+- [Language](https://jadpo.dev/docs/language.md): How a Jadpo program is laid out and written: its types, logic, failures and standard library.
+- [Data](https://jadpo.dev/docs/storing-data.md): What an app stores and how it reads and writes it: entities, migrations, queries, personal data and location.
+- [APIs](https://jadpo.dev/docs/apis.md): What an app answers: its routes, who is calling them and what each caller may do.
 - [Background work](https://jadpo.dev/docs/jobs-and-events.md): What runs outside a request: schedules, batches, events, and what happens when a delivery fails.
 - [Built-in services](https://jadpo.dev/docs/built-in-services.md): What Jadpo gives an app without a package: email, files, flags, rate limits, search, audit, AI and more.
 - [External services](https://jadpo.dev/docs/external-services.md): Another company's API from your app: connecting to it, calling it, receiving from it, and using packages.

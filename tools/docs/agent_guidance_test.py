@@ -159,8 +159,13 @@ class TheReferenceInLlmsTxt(unittest.TestCase):
         self.assertEqual(self.groups('[[group]]\nid = "two"\ntitle = "Two"\nsummary = "Both."\n'),
                          [('Two', 'https://jadpo.dev/docs/two.md', 'Both.')])
 
-    def test_a_group_with_no_page_of_its_id_opens_on_its_first_topic(self):
+    def test_a_group_with_no_topic_of_its_id_opens_on_its_landing_page(self):
         manifest = ('[[group]]\nid = "both"\ntitle = "Both"\nsummary = "Both."\n\n'
+                    '[[group.page]]\ntitle = "Page"\ntopics = ["two", "one"]\n')
+        self.assertEqual(self.groups(manifest), [('Both', 'https://jadpo.dev/docs/both.md', 'Both.')])
+
+    def test_a_group_with_no_id_opens_on_its_first_topic(self):
+        manifest = ('[[group]]\ntitle = "Both"\nsummary = "Both."\n\n'
                     '[[group.page]]\ntitle = "Page"\ntopics = ["two", "one"]\n')
         self.assertEqual(self.groups(manifest), [('Both', 'https://jadpo.dev/docs/two.md', 'Both.')])
 

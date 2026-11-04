@@ -389,13 +389,9 @@ What the Reddit thread found (Richard, 2026-11-03):
 - [x] **D17a Honest status words**: each area's "What is built" table; [writing guide](writing.md), "A status word"; `status_word_problems` in `tools/docs/agent_guidance.py`.
 - [x] **D17b The reference's manifest**: `docs/reference.toml` and its check; docs/documentation.md, "The reference's manifest".
 - [x] **D17c The navigation designed**: `design/docs-nav.html` in jadpo-website.
-- [ ] **D17d The site built from the manifest** `opus · high` **needs a
-  maintainer**, since merging deploys to jadpo.dev.
-- [ ] **D17e Landing pages and status lines** `opus · high`: each group has
-  a landing page that links everything in it, and a page not fully built
-  says so at its top, in its Markdown too.
-- [ ] **D17f Search that finds the docs** `opus · medium`: "deploy" and "send
-  email" find a guide or topic first, not error pages.
+- [x] **D17d The site built from the manifest**: `src/lib/nav.ts` and `src/components/docs/` in jadpo-website; its `DESIGN.md`.
+- [x] **D17e Landing pages and status lines**: `tools/docs/reference_pages.py`; docs/documentation.md, "Landing pages and status lines"; `docs/reference.toml`.
+- [x] **D17f Search that finds the docs**: `src/lib/search.ts` and `scripts/search.test.mjs` in jadpo-website.
 - [x] **D17g What an agent reads first**: [documentation guide](documentation.md), "How an agent uses it"; `llms.txt`, the skill and the AGENTS.md `jadpo new` writes; `whole_index_problems` and `read_once_problems` in `tools/docs/agent_guidance.py`.
 - [ ] **D17h Standard types under Values and types** `opus · high`: one
   generated list, in the sidebar, not two hand tables at the bottom of the
