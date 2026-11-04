@@ -696,6 +696,9 @@ struct Access {
 
 const EFFECTS: [&str; 4] = ["create", "read", "update", "delete"];
 
+/// A grant anyone at all meets, as a record writes it.
+const PUBLIC: &str = "Access.public";
+
 fn access(text: &str) -> Access {
     let mut out = Access::default();
     for entry in entries(text, &format::ACCESS) {
@@ -768,6 +771,35 @@ fn access(text: &str) -> Access {
         }
     }
     out
+}
+
+/// The entities whose records anyone may create, change or delete in the
+/// access record's `text`, each with those effects: a field's own list only
+/// narrows its record's, so it opens nothing of its own.
+pub fn public_writes(text: &str) -> BTreeMap<String, Vec<String>> {
+    access(text)
+        .entities
+        .into_iter()
+        .filter_map(|(entity, (lists, _))| {
+            let effects: Vec<String> = ["create", "update", "delete"]
+                .into_iter()
+                .filter(|effect| lists.get(*effect).is_some_and(|who| who.contains(PUBLIC)))
+                .map(str::to_string)
+                .collect();
+            (!effects.is_empty()).then_some((entity, effects))
+        })
+        .collect()
+}
+
+/// The actions under `actions:` in the access record's `text` that anyone
+/// may run.
+pub fn public_actions(text: &str) -> Vec<String> {
+    access(text)
+        .actions
+        .into_iter()
+        .filter(|(_, who)| who.contains(PUBLIC))
+        .map(|(action, _)| action)
+        .collect()
 }
 
 fn added<'a>(was: Option<&'a BTreeSet<String>>, now: &'a BTreeSet<String>) -> bool {

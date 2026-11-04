@@ -2,6 +2,10 @@
 //! "Comparing two builds"; chunk V2): the difference between the before
 //! side's manifest and today's, explained in the order it matters.
 //!
+//! First, what a first record holds that a person decides
+//! ([`acceptances::first`]): compared with nothing, it is led with, and with
+//! no before side at all it is the whole report ([`first_report`]).
+//!
 //! 1. Each change that needs a person, in plain words, with whether an
 //!    acceptance this change adds lists it, and the path that makes it
 //!    true ([`paths`]).
@@ -27,6 +31,7 @@ use jadpo_db::record::{self as format, Kind as RecordKind};
 use jadpo_db::{Before, Db, Project};
 use jadpo_graph::json::Value;
 
+use crate::acceptances::first::Notice;
 use crate::acceptances::{self, Need, access, files, network};
 pub use paths::{Paths, Reachable, Step};
 use view::{Node, View};
@@ -252,6 +257,11 @@ pub struct Report {
     /// How many errors the before side has with this compiler: a graph
     /// built with errors leaves out what couldn't be resolved.
     pub base_errors: i64,
+    /// What a first record holds that a person decides, which leads.
+    pub notice_list: Vec<Notice>,
+    /// Why there is no before side, when there is none: the report then
+    /// holds [`Self::notice_list`] alone.
+    pub not_compared: Option<String>,
     pub decisions: Vec<Decision>,
     /// The records the before side doesn't have, whose changes are
     /// compared with nothing (area 18, "Comparing two builds").
@@ -376,6 +386,8 @@ pub fn report(
     Report {
         base,
         base_errors: was.errors,
+        notice_list: acceptances::first::notice_list(db, project).clone(),
+        not_compared: None,
         decisions,
         not_judged: acceptances::introduced(db, project)
             .into_iter()
@@ -384,6 +396,26 @@ pub fn report(
         reachable: paths::newly_reachable(&was, &now),
         other,
         source: source(&was, &now),
+    }
+}
+
+/// The report with no before side, `reason` saying why: what a first record
+/// holds that a person decides, since there is nothing to take a difference
+/// of.
+pub fn first_report(db: &dyn Db, project: Project, reason: &str) -> Report {
+    Report {
+        base: Base {
+            described: format!("nothing: {reason}"),
+            commit: String::new(),
+        },
+        base_errors: 0,
+        notice_list: acceptances::first::notice_list(db, project).clone(),
+        not_compared: Some(reason.to_string()),
+        decisions: Vec::new(),
+        not_judged: Vec::new(),
+        reachable: Vec::new(),
+        other: Vec::new(),
+        source: Vec::new(),
     }
 }
 
@@ -1319,7 +1351,29 @@ fn json(report: &Report) -> Value {
             .map(|path| Value::from(path.as_str()))
             .collect::<Vec<_>>(),
     );
+    if let Some(reason) = &report.not_compared {
+        before.set("not_judged_because", reason.as_str());
+    }
     out.set("before", before);
+    out.set(
+        "notice_list",
+        report
+            .notice_list
+            .iter()
+            .map(|notice| {
+                let mut entry = Value::object();
+                entry.set("subject", notice.subject.as_str());
+                entry.set("kind", notice.kind.as_str());
+                entry.set("said", notice.said.as_str());
+                entry.set("decides", "human");
+                entry.set("file", notice.path.as_str());
+                if let Some(line) = notice.line {
+                    entry.set("line", line);
+                }
+                entry
+            })
+            .collect::<Vec<_>>(),
+    );
     out.set(
         "decisions",
         report

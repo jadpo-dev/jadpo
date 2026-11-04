@@ -12,7 +12,9 @@
 //! With no before side (not a git repository, no default branch, a
 //! project new since its base), nothing is compared or judged, and `jadpo
 //! check` says so in one line (Richard, 2026-10-30); only a migration that
-//! removes data is still held to an acceptance ([`data::unaccepted`]).
+//! removes data is still held to an acceptance ([`data::unaccepted`]). What
+//! such a first record holds that a person decides is a notice, not a need
+//! ([`first`]).
 //!
 //! One kind isn't a change: a connection that receives personal data and
 //! can't erase it needs a person for as long as that is so (chunk V6). So it
@@ -23,6 +25,7 @@ pub mod access;
 pub mod compare;
 pub mod data;
 pub mod files;
+pub mod first;
 pub mod network;
 pub mod upgrades;
 pub mod words;

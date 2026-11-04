@@ -386,11 +386,7 @@ a new agent can't find a type without them (Richard, 2026-11-03).
 - [x] **A12 What a new agent reads first**: documentation.md, "The bundle" and "How an agent uses it"; area 14, `jadpo new`; `tools/docs/agent_guidance.py`.
 - [x] **A13 A broken test environment says so once**: area 13, "The test database"; area 14, "`jadpo test`"; `docs/errors/test.database_unavailable.md`.
 - [x] **A14 Small diagnostics from the run**: design language, "Repeats and `--full`"; area 1, "One primary declaration per file" and "Domains"; area 13, "As JSON"; area 14, "The `jadpo` command" and "`jadpo check`"; `docs/errors/type.mismatch.md`, `docs/errors/syntax.expected_name.md`, `docs/errors/naming.generic_name.md`, `docs/errors/layout.unused_declaration.md`.
-- [ ] **A15 Public writes in a new app** `opus · high`: a first commit has
-  nothing to compare with, so a new project's public create, update or delete
-  passes unseen. The first `access.jadpo_record` holding a public write gives
-  a notice marked `(human)`, and the approval report leads with it. A
-  decision, not a vulnerability: an app may mean it.
+- [x] **A15 Public writes in a new app**: area 18, "What a first record holds"; area 17, "Reviewing a change"; area 7, "Answers that never change"; area 15, "What the compiler checks"; compiler/runtime §2.3, "What a first record holds"; `docs/errors/route.cache_invalid.md`.
 - [ ] **A16 Run the sign-in half again** **needs a maintainer** after 0.3.0: the
   same brief as 0.1's run, sign-in, roles and reminders included, the only way
   to judge A7, A10 and A11. Until then, no public claim that sign-in is fixed.
