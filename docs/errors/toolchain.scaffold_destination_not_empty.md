@@ -1,6 +1,6 @@
 # `toolchain.scaffold_destination_not_empty`
 
-You ran `jadpo new` on a folder that already has files in it, hidden files included.
+You ran `jadpo new` or `jadpo package new` on a folder that already has files in it, hidden files included.
 
 ## Why Jadpo refuses it
 

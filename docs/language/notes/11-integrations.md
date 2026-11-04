@@ -277,6 +277,18 @@ Numbered as the questions they settled, which other pages cite.
     passkey, since refusing a release from elsewhere is what stops a fork, and a
     package that genuinely moved needs a way on. The registry's own part of a
     name comes from the name in code, the only thing a release says of it.
+    A new package and the licence bar (chunk G7): `jadpo package new` writes
+    `Licence.proprietary`, and has no flag for another, because a licence gives
+    people rights and a tool that chose `mit` would give them on the author's
+    behalf; the same keeps a new package from being published before someone has
+    looked at it, since `verify` and `publish` refuse it. Its folder is the name
+    as the registry writes it, so the repository and the registry's name agree.
+    It runs no git, as `jadpo new` runs none. `<Name>` takes no version, since
+    the pages give `<Name>` and a dated API version is one edit to the index.
+    `CHANGELOG.md` is written with a first reason, since the command has to pass
+    `check` as written; `GUIDE.md` says to replace it. The licence is refused as
+    the publisher is, by the bar in `verify`, so `publish`, the verifier and
+    `preview` all hold to it, and `check` passes it for a private package's CI.
     Your own company's git repositories are listed in `packages:`'s
     `own_sources:` (Richard, 2026-10-31), so they install without
     `PackageChange.git_source`; adding one is itself a `PolicyChange`,

@@ -326,15 +326,6 @@ fn show_names_what_it_cant_find() {
         "{}",
         none.stderr
     );
-    let later = jadpo(&root, &["package", "new", "Postcodes"]);
-    assert_eq!(later.code, 1);
-    assert!(
-        later
-            .stderr
-            .starts_with("error: `jadpo package new` isn't built yet\n"),
-        "{}",
-        later.stderr
-    );
 }
 
 // --- jadpo package check ---------------------------------------------------

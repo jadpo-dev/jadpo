@@ -794,6 +794,8 @@ rules! {
         "The registry's verifier refused the release";
     PUBLISH_FILE_NOT_ALLOWED: "publish.file_not_allowed", area 14, Error, Agent,
         "A commit holds a file a release can't: anything but Jadpo source and the package's text files";
+    PUBLISH_LICENCE_PROPRIETARY: "publish.licence_proprietary", area 14, Error, Human,
+        "A package's licence is `Licence.proprietary`, which the public registry refuses";
     PUBLISH_NOT_AT_TAG: "publish.not_at_tag", area 14, Error, Agent,
         "What `jadpo package publish` would ask for isn't a pushed `v<version>` tag whose commit is the one checked out";
     PUBLISH_PUBLISHER_MISMATCH: "publish.publisher_mismatch", area 14, Error, Human,
@@ -1263,15 +1265,15 @@ rules! {
     TOOLCHAIN_PROJECT_NOT_FOUND: "toolchain.project_not_found", area 14, Error, Agent,
         "You ran a command that works on a project in a folder with no `app.jadpo`, in it or in any folder above it";
     TOOLCHAIN_SCAFFOLD_DESTINATION_EXISTS: "toolchain.scaffold_destination_exists", area 14, Error, Human,
-        "You ran `jadpo new` with the name of a file that already exists";
+        "You ran `jadpo new` or `jadpo package new` with the name of a file that already exists";
     TOOLCHAIN_SCAFFOLD_DESTINATION_NOT_EMPTY: "toolchain.scaffold_destination_not_empty", area 14, Error, Human,
-        "You ran `jadpo new` on a folder that already has files in it, hidden files included";
+        "You ran `jadpo new` or `jadpo package new` on a folder that already has files in it, hidden files included";
     TOOLCHAIN_SCAFFOLD_NAME_INVALID: "toolchain.scaffold_name_invalid", area 14, Error, Agent,
         "You ran `jadpo new` with a path that doesn't end in a folder's name, such as `..` or `/`";
     TOOLCHAIN_SCAFFOLD_READ_FAILED: "toolchain.scaffold_read_failed", area 14, Error, Human,
-        "You ran `jadpo new` on a path Jadpo can't look into, such as a folder you can't read or a path through a file";
+        "You ran `jadpo new` or `jadpo package new` on a path Jadpo can't look into, such as a folder you can't read or a path through a file";
     TOOLCHAIN_SCAFFOLD_WRITE_FAILED: "toolchain.scaffold_write_failed", area 14, Error, Human,
-        "You ran `jadpo new`, and writing the project's files failed, usually because the folder it goes in can't be written";
+        "You ran `jadpo new` or `jadpo package new`, and writing its files failed, usually because the folder they go in can't be written";
     TOOLCHAIN_SOURCE_READ_FAILED: "toolchain.source_read_failed", area 14, Error, Human,
         "A `.jadpo` file in the project couldn't be read, because it isn't UTF-8 text or you aren't allowed to read it";
     TOOLCHAIN_VERSION_INVALID: "toolchain.version_invalid", area 1, Error, Agent,
