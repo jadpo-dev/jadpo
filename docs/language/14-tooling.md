@@ -143,7 +143,7 @@ compares the change with the default branch at its merge base, and fails
 on each change that needs a person's acceptance and has none
 ([Review and sign-off](#review-and-sign-off)); `--before <branch or
 commit>` compares with another. With `--json`, `data` holds the `layout`,
-the `root`, the `fileCount` and the `errors`, the `notice_list`, and any
+the `root`, the `fileCount` and the `errors`, and any `notice_list`,
 `providers`, `per_instance` and `before`; `--full` lists the `files` and what it
 wrote to `build`. What a first commit holds that nothing can compare, such as a
 new project's public write, passes and is said as a notice for a person, in

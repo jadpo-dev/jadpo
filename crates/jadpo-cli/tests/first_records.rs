@@ -44,10 +44,11 @@ fn data(root: &Path) -> Value {
 
 /// What `jadpo check --json` says of each notice, `subject: said`.
 fn notices(root: &Path) -> Vec<String> {
+    // `--json` leaves out what is empty.
     data(root)["notice_list"]
         .as_array()
-        .expect("notice_list")
-        .iter()
+        .into_iter()
+        .flatten()
         .map(|notice| {
             format!(
                 "{}: {}",
@@ -304,7 +305,7 @@ fn a_widening_is_a_decision_rather_than_a_notice() {
     let output = jadpo(&root, &["check", "--json"]);
     let document: Value = serde_json::from_str(&output.stdout).expect("JSON");
     assert_eq!(document["ok"], false, "{}", output.stdout);
-    assert_eq!(document["data"]["notice_list"], serde_json::json!([]));
+    assert_eq!(document["data"]["notice_list"], Value::Null);
     assert_eq!(
         document["diagnostics"][0]["rule"], "acceptance.missing",
         "{}",
