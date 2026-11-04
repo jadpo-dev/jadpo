@@ -903,7 +903,7 @@ with that failure, though the action committed.
 
 When what a route runs returns an `AiStream`, the route sends a model's
 answer as it is written, piece by piece. An `AiStream` is the text
-`ai.stream` asks a model for ([Streaming](21-ai.md#streaming)). It is sent
+`ai.stream` asks a model for ([Streaming from a model](21-ai.md#streaming-from-a-model)). It is sent
 as server-sent events, the HTML standard's `text/event-stream`, which is
 the shape OpenAI's and Anthropic's APIs stream in. Jadpo has no WebSockets
 ([AI](21-ai.md)).

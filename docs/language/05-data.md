@@ -868,10 +868,13 @@ cart or a sign-up in progress, is an entity in a Redis store instead
 ([Entities in Redis](#entities-in-redis)). Which services can hold a cache
 (Redis-compatible ones, or `Driver.memory` with a warning), and what a
 cache may and may never hold, are in
-[Caches: drivers and what they hold](16-built-in-services.md#caches-drivers-and-what-they-hold).
+[Cache drivers and what a cache may hold](16-built-in-services.md#cache-drivers-and-what-a-cache-may-hold).
 
-Not built yet: caches. Clearing only the affected entries, for example
-the category pages a product moved out of and into, isn't designed yet.
+Not built yet: caches, so every read today goes to the database. An entity's
+`caches:` is `toolchain.not_built_yet` where it is written, and a query's
+`cache:` is `query.unknown_section`.
+Clearing only the affected entries, for example the category pages a product
+moved out of and into, isn't designed yet.
 
 ## Entities in Redis
 <!-- topic: entities-in-redis -->

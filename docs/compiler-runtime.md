@@ -3691,8 +3691,8 @@ document (record, graph node, OpenAPI operation and `routes` listing from
 `served::flags_served`), planned as `Run::Flags` of the `client: true`
 flags' numbers and answered by the HTTP component through `Ctx::flag`.
 
-**Monitoring thresholds** (area 16, "Monitoring thresholds: checked and
-generated"). `jadpo_check::thresholds` reads each domain's `thresholds {
+**Monitoring thresholds** (area 16, "What Jadpo generates from
+thresholds"). `jadpo_check::thresholds` reads each domain's `thresholds {
 }` twice: `written` as text alone, which the before side's monitoring
 files from git are read with too, and `thresholds` against the project,
 resolving each subject to its node's key. The acceptances compare the

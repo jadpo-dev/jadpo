@@ -763,7 +763,7 @@ synonym, and it takes `--json`.
 - `remove <flag> --keep <value>` rewrites the source as if the flag had
   always held that value, lists every change file by file, and checks
   the result, undoing it when it doesn't check
-  ([Flags: changed, listed and removed](16-built-in-services.md#flags-changed-listed-and-removed)).
+  ([Flag rules: changing, listing, removing](16-built-in-services.md#flag-rules-changing-listing-removing)).
 
 ```text
 $ jadpo flags set new_checkout --percent 10
