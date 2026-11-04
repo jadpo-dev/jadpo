@@ -217,6 +217,10 @@ jobs:
           # The whole history: `jadpo check` compares a change with the
           # default branch at its merge base to judge acceptances (area 18).
           fetch-depth: 0
+      # Unpacking this job's cache can fill the runner's disk before anything
+      # runs, so make room first; nothing here uses these toolchains.
+      - name: Free the runner's disk
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
       # PostgreSQL 16 with pgvector and PostGIS, as the `tests` job has it:
       # the corpus's projects with vectors and geometries need both, and
       # teaching example 22 pgvector 0.8 or later.
@@ -275,6 +279,10 @@ jobs:
           # The whole history: `jadpo check` compares a change with the
           # default branch at its merge base to judge acceptances (area 18).
           fetch-depth: 0
+      # Unpacking this job's cache can fill the runner's disk before anything
+      # runs, so make room first; nothing here uses these toolchains.
+      - name: Free the runner's disk
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
       # PostgreSQL 16 with pgvector and PostGIS, as the `tests` job has it,
       # built and started in the background while the toolchain installs.
       - name: Start PostgreSQL
