@@ -304,6 +304,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     .cloned(),
             );
             out.extend(
+                policy::flow::cached_personal_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
+            out.extend(
                 policy::flow::subscriber_store_problems(db, project, file)
                     .iter()
                     .cloned(),

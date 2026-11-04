@@ -533,6 +533,19 @@ pub fn api(api: &str, path: &str, before: &str, after: Option<&str>, out: &mut V
                     "PolicyChange.confirmation_removed",
                 );
             }
+            // A route whose body is now another media type, or raw bytes
+            // where it was JSON, or JSON where it was raw bytes (area 7,
+            // "Sending raw bytes"): what its clients read is gone.
+            if fact(entry, "sends") != fact(now, "sends") {
+                need(
+                    out,
+                    Family::Api,
+                    path,
+                    Some(heading),
+                    route_subject(api, heading),
+                    "ApiChange.media_type_changed",
+                );
+            }
             // A route that now takes or answers with another type: compare
             // what its clients sent and read with what it takes and answers.
             let input = |entry: &Entry| {
@@ -1244,6 +1257,30 @@ failure todo_locked
                 ("main.TodoView.priority", "ApiChange.output_field_retyped"),
                 ("main.todo_locked", "ApiChange.failure_changed"),
             ])
+        );
+    }
+
+    #[test]
+    fn a_change_to_what_a_route_sends_is_a_break() {
+        let raw = |media: &str| {
+            TODOS.replace(
+                "GET /todos/{todo_id: Uuid}\n    output TodoView\n",
+                &format!("GET /todos/{{todo_id: Uuid}}\n    output TodoView\n    sends {media}\n"),
+            )
+        };
+        let changed = pairs(&[(
+            "\"main GET /todos/{todo_id: Uuid}\"",
+            "ApiChange.media_type_changed",
+        )]);
+        assert_eq!(api_needs(TODOS, &raw("application/x-tar")), changed);
+        assert_eq!(api_needs(&raw("application/x-tar"), TODOS), changed);
+        assert_eq!(
+            api_needs(&raw("application/x-tar"), &raw("application/gzip")),
+            changed
+        );
+        assert_eq!(
+            api_needs(&raw("application/x-tar"), &raw("application/x-tar")),
+            pairs(&[])
         );
     }
 

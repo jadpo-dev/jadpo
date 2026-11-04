@@ -23,7 +23,9 @@ const ROUTE: &[&str] = &[
     "rate_limit",
     "input",
     "output",
+    "sends",
     "status",
+    "cache",
     "deadline",
     "run",
 ];

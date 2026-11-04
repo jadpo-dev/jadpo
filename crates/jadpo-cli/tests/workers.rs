@@ -51,6 +51,8 @@ mod newsroom;
 mod queues;
 /// A sealed field and its key's rotation (chunk P9).
 mod sealed;
+/// A route that sends raw bytes (chunk G3).
+mod sends;
 
 /// `jadpo` with `args` in `root`, which must succeed.
 fn jadpo(root: &Path, args: &[&str]) -> jadpo_cli::Output {
@@ -595,6 +597,19 @@ impl Workerd {
         headers: &[(&str, &str)],
         body: &str,
     ) -> (u16, String) {
+        let (status, _, body) = self.exchange(method, path, headers, body);
+        (status, String::from_utf8_lossy(&body).into_owned())
+    }
+
+    /// As [`Workerd::send`], with its head, in lowercase, and its body's
+    /// bytes as they came.
+    fn exchange(
+        &self,
+        method: &str,
+        path: &str,
+        headers: &[(&str, &str)],
+        body: &str,
+    ) -> (u16, String, Vec<u8>) {
         let mut stream = TcpStream::connect(("127.0.0.1", self.port)).expect("workerd listens");
         stream
             .set_read_timeout(Some(Duration::from_secs(60)))
@@ -624,6 +639,8 @@ impl Workerd {
         });
         let mut body = Vec::new();
         match length {
+            // A `HEAD` says how long the body is and sends none.
+            Some(_) if method == "HEAD" => {}
             Some(length) => {
                 body.resize(length, 0);
                 stream.read_exact(&mut body).expect("the body");
@@ -632,13 +649,17 @@ impl Workerd {
                 while !body.ends_with(b"0\r\n\r\n") && stream.read(&mut byte).unwrap_or(0) == 1 {
                     body.push(byte[0]);
                 }
-                return (status, dechunk(&String::from_utf8_lossy(&body)));
+                return (
+                    status,
+                    head,
+                    dechunk(&String::from_utf8_lossy(&body)).into_bytes(),
+                );
             }
             None => {
                 let _ = stream.read_to_end(&mut body);
             }
         }
-        (status, String::from_utf8_lossy(&body).into_owned())
+        (status, head, body)
     }
 }
 

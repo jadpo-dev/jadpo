@@ -1,6 +1,6 @@
 # `route.item_unknown`
 
-A route holds `authentication:` (area 8), `input:`, `output:`, `status:`, `deadline:`, `run:`, `rate_limit:` and `settle:`; `success:`, `query:`, `path:` and `headers:` are not route items:
+A route holds `authentication:` (area 8), `input:`, `output:`, `sends:`, `status:`, `cache:`, `deadline:`, `run:`, `rate_limit:` and `settle:`; `success:`, `query:`, `path:` and `headers:` are not route items:
 
 ```jadpo check project=e-item-unknown expect=route.item_unknown
 type Memo = Text {
@@ -41,7 +41,7 @@ error: `success` isn't something a route holds
    |
 28 |         success: SuccessStatus.created
    |         ^^^^^^^ unknown item
-  reason: `success:` is now `status:`, which takes a `SuccessStatus`. A route holds `authentication`, `confirm`, `rate_limit`, `input`, `output`, `status`, `deadline`, `run` and `settle`.
+  reason: `success:` is now `status:`, which takes a `SuccessStatus`. A route holds `authentication`, `confirm`, `rate_limit`, `input`, `output`, `sends`, `status`, `cache`, `deadline`, `run` and `settle`.
   next: Use `status` instead of `success` (agent)
   rule: route.item_unknown
   help: https://jadpo.dev/docs/errors/route.item_unknown

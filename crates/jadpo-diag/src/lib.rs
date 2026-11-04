@@ -922,6 +922,10 @@ rules! {
         "A `GET` route runs an action that isn't read-only, or a route of another method runs a query";
     ROUTE_RUN_REQUIRED: "route.run_required", area 7, Error, Agent,
         "Route does not say what it runs";
+    ROUTE_CACHE_INVALID: "route.cache_invalid", area 7, Error, Agent,
+        "Route's `cache:` isn't `immutable`, or it keeps an answer a public cache may not hold";
+    ROUTE_SENDS_INVALID: "route.sends_invalid", area 7, Error, Agent,
+        "Route's `sends:` isn't a media type, or its `Output` isn't exactly one `Bytes` field";
     ROUTE_SETTLE_INVALID: "route.settle_invalid", area 7, Error, Agent,
         "Route `settle:` is not an answer query and a wait inside its deadline";
     ROUTE_STATUS_INVALID: "route.status_invalid", area 7, Error, Agent,

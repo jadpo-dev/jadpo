@@ -1727,6 +1727,8 @@ fn answer(
     outcome: Outcome,
 ) -> Response {
     match outcome {
+        // Raw bytes for a body (area 7, "Sending raw bytes"; chunk G3).
+        Outcome::Value(value) if route.sends.is_some() => sent_raw(route, &value, request_id),
         Outcome::Value(value) => match route.output {
             Some(codec) => {
                 let mut body = String::new();
@@ -1734,9 +1736,12 @@ fn answer(
                     Some(write) => write(&app.codecs, &value, &mut body),
                     None => app.codecs.write(codec, &value, &mut body),
                 }
+                let mut headers =
+                    vec![("content-type".to_string(), "application/json".to_string())];
+                kept_for_good(route, &mut headers);
                 Response {
                     status: route.status.code(),
-                    headers: vec![("content-type".to_string(), "application/json".to_string())],
+                    headers,
                     body: body.into_bytes(),
                     ..Response::default()
                 }
@@ -1762,6 +1767,53 @@ fn answer(
             response
         }
         Outcome::Assertion(_) => runtime_failure(INTERNAL_FAULT, request_id, None),
+    }
+}
+
+/// `cache: immutable`'s header, on a success only, so a failure is never
+/// kept (area 7, "Answers that never change"; chunk G3).
+fn kept_for_good(route: &RoutePlan, headers: &mut Vec<(String, String)>) {
+    if route.immutable {
+        headers.push((
+            "cache-control".to_string(),
+            jadpo_std::http::CACHE_IMMUTABLE.to_string(),
+        ));
+    }
+}
+
+/// The headers of a body of `length` raw bytes: its media type, its length,
+/// which a `HEAD` keeps though it sends no body, and no sniffing, so a
+/// browser takes it as what it says it is.
+pub(crate) fn raw_headers(media_type: &str, length: usize) -> Vec<(String, String)> {
+    vec![
+        ("content-type".to_string(), media_type.to_string()),
+        ("content-length".to_string(), length.to_string()),
+        ("x-content-type-options".to_string(), "nosniff".to_string()),
+    ]
+}
+
+/// A `sends:` route's success: the field its `sends:` names, raw.
+fn sent_raw(route: &RoutePlan, value: &Value, request_id: &str) -> Response {
+    let field = route.sends.as_ref().and_then(|sends| {
+        let Value::Record(record) = value else {
+            return None;
+        };
+        match record.get(&sends.field) {
+            Some(Value::Bytes(body)) => Some((sends, body)),
+            _ => None,
+        }
+    });
+    let Some((sends, body)) = field else {
+        // The checker proved it is one `Bytes` field.
+        return runtime_failure(INTERNAL_FAULT, request_id, None);
+    };
+    let mut headers = raw_headers(&sends.media_type, body.len());
+    kept_for_good(route, &mut headers);
+    Response {
+        status: route.status.code(),
+        headers,
+        body: body.to_vec(),
+        ..Response::default()
     }
 }
 
@@ -2365,12 +2417,23 @@ pub fn response_value(
             ],
         );
     }
+    // What `sends:` sent, read back through its `Output`'s codec.
+    let raw = plan
+        .and_then(|plan| plan.sends.as_ref())
+        .filter(|_| (200..300).contains(&response.status))
+        .map(|sends| {
+            serde_json::json!({
+                sends.field.as_str(): jadpo_value::encoding::to_base64(&response.body)
+            })
+            .to_string()
+            .into_bytes()
+        });
     let output = match plan.map(|plan| (plan.output, &plan.run)) {
         Some((None, Run::MagicLink(step))) if (200..300).contains(&response.status) => {
             magic_link_output(*step, &response.body)
         }
         Some((Some(codec), _)) if (200..300).contains(&response.status) => {
-            jadpo_value::json::parse(&response.body)
+            jadpo_value::json::parse(raw.as_deref().unwrap_or(&response.body))
                 .and_then(|(json, numbers)| {
                     app.codecs.read(
                         codec,

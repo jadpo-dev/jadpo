@@ -256,6 +256,240 @@ an action that builds it.
   A route test reads it back through the same codec, so `response.output`
   is the layer the action returned.
 
+### Sending raw bytes
+
+A route's body doesn't have to be JSON. `sends:` names the media type of a
+body of raw bytes, on a route whose `Output` has exactly one field of a type
+built on `Bytes`. That field is the body, with nothing around it. Here a
+registry keeps each release's files as a tar archive, and a client unpacks
+what it is sent:
+
+```jadpo check project=raw-bytes file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=raw-bytes file=domains/registry/types/archive_digest.jadpo hidden
+/// A release's digest.
+type ArchiveDigest = Text {
+    pattern: "^sha256:[0-9a-f]{64}$"
+}
+```
+
+```jadpo check project=raw-bytes file=domains/registry/entities/release.jadpo hidden migrate=initial
+use registry/types { ArchiveDigest }
+
+/// A release of a package.
+entity Release {
+    id: Uuid
+    digest: ArchiveDigest {
+        unique: true
+    }
+    tar: Bytes
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+}
+```
+
+```jadpo check project=raw-bytes file=domains/registry/failures/archive_not_found.jadpo hidden
+/// No release has this digest.
+type ArchiveNotFound = Failure {
+    kind: FailureKind.not_found
+    message: "No release has this digest."
+}
+```
+
+```jadpo check project=raw-bytes file=domains/registry/types/archive.jadpo
+/// A release's files, as a tar archive.
+type Archive = Output {
+    tar: Bytes
+}
+```
+
+```jadpo check project=raw-bytes file=domains/registry/queries/archive_of.jadpo
+use registry/entities { Release }
+use registry/failures { ArchiveNotFound }
+use registry/types { Archive, ArchiveDigest }
+
+/// A release's archive.
+query archive_of(digest: ArchiveDigest) fails ArchiveNotFound -> Archive {
+    from: Release
+    where: Release.digest == digest
+    missing: ArchiveNotFound
+}
+```
+
+```jadpo check project=raw-bytes file=domains/registry/routes/archives.jadpo
+use registry/queries { archive_of }
+use registry/types { Archive, ArchiveDigest }
+
+/// Release archives, by digest.
+routes Archives {
+    prefix: /archives
+
+    /// A release's files, which its digest fixes for good.
+    GET /{digest: ArchiveDigest} {
+        authentication: RouteAuthentication.none
+        output: Archive
+        sends: "application/x-tar"
+        cache: immutable
+        run: archive_of(digest)
+    }
+}
+```
+
+In a route test, `response.output` is the `Output`, its field the bytes sent:
+
+```jadpo check project=raw-bytes file=domains/registry/failures/archive_exists.jadpo hidden
+/// A release already has this digest.
+type ArchiveExists = Failure {
+    kind: FailureKind.conflict
+    message: "A release already has this digest."
+}
+```
+
+```jadpo check project=raw-bytes file=domains/registry/actions/add_release.jadpo hidden
+use registry/entities { Release }
+use registry/failures { ArchiveExists }
+
+/// Keeps a release to read back.
+action add_release() fails ArchiveExists -> Release {
+    return attempt Release.create {
+        set: {
+            digest: "sha256:0000000000000000000000000000000000000000000000000000000000000abc"
+            tar: hash.sha256("the files")
+        }
+        conflict: {
+            Release.digest: ArchiveExists
+        }
+    }
+}
+```
+
+```jadpo check project=raw-bytes file=domains/registry/routes/archives.test.jadpo
+use registry/actions { add_release }
+use registry/entities { Release }
+use registry/types { Archive }
+
+test "a release's archive is sent as it was kept" {
+    var release: Release = attempt add_release()
+    var response: Response = request {
+        method: HttpMethod.get
+        path: "/archives/{digest}"
+        params: {
+            digest: release.digest
+        }
+    }
+    assert response.status == 200
+    assert response.output == Archive {
+        tar: hash.sha256("the files")
+    }
+}
+
+test "a digest no release has is not found" {
+    var response: Response = request {
+        method: HttpMethod.get
+        path: "/archives/{digest}"
+        params: {
+            digest: "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+        }
+    }
+    assert response.status == 404
+    assert response.code == "archive_not_found"
+}
+```
+
+- **One field, always there.** An `Output` of any other shape is
+  `route.sends_invalid`, and so is a `Bytes?` field, a `List` or `Page`, a map
+  layer or an `AiStream`. A body has no room for anything else, and nothing
+  to send for `none`.
+- **A media type it can write in a header.** A lowercase `type/subtype`, with
+  any parameters after a `;`, as in `text/csv; charset=utf-8`. JSON isn't one:
+  JSON is what an `Output`'s own fields are sent as, so a route can't send a
+  JSON body nothing declares. Nor is `text/event-stream`, which is what an
+  `AiStream` is sent as.
+- **What runs it is unchanged.** `output:` is still exactly what the route runs
+  returns. A `GET` runs a query or an action the compiler proves only reads,
+  and any other method an action.
+- **The response.** The route's status, `Content-Type` as written,
+  `Content-Length` and `X-Content-Type-Options: nosniff`, so a browser takes
+  the body as what it says it is. A `HEAD` gets the same head, its length
+  included, and no body.
+- **Failures stay JSON.** Everything but the success answers as any route's
+  does, in the failure envelope, with `Content-Type: application/json`.
+- **Not with `settle:`.** That is `route.sends_invalid`: while the work carries
+  on, `settle:` answers with how far it has got, which raw bytes can't say.
+- **A repeat gets the same bytes.** Under an `Idempotency-Key`, a route of
+  another method keeps what it sent as any route does, to the byte.
+- **The field is read as any field is.** Policy and `personal:` marks apply
+  whichever way it is sent: a field not every caller may read is
+  `policy.output_field_unproved`, and a read of a marked field counts as one
+  ([Field restrictions](09-policy.md#field-restrictions),
+  [Marking personal fields](15-personal-data.md#marking-personal-fields)).
+  Bodies are never logged.
+- **OpenAPI** lists the success under the media type, with no schema, as
+  OpenAPI 3.1 writes a binary body. `x-jadpo-sends` names the `Output` and the
+  field, and `Content-Length` is one of its `headers`. Failures are listed as
+  any route's are. An importer gives the operation no `output:`, since it reads
+  only JSON.
+- **The API record** says `sends application/x-tar` under the route, and the
+  `Output` keeps its entry. A route that starts or stops sending raw bytes, or
+  sends another media type, breaks whoever reads it, so it needs an acceptance:
+  `ApiChange.media_type_changed` ([Breaking changes](#breaking-changes)).
+
+### Answers that never change
+
+Nothing caches a route's answer unless the route says so. `cache: immutable`
+says the answer never changes, as an archive named by its own digest doesn't.
+The route's 200 then carries `Cache-Control: public, max-age=31536000,
+immutable`, so a browser or a CDN keeps it for a year and doesn't ask again. It
+goes with `sends:` or with JSON. A failure never carries the header, so a 404
+for a release not published yet isn't kept.
+
+Anything else is `route.cache_invalid`:
+
+- **Only `immutable`.** It is the one thing `cache:` says.
+- **Only a `GET`.** No other method's answer can be kept.
+- **Only a route anyone may call.** A public cache would hand what one caller
+  was sent to anyone who asked, so a route needing a signed-in caller can't say
+  it.
+- **Only an answer of 200.** Any other `status:` is refused.
+- **Nothing marked `personal:`.** No erasure reaches a public cache, so what
+  the route runs can't give a marked field, directly or through what it calls
+  ([What the compiler checks](15-personal-data.md#what-the-compiler-checks)).
+
+OpenAPI says `x-jadpo-cache: immutable` on the operation and lists the header
+on the 200, and the API record says `cache immutable` under the route, as the
+record below shows. Adding it or taking it away breaks no client, so neither
+needs an acceptance.
+
+```jadpo check project=raw-bytes file=api/main.jadpo_record
+// Generated by Jadpo from the routes of API main; update it with `jadpo api update`, never by hand.
+record api 1
+
+GET /archives/{digest: Text { pattern: "^sha256:[0-9a-f]{64}$" }}
+    authentication none
+    output Archive
+    sends application/x-tar
+    status 200
+    cache immutable
+    fails archive_not_found
+
+GET /openapi.json
+    generated openapi
+    authentication none
+    status 200
+
+output Archive
+    tar: Bytes
+
+failure archive_not_found
+    status 404
+    message "No release has this digest."
+```
+
 ## What a route runs
 <!-- topic: what-a-route-runs -->
 
@@ -1352,6 +1586,8 @@ package, with no corrections or recordings
 | `x-jadpo-changes` | Every operation | Whether the operation changes something: `true` for a route of any other method, `false` for a `GET`, whatever it runs, and for the runtime's own reads |
 | `x-jadpo-confirm` | A route with `confirm:` | What the signed-in person presents before it runs, `passkey` ([Confirm one request with a passkey](08-identity.md#confirm-one-request-with-a-passkey-confirm-confirmationpasskey)); the operation lists the `X-Jadpo-Confirmation` header and the 403 `confirmation_required` |
 | `x-jadpo-idempotency` | Every operation that reads an `Idempotency-Key` | Whether it takes `Idempotency-Key`, and whether the API requires it: `header`, `required` (the API's `idempotency:`), `keeps` (`response`: a repeat gets the first answer; `request`: a repeat waits for the first but runs again; `nothing`: running it again changes nothing, or no store keeps it), `window` (`1d`), `max_length` (255), and the codes a key's repeat answers with, `in_use` (`conflict`) and `reused` (`idempotency_key_reused`) |
+| `x-jadpo-sends` | The media type of a route with `sends:` | The `output` and the `field` its body is ([Sending raw bytes](#sending-raw-bytes)) |
+| `x-jadpo-cache` | A route with `cache:` | `immutable` ([Answers that never change](#answers-that-never-change)) |
 | `x-jadpo-failure` | The schema of each failure the application declares | Its `code` and `kind` (`not_found`); sign-in's, policy's and the runtime's own codes carry none, since the caller's runtime handles them |
 | `x-jadpo-constraints` | Every field's, placeholder's and success response's schema | Every field's rules: its type and rules as the API record writes them, `Text { min_length: 1, max_length: 200 }`, `List<TodoView>`, `Money?` |
 
@@ -1596,7 +1832,7 @@ test "a todo that isn't there is not found" {
 
 A change that can break a client also needs an acceptance written by a
 person: a route removed, a required input field added, an output field
-removed, or a failure code changed. An acceptance is a file in
+removed, a body sent as another media type, or a failure code changed. An acceptance is a file in
 `acceptances/` saying a person accepts the change
 ([Acceptances](18-records-and-manifest.md#acceptances)). Every change that
 needs one uses the same form, such as a database drop, a policy weakening
@@ -1613,7 +1849,10 @@ changed, `none` no longer allowed, an enum variant gone),
 `main.TodoView.priority: ApiChange.output_field_removed` or
 `.output_field_retyped`, and `main.todo_locked: ApiChange.failure_changed`
 (the code gone or its status changed). A route that now takes or
-answers with another type is compared field by field with the one it had.
+answers with another type is compared field by field with the one it had. A
+route that now sends another media type, or starts or stops sending raw bytes,
+is `"main GET /archives/{digest: Text}": ApiChange.media_type_changed`
+([Sending raw bytes](#sending-raw-bytes)).
 A route made open to anyone is `PolicyChange.route_public`
 ([Protecting policy](09-policy.md#protecting-policy)).
 
@@ -1653,6 +1892,8 @@ where an app uses it.
 | A `GET` that runs an action | Built: the proof over every action it calls, `route.run_kind` naming what breaks it and where, a `READ ONLY` transaction and the faults beside it, for a `GET`'s query and action alike. |
 | Issued tokens and keys | Built: a `GET` runs `sessions.tokens` and `<Service>.keys` itself, and the record and OpenAPI describe the `IssuedToken` and `IssuedKey` it sends ([Service credentials](08-identity.md#service-credentials)). |
 | Map layers | Built: a route may send a `FeatureCollection<G, P>` bare, its properties held to what an `Output` may hold and, where an action returns it, to the fields every caller may read ([Field restrictions](09-policy.md#field-restrictions)); OpenAPI describes RFC 7946's object and the record names it with its type arguments. A `GET` sends one a query gives ([Reads and writes](06-reads-and-writes.md), "A query giving a map layer"), held to field policy where the query is declared. |
+| Sending raw bytes | Built: `sends:` on an `Output` of one `Bytes` field, on the native and Workers hosts and in the interpreter, with `Content-Length`, `HEAD`, repeats under a key, OpenAPI and the record ([Sending raw bytes](#sending-raw-bytes), and `route.sends_invalid`). |
+| Answers that never change | Built: `cache: immutable` writes `Cache-Control` on a 200 ([Answers that never change](#answers-that-never-change), and `route.cache_invalid`). |
 | `settle:` | Built: a route waits for the work its action set off ([Waiting for follow-on work](#waiting-for-follow-on-work), and `route.settle_invalid`). |
 | Streaming | Built: a route whose action returns an `AiStream` sends a model's answer as server-sent events ([Streaming a model's answer](#streaming-a-models-answer), and `route.stream_invalid`). |
 | Failure wording from a build | Not built yet: `jadpo check` writes `<api>.failures.<locale>.json` beside each OpenAPI document, and `jadpo build` is to write it too. |
@@ -1684,6 +1925,8 @@ what it runs; in a project each lives in its own folder.
 - [`route.query_field_unsupported`](../errors/route.query_field_unsupported.md)
 - [`route.status_invalid`](../errors/route.status_invalid.md)
 - [`route.deadline_invalid`](../errors/route.deadline_invalid.md)
+- [`route.sends_invalid`](../errors/route.sends_invalid.md)
+- [`route.cache_invalid`](../errors/route.cache_invalid.md)
 - [`route.settle_invalid`](../errors/route.settle_invalid.md)
 - [`route.stream_invalid`](../errors/route.stream_invalid.md)
 - [`route.authentication_invalid`](../errors/route.authentication_invalid.md)
