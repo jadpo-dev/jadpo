@@ -282,10 +282,7 @@ fn notices_json(notices: &[Notice]) -> Json {
             ("said", notice.said.as_str().into()),
             ("decides", "human".into()),
             ("file", notice.path.as_str().into()),
-            (
-                "line",
-                notice.line.map_or(Json::Null, |line| Json::Int(line)),
-            ),
+            ("line", notice.line.map_or(Json::Null, Json::Int)),
         ])
     }))
 }
