@@ -412,10 +412,8 @@ fn reading_working_out_and_failing_are_proved() {
     proved(
         "    var shelves: List<Shelf> = open_shelves()\n    var through: List<Shelf> = read_through()\n    if (list.count(shelves) > 5) {\n        reject TooFar {}\n    }\n    if (list.count(through) > 6) {\n        reject Refused {}\n    }\n    var note: Note = wording.shouted(\"a\")\n",
     );
-    proved(&format!("    var shelf: Shelf = attempt Shelf.get(id)\n"));
-    proved(&format!(
-        "    var page: Page<AuditEntry> = Shelf.history(id)\n"
-    ));
+    proved("    var shelf: Shelf = attempt Shelf.get(id)\n");
+    proved("    var page: Page<AuditEntry> = Shelf.history(id)\n");
 }
 
 #[test]

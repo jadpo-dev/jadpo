@@ -1032,7 +1032,7 @@ fn what_a_get_runs_never_leaves_an_event_even_if_the_proof_were_wrong() {
     let answered = send(&table, &program, &host, &get("GET", "a"), NOW);
     assert_eq!(answered.status, 500, "{:?}", host.store.lines());
     assert_eq!(host.store.lines(), ["begin read only", "read", "rollback"]);
-    assert!(answered.deferred.is_empty(), "nothing is delivered");
+    assert!(answered.deferred.is_empty(), "nothing goes out");
 }
 
 #[test]

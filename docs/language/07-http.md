@@ -291,27 +291,27 @@ compiler can prove the action only reads. It proves that from the graph:
 the action writes nothing, emits nothing and makes no changing call, itself
 and through every action it calls.
 
-Here `GET /meters/{meter_id}/left` works out whether a meter has room left. It
-can fail two ways, so it answers 404 for a meter that isn't there and 422 for a
-reading past the meter's end:
+Here `GET /tanks/{tank_id}/left` works out whether a tank has room left. It
+can fail two ways, so it answers 404 for a tank that isn't there and 422 for a
+reading past the tank's end:
 
 ```jadpo check project=get-action file=app.jadpo hidden
 application {}
 ```
 
-```jadpo check project=get-action file=domains/metering/types/capacity.jadpo hidden
-type Capacity = Int {
+```jadpo check project=get-action file=domains/storage/types/notches.jadpo hidden
+type Notches = Int {
     min: 0
     max: 1000000
 }
 ```
 
-```jadpo check project=get-action file=domains/metering/entities/meter.jadpo hidden migrate=initial
-use metering/types { Capacity }
+```jadpo check project=get-action file=domains/storage/entities/tank.jadpo hidden migrate=initial
+use storage/types { Notches }
 
-entity Meter {
+entity Tank {
     id: Uuid
-    capacity: Capacity
+    notches: Notches
 
     policy: {
         create: [Access.public]
@@ -320,84 +320,84 @@ entity Meter {
 }
 ```
 
-```jadpo check project=get-action file=domains/metering/types/left_asked.jadpo hidden
-use metering/types { Capacity }
+```jadpo check project=get-action file=domains/storage/types/left_asked.jadpo hidden
+use storage/types { Notches }
 
 type LeftAsked = Input {
-    used: Capacity
+    used: Notches
 }
 ```
 
-```jadpo check project=get-action file=domains/metering/types/left_view.jadpo hidden
+```jadpo check project=get-action file=domains/storage/types/left_view.jadpo hidden
 type LeftView = Output {
-    enough: Bool
+    has_room: Bool
 }
 ```
 
-```jadpo check project=get-action file=domains/metering/failures/past_the_end.jadpo hidden
+```jadpo check project=get-action file=domains/storage/failures/past_the_end.jadpo hidden
 type PastTheEnd = Failure {
     kind: FailureKind.rejected
-    message: "That reading is past the end of the meter."
+    message: "That reading is past the end of the tank."
 }
 ```
 
-```jadpo check project=get-action file=domains/metering/actions/room_left.jadpo
-use metering/entities { Meter, MeterNotFound }
-use metering/types { LeftAsked, LeftView }
-use metering/failures { PastTheEnd }
+```jadpo check project=get-action file=domains/storage/actions/room_left.jadpo
+use storage/entities { Tank, TankNotFound }
+use storage/types { LeftAsked, LeftView }
+use storage/failures { PastTheEnd }
 
-action room_left(meter_id: Meter.id, asked: LeftAsked) fails MeterNotFound, PastTheEnd -> LeftView {
-    var meter: Meter = attempt Meter.get(meter_id)
-    if (asked.used > meter.capacity) {
+action room_left(tank_id: Tank.id, asked: LeftAsked) fails TankNotFound, PastTheEnd -> LeftView {
+    var tank: Tank = attempt Tank.get(tank_id)
+    if (asked.used > tank.notches) {
         reject PastTheEnd {}
     }
     return LeftView {
-        enough: asked.used < meter.capacity
+        has_room: asked.used < tank.notches
     }
 }
 ```
 
-```jadpo check project=get-action file=domains/metering/routes/meters.jadpo
-use metering/entities { Meter }
-use metering/types { LeftAsked, LeftView }
-use metering/actions { room_left }
+```jadpo check project=get-action file=domains/storage/routes/tanks.jadpo
+use storage/entities { Tank }
+use storage/types { LeftAsked, LeftView }
+use storage/actions { room_left }
 
-routes Meters {
-    prefix: /meters
+routes Tanks {
+    prefix: /tanks
 
-    GET /{meter_id: Meter.id}/left {
+    GET /{tank_id: Tank.id}/left {
         authentication: RouteAuthentication.none
         input: LeftAsked
         output: LeftView
-        run: room_left(meter_id, input)
+        run: room_left(tank_id, input)
     }
 }
 ```
 
-```jadpo check project=get-action file=domains/metering/fixtures/a_meter.jadpo hidden
-use metering/entities { Meter }
+```jadpo check project=get-action file=domains/storage/fixtures/a_tank.jadpo hidden
+use storage/entities { Tank }
 
-fixture a_meter() -> Meter {
-    return Meter.create {
+fixture a_tank() -> Tank {
+    return Tank.create {
         set: {
-            capacity: 10
+            notches: 10
         }
     }
 }
 ```
 
-```jadpo check project=get-action file=domains/metering/routes/meters.test.jadpo hidden
-use metering/entities { Meter }
-use metering/types { LeftAsked, LeftView }
-use metering/fixtures { a_meter }
+```jadpo check project=get-action file=domains/storage/routes/tanks.test.jadpo hidden
+use storage/entities { Tank }
+use storage/types { LeftAsked, LeftView }
+use storage/fixtures { a_tank }
 
-test "a meter says what is left" {
-    var meter: Meter = a_meter()
+test "a tank says what is left" {
+    var tank: Tank = a_tank()
     var response: Response = request {
         method: HttpMethod.get
-        path: "/meters/{meter_id}/left"
+        path: "/tanks/{tank_id}/left"
         params: {
-            meter_id: meter.id
+            tank_id: tank.id
         }
         input: LeftAsked {
             used: 4
@@ -405,17 +405,17 @@ test "a meter says what is left" {
     }
     assert response.status == 200
     assert response.output == LeftView {
-        enough: true
+        has_room: true
     }
 }
 
 test "a reading past the end is rejected" {
-    var meter: Meter = a_meter()
+    var tank: Tank = a_tank()
     var response: Response = request {
         method: HttpMethod.get
-        path: "/meters/{meter_id}/left"
+        path: "/tanks/{tank_id}/left"
         params: {
-            meter_id: meter.id
+            tank_id: tank.id
         }
         input: LeftAsked {
             used: 11
@@ -425,19 +425,19 @@ test "a reading past the end is rejected" {
     assert response.code == "past_the_end"
 }
 
-test "a meter that isn't there is not found" {
+test "a tank that isn't there is not found" {
     var response: Response = request {
         method: HttpMethod.get
-        path: "/meters/{meter_id}/left"
+        path: "/tanks/{tank_id}/left"
         params: {
-            meter_id: "0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e"
+            tank_id: "0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e"
         }
         input: LeftAsked {
             used: 1
         }
     }
     assert response.status == 404
-    assert response.code == "meter_not_found"
+    assert response.code == "tank_not_found"
 }
 ```
 
@@ -458,7 +458,7 @@ What the proof counts:
 | Calls another action, a package's among them | Whatever that action does |
 
 Anything on any way through the action counts: a write in one branch of an
-`if` is enough. A function needs no looking into, since a function can't do
+`if` is has_room. A function needs no looking into, since a function can't do
 any of these. Anything else makes the route `route.run_kind`, whose message
 names what the action does and where, following the calls.
 
