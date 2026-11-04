@@ -27,6 +27,7 @@ instead.
 | [Write tests](08-write-tests.md) | action and route tests, fixtures, a fixed clock and tests signed in as someone |
 | [Ship a change behind a flag](13-ship-a-change-behind-a-flag.md) | a change deployed switched off, both sides tested, turned on with no deploy, and the flag removed |
 | [Get a person's sign-off](09-get-a-sign-off.md) | an acceptance for a change that could break someone, with a person's reason |
+| [Ask a model for a typed answer](20-ask-a-model-for-a-typed-answer.md) | a checked prompt, a decoded answer with every failure named, a daily budget, and tests that never reach a model |
 | [Deploy natively](10-deploy-natively.md) | the app built into one program, running against a real database |
 | [Deploy to Cloudflare Workers](11-deploy-to-workers.md) | the app built as a Worker, reaching its database through Hyperdrive |
 | [Send an email](12-send-an-email.md) | a welcome email with typed templates, sent over SMTP after commit, tested and read in the dev inbox |
