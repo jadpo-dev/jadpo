@@ -295,6 +295,8 @@ environments is configuration
 ## Rate limits
 <!-- topic: rate-limits -->
 
+[Limit how often a route is called](../guides/14-limit-how-often-a-route-is-called.md) does the whole job, start to finish.
+
 A rate limit caps how many requests a caller may make in a period. Every
 route has limits by default, so you write nothing to get them: 600 a
 minute for each signed-in caller, and 120 a minute for each address on
