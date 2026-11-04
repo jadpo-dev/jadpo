@@ -1126,7 +1126,8 @@ same in the interpreter and in a compiled build, on every target:
 Past either, the call or operation that would go deeper is the
 `recursion_limit` fault, at its place in the code. That holds in
 `jadpo test` and `jadpo dev` as in a deployable, a compiled build of your
-app. So `reply_count` above walks a thread a thousand replies deep, and
+app, and on Cloudflare's own network, where the deepest walks answered and
+the next level faulted, the Worker serving on (measured once, from one location (London, LHR), on 2026-11-04). So `reply_count` above walks a thread a thousand replies deep, and
 the same walk written as `list.map(comment.replies, reply -> ...)` four
 hundred.
 

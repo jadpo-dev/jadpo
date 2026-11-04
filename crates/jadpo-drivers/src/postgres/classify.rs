@@ -56,6 +56,11 @@ pub fn classify(cause: Cause<'_>) -> StoreError {
             {
                 StoreError::Statement(format!("{code}: {message}"))
             }
+            // A trigger's `RAISE` says what its author wrote, which may
+            // quote a value, and this reaches the log.
+            _ if code.starts_with("P0") => {
+                StoreError::Fault(format!("PostgreSQL refused ({code})"))
+            }
             _ => StoreError::Fault(format!("PostgreSQL refused ({code}): {message}")),
         },
         Cause::Lost => StoreError::Unavailable,

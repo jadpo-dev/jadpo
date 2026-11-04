@@ -57,7 +57,7 @@ logged, the runtime uses that map to rewrite it, on the native target and
 on WebAssembly alike. A fault reads:
 
 ```text
-{"event":"operation.failed","classification":"int_overflow",
+{"event":"operation.failed","classification":"int_overflow","cause":null,
  "request_id":"req_0b1e…","build":"src_2c78570a2841d2f7",
  "stack":[
    "domains/ordering/actions/price_line.jadpo:4  action price_line",

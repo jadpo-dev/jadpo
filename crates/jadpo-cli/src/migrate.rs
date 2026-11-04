@@ -1727,6 +1727,26 @@ pub(crate) fn migrate_failed(store: &str, error: jadpo_runtime::MigrateError) ->
     }
 }
 
+/// `migrate status` couldn't read a store: it was only reading, so nothing
+/// was migrated or rolled back.
+fn status_failed(store: &str, error: &jadpo_runtime::StoreError) -> Diagnostic {
+    let why = crate::schedules::store_error(error);
+    let mut letters = why.chars();
+    let why = letters
+        .next()
+        .map(|first| first.to_uppercase().chain(letters).collect::<String>())
+        .unwrap_or_default();
+    Diagnostic::new(
+        &rule::MIGRATION_APPLY_FAILED,
+        format!("Couldn't read `{store}`'s migrations"),
+    )
+    .reason(format!("{why}. Nothing was changed."))
+    .next_for(
+        "Fix what stopped it, then run `jadpo migrate status` again",
+        Decider::Human,
+    )
+}
+
 fn status(call: &Call) -> Reply {
     let (cwd, loaded) = match load(call) {
         Ok(found) => found,
@@ -1757,13 +1777,10 @@ fn status(call: &Call) -> Reply {
                     states.insert(name.clone(), "pending");
                 }
             }
-            Ok(Err(error)) => return Reply::failed(migrate_failed(store, error)),
-            Err(error) => {
-                return Reply::failed(migrate_failed(
-                    store,
-                    jadpo_runtime::MigrateError::Store(error),
-                ));
+            Ok(Err(jadpo_runtime::MigrateError::Store(error))) | Err(error) => {
+                return Reply::failed(status_failed(store, &error));
             }
+            Ok(Err(error)) => return Reply::failed(migrate_failed(store, error)),
         }
     }
     let rows: Vec<(String, String)> = set

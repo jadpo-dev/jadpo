@@ -4448,11 +4448,26 @@ it is stated where the binding is written. The driver keeps no
 session state: statements unnamed (`query_typed`), each transaction's
 level in its own `BEGIN`, held by a live test that finds a reused
 connection at the server's level with no prepared statement after a
-repeatable read transaction; a column of an extension's type (pgvector's
-`vector`, PostGIS's `geography`) is the one exception, tokio-postgres
-describing it once per connection through a named statement, which
-Hyperdrive documents keeping for the client that prepared it; this is
-not yet checked on a real account. Proved under workerd (`crates/jadpo-host-workers/tests/workerd.rs`):
+repeatable read transaction. A column of an extension's type (pgvector's
+`vector`, PostGIS's `geography`) would make tokio-postgres describe the type
+through a named statement, a `Parse` and later a `Bind`, and it has no way to
+be told a type or to skip that; through Hyperdrive to Neon, `vector` answered
+`internal_fault` in 8 of 12 runs of 2026-11-04, and against a stand-in pooler
+that moves between statements (`crates/jadpo-cli/tests/pooled_statements.rs`,
+which deallocates each time the connection goes idle) it fails with `26000`,
+`prepared statement "s0" does not exist`. So `postgres::extension_types`'s
+`Described`, in the connection's stream (`Counted`), marks such a column in
+each `RowDescription` as the built-in `unknown`, with its real number in the
+column's table number, tokio-postgres then looks nothing up, and the driver
+asks for the types' names itself in one unnamed statement (`names_of`, kept
+for the store's life) and reads those columns by name. The test holds that no
+statement is named. That this ends the failures on Hyperdrive itself awaits a
+redeploy (the roadmap's 8.2n). *Rejected:* a patched copy of tokio-postgres,
+which every deployable's workspace would have to carry and follow upstream;
+casting such columns in the generated SQL, at each of the runtime's and the
+compiler's many `SELECT`s and `RETURNING`s; and describing a type inside a
+transaction, which holds the two messages to one server connection but leaves
+the statement behind on it for the next client. Proved under workerd (`crates/jadpo-host-workers/tests/workerd.rs`):
 a Hyperdrive binding read as its address, its host the pooler and
 `connect()` to it reaching the binding's service in a later request; a
 store reaching a scripted PostgreSQL elsewhere over TLS through
@@ -4510,7 +4525,9 @@ away ends the request, and Workers ends its `fetch()` to the model with
 it: workerd finds the client gone when it next sends it a piece, rather
 than calling the source's `cancel`, which, when a platform does call it,
 stops the read in hand and drops the stream, aborting that `fetch()`
-itself; when Cloudflare's edge finds a client gone is not yet checked.
+itself. On Cloudflare's edge, with a stand-in model on another Worker, 4 pieces
+came over 2.98 seconds, and a client leaving after 2 of 25 ended the model's
+call with its next piece (2026-11-04, from LHR).
 Proved under workerd (`crates/jadpo-cli/tests/workers/newsroom.rs`) by a news desk
 of its own whose model is a server the test starts: a draft's first piece
 reaching the client before the model writes the rest, a client that goes
@@ -4592,6 +4609,10 @@ and workerd, which queues nothing, never shows it; a promise of the
 waiting call's settled from the giving invocation, which the decision
 rules out; and a slot taken back after its call's own timeout, which
 would cut short a call legitimately slow before its request went out.
+On Cloudflare's edge, without the runtime's counting (a plain Worker), eight
+`fetch()`es at once, each held 3 seconds for its head, arrived at 0, 0, 0, 0, 0,
+0, 3 and 3 seconds, so its limit is what the runtime assumes (2026-11-04, from
+LHR).
 
 **Cloudflare Queues' consumer** (area 11; area 14, "A Workers deployable"). The generated crate exports
 `queue` beside `fetch` and `scheduled`, and the shim hands it the batch,
@@ -5370,9 +5391,11 @@ never called, so the workspace builds, lints and tests as one.
   (`jadpo_runtime::public_address`, the native guard's check, in the
   runtime so both ask one question) nor to `localhost`, follows no
   redirect and reads at most the bytes asked for. A name isn't looked up
-  first, since a Worker has no resolver; whether Cloudflare's network
-  reaches a private address a name resolves to is not yet checked on a
-  real deploy.
+  first, since a Worker has no resolver; on Cloudflare's network each name
+  tried that resolves to a private address (`10.0.0.1.nip.io`,
+  `192.168.1.1.nip.io`, `172.16.0.1.nip.io`, `127.0.0.1.nip.io`,
+  `169.254.169.254.nip.io`, `localtest.me`) answered 530, error 1016, over both
+  schemes, not reaching it (2026-11-04, from LHR).
 
 Every Workers test runs on this machine under the pinned workerd, with
 no Cloudflare account and no network past the machine; only a real

@@ -398,7 +398,8 @@ What else falls short depends on where the counts are kept:
   dropped first, so enough different addresses can win some of them a fresh
   count.
 - **In Cloudflare's binding, on Workers.** Counts are per Cloudflare location
-  and approximate ([What the binding promises](#what-the-binding-promises)).
+  and rough: a limit of 5 let 24 through when measured
+  ([What the binding promises](#what-the-binding-promises)).
 
 ### Where the counts are kept: `rate_limits: { store: }`
 
@@ -3073,34 +3074,49 @@ whole number of at least 1.
   writes any other window is refused where it wrote it
   (`rate_limits.window_unsupported`).
 - **A deployable's bindings.** Each is numbered from every limit the app
-  writes, so a limit has the same namespace in every deployable, which then
-  share its counts in each location, and a deployable's Wrangler file names
-  only those its own routes count.
+  writes, so a limit has the same namespace in every deployable, which by
+  Cloudflare's terms share its counts in each location, and a deployable's
+  Wrangler file names only those its own routes count.
 - **`Retry-After`** is the window's whole length, since the binding says
   only whether a request is within the limit, not when its window ends.
 
 ### What the binding promises
 
-Cloudflare documents the binding as approximate, and these are its terms,
-read from its documentation and not yet measured
-([What is built](#what-is-built)). A limit on Workers is only as strong as
-this:
+Treat a limit in this binding as rough: it refuses a client that keeps on
+asking, but well past the number you wrote. Here is what it did, measured once, from one location (London, LHR), on 2026-11-04, with one client and no other traffic on the account:
 
-- **Per location.** Each Cloudflare location keeps its own count, and they
-  don't add up to one worldwide limit. `requests: 5` is five in each location
-  a client's requests reach.
+| Limit | What happened |
+|---|---|
+| 5 in 10 seconds, one request after another | 24 passed before the first 429 |
+| 10 in 60 seconds, one after another | 49 passed before the first 429 |
+| 120 in 60 seconds, one after another | 200 passed with none refused, when the check stopped |
+| 5 in 10 seconds, 60 sent at once | 44 passed, 16 refused |
+
+Once its window had passed, the 5-in-10-seconds route answered again. Each
+429 gave the window's length in `Retry-After`. Those are one run's numbers,
+not a promise: they show how far past a limit a client can get, and it may
+differ elsewhere and under other traffic.
+
+Cloudflare documents the binding as approximate, and these are its other
+terms. A limit on Workers is only as strong as this:
+
+- **Per location.** Cloudflare says each of its locations keeps its own count,
+  and they don't add up to one worldwide limit, so `requests: 5` applies
+  roughly in each location a client's requests reach. This hasn't been
+  measured from a second location.
 - **Approximate.** Each check reads a count kept where the Worker runs, and
-  counts update in the background, so requests can pass the limit. It isn't
-  an accounting system. Cloudflare's own answer for a strict limit is a
-  limiter on a Durable Object, which Jadpo doesn't build.
+  counts update in the background, so requests pass the limit, as the table
+  shows. It isn't an accounting system. Cloudflare's own answer for a strict
+  limit is a limiter on a Durable Object, which Jadpo doesn't build.
 - **An address can be many people.** Cloudflare warns against keying a limit
   on an address, since many users can share one on mobile networks. Prefer
   `RateLimitKey.caller` where callers sign in, and don't set a limit by
   address so low that a shared address trips it.
-- **A namespace id is the whole account's.** Two bindings with one
-  `namespace_id` share their counts for a key, across Workers. Give another
-  app in the account a `namespace:` far enough from this one's that its
-  numbers don't meet them.
+- **A namespace id is the whole account's.** Cloudflare says two bindings with
+  one `namespace_id` share their counts for a key, across Workers, which the
+  measurement above didn't get far enough to show. Give another app in the
+  account a `namespace:` far enough from this one's that its numbers don't
+  meet them.
 
 So use the binding to shed abuse, not to enforce a total
 ([What a limit doesn't promise](#what-a-limit-doesnt-promise)).

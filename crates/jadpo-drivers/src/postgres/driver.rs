@@ -1,6 +1,7 @@
 //! [`Postgres`]: the runtime's `Database` over tokio-postgres.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::error::Error as _;
 use std::fmt;
 use std::future::Future;
@@ -14,6 +15,7 @@ use tokio_postgres::types::{FromSql, IsNull, Kind, ToSql, Type, to_sql_checked};
 use tokio_postgres::{Client, Config, NoTls};
 
 use super::classify::{Cause, classify};
+use super::extension_types::{self, Described};
 use super::wire;
 use crate::{Endpoint, Stream, Transport, Trust, within};
 
@@ -307,6 +309,8 @@ struct Pool {
     connect_ms: u64,
     idle: RefCell<Vec<Idle>>,
     slots: Rc<Slots>,
+    /// The name of each extension's type its columns have had, by number.
+    type_names: RefCell<HashMap<u32, String>>,
 }
 
 impl Pool {
@@ -363,6 +367,7 @@ impl Pool {
         let stream = Counted {
             inner: stream,
             written: Rc::clone(&written),
+            described: Described::default(),
         };
         let connected = self.config.connect_raw(stream, NoTls).await;
         if let (Err(_), Some(error), Some(trust), Endpoint::Tcp { host, .. }) =
@@ -450,6 +455,7 @@ enum Attempt {
 struct Counted {
     inner: Box<dyn Stream>,
     written: Written,
+    described: Described,
 }
 
 impl tokio::io::AsyncRead for Counted {
@@ -458,7 +464,38 @@ impl tokio::io::AsyncRead for Counted {
         cx: &mut std::task::Context<'_>,
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
-        std::pin::Pin::new(&mut self.inner).poll_read(cx, buf)
+        let this = &mut *self;
+        loop {
+            let ready = this.described.ready();
+            if !ready.is_empty() {
+                let count = ready.len().min(buf.remaining());
+                buf.put_slice(ready.get(..count).unwrap_or_default());
+                this.described.gave(count);
+                return Poll::Ready(Ok(()));
+            }
+            let before = buf.filled().len();
+            match std::pin::Pin::new(&mut this.inner).poll_read(cx, buf) {
+                Poll::Ready(Ok(())) => {}
+                other => return other,
+            }
+            let Some(read) = buf
+                .filled_mut()
+                .get_mut(before..)
+                .filter(|read| !read.is_empty())
+            else {
+                // The stream ended.
+                this.described.finish();
+                if this.described.ready().is_empty() {
+                    return Poll::Ready(Ok(()));
+                }
+                continue;
+            };
+            let passed = this.described.scan(read);
+            buf.set_filled(before + passed);
+            if passed > 0 {
+                return Poll::Ready(Ok(()));
+            }
+        }
     }
 }
 
@@ -630,6 +667,7 @@ impl Postgres {
                 connect_ms,
                 idle: RefCell::new(Vec::new()),
                 slots: Rc::new(Slots::default()),
+                type_names: RefCell::new(HashMap::new()),
             }),
         })
     }
@@ -712,8 +750,9 @@ impl Database for Postgres {
                 let before = conn.written.get();
                 match conn.client.query_typed(sql, &typed).await {
                     Ok(rows) => {
+                        let read = read_rows(&conn.client, &self.pool, &rows).await;
                         self.pool.give_back(conn);
-                        return rows.iter().map(read_row).collect();
+                        return read;
                     }
                     Err(error) => {
                         let error = store_error(&error);
@@ -830,7 +869,13 @@ impl Transaction for PgTransaction {
             let bound = bind(params)?;
             let typed = typed(&bound);
             match self.run(Op::Query(sql, &typed)).await? {
-                Done::Rows(rows) => rows.iter().map(read_row).collect(),
+                Done::Rows(rows) => {
+                    let read = match &self.conn {
+                        Some(conn) => read_rows(&conn.client, &self.pool, &rows).await,
+                        None => Err(StoreError::Unavailable),
+                    };
+                    self.note(read)
+                }
                 Done::Count(_) | Done::Ran => Ok(Vec::new()),
             }
         })
@@ -968,57 +1013,128 @@ impl<'a> FromSql<'a> for Cell {
         ty: &Type,
         raw: &'a [u8],
     ) -> Result<Cell, Box<dyn std::error::Error + Sync + Send>> {
-        if is_vector(ty) {
-            return Ok(Cell(wire::vector_from_wire(raw)?));
-        }
-        if is_geography(ty) {
-            return Ok(Cell(wire::geography_from_wire(raw)?));
-        }
         Ok(Cell(wire::decode(ty.oid(), raw)?))
     }
 
     fn from_sql_null(ty: &Type) -> Result<Cell, Box<dyn std::error::Error + Sync + Send>> {
-        match column_type(ty) {
+        match wire::column_type(ty.oid()) {
             Some(sql_type) => Ok(Cell(SqlValue::Null(sql_type))),
             None => Err(format!("the runtime doesn't read type {}", ty.name()).into()),
         }
     }
 
     fn accepts(ty: &Type) -> bool {
-        column_type(ty).is_some()
+        wire::column_type(ty.oid()).is_some()
     }
 }
 
-/// The runtime's type for a column of type `ty`: a built-in one by its
-/// number, pgvector's and PostGIS's by their names (chunks 5.5v1 and
+/// A column's bytes as the server sent them, or none for a null.
+struct Raw<'a>(Option<&'a [u8]>);
+
+impl<'a> FromSql<'a> for Raw<'a> {
+    fn from_sql(
+        _ty: &Type,
+        raw: &'a [u8],
+    ) -> Result<Raw<'a>, Box<dyn std::error::Error + Sync + Send>> {
+        Ok(Raw(Some(raw)))
+    }
+
+    fn from_sql_null(_ty: &Type) -> Result<Raw<'a>, Box<dyn std::error::Error + Sync + Send>> {
+        Ok(Raw(None))
+    }
+
+    fn accepts(_ty: &Type) -> bool {
+        true
+    }
+}
+
+/// The name of each type a column of `rows` has that only the database
+/// knows, by its number: from the store's, or asked for in one unnamed
+/// statement, which any of a pooler's connections answers alike.
+async fn names_of(
+    client: &Client,
+    pool: &Pool,
+    rows: &[tokio_postgres::Row],
+) -> Result<(), StoreError> {
+    let Some(row) = rows.first() else {
+        return Ok(());
+    };
+    let mut asked: Vec<u32> = row
+        .columns()
+        .iter()
+        .filter_map(extension_types::hidden_oid)
+        .filter(|oid| !pool.type_names.borrow().contains_key(oid))
+        .collect();
+    if asked.is_empty() {
+        return Ok(());
+    }
+    asked.sort_unstable();
+    asked.dedup();
+    let named = client
+        .query_typed(
+            "SELECT oid, typname FROM pg_catalog.pg_type WHERE oid = ANY($1)",
+            &[(&asked as &(dyn ToSql + Sync), Type::OID_ARRAY)],
+        )
+        .await
+        .map_err(|error| store_error(&error))?;
+    let mut names = pool.type_names.borrow_mut();
+    for row in &named {
+        let oid: u32 = row.try_get(0).map_err(|error| store_error(&error))?;
+        let name: String = row.try_get(1).map_err(|error| store_error(&error))?;
+        names.insert(oid, name);
+    }
+    Ok(())
+}
+
+/// `rows` as the runtime reads them, after finding the names of any
+/// extension's types among their columns.
+async fn read_rows(
+    client: &Client,
+    pool: &Pool,
+    rows: &[tokio_postgres::Row],
+) -> Result<Vec<Row>, StoreError> {
+    names_of(client, pool, rows).await?;
+    let names = pool.type_names.borrow();
+    rows.iter().map(|row| read_row(row, &names)).collect()
+}
+
+/// A column of an extension's type by its type's name: pgvector's and
+/// PostGIS's, whose numbers differ in each database (chunks 5.5v1 and
 /// 5.5u4).
-fn column_type(ty: &Type) -> Option<jadpo_runtime::SqlType> {
-    if is_vector(ty) {
-        return Some(jadpo_runtime::SqlType::Vector);
-    }
-    if is_geography(ty) {
-        return Some(jadpo_runtime::SqlType::Geography);
-    }
-    wire::column_type(ty.oid())
+fn read_extension_cell(
+    column: &str,
+    name: &str,
+    raw: Option<&[u8]>,
+) -> Result<SqlValue, StoreError> {
+    let value = match (name, raw) {
+        (wire::VECTOR, Some(raw)) => wire::vector_from_wire(raw),
+        (wire::GEOGRAPHY, Some(raw)) => wire::geography_from_wire(raw),
+        (wire::VECTOR, None) => return Ok(SqlValue::Null(jadpo_runtime::SqlType::Vector)),
+        (wire::GEOGRAPHY, None) => return Ok(SqlValue::Null(jadpo_runtime::SqlType::Geography)),
+        _ => {
+            return Err(StoreError::Fault(format!(
+                "column `{column}` has type {name}, which the runtime doesn't read"
+            )));
+        }
+    };
+    value.map_err(|error| {
+        StoreError::Fault(format!(
+            "column `{column}` of type {name} can't be read: {error}"
+        ))
+    })
 }
 
-/// Whether `ty` is PostGIS's `geography`, which an extension adds, so it
-/// has no built-in number (area 20, chunk 5.5u4).
-fn is_geography(ty: &Type) -> bool {
-    wire::column_type(ty.oid()).is_none() && ty.name() == wire::GEOGRAPHY
-}
-
-/// Whether `ty` is pgvector's `vector`, which an extension adds, so it has
-/// no built-in number.
-fn is_vector(ty: &Type) -> bool {
-    wire::column_type(ty.oid()).is_none() && ty.name() == wire::VECTOR
-}
-
-fn read_row(row: &tokio_postgres::Row) -> Result<Row, StoreError> {
+fn read_row(row: &tokio_postgres::Row, names: &HashMap<u32, String>) -> Result<Row, StoreError> {
     let mut out = Vec::with_capacity(row.len());
     for (index, column) in row.columns().iter().enumerate() {
+        if let Some(oid) = extension_types::hidden_oid(column) {
+            let name = names.get(&oid).map_or("an unknown type", String::as_str);
+            let raw: Raw<'_> = row.try_get(index).map_err(|error| store_error(&error))?;
+            out.push(read_extension_cell(column.name(), name, raw.0)?);
+            continue;
+        }
         let ty = column.type_();
-        if column_type(ty).is_none() {
+        if wire::column_type(ty.oid()).is_none() {
             return Err(StoreError::Fault(format!(
                 "column `{}` has type {}, which the runtime doesn't read",
                 column.name(),
