@@ -1259,7 +1259,7 @@ The sections inside a declaration go in one order:
 
 - a failure's `kind`, `code`, `message`, `client`, `internal`;
 - a route's `authentication`, `confirm`, `rate_limit`, `input`, `output`,
-  `status`, `deadline`, `run`;
+  `sends`, `status`, `cache`, `deadline`, `run`;
 - an entity's fields, then `identity`, `persistence`, `lifecycle`,
   `membership`, `policy`, `freshness`, `guard`, `person`.
 

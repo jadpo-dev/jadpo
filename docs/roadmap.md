@@ -508,11 +508,7 @@ real deploy) and, before outside authors can publish, D3 (releases).
   enum variant, where `package: Text` and `Kind.library` are unambiguous
   (Richard, 2026-11-03). An `Output` with a `type` field works in any app.
 - [x] **G2 A `GET` that runs a read-only action**: area 7, "A `GET` that runs an action"; area 3, "Functions and actions"; `docs/errors/route.run_kind.md`; compiler/runtime, "An action on a `GET`".
-- [ ] **G3 A route that sends raw bytes** `opus · high` after G2: area 7,
-  "Output and status" and OpenAPI; area 18, the API record. `sends:
-  "application/x-tar"` on an `Output` with exactly one `Bytes` field; that
-  field is the body, and failures stay JSON (Richard, 2026-11-03). Also `cache:
-  immutable`, for an answer that never changes.
+- [x] **G3 A route that sends raw bytes**: area 7, "Sending raw bytes", "Answers that never change" and "The public API record"; area 18, "Acceptances"; `docs/errors/route.sends_invalid.md`, `docs/errors/route.cache_invalid.md`; compiler/runtime, "A route that sends raw bytes".
 - [ ] **G4 A route's `rate_limit:`** `opus · high`: area 16's route limits. The
   registry's `POST releases` is anonymous and starts verifications, and the
   default 120 a minute per address doesn't fit it.
