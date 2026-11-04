@@ -458,11 +458,13 @@ pub fn erasure_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
                     .is_some_and(|held| crate::ai_personal::counts_as_marked(&lookup, &held.ty))
         };
         let how = |field: &str| {
-            if written_mark(field) {
-                "is marked `personal:`"
-            } else {
-                "is an email address, which counts as `PersonalData.contact`"
-            }
+            entity
+                .fields
+                .iter()
+                .find(|held| held.name == field)
+                .filter(|_| !written_mark(field))
+                .and_then(|held| crate::ai_personal::counted_as_marked(&lookup, &held.ty))
+                .unwrap_or_else(|| "is marked `personal:`".to_string())
         };
         let identity = crate::identity::identity(db, project);
         let subject = |field: &str| {
@@ -553,7 +555,7 @@ pub fn erasure_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
                                 at,
                                 field_span,
                                 written.is_some(),
-                                how(&other.name),
+                                &how(&other.name),
                             ));
                         }
                     }
@@ -615,7 +617,7 @@ fn own_record_problems(
     spans: &crate::data::EntitySpans,
     erasures: &Erasures,
     marked: &dyn Fn(&str) -> bool,
-    how: &dyn Fn(&str) -> &'static str,
+    how: &dyn Fn(&str) -> String,
     subject: &dyn Fn(&str) -> bool,
 ) -> Vec<Diagnostic> {
     let mut out = Vec::new();
