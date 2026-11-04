@@ -132,6 +132,8 @@ rules! {
         "Two APIs share a prefix";
     API_PREFIX_REQUIRED: "api.prefix_required", area 7, Error, Agent,
         "Declared API has no prefix";
+    API_ROUTE_NEEDS_SIGN_IN: "api.route_needs_sign_in", area 7, Error, Human,
+        "A route needs a signed-in caller, but its API says `authentication: []`, which accepts no way to sign in";
     API_SERVE_OPENAPI_INVALID: "api.serve_openapi_invalid", area 7, Error, Agent,
         "An API's `serve_openapi:` setting holds something other than `true` or `false`";
     API_SETTING_UNKNOWN: "api.setting_unknown", area 7, Error, Agent,
@@ -772,6 +774,10 @@ rules! {
         "A prompt's type has a field that its prompt file never writes";
     PROMPT_SECTION_MISSING: "prompt.section_missing", area 21, Error, Agent,
         "A prompt and its file don't make its two sections, each once and in order";
+    PROTOCOL_MISMATCH: "protocol.mismatch", area 14, Error, Agent,
+        "A registry's OpenAPI document differs from the registry protocol";
+    PROTOCOL_UNREADABLE: "protocol.unreadable", area 14, Error, Agent,
+        "The document given to `jadpo package protocol` couldn't be read as OpenAPI's JSON";
     PUBLISH_BEHAVIOUR_CHANGED: "publish.behaviour_changed", area 14, Error, Human,
         "An example or test of a package's last release fails against its new version, and the change isn't marked a fix";
     PUBLISH_BREAKING_CHANGE: "publish.breaking_change", area 14, Error, Human,
@@ -1504,6 +1510,8 @@ rules! {
         "Principal's subject field is not unique";
     TYPE_RANDOM_CONTEXT: "type.random_context", area 19, Error, Agent,
         "Randomness is read outside an action";
+    TYPE_RECORD_TYPE_ARGUMENTS: "type.record_type_arguments", area 2, Error, Agent,
+        "A record names its type with type arguments, which come from its place or its values";
     TYPE_REDUNDANT_NULLABILITY: "type.redundant_nullability", area 2, Error, Agent,
         "Type is already nullable";
     TYPE_RESERVED_FIELD_NAME: "type.reserved_field_name", area 2, Error, Agent,

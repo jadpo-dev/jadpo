@@ -10,7 +10,7 @@ Why [Standard library](../19-standard-library.md) is the way it is: the decision
 ## Consistency with the rest of the language
 
 - **Area 1:** `list`, `set`, `map`, `range`, `text`, `markup`, `money`,
-  `units`, `hash`, `encoding`, `crypto`, `random`, `json`, `csv`, `tsv`,
+  `units`, `bytes`, `hash`, `encoding`, `crypto`, `random`, `json`, `csv`, `tsv`,
   `json_lines`, `colour`, `media`, `web`, `semver`, `geo`, `ai` and
   `locale` are reserved namespaces; fields and named arguments keep every
   word (`note.text`, `set:`). It is `units` rather than `quantity`, since

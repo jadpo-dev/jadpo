@@ -3555,7 +3555,10 @@ apis: {
 
 Here a browser session or an API token works on any route under `/`, and
 only a service key works under `/partners`. A route can narrow its API's
-list but never add to it. An app with a single API accepts every method.
+list but never add to it. An API with no `authentication:` line accepts every
+method the application declares, and one that says `authentication: []`
+accepts none: every route in it is open to anyone, and says so
+([Serving the document](07-http.md#serving-the-document)).
 
 Webhooks from a provider such as Stripe aren't routes you write, so there's
 nothing here to set. Jadpo generates them, checks each one's signature and

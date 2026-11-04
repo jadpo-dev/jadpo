@@ -1568,6 +1568,15 @@ GET /v1/openapi.json
   accepts no way to sign in that is built, every route it has lets anyone
   call it, so its document tells no one more than its routes do, and
   anyone may read it, as above.
+- **An API that says `authentication: []` accepts no way to sign in,**
+  whatever `authentication.jadpo` declares, so anyone may read its document
+  and its record lists no `authentication` line. Every route in it says
+  `authentication: RouteAuthentication.none`: one that needs a caller could
+  never be reached, and is refused
+  ([`api.route_needs_sign_in`](../errors/api.route_needs_sign_in.md)). Opening
+  the document of an API that had a sign-in is `PolicyChange.route_public`, as
+  opening any route is. An API with no `authentication:` line accepts every
+  way the application declares.
 - **It answers 200 with the document exactly as `jadpo check` writes it**
   to `build/openapi/<api>.json`, as `application/json`. Like any route that
   takes no input, it answers a query string or a body with 422
@@ -1882,7 +1891,7 @@ where an app uses it.
 | Feature | Status |
 |---|---|
 | Checking routes | Built: `jadpo check` checks route groups, their prefixes and APIs (with `idempotency:`), methods and typed placeholders, the one input (from the query string for `GET` and `DELETE`, the JSON body otherwise, and `header:` fields), `output:` and `status:`, `deadline:`'s range and what `run:` calls, every route of the project against the others and the health paths, and each API's record. |
-| OpenAPI | Built: `jadpo check` writes one OpenAPI document per API to `build/openapi/`, and the failure wording for client apps beside it. Each API serves its own document at `<prefix>/openapi.json` (`serve_openapi: false` turns it off), listed in its record, its document and `jadpo routes`, and the documents carry the `x-jadpo` fields the OpenAPI importer reads ([OpenAPI](#openapi)). OpenAPI derives each route's responses from what it runs and shows `ZonedTime`, `Zone` and a mixed enum as they are sent. |
+| OpenAPI | Built: `jadpo check` writes one OpenAPI document per API to `build/openapi/`, and the failure wording for client apps beside it. Each API serves its own document at `<prefix>/openapi.json` (`serve_openapi: false` turns it off, `authentication: []` opens it to anyone), listed in its record, its document and `jadpo routes`, and the documents carry the `x-jadpo` fields the OpenAPI importer reads ([OpenAPI](#openapi)). OpenAPI derives each route's responses from what it runs and shows `ZonedTime`, `Zone` and a mixed enum as they are sent. |
 | Serving a request | Built: the runtime's HTTP component routes a request, decodes and checks its input (each problem as `{ field, rule }`), runs the action or query, and answers with the output or the failure envelope, its `request_id` and `x-request-id`, with the status the failure's kind sets; it answers `HEAD` and `OPTIONS` itself and counts the default rate limits. It reads a body only as JSON, and refuses a query string or body a route doesn't read, a header it can't read and a body over 1 MB. |
 | Deadlines and concurrent changes | Built: the runtime stops a route at its deadline without committing, even work that never waits, and runs an action again on a concurrent change found as it commits. |
 | Health endpoints | Built: `/health/live` and `/health/ready`. |
@@ -1947,6 +1956,7 @@ what it runs; in a project each lives in its own folder.
 - [`api.prefix_overlap`](../errors/api.prefix_overlap.md)
 - [`api.idempotency_invalid`](../errors/api.idempotency_invalid.md)
 - [`api.authentication_invalid`](../errors/api.authentication_invalid.md)
+- [`api.route_needs_sign_in`](../errors/api.route_needs_sign_in.md)
 - [`api.serve_openapi_invalid`](../errors/api.serve_openapi_invalid.md)
 - [`api.setting_unknown`](../errors/api.setting_unknown.md)
 

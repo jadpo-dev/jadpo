@@ -932,7 +932,7 @@ is in `<folder>/<name>.jadpo`; it is a built-in; or it is declared in this
 file.
 
 The standard library's namespaces are `list`, `set`, `map`, `range`,
-`integer`, `decimal`, `money`, `units`, `text`, `markup`, `hash`,
+`integer`, `decimal`, `money`, `units`, `text`, `markup`, `bytes`, `hash`,
 `encoding`, `crypto`, `random`, `json`, `csv`, `tsv`, `json_lines`,
 `temporal`, `locale`, `colour`, `media`, `web`, `semver`, `geo` and `ai`
 ([Standard library](19-standard-library.md)). Each is reserved by

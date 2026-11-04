@@ -1259,6 +1259,12 @@ impl Body<'_> {
             self.walk(|walk| walk.member_values(record.member_list()));
             return Ty::Error;
         };
+        // `Feature<Point, Pin> { ... }`: a record names its type alone.
+        if let Expr::GenericExpr(generic) = &head {
+            self.walk(|walk| walk.member_values(record.member_list()));
+            self.record_type_arguments(&head, generic);
+            return Ty::Error;
+        }
         // `Todo.update(todo) { ... }`: an update with its block, written
         // without `attempt` (area 6).
         if let Expr::CallExpr(call) = &head
@@ -1645,6 +1651,32 @@ impl Body<'_> {
             .next(format!(
                 "Read the `{written}` from its PEM with `text.parse(..., as: {written})`, or from JSON with `json.read`"
             )),
+        );
+    }
+
+    /// `type.record_type_arguments`: a record's type arguments come from
+    /// the type its place expects or its values (area 2, "A record names its type alone"),
+    /// so a head that also writes them is refused where it is written,
+    /// rather than compiling to something that can't run.
+    fn record_type_arguments(&mut self, head: &Expr, generic: &ast::GenericExpr) {
+        let written = head.syntax().text().to_string();
+        let span = self.span(head);
+        let Some(name) = generic.expr().map(|name| tree::written(name.syntax())) else {
+            return;
+        };
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_RECORD_TYPE_ARGUMENTS,
+                format!("`{written}` is written `{name} {{ ... }}`"),
+            )
+            .at(span.clone(), "type arguments on a record")
+            .reason(format!(
+                "A record names its type alone. Its type arguments come from the type its place expects, or else from its values, so there is one way to write a `{name}`."
+            ))
+            .next(format!(
+                "Write `{name} {{ ... }}`, with `{written}` on the `var` or the return type if its values don't say"
+            ))
+            .edit(span, name),
         );
     }
 

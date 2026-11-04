@@ -90,6 +90,7 @@ mod package_actions;
 mod package_conform;
 mod package_import;
 mod package_polls;
+mod package_protocol;
 mod package_recipes;
 mod package_release;
 mod package_subscribers;
