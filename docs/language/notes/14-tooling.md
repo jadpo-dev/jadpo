@@ -5,7 +5,7 @@ area: 14
 
 # Tooling: design notes
 
-Why [Tooling](../14-tooling.md) is the way it is: the decisions behind it, how it fits the rest of the language and what it carried to other areas. An app author reads the area page, not this one.
+Why [Tools](../14-tooling.md) is the way it is: the decisions behind it, how it fits the rest of the language and what it carried to other areas. An app author reads the area page, not this one.
 
 ## Carried to later areas
 
@@ -97,7 +97,7 @@ what other areas carried here and where this page answers it.
 
 ## Moved from the area page
 
-When [Tooling](../14-tooling.md) was rewritten to the [writing
+When [Tools](../14-tooling.md) was rewritten to the [writing
 guide](../../writing.md), its references to other areas by number, and
 the details of how the tools themselves are built, moved here. Nothing in
 this list changed a rule.

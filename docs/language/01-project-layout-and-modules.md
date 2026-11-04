@@ -227,8 +227,8 @@ and a security rule's with ", which a person then accepts".
 | [`policy.call_ungranted`](../errors/policy.call_ungranted.md) | [Policy](09-policy.md) | A listed action calls one that refuses some of the people its line lets in |
 | `translation.field_unused` | [Configuration and time](10-configuration-and-time.md) | No wording in a language uses one of a message's fields |
 | `package.standard_candidate` | [Integrations](11-integrations.md) | A provider field looks like a standard type the package doesn't use |
-| [`type.batch_order_updatable`](../errors/type.batch_order_updatable.md) | [Jobs and events](12-jobs-and-events.md) | A batch walks a query ordered by a field an update can change |
-| [`step.late_failure`](../errors/step.late_failure.md) | [Jobs and events](12-jobs-and-events.md) | An action can fail for good after a changing call took effect |
+| [`type.batch_order_updatable`](../errors/type.batch_order_updatable.md) | [Background work](12-jobs-and-events.md) | A batch walks a query ordered by a field an update can change |
+| [`step.late_failure`](../errors/step.late_failure.md) | [Background work](12-jobs-and-events.md) | An action can fail for good after a changing call took effect |
 | `email.field_unused` | [Built-in services](16-built-in-services.md) | An email's field is written by no template and no subject |
 | `email.health_problem` | [Built-in services](16-built-in-services.md) | An email's template fails a check of the mail health score |
 | `rate_limits.counted_in_memory` | [Built-in services](16-built-in-services.md) | A deployable built for Workers would count its rate limits in each instance's memory |
@@ -304,7 +304,7 @@ line with an empty reason for you to fill in, and "Remove decline" on a
 decline line removes it. Both run the same code as the commands.
 
 `jadpo approval` lists every decline a change adds or edits, so declining
-by reflex shows in review ([Records and manifest](18-records-and-manifest.md)).
+by reflex shows in review ([Review and records](18-records-and-manifest.md)).
 
 ### Rules triggered by time passing
 
@@ -542,11 +542,11 @@ to be revisited if a folder in a real application passes about 60 files.
 
 | Folder | Holds | Notes |
 |---|---|---|
-| `entities/` | One entity per file: its fields, unique rules, lifecycle, policy and record caches. The generated operations (`Todo.get`, create, update, delete) belong to it | Queries, actions and failures each have their own folder ([Failures](04-failures.md), [Data](05-data.md)) |
+| `entities/` | One entity per file: its fields, unique rules, lifecycle, policy and record caches. The generated operations (`Todo.get`, create, update, delete) belong to it | Queries, actions and failures each have their own folder ([Failures](04-failures.md), [Entities, stores and migrations](05-data.md)) |
 | `types/` | Types used by more than one file in the domain | A type one file uses lives beside its user |
 | `failures/` | One failure per file, every failure the domain raises | A failure two or more domains raise goes in `shared/failures/` ([Failures](04-failures.md)) |
 | `actions/` | Every action, one per file | Called by name (`complete_todo(todo_id)`); called by triggers or, if `public`, by other domains |
-| `queries/` | Every query, one per file, whatever it reads; a query's cache sits in its file | [Data](05-data.md) |
+| `queries/` | Every query, one per file, whatever it reads; a query's cache sits in its file | [Entities, stores and migrations](05-data.md) |
 | `libraries/` | Named groups of helper functions and constants, such as `library rounding` | Called like the standard library: `rounding.half_even(x)`, `pricing.vat_rate` ([Constants](03-logic.md#constants)) |
 | `routes/` | Named route groups with a prefix the compiler checks | The HTTP trigger: the URL is written in the source |
 | `schedules/` | Time triggers: when to run which action | |
@@ -554,7 +554,7 @@ to be revisited if a folder in a real application passes about 60 files.
 | `subscribers/` | Event triggers, including long-running coordination | |
 | (none) | Outside APIs are provider packages: connections in `app.jadpo`, installed packages in the root `packages/`, pinned in `jadpo.lock`, and the app's own in `shared/providers/` | [Integrations](11-integrations.md); there is no `integrations/` folder and no `integration` keyword |
 | `emails/` | Email types and their templates, one email per name (`welcome_email.jadpo`, `welcome_email.html`, `welcome_email.txt`), and the domain's own email partials, laid out the same way | [Email](16-built-in-services.md#email) |
-| `translations/` | One `type X = Message` per file; one `translations { }` language file per locale, named after it (`de_de.jadpo`), wording the domain's messages, failures, enums and email subjects; and the generated, committed `sources.jadpo_record` ([Records and manifest](18-records-and-manifest.md)) | [Configuration and time](10-configuration-and-time.md); a message a second domain uses goes in `shared/translations/`. A language file is named after its locale, not after its `translations { }` |
+| `translations/` | One `type X = Message` per file; one `translations { }` language file per locale, named after it (`de_de.jadpo`), wording the domain's messages, failures, enums and email subjects; and the generated, committed `sources.jadpo_record` ([Review and records](18-records-and-manifest.md)) | [Configuration and time](10-configuration-and-time.md); a message a second domain uses goes in `shared/translations/`. A language file is named after its locale, not after its `translations { }` |
 | `prompts/` | One `type X = Prompt` per file, each with its text in `<name>.prompt` beside it, in two sections, `# Instructions` and `# Request` | [Prompts as files](21-ai.md#prompts-as-files); a prompt a second domain uses goes in `shared/prompts/`, as a message does |
 | `documents/` | Document types and their templates, one document per name (`invoice_document.jadpo`, `invoice_document.html`), rendered to HTML or PDF by the `documents` capability | [Documents](16-built-in-services.md#documents) |
 | `fixtures/` | Test data shared by several test files in the domain | |
@@ -1105,7 +1105,7 @@ routes Todos {
 ```
 
 A schedule, in `domains/planning/schedules/overdue_reminders.jadpo`
-([Jobs and events](12-jobs-and-events.md)):
+([Background work](12-jobs-and-events.md)):
 
 ```jadpo fragment
 schedule overdue_reminders {
@@ -1142,10 +1142,10 @@ connections: {
 
 The layout only reserves these folders; each piece has its own page. Route
 groups are on [HTTP](07-http.md), schedules on
-[Jobs and events](12-jobs-and-events.md), integrations and provider API
+[Background work](12-jobs-and-events.md), integrations and provider API
 versions on [Integrations](11-integrations.md), translation files on
 [Configuration and time](10-configuration-and-time.md), and the migration
-workflow on [Data](05-data.md).
+workflow on [Entities, stores and migrations](05-data.md).
 
 ## What is built
 <!-- topic: project-layout-and-modules-built -->
@@ -1163,7 +1163,7 @@ The compiler builds the decided layout, with each rule's real output under
 | Reserved words | Built: a reserved word names only a field or an enum variant ([Names from reserved words](02-values-and-types.md#names-from-reserved-words)). |
 | Comments | Built: `//` and `///` documentation comments. |
 | Similar helpers | Partly built: `library.similar_exists`, a declinable error. Not built yet: `jadpo impact`. |
-| Declinable errors | Partly built: no warning severity; the `decline <rule>: "<reason>"` line with `decline.unused`, `decline.not_declinable` and `decline.no_reason`; the catalogue's security rules, whose decline needs an [acceptance](18-records-and-manifest.md#acceptances); `jadpo declines list` and `clear`; the editor's "Decline with a reason" and "Remove decline"; and the date rule for an expired [feature flag](16-built-in-services.md#feature-flags), `flag.expired`, judged at today by `check` and at the commit's date by `build`. `jadpo approval` lists them ([Records and manifest](18-records-and-manifest.md)). |
+| Declinable errors | Partly built: no warning severity; the `decline <rule>: "<reason>"` line with `decline.unused`, `decline.not_declinable` and `decline.no_reason`; the catalogue's security rules, whose decline needs an [acceptance](18-records-and-manifest.md#acceptances); `jadpo declines list` and `clear`; the editor's "Decline with a reason" and "Remove decline"; and the date rule for an expired [feature flag](16-built-in-services.md#feature-flags), `flag.expired`, judged at today by `check` and at the commit's date by `build`. `jadpo approval` lists them ([Review and records](18-records-and-manifest.md)). |
 | Constants | Built: `constant` as a reserved word and a declaration placed and shared as helper functions are, a private one unique within its domain, `constant.similar_exists`, and a top-level `var` pointed at `constant` ([Constants](03-logic.md#constants)). |
 | Imports | Built: `use <folder> { Names }` and `use <domain>`, with `import.missing`, `import.unknown`, `import.unused`, `import.unneeded` and `import.duplicate`; `jadpo fmt` adds, removes and sorts imports, `jadpo fmt --layout` makes promotion moves, and go to definition works from every use of a name, a `use` line's included. |
 | A file holds only what its primary declaration uses | Built: `layout.unused_declaration` for a supporting declaration the primary declaration doesn't use, directly or through one another. |
