@@ -385,10 +385,7 @@ a new agent can't find a type without them (Richard, 2026-11-03).
   `tree/main`, and says "check after each connected change", with how to
   stage a supporting type, since checking after every file refuses a type
   written before its user (`layout.unused_declaration`).
-- [ ] **A13 A broken test environment says so once** `opus · high`: a
-  PostgreSQL that can't start (a sandbox's shared memory) is one environment
-  diagnostic marked `(human)` at the top level, not five `internal_fault`s
-  under a `test.failed` an agent is told to fix.
+- [x] **A13 A broken test environment says so once**: area 13, "The test database"; area 14, "`jadpo test`"; `docs/errors/test.database_unavailable.md`.
 - [ ] **A14 Small diagnostics from the run** `opus · high`: a domain renamed
   in a project with no commits is the agent's to do, since no one depends on
   it yet; the first `type.mismatch` shows the expected shape and its edit;

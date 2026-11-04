@@ -559,6 +559,8 @@ fn parse(args: &[String]) -> Result<Parsed, Box<Diagnostic>> {
     for (name, value) in flags {
         match (name.as_str(), value) {
             ("--json", None) => {}
+            // Read by the commands that shorten what they report.
+            ("--full", None) => parsed.flags.push("--full"),
             ("--help", None) => parsed.help = true,
             ("--version", None) if command.is_none() => parsed.version = true,
             ("--color", Some(value)) => {

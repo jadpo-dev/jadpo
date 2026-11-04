@@ -157,6 +157,10 @@ pub struct Options {
     /// Keep each test's outcome-and-effect record ([`TestRecord`]), for
     /// the differential run (chunk 8.1c). Off, nothing is recorded.
     pub record: bool,
+    /// `--full`: repeats and passing tests are kept in what the run reports
+    /// rather than shortened (chunk A14), and all PostgreSQL said when the
+    /// test database can't start (chunk A13).
+    pub full: bool,
 }
 
 /// How a request to run tests ended.
@@ -250,6 +254,17 @@ impl Run {
 
     pub fn passed(&self) -> usize {
         self.results.len() - self.failed()
+    }
+
+    /// Whether a failed test ended in a fault only a person can act on:
+    /// one whose `next` is marked `(human)`.
+    pub fn needs_a_person(&self) -> bool {
+        self.results.iter().any(|result| {
+            result.failure.as_ref().is_some_and(|failure| {
+                matches!(&failure.detail, outcome::Detail::Fault(info)
+                    if info.next.as_deref().is_some_and(|next| next.ends_with("(human)")))
+            })
+        })
     }
 }
 
@@ -484,8 +499,7 @@ pub(crate) fn choose_and_run(
     let databases = (!steps.is_empty() && users > 0)
         .then(|| database::TestDatabases::new(steps.clone(), options.keep_failed).for_tests(users));
     // A server without an extension the migrations create, or with too
-    // old a one, stops the run before any test does; anything else that
-    // keeps a test database from being made is each test's fault to report.
+    // old a one, stops the run before any test does.
     if let Some((store, error)) = databases.as_ref().and_then(|databases| databases.refused())
         && matches!(
             error,
@@ -495,6 +509,19 @@ pub(crate) fn choose_and_run(
         )
     {
         return Ran::Unmigrated { store, error };
+    }
+    // A server that can't be used says so once, before any test, not in
+    // every test that needs it (chunk A13).
+    if let Some(error) = databases
+        .as_ref()
+        .and_then(|databases| databases.unavailable())
+    {
+        return Ran::Stopped(Box::new(database::unavailable_diagnostic(
+            &error,
+            users,
+            ordered.len() - users,
+            options.full,
+        )));
     }
     let failures = run::run_all(
         prepared,
@@ -668,4 +695,67 @@ pub fn discover(graph: &Graph) -> Vec<Test> {
         .collect();
     tests.sort_by(|a, b| (&a.file, a.line).cmp(&(&b.file, b.line)));
     tests
+}
+
+#[cfg(test)]
+mod a_person_tests {
+    use super::*;
+
+    fn failed_with(next: &str) -> TestResult {
+        let located = outcome::Located {
+            path: "a.test.jadpo".to_string(),
+            start: 0,
+            end: 0,
+            line: 1,
+            column: 1,
+            end_line: 1,
+            end_column: 1,
+            source: String::new(),
+            length: 0,
+            label: String::new(),
+        };
+        TestResult {
+            test: Test {
+                key: "test".to_string(),
+                name: "test".to_string(),
+                file: "a.test.jadpo".to_string(),
+                line: 1,
+                end_line: 1,
+                kind: TestKind::Action,
+            },
+            failure: Some(Box::new(TestFailure {
+                rule: &rule::TEST_FAULT,
+                delivery: None,
+                crash: None,
+                location: located,
+                detail: outcome::Detail::Fault(Box::new(outcome::FaultInfo {
+                    kind: "internal_fault".to_string(),
+                    subject: "internal_fault in action a".to_string(),
+                    rule: None,
+                    at: None,
+                    reason: None,
+                    next: Some(next.to_string()),
+                    stack: Vec::new(),
+                })),
+                rerun: String::new(),
+                kept: Vec::new(),
+            })),
+            record: None,
+        }
+    }
+
+    #[test]
+    fn a_fault_for_a_person_is_seen_at_the_top_of_the_run() {
+        let run = |next: &str| Run {
+            seed: 1,
+            root: None,
+            selection: Selection::default(),
+            total: BTreeMap::new(),
+            results: vec![failed_with(next)],
+            alerts: Vec::new(),
+            elapsed: Duration::ZERO,
+        };
+        assert!(run("Check the database it runs against (human)").needs_a_person());
+        assert!(!run("Bound the values (agent)").needs_a_person());
+    }
 }

@@ -25,7 +25,9 @@ subcommands. Run them anywhere inside your project: each finds the project
 by walking up from the current folder to `app.jadpo`, so you only give a
 path to work on another project. Every subcommand takes `--json`, for
 output an agent reads instead of prose, except the interactive modes,
-which need a terminal.
+which need a terminal. Every subcommand takes `--full` too: a report keeps
+what an agent reads short, and `--full` shows everything it left out, in
+either form.
 
 Commands have plain synonyms where people reach for either word, such as
 `fmt` and `format`, and an unknown command suggests the nearest. Tab
@@ -166,6 +168,10 @@ the build is broken it shows the errors and runs nothing. With `--json` it
 writes one envelope per line. Ctrl-c quits.
 
 `--keep-failed` keeps a failed test's database and names it in the report.
+
+When the tests need a database and none can be had, no test runs and the
+one error is [`test.database_unavailable`](../errors/test.database_unavailable.md),
+marked `(human)` ([The test database](13-testing.md#the-test-database)).
 
 ### `jadpo build`
 

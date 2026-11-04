@@ -1649,6 +1649,15 @@ PostgreSQL, unless the application declares otherwise
 the PostgreSQL tools on your machine. To use a server of your own, in CI
 for example, name it in `JADPO_TEST_DATABASE_URL`.
 
+When the tests need a database and there is none to be had, because
+PostgreSQL isn't installed, can't start (a sandbox with no shared memory,
+say) or the named server can't be used, no test runs. The run ends in one
+error, [`test.database_unavailable`](../errors/test.database_unavailable.md),
+marked `(human)`, with the line that says why; `--full` shows all PostgreSQL
+said. Nothing in the project is wrong, so no test is reported as failing and
+the last run's failures stay what `--failed` reruns. Tests that need no
+database still run under `jadpo test --kind pure`.
+
 ### A copy for each test
 
 `jadpo test` builds one template database from the migrations, and copies

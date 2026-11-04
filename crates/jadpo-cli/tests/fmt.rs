@@ -303,6 +303,7 @@ Flags
 
 On every command
   --json        Print data for tools instead of text
+  --full        Show everything a report shortens, repeats included
   --help        Show every flag, with examples
   --color       Choose when to use colour     auto, always, never
 
