@@ -7,7 +7,8 @@ Erasing a person would clear a field that can't be `none`: a reference whose rec
 Erasure keeps some records without the person. One kept with
 `Erasure.anonymised`, which an `OnDelete.cleared` reference means, loses
 its reference to the person and every field marked `personal:` or typed
-`Email`. One kept
+`Email`, `EmailWithName`, `PhoneNumber`, `PersonName`, `GivenName`, `FamilyName`
+or `PostalAddress`. One kept
 with `Erasure.retained` loses only the reference. A field whose type
 doesn't end in `?` must always hold a value, so erasure couldn't clear
 it, and the person's data would stay. A person's own record kept with
@@ -75,6 +76,42 @@ decides whether a person's comments outlive them.
 A reference erasure clears is refused the same way. `Erasure.retained`
 or `Erasure.anonymised` on `author_id: User.id`, which can't be `none`,
 keeps the comment while it still points at someone who is gone.
+
+A contact detail or a person's name is refused the same way with no mark,
+since it [holds personal data without saying so](../language/15-personal-data.md#contact-details-and-names-need-no-mark):
+
+```jadpo check project=e-erase-field-required-no-mark expect=data.erase_field_required
+entity User {
+    id: Uuid
+    email: Email
+
+    person: true
+}
+
+entity Order {
+    id: Uuid
+    buyer_id: User.id? {
+        on_delete: OnDelete.cleared
+    }
+    delivery_phone: PhoneNumber
+}
+```
+
+```text output
+error: Erasing a `User` can't clear `Order.delivery_phone`
+ --> main.jadpo:13:5
+   |
+10 |     buyer_id: User.id? {
+   |     -------- keeps the record without the person
+13 |     delivery_phone: PhoneNumber
+   |     ^^^^^^^^^^^^^^ personal data that can't be `none`
+  reason: `buyer_id` is `OnDelete.cleared`, which means `Erasure.anonymised`: erasing a `User` keeps each order that refers to them, clearing the reference and every marked field. `delivery_phone` is a phone number, which counts as `PersonalData.contact`, and only an optional field (`PhoneNumber?`) can be cleared.
+  next: Make `delivery_phone` `PhoneNumber?`, or say `erase: Erasure.deleted` on `buyer_id` to delete the order instead (human)
+  rule: data.erase_field_required
+  help: https://jadpo.dev/docs/errors/data.erase_field_required
+
+check failed: 1 error, 1 file
+```
 
 ## How to fix it
 
@@ -177,4 +214,5 @@ user still keeps them, with `author_id` set to `none`.
 
 - [Erasure](../language/15-personal-data.md#erasure)
 - [Marking personal fields](../language/15-personal-data.md#marking-personal-fields)
+- [Contact details and names need no mark](../language/15-personal-data.md#contact-details-and-names-need-no-mark)
 - [Values that may be missing](../language/02-values-and-types.md#values-that-may-be-missing)

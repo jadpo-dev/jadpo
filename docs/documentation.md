@@ -45,6 +45,7 @@ area page lists it under `## Errors`.
 | Guides: their index, then one page per common job, each its own project | `docs/guides/README.md`, `docs/guides/NN-*.md` |
 | How user pages are written | `docs/writing.md` |
 | The language, by topic | the area pages, `docs/language/NN-*.md` |
+| How the reference is grouped for a reader | `docs/reference.toml`, under [The reference's manifest](#the-references-manifest) |
 | One page per compiler error | `docs/errors/<rule.id>.md` (examples), with the rule's summary from the compiler's catalogue (`jadpo help --json`) |
 | Why the language is the way it is | each area's design notes, `docs/language/notes/NN-*.md`, kept apart from what an app author reads |
 | Commands | generated from `jadpo help --json` |
@@ -93,7 +94,9 @@ or old ID that isn't kebab case or is used twice, an ID line anywhere else,
 and a topic over 3,000 words as the bundle gives it, which is split. It
 also fails an area page that names an area or a question by number, as
 in "(area 8)", "area 8's" or "question 2", outside code. The design notes
-are exempt, since that is where question numbers belong.
+are exempt, since that is where question numbers belong. A new topic also
+adds its line to [the reference's manifest](#the-references-manifest), and the
+check says so until it does.
 
 ## The bundle
 
@@ -104,6 +107,7 @@ pages.
 ```text
 bundle/
   index.json                   one entry per page
+  nav.json                     how the reference is grouped, as a tree
   primer.md
   learn/<id>.md                the Learn path: the outline, then each page
   guides/<id>.md               the guides: their index, then each guide
@@ -127,6 +131,10 @@ markdown), the `area` it comes from (`null` for the primer, the Learn
 path and the guides, 14 for a command, and for a standard type the area
 its description cites, 19 for most), and the IDs it `links` to. A renamed topic's
 entry also has `aliases`, its old IDs; no other entry has the field. A
+page the [reference's manifest](#the-references-manifest) places (a topic, a
+standard type, a command) also has its `group` and its `page`, each a title,
+`page` being `null` directly under a group, and its `status`; no other entry
+has those. A
 page's path follows
 from its kind and ID. `learn` and `guide` pages are the user layer, and `topic`
 pages the reference; each area's "What is built" topic is titled
@@ -196,6 +204,79 @@ the compiler does.
 it into `build/docs-bundle/`, and on `main` CI keeps that folder as the
 `docs-bundle` artifact. A release attaches the bundle to its GitHub
 Release.
+
+## The reference's manifest
+
+The area pages are the language's order, which is how the people changing it
+read it. A reader looks by subject, so `docs/reference.toml` says how the
+reference is grouped: ten groups, each with its pages and sections, placing
+every topic exactly once. Text stays on its area page, and files, area numbers
+and `area` in the index don't change. A topic's title is its heading's, so a
+page has one name wherever it shows.
+
+A node (a group, a page or a section) has a `title`, and any of these:
+
+| Key | What it does |
+|---|---|
+| `id` | Its landing page. A topic of that ID is placed by it. An ID no page has is a landing page to be made, which needs a `summary` |
+| `summary` | One line on the node; without it, its landing's or its first topic's |
+| `topics` | Its topics in reading order |
+| `details` | Its exact rules and internals, listed after its usage |
+| `built` | Its "What is built" topics, which stay out of the sidebar |
+| `types` | One of the compiler's groups of standard types, listed after its topics |
+| `commands` | `true` on the one node listing every command, after its topics |
+| `status` | The "What is built" rows it reports, each `<area file>: <the start of the row's first cell>` |
+| `missing` | What a partly built node lacks, in a short phrase |
+| `href` | Only for a page the site writes itself: `/docs/errors` |
+
+`[topic_status]` gives a topic rows of its own, in the same form. A status is
+never written here: it comes from the first words of the row, `built`, `partly
+built` or `not built`, several rows saying `partly built` unless they agree. A
+topic's status is its own rows'. Without any, a node not built passes that on to
+everything under it, and otherwise its status goes on its landing or its first
+topic only, since the rest of a partly built page may be wholly built.
+
+The docs check fails a topic in no place or in two, an ID no topic has (saying
+the new ID when a renamed topic's old one is named), a status row that is gone
+or matches two, a row whose status starts with anything else, a partly built
+node with no `missing`, a "What is built" topic outside `built` or anything else
+in it, a compiler group of types in no place or two, commands in no place or
+two, a key nothing reads, and a node placing nothing.
+
+`nav.json` is the manifest worked out, so the site reads neither the manifest
+nor the tables:
+
+```json
+{
+  "version": "<jadpo's version>",
+  "groups": [
+    {
+      "id": "built-in-services",
+      "title": "Built-in services",
+      "summary": "…",
+      "href": "/docs/built-in-services",
+      "status": null,
+      "missing": null,
+      "topics": [],
+      "details": [],
+      "built": [
+        { "id": "built-in-services-built", "kind": "topic", "title": "…", "summary": "…",
+          "href": "/docs/built-in-services-built", "status": null }
+      ],
+      "children": []
+    }
+  ]
+}
+```
+
+Every node has those keys, `children` holding its pages or sections in the same
+shape, to any depth; `topics`, `details` and `built` hold entries in the shape
+shown. A `kind` is `topic`, `type` or `command`. A node's `id` is `null` when it
+has no landing of its own. `href` is always a page that exists: its landing, or
+until that page is made its first entry. A node's own landing topic isn't in its
+`topics`. `missing` is `null` unless `status` is `partly built`.
+
+A bundle from before this has no `nav.json` and no `group`, `page` or `status`.
 
 ## What the site serves
 
