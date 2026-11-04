@@ -394,8 +394,7 @@ What the Reddit thread found (Richard, 2026-11-03):
 - [ ] **D17e Landing pages and status lines** `opus · high`: each group has
   a landing page that links everything in it, and a page not fully built
   says so at its top, in its Markdown too.
-- [ ] **D17f Search that finds the docs** `opus · medium`: "deploy" and "send
-  email" find a guide or topic first, not error pages.
+- [x] **D17f Search that finds the docs**: `src/lib/search.ts` and `scripts/search.test.mjs` in jadpo-website.
 - [ ] **D17g What an agent reads first** `opus · high`: nothing tells an agent
   to read all of `index.json`, 173,000 tokens; about 9,000 once and under
   1,000 per lookup.
