@@ -1,0 +1,4 @@
+test "tidying keeps what is inside the text" {
+    var tidy: TidyText = attempt starter.tidied(" a b ")
+    assert tidy == "a b"
+}

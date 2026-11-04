@@ -10,7 +10,7 @@ Why [Standard library](../19-standard-library.md) is the way it is: the decision
 ## Consistency with the rest of the language
 
 - **Area 1:** `list`, `set`, `map`, `range`, `text`, `markup`, `money`,
-  `units`, `hash`, `encoding`, `crypto`, `random`, `json`, `csv`, `tsv`,
+  `units`, `bytes`, `hash`, `encoding`, `crypto`, `random`, `json`, `csv`, `tsv`,
   `json_lines`, `colour`, `media`, `web`, `semver`, `geo`, `ai` and
   `locale` are reserved namespaces; fields and named arguments keep every
   word (`note.text`, `set:`). It is `units` rather than `quantity`, since
@@ -74,7 +74,7 @@ Why [Standard library](../19-standard-library.md) is the way it is: the decision
 | JSON in memory | `json.read(text, as:)` and `json.write(value)`, one name per direction beside the batch forms; `mismatch` carries the first problem's path and rule; no dynamic JSON value; CSV file-only |
 | Data formats | The `csv`, `tsv`, `json_lines` and `json` file operations work through batches (area 12) and are tabled on this page, one shape per namespace with the in-memory `json` forms |
 | Validating mid-program | Construction is the way, nothing new for values or records; rules across an object's fields are area 2's |
-| Closed value sets are enums | A closed, authority-published, rarely changing list is a built-in enum (those marked "(enum)", `CountrySubdivision` included); large or fast-changing lists stay text with a `pattern:`; variants are the code in lower case with `_` (`Country.gb`), a reserved word or `all` taking a trailing `_`; text becomes an enum at a boundary and by `text.parse` mid-program, ignoring case; other code systems through `form: CodeForm.alpha3`; `text.format` gives the CLDR name and `.all` lists every variant of an enum without data; no matching of names; retired codes stay readable, and writing one is the declinable error `type.variant_retired` |
+| Closed value sets are enums | A closed, authority-published, rarely changing list is a built-in enum (those marked "(enum)", `CountrySubdivision` included); large or fast-changing lists stay text with a `pattern:`; variants are the code in lower case with `_` (`Country.gb`), `all` taking a trailing `_`, as `true`, `false` or `none` would (area 2, "Names from reserved words"); text becomes an enum at a boundary and by `text.parse` mid-program, ignoring case; other code systems through `form: CodeForm.alpha3`; `text.format` gives the CLDR name and `.all` lists every variant of an enum without data; no matching of names; retired codes stay readable, and writing one is the declinable error `type.variant_retired` |
 | `HttpMethod`'s variants | The five a route is written with (`get`, `post`, `put`, `patch`, `delete`), its codes RFC 9110's tokens |
 | A digest is `Bytes` | `hash.sha256` gives `Bytes`, written as text by `encoding` |
 | `crypto` | Ten operations with no algorithm choices: XChaCha20-Poly1305 with a required `context:`, Argon2id with `PasswordCheck.correct_outdated`, HMAC-SHA-256 checked in constant time, Ed25519, JWT and TOTP checks; keys are opaque settings written `key: config.<name>`, a compiler-owned place; `crypto.public_key` gives a `PrivateKey` setting's public half |

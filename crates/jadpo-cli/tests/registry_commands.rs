@@ -1230,6 +1230,42 @@ fn publish_refuses_a_package_with_no_publisher_and_asks_nothing() {
 }
 
 #[test]
+fn publish_refuses_a_proprietary_package_and_asks_nothing() {
+    let world = ready("registry-proprietary");
+    // Its licence is on the surface, so going private is a new major version.
+    write(
+        &world.package,
+        "package.jadpo",
+        &super::packages::INDEX
+            .replace("Licence.mit", "Licence.proprietary")
+            .replace("Postcodes.v2", "Postcodes.v3"),
+    );
+    plain(&world.package, &["package", "check"]);
+    let log = std::fs::read_to_string(world.package.join("CHANGELOG.md")).expect("changelog");
+    write(
+        &world.package,
+        "CHANGELOG.md",
+        &log.replacen("## 2.0.0", "Now private to Acme.\n\n## 2.0.0", 1),
+    );
+    let checked = plain(&world.package, &["package", "check"]);
+    assert_eq!(checked.code, 0, "{}", checked.stdout);
+    git(&world.package, &["add", "-A"]);
+    git(&world.package, &["commit", "-q", "-m", "private"]);
+    git(&world.package, &["tag", "v3.0.0"]);
+    git(&world.package, &["push", "-q", "origin", "main", "v3.0.0"]);
+    let refused = with(&world.url, &world.package, &["package", "publish"]);
+    assert_eq!(refused.code, 1, "{}{}", refused.stdout, refused.stderr);
+    assert!(
+        refused
+            .stdout
+            .contains("rule: publish.licence_proprietary\n"),
+        "{}",
+        refused.stdout
+    );
+    assert!(world.registry.started().is_empty());
+}
+
+#[test]
 fn add_refuses_files_that_name_another_publisher() {
     let (_dir, package, app) = workspace("registry-add-publisher");
     let registry = LocalRegistry::new();

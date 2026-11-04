@@ -581,3 +581,38 @@ fn a_pair_of_numbers_is_a_point_in_the_order_its_name_says() {
         );
     }
 }
+
+/// A record names its type alone: its type arguments come from its place or
+/// its fields (area 20, "Interop"). `Feature<Point, P> { ... }` once compiled
+/// and then faulted `not_built_yet` when run, so it is refused where it is
+/// written, with the spelling that works.
+#[test]
+fn a_record_with_type_arguments_is_refused_at_check() {
+    let refused = |head: &str, body: &str| {
+        let source = format!(
+            "{LAYER}/// A patch as a feature.\nfunction written(patch: DeliveryPatch) -> Exported {{\n    var made: Exported = {head} {{\n{body}    }}\n    return made\n}}\n"
+        );
+        assert_eq!(rules(&source), ["type.record_type_arguments"], "{head}");
+    };
+    let feature = "        geometry: patch.outline\n        properties: PatchProperties {\n            name: patch.name\n            note: none\n        }\n";
+    refused("Feature<Polygon, PatchProperties>", feature);
+    refused(
+        "FeatureCollection<Polygon, PatchProperties>",
+        "        features: []\n",
+    );
+    refused("Range<Int>", "        start: 1\n        end: 2\n");
+    refused(
+        "PatchProperties<Int>",
+        "        name: patch.name\n        note: none\n",
+    );
+    // The message says what to write instead, and its fix writes it.
+    let source = format!(
+        "{LAYER}/// A patch as a feature.\nfunction written(patch: DeliveryPatch) -> Exported {{\n    var made: Exported = Feature<Polygon, PatchProperties> {{\n{feature}    }}\n    return made\n}}\n"
+    );
+    assert_eq!(
+        problems(&source),
+        [
+            "main.jadpo type.record_type_arguments: `Feature<Polygon, PatchProperties>` is written `Feature { ... }`"
+        ]
+    );
+}

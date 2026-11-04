@@ -281,12 +281,11 @@ lock's. The local registry serves the table from memory over plain HTTP
 on `127.0.0.1` (`local::LocalRegistry::serve`), with its own log, for
 the `jadpo` tool's tests; its client, `http::fetch`, reaches only this
 machine. The registry application is built in another repository, so its
-CI runs the conformance test from a checkout of this one at the Jadpo
-release it targets, against its own served document:
-`JADPO_REGISTRY_OPENAPI=http://127.0.0.1:<port>/registry/v1/openapi.json
-cargo test -p jadpo-registry --test integration conformance::` (a file
-path works too); a Rust caller can use `conformance::check` as a git
-dependency.
+CI runs the conformance test with the `jadpo` release it targets, against
+its own document, and needs no Rust: `jadpo package protocol
+build/openapi/main.json`, or the address it is served at. That command reads
+an `https://` address through the tool's own download path, since `http::fetch`
+stays on this machine.
 
 **Dependency direction.** Compiler crates never depend on runtime crates,
 except `jadpo-interp`, which links the runtime it shares with compiled

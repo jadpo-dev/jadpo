@@ -12,7 +12,7 @@ test "a key without key_ops is kept and read back as none" {
             e: none
             kid: "plain"
             alg: none
-            use_: none
+            use: none
             key_ops: none
             x5c: none
         }

@@ -81,7 +81,7 @@ impl Shape {
             return Some(wire);
         }
         let (name, _) = self.fields.get(slot)?;
-        Some(jadpo_std::standard::wire_name(&self.ty, name))
+        Some(name)
     }
 
     /// Whether JSON may hold members it doesn't declare (area 11).

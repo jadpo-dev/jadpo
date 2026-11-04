@@ -504,7 +504,8 @@ Jadpo 0.3, so a package that has it declares that line or a later one.
 The licence is one of `Licence.mit`, `.apache_2_0`, `.bsd_2_clause`,
 `.bsd_3_clause`, `.isc`, `.mpl_2_0`, `.unlicense` and `.proprietary`.
 Only a package installed from git may be `.proprietary`; the public
-registry refuses it. There is no `requires:`, because packages have no
+registry refuses it
+([`publish.licence_proprietary`](../errors/publish.licence_proprietary.md)). There is no `requires:`, because packages have no
 dependencies, and no list of files.
 
 ```jadpo fragment
@@ -1395,7 +1396,10 @@ diffs the same two files.
 A package lives in its own repository. To start one, run
 `jadpo package new <Name> --library` or `--provider`. It writes the
 package format, plus `recipes/`, a `sample/` app that the recipes and
-tests run against, and `GUIDE.md`.
+tests run against, and `GUIDE.md`, with a small example of each to replace
+([`jadpo package new`](14-tooling.md#jadpo-package-new)). It passes `jadpo
+package check` as written. Its licence is `Licence.proprietary` until you
+choose another, and its publisher is whoever you name with `--publisher`.
 
 ### Developing it
 
@@ -1490,7 +1494,10 @@ description of every public message.
 > `publish.description_missing`; item 4's tests are the package's own
 > `.test.jadpo` files; item 5 works out the version from the surface at
 > the last tag and refuses a breaking change (`publish.breaking_change`);
-> item 7 is the index's own check. Item 8 is the `publisher` row: `check` says
+> item 7 is the index's own check and the `licence` row: `check` passes
+> `Licence.proprietary`, because a private package's CI runs it before a tag, and
+> `verify` and `publish` refuse it (`publish.licence_proprietary`). Item 8 is the
+> `publisher` row: `check` says
 > `left out` and passes, because a private package's CI runs it before a tag,
 > and `verify` and `publish` refuse the package
 > (`publish.publisher_missing`). Item 4's decoders are the `decoders`
@@ -1869,7 +1876,8 @@ it can send makes a release live.
   `package Postcodes.v2 version 2.1.0 registry @acme/postcodes digest
   sha256:…`.
 - **The registry application's served OpenAPI is checked against this
-  table** by a conformance test in the `jadpo` repository, run against a
+  table** by a conformance test, `jadpo package protocol <document>`
+  ([Tooling](14-tooling.md#jadpo-package-protocol)), also run against a
   local registry built from the same table, so neither side drifts. Every
   row must be served below `/registry/v1/` with its placeholders, query
   members, body, status, answer and failures, open to a caller who hasn't
@@ -1877,7 +1885,7 @@ it can send makes a release live.
   through any `$ref`, and what a Jadpo application adds that the table
   doesn't constrain (the runtime's shared failures, `x-jadpo-` keywords,
   an `Idempotency-Key` header) is left alone. The registry application's
-  CI runs it with `JADPO_REGISTRY_OPENAPI` set to its served document
+  CI runs it against its own document
   ([compiler/runtime §2.1](../compiler-runtime.md#21-workspace-and-crates)).
 
 ## The verifier
@@ -5714,7 +5722,6 @@ what `jadpo package check` and `jadpo package show` do.
 
 > Polls and capability mappings aren't in the surface yet, and settings,
 > webhooks, polls and erasure aren't in the provider's entry yet.
-> `jadpo package new` isn't built yet: it says `toolchain.not_built_yet`.
 
 ## How a release's facts, change record and fingerprints are worked out
 <!-- topic: how-a-releases-facts-change-record-and-fingerprints-are-worked-out -->
@@ -6369,8 +6376,8 @@ check.
   what to do, each `(agent)`, with `--json` for agents.
 - **Field and variant names on the wire.** A field or variant is the
   provider's name in `lower_snake_case`; where that differs (`collectAt`,
-  `after-noon`, or `type` written `type_value` to avoid a reserved word),
-  the importer writes the provider's spelling as the field's or variant's
+  `after-noon`, or a variant `none` written `none_value`, which no variant
+  can be called), the importer writes the provider's spelling as the field's or variant's
   `wire_name:` ([Decoding](#decoding)).
 
 > Importing Smithy, Postman, HAR and `.d.ts` isn't built yet: each is
@@ -7536,7 +7543,8 @@ package's name, as its types are.
 | Publisher trust for third-party git packages | Built: a package from a git repository under none of `packages:`'s `own_sources:` needs an [acceptance](18-records-and-manifest.md#acceptances), as does adding or widening an entry; an entry is `package.own_source_invalid` unless it is a host and a path ending in `/`. |
 | The registry protocol: its requests and answers, the log and its proofs, a local registry and the conformance test | Built (`jadpo-registry`). |
 | The `jadpo` tool's side of the public registry: `add` and `update` checked against the log, `search`, `audit`, `publish` and `preview` ([How the registry commands work](#how-the-registry-commands-work)) | Built, against the local registry. |
-| A package's publisher ([Names and publishers](#names-and-publishers)): `publisher:` in the index, on its surface and in its facts, the bar's `publisher` row, `jadpo package publish` and `verify --publisher`, the verifier's request and the local registry's check of a release | Built. `jadpo package new` will write it, and isn't built itself. The real registry's check comes with the registry. |
+| A package's publisher ([Names and publishers](#names-and-publishers)): `publisher:` in the index, on its surface and in its facts, the bar's `publisher` row, `jadpo package publish` and `verify --publisher`, the verifier's request and the local registry's check of a release | Built. The real registry's check comes with the registry. |
+| [Starting a package](#developing-and-publishing-a-package): `jadpo package new`, and the bar's `licence` row refusing `Licence.proprietary` for `verify` and `publish` | Built. |
 | The registry at jadpo.dev: publishing, search, advisories and compatibility runs | Not built yet. |
 | Importers other than OpenAPI | Not built yet. |
 | Choosing a provider when deploying | Not built yet. |
@@ -7800,6 +7808,7 @@ public type SlotTaken = Failure {
 - [`publish.too_large`](../errors/publish.too_large.md)
 - [`publish.publisher_missing`](../errors/publish.publisher_missing.md)
 - [`publish.publisher_mismatch`](../errors/publish.publisher_mismatch.md)
+- [`publish.licence_proprietary`](../errors/publish.licence_proprietary.md)
 
 
 ### Connection errors
