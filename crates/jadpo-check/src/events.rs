@@ -10,8 +10,8 @@
 //! placement"); an action that writes no store keeps it in the
 //! store `events: { store: }` names, and with none named it is
 //! `event.store_required`. A subscriber runs as the system (area 9,
-//! `Access.system`), so what it reaches that only `Access.public` grants
-//! (decided 2026-10-19), or that no list grants anyone (chunk A22), is
+//! `Access.system`), so what it reaches whose list doesn't name
+//! `Access.system` (decided 2026-10-19; chunks A22 and A23) is
 //! `policy.system_grant_missing`.
 //!
 //! Subscribers are read file by file ([`subscribers_in`]) and gathered
@@ -299,8 +299,8 @@ pub fn system_run_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
 
 /// `policy.system_grant_missing`: the action a schedule or a subscriber
 /// runs (`kind`, called `name`) reaches what only `Access.public` grants,
-/// which never lets the system in on purpose, or what no list grants
-/// anyone, which can only ever refuse it.
+/// which never lets the system in on purpose, what no list grants anyone,
+/// or what a list naming only people decides, which never let it in.
 pub(crate) fn system_refused(
     kind: &str,
     name: &str,
@@ -336,6 +336,19 @@ fn system_only(
     let every_run = |effect: Effect| match effect {
         Effect::Create => "so every run would be refused with `not_permitted`".to_string(),
         other => format!("so every run would find nothing to {}", other.word()),
+    };
+    // A list naming only people may be reached on a branch the system never
+    // takes, in an action a route runs too: splitting it is the other fix.
+    let people_why = |place: &str| {
+        format!(
+            "{place} names only people, and what the code could reach counts, whichever branch runs"
+        )
+    };
+    let split = |by: &Option<String>, doing: &str| match by {
+        Some(by) => format!(
+            "split `{by}` so the system's work is an action of its own that doesn't {doing}"
+        ),
+        None => format!("give the system its own query that doesn't {doing}"),
     };
     let (what, why, next) = match found {
         SystemRefused::PublicEntity { entity, effect } => (
@@ -395,6 +408,55 @@ fn system_only(
                 effect.word()
             ),
         ),
+        SystemRefused::People { entity, effect, by } => {
+            let place = format!("`{entity}`'s `{}:`", effect.word());
+            (
+                format!("{place} doesn't let in"),
+                people_why(&place),
+                format!(
+                    "Add `Access.system` to {place}, or {}",
+                    split(by, &format!("{} `{entity}`", effect.word()))
+                ),
+            )
+        }
+        SystemRefused::PeopleField {
+            entity,
+            field,
+            effect,
+            by,
+        } => {
+            let place = format!("`{entity}.{field}`'s own `{}:`", effect.word());
+            (
+                format!("{place} doesn't let in"),
+                people_why(&place),
+                format!(
+                    "Add `Access.system` to {place}, or {}",
+                    split(by, &format!("set `{field}`"))
+                ),
+            )
+        }
+        SystemRefused::PeopleLine { written } => {
+            let place = format!("`{written}`'s line under `actions:`");
+            (
+                format!("{place} doesn't let in"),
+                people_why(&place),
+                format!(
+                    "Add `Access.system` to {place}, or split `{written}` so the system's work is an action of its own"
+                ),
+            )
+        }
+        SystemRefused::ListedQuery { written } => {
+            let place = format!("`{written}`'s line under `actions:`");
+            (
+                format!("{place} can't let in"),
+                format!(
+                    "{place} is a listed query's, which can't name `Access.system`, whichever branch runs"
+                ),
+                format!(
+                    "Give the system its own query that isn't listed, or leave `{written}` out of what the system runs"
+                ),
+            )
+        }
     };
     Diagnostic::new(
         &rule::POLICY_SYSTEM_GRANT_MISSING,

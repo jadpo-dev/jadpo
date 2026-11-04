@@ -147,10 +147,9 @@ hourly purge schedule from the compiler, such as `Member.purge` for
   its code and kind. Due schedules run side by side, so one long run
   holds no other up.
 - **Grants.** A schedule runs as the system, so the records it reaches
-  must name `Access.system` in their policy. A schedule reaching what
-  only `Access.public` grants, or what no list grants anyone, is
-  `policy.system_grant_missing`, as a subscriber or a batch is
-  ([Background work](09-policy.md#background-work)).
+  must name `Access.system` in their policy. A schedule reaching a list
+  that doesn't name it is `policy.system_grant_missing`, as a subscriber
+  or a batch is ([Background work](09-policy.md#background-work)).
 
 ### The tick
 
@@ -1212,10 +1211,10 @@ in, as for a schedule or a subscriber
 ([Background work](09-policy.md#background-work)). Suppose what `from:`'s
 query reads, or what the action `each:` or `finished:` calls reaches
 (itself or through what it calls), has a grant list, a field's own list
-or a line under `actions:` that names `Access.public` and not
-`Access.system`, or does something no list grants anyone. Then that is
-`policy.system_grant_missing`, at that query's or action's call. Each call is checked, so one batch may be
-refused at more than one.
+or a line under `actions:` that doesn't name `Access.system`, or is a
+listed query. Then that is `policy.system_grant_missing`, at that query's
+or action's call. Each call is checked, so one batch may be refused at
+more than one.
 
 A batch's query that only `Access.public` may read:
 
@@ -1965,9 +1964,13 @@ A subscriber's action may emit further events.
 A subscriber runs as the system (`Access.system`,
 [Background work](09-policy.md#background-work)), not as the user who
 caused the event. If it needs to know who, put a field such as
-`by: User.id` in the event. What its action does that no list grants
-anyone is `policy.system_grant_missing`, so a write with no grant fails at
-`jadpo check`, not as a failed delivery.
+`by: User.id` in the event. What its action could reach whose list doesn't
+name `Access.system` is `policy.system_grant_missing`, so a write it could
+never make fails at `jadpo check`, not as a failed delivery.
+
+The system may write a `FieldAccess.server_only` field, as any other, where
+the record's own list names `Access.system`: the field keeps out requests,
+and the system is none.
 
 ### What a subscriber stores from its event
 

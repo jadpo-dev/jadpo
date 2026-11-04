@@ -130,6 +130,7 @@ mod search;
 mod seeds;
 mod sends;
 mod served_openapi;
+mod server_only_writes;
 mod settle;
 mod short_output;
 mod side_by_side;

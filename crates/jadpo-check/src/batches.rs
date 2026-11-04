@@ -7,9 +7,8 @@
 //! `key:`), as a subscriber is limited to its event's one field holding
 //! one ([`crate::events::Tenant`]); with none, or values naming different
 //! tenants, it reaches no tenant's records. What its query reads and its
-//! actions reach that only `Access.public` grants, or that no list grants
-//! anyone, is `policy.system_grant_missing`, as for a schedule or a
-//! subscriber.
+//! actions reach whose list doesn't name `Access.system` is
+//! `policy.system_grant_missing`, as for a schedule or a subscriber.
 
 use jadpo_db::{Db, File, Project};
 use jadpo_diag::{Diagnostic, Span};
@@ -89,8 +88,8 @@ pub fn run_tenant(
 
 /// `policy.system_grant_missing` for each batch an action in `file`
 /// starts: its `from:` query reading, or the action `each:` or
-/// `finished:` calls reaching, what only `Access.public` grants or no list
-/// grants anyone (area 9), at that query's or action's call.
+/// `finished:` calls reaching, what a list doesn't let the system in to
+/// (area 9), at that query's or action's call.
 #[salsa::tracked(returns(ref))]
 pub fn batch_grant_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     let mut out = Vec::new();

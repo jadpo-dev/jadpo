@@ -7252,8 +7252,9 @@ kept and limited.
   reply follows the action's commit rather than joining it, since the
   action may write another store: if that statement fails, a retry after
   the claim lapses runs the action again.
-- **What a reply may show.** What only `Access.public` lets the reply
-  action in to is `policy.system_grant_missing` at its `replies:` entry.
+- **What a reply may show.** What the reply action reaches whose list
+  doesn't name `Access.system` is `policy.system_grant_missing` at its
+  `replies:` entry.
   The reply goes back to whoever sent the webhook, so each field it
   carries, or that decided it, is one anyone at all may read
   (`policy.output_field_unproved`), a record the action created holding
