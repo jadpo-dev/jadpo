@@ -42,7 +42,7 @@ package, `@you/postcodes`, and its name in code can stay:
 package Postcodes.v2 {
     publisher: "@you"
     licence: Licence.mit
-    jadpo: "0.3"
+    jadpo: "X.Y"
 }
 ```
 
@@ -51,7 +51,7 @@ package Postcodes.v2 {
 package Postcodes.v2 {
     publisher: "@you"
     licence: Licence.mit
-    jadpo: "0.3"
+    jadpo: "X.Y"
 }
 ```
 

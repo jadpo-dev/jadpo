@@ -499,7 +499,7 @@ registry, as a handle: `publisher: "@acme"` for `@acme/postcodes`.
 A package only used by path or from git may leave `publisher:` out, since
 nothing is published and no one is named. The publishing bar asks for it
 ([What publishing requires](#what-publishing-requires)). The key came with
-Jadpo 0.3, so a package that has it declares `jadpo: "0.3"` or later.
+Jadpo 0.3, so a package that has it declares that line or a later one.
 
 The licence is one of `Licence.mit`, `.apache_2_0`, `.bsd_2_clause`,
 `.bsd_3_clause`, `.isc`, `.mpl_2_0`, `.unlicense` and `.proprietary`.

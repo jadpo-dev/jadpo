@@ -38,7 +38,7 @@ error: `Postcodes.v2` names no publisher
 package Postcodes.v2 {
     publisher: "@acme"
     licence: Licence.mit
-    jadpo: "0.3"
+    jadpo: "X.Y"
 }
 ```
 
@@ -47,7 +47,7 @@ package Postcodes.v2 {
 package Postcodes.v2 {
     publisher: "@acme"
     licence: Licence.mit
-    jadpo: "0.3"
+    jadpo: "X.Y"
 }
 ```
 
