@@ -414,9 +414,7 @@ What the Reddit thread found (Richard, 2026-11-03):
 - [ ] **D17k Implementer history out of the topics** `opus · medium`, with a
   check.
 - [ ] **D17l The guides index grouped** `opus · medium`.
-- [ ] **D17m The ten guides** `opus · high`, one pull request each: email,
-  flags, rate limits, search, audit, webhooks received, file export,
-  translations, AI, tenancy. Each compiles and its tests pass.
+- [x] **D17m The ten guides**: `docs/guides/12-send-an-email.md` to `21-keep-customers-data-apart.md`.
 - [ ] **D17n Review** `opus · high`: one independent review of the whole and
   a cold read of a service from its landing page.
 

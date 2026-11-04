@@ -443,6 +443,8 @@ under "What a run reaches under policy".
 ## Tenancy
 <!-- topic: tenancy -->
 
+[Keep customers' data apart](../guides/21-keep-customers-data-apart.md) does the whole job, start to finish.
+
 Use tenancy when your app is shared by many customer companies, so that
 one company never sees another's data. Each customer is a tenant: one
 record of an entity you choose, such as `Company`.
