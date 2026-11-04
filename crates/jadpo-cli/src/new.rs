@@ -23,8 +23,8 @@ use jadpo_term::{Block, Json, Outcome, Screen};
 use crate::run::{Call, Reply};
 
 // The project's files: `SCAFFOLD`, each project path with its text, from
-// `scaffold/` (build.rs). `{line}`, `{name}` and `{suggestions}` are
-// filled in as it is written.
+// `scaffold/` (build.rs). `{line}`, `{name}`, `{release}` and
+// `{suggestions}` are filled in as it is written.
 include!(concat!(env!("OUT_DIR"), "/scaffold.rs"));
 
 /// The fixed root's folders that start empty.
@@ -220,6 +220,7 @@ fn write_project(
         let text = template
             .replace("{name}", name)
             .replace("{line}", line)
+            .replace("{release}", crate::help::VERSION)
             .replace("{suggestions}", &suggestions);
         written
             .file(path, &text)

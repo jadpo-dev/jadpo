@@ -89,12 +89,15 @@ todo-app/
   where the docs are (the primer, the index and the error pages on the
   site, as [How an agent uses it](../documentation.md) describes), and
   which commands to run after a change. It gives an agent a working
-  method: one concern at a time, `jadpo check` after each file, one
+  method: one concern at a time, `jadpo check` after each connected
+  change (a declaration and the first thing that uses it, since a
+  supporting type alone is `layout.unused_declaration`), one
   topic read rather than a whole page, a feature declared and checked
   before it is designed around, `jadpo help <rule>` for an error, and
   `jadpo acceptance new` then a stop for a change that needs a person
   ([Acceptances](18-records-and-manifest.md#acceptances)). It ends with
-  the closest teaching example for each feature and what isn't built
+  the closest teaching example for each feature, linked at this
+  `jadpo`'s own release, and what isn't built
   yet, area by area, both written from the docs by
   `tools/docs/agent_guidance.py`, so they can't drift from them. `.gitignore` holds `build/`, and
   `.gitattributes` holds the lines that keep records readable in a diff

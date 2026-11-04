@@ -47,25 +47,31 @@ the same as any other API.
 
 ## Install it
 
-You build `jadpo` from its source code, so you need Git, and Rust
-installed through [rustup](https://rustup.rs). The repository pins the
-version of Rust it needs, and rustup fetches it on the first build.
+Pick one of these. Each puts `jadpo` on your `PATH`, and you install it
+once, not once per project.
+
+On macOS or Linux:
 
 ```sh
-git clone https://github.com/jadpo-dev/jadpo.git
-cd jadpo
-cargo build --release --locked -p jadpo-cli
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/jadpo-dev/jadpo/releases/latest/download/jadpo-cli-installer.sh | sh
 ```
 
-The first build can take several minutes. It puts the program at
-`target/release/jadpo`. So that you can type `jadpo` in any folder and
-any new terminal, add that folder to your `PATH` in your shell's
-startup file. Run this from the `jadpo` folder; it writes the folder's
-full path into the file. On a Mac the file is `~/.zshrc`; on most Linux
-systems use `~/.bashrc` instead:
+On Windows, in PowerShell:
 
 ```sh
-echo "export PATH=\"$PWD/target/release:\$PATH\"" >> ~/.zshrc
+powershell -c "irm https://github.com/jadpo-dev/jadpo/releases/latest/download/jadpo-cli-installer.ps1 | iex"
+```
+
+With Homebrew:
+
+```sh
+brew install jadpo-dev/tap/jadpo
+```
+
+With npm:
+
+```sh
+npm install -g @jadpo/jadpo
 ```
 
 Open a new terminal, and check that `jadpo` runs:
@@ -78,6 +84,12 @@ jadpo --version
 jadpo X.Y.Z
 ```
 
+Each project names the Jadpo release line it is written for, and whichever
+`jadpo` you run fetches and runs that release for it, so projects on
+different releases work side by side.
+
+## Install PostgreSQL
+
 From page 4 on, the app stores its data in PostgreSQL, so install
 PostgreSQL now if you don't have it, from postgresql.org or your package
 manager. You don't create a database or set a password: when you run or
@@ -88,8 +100,8 @@ or where the usual installers put them.
 ## Start a project
 
 `jadpo new` starts a project, which is the todo app the rest of these
-pages build. Make it outside the `jadpo` folder you built from, for
-instance in your home folder:
+pages build. Make it wherever you keep your work, for instance in your
+home folder:
 
 ```sh
 cd ~
@@ -163,11 +175,3 @@ get an agent started, ask it to read the primer and then follow these
 pages with you.
 
 Next: [A project and your first route](02-first-route.md).
-
-## Not built yet
-
-There is no installer yet, so you build from source as above. Prebuilt
-downloads, Homebrew (`brew install jadpo-dev/tap/jadpo`) and `npx @jadpo/jadpo` come with the first release. Each project names
-the Jadpo release line it is written for, and whichever `jadpo` you run
-fetches and runs that release for it, so projects on different releases
-work side by side.
