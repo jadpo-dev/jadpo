@@ -20,6 +20,7 @@ instead.
 | [Call an outside API](06-call-an-outside-api.md) | a typed description of another service, called through a connection and faked in tests |
 | [Run background work](07-run-background-work.md) | a schedule that starts a batch, an event with its subscriber, and a test of the whole run |
 | [Write tests](08-write-tests.md) | action and route tests, fixtures, a fixed clock and tests signed in as someone |
+| [Ship a change behind a flag](13-ship-a-change-behind-a-flag.md) | a change deployed switched off, both sides tested, turned on with no deploy, and the flag removed |
 | [Get a person's sign-off](09-get-a-sign-off.md) | an acceptance for a change that could break someone, with a person's reason |
 | [Deploy natively](10-deploy-natively.md) | the app built into one program, running against a real database |
 | [Deploy to Cloudflare Workers](11-deploy-to-workers.md) | the app built as a Worker, reaching its database through Hyperdrive |
