@@ -431,7 +431,7 @@ approved (Richard, 2026-10-31). The chunks here come after the A chunks
 above and before every other unticked chunk.
 
 0.2.0 shipped without V2. **0.3.0 holds** everything in this section, R1 to
-R6, everything the registry application (R7) needs from `jadpo`, the real
+R6, G1 to G5 (what the registry application, R7, needs from `jadpo`), the real
 deploy (8.2n) and what it finds, and D15, D16 and A12 to A15 (Richard,
 2026-11-03). It is released when those have merged. V1 and V3 to V5 run at the same time as each other and as R1
 and R4, where they touch different crates.
@@ -452,11 +452,9 @@ protection, a domain renamed with `jadpo domain rename`.
 - [x] **V5 Where personal data goes**: area 15, "Marking personal fields"
   and "Where personal data goes"; area 14, `jadpo package check`;
   compiler/runtime §2.3, "Where personal data goes".
-- [ ] **V6 Personal data a connection can't erase** `opus · high` after V5:
-  area 15, "Erasure at providers"; area 18, `ErasureNotPossible`. A
-  connection that receives a marked field, whose package declares no
-  `erasure:`, needs an `ErasureNotPossible` acceptance with the reason the
-  data stays; the approval report shows the personal-data report's diff.
+- [x] **V6 Personal data a connection can't erase**: area 15, "Erasure at
+  providers"; area 18, `ErasureNotPossible`; area 17, "Reviewing a change";
+  compiler/runtime §2.3, "Erasure at providers".
 
 ## The public registry
 
@@ -492,11 +490,32 @@ real deploy) and, before outside authors can publish, D3 (releases).
   account and the steps in [documentation](documentation.md#versions-and-releases):
   the repository variable `JADPO_VERIFIER_IMAGE` set to `on`, the app and its
   credential on Fly.io, then the image deployed. Before R7 can reach it.
+- [ ] **G1 Reserved words as names** `opus · high`: area 2 and area 1,
+  "Reserved words". Inside a type body a reserved word may name a field or an
+  enum variant, where `package: Text` and `Kind.library` are unambiguous
+  (Richard, 2026-11-03). An `Output` with a `type` field works in any app.
+- [ ] **G2 A `GET` that runs a read-only action** `opus · high` after G1: area
+  7, "What a route runs"; area 3. A `GET` still runs a named query, or an
+  action the graph proves writes nothing, emits nothing and makes no changing
+  call (Richard, 2026-11-03), so it can work a value out, raise several
+  failures and call `ai.embed`.
+- [ ] **G3 A route that sends raw bytes** `opus · high` after G2: area 7,
+  "Output and status" and OpenAPI; area 18, the API record. `sends:
+  "application/x-tar"` on an `Output` with exactly one `Bytes` field; that
+  field is the body, and failures stay JSON (Richard, 2026-11-03). Also `cache:
+  immutable`, for an answer that never changes.
+- [ ] **G4 A route's `rate_limit:`** `opus · high`: area 16's route limits. The
+  registry's `POST releases` is anonymous and starts verifications, and the
+  default 120 a minute per address doesn't fit it.
+- [ ] **G5 Small gaps the registry found** `opus · high`: `authentication: []`
+  honoured on `openapi.json`, which is accepted and ignored today; a `jadpo`
+  command that runs R4's conformance test against a document, so R7's CI needs
+  no Rust; `bytes.concat`.
 - [ ] **R7 The registry application** **needs a maintainer** to start the
-  jadpo.dev session, after R1, R4 and R6: built against the protocol and
-  passing R4's conformance test. Until the S3 driver its archives are kept
-  in PostgreSQL; until the search capability its word search is its own
-  queries over each package's written account.
+  jadpo.dev session, after R1, R4, R6, R6b, 8.2n and G1 to G5: built against the
+  protocol and passing R4's conformance test. Until the S3 driver its archives
+  are kept in PostgreSQL, and its database must offer pgvector 0.8. Word search
+  is `search:` with `matches`.
 
 After the registry is live, in order:
 
@@ -578,8 +597,10 @@ After the registry is live, in order:
      records go, a generated subscriber calling the package's `erasure:`
      operation after commit and retrying until it confirms, a delivery
      that gives up parked and shown, and a key that is personal data
-     kept only in the outbox until it is delivered. V6 reads the
-     declarations and builds `ErasureNotPossible`. Done when a test
+     kept only in the outbox until it is delivered. V6 read the
+     declarations and built `ErasureNotPossible`; this takes away the
+     personal-data report's line saying Jadpo doesn't call a provider's
+     `erasure:` yet. Done when a test
      erasing a person sees each fake provider's erasure called once,
      after the commit.
    - [ ] **P7 Marked fields in logs and access records** `opus · high`

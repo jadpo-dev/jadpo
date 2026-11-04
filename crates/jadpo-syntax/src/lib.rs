@@ -58,6 +58,9 @@ pub struct Parse {
     errors: Vec<SyntaxError>,
     /// Whether a second mistake on a line with an error went unreported.
     suppressed: bool,
+    /// Whether that mistake was a reserved word read as a name, which
+    /// [`Parse::checkable_reading_names`] allows and no edit fixes.
+    name_suppressed: bool,
 }
 
 impl Parse {
@@ -78,7 +81,7 @@ impl Parse {
     /// only renames or drops tokens, and nothing else went wrong, so the
     /// rest of the project can still be checked.
     pub fn checkable(&self) -> bool {
-        !self.suppressed && self.errors.iter().all(|error| error.clean)
+        !self.suppressed && !self.name_suppressed && self.errors.iter().all(|error| error.clean)
     }
 
     /// [`Parse::checkable`], also when an error is a reserved word read
@@ -143,20 +146,21 @@ fn parse(text: &str, entry: Entry) -> Parse {
     errors.sort_by_key(|error| (error.start, error.end));
     // A syntax error never brings a second on its line: whatever else the
     // line holds is reported once the first is fixed.
-    let mut suppressed = parser.suppressed;
     let mut line = None;
     errors.retain(|error| {
         let at = line_of(text, error.start);
         let first = line != Some(at);
         line = Some(at);
-        // A clean habit left unreported still reads as its Jadpo form.
-        suppressed |= !first && !(error.clean || error.reads_as_name);
+        if !first {
+            parser.leave_unreported(error);
+        }
         first
     });
     Parse {
         green,
         errors,
-        suppressed,
+        suppressed: parser.suppressed,
+        name_suppressed: parser.name_suppressed,
     }
 }
 

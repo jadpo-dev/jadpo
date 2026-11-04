@@ -57,6 +57,7 @@ pub mod policy;
 pub mod polls;
 pub mod prompt_recordings;
 pub mod prompts;
+pub mod provider_erasure;
 pub mod providers;
 pub mod publishing;
 pub mod rate_limits;
@@ -364,6 +365,13 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(acceptances::problems(db, project).iter().cloned());
         out.extend(packages::package_problems(db, project).iter().cloned());
         out.extend(providers::operation_problems(db, project).iter().cloned());
+        out.extend(
+            provider_erasure::declared(db, project)
+                .problems
+                .iter()
+                .cloned(),
+        );
+        out.extend(provider_erasure::key_problems(db, project));
         out.extend(
             connections::connection_problems(db, project)
                 .iter()
