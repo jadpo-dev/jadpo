@@ -524,6 +524,12 @@ entity (`orders`, `todos`). Domain names appear in calls, so they must not
 read like variables. Generic names (`misc`, `common`, `utils`, `helpers`,
 `core`) are refused for domains and libraries alike.
 
+Who renames a refused domain depends on whether anything can depend on it
+yet. In a project with no commits, the error's next step is `(agent)`: the
+name was chosen minutes ago and no one has built on it. Once the project has
+a commit, it is `(human)`: a domain is a boundary other code is shaped
+around.
+
 Split a domain only along a seam the compiler shows has no references
 across it ("these 12 entities never reference these 9"). A large domain
 whose parts depend on each other stays large: size alone is not a reason
@@ -570,10 +576,13 @@ Each file holds one primary declaration, named after it:
 `ServiceCredential` lives in `service_credential.jadpo`. Route groups and
 libraries are named declarations, so the same rule covers them.
 
-Supporting types, failures and helpers that only that file uses live in it
-too. A declaration any other file uses, apart from the file's own tests,
-has a file of its own named after it. So every name a `use` line brings in
-is in `<folder>/<name>.jadpo` (see [Imports](#imports)).
+Supporting types and helpers that only that file uses live in it too. A
+failure never does: every failure has a file of its own in `failures/`,
+however few files raise it, and one declared anywhere else is
+`layout.wrong_folder` ([Failures](04-failures.md)). A declaration any other
+file uses, apart from the file's own tests, has a file of its own named
+after it. So every name a `use` line brings in is in `<folder>/<name>.jadpo`
+(see [Imports](#imports)).
 
 Everything in a file besides its primary declaration is used by the
 primary declaration, directly or through one another. A declaration that
@@ -601,7 +610,7 @@ constants and types it needs already in view.
 
 When two declarations could go in either order:
 
-- They go by kind: constants, then types, then failures, then helpers.
+- They go by kind: constants, then types, then helpers.
 - Within a kind, they go in the order the primary declaration first
   reaches them. Reaching follows the primary's names in the order it first
   writes them, into each declaration before the next.
@@ -693,12 +702,12 @@ Not built yet: `jadpo rename`.
 ## Sharing and promotion
 <!-- topic: sharing-and-promotion -->
 
-A type, failure or helper used by one file lives in that file. When a
-second file needs it, it moves to a file of its own, a step called
-promotion:
+A type or helper used by one file lives in that file. When a second file
+needs it, it moves to a file of its own, a step called promotion. A failure
+starts in its domain's `failures/`, so it moves only to leave its domain:
 
 - When a second file in the same domain uses it, it moves to the domain's
-  `types/`, `failures/` or `libraries/`.
+  `types/` or `libraries/`.
 - When a second domain uses it, it moves to `shared/`. Only pure types,
   failures, libraries and messages go there; a message moves to
   `shared/translations/`.

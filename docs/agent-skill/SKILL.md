@@ -30,12 +30,14 @@ jadpo check --json
 jadpo test --json
 ```
 
-Each prints one JSON document: `schemaVersion`, `command`, `ok`, `data` and
-`diagnostics`. Stop when `ok` is `true`. Otherwise read each entry of
+Each prints one JSON document: `schemaVersion`, `command`, `ok`,
+`durationMs`, `data` and `diagnostics`, kept short: add `--full` for
+everything it leaves out. Stop when `ok` is `true`. Otherwise read each entry of
 `diagnostics`:
 
 - `rule` names the error, and `message` says what is wrong.
-- `reason` says why Jadpo refuses it.
+- `reason` says why Jadpo refuses it. An entry saying the same as an earlier
+  one has `sameAs`, that entry's place in the list, instead.
 - `next.text` is the step to take, and `next.edits` lists edits to apply
   when the fix is mechanical.
 - `help` is the address of the rule's page, such as

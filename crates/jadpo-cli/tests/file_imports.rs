@@ -998,7 +998,7 @@ fn a_file_that_doesnt_fit_its_field_is_refused_where_it_is_written() {
     if !jadpo_test::live() {
         return;
     }
-    let ran = jadpo(&root, &["test", "--json", "--seed", "1"]);
+    let ran = jadpo(&root, &["test", "--json", "--full", "--seed", "1"]);
     assert_eq!(ran.code, 1, "{}{}", ran.stdout, ran.stderr);
     let document: serde_json::Value = serde_json::from_str(&ran.stdout).expect("JSON");
     let tests = document["data"]["tests"].as_array().expect("tests");

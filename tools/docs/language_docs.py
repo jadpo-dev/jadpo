@@ -523,7 +523,7 @@ class Page:
                     # are the project's own.
                     if expected.startswith('test.'):
                         test_code, test_out = jadpo(['test', '.', '--seed', TEST_SEED], cwd=tmp)
-                    test_json_code, test_json = jadpo(['test', '.', '--json', '--seed', TEST_SEED], cwd=tmp)
+                    test_json_code, test_json = jadpo(['test', '.', '--json', '--full', '--seed', TEST_SEED], cwd=tmp)
             out = normalised(out.replace(tmp + '/', '').replace(tmp, '.'))
             if test_out is not None:
                 test_out = normalised(test_out)
@@ -1773,7 +1773,7 @@ def run_type_examples(examples):
         (root / 'main.jadpo').write_text('\n\n'.join(declarations) + '\n')
         (root / 'main.test.jadpo').write_text('\n'.join(type_example_test(name, code)
                                                         for name, code in examples.items()))
-        code, out = jadpo(['test', '.', '--json', '--seed', TEST_SEED], cwd=tmp)
+        code, out = jadpo(['test', '.', '--json', '--full', '--seed', TEST_SEED], cwd=tmp)
     try:
         report = json.loads(out)
     except ValueError:

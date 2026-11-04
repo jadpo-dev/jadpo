@@ -132,7 +132,7 @@ def check(project: Path) -> tuple[list[str], str | None]:
             problems += suggestions(name, copy)
         if SKIP_POSTGRES and needs_postgres(project):
             return problems, None
-        code, document = jadpo(['test', '.', '--json', '--seed', TEST_SEED], cwd=copy)
+        code, document = jadpo(['test', '.', '--json', '--full', '--seed', TEST_SEED], cwd=copy)
         if pgvector_outdated(document):
             OLD_PGVECTOR.add(name)
             return problems, None
@@ -248,7 +248,7 @@ def try_edit(project: Path, edit: dict) -> list[str]:
             if rules != sorted(edit['check']):
                 problems.append(f'{label}: the README says {", ".join(edit["check"])}, but jadpo check reports {", ".join(rules) or "nothing"}')
         if 'test' in edit and not (SKIP_POSTGRES and needs_postgres(project)):
-            _, out = jadpo(['test', '.', '--json', '--seed', TEST_SEED], cwd=copy)
+            _, out = jadpo(['test', '.', '--json', '--full', '--seed', TEST_SEED], cwd=copy)
             if pgvector_outdated(out):
                 return problems
             try:

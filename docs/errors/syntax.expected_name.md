@@ -44,12 +44,16 @@ public action borrow() -> Unit {}
 error: `library` is a reserved word and can't name a domain
  --> domains/library/actions/borrow.jadpo
   reason: A domain's folder name is its name, written before each call into it, and a reserved word can't be a name: `library.` would read as the word, not the domain.
-  next: Rename the folder `domains/library/` after the business area it covers, and write the new name wherever `library.` names the domain (human)
+  next: Rename the folder `domains/library/` after the business area it covers, and write the new name wherever `library.` names the domain (agent)
   rule: syntax.expected_name
   help: https://jadpo.dev/docs/errors/syntax.expected_name
 
 check failed: 1 error, 3 files
 ```
+
+`(agent)` means your coding agent can rename it: this project has no commit
+yet, so no one depends on the name. Once the project has a commit, the next
+step ends `(human)`, and a person decides.
 
 A block whose names are wrong reports the first: a later line is most
 often the same mistake again, and is reported once the first is fixed.

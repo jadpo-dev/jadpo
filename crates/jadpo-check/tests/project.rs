@@ -603,7 +603,9 @@ fn names_follow_their_kind_and_stay_unique() {
 /// person names it. The catalogue's usual decider is the library's.
 #[test]
 fn a_generic_library_is_the_agents_to_rename_and_a_domain_a_persons() {
-    let db = jadpo_db::Database::default();
+    use salsa::Setter;
+
+    let mut db = jadpo_db::Database::default();
     let mut files = SHOP.to_vec();
     files.push((
         "shared/libraries/helpers.jadpo",
@@ -614,6 +616,9 @@ fn a_generic_library_is_the_agents_to_rename_and_a_domain_a_persons() {
         "action tidy() -> Unit {}\n",
     ));
     let project = support::project(&db, Layout::Project, &files);
+    // Once the project has a commit: before one, no one depends on the
+    // domain's name, and it is the agent's too (chunk A14).
+    project.set_committed(&mut db).to(true);
     let mut found: Vec<(String, &str)> = jadpo_check::check(&db, project)
         .iter()
         .filter(|d| d.rule.id == "naming.generic_name")

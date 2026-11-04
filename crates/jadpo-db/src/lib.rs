@@ -221,6 +221,13 @@ pub struct Project {
     #[default]
     #[returns(copy)]
     pub judged_on: Option<i32>,
+    /// Whether the project has a commit in git (area 1, "Domains"): until
+    /// it has, nothing depends on it yet, so renaming a domain is the
+    /// agent's to do (chunk A14). `false` where none is known, as in a
+    /// test's project.
+    #[default]
+    #[returns(copy)]
+    pub committed: bool,
     /// The project's folder on this machine, its absolute path with links
     /// resolved: what `jadpo check` holds a disk store's `path:` outside
     /// (area 16, "The disk driver"; chunk B2). Empty where none is known,

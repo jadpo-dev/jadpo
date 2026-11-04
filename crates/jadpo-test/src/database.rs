@@ -25,7 +25,9 @@ use std::thread::JoinHandle;
 
 use jadpo_runtime::{MigrateError, Migration};
 
-use crate::postgres::{Server, ServerError};
+use jadpo_diag::{Diagnostic, rule};
+
+use crate::postgres::{DATABASE_URL_VARIABLE, Server, ServerError};
 
 /// How many copies are kept ready beyond the ones tests hold.
 const AHEAD: usize = 4;
@@ -40,15 +42,9 @@ const WORKERS: usize = 4;
 
 /// The server tests in this process use, started the first time one is
 /// needed and kept until the process ends.
-pub fn server() -> Result<Arc<Server>, String> {
-    static SERVER: OnceLock<Result<Arc<Server>, String>> = OnceLock::new();
-    SERVER
-        .get_or_init(|| {
-            Server::start()
-                .map(Arc::new)
-                .map_err(|error| error.to_string())
-        })
-        .clone()
+pub fn server() -> Result<Arc<Server>, ServerError> {
+    static SERVER: OnceLock<Result<Arc<Server>, ServerError>> = OnceLock::new();
+    SERVER.get_or_init(|| Server::start().map(Arc::new)).clone()
 }
 
 /// The digest naming a store's template: its migrations' names and
@@ -69,12 +65,22 @@ pub fn template_digest(steps: &[Migration]) -> String {
 enum Unmade {
     /// Its migrations were refused: an extension the server lacks, say.
     Refused(MigrateError),
-    /// Anything else, as the test that needed it reports it.
-    Failed(String),
+    /// Anything else: the server can't be used, which stops the run
+    /// ([`TestDatabases::unavailable`]).
+    Failed(ServerError),
 }
 
 impl From<String> for Unmade {
     fn from(error: String) -> Unmade {
+        Unmade::Failed(ServerError::Failed {
+            step: "making the test database".to_string(),
+            detail: error,
+        })
+    }
+}
+
+impl From<ServerError> for Unmade {
+    fn from(error: ServerError) -> Unmade {
         Unmade::Failed(error)
     }
 }
@@ -83,7 +89,7 @@ impl std::fmt::Display for Unmade {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Unmade::Refused(error) => write!(f, "applying the migrations failed: {error:?}"),
-            Unmade::Failed(error) => f.write_str(error),
+            Unmade::Failed(error) => write!(f, "{error}"),
         }
     }
 }
@@ -100,7 +106,7 @@ fn template(server: &Server, store: &str, steps: &[Migration]) -> Result<String,
     let built = BUILT.get_or_init(|| Mutex::new(BTreeMap::new()));
     let mut built = built
         .lock()
-        .map_err(|_| "the template lock was poisoned".to_string())?;
+        .map_err(|_| Unmade::from("the template lock was poisoned".to_string()))?;
     if let Some(done) = built.get(&key) {
         return done.clone();
     }
@@ -136,9 +142,7 @@ fn build_template(server: &Server, name: &str, steps: &[Migration]) -> Result<St
         crate::postgres::process_tag(),
         NEXT.fetch_add(1, Ordering::Relaxed)
     );
-    server
-        .admin(&format!("CREATE DATABASE \"{building}\""))
-        .map_err(|e| e.to_string())?;
+    server.admin(&format!("CREATE DATABASE \"{building}\""))?;
     let migrated = migrate(&server.url(&building), steps);
     if let Err(error) = migrated {
         let _ = drop_database(server, &building);
@@ -164,15 +168,16 @@ fn migrate(url: &str, steps: &[Migration]) -> Result<(), Unmade> {
     let url = url.to_string();
     let migrations = steps.to_vec();
     std::thread::spawn(move || -> Result<(), Unmade> {
-        let runtime = jadpo_host_native::Runtime::new().map_err(|e| e.to_string())?;
-        let store = jadpo_host_native::postgres(&url).map_err(|e| format!("{e:?}"))?;
+        let runtime = jadpo_host_native::Runtime::new().map_err(|e| Unmade::from(e.to_string()))?;
+        let store =
+            jadpo_host_native::postgres(&url).map_err(|e| Unmade::from(format!("{e:?}")))?;
         runtime
             .block_on(jadpo_runtime::migrate(&store, &migrations))
             .map(|_| ())
             .map_err(Unmade::Refused)
     })
     .join()
-    .map_err(|_| Unmade::Failed("the migrating thread panicked".to_string()))?
+    .map_err(|_| Unmade::from("the migrating thread panicked".to_string()))?
 }
 
 /// Whether the server has a database called `name`.
@@ -326,6 +331,8 @@ struct State {
     /// The store whose migrations the server refused, and why, when that
     /// is why `ready` failed.
     refused: Option<(String, MigrateError)>,
+    /// Why the server can't be used, when that is why `ready` failed.
+    unavailable: Option<ServerError>,
     /// Copies prepared and not yet taken.
     pool: VecDeque<Copy>,
     /// How many copies tests want ready.
@@ -456,8 +463,9 @@ impl TestDatabases {
     /// Starts the server and builds each store's template, unless a test
     /// already has, and gives the store whose migrations the server
     /// refused, and why: `jadpo test` stops on that before any test runs,
-    /// as `jadpo migrate apply` does (areas 20 and 21). Any other trouble
-    /// is left for the tests that need a database to report.
+    /// as `jadpo migrate apply` does (areas 20 and 21). A server that can't
+    /// be used is [`TestDatabases::unavailable`]'s; any other trouble is
+    /// left for the tests that need a database to report.
     pub fn refused(&self) -> Option<(String, MigrateError)> {
         self.start_workers();
         let mut state = self.shared.state.lock().ok()?;
@@ -465,6 +473,19 @@ impl TestDatabases {
             state = self.shared.changed.wait(state).ok()?;
         }
         state.refused.clone()
+    }
+
+    /// Starts the server and builds each store's template, as
+    /// [`TestDatabases::refused`] does, and gives why the server can't be
+    /// used, if it can't: `jadpo test` says so once, before any test runs,
+    /// rather than every test faulting on it (chunk A13).
+    pub fn unavailable(&self) -> Option<ServerError> {
+        self.start_workers();
+        let mut state = self.shared.state.lock().ok()?;
+        while state.ready.is_none() {
+            state = self.shared.changed.wait(state).ok()?;
+        }
+        state.unavailable.clone()
     }
 
     fn start_workers(&self) {
@@ -506,7 +527,7 @@ fn prepare(shared: &Arc<Shared>) {
     let ready = (|| -> Result<Started, (Option<String>, Unmade)> {
         let server = match &shared.server {
             Some(server) => Arc::clone(server),
-            None => server().map_err(|error| (None, error.into()))?,
+            None => server().map_err(|error| (None, Unmade::Failed(error)))?,
         };
         let mut templates = BTreeMap::new();
         for (store, steps) in &shared.steps {
@@ -520,8 +541,12 @@ fn prepare(shared: &Arc<Shared>) {
         Ok(started) => started,
         Err((store, error)) => {
             if let Ok(mut state) = shared.state.lock() {
-                if let (Some(store), Unmade::Refused(refused)) = (store, &error) {
-                    state.refused = Some((store, refused.clone()));
+                match (store, &error) {
+                    (Some(store), Unmade::Refused(refused)) => {
+                        state.refused = Some((store, refused.clone()));
+                    }
+                    (_, Unmade::Failed(failed)) => state.unavailable = Some(failed.clone()),
+                    (None, Unmade::Refused(_)) => {}
                 }
                 state.ready = Some(Err(error.to_string()));
                 shared.changed.notify_all();
@@ -552,6 +577,10 @@ fn prepare(shared: &Arc<Shared>) {
             state.ready = Some(Ok((Arc::clone(&server), templates.clone())));
         }
         Err(error) => {
+            state.unavailable = Some(ServerError::Failed {
+                step: "copying a template".to_string(),
+                detail: error.clone(),
+            });
             state.ready = Some(Err(format!("copying a template failed: {error}")));
             shared.changed.notify_all();
             return;
@@ -1092,5 +1121,147 @@ impl jadpo_runtime::Host for TestHost<'_> {
     /// batches (area 13, "Batches").
     fn rows_per_batch(&self) -> u32 {
         jadpo_runtime::test_run::ROWS_PER_BATCH
+    }
+}
+
+/// The one diagnostic for a server that can't be used (chunk A13), for a
+/// run where `waiting` of its tests need a database, and `others` don't.
+/// Nothing in the project is wrong and no test ran, so it is a person's to
+/// act on: a sandbox, say, which no command should step out of on its own.
+/// PostgreSQL's words are cut to the line that says why, and `full` keeps
+/// them all.
+pub(crate) fn unavailable_diagnostic(
+    error: &ServerError,
+    waiting: usize,
+    others: usize,
+    full: bool,
+) -> Diagnostic {
+    let own_server = std::env::var(DATABASE_URL_VARIABLE).is_ok_and(|url| !url.trim().is_empty());
+    let tests = if waiting == 1 {
+        "1 test"
+    } else {
+        &format!("{waiting} tests")
+    };
+    let need = if waiting == 1 { "needs" } else { "need" };
+    let not_run =
+        format!("Nothing in the project is wrong; the {tests} that {need} a database didn't run.");
+    let problem = match error {
+        ServerError::NotFound => Diagnostic::new(
+            &rule::TEST_DATABASE_UNAVAILABLE,
+            "No PostgreSQL for the tests",
+        )
+        .reason(format!(
+            "`jadpo test` starts a disposable server from PostgreSQL's own tools, and none is installed where it looks. {not_run}"
+        ))
+        .next(format!(
+            "Install PostgreSQL, or set `{DATABASE_URL_VARIABLE}` to a server's admin URL"
+        )),
+        ServerError::Failed { step, detail } => {
+            let step = match step.as_str() {
+                "initdb" | "pg_ctl start" => format!("`{step}`"),
+                step => step.to_string(),
+            };
+            let reason = if full {
+                format!("{step} failed: {}\n{not_run}", detail.trim_end())
+            } else {
+                format!(
+                    "{step} failed: {}. {not_run} `jadpo test --full` shows all it said.",
+                    what_it_said(detail)
+                )
+            };
+            let sandboxed =
+                detail.contains("shared memory") || detail.contains("Operation not permitted");
+            let next = if own_server {
+                format!(
+                    "Check that the server `{DATABASE_URL_VARIABLE}` names takes connections, then run `jadpo test` again"
+                )
+            } else if sandboxed {
+                format!(
+                    "Run `jadpo test` outside the sandbox, where PostgreSQL can start, or set `{DATABASE_URL_VARIABLE}` to a server's admin URL"
+                )
+            } else {
+                format!(
+                    "Check PostgreSQL on this machine, or set `{DATABASE_URL_VARIABLE}` to a server's admin URL, then run `jadpo test` again"
+                )
+            };
+            Diagnostic::new(
+                &rule::TEST_DATABASE_UNAVAILABLE,
+                if own_server {
+                    "The PostgreSQL server for the tests can't be used"
+                } else {
+                    "PostgreSQL for the tests couldn't start"
+                },
+            )
+            .reason(reason)
+            .next(next)
+        }
+    };
+    if others == 0 {
+        return problem;
+    }
+    problem.impact("`jadpo test --kind pure` runs the tests that need no database.")
+}
+
+/// The longest of PostgreSQL's lines a shortened report keeps.
+const SAID_LENGTH: usize = 200;
+
+/// The line that says why, of everything PostgreSQL printed: its `FATAL`,
+/// else its `ERROR`, else its last line. Without the time and process that
+/// start each of its log lines.
+fn what_it_said(detail: &str) -> String {
+    let lines = || {
+        detail
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+    };
+    let marked = |mark: &str| {
+        lines().find_map(|line| {
+            line.split_once(mark)
+                .map(|(_, said)| said.trim().to_string())
+        })
+    };
+    let said = marked("FATAL:")
+        .or_else(|| marked("ERROR:"))
+        .or_else(|| lines().next_back().map(str::to_string))
+        .unwrap_or_else(|| "it gave no reason".to_string());
+    let said = said.trim_end_matches('.');
+    match said.char_indices().nth(SAID_LENGTH) {
+        Some((end, _)) => format!("{}…", &said[..end]),
+        None => said.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn what_postgresql_said_is_cut_to_the_line_that_says_why() {
+        let initdb = "selecting default max_connections ... 20\nrunning bootstrap script ... 2026-11-01 21:54:11.133 GMT [20904] FATAL:  could not create shared memory segment: Operation not permitted\nDETAIL: more\n";
+        assert_eq!(
+            what_it_said(initdb),
+            "could not create shared memory segment: Operation not permitted"
+        );
+        assert_eq!(what_it_said("first\nsecond.\n\n"), "second");
+        assert_eq!(what_it_said(""), "it gave no reason");
+        assert!(what_it_said(&"x".repeat(500)).ends_with('…'));
+    }
+
+    #[test]
+    fn a_machine_with_no_postgresql_is_told_to_install_it() {
+        let diagnostic = unavailable_diagnostic(&ServerError::NotFound, 2, 1, false);
+        assert_eq!(diagnostic.rule.id, "test.database_unavailable");
+        assert_eq!(
+            diagnostic.next.as_ref().map(|next| next.decides),
+            Some(jadpo_diag::Decider::Human)
+        );
+        assert!(
+            diagnostic
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("the 2 tests that need a database"))
+        );
+        assert!(diagnostic.impact.is_some());
     }
 }
