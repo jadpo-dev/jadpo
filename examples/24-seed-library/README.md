@@ -21,7 +21,7 @@ checked becomes a problem, not a stop.
 
 ## What it teaches
 
-1. **Starting a batch.** `batches.each` with `from:`, a call of a named query returning a `Page`, `each:` calling an action per item, `finished:` once at the end, and `key:`. It gives a `BatchRun` at once, kept on the stock check. See `domains/seedbank/actions/start_check.jadpo` and [area 12, Batches](../../docs/language/12-jobs-and-events.md#batches-work-over-many-items).
+1. **Starting a batch.** `batches.each` with `from:`, a call of a named query returning a `Page`, `each:` calling an action per item, `finished:` once at the end, and `key:`. It gives a `BatchRun` at once, kept on the stock check. See `domains/seedbank/actions/start_check.jadpo` and [area 12, Batches](../../docs/language/12-jobs-and-events.md#batches).
 2. **The query a batch walks.** A `Page` ordered by `id`, which never changes, so every packet is in exactly one page however the shelves change during the walk. See `domains/seedbank/queries/shelf_packets.jadpo`.
 3. **An item's action.** An ordinary action given the item and what the run saved; when it fails, only its writes are undone, and the run keeps a problem in its place. See `domains/seedbank/actions/check_packet.jadpo`.
 4. **Finishing.** `finished:` gets an `ImportSummary`: how many items, how many with problems, and each `RowProblem`, never the item's values. See `domains/seedbank/actions/record_check.jadpo`.

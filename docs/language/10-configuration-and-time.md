@@ -112,7 +112,7 @@ letter, and no two settings read the same variable. A `SigningKey` or an
 Because the name comes from the field, renaming a field renames its
 variable, and a deployment that still sets the old name breaks. So a
 changed variable name is shown for review like any other change to the
-app's contract ([Records and manifest](18-records-and-manifest.md)).
+app's contract ([Review and records](18-records-and-manifest.md)).
 
 ### What a setting can hold
 
@@ -209,8 +209,8 @@ There are three kinds of value, from fixed to changing while the app runs:
 When a fixed value needs to differ per deployment, a tool makes the change
 for you: `jadpo config move <constant>` on the command line, or "Make this
 a setting" in the editor on the constant's declaration or any read of it.
-Both run the same code, as the editor's rename runs `jadpo rename`
-([Editor support](14-tooling.md#editor-support)). The move is offered,
+Both run the same code, as the editor's rename will run `jadpo rename` once
+both are built ([Editor support](14-tooling.md#editor-support)). The move is offered,
 never required, so `jadpo fmt --layout`, which makes only the moves an
 error asks for, doesn't make it. In one step it:
 
@@ -1922,6 +1922,8 @@ header and the same `locales { }`:
 
 ## Translations as messages
 <!-- topic: translations-as-messages -->
+
+[Translate your app's text](../guides/19-translate-your-apps-text.md) does the whole job, start to finish.
 
 Text your server writes for people, such as emails, generated pages and a
 failure's text for client apps, is translated in Jadpo itself. Each message

@@ -5,7 +5,7 @@ area: 12
 
 # Jobs and events: design notes
 
-Why [Jobs and events](../12-jobs-and-events.md) is the way it is: the decisions behind it, how it fits the rest of the language and what it carried to other areas. An app author reads the area page, not this one.
+Why [Background work](../12-jobs-and-events.md) is the way it is: the decisions behind it, how it fits the rest of the language and what it carried to other areas. An app author reads the area page, not this one.
 
 ## Consistency with the rest of the language
 
@@ -176,7 +176,7 @@ Carried from other areas, and the choices the topic sections leave open:
 
 ## Moved from the area page
 
-When [Jobs and events](../12-jobs-and-events.md) was rewritten to the
+When [Background work](../12-jobs-and-events.md) was rewritten to the
 [writing guide](../../writing.md), its references to the decisions
 above by number, its comparisons with other frameworks and its pointers
 into this page moved here. Nothing in this list changed a rule.

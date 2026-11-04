@@ -162,4 +162,4 @@ both can.
 ## Related
 
 - [Writing a threshold](../language/16-built-in-services.md#writing-a-threshold)
-- [Monitoring thresholds](../language/16-built-in-services.md#monitoring-thresholds)
+- [Monitoring](../language/16-built-in-services.md#monitoring)
