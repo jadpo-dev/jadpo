@@ -19,11 +19,10 @@
 //! Cloudflare's rate-limiting binding (`Driver.cloudflare_rate_limits`),
 //! which counts one limit over 10 seconds or a minute a binding: each limit
 //! the app counts there has a binding of its own, numbered from the
-//! connection's `namespace:` ([`jadpo_std::http::rate_limit_bindings`]),
-//! and every limit counted today is a minute's; a route's own
-//! `rate_limit:` brings the error the page decides for any other window
-//! (`rate_limits.window_unsupported`),
-//! naming Redis. A deployable built for Workers that serves an
+//! connection's `namespace:` ([`jadpo_std::http::rate_limit_bindings`]).
+//! A route's or an API's own `rate_limit:` over any other window is
+//! refused where it is written, naming Redis
+//! (`rate_limits.window_unsupported`). A deployable built for Workers that serves an
 //! API needs a store, since a Worker keeps no memory its instances share
 //! (`deployables::target_problems`).
 

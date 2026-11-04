@@ -53,8 +53,8 @@ fn a_routes_limit_is_counted_in_its_own_binding_on_workers() {
 
     let worker = Workerd::start(&out, &wrangler, &[]);
     let from = [("CF-Connecting-IP", "203.0.113.9")];
-    answers_as_every_host_does(|path| {
-        let (status, head, _) = worker.answered("POST", path, &from, "");
+    answers_as_every_host_does(|method, path| {
+        let (status, head, _) = worker.answered(method, path, &from, "");
         (status, head)
     });
     let log = worker.log();

@@ -2,9 +2,10 @@
 //! limits"; chunk G4). One project answers the same requests the same way
 //! on every host: `jadpo dev` here, its compiled native deployable in
 //! `deployable.rs` and its Worker under workerd in `workers/limits.rs`. An
-//! anonymous route that starts expensive work takes three a minute and
-//! another two in 10 seconds, each counted alone; two routes of an API
-//! share its limit; and a route that writes none keeps the default.
+//! anonymous `POST` that starts expensive work takes three a minute and an
+//! anonymous `GET` that runs an action, as one calling a model does, two in
+//! 10 seconds, each counted alone; two routes of an API share its limit; and
+//! a route that writes none keeps the default.
 
 use std::path::Path;
 
@@ -16,7 +17,7 @@ use super::http::{Dev, tempdir};
 
 /// `routes` holding one anonymous route that keeps its action, limited as
 /// `limit` says.
-fn route(name: &str, group: &str, api: &str, paths: &[&str], limit: &str) -> String {
+fn route(method: &str, name: &str, group: &str, api: &str, paths: &[&str], limit: &str) -> String {
     let api = if api.is_empty() {
         String::new()
     } else {
@@ -26,7 +27,7 @@ fn route(name: &str, group: &str, api: &str, paths: &[&str], limit: &str) -> Str
         .iter()
         .map(|path| {
             format!(
-                "    POST {path} {{\n        authentication: RouteAuthentication.none\n{limit}        output: Kept\n        run: keep()\n    }}\n"
+                "    {method} {path} {{\n        authentication: RouteAuthentication.none\n{limit}        output: Kept\n        run: keep()\n    }}\n"
             )
         })
         .collect();
@@ -77,19 +78,19 @@ pub(crate) fn project_at(root: &Path, application: &str) {
         ),
         (
             "domains/desk/routes/releases.jadpo",
-            route("releases", "Releases", "", &["/"], &limited(3, "1m", "ip")),
+            route("POST", "releases", "Releases", "", &["/"], &limited(3, "1m", "ip")),
         ),
         (
             "domains/desk/routes/estimates.jadpo",
-            route("estimates", "Estimates", "", &["/"], &limited(2, "10s", "caller")),
+            route("GET", "estimates", "Estimates", "", &["/"], &limited(2, "10s", "caller")),
         ),
         (
             "domains/desk/routes/plain.jadpo",
-            route("plain", "Plain", "", &["/"], ""),
+            route("POST", "plain", "Plain", "", &["/"], ""),
         ),
         (
             "domains/desk/routes/partners_shared.jadpo",
-            route("partners/shared", "PartnersShared", "partners", &["/a", "/b"], ""),
+            route("POST", "partners/shared", "PartnersShared", "partners", &["/a", "/b"], ""),
         ),
     ];
     for (path, text) in files {
@@ -101,7 +102,8 @@ pub(crate) fn project_at(root: &Path, application: &str) {
     }
 }
 
-/// Each request in order, what it should answer, and the policy a refusal
+/// Each request in order (a `GET` on `/estimates`, a `POST` on the rest),
+/// what it should answer, and the policy a refusal
 /// says it was over: what every host must give.
 pub(crate) const ANSWERS: [(&str, u16, Option<&str>); 12] = [
     // Three a minute, each address alone.
@@ -127,9 +129,10 @@ pub(crate) const ANSWERS: [(&str, u16, Option<&str>); 12] = [
 pub(crate) type Answered = (u16, String);
 
 /// Sends [`ANSWERS`]' requests through `send` and checks every answer.
-pub(crate) fn answers_as_every_host_does(send: impl Fn(&str) -> Answered) {
+pub(crate) fn answers_as_every_host_does(send: impl Fn(&str, &str) -> Answered) {
     for (path, status, policy) in ANSWERS {
-        let (got, head) = send(path);
+        let method = if path == "/estimates" { "GET" } else { "POST" };
+        let (got, head) = send(method, path);
         let value = |name: &str| {
             head.lines().find_map(|line| {
                 let (header, value) = line.split_once(':')?;
@@ -170,8 +173,8 @@ fn a_routes_limit_is_counted_on_jadpo_dev() {
     let records = run(&["records".to_string(), "update".to_string()], &env);
     assert_eq!(records.code, 0, "{}{}", records.stdout, records.stderr);
     let dev = Dev::start_without_database(dir.path());
-    answers_as_every_host_does(|path| {
-        let reply = dev.send("POST", path, &[], "");
+    answers_as_every_host_does(|method, path| {
+        let reply = dev.send(method, path, &[], "");
         let head = ["ratelimit-policy", "ratelimit", "retry-after"]
             .iter()
             .filter_map(|name| reply.header(name).map(|value| format!("{name}: {value}\n")))

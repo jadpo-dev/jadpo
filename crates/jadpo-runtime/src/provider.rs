@@ -856,6 +856,10 @@ async fn made(
         }
         Err(Unready::Fault(kind)) => return Done::Fault(kind),
     };
+    // What a `GET` runs was proved to make no changing call (chunk G2).
+    if op.changes && ctx.running_read_only() {
+        return Done::Fault(FaultKind::Defect(crate::boundary::READ_ONLY_CHANGE.into()));
+    }
     // A step of an action with several changing calls (area 12; chunk
     // 7.5b): given its recorded answer back, or sent at its place.
     let did_nothing = did_nothing(providers, op);

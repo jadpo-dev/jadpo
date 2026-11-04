@@ -448,6 +448,7 @@ async fn answer_request(
         .push(("x-request-id".to_string(), request_id.to_string()));
     if request.method == "HEAD" {
         response.body.clear();
+        response.stream = None;
     }
     response
 }
@@ -1417,6 +1418,11 @@ async fn run_with_caller(
                         ))));
                     }
                 }
+            }
+            // What a `GET` runs can't write, whichever kind of thing it is
+            // (area 7, "What a route runs"; chunk G2).
+            if route.method == HttpMethod::Get {
+                ctx.read_only();
             }
             Ok(match &route.run {
                 Run::Action(callable) => {

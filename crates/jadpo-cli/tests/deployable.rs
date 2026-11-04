@@ -1384,8 +1384,8 @@ fn a_deployable_counts_a_routes_own_limit_as_dev_does() {
         .as_str()
         .expect("its address")
         .to_string();
-    super::route_limits::answers_as_every_host_does(|path| {
-        let (status, head, _) = exchanged(&address, "POST", path, "");
+    super::route_limits::answers_as_every_host_does(|method, path| {
+        let (status, head, _) = exchanged(&address, method, path, "");
         (status, head)
     });
     let stopped = Command::new("kill")

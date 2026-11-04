@@ -923,7 +923,7 @@ rules! {
     ROUTE_RUN_INVALID: "route.run_invalid", area 7, Error, Agent,
         "Route `run:` is not a call of a named action or query";
     ROUTE_RUN_KIND: "route.run_kind", area 7, Error, Agent,
-        "A `GET` route runs an action, or a route of another method runs a query";
+        "A `GET` route runs an action that isn't read-only, or a route of another method runs a query";
     ROUTE_RUN_REQUIRED: "route.run_required", area 7, Error, Agent,
         "Route does not say what it runs";
     ROUTE_SETTLE_INVALID: "route.settle_invalid", area 7, Error, Agent,
