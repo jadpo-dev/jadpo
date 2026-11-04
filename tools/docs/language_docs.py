@@ -104,6 +104,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
 
+import agent_guidance
 import reference_manifest
 import reference_pages
 
@@ -1323,12 +1324,54 @@ class GuidePage(LearnPage):
     migrations and the records as a reader's commands do, as a Learn
     page's does."""
 
+    # The `##` heading it sits under on the index; none on the index itself.
+    group = None
+
+
+GUIDE_ROW = re.compile(r'\|\s*\[[^\]]*\]\(([0-9][0-9]-[^)#/]+\.md)\)\s*\|')
+
+
+def guide_index(path):
+    """Each guide on the index, in order: its file, and the `##` heading it sits under."""
+    rows, group = [], None
+    for line in path.read_text().splitlines():
+        row = GUIDE_ROW.match(line)
+        if line.startswith('## '):
+            group = line[3:].strip()
+        elif row:
+            rows.append((row.group(1), group))
+    return rows
+
 
 def load_guides(catalogue, root=ROOT):
-    """The guides in order, their index first."""
+    """The guides in order, their index first, then the guides as the index
+    lists them, each knowing its heading there."""
     guides = root / 'docs/guides'
-    paths = ([guides / 'README.md'] if (guides / 'README.md').exists() else []) + sorted(guides.glob('[0-9][0-9]-*.md'))
-    return [GuidePage(path, catalogue, root=root) for path in paths]
+    index = guides / 'README.md'
+    rows = guide_index(index) if index.exists() else []
+    place = {name: at for at, (name, _) in reversed(list(enumerate(rows)))}
+    numbered = sorted(guides.glob('[0-9][0-9]-*.md'), key=lambda path: (place.get(path.name, len(rows)), path.name))
+    pages = [GuidePage(path, catalogue, root=root) for path in ([index] if index.exists() else []) + numbered]
+    group_of = dict(rows)
+    for page in pages:
+        page.group = group_of.get(page.path.name)
+    return pages
+
+
+def guide_index_problems(guides):
+    """The index against the guides: each guide has one row, under a heading."""
+    if not guides or guides[0].path.name != 'README.md':
+        return []
+    index, others = guides[0], guides[1:]
+    rows = guide_index(index.path)
+    names = [name for name, _ in rows]
+    problems = [f'{index.path.name} lists {name} twice: a guide has one place on the index'
+                for name in dict.fromkeys(names) if names.count(name) > 1]
+    problems += [f'{index.path.name} lists {name} under no heading: a guide sits under one'
+                 for name, group in rows if group is None]
+    problems += [f'{index.path.name} has no row for {page.path.name}: every guide has one'
+                 for page in others if page.path.name not in names]
+    return problems
 
 
 # What docs/writing.md says a user page never does, outside code.
@@ -1819,6 +1862,8 @@ class Bundle:
                          if page.topics() and page.topics()[0]['id']}
         self.guide_of = {page.path.resolve(): page.topics()[0]['id'] for page in self.guides
                          if page.topics() and page.topics()[0]['id']}
+        self.guide_group = {self.guide_of[page.path.resolve()]: page.group for page in self.guides
+                            if page.path.resolve() in self.guide_of}
         self.catalogue = {r['id']: r for r in help_data.get('rules', [])}
         self.commands = help_data.get('commands', [])
         self.global_flags = help_data.get('flags', [])
@@ -2133,6 +2178,8 @@ class Bundle:
                 'area': area, 'links': sorted(linked - {page_id}),
                 # Only a renamed topic has them: its old IDs, which still reach it.
                 **({'aliases': list(aliases)} if aliases else {}),
+                # A guide's heading on the guides' index.
+                **({'group': self.guide_group[page_id]} if self.guide_group.get(page_id) else {}),
             })
         if self.reference is not None:
             # Where the reference's manifest places the page, for pages it places.
@@ -2349,6 +2396,14 @@ def agent_reading_problems(built, root=ROOT):
     return problems
 
 
+def read_once_problems(built, root=ROOT):
+    """What an agent reads once, the primer as the bundle gives it and the
+    repository's llms.txt, over its budget."""
+    primer = next((text for kind, _, _, _, _, text, _ in built if kind == 'primer'), '')
+    path = root / 'llms.txt'
+    return agent_guidance.read_once_problems(primer, path.read_text() if path.exists() else '')
+
+
 def check_skill(root=ROOT):
     """Problems with the agent skill (docs/documentation.md, "The agent
     skill"): it exists, and its front matter has a `name` that is its
@@ -2419,7 +2474,7 @@ def hand_table_problem(name, table, names):
 def check_structure(pages, errors, catalogue, commands=(), root=ROOT, learn=(), guides=(), help_data=None):
     """Problems with the docs' shape, none of which needs an example
     compiled: topic IDs, a page per rule, topic sizes and links."""
-    problems = []
+    problems = guide_index_problems(guides)
     seen = {}
     types = (help_data or {}).get('types', [])
     for entry in types:
@@ -2466,6 +2521,7 @@ def check_structure(pages, errors, catalogue, commands=(), root=ROOT, learn=(), 
     problems += bundle.status_line_problems(built)
     problems += site_path_problems({kind for kind, *_ in built})
     problems += agent_reading_problems(built, root)
+    problems += read_once_problems(built, root)
     files = markdown_files(root)
     problems += check_links(files, root)
     problems += check_help_lines(files, catalogue, root)

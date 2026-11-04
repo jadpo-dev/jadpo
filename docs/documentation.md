@@ -137,7 +137,8 @@ entry also has `aliases`, its old IDs; no other entry has the field. A
 page the [reference's manifest](#the-references-manifest) places (a topic, a
 standard type, a command) also has its `group` and its `page`, each a title,
 `page` being `null` directly under a group, and its `status`; no other entry
-has those. A
+has those, but for a guide's `group`, the heading it sits under on the guides'
+index. A
 page's path follows
 from its kind and ID. `learn` and `guide` pages are the user layer, and `topic`
 pages the reference; each area's "What is built" topic is titled
@@ -331,7 +332,7 @@ no `group`, `page` or `status`.
 
 | Path | What |
 |---|---|
-| `/llms.txt` | A short index: what Jadpo is, the primer's URL, how to find a page by ID or by rule, the version |
+| `/llms.txt` | A short index: what Jadpo is, the primer's URL, the guides, the reference's groups, how to find a page by rule, the version |
 | `/docs/primer`, `/docs/primer.md` | The primer, as HTML and as markdown |
 | `/learn`, `/learn/<id>`, `.md` | The Learn path: the outline, then each page, with previous and next in the index's order |
 | `/guides`, `/guides/<id>`, `.md` | The guides: their index, then each guide |
@@ -339,7 +340,7 @@ no `group`, `page` or `status`.
 | `/docs/<old-id>`, `.md` | A permanent redirect to the topic whose `aliases` hold it |
 | `/docs/types`, `/docs/types/<id>`, `.md` | The standard types: their index, then each type |
 | `/docs/errors/<rule.id>`, `.md` | An error's page; reached from a compiler error, not listed in navigation |
-| `/docs/index.json` | The bundle's index |
+| `/docs/index.json` | The bundle's index, for tools |
 | `/.well-known/agent-skills/jadpo/SKILL.md`, `/.well-known/agent-skills/index.json` | The agent skill, and the index that lists it |
 | `/v/<version>/…` | The same paths for one release, its links staying under `/v/<version>/`; immutable, cached for good |
 | `/…` without `/v/` | The latest release; short cache, `ETag` from the page's hash |
@@ -358,16 +359,16 @@ as pages of kind `guide`, so the site keeps no task list of its own.
 `docs/agent-skill/SKILL.md` is a skill in the standard `SKILL.md` format,
 for a coding agent that writes Jadpo apps (it does not cover changing
 Jadpo). Its front matter has a `name`, `jadpo`, and a one-line
-`description`; its body tells the agent to read the primer first, find
-pages through `index.json` or `llms.txt`, run `jadpo check --json` and
-`jadpo test --json`, read the error document and what `(agent)` and
+`description`; its body tells the agent to read the primer and `llms.txt`
+first, find pages through a guide or a group of the reference, run
+`jadpo check --json` and `jadpo test --json`, read the error document and what `(agent)` and
 `(human)` mean, and report a bug in Jadpo through the user, as "Using
 Jadpo" in `AGENTS.md` says. It is versioned with the language: a release's
 bundle holds the skill of that release. Its links are full URLs, because
 the bundle's text is served as it is.
 
-The bundle holds it at `skills/jadpo/SKILL.md`, a byte-for-byte copy and
-no entry in `index.json`. The site serves that file as it is (the
+The bundle holds it at `skills/jadpo/SKILL.md`, a byte-for-byte copy with
+no entry in the bundle's index. The site serves that file as it is (the
 `ETag` from its hash) at `/.well-known/agent-skills/jadpo/SKILL.md`, and
 builds `/.well-known/agent-skills/index.json` from the front matter: for
 each skill its `name`, `description`, `type` (`skill-md`), `url` and
@@ -382,14 +383,25 @@ serves the release's own copy. The site's `llms.txt` links the skill.
    own release and what isn't built yet
    ([`jadpo new`](language/14-tooling.md#jadpo-new)). Agents
    load that file on their own.
-2. The agent reads the primer once per session; it is the same every time,
-   so prompt caching keeps it cheap.
-3. For a task it reads `index.json` (or `llms.txt`), picks the topics by
-   title and summary, and fetches only their `.md`.
+2. The agent reads the primer and `llms.txt` once per session. They are the
+   same every time, so prompt caching keeps them cheap.
+3. For a task it follows the guide for that job, if there is one. Otherwise
+   it opens the page of the task's group in `llms.txt`, which lists what is
+   in the group, and fetches only the topics it needs.
 4. A compiler error names its rule; the agent reads that rule's page only if
    the error's own reason and fix are not enough.
-5. It reads the version its app declares, under `/v/<version>/`, and skips
-   pages whose hash it already has.
+5. It reads the version its app declares, under `/v/<version>/`.
+
+An agent's first read stays small: the primer and `llms.txt` together are at
+most 9,000 tokens, a quarter of their characters as the bundle's index counts
+them. The docs check holds the primer and this repository's `llms.txt` to that,
+and the site's build holds the `llms.txt` it writes. Each counts the primer as
+it serves it.
+
+`index.json` is for tools, and an agent never reads it whole: it is about 190,000
+tokens. The docs check fails anything that tells an agent what to read and sends
+it to the whole file, and the site's build does the same for its own pages. 0.1's
+and 0.2's released `AGENTS.md` files still name the file, so it stays served.
 
 `llms.txt` in this repository links the raw files on GitHub, for an agent
 working from a checkout; some agents cannot fetch from GitHub, which is

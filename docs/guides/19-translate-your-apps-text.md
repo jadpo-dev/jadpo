@@ -439,7 +439,7 @@ done.
 
 An enum's values can have wording of their own, so a template or message shows them in the
 reader's language. Emails use these same messages, written without `locale:`, as
-[Email](../language/16-built-in-services.md#email) shows. To send wording to a translation service and
+[Send an email](12-send-an-email.md) shows. To send wording to a translation service and
 bring it back, see
 [Exchanging translations with a service](../language/10-configuration-and-time.md#exchanging-translations-with-a-service).
 

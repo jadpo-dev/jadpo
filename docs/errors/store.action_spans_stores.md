@@ -45,6 +45,10 @@ entity Cart {
     id: Uuid
 
     store: carts
+
+    policy: {
+        delete: [Access.system]
+    }
 }
 ```
 
@@ -251,6 +255,10 @@ entity Cart {
     id: Uuid
 
     store: carts
+
+    policy: {
+        delete: [Access.system]
+    }
 }
 ```
 

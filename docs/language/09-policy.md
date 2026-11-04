@@ -340,6 +340,17 @@ a batch that reaches a statement only `Access.public` grants is a compile
 error, `policy.system_grant_missing`, in the same way that
 `policy.effect_ungranted` refuses such a route.
 
+### Nothing grants it
+
+So is one that reaches a statement no list grants anyone, such as a create
+on an entity with no `create:`. It could only ever be refused, and a route
+reaching it is `policy.effect_ungranted`, so nothing could run it.
+
+A list that names people and not the system isn't a compile error, since
+an action a route runs too may reach it on a branch the system never
+takes. If the system does take that branch, it is refused like any caller
+no list names ([When policy says no](#when-policy-says-no)).
+
 ### Which tenant background work reaches
 
 On a tenant's records ([Tenancy](#tenancy)), a grant naming `Access.system`
@@ -388,8 +399,9 @@ None of them reaches a tenant's records, only those every tenant shares,
 since no tenant's event starts them and "no tenant" means every tenant
 only for a schedule. Each is let in only by `Access.system`. So when one
 of them reaches a grant, or a line under `actions:`, that names
-`Access.public` and not `Access.system`, that is
-`policy.system_grant_missing`, reported where the action is named.
+`Access.public` and not `Access.system`, or a statement no list grants
+anyone, that is `policy.system_grant_missing`, reported where the action
+is named.
 
 ### Proving which tenant work is for
 
@@ -442,6 +454,8 @@ under "What a run reaches under policy".
 
 ## Tenancy
 <!-- topic: tenancy -->
+
+[Keep customers' data apart](../guides/21-keep-customers-data-apart.md) does the whole job, start to finish.
 
 Use tenancy when your app is shared by many customer companies, so that
 one company never sees another's data. Each customer is a tenant: one
