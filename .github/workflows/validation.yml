@@ -137,15 +137,15 @@ jobs:
           # The whole history: `jadpo check` compares a change with the
           # default branch at its merge base to judge acceptances (area 18).
           fetch-depth: 0
+      # The tests build enough to fill the runner's disk, so make room first;
+      # nothing here uses these toolchains.
+      - name: Free the runner's disk
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
       # PostgreSQL 16 with pgvector and PostGIS, built from
       # tools/fixtures/postgres/Dockerfile (chunk 5.5v1), with durability off, as the
       # disposable servers local runs start have it (docs/compiler-runtime.md
       # §2.7); a service container can't be built or given the settings. It
       # builds and starts in the background while the toolchain installs.
-      # The tests build enough to fill the runner's disk, so make room first;
-      # nothing here uses these toolchains.
-      - name: Free the runner's disk
-        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
       - name: Start PostgreSQL
         run: |
           (docker build --quiet --tag jadpo-postgres tools/fixtures/postgres &&
