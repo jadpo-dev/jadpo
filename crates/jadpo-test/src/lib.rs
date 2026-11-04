@@ -214,6 +214,8 @@ pub struct Run {
     /// another version of its prompt (chunk 5.5v4), in path order.
     pub alerts: Vec<StaleRecording>,
     pub elapsed: Duration,
+    /// `--full`: what the run reports isn't shortened (chunk A14).
+    pub full: bool,
 }
 
 /// A recording of a prompt's answer made from another version of its
@@ -254,6 +256,37 @@ impl Run {
 
     pub fn passed(&self) -> usize {
         self.results.len() - self.failed()
+    }
+
+    /// For each result, the `order` of the earlier failed test whose fault
+    /// says the same, when it is a repeat (chunk A14): the same kind, reason
+    /// and next step. None with `--full`.
+    pub(crate) fn fault_repeats(&self) -> Vec<Option<usize>> {
+        let mut first: Vec<(&outcome::FaultInfo, usize)> = Vec::new();
+        self.results
+            .iter()
+            .enumerate()
+            .map(|(index, result)| {
+                if self.full {
+                    return None;
+                }
+                let failure = result.failure.as_ref()?;
+                let outcome::Detail::Fault(info) = &failure.detail else {
+                    return None;
+                };
+                info.reason.as_ref()?;
+                let same = first.iter().find(|(seen, _)| {
+                    seen.kind == info.kind && seen.reason == info.reason && seen.next == info.next
+                });
+                match same {
+                    Some((_, order)) => Some(*order),
+                    None => {
+                        first.push((info.as_ref(), index + 1));
+                        None
+                    }
+                }
+            })
+            .collect()
     }
 
     /// Whether a failed test ended in a fault only a person can act on:
@@ -314,7 +347,24 @@ fn running(options: Options, maker: Option<run::Maker<'_>>) -> Ran {
         Err(ran) => return ran,
     };
     let started = Instant::now();
+    let full = options.full;
     match jadpo_interp::on_large_stack(move || execute(target, options, started, maker)) {
+        Ok(Ran::Refused {
+            mut diagnostics,
+            sources,
+            files,
+            root,
+        }) => {
+            if !full {
+                jadpo_diag::shorten_repeats(&mut diagnostics);
+            }
+            Ran::Refused {
+                diagnostics,
+                sources,
+                files,
+                root,
+            }
+        }
         Ok(ran) => ran,
         Err(error) => Ran::Stopped(Box::new(
             Diagnostic::new(
@@ -578,6 +628,7 @@ pub(crate) fn choose_and_run(
         results,
         alerts,
         elapsed: started.elapsed(),
+        full: options.full,
     }))
 }
 
@@ -754,6 +805,7 @@ mod a_person_tests {
             results: vec![failed_with(next)],
             alerts: Vec::new(),
             elapsed: Duration::ZERO,
+            full: false,
         };
         assert!(run("Check the database it runs against (human)").needs_a_person());
         assert!(!run("Bound the values (agent)").needs_a_person());

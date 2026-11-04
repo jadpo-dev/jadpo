@@ -44,6 +44,8 @@ Why [Project layout and modules](../01-project-layout-and-modules.md) is the way
 | Reachable from public | A type or failure reachable from a public declaration's signature must itself be public, in domains and packages alike |
 | Imports | Every name not declared in a file is imported with `use <folder> { Names }`, own domain included; built-ins never are; `jadpo fmt` writes and sorts them; see [Imports](../01-project-layout-and-modules.md#imports) |
 | A file per shared name | A declaration any other file uses has a file of its own named after it; supporting declarations used only by their file (and its test) stay in it |
+| A failure's place | Every failure has a file in `failures/`, however few files raise it, as the compiler already required (Richard, 2026-11-03): the page said it could sit beside its action, and an agent following it hit `layout.wrong_folder` |
+| Renaming a domain before any commit | A domain's rename is `(agent)` until the project has a commit, since no one depends on it yet, and `(human)` after (Richard, 2026-11-03) |
 | A file holds only what its primary declaration uses | Everything beside the primary declaration is used by it, or is `layout.unused_declaration`; see [Files and names](../01-project-layout-and-modules.md#files-and-names) |
 | Definition before use | Every declaration comes before the first one that uses it, so the primary declaration comes last; see [Files and names](../01-project-layout-and-modules.md#files-and-names) |
 | Names per domain | A private function, type or constant needs a name unique only within its domain, so agents in parallel workspaces don't clash on private helper names at merge; a domain is not a namespace. See [Files and names](../01-project-layout-and-modules.md#files-and-names) |

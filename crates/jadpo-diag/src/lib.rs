@@ -1657,6 +1657,35 @@ pub struct Diagnostic {
     /// file (`semantic.duplicate_declaration`, area 1): printed as the `in
     /// use` field after `next`.
     pub in_use: Vec<(String, String)>,
+    /// Which earlier diagnostic of the same list says the same thing, by
+    /// its place: this one has no `reason` of its own, set by
+    /// [`shorten_repeats`].
+    pub repeat_of: Option<usize>,
+}
+
+/// Shortens a list of diagnostics for the one reading them, whose context
+/// it costs (chunk A14; CLI design language, "Repeats"): a diagnostic with
+/// the same rule and reason as an earlier one keeps its headline, place,
+/// next step and edits, and points back rather than saying why again.
+/// `--full` leaves the list as it is.
+pub fn shorten_repeats(diagnostics: &mut [Diagnostic]) {
+    let mut first: Vec<(&'static str, String, usize)> = Vec::new();
+    for (index, diagnostic) in diagnostics.iter_mut().enumerate() {
+        let Some(reason) = &diagnostic.reason else {
+            continue;
+        };
+        let rule = diagnostic.rule.id;
+        match first
+            .iter()
+            .find(|(seen, said, _)| *seen == rule && said == reason)
+        {
+            Some((_, _, at)) => {
+                diagnostic.repeat_of = Some(*at);
+                diagnostic.reason = None;
+            }
+            None => first.push((rule, reason.clone(), index)),
+        }
+    }
 }
 
 impl Diagnostic {
@@ -1670,6 +1699,7 @@ impl Diagnostic {
             next: None,
             impact: None,
             in_use: Vec::new(),
+            repeat_of: None,
         }
     }
 

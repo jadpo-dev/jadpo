@@ -2406,6 +2406,7 @@ fn examples_and_tests(
 
     let ran = jadpo_test::run(jadpo_test::Options {
         cwd: compiled.scratch.0.clone(),
+        full: true,
         ..jadpo_test::Options::default()
     });
     let run = match ran {

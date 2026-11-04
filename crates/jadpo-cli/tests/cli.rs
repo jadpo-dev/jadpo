@@ -311,7 +311,7 @@ fn help_json_is_the_whole_command_reference() {
     let output = jadpo(&["help", "--json"]);
     assert_eq!(output.code, 0);
     let document = json(&output);
-    assert_eq!(document["schemaVersion"], 2);
+    assert_eq!(document["schemaVersion"], 3);
     assert_eq!(document["command"], "help");
     assert_eq!(document["ok"], true);
     let data = &document["data"];
@@ -467,10 +467,20 @@ fn help_json_is_the_whole_command_reference() {
 
 #[test]
 fn help_json_for_one_command_is_that_command() {
-    let document = json(&jadpo(&["help", "completions", "--json"]));
+    // The same but for how long each took.
+    let timeless = |args: &[&str]| {
+        let mut document = json(&jadpo(args));
+        document
+            .as_object_mut()
+            .expect("an object")
+            .remove("durationMs")
+            .expect("its duration");
+        document
+    };
+    let document = timeless(&["help", "completions", "--json"]);
     assert_eq!(document["data"]["name"], "completions");
-    assert_eq!(json(&jadpo(&["completions", "--help", "--json"])), document);
-    assert_eq!(json(&jadpo(&["--json"])), json(&jadpo(&["help", "--json"])));
+    assert_eq!(timeless(&["completions", "--help", "--json"]), document);
+    assert_eq!(timeless(&["--json"]), timeless(&["help", "--json"]));
 }
 
 #[test]

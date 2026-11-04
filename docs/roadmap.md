@@ -386,13 +386,7 @@ a new agent can't find a type without them (Richard, 2026-11-03).
   stage a supporting type, since checking after every file refuses a type
   written before its user (`layout.unused_declaration`).
 - [x] **A13 A broken test environment says so once**: area 13, "The test database"; area 14, "`jadpo test`"; `docs/errors/test.database_unavailable.md`.
-- [ ] **A14 Small diagnostics from the run** `opus · high`: a domain renamed
-  in a project with no commits is the agent's to do, since no one depends on
-  it yet; the first `type.mismatch` shows the expected shape and its edit;
-  area 1 says a failure may live in its action's file while the compiler
-  refuses it, so the page changes to match (Richard's call on recommendation,
-  2026-11-03); `--json` results carry the command's duration, and repeated
-  output is shortened.
+- [x] **A14 Small diagnostics from the run**: design language, "Repeats and `--full`"; area 1, "One primary declaration per file" and "Domains"; area 13, "As JSON"; area 14, "The `jadpo` command" and "`jadpo check`"; `docs/errors/type.mismatch.md`, `docs/errors/syntax.expected_name.md`, `docs/errors/naming.generic_name.md`, `docs/errors/layout.unused_declaration.md`.
 - [ ] **A15 Public writes in a new app** `opus · high`: a first commit has
   nothing to compare with, so a new project's public create, update or delete
   passes unseen. The first `access.jadpo_record` holding a public write gives

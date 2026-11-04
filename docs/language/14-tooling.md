@@ -25,9 +25,14 @@ subcommands. Run them anywhere inside your project: each finds the project
 by walking up from the current folder to `app.jadpo`, so you only give a
 path to work on another project. Every subcommand takes `--json`, for
 output an agent reads instead of prose, except the interactive modes,
-which need a terminal. Every subcommand takes `--full` too: a report keeps
-what an agent reads short, and `--full` shows everything it left out, in
-either form.
+which need a terminal. Every `--json` document says how long the command
+took, in `durationMs`.
+
+A report keeps what an agent reads short: what it repeats points back at
+the first, and what says nothing is left out. Every subcommand takes
+`--full`, which shows everything, on the screen or under `--json`
+([the design language](../cli-design-language.md#repeats-and---full) lists
+what is left out).
 
 Commands have plain synonyms where people reach for either word, such as
 `fmt` and `format`, and an unknown command suggests the nearest. Tab
@@ -134,7 +139,10 @@ it: `build/manifest.json` and the catalogues in `build/catalogue/`
 compares the change with the default branch at its merge base, and fails
 on each change that needs a person's acceptance and has none
 ([Review and sign-off](#review-and-sign-off)); `--before <branch or
-commit>` compares with another.
+commit>` compares with another. With `--json`, `data` holds the `layout`,
+the `root`, the `fileCount` and the `errors`, and any `providers`,
+`per_instance` and `before`; `--full` lists the `files` and what it wrote to
+`build`.
 
 ### `jadpo fmt`
 
@@ -3315,7 +3323,7 @@ Each row says what is built and what is specified but not built yet.
 | Which jadpo runs | Built in 0.1.0: every `jadpo` runs the release a project's line or `jadpo.lock` pin names, kept in the cache or fetched from GitHub's releases, its archive checked against its published SHA-256 and its GitHub artifact attestation (Sigstore's verifier, with the public-good trusted root carried in the binary) before it runs, and refuses with `toolchain.version_newer` or `toolchain.version_older` when it can't; `jadpo toolchain` lists, removes, pins and unpins, and `JADPO_TOOLCHAIN=local` runs everything with the `jadpo` started. The trusted root is the one this release was built with: no TUF refresh. |
 | Formatter | Built: one member per line, one blank line between declarations, and `fmt --check` counts the files it read; it keeps `use` lines at the top, sorted, fixes imports inside a project, `--layout` makes promotion moves, and it writes each file's declarations before their use, the primary declaration last. |
 | Error messages | Built: one error per mistake, in the field order [Error messages](#error-messages) gives, `impact` only when it says something, edits on the next step where one exists, and help links to each error's page on the site. |
-| JSON output | Built: every command takes `--json` and prints one envelope (`schemaVersion` 2) with project-relative paths and `data.root`, line and column beside byte offsets, and camelCase keys; `jadpo test --json` is described in [Testing](13-testing.md) and under `testReport` in `jadpo help --json`. |
+| JSON output | Built: every command takes `--json` and prints one envelope (`schemaVersion` 3) with `durationMs`, project-relative paths and `data.root`, line and column beside byte offsets, and camelCase keys, shortened unless `--full` is given; `jadpo test --json` is described in [Testing](13-testing.md) and under `testReport` in `jadpo help --json`. |
 | `build/` | Built: `jadpo check` writes `build/manifest.json` and the catalogues in `build/catalogue/`; `jadpo test` keeps its last run in `build/test/`. Since chunk B13 the monitoring rules in `build/monitoring/`. Not built yet: the reports in `build/`. |
 | Commands | Built: each command [The `jadpo` command](#the-jadpo-command) and the topics after it describe, apart from those in their "Not built yet" notes. |
 | Language server | Built: diagnostics; hover, with a query's SQL and a route's full path; go to definition, from a `use` line too; find references; completion; formatting as `jadpo fmt`; quick fixes from each error's edit, promotion among them; and the code actions under [Editor support](#editor-support). Not built yet: rename, which waits for `jadpo rename`. |

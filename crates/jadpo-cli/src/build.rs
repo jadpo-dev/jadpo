@@ -63,7 +63,13 @@ pub fn build(call: &Call) -> Reply {
         Err(reply) => return *reply,
     };
     if !checked.diagnostics.is_empty() {
-        return reported(&cwd, checked, started.elapsed(), "build stopped");
+        return reported(
+            &cwd,
+            checked,
+            started.elapsed(),
+            "build stopped",
+            call.flag("--full"),
+        );
     }
     let Checked {
         loaded, written, ..

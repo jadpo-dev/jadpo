@@ -329,6 +329,19 @@ impl Body<'_> {
                     "Collections keep their element type, so a `{actual}` is never a `{expected}`, even where each element would widen."
                 ))
                 .next(format!("Build a `{expected}` here"))
+        } else if let Some(object) = literal::object_wanted(self.table, expected) {
+            // An object: its shape, and the value written out (chunk A14).
+            problem
+                .reason(format!(
+                    "`{actual}` is {} and `{expected}` is an object: `{}`.",
+                    literal::what(self.table, actual),
+                    object.shape
+                ))
+                .next(format!(
+                    "Write `{}`{}",
+                    object.skeleton(),
+                    literal::help_for(object.standard.as_deref())
+                ))
         } else {
             problem
                 .reason(format!(
@@ -336,7 +349,10 @@ impl Body<'_> {
                     literal::what(self.table, actual),
                     literal::what(self.table, expected)
                 ))
-                .next(format!("Use a `{expected}` value here"))
+                .next(format!(
+                    "Use a `{expected}` value here{}",
+                    literal::help_for(literal::standard_behind(self.table, expected).as_deref())
+                ))
         };
         self.out.push(problem);
     }

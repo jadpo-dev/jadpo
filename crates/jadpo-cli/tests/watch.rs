@@ -675,7 +675,7 @@ error: `north_step_0` isn't used
 4 |     function north_step_0(a: NorthAmount, b: NorthAmount) -> NorthAmount {
   |              ^^^^^^^^^^^^ nothing uses this
   reason: A library function exists to be used by several files; one that nothing uses is dead code. Tests don't count as users.
-  next: Remove `north_step_0` (agent)
+  next: Use `north_step_0`, or remove it if nothing will (agent)
   rule: layout.unused_declaration
   help: https://jadpo.dev/docs/errors/layout.unused_declaration
 
@@ -813,7 +813,7 @@ watching 12 files · 1 failing  ctrl-c quit"#,
     │
   reason    A library function exists to be used by several files; one that
             nothing uses is dead code. Tests don't count as users.
-  next      Remove `north_step_0` (agent)
+  next      Use `north_step_0`, or remove it if nothing will (agent)
   rule      layout.unused_declaration
   help      https://jadpo.dev/docs/errors/layout.unused_declaration
 
@@ -937,7 +937,7 @@ fn json_streams_one_envelope_per_line_and_nothing_on_stderr() {
         })
         .collect();
     for document in &documents {
-        assert_eq!(document["schemaVersion"], 2);
+        assert_eq!(document["schemaVersion"], 3);
         assert_eq!(document["command"], "test");
     }
     let start = &documents[0];

@@ -17,7 +17,7 @@ mod table;
 
 pub use detect::{ColorChoice, Depth, Environment, MAX_WIDTH, Mode, Stream, Style, Symbols, Theme};
 pub use diagnostic::DiagnosticView;
-pub use json::{Json, SCHEMA_VERSION, diagnostic_json, envelope};
+pub use json::{Json, SCHEMA_VERSION, diagnostic_json, envelope, short_envelope};
 pub use palette::{Symbol, Token};
 pub use report::{Diagram, DiagramLine, Field, Frame, Item, Mark, Report, Text};
 pub use screen::{

@@ -138,11 +138,11 @@ fn a_terminal_gets_the_rich_form() {
 fn json_carries_the_problems_with_lines_and_edits() {
     let root = project("json");
     write(&root, TALLY, MISTAKE);
-    let output = jadpo(&root, &["check", "--json"]);
+    let output = jadpo(&root, &["check", "--json", "--full"]);
     assert_eq!(output.code, 1);
     assert_eq!(output.stderr, "");
     let document: serde_json::Value = serde_json::from_str(&output.stdout).expect("JSON");
-    assert_eq!(document["schemaVersion"], 2);
+    assert_eq!(document["schemaVersion"], 3);
     assert_eq!(document["command"], "check");
     assert_eq!(document["ok"], false);
     assert_eq!(document["data"]["layout"], "project");
@@ -157,10 +157,17 @@ fn json_carries_the_problems_with_lines_and_edits() {
     assert_eq!(problem["location"]["line"], 4);
     assert_eq!(problem["location"]["column"], 12);
     assert_eq!(problem["next"]["edits"][0]["replacement"], "double");
-    let again = jadpo(&root, &["check", "--json"]);
+    let again = jadpo(&root, &["check", "--json", "--full"]);
+    let timeless = |stdout: &str| -> String {
+        stdout
+            .lines()
+            .filter(|line| !line.contains("\"durationMs\""))
+            .collect()
+    };
     assert_eq!(
-        again.stdout, output.stdout,
-        "the same source, the same bytes"
+        timeless(&again.stdout),
+        timeless(&output.stdout),
+        "the same source, the same bytes but for how long it took"
     );
 }
 
