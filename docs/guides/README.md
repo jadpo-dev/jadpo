@@ -20,6 +20,7 @@ instead.
 | [Handle failures](04-handle-failures.md) | a failure of your own, refused with the right status, handled where a caller wants to |
 | [Translate your app's text](19-translate-your-apps-text.md) | typed messages in two languages, chosen from the browser's header, with stale translations caught by `jadpo check` |
 | [Add sign-in](05-add-sign-in.md) | sign-in by emailed link and with Google, and routes that know who is calling |
+| [Keep customers' data apart](21-keep-customers-data-apart.md) | a tenant named once, memberships and roles, and tests proving one company can't reach another's records |
 | [Call an outside API](06-call-an-outside-api.md) | a typed description of another service, called through a connection and faked in tests |
 | [Receive a webhook](17-receive-a-webhook.md) | a sender described as a package, its signed requests checked and de-duplicated, and a subscriber keeping each event |
 | [Run background work](07-run-background-work.md) | a schedule that starts a batch, an event with its subscriber, and a test of the whole run |
