@@ -101,6 +101,11 @@ class Pages(unittest.TestCase):
         self.assertEqual({i: n for i, n in sizes.items() if n > docs.TOPIC_WORDS}, {})
         self.assertEqual(bundle.problems, [])
 
+    def test_every_topic_has_its_place_in_the_manifest(self):
+        catalogue, pages, _, errors = real_docs()
+        bundle = docs.Bundle(pages, errors, {'rules': list(catalogue.values()), 'commands': []})
+        self.assertEqual(bundle.reference_problems(bundle.build()), [])
+
 
 AREA_ONE = """---
 title: One
@@ -154,9 +159,28 @@ Back to [one](01-one.md).
 """
 
 
-def tree(root, one=AREA_ONE, two=AREA_TWO):
+REFERENCE = """
+[[group]]
+title = "Things"
+
+[[group.page]]
+id = "one"
+title = "One"
+topics = ["shown"]
+
+[[group.page]]
+title = "Two"
+topics = ["two"]
+details = ["twos-part"]
+commands = true
+"""
+
+
+def tree(root, one=AREA_ONE, two=AREA_TWO, reference=REFERENCE):
     language = root / 'docs/language'
     (language / 'notes').mkdir(parents=True)
+    if reference is not None:
+        (root / 'docs/reference.toml').write_text(reference)
     (root / 'docs/errors').mkdir()
     (language / '01-one.md').write_text(one)
     (language / '02-two.md').write_text(two)
@@ -185,6 +209,7 @@ class Bundle(unittest.TestCase):
             bundle.write(root / 'bundle')
             files = {str(p.relative_to(root / 'bundle')): p.read_text()
                      for p in (root / 'bundle').rglob('*') if p.is_file()}
+            self.nav = json.loads(files.pop('nav.json')) if 'nav.json' in files else None
             return json.loads(files.pop('index.json')), files, bundle
 
     def test_the_bundle_has_its_shape(self):
@@ -195,8 +220,13 @@ class Bundle(unittest.TestCase):
                           ('error', 'a.b'), ('command', 'jadpo-check')])
         paths = {'topic': 'topics/{}.md', 'error': 'errors/{}.md', 'command': 'commands/{}.md'}
         self.assertEqual(sorted(files), sorted(paths[e['kind']].format(e['id']) for e in index['pages']))
+        placed = {'one': ('Things', 'One'), 'shown': ('Things', 'One'), 'two': ('Things', 'Two'),
+                  'twos-part': ('Things', 'Two'), 'jadpo-check': ('Things', 'Two')}
         for entry in index['pages']:
-            self.assertEqual(sorted(entry), sorted(['id', 'kind', 'title', 'summary', 'tokens', 'hash', 'area', 'links']))
+            place = ['group', 'page', 'status'] if entry['id'] in placed else []
+            self.assertEqual(sorted(entry), sorted(['id', 'kind', 'title', 'summary', 'tokens', 'hash', 'area', 'links'] + place))
+            if place:
+                self.assertEqual((entry['group'], entry['page']), placed[entry['id']])
             text = files[paths[entry['kind']].format(entry['id'])]
             self.assertEqual(entry['hash'], 'sha256:' + hashlib.sha256(text.encode()).hexdigest())
             self.assertEqual(entry['tokens'], (len(text) + 3) // 4)
@@ -206,6 +236,59 @@ class Bundle(unittest.TestCase):
         self.assertEqual(by_id['shown']['links'], ['a.b', 'twos-part'])
         self.assertEqual(by_id['a.b']['summary'], 'A is b')
         self.assertEqual(by_id['jadpo-check']['links'], ['a.b'])
+
+    def test_nav_json_is_the_tree_with_its_addresses(self):
+        self.build()
+        self.assertEqual(self.nav['version'], '0.1.0')
+        group = self.nav['groups'][0]
+        self.assertEqual(group['title'], 'Things')
+        self.assertEqual(group['href'], '/docs/one')
+        one, two = group['children']
+        self.assertEqual((one['id'], one['href'], one['summary']), ('one', '/docs/one', 'What one is.'))
+        self.assertEqual([t['href'] for t in two['topics']], ['/docs/two', '/docs/jadpo-check'])
+        self.assertEqual([t['kind'] for t in two['topics']], ['topic', 'command'])
+        self.assertEqual([t['id'] for t in two['details']], ['twos-part'])
+
+    def test_no_manifest_writes_no_nav_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalogue, pages, errors = tree(root, reference=None)
+            bundle = docs.Bundle(pages, errors, {'version': '0.1.0', 'rules': list(catalogue.values()),
+                                                 'commands': COMMANDS}, root)
+            bundle.write(root / 'bundle')
+            self.assertFalse((root / 'bundle/nav.json').exists())
+            self.assertTrue((root / 'bundle/index.json').exists())
+
+    def test_a_standard_types_group_has_its_compiler_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalogue, pages, errors = tree(root, reference=REFERENCE + '''
+[[group]]
+title = "Types"
+id = "types"
+summary = "Every type."
+
+[[group.page]]
+title = "Money"
+id = "types-money"
+summary = "Money and what goes with it."
+types = "Money"
+''')
+            types = [{'name': 'Money', 'group': 'Money', 'summary': 'A sum'}, {'name': 'Iban', 'group': 'Money', 'summary': 'An account'}]
+            type_pages = {'index': '# Standard types\n\nEvery type.\n',
+                          'types': [{'id': 'type-money', 'name': 'Money', 'page': '# Money\n\nA sum.\n'},
+                                    {'id': 'type-iban', 'name': 'Iban', 'page': '# Iban\n\nAn account.\n'}]}
+            bundle = docs.Bundle(pages, errors, {'version': '0.1.0', 'rules': list(catalogue.values()), 'commands': COMMANDS,
+                                                 'types': types, 'type_pages': type_pages}, root)
+            built = bundle.write(root / 'bundle')
+            nav = json.loads((root / 'bundle/nav.json').read_text())
+            index = {e['id']: e for e in json.loads((root / 'bundle/index.json').read_text())['pages']}
+            self.assertEqual(bundle.reference_problems(built), [])
+        money = nav['groups'][1]['children'][0]
+        self.assertEqual(nav['groups'][1]['href'], '/docs/types')
+        self.assertEqual([(t['id'], t['href']) for t in money['topics']],
+                         [('type-money', '/docs/types/type-money'), ('type-iban', '/docs/types/type-iban')])
+        self.assertEqual((index['type-iban']['group'], index['type-iban']['page']), ('Types', 'Money'))
 
     def test_a_renamed_topic_keeps_its_old_ids(self):
         index, files, _ = self.build(two=AREA_TWO.replace('<!-- topic: twos-part -->',
@@ -545,6 +628,22 @@ class Structure(unittest.TestCase):
 
     def test_a_tree_in_shape_has_one_problem_the_missing_page(self):
         self.assertEqual(self.problems(), ['c.d (area 2) has no page: add docs/errors/c.d.md'])
+
+    def test_a_new_topic_needs_its_place_in_the_manifest(self):
+        problems = self.problems(two=AREA_TWO + '\n## Newer\n<!-- topic: newer -->\n\nNewer still.\n')
+        self.assertIn('topic "newer" has no place', ' '.join(problems))
+
+    def test_a_renamed_topic_names_its_new_id(self):
+        problems = self.problems(two=AREA_TWO.replace('<!-- topic: twos-part -->',
+                                                      '<!-- topic: the-part (was twos-part) -->'))
+        self.assertIn('"twos-part" is now "the-part"', ' '.join(problems))
+
+    def test_a_tree_with_no_manifest_says_so(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalogue, pages, errors = tree(root, reference=None)
+            problems = docs.check_structure(pages, errors, catalogue, COMMANDS, root)
+        self.assertIn('docs/reference.toml is missing', ' '.join(problems))
 
     def test_a_help_line_is_a_rules_page_on_the_site(self):
         shown = '```text\nerror: no\n  rule: a.b\n  help: {}\n```\n'
@@ -1166,6 +1265,7 @@ class TypeReference(unittest.TestCase):
             bundle.write(root / 'bundle')
             files = {str(p.relative_to(root / 'bundle')): p.read_text()
                      for p in (root / 'bundle').rglob('*') if p.is_file()}
+            self.nav = json.loads(files.pop('nav.json')) if 'nav.json' in files else None
             return json.loads(files.pop('index.json')), files, bundle
 
     def test_a_type_id_is_its_name_in_kebab_case(self):
