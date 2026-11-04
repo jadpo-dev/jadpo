@@ -61,7 +61,7 @@ status table, with the [roadmap](../roadmap.md), say what is built. A
 Give the agent this index and the actual area files needed for its task.
 An index is not a substitute for their rules, and some URL tools do not
 follow links. The root [llms.txt](../../llms.txt) lists absolute plain-text
-URLs for every area; the [documentation guide](../documentation.md#how-an-agent-uses-it)
+URLs for the reference's groups; the [documentation guide](../documentation.md#how-an-agent-uses-it)
 explains how an agent reads the docs, including Gemini import.
 
 Ask the agent to cite the sections it read and distinguish implemented

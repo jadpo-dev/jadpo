@@ -315,6 +315,17 @@ fn a_schedule_trigger_is_the_servers_timer_or_an_external_tick() {
 }
 
 #[test]
+fn a_schedule_reaching_what_no_list_grants_is_refused() {
+    let none = TODO.replace("        create: [Access.system]\n", "");
+    assert_eq!(
+        problems(&[("domains/planning/entities/todo.jadpo", none.as_str())]),
+        [format!(
+            "{PATH} policy.system_grant_missing: `tidy_up` runs as the system, which nothing lets create `Todo`"
+        )]
+    );
+}
+
+#[test]
 fn a_schedule_reaching_what_only_access_public_grants_is_refused() {
     let public = TODO.replace("create: [Access.system]", "create: [Access.public]");
     assert_eq!(

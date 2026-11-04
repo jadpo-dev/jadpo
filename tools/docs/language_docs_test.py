@@ -851,6 +851,25 @@ class WhatAnAgentIsToldToRead(unittest.TestCase):
         self.assertEqual(self.problems(skill='https://jadpo.dev/docs/errors/<rule>.md, https://jadpo.dev/v/<version>/docs/index.json\n'), [])
 
 
+class WhatAnAgentReadsOnce(unittest.TestCase):
+    """The primer as the bundle gives it, and the repository's llms.txt, stay
+    inside the budget (agent_guidance.READ_ONCE_TOKENS)."""
+
+    def problems(self, primer, llms):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'llms.txt').write_text(llms)
+            return docs.read_once_problems([('primer', 'primer', 'primer.md', 'Primer', None, primer, set())], root)
+
+    def test_inside_the_budget_passes(self):
+        self.assertEqual(self.problems('p' * 100, 'l' * 100), [])
+
+    def test_over_it_fails_on_the_page_as_the_bundle_gives_it(self):
+        found = self.problems('p' * 40_000, 'l' * 100)
+        self.assertEqual(len(found), 1)
+        self.assertIn('read once', found[0])
+
+
 class Primer(unittest.TestCase):
     def test_the_bundle_leads_with_the_primer(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1113,6 +1132,26 @@ GUIDE_INDEX = """# Guides
 [Count things](01-count.md).
 """
 
+GROUPED_GUIDE_INDEX = """# Guides
+<!-- topic: guides -->
+
+Each guide does one job.
+
+## Naming
+
+Giving things names.
+
+| Guide | You end with |
+|---|---|
+| [Name things](02-name.md) | a name |
+
+## Counting
+
+| Guide | You end with |
+|---|---|
+| [Count things](01-count.md) | a count |
+"""
+
 GUIDE_ONE = """# Count things
 <!-- topic: guide-count -->
 
@@ -1182,6 +1221,46 @@ class Guides(unittest.TestCase):
         self.assertIn('[one](../topics/one.md)', one)
         self.assertIn('[the path](../learn/learn.md)', one)
         self.assertNotIn('topic:', one)
+
+    def test_the_index_sets_the_guides_order_and_group(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalogue, pages, errors = tree(root)
+            guides_dir = root / 'docs/guides'
+            guides_dir.mkdir(parents=True)
+            (guides_dir / 'README.md').write_text(GROUPED_GUIDE_INDEX)
+            (guides_dir / '01-count.md').write_text(GUIDE_ONE)
+            (guides_dir / '02-name.md').write_text(GUIDE_TWO)
+            guides = docs.load_guides({}, root)
+            for page in guides:
+                page.collect_blocks()
+            bundle = docs.Bundle(pages, errors, {'version': '0.1.0', 'rules': list(catalogue.values()),
+                                                 'commands': []}, root, guides=guides)
+            bundle.write(root / 'bundle')
+            index = json.loads((root / 'bundle/index.json').read_text())
+            written = (root / 'bundle/guides/guides.md').read_text()
+            self.assertEqual(docs.guide_index_problems(guides), [])
+        entries = [(e['id'], e.get('group')) for e in index['pages'] if e['kind'] == 'guide']
+        self.assertEqual(entries, [('guides', None), ('guide-name', 'Naming'), ('guide-count', 'Counting')])
+        self.assertIn('## Naming', written)
+
+    def test_every_guide_sits_under_one_heading_of_the_index(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            guides_dir = root / 'docs/guides'
+            guides_dir.mkdir(parents=True)
+            (guides_dir / 'README.md').write_text(
+                '# Guides\n<!-- topic: guides -->\n\n'
+                '| Guide | You end with |\n|---|---|\n| [Count things](01-count.md) | a count |\n\n'
+                '## Naming\n\n| Guide | You end with |\n|---|---|\n| [Count things](01-count.md) | a count |\n')
+            (guides_dir / '01-count.md').write_text(GUIDE_ONE)
+            (guides_dir / '02-name.md').write_text(GUIDE_TWO)
+            problems = docs.guide_index_problems(docs.load_guides({}, root))
+        self.assertEqual(problems, [
+            'README.md lists 01-count.md twice: a guide has one place on the index',
+            'README.md lists 01-count.md under no heading: a guide sits under one',
+            'README.md has no row for 02-name.md: every guide has one',
+        ])
 
     def test_a_guide_may_link_another_guide(self):
         with tempfile.TemporaryDirectory() as tmp:

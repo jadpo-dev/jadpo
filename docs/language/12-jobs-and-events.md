@@ -148,8 +148,9 @@ hourly purge schedule from the compiler, such as `Member.purge` for
   holds no other up.
 - **Grants.** A schedule runs as the system, so the records it reaches
   must name `Access.system` in their policy. A schedule reaching what
-  only `Access.public` grants is `policy.system_grant_missing`, as a
-  subscriber or a batch is ([Policy and background work](09-policy.md#policy-and-background-work)).
+  only `Access.public` grants, or what no list grants anyone, is
+  `policy.system_grant_missing`, as a subscriber or a batch is
+  ([Policy and background work](09-policy.md#policy-and-background-work)).
 
 ### The tick
 
@@ -1212,8 +1213,8 @@ in, as for a schedule or a subscriber
 query reads, or what the action `each:` or `finished:` calls reaches
 (itself or through what it calls), has a grant list, a field's own list
 or a line under `actions:` that names `Access.public` and not
-`Access.system`. Then that is `policy.system_grant_missing`, at that
-query's or action's call. Each call is checked, so one batch may be
+`Access.system`, or does something no list grants anyone. Then that is
+`policy.system_grant_missing`, at that query's or action's call. Each call is checked, so one batch may be
 refused at more than one.
 
 A batch's query that only `Access.public` may read:
@@ -1964,7 +1965,9 @@ A subscriber's action may emit further events.
 A subscriber runs as the system (`Access.system`,
 [Policy and background work](09-policy.md#policy-and-background-work)), not as the user who
 caused the event. If it needs to know who, put a field such as
-`by: User.id` in the event.
+`by: User.id` in the event. What its action does that no list grants
+anyone is `policy.system_grant_missing`, so a write with no grant fails at
+`jadpo check`, not as a failed delivery.
 
 ### What a subscriber stores from its event
 

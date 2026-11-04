@@ -52,6 +52,10 @@ entity Member {{
     }}
     nickname: Nickname
     backup: Email
+
+    policy: {{
+        create: [Access.system]
+    }}
 }}
 
 {code}"#
@@ -1174,11 +1178,19 @@ const LISTENING: &str = r#"entity SignInNote {
     member_id: Member.id {
         on_delete: OnDelete.cascade
     }
+
+    policy: {
+        create: [Access.system]
+    }
 }
 
 entity WayIn {
     id: Uuid
     by_link: Bool
+
+    policy: {
+        create: [Access.system]
+    }
 }
 
 /// Notes who signed in.
@@ -1452,6 +1464,15 @@ fn on_first_sign_in_runs_as_the_system() {
     );
     let found = with(SENDS, LINK, FIRST, &code("Access.public, Access.system"));
     assert!(!has(&found, "policy.system_grant_missing"), "{found:?}");
+    let none = code("GONE").replace("        create: [GONE]\n", "");
+    let found = with(SENDS, LINK, FIRST, &none);
+    assert!(
+        has(
+            &found,
+            "policy.system_grant_missing: `create_member` runs as the system, which nothing lets create `SignUp`"
+        ),
+        "{found:?}"
+    );
 }
 
 /// The magic-link `send:` action runs as the system too.

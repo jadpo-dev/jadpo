@@ -201,7 +201,10 @@ open. An error's `help:` line is its page's address on the site,
   `hidden` blocks, which the docs check compiles and the bundle leaves
   out; its first paragraph after the opening says in words what those
   are. Guides don't depend on each other, so each says what it starts
-  from rather than "as the last guide did".
+  from rather than "as the last guide did". The guides' index lists each
+  guide once, under a `##` heading naming a kind of job, with a line saying
+  what the reader ends with; the docs check fails a guide with no row. The
+  index's order is the bundle's.
 - **Primer** (`docs/primer.md`): the one page an agent reads before
   writing an app, 3,000 to 5,000 tokens.
 

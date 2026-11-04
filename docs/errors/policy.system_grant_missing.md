@@ -1,6 +1,6 @@
 # `policy.system_grant_missing`
 
-A schedule or subscriber reaches a grant that names `Access.public` but not `Access.system`, so the background work would always be refused.
+A schedule or subscriber reaches something no list grants anyone, or a grant that names `Access.public` but not `Access.system`, so the background work would always be refused.
 
 ## Why Jadpo refuses it
 
@@ -9,7 +9,10 @@ which gets exactly what `Access.system` grants. `Access.public` lets in
 anyone who calls a route, signed in or not, but the system is nobody
 calling. So a grant that names `Access.public` and not `Access.system`
 never lets background work in, and the subscriber would be refused every
-time it runs.
+time it runs. Nor does an entity let anyone in by saying nothing: a
+create, read, update or delete no list grants anyone can only be refused,
+and without this check you would first see that once it was deployed, as
+a delivery that failed.
 
 Jadpo won't choose the fix for you. Granting `Access.system` lets your
 app's background work change these records, which is a decision about
@@ -71,6 +74,55 @@ check failed: 1 error, 1 file
 `(human)` at the end of the `next:` line tells your coding agent to stop
 and ask you which fix you want, because the choice is yours to make: it
 decides whether background work may mark reminders as sent.
+
+An entity that grants nobody what the subscriber does is refused the same
+way. Here `SentNote` has no `create:`, so nothing could ever create one:
+
+```jadpo check project=e-system-grant-missing-no-list expect=policy.system_grant_missing
+type Note = Text {
+    max_length: 200
+}
+
+entity SentNote {
+    id: Uuid
+    note: Note
+
+    policy: {
+        read: [Access.authenticated]
+    }
+}
+
+type ReminderDue = Event {
+    note: Note
+}
+
+action keep_sent(note: Note) -> SentNote {
+    return SentNote.create {
+        set: {
+            note: note
+        }
+    }
+}
+
+subscriber keep_due {
+    on: ReminderDue
+    run: keep_sent(event.note)
+}
+```
+
+```text output
+error: `keep_due` runs as the system, which nothing lets create `SentNote`
+ --> main.jadpo:26:12
+   |
+26 | subscriber keep_due {
+   |            ^^^^^^^^ runs as `Access.system`
+  reason: A subscriber runs as the system, which an entity grants background work by naming `Access.system`; `SentNote`'s policy grants nobody `create`, so every run would be refused with `not_permitted`.
+  next: Add `create: [Access.system]` to `SentNote`'s `policy:` (human)
+  rule: policy.system_grant_missing
+  help: https://jadpo.dev/docs/errors/policy.system_grant_missing
+
+check failed: 1 error, 1 file
+```
 
 The magic-link `send:` action, a webhook's reply action and the
 `on_first_sign_in:` action run as the system too, and are checked the
@@ -189,6 +241,47 @@ subscriber send_due {
 `send_due` may now mark a reminder as sent when a `ReminderDue` event is
 delivered. Anyone calling a route may still update a reminder, as
 before.
+
+**If nothing grants it yet**, give the subscriber its own list:
+
+```jadpo fragment
+        create: [Access.system]
+```
+
+```jadpo check project=e-system-grant-missing-no-list-fixed hidden
+type Note = Text {
+    max_length: 200
+}
+
+entity SentNote {
+    id: Uuid
+    note: Note
+
+    policy: {
+        create: [Access.system]
+        read: [Access.authenticated]
+    }
+}
+
+type ReminderDue = Event {
+    note: Note
+}
+
+action keep_sent(note: Note) -> SentNote {
+    return SentNote.create {
+        set: {
+            note: note
+        }
+    }
+}
+
+subscriber keep_due {
+    on: ReminderDue
+    run: keep_sent(event.note)
+}
+```
+
+`keep_due` may now create a `SentNote`, and no request may.
 
 **If the subscriber may run a listed action**, add `Access.system` to
 that action's line under `actions:`:
