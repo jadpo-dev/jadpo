@@ -163,15 +163,65 @@ impl Logged {
     }
 }
 
+impl Logged {
+    /// A 500 no fault is behind: what the runtime raises when a connection
+    /// can't be used as deployed (`misconfigured`) or a call's outcome is
+    /// unknown. Its answer says no more than its code, so this line is all
+    /// an operator gets: the code, the route and the connection that failed.
+    fn refused(&self, answered: &Answered<'_>) {
+        if answered.response.status != 500 {
+            return;
+        }
+        let code: Option<String> = serde_json::from_slice::<Value>(&answered.response.body)
+            .ok()
+            .and_then(|body| body.get("error")?.get("code")?.as_str().map(str::to_string));
+        let Some(code) = code else {
+            return;
+        };
+        let connection = answered.spans.iter().find_map(|span| match &span.kind {
+            crate::spans::Kind::Call { connection, .. }
+                if span.ended != crate::spans::Ended::Value =>
+            {
+                Some(connection.clone())
+            }
+            _ => None,
+        });
+        self.log.event(
+            "operation.failed",
+            [
+                ("classification", code.as_str().into()),
+                ("connection", connection.map_or(Value::Null, Value::from)),
+                (
+                    "route",
+                    answered
+                        .response
+                        .route
+                        .as_deref()
+                        .map_or(Value::Null, Value::from),
+                ),
+                (
+                    "request_id",
+                    answered
+                        .response
+                        .header("x-request-id")
+                        .map_or(Value::Null, Value::from),
+                ),
+            ],
+        );
+    }
+}
+
 impl Observer for Logged {
     fn answered(&self, answered: &Answered<'_>) {
         let Some(fault) = &answered.response.fault else {
+            self.refused(answered);
             return;
         };
         self.log.event(
             "operation.failed",
             [
                 ("classification", fault.kind.classification().into()),
+                ("cause", fault.kind.cause().map_or(Value::Null, Value::from)),
                 (
                     "route",
                     answered
@@ -978,6 +1028,87 @@ mod tests {
         for hidden in ["bug", "Jadpo", "github", "checker", "Defect"] {
             assert!(!body.contains(hidden), "{hidden} in {body}");
         }
+    }
+
+    /// What a store said reaches the operator's line, since the client's
+    /// answer says nothing and a fault with no reason can't be diagnosed: the
+    /// real deploy's `vector` reads failed 8 times in 12 with only
+    /// `internal_fault` to go on (chunk 8.2n).
+    #[test]
+    fn a_stores_reason_reaches_the_log() {
+        logged();
+        let mut response =
+            crate::http::runtime_failure(crate::http::INTERNAL_FAULT, "req_0b1e", None);
+        response.fault = Some(Box::new(crate::Fault {
+            kind: crate::FaultKind::Store(
+                "PostgreSQL refused (26000): prepared statement \"s0\" does not exist".into(),
+            ),
+            frames: Vec::new(),
+        }));
+        let request = crate::http::Request::default();
+        let program = Sweeping {
+            places: Places::new(),
+            schedules: SchedulesPlan::default(),
+        };
+        let spans = crate::spans::Spans::default();
+        Logged::new(Log::new(STAMP, kept), &[] as &[Unbuilt]).answered(&crate::serve::Answered {
+            request: &request,
+            response: &response,
+            program: &program,
+            ms: 3,
+            spans: &spans,
+        });
+        let lines = logged();
+        let [line] = lines.as_slice() else {
+            panic!("{lines:?}")
+        };
+        assert_eq!(line["classification"], "internal_fault", "{line}");
+        assert_eq!(
+            line["cause"], "PostgreSQL refused (26000): prepared statement \"s0\" does not exist",
+            "{line}"
+        );
+        let body = String::from_utf8(response.body.clone()).unwrap();
+        assert!(!body.contains("26000"), "{body}");
+    }
+
+    /// A 500 with no fault behind it is logged too: on the real deploy a
+    /// model the Worker couldn't reach answered `misconfigured`, and nothing
+    /// reached the log (chunk 8.2n).
+    #[test]
+    fn a_misconfigured_answer_is_logged_though_no_fault_is_behind_it() {
+        logged();
+        let mut response = crate::http::runtime_failure(
+            (
+                500,
+                "misconfigured",
+                "The server isn't set up to answer that.",
+            ),
+            "req_0b1e",
+            None,
+        );
+        response
+            .headers
+            .push(("x-request-id".into(), "req_0b1e".into()));
+        let request = crate::http::Request::default();
+        let program = Sweeping {
+            places: Places::new(),
+            schedules: SchedulesPlan::default(),
+        };
+        let spans = crate::spans::Spans::default();
+        Logged::new(Log::new(STAMP, kept), &[] as &[Unbuilt]).answered(&crate::serve::Answered {
+            request: &request,
+            response: &response,
+            program: &program,
+            ms: 3,
+            spans: &spans,
+        });
+        let lines = logged();
+        let [line] = lines.as_slice() else {
+            panic!("{lines:?}")
+        };
+        assert_eq!(line["event"], "operation.failed", "{line}");
+        assert_eq!(line["classification"], "misconfigured", "{line}");
+        assert_eq!(line["request_id"], "req_0b1e", "{line}");
     }
 
     /// A fault that is the app's own, an overflow, is not called a bug.

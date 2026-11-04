@@ -104,6 +104,7 @@ mod passkey_tokens;
 mod passkeys;
 mod personal_data_report;
 mod policy;
+mod pooled_statements;
 mod provider_calls;
 mod provider_fakes;
 mod provider_parts;

@@ -148,35 +148,21 @@ a finished chunk is in git history.
   14, "A Workers deployable" and Decisions; area 10, "Client addresses".
 - [x] **8.2m2 Rate limits' store on Workers**: area 16, "Rate limits" and
   "Rate limits on Workers"; §2.6, "The Workers host".
-- [ ] **8.2n A real deploy** `opus · high`, after 8.2a to 8.2m2, **needs
-  a maintainer** (the maintainer's Cloudflare account): a teaching example deployed with
-  Hyperdrive's caching off to a real PostgreSQL, the cron and a queue,
-  its Wrangler file accepted by `wrangler deploy`; its cold start against
-  the one-second limit, its module against the plan's size limit, and
-  the client's address and the six connections on the real edge,
-  measured; whether the outbound guard's names can reach a private
-  address there checked. From 8.2i: the Worker reaching Hyperdrive
-  without TLS as its binding's address says, Hyperdrive's default TLS
-  checking the database's certificate, and a `vector` column read through
-  it (tokio-postgres describes one through a named statement). From 8.2h:
-  a Worker reaching its own `JadpoHandOn` (since 8.4b through
-  `ctx.exports`, not a binding), each invocation handed on given its own
-  30 seconds once the one that called it has ended, and a client leaving
-  a streamed answer ending the model's call.
-  From 8.2k: a queue's name in Jadpo's form and its consumer accepted by
-  Cloudflare, and a batch's `retry({ delaySeconds })` honoured on the edge.
-  From 8.4a: a recursion through 400 inline functions, and a thousand
-  frames of a large function, answered on the edge, whose V8 stack the
-  inline-function limit assumes is about workerd's megabyte, and the
-  module's 8 MiB stack within an isolate's memory.
-  From 8.4b: the hand-on reaching the Worker through `ctx.exports` on the
-  edge, under the file's name and under `wrangler deploy --env`, and the
-  dead-letter queue's consumer accepted beside the queue's.
-  From G4: a route's own binding (`LIMITS_<n>_PER_<period>S`) accepted by
-  `wrangler deploy` at 10 and 60 seconds and refusing at about its limit;
-  how far past its limit a burst gets, whether two locations really count
-  apart, as Cloudflare's documentation says, and how an address behaves as
-  a key; two deployables sharing a `namespace_id` sharing their counts.
+- [ ] **8.2n A real deploy, what's left** `opus · high`, **needs a
+  maintainer** (the maintainer's Cloudflare account; Richard's yes to redeploy):
+  deployed once on 2026-11-04, and what it measured is on the area pages. Left
+  for one more deploy, with the checks in the PR that recorded them:
+  - **`vector` through Hyperdrive**, which failed in 8 of 12 runs: fixed against
+    a stand-in pooler (§2.6, "PostgreSQL through Hyperdrive"), and to be read
+    back 12 of 12 on the real thing, `operation.failed`'s `cause` naming any
+    that aren't.
+  - Two deployables sharing a `namespace_id`: send more than the 60 requests
+    that one Worker never refused at 10 in 60 seconds.
+  - The parked row of a message sent to the dead-letter queue (`jadpo
+    deliveries`).
+  - Two locations counting apart, from a second network.
+  - Hyperdrive's default TLS checking the database's certificate, and the
+    module's 8 MiB stack within an isolate's memory.
 
 - [x] **8.3 Performance spike**: §2.11.
 

@@ -356,7 +356,8 @@ from `JADPO_HYPERDRIVE_<variable>`
   configuration's caching, so `jadpo build` says so when it writes a
   binding with no id.
 - **No session state.** Hyperdrive hands a Worker a connection for one
-  transaction at a time, so Jadpo's statements are unnamed, each transaction sets
+  transaction at a time, so Jadpo's statements are unnamed, a column of an
+  extension's type (`vector`, `geography`) included, each transaction sets
   its isolation level in its own `BEGIN`, and leases are rows, never
   advisory locks. That is the same on every target.
 
