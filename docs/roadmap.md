@@ -400,8 +400,7 @@ What the Reddit thread found (Richard, 2026-11-03):
   reference home.
 - [ ] **D17i Built-in services, one home each** `opus · high`: usage first,
   details last, the landing's rows all linking.
-- [ ] **D17j Every other area** `opus · high`: the remaining merges and
-  renames, translations findable under Configuration.
+- [x] **D17j Every other area**: the `(was …)` declarations on the area pages; `docs/reference.toml`, Configuration.
 - [ ] **D17k Implementer history out of the topics** `opus · medium`, with a
   check.
 - [ ] **D17l The guides index grouped** `opus · medium`.
