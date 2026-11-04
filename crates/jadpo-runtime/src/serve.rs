@@ -241,6 +241,7 @@ mod tests {
                 authentication: Authentication::Public,
                 caller: None,
                 confirm: false,
+                rate_limit: None,
                 file: "domains/widgets/routes/widgets.jadpo".into(),
                 line: 1,
             }],

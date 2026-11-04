@@ -72,7 +72,7 @@ use jadpo_check::publishing::{self, Bump};
 use jadpo_check::release::{self, ChangeEntry};
 use jadpo_check::surface::{self, Declaration, Surface, What, first_paragraph};
 use jadpo_db::{Locked, Source};
-use jadpo_diag::{Diagnostic, nearest, rule};
+use jadpo_diag::{Decider, Diagnostic, nearest, rule};
 use jadpo_term::{Block, Fact, Json, Outcome, Row, RowState, Screen};
 
 use crate::fmt::project_needed;
@@ -170,6 +170,7 @@ pub fn package(call: &Call) -> Reply {
         ),
         ("--from", &["search"][..], "`search`"),
         ("--kind", &["search"][..], "`search`"),
+        ("--publisher", &["verify"][..], "`verify`"),
     ] {
         if call.value(flag).is_some() && !action.is_some_and(|action| goes_with.contains(&action)) {
             return Reply::failed(arguments(
@@ -506,6 +507,9 @@ fn overview(
         fields.push(("version".into(), version.clone()));
     }
     fields.push(("source".into(), source.clone()));
+    if let Some(publisher) = &surface.publisher {
+        fields.push(("publisher".into(), publisher.clone()));
+    }
     if let Some(licence) = &surface.licence {
         fields.push(("licence".into(), licence.clone()));
     }
@@ -574,6 +578,10 @@ fn overview(
                 ("kind", Json::from(surface.kind)),
                 ("version", version.as_deref().map_or(Json::Null, Json::from)),
                 ("source", Json::from(source.as_str())),
+                (
+                    "publisher",
+                    surface.publisher.as_deref().map_or(Json::Null, Json::from),
+                ),
                 (
                     "licence",
                     surface.licence.as_deref().map_or(Json::Null, Json::from),
@@ -961,6 +969,8 @@ struct Item {
     name: &'static str,
     state: RowState,
     detail: String,
+    /// A skipped row that won't be checked: nothing is owed, only said.
+    left_out: bool,
 }
 
 impl Item {
@@ -969,6 +979,7 @@ impl Item {
             name,
             state: RowState::Done,
             detail: detail.into(),
+            left_out: false,
         }
     }
 
@@ -977,6 +988,7 @@ impl Item {
             name,
             state: RowState::Failed,
             detail: detail.into(),
+            left_out: false,
         }
     }
 
@@ -985,10 +997,21 @@ impl Item {
             name,
             state: RowState::Skipped,
             detail: detail.into(),
+            left_out: false,
+        }
+    }
+
+    fn left_out(name: &'static str, detail: impl Into<String>) -> Item {
+        Item {
+            left_out: true,
+            ..Item::later(name, detail)
         }
     }
 
     fn word(&self) -> &'static str {
+        if self.left_out {
+            return "left out";
+        }
         match self.state {
             RowState::Done => "passed",
             RowState::Failed => "failed",
@@ -1255,18 +1278,75 @@ pub(crate) enum Mode {
     /// release given, writing nothing.
     /// With `run` false, none of the package's code runs: the verifier's
     /// first pass, whose facts its code can't touch.
+    /// `publisher` is who the release was asked for, when that is known.
     Verify {
         previous: Option<Box<Previous>>,
         run: bool,
+        publisher: Option<String>,
     },
 }
 
 /// Runs the publishing bar on the package in `folder`.
+/// The bar's `publisher` row (area 11, "Names and publishers"). `check` is
+/// also run by a package only used by path or from git, which needs none; what
+/// the registry reads, `verify` and `publish`, can't go without.
+fn publisher_row(
+    verifying: bool,
+    surface: Option<&Surface>,
+    asked: Option<&str>,
+    problems: &mut Vec<Diagnostic>,
+) -> Item {
+    let Some(surface) = surface else {
+        return Item::later("publisher", "the package has errors");
+    };
+    let index = jadpo_db::PACKAGE_INDEX;
+    match (&surface.publisher, asked) {
+        (None, _) if !verifying => Item::left_out("publisher", "publishing needs it"),
+        (None, _) => {
+            problems.push(
+                Diagnostic::new(
+                    &rule::PUBLISH_PUBLISHER_MISSING,
+                    format!("`{}` names no publisher", surface.package),
+                )
+                .reason(format!(
+                    "The registry publishes it under the publisher `{index}` names, and only their releasers can confirm it, so a fork can't be published as the original."
+                ))
+                .next_for(
+                    format!("Add `publisher: \"@<your handle>\"` to `{index}`, run `jadpo package check` and tag a new release"),
+                    Decider::Human,
+                ),
+            );
+            Item::failed("publisher", format!("`{index}` names none"))
+        }
+        (Some(named), Some(asked)) if named != asked => {
+            problems.push(
+                Diagnostic::new(
+                    &rule::PUBLISH_PUBLISHER_MISMATCH,
+                    format!("`{}` is `{named}`'s, not `{asked}`'s", surface.package),
+                )
+                .reason(format!(
+                    "`{index}` names `{named}`, and this release was asked for `{asked}`."
+                ))
+                .next_for(
+                    format!("Ask for it as `{named}`, or, if this is a fork of it, name your own handle in `{index}` and publish under that"),
+                    Decider::Human,
+                ),
+            );
+            Item::failed("publisher", format!("`{named}`, asked for `{asked}`"))
+        }
+        (Some(named), _) => Item::passed("publisher", named.clone()),
+    }
+}
+
 pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
     let cwd = call.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
     let folder = folder.to_path_buf();
     let verifying = matches!(mode, Mode::Verify { .. });
     let running = !matches!(mode, Mode::Verify { run: false, .. });
+    let asked = match &mode {
+        Mode::Verify { publisher, .. } => publisher.clone(),
+        Mode::Check => None,
+    };
     let command = if verifying {
         "package verify"
     } else {
@@ -1749,6 +1829,13 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
         written = Some((in_folder(&shown, jadpo_db::record::SURFACE_FILE), !same));
     }
 
+    items.push(publisher_row(
+        verifying,
+        found.as_ref(),
+        asked.as_deref(),
+        &mut diagnostics,
+    ));
+
     let licence = found.as_ref().and_then(|s| s.licence.clone());
     let jadpo = found.as_ref().and_then(|s| s.jadpo.clone());
     let declared = jadpo.clone();
@@ -1812,7 +1899,10 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
     let (failed, passed, later) = (
         count(RowState::Failed),
         count(RowState::Done),
-        count(RowState::Skipped),
+        items
+            .iter()
+            .filter(|item| item.state == RowState::Skipped && !item.left_out)
+            .count(),
     );
     let mut counts = Vec::new();
     if failed == 0 {
@@ -1869,6 +1959,7 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
             (
                 "state",
                 Json::from(match item.state {
+                    _ if item.left_out => "left_out",
                     RowState::Done => "passed",
                     RowState::Failed => "failed",
                     RowState::Skipped => "not_checked",

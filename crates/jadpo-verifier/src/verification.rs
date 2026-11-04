@@ -94,6 +94,18 @@ pub struct Request {
     pub commit: String,
     /// The previous release's digest; `None` for a first release.
     pub previous: Option<String>,
+    /// Who the registry was asked to publish it for, `@acme`, when it knows:
+    /// a release naming another publisher fails the bar's `publisher` row.
+    pub publisher: Option<String>,
+}
+
+/// One run of `jadpo package verify`.
+#[derive(Clone, Copy)]
+struct Pass<'a> {
+    name: &'a str,
+    previous: Option<&'a Path>,
+    publisher: Option<&'a str>,
+    source_only: bool,
 }
 
 /// A verification's end.
@@ -303,15 +315,19 @@ impl Verifier {
         };
 
         // Worked out first, by a process none of its code runs in.
-        let source = self.report(
-            &work,
-            &self.jadpo,
-            "source",
-            &new,
-            previous.as_deref(),
-            true,
-        )?;
-        let ran = self.report(&work, &self.jadpo, "run", &new, previous.as_deref(), false)?;
+        let asked = Pass {
+            name: "source",
+            previous: previous.as_deref(),
+            publisher: request.publisher.as_deref(),
+            source_only: true,
+        };
+        let source = self.report(&work, &self.jadpo, &new, asked)?;
+        let asked = Pass {
+            name: "run",
+            source_only: false,
+            ..asked
+        };
+        let ran = self.report(&work, &self.jadpo, &new, asked)?;
         let mut checked = combine(&source, &ran, &judged.left_out);
         // The bar's first row, unless the `jadpo` that ran wrote its own.
         if let Some(bar) = checked["bar"].as_array_mut()
@@ -453,11 +469,15 @@ impl Verifier {
         &self,
         work: &Workspace,
         jadpo: &Path,
-        name: &str,
         new: &Path,
-        previous: Option<&Path>,
-        source_only: bool,
+        pass: Pass<'_>,
     ) -> Result<Report, Outcome> {
+        let Pass {
+            name,
+            previous,
+            publisher,
+            source_only,
+        } = pass;
         let tmp = work.folder(&format!("tmp-{name}")).map_err(unwritable)?;
         let mut args: Vec<OsString> = vec!["package".into(), "verify".into(), new.into()];
         let mut read_only = vec![new.to_path_buf()];
@@ -465,6 +485,10 @@ impl Verifier {
             args.push("--previous".into());
             args.push(previous.into());
             read_only.push(previous.to_path_buf());
+        }
+        if let Some(publisher) = publisher {
+            args.push("--publisher".into());
+            args.push(publisher.into());
         }
         args.push("--json".into());
         if source_only {
@@ -535,7 +559,15 @@ impl Verifier {
             &format!("no release of {line} to check with"),
         );
         if let Some(binary) = (self.releases)(line) {
-            let report = self.report(work, &binary, "declared", new, previous, false)?;
+            // An older release may not know `--publisher`, and what a release
+            // shows always comes from the newest.
+            let pass = Pass {
+                name: "declared",
+                previous,
+                publisher: None,
+                source_only: false,
+            };
+            let report = self.report(work, &binary, new, pass)?;
             declared = match &report {
                 Report::Answered {
                     data: Some(data), ..

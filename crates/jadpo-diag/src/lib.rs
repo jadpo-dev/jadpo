@@ -790,6 +790,10 @@ rules! {
         "A commit holds a file a release can't: anything but Jadpo source and the package's text files";
     PUBLISH_NOT_AT_TAG: "publish.not_at_tag", area 14, Error, Agent,
         "What `jadpo package publish` would ask for isn't a pushed `v<version>` tag whose commit is the one checked out";
+    PUBLISH_PUBLISHER_MISMATCH: "publish.publisher_mismatch", area 14, Error, Human,
+        "A release names another publisher than the one asked to publish it";
+    PUBLISH_PUBLISHER_MISSING: "publish.publisher_missing", area 14, Error, Human,
+        "A package's index names no publisher, and it has to for the registry";
     PUBLISH_REPOSITORY_REFUSED: "publish.repository_refused", area 14, Error, Human,
         "The package's repository isn't one the registry can fetch: a public git repository reached over HTTPS";
     PUBLISH_SAMPLE_MISSING: "publish.sample_missing", area 14, Error, Agent,
@@ -870,6 +874,8 @@ rules! {
         "Rate limits' store isn't a connection that can count them";
     RATE_LIMITS_STORE_REQUIRED: "rate_limits.store_required", area 16, Error, Agent,
         "Deployable built for Workers has nowhere to count its rate limits";
+    RATE_LIMITS_WINDOW_UNSUPPORTED: "rate_limits.window_unsupported", area 16, Error, Agent,
+        "A rate limit's window is one its store can't count";
     RECEIVING_INVALID: "receiving.invalid", area 12, Error, Agent,
         "A queue in `receiving:` doesn't say how its messages are read";
     RECORD_EDITED: "record.edited", area 18, Error, Agent,
@@ -934,6 +940,8 @@ rules! {
         "Route group has no prefix";
     ROUTE_QUERY_FIELD_UNSUPPORTED: "route.query_field_unsupported", area 7, Error, Agent,
         "Query-string input field is not a scalar, an enum or a list of them";
+    ROUTE_RATE_LIMIT_INVALID: "route.rate_limit_invalid", area 16, Error, Agent,
+        "A `rate_limit:` doesn't say how many requests over how long, or says it wrongly";
     ROUTE_RUN_INVALID: "route.run_invalid", area 7, Error, Agent,
         "Route `run:` is not a call of a named action or query";
     ROUTE_RUN_KIND: "route.run_kind", area 7, Error, Agent,

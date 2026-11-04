@@ -9,6 +9,7 @@
 //!
 //! ```text
 //! ✓ Asked the registry to release Postcodes.v2 2.1.0
+//!     publisher   @acme
 //!     repository  https://github.com/acme/postcodes
 //!     tag         v2.1.0
 //!     state       pending
@@ -68,6 +69,7 @@ pub(crate) fn publish(call: &Call) -> Reply {
             "Run `jadpo package check`, commit what it writes and tag the release".to_string(),
         );
     };
+    let publisher = committed_publisher(&folder);
     let tag = format!("v{version}");
     let repository = match ready_repository(&folder, &tag) {
         Ok(repository) => repository,
@@ -80,6 +82,7 @@ pub(crate) fn publish(call: &Call) -> Reply {
         Mode::Verify {
             previous: previous_release(&folder, &package, &tag).map(Box::new),
             run: true,
+            publisher: None,
         },
     ) {
         Reply::Report { diagnostics, .. } if diagnostics.is_empty() => {}
@@ -116,11 +119,14 @@ pub(crate) fn publish(call: &Call) -> Reply {
         Err(asked) => return asked.reply(),
     };
     shown(
-        &package,
-        &version,
-        &repository,
-        &tag,
-        dry_run,
+        &Asking {
+            package: &package,
+            version: &version,
+            publisher: publisher.as_deref(),
+            repository: &repository,
+            tag: &tag,
+            dry_run,
+        },
         &started.id,
         &settled,
     )
@@ -142,6 +148,13 @@ fn settle(client: &Client, id: &str, longest: Duration) -> Result<Option<Release
         std::thread::sleep(pause);
         pause = (pause * 2).min(LONGEST_PAUSE);
     }
+}
+
+/// The publisher this checkout's committed surface names, which the bar has
+/// held to its index by the time it is asked of.
+fn committed_publisher(folder: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(folder.join(jadpo_db::record::SURFACE_FILE)).ok()?;
+    install::surface_publisher(&jadpo_db::record::normalise(&text))
 }
 
 fn state_word(state: ReleaseState) -> &'static str {
@@ -166,19 +179,30 @@ fn bar_rows(rows: &[BarRow]) -> Vec<Row> {
         .collect()
 }
 
-/// What the registry said, on the screen.
-fn shown(
-    package: &str,
-    version: &str,
-    repository: &str,
-    tag: &str,
+/// What the registry was asked for.
+struct Asking<'a> {
+    package: &'a str,
+    version: &'a str,
+    publisher: Option<&'a str>,
+    repository: &'a str,
+    tag: &'a str,
     dry_run: bool,
-    id: &str,
-    settled: &ReleaseRequest,
-) -> Reply {
+}
+
+/// What the registry said, on the screen.
+fn shown(asking: &Asking<'_>, id: &str, settled: &ReleaseRequest) -> Reply {
+    let &Asking {
+        package,
+        version,
+        publisher,
+        repository,
+        tag,
+        dry_run,
+    } = asking;
     let data = Json::object([
         ("package", Json::from(package)),
         ("version", Json::from(version)),
+        ("publisher", publisher.map_or(Json::Null, Json::from)),
         ("repository", Json::from(repository)),
         ("tag", Json::from(tag)),
         ("dry_run", dry_run.into()),
@@ -195,6 +219,26 @@ fn shown(
             })),
         ),
     ]);
+    // Who the registry read the release as, and the row it refuses it with.
+    let read = settled
+        .facts
+        .as_ref()
+        .and_then(|facts| facts.publisher.as_ref())
+        .map(ToString::to_string);
+    let refused_row = settled
+        .bar
+        .iter()
+        .find(|row| row.check == "publisher" && !row.passed)
+        .map(|row| row.detail.clone());
+    let disagreeing = match (&read, publisher) {
+        (Some(read), Some(asked)) if read != asked => Some(format!(
+            "The registry read `{read}` from the tag, and this checkout names `{asked}`."
+        )),
+        _ => None,
+    };
+    let mismatch = refused_row
+        .map(|detail| format!("The registry refused it: {detail}."))
+        .or(disagreeing);
     let mut screen = Screen::new();
     let asked = if dry_run {
         format!("Asked the registry to check {package} {version}")
@@ -202,13 +246,17 @@ fn shown(
         format!("Asked the registry to release {package} {version}")
     };
     screen.push(Block::Status {
-        outcome: if settled.state == ReleaseState::Failed {
+        outcome: if settled.state == ReleaseState::Failed || mismatch.is_some() {
             Outcome::Failure
         } else {
             Outcome::Success
         },
         text: asked,
         rows: vec![
+            (
+                "publisher".to_string(),
+                publisher.unwrap_or("none").to_string(),
+            ),
             ("repository".to_string(), repository.to_string()),
             ("tag".to_string(), tag.to_string()),
             ("state".to_string(), state_word(settled.state).to_string()),
@@ -218,6 +266,37 @@ fn shown(
         screen.push(Block::list("Registry's bar", bar_rows(&settled.bar)));
     }
     let release = format!("{package} {version}");
+    if let Some(reason) = mismatch {
+        let diagnostic = Diagnostic::new(
+            &rule::PUBLISH_PUBLISHER_MISMATCH,
+            format!(
+                "`{release}` can't be released as `{}`",
+                publisher.unwrap_or("nobody")
+            ),
+        )
+        .reason(reason)
+        .next_for(
+            "If this is a fork, name your own handle in `package.jadpo` and tag a new release; if it is yours, ask on jadpo.dev",
+            Decider::Human,
+        );
+        let sources = std::collections::BTreeMap::new();
+        screen.push(Block::diagnostic_from(&diagnostic, &sources, None));
+        screen.push(Block::summary(
+            Outcome::Failure,
+            if dry_run {
+                "dry run failed"
+            } else {
+                "publish failed"
+            },
+            [Fact::plain(release)],
+        ));
+        return Reply::Report {
+            screen,
+            data,
+            diagnostics: vec![diagnostic],
+            sources,
+        };
+    }
     match settled.state {
         ReleaseState::Failed | ReleaseState::Cancelled => {
             let failed: Vec<String> = settled
