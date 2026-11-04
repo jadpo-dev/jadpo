@@ -336,6 +336,20 @@ impl Fetched {
                 self.package.code_name
             )));
         }
+        let scope = self.name.publisher_segment();
+        match crate::install::surface_publisher(surface) {
+            Some(named) if named == scope => {}
+            Some(named) => {
+                return Err(refused(format!(
+                    "Its name says `{scope}`, and its files say `{named}`."
+                )));
+            }
+            None => {
+                return Err(refused(format!(
+                    "Its name says `{scope}`, and its files name no publisher."
+                )));
+            }
+        }
         if version != self.release.version.as_str() {
             return Err(refused(format!(
                 "The registry says {}, and its files say {version}.",

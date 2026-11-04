@@ -804,7 +804,7 @@ connection or operation is `cli.package_arguments`, with the nearest.
 | `jadpo package preview [<folder>]` | Serves the package's registry page locally |
 | `jadpo package search <words> [--from <type>] [--to <type>] [--kind <kind>]` | Finds packages and standard-library functions for a need |
 | `jadpo package audit` | Lists the advisories against the app's packages, and whether the app reaches each |
-| `jadpo package verify <folder> [--previous <folder>] [--no-run]`, `jadpo package verify --serve` | The registry's verifier: the bar, facts, change record and fingerprints, and the service that answers the registry |
+| `jadpo package verify <folder> [--previous <folder>] [--publisher <handle>] [--no-run]`, `jadpo package verify --serve` | The registry's verifier: the bar, facts, change record and fingerprints, and the service that answers the registry |
 
 ### `jadpo package add`
 
@@ -932,6 +932,9 @@ and publishing a package](11-integrations.md#developing-and-publishing-a-package
   and a breaking change is refused (`publish.breaking_change`).
 - A `recipes` row compiles each recipe in the one domain of the package's
   `sample/` app (`publish.sample_missing` without one).
+- A `publisher` row shows who `package.jadpo` names, and says `left out` when
+  it names no one: a package only used by path or from git may, and only `verify`
+  and `publish` refuse it.
 
 - A `behaviour` row runs the last release's examples and tests against the
   new code. One that fails is a change the types don't show, refused within
@@ -994,8 +997,12 @@ it with a passkey on jadpo.dev ([Releasing](11-integrations.md#releasing)). The
 tag has to be pushed and the checkout that commit, unchanged
 (`publish.not_at_tag`), and the repository reached over HTTPS
 (`publish.repository_refused`). It holds the package to the bar here first, then
-shows what the registry's verifier found; a refusal is `publish.failed`.
-`--dry-run` runs the verifier and publishes nothing.
+shows what the registry's verifier found; a refusal is `publish.failed`. A
+package whose index names no publisher stops at the bar, having asked nothing
+(`publish.publisher_missing`), and a release that isn't its publisher's to make
+is `publish.publisher_mismatch` ([Names and
+publishers](11-integrations.md#names-and-publishers)). `--dry-run` runs the
+verifier and publishes nothing.
 
 ### `jadpo package preview`
 
@@ -1025,6 +1032,11 @@ Its first row, `files`, holds a commit to what a release may hold: only Jadpo
 source and the package's text files, within the size limit
 (`publish.file_not_allowed`, `publish.too_large`).
 
+Its `publisher` row needs `package.jadpo` to name one
+(`publish.publisher_missing`); `check`'s only says `left out`, since a package
+used by path or from git may. `--publisher <handle>` says who the release is
+for, and a package naming anyone else fails it (`publish.publisher_mismatch`).
+
 `--no-run` runs none of the package's code: the rows that need it say
 `not run`, and everything worked out from its source is as it would be. It is
 how the verifier gets a release's facts from a process the package's code
@@ -1040,7 +1052,8 @@ Not built yet:
 
 - `jadpo package new <Name> --library` or `--provider`, which writes a
   package's own repository: the package format, `recipes/`, a `sample/`
-  app and `GUIDE.md`.
+  app and `GUIDE.md`. `--publisher <handle>` writes the index's `publisher:`;
+  without it the command asks on a terminal and leaves the key out elsewhere.
 - `jadpo package add` from another Jadpo app's folder (its OpenAPI, such as
   `../orders`), or from a URL serving an OpenAPI document. Another app's
   folder says `toolchain.not_built_yet` until the importer. A package from git needs a person's
@@ -3131,6 +3144,8 @@ its command is built.
 | `publish.example_failed` | `package check` | Example in a package's description doesn't compile or doesn't hold ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.example_missing` | `package check` | Package's function has no example, or a failure it raises is shown by none ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.file_not_allowed` | `package verify` | A commit holds a file a release can't: anything but Jadpo source and the package's text files ([Publishing errors](11-integrations.md#publishing-errors)) |
+| `publish.publisher_mismatch` | `package verify`, `package publish` | A release names another publisher than the one asked to publish it ([Publishing errors](11-integrations.md#publishing-errors)) |
+| `publish.publisher_missing` | `package verify`, `package publish` | A package's index names no publisher, and it has to for the registry ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.sample_missing` | `package check` | Package's recipes have no sample app with one domain to compile in ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.stale_files` | `package verify` | A commit's `surface.jadpo_record` or changelog list isn't what the package's code gives ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.too_large` | `package verify` | A commit's release is past the size limit ([Publishing errors](11-integrations.md#publishing-errors)) |

@@ -280,13 +280,16 @@ pub fn changes(before: &str, now: &str) -> Vec<(String, String)> {
 /// file, where it is confirmed from and, for the package, its version and
 /// guide.
 pub(crate) fn significant(entry: &Entry) -> Vec<String> {
-    const LOOSE: [&str; 6] = [
+    const LOOSE: [&str; 7] = [
         "///",
         "file ",
         "confirmed ",
         "source ",
         "version ",
         "guide ",
+        // Who publishes it changes nothing an app calls, and a release
+        // naming someone else's is refused by the registry, not by its version.
+        "publisher ",
     ];
     let mut out = Vec::new();
     for member in &entry.members {
