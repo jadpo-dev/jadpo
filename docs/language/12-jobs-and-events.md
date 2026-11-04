@@ -1,11 +1,11 @@
 ---
-title: Jobs and events
+title: Background work
 area: 12
 status: decided
 checked-with: this checkout's jadpo on every gate run
 ---
 
-# Jobs and events
+# Background work
 <!-- topic: jobs-and-events -->
 
 This page covers the work your app does outside a request: schedules that
@@ -30,7 +30,7 @@ Two more things feed this work without being triggers of their own:
 
 - Work over more items than one action can hold runs as a **batch**. An
   action starts it, and it calls an action for each item
-  ([Batches](#batches-work-over-many-items)).
+  ([Batches](#batches)).
 - The outside world produces events for your subscribers: webhooks, a
   package's own events and polls, and messages read from a queue
   ([Events from outside](#events-from-outside)).
@@ -240,7 +240,7 @@ The tick deletes:
   ([What an operator sees](#what-an-operator-sees));
 - the handled records of those deliveries (below);
 - browser sessions and API tokens that have ended, and service keys that
-  have expired ([Identity](08-identity.md)), which a lookup already
+  have expired ([Sign-in and identity](08-identity.md)), which a lookup already
   ignores. Each is deleted in the store it is kept in, beside its
   principal's users or services;
 - schedule run records and ended batch runs 30 days old
@@ -392,9 +392,9 @@ twice.
 
 This shape suits a bounded set found by a query. Work over a set with no
 bound, such as every row of an uploaded file, a large export or every
-page of a provider's list, is a [batch](#batches-work-over-many-items).
+page of a provider's list, is a [batch](#batches).
 
-## Batches: work over many items
+## Batches
 <!-- topic: batches-work-over-many-items -->
 
 Use a batch when one action can't hold the work: importing every row of
@@ -693,7 +693,7 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
 <!-- topic: how-a-run-is-kept -->
 
 This topic is the detail of how a `batches.each` run is stored, resumed
-and checked. Most apps never need it: [Batches](#batches-work-over-many-items)
+and checked. Most apps never need it: [Batches](#batches)
 says what a batch does. The rules for a file's run and an export's run
 build on this one ([How a file's run is kept](#how-a-files-run-is-kept),
 [How an export's run is kept](#how-an-exports-run-is-kept)).
@@ -947,7 +947,7 @@ than one, are `toolchain.not_built_yet`.
 This topic is what a file helper's read run does beyond a query's run
 ([How a run is kept](#how-a-run-is-kept)). It covers `csv.read`,
 `tsv.read`, `json_lines.read` and `json.read`'s file form. Where
-[Batches](#batches-work-over-many-items) and
+[Batches](#batches) and
 [Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines)
 leave a choice open, the run takes the most cautious one.
 
@@ -1105,7 +1105,7 @@ them, is `toolchain.not_built_yet`.
 This topic is what a file helper's write run does beyond a query's run
 ([How a run is kept](#how-a-run-is-kept)). It covers `csv.write`,
 `tsv.write`, `json_lines.write` and `json.write`'s file form. Where
-[Batches](#batches-work-over-many-items) and
+[Batches](#batches) and
 [Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines)
 leave a choice open, the run takes the most cautious one. Data formats
 also says how each row is written.
@@ -2403,8 +2403,9 @@ run resumed under a changed build still stops as `diverged`.
 Fakes honour keys and can answer `lost` and `in_use`. `jadpo test` runs
 every multi-step test again with a crash at each step boundary, on by
 default ([Fakes for integrations](13-testing.md#fakes-for-integrations)).
-`jadpo dev`, `jadpo watch` and `jadpo deliveries show` list each step's
-state ([Debugging and review](17-debugging-and-review.md)).
+`jadpo dev` and `jadpo deliveries show` list each step's state, and
+`jadpo watch` will once it is built
+([Debugging](17-debugging-and-review.md)).
 
 ### Providers that take no key
 
@@ -3350,7 +3351,7 @@ records and checks every part of a schedule's life, so you find out.
   stops. There is no `--env` flag: an environment is its configuration.
   Times are UTC, as schedules count them.
 - **`jadpo why <schedule>`** answers "why didn't it run?", in the shape
-  of every `jadpo why` answer ([Debugging and review](17-debugging-and-review.md)).
+  of every `jadpo why` answer ([Debugging](17-debugging-and-review.md)).
   It gives the first of these that holds: paused, with the due times
   skipped since; no tick since a time; a lease held past its end; a run
   still holding it; a tick skipped since the last run; the last run
@@ -3456,7 +3457,7 @@ database:
 Three things aren't built yet: names for instances, so the lease holder
 shows as a run rather than an instance; sending the metrics and alerts
 to a monitoring tool; and the console's timeline of each schedule's runs
-and ticks ([Debugging and review](17-debugging-and-review.md)).
+and ticks ([Debugging](17-debugging-and-review.md)).
 
 ## Limits and runtime faults
 <!-- topic: limits-and-runtime-faults -->
@@ -3479,10 +3480,11 @@ These limits may change once they have been measured on real runs.
 |---|---|
 | Everything else on this page | Built. |
 | Publishing chosen public events outward | Not built yet. |
+| `jadpo batches list`, `show` and `cancel` | Not built yet: an action can call `batches.status` and `batches.cancel` meanwhile ([Tooling](14-tooling.md#commands-for-services-calls-email-and-stored-data)). |
 | `batches.each` over a provider's list operation, walked by `page.next` | Not built yet: a provider's list operation as `from:` is `toolchain.not_built_yet` where it is written; a named query giving a `Page` is built ([Walking records or a provider's list](#walking-records-or-a-providers-list-batcheseach)). |
-| Each step's state in `jadpo watch`, and in `jadpo trace` with the request timelines ([Debugging and review](17-debugging-and-review.md)), and a record's entry in the [personal-data report](15-personal-data.md) | Not built yet. |
+| Each step's state in `jadpo watch`, and in `jadpo trace` with the request timelines ([Debugging](17-debugging-and-review.md)), and a record's entry in the [personal-data report](15-personal-data.md) | Not built yet. |
 | Sending the metrics and the alerts' log events to a monitoring tool | Not built yet: waits for [telemetry](16-built-in-services.md). |
-| The console's timeline | Not built yet ([Debugging and review](17-debugging-and-review.md)). |
+| The console's timeline | Not built yet ([Debugging](17-debugging-and-review.md)). |
 | Jitter and `Retry-After` between a delivery's attempts | Not built yet: the next attempt waits only its backoff ([Retries and giving up](#retries-and-giving-up)). |
 | Splitting a page type allowing more than 1,000 items into batches; `batches.status` and `batches.cancel` with runs in no store or several; a file's run with several databases and none written | Not built yet ([How a run is kept](#how-a-run-is-kept), [How a file's run is kept](#how-a-files-run-is-kept)). |
 | `cli.signal_handler_failed` | Not built yet ([Running background work](#running-background-work)). |

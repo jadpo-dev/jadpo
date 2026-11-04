@@ -38,20 +38,20 @@ status table, with the [roadmap](../roadmap.md), say what is built. A
 | 2 | [Values and types](02-values-and-types.md) | Named types, validation, refinements, objects, enums and collections |
 | 3 | [Logic](03-logic.md) | Functions, actions, expressions, control flow and effects |
 | 4 | [Failures](04-failures.md) | Declared domain failures, handling, propagation and runtime faults |
-| 5 | [Data](05-data.md) | Entities, relationships, storage, schema history and migrations |
+| 5 | [Entities, stores and migrations](05-data.md) | Entities, relationships, storage, schema history and migrations |
 | 6 | [Reads and writes](06-reads-and-writes.md) | Queries, pagination, aggregates, transactions and concurrency |
 | 7 | [HTTP](07-http.md) | Routes, boundary contracts, API records and OpenAPI |
-| 8 | [Identity](08-identity.md) | Principals, sessions, tokens, keys, magic links and passkeys |
+| 8 | [Sign-in and identity](08-identity.md) | Principals, sessions, tokens, keys, magic links and passkeys |
 | 9 | [Policy](09-policy.md) | Ownership, grants, roles, tenancy and field-level access |
 | 10 | [Configuration and time](10-configuration-and-time.md) | Settings, secrets, connections, clocks, calendars and translations |
 | 11 | [Integrations](11-integrations.md) | Provider packages, capabilities, connections, webhooks and recordings |
-| 12 | [Jobs and events](12-jobs-and-events.md) | Events, outbox delivery, subscribers, schedules and batches |
+| 12 | [Background work](12-jobs-and-events.md) | Events, outbox delivery, subscribers, schedules and batches |
 | 13 | [Testing](13-testing.md) | Test kinds, fixtures, real databases, fakes and controlled clocks |
-| 14 | [Tooling](14-tooling.md) | CLI commands and their status, formatter, editor support and deployables |
+| 14 | [Tools](14-tooling.md) | CLI commands and their status, formatter, editor support and deployables |
 | 15 | [Personal data](15-personal-data.md) | Marking, export, erasure, retention and privacy reporting; largely planned |
 | 16 | [Built-in services](16-built-in-services.md) | Email, files, rate limits, search, audit and telemetry; status varies |
-| 17 | [Debugging and review](17-debugging-and-review.md) | Source-level evidence, request explanations and behaviour review; mostly planned |
-| 18 | [Records and manifest](18-records-and-manifest.md) | Committed contracts, generated manifests and planned approval records |
+| 17 | [Debugging](17-debugging-and-review.md) | Source-level evidence, request explanations and behaviour review; mostly planned |
+| 18 | [Review and records](18-records-and-manifest.md) | Committed contracts, generated manifests and planned approval records |
 | 19 | [Standard library](19-standard-library.md) | Standard vocabulary types and operations, money, units, text and formats |
 | 20 | [Geospatial](20-geospatial.md) | Geometry, geodesic operations, PostGIS and map layers |
 | 21 | [AI](21-ai.md) | Prompts, model calls, streaming, embeddings, budgets and personal-data flow |

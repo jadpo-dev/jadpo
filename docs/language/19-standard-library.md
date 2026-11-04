@@ -37,10 +37,10 @@ never `count(items)`.
 | `encoding` | Bytes as text and back | 9 | This page |
 | `crypto` | Encryption, passwords, signatures, message authentication | 10 | This page |
 | `random` | Tokens, codes, shuffles; actions only | 5 | This page |
-| `json` | One JSON document in memory, and large JSON lists through batches | 4 | This page; the batch forms in [Batches](12-jobs-and-events.md#batches-work-over-many-items) |
-| `csv` | CSV files, read and written through batches | 2 | [Batches](12-jobs-and-events.md#batches-work-over-many-items) |
-| `tsv` | TSV files, CSV's tab-separated form | 2 | [Batches](12-jobs-and-events.md#batches-work-over-many-items) |
-| `json_lines` | JSON Lines files, one value per line | 2 | [Batches](12-jobs-and-events.md#batches-work-over-many-items) |
+| `json` | One JSON document in memory, and large JSON lists through batches | 4 | This page; the batch forms in [Batches](12-jobs-and-events.md#batches) |
+| `csv` | CSV files, read and written through batches | 2 | [Batches](12-jobs-and-events.md#batches) |
+| `tsv` | TSV files, CSV's tab-separated form | 2 | [Batches](12-jobs-and-events.md#batches) |
+| `json_lines` | JSON Lines files, one value per line | 2 | [Batches](12-jobs-and-events.md#batches) |
 | `temporal` | Instants, dates, local times, zones, formats, recurrence | 24 (21 from Configuration and time) | [Zones and local times](10-configuration-and-time.md#zones-and-local-times) and this page |
 | `locale` | Choosing a supported locale | 1 | [Choosing a locale from a request](10-configuration-and-time.md#choosing-a-locale-from-a-request) |
 | `colour` | Converting `Colour` between spaces, contrast | 5 | This page |
@@ -51,7 +51,7 @@ never `count(items)`.
 
 There are 171 operations in all: 28 defined on the Values and types,
 Logic, and Configuration and time pages, 8 file helpers defined with
-[batches](12-jobs-and-events.md#batches-work-over-many-items), and 135
+[batches](12-jobs-and-events.md#batches), and 135
 defined here. Operators are counted apart, in
 [the standard operator table](#the-standard-operator-table). Operations
 on geometry and AI are counted on the [Geospatial](20-geospatial.md) and
@@ -198,7 +198,7 @@ entities are left out:
 | Formats: `Hex`, `Base64`, `Wkt`, `Json`, `CsvDialect`, `MessageFormat`, `VCard`, `OtpAuthUri`, `CssLength` | Out: `encoding.` and `json.` operations |
 | Application entities: `Recipe`, `HotelStay`, `OrderStatus`, `PaymentStatus`, `Consent`, `SensorReading`, `StoredFile`, `UserId`, `Allergy` and 31 more | Out: an application's own records |
 | `Gender`, `SexAtBirth`, `Cvv` | Out: sensitive (a CVV is never stored) |
-| `HashAlgorithm`, `KeyAlgorithm`; `SessionId`; `AcceptLanguage` | Out: no algorithm choices; the runtime's ([Identity](08-identity.md)); a call, `locale.from_accept_language` |
+| `HashAlgorithm`, `KeyAlgorithm`; `SessionId`; `AcceptLanguage` | Out: no algorithm choices; the runtime's ([Sign-in and identity](08-identity.md)); a call, `locale.from_accept_language` |
 | Niche, silly, or a maybe with no published standard | Out: 729 entries, a package's to define |
 
 ## Every standard type meets one contract
@@ -502,20 +502,20 @@ never through an encoder of its own:
 | Boundary | Encoding | Specified in |
 |---|---|---|
 | HTTP requests and responses, OpenAPI | The contract's JSON, through the route codec | [HTTP](07-http.md), this page |
-| Storage and migrations | The contract's storage: one column, named columns laid out from the type's parts, or a native PostgreSQL type (a range, `time`, `timestamp`); a quantity's column carries a comment naming its SI unit; a fixed currency or rate a check constraint | [Data](05-data.md), this page |
-| SQL literals: a query's or a lifecycle's condition, a transition's `set:`, a backfill | The value the storage codec makes, which the runtime binds: a parameter wherever the statement takes one, otherwise that value written as SQL text | [Data](05-data.md) and [Reads and writes](06-reads-and-writes.md), this page |
-| Caches and Redis entities | The contract's JSON, as [Caches](05-data.md#caches) holds the API's JSON there | [Data](05-data.md) |
-| Event, job and batch payloads | The contract's JSON of the event's or the job's type, written and read by the route codec, and a batch's captured values the same; read with the type as it is when delivered, so a change an API record would call breaking needs an [acceptance](18-records-and-manifest.md#acceptances), and a payload that no longer reads is parked, never dropped | [Jobs and events](12-jobs-and-events.md) |
+| Storage and migrations | The contract's storage: one column, named columns laid out from the type's parts, or a native PostgreSQL type (a range, `time`, `timestamp`); a quantity's column carries a comment naming its SI unit; a fixed currency or rate a check constraint | [Entities, stores and migrations](05-data.md), this page |
+| SQL literals: a query's or a lifecycle's condition, a transition's `set:`, a backfill | The value the storage codec makes, which the runtime binds: a parameter wherever the statement takes one, otherwise that value written as SQL text | [Entities, stores and migrations](05-data.md) and [Reads and writes](06-reads-and-writes.md), this page |
+| Caches and Redis entities | The contract's JSON, as [Caches](05-data.md#caches) holds the API's JSON there | [Entities, stores and migrations](05-data.md) |
+| Event, job and batch payloads | The contract's JSON of the event's or the job's type, written and read by the route codec, and a batch's captured values the same; read with the type as it is when delivered, so a change an API record would call breaking needs an [acceptance](18-records-and-manifest.md#acceptances), and a payload that no longer reads is parked, never dropped | [Background work](12-jobs-and-events.md) |
 | CSV and TSV cells | A standard type's canonical text (`text.from`), read by `text.parse`; a type with no single text form (`PostalAddress`, `Price`, a choice) is the compile error naming JSON Lines that a list or an object is | This page, [Data formats](#data-formats-json-csv-tsv-and-json-lines) |
 | JSON Lines rows, `json.read` and `json.write` | The contract's JSON | This page |
 | Logs and traces | Values as [Logging](04-failures.md#logging) and [Personal data](15-personal-data.md) allow; a personal value's keyed hash covers the UTF-8 of its canonical text, or of its contract JSON where it has no single text form | [Personal data](15-personal-data.md) |
 | Settings | `text.parse`'s canonical text, with the source spellings a setting also takes (`5m`) | [Settings](10-configuration-and-time.md#settings-configjadpo) |
 | Translation placeholders and email | Shown to people by `text.format` (`PresentationText`), never read back | [Configuration and time](10-configuration-and-time.md) and [Built-in services](16-built-in-services.md) |
 | Outbound provider calls and webhooks | The contract's JSON for a field without `wire:`; `wire:` only names another encoding a provider uses | [Integrations](11-integrations.md) |
-| Records and the manifest | Types and defaults as source writes them; no runtime values | [Records and manifest](18-records-and-manifest.md) |
-| Test fixtures and seeds | Written through the actions they call, so through storage | [Data](05-data.md) and [Testing](13-testing.md) |
+| Records and the manifest | Types and defaults as source writes them; no runtime values | [Review and records](18-records-and-manifest.md) |
+| Test fixtures and seeds | Written through the actions they call, so through storage | [Entities, stores and migrations](05-data.md) and [Testing](13-testing.md) |
 | Files | Bytes; the format namespaces above turn them into values | [Files](16-built-in-services.md#files) |
-| Developer reports | A value as code makes one (`money.from_minor(1050, Currency.gbp)`), which keeps its currency, unit and places and is never read back | [Debugging and review](17-debugging-and-review.md) |
+| Developer reports | A value as code makes one (`money.from_minor(1050, Currency.gbp)`), which keeps its currency, unit and places and is never read back | [Debugging](17-debugging-and-review.md) |
 | The interpreter and compiled code, native and wasm32 | One runtime crate, so one codec for each shape | [The compiler and runtime](../compiler-runtime.md) |
 
 Your app's own structured values are stored as their contract's JSON
@@ -888,7 +888,7 @@ in the release, as these enums, not by applications.
 
 Not built yet: the data migration and the acceptances for swapping a type
 already stored or on the wire come with
-[Records and manifest](18-records-and-manifest.md), and until then such a
+[Review and records](18-records-and-manifest.md), and until then such a
 swap stops.
 
 ## A release that adds a standard type
@@ -1003,7 +1003,7 @@ The example of `type.standard_clash` is under [Errors](#errors). The
 editor's quick fix is titled "Swap for the standard ...".
 
 Not built yet: the migration and acceptances a swap of a stored type
-needs ([Records and manifest](18-records-and-manifest.md)), and a general
+needs ([Review and records](18-records-and-manifest.md)), and a general
 `jadpo rename` ([the roadmap](../roadmap.md)).
 
 ## What every operation follows
@@ -1580,7 +1580,7 @@ The rules every SQL form follows:
   and escapes are written `E'...'`, so a session's time zone, date style,
   interval style and `standard_conforming_strings` make no difference.
 - **Lists, sets and maps.** A list or set is stored as a `jsonb` array
-  and a map as a `jsonb` object ([Data](05-data.md)); only `count` has a
+  and a map as a `jsonb` object ([Entities, stores and migrations](05-data.md)); only `count` has a
   SQL form.
 - **Each form is tested against the runtime before anything uses it.**
   Each operation with a form is run in the runtime and as its form, on
@@ -6374,7 +6374,7 @@ test "what the clinic signs checks with the key it publishes" {
 A release that changes a construction keeps reading the old format, by
 the sealed value's version byte or the password hash's PHC string, and
 `correct_outdated` tells your app to hash a password again when its owner
-signs in. [Identity](08-identity.md) leaves checking a password to your
+signs in. [Sign-in and identity](08-identity.md) leaves checking a password to your
 application, which is why it needs these operations.
 
 ### Keys are settings that code never reads
@@ -7151,8 +7151,8 @@ secret, and that order always agrees with `==`.
 
 Wherever Jadpo shows a value, it shows a secret as `<redacted ApiKey>`,
 naming its type: a failed test's values, `jadpo test`'s output and its
-`--json`, a failure's report, a fault, and anything a debugger or
-`jadpo watch` shows. Every one of them writes a value the same way.
+`--json`, a failure's report, a fault, and anything a debugger shows, as
+`jadpo watch` will once it is built. Every one of them writes a value the same way.
 
 A test that fails over a secret shows it redacted wherever it shows a
 value, and its diff still says which field differs:
@@ -7746,7 +7746,7 @@ defect where it runs, as overflow is. The checker proves a code's
 `temporal.occurrences`' `count` and `list.slice`'s.
 
 > Not built yet: `jadpo replay` itself
-> ([Debugging and review](17-debugging-and-review.md)). Since the
+> ([Debugging](17-debugging-and-review.md)). Since the
 > recorded bytes can hold tokens, nothing writes them out until it is.
 
 ## Encodings
@@ -7761,7 +7761,7 @@ as bytes, and percent-encoding for a part of a link. Each is called as
 |---|---|---|---|
 | `to_base64(bytes)` | `Text`, standard alphabet, padded | | `translate(encode(x, 'base64'), E'\n', '')` |
 | `from_base64(text)` | `Bytes` | `malformed` | none |
-| `to_base64url(bytes)` | `Text`, URL alphabet, unpadded, as [Identity](08-identity.md)'s signed parts are | | `rtrim(translate(encode(x, 'base64'), E'+/\n', '-_'), '=')` |
+| `to_base64url(bytes)` | `Text`, URL alphabet, unpadded, as [Sign-in and identity](08-identity.md)'s signed parts are | | `rtrim(translate(encode(x, 'base64'), E'+/\n', '-_'), '=')` |
 | `from_base64url(text)` | `Bytes`; padding refused | `malformed` | none |
 | `to_hex(bytes)` | `Text`, lowercase | | `encode(x, 'hex')` |
 | `from_hex(text)` | `Bytes`; either case | `malformed` | none |
@@ -7952,7 +7952,7 @@ with `store.read` and `store.put` ([Files](16-built-in-services.md#files)).
 
 A file's rows, however many, are read and written only through these
 operations' batch forms. They run as
-[batches](12-jobs-and-events.md#batches-work-over-many-items): background
+[batches](12-jobs-and-events.md#batches): background
 work over many items that keeps its progress. There is no loop over a
 file's rows and no reading a whole file into a list. How a run goes
 (batches, transactions, resuming, `batches.status` and `batches.cancel`,
@@ -8773,7 +8773,7 @@ time, as `csv.read` does. How its run goes is in
 - **The document around the items is held to JSON's structure:** the
   objects on the way to the list name each member once. Anything the
   reader can't read on from stops the run, with the items before it done
-  ([Batches](12-jobs-and-events.md#batches-work-over-many-items)).
+  ([Batches](12-jobs-and-events.md#batches)).
 
 A seed library reads the catalogue a partner library exports: a JSON
 document whose packets sit at `catalogue.packets`, each packet's sowing
@@ -12030,13 +12030,13 @@ what Jadpo took from each, is in the
 |---|---|
 | Everything on this page not listed below | Built |
 | What keys held as data allow: `crypto.verify_totp` and HS256 in `crypto.verify_jwt` | Not built yet: the next chunk on [the roadmap](../roadmap.md) |
-| A `type.standard_exists` or `type.standard_clash` swap of a type already stored or on the wire, and `jadpo rename` | Not built yet: a swap waits on [Records and manifest](18-records-and-manifest.md), `jadpo rename` on [Tooling](14-tooling.md) |
+| A `type.standard_exists` or `type.standard_clash` swap of a type already stored or on the wire, and `jadpo rename` | Not built yet: a swap waits on [Review and records](18-records-and-manifest.md), `jadpo rename` on [Tools](14-tooling.md) |
 | A query comparing or ordering by an amount of money, a one-step update working one out, a backfill of a new required one, and a condition on a JSON-held field | Not built yet: `toolchain.not_built_yet` names each |
 | The UK modulus check in `BankAccount` | Not built yet: waits on Vocalink's permission to ship its tables |
 | Checking `UnLocode`, `IataAirport`, `IcaoAirport`, `IataAirline` and `Icd10Code` against their lists | Not built yet: waits on licences that allow shipping the lists |
 | [Policy](09-policy.md)'s scopes narrowing `OAuthScope` | Not built yet: waits on [Policy](09-policy.md) |
 | Legacy encodings in the file readers | Not built yet: waits on an application that needs one |
-| `jadpo replay`, and a calendar file's writer | Not built yet: `jadpo replay` waits on [Debugging and review](17-debugging-and-review.md), a calendar file's writer on an application that needs one |
+| `jadpo replay`, and a calendar file's writer | Not built yet: `jadpo replay` waits on [Debugging](17-debugging-and-review.md), a calendar file's writer on an application that needs one |
 | What [Personal data](15-personal-data.md) does with each standard type's personal data category | Not built yet: waits on [Personal data](15-personal-data.md) |
 | The rest of geospatial and AI | Partly built: [What is built: Geospatial](20-geospatial.md#what-is-built) and [What is built: AI](21-ai.md#what-is-built) say which parts |
 
