@@ -49,6 +49,7 @@ mod package_conform;
 mod package_import;
 pub mod package_new;
 pub mod package_preview;
+mod package_protocol;
 mod package_publish;
 mod package_recipe;
 mod package_record;

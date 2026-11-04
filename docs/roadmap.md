@@ -491,10 +491,7 @@ real deploy) and, before outside authors can publish, D3 (releases).
 - [x] **G3 A route that sends raw bytes**: area 7, "Sending raw bytes", "Answers that never change" and "The public API record"; area 18, "Acceptances"; `docs/errors/route.sends_invalid.md`, `docs/errors/route.cache_invalid.md`; compiler/runtime, "A route that sends raw bytes".
 - [x] **G4 A route's `rate_limit:`**: area 16, "Rate limits" and "What the
   binding promises"; §2.6; area 16's Decisions.
-- [ ] **G5 Small gaps the registry found** `opus · high`: `authentication: []`
-  honoured on `openapi.json`, which is accepted and ignored today; a `jadpo`
-  command that runs R4's conformance test against a document, so R7's CI needs
-  no Rust; `bytes.concat`.
+- [x] **G5 Small gaps the registry found**: area 7, "Serving the document"; area 14, "`jadpo package protocol`"; area 19, "Bytes"; area 2, "A record names its type alone"; `docs/errors/api.route_needs_sign_in.md`, `docs/errors/protocol.mismatch.md`, `docs/errors/protocol.unreadable.md`, `docs/errors/type.record_type_arguments.md`.
 - [x] **G6 A package names its publisher**: area 11, "The index: `package.jadpo`", "Names and publishers", "Releasing" and "The verifier"; area 14, `jadpo package verify`; compiler/runtime §2.1, "A package's publisher"; `docs/errors/publish.publisher_missing.md`, `docs/errors/publish.publisher_mismatch.md`.
 - [x] **G7 `jadpo package new` and the licence bar**: area 14, `jadpo package new`, `jadpo package check` and `jadpo package verify`; area 11, "Developing and publishing a package" and "What publishing requires"; the design notes' "A new package and the licence bar"; `docs/errors/publish.licence_proprietary.md`.
 - [ ] **R7 The registry application** **needs a maintainer** to start the

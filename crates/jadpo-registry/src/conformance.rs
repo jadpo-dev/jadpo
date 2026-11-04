@@ -46,7 +46,12 @@ pub fn load(source: &str) -> Result<Value, String> {
     } else {
         std::fs::read(source).map_err(|e| e.to_string())?
     };
-    serde_json::from_slice(&bytes).map_err(|e| format!("isn't JSON: {e}"))
+    parse(&bytes)
+}
+
+/// A document's JSON, wherever it was read from.
+pub fn parse(bytes: &[u8]) -> Result<Value, String> {
+    serde_json::from_slice(bytes).map_err(|e| format!("It isn't JSON: {e}."))
 }
 
 /// Every way `document` differs from the protocol; none when it conforms.

@@ -930,7 +930,9 @@ pub static COMMANDS: &[Command] = &[
                       as JSON, once and offline, into the app's own integration in \
                       shared/providers/<name>/<version>/: another Jadpo application's exactly, from its \
                       x-jadpo fields, any other's by its formats, with what it leaves out listed to \
-                      check; importing again merges, keeping corrections. `record <connection> \
+                      check; importing again merges, keeping corrections. `protocol <document>` checks a \
+                      registry's OpenAPI document, a file or an address, against the registry protocol \
+                      (area 11), exiting 1 if it differs. `record <connection> \
                       <resource>.<operation>` calls the provider's sandbox once, never live, with \
                       `--input` as the operation's input, checks the answer against the operation's \
                       types and keeps it in the package's recordings/ with its values as placeholders; \
@@ -952,13 +954,13 @@ pub static COMMANDS: &[Command] = &[
         arguments: &[
             Argument {
                 name: "action",
-                description: "What to do: show, check, verify, import, record, conform, add, update, remove, link, unlink, recipe, search, audit, publish or preview",
+                description: "What to do: show, check, verify, import, record, conform, protocol, add, update, remove, link, unlink, recipe, search, audit, publish or preview",
                 required: true,
                 values: Values::Fixed(crate::package::ACTIONS),
             },
             Argument {
                 name: "name",
-                description: "The package, such as holidays; for check, verify, link and preview, its folder; for add, @<publisher>/<name>, its folder or <repository>@v<version>; for search, the words; for import, openapi; for record, the connection; for conform and recipe, the package",
+                description: "The package, such as holidays; for check, verify, link and preview, its folder; for add, @<publisher>/<name>, its folder or <repository>@v<version>; for search, the words; for import, openapi; for record, the connection; for conform and recipe, the package; for protocol, the registry's OpenAPI document, a file or an address",
                 required: false,
                 values: Values::Path,
             },
