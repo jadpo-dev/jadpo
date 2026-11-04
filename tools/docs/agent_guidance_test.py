@@ -146,14 +146,126 @@ class Examples(unittest.TestCase):
                       guidance.feature_table(features, guidance.GITHUB_TREE))
 
 
+class TheReferenceInLlmsTxt(unittest.TestCase):
+    def groups(self, manifest, area='# One\n<!-- topic: one -->\n\n## Two\n<!-- topic: two -->\n'):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'docs/language').mkdir(parents=True)
+            (root / 'docs/language/01-one.md').write_text(area)
+            (root / 'docs/reference.toml').write_text(manifest)
+            return guidance.reference_groups(root)
+
+    def test_a_group_with_a_topic_of_its_id_opens_on_it(self):
+        self.assertEqual(self.groups('[[group]]\nid = "two"\ntitle = "Two"\nsummary = "Both."\n'),
+                         [('Two', 'https://jadpo.dev/docs/two.md', 'Both.')])
+
+    def test_a_group_with_no_topic_of_its_id_opens_on_its_landing_page(self):
+        manifest = ('[[group]]\nid = "both"\ntitle = "Both"\nsummary = "Both."\n\n'
+                    '[[group.page]]\ntitle = "Page"\ntopics = ["two", "one"]\n')
+        self.assertEqual(self.groups(manifest), [('Both', 'https://jadpo.dev/docs/both.md', 'Both.')])
+
+    def test_a_group_with_no_id_opens_on_its_first_topic(self):
+        manifest = ('[[group]]\ntitle = "Both"\nsummary = "Both."\n\n'
+                    '[[group.page]]\ntitle = "Page"\ntopics = ["two", "one"]\n')
+        self.assertEqual(self.groups(manifest), [('Both', 'https://jadpo.dev/docs/two.md', 'Both.')])
+
+    def test_a_group_the_site_writes_itself_has_no_markdown_so_it_is_left_out(self):
+        manifest = '[[group]]\nid = "errors"\ntitle = "Errors"\nsummary = "All."\nhref = "/docs/errors"\n'
+        self.assertEqual(self.groups(manifest), [])
+
+
+class TheWholeIndex(unittest.TestCase):
+    """Nothing an agent reads first sends it to the whole of index.json
+    (roadmap chunk D17g): the file is far longer than anything it could
+    read."""
+
+    def found(self, text, name='llms.txt'):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / name).parent.mkdir(parents=True, exist_ok=True)
+            (root / name).write_text(text)
+            return guidance.whole_index_problems(root)
+
+    def test_being_told_to_read_it_is_a_problem(self):
+        for text in ('Find pages in https://jadpo.dev/docs/index.json by title and summary.\n',
+                     'For the task, read the bundle\'s index, https://jadpo.dev/docs/index.json\n'
+                     '(or the shorter https://jadpo.dev/llms.txt), and pick pages.\n',
+                     '[the index](/docs/index.json)\n'):
+            found = self.found(text)
+            self.assertEqual(len(found), 1, text)
+            self.assertIn('llms.txt:1', found[0])
+            self.assertIn('index.json', found[0])
+
+    def test_each_mention_is_on_its_own_line(self):
+        found = self.found('One.\n\nRead `index.json` first.\n\nThen read index.json again.\n')
+        self.assertEqual([p.split(': ')[0] for p in found], ['llms.txt:3', 'llms.txt:5'])
+
+    def test_being_told_not_to_read_it_whole_is_not(self):
+        for text in ('Never read `index.json` whole.\n',
+                     "`docs/index.json` is a list for tools: never read it whole.\n",
+                     "Don't read all of\nhttps://jadpo.dev/docs/index.json.\n",
+                     'Filter index.json with jq, and do not read the whole of it.\n'):
+            self.assertEqual(self.found(text), [], text)
+
+    def test_the_agent_skills_own_index_is_another_file(self):
+        self.assertEqual(self.found('It builds /.well-known/agent-skills/index.json from it.\n'), [])
+
+    def test_a_later_sentence_doesnt_excuse_it(self):
+        self.assertEqual(len(self.found('Read index.json first. Never read the primer whole.\n')), 1)
+
+    def test_every_place_that_guides_an_agent_is_read(self):
+        for name in ('crates/jadpo-cli/scaffold/AGENTS.md.tmpl', 'docs/agent-skill/SKILL.md', 'docs/primer.md',
+                     'docs/learn/01-setting-up.md', 'docs/guides/README.md', 'docs/language/14-tooling.md',
+                     'benchmarks/agent-changes/agents/jadpo-AGENTS.md', 'README.md', 'AGENTS.md'):
+            self.assertEqual(len(self.found('Read index.json.\n', name)), 1, name)
+
+    def test_the_contract_is_read_only_where_it_says_how_an_agent_reads(self):
+        contract = ('# Docs\n\n## The bundle\n\n`index.json` is `{}`.\n\n'
+                    '## The agent skill\n\nIt says read index.json.\n\n## How an agent uses it\n\nRead `index.json`.\n')
+        found = self.found(contract, 'docs/documentation.md')
+        self.assertEqual([p.split(': ')[0] for p in found], ['docs/documentation.md:9', 'docs/documentation.md:13'])
+
+    def test_the_real_guidance_passes(self):
+        self.assertEqual(guidance.whole_index_problems(guidance.ROOT), [])
+
+    def test_the_problem_reaches_the_gate(self):
+        root = project(AREA)
+        (root / 'llms.txt').write_text('Read index.json.\n')
+        self.assertTrue(any('index.json' in problem for problem in guidance.problems(root)))
+
+
+class ReadOnce(unittest.TestCase):
+    """What an agent reads once, the primer and llms.txt, has a budget."""
+
+    def test_under_the_budget_is_fine(self):
+        self.assertEqual(guidance.read_once_problems('p' * 4000, 'l' * 4000), [])
+
+    def test_the_tokens_are_a_quarter_of_the_characters_as_the_bundle_gives_them(self):
+        self.assertEqual(guidance.tokens('abcd'), 1)
+        self.assertEqual(guidance.tokens('abcde'), 2)
+
+    def test_over_the_budget_says_how_much_of_each(self):
+        limit = guidance.READ_ONCE_TOKENS
+        found = guidance.read_once_problems('p' * (limit * 4 - 8), 'l' * 40)
+        self.assertEqual(len(found), 1)
+        self.assertIn(f'{limit - 2 + 10:,} tokens', found[0])
+        self.assertIn(f'over {limit:,}', found[0])
+        self.assertIn('llms.txt', found[0])
+
+
 class InStep(unittest.TestCase):
     def test_the_written_files_are_what_the_sources_give(self):
         self.assertEqual(guidance.problems(guidance.ROOT), [])
 
-    def test_llms_txt_lists_every_teaching_example(self):
+    def test_llms_txt_links_the_examples_own_list(self):
+        self.assertIn('/main/examples/README.md', (guidance.ROOT / 'llms.txt').read_text())
+
+    def test_llms_txt_lists_the_reference_by_group(self):
         text = (guidance.ROOT / 'llms.txt').read_text()
-        for folder in sorted(p.name for p in (guidance.ROOT / 'examples').iterdir() if (p / 'app.jadpo').is_file()):
-            self.assertIn(f'/examples/{folder}/README.md', text, folder)
+        for title in ('Language', 'Data', 'APIs', 'Background work', 'Built-in services', 'External services',
+                      'Configuration', 'Testing', 'Tools'):
+            self.assertIn(f'- [{title}](https://jadpo.dev/docs/', text, title)
+        self.assertNotIn('Project layout and modules](', text)
 
     def test_the_agents_template_keeps_its_working_method(self):
         text = guidance.TEMPLATE.read_text()

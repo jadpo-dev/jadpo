@@ -115,4 +115,4 @@ Both branches are now tested, so the flag can be switched either way.
 
 - [What the compiler checks](../language/16-built-in-services.md#what-the-compiler-checks)
 - [`flags:` in a test](../language/13-testing.md#flags)
-- [Flags: changed, listed and removed](../language/16-built-in-services.md#flags-changed-listed-and-removed)
+- [Flag rules: changing, listing, removing](../language/16-built-in-services.md#flag-rules-changing-listing-removing)

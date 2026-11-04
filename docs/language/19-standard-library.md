@@ -7151,8 +7151,8 @@ secret, and that order always agrees with `==`.
 
 Wherever Jadpo shows a value, it shows a secret as `<redacted ApiKey>`,
 naming its type: a failed test's values, `jadpo test`'s output and its
-`--json`, a failure's report, a fault, and anything a debugger or
-`jadpo watch` shows. Every one of them writes a value the same way.
+`--json`, a failure's report, a fault, and anything a debugger shows, as
+`jadpo watch` will once it is built. Every one of them writes a value the same way.
 
 A test that fails over a secret shows it redacted wherever it shows a
 value, and its diff still says which field differs:
@@ -11955,7 +11955,7 @@ linked beside it.
 |---|---|
 | Embed help articles and find the closest | `Vector`, pgvector query ([Embeddings and search](21-ai.md#embeddings-and-search)) |
 | Answer as a typed reply with sources | `ai.generate(..., as:)` ([Typed output](21-ai.md#typed-output)) |
-| Show the answer as it is written | `ai.stream` ([Streaming](21-ai.md#streaming)) |
+| Show the answer as it is written | `ai.stream` ([Streaming from a model](21-ai.md#streaming-from-a-model)) |
 | Keep within a monthly budget | AI limits ([Budgets](21-ai.md#budgets)) |
 | Strip personal data before sending | `text.replace`; the [personal-data report](15-personal-data.md#the-personal-data-report) |
 | Chunk articles into passages | `text.split`, `list.keep_first` |

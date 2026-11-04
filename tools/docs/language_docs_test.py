@@ -10,6 +10,7 @@ time limit, so a parser that stops moving fails rather than hangs.
 
 import hashlib
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -106,6 +107,31 @@ class Pages(unittest.TestCase):
         catalogue, pages, _, errors = real_docs()
         bundle = docs.Bundle(pages, errors, {'rules': list(catalogue.values()), 'commands': []})
         self.assertEqual(bundle.reference_problems(bundle.build()), [])
+
+    def test_each_built_in_service_has_a_row_that_links_its_page_and_says_what_it_is(self):
+        catalogue, pages, _, errors = real_docs()
+        bundle = docs.Bundle(pages, errors, {'rules': list(catalogue.values()), 'commands': []})
+        landing = next(text for _, page_id, _, _, _, text, _ in bundle.build() if page_id == 'built-in-services')
+        rows = [line for line in landing.split('\n') if line.startswith('| ')][1:]
+        names = [re.match(r'\| \[([^\]]+)\]\(([^)]+\.md)\) \|', row) for row in rows]
+        self.assertEqual([m and m.group(1) for m in names], [
+            'Email', 'Files', 'Feature flags', 'Rate limits', 'Search', 'Audit trail', 'AI', 'Monitoring',
+            'Caches', 'Documents', 'Bot protection', 'Outgoing webhooks', "What isn't built in",
+        ])
+        for row in rows:
+            self.assertNotIn('start to finish', row, 'a row says what the service is, not what its guide does')
+
+    def test_a_service_that_works_shows_an_example_the_docs_check_compiles_first(self):
+        _, pages, _, _ = real_docs()
+        source = {topic['id']: page for page in pages for topic in page.topics()}
+        services = ['email', 'files', 'feature-flags', 'rate-limits', 'search', 'audit-trail', 'ai',
+                    'monitoring-thresholds']
+        for service in services:
+            text = source[service].path.read_text()
+            start = text.index(f'<!-- topic: {service}')
+            fence = re.compile(r'^```(\S*)(.*)$', re.M).search(text, start)
+            self.assertIn('check', fence.group(2), f'{service} opens with a fragment nothing compiles')
+            self.assertNotIn('fragment', fence.group(2), service)
 
     def test_every_group_links_everything_in_it_and_every_status_is_at_the_top(self):
         catalogue, pages, _, errors = real_docs()
@@ -823,6 +849,25 @@ class WhatAnAgentIsToldToRead(unittest.TestCase):
 
     def test_a_pattern_in_an_address_is_not_a_page(self):
         self.assertEqual(self.problems(skill='https://jadpo.dev/docs/errors/<rule>.md, https://jadpo.dev/v/<version>/docs/index.json\n'), [])
+
+
+class WhatAnAgentReadsOnce(unittest.TestCase):
+    """The primer as the bundle gives it, and the repository's llms.txt, stay
+    inside the budget (agent_guidance.READ_ONCE_TOKENS)."""
+
+    def problems(self, primer, llms):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'llms.txt').write_text(llms)
+            return docs.read_once_problems([('primer', 'primer', 'primer.md', 'Primer', None, primer, set())], root)
+
+    def test_inside_the_budget_passes(self):
+        self.assertEqual(self.problems('p' * 100, 'l' * 100), [])
+
+    def test_over_it_fails_on_the_page_as_the_bundle_gives_it(self):
+        found = self.problems('p' * 40_000, 'l' * 100)
+        self.assertEqual(len(found), 1)
+        self.assertIn('read once', found[0])
 
 
 class Primer(unittest.TestCase):

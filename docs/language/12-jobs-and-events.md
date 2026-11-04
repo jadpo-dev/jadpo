@@ -148,8 +148,9 @@ hourly purge schedule from the compiler, such as `Member.purge` for
   holds no other up.
 - **Grants.** A schedule runs as the system, so the records it reaches
   must name `Access.system` in their policy. A schedule reaching what
-  only `Access.public` grants is `policy.system_grant_missing`, as a
-  subscriber or a batch is ([Background work](09-policy.md#background-work)).
+  only `Access.public` grants, or what no list grants anyone, is
+  `policy.system_grant_missing`, as a subscriber or a batch is
+  ([Background work](09-policy.md#background-work)).
 
 ### The tick
 
@@ -970,7 +971,7 @@ its `File`, so a resumed run reads the same one.
 ### Read before the transaction
 
 No outside call goes out while a transaction is open
-([The seam every outside call goes through](16-built-in-services.md#the-seam-every-outside-call-goes-through)),
+([How every outside call is made safe](16-built-in-services.md#how-every-outside-call-is-made-safe)),
 and an item's action runs
 inside its batch's transaction. So each batch's rows are read from the
 store first, through the `files` capability, in windows of at most a
@@ -1118,7 +1119,7 @@ As for `batches.each`: in the store `from:`'s query reads, which
 ### Each page is stored after its page commits
 
 No outside call goes out while a transaction is open
-([The seam every outside call goes through](16-built-in-services.md#the-seam-every-outside-call-goes-through)),
+([How every outside call is made safe](16-built-in-services.md#how-every-outside-call-is-made-safe)),
 so each page goes in three steps:
 
 1. A transaction locks the run's row and reads, as the system, the page
@@ -1212,8 +1213,8 @@ in, as for a schedule or a subscriber
 query reads, or what the action `each:` or `finished:` calls reaches
 (itself or through what it calls), has a grant list, a field's own list
 or a line under `actions:` that names `Access.public` and not
-`Access.system`. Then that is `policy.system_grant_missing`, at that
-query's or action's call. Each call is checked, so one batch may be
+`Access.system`, or does something no list grants anyone. Then that is
+`policy.system_grant_missing`, at that query's or action's call. Each call is checked, so one batch may be
 refused at more than one.
 
 A batch's query that only `Access.public` may read:
@@ -1964,7 +1965,9 @@ A subscriber's action may emit further events.
 A subscriber runs as the system (`Access.system`,
 [Background work](09-policy.md#background-work)), not as the user who
 caused the event. If it needs to know who, put a field such as
-`by: User.id` in the event.
+`by: User.id` in the event. What its action does that no list grants
+anyone is `policy.system_grant_missing`, so a write with no grant fails at
+`jadpo check`, not as a failed delivery.
 
 ### What a subscriber stores from its event
 
@@ -2403,8 +2406,9 @@ run resumed under a changed build still stops as `diverged`.
 Fakes honour keys and can answer `lost` and `in_use`. `jadpo test` runs
 every multi-step test again with a crash at each step boundary, on by
 default ([Fakes for integrations](13-testing.md#fakes-for-integrations)).
-`jadpo dev`, `jadpo watch` and `jadpo deliveries show` list each step's
-state ([Debugging](17-debugging-and-review.md)).
+`jadpo dev` and `jadpo deliveries show` list each step's state, and
+`jadpo watch` will once it is built
+([Debugging](17-debugging-and-review.md)).
 
 ### Providers that take no key
 
@@ -3479,6 +3483,7 @@ These limits may change once they have been measured on real runs.
 |---|---|
 | Everything else on this page | Built. |
 | Publishing chosen public events outward | Not built yet. |
+| `jadpo batches list`, `show` and `cancel` | Not built yet: an action can call `batches.status` and `batches.cancel` meanwhile ([Tooling](14-tooling.md#commands-for-services-calls-email-and-stored-data)). |
 | `batches.each` over a provider's list operation, walked by `page.next` | Not built yet: a provider's list operation as `from:` is `toolchain.not_built_yet` where it is written; a named query giving a `Page` is built ([Walking records or a provider's list](#walking-records-or-a-providers-list-batcheseach)). |
 | Each step's state in `jadpo watch`, and in `jadpo trace` with the request timelines ([Debugging](17-debugging-and-review.md)), and a record's entry in the [personal-data report](15-personal-data.md) | Not built yet. |
 | Sending the metrics and the alerts' log events to a monitoring tool | Not built yet: waits for [telemetry](16-built-in-services.md). |

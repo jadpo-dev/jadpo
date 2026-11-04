@@ -763,7 +763,7 @@ rules! {
     POLICY_SUBJECT_DUPLICATE: "policy.subject_duplicate", area 9, Error, Agent,
         "Grant names the same caller twice";
     POLICY_SYSTEM_GRANT_MISSING: "policy.system_grant_missing", area 9, Error, Human,
-        "A schedule or subscriber reaches a grant that names `Access.public` but not `Access.system`, so the background work would always be refused";
+        "A schedule or subscriber reaches something no list grants anyone, or a grant that names `Access.public` but not `Access.system`, so the background work would always be refused";
     PROMPT_FREE_TEXT_IN_INSTRUCTIONS: "prompt.free_text_in_instructions", area 21, Error, Agent,
         "A prompt writes a free-text value, such as text a user typed, in its instructions rather than in its request";
     PROMPT_PLACEHOLDER_TYPE: "prompt.placeholder_type", area 21, Error, Agent,

@@ -386,28 +386,24 @@ What the Reddit thread found (Richard, 2026-11-03):
   what it would save, measured against the PersonName detour in the 0.2.0 run.
 - [x] **A20 An email address is personal data**: area 15, "Contact details and names need no mark" and "What the compiler checks"; area 18, "What a first record holds"; compiler/runtime §2.3, "Contact details and names need no mark"; notes for areas 15 and 18.
 - [x] **A21 Phone numbers, names and addresses are cleared as an email is**: area 15, "Contact details and names need no mark" and "Erasure"; `data.erase_field_required`; compiler/runtime §2.3, "Contact details and names need no mark"; notes for area 15.
+- [x] **A22 A write background work could never make**: area 9, "Nothing grants it"; area 12, "Runs as the system"; `docs/errors/policy.system_grant_missing.md`; notes for area 9, "Background work and no grant".
 - [x] **D17a Honest status words**: each area's "What is built" table; [writing guide](writing.md), "A status word"; `status_word_problems` in `tools/docs/agent_guidance.py`.
 - [x] **D17b The reference's manifest**: `docs/reference.toml` and its check; docs/documentation.md, "The reference's manifest".
 - [x] **D17c The navigation designed**: `design/docs-nav.html` in jadpo-website.
 - [x] **D17d The site built from the manifest**: `src/lib/nav.ts` and `src/components/docs/` in jadpo-website; its `DESIGN.md`.
 - [x] **D17e Landing pages and status lines**: `tools/docs/reference_pages.py`; docs/documentation.md, "Landing pages and status lines"; `docs/reference.toml`.
 - [x] **D17f Search that finds the docs**: `src/lib/search.ts` and `scripts/search.test.mjs` in jadpo-website.
-- [ ] **D17g What an agent reads first** `opus · high`: nothing tells an agent
-  to read all of `index.json`, 173,000 tokens; about 9,000 once and under
-  1,000 per lookup.
+- [x] **D17g What an agent reads first**: [documentation guide](documentation.md), "How an agent uses it"; `llms.txt`, the skill and the AGENTS.md `jadpo new` writes; `whole_index_problems` and `read_once_problems` in `tools/docs/agent_guidance.py`.
 - [ ] **D17h Standard types under Values and types** `opus · high`: one
   generated list, in the sidebar, not two hand tables at the bottom of the
   reference home.
-- [ ] **D17i Built-in services, one home each** `opus · high`: usage first,
-  details last, the landing's rows all linking.
+- [x] **D17i Built-in services, one home each**: docs/language/16-built-in-services.md; docs/language/21-ai.md, "AI"; [writing guide](writing.md), "How a built-in service's page reads"; `docs/reference.toml`.
 - [ ] **D17j Every other area** `opus · high`: the remaining merges and
   renames, translations findable under Configuration.
 - [ ] **D17k Implementer history out of the topics** `opus · medium`, with a
   check.
 - [ ] **D17l The guides index grouped** `opus · medium`.
-- [ ] **D17m The ten guides** `opus · high`, one pull request each: email,
-  flags, rate limits, search, audit, webhooks received, file export,
-  translations, AI, tenancy. Each compiles and its tests pass.
+- [x] **D17m The ten guides**: `docs/guides/12-send-an-email.md` to `21-keep-customers-data-apart.md`.
 - [ ] **D17n Review** `opus · high`: one independent review of the whole and
   a cold read of a service from its landing page.
 
@@ -423,7 +419,7 @@ above and before every other unticked chunk.
 
 0.2.0 shipped without V2. **0.3.0 holds** everything in this section, R1 to
 R6, G1 to G7 (what the registry application, R7, needs from `jadpo`), the real
-deploy (8.2n) and what it finds, and D15, D16, D17, A12 to A15, A20 and A21 (Richard,
+deploy (8.2n) and what it finds, and D15, D16, D17, A12 to A15, A20, A21 and A22 (Richard,
 2026-11-03). It is released when those have merged. V1 and V3 to V5 run at the same time as each other and as R1
 and R4, where they touch different crates.
 
@@ -704,12 +700,12 @@ After the registry is live, in order:
      see each failure on both executors, and `jadpo files copy` moves a
      disk store's files to S3.
    - [x] **B9 Flags declared, read and tested**: area 16, "Feature flags"
-     and "Flags: declared, read and tested"; area 1, "Rules triggered by
+     and "Flag rules: declaring, reading, testing"; area 1, "Rules triggered by
      time passing"; area 13, "Test settings"; compiler/runtime §2.6,
      "Feature flags".
    - [x] **B10 Changing and removing flags**: area 16, "Changing a flag",
-     "Removing a flag", "Flags in browsers and apps" and "Flags: changed,
-     listed and removed"; area 14, `jadpo flags`; compiler/runtime §2.6,
+     "Removing a flag", "Flags in browsers and apps" and "Flag rules: changing,
+     listing, removing"; area 14, `jadpo flags`; compiler/runtime §2.6,
      "Feature flags".
    - [x] **B11 The audit trail**: area 16, "Audit trail" (with "Reading
      a history", "Retention and erasure" and "What the audit trail

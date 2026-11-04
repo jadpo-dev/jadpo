@@ -303,8 +303,8 @@ pub fn schedule_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagn
         if !crate::policy::policy_clean(db, project) {
             continue;
         }
-        if let Some(found) = crate::policy::reach::public_only(db, project, action.name()) {
-            out.push(crate::events::public_only(
+        if let Some(found) = crate::policy::reach::system_refused(db, project, action.name()) {
+            out.push(crate::events::system_refused(
                 "schedule",
                 &model.name,
                 &read.span,
