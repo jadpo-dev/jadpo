@@ -1241,8 +1241,9 @@ Not built yet:
   services](11-integrations.md)).
 - `jadpo dev grants add <connection> --owner <id>`, which makes a fake
   OAuth grant for local development ([OAuth grants](11-integrations.md#oauth-grants)).
-- `jadpo files copy`, which copies files between two stores (S3, R2,
-  disk) ([Files](16-built-in-services.md#files)).
+- `jadpo files ls`, `show`, `get`, `put` and `copy`, which work on any
+  store, in development or production, `copy` copying files between two
+  stores (S3, R2, disk) ([Files](16-built-in-services.md#files)).
 - `jadpo batches list`, `show <id>` and `cancel <id>`, which list batch
   runs (file reads and writes, `batches.each`) with their state and
   progress, show one run's progress and problems, and stop one, as
@@ -1300,8 +1301,12 @@ naming the nearest rule.
 
 Not built yet: the debugging commands of [Debugging and
 review](17-debugging-and-review.md), which are proposed there:
-`jadpo trace <id>`, `jadpo why` for anything but a schedule,
-`jadpo call` and `jadpo console`. Also `jadpo incident [file | -]`,
+`jadpo trace <id>`, `jadpo traces`, `jadpo metrics`, `jadpo logs`,
+`jadpo watch`, `jadpo why` for anything but a schedule, `jadpo call`,
+`jadpo console`, `jadpo mcp`, `jadpo replay` and `jadpo test new --from`;
+`jadpo path` ([Path IDs](16-built-in-services.md#path-ids)); and
+`jadpo privacy requests` ([Personal data](15-personal-data.md)). Also
+`jadpo incident [file | -]`,
 which explains a runtime event from a file, from standard input
 (`pbpaste | jadpo incident -`, or a log stream piped in), or, with no
 argument in a terminal, from text pasted at a prompt. It finds the Jadpo
@@ -3413,7 +3418,7 @@ Each row says what is built and what is specified but not built yet.
 | Error messages | Built: one error per mistake, in the field order [Error messages](#error-messages) gives, `impact` only when it says something, edits on the next step where one exists, and help links to each error's page on the site. |
 | JSON output | Built: every command takes `--json` and prints one envelope (`schemaVersion` 3) with `durationMs`, project-relative paths and `data.root`, line and column beside byte offsets, and camelCase keys, shortened unless `--full` is given; `jadpo test --json` is described in [Testing](13-testing.md) and under `testReport` in `jadpo help --json`. |
 | `build/` | Partly built: `jadpo check` writes `build/manifest.json`, the catalogues in `build/catalogue/`, the permissions, network, provider and personal-data reports in `build/report/` and the monitoring rules in `build/monitoring/`; `jadpo test` keeps its last run in `build/test/`. Not built yet: the schema and query reports, and `diagnostics/`, `inventory/`, `audit/` and `compatibility/`. |
-| Commands | Partly built: each command [The `jadpo` command](#the-jadpo-command) and the topics after it describe. Not built yet: those in their "Not built yet" notes. |
+| Commands | Partly built: each command [The `jadpo` command](#the-jadpo-command) and the topics after it describe. Not built yet: those in their "Not built yet" notes, `jadpo inspect`, `impact`, `rename`, `domain`, `services`, `dev grants`, `files`, `batches`, `search reindex`, `trace`, `traces`, `metrics`, `logs`, `watch`, `call`, `console`, `mcp`, `replay`, `path`, `privacy requests`, `incident` and `test new --from`. |
 | Language server | Partly built: diagnostics; hover, with a query's SQL and a route's full path; go to definition, from a `use` line too; find references; completion; formatting as `jadpo fmt`; quick fixes from each error's edit, promotion among them; and the code actions under [Editor support](#editor-support). Not built yet: rename, which waits for `jadpo rename`. |
 | VS Code extension | Built: starts `jadpo lsp`, formats on save, highlights, a status item naming the `jadpo` running, "Open Generated File", and packaging and publishing on each release to the VS Code Marketplace and Open VSX, which publishes through trusted publishing. |
 | Agent tools | Partly built: the catalogues and the similar-helper check, a declinable error, are built; `migrate` is built; `impact`, `domain` and `rename` are not built yet, nor are the agent skill and generated CI. |

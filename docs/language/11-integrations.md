@@ -153,8 +153,8 @@ run by Jadpo without `host:`, and SMTP on port 25
   container has no outbound network until its connection grants it, is
   never privileged and can't reach the host's disk. A new or changed image
   runs only once a person accepts it in the approval report.
-  `jadpo services` lists, starts and stops each one and shows its logs
-  ([Tools](14-tooling.md)). You never write a Dockerfile or a Compose
+  `jadpo services`, not built yet, will list, start and stop each one and
+  show its logs ([Tools](14-tooling.md)). You never write a Dockerfile or a Compose
   file, and an app with no such connection never needs an engine
   ([Services](#services)).
 - **The operator's infrastructure is their own.** They may run
@@ -892,7 +892,8 @@ held, the app words each under a key that carries the version,
   in code always means the official package.
 - **Two packages never share a name in code.** Installing a registry package
   whose name one of the app's own integrations or libraries already uses
-  stops and asks for the app's own to be renamed first (`jadpo rename`).
+  stops and asks for the app's own to be renamed first (by hand, since
+  `jadpo rename` isn't built yet).
 - **A package's name can't clash with any other name.** Domain, library
   and standard-library names are unique among themselves, and a package's
   name joins them. Installing a package refuses one whose name the app
@@ -4111,11 +4112,11 @@ provider {
   it. An app with no service never needs an engine; when one is needed and
   none is found, `jadpo dev` and the deployable say so and how to install
   one.
-- **Docker stays behind the scenes.** `jadpo services` lists each service
-  (package, image, state, health, CPU and memory, restarts, uptime);
-  `jadpo services start`, `stop` and `restart <name>`, `logs <name>`
-  (`--follow`, `--since`) and `shell <name>` (development only) manage them,
-  each with `--json`. In production the commands talk to the running app,
+- **Docker stays behind the scenes.** `jadpo services`, not built yet,
+  lists each service (package, image, state, health, CPU and memory,
+  restarts, uptime); `jadpo services start`, `stop` and `restart <name>`,
+  `logs <name>` (`--follow`, `--since`) and `shell <name>` (development
+  only) manage them, each with `--json`. In production the commands talk to the running app,
   which supervises its services. A service's output joins the app's
   OpenTelemetry logs under its name, and a call to it appears in the
   request's trace as a provider call.
@@ -4254,9 +4255,9 @@ record ends.
   reruns every test that reaches a multi-step action with a crash at each
   step boundary (before sending, after sending but before recording, after
   recording) and checks that the end state and the fake's effects match the
-  run without one; this is on by default. `jadpo dev`, `jadpo watch` and
+  run without one; this is on by default. `jadpo dev` and
   `jadpo deliveries show` list each step as sent (with its key), answered,
-  replayed or in doubt.
+  replayed or in doubt, and `jadpo watch` will once it is built.
 
 ```text
 $ jadpo deliveries show d_7Q2
@@ -4896,8 +4897,8 @@ deletes and revokes its grants.
 
 ### In development and tests
 
-Calls are faked by default. `jadpo dev grants add <connection> --owner <id>`
-makes a fake grant, and tests declare grants as fixtures.
+Calls are faked by default. `jadpo dev grants add <connection> --owner <id>`,
+not built yet, makes a fake grant, and tests declare grants as fixtures.
 
 ### Later
 
@@ -4905,8 +4906,9 @@ Each of these comes when an app needs it: several accounts per owner,
 scopes added after connecting, provider notifications per grant, and
 GitHub App installation tokens (a credential scheme in the runtime).
 
-> OAuth grants, their routes and `on_behalf_of:` aren't built yet, and nor is
-> acting as an OAuth provider ([What is built](#what-is-built)).
+> OAuth grants, their routes, `on_behalf_of:` and `jadpo dev grants add` aren't
+> built yet, and nor is acting as an OAuth provider
+> ([What is built](#what-is-built)).
 
 ## Packages from other Jadpo apps
 <!-- topic: packages-from-other-jadpo-apps -->
@@ -7529,8 +7531,8 @@ package's name, as its types are.
 | The `email` capability with SMTP and Resend | Built. |
 | Package actions, subscribers, recipes and polls | Built. |
 | Webhooks as events, replies, handshakes, queues through a package and the Cloudflare Queues driver | Built. |
-| Services (`runs:`) | Not built yet. |
-| OAuth grants | Not built yet: the application's `grants:` is `toolchain.not_built_yet` where it is written. |
+| Services (`runs:`) | Not built yet, nor is `jadpo services`. |
+| OAuth grants | Not built yet: the application's `grants:` is `toolchain.not_built_yet` where it is written, and `jadpo dev grants add` isn't a command yet. |
 | A release's facts and change record in `jadpo package check` and `show`, the previous release's examples and tests run against the new code, and `jadpo package verify` with the fingerprints ([How they are worked out](#how-a-releases-facts-change-record-and-fingerprints-are-worked-out)) | Built. |
 | [The verifier](#the-verifier): `jadpo package verify --serve`, its sandbox, the check of a commit's files and size, its container image and Fly.io configuration | Built. Not deployed yet: its image is published, and it runs on Fly.io, once a maintainer has switched them on ([documentation](../documentation.md#versions-and-releases)). |
 | Publisher trust for third-party git packages | Built: a package from a git repository under none of `packages:`'s `own_sources:` needs an [acceptance](18-records-and-manifest.md#acceptances), as does adding or widening an entry; an entry is `package.own_source_invalid` unless it is a host and a path ending in `/`. |

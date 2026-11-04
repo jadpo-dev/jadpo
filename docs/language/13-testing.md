@@ -1274,8 +1274,8 @@ An OAuth grant lets the app call another service on a user's behalf
 ([OAuth grants](11-integrations.md#oauth-grants)).
 A test declares its grants at the top, beside `fakes:`, as
 `grants: { calendar: [alice] }`: the connection's name, and the fixtures
-whose records own a grant, as `jadpo dev grants add` makes them in
-development. A call on behalf of an owner with no grant fails
+whose records own a grant, as `jadpo dev grants add`, not built yet, will
+make them in development. A call on behalf of an owner with no grant fails
 `grant_missing`, and a script can answer `grant_revoked`.
 
 #### Files
@@ -1697,9 +1697,9 @@ as in production.
 
 ### Keeping a failed test's database: `--keep-failed`
 
-`--keep-failed` keeps a failed test's database, named in the report, and
-its trace. `jadpo trace` and the developer console can then inspect
-exactly what it did.
+`--keep-failed` keeps a failed test's database, named in the report. Not
+built yet: its trace, with `jadpo trace` and the developer console to
+inspect exactly what it did.
 
 ## Events and caches in tests
 <!-- topic: caches-and-events -->
@@ -1951,6 +1951,7 @@ Not built yet: caches, which need the Redis driver.
 | Watch mode | Partly built: `jadpo test --watch` runs the tests asked for, then on every save the ones that reach what changed, through the graph's digests and `calls` and `uses` edges, on one long-lived database; a save no test reaches says `nothing to rerun`, a broken build shows its errors, and the next good save runs everything changed since the last run, or says `errors fixed` when no test reaches it; a removed file is a change like any other. Run from outside the project, its paths start with the project as typed. It ends when nothing reads its output any more, as when piped into `head`. A save shows its results in about 0.1 s on a 230-file project, and the gate fails above 1.25 s. The keys in the interactive screen (`enter`, `a`, `f`) wait for `--interactive`, which says `toolchain.not_built_yet`; ctrl-c quits. |
 | Fixtures | Built: a fixture is checked like an action and called by name from tests, fixtures and seeds; an action calling one is `semantic.not_callable`. A `public` fixture is called through its domain from other domains' tests, fixtures and seeds and from root `tests/`; a private one from there is `visibility.private_cross_domain`. Seeds are checked like tests and run with `jadpo seed` ([Seeds](05-data.md#seeds)). |
 | Data builders, `assert emitted` | Not built yet. |
+| The trace `--keep-failed` keeps, for `jadpo trace` | Not built yet: it comes with [Debugging and review](17-debugging-and-review.md). |
 | Interactive mode | Not built yet: `jadpo test --interactive` says `toolchain.not_built_yet`. |
 | Generated tests | Not built yet: `jadpo test` runs only the tests a project declares. |
 | Caches in tests | Not built yet: caches need the Redis driver. |
