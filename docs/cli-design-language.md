@@ -179,6 +179,27 @@ long one gets a line of its own so it copies whole.
 - Interactive modes refuse `--json` and a missing terminal, naming the flags
   that do the same job.
 
+### Repeats and `--full`
+
+An agent pays for every line it reads, so a report says a thing once.
+Everything left out comes back with `--full`, in every mode.
+
+- A diagnostic with the same rule and reason as an earlier one keeps its
+  headline, location, code frame, `next` and `rule`. Its `reason` reads
+  ``As the first `type.mismatch` above``, and it has no `help`.
+- A failed test whose fault has the same kind, reason and next step as an
+  earlier test's keeps its headline, `fault`, `at`, `rule` and `rerun`. Its
+  `reason` reads `As the first fault above`.
+- Long output from another program is cut to the line that says why.
+- In `--json` the same repeats carry `sameAs` in place of what they leave
+  out: a diagnostic's place in `diagnostics`, from 0, or the `order` of the
+  test whose fault it repeats. `null`, empty lists and objects, an empty
+  `label`, a diagnostic's `severity` and a false `declinable` are left out,
+  tests that passed are counted rather than listed, and `jadpo check` counts
+  its files as `fileCount` rather than listing them and what it wrote.
+- Every `--json` document has `durationMs`, how long the command took: the
+  one thing in it that changes from run to run of the same source.
+
 ## Voice and wording
 
 - Short, plain British English (colour, behaviour, "isn't").

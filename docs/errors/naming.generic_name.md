@@ -43,8 +43,7 @@ check failed: 1 error, 1 file
 `(agent)` at the end of the `next:` line means your coding agent can make
 the fix itself: it can name a library after what its functions do.
 
-A domain called `utils` is reported at its first file, and there a person
-decides:
+A domain called `utils` is reported at its first file:
 
 ```jadpo check project=e-generic-domain file=app.jadpo hidden
 application {}
@@ -63,17 +62,19 @@ error: `utils` is too generic for a domain
 1 | action tidy() -> Unit {}
   | ^ says nothing about what it holds
   reason: Domains and libraries are named after what they hold, because the name appears in every call; `common`, `core`, `helpers`, `misc` and `utils` say nothing.
-  next: Rename `domains/utils/` after the business area it covers (human)
+  next: Rename `domains/utils/` after the business area it covers (agent)
   rule: naming.generic_name
   help: https://jadpo.dev/docs/errors/naming.generic_name
 
 check failed: 1 error, 2 files
 ```
 
-`(human)` at the end of the `next:` line tells your coding agent to stop
-and ask you which fix you want, because the choice is yours to make: a
-domain is a boundary other code is shaped around, so a new domain's name
-needs your [acceptance](../language/18-records-and-manifest.md#acceptances).
+This project has no commit yet, so no one depends on the name and your
+coding agent can choose one. Once the project has a commit, the next step
+ends `(human)`, which tells your coding agent to stop and ask you which fix
+you want, because the choice is yours to make: a domain is a boundary other
+code is shaped around, so a new domain's name needs your
+[acceptance](../language/18-records-and-manifest.md#acceptances).
 
 ## How to fix it
 

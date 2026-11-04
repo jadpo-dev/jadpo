@@ -6,7 +6,9 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use jadpo_diag::{Diagnostic, rule};
-use jadpo_term::{Block, ColorChoice, Environment, Json, Screen, Stream, Style, envelope};
+use jadpo_term::{
+    Block, ColorChoice, Environment, Json, Screen, Sources, Stream, Style, envelope, short_envelope,
+};
 
 use crate::completion;
 use crate::help;
@@ -169,12 +171,54 @@ pub fn run(args: &[String], env: &Environment) -> Output {
             session: None,
         };
     }
+    let started = std::time::Instant::now();
     let (json, choice) = presentation(args);
     let (name, reply) = match parse(args) {
         Ok(parsed) => dispatch(parsed, env),
         Err(diagnostic) => (None, Reply::Failed(diagnostic)),
     };
-    finish(name, reply, env, json, choice)
+    let asked = Asked {
+        full: args
+            .iter()
+            .take_while(|arg| *arg != "--")
+            .any(|arg| arg == "--full"),
+        started: Some(started),
+    };
+    finish(name, reply, env, json, choice, &asked)
+}
+
+/// What a command's document depends on besides its reply.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct Asked {
+    /// `--full`: everything the short form of a document leaves out.
+    pub full: bool,
+    /// When the command started, for its `durationMs` (chunk A14); `None`
+    /// for what isn't a run of a command, as a session's refusal.
+    pub started: Option<std::time::Instant>,
+}
+
+/// The document `--json` prints for a command that ended like this: short
+/// unless `--full` asks for everything, with how long the command took.
+fn document(
+    name: Option<&str>,
+    data: Option<Json>,
+    diagnostics: &[Diagnostic],
+    sources: &dyn Sources,
+    asked: &Asked,
+) -> String {
+    let made = if asked.full {
+        envelope(name, data, diagnostics, sources)
+    } else {
+        short_envelope(name, data, diagnostics, sources)
+    };
+    let made = match asked.started {
+        Some(started) => {
+            let took = i64::try_from(started.elapsed().as_millis()).unwrap_or(i64::MAX);
+            made.with_field_after("ok", "durationMs", Json::Int(took))
+        }
+        None => made,
+    };
+    made.to_document()
 }
 
 fn finish_report(
@@ -183,11 +227,12 @@ fn finish_report(
     env: &Environment,
     json: bool,
     choice: ColorChoice,
+    asked: &Asked,
 ) -> Output {
     let (screen, data, diagnostics, sources) = report;
     let code = diagnostics.iter().map(exit_code).max().unwrap_or(0);
     let stdout = if json {
-        envelope(name, Some(data), &diagnostics, &sources).to_document()
+        document(name, Some(data), &diagnostics, &sources, asked)
     } else {
         screen.render(&Style::detect(env, false, choice, Stream::Stdout))
     };
@@ -205,6 +250,7 @@ pub(crate) fn finish(
     env: &Environment,
     json: bool,
     choice: ColorChoice,
+    asked: &Asked,
 ) -> Output {
     let (data, diagnostic, text) = match reply {
         // The session writes everything itself, in the form asked for.
@@ -228,7 +274,7 @@ pub(crate) fn finish(
                 .reason("The value is typed at a prompt, and nothing about it may be printed, so there is no document to write.")
                 .next("Leave out `--json`; `jadpo config check --json` lists how each setting stands");
                 return Output {
-                    stdout: envelope(name, None, &[refusal], &()).to_document(),
+                    stdout: document(name, None, &[refusal], &(), asked),
                     stderr: String::new(),
                     code: 2,
                     session: None,
@@ -251,6 +297,7 @@ pub(crate) fn finish(
                     env,
                     json,
                     choice,
+                    asked,
                 );
             }
             args.choice = choice;
@@ -326,7 +373,7 @@ pub(crate) fn finish(
                 jadpo_diag::Decider::Human,
             );
             return Output {
-                stdout: envelope(name, None, &[refusal], &()).to_document(),
+                stdout: document(name, None, &[refusal], &(), asked),
                 stderr: String::new(),
                 code: 2,
                 session: None,
@@ -354,6 +401,7 @@ pub(crate) fn finish(
                 env,
                 json,
                 choice,
+                asked,
             );
         }
     };
@@ -361,7 +409,7 @@ pub(crate) fn finish(
     if json {
         let diagnostics: Vec<Diagnostic> = diagnostic.into_iter().collect();
         return Output {
-            stdout: envelope(name, data, &diagnostics, &()).to_document(),
+            stdout: document(name, data, &diagnostics, &(), asked),
             stderr: String::new(),
             code,
             session: None,
@@ -580,6 +628,8 @@ fn parse(args: &[String]) -> Result<Parsed, Box<Diagnostic>> {
     for (name, value) in flags {
         match (name.as_str(), value) {
             ("--json", None) => {}
+            // Read by the commands that shorten what they report.
+            ("--full", None) => parsed.flags.push("--full"),
             ("--help", None) => parsed.help = true,
             ("--version", None) if command.is_none() => parsed.version = true,
             ("--color", Some(value)) => {

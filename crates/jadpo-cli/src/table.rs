@@ -165,6 +165,12 @@ pub static GLOBAL_FLAGS: &[Flag] = &[
         values: &[],
     },
     Flag {
+        name: "--full",
+        value: None,
+        description: "Show everything a report shortens",
+        values: &[],
+    },
+    Flag {
         name: "--help",
         value: None,
         description: "Show every flag, with examples",
@@ -381,6 +387,7 @@ pub static COMMANDS: &[Command] = &[
             &rule::TEST_FAILED,
             &rule::TEST_NO_TESTS,
             &rule::TEST_RUNTIME_START_FAILED,
+            &rule::TEST_DATABASE_UNAVAILABLE,
             &rule::MIGRATION_APPLY_FAILED,
             &rule::MIGRATION_EXTENSION_MISSING,
             &rule::MIGRATION_EXTENSION_OUTDATED,

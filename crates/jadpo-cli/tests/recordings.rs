@@ -211,7 +211,7 @@ fn jadpo_test_decodes_every_recording() {
         "decoded",
         &[("bookings.create.json", recording("booked", "PM"))],
     );
-    let ran = jadpo(&root, &["test", "--json", "--seed", "1"]);
+    let ran = jadpo(&root, &["test", "--json", "--full", "--seed", "1"]);
     assert_eq!(ran.code, 0, "{}{}", ran.stdout, ran.stderr);
     let tests = tests_of(&ran);
     assert_eq!(tests.len(), 1, "{tests:?}");
@@ -254,7 +254,7 @@ fn a_recording_its_decoders_refuse_fails_the_run() {
         ran.stdout,
         "FAIL  bookings.create's recording decodes\n --> shared/providers/acme_couriers/v1/recordings/bookings.create.json:1\n\n  decode: `bookings.create`'s recording doesn't decode: `variant` on `status`\n  reason: Every decoder decodes every recorded answer: the operation's output type, or a decoder of its own, refuses what the provider sent here, so a real answer like it would fault the call.\n  next: Correct the type or its decoder against the recording and the provider's documentation (agent)\n\n  rule: test.recording_undecodable\n  rerun: jadpo test shared/providers/acme_couriers/v1/recordings/bookings.create.json:1 --seed 1\n\ntest failed: 1 failed, 1 recording test\n"
     );
-    let json = jadpo(&root, &["test", "--json", "--seed", "1"]);
+    let json = jadpo(&root, &["test", "--json", "--full", "--seed", "1"]);
     let tests = tests_of(&json);
     assert_eq!(tests[0]["failure"]["code"], "test.recording_undecodable");
     assert_eq!(tests[0]["failure"]["recording"]["field"], "status");
@@ -267,7 +267,7 @@ fn a_recording_its_decoders_refuse_fails_the_run() {
         "round-trip",
         &[("bookings.create.json", recording("booked", "EVE"))],
     );
-    let ran = jadpo(&root, &["test", "--json", "--seed", "1"]);
+    let ran = jadpo(&root, &["test", "--json", "--full", "--seed", "1"]);
     assert_eq!(ran.code, 1, "{}{}", ran.stdout, ran.stderr);
     let tests = tests_of(&ran);
     assert_eq!(tests[0]["failure"]["code"], "test.round_trip_failed");
@@ -278,7 +278,7 @@ fn a_recording_its_decoders_refuse_fails_the_run() {
         "no-operation",
         &[("bookings.cancel.json", recording("booked", "PM"))],
     );
-    let ran = jadpo(&root, &["test", "--json", "--seed", "1"]);
+    let ran = jadpo(&root, &["test", "--json", "--full", "--seed", "1"]);
     let tests = tests_of(&ran);
     assert_eq!(tests[0]["failure"]["code"], "test.recording_undecodable");
     assert_eq!(

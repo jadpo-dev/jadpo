@@ -15,20 +15,25 @@ pub fn json(run: &Run) -> Json {
     for result in &run.results {
         *ran.entry(result.test.kind).or_insert(0usize) += 1;
     }
+    // Without `--full`, a kind no test has says nothing, nor does a filter
+    // not asked for, and a test that passed is counted, not listed, as on
+    // the screen (chunk A14).
     let kinds = |counts: &dyn Fn(TestKind) -> usize| {
         Json::object(
             TestKind::ALL
                 .into_iter()
+                .filter(|kind| run.full || counts(*kind) > 0)
                 .map(|kind| (kind.word(), counts(kind).into())),
         )
     };
-    Json::object([
+    let repeats = run.fault_repeats();
+    let document = Json::object([
         (
             "seed",
             Json::Int(i64::try_from(run.seed).unwrap_or(i64::MAX)),
         ),
         ("root", Json::from(run.root.as_deref().unwrap_or("."))),
-        ("selection", selection(&run.selection)),
+        ("selection", selection(&run.selection, run.full)),
         (
             "counts",
             Json::object([
@@ -52,7 +57,17 @@ pub fn json(run: &Run) -> Json {
                 run.results
                     .iter()
                     .enumerate()
-                    .map(|(i, result)| test(i + 1, result)),
+                    .filter(|(_, result)| run.full || result.failure.is_some())
+                    .map(|(i, result)| {
+                        let first = repeats[i].and_then(|order| {
+                            let failure = run.results.get(order - 1)?.failure.as_ref()?;
+                            match &failure.detail {
+                                Detail::Fault(info) => Some((order, info.as_ref())),
+                                _ => None,
+                            }
+                        });
+                        test(i + 1, result, first)
+                    }),
             ),
         ),
         (
@@ -69,20 +84,32 @@ pub fn json(run: &Run) -> Json {
                 ])
             })),
         ),
-    ])
+    ]);
+    if run.full {
+        document
+    } else {
+        document.pruned()
+    }
 }
 
-fn selection(selection: &Selection) -> Json {
+fn selection(selection: &Selection, full: bool) -> Json {
     Json::object([
         ("path", selection.path.as_ref().into()),
         ("line", selection.line.into()),
         ("name", selection.name.as_ref().into()),
         ("kind", selection.kind.map(TestKind::word).into()),
-        ("failed", selection.failed.into()),
+        (
+            "failed",
+            if full || selection.failed {
+                selection.failed.into()
+            } else {
+                Json::Null
+            },
+        ),
     ])
 }
 
-fn test(order: usize, result: &TestResult) -> Json {
+fn test(order: usize, result: &TestResult, repeat: Option<(usize, &FaultInfo)>) -> Json {
     let test = &result.test;
     let mut entries = vec![
         ("order".to_string(), order.into()),
@@ -106,7 +133,7 @@ fn test(order: usize, result: &TestResult) -> Json {
         let (assertion, raised, fault) = match &failure.detail {
             Detail::Assertion(assertion) => (assertion_json(assertion), Json::Null, Json::Null),
             Detail::Failure(info) => (Json::Null, failure_json(info), Json::Null),
-            Detail::Fault(info) => (Json::Null, Json::Null, fault_json(info)),
+            Detail::Fault(info) => (Json::Null, Json::Null, fault_json(info, repeat)),
             Detail::Fake(_) | Detail::Recording(_) => (Json::Null, Json::Null, Json::Null),
         };
         let fake = match &failure.detail {
@@ -159,7 +186,14 @@ fn test(order: usize, result: &TestResult) -> Json {
             "failure".to_string(),
             Json::object([
                 ("code", failure.rule.id.into()),
-                ("help", failure.rule.help().into()),
+                (
+                    "help",
+                    if repeat.is_some() {
+                        Json::Null
+                    } else {
+                        failure.rule.help().into()
+                    },
+                ),
                 ("location", location(&failure.location)),
                 ("assertion", assertion),
                 ("failure", raised),
@@ -279,7 +313,31 @@ fn failure_json(info: &FailureInfo) -> Json {
     ])
 }
 
-fn fault_json(info: &FaultInfo) -> Json {
+/// A fault as data; `repeat`, the `order` of the test whose fault says the
+/// same and that fault: this one gives only what differs from it (chunk A14).
+fn fault_json(info: &FaultInfo, repeat: Option<(usize, &FaultInfo)>) -> Json {
+    if let Some((order, first)) = repeat {
+        return Json::object([
+            ("kind", Json::from(&info.kind)),
+            (
+                "message",
+                if info.subject == first.subject {
+                    Json::Null
+                } else {
+                    Json::from(&info.subject)
+                },
+            ),
+            (
+                "at",
+                if info.at == first.at {
+                    Json::Null
+                } else {
+                    located(&info.at)
+                },
+            ),
+            ("sameAs", order.into()),
+        ]);
+    }
     Json::object([
         ("kind", Json::from(&info.kind)),
         ("message", Json::from(&info.subject)),
@@ -330,7 +388,10 @@ pub fn schema() -> Json {
                     "counts",
                     "total, ran, passed, failed, and totalByKind and ranByKind for pure, action, route and schedule",
                 ),
-                ("tests", "Every test that ran, in the order it ran"),
+                (
+                    "tests",
+                    "Each test that failed, in the order it ran; with --full, every test that ran",
+                ),
                 (
                     "alerts",
                     "What passed but should change: each recording of a prompt's answer the run read that was made from another version of the prompt, { kind: recording_stale, file, prompt, name, recorded (the version it was made from), now (the prompt's version now), next (the command that records it again) }",
@@ -422,7 +483,7 @@ pub fn schema() -> Json {
                 ),
                 (
                     "fault",
-                    "For a fault: kind, message, rule, at (a location), reason, next and stack (stack frames, innermost first)",
+                    "For a fault: kind, message, rule, at (a location), reason, next and stack (stack frames, innermost first); for one that repeats an earlier test's, without --full, kind, sameAs (that test's order), and message and at where they differ from it",
                 ),
                 (
                     "fake",

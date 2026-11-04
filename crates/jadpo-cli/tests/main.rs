@@ -129,6 +129,7 @@ mod seeds;
 mod sends;
 mod served_openapi;
 mod settle;
+mod short_output;
 mod side_by_side;
 mod signed;
 mod sql;

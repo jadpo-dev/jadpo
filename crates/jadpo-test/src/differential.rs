@@ -351,6 +351,7 @@ mod tests {
 
     fn run(records: &[(&str, Option<TestRecord>)]) -> Run {
         Run {
+            full: false,
             seed: 1,
             root: None,
             selection: Selection::default(),

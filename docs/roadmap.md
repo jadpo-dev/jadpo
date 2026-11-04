@@ -384,17 +384,8 @@ a new agent can't find a type without them (Richard, 2026-11-03).
 - [x] **D15 Links that can't break**: documentation.md, "The bundle" and "What the site serves"; `bundle_link_problems`, `site_path_problems` and `agent_reading_problems` in `tools/docs/language_docs.py`; the site's `scripts/check-links.mjs`.
 - [x] **D16 Standard type pages that teach**: writing.md, "How a standard type's page reads"; documentation.md, "The bundle"; area 14, "`jadpo help`"; `crates/jadpo-std/src/standard/pages/` and `crates/jadpo-cli/src/type_page.rs`.
 - [x] **A12 What a new agent reads first**: documentation.md, "The bundle" and "How an agent uses it"; area 14, `jadpo new`; `tools/docs/agent_guidance.py`.
-- [ ] **A13 A broken test environment says so once** `opus · high`: a
-  PostgreSQL that can't start (a sandbox's shared memory) is one environment
-  diagnostic marked `(human)` at the top level, not five `internal_fault`s
-  under a `test.failed` an agent is told to fix.
-- [ ] **A14 Small diagnostics from the run** `opus · high`: a domain renamed
-  in a project with no commits is the agent's to do, since no one depends on
-  it yet; the first `type.mismatch` shows the expected shape and its edit;
-  area 1 says a failure may live in its action's file while the compiler
-  refuses it, so the page changes to match (Richard's call on recommendation,
-  2026-11-03); `--json` results carry the command's duration, and repeated
-  output is shortened.
+- [x] **A13 A broken test environment says so once**: area 13, "The test database"; area 14, "`jadpo test`"; `docs/errors/test.database_unavailable.md`.
+- [x] **A14 Small diagnostics from the run**: design language, "Repeats and `--full`"; area 1, "One primary declaration per file" and "Domains"; area 13, "As JSON"; area 14, "The `jadpo` command" and "`jadpo check`"; `docs/errors/type.mismatch.md`, `docs/errors/syntax.expected_name.md`, `docs/errors/naming.generic_name.md`, `docs/errors/layout.unused_declaration.md`.
 - [ ] **A15 Public writes in a new app** `opus · high`: a first commit has
   nothing to compare with, so a new project's public create, update or delete
   passes unseen. The first `access.jadpo_record` holding a public write gives

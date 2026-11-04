@@ -40,6 +40,9 @@ pub struct DiagnosticView {
     impact: Option<String>,
     rule: String,
     help: String,
+    /// It says what an earlier diagnostic of its rule says, so it points
+    /// back instead of giving the reason and the link again.
+    repeat: bool,
 }
 
 impl DiagnosticView {
@@ -98,6 +101,7 @@ impl DiagnosticView {
             impact: diagnostic.impact.clone(),
             rule: diagnostic.rule.id.to_string(),
             help: diagnostic.help(),
+            repeat: diagnostic.repeat_of.is_some(),
         }
     }
 
@@ -114,6 +118,9 @@ impl DiagnosticView {
         lines.extend(self.frame_lines(style));
         if let Some(reason) = &self.reason {
             lines.extend(field("reason", vec![raw(reason.as_str())], style));
+        } else if self.repeat {
+            let said = format!("As the first `{}` above", self.rule);
+            lines.extend(field("reason", vec![raw(said.as_str())], style));
         }
         if let Some((text, decides)) = &self.next {
             lines.extend(field(
@@ -127,7 +134,9 @@ impl DiagnosticView {
             lines.extend(field("impact", vec![raw(impact.as_str())], style));
         }
         lines.extend(field("rule", vec![raw(self.rule.as_str())], style));
-        lines.extend(field("help", vec![link(self.help.as_str())], style));
+        if !self.repeat {
+            lines.extend(field("help", vec![link(self.help.as_str())], style));
+        }
         lines
     }
 

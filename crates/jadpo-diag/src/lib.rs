@@ -1228,6 +1228,8 @@ rules! {
         "Variable has no type";
     TEST_ASSERTION_FAILED: "test.assertion_failed", area 13, Error, Agent,
         "A test's `assert` doesn't hold: its condition is false, or a call checked with `assert … fails` returned or failed differently";
+    TEST_DATABASE_UNAVAILABLE: "test.database_unavailable", area 14, Error, Human,
+        "The tests that need a database couldn't run, because PostgreSQL for the tests couldn't be started or reached";
     TEST_FAILED: "test.failed", area 14, Error, Agent,
         "A test failed under `jadpo test`, or among a package's own tests under `jadpo package check`";
     TEST_FAKE_EXHAUSTED: "test.fake_exhausted", area 13, Error, Agent,
@@ -1669,6 +1671,35 @@ pub struct Diagnostic {
     /// file (`semantic.duplicate_declaration`, area 1): printed as the `in
     /// use` field after `next`.
     pub in_use: Vec<(String, String)>,
+    /// Which earlier diagnostic of the same list says the same thing, by
+    /// its place: this one has no `reason` of its own, set by
+    /// [`shorten_repeats`].
+    pub repeat_of: Option<usize>,
+}
+
+/// Shortens a list of diagnostics for the one reading them, whose context
+/// it costs (chunk A14; CLI design language, "Repeats"): a diagnostic with
+/// the same rule and reason as an earlier one keeps its headline, place,
+/// next step and edits, and points back rather than saying why again.
+/// `--full` leaves the list as it is.
+pub fn shorten_repeats(diagnostics: &mut [Diagnostic]) {
+    let mut first: Vec<(&'static str, String, usize)> = Vec::new();
+    for (index, diagnostic) in diagnostics.iter_mut().enumerate() {
+        let Some(reason) = &diagnostic.reason else {
+            continue;
+        };
+        let rule = diagnostic.rule.id;
+        match first
+            .iter()
+            .find(|(seen, said, _)| *seen == rule && said == reason)
+        {
+            Some((_, _, at)) => {
+                diagnostic.repeat_of = Some(*at);
+                diagnostic.reason = None;
+            }
+            None => first.push((rule, reason.clone(), index)),
+        }
+    }
 }
 
 impl Diagnostic {
@@ -1682,6 +1713,7 @@ impl Diagnostic {
             next: None,
             impact: None,
             in_use: Vec::new(),
+            repeat_of: None,
         }
     }
 

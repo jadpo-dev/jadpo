@@ -203,7 +203,7 @@ fn worker(work: &Path, sources: &Path) -> Result<PathBuf, Problem> {
 /// process's own listening on `127.0.0.1`, since a local run's listens on
 /// a Unix socket, which `connect()` can't open.
 fn tcp_server() -> Result<Arc<Server>, String> {
-    let run = crate::database::server()?;
+    let run = crate::database::server().map_err(|error| error.to_string())?;
     if run.tcp_url(ADMIN_DATABASE).is_some() {
         return Ok(run);
     }

@@ -995,7 +995,7 @@ fn unused(path: &str, source: &ast::SourceFile, item: &Item, library: Option<u32
     .reason(format!(
         "A {what} exists to be used by several files; one that nothing uses is dead code. Tests don't count as users."
     ))
-    .next(format!("Remove `{}`", item.name))
+    .next(format!("Use `{}`, or remove it if nothing will", item.name))
 }
 
 fn unused_beside(path: &str, source: &ast::SourceFile, item: &Item, primary: &Item) -> Diagnostic {
@@ -1011,7 +1011,9 @@ fn unused_beside(path: &str, source: &ast::SourceFile, item: &Item, primary: &It
     .reason(
         "Everything in a file besides the declaration it is named after is there for that declaration, used by it directly or through one another; anything else is dead code. Tests don't count as users.",
     )
-    .next(format!("Remove `{name}`"))
+    .next(format!(
+        "Use `{name}` in `{primary}`, or remove it if nothing will"
+    ))
 }
 
 /// The translation calls the application's code makes, as `<scope>.<key>`:

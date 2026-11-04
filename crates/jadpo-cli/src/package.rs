@@ -2444,10 +2444,25 @@ fn examples_and_tests(
 
     let ran = jadpo_test::run(jadpo_test::Options {
         cwd: compiled.scratch.0.clone(),
+        full: true,
         ..jadpo_test::Options::default()
     });
     let run = match ran {
         jadpo_test::Ran::Done(run) => Some(run),
+        // With no database no test ran, which isn't a package with none.
+        jadpo_test::Ran::Stopped(diagnostic)
+            if diagnostic.rule.id == rule::TEST_DATABASE_UNAVAILABLE.id =>
+        {
+            let tests = Item::later("tests", "no test database");
+            problems.push(*diagnostic);
+            return Ran {
+                examples: Item::later("examples", "no test database"),
+                tests,
+                decoders: None,
+                problems,
+                blocks: Vec::new(),
+            };
+        }
         jadpo_test::Ran::Refused { .. } | jadpo_test::Ran::NoProject => {
             return Ran {
                 examples: if failed_examples > 0 {

@@ -539,8 +539,10 @@ the rule, primary and secondary spans, reason, next step with optional
 edits, and who decides (`agent` or `human`). `jadpo-term` renders it rich
 or plain per the design language, writing control characters and
 bidirectional overrides from source as `\u{...}` so they can't restyle the
-terminal or reorder code; `--json` carries `schemaVersion`,
-project-relative paths, and line and column beside byte offsets. The
+terminal or reorder code; `--json` carries `schemaVersion`, `durationMs`,
+project-relative paths, and line and column beside byte offsets, short
+unless `--full` asks for everything
+([design language](cli-design-language.md#repeats-and---full)). The
 catalogue is part of `jadpo help --json`, which the docs check reads.
 *Rejected:* a `build.rs` scan of emitter strings, which lets codes drift.
 
