@@ -281,6 +281,10 @@ const LISTENING: &str = r#"entity PasskeyNote {
     }
     passkey_id: Uuid
     added: Bool
+
+    policy: {
+        create: [Access.system]
+    }
 }
 
 /// Notes a passkey added.

@@ -155,6 +155,17 @@ fn a_reply_action_runs_as_the_system() {
     );
 }
 
+/// So does one with no list at all, which has `create: []` here.
+#[test]
+fn a_reply_action_reaching_what_no_list_grants_is_refused() {
+    assert_eq!(
+        problems("", &answer("", HEARD)),
+        [
+            "app.jadpo policy.system_grant_missing: `support.answer_call` runs as the system, which nothing lets create `PhoneLog`"
+        ]
+    );
+}
+
 const CALLS_SEEN: &str = "domains/support/actions/answer_call.jadpo policy.output_field_unproved: `answer_call`'s reply shows whether a `PhoneLog` is there, which not everyone may read";
 
 /// A reply counting or testing for records only the system may read is
