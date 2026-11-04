@@ -157,6 +157,14 @@ pub fn own_writes(db: &dyn Db, project: Project, action: &str) -> Vec<String> {
     out
 }
 
+/// Whether the action called `action` creates, changes or deletes records,
+/// in its own body or through an action it calls.
+pub fn writes(db: &dyn Db, project: Project, action: &str) -> bool {
+    calls_from(db, project, action)
+        .iter()
+        .any(|called| !own_writes(db, project, called).is_empty())
+}
+
 /// Who the line under `actions:` for the action called `action` lets call
 /// it as it starts, when it is listed (area 9, "Actions").
 pub fn line_gate(db: &dyn Db, project: Project, action: &str) -> Option<LineGate> {

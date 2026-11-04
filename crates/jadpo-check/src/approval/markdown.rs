@@ -41,8 +41,49 @@ pub fn path_line(path: &[Step]) -> String {
         .join(" → ")
 }
 
+/// What nothing compared, ahead of everything else: each thing a first
+/// record holds that a person decides.
+fn notices(out: &mut String, report: &Report) {
+    if report.notices.is_empty() {
+        return;
+    }
+    let _ = writeln!(out, "## Decisions compared with nothing\n");
+    let _ = writeln!(
+        out,
+        "These arrive with this change and there is nothing to compare them with, so `jadpo check` passes them unseen. None is a fault in itself: a person decides whether the app means each one. Once a commit holds them, they are compared as usual.\n"
+    );
+    for notice in &report.notices {
+        let _ = writeln!(out, "### {}\n", capital(&notice.said));
+        match &notice.heading {
+            Some(heading) => {
+                let _ = writeln!(out, "- **Shows in:** `{}`, `{heading}`", notice.place());
+            }
+            None => {
+                let _ = writeln!(out, "- **Shows in:** `{}`", notice.place());
+            }
+        }
+        if notice.refused_next() {
+            let _ = writeln!(
+                out,
+                "- **Next change:** refused until an acceptance lists `{}: {}` with a person's reason.",
+                notice.subject, notice.kind
+            );
+        }
+        out.push('\n');
+    }
+}
+
 pub fn render(report: &Report) -> String {
     let mut out = String::new();
+    if let Some(reason) = &report.not_compared {
+        let _ = writeln!(out, "# Approval\n");
+        let _ = writeln!(
+            out,
+            "This project has nothing to compare with: {reason}. So this report holds only what a person decides of what it starts with; once there is a commit to compare with, it says what each change does. Written by `jadpo approval`.\n"
+        );
+        notices(&mut out, report);
+        return out;
+    }
     let decisions = report.decisions.len();
     let accepted = report
         .decisions
@@ -85,6 +126,8 @@ pub fn render(report: &Report) -> String {
             count(report.base_errors as usize, "error")
         );
     }
+
+    notices(&mut out, report);
 
     let _ = writeln!(out, "## Decisions that need a person\n");
     for path in &report.not_judged {

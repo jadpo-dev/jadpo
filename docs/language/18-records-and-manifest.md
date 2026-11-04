@@ -591,6 +591,69 @@ costs one build per base commit.
   A migration that removes data is judged all the same: with no before
   side, it needs an acceptance with a reason anywhere in the project
   ([`migration.drop_not_accepted`](../errors/migration.drop_not_accepted.md)).
+  What the first record holds that a person decides is said all the same
+  ([What a first record holds](#what-a-first-record-holds)).
+
+### What a first record holds
+
+A first commit has nothing to compare with, so what would need a person on any
+later change passes unseen. The first of all is a new project's public create,
+update or delete. So `jadpo check` says what such a first record holds, marked
+`(human)`, and [the approval report](17-debugging-and-review.md#reviewing-a-change)
+leads with it. It is a notice and not an error, and `check` still passes: it is
+a decision, not a vulnerability, since an app may mean it (Richard, 2026-11-03).
+
+```text
+$ jadpo check
+1 decision compared with nothing
+◆ anyone can create and change `lending.Book` records, with no sign-in  not compared
+    access.jadpo_record:12
+
+◆ decision  nothing compares this, so a person reads it before it goes in
+  next      A person decides whether the app means it. This passes either way,
+            and it is compared as usual once a commit holds it. (human)
+
+  before    none, so acceptances aren't judged: no commit yet
+
+checked: 14 files
+```
+
+It is said while there is no before side (no commit yet, the first commit
+itself, a project new since its base) and, for what a record holds, while the
+before side has no such record, as when `access.jadpo_record` arrives with this
+change. Outside git nothing is being reviewed, so nothing is said, as with
+`before none`. It is said only once `check` otherwise passes, since an agent's
+errors come first, and `--json` gives each as `notices`: its `subject`, its
+`kind`, what it `said`, `decides: human`, and its `file` and `line`. Once a
+commit holds it, it goes: from then on it is compared.
+
+| Said | Kind | Goes once |
+|---|---|---|
+| A create, update or delete anyone may make, or an action listed for anyone that creates, changes or deletes records, itself or through what it calls | `public_write` | A commit holds it |
+| A connection that receives personal data and can't erase it ([Erasure at providers](15-personal-data.md#erasure-at-providers)) | `ErasureNotPossible.data_stays` | An acceptance lists it with a reason: the next change is refused until one does, since this kind says how things stand |
+| A security rule declined | `PolicyChange.<rule>_declined` | A commit holds it |
+| A sign-in setting past its limit | `PolicyChange.sign_in_loosened` | A commit holds it |
+| An entity shared by every tenant | `PolicyChange.shared_entity_added` | A commit holds it |
+| An own source in `packages:` | `PolicyChange.own_source_added` | A commit holds it |
+| A third party's package from git | `PackageChange.git_source` | A commit holds it |
+| A connection reaching a host someone else runs: not the app's own database or cache, which every app has | `NetworkChange.host_added` | A commit holds it |
+
+A public write has no acceptance to write, since a new entity's grants need
+none. So its notice is for the first record holding one, however old the
+record: the change that adds the first entity anyone may write to says so, and
+a later one is the diff's to show. A widening that lets anyone in is judged as
+ever, as a decision rather than a notice. A reason already in the project for
+one of the kinds in the table says it was decided, so it isn't said again.
+
+The other kinds have no such gap. Removing or changing something (`ApiChange`,
+`ThresholdChange`, an upgrade's `PackageChange`, `PolicyChange.route_public`,
+`.confirmation_removed`, `.restriction_removed`, `.tenancy_loosened` and
+`.listing_removed`) has nothing to remove or change in a first commit, and
+`DataChange` is judged even so. The first grants, roles, listed actions and
+domains (`PolicyChange.widened`, `.role_requirements_changed`,
+`.listing_added`, `DomainChange.created`) are what a project is made of, so
+listing them would list the whole project; a public write is the one among them
+that is said.
 
 `jadpo check` reads the before side's records and acceptances from git,
 and the names of its domains, and compares them with the records today's
@@ -854,6 +917,7 @@ Every command takes `--json`, and `jadpo help --json` describes them all
 | Rename anything | `jadpo rename <old> <new>` | The registry gains one line |
 | What did my change do? | `jadpo approval --json` | Decisions first |
 | A change needs a person | `jadpo acceptance new <purpose>` | Stop and hand over |
+| A check passes with `notices` | Tell a person what each says | They decide whether the app means it ([What a first record holds](#what-a-first-record-holds)) |
 | Look something up | `jadpo inspect <name> --json` | One node from the manifest |
 | Upgrade a package | `jadpo package update <name>` | Fix compile errors, then as above |
 | Explain a production event | `jadpo incident <event>` | `jadpo test new --from-event` |

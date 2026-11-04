@@ -556,6 +556,11 @@ matters. `jadpo approval --before <ref>` writes a report in that order, as
 Markdown and JSON in `build/review/`, and a static web view of the same
 report:
 
+What [a first record holds](18-records-and-manifest.md#what-a-first-record-holds)
+that a person decides comes before all of it, under "Decisions compared with
+nothing": each thing `jadpo check` couldn't compare, in plain words, with where
+it shows. A project's first public write leads the report this way.
+
 1. **Decisions that need a person.** Each change that needs an acceptance,
    a file in `acceptances/` in which a person accepts it
    ([Acceptances](18-records-and-manifest.md#acceptances)). Each is said in
@@ -624,7 +629,11 @@ what changed can only be worked out from a source that reads
 doesn't know, or nothing to compare with is
 [`cli.approval_arguments`](../errors/cli.approval_arguments.md); a base the
 clone doesn't hold is
-[`acceptance.base_missing`](../errors/acceptance.base_missing.md).
+[`acceptance.base_missing`](../errors/acceptance.base_missing.md). With nothing
+to compare with but something
+[a first record holds](18-records-and-manifest.md#what-a-first-record-holds),
+the report is written and holds that alone, saying why: there is no before side
+to take a difference of. `before.not_judged_because` in the JSON says the same.
 
 ### Packages and services that need a person
 

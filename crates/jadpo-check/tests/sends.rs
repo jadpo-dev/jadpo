@@ -383,6 +383,94 @@ fn a_public_cache_never_keeps_what_is_marked_personal() {
     );
 }
 
+/// A standard type that is personal data counts as a marked field does, as
+/// it does in the personal-data report (area 15, "Where personal data goes"):
+/// no erasure reaches a public cache either way.
+#[test]
+fn a_public_cache_never_keeps_a_standard_type_that_is_personal() {
+    let customer = (
+        "domains/shop/entities/customer.jadpo",
+        "use shop/types { Reference }\n\nentity Customer {\n    id: Uuid\n    digest: Reference {\n        unique: true\n    }\n    address: PhoneNumber\n\n    policy: {\n        read: [Access.public]\n    }\n}\n",
+    );
+    let reach = (
+        "domains/shop/types/reach.jadpo",
+        "use shop/entities { Customer }\n\ntype Reach = Output {\n    pick: [Customer.address]\n}\n",
+    );
+    let label = (
+        "domains/shop/types/label.jadpo",
+        "use shop/entities { Customer }\n\ntype Label = Output {\n    pick: [Customer.digest]\n}\n",
+    );
+    let reach_of = (
+        "domains/shop/queries/reach_of.jadpo",
+        "use shop/entities { Customer }\nuse shop/failures { ArchiveNotFound }\nuse shop/types { Reach, Reference }\n\nquery reach_of(digest: Reference) fails ArchiveNotFound -> Reach {\n    from: Customer\n    where: Customer.digest == digest\n    missing: ArchiveNotFound\n}\n",
+    );
+    let label_of = (
+        "domains/shop/queries/label_of.jadpo",
+        "use shop/entities { Customer }\nuse shop/failures { ArchiveNotFound }\nuse shop/types { Label, Reference }\n\nquery label_of(digest: Reference) fails ArchiveNotFound -> Label {\n    from: Customer\n    where: Customer.digest == digest\n    missing: ArchiveNotFound\n}\n",
+    );
+    // The route group, importing what these routes use.
+    let group = |routes: &str| {
+        format!(
+            "use shop/actions {{ written }}\nuse shop/queries {{ label_of, reach_of }}\nuse shop/types {{ Label, Reach, Reference, Typed }}\n\nroutes Archives {{\n    prefix: /archives\n\n{routes}}}\n"
+        )
+    };
+    let typed = (
+        "domains/shop/types/typed.jadpo",
+        "type Typed = Output {\n    address: PhoneNumber\n}\n",
+    );
+    let written = (
+        "domains/shop/actions/written.jadpo",
+        "use shop/types { Reference, Typed }\n\naction written(digest: Reference, address: PhoneNumber) -> Typed {\n    assert digest != \"\"\n    return Typed {\n        address: address\n    }\n}\n",
+    );
+    let policy = (
+        "policy.jadpo",
+        "use shop\n\npolicy {\n    actions: {\n        shop.written: [Access.public]\n    }\n}\n",
+    );
+    let found_in = |routes: &str| {
+        let group = group(routes);
+        problems(&with(
+            "",
+            &[
+                customer,
+                reach,
+                label,
+                reach_of,
+                label_of,
+                typed,
+                written,
+                policy,
+                ("domains/shop/routes/archives.jadpo", group.as_str()),
+            ],
+        ))
+    };
+    // Not kept, it is as any other route's.
+    let sent = route("        output: Reach\n        run: reach_of(digest)\n");
+    assert_eq!(found_in(&sent), Vec::<String>::new());
+    // Kept, from a field no `personal:` marks.
+    let kept =
+        route("        output: Reach\n        cache: immutable\n        run: reach_of(digest)\n");
+    let found = found_in(&kept);
+    assert!(
+        found.len() == 1
+            && found[0].starts_with("route.cache_invalid: ")
+            && found[0].contains("`Customer.address`, a `PhoneNumber`, which is personal data"),
+        "{found:#?}"
+    );
+    // Kept, what the record holds but the answer doesn't give is no matter.
+    let label =
+        route("        output: Label\n        cache: immutable\n        run: label_of(digest)\n");
+    assert_eq!(found_in(&label), Vec::<String>::new());
+    // Kept, what the output's own type says it holds, wherever it came from.
+    let kept = "    GET /{digest: Reference}/{address: PhoneNumber} {\n        authentication: RouteAuthentication.none\n        output: Typed\n        cache: immutable\n        run: written(digest, address)\n    }\n";
+    let found = found_in(kept);
+    assert!(
+        found.len() == 1
+            && found[0].starts_with("route.cache_invalid: ")
+            && found[0].contains("a `PhoneNumber`, which is personal data"),
+        "{found:#?}"
+    );
+}
+
 /// The API record and OpenAPI of `routes`.
 fn written(routes: &str) -> (String, Value) {
     let files = with(routes, &[]);

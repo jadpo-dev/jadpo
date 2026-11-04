@@ -6,6 +6,10 @@
 //! writes the difference of the two manifests to `build/review/approval.md`
 //! and `.json`, decisions first.
 //!
+//! What a first record holds that a person decides leads the report (area
+//! 18, "What a first record holds"; chunk A15); with no before side to build
+//! it is all the report holds.
+//!
 //! The terminal says the decisions in full, each with its state and the
 //! path that makes it true, then counts the rest:
 //!
@@ -68,6 +72,15 @@ pub fn approval(call: &Call) -> Reply {
     if project.layout(db) != Layout::Project {
         return project_needed("approval");
     }
+    // What changed can only be worked out from a source without errors;
+    // what needs a person and the records out of date are what the report
+    // explains.
+    let blocking: Vec<Diagnostic> = checked
+        .diagnostics
+        .iter()
+        .filter(|d| !d.rule.id.starts_with("acceptance.") && !d.rule.id.starts_with("record."))
+        .cloned()
+        .collect();
     let side = match project.before(db) {
         Before::At(side) => side,
         Before::Missing { base } => {
@@ -80,18 +93,17 @@ pub fn approval(call: &Call) -> Reply {
                 .next("Fetch the history with `git fetch --unshallow`, then run the command again"),
             );
         }
-        Before::Nothing(reason) => return Reply::failed(nothing_to_compare(reason)),
+        Before::Nothing(reason) => {
+            if jadpo_check::acceptances::first::notices(db, project).is_empty() {
+                return Reply::failed(nothing_to_compare(reason));
+            }
+            if !blocking.is_empty() {
+                return crate::migrate::blocked(loaded, &cwd, blocking, "approval not written");
+            }
+            return written(loaded, &approval::first_report(db, project, reason));
+        }
         Before::NotRead => return Reply::failed(nothing_to_compare("not a git repository")),
     };
-    // What changed can only be worked out from a source without errors;
-    // what needs a person and the records out of date are what the report
-    // explains.
-    let blocking: Vec<Diagnostic> = checked
-        .diagnostics
-        .iter()
-        .filter(|d| !d.rule.id.starts_with("acceptance.") && !d.rule.id.starts_with("record."))
-        .cloned()
-        .collect();
     if !blocking.is_empty() {
         return crate::migrate::blocked(loaded, &cwd, blocking, "approval not written");
     }
@@ -116,6 +128,11 @@ pub fn approval(call: &Call) -> Reply {
         &base.personal,
         &after,
     );
+    written(loaded, &report)
+}
+
+/// Writes `report` to `build/review/` and says so.
+fn written(loaded: &jadpo_db::Loaded, report: &Report) -> Reply {
     let mut data = report.json();
     for (path, text) in [
         (approval::MARKDOWN, report.markdown()),
@@ -126,7 +143,7 @@ pub fn approval(call: &Call) -> Reply {
         }
     }
     data.set("file", approval::MARKDOWN);
-    Reply::screen(screen(&report), crate::help::from_graph(&data))
+    Reply::screen(screen(report), crate::help::from_graph(&data))
 }
 
 fn nothing_to_compare(reason: &str) -> Diagnostic {
@@ -219,6 +236,21 @@ fn count(n: usize, one: &str) -> String {
 /// What the terminal shows of `report`.
 fn screen(report: &Report) -> Screen {
     let mut screen = Screen::new();
+    for block in crate::check::notice_blocks(&report.notices) {
+        screen.push(block);
+    }
+    if let Some(reason) = &report.not_compared {
+        screen.push(Block::Fields(vec![(
+            "before".to_string(),
+            format!("none, so nothing else is compared: {reason}"),
+        )]));
+        screen.push(Block::Status {
+            outcome: Outcome::Success,
+            text: format!("Wrote {}", approval::MARKDOWN),
+            rows: Vec::new(),
+        });
+        return screen;
+    }
     let decisions = report.decisions.len();
     if decisions == 0 {
         screen.push(Block::Section {

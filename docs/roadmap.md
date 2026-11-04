@@ -396,11 +396,7 @@ a new agent can't find a type without them (Richard, 2026-11-03).
   refuses it, so the page changes to match (Richard's call on recommendation,
   2026-11-03); `--json` results carry the command's duration, and repeated
   output is shortened.
-- [ ] **A15 Public writes in a new app** `opus · high`: a first commit has
-  nothing to compare with, so a new project's public create, update or delete
-  passes unseen. The first `access.jadpo_record` holding a public write gives
-  a notice marked `(human)`, and the approval report leads with it. A
-  decision, not a vulnerability: an app may mean it.
+- [x] **A15 Public writes in a new app**: area 18, "What a first record holds"; area 17, "Reviewing a change"; area 7, "Answers that never change"; area 15, "What the compiler checks"; compiler/runtime §2.3, "What a first record holds"; `docs/errors/route.cache_invalid.md`.
 - [ ] **A16 Run the sign-in half again** **needs a maintainer** after 0.3.0: the
   same brief as 0.1's run, sign-in, roles and reminders included, the only way
   to judge A7, A10 and A11. Until then, no public claim that sign-in is fixed.

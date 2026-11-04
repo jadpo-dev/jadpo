@@ -8,10 +8,11 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+use jadpo_check::acceptances::first::Notice;
 use jadpo_check::deployables::PerInstance;
 use jadpo_db::Layout;
 use jadpo_diag::{Diagnostic, Span, rule};
-use jadpo_term::{Block, Fact, Json, Outcome, Screen};
+use jadpo_term::{Block, DecisionRow, Fact, Json, Outcome, Screen};
 
 use crate::derived;
 use crate::fmt::project_not_found;
@@ -197,6 +198,8 @@ pub(crate) fn reported(
         }
         _ => None,
     };
+    // What a first record holds that a person decides (area 18, chunk A15).
+    let notices = jadpo_check::acceptances::first::notices(db, loaded.project);
     let not_judged = match loaded.project.before(db) {
         jadpo_db::Before::Nothing(reason) if layout == Layout::Project => {
             Some(format!("none, so acceptances aren't judged: {reason}"))
@@ -223,9 +226,68 @@ pub(crate) fn reported(
         root,
         &paths,
         loaded.unreadable.len(),
-        (layout, written, reviews, &per_instance),
+        (layout, written, reviews, &per_instance, notices),
         (elapsed, failed, before, not_judged),
     )
+}
+
+/// What a person reads of `notices`: each thing nothing compared, then that
+/// it is theirs to decide. `jadpo check` shows them once it passes, and the
+/// approval report leads with them.
+pub(crate) fn notice_blocks(notices: &[Notice]) -> Vec<Block> {
+    let (one, heading) = match notices.len() {
+        0 => return Vec::new(),
+        1 => (true, "1 decision compared with nothing".to_string()),
+        n => (false, format!("{n} decisions compared with nothing")),
+    };
+    vec![
+        Block::Decisions {
+            heading,
+            rows: notices
+                .iter()
+                .map(|notice| DecisionRow {
+                    decided: false,
+                    text: notice.said.clone(),
+                    state: if notice.refused_next() {
+                        "refused from the next change".to_string()
+                    } else {
+                        "not compared".to_string()
+                    },
+                    path: vec![notice.place()],
+                })
+                .collect(),
+        },
+        Block::Decision {
+            subject: if one {
+                "nothing compares this, so a person reads it before it goes in".to_string()
+            } else {
+                "nothing compares these, so a person reads them before they go in".to_string()
+            },
+            location: None,
+            next: format!(
+                "A person decides whether the app means {it}. This passes either way, and {subject} compared as usual once a commit holds {it}.",
+                it = if one { "it" } else { "them" },
+                subject = if one { "it is" } else { "they are" },
+            ),
+        },
+    ]
+}
+
+/// `notices` as `--json` gives them.
+fn notices_json(notices: &[Notice]) -> Json {
+    Json::array(notices.iter().map(|notice| {
+        Json::object([
+            ("subject", notice.subject.as_str().into()),
+            ("kind", notice.kind.as_str().into()),
+            ("said", notice.said.as_str().into()),
+            ("decides", "human".into()),
+            ("file", notice.path.as_str().into()),
+            (
+                "line",
+                notice.line.map_or(Json::Null, |line| Json::Int(line)),
+            ),
+        ])
+    }))
 }
 
 /// What `jadpo check` says once it passes of each `max_concurrent:` a
@@ -367,15 +429,19 @@ fn report(
     root: Option<String>,
     paths: &[&String],
     unreadable: usize,
-    (layout, written, reviews, per_instance): (
+    (layout, written, reviews, per_instance, notices): (
         Layout,
         Vec<String>,
         &[jadpo_check::review::ProviderReview],
         &[PerInstance],
+        &[Notice],
     ),
     (elapsed, failed, before, not_judged): (Duration, &str, Option<Json>, Option<String>),
 ) -> Reply {
     let errors = diagnostics.len();
+    // With errors the agent's work comes first: a person is asked once it
+    // passes.
+    let notices = if errors == 0 { notices } else { &[] };
     let mut facts = Vec::new();
     if errors > 0 {
         facts.push(Fact::problem(count(errors, "error", "errors")));
@@ -411,6 +477,9 @@ fn report(
             screen.push(per_instance_block(per_instance));
         }
     }
+    for block in notice_blocks(notices) {
+        screen.push(block);
+    }
     if let Some(said) = &not_judged {
         screen.push(Block::Fields(vec![("before".to_string(), said.clone())]));
     }
@@ -439,6 +508,7 @@ fn report(
                 ])
             })),
         ),
+        ("notices", notices_json(notices)),
     ]);
     if let (Some(before), Json::Object(fields)) = (before, &mut data) {
         fields.push(("before".to_string(), before));

@@ -832,48 +832,124 @@ pub fn model_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
     out
 }
 
-/// A marked field among `prov`'s sources, as `host.field` (`Scan.tar`): what
-/// [`cached_personal_problems`] refuses. What only decided the value isn't
-/// in it, and a parameter is what the request itself sent.
-fn holds_marked(flow: &Flow<'_>, prov: &Prov) -> Option<String> {
-    let marks = crate::ai_personal::marks(flow.db, flow.project);
-    let marked = |host: &str, field: &str| {
-        let (host, field) = exits::field_origin(flow, host, field);
-        marks
-            .mark(&host, &field)
-            .is_some_and(|mark| mark.category.is_some())
-            .then(|| format!("{host}.{field}"))
-    };
-    fn each(
-        src: Src,
-        marked: &dyn Fn(&str, &str) -> Option<String>,
-        flow: &Flow<'_>,
-    ) -> Option<String> {
-        match src {
-            Src::Field { entity, field, .. } => marked(&entity, &field),
-            Src::Marked { host, field } | Src::Declared { host, field } => marked(&host, &field),
-            Src::Record { entity, given, .. } => {
-                flow.lookup.fields(&entity)?.iter().find_map(|field| {
-                    (!given.contains(&field.name))
-                        .then(|| marked(&entity, &field.name))
-                        .flatten()
-                })
-            }
-            Src::Deep(inner) | Src::Answered(inner) => each(*inner, marked, flow),
-            _ => None,
-        }
-    }
-    prov.flat()
-        .into_iter()
-        .find_map(|src| each(src, &marked, flow))
+/// What a route's answer gives that is personal data, as the personal-data
+/// report counts it (area 15, "Where personal data goes"): a field marked
+/// `personal:`, or a value of a standard type that is personal data whatever
+/// holds it, on a field no mark names or on nothing at all.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Given {
+    /// `Scan.tar`, marked `personal:`.
+    Marked(String),
+    /// `Customer.address`, a `PhoneNumber`.
+    FieldOf(String, String),
+    /// A value of the type `PhoneNumber`.
+    Value(String),
 }
 
-/// `cache: immutable` on what can give a field marked `personal:` (area 7,
-/// "Answers that never change"; chunk G3): no erasure reaches a public
-/// cache, so it would keep a copy nothing can find (area 15, "What the
-/// compiler checks"). It follows what the route runs as the walk for what
-/// reaches a model does: through variables, calls and what is built from
-/// them.
+impl Given {
+    /// As the error says what is given.
+    fn named(&self) -> String {
+        match self {
+            Given::Marked(field) | Given::FieldOf(field, _) => format!("`{field}`"),
+            Given::Value(ty) => format!("{} `{ty}`", article(ty)),
+        }
+    }
+
+    fn said(&self) -> String {
+        match self {
+            Given::Marked(field) => format!("`{field}`, marked `personal:`"),
+            Given::FieldOf(field, ty) => {
+                format!("`{field}`, {} `{ty}`, which is personal data", article(ty))
+            }
+            Given::Value(ty) => format!("{} `{ty}`, which is personal data", article(ty)),
+        }
+    }
+}
+
+fn article(word: &str) -> &'static str {
+    if word.starts_with(['A', 'E', 'I', 'O', 'U']) {
+        "an"
+    } else {
+        "a"
+    }
+}
+
+/// What the holding of `host`'s field `field` gives, when it is personal data:
+/// its own mark first, since that is what a person wrote.
+fn given_field(flow: &Flow<'_>, host: &str, field: &str) -> Option<Given> {
+    let (host, field) = exits::field_origin(flow, host, field);
+    let marks = crate::ai_personal::marks(flow.db, flow.project);
+    let holding = crate::ai_personal::field_holding(&flow.lookup, marks, &host, &field)?;
+    let name = format!("{host}.{field}");
+    if holding.categories.values().any(Option::is_none) {
+        return Some(Given::Marked(name));
+    }
+    let ty = holding.categories.values().flatten().next()?;
+    Some(Given::FieldOf(name, ty.clone()))
+}
+
+/// What is personal data among `prov`'s sources and in `output`, the type the
+/// route says it answers with, a field before a bare value: what
+/// [`cached_personal_problems`] refuses. What only decided the value isn't in
+/// it, and a parameter is what the request itself sent, unless its type or
+/// the output's says it is personal data.
+fn gives_personal(
+    flow: &Flow<'_>,
+    prov: &Prov,
+    output: Option<&crate::types::Ty>,
+) -> Option<Given> {
+    fn each(src: Src, flow: &Flow<'_>, out: &mut Vec<Given>) {
+        match src {
+            Src::Field { entity, field, .. } => out.extend(given_field(flow, &entity, &field)),
+            Src::Marked { host, field } | Src::Declared { host, field } => {
+                out.extend(given_field(flow, &host, &field));
+            }
+            Src::Record { entity, given, .. } => {
+                for field in flow.lookup.fields(&entity).into_iter().flatten() {
+                    if !given.contains(&field.name) {
+                        out.extend(given_field(flow, &entity, &field.name));
+                    }
+                }
+            }
+            Src::Typed { ty, .. } => out.push(Given::Value(ty)),
+            Src::Deep(inner) | Src::Answered(inner) => each(*inner, flow, out),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for src in prov.flat() {
+        each(src, flow, &mut out);
+    }
+    if let Some(output) = output {
+        let marks = crate::ai_personal::marks(flow.db, flow.project);
+        let mut found = BTreeMap::new();
+        crate::ai_personal::deep(
+            &flow.lookup,
+            marks,
+            output,
+            &mut found,
+            &mut BTreeSet::new(),
+        );
+        for (holder, holding) in found {
+            if holding.categories.is_empty() {
+                continue;
+            }
+            match holder {
+                crate::ai_personal::Holder::Field { host, field } => {
+                    out.extend(given_field(flow, &host, &field));
+                }
+                crate::ai_personal::Holder::Type(ty) => out.push(Given::Value(ty)),
+            }
+        }
+    }
+    out.into_iter().min()
+}
+
+/// `cache: immutable` on what can give personal data (area 7, "Answers that
+/// never change"; chunks G3 and A15): no erasure reaches a public cache, so
+/// it would keep a copy nothing can find (area 15, "What the compiler
+/// checks"). It follows what the route runs as the walk for what reaches a
+/// model does: through variables, calls and what is built from them.
 #[salsa::tracked(returns(ref))]
 pub fn cached_personal_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     use crate::routes::{CACHE_REASON, group_read};
@@ -917,7 +993,9 @@ pub fn cached_personal_problems(db: &dyn Db, project: Project, file: File) -> Ve
                     .and_then(|key| resolve(db, project, &key))
                     .map(|callable| model_summary(db, project, callable).returns.clone())
             };
-            let Some(field) = given.and_then(|given| holds_marked(&flow, &given)) else {
+            let Some(personal) =
+                gives_personal(&flow, &given.unwrap_or_default(), route.output.as_ref())
+            else {
                 continue;
             };
             let label = route.label();
@@ -928,13 +1006,14 @@ pub fn cached_personal_problems(db: &dyn Db, project: Project, file: File) -> Ve
                 Diagnostic::new(
                     &rule::ROUTE_CACHE_INVALID,
                     format!(
-                        "`{label}` says `cache: immutable`, but `{}` gives `{field}`, marked `personal:`",
-                        route.run.name
+                        "`{label}` says `cache: immutable`, but `{}` gives {}",
+                        route.run.name,
+                        personal.said()
                     ),
                 )
-                .at(span.clone(), format!("gives `{field}`"))
+                .at(span.clone(), format!("gives {}", personal.named()))
                 .reason(CACHE_REASON)
-                .next("Remove `cache:`, or send something that isn't marked"),
+                .next("Remove `cache:`, or send something that isn't personal data"),
             );
         }
     }

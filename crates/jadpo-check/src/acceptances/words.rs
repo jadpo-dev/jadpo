@@ -51,6 +51,17 @@ fn verb(effect: &str) -> &str {
     }
 }
 
+/// What several effects let a caller do: `create`, `create and change`,
+/// `create, change and delete`.
+pub fn verbs(effects: &[&str]) -> String {
+    let words: Vec<&str> = effects.iter().map(|effect| verb(effect)).collect();
+    match words.as_slice() {
+        [] => String::new(),
+        [one] => (*one).to_string(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
+}
+
 /// A listed action's or query's line that lets `who` in.
 pub fn can_run(subject: &str, who: &[String]) -> String {
     format!("{} can now run `{subject}`", callers(who))
