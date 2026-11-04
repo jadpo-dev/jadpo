@@ -45,6 +45,8 @@ mod depot;
 mod external;
 /// Teaching example 23's kiosk (chunks 8.2b, 8.2d, 8.2i and 8.4f).
 mod kiosk;
+/// A route's own rate limit (chunk G4).
+mod limits;
 /// After the response (chunk 8.2h) and a Worker's limits (chunk 8.4a).
 mod newsroom;
 /// Cloudflare Queues' consumer (chunk 8.2k).
@@ -595,6 +597,18 @@ impl Workerd {
         headers: &[(&str, &str)],
         body: &str,
     ) -> (u16, String) {
+        let (status, _, body) = self.answered(method, path, headers, body);
+        (status, body)
+    }
+
+    /// [`Workerd::send`], with the answer's head as well, in lower case.
+    fn answered(
+        &self,
+        method: &str,
+        path: &str,
+        headers: &[(&str, &str)],
+        body: &str,
+    ) -> (u16, String, String) {
         let mut stream = TcpStream::connect(("127.0.0.1", self.port)).expect("workerd listens");
         stream
             .set_read_timeout(Some(Duration::from_secs(60)))
@@ -632,13 +646,13 @@ impl Workerd {
                 while !body.ends_with(b"0\r\n\r\n") && stream.read(&mut byte).unwrap_or(0) == 1 {
                     body.push(byte[0]);
                 }
-                return (status, dechunk(&String::from_utf8_lossy(&body)));
+                return (status, head, dechunk(&String::from_utf8_lossy(&body)));
             }
             None => {
                 let _ = stream.read_to_end(&mut body);
             }
         }
-        (status, String::from_utf8_lossy(&body).into_owned())
+        (status, head, String::from_utf8_lossy(&body).into_owned())
     }
 }
 

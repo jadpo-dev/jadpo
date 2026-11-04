@@ -272,6 +272,10 @@ struct Fake {
     /// Counts requests against one a minute, whatever the runtime's
     /// default, when given.
     limits: Option<crate::RateLimits>,
+    /// Counts requests against the limit asked about, not one a minute.
+    as_asked: bool,
+    /// What each request was counted as, and against which limit.
+    asked: std::cell::RefCell<Vec<(String, jadpo_std::http::RateLimit)>>,
     /// A monotonic clock that moves only when the test moves it.
     still: Option<Cell<u64>>,
     /// No wall clock: `now_ms` gives nothing.
@@ -319,17 +323,18 @@ impl Host for Fake {
     fn rate_limit<'a>(
         &'a self,
         key: &'a str,
-        _limit: jadpo_std::http::RateLimit,
+        limit: jadpo_std::http::RateLimit,
         now: i64,
     ) -> LocalFuture<'a, crate::Allowed> {
+        self.asked.borrow_mut().push((key.to_string(), limit));
         let one = jadpo_std::http::RateLimit {
             requests: 1,
             window_ms: 60_000,
         };
-        let allowed = self
-            .limits
-            .as_ref()
-            .map_or(crate::Allowed::Yes, |limits| limits.allow(key, one, now));
+        let counted = if self.as_asked { limit } else { one };
+        let allowed = self.limits.as_ref().map_or(crate::Allowed::Yes, |limits| {
+            limits.allow(key, counted, now)
+        });
         Box::pin(async move { allowed })
     }
 }
@@ -468,6 +473,7 @@ fn table(keys: Option<&str>, required: bool) -> RouteTable {
             authentication: jadpo_std::http::Authentication::Public,
             caller: None,
             confirm: false,
+            rate_limit: None,
             file: "domains/widgets/routes/widgets.jadpo".into(),
             line: 1,
         }],
@@ -1143,6 +1149,175 @@ fn two_clients_behind_a_proxy_are_counted_apart() {
     let second = send(&table, &program, &host, &behind("198.51.100.50"), NOW);
     assert_eq!((second.status, code(&second)), (429, Some("rate_limited")));
     assert_eq!(program.runs.get(), 3);
+}
+
+/// A limit of `requests` a minute of a route's own, by `by`.
+fn own_limit(requests: u32, by: jadpo_std::RateLimitKey) -> jadpo_std::http::RouteRateLimit {
+    jadpo_std::http::RouteRateLimit {
+        limit: jadpo_std::http::RateLimit {
+            requests,
+            window_ms: 60_000,
+        },
+        by,
+        counted: "route POST /widgets".to_string(),
+    }
+}
+
+fn counting_as_asked() -> Fake {
+    Fake {
+        limits: Some(crate::RateLimits::new(1 << 20)),
+        as_asked: true,
+        ..Fake::default()
+    }
+}
+
+fn from(address: &str) -> Request {
+    let mut request = post(None, "a");
+    request.address = Some(address.into());
+    request
+}
+
+/// What each request was counted as (area 16, "Rate limits"; chunk G4).
+fn counted_as(host: &Fake) -> Vec<String> {
+    host.asked
+        .borrow()
+        .iter()
+        .map(|(key, limit)| format!("{key} {}/{}", limit.requests, limit.window_ms))
+        .collect()
+}
+
+/// A route's limit stands in for the default ones: it counts alone, each
+/// address on its own, and a request to it uses nothing of the address's
+/// default allowance. A client sees it in the headers.
+#[test]
+fn a_routes_own_limit_stands_in_for_the_defaults() {
+    let mut table = table(Some("main"), false);
+    table.routes[0].rate_limit = Some(own_limit(2, jadpo_std::RateLimitKey::Ip));
+    let program = Program::new(Ends::Writes);
+    let host = counting_as_asked();
+    for _ in 0..2 {
+        assert_eq!(
+            send(&table, &program, &host, &from("10.0.0.1"), NOW).status,
+            204
+        );
+    }
+    let refused = send(&table, &program, &host, &from("10.0.0.1"), NOW + 1_000);
+    assert_eq!(
+        (refused.status, code(&refused)),
+        (429, Some("rate_limited"))
+    );
+    assert_eq!(program.runs.get(), 2, "the refused request never ran");
+    let header = |name: &str| {
+        refused
+            .headers
+            .iter()
+            .find(|(header, _)| header == name)
+            .map(|(_, value)| value.as_str())
+    };
+    assert_eq!(header("retry-after"), Some("59"));
+    assert_eq!(header("ratelimit-policy"), Some("\"default\";q=2;w=60"));
+    assert_eq!(header("ratelimit"), Some("\"default\";r=0;t=59"));
+    assert_eq!(
+        send(&table, &program, &host, &from("10.0.0.2"), NOW).status,
+        204
+    );
+    let asked = counted_as(&host);
+    assert_eq!(
+        asked,
+        [
+            "route POST /widgets address 10.0.0.1 2/60000",
+            "route POST /widgets address 10.0.0.1 2/60000",
+            "route POST /widgets address 10.0.0.1 2/60000",
+            "route POST /widgets address 10.0.0.2 2/60000",
+        ]
+    );
+}
+
+/// A limit can loosen the default as well as tighten it: more than 120 a
+/// minute go through on a route that says so.
+#[test]
+fn a_routes_own_limit_can_be_above_the_default() {
+    let mut table = table(None, false);
+    table.routes[0].rate_limit = Some(own_limit(150, jadpo_std::RateLimitKey::Caller));
+    let program = Program::new(Ends::Writes);
+    let host = counting_as_asked();
+    for _ in 0..150 {
+        assert_eq!(
+            send(&table, &program, &host, &from("10.0.0.1"), NOW).status,
+            204
+        );
+    }
+    assert_eq!(
+        send(&table, &program, &host, &from("10.0.0.1"), NOW).status,
+        429
+    );
+}
+
+/// Every request a default limit refuses says what limit it was over too.
+#[test]
+fn a_request_over_a_default_limit_is_told_the_limit() {
+    let table = table(None, false);
+    let program = Program::new(Ends::Writes);
+    let host = counting_as_asked();
+    for _ in 0..120 {
+        assert_eq!(
+            send(&table, &program, &host, &from("10.0.0.1"), NOW).status,
+            204
+        );
+    }
+    let refused = send(&table, &program, &host, &from("10.0.0.1"), NOW);
+    assert_eq!(refused.status, 429);
+    assert!(
+        refused.headers.contains(&(
+            "ratelimit-policy".to_string(),
+            "\"default\";q=120;w=60".to_string()
+        )),
+        "{:?}",
+        refused.headers
+    );
+}
+
+/// A request with a credential to a route anyone may call runs as no one,
+/// so it counts once, by its address, whichever key the limit counts by.
+#[test]
+fn a_credential_on_a_limited_route_anyone_may_call_counts_once() {
+    for by in [jadpo_std::RateLimitKey::Caller, jadpo_std::RateLimitKey::Ip] {
+        let mut table = table(Some("main"), false);
+        table.routes[0].rate_limit = Some(own_limit(5, by));
+        let program = Program::new(Ends::Writes);
+        let host = counting_as_asked();
+        let mut junk = from("10.0.0.1");
+        junk.headers.push(("Authorization".into(), "junk".into()));
+        assert_eq!(send(&table, &program, &host, &junk, NOW).status, 204);
+        assert_eq!(
+            counted_as(&host),
+            ["route POST /widgets address 10.0.0.1 5/60000"],
+            "{by:?}"
+        );
+    }
+}
+
+/// A route's limit never widens what a credential that doesn't sign in may
+/// try: refused, it counts against the address's default allowance too, or
+/// a generous limit would be an open door for guessing.
+#[test]
+fn a_refused_credential_counts_against_the_default_whatever_the_route_says() {
+    let mut table = table(Some("main"), false);
+    table.routes[0].rate_limit = Some(own_limit(1000, jadpo_std::RateLimitKey::Ip));
+    table.routes[0].authentication = jadpo_std::http::Authentication::Required;
+    let program = Program::new(Ends::Writes);
+    let host = counting_as_asked();
+    let mut junk = from("10.0.0.1");
+    junk.headers.push(("Authorization".into(), "junk".into()));
+    let refused = send(&table, &program, &host, &junk, NOW);
+    assert_eq!(refused.status, 401);
+    assert_eq!(
+        counted_as(&host),
+        [
+            "route POST /widgets address 10.0.0.1 1000/60000",
+            "address 10.0.0.1 120/60000",
+        ]
+    );
 }
 
 #[test]

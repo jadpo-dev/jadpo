@@ -105,6 +105,7 @@ mod result_rules;
 mod retention;
 mod review;
 mod role_requirements;
+mod route_limits;
 mod routes;
 mod scale;
 mod schedule_checks;

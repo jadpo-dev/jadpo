@@ -410,6 +410,7 @@ mod tests {
             authentication: jadpo_std::http::Authentication::Public,
             caller: None,
             confirm: false,
+            rate_limit: None,
             file: "domains/accounts/routes/accounts.jadpo".into(),
             line: 1,
         }

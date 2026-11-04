@@ -69,10 +69,11 @@ use std::collections::BTreeMap;
 
 pub use jadpo_std::http::BODY_LIMIT;
 use jadpo_std::http::{
-    ADDRESS_LIMIT, ArgRoot, CALLER_LIMIT, Codec, CodecId, RoutePlan, RouteTable, Run, Segment,
+    ADDRESS_LIMIT, ArgRoot, CALLER_LIMIT, Codec, CodecId, RateLimit, RoutePlan, RouteRateLimit,
+    RouteTable, Run, Segment,
 };
 use jadpo_std::types::FailurePlan;
-use jadpo_std::{HttpMethod, Idempotency};
+use jadpo_std::{HttpMethod, Idempotency, RateLimitKey};
 use jadpo_value::Value;
 use jadpo_value::json::reading::{At, InputReader, Reading, TextReader, Writer};
 use jadpo_value::json::{Codecs, Doc, Members, Path, Problem, write_string};
@@ -498,9 +499,19 @@ async fn respond(
     }
     // A request with a credential counts against its caller once signed
     // in, or against its address if it isn't; every other request against
-    // its address, here.
+    // its address, here. A route with a limit of its own (`rate_limit:`,
+    // area 16) counts that in place of the defaults; one by address counts
+    // whatever credential comes, before anything is read.
     let deferred = identity::carries_credential(app.table, request);
-    if !deferred && let Some(response) = by_address(ctx, request_id).await {
+    let own = own_limit(app, &found);
+    let limited = match own {
+        Some(own) if !deferred || own.by == RateLimitKey::Ip => {
+            own_by_address(ctx, own, request_id).await
+        }
+        None if !deferred => by_address(ctx, request_id).await,
+        _ => None,
+    };
+    if let Some(response) = limited {
         return response;
     }
     let mut response = route_request(app, executor, ctx, request, request_id, found).await;
@@ -523,17 +534,62 @@ async fn by_address(ctx: &Ctx<'_>, request_id: &str) -> Option<Response> {
         ctx.client()
             .map_or_else(|| "unknown".to_string(), address::counted_as)
     );
-    match ctx.host().rate_limit(&key, ADDRESS_LIMIT, ctx.now()).await {
+    counted(ctx, &key, ADDRESS_LIMIT, request_id).await
+}
+
+/// The limit the found route writes with `rate_limit:`, its own or its
+/// API's (area 16, "Rate limits"), which it counts in place of the
+/// defaults.
+fn own_limit<'a>(app: &App<'a>, found: &Found) -> Option<&'a RouteRateLimit> {
+    let Found::Route {
+        route: Some(number),
+        ..
+    } = found
+    else {
+        return None;
+    };
+    app.table.routes.get(*number as usize)?.rate_limit.as_ref()
+}
+
+/// 429 when `request`'s address has used `own`'s allowance.
+async fn own_by_address(ctx: &Ctx<'_>, own: &RouteRateLimit, request_id: &str) -> Option<Response> {
+    let key = format!(
+        "{} address {}",
+        own.counted,
+        ctx.client()
+            .map_or_else(|| "unknown".to_string(), address::counted_as)
+    );
+    counted(ctx, &key, own.limit, request_id).await
+}
+
+/// One more request for `key`, as the host counts it against `limit`: the
+/// 429 if it is over.
+async fn counted(ctx: &Ctx<'_>, key: &str, limit: RateLimit, request_id: &str) -> Option<Response> {
+    match ctx.host().rate_limit(key, limit, ctx.now()).await {
         Allowed::Yes => None,
-        Allowed::No { retry_after } => Some(rate_limited(request_id, retry_after)),
+        Allowed::No { retry_after } => Some(rate_limited(request_id, retry_after, limit)),
     }
 }
 
-fn rate_limited(request_id: &str, retry_after: u64) -> Response {
+/// A refused request: its wait, and the limit in the headers of the IETF
+/// draft (area 7, "Rate-limited requests").
+fn rate_limited(request_id: &str, retry_after: u64, limit: RateLimit) -> Response {
     let mut response = runtime_failure(RATE_LIMITED, request_id, None);
-    response
-        .headers
-        .push(("retry-after".to_string(), retry_after.to_string()));
+    response.headers.extend([
+        ("retry-after".to_string(), retry_after.to_string()),
+        (
+            "ratelimit-policy".to_string(),
+            format!(
+                "\"default\";q={};w={}",
+                limit.requests,
+                limit.window_ms / 1000
+            ),
+        ),
+        (
+            "ratelimit".to_string(),
+            format!("\"default\";r=0;t={retry_after}"),
+        ),
+    ]);
     response.counted = true;
     response
 }
@@ -948,22 +1004,35 @@ async fn run_route(
     } else {
         // A route anyone may call runs as no one, so a request with a
         // credential counts against its address before it runs, as every
-        // other does.
-        if identity::carries_credential(app.table, request)
-            && let Some(limited) = by_address(ctx, request_id).await
-        {
-            return limited;
+        // other does: against the route's own limit if it counts callers,
+        // whom this one isn't, unless that has counted it already.
+        if identity::carries_credential(app.table, request) {
+            let limited = match &route.rate_limit {
+                None => by_address(ctx, request_id).await,
+                Some(own) if own.by == RateLimitKey::Caller => {
+                    own_by_address(ctx, own, request_id).await
+                }
+                Some(_) => None,
+            };
+            if let Some(limited) = limited {
+                return limited;
+            }
         }
         None
     };
-    let counted = caller.is_none() && identity::carries_credential(app.table, request);
-    if let Some(caller) = &caller
-        && let Allowed::No { retry_after } = ctx
-            .host()
-            .rate_limit(&caller.key, CALLER_LIMIT, ctx.now())
-            .await
-    {
-        return rate_limited(request_id, retry_after);
+    let was_counted = caller.is_none() && identity::carries_credential(app.table, request);
+    if let Some(caller) = &caller {
+        let limited = match &route.rate_limit {
+            None => counted(ctx, &caller.key, CALLER_LIMIT, request_id).await,
+            Some(own) if own.by == RateLimitKey::Caller => {
+                let key = format!("{} {}", own.counted, caller.key);
+                counted(ctx, &key, own.limit, request_id).await
+            }
+            Some(_) => None,
+        };
+        if let Some(limited) = limited {
+            return limited;
+        }
     }
     let scope = caller.as_ref().map_or_else(
         || idempotency::ANONYMOUS.to_string(),
@@ -1053,7 +1122,7 @@ async fn run_route(
             .await
         }
     };
-    response.counted = response.counted || counted || ctx.caller().is_some();
+    response.counted = response.counted || was_counted || ctx.caller().is_some();
     ctx.set_caller(None);
     response
 }

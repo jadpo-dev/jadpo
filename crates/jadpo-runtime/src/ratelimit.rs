@@ -10,7 +10,8 @@
 //! workers its requests reach. It is plain data behind a lock per shard,
 //! held only to find and bump one counter and never across an await.
 //! Several servers each count their own, which a Redis connection (area
-//! 16) counts once.
+//! 16) counts once. A route's own limit (`rate_limit:`) has a key of its
+//! own and any window from a second to a day.
 
 use std::collections::hash_map::RandomState;
 use std::collections::{HashMap, VecDeque};
@@ -55,11 +56,12 @@ struct Counter {
 struct Shard {
     capacity: usize,
     counts: HashMap<Arc<str>, Counter>,
-    /// Each counter's key with the start of the window it was placed for,
-    /// in the order the windows started, oldest first. A key whose window
-    /// starts again is placed again at the back, and its earlier place is
-    /// passed over.
-    order: VecDeque<(Arc<str>, i64)>,
+    /// For each window's length a route counts over, each counter's key
+    /// with the start of the window it was placed for, in the order the
+    /// windows started, oldest first, so the fronts say which window ends
+    /// first. A key whose window starts again is placed again at the back,
+    /// and its earlier place is passed over.
+    order: Vec<(i64, VecDeque<(Arc<str>, i64)>)>,
 }
 
 impl Shard {
@@ -89,7 +91,7 @@ impl Shard {
                     count: 0,
                 },
             );
-            self.place(key, now);
+            self.place(window, key, now);
         }
         let Some(counter) = self.counts.get_mut(key) else {
             return Allowed::Yes;
@@ -108,12 +110,20 @@ impl Shard {
         Allowed::Yes
     }
 
-    /// Drops the counters whose windows started longest ago until there
-    /// is room for one more: one whose window has ended goes before any
-    /// still counting.
+    /// Drops the counters whose windows end soonest until there is room
+    /// for one more: one whose window has ended goes before any still
+    /// counting, whatever each one's length.
     fn make_room(&mut self) {
         while self.counts.len() >= self.capacity {
-            let Some((key, start)) = self.order.pop_front() else {
+            let soonest = self
+                .order
+                .iter_mut()
+                .filter_map(|(window, places)| {
+                    let (_, start) = places.front()?;
+                    Some((start.saturating_add(*window), places))
+                })
+                .min_by_key(|(ends, _)| *ends);
+            let Some((key, start)) = soonest.and_then(|(_, places)| places.pop_front()) else {
                 break;
             };
             if self
@@ -126,18 +136,33 @@ impl Shard {
         }
     }
 
-    /// Places `key`'s window, begun at `start`, at the back of the order,
-    /// leaving out the places passed over once they outnumber the
-    /// counters, so the order holds at most twice the shard's counters.
-    fn place(&mut self, key: Arc<str>, start: i64) {
-        self.order.push_back((key, start));
-        if self.order.len() > 2 * self.capacity {
+    /// Places `key`'s window, begun at `start`, at the back of its length's
+    /// order, leaving out the places passed over once they outnumber the
+    /// counters, so the orders hold at most twice the shard's counters.
+    fn place(&mut self, window: i64, key: Arc<str>, start: i64) {
+        let places = match self.order.iter().position(|(length, _)| *length == window) {
+            Some(at) => at,
+            None => {
+                self.order.push((window, VecDeque::new()));
+                self.order.len() - 1
+            }
+        };
+        self.order[places].1.push_back((key, start));
+        if self
+            .order
+            .iter()
+            .map(|(_, places)| places.len())
+            .sum::<usize>()
+            > 2 * self.capacity
+        {
             let counts = &self.counts;
-            self.order.retain(|(key, start)| {
-                counts
-                    .get(key)
-                    .is_some_and(|counter| counter.start == *start)
-            });
+            for (_, places) in &mut self.order {
+                places.retain(|(key, start)| {
+                    counts
+                        .get(key)
+                        .is_some_and(|counter| counter.start == *start)
+                });
+            }
         }
     }
 }
@@ -198,7 +223,8 @@ impl RateLimits {
             .iter()
             .fold((0, 0), |(counters, places), shard| {
                 let shard = shard.lock().unwrap();
-                (counters + shard.counts.len(), places + shard.order.len())
+                let held: usize = shard.order.iter().map(|(_, order)| order.len()).sum();
+                (counters + shard.counts.len(), places + held)
             })
     }
 }
@@ -265,6 +291,26 @@ mod tests {
             "`a` is still counted"
         );
         assert!(matches!(limits.allow("c", ONE, 60_001), Allowed::No { .. }));
+    }
+
+    /// A route's own limit can count over a window of any length (chunk
+    /// G4): a short window that has ended goes before a long one still
+    /// counting that started earlier, so an hour's limit isn't handed a
+    /// fresh allowance while a minute's dead counter stays.
+    #[test]
+    fn a_long_window_still_counting_outlives_a_short_one_that_ended() {
+        let hour = RateLimit {
+            requests: 1,
+            window_ms: 3_600_000,
+        };
+        let limits = RateLimits::new(ENTRY_BYTES * 2);
+        assert_eq!(limits.allow("hourly", hour, 0), Allowed::Yes);
+        assert_eq!(limits.allow("minutely", ONE, 1_000), Allowed::Yes);
+        assert_eq!(limits.allow("next", ONE, 120_000), Allowed::Yes);
+        assert!(
+            matches!(limits.allow("hourly", hour, 120_001), Allowed::No { .. }),
+            "the hour's counter is still counted"
+        );
     }
 
     /// Workers read the clock apart, so a time a little before a

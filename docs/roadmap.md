@@ -172,6 +172,11 @@ a finished chunk is in git history.
   From 8.4b: the hand-on reaching the Worker through `ctx.exports` on the
   edge, under the file's name and under `wrangler deploy --env`, and the
   dead-letter queue's consumer accepted beside the queue's.
+  From G4: a route's own binding (`LIMITS_<n>_PER_<period>S`) accepted by
+  `wrangler deploy` at 10 and 60 seconds and refusing at about its limit;
+  how far past its limit a burst gets, whether two locations really count
+  apart, as Cloudflare's documentation says, and how an address behaves as
+  a key; two deployables sharing a `namespace_id` sharing their counts.
 
 - [x] **8.3 Performance spike**: §2.11.
 
@@ -523,9 +528,9 @@ real deploy) and, before outside authors can publish, D3 (releases).
   "application/x-tar"` on an `Output` with exactly one `Bytes` field; that
   field is the body, and failures stay JSON (Richard, 2026-11-03). Also `cache:
   immutable`, for an answer that never changes.
-- [ ] **G4 A route's `rate_limit:`** `opus · high`: area 16's route limits. The
-  registry's `POST releases` is anonymous and starts verifications, and the
-  default 120 a minute per address doesn't fit it.
+- [x] **G4 A route's `rate_limit:`**: area 16, "Rate limits" and "What the
+  binding promises"; §2.6; area 16's
+  Decisions.
 - [ ] **G5 Small gaps the registry found** `opus · high`: `authentication: []`
   honoured on `openapi.json`, which is accepted and ignored today; a `jadpo`
   command that runs R4's conformance test against a document, so R7's CI needs

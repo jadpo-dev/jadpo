@@ -20,6 +20,7 @@
 
 pub mod apis;
 pub mod generated;
+pub mod limit;
 pub mod openapi;
 pub mod record;
 pub mod served;
@@ -36,6 +37,7 @@ use jadpo_std::{HttpMethod, RouteAuthentication, SuccessStatus};
 use jadpo_syntax::ast::{self, AstNode, Decl, Expr, MemberItem};
 
 pub use apis::{Api, Apis, api_problems, api_table};
+pub use limit::limit_of;
 
 use crate::lookups::{Lookup, Name, NameView, SigView, file_at};
 use crate::resolve::{Names, Want};
@@ -62,12 +64,6 @@ pub const ROUTE_ITEMS: [&str; 9] = [
 
 /// What a route group holds besides its routes.
 pub const GROUP_ITEMS: [&str; 2] = ["prefix", "api"];
-
-/// The route items a later chunk builds, with what builds them.
-const LATER_ITEMS: [(&str, &str); 1] = [(
-    "rate_limit",
-    "A route's own `rate_limit:` comes with the rest of area 16's rate limits; every route already has the default limits",
-)];
 
 /// Why a streaming route answers 200 and waits for nothing
 /// (`route.stream_invalid`).
@@ -210,6 +206,9 @@ pub struct RouteModel {
     /// their own passkeys before it runs (`confirm: Confirmation.passkey`,
     /// area 8).
     pub confirm: bool,
+    /// The limit it writes with `rate_limit:` (area 16, "Rate limits");
+    /// its API's, or the defaults, when `None`.
+    pub rate_limit: Option<limit::Limit>,
     pub run: Run,
     /// What it waits for before it answers, with `settle:`; its `output:`
     /// is then what `answer:` gives.
@@ -277,6 +276,9 @@ pub struct GroupRead {
     /// Each route that read cleanly: its label and where its method and
     /// path are written, for problems found across groups.
     pub spans: Vec<(String, Span)>,
+    /// Each limit a route writes and where its `within:` is, for what the
+    /// store can count.
+    pub limits: Vec<(limit::Limit, Span)>,
     pub problems: Vec<Diagnostic>,
 }
 
@@ -413,12 +415,14 @@ pub fn group_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> Op
         path: &symbol.path,
         out: Vec::new(),
         spans: Vec::new(),
+        limits: Vec::new(),
     };
     let model = reader.group(&symbol, &decl).map(Arc::new);
     Some(GroupRead {
         path: symbol.path.clone(),
         model,
         spans: reader.spans,
+        limits: reader.limits,
         problems: reader.out,
     })
 }
@@ -1000,6 +1004,7 @@ struct Reader<'a> {
     path: &'a str,
     out: Vec<Diagnostic>,
     spans: Vec<(String, Span)>,
+    limits: Vec<(limit::Limit, Span)>,
 }
 
 /// What a route's call returns and the failures it can raise.
@@ -1523,17 +1528,6 @@ impl Reader<'_> {
                         self.duplicate(&written, &key, &first, "route");
                         continue;
                     }
-                    if let Some((_, why)) = LATER_ITEMS.iter().find(|(item, _)| *item == written) {
-                        self.out.push(
-                            Diagnostic::new(
-                                &rule::TOOLCHAIN_NOT_BUILT_YET,
-                                format!("A route's `{written}:` isn't built yet"),
-                            )
-                            .at(self.span(&key), "decided, not built")
-                            .reason(format!("{why}."))
-                            .next(format!("Leave `{written}:` out for now")),
-                        );
-                    }
                     items.found.push((written, member));
                 }
                 MemberItem::BareMember(bare) => {
@@ -1589,6 +1583,12 @@ impl Reader<'_> {
                 .unwrap_or(jadpo_std::http::DEFAULT_DEADLINE_MS),
             None => jadpo_std::http::DEFAULT_DEADLINE_MS,
         };
+        // `rate_limit:`.
+        let rate_limit = items.get("rate_limit").and_then(|member| {
+            let (limit, within) = limit::read(self.path, member, &mut self.out)?;
+            self.limits.push((limit, within));
+            Some(limit)
+        });
         // `output:`.
         let output = items.get("output").map(|member| self.output(member));
 
@@ -1816,6 +1816,7 @@ impl Reader<'_> {
             authentication: self.authentication,
             caller: self.caller.as_ref().map(|(kind, _)| *kind),
             confirm,
+            rate_limit,
             run,
             settle: settle.map(|(settle, _, _)| settle),
             fails: sig.fails.clone(),

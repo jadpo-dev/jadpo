@@ -23,6 +23,7 @@
 //!
 //! The `x-jadpo` fields carry what plain OpenAPI lacks (area 7, chunk
 //! 7.2), so area 11's importer makes an exact package from the document:
+//! `x-jadpo-rate-limit` on every route written (area 16),
 //! `x-jadpo-changes` on every operation (a route that runs an action
 //! changes something), `x-jadpo-idempotency` on every operation that
 //! reads an `Idempotency-Key` (the header, whether the API requires it,
@@ -260,6 +261,13 @@ pub fn document(
         if !route.authentication.needs_caller() {
             operation.set("security", Vec::<Value>::new());
         }
+        // What it's limited to (area 16, "What a client sees").
+        let limited = super::limit::shown(super::api_table(db, project), group, route);
+        let mut rate_limit = Value::object();
+        rate_limit.set("requests", i64::from(limited.limit.requests));
+        rate_limit.set("within", super::limit::within(limited.limit));
+        rate_limit.set("by", limited.by.name());
+        operation.set("x-jadpo-rate-limit", rate_limit);
         operation.set("tags", vec![Value::from(group.name.as_str())]);
         tags.entry(group.name.clone())
             .or_insert_with(|| group.doc.clone());

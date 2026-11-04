@@ -16,7 +16,9 @@
 
 use crate::read::{Column, ReadPlan};
 use crate::types::{ShapeId, ValidatorId};
-use crate::{AuthenticationMethod, Builtin, ClientAddressSource, HttpMethod, SuccessStatus};
+use crate::{
+    AuthenticationMethod, Builtin, ClientAddressSource, HttpMethod, RateLimitKey, SuccessStatus,
+};
 
 /// A route's deadline when it says none (area 7, "Time limits").
 pub const DEFAULT_DEADLINE_MS: u32 = 10_000;
@@ -1396,6 +1398,11 @@ pub struct RoutePlan {
     /// Confirmation.passkey`, area 8).
     #[serde(default)]
     pub confirm: bool,
+    /// The limit it, or its API, writes with `rate_limit:` (area 16, "Rate
+    /// limits"), which it counts in place of the default limits; `None`
+    /// for the defaults.
+    #[serde(default)]
+    pub rate_limit: Option<RouteRateLimit>,
     /// Where it is written, for logs and `jadpo dev`.
     pub file: String,
     pub line: u32,
@@ -1472,13 +1479,35 @@ pub const ADDRESS_LIMIT: RateLimit = RateLimit {
     window_ms: 60_000,
 };
 
+/// The shortest window a `rate_limit:` may count over: `Retry-After` and
+/// `RateLimit-Policy` say seconds.
+pub const SHORTEST_LIMIT_WINDOW_MS: u32 = 1_000;
+
+/// The longest window a `rate_limit:` may count over: a day. A longer
+/// allowance is a plan's limit, the application's data (area 16).
+pub const LONGEST_LIMIT_WINDOW_MS: u32 = 86_400_000;
+
+/// A limit an API or a route writes for itself with `rate_limit:` (area
+/// 16, "Rate limits"), in place of the default limits, and what its count
+/// is kept under.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct RouteRateLimit {
+    pub limit: RateLimit,
+    pub by: RateLimitKey,
+    /// What each count's key starts with: the route's key, `route POST
+    /// /todos`, so it counts alone, or `api main` for the limit an API
+    /// gives its routes, which they share.
+    pub counted: String,
+}
+
 /// How much memory in-memory rate-limit counters may take before the
 /// oldest are dropped (area 16: `memory: 16MB` by default).
 pub const RATE_LIMIT_MEMORY: usize = 16 * 1024 * 1024;
 
-/// Every limit the HTTP component counts, in the order a store's bindings
-/// are numbered (by window, then requests): the address's and the signed-in
-/// caller's, until routes give their own (`rate_limit:`).
+/// The limits the HTTP component counts whatever a route says, in the order
+/// a store's bindings are numbered (by window, then requests): the
+/// address's and the signed-in caller's. A store's bindings also count each
+/// limit the app writes with `rate_limit:`.
 pub const COUNTED_LIMITS: [RateLimit; 2] = [ADDRESS_LIMIT, CALLER_LIMIT];
 
 /// The windows Cloudflare's rate-limiting binding counts over: 10 seconds
@@ -1519,8 +1548,8 @@ pub struct RateLimitBinding {
 }
 
 /// The bindings connection `connection` counts `limits` in, numbered from
-/// `namespace`: one a limit, in the order of [`COUNTED_LIMITS`], each
-/// named for the connection and the limit. `None` when the numbers would
+/// `namespace`: one a limit, by window and then by requests, each named
+/// for the connection and the limit. `None` when the numbers would
 /// pass the largest a `u32` holds.
 pub fn rate_limit_bindings(
     connection: &str,

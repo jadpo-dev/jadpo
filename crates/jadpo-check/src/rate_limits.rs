@@ -21,18 +21,22 @@
 //! the app counts there has a binding of its own, numbered from the
 //! connection's `namespace:` ([`jadpo_std::http::rate_limit_bindings`]),
 //! and every limit counted today is a minute's; a route's own
-//! `rate_limit:` brings the error the page decides for any other window,
+//! `rate_limit:` brings the error the page decides for any other window
+//! (`rate_limits.window_unsupported`),
 //! naming Redis. A deployable built for Workers that serves an
 //! API needs a store, since a Worker keeps no memory its instances share
 //! (`deployables::target_problems`).
 
 use jadpo_db::{Db, Project};
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
-use jadpo_std::http::{COUNTED_LIMITS, RateLimitStore, rate_limit_bindings};
+use jadpo_std::http::{
+    BINDING_WINDOWS_MS, COUNTED_LIMITS, RateLimit, RateLimitStore, rate_limit_bindings,
+};
 use jadpo_syntax::ast::AstNode;
 
 use crate::config::singletons;
 use crate::data::ConnectionKind;
+use crate::lookups::Name;
 use crate::tree::{self, name_text, node_span};
 
 /// What a connection with `driver: Driver.cloudflare_rate_limits` holds.
@@ -283,7 +287,90 @@ pub fn rate_limits(db: &dyn Db, project: Project) -> RateLimitsRead {
 pub fn rate_limits_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     let mut out = binding_connections(db, project).problems.clone();
     out.extend(rate_limits(db, project).problems.iter().cloned());
+    out.extend(window_problems(db, project));
     out
+}
+
+/// Every limit the app's routes and APIs write with `rate_limit:`, and
+/// where each one's `within:` is.
+fn written_limits(db: &dyn Db, project: Project) -> Vec<(RateLimit, Span)> {
+    let mut limits: Vec<(RateLimit, Span)> = crate::routes::api_table(db, project)
+        .limits
+        .iter()
+        .map(|(limit, at)| (limit.limit, at.clone()))
+        .collect();
+    for name in crate::routes::group_names(db, project) {
+        let read = crate::routes::group_read(db, project, Name::new(db, name.clone()));
+        limits.extend(
+            read.iter()
+                .flat_map(|read| &read.limits)
+                .map(|(limit, at)| (limit.limit, at.clone())),
+        );
+    }
+    limits
+}
+
+/// A limit counted in Cloudflare's binding, whose window it can't count, is
+/// refused where it is written (area 16, "Counting on Workers"), never
+/// quietly counted over another window; so is a set of limits whose
+/// bindings' numbers would pass the largest namespace id.
+fn window_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
+    let Some((store, store_at)) = rate_limits(db, project).store.as_ref() else {
+        return Vec::new();
+    };
+    if crate::data::connections(db, project).kind(store)
+        != Some(ConnectionKind::CloudflareRateLimits)
+    {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let written = written_limits(db, project);
+    for (limit, at) in &written {
+        if BINDING_WINDOWS_MS.contains(&limit.window_ms) {
+            continue;
+        }
+        let within = crate::routes::limit::within(*limit);
+        out.push(
+            Diagnostic::new(
+                &rule::RATE_LIMITS_WINDOW_UNSUPPORTED,
+                format!("`within: {within}` can't be counted in Cloudflare's rate-limiting binding"),
+            )
+            .at(at.clone(), "not 10 or 60 seconds")
+            .also(store_at.clone(), "counted in the binding")
+            .reason("Cloudflare's rate-limiting binding counts only windows of 10 or 60 seconds. A Redis connection can count any window, but until Redis's driver comes each of a Worker's instances would count it in its own memory, which is the judgement call `rate_limits.counted_in_memory`.")
+            .next("Write `within: 1m` or `within: 10s`, with `requests:` to suit, or name a Redis connection in `rate_limits: { store: }`"),
+        );
+    }
+    let numbered = binding_connections(db, project)
+        .list
+        .iter()
+        .find(|connection| &connection.name == store)
+        .is_none_or(|connection| {
+            rate_limit_bindings(store, connection.namespace, &all_limits(db, project)).is_some()
+        });
+    if !numbered {
+        out.push(
+            invalid(
+                format!("`store: {store}`'s bindings run past the largest namespace id"),
+                store_at.clone(),
+                "numbered from too high a `namespace:`",
+            )
+            .next(format!("Give `{store}` a lower `namespace:`")),
+        );
+    }
+    out
+}
+
+/// Every limit the app counts: the defaults and each it writes.
+fn all_limits(db: &dyn Db, project: Project) -> Vec<RateLimit> {
+    COUNTED_LIMITS
+        .into_iter()
+        .chain(
+            written_limits(db, project)
+                .into_iter()
+                .map(|(limit, _)| limit),
+        )
+        .collect()
 }
 
 /// The store the plan counts in: its connection, and on Cloudflare's
@@ -296,7 +383,7 @@ pub fn store_plan(db: &dyn Db, project: Project) -> Option<RateLimitStore> {
                 .list
                 .iter()
                 .find(|connection| &connection.name == store)?;
-            rate_limit_bindings(store, connection.namespace, &COUNTED_LIMITS)?
+            rate_limit_bindings(store, connection.namespace, &all_limits(db, project))?
         }
         _ => Vec::new(),
     };
