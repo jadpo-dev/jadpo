@@ -459,9 +459,7 @@ action or query it runs. A `GET` runs a query, or an action the compiler
 proves only reads; every other method runs an action. `GET` and `DELETE` read
 their input from the query string, the other methods from the JSON body.
 `output:` must be exactly what the route runs returns. A failure's kind sets
-the status. An `Output` of one `Bytes` field can go out as raw bytes with
-`sends: "application/x-tar"`, and an answer that never changes says `cache:
-immutable` ([Sending raw bytes](language/07-http.md#sending-raw-bytes)).
+the status.
 
 ```jadpo check project=tool-share file=domains/lending/routes/tools.jadpo
 use lending/entities { Tool }

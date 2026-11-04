@@ -678,7 +678,7 @@ Each change the compiler reports, and the subject it names:
 | `ApiChange.rule_tightened` | `main.CreateTodo.title` | A field clients send allows fewer values: a bound raised or lowered, a rule added, a type changed, `none` no longer allowed, or a field that could be left out no longer can; an enum variant gone from what clients send |
 | `ApiChange.output_field_removed` | `main.TodoView.priority` | A field clients read is gone, from its type or from the type a route now answers with |
 | `ApiChange.output_field_retyped` | `main.TodoView.priority` | A field clients read allows more or other values |
-| `ApiChange.media_type_changed` | `"main GET /archives/{digest: Text}"` | A route's `sends` line in the API record is new, gone or names another media type ([Sending raw bytes](07-http.md#sending-raw-bytes)) |
+| `ApiChange.media_type_changed` | `"main GET /deeds/{deed_ref: Text}"` | A route's `sends` line in the API record is new, gone or names another media type ([Sending raw bytes](07-http.md#sending-raw-bytes)) |
 | `ApiChange.failure_changed` | `main.todo_locked` | A failure code is gone, or its status changed |
 | `ApiChange.event_removed` | `planning.TodoCompleted` | An event is gone from its domain's event record |
 | `PolicyChange.route_public` | `"main GET /books"` | A route that needed a signed-in caller is open to anyone |

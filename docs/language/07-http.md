@@ -261,30 +261,30 @@ an action that builds it.
 A route's body doesn't have to be JSON. `sends:` names the media type of a
 body of raw bytes, on a route whose `Output` has exactly one field of a type
 built on `Bytes`. That field is the body, with nothing around it. Here a
-registry keeps each release's files as a tar archive, and a client unpacks
-what it is sent:
+land registry keeps a scan of each deed, and a client opens the PDF it is
+sent:
 
 ```jadpo check project=raw-bytes file=app.jadpo hidden
 application {}
 ```
 
-```jadpo check project=raw-bytes file=domains/registry/types/archive_digest.jadpo hidden
-/// A release's digest.
-type ArchiveDigest = Text {
-    pattern: "^sha256:[0-9a-f]{64}$"
+```jadpo check project=raw-bytes file=domains/titles/types/deed_ref.jadpo hidden
+/// A deed's reference.
+type DeedRef = Text {
+    pattern: "^D[0-9]{6}$"
 }
 ```
 
-```jadpo check project=raw-bytes file=domains/registry/entities/release.jadpo hidden migrate=initial
-use registry/types { ArchiveDigest }
+```jadpo check project=raw-bytes file=domains/titles/entities/deed.jadpo hidden migrate=initial
+use titles/types { DeedRef }
 
-/// A release of a package.
-entity Release {
+/// A deed the registry holds.
+entity Deed {
     id: Uuid
-    digest: ArchiveDigest {
+    deed_ref: DeedRef {
         unique: true
     }
-    tar: Bytes
+    pdf: Bytes
 
     policy: {
         create: [Access.public]
@@ -293,111 +293,111 @@ entity Release {
 }
 ```
 
-```jadpo check project=raw-bytes file=domains/registry/failures/archive_not_found.jadpo hidden
-/// No release has this digest.
-type ArchiveNotFound = Failure {
+```jadpo check project=raw-bytes file=domains/titles/failures/deed_not_found.jadpo hidden
+/// No deed has this reference.
+type DeedNotFound = Failure {
     kind: FailureKind.not_found
-    message: "No release has this digest."
+    message: "No deed has this reference."
 }
 ```
 
-```jadpo check project=raw-bytes file=domains/registry/types/archive.jadpo
-/// A release's files, as a tar archive.
-type Archive = Output {
-    tar: Bytes
+```jadpo check project=raw-bytes file=domains/titles/types/deed_scan.jadpo
+/// A scan of a deed, as a PDF.
+type DeedScan = Output {
+    pdf: Bytes
 }
 ```
 
-```jadpo check project=raw-bytes file=domains/registry/queries/archive_of.jadpo
-use registry/entities { Release }
-use registry/failures { ArchiveNotFound }
-use registry/types { Archive, ArchiveDigest }
+```jadpo check project=raw-bytes file=domains/titles/queries/scan_of.jadpo
+use titles/entities { Deed }
+use titles/types { DeedRef, DeedScan }
+use titles/failures { DeedNotFound }
 
-/// A release's archive.
-query archive_of(digest: ArchiveDigest) fails ArchiveNotFound -> Archive {
-    from: Release
-    where: Release.digest == digest
-    missing: ArchiveNotFound
+/// A deed's scan.
+query scan_of(deed_ref: DeedRef) fails DeedNotFound -> DeedScan {
+    from: Deed
+    where: Deed.deed_ref == deed_ref
+    missing: DeedNotFound
 }
 ```
 
-```jadpo check project=raw-bytes file=domains/registry/routes/archives.jadpo
-use registry/queries { archive_of }
-use registry/types { Archive, ArchiveDigest }
+```jadpo check project=raw-bytes file=domains/titles/routes/deeds.jadpo
+use titles/types { DeedRef, DeedScan }
+use titles/queries { scan_of }
 
-/// Release archives, by digest.
-routes Archives {
-    prefix: /archives
+/// Scans of deeds, by reference.
+routes Deeds {
+    prefix: /deeds
 
-    /// A release's files, which its digest fixes for good.
-    GET /{digest: ArchiveDigest} {
+    /// A deed's scan, which never changes once it is made.
+    GET /{deed_ref: DeedRef} {
         authentication: RouteAuthentication.none
-        output: Archive
-        sends: "application/x-tar"
+        output: DeedScan
+        sends: "application/pdf"
         cache: immutable
-        run: archive_of(digest)
+        run: scan_of(deed_ref)
     }
 }
 ```
 
 In a route test, `response.output` is the `Output`, its field the bytes sent:
 
-```jadpo check project=raw-bytes file=domains/registry/failures/archive_exists.jadpo hidden
-/// A release already has this digest.
-type ArchiveExists = Failure {
+```jadpo check project=raw-bytes file=domains/titles/failures/deed_exists.jadpo hidden
+/// A deed already has this reference.
+type DeedExists = Failure {
     kind: FailureKind.conflict
-    message: "A release already has this digest."
+    message: "A deed already has this reference."
 }
 ```
 
-```jadpo check project=raw-bytes file=domains/registry/actions/add_release.jadpo hidden
-use registry/entities { Release }
-use registry/failures { ArchiveExists }
+```jadpo check project=raw-bytes file=domains/titles/actions/add_deed.jadpo hidden
+use titles/entities { Deed }
+use titles/failures { DeedExists }
 
-/// Keeps a release to read back.
-action add_release() fails ArchiveExists -> Release {
-    return attempt Release.create {
+/// Keeps a deed to read back.
+action add_deed() fails DeedExists -> Deed {
+    return attempt Deed.create {
         set: {
-            digest: "sha256:0000000000000000000000000000000000000000000000000000000000000abc"
-            tar: hash.sha256("the files")
+            deed_ref: "D000123"
+            pdf: hash.sha256("the scan")
         }
         conflict: {
-            Release.digest: ArchiveExists
+            Deed.deed_ref: DeedExists
         }
     }
 }
 ```
 
-```jadpo check project=raw-bytes file=domains/registry/routes/archives.test.jadpo
-use registry/actions { add_release }
-use registry/entities { Release }
-use registry/types { Archive }
+```jadpo check project=raw-bytes file=domains/titles/routes/deeds.test.jadpo
+use titles/entities { Deed }
+use titles/types { DeedScan }
+use titles/actions { add_deed }
 
-test "a release's archive is sent as it was kept" {
-    var release: Release = attempt add_release()
+test "a deed's scan is sent as it was kept" {
+    var deed: Deed = attempt add_deed()
     var response: Response = request {
         method: HttpMethod.get
-        path: "/archives/{digest}"
+        path: "/deeds/{deed_ref}"
         params: {
-            digest: release.digest
+            deed_ref: deed.deed_ref
         }
     }
     assert response.status == 200
-    assert response.output == Archive {
-        tar: hash.sha256("the files")
+    assert response.output == DeedScan {
+        pdf: hash.sha256("the scan")
     }
 }
 
-test "a digest no release has is not found" {
+test "a reference no deed has is not found" {
     var response: Response = request {
         method: HttpMethod.get
-        path: "/archives/{digest}"
+        path: "/deeds/{deed_ref}"
         params: {
-            digest: "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+            deed_ref: "D999999"
         }
     }
     assert response.status == 404
-    assert response.code == "archive_not_found"
+    assert response.code == "deed_not_found"
 }
 ```
 
@@ -434,7 +434,7 @@ test "a digest no release has is not found" {
   field, and `Content-Length` is one of its `headers`. Failures are listed as
   any route's are. An importer gives the operation no `output:`, since it reads
   only JSON.
-- **The API record** says `sends application/x-tar` under the route, and the
+- **The API record** says `sends application/pdf` under the route, and the
   `Output` keeps its entry. A route that starts or stops sending raw bytes, or
   sends another media type, breaks whoever reads it, so it needs an acceptance:
   `ApiChange.media_type_changed` ([Breaking changes](#breaking-changes)).
@@ -442,11 +442,11 @@ test "a digest no release has is not found" {
 ### Answers that never change
 
 Nothing caches a route's answer unless the route says so. `cache: immutable`
-says the answer never changes, as an archive named by its own digest doesn't.
+says the answer never changes, as a scan of a signed deed doesn't.
 The route's 200 then carries `Cache-Control: public, max-age=31536000,
 immutable`, so a browser or a CDN keeps it for a year and doesn't ask again. It
 goes with `sends:` or with JSON. A failure never carries the header, so a 404
-for a release not published yet isn't kept.
+for a deed not scanned yet isn't kept.
 
 Anything else is `route.cache_invalid`:
 
@@ -469,25 +469,25 @@ needs an acceptance.
 // Generated by Jadpo from the routes of API main; update it with `jadpo api update`, never by hand.
 record api 1
 
-GET /archives/{digest: Text { pattern: "^sha256:[0-9a-f]{64}$" }}
+GET /deeds/{deed_ref: Text { pattern: "^D[0-9]{6}$" }}
     authentication none
-    output Archive
-    sends application/x-tar
+    output DeedScan
+    sends application/pdf
     status 200
     cache immutable
-    fails archive_not_found
+    fails deed_not_found
 
 GET /openapi.json
     generated openapi
     authentication none
     status 200
 
-output Archive
-    tar: Bytes
+output DeedScan
+    pdf: Bytes
 
-failure archive_not_found
+failure deed_not_found
     status 404
-    message "No release has this digest."
+    message "No deed has this reference."
 ```
 
 ## What a route runs
@@ -1851,7 +1851,7 @@ changed, `none` no longer allowed, an enum variant gone),
 (the code gone or its status changed). A route that now takes or
 answers with another type is compared field by field with the one it had. A
 route that now sends another media type, or starts or stops sending raw bytes,
-is `"main GET /archives/{digest: Text}": ApiChange.media_type_changed`
+is `"main GET /deeds/{deed_ref: Text}": ApiChange.media_type_changed`
 ([Sending raw bytes](#sending-raw-bytes)).
 A route made open to anyone is `PolicyChange.route_public`
 ([Protecting policy](09-policy.md#protecting-policy)).

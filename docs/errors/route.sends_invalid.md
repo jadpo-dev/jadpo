@@ -52,12 +52,5 @@ error: `GET /scans` sends raw bytes, but `Scan` isn't exactly one `Bytes` field
 check failed: 1 error, 1 file
 ```
 
-Send the bytes alone, and read the note from a route of its own:
-
-```jadpo fragment
-type Scan = Output {
-    body: Bytes
-}
-```
-
-See [Sending raw bytes](../language/07-http.md#sending-raw-bytes).
+Send the bytes alone, with `body` as `Scan`'s one field, and read the note from
+a route of its own. See [Sending raw bytes](../language/07-http.md#sending-raw-bytes).
