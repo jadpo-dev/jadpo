@@ -319,6 +319,44 @@ POST / {
 }
 ```
 
+`requests:` is a whole number of at least 1. `within:` is whole seconds
+from `1s` to `24h`; a longer allowance is a plan's limit, which is your
+app's data ([Not built in](#not-built-in)). Anything else
+is `route.rate_limit_invalid`.
+
+An API's limit is written the same way:
+
+```jadpo check project=rate-limits-on-an-api file=app.jadpo
+application {
+    apis: {
+        main: {
+            prefix: /
+            rate_limit: {
+                requests: 300
+                within: 1m
+            }
+        }
+    }
+}
+```
+
+### What a limit you write changes
+
+A limit you write stands in for the default limits, so it can loosen them
+as well as tighten them:
+
+- A route's own limit has a count of its own. A request to that route
+  counts against it and uses nothing of the caller's or address's default
+  allowance.
+- An API's limit is one count, which all the API's routes that write no
+  limit of their own share, as the defaults are shared across every route.
+- A request whose credential is refused still counts against its address's
+  default allowance as well, whatever the route says, so a generous limit
+  doesn't make guessing a credential any cheaper.
+- Routes Jadpo answers itself, such as sign-in, webhooks, the OpenAPI
+  document and health checks, keep their own limits. An API's limit doesn't
+  reach them.
+
 ### Who is counted: `by:`
 
 `by:` says what a limit counts requests by:
@@ -339,6 +377,28 @@ block doesn't get it a fresh count.
 The magic-link routes Jadpo generates
 ([Magic links](08-identity.md#magic-links)) are limited by address
 without you writing anything.
+
+### What a limit doesn't promise
+
+A limit is per caller or per address. It doesn't cap what everyone does
+between them: `by:` has no value that counts all callers together, so a
+client with many addresses gets the allowance many times. A limit makes an
+expensive anonymous route more costly to abuse, but it isn't a budget. A
+route that starts expensive work, or calls a model and spends money each
+time, needs a cap of its own as well: a limit on the work waiting, kept in
+your data, or for a model the AI budget's `over_budget`
+([Budgets](21-ai.md#budgets)).
+
+What else falls short depends on where the counts are kept:
+
+- **In memory, the native host's default.** Each server has its own counts,
+  so several servers each give the whole allowance. A restart starts every
+  count again, so a long window is only as good as the server's uptime. When
+  the 16 MB allowance runs out, the counters whose windows end soonest are
+  dropped first, so enough different addresses can win some of them a fresh
+  count.
+- **In Cloudflare's binding, on Workers.** Counts are per Cloudflare location
+  and approximate ([What the binding promises](#what-the-binding-promises)).
 
 ### Where the counts are kept: `rate_limits: { store: }`
 
@@ -367,8 +427,11 @@ shows the store Workers uses.
 
 A refused request gets a `429` with `Retry-After` and the standard
 `RateLimit` headers, its wording from translations like any failure's
-([Rate-limited requests](07-http.md#rate-limited-requests)). Each limit
-also appears in its route's OpenAPI entry and in `jadpo routes`.
+([Rate-limited requests](07-http.md#rate-limited-requests)). Each route you
+write shows what it is limited to, its own limit or the default one, in its
+OpenAPI entry (`x-jadpo-rate-limit`) and in `jadpo routes`. A route test's
+host counts nothing, so a route test never gets a 429; a limit is seen on
+`jadpo dev` and in a deployable.
 
 ### Counting on Workers
 
@@ -399,14 +462,20 @@ A connection with `driver: Driver.cloudflare_rate_limits` runs only on
 Workers. Its `namespace:` is the first of the namespace ids in your
 Cloudflare account that its bindings take. A binding counts one limit
 over one window, so each limit your app counts there is a binding of its
-own: `LIMITS_120_PER_60S` counts 120 a minute. The bindings are numbered
-from `namespace:`, in order of window and then of requests, and
-`jadpo build` writes each into the Wrangler file's `ratelimits`.
+own: `LIMITS_120_PER_60S` counts 120 a minute, and a route's `requests: 5`
+`within: 1m` is `LIMITS_5_PER_60S`. Two routes with the same limit share a
+binding and still count apart. The bindings are numbered from `namespace:`,
+in order of window and then of requests, and `jadpo build` writes each into
+the Wrangler file's `ratelimits`.
 
 This store can count only windows of 10 or 60 seconds. A limit with any
-other window is a compile error, which names Redis as a store that can
-count it. The default limits are all per minute, so only a limit you
-write yourself, such as `within: 1h`, can raise it.
+other window, such as `within: 1h`, is a compile error
+(`rate_limits.window_unsupported`), which names Redis as a store that can
+count it. It is never counted over another window instead. Until Redis's
+driver comes a Redis store counts in each instance's memory
+([A Redis store on Workers](#a-redis-store-on-workers)), so for now a limit
+on Workers is in practice per 10 seconds or per minute. The default limits
+are all per minute, so only a limit you write yourself can raise this.
 
 The binding says only whether a request is within the limit, so a
 refused client is told to try again after the window's whole length. If
@@ -2999,12 +3068,42 @@ whole number of at least 1.
   `ratelimits: [{ name, namespace_id, simple: { limit, period } }]`.
   Adding a limit can renumber the ones after it, which loses at most a
   window's counts, and those are harmless to lose.
-- **Windows** of 10 and 60 seconds. Every limit counted today is a
-  minute's (600 for a signed-in caller, 120 for an address), so all of
-  them map onto the binding. The error for any other window comes with a
-  route's own `rate_limit:`, the first thing that can write one.
+- **Windows** of 10 and 60 seconds. The default limits are a minute's
+  (600 for a signed-in caller, 120 for an address). A route or an API that
+  writes any other window is refused where it wrote it
+  (`rate_limits.window_unsupported`).
+- **A deployable's bindings.** Each is numbered from every limit the app
+  writes, so a limit has the same namespace in every deployable, which then
+  share its counts in each location, and a deployable's Wrangler file names
+  only those its own routes count.
 - **`Retry-After`** is the window's whole length, since the binding says
   only whether a request is within the limit, not when its window ends.
+
+### What the binding promises
+
+Cloudflare documents the binding as approximate, and these are its terms,
+read from its documentation and not yet measured
+([What is built](#what-is-built)). A limit on Workers is only as strong as
+this:
+
+- **Per location.** Each Cloudflare location keeps its own count, and they
+  don't add up to one worldwide limit. `requests: 5` is five in each location
+  a client's requests reach.
+- **Approximate.** Each check reads a count kept where the Worker runs, and
+  counts update in the background, so requests can pass the limit. It isn't
+  an accounting system. Cloudflare's own answer for a strict limit is a
+  limiter on a Durable Object, which Jadpo doesn't build.
+- **An address can be many people.** Cloudflare warns against keying a limit
+  on an address, since many users can share one on mobile networks. Prefer
+  `RateLimitKey.caller` where callers sign in, and don't set a limit by
+  address so low that a shared address trips it.
+- **A namespace id is the whole account's.** Two bindings with one
+  `namespace_id` share their counts for a key, across Workers. Give another
+  app in the account a `namespace:` far enough from this one's that its
+  numbers don't meet them.
+
+So use the binding to shed abuse, not to enforce a total
+([What a limit doesn't promise](#what-a-limit-doesnt-promise)).
 
 ### When the binding can't be asked
 
@@ -4178,7 +4277,7 @@ The errors this page describes are built with the feature they belong to.
 | The privacy emails | Not built yet. They come with data requests ([Data requests](15-personal-data.md#data-requests)). |
 | Mail packages | Built: a mail package as the connection, partials and `email.sent` ([Mail packages, partials and `email.sent`](#mail-packages-partials-and-emailsent)). |
 | The dev inbox and the health score | Built: the dev inbox, `jadpo email`, the health score, `email.health_problem` and `jadpo email check-domain` ([The dev inbox and the health score](#the-dev-inbox-and-the-health-score)), with SpamAssassin's rules in the score ([SpamAssassin in the health score](#spamassassin-in-the-health-score)). Not built yet: the inbox page as part of the developer console, and its link to each mail's trace, which comes with `jadpo trace`. |
-| Rate limits | Built: default rate limits with routes, and their store on Workers, Cloudflare's rate-limiting binding ([Rate limits on Workers](#rate-limits-on-workers)). Not built yet: Redis's driver, which comes with caches. Until then a deployable whose store is Redis counts in its own memory, which on Workers is the judgement call `rate_limits.counted_in_memory`. The binding's windows and the Wrangler entries aren't yet checked against the real edge. |
+| Rate limits | Built: default rate limits with routes, a route's and an API's own `rate_limit:`, and their store on Workers, Cloudflare's rate-limiting binding ([Rate limits on Workers](#rate-limits-on-workers)). Not built yet: Redis's driver, which comes with caches. Until then a deployable whose store is Redis counts in its own memory, which on Workers is the judgement call `rate_limits.counted_in_memory`. Not built: turning a limit off, which the design notes say needs an acceptance and which has no syntax yet; `requests:` and `within:` can only loosen it. A generated route's own limits don't appear in OpenAPI's `x-jadpo-rate-limit` or `jadpo routes`, and a magic-link refusal gives `Retry-After` without the `RateLimit` headers. The binding's windows, the Wrangler entries and what its documentation says of locations and accuracy aren't yet checked against the real edge. |
 | The capability seam | Built: the seam every capability's calls go through, with a delivery that hands its event to a capability, parked as `outcome_unknown` when a send without a key may have acted ([The seam every outside call goes through](#the-seam-every-outside-call-goes-through)). |
 | Files | Partly built. Built: the `files` capability's first part on that seam: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [Files: `put`, `read` and the disk driver in development](#files-put-read-and-the-disk-driver-in-development)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([Files: an export's pieces](#files-an-exports-pieces)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). A file's bytes are deleted once no record holds it, after the change commits, through the generated subscriber `files <store>`, and a day after a `put` when no record ever held them, a person's erasure and retention included ([Deleting and erasing](#deleting-and-erasing)). The floor is a monitoring threshold ([Monitoring thresholds](#monitoring-thresholds)). Not built yet: upload slots, multipart ones included, downloads, fields naming one store of files in entities of two databases, the S3 driver, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written. |
 | Flags | Built: `flags { }` of `Bool` and enum flags with their `default:`, `owner:` and `expires:`; `flags.<name>` in actions, tests and a route's `run:` arguments, worked out for the caller from `jadpo_flags` in `flags: { store: }`, held in each server's memory and fixed for the operation; a test's `flags:`; `flag.unknown`, `flag.read_context` and `flag.expired` ([Flags: declared, read and tested](#flags-declared-read-and-tested)). `jadpo flags list`, `set`, `reset` and `remove`, each change logged in `jadpo_flag_changes`; `flag.value_untested`; and `client: true` with each API's `GET /flags` ([Flags: changed, listed and removed](#flags-changed-listed-and-removed)). Not built yet: named tenants, which wait for tenancy to be settled for flags; and a user's erasure reaching their `id` in `jadpo_flags` and `jadpo_flag_changes`, which comes with erasures. |
@@ -4213,6 +4312,8 @@ The errors this page describes are built with the feature they belong to.
 - [`rate_limits.counted_in_memory`](../errors/rate_limits.counted_in_memory.md)
 - [`rate_limits.store_invalid`](../errors/rate_limits.store_invalid.md)
 - [`rate_limits.store_required`](../errors/rate_limits.store_required.md)
+- [`rate_limits.window_unsupported`](../errors/rate_limits.window_unsupported.md)
+- [`route.rate_limit_invalid`](../errors/route.rate_limit_invalid.md)
 - [`flag.declaration_invalid`](../errors/flag.declaration_invalid.md)
 - [`flag.expired`](../errors/flag.expired.md)
 - [`flag.read_context`](../errors/flag.read_context.md)

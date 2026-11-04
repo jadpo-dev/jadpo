@@ -20,6 +20,7 @@
 
 pub mod apis;
 pub mod generated;
+pub mod limit;
 pub mod openapi;
 pub mod record;
 pub mod served;
@@ -36,6 +37,7 @@ use jadpo_std::{HttpMethod, RouteAuthentication, SuccessStatus};
 use jadpo_syntax::ast::{self, AstNode, Decl, Expr, MemberItem};
 
 pub use apis::{Api, Apis, api_problems, api_table};
+pub use limit::limit_of;
 
 use crate::lookups::{Lookup, Name, NameView, SigView, file_at};
 use crate::resolve::{Names, Want};
@@ -64,12 +66,6 @@ pub const ROUTE_ITEMS: [&str; 11] = [
 
 /// What a route group holds besides its routes.
 pub const GROUP_ITEMS: [&str; 2] = ["prefix", "api"];
-
-/// The route items a later chunk builds, with what builds them.
-const LATER_ITEMS: [(&str, &str); 1] = [(
-    "rate_limit",
-    "A route's own `rate_limit:` comes with the rest of area 16's rate limits; every route already has the default limits",
-)];
 
 /// Why a streaming route answers 200 and waits for nothing
 /// (`route.stream_invalid`).
@@ -218,6 +214,9 @@ pub struct RouteModel {
     /// their own passkeys before it runs (`confirm: Confirmation.passkey`,
     /// area 8).
     pub confirm: bool,
+    /// The limit it writes with `rate_limit:` (area 16, "Rate limits");
+    /// its API's, or the defaults, when `None`.
+    pub rate_limit: Option<limit::Limit>,
     pub run: Run,
     /// What it waits for before it answers, with `settle:`; its `output:`
     /// is then what `answer:` gives.
@@ -290,6 +289,9 @@ pub struct GroupRead {
     /// Each route that read cleanly: its label and where its method and
     /// path are written, for problems found across groups.
     pub spans: Vec<(String, Span)>,
+    /// Each limit a route writes and where its `within:` is, for what the
+    /// store can count.
+    pub limits: Vec<(limit::Limit, Span)>,
     /// Each route that read cleanly: its label and where its `run:` names
     /// what it runs, for what that action is found to do (chunk G2).
     pub run_spans: Vec<(String, Span)>,
@@ -429,6 +431,7 @@ pub fn group_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> Op
         path: &symbol.path,
         out: Vec::new(),
         spans: Vec::new(),
+        limits: Vec::new(),
         run_spans: Vec::new(),
     };
     let model = reader.group(&symbol, &decl).map(Arc::new);
@@ -436,6 +439,7 @@ pub fn group_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> Op
         path: symbol.path.clone(),
         model,
         spans: reader.spans,
+        limits: reader.limits,
         run_spans: reader.run_spans,
         problems: reader.out,
     })
@@ -930,14 +934,20 @@ pub fn table_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     out
 }
 
-/// Routes that need a signed-in caller when nothing signs anyone in (area
-/// 8; area 14, "Build-only errors in `check`": `jadpo check` reports what couldn't run),
+/// Routes that need a signed-in caller where nothing signs anyone in (area
+/// 8; area 14, "Build-only errors in `check`": `jadpo check` reports what couldn't run):
+/// in an API whose `authentication: []` accepts no way to sign in, each
+/// reported where it is written, and in an app that declares none,
 /// reported once, at the first in file order.
 #[salsa::tracked(returns(ref))]
 pub fn signin_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
-    if crate::identity::identity(db, project).signs_in() {
-        return Vec::new();
-    }
+    let apis = api_table(db, project);
+    let shut = |api: &str| {
+        apis.get(api)
+            .is_some_and(|api| api.methods.as_ref().is_some_and(Vec::is_empty))
+    };
+    let signs_in = crate::identity::identity(db, project).signs_in();
+    let mut out = Vec::new();
     let mut protected: Vec<(String, Span)> = Vec::new();
     for name in group_names(db, project) {
         let Some(read) = group_read(db, project, Name::new(db, name.clone())) else {
@@ -948,16 +958,37 @@ pub fn signin_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             if !route.authentication.needs_caller() {
                 continue;
             }
-            if let Some((label, span)) =
-                read.spans.iter().find(|(label, _)| *label == route.label())
-            {
+            let Some((label, span)) = read.spans.iter().find(|(label, _)| *label == route.label())
+            else {
+                continue;
+            };
+            if shut(&model.api) {
+                out.push(
+                    Diagnostic::new(
+                        &rule::API_ROUTE_NEEDS_SIGN_IN,
+                        format!(
+                            "`{label}` needs a signed-in caller, but API `{}` accepts no way to sign in",
+                            model.api
+                        ),
+                    )
+                    .at(span.clone(), "needs a signed-in caller")
+                    .reason(format!(
+                        "Every route needs a signed-in caller unless it says `authentication: RouteAuthentication.none`, and API `{}` says `authentication: []`, so no request could reach this one.",
+                        model.api
+                    ))
+                    .next(format!(
+                        "List the ways to sign in API `{}` accepts in its `authentication:`, or let anyone call the route with `authentication: RouteAuthentication.none`",
+                        model.api
+                    )),
+                );
+            } else if !signs_in {
                 protected.push((label.clone(), span.clone()));
             }
         }
     }
     protected.sort_by(|a, b| (&a.1.path, a.1.start).cmp(&(&b.1.path, b.1.start)));
     let Some((label, span)) = protected.first() else {
-        return Vec::new();
+        return out;
     };
     let others = protected.len() - 1;
     let reach = match others {
@@ -965,7 +996,7 @@ pub fn signin_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         1 => "this route or the other one that needs a caller".to_string(),
         n => format!("this route or the {n} others that need a caller"),
     };
-    vec![
+    out.push(
         Diagnostic::new(
             &rule::SEMANTIC_AUTH_NOT_SET_UP,
             format!("`{label}` needs a signed-in caller, but nothing signs anyone in"),
@@ -975,7 +1006,8 @@ pub fn signin_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             "Every route needs a signed-in caller unless it says `authentication: RouteAuthentication.none`, and `authentication.jadpo` declares no way to sign in that is built, so no request could reach {reach}."
         ))
         .next("Declare how callers sign in, `authentication { browser_session: { cookie: \"<name>\" } }`, or let anyone call the route with `authentication: RouteAuthentication.none`"),
-    ]
+    );
+    out
 }
 
 /// Whether one request could match both paths, a fixed segment beating a
@@ -1018,6 +1050,7 @@ struct Reader<'a> {
     path: &'a str,
     out: Vec<Diagnostic>,
     spans: Vec<(String, Span)>,
+    limits: Vec<(limit::Limit, Span)>,
     run_spans: Vec<(String, Span)>,
 }
 
@@ -1542,17 +1575,6 @@ impl Reader<'_> {
                         self.duplicate(&written, &key, &first, "route");
                         continue;
                     }
-                    if let Some((_, why)) = LATER_ITEMS.iter().find(|(item, _)| *item == written) {
-                        self.out.push(
-                            Diagnostic::new(
-                                &rule::TOOLCHAIN_NOT_BUILT_YET,
-                                format!("A route's `{written}:` isn't built yet"),
-                            )
-                            .at(self.span(&key), "decided, not built")
-                            .reason(format!("{why}."))
-                            .next(format!("Leave `{written}:` out for now")),
-                        );
-                    }
                     items.found.push((written, member));
                 }
                 MemberItem::BareMember(bare) => {
@@ -1608,6 +1630,12 @@ impl Reader<'_> {
                 .unwrap_or(jadpo_std::http::DEFAULT_DEADLINE_MS),
             None => jadpo_std::http::DEFAULT_DEADLINE_MS,
         };
+        // `rate_limit:`.
+        let rate_limit = items.get("rate_limit").and_then(|member| {
+            let (limit, within) = limit::read(self.path, member, &mut self.out)?;
+            self.limits.push((limit, within));
+            Some(limit)
+        });
         // `output:`.
         let output = items.get("output").map(|member| self.output(member));
 
@@ -1852,6 +1880,7 @@ impl Reader<'_> {
             authentication: self.authentication,
             caller: self.caller.as_ref().map(|(kind, _)| *kind),
             confirm,
+            rate_limit,
             run,
             settle: settle.map(|(settle, _, _)| settle),
             sends,

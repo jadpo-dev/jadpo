@@ -141,20 +141,27 @@ fn agents_md_gives_a_working_method_what_is_built_and_the_examples() {
     let agents = fs::read_to_string(parent.join("shop/AGENTS.md")).expect("AGENTS.md");
     for phrase in [
         "One concern at a time",
-        "`jadpo check` after each file",
+        "`jadpo check` after each connected change",
+        "`layout.unused_declaration`",
         "one topic",
         "Declare a feature and check it",
         "`jadpo help <rule>`",
         "`jadpo acceptance new <purpose>`",
         "never write the reason yourself",
         "## The closest example for each feature",
-        "https://github.com/jadpo-dev/jadpo/tree/main/examples/29-lending-desk",
+        &format!(
+            "https://github.com/jadpo-dev/jadpo/tree/v{}/examples/29-lending-desk",
+            env!("CARGO_PKG_VERSION")
+        ),
         "## What isn't built yet",
         "https://jadpo.dev/docs/identity-built.md",
     ] {
         assert!(agents.contains(phrase), "{phrase:?} in:\n{agents}");
     }
-    assert!(!agents.contains("{name}") && !agents.contains("{line}"));
+    assert!(
+        !agents.contains("{name}") && !agents.contains("{line}") && !agents.contains("{release}")
+    );
+    assert!(!agents.contains("/tree/main/"), "{agents}");
     let words = agents.split_whitespace().count();
     assert!(words < 2_000, "{words} words");
 }

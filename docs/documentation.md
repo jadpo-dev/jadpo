@@ -149,7 +149,12 @@ that summary; a command's page is its usage, arguments, flags,
 examples, the flags every command takes and what `--json` gives (the
 same on each page), and errors. The primer is `docs/primer.md` with its hidden blocks
 left out; the docs check compiles its every example, refuses a `fragment`
-in it and keeps it to 3,000 to 5,000 tokens, its words times 1.3. A
+in it and keeps it to 3,000 to 5,000 tokens, its words times 1.3. What
+a release ships isn't prose on these pages: `tools/docs/agent_guidance.py`
+writes the primer's `## Not built yet` from the areas' "What is built"
+tables, and the first Learn page's `## Install it` from
+`dist-workspace.toml`, and the gate fails when they are stale or when
+another line of either says how to get `jadpo` by hand. A
 Learn page shows only the files it adds or changes; the docs check
 compiles and tests its project as the pages before it built it, less
 what its front matter `removes:`, making the migrations and the API
@@ -243,8 +248,9 @@ serves the release's own copy. The site's `llms.txt` links the skill.
 
 1. A project made by `jadpo new` holds a short `AGENTS.md`: what Jadpo
    is, the version the app declares in `app.jadpo`, where the docs are, a
-   working method, the closest example for each feature and what isn't
-   built yet ([`jadpo new`](language/14-tooling.md#jadpo-new)). Agents
+   working method, the closest example for each feature at that `jadpo`'s
+   own release and what isn't built yet
+   ([`jadpo new`](language/14-tooling.md#jadpo-new)). Agents
    load that file on their own.
 2. The agent reads the primer once per session; it is the same every time,
    so prompt caching keeps it cheap.

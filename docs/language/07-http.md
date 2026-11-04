@@ -1505,7 +1505,8 @@ RateLimit: "default";r=0;t=42
 
 `Retry-After` gives the seconds to wait. `RateLimit` and `RateLimit-Policy`
 are the standard headers of the IETF draft
-`draft-ietf-httpapi-ratelimit-headers`. The failure's wording for people
+`draft-ietf-httpapi-ratelimit-headers`: the limit's requests (`q`) and window
+in seconds (`w`), and none left (`r=0`) until `t` seconds from now. The failure's wording for people
 comes from translations, as every failure's does, and is in the per-locale
 failure export ([OpenAPI](#openapi)).
 
@@ -1567,6 +1568,15 @@ GET /v1/openapi.json
   accepts no way to sign in that is built, every route it has lets anyone
   call it, so its document tells no one more than its routes do, and
   anyone may read it, as above.
+- **An API that says `authentication: []` accepts no way to sign in,**
+  whatever `authentication.jadpo` declares, so anyone may read its document
+  and its record lists no `authentication` line. Every route in it says
+  `authentication: RouteAuthentication.none`: one that needs a caller could
+  never be reached, and is refused
+  ([`api.route_needs_sign_in`](../errors/api.route_needs_sign_in.md)). Opening
+  the document of an API that had a sign-in is `PolicyChange.route_public`, as
+  opening any route is. An API with no `authentication:` line accepts every
+  way the application declares.
 - **It answers 200 with the document exactly as `jadpo check` writes it**
   to `build/openapi/<api>.json`, as `application/json`. Like any route that
   takes no input, it answers a query string or a body with 422
@@ -1584,6 +1594,7 @@ package, with no corrections or recordings
 | Field | On | Holds |
 |---|---|---|
 | `x-jadpo-changes` | Every operation | Whether the operation changes something: `true` for a route of any other method, `false` for a `GET`, whatever it runs, and for the runtime's own reads |
+| `x-jadpo-rate-limit` | Every route you write | What it is limited to, its own limit, its API's or the default: `requests`, `within` and `by`, as `rate_limit:` writes them ([Rate limits](16-built-in-services.md#rate-limits)) |
 | `x-jadpo-confirm` | A route with `confirm:` | What the signed-in person presents before it runs, `passkey` ([Confirm one request with a passkey](08-identity.md#confirm-one-request-with-a-passkey-confirm-confirmationpasskey)); the operation lists the `X-Jadpo-Confirmation` header and the 403 `confirmation_required` |
 | `x-jadpo-idempotency` | Every operation that reads an `Idempotency-Key` | Whether it takes `Idempotency-Key`, and whether the API requires it: `header`, `required` (the API's `idempotency:`), `keeps` (`response`: a repeat gets the first answer; `request`: a repeat waits for the first but runs again; `nothing`: running it again changes nothing, or no store keeps it), `window` (`1d`), `max_length` (255), and the codes a key's repeat answers with, `in_use` (`conflict`) and `reused` (`idempotency_key_reused`) |
 | `x-jadpo-sends` | The media type of a route with `sends:` | The `output` and the `field` its body is ([Sending raw bytes](#sending-raw-bytes)) |
@@ -1880,7 +1891,7 @@ where an app uses it.
 | Feature | Status |
 |---|---|
 | Checking routes | Built: `jadpo check` checks route groups, their prefixes and APIs (with `idempotency:`), methods and typed placeholders, the one input (from the query string for `GET` and `DELETE`, the JSON body otherwise, and `header:` fields), `output:` and `status:`, `deadline:`'s range and what `run:` calls, every route of the project against the others and the health paths, and each API's record. |
-| OpenAPI | Built: `jadpo check` writes one OpenAPI document per API to `build/openapi/`, and the failure wording for client apps beside it. Each API serves its own document at `<prefix>/openapi.json` (`serve_openapi: false` turns it off), listed in its record, its document and `jadpo routes`, and the documents carry the `x-jadpo` fields the OpenAPI importer reads ([OpenAPI](#openapi)). OpenAPI derives each route's responses from what it runs and shows `ZonedTime`, `Zone` and a mixed enum as they are sent. |
+| OpenAPI | Built: `jadpo check` writes one OpenAPI document per API to `build/openapi/`, and the failure wording for client apps beside it. Each API serves its own document at `<prefix>/openapi.json` (`serve_openapi: false` turns it off, `authentication: []` opens it to anyone), listed in its record, its document and `jadpo routes`, and the documents carry the `x-jadpo` fields the OpenAPI importer reads ([OpenAPI](#openapi)). OpenAPI derives each route's responses from what it runs and shows `ZonedTime`, `Zone` and a mixed enum as they are sent. |
 | Serving a request | Built: the runtime's HTTP component routes a request, decodes and checks its input (each problem as `{ field, rule }`), runs the action or query, and answers with the output or the failure envelope, its `request_id` and `x-request-id`, with the status the failure's kind sets; it answers `HEAD` and `OPTIONS` itself and counts the default rate limits. It reads a body only as JSON, and refuses a query string or body a route doesn't read, a header it can't read and a body over 1 MB. |
 | Deadlines and concurrent changes | Built: the runtime stops a route at its deadline without committing, even work that never waits, and runs an action again on a concurrent change found as it commits. |
 | Health endpoints | Built: `/health/live` and `/health/ready`. |
@@ -1898,7 +1909,8 @@ where an app uses it.
 | Streaming | Built: a route whose action returns an `AiStream` sends a model's answer as server-sent events ([Streaming a model's answer](#streaming-a-models-answer), and `route.stream_invalid`). |
 | Failure wording from a build | Not built yet: `jadpo check` writes `<api>.failures.<locale>.json` beside each OpenAPI document, and `jadpo build` is to write it too. |
 | `x-jadpo-events` | Not built yet: it waits for publishing events outward ([Where events travel](12-jobs-and-events.md#where-events-travel)). |
-| A route's own `rate_limit:` and the Redis store for rate limits | Not built yet ([Rate limits](16-built-in-services.md#rate-limits)). |
+| Rate limits | Built: a route's own `rate_limit:` and an API's ([Rate limits](16-built-in-services.md#rate-limits)). |
+| The Redis store for rate limits | Not built yet ([Rate limits](16-built-in-services.md#rate-limits)). |
 | Classifying breaking changes and their acceptances | Built ([Acceptances](18-records-and-manifest.md#acceptances)). |
 | The `Jadpo-Revision` header | Not built yet: it comes with caches ([Write revisions](#write-revisions)). |
 
@@ -1944,6 +1956,7 @@ what it runs; in a project each lives in its own folder.
 - [`api.prefix_overlap`](../errors/api.prefix_overlap.md)
 - [`api.idempotency_invalid`](../errors/api.idempotency_invalid.md)
 - [`api.authentication_invalid`](../errors/api.authentication_invalid.md)
+- [`api.route_needs_sign_in`](../errors/api.route_needs_sign_in.md)
 - [`api.serve_openapi_invalid`](../errors/api.serve_openapi_invalid.md)
 - [`api.setting_unknown`](../errors/api.setting_unknown.md)
 

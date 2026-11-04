@@ -411,6 +411,11 @@ pub fn run(
             standard::parse_in(raw, ty, form, country)
         }
         (Op::TextFormat | Op::TextFrom | Op::TextParse, _) => Err(Fault::Shape),
+        // Joining bytes (area 19, "Bytes"): `first`'s, then `second`'s.
+        (Op::BytesConcat, [Value::Bytes(first), Value::Bytes(second)]) => {
+            Ok(bytes_value(&[&first[..], &second[..]].concat()))
+        }
+        (Op::BytesConcat, _) => Err(Fault::Shape),
         // The encodings (area 19, "Encodings"): decoding fails `malformed`.
         (Op::EncodingToBase64, [Value::Bytes(bytes)]) => {
             Ok(Value::text(&encoding::to_base64(bytes)))
@@ -904,6 +909,7 @@ mod tests {
                 | Op::CryptoVerifyJwt
                 | Op::CryptoVerifyPassword
                 | Op::CryptoVerifySignature => continue,
+                Op::BytesConcat => vec![bytes.clone(), bytes.clone()],
                 Op::EncodingToBase64
                 | Op::EncodingToBase64url
                 | Op::EncodingToHex

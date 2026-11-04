@@ -96,12 +96,15 @@ todo-app/
   where the docs are (the primer, the index and the error pages on the
   site, as [How an agent uses it](../documentation.md) describes), and
   which commands to run after a change. It gives an agent a working
-  method: one concern at a time, `jadpo check` after each file, one
+  method: one concern at a time, `jadpo check` after each connected
+  change (a declaration and the first thing that uses it, since a
+  supporting type alone is `layout.unused_declaration`), one
   topic read rather than a whole page, a feature declared and checked
   before it is designed around, `jadpo help <rule>` for an error, and
   `jadpo acceptance new` then a stop for a change that needs a person
   ([Acceptances](18-records-and-manifest.md#acceptances)). It ends with
-  the closest teaching example for each feature and what isn't built
+  the closest teaching example for each feature, linked at this
+  `jadpo`'s own release, and what isn't built
   yet, area by area, both written from the docs by
   `tools/docs/agent_guidance.py`, so they can't drift from them. `.gitignore` holds `build/`, and
   `.gitattributes` holds the lines that keep records readable in a diff
@@ -312,7 +315,11 @@ queries send, and what a prompt sends a model.
 ### `jadpo routes`
 
 Lists every route with its full method and path, its file, its API, its
-authentication and the query or action it runs. Authentication shows
+authentication, the query or action it runs and, for a route you write, what
+it is limited to: `5/1h ip` is five an hour for each address, `600/1m caller`
+a minute's 600 for each caller ([Rate limits](16-built-in-services.md#rate-limits)).
+`--json` gives it as `rate_limit`, `null` for a route the runtime answers.
+Authentication shows
 `required`, `none` or `fresh` ([Routes: signed in by
 default](08-identity.md#routes-signed-in-by-default)). A connection's
 generated webhook shows `signature` ([External
@@ -813,6 +820,7 @@ connection or operation is `cli.package_arguments`, with the nearest.
 | `jadpo package recipe <package> <recipe> --into <domain>` | Copies a package's recipe into your code |
 | `jadpo package record <connection> <operation>` | Confirms an operation against the sandbox and saves the recording |
 | `jadpo package conform <package> <capability>` | Runs a capability's conformance suite |
+| `jadpo package protocol <document>` | Checks a registry's OpenAPI document against the registry protocol |
 | `jadpo package check` | Runs the publishing bar on a package |
 | `jadpo package publish [--dry-run]` | Asks the registry to release the package from a tag |
 | `jadpo package preview [<folder>]` | Serves the package's registry page locally |
@@ -929,6 +937,26 @@ your machine.
 connection to the package. It is refused without that connection, without
 its credential or address set, or without `ai:` through it
 (`conform.refused`). A case that fails is `conform.failed`.
+
+### `jadpo package protocol`
+
+`protocol <document>` is [the registry protocol](11-integrations.md#the-registry-protocol)'s
+conformance test: it checks a registry application's OpenAPI document against
+the protocol's table, so that application's CI needs only `jadpo`, at the
+release it targets. The document is a file, such as the
+`build/openapi/main.json` that `jadpo check` writes, an `https://` address, or
+an `http://` address on this machine. It needs no project.
+
+A document that conforms is one line:
+
+```text
+✓ Conforms to the registry protocol  build/openapi/main.json · 10 requests
+```
+
+One that differs is `protocol.mismatch` with each difference under its request,
+and exits 1; `--json` gives `document`, `conforms`, `requests` and
+`mismatches`, each with its `operation` and `problem`. A document it can't read
+is `protocol.unreadable`, which is not a difference.
 
 ### `jadpo package check`
 
@@ -3063,6 +3091,8 @@ its command is built.
 | `acceptance.unmatched` | `check`, `build` | Acceptance lists a change this change doesn't make |
 | `conform.failed` | `package conform` | A package's answers to `jadpo package conform` don't fit the capability it fills, or the suite couldn't run |
 | `conform.refused` | `package conform` | The conformance suite wasn't sent to the provider's live API, because the app has no connection to the package, nothing sets the connection's credential or address, or `ai:` doesn't ask its models through it |
+| `protocol.mismatch` | `package protocol` | A registry's OpenAPI document differs from the registry protocol |
+| `protocol.unreadable` | `package protocol` | The document given to `jadpo package protocol` couldn't be read as OpenAPI's JSON |
 | `recording.failed` | `package record`, `ai record` | A recording by `jadpo package record` or `jadpo ai record` got no answer worth keeping from the sandbox or the model, or its call couldn't be made |
 | `recording.refused` | `package record`, `ai record` | A recording was refused before anything was sent, because its connection would call a live API or has nothing set for its sandbox, its package is installed, or there is nothing to ask its prompt with |
 | `configuration.local_changed` | `config` | Something else saved `.env.local` while `jadpo config set` was saving a value in it |

@@ -45,6 +45,8 @@ mod depot;
 mod external;
 /// Teaching example 23's kiosk (chunks 8.2b, 8.2d, 8.2i and 8.4f).
 mod kiosk;
+/// A route's own rate limit (chunk G4).
+mod limits;
 /// After the response (chunk 8.2h) and a Worker's limits (chunk 8.4a).
 mod newsroom;
 /// Cloudflare Queues' consumer (chunk 8.2k).

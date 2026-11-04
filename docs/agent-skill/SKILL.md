@@ -22,7 +22,8 @@ languages. The docs are the only source, and the compiler is the check.
 
 ## Check your work
 
-Run both after every change, and read the result before writing more:
+Run both after each connected change, a declaration and the first thing
+that uses it, and read the result before writing more:
 
 ```text
 jadpo check --json
