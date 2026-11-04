@@ -689,7 +689,7 @@ pub fn standard_object_schema(entry: &jadpo_std::StandardType) -> Value {
     let members = matches!(entry.json, jadpo_std::standard::Json::Members(_));
     if let jadpo_std::standard::Holds::Object(fields) = entry.holds {
         for (name, part) in fields {
-            let name = jadpo_std::standard::wire_name(entry.name, name);
+            let name: &str = name;
             properties.set(name, part_schema(*part));
             if !(members && part.required().1) {
                 required.push(name);

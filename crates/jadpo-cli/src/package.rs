@@ -107,6 +107,10 @@ pub const ACTIONS: &[Value] = &[
         description: "Run a capability's conformance suite against a package",
     },
     Value {
+        name: "protocol",
+        description: "Check a registry's OpenAPI document against the registry protocol",
+    },
+    Value {
         name: "add",
         description: "Install a package from a folder or a git repository's tag",
     },
@@ -204,6 +208,7 @@ pub fn package(call: &Call) -> Reply {
         Some("import") => crate::package_import::import(call),
         Some("record") => crate::package_record::record(call),
         Some("conform") => crate::package_conform::conform(call),
+        Some("protocol") => crate::package_protocol::protocol(call),
         Some("recipe") => crate::package_recipe::recipe(call),
         Some("search") => crate::package_search::search(call),
         Some("audit") => crate::package_audit::audit(call),

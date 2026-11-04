@@ -93,5 +93,5 @@ pub fn problem_text(record: &Record) -> Result<String, Fault> {
     if let Some(Value::Int(status)) = record.get("status") {
         return Ok(status.to_string());
     }
-    Ok(text("type_").unwrap_or_else(|| "about:blank".to_string()))
+    Ok(text("type").unwrap_or_else(|| "about:blank".to_string()))
 }

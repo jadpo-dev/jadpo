@@ -37,9 +37,10 @@ pub struct Api {
     pub prefix: Vec<String>,
     /// Whether its writes need an `Idempotency-Key`.
     pub idempotency: Idempotency,
-    /// The sign-in methods it accepts, in written order; empty when it
-    /// names none, and accepts every declared method.
-    pub methods: Vec<AuthenticationMethod>,
+    /// The sign-in methods its `authentication:` lists, in written order:
+    /// `None` when it has no such line, and accepts every declared method;
+    /// `Some` of an empty list for `authentication: []`, which accepts none.
+    pub methods: Option<Vec<AuthenticationMethod>>,
     /// Whether it serves its OpenAPI document at `<prefix>/openapi.json`
     /// (area 7, "OpenAPI"): unless `serve_openapi: false`.
     pub serve_openapi: bool,
@@ -158,7 +159,7 @@ pub fn api_table(db: &dyn Db, project: Project) -> Apis {
             name: MAIN.to_string(),
             prefix: Vec::new(),
             idempotency: Idempotency::Optional,
-            methods: Vec::new(),
+            methods: None,
             serve_openapi: true,
             rate_limit: None,
         }]
@@ -175,7 +176,7 @@ pub fn api_problems(db: &dyn Db, project: Project) -> &[Diagnostic] {
 struct Read {
     prefix: Vec<String>,
     idempotency: Idempotency,
-    methods: Vec<AuthenticationMethod>,
+    methods: Option<Vec<AuthenticationMethod>>,
     serve_openapi: bool,
     rate_limit: Option<(super::limit::Limit, Span)>,
 }
@@ -191,7 +192,7 @@ fn read_api(
 ) -> Option<Read> {
     let mut prefix = None;
     let mut idempotency = Idempotency::Optional;
-    let mut methods = Vec::new();
+    let mut methods = None;
     let mut serve_openapi = true;
     let mut rate_limit = None;
     for (key, member) in tree::members(list) {
@@ -246,7 +247,7 @@ fn read_api(
                 }
             },
             "authentication" => {
-                methods = read_methods(db, project, path, api, &member, out);
+                methods = Some(read_methods(db, project, path, api, &member, out));
             }
             "serve_openapi" => {
                 let value = member.value();
@@ -423,15 +424,18 @@ fn read_idempotency(value: Option<&Expr>) -> Result<Idempotency, String> {
 }
 
 /// The sign-in methods API `api` accepts (area 8): its own
-/// `authentication:` list, or every method `authentication.jadpo`
-/// declares when it names none.
+/// `authentication:` list, which `[]` leaves empty, or every method
+/// `authentication.jadpo` declares when it has no such line.
 pub fn accepted_methods(
     db: &dyn Db,
     project: Project,
     api: &str,
 ) -> Vec<jadpo_std::AuthenticationMethod> {
     match api_table(db, project).get(api) {
-        Some(declared) if !declared.methods.is_empty() => declared.methods.clone(),
+        Some(Api {
+            methods: Some(listed),
+            ..
+        }) => listed.clone(),
         _ => crate::identity::identity(db, project)
             .methods
             .iter()

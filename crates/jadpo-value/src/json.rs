@@ -1442,9 +1442,7 @@ impl Codecs<'_> {
                         out.push(',');
                     }
                     first = false;
-                    let name = shape
-                        .and_then(|shape| shape.json_name(at))
-                        .unwrap_or_else(|| jadpo_std::standard::wire_name(&record.ty, name));
+                    let name = shape.and_then(|shape| shape.json_name(at)).unwrap_or(name);
                     write_string(name, out);
                     out.push(':');
                     self.write(*codec, field, out);

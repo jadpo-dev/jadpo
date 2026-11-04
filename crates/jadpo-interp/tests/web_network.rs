@@ -65,7 +65,7 @@ function worth_retrying(status: HttpStatus) -> YesNo {
 /// The problem a sold-out item is reported with.
 function sold_out(item_page: ShopLink) -> ProblemDetails {
     return ProblemDetails {
-        type_: \"https://tea.example/problems/sold-out\"
+        type: \"https://tea.example/problems/sold-out\"
         status: 409
         title: \"Sold out\"
         detail: \"Nothing is left of this item.\"
