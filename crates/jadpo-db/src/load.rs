@@ -100,7 +100,25 @@ pub fn load_whole(target: &Path) -> Loaded {
 /// wait until the app calls into them ([`crate::lazy`]).
 fn read_into(target: &Path, db: Database, lazily: bool) -> Loaded {
     let (root, files) = read(target);
-    load_files_into(root, &files, db, lazily)
+    let mut loaded = load_files_into(root, &files, db, lazily);
+    if loaded.project.layout(&loaded.db) == Layout::Project && has_a_commit(&loaded.root) {
+        loaded.project.set_committed(&mut loaded.db).to(true);
+    }
+    loaded
+}
+
+/// Whether git has a commit holding anything under `root`: not outside a
+/// repository, before the first commit, or for a project git ignores.
+fn has_a_commit(root: &Path) -> bool {
+    std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["log", "-1", "--format=%H", "--", "."])
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .is_ok_and(|output| output.status.success() && !output.stdout.is_empty())
 }
 
 /// Reads what `target` names from disk, as [`load`] finds it: the folder

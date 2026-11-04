@@ -213,6 +213,15 @@ fn human_decisions_take_the_decision_colour() {
 }
 
 #[test]
+fn a_painted_word_is_an_escape_sequence_never_the_colours_numbers() {
+    let mut style = Style::new(Mode::Rich);
+    style.color = Some(Depth::Ansi16);
+    assert_eq!(Token::Accent.painted("?", &style), "\x1b[36m?\x1b[0m");
+    style.color = None;
+    assert_eq!(Token::Accent.painted("?", &style), "?");
+}
+
+#[test]
 fn tokens_use_exact_values_only_when_the_theme_is_known() {
     assert_eq!(Token::Failure.sgr(Depth::TrueColor, None), "31");
     assert_eq!(Token::Muted.sgr(Depth::Ansi256, None), "2");

@@ -58,6 +58,7 @@ pub fn test(call: &Call) -> Reply {
         keep_failed: call.flag("--keep-failed"),
         ci: crate::run::in_ci(&call.environment),
         record: false,
+        full: call.flag("--full"),
     };
     if call.flag("--watch") {
         // Mistakes in what to run end the command before it starts
@@ -144,17 +145,25 @@ pub(crate) fn view(ran: Ran) -> (Screen, Json, Vec<Diagnostic>, BTreeMap<String,
             let failed = run.failed();
             let diagnostics = if failed > 0 {
                 let ran = run.results.len();
-                vec![
-                    Diagnostic::new(
+                let failed = Diagnostic::new(
                         &rule::TEST_FAILED,
                         format!(
                             "{failed} of {ran} {} failed",
                             if ran == 1 { "test" } else { "tests" }
                         ),
                     )
-                    .reason("Each failed test's report is in `data.tests`: its code, the values in its assertion or what happened instead, and the command that reruns it.")
-                    .next("Fix each failure, then run `jadpo test --failed`"),
-                ]
+                    .reason("Each failed test's report is in `data.tests`: its code, the values in its assertion or what happened instead, and the command that reruns it.");
+                vec![if run.needs_a_person() {
+                    // A fault only a person can act on is said at the top,
+                    // where an agent reading only this would otherwise be
+                    // told to fix it (chunk A13).
+                    failed.next_for(
+                        "Ask your user about each failure whose `next` ends `(human)`, fix the rest, then run `jadpo test --failed`",
+                        jadpo_diag::Decider::Human,
+                    )
+                } else {
+                    failed.next("Fix each failure, then run `jadpo test --failed`")
+                }]
             } else {
                 Vec::new()
             };

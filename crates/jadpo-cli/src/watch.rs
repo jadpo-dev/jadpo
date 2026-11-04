@@ -15,7 +15,7 @@ use std::io::Write;
 
 use jadpo_term::{
     Block, Change, ChangeMark, ColorChoice, Environment, Fact, Json, Screen, Stream, Style,
-    envelope, shown_path,
+    envelope, short_envelope, shown_path,
 };
 use jadpo_test::Options;
 use jadpo_test::watch::{Edit, EditKind, Event, Poller, Watch};
@@ -49,6 +49,8 @@ pub struct Watcher {
     out: Style,
     err: Style,
     json: bool,
+    /// `--full`: each line is whole rather than short (chunk A14).
+    full: bool,
     /// A waiting line is showing on stderr and can be erased.
     live: bool,
     /// The waiting line last written where it can't be erased.
@@ -85,8 +87,17 @@ impl Watcher {
         let (watch, event) = match Watch::start_with(args.options.clone(), db) {
             Ok(started) => started,
             Err(ran) => {
-                let output =
-                    crate::run::finish(Some("test"), reply(ran), env, args.json, args.choice);
+                let output = crate::run::finish(
+                    Some("test"),
+                    reply(ran),
+                    env,
+                    args.json,
+                    args.choice,
+                    &crate::run::Asked {
+                        full: args.options.full,
+                        started: None,
+                    },
+                );
                 return Err((
                     Frame {
                         erase: false,
@@ -102,6 +113,7 @@ impl Watcher {
             out: Style::detect(env, false, args.choice, Stream::Stdout),
             err: Style::detect(env, false, args.choice, Stream::Stderr),
             json: args.json,
+            full: args.options.full,
             live: false,
             shown: None,
         };
@@ -125,7 +137,7 @@ impl Watcher {
         if self.json {
             return Frame {
                 erase: false,
-                stdout: json_line(event, time.is_none()),
+                stdout: json_line(event, time.is_none(), self.full),
                 stderr: String::new(),
             };
         }
@@ -239,7 +251,12 @@ fn key_bar(files: usize, failing: usize) -> Block {
 
 /// One step as one envelope on one line: `jadpo test --json`'s data with a
 /// `watch` object saying what changed and how many tests it reached.
-fn json_line(event: Event, first: bool) -> String {
+fn json_line(event: Event, first: bool, full: bool) -> String {
+    // How long this step's tests took, when any ran.
+    let took = match &event.ran {
+        Some(jadpo_test::Ran::Done(run)) => Some(run.elapsed),
+        _ => None,
+    };
     let changed = Json::array(event.edits.iter().map(|edit| {
         Json::object([
             ("path", Json::from(&edit.path)),
@@ -272,7 +289,20 @@ fn json_line(event: Event, first: bool) -> String {
         }
         other => Json::object([("result", other), ("watch", watch)]),
     };
-    envelope(Some("test"), Some(data), &diagnostics, &sources).to_line()
+    let line = if full {
+        envelope(Some("test"), Some(data), &diagnostics, &sources)
+    } else {
+        short_envelope(Some("test"), Some(data), &diagnostics, &sources)
+    };
+    let line = match took {
+        Some(took) => line.with_field_after(
+            "ok",
+            "durationMs",
+            Json::Int(i64::try_from(took.as_millis()).unwrap_or(i64::MAX)),
+        ),
+        None => line,
+    };
+    line.to_line()
 }
 
 /// Writes a frame: the erase first, so results replace the waiting line.

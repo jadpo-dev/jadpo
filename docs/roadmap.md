@@ -384,17 +384,8 @@ a new agent can't find a type without them (Richard, 2026-11-03).
 - [x] **D15 Links that can't break**: documentation.md, "The bundle" and "What the site serves"; `bundle_link_problems`, `site_path_problems` and `agent_reading_problems` in `tools/docs/language_docs.py`; the site's `scripts/check-links.mjs`.
 - [x] **D16 Standard type pages that teach**: writing.md, "How a standard type's page reads"; documentation.md, "The bundle"; area 14, "`jadpo help`"; `crates/jadpo-std/src/standard/pages/` and `crates/jadpo-cli/src/type_page.rs`.
 - [x] **A12 What a new agent reads first**: documentation.md, "The bundle" and "How an agent uses it"; area 14, `jadpo new`; `tools/docs/agent_guidance.py`.
-- [ ] **A13 A broken test environment says so once** `opus · high`: a
-  PostgreSQL that can't start (a sandbox's shared memory) is one environment
-  diagnostic marked `(human)` at the top level, not five `internal_fault`s
-  under a `test.failed` an agent is told to fix.
-- [ ] **A14 Small diagnostics from the run** `opus · high`: a domain renamed
-  in a project with no commits is the agent's to do, since no one depends on
-  it yet; the first `type.mismatch` shows the expected shape and its edit;
-  area 1 says a failure may live in its action's file while the compiler
-  refuses it, so the page changes to match (Richard's call on recommendation,
-  2026-11-03); `--json` results carry the command's duration, and repeated
-  output is shortened.
+- [x] **A13 A broken test environment says so once**: area 13, "The test database"; area 14, "`jadpo test`"; `docs/errors/test.database_unavailable.md`.
+- [x] **A14 Small diagnostics from the run**: design language, "Repeats and `--full`"; area 1, "One primary declaration per file" and "Domains"; area 13, "As JSON"; area 14, "The `jadpo` command" and "`jadpo check`"; `docs/errors/type.mismatch.md`, `docs/errors/syntax.expected_name.md`, `docs/errors/naming.generic_name.md`, `docs/errors/layout.unused_declaration.md`.
 - [x] **A15 Public writes in a new app**: area 18, "What a first record holds"; area 17, "Reviewing a change"; area 7, "Answers that never change"; area 15, "What the compiler checks"; compiler/runtime §2.3, "What a first record holds"; `docs/errors/route.cache_invalid.md`.
 - [ ] **A16 Run the sign-in half again** **needs a maintainer** after 0.3.0: the
   same brief as 0.1's run, sign-in, roles and reminders included, the only way
@@ -426,7 +417,7 @@ approved (Richard, 2026-10-31). The chunks here come after the A chunks
 above and before every other unticked chunk.
 
 0.2.0 shipped without V2. **0.3.0 holds** everything in this section, R1 to
-R6, G1 to G6 (what the registry application, R7, needs from `jadpo`), the real
+R6, G1 to G7 (what the registry application, R7, needs from `jadpo`), the real
 deploy (8.2n) and what it finds, and D15, D16 and A12 to A15 (Richard,
 2026-11-03). It is released when those have merged. V1 and V3 to V5 run at the same time as each other and as R1
 and R4, where they touch different crates.
@@ -486,8 +477,9 @@ real deploy) and, before outside authors can publish, D3 (releases).
   binding promises"; §2.6; area 16's Decisions.
 - [x] **G5 Small gaps the registry found**: area 7, "Serving the document"; area 14, "`jadpo package protocol`"; area 19, "Bytes"; area 2, "A record names its type alone"; `docs/errors/api.route_needs_sign_in.md`, `docs/errors/protocol.mismatch.md`, `docs/errors/protocol.unreadable.md`, `docs/errors/type.record_type_arguments.md`.
 - [x] **G6 A package names its publisher**: area 11, "The index: `package.jadpo`", "Names and publishers", "Releasing" and "The verifier"; area 14, `jadpo package verify`; compiler/runtime §2.1, "A package's publisher"; `docs/errors/publish.publisher_missing.md`, `docs/errors/publish.publisher_mismatch.md`.
+- [x] **G7 `jadpo package new` and the licence bar**: area 14, `jadpo package new`, `jadpo package check` and `jadpo package verify`; area 11, "Developing and publishing a package" and "What publishing requires"; the design notes' "A new package and the licence bar"; `docs/errors/publish.licence_proprietary.md`.
 - [ ] **R7 The registry application** **needs a maintainer** to start the
-  jadpo.dev session, after R1, R4, R6, R6b, 8.2n and G1 to G6: built against the
+  jadpo.dev session, after R1, R4, R6, R6b, 8.2n and G1 to G7: built against the
   protocol and passing R4's conformance test. Until the S3 driver its archives
   are kept in PostgreSQL, and its database must offer pgvector 0.8. Word search
   is `search:` with `matches`.
@@ -734,8 +726,7 @@ After the registry is live, in order:
    `jadpo services`); the `documents` capability; OAuth grants per owner;
    search, `bot_check` and `scanning` capabilities;
    telemetry's `telemetry:` section, custom metrics and the local
-   `jadpo traces`, `metrics` and `logs`; `jadpo watch`; publishing packages (`jadpo package new`, `check`,
-   `publish`, git-tag versions, publisher trust); a service's new or
+   `jadpo traces`, `metrics` and `logs`; `jadpo watch`; a service's new or
    changed container image and its `outbound:` grants, each with a
    `PackageChange` acceptance; packages from other Jadpo
    apps and the cross-app break check; choosing a provider when deploying,

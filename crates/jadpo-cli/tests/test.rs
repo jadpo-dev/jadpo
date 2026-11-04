@@ -438,7 +438,10 @@ fn help_json_documents_every_field_test_json_writes() {
     let help = json(&jadpo(Path::new("."), &["help", "--json"]));
     let schema = &help["data"]["testReport"];
     let root = loose("schema", &[ADDS, MOVES, KEPT, PRICED]);
-    let document = json(&jadpo(&root, &["test", ".", "--json", "--seed", "1"]));
+    let document = json(&jadpo(
+        &root,
+        &["test", ".", "--json", "--seed", "1", "--full"],
+    ));
     let data = &document["data"];
     assert_eq!(keys(data), keys(&schema["data"]));
     for test in data["tests"].as_array().expect("tests") {
@@ -715,11 +718,11 @@ fn failed_when_the_failed_tests_are_gone_has_nothing_to_rerun() {
 #[test]
 fn json_is_one_versioned_document_with_every_failure_as_data() {
     let root = loose("json", &[ADDS, MOVES, KEPT]);
-    let output = jadpo(&root, &["test", ".", "--json", "--seed", "7"]);
+    let output = jadpo(&root, &["test", ".", "--json", "--seed", "7", "--full"]);
     assert_eq!(output.code, 1);
     assert_eq!(output.stderr, "");
     let document = json(&output);
-    assert_eq!(document["schemaVersion"], 2);
+    assert_eq!(document["schemaVersion"], 3);
     assert_eq!(document["command"], "test");
     assert_eq!(document["ok"], false);
     assert_eq!(document["diagnostics"][0]["rule"], "test.failed");
@@ -798,7 +801,9 @@ fn json_is_one_versioned_document_with_every_failure_as_data() {
 
 /// The order tests ran in, by name.
 fn order(root: &Path, args: &[&str]) -> Vec<String> {
-    let output = jadpo(root, args);
+    let mut args = args.to_vec();
+    args.push("--full");
+    let output = jadpo(root, &args);
     json(&output)["data"]["tests"]
         .as_array()
         .expect("tests")

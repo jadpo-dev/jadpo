@@ -165,6 +165,12 @@ pub static GLOBAL_FLAGS: &[Flag] = &[
         values: &[],
     },
     Flag {
+        name: "--full",
+        value: None,
+        description: "Show everything a report shortens",
+        values: &[],
+    },
+    Flag {
         name: "--help",
         value: None,
         description: "Show every flag, with examples",
@@ -381,6 +387,7 @@ pub static COMMANDS: &[Command] = &[
             &rule::TEST_FAILED,
             &rule::TEST_NO_TESTS,
             &rule::TEST_RUNTIME_START_FAILED,
+            &rule::TEST_DATABASE_UNAVAILABLE,
             &rule::MIGRATION_APPLY_FAILED,
             &rule::MIGRATION_EXTENSION_MISSING,
             &rule::MIGRATION_EXTENSION_OUTDATED,
@@ -910,7 +917,11 @@ pub static COMMANDS: &[Command] = &[
         synonyms: &["packages"],
         group: "Build and check",
         summary: "Show, check, import and install packages",
-        description: "`show <name>` prints a package's description, licence, version, kind and public \
+        description: "`new <Name> --library` or `--provider` starts a package in its own repository, \
+                      in a folder named as the registry writes the name, and it passes `check` as written; \
+                      `--publisher <handle>` names who publishes it, and without it the command asks on a \
+                      terminal and leaves the key out elsewhere. \
+                      `show <name>` prints a package's description, licence, version, kind and public \
                       surface (area 11), installed in packages/ or the app's own in shared/providers/; \
                       `show <name> <declaration>` prints one operation, function, type or failure in \
                       full with its file, and `--guide` prints the package's GUIDE.md. `check`, run in \
@@ -1007,7 +1018,19 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--publisher",
                 value: Some("handle"),
-                description: "For verify: who the release is for",
+                description: "For verify and new: who publishes it",
+                values: &[],
+            },
+            Flag {
+                name: "--library",
+                value: None,
+                description: "For new: a package of code an app calls",
+                values: &[],
+            },
+            Flag {
+                name: "--provider",
+                value: None,
+                description: "For new: a package that describes an API",
                 values: &[],
             },
             Flag {
@@ -1060,6 +1083,10 @@ pub static COMMANDS: &[Command] = &[
             },
         ],
         examples: &[
+            Example {
+                description: "Start a library package in its own repository",
+                command: "jadpo package new TidePool --library --publisher @acme",
+            },
             Example {
                 description: "See what the holidays package offers",
                 command: "jadpo package show holidays",
@@ -1144,6 +1171,7 @@ pub static COMMANDS: &[Command] = &[
             &rule::PUBLISH_EXAMPLE_FAILED,
             &rule::PUBLISH_EXAMPLE_MISSING,
             &rule::PUBLISH_FAILED,
+            &rule::PUBLISH_LICENCE_PROPRIETARY,
             &rule::PUBLISH_NOT_AT_TAG,
             &rule::PUBLISH_PUBLISHER_MISMATCH,
             &rule::PUBLISH_PUBLISHER_MISSING,
@@ -1155,6 +1183,10 @@ pub static COMMANDS: &[Command] = &[
             &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
             &rule::TOOLCHAIN_NOT_BUILT_YET,
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+            &rule::TOOLCHAIN_SCAFFOLD_DESTINATION_EXISTS,
+            &rule::TOOLCHAIN_SCAFFOLD_DESTINATION_NOT_EMPTY,
+            &rule::TOOLCHAIN_SCAFFOLD_READ_FAILED,
+            &rule::TOOLCHAIN_SCAFFOLD_WRITE_FAILED,
             &rule::TOOLCHAIN_SOURCE_READ_FAILED,
         ],
         run: commands::package,

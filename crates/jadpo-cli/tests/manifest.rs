@@ -169,7 +169,7 @@ fn a_project_with_errors_still_writes_and_says_so() {
         "use notes/types { Body }\n\naction broken(body: Body) -> Body {\n    return missing(body)\n}\n",
     ));
     let root = project("errors", &files);
-    let output = jadpo(&root, &["check", "--json"]);
+    let output = jadpo(&root, &["check", "--json", "--full"]);
     assert_eq!(output.code, 1);
     let document: serde_json::Value = serde_json::from_str(&output.stdout).expect("JSON");
     // All but the personal-data report, which only a project with no errors
@@ -197,7 +197,7 @@ fn loose_files_write_nothing() {
         "notes/sketch.jadpo",
         "type Count = Int {\n    min: 0\n}\n",
     );
-    let output = jadpo(&root, &["check", "notes", "--json"]);
+    let output = jadpo(&root, &["check", "notes", "--json", "--full"]);
     let document: serde_json::Value = serde_json::from_str(&output.stdout).expect("JSON");
     assert_eq!(document["data"]["build"], serde_json::json!([]));
     assert!(!root.join("notes/build").exists() && !root.join("build").exists());

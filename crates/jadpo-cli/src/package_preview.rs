@@ -108,6 +108,7 @@ pub fn serve(args: &PreviewArgs, env: &Environment) -> u8 {
                 env,
                 args.json,
                 args.choice,
+                &crate::run::Asked::default(),
             );
             let _ = std::io::stderr().write_all(output.stderr.as_bytes());
             let _ = std::io::stdout().write_all(output.stdout.as_bytes());

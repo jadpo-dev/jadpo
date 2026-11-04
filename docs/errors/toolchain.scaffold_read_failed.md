@@ -1,6 +1,6 @@
 # `toolchain.scaffold_read_failed`
 
-You ran `jadpo new` on a path Jadpo can't look into, such as a folder you can't read or a path through a file.
+You ran `jadpo new` or `jadpo package new` on a path Jadpo can't look into, such as a folder you can't read or a path through a file.
 
 ## Why Jadpo refuses it
 

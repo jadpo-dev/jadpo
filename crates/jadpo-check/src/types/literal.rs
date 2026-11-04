@@ -6,7 +6,8 @@
 use jadpo_diag::{Diagnostic, Span, rule};
 
 use super::rules::{Broken, Const, check_builtin, check_rules};
-use super::table::{Def, TypeView};
+use super::shape::FieldsBase;
+use super::table::{Def, FieldDef, TypeView, standard_fields};
 use super::ty::{Prim, Ty};
 
 /// Why a literal can't be the expected type.
@@ -318,6 +319,160 @@ pub fn what(table: &dyn TypeView, ty: &Ty) -> String {
     }
 }
 
+/// The most fields a shape names before it stops at `…`.
+const SHAPE_FIELDS: usize = 8;
+
+/// An object type a value is wanted for, as a mismatch shows it.
+pub(crate) struct ObjectWanted {
+    /// `PersonName { given: GivenName, family: FamilyName? }`.
+    pub shape: String,
+    /// The standard type's name, when it is one, for `jadpo help`.
+    pub standard: Option<String>,
+    /// Its name.
+    name: String,
+    /// The field or named type built from the object, as in
+    /// `Book.author(PersonName { ... })`; `None` when the object itself is
+    /// what is wanted.
+    wrapper: Option<String>,
+    /// Each field a value must give, with its declared type.
+    required: Vec<(String, Ty)>,
+}
+
+impl ObjectWanted {
+    fn wrapped(&self, object: String) -> String {
+        match &self.wrapper {
+            Some(wrapper) => format!("{wrapper}({object})"),
+            None => object,
+        }
+    }
+
+    /// The value written out, with what each field needs left to fill in.
+    pub(crate) fn skeleton(&self) -> String {
+        let name = &self.name;
+        if self.required.is_empty() {
+            return self.wrapped(format!("{name} {{ ... }}"));
+        }
+        let fields: Vec<String> = self
+            .required
+            .iter()
+            .map(|(field, _)| format!("{field}: ..."))
+            .collect();
+        self.wrapped(format!("{name} {{ {} }}", fields.join(", ")))
+    }
+
+    /// The value `written`, a text literal, makes when it fits the one field
+    /// the object must have: an edit that checks as it stands.
+    fn holding(&self, table: &dyn TypeView, written: &str) -> Option<String> {
+        let [(field, declared)] = self.required.as_slice() else {
+            return None;
+        };
+        let text = written.strip_prefix('"')?.strip_suffix('"')?;
+        if text.contains('\\') {
+            return None;
+        }
+        check(table, declared, &Const::Str(text.to_string())).ok()?;
+        Some(self.wrapped(format!("{} {{ {field}: {written} }}", self.name)))
+    }
+}
+
+/// `expected` as an object a value could be written for, when it is one: an
+/// object type, or a field or named type built on one.
+pub(crate) fn object_wanted(table: &dyn TypeView, expected: &Ty) -> Option<ObjectWanted> {
+    // A standard object type is opaque, its fields in its data entry.
+    let (name, fields) = match table.structure(expected) {
+        Ty::Named(name) if table.base(&name) == Some(FieldsBase::Object) => {
+            let fields = table.fields(&name)?;
+            (name, fields)
+        }
+        Ty::Opaque(name, args) if args.is_empty() => {
+            let fields = standard_fields(&name)?;
+            (name, fields)
+        }
+        _ => return None,
+    };
+    let shown = |field: &FieldDef| {
+        let nullable = table.is_nullable(&field.declared);
+        let mark = if field.optional && !nullable { "?" } else { "" };
+        format!("{}: {}{mark}", field.name, field.declared)
+    };
+    let mut parts: Vec<String> = fields.iter().take(SHAPE_FIELDS).map(shown).collect();
+    if fields.len() > SHAPE_FIELDS {
+        parts.push("…".to_string());
+    }
+    let required = fields
+        .iter()
+        .filter(|field| {
+            !field.optional && field.default.is_none() && !table.is_nullable(&field.declared)
+        })
+        .map(|field| (field.name.clone(), field.declared.clone()))
+        .collect();
+    // The outermost type a value is built through: a field whose declared
+    // type is itself a field is built through that field.
+    let mut wrapper = None;
+    let mut current = expected.strip_nullable().clone();
+    for _ in 0..8 {
+        match &current {
+            Ty::Field(host, path) => {
+                wrapper = Some(current.to_string());
+                let Some(field) = table.field(host, path) else {
+                    break;
+                };
+                let declared = field.declared.strip_nullable().clone();
+                if !matches!(declared, Ty::Field(..)) {
+                    break;
+                }
+                current = declared;
+            }
+            Ty::Named(named) if *named != name => {
+                wrapper = Some(current.to_string());
+                break;
+            }
+            _ => break,
+        }
+    }
+    Some(ObjectWanted {
+        shape: format!("{name} {{ {} }}", parts.join(", ")),
+        standard: is_standard(&name).then(|| name.clone()),
+        name,
+        wrapper,
+        required,
+    })
+}
+
+fn is_standard(name: &str) -> bool {
+    jadpo_std::standard::STANDARD_TYPES
+        .iter()
+        .any(|entry| entry.name == name)
+}
+
+/// The standard type `ty` is, or is built on, when there is one.
+pub(crate) fn standard_behind(table: &dyn TypeView, ty: &Ty) -> Option<String> {
+    let mut current = ty.strip_nullable().clone();
+    for _ in 0..8 {
+        let next = match &current {
+            Ty::Field(host, path) => table.field(host, path)?.declared.strip_nullable().clone(),
+            Ty::Named(name) | Ty::Opaque(name, _) if is_standard(name) => {
+                return Some(name.clone());
+            }
+            Ty::Named(name) => match table.def(name)? {
+                Def::Scalar { parent, .. } => parent.strip_nullable().clone(),
+                _ => return None,
+            },
+            _ => return None,
+        };
+        current = next;
+    }
+    None
+}
+
+/// Where a next step says the standard type is explained: `jadpo help`
+/// works offline (area 14; chunk D16).
+pub(crate) fn help_for(standard: Option<&str>) -> String {
+    standard.map_or_else(String::new, |name| {
+        format!(", and see `jadpo help {name}` for the type")
+    })
+}
+
 /// The error for a literal that can't be `expected`: `type.mismatch` for
 /// the wrong kind of value, `type.invalid_literal` for a broken rule.
 /// `constructor` names the type being constructed, whose wrong-kind error is
@@ -349,12 +504,40 @@ pub fn diagnostic(
                     format!("`{written}` can't be used where `{expected}` is required"),
                 )
             };
+            // An object: its shape, and the value written out, so the first
+            // error is enough to write the next attempt (chunk A14).
+            let object = (!constructor && written != "none" && fix.is_none())
+                .then(|| object_wanted(table, expected))
+                .flatten();
+            let reason = match &object {
+                Some(object) => format!(
+                    "This is {value}, and `{expected}` is an object: `{}`.",
+                    object.shape
+                ),
+                None => reason,
+            };
             let problem = headline.at(span.clone(), "the wrong kind of value").reason(reason);
-            match fix {
-                Some(fix) => problem
+            match (fix, object) {
+                (Some(fix), _) => problem
                     .next(format!("Write `{fix}`"))
                     .edit(span, fix),
-                None => problem.next(format!("Use a `{expected}` value here")),
+                (None, Some(object)) => match object.holding(table, written) {
+                    Some(value) => problem
+                        .next(format!(
+                            "Write `{value}`{}",
+                            help_for(object.standard.as_deref())
+                        ))
+                        .edit(span, value),
+                    None => problem.next(format!(
+                        "Write `{}`{}",
+                        object.skeleton(),
+                        help_for(object.standard.as_deref())
+                    )),
+                },
+                (None, None) => problem.next(format!(
+                    "Use a `{expected}` value here{}",
+                    help_for(standard_behind(table, expected).as_deref())
+                )),
             }
         }
         Problem::UnitRequired(kind) => unit_required(kind, written, &expected.to_string(), span),

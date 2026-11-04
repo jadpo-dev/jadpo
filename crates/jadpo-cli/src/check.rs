@@ -58,7 +58,13 @@ pub fn check(call: &Call) -> Reply {
         Ok(checked) => checked,
         Err(reply) => return *reply,
     };
-    reported(&cwd, checked, started.elapsed(), "check failed")
+    reported(
+        &cwd,
+        checked,
+        started.elapsed(),
+        "check failed",
+        call.flag("--full"),
+    )
 }
 
 /// The date a rule triggered by time passing is judged at (area 1, "Rules
@@ -155,6 +161,7 @@ pub(crate) fn reported(
     checked: Checked,
     elapsed: Duration,
     failed: &str,
+    full: bool,
 ) -> Reply {
     let Checked {
         loaded,
@@ -169,6 +176,9 @@ pub(crate) fn reported(
     // are fixed.
     if !loaded.links.is_empty() {
         jadpo_db::show_in_checkouts(&loaded.links, &mut diagnostics, &mut sources);
+    }
+    if !full {
+        jadpo_diag::shorten_repeats(&mut diagnostics);
     }
     let paths: Vec<&String> = files.iter().map(|file| file.path(db)).collect();
     let root = jadpo_db::shown_root(cwd, &loaded.root);
@@ -227,7 +237,7 @@ pub(crate) fn reported(
         &paths,
         loaded.unreadable.len(),
         (layout, written, reviews, &per_instance, notice_list),
-        (elapsed, failed, before, not_judged),
+        (elapsed, failed, before, not_judged, full),
     )
 }
 
@@ -433,7 +443,13 @@ fn report(
         &[PerInstance],
         &[Notice],
     ),
-    (elapsed, failed, before, not_judged): (Duration, &str, Option<Json>, Option<String>),
+    (elapsed, failed, before, not_judged, full): (
+        Duration,
+        &str,
+        Option<Json>,
+        Option<String>,
+        bool,
+    ),
 ) -> Reply {
     let errors = diagnostics.len();
     // With errors the agent's work comes first: a person is asked once it
@@ -481,34 +497,51 @@ fn report(
         screen.push(Block::Fields(vec![("before".to_string(), said.clone())]));
     }
     screen.push(Block::summary(outcome, headline, facts));
-    let mut data = Json::object([
-        (
-            "layout",
-            match layout {
-                Layout::Project => "project",
-                Layout::Loose => "loose",
-            }
-            .into(),
-        ),
-        ("root", Json::from(root.as_deref().unwrap_or("."))),
-        ("files", Json::array(paths.iter().map(|path| path.as_str()))),
-        ("errors", errors.into()),
-        ("build", Json::array(written)),
-        ("providers", crate::provider_review::json(reviews)),
-        (
-            "per_instance",
-            Json::array(per_instance.iter().map(|cap| {
-                Json::object([
-                    ("connection", cap.connection.as_str().into()),
-                    ("max_concurrent", cap.cap.into()),
-                    ("deployable", cap.deployable.as_str().into()),
-                ])
-            })),
-        ),
-        ("notice_list", notice_list_json(notice_list)),
-    ]);
+    let files_written = if full {
+        vec![
+            ("files", Json::array(paths.iter().map(|path| path.as_str()))),
+            ("errors", errors.into()),
+            ("build", Json::array(written)),
+        ]
+    } else {
+        // Every run's list of files and of what it wrote cost more to read
+        // than they tell (chunk A14): counted, and whole with `--full`.
+        vec![("fileCount", total.into()), ("errors", errors.into())]
+    };
+    let mut data = Json::object(
+        [
+            (
+                "layout",
+                match layout {
+                    Layout::Project => "project",
+                    Layout::Loose => "loose",
+                }
+                .into(),
+            ),
+            ("root", Json::from(root.as_deref().unwrap_or("."))),
+        ]
+        .into_iter()
+        .chain(files_written)
+        .chain([
+            ("providers", crate::provider_review::json(reviews)),
+            (
+                "per_instance",
+                Json::array(per_instance.iter().map(|cap| {
+                    Json::object([
+                        ("connection", cap.connection.as_str().into()),
+                        ("max_concurrent", cap.cap.into()),
+                        ("deployable", cap.deployable.as_str().into()),
+                    ])
+                })),
+            ),
+            ("notice_list", notice_list_json(notice_list)),
+        ]),
+    );
     if let (Some(before), Json::Object(fields)) = (before, &mut data) {
         fields.push(("before".to_string(), before));
+    }
+    if !full {
+        data = data.pruned();
     }
     Reply::Report {
         screen,

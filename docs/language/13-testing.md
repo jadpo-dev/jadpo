@@ -1551,15 +1551,20 @@ FAIL  a rate-limited reminder is retried
 #### As JSON
 
 `jadpo test --json` prints one document in the envelope every command
-shares (`schemaVersion` 2, `command`, `ok`, `data`, `diagnostics`), and
-`jadpo help --json` describes every field under `testReport`. `data` holds the order `seed`; `root`, the project folder as
+shares (`schemaVersion` 3, `command`, `ok`, `durationMs`, `data`,
+`diagnostics`), and `jadpo help --json` describes every field under
+`testReport`. `data` holds the order `seed`; `root`, the project folder as
 seen from where the command ran (`"."` from inside it), which every path is
-relative to; the `selection`; the `counts`; and the `tests` in the order
-they ran. A failed test's `failure` has its `code` and `help`, its
+relative to; the `selection`, what was asked for; the `counts`; and the
+`tests` that failed, in the order they ran, since one that passed is counted
+rather than listed. A failed test's `failure` has its `code` and `help`, its
 `location` in the test, one of `assertion`, `failure` or `fault`, for
 `test.subscriber_failed` the `delivery` it happened in (its `event`,
-`subscriber`, `attempt` and `attempts`, `null` otherwise), and the
-`rerun` command, which works from where the command ran. Part of the
+`subscriber`, `attempt` and `attempts`), and the `rerun` command, which
+works from where the command ran. A fault with the same kind, reason and
+next step as an earlier test's has `sameAs`, that test's `order`, in place
+of its `reason`, `next` and `stack`. `--full` lists every test, gives each
+fault whole, and keeps the fields that are `null` or empty. Part of the
 document for the `test.fault` example under [Errors](#errors):
 
 ```json
@@ -1580,7 +1585,8 @@ document for the `test.fault` example under [Errors](#errors):
 
 Every location, a test's, a failure's `at`, a stack frame's and a
 diagnostic's, has the one shape `path`, `start`, `end`, `line`, `column`,
-`endLine`, `endColumn`, `label`. A stack frame is `{ location, callable,
+`endLine`, `endColumn`, `label`, with an empty `label` left out unless
+`--full` is given. A stack frame is `{ location, callable,
 repeats }`, a recursion counted once. A project with errors runs nothing:
 `data` is `{ ran: false, root, fileCount, errors, warnings }` and the errors
 are the diagnostics. `--failed` with nothing to rerun gives `{ selection,
@@ -1648,6 +1654,15 @@ PostgreSQL, unless the application declares otherwise
 `jadpo test` starts a disposable local PostgreSQL server for the run, from
 the PostgreSQL tools on your machine. To use a server of your own, in CI
 for example, name it in `JADPO_TEST_DATABASE_URL`.
+
+When the tests need a database and there is none to be had, because
+PostgreSQL isn't installed, can't start (a sandbox with no shared memory,
+say) or the named server can't be used, no test runs. The run ends in one
+error, [`test.database_unavailable`](../errors/test.database_unavailable.md),
+marked `(human)`, with the line that says why; `--full` shows all PostgreSQL
+said. Nothing in the project is wrong, so no test is reported as failing and
+the last run's failures stay what `--failed` reruns. Tests that need no
+database still run under `jadpo test --kind pure`.
 
 ### A copy for each test
 

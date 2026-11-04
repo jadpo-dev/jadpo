@@ -6,7 +6,8 @@
 //! `surface.jadpo_record` and its changelog's new section. `import` reads
 //! a provider's description into the app's own integration
 //! ([`crate::package_import`], chunk 7.2). Installing (`add`, `update`,
-//! `remove`, `link`, `unlink`) is in [`crate::install`].
+//! `remove`, `link`, `unlink`) is in [`crate::install`], and starting a package
+//! (`new`) in [`crate::package_new`].
 //!
 //! `show` answers what the package is first, its facts on the grid, then a
 //! list per section and a footer counting them, and the one command that
@@ -83,6 +84,10 @@ use crate::table::Value;
 /// What `jadpo package` does today.
 pub const ACTIONS: &[Value] = &[
     Value {
+        name: "new",
+        description: "Start a package in its own repository",
+    },
+    Value {
         name: "show",
         description: "Show a package's surface, one declaration, or its guide",
     },
@@ -152,10 +157,6 @@ pub const ACTIONS: &[Value] = &[
     },
 ];
 
-/// What the language decides `jadpo package` does, not built yet, and the
-/// work that brings each.
-const LATER: &[(&str, &str)] = &[("new", "package repositories")];
-
 pub fn package(call: &Call) -> Reply {
     let names: Vec<&str> = ACTIONS.iter().map(|action| action.name).collect();
     let action = call.arguments.first().map(String::as_str);
@@ -174,13 +175,22 @@ pub fn package(call: &Call) -> Reply {
         ),
         ("--from", &["search"][..], "`search`"),
         ("--kind", &["search"][..], "`search`"),
-        ("--publisher", &["verify"][..], "`verify`"),
+        ("--publisher", &["verify", "new"][..], "`verify` and `new`"),
     ] {
         if call.value(flag).is_some() && !action.is_some_and(|action| goes_with.contains(&action)) {
             return Reply::failed(arguments(
                 format!("`{flag}` goes with {with}"),
                 "No other action of `jadpo package` reads it.".to_string(),
                 format!("Run `jadpo package {} ... {flag} <value>`", goes_with[0]),
+            ));
+        }
+    }
+    for flag in ["--library", "--provider"] {
+        if call.flag(flag) && action != Some("new") {
+            return Reply::failed(arguments(
+                format!("`{flag}` goes with `jadpo package new`"),
+                "It says what kind of package to start, which only `new` does.".to_string(),
+                format!("Run `jadpo package new <Name> {flag}`"),
             ));
         }
     }
@@ -197,6 +207,7 @@ pub fn package(call: &Call) -> Reply {
             "`jadpo package show <name>` prints a package's surface, and `jadpo package check` runs the publishing bar in a package's own folder.".to_string(),
             "Run `jadpo package show <name>` or `jadpo package check`".to_string(),
         )),
+        Some("new") => crate::package_new::new(call),
         Some("show") => show(call),
         Some("check") => check(call),
         Some("verify") => package_release::verify(call),
@@ -214,21 +225,6 @@ pub fn package(call: &Call) -> Reply {
         Some("audit") => crate::package_audit::audit(call),
         Some("publish") => crate::package_publish::publish(call),
         Some("preview") => crate::package_preview::preview(call),
-        Some(later) if LATER.iter().any(|(name, _)| *name == later) => {
-            let comes = LATER
-                .iter()
-                .find(|(name, _)| *name == later)
-                .map_or("", |(_, comes)| comes);
-            let diagnostic = Diagnostic::new(
-                &rule::TOOLCHAIN_NOT_BUILT_YET,
-                format!("`jadpo package {later}` isn't built yet"),
-            )
-            .reason(format!(
-                "Area 11 decides `jadpo package {later}`, and it comes with {comes}."
-            ))
-            .next("Run `jadpo package show <name>` or `jadpo package check` meanwhile");
-            Reply::failed(diagnostic)
-        }
         Some(other) => {
             let reason = format!("`jadpo package` can {}.", either(&quoted(&names)));
             Reply::failed(match nearest(other, names.iter().copied()) {
@@ -1343,6 +1339,42 @@ fn publisher_row(
     }
 }
 
+/// The bar's `licence` row (area 11, "What publishing requires"). The registry
+/// carries what others may use, so what it reads, `verify` and `publish`, can't
+/// be proprietary; `check` is also run by a private package, which may be.
+fn licence_row(
+    verifying: bool,
+    package: &str,
+    licence: Option<&str>,
+    jadpo: Option<&str>,
+    problems: &mut Vec<Diagnostic>,
+) -> Item {
+    let (Some(licence), Some(jadpo)) = (licence, jadpo) else {
+        return Item::failed("licence", "the index doesn't say");
+    };
+    if licence != "proprietary" {
+        return Item::passed("licence", format!("{licence}, from Jadpo {jadpo}"));
+    }
+    if !verifying {
+        return Item::passed("licence", "proprietary, registry refuses it");
+    }
+    let index = jadpo_db::PACKAGE_INDEX;
+    problems.push(
+        Diagnostic::new(
+            &rule::PUBLISH_LICENCE_PROPRIETARY,
+            format!("`{package}` is proprietary, and the public registry carries only open licences"),
+        )
+        .reason(format!(
+            "`{index}` says `Licence.proprietary`, so only its owner may use it, and the registry carries packages others may use. A private package stays in git, where `jadpo package check` is all it needs."
+        ))
+        .next_for(
+            format!("Choose an open licence in `{index}`, such as `Licence.mit`, run `jadpo package check` and tag a new release, or keep it private and install it from git"),
+            Decider::Human,
+        ),
+    );
+    Item::failed("licence", "proprietary")
+}
+
 pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
     let cwd = call.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
     let folder = folder.to_path_buf();
@@ -1844,12 +1876,13 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
     let licence = found.as_ref().and_then(|s| s.licence.clone());
     let jadpo = found.as_ref().and_then(|s| s.jadpo.clone());
     let declared = jadpo.clone();
-    items.push(match (licence, jadpo) {
-        (Some(licence), Some(jadpo)) => {
-            Item::passed("licence", format!("{licence}, from Jadpo {jadpo}"))
-        }
-        _ => Item::failed("licence", "the index doesn't say"),
-    });
+    items.push(licence_row(
+        verifying,
+        &package,
+        licence.as_deref(),
+        jadpo.as_deref(),
+        &mut diagnostics,
+    ));
 
     let mut screen = Screen::new();
     for diagnostic in &diagnostics {
@@ -2411,10 +2444,25 @@ fn examples_and_tests(
 
     let ran = jadpo_test::run(jadpo_test::Options {
         cwd: compiled.scratch.0.clone(),
+        full: true,
         ..jadpo_test::Options::default()
     });
     let run = match ran {
         jadpo_test::Ran::Done(run) => Some(run),
+        // With no database no test ran, which isn't a package with none.
+        jadpo_test::Ran::Stopped(diagnostic)
+            if diagnostic.rule.id == rule::TEST_DATABASE_UNAVAILABLE.id =>
+        {
+            let tests = Item::later("tests", "no test database");
+            problems.push(*diagnostic);
+            return Ran {
+                examples: Item::later("examples", "no test database"),
+                tests,
+                decoders: None,
+                problems,
+                blocks: Vec::new(),
+            };
+        }
         jadpo_test::Ran::Refused { .. } | jadpo_test::Ran::NoProject => {
             return Ran {
                 examples: if failed_examples > 0 {
