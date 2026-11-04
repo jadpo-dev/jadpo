@@ -7545,7 +7545,7 @@ package's name, as its types are.
 | Publisher trust for third-party git packages | Built: a package from a git repository under none of `packages:`'s `own_sources:` needs an [acceptance](18-records-and-manifest.md#acceptances), as does adding or widening an entry; an entry is `package.own_source_invalid` unless it is a host and a path ending in `/`. |
 | The registry protocol: its requests and answers, the log and its proofs, a local registry and the conformance test | Built (`jadpo-registry`). |
 | The `jadpo` tool's side of the public registry: `add` and `update` checked against the log, `search`, `audit`, `publish` and `preview` ([How the registry commands work](#how-the-registry-commands-work)) | Built, against the local registry. |
-| A package's publisher ([Names and publishers](#names-and-publishers)): `publisher:` in the index, on its surface and in its facts, the bar's `publisher` row, `jadpo package publish` and `verify --publisher`, the verifier's request and the local registry's check of a release | Built. The real registry's check comes with the registry. |
+| A package's publisher ([Names and publishers](#names-and-publishers)): `publisher:` in the index, on its surface and in its facts, the bar's `publisher` row, `jadpo package publish` and `verify --publisher`, the verifier's request and the local registry's check of a release | Built, against the local registry. |
 | [Starting a package](#developing-and-publishing-a-package): `jadpo package new`, and the bar's `licence` row refusing `Licence.proprietary` for `verify` and `publish` | Built. |
 | The registry at jadpo.dev: publishing, search, advisories and compatibility runs | Not built yet. |
 | Importers other than OpenAPI | Not built yet. |

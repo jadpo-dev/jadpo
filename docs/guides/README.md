@@ -23,3 +23,4 @@ instead.
 | [Get a person's sign-off](09-get-a-sign-off.md) | an acceptance for a change that could break someone, with a person's reason |
 | [Deploy natively](10-deploy-natively.md) | the app built into one program, running against a real database |
 | [Deploy to Cloudflare Workers](11-deploy-to-workers.md) | the app built as a Worker, reaching its database through Hyperdrive |
+| [Send an email](12-send-an-email.md) | a welcome email with typed templates, sent over SMTP after commit, tested and read in the dev inbox |
