@@ -2055,12 +2055,13 @@ Each feature not built yet is `toolchain.not_built_yet` where it is used.
 |---|---|
 | Entities, their fields, references, unique rules, indexes and stores | Built. |
 | Migrations, computed backfills and the test database | Built. |
-| PostgreSQL over TLS and through Hyperdrive | Built. Checking a Hyperdrive configuration's caching on a real deploy is not built yet. |
+| PostgreSQL over TLS and through Hyperdrive | Partly built: both connect. Not built yet: checking a Hyperdrive configuration's caching on a real deploy. |
 | D1, and actions on it as reads first and one checked batch of writes | Not built yet. |
 | Lifecycles | Built. |
-| Structured values stored as JSON, and their migrations | Built. Conditions on them, a `unique:` or index over them, and an update by `id` that works one out in the database are not built yet. |
-| The check of every stored value on read | Built. `CHECK` constraints holding fields' rules in the database are not built yet. |
-| Standard types stored in named columns, and the standard collections | Built. Comparing or ordering by them in a query is not built yet. |
+| Structured values stored as JSON, and their migrations | Partly built: each is stored whole, read back and migrated. Not built yet: conditions on them, a `unique:` or index over them, and an update by `id` that works one out in the database. |
+| The check of every stored value on read | Built. |
+| `CHECK` constraints holding fields' rules in the database | Not built yet. |
+| Standard types stored in named columns, and the standard collections | Partly built: each is stored and read back. Not built yet: comparing or ordering by them in a query. |
 | Manifest nodes | Built: a node for each entity's placement, unique rule, index and reference, with `references` edges between entities, one for each system table and migration snapshot, and one for each lifecycle and transition (`lifecycle Todo`, `transition Todo.delete`, with its `when:`, whether it can refuse a record and the fields it sets). |
 | Removing data | Built: retiring a field or an entity, moving an entity to another store and `--drop`, each needing its [acceptance](18-records-and-manifest.md#acceptances) ([Removing data](#removing-data)). Copying an entity's records to its new store is yours to do. |
 | Other schema changes in `jadpo migrate new` | Not built yet: a new `pattern:` on a stored field, and other column type changes. Turning `encrypted:` on or off is refused for good: it needs a data migration ([Encrypted fields](15-personal-data.md#encrypted-fields)). |

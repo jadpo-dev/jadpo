@@ -26,6 +26,10 @@ What they generate from, so none can drift from what it summarises:
   package and formula in crates/jadpo-cli/Cargo.toml, and the repository
   in Cargo.toml.
 
+A status in those tables starts Built, Partly built or Not built, and a row
+that says Built says nothing of its own isn't built: what it lacks makes it
+Partly built, or has a row of its own.
+
 No other line of the primer or the Learn path says how to get `jadpo` by
 hand. Every teaching example (a folder of examples/ holding app.jadpo) must be
 in the reading order, and every example the feature table names must
@@ -77,6 +81,13 @@ PRIMER_NOT_BUILT = (
     ('13-testing', 'Data builders', 'data builders and `assert emitted` in tests'),
     ('16-built-in-services', 'Documents', 'documents'),
 )
+
+# The words a status starts with, and what a row that says Built can't also
+# say. An error's name (`toolchain.not_built_yet`) and a link's address aren't
+# words, and "not deployed yet" is about what runs where, not what is built.
+STATUS_WORDS = ('Built', 'Partly built', 'Not built')
+SAYS_UNBUILT = re.compile(r"(?:\bnot|n't) (?:\w+ )?built\b|(?:\bnot|n't) yet\b"
+                          r"|\bcomes? (?:with|later)\b|\buntil\b.*\bbuilt\b", re.IGNORECASE)
 
 # Getting `jadpo` by hand, which a first page says only through a link to
 # the generated install section.
@@ -172,6 +183,20 @@ def primer_pick_problems(root: Path = ROOT, picks=PRIMER_NOT_BUILT) -> list[str]
         if not any(name.startswith(start) for name, _ in area_rows(root / f'docs/language/{page}.md')):
             found.append(f'the primer\'s list reads "{start}" in docs/language/{page}.md, whose "What is built" '
                          'table has no such row: change PRIMER_NOT_BUILT in tools/docs/agent_guidance.py')
+    return found
+
+
+def status_word_problems(root: Path = ROOT) -> list[str]:
+    """A "What is built" row whose status overstates what it goes on to say."""
+    found = []
+    for path in sorted((root / 'docs/language').glob('[0-9][0-9]-*.md')):
+        for feature, status in area_rows(path):
+            where = f'docs/language/{path.name}, "What is built", the row "{feature}"'
+            if not status.startswith(STATUS_WORDS):
+                found.append(f'{where} says "{status[:40]}": a status starts Built, Partly built or Not built')
+            elif status.startswith('Built') and (said := SAYS_UNBUILT.search(plain(status))):
+                found.append(f'{where} says Built and also "{said.group()}": make it "Partly built: ...", '
+                             'or give what it lacks a row of its own')
     return found
 
 
@@ -360,7 +385,7 @@ def problems(root: Path = ROOT) -> list[str]:
         for folder in folders:
             if folder not in teaching:
                 found.append(f'the feature table names examples/{folder} for "{feature}", which isn\'t a teaching example')
-    found += install_claim_problems(root)
+    found += install_claim_problems(root) + status_word_problems(root)
     # A folder holding only the examples and the areas, as a test builds.
     if all((root / path.relative_to(ROOT)).is_file() for path in (TEMPLATE, LLMS, PRIMER, LEARN_SETUP)):
         found += primer_pick_problems(root) + install_problems(root)
