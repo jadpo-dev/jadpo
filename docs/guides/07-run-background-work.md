@@ -358,7 +358,7 @@ see [Deploy to Cloudflare Workers](11-deploy-to-workers.md).
 
 [Schedules](../language/12-jobs-and-events.md#schedules),
 [Batch work keeps its progress](../language/12-jobs-and-events.md#batch-work-keeps-its-progress),
-[Batches: work over many items](../language/12-jobs-and-events.md#batches-work-over-many-items),
+[Batches](../language/12-jobs-and-events.md#batches),
 [Declaring an event](../language/12-jobs-and-events.md#declaring-an-event),
 [Emitting an event](../language/12-jobs-and-events.md#emitting-an-event),
 [Subscribers](../language/12-jobs-and-events.md#subscribers),

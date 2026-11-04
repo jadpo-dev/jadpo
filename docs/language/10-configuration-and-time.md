@@ -112,7 +112,7 @@ letter, and no two settings read the same variable. A `SigningKey` or an
 Because the name comes from the field, renaming a field renames its
 variable, and a deployment that still sets the old name breaks. So a
 changed variable name is shown for review like any other change to the
-app's contract ([Records and manifest](18-records-and-manifest.md)).
+app's contract ([Review and records](18-records-and-manifest.md)).
 
 ### What a setting can hold
 

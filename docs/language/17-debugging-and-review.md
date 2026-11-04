@@ -1,12 +1,12 @@
 ---
-title: Debugging and review
+title: Debugging
 area: 17
 status: decided
 checked-with: this checkout's jadpo on every gate run
 rules: []
 ---
 
-# Debugging and review
+# Debugging
 <!-- topic: debugging-and-review -->
 
 Jadpo code is written mainly by coding agents and read by people, so two
@@ -543,7 +543,7 @@ chat or a hosted tool.
 It can't write data, retry deliveries or edit code; a person or an agent
 runs commands for those, deliberately. It is generated from the same
 command reference as `jadpo`, so the two always match. It is protected by
-your app's own OAuth ([Identity](08-identity.md)).
+your app's own OAuth ([Sign-in and identity](08-identity.md)).
 
 ### Production monitoring
 

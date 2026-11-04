@@ -82,7 +82,9 @@ page the bundle builds reaches a page in the bundle, its anchor a heading of
 that page (bundle_link_problems). index.json's kinds keep to the paths
 docs/documentation.md gives them (site_path_problems), and what an agent is
 told to read first names those paths, never a whole area page
-(agent_reading_problems).
+(agent_reading_problems). Each node of the reference's manifest has a page that
+links everything directly in it (landing_problems), and a page not wholly built
+says so straight under its title (status_line_problems).
 """
 
 import argparse
@@ -104,6 +106,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import reference_manifest
+import reference_pages
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCS = ROOT / 'docs/language'
@@ -1834,6 +1837,9 @@ class Bundle:
                 groups.setdefault(entry.get('group'), []).append(type_id(entry['name']))
             self.type_groups = list(groups.items())
         self.problems = []
+        # What a person wrote of each page, and its summary, before the
+        # manifest's contents and status line go on it.
+        self.written, self.summaries, self.tree = {}, {}, None
         # A renamed topic's ID -> the IDs it had before, which still reach it.
         self.aliases = {t['id']: t['aliases'] for page in pages for t in page.topics() if t['aliases']}
         # Where each anchor of an area page went: (page, anchor) -> topic ID,
@@ -2051,7 +2057,57 @@ class Bundle:
             if kind in ('guide', 'learn', 'primer') or page_id in TOPICS_LINKING_TYPES:
                 text = link_type_names(text, names, linked, 'types/' if kind == 'primer' else '../types/')
             linked_types.append((kind, page_id, path, title, area, bare_fences(text), linked))
-        return linked_types
+        return self.with_reference(linked_types)
+
+    def with_reference(self, built):
+        """The pages with what the manifest writes: a landing page where a node
+        needs one, each node's contents on the page it opens, and a status line
+        on each page not wholly built (docs/documentation.md, "The reference's
+        manifest")."""
+        self.written = {page_id: text for _, page_id, _, _, _, text, _ in built}
+        if self.reference is None or self.reference.error:
+            return built
+        entries = {entry['id']: entry for entry in self.index(built)['pages']}
+        for page_id, summary in self.reference.topic_summary.items():
+            if page_id in entries:
+                entries[page_id]['summary'] = summary
+        self.summaries = {page_id: entry['summary'] for page_id, entry in entries.items()}
+        paths = {page_id: path for _, page_id, path, _, _, _, _ in built}
+        made = self.reference.landings_to_make(entries)
+        for node in made:
+            page_id = node['id']
+            entries[page_id] = {'id': page_id, 'kind': 'landing', 'title': node['title'], 'summary': node['summary']}
+            self.summaries[page_id] = node['summary']
+            paths[page_id] = f'landings/{page_id}.md'
+        self.tree = self.reference.nav(entries, self.type_groups, site_path, self.version)
+        unfinished = self.reference.unfinished(entries, self.type_groups)
+        writer = reference_pages.Writer(paths, unfinished, self.area_built_topics())
+        groups = [id(group) for group in self.tree['groups']]
+        openers = {}
+        for node in reference_pages.walk(self.tree):
+            own = reference_pages.own_page(node, paths)
+            if own:
+                openers[own] = (node, id(node) in groups)
+        pages = []
+        for kind, page_id, path, title, area, text, linked in built:
+            if page_id in openers:
+                text = writer.with_contents(text, *openers[page_id], path)
+            pages.append((kind, page_id, path, title, area, text, linked))
+        for page_id in (node['id'] for node in made):
+            text = writer.landing(*openers[page_id])
+            pages.append(('landing', page_id, paths[page_id], openers[page_id][0]['title'], None, text,
+                          {target for _, target in links_as_ids(text, paths, paths[page_id])}))
+        out = []
+        for kind, page_id, path, title, area, text, linked in pages:
+            line = writer.status_line(page_id, path)
+            out.append((kind, page_id, path, title, area,
+                        reference_pages.with_status_line(text, line) if line else text, linked))
+        return out
+
+    def area_built_topics(self):
+        """Each area file's "What is built" topic."""
+        return {page.path.stem: topic['id'] for page in self.pages for topic in page.topics()
+                if plain(topic['title'].replace('`', '')) == 'What is built'}
 
     def index(self, built):
         areas = {area: title for kind, page_id, _, title, area, _, _ in built
@@ -2063,8 +2119,8 @@ class Bundle:
             if kind == 'topic' and title.startswith('What is built: '):
                 # Each area's table of what is built leads with the table.
                 fallback = f'Which parts of {areas.get(area, "the area")} are built, and what the rest waits on'
-            summary = (self.catalogue[page_id]['summary'] if kind == 'error'
-                       else summary_of(text, fallback))
+            summary = self.summaries.get(page_id) or (self.catalogue[page_id]['summary'] if kind == 'error'
+                                                      else summary_of(text, fallback))
             entries.append({
                 'id': page_id, 'kind': kind, 'title': title, 'summary': summary,
                 # About four characters a token, as tokenizers average on English.
@@ -2089,6 +2145,15 @@ class Bundle:
         entries = {entry['id']: entry for entry in self.index(built)['pages']}
         return self.reference.problems(entries, old_ids, self.type_groups)
 
+    def landing_problems(self, built):
+        """Each manifest node's page against what is in the node, as the page's
+        own links reach it."""
+        return landing_problems(self.tree, built) if self.tree else []
+
+    def status_line_problems(self, built):
+        """Each page's status against what it opens with."""
+        return status_line_problems(self.index(built)['pages'], built)
+
     def write(self, out):
         """Writes the bundle into `out`, replacing what was there."""
         import shutil
@@ -2111,6 +2176,61 @@ class Bundle:
             (out / SKILL_IN_BUNDLE).parent.mkdir(parents=True, exist_ok=True)
             (out / SKILL_IN_BUNDLE).write_bytes(skill.read_bytes())
         return built
+
+
+def links_as_ids(text, paths, here):
+    """The pages a page's relative links reach, as (path, ID), `here` being the
+    page's own path."""
+    ids = {path: page_id for page_id, path in paths.items()}
+    base = os.path.dirname(here)
+    found = []
+    for _, target in links_in(text):
+        if re.match(r'^[a-z][a-z0-9+.-]*:', target):
+            continue
+        name = target.partition('#')[0]
+        path = os.path.normpath(os.path.join(base, name)) if name else None
+        if path in ids:
+            found.append((path, ids[path]))
+    return found
+
+
+def landing_problems(tree, built):
+    """Each node of the reference opens a page, and that page links everything
+    directly in the node: its topics, its details, its pages or sections and its
+    "What is built" topics. Following those reaches everything under a group."""
+    texts = {page_id: text for _, page_id, _, _, _, text, _ in built}
+    paths = {page_id: path for _, page_id, path, _, _, _, _ in built}
+    problems = []
+    for node in reference_pages.walk(tree):
+        if node['href'] in reference_manifest.SITE_OWN:
+            continue
+        own = reference_pages.own_page(node, paths)
+        if own is None:
+            problems.append(f'reference: "{node["title"]}" has no page: give it a landing page or a first topic')
+            continue
+        linked = {page_id for _, page_id in links_as_ids(texts[own], paths, paths[own])}
+        held = [e['id'] for e in node['topics'] + node['details'] + node['built']]
+        held += filter(None, (reference_pages.own_page(child, paths) for child in node['children']))
+        for page_id in held:
+            if page_id != own and page_id not in linked:
+                problems.append(f'reference: "{node["title"]}", {paths[own]}, doesn\'t link {page_id}, which is in it')
+    return problems
+
+
+def status_line_problems(entries, built):
+    """A page not wholly built says so straight under its title, in the words
+    of its status; a page wholly built doesn't."""
+    texts = {page_id: text for _, page_id, _, _, _, text, _ in built}
+    problems = []
+    for entry in entries:
+        at_top = reference_pages.status_line_at_top(texts.get(entry['id'], ''))
+        wanted = reference_pages.STATUS_WORDS.get(entry.get('status'))
+        if wanted and at_top != wanted:
+            problems.append(f'{entry["kind"]} "{entry["id"]}" is {entry["status"]}, so it opens with '
+                            f'"**{wanted}.**" straight under its title')
+        elif at_top and not wanted:
+            problems.append(f'{entry["kind"]} "{entry["id"]}" opens with "**{at_top}.**", which its status doesn\'t say')
+    return problems
 
 
 def bundle_link_problems(built):
@@ -2145,6 +2265,7 @@ SITE_PATHS = {
     'guide': (('/guides', '/guides/<id>'), 'guide'),
     'topic': (('/docs/<id>',), 'topic'),
     'command': (('/docs/<id>',), 'command'),
+    'landing': (('/docs/<id>',), 'landing'),
     'type': (('/docs/types', '/docs/types/<id>'), 'standard type'),
     'error': (('/docs/errors/<rule.id>',), 'error'),
 }
@@ -2331,11 +2452,14 @@ def check_structure(pages, errors, catalogue, commands=(), root=ROOT, learn=(), 
                     primer=root / 'docs/primer.md', learn=learn, guides=guides)
     built = bundle.build()
     for kind, page_id, _, _, _, text, _ in built:
-        if kind in ('topic', 'learn', 'guide') and words(text) > TOPIC_WORDS:
-            problems.append(f'topic "{page_id}" is {words(text)} words, over {TOPIC_WORDS}: split it')
+        written = bundle.written.get(page_id, text)
+        if kind in ('topic', 'learn', 'guide') and words(written) > TOPIC_WORDS:
+            problems.append(f'topic "{page_id}" is {words(written)} words, over {TOPIC_WORDS}: split it')
     problems += bundle.problems
     problems += bundle_link_problems(built)
     problems += bundle.reference_problems(built)
+    problems += bundle.landing_problems(built)
+    problems += bundle.status_line_problems(built)
     problems += site_path_problems({kind for kind, *_ in built})
     problems += agent_reading_problems(built, root)
     files = markdown_files(root)
@@ -2714,9 +2838,9 @@ def export_corpus(corpus):
 
 AREAS = [
     (1, 'Project layout and modules'), (2, 'Values and types'), (3, 'Logic'), (4, 'Failures'),
-    (5, 'Data'), (6, 'Reads and writes'), (7, 'HTTP'), (8, 'Identity'), (9, 'Policy'),
-    (10, 'Configuration and time'), (11, 'External services'), (12, 'Jobs and events'),
-    (13, 'Testing'), (14, 'Tooling'), (15, 'Personal data'), (16, 'Built-in services'), (17, 'Debugging and review'), (18, 'Records and manifest'),
+    (5, 'Entities, stores and migrations'), (6, 'Reads and writes'), (7, 'HTTP'), (8, 'Sign-in and identity'), (9, 'Policy'),
+    (10, 'Configuration and time'), (11, 'External services'), (12, 'Background work'),
+    (13, 'Testing'), (14, 'Tools'), (15, 'Personal data'), (16, 'Built-in services'), (17, 'Debugging'), (18, 'Review and records'),
     (19, 'Standard library'), (20, 'Geospatial'),
     (21, 'AI'),
 ]

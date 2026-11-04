@@ -1,11 +1,11 @@
 ---
-title: Tooling
+title: Tools
 area: 14
 status: decided
 checked-with: this checkout's jadpo on every gate run
 ---
 
-# Tooling
+# Tools
 <!-- topic: tooling -->
 
 The `jadpo` command and everything around it: the formatter, the editor
@@ -108,7 +108,7 @@ todo-app/
   yet, area by area, both written from the docs by
   `tools/docs/agent_guidance.py`, so they can't drift from them. `.gitignore` holds `build/`, and
   `.gitattributes` holds the lines that keep records readable in a diff
-  ([Records and manifest](18-records-and-manifest.md)). There are no
+  ([Review and records](18-records-and-manifest.md)). There are no
   hidden folders.
 
 The project is named after the folder: the last part of `<name>`, or the
@@ -273,7 +273,7 @@ emitted or its failure, and its time. Each alert gets a line when it
 starts. Each step reached by an action with several changing calls is a
 line under its request's line. A delivery whose action reached steps gets
 a line of its own, with `jadpo deliveries show <id>` when it needs an
-operator ([Jobs and events](12-jobs-and-events.md)).
+operator ([Background work](12-jobs-and-events.md)).
 
 **Provider calls.** Every call to an outside provider is faked by default,
 so you need no credential. A connection's `development: { sandbox: }`
@@ -297,7 +297,7 @@ Not built yet:
   turn watching on and off ([Testing](13-testing.md)). The flag says
   `toolchain.not_built_yet`.
 - The trace `--keep-failed` keeps, which comes with
-  [Debugging and review](17-debugging-and-review.md).
+  [Debugging](17-debugging-and-review.md).
 - `jadpo dev` starting the services the app's connections declare
   ([External services](11-integrations.md)).
 
@@ -555,7 +555,7 @@ written back as the app's, in the root file.
 
 Some files in your project are records: files Jadpo writes for you to
 commit, such as the record of your public API, which a reviewer reads in a
-pull request ([Records and manifest](18-records-and-manifest.md)). These
+pull request ([Review and records](18-records-and-manifest.md)). These
 commands keep them current, and deal with the findings `jadpo check`
 leaves for a person or an agent to settle.
 
@@ -1193,7 +1193,7 @@ Shows the provider calls `jadpo dev` made, faked or real. It takes
   one of `ai.generate`'s five conditions ([AI](21-ai.md)).
 
 An unknown action, call, operation or answer is `cli.calls_arguments`,
-with the nearest ([Debugging and review](17-debugging-and-review.md)).
+with the nearest ([Debugging](17-debugging-and-review.md)).
 
 ### `jadpo email`
 
@@ -1250,7 +1250,7 @@ Not built yet:
 - `jadpo batches list`, `show <id>` and `cancel <id>`, which list batch
   runs (file reads and writes, `batches.each`) with their state and
   progress, show one run's progress and problems, and stop one, as
-  `batches.cancel` does ([Jobs and events](12-jobs-and-events.md)).
+  `batches.cancel` does ([Background work](12-jobs-and-events.md)).
 - `jadpo search reindex`, which rebuilds a search index from the
   database ([Search](16-built-in-services.md#search)).
 
@@ -1750,7 +1750,7 @@ Not built yet: publishing the extension, which is switched off until the
 Marketplace and Open VSX are set up; and rename in the editor. It goes through the same code as
 `jadpo rename`, so an entity field renamed in the editor keeps its
 stored data, and it waits for that command and the identity registry it
-writes ([Data](05-data.md), [Stable
+writes ([Entities, stores and migrations](05-data.md), [Stable
 identity](18-records-and-manifest.md#stable-identity)).
 
 ## Error messages
@@ -1870,9 +1870,9 @@ report because a reviewer reads them together.
 
 `jadpo check` also writes the monitoring rules to `build/monitoring/`
 once the thresholds read cleanly
-([Monitoring thresholds](16-built-in-services.md#monitoring-thresholds)).
+([Monitoring](16-built-in-services.md#monitoring)).
 
-Not built yet: the schema report ([Data](05-data.md)) and the query report,
+Not built yet: the schema report ([Entities, stores and migrations](05-data.md)) and the query report,
 and the `diagnostics/`, `inventory/`, `audit/` and `compatibility/` folders.
 
 ## Tools for agents
@@ -2427,7 +2427,7 @@ above. `jadpo new` writes the project token; for a project without one,
 
 Some changes need a person to accept them before they ship: a change that
 can break an API client ([Breaking changes](07-http.md#breaking-changes)),
-dropping something from the database ([Data](05-data.md)), a weaker policy
+dropping something from the database ([Entities, stores and migrations](05-data.md)), a weaker policy
 ([Policy](09-policy.md)), and a new or renamed domain ([Project layout and
 modules](01-project-layout-and-modules.md)). They all use one form of
 acceptance, a file a person writes saying they accept the change
@@ -2462,7 +2462,7 @@ The running app reports three events of its own, never compile errors:
 
 `jadpo build` refuses features the compiler checks but can't generate
 yet, with `toolchain.target_*` errors. `jadpo check` reports the same
-errors, so a project that passes `check` also builds. [Identity](08-identity.md)
+errors, so a project that passes `check` also builds. [Sign-in and identity](08-identity.md)
 asks the same of a protected route in an app with no sign-in set up.
 
 ## A native deployable
@@ -2638,7 +2638,7 @@ with the stamp's fields (`build`, `commit`, `modified`, `compiler`,
   `problems`, each store it couldn't work in, `unbuilt` and `ms`;
 - `operation.failed`, for a fault behind a 500, with its classification,
   `cause`, route, `request_id` and `.jadpo` frames ([Failures](04-failures.md),
-  [Debugging and review](17-debugging-and-review.md)). `cause` is what the
+  [Debugging](17-debugging-and-review.md)). `cause` is what the
   runtime or a driver said went wrong, naming a field or a statement's problem
   and never a value, or `null` when the classification says it all. When the
   fault is a bug in Jadpo, `bug_in_jadpo` is `true` and `report` holds the issue
@@ -2832,7 +2832,7 @@ deployable](#a-workers-deployable)).
 
 Each binary's stamp names it, and its build id is its own. The id digests
 the deployable's program, so a change it doesn't reach leaves it alone
-([Records and manifest](18-records-and-manifest.md)). `jadpo check` writes
+([Review and records](18-records-and-manifest.md)). `jadpo check` writes
 each deployable's target and build id in the manifest, with no build id
 while the project has errors. `settings` lists the variables the
 deployables read, each once.

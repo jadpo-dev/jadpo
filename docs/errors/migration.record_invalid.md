@@ -68,4 +68,4 @@ is the only thing that writes them.
 ## Related
 
 - [Migrations](../language/05-data.md#migrations)
-- [Migrations, in Records and manifest](../language/18-records-and-manifest.md#migrations)
+- [Migrations, in Review and records](../language/18-records-and-manifest.md#migrations)

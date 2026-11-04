@@ -171,7 +171,7 @@ repeated: `?status=open&status=done`. A nested object needs a body.
 A field read from a header says so with `header:`. A header field is a
 scalar, and each header is named once. A header field never reads a
 credential (`Authorization`, cookies, `X-Jadpo-*`): those belong to
-sign-in ([Identity](08-identity.md)).
+sign-in ([Sign-in and identity](08-identity.md)).
 
 ### What is refused
 
@@ -214,12 +214,12 @@ POST / {
 |---|---|---|
 | left out (`SuccessStatus.ok`) | 200 | `output:` |
 | `SuccessStatus.created` | 201 | `output:` |
-| `SuccessStatus.accepted` | 202 | `output:`; the work carries on in the background ([Jobs and events](12-jobs-and-events.md)) |
+| `SuccessStatus.accepted` | 202 | `output:`; the work carries on in the background ([Background work](12-jobs-and-events.md)) |
 | `SuccessStatus.no_content` | 204 | no `output:`; the action returns `Unit` |
 
 Only the output's declared fields are sent. `IssuedToken` and `IssuedKey`,
 the built-in types for an issued sign-in token and a service's key
-([Identity](08-identity.md)), are sent as the objects they are: an `id`,
+([Sign-in and identity](08-identity.md)), are sent as the objects they are: an `id`,
 `started_at` and `ends_at`.
 
 A route never writes a failure's status. It comes from the kind of each
@@ -836,7 +836,7 @@ Some work can't be waited for:
 - So does a delivery the request couldn't claim.
 - So does a batch run the action started. A batch is long work no route
   waits on, so a route whose action starts one answers 202
-  ([Batches: work over many items](12-jobs-and-events.md#batches-work-over-many-items)).
+  ([Batches](12-jobs-and-events.md#batches)).
 
 Waiting stops at the first such piece. The rest is left for after the
 response, and a retry is left to the outbox's sweep, the runtime's regular
@@ -1459,7 +1459,7 @@ Some features generate their routes for you:
   [Passkeys](08-identity.md#passkeys)), each sign-in provider's
   `POST /auth/<name>/start` and `GET /auth/<name>/callback`
   ([Providers](08-identity.md#providers)), and `POST /auth/exchange`
-  ([Identity](08-identity.md));
+  ([Sign-in and identity](08-identity.md));
 - the privacy requests ([Data requests](15-personal-data.md#data-requests));
 - each API's `GET <prefix>/flags`, while a flag has `client: true`
   ([Flags in browsers and apps](16-built-in-services.md#flags-in-browsers-and-apps));
@@ -1902,7 +1902,7 @@ where an app uses it.
 | Idempotent writes | Built: the runtime keeps each write's `Idempotency-Key` with its response. |
 | Commands | Built: `jadpo dev` serves the routes and reloads on save, `jadpo routes` lists them and `jadpo api update` writes the records, each `api/<api>.jadpo_record` in the record format with no `version:` line; the OpenAPI version is a hash of it. |
 | Native connection limits | Built: natively, a client has 10 seconds for its headers and 30 for its body, a write waits at most 30 seconds for it to read, and the server holds at most 1,024 connections and 10 database connections per store per worker. |
-| Sign-in | Built: every route needs a signed-in caller unless it says `authentication: RouteAuthentication.none`; each API lists the sign-in methods it accepts, named in its record; a route passes `current_principal` to what it runs; a signed-in caller's requests count against its own rate limit, and its idempotency keys are its own; a request with a credential on a route anyone may call counts against its address before it runs ([Identity](08-identity.md)). |
+| Sign-in | Built: every route needs a signed-in caller unless it says `authentication: RouteAuthentication.none`; each API lists the sign-in methods it accepts, named in its record; a route passes `current_principal` to what it runs; a signed-in caller's requests count against its own rate limit, and its idempotency keys are its own; a request with a credential on a route anyone may call counts against its address before it runs ([Sign-in and identity](08-identity.md)). |
 | Policy | Built: policy decides what each route reaches, and OpenAPI lists the 403 `not_permitted` on every route that runs an action that writes or is listed under `actions:` ([Policy](09-policy.md)). |
 | A `GET` that runs an action | Built: the proof over every action it calls, `route.run_kind` naming what breaks it and where, a `READ ONLY` transaction and the faults beside it, for a `GET`'s query and action alike. |
 | Issued tokens and keys | Built: a `GET` runs `sessions.tokens` and `<Service>.keys` itself, and the record and OpenAPI describe the `IssuedToken` and `IssuedKey` it sends ([Service credentials](08-identity.md#service-credentials)). |
