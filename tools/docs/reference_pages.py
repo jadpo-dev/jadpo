@@ -162,7 +162,7 @@ class Writer:
         lines += self.contents(node, here, group) + self.details(node, here)
         return '\n'.join(lines).rstrip('\n') + '\n'
 
-    def with_contents(self, text, node, here, group=False):
+    def with_contents(self, text, node, group, here):
         """A topic that opens a node, its contents after its intro and its
         Details last."""
         contents = '\n'.join(self.contents(node, here, group))

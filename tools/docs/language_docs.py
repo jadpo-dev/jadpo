@@ -2082,22 +2082,21 @@ class Bundle:
         self.tree = self.reference.nav(entries, self.type_groups, site_path, self.version)
         unfinished = self.reference.unfinished(entries, self.type_groups)
         writer = reference_pages.Writer(paths, unfinished, self.area_built_topics())
-        openers = {}
         groups = [id(group) for group in self.tree['groups']]
+        openers = {}
         for node in reference_pages.walk(self.tree):
             own = reference_pages.own_page(node, paths)
             if own:
-                openers[own] = node
+                openers[own] = (node, id(node) in groups)
         pages = []
         for kind, page_id, path, title, area, text, linked in built:
             if page_id in openers:
-                text = writer.with_contents(text, openers[page_id], path, id(openers[page_id]) in groups)
+                text = writer.with_contents(text, *openers[page_id], path)
             pages.append((kind, page_id, path, title, area, text, linked))
-        for node in made:
-            node_of = next(n for n in reference_pages.walk(self.tree) if n['id'] == node['id'])
-            text = writer.landing(node_of, id(node_of) in groups)
-            pages.append(('landing', node['id'], paths[node['id']], node['title'], None, text,
-                          {t for _, t in links_as_ids(text, paths)}))
+        for page_id in (node['id'] for node in made):
+            text = writer.landing(*openers[page_id])
+            pages.append(('landing', page_id, paths[page_id], openers[page_id][0]['title'], None, text,
+                          {target for _, target in links_as_ids(text, paths, paths[page_id])}))
         out = []
         for kind, page_id, path, title, area, text, linked in pages:
             line = writer.status_line(page_id, path)
@@ -2179,11 +2178,11 @@ class Bundle:
         return built
 
 
-def links_as_ids(text, paths, here=None):
+def links_as_ids(text, paths, here):
     """The pages a page's relative links reach, as (path, ID), `here` being the
-    page's own path; with none, the `landings/` folder."""
+    page's own path."""
     ids = {path: page_id for page_id, path in paths.items()}
-    base = os.path.dirname(here) if here else 'landings'
+    base = os.path.dirname(here)
     found = []
     for _, target in links_in(text):
         if re.match(r'^[a-z][a-z0-9+.-]*:', target):
@@ -2211,7 +2210,7 @@ def landing_problems(tree, built):
             continue
         linked = {page_id for _, page_id in links_as_ids(texts[own], paths, paths[own])}
         held = [e['id'] for e in node['topics'] + node['details'] + node['built']]
-        held += [child_own for child_own in map(lambda c: reference_pages.own_page(c, paths), node['children']) if child_own]
+        held += filter(None, (reference_pages.own_page(child, paths) for child in node['children']))
         for page_id in held:
             if page_id != own and page_id not in linked:
                 problems.append(f'reference: "{node["title"]}", {paths[own]}, doesn\'t link {page_id}, which is in it')

@@ -467,10 +467,11 @@ class Bundle(unittest.TestCase):
         self.assertEqual([(e['kind'], e['id']) for e in index['pages']],
                          [('topic', 'one'), ('topic', 'shown'), ('topic', 'two'), ('topic', 'twos-part'),
                           ('error', 'a.b'), ('command', 'jadpo-check'), ('landing', 'things')])
-        paths = {'topic': 'topics/{}.md', 'error': 'errors/{}.md', 'command': 'commands/{}.md'}
+        paths = {'topic': 'topics/{}.md', 'error': 'errors/{}.md', 'command': 'commands/{}.md',
+                 'landing': 'landings/{}.md'}
         self.assertEqual(sorted(files), sorted(paths[e['kind']].format(e['id']) for e in index['pages']))
         placed = {'one': ('Things', 'One'), 'shown': ('Things', 'One'), 'two': ('Things', 'Two'),
-                  'twos-part': ('Things', 'Two'), 'jadpo-check': ('Things', 'Two')}
+                  'twos-part': ('Things', 'Two'), 'jadpo-check': ('Things', 'Two'), 'things': ('Things', None)}
         for entry in index['pages']:
             place = ['group', 'page', 'status'] if entry['id'] in placed else []
             self.assertEqual(sorted(entry), sorted(['id', 'kind', 'title', 'summary', 'tokens', 'hash', 'area', 'links'] + place))
@@ -734,7 +735,7 @@ class WhatTheSiteServes(unittest.TestCase):
     def test_the_kinds_are_the_ones_the_bundle_writes(self):
         self.assertEqual(set(docs.SITE_PATHS), self.KINDS)
         documented = (docs.ROOT / 'docs/documentation.md').read_text()
-        self.assertIn('(`primer`, `learn`, `guide`, `topic`, `type`, `error`, `command`)', documented)
+        self.assertIn('(`primer`, `learn`, `guide`, `topic`, `type`, `error`, `command`, `landing`)', documented)
 
     def test_a_built_kind_without_a_path_is_a_problem(self):
         problems = docs.site_path_problems(kinds={'topic', 'recipe'})
