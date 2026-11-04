@@ -1,0 +1,10 @@
+/// The account a credential belongs to. Replace this with a resource of your own.
+public resource account {
+    /// Reads the account.
+    get: {
+        method: HttpMethod.get
+        path: "/v1/account"
+        output: Account
+        source: PackageSource.written
+    }
+}

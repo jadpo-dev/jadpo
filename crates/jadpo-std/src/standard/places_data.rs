@@ -115,7 +115,7 @@ pub const COUNTRIES: &[(&str, &str)] = &[
     ("ie", "IE"),
     ("il", "IL"),
     ("im", "IM"),
-    ("in_", "IN"),
+    ("in", "IN"),
     ("io", "IO"),
     ("iq", "IQ"),
     ("ir", "IR"),
@@ -12351,7 +12351,7 @@ pub const LANGUAGES: &[(&str, &str)] = &[
     ("ig", "ig"),
     ("ii", "ii"),
     ("ik", "ik"),
-    ("in_", "in"),
+    ("in", "in"),
     ("io", "io"),
     ("is", "is"),
     ("it", "it"),
@@ -12410,7 +12410,7 @@ pub const LANGUAGES: &[(&str, &str)] = &[
     ("oc", "oc"),
     ("oj", "oj"),
     ("om", "om"),
-    ("or_", "or"),
+    ("or", "or"),
     ("os", "os"),
     ("pa", "pa"),
     ("pi", "pi"),
@@ -12494,7 +12494,7 @@ pub const LANGUAGE_ALPHA3: &[&str] = &[
 /// The ISO 639-1 codes withdrawn that are still read, each with its
 /// English name, since CLDR names none of them.
 pub const LANGUAGES_RETIRED: &[(&str, &str)] = &[
-    ("in_", "Indonesian"),
+    ("in", "Indonesian"),
     ("iw", "Hebrew"),
     ("ji", "Yiddish"),
     ("jw", "Javanese"),

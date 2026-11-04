@@ -84,7 +84,27 @@ fn main() {
         miniz_oxide::deflate::compress_to_vec(&packed, 6),
     )
     .expect("the packed runtime");
-    scaffold(&manifest.join("scaffold"), &out);
+    let scaffolds = [
+        (manifest.join("scaffold"), "SCAFFOLD", "scaffold.rs"),
+        (
+            manifest.join("package_scaffold/common"),
+            "PACKAGE_COMMON",
+            "package_common.rs",
+        ),
+        (
+            manifest.join("package_scaffold/library"),
+            "PACKAGE_LIBRARY",
+            "package_library.rs",
+        ),
+        (
+            manifest.join("package_scaffold/provider"),
+            "PACKAGE_PROVIDER",
+            "package_provider.rs",
+        ),
+    ];
+    for (folder, list, file) in &scaffolds {
+        scaffold(folder, list, &out.join(file));
+    }
     error_pages(&root.join("docs").join("errors"), &out);
     type_goldens(
         &root
@@ -157,18 +177,19 @@ fn error_pages(folder: &Path, out: &Path) {
     .expect("the packed error pages");
 }
 
-/// What `jadpo new` writes (`src/new.rs`): each file of `scaffold/` as the
+/// What `jadpo new` (`src/new.rs`) and `jadpo package new`
+/// (`src/package_new.rs`) write: each file of a scaffold as the
 /// project path it is written to and its text, in `scaffold.rs`. A
 /// template is named after its path with `.tmpl` added, so no tool reads
 /// one as a project's source; `gitignore` and `gitattributes` at the top
 /// are the project's dot files, which inside this repository would apply
 /// to it.
-fn scaffold(folder: &Path, out: &Path) {
+fn scaffold(folder: &Path, list: &str, out: &Path) {
     println!("cargo::rerun-if-changed={}", folder.display());
     let mut templates = Vec::new();
     walk(folder, &mut templates);
     templates.sort();
-    let mut code = String::from("pub const SCAFFOLD: &[(&str, &str)] = &[\n");
+    let mut code = format!("pub const {list}: &[(&str, &str)] = &[\n");
     for template in templates {
         println!("cargo::rerun-if-changed={}", template.display());
         let inside = template
@@ -177,7 +198,10 @@ fn scaffold(folder: &Path, out: &Path) {
             .to_string_lossy()
             .replace('\\', "/");
         let Some(path) = inside.strip_suffix(".tmpl") else {
-            panic!("scaffold/{inside} is a template, so its name ends in `.tmpl`");
+            panic!(
+                "{}/{inside} is a template, so its name ends in `.tmpl`",
+                folder.display()
+            );
         };
         let path = match path {
             "gitignore" | "gitattributes" => format!(".{path}"),
@@ -189,7 +213,7 @@ fn scaffold(folder: &Path, out: &Path) {
         ));
     }
     code.push_str("];\n");
-    std::fs::write(out.join("scaffold.rs"), code).expect("the scaffold's list");
+    std::fs::write(out, code).expect("the scaffold's list");
 }
 
 /// Every file under `folder`, in no particular order.

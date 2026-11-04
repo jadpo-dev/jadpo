@@ -1,0 +1,15 @@
+/// A first function, showing the shape of one. Replace it with your own.
+public library starter {
+    /// Takes the spaces off both ends of what someone typed.
+    ///
+    /// ```jadpo
+    /// var tidy: TidyText = attempt starter.tidied("  Hello ")
+    /// assert tidy == "Hello"
+    /// assert starter.tidied("   ") fails NothingEntered
+    /// ```
+    function tidied(entered: EnteredText) fails NothingEntered -> TidyText {
+        return attempt TidyText(text.trim(entered)) {
+            invalid: NothingEntered
+        }
+    }
+}

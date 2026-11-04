@@ -38,6 +38,8 @@ pub enum Session {
     Dev(Box<crate::dev::DevArgs>),
     /// `jadpo config set`, which asks for the value at a prompt.
     ConfigSet(Box<crate::config::SetArgs>),
+    /// `jadpo package new`, which asks who publishes the package.
+    PackageNew(Box<crate::package_new::NewArgs>),
     /// `jadpo package preview`, until it is stopped.
     Preview(Box<crate::package_preview::PreviewArgs>),
     /// `jadpo package verify --serve`, until it is stopped.
@@ -284,6 +286,25 @@ pub(crate) fn finish(
                 stderr: String::new(),
                 code: 0,
                 session: Some(Session::ConfigSet(args)),
+            };
+        }
+        Reply::Session(Session::PackageNew(mut args)) => {
+            // A prompt has no JSON form: JSON goes where there is no one to ask.
+            if json {
+                return finish(
+                    name,
+                    crate::package_new::write(&args, None),
+                    env,
+                    json,
+                    choice,
+                );
+            }
+            args.choice = choice;
+            return Output {
+                stdout: String::new(),
+                stderr: String::new(),
+                code: 0,
+                session: Some(Session::PackageNew(args)),
             };
         }
         Reply::Session(Session::Preview(mut args)) => {

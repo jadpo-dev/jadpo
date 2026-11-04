@@ -36,7 +36,7 @@ jadpo package install Stripe.v2024_06_20
 
 ```text output
 error: `install` isn't something `jadpo package` does
-  reason: `jadpo package` can `show`, `check`, `verify`, `import`, `record`, `conform`, `protocol`, `add`, `update`, `remove`, `link`, `unlink`, `recipe`, `search`, `audit`, `publish` or `preview`.
+  reason: `jadpo package` can `new`, `show`, `check`, `verify`, `import`, `record`, `conform`, `protocol`, `add`, `update`, `remove`, `link`, `unlink`, `recipe`, `search`, `audit`, `publish` or `preview`.
   next: Run `jadpo package show <name>` or `jadpo package check` (agent)
   rule: cli.package_arguments
   help: https://jadpo.dev/docs/errors/cli.package_arguments

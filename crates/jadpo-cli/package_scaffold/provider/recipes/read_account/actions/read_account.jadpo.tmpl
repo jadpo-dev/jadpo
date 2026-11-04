@@ -1,0 +1,7 @@
+use app { service }
+use shared/providers/{snake}
+
+/// Reads the account this app's credential belongs to.
+action read_account() -> {name}.Account {
+    return service.account.get()
+}

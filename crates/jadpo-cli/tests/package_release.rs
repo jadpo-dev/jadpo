@@ -948,6 +948,91 @@ fn the_registrys_bar_refuses_a_package_with_no_publisher() {
     );
 }
 
+/// A package ready to release, proprietary as a company's private one is.
+fn released_as_proprietary(name: &str) -> (tempdir::Dir, std::path::PathBuf) {
+    let (dir, root) = repository(name);
+    write(
+        &root,
+        "package.jadpo",
+        &super::packages::INDEX.replace("Licence.mit", "Licence.proprietary"),
+    );
+    plain(&root, &["package", "check"]);
+    let log = std::fs::read_to_string(root.join("CHANGELOG.md")).expect("changelog");
+    write(
+        &root,
+        "CHANGELOG.md",
+        &format!("{log}\nReads UK postcodes as people type them.\n"),
+    );
+    (dir, root)
+}
+
+/// The bar's `licence` row, from a command's `--json`.
+fn licence_row(data: &serde_json::Value) -> serde_json::Value {
+    data["bar"]
+        .as_array()
+        .and_then(|bar| bar.iter().find(|row| row["item"] == "licence"))
+        .cloned()
+        .unwrap_or_else(|| panic!("a licence row: {data}"))
+}
+
+#[test]
+fn a_private_packages_check_allows_a_proprietary_licence() {
+    let (dir, root) = released_as_proprietary("release-proprietary-check");
+    let shown = root.to_str().expect("a path");
+    let (data, document, code) = json(dir.path(), &["package", "check", shown]);
+    assert_eq!(code, 0, "{document}");
+    let row = licence_row(&data);
+    assert_eq!(row["state"], "passed", "{document}");
+    // It passes, and says what it will meet at the registry.
+    assert_eq!(
+        row["detail"], "proprietary, registry refuses it",
+        "{document}"
+    );
+    // Short enough to be shown: a row's last column fits or isn't.
+    let checked = plain(&root, &["package", "check"]);
+    assert!(
+        checked
+            .stdout
+            .contains("proprietary, registry refuses it\n"),
+        "{}",
+        checked.stdout
+    );
+}
+
+#[test]
+fn the_registrys_bar_refuses_a_proprietary_licence() {
+    let (dir, root) = released_as_proprietary("release-proprietary-verify");
+    plain(&root, &["package", "check"]);
+    let shown = root.to_str().expect("a path");
+    for args in [
+        &["package", "verify", shown][..],
+        &["package", "verify", shown, "--no-run"][..],
+    ] {
+        let (data, document, code) = json(dir.path(), args);
+        assert_eq!(code, 1, "{document}");
+        assert_eq!(data["passed"], false, "{document}");
+        let row = licence_row(&data);
+        assert_eq!(row["state"], "failed", "{document}");
+        assert_eq!(row["detail"], "proprietary", "{document}");
+    }
+    let refused = plain(dir.path(), &["package", "verify", shown]);
+    assert_eq!(refused.code, 1, "{}", refused.stdout);
+    assert!(
+        refused.stdout.starts_with(
+            "error: `Postcodes.v2` is proprietary, and the public registry carries only open licences\n"
+        ),
+        "{}",
+        refused.stdout
+    );
+    assert!(
+        refused
+            .stdout
+            .contains("rule: publish.licence_proprietary\n"),
+        "{}",
+        refused.stdout
+    );
+}
+
 #[test]
 fn verify_holds_a_release_to_the_publisher_asked_for() {
     let (dir, root) = released("release-publisher-asked");

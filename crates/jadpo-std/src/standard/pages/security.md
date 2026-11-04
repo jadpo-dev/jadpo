@@ -131,7 +131,7 @@ Jwk {
     e: none
     kid: none
     alg: none
-    use_: none
+    use: none
     key_ops: none
     x5c: none
 }

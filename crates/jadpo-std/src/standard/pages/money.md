@@ -32,8 +32,8 @@ in a currency is a `Money`, which already holds one.
 Currency.gbp
 ```
 
-- Each value is its code in lower case. A code that is a reserved word takes a
-  trailing `_`: `Currency.all_` is the Albanian lek.
+- Each value is its code in lower case. `all` lists the variants, so the
+  Albanian lek takes a trailing `_`: `Currency.all_`.
 - It lists active currencies. Old currencies you already hold, such as Croatian
   kuna, are still read, but gold (`XAU`) and made-up codes aren't.
 

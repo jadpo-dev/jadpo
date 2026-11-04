@@ -188,5 +188,4 @@ different.
 Nationality.gb
 ```
 
-- Each value is its country code in lower case. A code that is a reserved word
-  takes a trailing `_`: `Nationality.in_` is Indian.
+- Each value is its country code in lower case: `Nationality.in` is Indian.
