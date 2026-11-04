@@ -154,6 +154,19 @@ mod tests {
         path
     }
 
+    // Another test's fork can briefly hold a script's write handle, so running
+    // one just written can fail with ETXTBSY.
+    fn run_written(program: &Path, mail: &[u8], timeout: Duration) -> Result<String, RunError> {
+        loop {
+            match run(program, mail, timeout) {
+                Err(RunError::Start(why)) if why.contains("Text file busy") => {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                other => return other,
+            }
+        }
+    }
+
     #[test]
     fn it_is_found_on_the_path_and_given_the_mail_with_network_tests_off() {
         // Echoes its arguments, then the mail it was given.
@@ -163,7 +176,7 @@ mod tests {
         assert_eq!(find(Some(&path)), Some(program.clone()));
         assert_eq!(find(Some(OsStr::new("/nowhere"))), None);
         assert_eq!(find(None), None);
-        let out = run(
+        let out = run_written(
             &program,
             b"Subject: Notes\r\n\r\nThe weekly notes\r\n",
             TIMEOUT,
@@ -178,10 +191,10 @@ mod tests {
     #[test]
     fn a_failed_or_slow_run_says_so() {
         let failing = script("fails", "cat > /dev/null\nexit 3\n");
-        assert_eq!(run(&failing, b"x", TIMEOUT), Err(RunError::Exited(Some(3))));
+        assert_eq!(run_written(&failing, b"x", TIMEOUT), Err(RunError::Exited(Some(3))));
         let slow = script("slow", "sleep 5\n");
         assert_eq!(
-            run(&slow, b"x", Duration::from_millis(100)),
+            run_written(&slow, b"x", Duration::from_millis(100)),
             Err(RunError::TimedOut)
         );
         assert!(matches!(
