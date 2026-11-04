@@ -3074,8 +3074,7 @@ whole number of at least 1.
   writes any other window is refused where it wrote it
   (`rate_limits.window_unsupported`).
 - **A deployable's bindings.** Each is numbered from every limit the app
-  writes, so a limit has the same namespace in every deployable, which by
-  Cloudflare's terms share its counts in each location, and a deployable's
+  writes, so a limit has the same namespace in every deployable, and a deployable's
   Wrangler file names only those its own routes count.
 - **`Retry-After`** is the window's whole length, since the binding says
   only whether a request is within the limit, not when its window ends.
@@ -3113,10 +3112,12 @@ terms. A limit on Workers is only as strong as this:
   `RateLimitKey.caller` where callers sign in, and don't set a limit by
   address so low that a shared address trips it.
 - **A namespace id is the whole account's.** Cloudflare says two bindings with
-  one `namespace_id` share their counts for a key, across Workers, which the
-  measurement above didn't get far enough to show. Give another app in the
-  account a `namespace:` far enough from this one's that its numbers don't
-  meet them.
+  one `namespace_id` share their counts for a key, across Workers, but two
+  deployables of one app didn't in a single measurement (LHR, 2026-11-04):
+  three times, one was refused after 87, 81 and 10 requests at 10 in 60
+  seconds and the other then answered three requests. Don't rely on either
+  behaviour. Give another app in the account a `namespace:` far enough from
+  this one's that its numbers don't meet them.
 
 So use the binding to shed abuse, not to enforce a total
 ([What a limit doesn't promise](#what-a-limit-doesnt-promise)).

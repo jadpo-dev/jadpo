@@ -148,21 +148,14 @@ a finished chunk is in git history.
   14, "A Workers deployable" and Decisions; area 10, "Client addresses".
 - [x] **8.2m2 Rate limits' store on Workers**: area 16, "Rate limits" and
   "Rate limits on Workers"; §2.6, "The Workers host".
-- [ ] **8.2n A real deploy, what's left** `opus · high`, **needs a
-  maintainer** (the maintainer's Cloudflare account; Richard's yes to redeploy):
-  deployed once on 2026-11-04, and what it measured is on the area pages. Left
-  for one more deploy, with the checks in the PR that recorded them:
-  - **`vector` through Hyperdrive**, which failed in 8 of 12 runs: fixed against
-    a stand-in pooler (§2.6, "PostgreSQL through Hyperdrive"), and to be read
-    back 12 of 12 on the real thing, `operation.failed`'s `cause` naming any
-    that aren't.
-  - Two deployables sharing a `namespace_id`: send more than the 60 requests
-    that one Worker never refused at 10 in 60 seconds.
-  - The parked row of a message sent to the dead-letter queue (`jadpo
-    deliveries`).
-  - Two locations counting apart, from a second network.
-  - Hyperdrive's default TLS checking the database's certificate, and the
-    module's 8 MiB stack within an isolate's memory.
+- [x] **8.2n A real deploy**: compiler/runtime §2.6, "PostgreSQL through Hyperdrive"; area 16, "Rate limits on Workers"; guide 11.
+- [ ] **8.2o What a deploy couldn't show** **needs a maintainer**, after 0.3.0
+  (2026-11-04): two locations counting apart, from a second network;
+  Hyperdrive's default TLS checking the database's certificate, which takes an
+  origin with a bad one; the module's 8 MiB stack within an isolate's memory,
+  from Cloudflare's logs; a message sent to the dead-letter queue parked
+  (`jadpo deliveries`); why two deployables with one `namespace_id` didn't
+  share their counts.
 
 - [x] **8.3 Performance spike**: §2.11.
 
