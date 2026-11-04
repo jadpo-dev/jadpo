@@ -1396,11 +1396,10 @@ mod tests {
 
     #[test]
     fn every_type_has_a_forms_file_packed() {
-        for entry in jadpo_std::standard::STANDARD_TYPES {
+        for (index, entry) in jadpo_std::standard::STANDARD_TYPES.iter().enumerate() {
             assert!(
                 unpack(entry.name).is_some(),
-                "{} has no golden file",
-                entry.name
+                "standard type {index} has no golden file"
             );
         }
     }
