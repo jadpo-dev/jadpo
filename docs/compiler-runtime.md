@@ -722,11 +722,27 @@ same bare name.
 
 `personal_data::report` writes the report from `sent`, naming each holder as
 it is declared; the CLI writes it only for a project with no errors and
-removes an old one otherwise. V6 reads `sent` for the connections it asks an
-`ErasureNotPossible` of, and P8 adds its sections to `report` and its JSON
+removes an old one otherwise. P8 adds its sections to `report` and its JSON
 beside `connections`. Marks and exits aren't graph nodes yet: the report is
-worked out from the analysis directly until the approval review needs a diff,
-which reads the JSON twin as it does the other reports.
+worked out from the analysis directly, and the approval review compares the
+JSON twins (`personal_data::entries`), the before side's kept beside its
+manifest in `build/before/<commit>/`.
+
+`exits::How` keeps, with each row, whether the holder only decided what was
+sent and whether it counts only as what a provider's answer may hold. A row a
+stronger one of the same exit and holder covers is dropped
+(`exits::strongest`).
+
+**Erasure at providers** (area 15; chunk V6). `provider_erasure::declared`
+reads each package's `erasure:` and `key_problems` each connection's `key:`
+against the data model, so a connection is let off only by what can be carried
+out. `of_connection` says what becomes of what `sent` takes through a
+connection, and `unerased` lists those whose copy stays, which
+`acceptances::needs` turns into `ErasureNotPossible.data_stays` unless an
+acceptance on the before side, still in the project, lists it with a reason.
+So unlike every other kind it reads no record: it says how things stand, and a
+body with errors (`provider_erasure::clean`) leaves it unjudged, since nothing
+can say what such a body sends.
 
 **Retention** (area 15). An entity's `retention:` and each field's are
 read by `data::retention::read` once the entity's fields and lifecycle
@@ -894,8 +910,9 @@ This graph diff runs in tests.
 **The approval report** (chunk V2, areas 17 and 18) builds the base: `jadpo
 approval` reads the commit through `git cat-file --batch` into an in-memory
 file set (`jadpo_db::FileSet`, loaded by `load_files`, §2.2, "Loading"),
-checks it with the same compiler and keeps its manifest and its declines in
-`build/before/<commit>/`, used again while this compiler wrote them.
+checks it with the same compiler and keeps its manifest, its declines and its
+personal-data report in `build/before/<commit>/`, used again while this
+compiler wrote them.
 `jadpo_check::approval` then reads both sides as manifests, the graph's
 canonical JSON, rather than as `Graph`s, since a kept manifest is all the
 before side has: it compares their nodes and edges for the source, the

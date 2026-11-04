@@ -13,6 +13,11 @@
 //! project new since its base), nothing is compared or judged, and `jadpo
 //! check` says so in one line (Richard, 2026-10-30); only a migration that
 //! removes data is still held to an acceptance ([`data::unaccepted`]).
+//!
+//! One kind isn't a change: a connection that receives personal data and
+//! can't erase it needs a person for as long as that is so (chunk V6). So it
+//! is a need until an acceptance lists it, on the before side as well as
+//! added, and that acceptance goes on allowing it while it is kept.
 
 pub mod access;
 pub mod compare;
@@ -69,6 +74,7 @@ pub fn needs(db: &dyn Db, project: Project) -> Vec<Need> {
     compare::domains(&before.domains, &domains(db, project), &mut out);
     data::needs(db, project, before, &mut out);
     threshold_needs(db, project, before, &mut out);
+    erasure_needs(db, project, before, &mut out);
     out.sort();
     out.dedup_by(|a, b| a.subject == b.subject && a.change == b.change);
     out
@@ -264,6 +270,42 @@ fn threshold_needs(db: &dyn Db, project: Project, before: &BeforeSide, out: &mut
                 subject,
                 change: thresholds::LOWERED.to_string(),
                 family: Family::Thresholds,
+                path: jadpo_db::PROJECT_FILE.to_string(),
+                heading: None,
+                who: Vec::new(),
+            });
+        }
+    }
+}
+
+/// Each connection that keeps personal data after a person is erased, with
+/// no acceptance the before side holds and the project still has saying why.
+fn erasure_needs(db: &dyn Db, project: Project, before: &BeforeSide, out: &mut Vec<Need>) {
+    use crate::provider_erasure::{self, DATA_STAYS};
+    if !provider_erasure::clean(db, project) {
+        return;
+    }
+    let history: Vec<files::Acceptance> = files::acceptances(db, project)
+        .into_iter()
+        .filter(|acceptance| {
+            before.text(&acceptance.path).is_some()
+                && acceptance.reason.is_some()
+                && acceptance.problems.is_empty()
+        })
+        .collect();
+    for unerased in provider_erasure::unerased(db, project) {
+        let accepted = history.iter().any(|acceptance| {
+            acceptance
+                .entries
+                .iter()
+                .any(|entry| entry.subject == unerased.connection && entry.change == DATA_STAYS)
+        });
+        if !accepted {
+            out.push(Need {
+                said: unerased.said(),
+                subject: unerased.connection.clone(),
+                change: DATA_STAYS.to_string(),
+                family: Family::Erasure,
                 path: jadpo_db::PROJECT_FILE.to_string(),
                 heading: None,
                 who: Vec::new(),
@@ -498,6 +540,10 @@ fn said(change: &str, family: &Family) -> (&'static str, &'static str) {
             "a package installed from git has no verified publisher",
             "Nothing verifies who published a package from git, as the registry does.",
         ),
+        crate::provider_erasure::DATA_STAYS => (
+            "a connection that can't erase the personal data it receives needs a person",
+            "Erasing a person asks each provider that holds their data to erase it, and this one can't be asked.",
+        ),
         "PackageChange.operation_removed" => (
             "an upgrade removes an operation the app uses",
             "The app called it, and the package no longer has it.",
@@ -608,8 +654,28 @@ fn missing_acceptance(
             .unwrap_or_else(|| place(db, project, path, needs[0].heading.as_deref())),
         Family::Data => data::span(db, project, needs[0]),
         Family::Thresholds => threshold_span(db, project, needs[0]),
+        Family::Erasure => crate::provider_erasure::connection_span(db, project, &needs[0].subject)
+            .unwrap_or_else(|| crate::tree::file_span(path)),
         _ => place(db, project, path, needs[0].heading.as_deref()),
     };
+    if *family == Family::Erasure {
+        let said: Vec<String> = needs.iter().map(|need| need.said.clone()).collect();
+        return Diagnostic::new(
+            &rule::ACCEPTANCE_MISSING,
+            format!("{what}: {}", subjects.join(", ")),
+        )
+        .at(span, change)
+        .reason(format!(
+            "{why} Here: {}. So a person says why the data stays: no acceptance lists {}.",
+            said.join("; "),
+            if subjects.len() == 1 {
+                format!("`{}: {change}`", subjects[0])
+            } else {
+                format!("these as `{change}`")
+            }
+        ))
+        .next("Declare the package's `erasure:` and name the connection's `erasure: { key: }`, or a person accepts it: `jadpo acceptance new <purpose>` writes the draft for them");
+    }
     Diagnostic::new(
         &rule::ACCEPTANCE_MISSING,
         format!("{what}: {}", subjects.join(", ")),
