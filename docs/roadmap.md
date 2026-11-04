@@ -479,18 +479,12 @@ real deploy) and, before outside authors can publish, D3 (releases).
   account and the steps in [documentation](documentation.md#versions-and-releases):
   the repository variable `JADPO_VERIFIER_IMAGE` set to `on`, the app and its
   credential on Fly.io, then the image deployed. Before R7 can reach it.
-- [ ] **G1 Reserved words as names** `opus · high`: area 2 and area 1,
-  "Reserved words". Inside a type body a reserved word may name a field or an
-  enum variant, where `package: Text` and `Kind.library` are unambiguous
-  (Richard, 2026-11-03). An `Output` with a `type` field works in any app.
+- [x] **G1 Reserved words as names**: area 2, "Names from reserved words"; area 1, "Reserved words"; `docs/errors/syntax.expected_name.md`, `docs/errors/type.reserved_variant_name.md`.
 - [x] **G2 A `GET` that runs a read-only action**: area 7, "A `GET` that runs an action"; area 3, "Functions and actions"; `docs/errors/route.run_kind.md`; compiler/runtime, "An action on a `GET`".
 - [x] **G3 A route that sends raw bytes**: area 7, "Sending raw bytes", "Answers that never change" and "The public API record"; area 18, "Acceptances"; `docs/errors/route.sends_invalid.md`, `docs/errors/route.cache_invalid.md`; compiler/runtime, "A route that sends raw bytes".
 - [x] **G4 A route's `rate_limit:`**: area 16, "Rate limits" and "What the
   binding promises"; §2.6; area 16's Decisions.
-- [ ] **G5 Small gaps the registry found** `opus · high`: `authentication: []`
-  honoured on `openapi.json`, which is accepted and ignored today; a `jadpo`
-  command that runs R4's conformance test against a document, so R7's CI needs
-  no Rust; `bytes.concat`.
+- [x] **G5 Small gaps the registry found**: area 7, "Serving the document"; area 14, "`jadpo package protocol`"; area 19, "Bytes"; area 2, "A record names its type alone"; `docs/errors/api.route_needs_sign_in.md`, `docs/errors/protocol.mismatch.md`, `docs/errors/protocol.unreadable.md`, `docs/errors/type.record_type_arguments.md`.
 - [x] **G6 A package names its publisher**: area 11, "The index: `package.jadpo`", "Names and publishers", "Releasing" and "The verifier"; area 14, `jadpo package verify`; compiler/runtime §2.1, "A package's publisher"; `docs/errors/publish.publisher_missing.md`, `docs/errors/publish.publisher_mismatch.md`.
 - [ ] **R7 The registry application** **needs a maintainer** to start the
   jadpo.dev session, after R1, R4, R6, R6b, 8.2n and G1 to G6: built against the

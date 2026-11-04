@@ -28,7 +28,7 @@ fn a_closed_list_s_variants_are_its_codes() {
         NONE
     );
     assert_eq!(
-        rules("function india() -> Country {\n    return Country.in_\n}\n"),
+        rules("function india() -> Country {\n    return Country.in\n}\n"),
         NONE,
         "a code that is a reserved word takes a trailing `_`"
     );
@@ -39,7 +39,7 @@ fn a_closed_list_s_variants_are_its_codes() {
         NONE
     );
     assert_eq!(
-        rules("function odia() -> Language {\n    return Language.or_\n}\n"),
+        rules("function odia() -> Language {\n    return Language.or\n}\n"),
         NONE
     );
     assert_eq!(

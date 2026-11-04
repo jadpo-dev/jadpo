@@ -1589,7 +1589,9 @@ test "a patch with one corner at a height is refused" {
   where the type is written or where a literal's values give it. A
   literal takes its arguments from the type its place expects, or else
   from its values: a feature's from its geometry and its properties, a
-  collection's from its features.
+  collection's from its features. A literal never writes them itself:
+  `Feature<Point, Pin> { ... }` is
+  [`type.record_type_arguments`](../errors/type.record_type_arguments.md).
 - **Read strictly.** A feature's members are `type`, which must be
   `Feature` (another is `variant`), `geometry`, `properties`, and the
   `bbox` that RFC 7946 §5 lets any object carry. A `bbox` is checked as

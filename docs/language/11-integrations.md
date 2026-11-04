@@ -1869,7 +1869,8 @@ it can send makes a release live.
   `package Postcodes.v2 version 2.1.0 registry @acme/postcodes digest
   sha256:…`.
 - **The registry application's served OpenAPI is checked against this
-  table** by a conformance test in the `jadpo` repository, run against a
+  table** by a conformance test, `jadpo package protocol <document>`
+  ([Tooling](14-tooling.md#jadpo-package-protocol)), also run against a
   local registry built from the same table, so neither side drifts. Every
   row must be served below `/registry/v1/` with its placeholders, query
   members, body, status, answer and failures, open to a caller who hasn't
@@ -1877,7 +1878,7 @@ it can send makes a release live.
   through any `$ref`, and what a Jadpo application adds that the table
   doesn't constrain (the runtime's shared failures, `x-jadpo-` keywords,
   an `Idempotency-Key` header) is left alone. The registry application's
-  CI runs it with `JADPO_REGISTRY_OPENAPI` set to its served document
+  CI runs it against its own document
   ([compiler/runtime §2.1](../compiler-runtime.md#21-workspace-and-crates)).
 
 ## The verifier
@@ -6369,8 +6370,8 @@ check.
   what to do, each `(agent)`, with `--json` for agents.
 - **Field and variant names on the wire.** A field or variant is the
   provider's name in `lower_snake_case`; where that differs (`collectAt`,
-  `after-noon`, or `type` written `type_value` to avoid a reserved word),
-  the importer writes the provider's spelling as the field's or variant's
+  `after-noon`, or a variant `none` written `none_value`, which no variant
+  can be called), the importer writes the provider's spelling as the field's or variant's
   `wire_name:` ([Decoding](#decoding)).
 
 > Importing Smithy, Postman, HAR and `.d.ts` isn't built yet: each is

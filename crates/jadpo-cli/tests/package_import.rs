@@ -435,9 +435,7 @@ public type Booking = Object {
     tracking_url: Url? {
         wire_name: \"trackingUrl\"
     }
-    type_value: Text? {
-        wire_name: \"type\"
-    }
+    type: Text?
 }
 "
     );

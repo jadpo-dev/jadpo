@@ -1,0 +1,8 @@
+// The `bytes` namespace (area 19, "Bytes"): joining bytes, as `list.concat`
+// joins lists. `encoding` writes bytes as text and reads them back, and
+// `hash` digests them.
+
+public library bytes {
+    /// `first`'s bytes, then `second`'s.
+    function concat(first: Bytes, second: Bytes) -> Bytes {}
+}

@@ -532,7 +532,16 @@ fn decl(p: &mut Parser<'_>) {
             body_start(p, false);
             m.complete(p, FIXTURE_DECL);
         }
-        ENTITY_KW => keyword_named(p, m, ENTITY_DECL, "this entity"),
+        ENTITY_KW => {
+            p.bump_any();
+            name(p, "this entity");
+            if p.at(L_BRACE) {
+                member_list(p, Members::Fields);
+            } else {
+                body_start(p, true);
+            }
+            m.complete(p, ENTITY_DECL);
+        }
         LIBRARY_KW => keyword_named(p, m, LIBRARY_DECL, "this library"),
         ROUTES_KW => keyword_named(p, m, ROUTES_DECL, "this route group"),
         SCHEDULE_KW => keyword_named(p, m, SCHEDULE_DECL, "this schedule"),
@@ -569,8 +578,16 @@ fn decl(p: &mut Parser<'_>) {
                 m.complete(p, kind);
             }
             Some(_) => {
+                let translations = p.at_word("translations");
                 p.bump(IDENT);
-                member_list(p, Members::Declaration);
+                member_list(
+                    p,
+                    if translations {
+                        Members::Headed
+                    } else {
+                        Members::Declaration
+                    },
+                );
                 m.complete(p, SINGLETON_DECL);
             }
             None if habits::function_keyword_at(p, 0).is_some() => {
@@ -825,7 +842,7 @@ fn type_decl(p: &mut Parser<'_>, m: crate::parser::Marker) {
     let type_name = p.current_text().to_string();
     name(p, "this type");
     if habits::go_struct(p, &type_name) {
-        member_list(p, Members::Declaration);
+        member_list(p, Members::Fields);
         m.complete(p, TYPE_DECL);
         return;
     }
@@ -869,7 +886,16 @@ fn type_decl(p: &mut Parser<'_>, m: crate::parser::Marker) {
         base = ty(p, "the base type");
     }
     if p.at(L_BRACE) {
-        member_list(p, Members::Declaration);
+        let enum_body =
+            base.is_some() && &p.text()[base_start as usize..p.prev_end() as usize] == "Enum";
+        member_list(
+            p,
+            if enum_body {
+                Members::Variants
+            } else {
+                Members::Fields
+            },
+        );
     } else if base.is_some() {
         let at = p.prev_end();
         let base_text = p.text()[base_start as usize..at as usize].to_string();
@@ -961,7 +987,11 @@ fn callable(p: &mut Parser<'_>, m: crate::parser::Marker, kind: SyntaxKind, memb
         .edit(TextEdit::insert(arrow, format!("{clause} ")));
         p.push_error(error);
     }
-    body_start(p, members);
+    if kind == QUERY_DECL && p.at(L_BRACE) {
+        member_list(p, Members::Headed);
+    } else {
+        body_start(p, members);
+    }
     m.complete(p, kind);
 }
 
@@ -1100,6 +1130,12 @@ fn ret_type(p: &mut Parser<'_>) {
 /// are reserved wherever something is named (area 1, question 7).
 pub const RESERVED_NAMES: &[&str] = &["package", "provide", "resource", "seed", "test", "use"];
 
+/// The reserved words that are values, which no enum variant takes: beside
+/// a `Kind?`, `Kind.none` would read as the `none` it isn't (area 2,
+/// "Enums"). A field may have one of these names, being read through what
+/// holds it.
+pub const VALUE_WORDS: &[&str] = &["true", "false", "none"];
+
 fn name(p: &mut Parser<'_>, what: &str) {
     match p.current() {
         IDENT if RESERVED_NAMES.contains(&p.current_text()) => {
@@ -1146,7 +1182,8 @@ fn reserved_word(p: &mut Parser<'_>) {
         .label("can't be a name")
         .reason(
             "Control-flow and declaration words are reserved, so they can't name a \
-             declaration, field, parameter or variable.",
+             declaration, parameter or variable; only a field or variant, in its type's body, \
+             may take one.",
         )
         .next(format!("Choose another name than `{word}`"));
     p.push_error(error);
@@ -1394,10 +1431,42 @@ fn generic_ahead(p: &Parser<'_>) -> bool {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Members {
-    /// A declaration's body: bare names are enum variants.
+    /// A declaration's body, whose keys are settings: a reserved word is
+    /// refused as one.
     Declaration,
-    /// The block after a value (`TodoView { ... }`): every member has a value.
+    /// The block after a value (`TodoView { ... }`): every member has a
+    /// value, and its key may be a field named with a reserved word.
     Record,
+    /// A type's or entity's body, where a reserved word may name a field
+    /// (area 2, "Field names").
+    Fields,
+    /// An `Enum`'s body, where a reserved word may name a variant as well,
+    /// and a line with only a word on it is one.
+    Variants,
+    /// A query's or language file's body, whose keys are settings or
+    /// messages as a declaration's are.
+    Headed,
+    /// A block inside one: a query's `group:`, `aggregate:` and `include:`,
+    /// keyed by the fields of its result, and an enum's wording, keyed by
+    /// its variants.
+    HeadedBlock,
+}
+
+impl Members {
+    /// Whether a reserved word before `:` is a name here.
+    fn reserved_word_keys(self) -> bool {
+        !matches!(self, Members::Declaration | Members::Headed)
+    }
+
+    /// What a `name: { ... }` block inside this one holds.
+    fn nested(self) -> Members {
+        match self {
+            Members::Variants => Members::Fields,
+            Members::Fields => Members::Declaration,
+            Members::Headed => Members::HeadedBlock,
+            other => other,
+        }
+    }
 }
 
 fn member_list(p: &mut Parser<'_>, context: Members) -> CompletedMarker {
@@ -1411,7 +1480,10 @@ fn member_list(p: &mut Parser<'_>, context: Members) -> CompletedMarker {
     p.with_newlines(false, |p| {
         p.with_records(true, |p| {
             while !p.at(R_BRACE) && !p.at_eof() {
-                if ends_block(p) && !p.at(FUNCTION_KW) {
+                if ends_block(p)
+                    && !p.at(FUNCTION_KW)
+                    && !(context == Members::Variants && at_reserved_variant(p))
+                {
                     break;
                 }
                 let before = p.position();
@@ -1461,6 +1533,10 @@ fn member_key_len(p: &Parser<'_>) -> Option<usize> {
 
 /// [`member_key_len`], `n` tokens ahead.
 fn member_key_len_at(p: &Parser<'_>, n: usize) -> Option<usize> {
+    if p.nth(n).is_keyword() && p.nth(n + 1) == COLON {
+        // A field named with a reserved word (area 2).
+        return Some(1);
+    }
     if p.nth(n) != IDENT {
         return None;
     }
@@ -1481,8 +1557,21 @@ fn keyword_key_len(p: &Parser<'_>) -> Option<usize> {
     (i > 1 && p.nth(i) == COLON).then_some(i)
 }
 
+/// A reserved word alone on its line in an `Enum`'s body: a variant, with
+/// nothing after it that could start the declaration the word opens
+/// elsewhere (`type Name = ...`).
+fn at_reserved_variant(p: &Parser<'_>) -> bool {
+    p.current().is_keyword() && (p.nth_on_new_line(1) || matches!(p.nth(1), R_BRACE | EOF | COMMA))
+}
+
 fn member_item(p: &mut Parser<'_>, context: Members) {
     match p.current() {
+        _ if context == Members::Variants && at_reserved_variant(p) => {
+            bare_member(p, context);
+            if p.at(COMMA) && !p.on_new_line() {
+                habits::member_comma(p);
+            }
+        }
         DECLINE_KW if p.nth(1) != COLON => declined(p, |p| {
             if p.at(DECLINE_KW) || p.at(R_BRACE) || p.at_eof() {
                 no_declaration(p);
@@ -1497,7 +1586,7 @@ fn member_item(p: &mut Parser<'_>, context: Members) {
         }
         _ if at_decl(p) && !(p.current().is_keyword() && p.nth(1) == COLON) => decl(p),
         _ if at_route_entry(p) => route_entry(p),
-        IDENT if context == Members::Declaration && at_rule_member(p) => rule_member(p),
+        IDENT if context != Members::Record && at_rule_member(p) => rule_member(p),
         IDENT => {
             if member_key_len(p).is_some() {
                 member(p, context);
@@ -1514,7 +1603,9 @@ fn member_item(p: &mut Parser<'_>, context: Members) {
             }
         }
         kind if kind.is_keyword() && p.nth(1) == COLON => {
-            reserved_word(p);
+            if !context.reserved_word_keys() {
+                reserved_word(p);
+            }
             member(p, context);
         }
         STRING if p.nth(1) == COLON && !p.nth_on_new_line(1) => member(p, context),
@@ -1642,7 +1733,7 @@ fn member(p: &mut Parser<'_>, context: Members) {
 
 fn member_value(p: &mut Parser<'_>, context: Members) {
     if p.at(L_BRACE) {
-        member_list(p, context);
+        member_list(p, context.nested());
         return;
     }
     if p.on_new_line() || p.at(R_BRACE) || p.at_eof() {
@@ -1719,6 +1810,9 @@ fn member_end(p: &mut Parser<'_>) {
     if p.at(IDENT) && (member_key_len(p).is_some() || p.nth(1) == R_BRACE) {
         return;
     }
+    if p.current().is_keyword() && p.nth(1) == COLON {
+        return;
+    }
     let found = p.found();
     let error = p
         .error_here(&rule::SYNTAX_UNEXPECTED_TOKEN, "Expected the end of the line")
@@ -1749,7 +1843,7 @@ fn bare_member(p: &mut Parser<'_>, context: Members) {
     }
     let m = p.start();
     let n = p.start();
-    p.bump(IDENT);
+    p.bump_remap(IDENT);
     n.complete(p, NAME);
     m.complete(p, BARE_MEMBER);
 }
@@ -1791,7 +1885,7 @@ fn member_without_colon(p: &mut Parser<'_>, context: Members) {
     n.complete(p, NAME);
     k.complete(p, MEMBER_KEY);
     if p.at(L_BRACE) {
-        member_list(p, context);
+        member_list(p, context.nested());
     } else if can_start_expr(p) {
         expr(p);
     }
@@ -2531,6 +2625,11 @@ fn expr_bp_inner(p: &mut Parser<'_>, min: u8) -> Option<CompletedMarker> {
         let Some((power, kind)) = infix_power(p) else {
             break;
         };
+        // `Thing { a: x in: y }`: the next member's key, a field named with
+        // the word, since no operand starts with `:`.
+        if p.current().is_keyword() && p.nth(1) == COLON {
+            break;
+        }
         if power <= min || p.line_break_ends() || !p.enter() {
             break;
         }
@@ -2694,6 +2793,11 @@ fn primary(p: &mut Parser<'_>) -> Option<CompletedMarker> {
             p.bump(DOT3);
             ELISION_EXPR
         }
+        kind if kind.is_keyword() && !p.on_new_line() && !p.at(ELSE_KW) => {
+            reserved_value(p);
+            p.bump_remap(IDENT);
+            NAME_REF
+        }
         _ => {
             m.abandon(p);
             expected_expression(p);
@@ -2701,6 +2805,25 @@ fn primary(p: &mut Parser<'_>) -> Option<CompletedMarker> {
         }
     };
     Some(m.complete(p, kind))
+}
+
+/// A reserved word where a value belongs. A field may be named with one,
+/// but only `thing.type` reads it: alone, the word is never a name.
+fn reserved_value(p: &mut Parser<'_>) {
+    let word = p.current_text().to_string();
+    let error = p
+        .error_here(
+            &rule::SYNTAX_EXPECTED_NAME,
+            format!("`{word}` is a reserved word"),
+        )
+        .label("can't be read on its own")
+        .reason(format!(
+            "A field may be named with a reserved word, and is then read through what holds it, `thing.{word}`. On its own the word is never a name, so a rule's condition, which names fields alone, can't read one."
+        ))
+        .next(format!(
+            "Read it as `thing.{word}`; in a rule's condition, rename the field"
+        ));
+    p.push_error(error);
 }
 
 fn expected_expression(p: &mut Parser<'_>) {
@@ -2991,6 +3114,16 @@ fn arg(p: &mut Parser<'_>, named: &mut Vec<(String, (u32, u32))>) {
     m.complete(p, ARG);
 }
 
+/// A reserved word that is a whole item of a list: a field named with it,
+/// in `unique: [type, name]`, `read: [for]` or `order: [type desc]`, since
+/// nothing else a list holds is a word and nothing more. `true`, `false` and
+/// `none` are values in a list as they are anywhere.
+fn reserved_list_name(p: &Parser<'_>) -> bool {
+    p.current().is_keyword()
+        && !matches!(p.current(), TRUE_KW | FALSE_KW | NONE_KW)
+        && (matches!(p.nth(1), COMMA | R_BRACK) || matches!(p.nth_text(1), "asc" | "desc"))
+}
+
 fn list(p: &mut Parser<'_>) {
     let open = p.range();
     p.bump(L_BRACK);
@@ -3004,7 +3137,13 @@ fn list(p: &mut Parser<'_>) {
                     break;
                 }
                 let before = p.position();
-                let item = expr(p);
+                let item = if reserved_list_name(p) {
+                    let m = p.start();
+                    p.bump_remap(IDENT);
+                    Some(m.complete(p, NAME_REF))
+                } else {
+                    expr(p)
+                };
                 if let Some(item) = item
                     && (p.at_word("asc") || p.at_word("desc"))
                 {

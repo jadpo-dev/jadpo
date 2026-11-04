@@ -605,3 +605,17 @@ fn a_decline_line_sits_alone_directly_above_its_declaration() {
         "library rounding {\n    decline library.similar_exists: \"Rounds down\"\n    function capped(amount: Int) -> Int {\n        return amount\n    }\n}\n\ntype Box = Object {\n    decline personal.unread: \"Kept\"\n    width: Int\n}\n"
     );
 }
+
+#[test]
+fn reserved_words_as_fields_and_variants_keep_their_places() {
+    assert_eq!(
+        fmt("type Kind = Enum {\nlibrary\ntype\npublic\n}\n"),
+        "type Kind = Enum {\n    library\n    type\n    public\n}\n"
+    );
+    let written = "type Kind = Enum {\n    library\n    package: {\n        type: Text\n    }\n    public\n}\n\ntype Thing = Object {\n    type: Text\n    in: Text\n    package: Text\n}\n\nfunction f(thing: Thing) -> Thing {\n    return Thing {\n        type: thing.type\n        in: thing.in\n        package: thing.package\n    }\n}\n";
+    assert_eq!(fmt(written), written);
+    assert_eq!(
+        fmt("type Flags = Object { in: Bool and: Bool if: Bool }\n"),
+        "type Flags = Object {\n    in: Bool\n    and: Bool\n    if: Bool\n}\n"
+    );
+}

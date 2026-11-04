@@ -19,10 +19,49 @@
       "include": "#declarations"
     },
     {
+      "include": "#enum-body"
+    },
+    {
       "include": "#expression"
     }
   ],
   "repository": {
+    "enum-body": {
+      "comment": "A word alone on its line in an enum's body is a variant, even a reserved word (area 2).",
+      "begin": "(?<=\\bEnum )\\{",
+      "end": "\\}",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.jadpo"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.jadpo"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "name": "variable.other.enummember.jadpo",
+          "match": "^\\s*[a-z][a-z0-9_]*(?=\\s*(?://.*)?$)"
+        },
+        {
+          "begin": "\\{",
+          "end": "\\}",
+          "patterns": [
+            {
+              "include": "#expression"
+            }
+          ]
+        },
+        {
+          "include": "#expression"
+        }
+      ]
+    },
     "expression": {
       "patterns": [
         {
@@ -42,6 +81,9 @@
         },
         {
           "include": "#member-keys"
+        },
+        {
+          "include": "#field-access"
         },
         {
           "include": "#keywords"
@@ -119,7 +161,7 @@
     },
     "use": {
       "comment": "`use <folder> { Names }` and `use <domain>` (area 1, Imports).",
-      "begin": "^(\\s*)(use)\\b",
+      "begin": "^(\\s*)(use)\\b(?!\\s*:)",
       "end": "$",
       "beginCaptures": {
         "2": {
@@ -338,6 +380,11 @@
           "name": "variable.other.property.jadpo"
         }
       }
+    },
+    "field-access": {
+      "comment": "A name after `.` is a field or variant, even a reserved word (area 2).",
+      "match": "(?<=\\.)[a-z][a-z0-9_]*\\b(?!\\s*\\()",
+      "name": "variable.other.property.jadpo"
     },
     "types": {
       "name": "entity.name.type.jadpo",

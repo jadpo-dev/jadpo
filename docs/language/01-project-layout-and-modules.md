@@ -79,13 +79,18 @@ have two capitals in a row: write `VatRate`, not `VATRate`.
 ### Reserved words
 
 The words that control flow or open a declaration are reserved. None of
-them can name a declaration, field, parameter, variable or variant, and
-using one as a name is `syntax.expected_name`. They are `action`, `and`,
+them can name a declaration, parameter or variable, and using one as a name
+is `syntax.expected_name`. They are `action`, `and`,
 `assert`, `attempt`, `constant`, `decline`, `else`, `emit`, `entity`,
 `fails`, `false`, `fixture`, `for`, `function`, `if`, `in`, `library`,
 `match`, `mut`, `none`, `not`, `or`, `package`, `propagate`, `provide`,
 `public`, `query`, `reject`, `resource`, `return`, `routes`, `schedule`,
 `seed`, `subscriber`, `test`, `true`, `type`, `use` and `var`.
+
+Inside a type's or entity's body one may name a field or an enum variant,
+where `package: Text` and `Kind.library` can't be misread. Such a name is
+always read through what holds it, `parcel.package`, and alone it is still
+the word ([Names from reserved words](02-values-and-types.md#names-from-reserved-words)).
 
 A domain is named by its folder, so a folder named with a reserved word,
 `domains/library/`, is `syntax.expected_name` once, at the folder. Where
@@ -927,7 +932,7 @@ is in `<folder>/<name>.jadpo`; it is a built-in; or it is declared in this
 file.
 
 The standard library's namespaces are `list`, `set`, `map`, `range`,
-`integer`, `decimal`, `money`, `units`, `text`, `markup`, `hash`,
+`integer`, `decimal`, `money`, `units`, `text`, `markup`, `bytes`, `hash`,
 `encoding`, `crypto`, `random`, `json`, `csv`, `tsv`, `json_lines`,
 `temporal`, `locale`, `colour`, `media`, `web`, `semver`, `geo` and `ai`
 ([Standard library](19-standard-library.md)). Each is reserved by
@@ -1146,7 +1151,7 @@ The compiler builds the decided layout, with each rule's real output under
 | Names per domain | Partly built: private functions and types unique only within their domain, each domain's code reading its own; their identity keys carrying the domain, with promotion to `shared/` writing a registry line; `semantic.duplicate_declaration` saying copy or clash and listing the names in use with the same words. `jadpo rename` is not built yet ([Commands for looking into and changing code](14-tooling.md#commands-for-looking-into-and-changing-code)). |
 | Order independence | Built: declaration and file order never matter. |
 | Domains, `public` and calls | Built: owner-qualified calls and per-declaration `public`, with `visibility.private_cross_domain`, `visibility.public_not_allowed` and `visibility.public_unused`. |
-| Reserved words | Built: a reserved word can't name anything. |
+| Reserved words | Built: a reserved word names only a field or an enum variant ([Names from reserved words](02-values-and-types.md#names-from-reserved-words)). |
 | Comments | Built: `//` and `///` documentation comments. |
 | Similar helpers | Built: `library.similar_exists`, a declinable error. Not built yet: `jadpo impact`. |
 | Declinable errors | Partly built: no warning severity; the `decline <rule>: "<reason>"` line with `decline.unused`, `decline.not_declinable` and `decline.no_reason`; the catalogue's security rules, whose decline needs an [acceptance](18-records-and-manifest.md#acceptances); `jadpo declines list` and `clear`; the editor's "Decline with a reason" and "Remove decline"; and the date rule for an expired [feature flag](16-built-in-services.md#feature-flags), `flag.expired`, judged at today by `check` and at the commit's date by `build`. `jadpo approval` lists them ([Records and manifest](18-records-and-manifest.md)). |

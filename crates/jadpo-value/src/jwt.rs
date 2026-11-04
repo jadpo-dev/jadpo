@@ -80,8 +80,7 @@ pub fn read_jwk(json: &Json) -> Option<Value> {
     let parts = jadpo_std::standard::security::JWK_FIELDS
         .iter()
         .map(|(name, _)| {
-            let wire = if *name == "use_" { "use" } else { name };
-            match members.get(wire) {
+            match members.get(*name) {
                 None | Some(Json::Null) => Some(Value::None),
                 Some(Json::String(text)) if !matches!(*name, "x5c" | "key_ops") => {
                     Some(Value::text(text))
@@ -266,7 +265,7 @@ fn key_of(value: &Value) -> Option<Key<'_>> {
     let bytes = |name: &str| text(name).and_then(decode_base64url);
     let kty = text("kty")?;
     let algorithm = jwk::algorithm_of(kty)?;
-    if text("use_").is_some_and(|usage| usage != "sig")
+    if text("use").is_some_and(|usage| usage != "sig")
         || text("alg").is_some_and(|alg| alg != algorithm)
     {
         return None;
@@ -486,7 +485,7 @@ fn claim_names(codecs: &Codecs<'_>, codec: CodecId) -> Vec<String> {
     };
     (0..shape.len())
         .filter_map(|slot| shape.field(slot))
-        .map(|(name, _)| jadpo_std::standard::wire_name(shape.ty(), name).to_string())
+        .map(|(name, _)| name.to_string())
         .collect()
 }
 
@@ -1211,7 +1210,7 @@ mod tests {
             ("kty", Value::text("RSA")),
             ("n", Value::text(RFC_7515_RSA_N)),
             ("e", Value::text("AQAB")),
-            ("use_", Value::text("enc")),
+            ("use", Value::text("enc")),
         ]);
         assert!(key_of(&encryption).is_none());
         let confused = key(&[

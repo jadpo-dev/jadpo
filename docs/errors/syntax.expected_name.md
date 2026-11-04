@@ -53,3 +53,34 @@ check failed: 1 error, 3 files
 
 A block whose names are wrong reports the first: a later line is most
 often the same mistake again, and is reported once the first is fixed.
+
+A field may be named with a reserved word, but only what holds it can read
+it, `booking.type`. On its own the word is never a name, and a rule across
+fields names its fields alone, so it can't read this one:
+
+```jadpo check project=e-expected-name-value expect=syntax.expected_name
+type Kind = Enum {
+    a
+    b
+}
+
+type Booking = Object {
+    type: Kind
+    other: Kind
+    rule same: type == other
+}
+```
+
+```text output
+error: `type` is a reserved word
+ --> main.jadpo:9:16
+  |
+9 |     rule same: type == other
+  |                ^^^^ can't be read on its own
+  reason: A field may be named with a reserved word, and is then read through what holds it, `thing.type`. On its own the word is never a name, so a rule's condition, which names fields alone, can't read one.
+  next: Read it as `thing.type`; in a rule's condition, rename the field (agent)
+  rule: syntax.expected_name
+  help: https://jadpo.dev/docs/errors/syntax.expected_name
+
+check failed: 1 error, 1 file
+```

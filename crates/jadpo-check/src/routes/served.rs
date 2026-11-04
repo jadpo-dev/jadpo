@@ -8,7 +8,8 @@
 //!
 //! It is under the API's own default authentication: a signed-in caller,
 //! by any method the API accepts, so an admin API's document needs
-//! sign-in. Where the API accepts no way to sign in that is built, every
+//! sign-in. Where the API accepts no way to sign in that is built, because
+//! the app declares none or its entry says `authentication: []`, every
 //! route it has lets anyone call it, so its document tells no one more
 //! than its routes do, and anyone may read it.
 
