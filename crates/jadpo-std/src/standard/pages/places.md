@@ -10,8 +10,7 @@ country, use `CountrySubdivision`.
 Country.gb
 ```
 
-- Each value is its code in lower case. A code that is a reserved word takes
-  a trailing `_`: `Country.in_` is India.
+- Each value is its code in lower case: `Country.in` is India.
 - `text.format` can also write the three-letter code, `GBR`, with `form:
   CodeForm.alpha3`, or the number, `826`, with `form: CodeForm.numeric`.
 - The withdrawn code `YU` is only read from old data, so don't create new ones.
@@ -85,8 +84,7 @@ tells `en-GB` from `en-US`.
 Language.en
 ```
 
-- Each value is its code. A code that is a reserved word takes a trailing `_`:
-  `Language.or_` is Odia.
+- Each value is its code: `Language.or` is Odia.
 - `text.format` can also write the three-letter code, `eng`, with `form:
   CodeForm.alpha3`.
 

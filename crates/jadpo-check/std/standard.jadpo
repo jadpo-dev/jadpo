@@ -222,7 +222,7 @@ public type Continent = Enum {
 
 /// A country (area 19, ISO 3166-1), written as its alpha-2 code, `GB`;
 /// `form: CodeForm.alpha3` writes `GBR` and `CodeForm.numeric` `826`. A
-/// code that is `all`, `true`, `false` or `none` takes a trailing `_`: `Country.in` is
+/// code that is `all`, `true`, `false` or `none` takes a trailing `_`. `Country.in` is
 /// India. A withdrawn code, `YU`, is only read.
 public type Country = Enum {}
 
