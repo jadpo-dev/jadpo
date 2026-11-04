@@ -29,6 +29,7 @@ pub const LINE_MAX: usize = 200;
 /// The categories of the standard types that are personal data and aren't
 /// held as text, by name (area 15); a type held as text names its own.
 pub const PERSONAL: &[(&str, &str)] = &[
+    ("Email", "contact"),
     ("EmailWithName", "contact"),
     ("Nationality", "demographic"),
     ("PersonName", "identifying"),

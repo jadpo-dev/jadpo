@@ -6,7 +6,8 @@ Erasing a person would clear a field that can't be `none`: a reference whose rec
 
 Erasure keeps some records without the person. One kept with
 `Erasure.anonymised`, which an `OnDelete.cleared` reference means, loses
-its reference to the person and every field marked `personal:`. One kept
+its reference to the person and every field marked `personal:` or typed
+`Email`. One kept
 with `Erasure.retained` loses only the reference. A field whose type
 doesn't end in `?` must always hold a value, so erasure couldn't clear
 it, and the person's data would stay. A person's own record kept with

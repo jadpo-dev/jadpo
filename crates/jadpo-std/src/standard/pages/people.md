@@ -68,7 +68,8 @@ Username("mary.somerville_1780")
 An email address, checked as one.
 
 Use it for any address you send to or sign someone in with. To keep the name
-shown beside the address, use `EmailWithName`.
+shown beside the address, use `EmailWithName`. Either is personal data with no
+`personal:` on the field: it counts as `PersonalData.contact`.
 
 ```jadpo
 Email("mary@example.com")

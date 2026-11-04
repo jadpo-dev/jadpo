@@ -405,13 +405,7 @@ What the Reddit thread found (Richard, 2026-11-03):
   a hole and have the compiler say what type belongs there and what is in
   scope. A language decision, so it goes to Richard with a recommendation and
   what it would save, measured against the PersonName detour in the 0.2.0 run.
-- [ ] **A20 An email address is personal data** `opus · high`, in 0.3.0,
-  after A15 (Richard, 2026-11-04): a field typed `Email` counts as
-  `PersonalData.contact` without saying so, and the first commit that lets
-  anyone read personal data with no sign-in gets a notice, as A15 does for
-  public writes. Area 15, "What the compiler checks"; area 18, "What a first
-  record holds". The 0.2.0 run read a customer's email through a public
-  route and nothing said so.
+- [x] **A20 An email address is personal data**: area 15, "An email address needs no mark" and "What the compiler checks"; area 18, "What a first record holds"; compiler/runtime §2.3, "An email address is personal data"; notes for areas 15 and 18.
 - [ ] **D17 The documentation reorganised** `opus · high`, in 0.3.0, after
   A15 and A20 (Richard, 2026-11-04): a review of how all the documentation
   and the site's navigation are organised, then the reorganisation it

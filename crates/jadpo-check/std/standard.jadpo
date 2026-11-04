@@ -301,7 +301,7 @@ public type Duration = Duration {}
 /// passing: `4006381333931`.
 public type Ean13 = Text {}
 
-/// An email address (area 2), checked as one.
+/// An email address (area 2), checked as one. Personal data.
 public type Email = Email {}
 
 /// A mailbox (area 19, RFC 5322): an address with the name shown with it,

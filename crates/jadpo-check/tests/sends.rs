@@ -383,6 +383,43 @@ fn a_public_cache_never_keeps_what_is_marked_personal() {
     );
 }
 
+/// An email address is personal data with no mark, so a public cache can't
+/// keep one (area 15, "Marking personal fields"; chunk A20).
+#[test]
+fn a_public_cache_never_keeps_an_email_address() {
+    let customer = (
+        "domains/shop/entities/customer.jadpo",
+        "use shop/types { Reference }\n\nentity Customer {\n    id: Uuid\n    digest: Reference {\n        unique: true\n    }\n    address: Email\n\n    policy: {\n        read: [Access.public]\n    }\n}\n",
+    );
+    let reach = (
+        "domains/shop/types/reach.jadpo",
+        "use shop/entities { Customer }\n\ntype Reach = Output {\n    pick: [Customer.address]\n}\n",
+    );
+    let reach_of = (
+        "domains/shop/queries/reach_of.jadpo",
+        "use shop/entities { Customer }\nuse shop/failures { ArchiveNotFound }\nuse shop/types { Reach, Reference }\n\nquery reach_of(digest: Reference) fails ArchiveNotFound -> Reach {\n    from: Customer\n    where: Customer.digest == digest\n    missing: ArchiveNotFound\n}\n",
+    );
+    let group = format!(
+        "use shop/queries {{ reach_of }}\nuse shop/types {{ Reach, Reference }}\n\nroutes Archives {{\n    prefix: /archives\n\n{}}}\n",
+        route("        output: Reach\n        cache: immutable\n        run: reach_of(digest)\n")
+    );
+    let found = problems(&with(
+        "",
+        &[
+            customer,
+            reach,
+            reach_of,
+            ("domains/shop/routes/archives.jadpo", group.as_str()),
+        ],
+    ));
+    assert!(
+        found.len() == 1
+            && found[0].starts_with("route.cache_invalid: ")
+            && found[0].contains("`Customer.address`, an `Email`, which is personal data"),
+        "{found:#?}"
+    );
+}
+
 /// A standard type that is personal data counts as a marked field does, as
 /// it does in the personal-data report (area 15, "Where personal data goes"):
 /// no erasure reaches a public cache either way.

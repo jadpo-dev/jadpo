@@ -10695,8 +10695,8 @@ These are held as text:
 ### Personal data and shapes
 
 **Personal data:** a name, a given or family name and a username are
-`identifying`; a mailbox, an address, an extension and a UPRN are
-`contact`; a nationality is `demographic`. The lists of places aren't
+`identifying`; an email address, a mailbox, an address, an extension and a
+UPRN are `contact`; a nationality is `demographic`. The lists of places aren't
 personal data.
 
 **No shapes:** `type.standard_exists` matches none of the objects,

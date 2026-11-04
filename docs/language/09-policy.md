@@ -312,7 +312,9 @@ A public read also needs a route that skips sign-in, one that says
 `authentication: RouteAuthentication.none`
 ([Routes: signed in by default](08-identity.md#routes-signed-in-by-default)).
 Either alone isn't enough: the route lets in callers who aren't signed in,
-and the grant lets them read the record.
+and the grant lets them read the record. A project's first record holding
+personal data anyone may read says so to a person
+([What a first record holds](18-records-and-manifest.md#what-a-first-record-holds)).
 
 There is no administrator who bypasses policy.
 

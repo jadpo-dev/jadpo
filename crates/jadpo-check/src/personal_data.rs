@@ -77,7 +77,31 @@ fn categories(db: &dyn Db, project: Project, holder: &Holder) -> Vec<String> {
 pub fn sent(db: &dyn Db, project: Project) -> Vec<Sent> {
     let left = crate::policy::flow::exits::left(db, project);
     let mut out: Vec<Sent> = Vec::new();
+    // A standard type a field is of goes with the field, however each of
+    // them got to the connection: an `Email` with `User.email`.
+    let lookup = Lookup::new(db, project);
+    let marks = ai_personal::marks(db, project);
+    let of_field: Vec<(&Exit, String)> = crate::policy::flow::exits::strongest(left)
+        .flat_map(|(exit, holder, _)| match holder {
+            Holder::Field { host, field } => {
+                ai_personal::field_holding(&lookup, marks, host, field)
+                    .map(|holding| holding.of_types)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|ty| (exit, ty))
+                    .collect()
+            }
+            Holder::Type(_) => Vec::new(),
+        })
+        .collect();
     for (exit, holder, how) in crate::policy::flow::exits::strongest(left) {
+        if let Holder::Type(ty) = holder
+            && of_field
+                .iter()
+                .any(|(with, held)| *with == exit && held == ty)
+        {
+            continue;
+        }
         let sent = Sent {
             connection: exit.connection.clone(),
             holder: named(db, project, holder),
@@ -113,7 +137,7 @@ pub struct Report {
 fn shown(holder: &Holder) -> String {
     match holder {
         Holder::Field { host, field } => format!("`{host}.{field}`"),
-        Holder::Type(ty) => format!("a `{ty}`"),
+        Holder::Type(ty) => ai_personal::a_type(ty),
     }
 }
 
@@ -384,7 +408,7 @@ pub fn entries(json: &Value) -> BTreeMap<String, Vec<String>> {
         for row in rows {
             let flag = |key: &str| row.get(key) == Some(&Value::Bool(true));
             let holder = match row.get("type").and_then(Value::as_str) {
-                Some(ty) => format!("a `{ty}`"),
+                Some(ty) => ai_personal::a_type(ty),
                 None => format!("`{}.{}`", text(row, "host"), text(row, "field")),
             };
             let by = match row.get("name").and_then(Value::as_str) {

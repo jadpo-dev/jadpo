@@ -559,7 +559,8 @@ report:
 What [a first record holds](18-records-and-manifest.md#what-a-first-record-holds)
 that a person decides comes before all of it, under "Decisions compared with
 nothing": each thing `jadpo check` couldn't compare, in plain words, with where
-it shows. A project's first public write leads the report this way.
+it shows. A project's first public write, and the first personal data anyone may
+read, lead the report this way.
 
 1. **Decisions that need a person.** Each change that needs an acceptance,
    a file in `acceptances/` in which a person accepts it

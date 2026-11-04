@@ -328,10 +328,11 @@ pub fn audit_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
             } else if let Some((ty, category)) = standard.first() {
                 Some((
                     format!(
-                        "`{}` is a `{ty}`, personal data (`PersonalData.{category}`) whatever holds it",
-                        field.name
+                        "`{}` is {}, personal data (`PersonalData.{category}`) whatever holds it",
+                        field.name,
+                        crate::ai_personal::a_type(ty)
                     ),
-                    format!("a `{ty}`"),
+                    crate::ai_personal::a_type(ty),
                 ))
             } else {
                 None
