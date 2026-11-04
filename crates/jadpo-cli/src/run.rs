@@ -297,6 +297,7 @@ pub(crate) fn finish(
                     env,
                     json,
                     choice,
+                    asked,
                 );
             }
             args.choice = choice;
