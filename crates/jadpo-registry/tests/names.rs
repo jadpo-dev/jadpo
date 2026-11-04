@@ -1,7 +1,7 @@
 //! A registry's names and digests: the scoped name, the version and the
 //! release digest, each read in exactly one spelling.
 
-use jadpo_registry::names::{Digest, ScopedName, Version};
+use jadpo_registry::names::{Digest, Handle, ScopedName, Version};
 
 #[test]
 fn a_scoped_name_is_its_publisher_and_its_name() {
@@ -95,4 +95,23 @@ fn names_are_json_text_and_refused_when_misspelt() {
     assert!(serde_json::from_str::<ScopedName>("\"acme/postcodes\"").is_err());
     assert!(serde_json::from_str::<Version>("\"1.0\"").is_err());
     assert!(serde_json::from_str::<Digest>("\"sha256:00\"").is_err());
+}
+
+#[test]
+fn a_registry_name_comes_from_the_publisher_and_the_name_in_code() {
+    let handle = Handle::parse("@acme").unwrap();
+    for (code, name) in [
+        ("Postcodes", "@acme/postcodes"),
+        ("AcmeCouriers", "@acme/acme-couriers"),
+        ("GitHub", "@acme/git-hub"),
+        ("Oauth2Tokens", "@acme/oauth2-tokens"),
+    ] {
+        assert_eq!(
+            ScopedName::of_code(&handle, code)
+                .expect("a name")
+                .to_string(),
+            name
+        );
+    }
+    assert!(ScopedName::of_code(&handle, &"Long".repeat(10)).is_none());
 }

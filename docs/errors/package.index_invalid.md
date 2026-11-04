@@ -1,7 +1,7 @@
 # `package.index_invalid`
 
-A package's index is a `///` description and two keys, `licence:` and
-`jadpo:`. Packages have no dependencies, so it has no `requires:`:
+A package's index is a `///` description, `licence:` and `jadpo:`, and
+`publisher:` when it is published. Packages have no dependencies, so it has no `requires:`:
 
 ```jadpo check project=p71-index file=app.jadpo hidden
 application {}

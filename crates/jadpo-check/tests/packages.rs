@@ -437,6 +437,41 @@ fn the_index_holds_its_description_licence_and_version_only() {
 }
 
 #[test]
+fn an_index_may_name_its_publisher_and_has_to_name_it_well() {
+    let named = (
+        INDEX.0,
+        "/// UK postcodes.\npackage Postcodes.v2 {\n    publisher: \"@acme-labs\"\n    licence: Licence.mit\n    jadpo: \"1.0\"\n}\n",
+    );
+    let mut files = with(&[SAVE]);
+    files.retain(|(path, _)| *path != INDEX.0);
+    files.push(named);
+    assert_eq!(installed(&files), Vec::<String>::new());
+    for written in [
+        "\"acme\"",
+        "\"@Acme\"",
+        "\"@acme/postcodes\"",
+        "\"@-acme\"",
+        "\"@acme--labs\"",
+        "\"\"",
+        "Licence.mit",
+        "3",
+    ] {
+        let text = format!(
+            "/// UK postcodes.\npackage Postcodes.v2 {{\n    publisher: {written}\n    licence: Licence.mit\n    jadpo: \"1.0\"\n}}\n"
+        );
+        let mut files = with(&[SAVE]);
+        files.retain(|(path, _)| *path != INDEX.0);
+        files.push((INDEX.0, text.as_str()));
+        let found = installed(&files);
+        let expected = format!("package.index_invalid: `{written}` isn't a package's `publisher:`");
+        assert!(
+            found.iter().any(|p| p.contains(&expected)),
+            "{expected}: {found:#?}"
+        );
+    }
+}
+
+#[test]
 fn a_package_holds_no_email_templates() {
     let email = (
         "packages/postcodes/v2/emails/welcome.jadpo",

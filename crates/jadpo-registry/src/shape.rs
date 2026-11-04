@@ -209,6 +209,7 @@ pub fn named(name: &str) -> Option<Shape> {
         ]),
         "Facts" => object(vec![
             field("kind", Named("PackageKind")),
+            field("publisher", nullable(text(Text::Handle))),
             field("pure", Bool),
             field("hosts", list(Named("HostFact"))),
             field("changing_calls", list(plain())),

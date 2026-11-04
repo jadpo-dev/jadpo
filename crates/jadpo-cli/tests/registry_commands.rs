@@ -10,7 +10,7 @@ use jadpo_cli::{Output, run};
 use jadpo_db::{Source, parse_lock};
 use jadpo_registry::http::{Fetched, Incoming, Server, fetch};
 use jadpo_registry::local::{LocalRegistry, ReleaseSeed, Served};
-use jadpo_registry::names::{ScopedName, Version};
+use jadpo_registry::names::{Handle, ScopedName, Version};
 use jadpo_registry::protocol::{Advisory, Change, ChangeEntry, Method, ReleaseState};
 use jadpo_term::Environment;
 
@@ -684,8 +684,15 @@ fn a_package_handed_to_another_publisher_is_shown_and_waits_again() {
     let mut surface = String::new();
     for (path, bytes) in &mut files {
         if path == "surface.jadpo_record" {
-            surface = String::from_utf8_lossy(bytes).replace("version 2.1.0", "version 2.2.0");
+            surface = String::from_utf8_lossy(bytes)
+                .replace("version 2.1.0", "version 2.2.0")
+                .replace("publisher @acme", "publisher @new");
             *bytes = surface.clone().into_bytes();
+        }
+        if path == "package.jadpo" {
+            *bytes = String::from_utf8_lossy(bytes)
+                .replace("@acme", "@new")
+                .into_bytes();
         }
     }
     let mut carried = ReleaseSeed::new(name("@new/postcodes"), version("2.2.0"), files);
@@ -1087,6 +1094,170 @@ fn a_release_the_verifier_refuses_shows_its_rows() {
         "{}",
         refused.stdout
     );
+}
+
+/// The verifier's answer, once started, put through the registry's own check
+/// of whose release it is.
+fn check_when_started(registry: &LocalRegistry, publisher: &str) -> std::thread::JoinHandle<()> {
+    let registry = registry.clone();
+    let publisher = Handle::parse(publisher).expect("a handle");
+    std::thread::spawn(move || {
+        for _ in 0..600 {
+            if !registry.started().is_empty() {
+                let mut facts =
+                    ReleaseSeed::new(name("@acme/postcodes"), version("2.0.0"), Vec::new()).facts;
+                facts.publisher = Some(publisher);
+                let bar = vec![("tests".to_string(), true, "3 tests".to_string())];
+                registry.checked("rel_0001", "Postcodes", facts, bar);
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    })
+}
+
+#[test]
+fn publish_goes_through_the_registrys_check_of_its_publisher() {
+    let world = ready("registry-publisher-passes");
+    push_tag(&world.package);
+    world.registry.repository_of(
+        &name("@acme/postcodes"),
+        "https://git.example/acme/postcodes",
+    );
+    let checking = check_when_started(&world.registry, "@acme");
+    let published = with(&world.url, &world.package, &["package", "publish"]);
+    checking.join().unwrap();
+    assert_eq!(
+        published.code, 0,
+        "{}{}",
+        published.stdout, published.stderr
+    );
+    assert!(
+        published.stdout.contains("publisher   @acme\n"),
+        "{}",
+        published.stdout
+    );
+    assert!(
+        published.stdout.contains("release pending"),
+        "{}",
+        published.stdout
+    );
+}
+
+#[test]
+fn a_fork_naming_the_original_is_refused_with_its_own_page() {
+    let world = ready("registry-publisher-fork");
+    push_tag(&world.package);
+    // `@acme/postcodes` comes from another repository than this checkout's.
+    let checking = check_when_started(&world.registry, "@acme");
+    let refused = with(&world.url, &world.package, &["package", "publish"]);
+    checking.join().unwrap();
+    assert_eq!(refused.code, 1, "{}{}", refused.stdout, refused.stderr);
+    assert!(
+        refused
+            .stdout
+            .contains("rule: publish.publisher_mismatch\n"),
+        "{}",
+        refused.stdout
+    );
+    assert!(
+        refused.stdout.contains("https://github.com/acme/postcodes"),
+        "{}",
+        refused.stdout
+    );
+    assert!(
+        !refused.stdout.contains("rule: publish.failed"),
+        "{}",
+        refused.stdout
+    );
+}
+
+#[test]
+fn a_release_the_registry_read_as_another_publishers_is_refused() {
+    let world = ready("registry-publisher-disagrees");
+    push_tag(&world.package);
+    // The registry holds nothing of `@other`'s, so it has nothing to refuse;
+    // this checkout says `@acme`, and that is who asked.
+    let checking = check_when_started(&world.registry, "@other");
+    let refused = with(&world.url, &world.package, &["package", "publish"]);
+    checking.join().unwrap();
+    assert_eq!(refused.code, 1, "{}{}", refused.stdout, refused.stderr);
+    assert!(
+        refused
+            .stdout
+            .contains("rule: publish.publisher_mismatch\n")
+            || refused
+                .stderr
+                .contains("rule: publish.publisher_mismatch\n"),
+        "{}{}",
+        refused.stdout,
+        refused.stderr
+    );
+    let said = format!("{}{}", refused.stdout, refused.stderr);
+    assert!(said.contains("`@other`"), "{said}");
+    assert!(said.contains("`@acme`"), "{said}");
+}
+
+#[test]
+fn publish_refuses_a_package_with_no_publisher_and_asks_nothing() {
+    let world = ready("registry-publisher-missing");
+    write(
+        &world.package,
+        "package.jadpo",
+        &super::packages::INDEX.replace("    publisher: \"@acme\"\n", ""),
+    );
+    plain(&world.package, &["package", "check"]);
+    let log = std::fs::read_to_string(world.package.join("CHANGELOG.md")).expect("changelog");
+    write(
+        &world.package,
+        "CHANGELOG.md",
+        &log.replacen("## 2.0.0", "No longer names a publisher.\n\n## 2.0.0", 1),
+    );
+    let checked = plain(&world.package, &["package", "check"]);
+    assert_eq!(checked.code, 0, "{}", checked.stdout);
+    git(&world.package, &["add", "-A"]);
+    git(&world.package, &["commit", "-q", "-m", "no publisher"]);
+    git(&world.package, &["tag", "v2.0.1"]);
+    git(&world.package, &["push", "-q", "origin", "main", "v2.0.1"]);
+    let refused = with(&world.url, &world.package, &["package", "publish"]);
+    assert_eq!(refused.code, 1, "{}{}", refused.stdout, refused.stderr);
+    assert!(
+        refused.stdout.contains("rule: publish.publisher_missing\n"),
+        "{}",
+        refused.stdout
+    );
+    assert!(world.registry.started().is_empty());
+}
+
+#[test]
+fn add_refuses_files_that_name_another_publisher() {
+    let (_dir, package, app) = workspace("registry-add-publisher");
+    let registry = LocalRegistry::new();
+    // `@other/postcodes` whose files say they are `@acme`'s.
+    let mut seed = ReleaseSeed::new(
+        name("@other/postcodes"),
+        version("2.0.0"),
+        snapshot(&package),
+    );
+    seed.released_at = days_ago(40);
+    seed.surface = std::fs::read_to_string(package.join("surface.jadpo_record")).expect("surface");
+    registry.release(seed);
+    let served = registry.serve().expect("serves");
+    let refused = with(&served.url(), &app, &["package", "add", "@other/postcodes"]);
+    assert_eq!(refused.code, 1, "{}", refused.stderr);
+    assert!(
+        refused.stderr.contains("rule: install.not_proved\n"),
+        "{}",
+        refused.stderr
+    );
+    assert!(
+        refused
+            .stderr
+            .contains("Its name says `@other`, and its files say `@acme`."),
+        "{}",
+        refused.stderr
+    );
+    assert!(!app.join("jadpo.lock").exists());
 }
 
 #[test]

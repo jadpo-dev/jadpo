@@ -140,6 +140,7 @@ impl Set {
             repository: verifier.git.repository(url).expect("a repository"),
             commit: commit.to_string(),
             previous: previous.map(str::to_string),
+            publisher: None,
         }
     }
 }
@@ -739,6 +740,7 @@ fn a_public_policy_refuses_a_name_that_points_somewhere_private() {
         repository: repository.clone(),
         commit: "a".repeat(40),
         previous: None,
+        publisher: None,
     };
     match verifier.verify(&request) {
         Outcome::CouldNotCheck { code, .. } => assert_eq!(code, "repository_refused"),
@@ -750,4 +752,37 @@ fn a_public_policy_refuses_a_name_that_points_somewhere_private() {
     ));
     // And the local form a test uses is nothing the real policy takes.
     assert!(GitPolicy::https().repository("file:///etc").is_err());
+}
+
+#[test]
+fn both_passes_are_asked_about_the_publisher_the_registry_named() {
+    let Some(sandbox) = sandbox() else { return };
+    let set = set("publisher-asked");
+    let (url, commit) = set.repository(PACKAGE);
+    let facts = json!({ "kind": "library", "publisher": "@acme" });
+    // Answers only when it is asked about `@acme`; whichever pass isn't has
+    // nothing to say.
+    let answer = |document: &Value| {
+        format!(
+            "case \"$*\" in\n*\"--publisher @acme\"*) cat <<'JSON'\n{document}\nJSON\n;;\n*) exit 9 ;;\nesac\n"
+        )
+    };
+    let source = answer(&report(true, &facts, &[]));
+    let run = answer(&report(true, &facts, &[("bar", ran_bar())]));
+    let jadpo = script(
+        set.tools.path(),
+        "jadpo",
+        &format!("case \"$*\" in\n*--no-run*)\n{source}\n;;\n*)\n{run}\n;;\nesac\n"),
+    );
+    let verifier = verifier(sandbox, set.repositories.path(), set.scratch.path(), jadpo);
+    let mut request = set.request(&url, &commit, &verifier, None);
+    request.publisher = Some("@acme".to_string());
+    let answered = checked(verifier.verify(&request));
+    assert_eq!(answered["passed"], true, "{answered}");
+    assert_eq!(answered["facts"]["publisher"], "@acme");
+
+    // With none named, it isn't asked at all.
+    request.publisher = None;
+    let answered = checked(verifier.verify(&request));
+    assert_eq!(answered["passed"], false, "{answered}");
 }
