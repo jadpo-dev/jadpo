@@ -908,12 +908,13 @@ closed: by exact host and whole path parts, with an address it can't tell
 apart from someone else's under nothing (area 11, "Installing safely").
 This graph diff runs in tests.
 
-**An email address is personal data** (chunk A20, area 15). `Email` is in
+**Contact details and names need no mark** (chunks A20 and A21, area 15). `Email` is in
 `contact::PERSONAL`, and `ai_personal::builtin_category` reads a built-in type's
 category where `deep` and `shallow` walk, so every check that follows a standard
 type that is personal data follows it. `ai_personal::counts_as_marked` is what
-erasure adds to `personal:` for what it clears; `persons::personal_problems` still
-reads only `personal:`. `personal_data::sent` names a standard type with a field of
+erasure adds to `personal:` for what it clears, the types in
+`ai_personal::CLEARED_WITH_NO_MARK`, and `counted_as_marked` says what one is in a
+refusal; `persons::personal_problems` still reads only `personal:`. `personal_data::sent` names a standard type with a field of
 that type at the same exit, through `Holding::of_types`.
 
 **What a first record holds** (chunk A15, area 18). `acceptances::first::notice_list`

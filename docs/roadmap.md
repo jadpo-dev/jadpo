@@ -384,13 +384,12 @@ What the Reddit thread found (Richard, 2026-11-03):
   a hole and have the compiler say what type belongs there and what is in
   scope. A language decision, so it goes to Richard with a recommendation and
   what it would save, measured against the PersonName detour in the 0.2.0 run.
-- [x] **A20 An email address is personal data**: area 15, "An email address needs no mark" and "What the compiler checks"; area 18, "What a first record holds"; compiler/runtime §2.3, "An email address is personal data"; notes for areas 15 and 18.
+- [x] **A20 An email address is personal data**: area 15, "Contact details and names need no mark" and "What the compiler checks"; area 18, "What a first record holds"; compiler/runtime §2.3, "Contact details and names need no mark"; notes for areas 15 and 18.
+- [x] **A21 Phone numbers, names and addresses are cleared as an email is**: area 15, "Contact details and names need no mark" and "Erasure"; `data.erase_field_required`; compiler/runtime §2.3, "Contact details and names need no mark"; notes for area 15.
 - [x] **A22 A write background work could never make**: area 9, "Nothing grants it"; area 12, "Runs as the system"; `docs/errors/policy.system_grant_missing.md`; notes for area 9, "Background work and no grant".
 - [x] **D17a Honest status words**: each area's "What is built" table; [writing guide](writing.md), "A status word"; `status_word_problems` in `tools/docs/agent_guidance.py`.
 - [x] **D17b The reference's manifest**: `docs/reference.toml` and its check; docs/documentation.md, "The reference's manifest".
-- [ ] **D17c The navigation designed** `opus · high` **needs a maintainer**
-  to look at the canvas once: sidebar, mobile menu, status marks, landing
-  pages, reference home, types index, guides index, search results.
+- [x] **D17c The navigation designed**: `design/docs-nav.html` in jadpo-website.
 - [ ] **D17d The site built from the manifest** `opus · high` **needs a
   maintainer**, since merging deploys to jadpo.dev.
 - [ ] **D17e Landing pages and status lines** `opus · high`: each group has
@@ -429,7 +428,7 @@ above and before every other unticked chunk.
 
 0.2.0 shipped without V2. **0.3.0 holds** everything in this section, R1 to
 R6, G1 to G7 (what the registry application, R7, needs from `jadpo`), the real
-deploy (8.2n) and what it finds, and D15, D16, D17, A12 to A15, A20 and A22 (Richard,
+deploy (8.2n) and what it finds, and D15, D16, D17, A12 to A15, A20, A21 and A22 (Richard,
 2026-11-03). It is released when those have merged. V1 and V3 to V5 run at the same time as each other and as R1
 and R4, where they touch different crates.
 
