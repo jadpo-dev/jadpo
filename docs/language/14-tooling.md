@@ -143,9 +143,12 @@ compares the change with the default branch at its merge base, and fails
 on each change that needs a person's acceptance and has none
 ([Review and sign-off](#review-and-sign-off)); `--before <branch or
 commit>` compares with another. With `--json`, `data` holds the `layout`,
-the `root`, the `fileCount` and the `errors`, and any `providers`,
-`per_instance` and `before`; `--full` lists the `files` and what it wrote to
-`build`.
+the `root`, the `fileCount` and the `errors`, and any `notice_list`,
+`providers`, `per_instance` and `before`; `--full` lists the `files` and what it
+wrote to `build`. What a first commit holds that nothing can compare, such as a
+new project's public write, passes and is said as a notice for a person, in
+`notice_list`
+([What a first record holds](18-records-and-manifest.md#what-a-first-record-holds)).
 
 ### `jadpo fmt`
 
@@ -629,7 +632,9 @@ what it says, in that order, and what it prints. It fails only when it
 can't write the report: a source with errors (`approval not written`, each
 error shown), `cli.approval_arguments` for an argument, a `--before` git
 doesn't know or nothing to compare with, and `acceptance.base_missing` for
-a base the clone doesn't hold.
+a base the clone doesn't hold. With no before side, what
+[a first record holds](18-records-and-manifest.md#what-a-first-record-holds)
+is still written, as all the report holds.
 
 ### `jadpo declines list` and `clear`
 

@@ -147,6 +147,68 @@ fn twin(root: &Path) -> serde_json::Value {
 
 const NEEDS: &str = "pay: ErasureNotPossible.data_stays";
 
+/// A project's first commit has nothing to compare with, so a connection that
+/// can't erase what it receives is a notice for a person, and the next change
+/// is the one refused until a person accepts it.
+#[test]
+fn a_first_commit_says_so_rather_than_passing_unseen() {
+    let root = project("erasure-first", "user.display_name", "", "");
+    let said = "connection `pay` keeps `User.display_name` after a person is erased: `AcmePay.v1` declares no `erasure:`";
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}", checked.stdout);
+    // The connection's hosts are someone else's, so they are said too.
+    for words in [
+        said,
+        "from the next change",
+        "connection `pay` can now reach `https://api.acme-pay.example`",
+        "(human)",
+    ] {
+        assert!(
+            checked.stdout.contains(words),
+            "{words}\n{}",
+            checked.stdout
+        );
+    }
+    let approved = jadpo(&root, &["approval"]);
+    assert_eq!(approved.code, 0, "{}{}", approved.stdout, approved.stderr);
+    let markdown = fs::read_to_string(root.join("build/review/approval.md")).expect("the report");
+    assert!(
+        markdown.contains("## Decisions compared with nothing"),
+        "{markdown}"
+    );
+    assert!(
+        markdown.contains("ErasureNotPossible.data_stays"),
+        "{markdown}"
+    );
+
+    // A person's reason already in the project says it was decided.
+    write(
+        &root,
+        "acceptances/20261104T1200_names_at_pay.jadpo",
+        "/// Acme Pay must keep customers' names for seven years for tax.\nacceptance {\n    changes: {\n        pay: ErasureNotPossible.data_stays\n    }\n}\n",
+    );
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}", checked.stdout);
+    assert!(!checked.stdout.contains(said), "{}", checked.stdout);
+    fs::remove_dir_all(root.join("acceptances")).expect("removed");
+
+    // Compared from then on: the next change needs its acceptance.
+    write(&root, "README.md", "Billing.\n");
+    commit(&root, "Say what it is");
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 1, "{}", checked.stdout);
+    assert!(
+        checked.stdout.contains("rule: acceptance.missing"),
+        "{}",
+        checked.stdout
+    );
+    assert!(
+        !checked.stdout.contains("from the next change"),
+        "{}",
+        checked.stdout
+    );
+}
+
 /// A branch starts sending a marked field to a connection that can't erase
 /// it: refused until a person accepts it with a reason, which then stands.
 #[test]

@@ -456,9 +456,13 @@ Anything else is `route.cache_invalid`:
   was sent to anyone who asked, so a route needing a signed-in caller can't say
   it.
 - **Only an answer of 200.** Any other `status:` is refused.
-- **Nothing marked `personal:`.** No erasure reaches a public cache, so what
-  the route runs can't give a marked field, directly or through what it calls
-  ([What the compiler checks](15-personal-data.md#what-the-compiler-checks)).
+- **No personal data.** No erasure reaches a public cache, so what the route
+  runs can't give any, directly or through what it calls, and its `output:`
+  can't say it holds any. It counts as
+  [the personal-data report](15-personal-data.md#where-personal-data-goes)
+  counts: a field marked `personal:`, and a standard type that is personal data
+  whatever holds it, such as `PhoneNumber`, on a field with no mark as much as on its
+  own ([What the compiler checks](15-personal-data.md#what-the-compiler-checks)).
 
 OpenAPI says `x-jadpo-cache: immutable` on the operation and lists the header
 on the 200, and the API record says `cache immutable` under the route, as the

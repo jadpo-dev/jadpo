@@ -104,7 +104,7 @@ pub fn streams(ty: &Ty) -> bool {
 const SENDS_REASON: &str = "`sends:` names the media type of a body of raw bytes: the `Output`'s one field, which is `Bytes`. There is no JSON around it to hold anything else, and a failure still answers in the JSON envelope.";
 
 /// Why `cache: immutable` is what it is (`route.cache_invalid`).
-pub(crate) const CACHE_REASON: &str = "`cache: immutable` promises the answer never changes, so any cache on the way may keep it for a year: a `GET` anyone may call, answering 200, with nothing marked `personal:` in it, since no erasure reaches a public cache.";
+pub(crate) const CACHE_REASON: &str = "`cache: immutable` promises the answer never changes, so any cache on the way may keep it for a year: a `GET` anyone may call, answering 200, with no personal data in it, marked `personal:` or of a standard type that is, since no erasure reaches a public cache.";
 
 /// What `settle:` holds (`route.settle_invalid`).
 const SETTLE_REASON: &str = "`settle:` holds `answer:`, a named query given `result` (what the action returns) or fields read through it, and `within:`, how long the route waits for the work its action set off, a duration shorter than the route's `deadline:`.";
