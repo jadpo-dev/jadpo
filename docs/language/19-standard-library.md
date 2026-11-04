@@ -7089,8 +7089,8 @@ secret, and that order always agrees with `==`.
 
 Wherever Jadpo shows a value, it shows a secret as `<redacted ApiKey>`,
 naming its type: a failed test's values, `jadpo test`'s output and its
-`--json`, a failure's report, a fault, and anything a debugger or
-`jadpo watch` shows. Every one of them writes a value the same way.
+`--json`, a failure's report, a fault, and anything a debugger shows, as
+`jadpo watch` will once it is built. Every one of them writes a value the same way.
 
 A test that fails over a secret shows it redacted wherever it shows a
 value, and its diff still says which field differs:

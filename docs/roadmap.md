@@ -396,8 +396,7 @@ What the Reddit thread found (Richard, 2026-11-03):
   to read all of `index.json`, 173,000 tokens; about 9,000 once and under
   1,000 per lookup.
 - [x] **D17h Standard types under Values and types**: docs/documentation.md, "The bundle"; `hand_type_table_problems` in `tools/docs/language_docs.py`; `/docs/types` in jadpo-website.
-- [ ] **D17i Built-in services, one home each** `opus · high`: usage first,
-  details last, the landing's rows all linking.
+- [x] **D17i Built-in services, one home each**: docs/language/16-built-in-services.md; docs/language/21-ai.md, "AI"; [writing guide](writing.md), "How a built-in service's page reads"; `docs/reference.toml`.
 - [ ] **D17j Every other area** `opus · high`: the remaining merges and
   renames, translations findable under Configuration.
 - [ ] **D17k Implementer history out of the topics** `opus · medium`, with a
@@ -702,12 +701,12 @@ After the registry is live, in order:
      see each failure on both executors, and `jadpo files copy` moves a
      disk store's files to S3.
    - [x] **B9 Flags declared, read and tested**: area 16, "Feature flags"
-     and "Flags: declared, read and tested"; area 1, "Rules triggered by
+     and "Flag rules: declaring, reading, testing"; area 1, "Rules triggered by
      time passing"; area 13, "Test settings"; compiler/runtime §2.6,
      "Feature flags".
    - [x] **B10 Changing and removing flags**: area 16, "Changing a flag",
-     "Removing a flag", "Flags in browsers and apps" and "Flags: changed,
-     listed and removed"; area 14, `jadpo flags`; compiler/runtime §2.6,
+     "Removing a flag", "Flags in browsers and apps" and "Flag rules: changing,
+     listing, removing"; area 14, `jadpo flags`; compiler/runtime §2.6,
      "Feature flags".
    - [x] **B11 The audit trail**: area 16, "Audit trail" (with "Reading
      a history", "Retention and erasure" and "What the audit trail

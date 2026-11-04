@@ -1080,7 +1080,8 @@ are erased the same way.
   [built-in emails](16-built-in-services.md#built-in-emails), goes only
   once every provider has confirmed. A delivery that gives up is parked
   for an operator and shown in the privacy request's state and in
-  `jadpo privacy requests`. It is never left quietly incomplete.
+  `jadpo privacy requests`, which isn't built yet. It is never left
+  quietly incomplete.
 - **A copied key that is itself personal data**, such as an email address
   used as the provider's key, stays only in the outbox until it is
   delivered. The personal-data report lists it there.
@@ -1447,8 +1448,8 @@ files, which the email lists.
 ### Deadlines and events
 
 Every request is a record with its one-month legal deadline.
-`jadpo privacy requests` and the console list them, and one nearing its
-deadline raises an alert.
+`jadpo privacy requests` and the console, neither built yet, list them,
+and one nearing its deadline raises an alert.
 
 Each step emits an event: `PrivacyRequestReceived`, `PrivacyExportReady`
 (with the download link), `PrivacyErasureScheduled`,
@@ -1817,7 +1818,7 @@ This is not legal advice. A privacy professional reviews the report.
 | `include_erased:` on a query | Built: it finds the people erasure keeps a record of too, and is held to what they keep. |
 | `User.erase(id)` | Partly built. Built: for a caller with `delete` on the person's record, one statement deletes the record, hidden or not, with the sign-in state of anyone it deletes who signs in, and deletes, anonymises or keeps each record of theirs as its reference says, however deep, records with a lifecycle removed outright. A record that belongs to several people keeps its marked fields until the last of them is erased, and another person's own record loses only the reference ([Records that belong to several people](#records-that-belong-to-several-people)). The person's own record stays field by field, hidden, where one of their fields says so ([The person's own record](#the-persons-own-record)). The bytes of each `File` it deletes or clears go once it commits ([Files](16-built-in-services.md#deleting-and-erasing)), and an audited record it deletes takes its history with it. Not built yet: one that would keep an audited record, whose history still refers to the person ([Audit trail](16-built-in-services.md#audit-trail)), `toolchain.not_built_yet` where `erase` is called, so no erasure is ever partial; and records in another store, `PersonErased`, the erasure log and providers' erasure, which nothing emits or calls. |
 | `User.export(id)` | Not built yet: it is `toolchain.not_built_yet` where it is called. |
-| `privacy:` in `application { }` | Not built yet: it is `toolchain.not_built_yet` where it is written. |
+| `privacy:` in `application { }` | Not built yet: it is `toolchain.not_built_yet` where it is written. Nor is `jadpo privacy requests`, which lists the requests it starts. |
 | Encrypted fields | Built: `encrypted: true`, key-type, `TotpSecret` and `SecretText` fields, sealed on write and opened on read, interpreted, compiled and on Workers; each refusal above; rotation through `_PREVIOUS`, with `field_encryption.reseal` and `jadpo config rotation`. |
 | The personal-data report | Partly built: `jadpo check` writes `build/report/personal-data.md` and `.json`, for a project with no errors, listing [where personal data goes](#where-personal-data-goes), and `jadpo package check` shows the same for a package. Each connection says whether its copy is erased or kept for an accepted reason, and the approval review shows its difference from the before side's, a connection at a time. Not built yet: the rest of its list, each person entity's fields, category, store and readers, the queries that say `include_erased: true`, retention, what erasure does, keys in the outbox, step records and OAuth grants. |
 | `erasure:` on a package and on a connection | Partly built. Built: each is read and checked, and a connection that receives personal data and can't erase it needs an `ErasureNotPossible` acceptance ([Erasure at providers](#erasure-at-providers)). Not built yet: calling the package's `erasure:`, so a connection that declares one is not yet asked to erase anyone. |

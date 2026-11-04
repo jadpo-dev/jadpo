@@ -645,7 +645,7 @@ each operation is described in its section of the
 |---|---|
 | Embed help articles and find the closest | `Vector`, pgvector query ([Embeddings and search](../21-ai.md#embeddings-and-search)) |
 | Answer as a typed reply with sources | `ai.generate(..., as:)` ([Typed output](../21-ai.md#typed-output)) |
-| Show the answer as it is written | `ai.stream` ([Streaming](../21-ai.md#streaming)) |
+| Show the answer as it is written | `ai.stream` ([Streaming from a model](../21-ai.md#streaming-from-a-model)) |
 | Keep within a monthly budget | AI limits ([Budgets](../21-ai.md#budgets)) |
 | Strip personal data before sending | `text.replace`; the [personal-data report](../15-personal-data.md#the-personal-data-report) |
 | Chunk articles into passages | `text.split`, `list.keep_first` |

@@ -445,7 +445,7 @@ sent. [Email](../language/16-built-in-services.md#email) shows how to send one.
 [Files](../language/16-built-in-services.md#files),
 [Data formats](../language/19-standard-library.md#data-formats-json-csv-tsv-and-json-lines),
 [Batches](../language/12-jobs-and-events.md#batches) and
-[Files: an export's pieces](../language/16-built-in-services.md#files-an-exports-pieces).
+[How an export writes its file](../language/16-built-in-services.md#how-an-export-writes-its-file).
 
 ## Not built yet
 

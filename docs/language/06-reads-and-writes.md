@@ -1804,7 +1804,7 @@ recognise a repeat. So a rerun repeats the call harmlessly
   run again. It stops as `outcome_unknown`, for an operator to look at,
   since sending it again could act twice (see "Parked, never sent again
   blindly" in
-  [The seam every outside call goes through](16-built-in-services.md#the-seam-every-outside-call-goes-through)).
+  [How every outside call is made safe](16-built-in-services.md#how-every-outside-call-is-made-safe)).
 - **An action with several changing calls.** Once its record of the calls
   exists, a rerun replays the recorded calls and keeps the record's
   `clock.now` ([Several outside calls](#several-outside-calls), below).
@@ -1862,7 +1862,7 @@ The guarantee is the one repeatable read gives: every record the action
 writes is checked against the copy it loaded.
 
 This is done where every outside call goes through Jadpo's runtime
-([The seam every outside call goes through](16-built-in-services.md#the-seam-every-outside-call-goes-through)):
+([How every outside call is made safe](16-built-in-services.md#how-every-outside-call-is-made-safe)):
 
 - **Reads before a call are a snapshot.** An action's transaction still
   begins at its first store operation, at its isolation level. If the

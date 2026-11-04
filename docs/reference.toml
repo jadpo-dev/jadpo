@@ -377,7 +377,7 @@ status = [
   "15-personal-data: `privacy:` in",
   "15-personal-data: The personal-data report",
 ]
-missing = "exporting a person's data, `privacy:` and most of the report"
+missing = "exporting a person's data, `privacy:`, jadpo privacy requests and most of the report"
 topics = [
   "personal-data",
   "marking-personal-fields",
@@ -513,6 +513,12 @@ topics = [
 
 [[group.page]]
 title = "Batches"
+status = [
+  "12-jobs-and-events: Everything else on this page",
+  "12-jobs-and-events: `batches.each` over a provider's list operation",
+  "12-jobs-and-events: `jadpo batches list`",
+]
+missing = "walking a provider's list and jadpo batches"
 topics = [
   "batches-work-over-many-items",
   "batch-work-keeps-its-progress",
@@ -587,7 +593,7 @@ details = [
 [[group.page]]
 title = "Files"
 status = ["16-built-in-services: Files"]
-missing = "uploads, downloads and the S3 driver"
+missing = "uploads, downloads, the S3 driver and jadpo files"
 topics = [
   "files",
 ]
@@ -646,14 +652,15 @@ status = [
   "21-ai: Everything else on this page",
   "21-ai: Keeping prompts and answers in production",
   "21-ai: A package's `embed:` with a `batch:` below 100",
+  "21-ai: `jadpo call`",
 ]
-missing = "`keep_content:` and `embed:` batches below 100"
+missing = "`keep_content:`, `embed:` batches below 100 and `jadpo call`"
 topics = [
   "ai",
   "the-ai-capability",
   "typed-output",
   "prompts-as-files",
-  "streaming",
+  "streaming-from-a-model",
   "embeddings-and-search",
   "asking-for-an-embedding",
   "keeping-embeddings-current",
@@ -684,7 +691,7 @@ status = [
   "16-built-in-services: The `telemetry:` section",
   "16-built-in-services: Path IDs",
 ]
-missing = "telemetry, and recording the path each request takes"
+missing = "telemetry, recording the path each request takes, and `jadpo traces`, `metrics`, `logs` and `path`"
 topics = [
   "monitoring-thresholds",
   "telemetry",
@@ -760,7 +767,7 @@ details = [
   "how-provider-calls-are-made",
   "wire-encodings-decoders-and-retries",
   "fakes-and-the-development-call-log",
-  "the-seam-every-outside-call-goes-through",
+  "how-outside-calls-are-made-safe",
 ]
 
 [[group.page]]
@@ -901,6 +908,8 @@ built = [
 id = "commands"
 title = "Commands"
 summary = "Every jadpo command, what it does and how to run it."
+status = ["14-tooling: Commands"]
+missing = "`jadpo inspect`, `impact`, `rename`, `domain`, `services`, `dev grants`, `files`, `batches`, `search reindex`, the debugging commands, `path` and privacy requests"
 
 [[group.page.section]]
 id = "the-jadpo-command"
@@ -986,6 +995,13 @@ topics = [
 
 [[group.page]]
 title = "Debugging"
+status = [
+  "17-debugging-and-review: `jadpo calls`",
+  "17-debugging-and-review: Mapped `.jadpo` stacks",
+  "17-debugging-and-review: The developer console",
+  "17-debugging-and-review: `jadpo traces`",
+]
+missing = "jadpo incident, trace, traces, metrics, logs, watch, call, test new --from, replay and mcp"
 topics = [
   "debugging-and-review",
   "errors-point-at-the-jadpo-line",
@@ -1061,7 +1077,9 @@ what-the-graph-and-production-evidence-add = ["17-debugging-and-review: `jadpo t
 
 # A topic whose first sentence doesn't say what it is, or runs too long for a row.
 [topic_summary]
-email = "Most apps send a handful of emails: confirm your address, an invoice, a welcome."
+email = "Emails as typed values: templates the compiler checks, sent after your action commits, caught in tests and in a dev inbox."
+files = "A `File` field on a record, with the bytes kept in a store of files."
+caches = "Copies of records and query results kept in Redis, so busy pages read them quickly."
 feature-flags = "A feature flag lets you ship code switched off, then turn it on for some users, a share of users, or everyone, without a deploy."
 rate-limits = "A rate limit caps how many requests a caller may make in a period."
 search = "Give an entity a `search:` section and people can search its records by words."
