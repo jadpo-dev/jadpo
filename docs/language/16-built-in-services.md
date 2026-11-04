@@ -2440,6 +2440,8 @@ var file: File = attempt invoices.put(pdf, FileType.pdf)
 ## Search
 <!-- topic: search -->
 
+[Add search to a list](../guides/15-add-search-to-a-list.md) does the whole job, start to finish.
+
 Give an entity a `search:` section and people can search its records by
 words. The compiler generates the index, keeps it up to date and
 generates its migration, and a query finds records with `matches`. By
