@@ -11,7 +11,8 @@
 //! store `events: { store: }` names, and with none named it is
 //! `event.store_required`. A subscriber runs as the system (area 9,
 //! `Access.system`), so what it reaches that only `Access.public` grants
-//! is `policy.system_grant_missing` (decided 2026-10-19).
+//! (decided 2026-10-19), or that no list grants anyone (chunk A22), is
+//! `policy.system_grant_missing`.
 //!
 //! Subscribers are read file by file ([`subscribers_in`]) and gathered
 //! for the plan ([`subscribers`]); which actions emit is worked out from
@@ -186,7 +187,8 @@ pub fn subscribers(db: &dyn Db, project: Project) -> Arc<Vec<Arc<SubscriberModel
 }
 
 /// The problems of the subscribers `file` declares: how each reads, then
-/// what its action reaches that only `Access.public` grants (area 9).
+/// what its action reaches that lets the system in by no grant of its own
+/// (area 9).
 #[salsa::tracked(returns(ref))]
 pub fn subscriber_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     let mut out = Vec::new();
@@ -196,8 +198,13 @@ pub fn subscriber_problems(db: &dyn Db, project: Project, file: File) -> Vec<Dia
         if !crate::policy::policy_clean(db, project) {
             continue;
         }
-        if let Some(found) = crate::policy::reach::public_only(db, project, model.run.name()) {
-            out.push(public_only("subscriber", &model.name, &read.span, &found));
+        if let Some(found) = crate::policy::reach::system_refused(db, project, model.run.name()) {
+            out.push(system_refused(
+                "subscriber",
+                &model.name,
+                &read.span,
+                &found,
+            ));
         }
     }
     out
@@ -283,7 +290,7 @@ pub fn system_run_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     }
     let mut out = Vec::new();
     for (kind, run, shown, span) in runs {
-        if let Some(found) = crate::policy::reach::public_only(db, project, &run) {
+        if let Some(found) = crate::policy::reach::system_refused(db, project, &run) {
             out.push(system_only(kind, &shown, &span, &found, false));
         }
     }
@@ -292,55 +299,115 @@ pub fn system_run_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
 
 /// `policy.system_grant_missing`: the action a schedule or a subscriber
 /// runs (`kind`, called `name`) reaches what only `Access.public` grants,
-/// which never lets the system in on purpose.
-pub(crate) fn public_only(
+/// which never lets the system in on purpose, or what no list grants
+/// anyone, which can only ever refuse it.
+pub(crate) fn system_refused(
     kind: &str,
     name: &str,
     span: &Span,
-    found: &crate::policy::reach::PublicOnly,
+    found: &crate::policy::reach::SystemRefused,
 ) -> Diagnostic {
     system_only(kind, name, span, found, true)
 }
 
-/// [`public_only`] for background work, or with `background` false for
+/// [`system_refused`] for background work, or with `background` false for
 /// the system's runs inside a request.
 fn system_only(
     kind: &str,
     name: &str,
     span: &Span,
-    found: &crate::policy::reach::PublicOnly,
+    found: &crate::policy::reach::SystemRefused,
     background: bool,
 ) -> Diagnostic {
-    use crate::policy::reach::PublicOnly;
-    let (what, place, next) = match found {
-        PublicOnly::Entity { entity, effect } => (
-            format!("{} `{entity}`", effect.word()),
-            format!("`{entity}`'s `{}:`", effect.word()),
+    use crate::policy::Effect;
+    use crate::policy::reach::SystemRefused;
+    let public_why = |place: &str| {
+        if background {
+            format!(
+                "{place} names `Access.public` and not `Access.system`, and anyone at all is never how background work is let in"
+            )
+        } else {
+            format!(
+                "{place} names `Access.public` and not `Access.system`, and anyone at all is never how the system is let in"
+            )
+        }
+    };
+    // What every run comes to (area 9, "When policy says no").
+    let every_run = |effect: Effect| match effect {
+        Effect::Create => "so every run would be refused with `not_permitted`".to_string(),
+        other => format!("so every run would find nothing to {}", other.word()),
+    };
+    let (what, why, next) = match found {
+        SystemRefused::PublicEntity { entity, effect } => (
+            format!("only `Access.public` lets {} `{entity}`", effect.word()),
+            public_why(&format!("`{entity}`'s `{}:`", effect.word())),
             format!(
                 "Add `Access.system` to `{entity}`'s `{}:`, or reach `{entity}` from a route instead",
                 effect.word()
             ),
         ),
-        PublicOnly::Line { written } => (
-            format!("call `{written}`"),
-            format!("`{written}`'s line under `actions:`"),
+        SystemRefused::PublicLine { written } => (
+            format!("only `Access.public` lets call `{written}`"),
+            public_why(&format!("`{written}`'s line under `actions:`")),
             format!("Add `Access.system` to `{written}`'s line under `actions:`"),
+        ),
+        SystemRefused::Ungranted {
+            entity,
+            effect,
+            line: None,
+        } => (
+            format!("nothing lets {} `{entity}`", effect.word()),
+            format!(
+                "`{entity}`'s policy grants nobody `{}`, {}",
+                effect.word(),
+                every_run(*effect)
+            ),
+            format!(
+                "Add `{word}: [Access.system]` to `{entity}`'s `policy:`",
+                word = effect.word()
+            ),
+        ),
+        SystemRefused::Ungranted {
+            entity,
+            effect,
+            line: Some(line),
+        } => (
+            format!("nothing lets {} `{entity}`", effect.word()),
+            format!(
+                "`{line}`'s line under `actions:` grants nobody on `{entity}`, {}",
+                every_run(*effect)
+            ),
+            format!("Add `Access.system` to `{line}`'s line under `actions:`"),
+        ),
+        SystemRefused::UngrantedField {
+            entity,
+            field,
+            effect,
+        } => (
+            format!("nothing lets {} `{entity}.{field}`", effect.word()),
+            format!(
+                "`{entity}.{field}`'s own `{}:` names nobody, {}",
+                effect.word(),
+                every_run(Effect::Create)
+            ),
+            format!(
+                "Add `Access.system` to `{entity}.{field}`'s own `{}:`, or leave `{field}` out of what this action writes",
+                effect.word()
+            ),
         ),
     };
     Diagnostic::new(
         &rule::POLICY_SYSTEM_GRANT_MISSING,
-        format!(
-            "`{name}` runs as the system, which only `Access.public` lets {what}"
-        ),
+        format!("`{name}` runs as the system, which {what}"),
     )
     .at(span.clone(), "runs as `Access.system`")
     .reason(if background {
         format!(
-            "A {kind} runs as the system, which an entity grants background work by naming `Access.system`; {place} names `Access.public` and not `Access.system`, and anyone at all is never how background work is let in."
+            "A {kind} runs as the system, which an entity grants background work by naming `Access.system`; {why}."
         )
     } else {
         format!(
-            "A {kind} runs as the system, which an entity lets in by naming `Access.system`; {place} names `Access.public` and not `Access.system`, and anyone at all is never how the system is let in."
+            "A {kind} runs as the system, which an entity lets in by naming `Access.system`; {why}."
         )
     })
     .next(next)

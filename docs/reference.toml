@@ -745,6 +745,7 @@ topics = [
 [[group]]
 id = "external-services"
 title = "External services"
+summary = "Another company's API from your app: connecting to it, calling it, receiving from it, and using packages."
 topics = [
   "how-integrations-fit-together",
 ]
@@ -881,6 +882,7 @@ details = [
 [[group]]
 id = "testing"
 title = "Testing"
+summary = "How your tests run your real application against a real database: kinds of test, fixtures and fakes."
 topics = [
   "where-tests-live",
   "writing-a-test",
@@ -904,7 +906,7 @@ built = [
 [[group]]
 id = "tooling"
 title = "Tools"
-summary = "The jadpo command, your editor, building and deploying, and working with an agent."
+summary = "The jadpo command, your editor, building and deploying, and what a coding agent can look up."
 built = [
   "tooling-built",
 ]
