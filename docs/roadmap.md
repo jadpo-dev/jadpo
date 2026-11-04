@@ -416,6 +416,13 @@ What the Reddit thread found (Richard, 2026-11-03):
   public writes. Area 15, "What the compiler checks"; area 18, "What a first
   record holds". The 0.2.0 run read a customer's email through a public
   route and nothing said so.
+- [ ] **D17 The documentation reorganised** `opus · high`, in 0.3.0, after
+  A15 and A20 (Richard, 2026-11-04): a review of how all the documentation
+  and the site's navigation are organised, then the reorganisation it
+  calls for. Built-in services grouped by service, each with one home and
+  a landing page that links to it and says what is built; task guides for
+  the services that work; the standard types under Values and types, not
+  at the end of the primer. Old addresses keep working.
 
 Not scheduled: a way to write a query the language can't express. Richard
 will work through it and other solutions later; don't design or build one
@@ -429,7 +436,7 @@ above and before every other unticked chunk.
 
 0.2.0 shipped without V2. **0.3.0 holds** everything in this section, R1 to
 R6, G1 to G7 (what the registry application, R7, needs from `jadpo`), the real
-deploy (8.2n) and what it finds, and D15, D16, A12 to A15 and A20 (Richard,
+deploy (8.2n) and what it finds, and D15, D16, D17, A12 to A15 and A20 (Richard,
 2026-11-03). It is released when those have merged. V1 and V3 to V5 run at the same time as each other and as R1
 and R4, where they touch different crates.
 
