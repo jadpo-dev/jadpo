@@ -578,7 +578,8 @@ report:
    [permissions report](09-policy.md#the-permissions-report), as
    `access.jadpo_record` holds it, and the
    [personal-data report](15-personal-data.md#the-personal-data-report). A
-   record's changes are shown as a diff of its entries. Beside them: what
+   record's changes are shown as a diff of its entries, and the report's a
+   connection at a time, from the before side's. Beside them: what
    widens access with no grant changed, an output gaining a field or an
    action reading or writing another entity; every
    [decline](01-project-layout-and-modules.md#declining-a-judgement-call)

@@ -5127,8 +5127,9 @@ error, unless an acceptance ([Acceptances](18-records-and-manifest.md#acceptance
 is listed in the personal-data report. The app may add its own
 `PersonErased` subscribers.
 
-> Erasure at providers isn't built yet: it comes with
-> [Personal data](15-personal-data.md).
+> Calling the provider isn't built yet: it comes with
+> [Personal data](15-personal-data.md). Both declarations are read and
+> checked, and the acceptance is built.
 
 ### Proving a package works
 
@@ -7490,7 +7491,7 @@ package's name, as its types are.
 | The registry at jadpo.dev: publishing, search, advisories and compatibility runs | Not built yet. A package's `package.jadpo` doesn't name its publisher yet ([Names and publishers](#names-and-publishers)). |
 | Importers other than OpenAPI | Not built yet. |
 | Choosing a provider when deploying | Not built yet. |
-| Erasure at providers | Not built yet: it comes with [Personal data](15-personal-data.md). |
+| Erasure at providers | Partly built: the package's and the connection's `erasure:` are read and checked, and a connection that can't erase what it receives needs an `ErasureNotPossible` acceptance ([Erasure at providers](15-personal-data.md#erasure-at-providers)). Not built yet: calling the provider. |
 
 [The roadmap](../roadmap.md) says when each comes.
 

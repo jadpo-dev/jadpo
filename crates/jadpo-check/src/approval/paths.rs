@@ -169,9 +169,11 @@ fn target(view: &View<'_>, need: &Need) -> Option<Target> {
         }
         "PolicyChange.listing_added" | "PolicyChange.listing_removed" => callable_named(subject),
         change if change.ends_with("_declined") => callable_named(subject),
-        "NetworkChange.host_added" => Some(Target::Connection {
-            name: subject.to_string(),
-        }),
+        "NetworkChange.host_added" | crate::provider_erasure::DATA_STAYS => {
+            Some(Target::Connection {
+                name: subject.to_string(),
+            })
+        }
         "PackageChange.git_source" => Some(Target::Package {
             name: subject.to_string(),
         }),
