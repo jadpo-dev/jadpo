@@ -335,6 +335,7 @@ pub(crate) fn table(
             authentication: route.authentication,
             caller: route.caller,
             confirm: route.confirm,
+            rate_limit: routes::limit_of(apis, group, route),
             file: group.path.clone(),
             line,
         });
@@ -379,6 +380,7 @@ pub(crate) fn table(
             authentication: route.authentication,
             caller: Some(jadpo_std::http::PrincipalKind::User),
             confirm: false,
+            rate_limit: None,
             file: "generated".to_string(),
             line: 0,
         });
@@ -416,6 +418,7 @@ pub(crate) fn table(
             authentication: jadpo_std::http::Authentication::Required,
             caller: Some(jadpo_std::http::PrincipalKind::Service),
             confirm: false,
+            rate_limit: None,
             file: "generated".to_string(),
             line: 0,
         });
@@ -466,6 +469,7 @@ pub(crate) fn table(
                 caller: (step.authentication().needs_caller())
                     .then_some(jadpo_std::http::PrincipalKind::User),
                 confirm: false,
+                rate_limit: None,
                 file: "generated".to_string(),
                 line: 0,
             });
@@ -498,6 +502,7 @@ pub(crate) fn table(
                     authentication: step.authentication(),
                     caller: None,
                     confirm: false,
+                    rate_limit: None,
                     file: "generated".to_string(),
                     line: 0,
                 });
@@ -535,6 +540,7 @@ pub(crate) fn table(
                 authentication: step.authentication(),
                 caller: None,
                 confirm: false,
+                rate_limit: None,
                 file: "generated".to_string(),
                 line: 0,
             });
@@ -580,6 +586,7 @@ pub(crate) fn table(
                 authentication: served.authentication,
                 caller: None,
                 confirm: false,
+                rate_limit: None,
                 file: "generated".to_string(),
                 line: 0,
             });
@@ -626,6 +633,7 @@ pub(crate) fn table(
             authentication: served.authentication,
             caller: None,
             confirm: false,
+            rate_limit: None,
             file: "generated".to_string(),
             line: 0,
         });
