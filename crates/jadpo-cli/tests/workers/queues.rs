@@ -304,10 +304,12 @@ fn a_worker_consumes_a_cloudflare_queue_answering_each_message() {
 /// It runs with no account, its banner's update check, telemetry and
 /// error reports off, a home of its own, and `offline.mjs` refusing and
 /// reporting any connection it would make.
-fn dry_run(out: &Path) -> String {
+pub(super) fn dry_run(out: &Path) -> String {
     let (wrangler, offline) =
         jadpo_test::workerd_install::wrangler().unwrap_or_else(|why| panic!("{why}"));
-    let home = Path::new(env!("CARGO_TARGET_TMPDIR")).join("workers-wrangler");
+    let home = Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join("workers-wrangler")
+        .join(out.file_name().expect("the Worker's name"));
     let _ = fs::remove_dir_all(&home);
     fs::create_dir_all(&home).expect("a home");
     let mut command = Command::new("node");

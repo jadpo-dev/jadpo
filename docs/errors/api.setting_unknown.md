@@ -17,7 +17,7 @@ error: `version` isn't an API setting
   |
 5 |             version: 2
   |             ^^^^^^^ unknown setting
-  reason: An API in `apis:` holds its `prefix:`, `idempotency:`, `authentication:` and `serve_openapi:`, and later its `rate_limit:`.
+  reason: An API in `apis:` holds its `prefix:`, `idempotency:`, `authentication:`, `serve_openapi:` and `rate_limit:`.
   next: Remove `version` (agent)
   rule: api.setting_unknown
   help: https://jadpo.dev/docs/errors/api.setting_unknown

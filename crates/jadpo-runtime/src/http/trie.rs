@@ -432,6 +432,7 @@ mod tests {
             authentication: Authentication::Public,
             caller: None,
             confirm: false,
+            rate_limit: None,
             file: "routes.jadpo".into(),
             line: 1,
         }
