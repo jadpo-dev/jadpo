@@ -1338,16 +1338,47 @@ BUILD_STATUS = re.compile(r"\b(?:not built yet|isn't built|aren't built|not yet 
                           re.IGNORECASE)
 SPEC_WORDS = re.compile(r'^Decided\.|\bcarried to\b')
 NOT_BUILT = '## Not built yet'
+# How many source lines a note beside an example may wrap over.
+NOTE_LINES = 2
 REPOSITORY_URL = re.compile(r'^https://github\.com/jadpo-dev/jadpo/(?:blob|tree)/')
+
+
+def notes_beside_examples(lines):
+    """The lines of each note beside an example (docs/writing.md, "A page's first
+    example stands alone"): a paragraph of one sentence, at most NOTE_LINES long,
+    straight after a code block the reader sees."""
+    notes, i = set(), 0
+    while i < len(lines):
+        match = FENCE.match(lines[i])
+        if not match or not lines[i].startswith('```'):
+            i += 1
+            continue
+        hidden = parse_attrs(match.group(2)).get('hidden')
+        i += 1
+        while i < len(lines) and not lines[i].startswith('```'):
+            i += 1
+        i += 1
+        start = i
+        while start < len(lines) and not lines[start].strip():
+            start += 1
+        end = start
+        while end < len(lines) and lines[end].strip():
+            end += 1
+        paragraph = ' '.join(lines[start:end])
+        if (not hidden and start > i - 1 and 0 < end - start <= NOTE_LINES and not paragraph.startswith(('```', '#'))
+                and not SENTENCE_BREAK.search(paragraph)):
+            notes.update(range(start, end))
+    return notes
 
 
 def user_page_problems(page, root=ROOT):
     """Problems with a user page (the primer, the Learn path, a guide) against the
     mechanical rules of docs/writing.md: no area or question by number, build
-    status only in a final `## Not built yet` section, no spec vocabulary,
-    no `fragment`, and links only to pages of the docs."""
+    status only in a final `## Not built yet` section or a note beside an example,
+    no spec vocabulary, no `fragment`, and links only to pages of the docs."""
     problems = []
     lines = page.body.split('\n')
+    beside = notes_beside_examples(lines)
     sections = [i for i, line, fenced in body_lines(lines) if not fenced and line.startswith('## ')]
     note = next((i for i in sections if lines[i].strip() == NOT_BUILT), None)
     if note is not None and note != sections[-1]:
@@ -1359,7 +1390,7 @@ def user_page_problems(page, root=ROOT):
         where = f'line {i + page.offset + 1}'
         for match in NUMBERED.finditer(prose):
             problems.append(f'{where}: "{match.group(0)}": link the topic by its title instead')
-        if BUILD_STATUS.search(prose) and (note is None or i < note):
+        if BUILD_STATUS.search(prose) and (note is None or i < note) and i not in beside:
             problems.append(f'{where}: build status belongs in the final `{NOT_BUILT}` section')
         if SPEC_WORDS.search(prose):
             problems.append(f'{where}: spec vocabulary ("Decided.", "carried to") belongs on area pages')
