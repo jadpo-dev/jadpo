@@ -497,13 +497,7 @@ real deploy) and, before outside authors can publish, D3 (releases).
   passkey".
 - [x] **R3 A release's facts, change record and fingerprints**: area 11, "How a release's facts, change record and fingerprints are worked out"; area 14, "`jadpo package check`" and "`jadpo package verify`"; compiler/runtime §2.3, "What a release shows"; `docs/errors/publish.behaviour_changed.md`, `docs/errors/publish.stale_files.md`.
 - [x] **R4 The registry protocol and a local registry**: area 11, "The registry protocol"; compiler/runtime §2.1, `jadpo-registry`.
-- [ ] **R5 The registry commands** `opus · high` after R3 and R4: area 11,
-  "Installing and updating from the registry", "Developing for the
-  registry"; area 14, the package commands. `add @publisher/name` with the
-  log check and the lock's scoped `registry` line, `update`'s three-day
-  wait, `--to` and urgent releases, `search`, `audit`, `publish` and
-  `--dry-run`, `preview`. Every screen designed with the design skills
-  first.
+- [x] **R5 The registry commands**: area 11, "How the registry commands work"; area 14, the package commands; compiler/runtime §2.1, "The registry commands"; the pages of `install.not_in_registry`, `install.not_proved`, `install.yanked`, `package.advisory`, `publish.failed`, `publish.not_at_tag`, `publish.repository_refused` and `registry.unreachable`.
 - [x] **R6 The verifier**: area 11, "The verifier" and "Publishing errors"; area 14, "`jadpo package verify`"; compiler/runtime §2.1, `jadpo-verifier`; `deploy/verifier/`; `.github/workflows/verifier-image.yml`; documentation, "Versions and releases".
 - [ ] **R6b The verifier deployed** **needs a maintainer**: the Fly.io
   account and the steps in [documentation](documentation.md#versions-and-releases):

@@ -55,6 +55,7 @@ end
 first_day
 phone
 postal_code
+preview
 start
 passport
 vat

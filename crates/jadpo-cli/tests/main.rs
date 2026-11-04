@@ -113,6 +113,7 @@ mod read_only_get;
 mod receiving;
 mod recordings;
 mod records;
+mod registry_commands;
 mod released;
 mod removals;
 mod reserved_names;

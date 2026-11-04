@@ -246,6 +246,21 @@ Numbered as the questions they settled, which other pages cite.
     so a fix would otherwise never reach them. The verifier is the `jadpo`
     tool in a container, reached as a provider, so the registry is an
     ordinary Jadpo application.
+    Where the pages left the commands open (chunk R5): `add` takes the newest
+    release at once, since the page gives the wait to `update` and a new
+    dependency is read by a person, and `--to` works there too so an older
+    major can be added; a bare name is `@jadpo/<name>` or nothing, never the
+    first match. `update` follows a package's `successor`, with its wait
+    counted from each release's own time there, and ignores an urgent mark
+    under a new publisher, so a package hijacked by succession can't mark
+    itself past the wait. `audit` fails only on what the app reaches, because
+    a CI step that fails on code the app can't run gets switched off; an app
+    with errors counts everything as reached. `publish` needs the checkout
+    at the tag's commit, unchanged, so the bar it runs here is on what the
+    registry fetches. A dry run has no state of its own in the protocol, so
+    it passes in any state but `failed` or `cancelled`. `JADPO_REGISTRY`
+    names a stand-in as `JADPO_RUST_DIST_SERVER` does; it isn't a private
+    registry, which stays ruled out.
     Your own company's git repositories are listed in `packages:`'s
     `own_sources:` (Richard, 2026-10-31), so they install without
     `PackageChange.git_source`; adding one is itself a `PolicyChange`,
