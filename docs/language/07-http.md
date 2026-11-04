@@ -260,9 +260,9 @@ an action that builds it.
 <!-- topic: what-a-route-runs -->
 
 `run:` calls one named action. It passes the placeholders, `input` and the
-caller as ordinary arguments. A `GET` calls a named query instead, so it
-can never write, as HTTP promises of a `GET`, and a read needs no action
-wrapped around its query:
+caller as ordinary arguments. A `GET` calls a named query instead, or an
+action that only reads, so it can never write, as HTTP promises of a `GET`,
+and a read needs no action wrapped around its query:
 
 ```jadpo fragment
 GET /{todo_id: Todo.id} {
@@ -282,6 +282,211 @@ are called by their names. Another domain's `public` ones are called
 through that domain's name, as in `billing.charge(order)`
 ([Project layout and modules](01-project-layout-and-modules.md)). A route
 can't hold an action of its own written inline.
+
+### A `GET` that runs an action
+
+A query says what to read. A `GET` that has to work a value out, raise more
+than one failure or ask a model runs an action instead, as long as the
+compiler can prove the action only reads. It proves that from the graph:
+the action writes nothing, emits nothing and makes no changing call, itself
+and through every action it calls.
+
+Here `GET /tanks/{tank_id}/left` works out whether a tank has room left. It
+can fail two ways, so it answers 404 for a tank that isn't there and 422 for a
+reading past the tank's end:
+
+```jadpo check project=get-action file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=get-action file=domains/storage/types/notches.jadpo hidden
+type Notches = Int {
+    min: 0
+    max: 1000000
+}
+```
+
+```jadpo check project=get-action file=domains/storage/entities/tank.jadpo hidden migrate=initial
+use storage/types { Notches }
+
+entity Tank {
+    id: Uuid
+    notches: Notches
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+}
+```
+
+```jadpo check project=get-action file=domains/storage/types/left_asked.jadpo hidden
+use storage/types { Notches }
+
+type LeftAsked = Input {
+    used: Notches
+}
+```
+
+```jadpo check project=get-action file=domains/storage/types/left_view.jadpo hidden
+type LeftView = Output {
+    has_room: Bool
+}
+```
+
+```jadpo check project=get-action file=domains/storage/failures/past_the_end.jadpo hidden
+type PastTheEnd = Failure {
+    kind: FailureKind.rejected
+    message: "That reading is past the end of the tank."
+}
+```
+
+```jadpo check project=get-action file=domains/storage/actions/room_left.jadpo
+use storage/entities { Tank, TankNotFound }
+use storage/types { LeftAsked, LeftView }
+use storage/failures { PastTheEnd }
+
+action room_left(tank_id: Tank.id, asked: LeftAsked) fails TankNotFound, PastTheEnd -> LeftView {
+    var tank: Tank = attempt Tank.get(tank_id)
+    if (asked.used > tank.notches) {
+        reject PastTheEnd {}
+    }
+    return LeftView {
+        has_room: asked.used < tank.notches
+    }
+}
+```
+
+```jadpo check project=get-action file=domains/storage/routes/tanks.jadpo
+use storage/entities { Tank }
+use storage/types { LeftAsked, LeftView }
+use storage/actions { room_left }
+
+routes Tanks {
+    prefix: /tanks
+
+    GET /{tank_id: Tank.id}/left {
+        authentication: RouteAuthentication.none
+        input: LeftAsked
+        output: LeftView
+        run: room_left(tank_id, input)
+    }
+}
+```
+
+```jadpo check project=get-action file=domains/storage/fixtures/a_tank.jadpo hidden
+use storage/entities { Tank }
+
+fixture a_tank() -> Tank {
+    return Tank.create {
+        set: {
+            notches: 10
+        }
+    }
+}
+```
+
+```jadpo check project=get-action file=domains/storage/routes/tanks.test.jadpo hidden
+use storage/entities { Tank }
+use storage/types { LeftAsked, LeftView }
+use storage/fixtures { a_tank }
+
+test "a tank says what is left" {
+    var tank: Tank = a_tank()
+    var response: Response = request {
+        method: HttpMethod.get
+        path: "/tanks/{tank_id}/left"
+        params: {
+            tank_id: tank.id
+        }
+        input: LeftAsked {
+            used: 4
+        }
+    }
+    assert response.status == 200
+    assert response.output == LeftView {
+        has_room: true
+    }
+}
+
+test "a reading past the end is rejected" {
+    var tank: Tank = a_tank()
+    var response: Response = request {
+        method: HttpMethod.get
+        path: "/tanks/{tank_id}/left"
+        params: {
+            tank_id: tank.id
+        }
+        input: LeftAsked {
+            used: 11
+        }
+    }
+    assert response.status == 422
+    assert response.code == "past_the_end"
+}
+
+test "a tank that isn't there is not found" {
+    var response: Response = request {
+        method: HttpMethod.get
+        path: "/tanks/{tank_id}/left"
+        params: {
+            tank_id: "0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e"
+        }
+        input: LeftAsked {
+            used: 1
+        }
+    }
+    assert response.status == 404
+    assert response.code == "tank_not_found"
+}
+```
+
+What the proof counts:
+
+| It does | So |
+|---|---|
+| Works a value out, calls a function, raises any failure | Read-only |
+| Reads with `get`, `history` or a query; `sessions.tokens`, `<Service>.keys`, `batches.status` | Read-only |
+| Calls a provider's operation that changes nothing: `changes: false`, or a `GET` operation that doesn't say | Read-only |
+| Asks a model: `ai.embed`, `ai.embed_all`, `ai.generate`, `ai.stream` ([Generating changes nothing at the provider](21-ai.md)) | Read-only |
+| A store's `read` | Read-only |
+| `create`, `update`, `delete`, a counter, a transition, `erase` or `export` | Not read-only |
+| `sessions.start`, `sessions.end`, issuing or revoking a token or a key, a magic link's request or redemption | Not read-only |
+| Starting or cancelling a run (`batches.each`, `batches.cancel`, a file helper) | Not read-only: each keeps a row |
+| `emit`, of an event or an email, which is how a job starts | Not read-only |
+| A provider's operation with `changes: true`, even an idempotent one, or a store's `put` | Not read-only |
+| Calls another action, a package's among them | Whatever that action does |
+
+Anything on any way through the action counts: a write in one branch of an
+`if` is has_room. A function needs no looking into, since a function can't do
+any of these. Anything else makes the route `route.run_kind`, whose message
+names what the action does and where, following the calls.
+
+What Jadpo keeps for itself is not the action's doing, and a `GET` that
+calls a model or a provider may still cause it: a model's use is counted
+against `ai: { limits: }` ([Budgets](21-ai.md)), and a provider's circuit
+breaker and the rate limits count their own. Each is done in a statement of
+its own, or in memory, never in the action's transaction. Signing a caller
+in reads and changes nothing. A `GET` keeps no `Idempotency-Key`, so a model
+or a provider that changes nothing is sent none of the keys derived from
+one. Reads leave no record: the audit trail only records changes, and the
+[access records](15-personal-data.md#access-records) aren't built yet; when
+they are, they go in a statement of their own for a query and an action
+alike.
+
+The runtime holds what a `GET` runs to the same line, its query or its action.
+Its transaction is begun `READ ONLY`, so PostgreSQL itself refuses a write.
+Asking to write, to keep an event or to make a changing call answers 500
+`internal_fault` and keeps nothing. The proof means checked code never gets
+there, so reaching it is a bug in Jadpo.
+
+Everything else about a `GET` stays as it was. `HEAD` runs the same action and
+sends the same head with no body, so a `HEAD` of a route that calls a model
+calls the model. Its input is its query string, there is no `settle:` to set,
+since nothing was set off, and browsers and caches may repeat it. A `GET`
+calling a model costs money each time it's repeated: `ai: { limits: }` caps
+that, and a route that should not be open to the world says who may call it,
+as any route does.
 
 ### Listing tokens and keys
 
@@ -1144,7 +1349,7 @@ package, with no corrections or recordings
 
 | Field | On | Holds |
 |---|---|---|
-| `x-jadpo-changes` | Every operation | Whether the operation changes something: `true` for a route that runs an action, `false` for a `GET` and for the runtime's own reads |
+| `x-jadpo-changes` | Every operation | Whether the operation changes something: `true` for a route of any other method, `false` for a `GET`, whatever it runs, and for the runtime's own reads |
 | `x-jadpo-confirm` | A route with `confirm:` | What the signed-in person presents before it runs, `passkey` ([Confirm one request with a passkey](08-identity.md#confirm-one-request-with-a-passkey-confirm-confirmationpasskey)); the operation lists the `X-Jadpo-Confirmation` header and the 403 `confirmation_required` |
 | `x-jadpo-idempotency` | Every operation that reads an `Idempotency-Key` | Whether it takes `Idempotency-Key`, and whether the API requires it: `header`, `required` (the API's `idempotency:`), `keeps` (`response`: a repeat gets the first answer; `request`: a repeat waits for the first but runs again; `nothing`: running it again changes nothing, or no store keeps it), `window` (`1d`), `max_length` (255), and the codes a key's repeat answers with, `in_use` (`conflict`) and `reused` (`idempotency_key_reused`) |
 | `x-jadpo-failure` | The schema of each failure the application declares | Its `code` and `kind` (`not_found`); sign-in's, policy's and the runtime's own codes carry none, since the caller's runtime handles them |
@@ -1445,6 +1650,7 @@ where an app uses it.
 | Native connection limits | Built: natively, a client has 10 seconds for its headers and 30 for its body, a write waits at most 30 seconds for it to read, and the server holds at most 1,024 connections and 10 database connections per store per worker. |
 | Sign-in | Built: every route needs a signed-in caller unless it says `authentication: RouteAuthentication.none`; each API lists the sign-in methods it accepts, named in its record; a route passes `current_principal` to what it runs; a signed-in caller's requests count against its own rate limit, and its idempotency keys are its own; a request with a credential on a route anyone may call counts against its address before it runs ([Identity](08-identity.md)). |
 | Policy | Built: policy decides what each route reaches, and OpenAPI lists the 403 `not_permitted` on every route that runs an action that writes or is listed under `actions:` ([Policy](09-policy.md)). |
+| A `GET` that runs an action | Built: the proof over every action it calls, `route.run_kind` naming what breaks it and where, a `READ ONLY` transaction and the faults beside it, for a `GET`'s query and action alike. |
 | Issued tokens and keys | Built: a `GET` runs `sessions.tokens` and `<Service>.keys` itself, and the record and OpenAPI describe the `IssuedToken` and `IssuedKey` it sends ([Service credentials](08-identity.md#service-credentials)). |
 | Map layers | Built: a route may send a `FeatureCollection<G, P>` bare, its properties held to what an `Output` may hold and, where an action returns it, to the fields every caller may read ([Field restrictions](09-policy.md#field-restrictions)); OpenAPI describes RFC 7946's object and the record names it with its type arguments. A `GET` sends one a query gives ([Reads and writes](06-reads-and-writes.md), "A query giving a map layer"), held to field policy where the query is declared. |
 | `settle:` | Built: a route waits for the work its action set off ([Waiting for follow-on work](#waiting-for-follow-on-work), and `route.settle_invalid`). |

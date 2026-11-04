@@ -734,7 +734,10 @@ const NODE_FIELDS: &[(&str, &str)] = &[
         "source",
         "Where a locked package came from: registry, git, path or link",
     ),
-    ("location", "A locked package's git repository or folder"),
+    (
+        "location",
+        "A locked package's git repository, folder or registry name",
+    ),
     ("tag", "A git package's tag"),
     ("commit", "A git package's tag's commit"),
     ("packageDigest", "A locked package's digest"),

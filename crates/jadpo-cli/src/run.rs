@@ -36,6 +36,8 @@ pub enum Session {
     Dev(Box<crate::dev::DevArgs>),
     /// `jadpo config set`, which asks for the value at a prompt.
     ConfigSet(Box<crate::config::SetArgs>),
+    /// `jadpo package preview`, until it is stopped.
+    Preview(Box<crate::package_preview::PreviewArgs>),
     /// `jadpo package verify --serve`, until it is stopped.
     Verifier(Box<crate::verifier::VerifierArgs>),
 }
@@ -236,6 +238,16 @@ pub(crate) fn finish(
                 stderr: String::new(),
                 code: 0,
                 session: Some(Session::ConfigSet(args)),
+            };
+        }
+        Reply::Session(Session::Preview(mut args)) => {
+            args.json = json;
+            args.choice = choice;
+            return Output {
+                stdout: String::new(),
+                stderr: String::new(),
+                code: 0,
+                session: Some(Session::Preview(args)),
             };
         }
         Reply::Session(Session::Dev(mut args)) => {
@@ -623,7 +635,10 @@ fn dispatch(parsed: Parsed, env: &Environment) -> (Option<&'static str>, Reply) 
         };
         return (Some("help"), help::command(target));
     }
-    if parsed.arguments.len() > command.arguments.len() {
+    // `jadpo package search <words>` takes as many words as it is given.
+    let any_words =
+        command.name == "package" && parsed.arguments.first().map(String::as_str) == Some("search");
+    if parsed.arguments.len() > command.arguments.len() && !any_words {
         return (
             Some(command.name),
             Reply::failed(too_many(command, &parsed.arguments)),

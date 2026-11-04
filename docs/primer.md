@@ -455,9 +455,11 @@ No outside call may sit inside a `for`.
 ## Routes
 
 A route group is a thin door: method, path, input, output and the one
-action or query it runs. `GET` and `DELETE` read their input from the
-query string, the other methods from the JSON body. `output:` must be
-exactly what the route runs returns. A failure's kind sets the status.
+action or query it runs. A `GET` runs a query, or an action the compiler
+proves only reads; every other method runs an action. `GET` and `DELETE` read
+their input from the query string, the other methods from the JSON body.
+`output:` must be exactly what the route runs returns. A failure's kind sets
+the status.
 
 ```jadpo check project=tool-share file=domains/lending/routes/tools.jadpo
 use lending/entities { Tool }

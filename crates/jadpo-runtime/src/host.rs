@@ -125,6 +125,18 @@ pub trait Database {
         isolation: Isolation,
     ) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>>;
 
+    /// Begins a transaction at `isolation` that the store itself keeps
+    /// from writing: what a `GET` runs in (area 7, "What a route runs";
+    /// chunk G2), beside the graph's proof that it writes nothing. A store
+    /// with no such mode begins an ordinary one, the boundary refusing a
+    /// write all the same.
+    fn begin_read_only(
+        &self,
+        isolation: Isolation,
+    ) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
+        self.begin_at(isolation)
+    }
+
     /// Begins a transaction at repeatable read: what runs outside an
     /// action, such as migrations, purge and tools.
     fn begin(&self) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {

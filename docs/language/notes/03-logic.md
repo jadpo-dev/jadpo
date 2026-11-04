@@ -25,6 +25,7 @@ Why [Logic](../03-logic.md) is the way it is: the decisions behind it, how it fi
 
 | Topic | Decision |
 |---|---|
+| A read-only action | Decided 2026-11-03 (area 7): an action that writes nothing, emits nothing and makes no changing call, itself or through any action it calls, is read-only and can answer a `GET`. It carries no marking: the compiler works it out, so an action stops qualifying the moment it does one of these, and `route.run_kind` says what and where |
 | Match arm arrow (question 1) | `->` for match arms, the same arrow as result types; the formatter rewrites `=>` (area 2) |
 | `var` or `let` (question 2) | `var` ("variable"), immutable by default, and `var mut` when it can change. Every keyword carries baggage from another language (`let` is mutable in JavaScript), and `var` with an explicit `mut` reads clearly on its own |
 | Shadowing (question 3) | A name in scope cannot be declared again, parameters included, extending area 1's rule that locals cannot reuse domain and library names; for a reviewer reading a diff, one name meaning one value is worth more than Rust's shadowing |

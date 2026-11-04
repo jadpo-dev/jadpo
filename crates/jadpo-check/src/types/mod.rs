@@ -19,6 +19,7 @@ pub(crate) mod json_form;
 pub(crate) mod literal;
 mod loading;
 mod outside;
+mod read_only;
 mod recursion;
 pub(crate) mod rules;
 pub(crate) mod secrets;
@@ -51,6 +52,7 @@ pub use facts::{
 };
 pub use loading::{Decided, Loading, Loads, file_loading, has_isolation, isolation};
 pub use outside::{Outside, call_order_problems, outside_calls};
+pub use read_only::{Change, NotReadOnly, not_read_only, read_only_problems};
 pub use recursion::{Cycles, action_calls, action_cycles, recursion_problems};
 pub use rules::{CONSTRAINTS, Const, FIELD_SETTINGS, Num, Rules, show as show_number};
 pub use shape::{

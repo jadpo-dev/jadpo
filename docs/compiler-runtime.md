@@ -922,6 +922,16 @@ decisions themselves are `acceptances::needs`, the same list `check` judges,
 each carrying its plain words and the callers it lets in from where its
 record is read.
 
+**The registry commands** (chunk R5, area 11, "How the registry commands
+work") are `jadpo-cli`'s `registry` (asking the protocol over `download`,
+each answer held to the table's shapes; the log check; which release `update`
+takes), `install` (where a release from the registry joins `add` and `update`
+at the same `verify`), `package_search`, `package_audit`, `package_publish` and
+`package_preview`. `jadpo_check::release::reached` follows the graph's calls,
+uses and raises from the app's own code, and `type_shape` reduces a type as a
+fingerprint does. Tests run them against `jadpo-registry`'s local registry, and
+a stand-in in front of it that changes its answers.
+
 **What a release shows** (chunk R3, area 11) is worked out by
 `jadpo_check::release`, not held in the graph, since it describes a package's
 release rather than an app. `facts` reads the surface,
@@ -3077,6 +3087,22 @@ record's grants (`FieldProbe`) to tell a field's refusal, 403
 field a row and `fields` in its JSON, and `graph::policy_nodes` adds
 `grant`, `field_restriction`, `tenancy` and `action_exception` nodes with
 `grants` and `scopes` edges.
+
+**An action on a `GET`** (area 7, "A `GET` that runs an action"; chunk G2).
+`routes::Reader::run` lets a `GET` name an action, and
+`types::read_only_problems` reports `route.run_kind` once the routes are read,
+so the proof never sits inside `routes::groups`, which a route test's body
+reads. `not_read_only` walks the graph from the action: `outside::does` says
+what a site writes and which actions it joins, `steps::Calls` says whether an
+outside call changes anything, and `emit` is read off the statement, over every
+site of a body, so a write on one way through or in an inline function counts.
+It keeps positions only in `own_changes`, which nothing but this check reads.
+At run time `Ctx::read_only` marks the next boundary. It begins with
+`Database::begin_read_only` (`BEGIN ... READ ONLY` on PostgreSQL, an ordinary
+`begin_at` on a store with no such mode), `Boundary::transaction` refuses
+`writes`, so `seal` can't keep an event, and a provider's changing call and a
+store's `put` are faults. A `GET`'s query and listing run the same way, and a
+`HEAD` drops the stream as it drops the body.
 
 **Listing tokens and keys from a `GET`** (area 8). A
 route's `Run` has a `generated` field: `sessions.tokens` or the service

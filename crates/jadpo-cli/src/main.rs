@@ -55,6 +55,10 @@ fn main() -> ExitCode {
             &args,
             &Environment::from_process(),
         )),
+        Some(Session::Preview(args)) => ExitCode::from(jadpo_cli::package_preview::serve(
+            &args,
+            &Environment::from_process(),
+        )),
         None => ExitCode::from(output.code),
     }
 }

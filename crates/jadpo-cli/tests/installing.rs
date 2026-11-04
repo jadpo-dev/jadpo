@@ -506,12 +506,21 @@ fn package_commands_name_what_they_cant_find() {
         "{}",
         folder.stderr
     );
-    let registry = jadpo(&app, &["package", "add", "postcodes"]);
+    // A bare name is the registry's; this address is closed, so nothing
+    // leaves this machine.
+    let bare: Vec<String> = ["package", "add", "postcodes"]
+        .iter()
+        .map(|arg| arg.to_string())
+        .collect();
+    let registry = run(
+        &bare,
+        &Environment::empty()
+            .with_var("JADPO_REGISTRY", "http://127.0.0.1:9/registry/v1/")
+            .with_cwd(&app),
+    );
     assert_eq!(registry.code, 1);
     assert!(
-        registry
-            .stderr
-            .starts_with("error: Installing from the registry isn't built yet\n"),
+        registry.stderr.contains("rule: registry.unreachable\n"),
         "{}",
         registry.stderr
     );
