@@ -50,6 +50,17 @@ impl Token {
     /// The SGR parameters for this token. The exact values are used only
     /// when the background is known; otherwise the terminal's own 16
     /// colours, with muted as dim.
+    /// `text` in this token's colour on `style`, or as it is where `style`
+    /// has none: what a line written by hand, a prompt's, paints with.
+    pub fn painted(self, text: &str, style: &crate::detect::Style) -> String {
+        match style.color {
+            Some(depth) => format!("\x1b[{}m{text}\x1b[0m", self.sgr(depth, style.theme)),
+            None => text.to_string(),
+        }
+    }
+
+    /// The numbers of the colour's escape sequence, without the sequence:
+    /// [`Token::painted`] is what writes one.
     pub fn sgr(self, depth: Depth, theme: Option<Theme>) -> String {
         let values = self.values();
         match (theme, depth) {
