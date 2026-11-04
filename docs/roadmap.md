@@ -389,11 +389,9 @@ What the Reddit thread found (Richard, 2026-11-03):
 - [x] **D17a Honest status words**: each area's "What is built" table; [writing guide](writing.md), "A status word"; `status_word_problems` in `tools/docs/agent_guidance.py`.
 - [x] **D17b The reference's manifest**: `docs/reference.toml` and its check; docs/documentation.md, "The reference's manifest".
 - [x] **D17c The navigation designed**: `design/docs-nav.html` in jadpo-website.
-- [ ] **D17d The site built from the manifest** `opus · high` **needs a
-  maintainer**, since merging deploys to jadpo.dev.
+- [x] **D17d The site built from the manifest**: `src/lib/nav.ts` and `src/components/docs/` in jadpo-website; its `DESIGN.md`.
 - [x] **D17e Landing pages and status lines**: `tools/docs/reference_pages.py`; docs/documentation.md, "Landing pages and status lines"; `docs/reference.toml`.
-- [ ] **D17f Search that finds the docs** `opus · medium`: "deploy" and "send
-  email" find a guide or topic first, not error pages.
+- [x] **D17f Search that finds the docs**: `src/lib/search.ts` and `scripts/search.test.mjs` in jadpo-website.
 - [ ] **D17g What an agent reads first** `opus · high`: nothing tells an agent
   to read all of `index.json`, 173,000 tokens; about 9,000 once and under
   1,000 per lookup.
@@ -709,8 +707,8 @@ After the registry is live, in order:
      time passing"; area 13, "Test settings"; compiler/runtime §2.6,
      "Feature flags".
    - [x] **B10 Changing and removing flags**: area 16, "Changing a flag",
-     "Removing a flag", "Flags in browsers and apps" and "Flags: changed,
-     listed and removed"; area 14, `jadpo flags`; compiler/runtime §2.6,
+     "Removing a flag", "Flags in browsers and apps" and "Flag rules: changing,
+     listing, removing"; area 14, `jadpo flags`; compiler/runtime §2.6,
      "Feature flags".
    - [x] **B11 The audit trail**: area 16, "Audit trail" (with "Reading
      a history", "Retention and erasure" and "What the audit trail
