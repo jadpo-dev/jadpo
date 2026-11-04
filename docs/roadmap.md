@@ -385,10 +385,7 @@ What the Reddit thread found (Richard, 2026-11-03):
   scope. A language decision, so it goes to Richard with a recommendation and
   what it would save, measured against the PersonName detour in the 0.2.0 run.
 - [x] **A20 An email address is personal data**: area 15, "An email address needs no mark" and "What the compiler checks"; area 18, "What a first record holds"; compiler/runtime §2.3, "An email address is personal data"; notes for areas 15 and 18.
-- [ ] **D17a Honest status words** `opus · high`, in 0.3.0, after A15 and
-  A20 (Richard, 2026-11-04), as are all of D17: the 18 "What is built" rows
-  saying Built of what isn't fully built become Partly built, and a check
-  keeps them so.
+- [x] **D17a Honest status words**: each area's "What is built" table; [writing guide](writing.md), "A status word"; `status_word_problems` in `tools/docs/agent_guidance.py`.
 - [ ] **D17b The reference's manifest** `opus · high`: one file in the
   language repository places every topic in ten groups (Language, Data,
   APIs, Background work, Built-in services, External services,

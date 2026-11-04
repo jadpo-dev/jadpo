@@ -240,6 +240,10 @@ standard is the topic "Routes: signed in by default" on the
   rule's wording.
 - **Build status** is in the page's "What is built" section, or one note
   at the end of the topic, never in its first lines.
+- **A status word** in "What is built" is Built only of a row wholly built.
+  Something it lacks makes the row Partly built, saying what, or gets a row
+  of its own; `tools/docs/agent_guidance.py` fails a Built row that says
+  otherwise.
 
 The design notes keep the Decisions table, the open questions and why
 the language is the way it is; nothing is deleted on its way there.
