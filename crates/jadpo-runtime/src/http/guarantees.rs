@@ -221,6 +221,22 @@ impl Transaction for Tx {
 }
 
 impl Database for Store {
+    fn begin_read_only(
+        &self,
+        _isolation: Isolation,
+    ) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
+        self.line("begin read only");
+        let store = self.clone();
+        Box::pin(async move {
+            Ok(Box::new(Tx {
+                store,
+                pending: Vec::new(),
+                ended: false,
+                wrote: false,
+            }) as Box<dyn Transaction>)
+        })
+    }
+
     fn begin_at(
         &self,
         _isolation: Isolation,
@@ -348,6 +364,13 @@ enum Ends {
     /// Writes, writes down whether the system runs it, as policy would
     /// bind it (`system true` or `system false`), and emits `type Done`.
     Emits,
+    /// Only reads.
+    Reads,
+    /// Reads, then asks to write, reporting a store's refusal as a fault,
+    /// as a real write does.
+    AsksToWrite,
+    /// Reads, then emits `type Done`.
+    OnlyEmits,
 }
 
 /// Runs the one action: it writes, then ends as `ends` says.
@@ -373,11 +396,34 @@ impl<'p> ActionBody<'p> for Body {
     fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
         let ends = self.0;
         Box::pin(async move {
-            if let Ok(transaction) = ctx.transaction("main").await {
+            if matches!(ends, Ends::Reads | Ends::AsksToWrite | Ends::OnlyEmits) {
+                if let Ok(transaction) = ctx.read_transaction("main").await {
+                    let _ = transaction.query("read", &[]).await;
+                }
+            } else if let Ok(transaction) = ctx.transaction("main").await {
                 let _ = transaction.execute("write", &[]).await;
             }
             match ends {
-                Ends::Writes => Outcome::Value(Value::Unit),
+                Ends::Writes | Ends::Reads => Outcome::Value(Value::Unit),
+                Ends::AsksToWrite => match ctx.transaction("main").await {
+                    Ok(transaction) => {
+                        let _ = transaction.execute("write", &[]).await;
+                        Outcome::Value(Value::Unit)
+                    }
+                    Err(StoreError::Fault(reason)) => Outcome::Fault(
+                        ctx.fault(crate::FaultKind::Defect(reason), crate::Frame::ENTRY),
+                    ),
+                    Err(_) => Outcome::Failed(Box::new(crate::unavailable())),
+                },
+                Ends::OnlyEmits => {
+                    let _ = ctx.emit(crate::Event {
+                        key: "type Done".into(),
+                        value: Value::Unit,
+                        payload: "null".into(),
+                        subscribers: vec!["subscriber s".into()],
+                    });
+                    Outcome::Value(Value::Unit)
+                }
                 Ends::NotFound => {
                     let mut failure = Failure::new("type Gone", "Gone", "gone");
                     failure.kind = Some("not_found".into());
@@ -473,6 +519,24 @@ fn table(keys: Option<&str>, required: bool) -> RouteTable {
         }],
         stores: vec!["main".into()],
         ..RouteTable::default()
+    }
+}
+
+/// `GET /widgets/{name}`, running the one action and answering 204 (area
+/// 7, "What a route runs"; chunk G2).
+fn get_table() -> RouteTable {
+    let mut table = table(None, false);
+    let route = &mut table.routes[0];
+    route.key = "route GET /widgets".into();
+    route.method = HttpMethod::Get;
+    table
+}
+
+fn get(method: &str, name: &str) -> Request {
+    Request {
+        method: method.into(),
+        path: format!("/widgets/{name}"),
+        ..Request::default()
     }
 }
 
@@ -922,6 +986,53 @@ fn an_api_can_require_the_key_and_a_bad_key_is_refused() {
     assert_eq!(program.runs.get(), 0);
     let sent = send(&table, &program, &host, &post(Some("k1"), "a"), NOW);
     assert_eq!(sent.status, 204);
+}
+
+#[test]
+fn what_a_get_runs_reads_in_a_transaction_the_store_keeps_from_writing() {
+    let table = get_table();
+    let program = Program::new(Ends::Reads);
+    let host = Fake::default();
+    let answered = send(&table, &program, &host, &get("GET", "a"), NOW);
+    assert_eq!(answered.status, 204, "{:?}", host.store.lines());
+    assert_eq!(host.store.lines(), ["begin read only", "read", "commit"]);
+    // A `HEAD` is answered as the `GET` is, with no body.
+    let host = Fake::default();
+    let answered = send(&table, &program, &host, &get("HEAD", "a"), NOW);
+    assert_eq!(answered.status, 204);
+    assert!(answered.body.is_empty());
+    assert_eq!(host.store.lines(), ["begin read only", "read", "commit"]);
+}
+
+#[test]
+fn another_method_begins_an_ordinary_transaction() {
+    let table = table(None, false);
+    let program = Program::new(Ends::Reads);
+    let host = Fake::default();
+    send(&table, &program, &host, &post(None, "a"), NOW);
+    assert_eq!(host.store.lines(), ["begin", "read", "commit"]);
+}
+
+#[test]
+fn what_a_get_runs_never_writes_even_if_the_proof_were_wrong() {
+    let table = get_table();
+    let program = Program::new(Ends::AsksToWrite);
+    let host = Fake::default();
+    let answered = send(&table, &program, &host, &get("GET", "a"), NOW);
+    assert_eq!(answered.status, 500, "{:?}", host.store.lines());
+    assert_eq!(code(&answered), Some("internal_fault"));
+    assert_eq!(host.store.lines(), ["begin read only", "read", "rollback"]);
+}
+
+#[test]
+fn what_a_get_runs_never_leaves_an_event_even_if_the_proof_were_wrong() {
+    let table = get_table();
+    let program = Program::new(Ends::OnlyEmits);
+    let host = Fake::default();
+    let answered = send(&table, &program, &host, &get("GET", "a"), NOW);
+    assert_eq!(answered.status, 500, "{:?}", host.store.lines());
+    assert_eq!(host.store.lines(), ["begin read only", "read", "rollback"]);
+    assert!(answered.deferred.is_empty(), "nothing goes out");
 }
 
 #[test]

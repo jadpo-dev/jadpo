@@ -2137,6 +2137,11 @@ begins the transaction at it (`BEGIN ISOLATION LEVEL READ COMMITTED` or
 transaction at its level, which already counts what the callee does. Each
 action a test calls begins its own.
 
+What a `GET` runs, a query or an
+[action that only reads](07-http.md#a-get-that-runs-an-action), begins its
+transaction at the same levels with `READ ONLY` added, so PostgreSQL refuses a
+write there too.
+
 So `view_video` above runs at read committed. Two requests counting one
 video at once both commit at their first attempt, the second waiting for
 the first's lock and adding to its count. A counter in an action that
