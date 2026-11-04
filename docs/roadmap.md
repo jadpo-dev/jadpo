@@ -416,13 +416,43 @@ What the Reddit thread found (Richard, 2026-11-03):
   public writes. Area 15, "What the compiler checks"; area 18, "What a first
   record holds". The 0.2.0 run read a customer's email through a public
   route and nothing said so.
-- [ ] **D17 The documentation reorganised** `opus · high`, in 0.3.0, after
-  A15 and A20 (Richard, 2026-11-04): a review of how all the documentation
-  and the site's navigation are organised, then the reorganisation it
-  calls for. Built-in services grouped by service, each with one home and
-  a landing page that links to it and says what is built; task guides for
-  the services that work; the standard types under Values and types, not
-  at the end of the primer. Old addresses keep working.
+- [ ] **D17a Honest status words** `opus · high`, in 0.3.0, after A15 and
+  A20 (Richard, 2026-11-04), as are all of D17: the 18 "What is built" rows
+  saying Built of what isn't fully built become Partly built, and a check
+  keeps them so.
+- [ ] **D17b The reference's manifest** `opus · high`: one file in the
+  language repository places every topic in ten groups (Language, Data,
+  APIs, Background work, Built-in services, External services,
+  Configuration, Testing, Tools, Errors) and builds the sidebar, landing
+  pages and `llms.txt`. Area files and numbers stay; old addresses redirect.
+- [ ] **D17c The navigation designed** `opus · high` **needs a maintainer**
+  to look at the canvas once: sidebar, mobile menu, status marks, landing
+  pages, reference home, types index, guides index, search results.
+- [ ] **D17d The site built from the manifest** `opus · high` **needs a
+  maintainer**, since merging deploys to jadpo.dev.
+- [ ] **D17e Landing pages and status lines** `opus · high`: each group has
+  a landing page that links everything in it, and a page not fully built
+  says so at its top, in its Markdown too.
+- [ ] **D17f Search that finds the docs** `opus · medium`: "deploy" and "send
+  email" find a guide or topic first, not error pages.
+- [ ] **D17g What an agent reads first** `opus · high`: nothing tells an agent
+  to read all of `index.json`, 173,000 tokens; about 9,000 once and under
+  1,000 per lookup.
+- [ ] **D17h Standard types under Values and types** `opus · high`: one
+  generated list, in the sidebar, not two hand tables at the bottom of the
+  reference home.
+- [ ] **D17i Built-in services, one home each** `opus · high`: usage first,
+  details last, the landing's rows all linking.
+- [ ] **D17j Every other area** `opus · high`: the remaining merges and
+  renames, translations findable under Configuration.
+- [ ] **D17k Implementer history out of the topics** `opus · medium`, with a
+  check.
+- [ ] **D17l The guides index grouped** `opus · medium`.
+- [ ] **D17m The ten guides** `opus · high`, one pull request each: email,
+  flags, rate limits, search, audit, webhooks received, file export,
+  translations, AI, tenancy. Each compiles and its tests pass.
+- [ ] **D17n Review** `opus · high`: one independent review of the whole and
+  a cold read of a service from its landing page.
 
 Not scheduled: a way to write a query the language can't express. Richard
 will work through it and other solutions later; don't design or build one
