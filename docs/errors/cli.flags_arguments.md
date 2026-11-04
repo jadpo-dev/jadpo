@@ -104,4 +104,4 @@ Half the users get each layout.
 ## Related
 
 - [`jadpo flags`](../language/14-tooling.md#jadpo-flags)
-- [Flags: changed, listed and removed](../language/16-built-in-services.md#flags-changed-listed-and-removed)
+- [Flag rules: changing, listing, removing](../language/16-built-in-services.md#flag-rules-changing-listing-removing)
