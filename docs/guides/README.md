@@ -20,5 +20,6 @@ instead.
 | [Run background work](07-run-background-work.md) | a schedule that starts a batch, an event with its subscriber, and a test of the whole run |
 | [Write tests](08-write-tests.md) | action and route tests, fixtures, a fixed clock and tests signed in as someone |
 | [Get a person's sign-off](09-get-a-sign-off.md) | an acceptance for a change that could break someone, with a person's reason |
+| [Ask a model for a typed answer](20-ask-a-model-for-a-typed-answer.md) | a checked prompt, a decoded answer with every failure named, a daily budget, and tests that never reach a model |
 | [Deploy natively](10-deploy-natively.md) | the app built into one program, running against a real database |
 | [Deploy to Cloudflare Workers](11-deploy-to-workers.md) | the app built as a Worker, reaching its database through Hyperdrive |
