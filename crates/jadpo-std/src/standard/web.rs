@@ -773,11 +773,9 @@ pub const PROBLEM_DETAILS: &str = "ProblemDetails";
 /// `ProblemDetails`' members (RFC 9457 §3.1), in its order, each one that
 /// may be left out: the problem's type, a URL (`about:blank` when left
 /// out), the HTTP status, a short title, a detail for people, and the URL
-/// of this occurrence. `type` is a reserved word, so code writes `type_`
-/// and the wire `type`, as a closed list's code that is a reserved word is
-/// (question 22).
+/// of this occurrence.
 pub const PROBLEM_FIELDS: [(&str, Part); 5] = [
-    ("type_", Part::Optional(&Part::Of(crate::Builtin::Url))),
+    ("type", Part::Optional(&Part::Of(crate::Builtin::Url))),
     ("status", Part::Optional(&Part::Standard("HttpStatus"))),
     ("title", Part::Optional(&Part::Line)),
     ("detail", Part::Optional(&Part::Paragraph)),

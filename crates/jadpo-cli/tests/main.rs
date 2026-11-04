@@ -117,6 +117,7 @@ mod records;
 mod registry_commands;
 mod released;
 mod removals;
+mod reserved_names;
 mod retention;
 mod round_trips;
 mod route_limits;

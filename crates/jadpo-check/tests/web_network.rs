@@ -4,7 +4,7 @@
 //! the other way), the web types' literals checked while compiling by
 //! their standards (RFC 3986, UTS 46, RFC 9110), `HttpStatus` and
 //! `NetworkPort` as whole numbers with their ranges, and `ProblemDetails`'
-//! reserved member written `type_`.
+//! member named with the reserved word `type`.
 
 use crate::support;
 
@@ -176,7 +176,7 @@ fn a_problem_s_type_is_written_type_() {
             "function problem() -> ProblemDetails {{\n    return ProblemDetails {{\n{members}    }}\n}}\n"
         ))
     };
-    let all = "        type_: \"https://example.com/probs/out-of-credit\"\n        status: 403\n        title: \"You do not have enough credit.\"\n        detail: \"Your balance is 30.\"\n        instance: none\n";
+    let all = "        type: \"https://example.com/probs/out-of-credit\"\n        status: 403\n        title: \"You do not have enough credit.\"\n        detail: \"Your balance is 30.\"\n        instance: none\n";
     assert_eq!(problem(all), NONE);
     assert_eq!(
         problem(&all.replace("403", "600")),
@@ -193,7 +193,7 @@ fn a_problem_s_type_is_written_type_() {
     );
     assert_eq!(
         rules(
-            "function status(problem: ProblemDetails) -> Answer {\n    return Answer(problem.status == 404 and problem.type_ == none)\n}\n"
+            "function status(problem: ProblemDetails) -> Answer {\n    return Answer(problem.status == 404 and problem.type == none)\n}\n"
         ),
         NONE
     );

@@ -308,7 +308,7 @@ pub(super) fn type_keyword(p: &mut Parser<'_>, m: crate::parser::Marker) {
     p.bump_remap(TYPE_KW);
     name(p, "this type");
     if p.at(L_BRACE) {
-        member_list(p, Members::Declaration);
+        member_list(p, Members::Fields);
     } else {
         skip_line(p);
     }

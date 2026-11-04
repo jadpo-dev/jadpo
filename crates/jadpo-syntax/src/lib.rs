@@ -23,7 +23,7 @@ pub use error::{SyntaxError, TextEdit};
 pub use generated::kinds::SyntaxKind;
 pub use grammar::{
     CONTEXTUAL_DECLARATIONS, DECLARATION_KEYWORDS, EXPRESSION_KEYWORDS, RESERVED_NAMES,
-    STATEMENT_KEYWORDS,
+    STATEMENT_KEYWORDS, VALUE_WORDS,
 };
 pub use rowan::TokenAtOffset;
 
