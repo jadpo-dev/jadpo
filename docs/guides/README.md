@@ -14,6 +14,7 @@ instead.
 | [Build an API](01-build-an-api.md) | routes with typed input and output, the committed API record, and the OpenAPI document |
 | [Store and change a record](02-store-and-change-a-record.md) | an entity, its migration, and actions that add, change and delete records |
 | [Query records](03-query-records.md) | a query for one record, and a list a caller narrows and pages through |
+| [Add search to a list](15-add-search-to-a-list.md) | a searchable entity, its migration, and a route giving the best matches first, a page at a time |
 | [Handle failures](04-handle-failures.md) | a failure of your own, refused with the right status, handled where a caller wants to |
 | [Add sign-in](05-add-sign-in.md) | sign-in by emailed link and with Google, and routes that know who is calling |
 | [Call an outside API](06-call-an-outside-api.md) | a typed description of another service, called through a connection and faked in tests |
@@ -23,3 +24,4 @@ instead.
 | [Get a person's sign-off](09-get-a-sign-off.md) | an acceptance for a change that could break someone, with a person's reason |
 | [Deploy natively](10-deploy-natively.md) | the app built into one program, running against a real database |
 | [Deploy to Cloudflare Workers](11-deploy-to-workers.md) | the app built as a Worker, reaching its database through Hyperdrive |
+| [Send an email](12-send-an-email.md) | a welcome email with typed templates, sent over SMTP after commit, tested and read in the dev inbox |

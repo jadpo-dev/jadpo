@@ -81,6 +81,53 @@ class WhatIsBuilt(unittest.TestCase):
         self.assertIn('| [Identity](https://jadpo.dev/docs/identity-built.md) | All of it |', table)
 
 
+class StatusWords(unittest.TestCase):
+    def row(self, feature, status):
+        area = AREA.replace('| Everything else on this page | Built. |', f'| {feature} | {status} |')
+        return guidance.status_word_problems(project(area=area))
+
+    def test_a_built_row_saying_part_of_it_is_not_built_is_a_problem(self):
+        for status in ('Built: the list. Not built yet: `jadpo impact`.',
+                       "Built. Comparing them in a query isn't built yet.",
+                       'Built: `share`, against a fake (HQ itself comes later).',
+                       "Built: its driver, which comes with caches.",
+                       "Built: the binding, whose windows aren't yet checked.",
+                       'Built. Until the timelines are built, each step is a line.'):
+            problems = self.row('Flags', status)
+            self.assertEqual(len(problems), 1, status)
+            self.assertIn('"Flags"', problems[0])
+            self.assertIn('Partly built', problems[0])
+
+    def test_the_problem_reaches_the_gate(self):
+        area = AREA.replace('| Everything else on this page | Built. |',
+                            '| Flags | Built. Not built yet: tenants. |')
+        self.assertTrue(any('"Flags"' in problem for problem in guidance.problems(project(area=area))))
+
+    def test_a_row_saying_partly_built_may_say_what_is_missing(self):
+        self.assertEqual(self.row('Flags', 'Partly built: the list. Not built yet: tenants.'), [])
+
+    def test_what_a_built_row_may_say(self):
+        for status in ('Built.', 'Built, with the checks under [Errors](#errors).',
+                       'Built: `toolchain.not_built_yet` where it is written.',
+                       'Built. It is [listed](other.md#wording-not-yet-accepted).',
+                       'Built. Not deployed yet: a maintainer switches it on.',
+                       'Built: a route waits for the work its action set off.',
+                       "Built: the kind comes from what a test calls."):
+            self.assertEqual(self.row('Flags', status), [], status)
+
+    def test_a_status_starts_with_one_of_the_three_words(self):
+        problems = self.row('Flags', 'Mostly there.')
+        self.assertEqual(len(problems), 1)
+        self.assertIn('"Mostly there."', problems[0])
+
+    def test_only_the_first_table_holds_statuses(self):
+        self.assertIn('Not built yet, a second table', AREA)
+        self.assertEqual(guidance.status_word_problems(project()), [])
+
+    def test_the_real_tables_are_honest(self):
+        self.assertEqual(guidance.status_word_problems(), [])
+
+
 class Examples(unittest.TestCase):
     def test_every_example_is_listed_in_reading_order(self):
         listed = guidance.examples(project())
