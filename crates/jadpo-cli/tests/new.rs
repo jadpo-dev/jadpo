@@ -158,7 +158,9 @@ fn agents_md_gives_a_working_method_what_is_built_and_the_examples() {
     ] {
         assert!(agents.contains(phrase), "{phrase:?} in:\n{agents}");
     }
-    assert!(!agents.contains("{name}") && !agents.contains("{line}") && !agents.contains("{release}"));
+    assert!(
+        !agents.contains("{name}") && !agents.contains("{line}") && !agents.contains("{release}")
+    );
     assert!(!agents.contains("/tree/main/"), "{agents}");
     let words = agents.split_whitespace().count();
     assert!(words < 2_000, "{words} words");

@@ -94,8 +94,8 @@ type DueWindow = Int {
 ```jadpo check project=e-unused-staged file=domains/planning/actions/next_due.jadpo
 use planning/types { DueWindow }
 
-/// The day after a window of `days`.
-action next_due(days: DueWindow) -> Int {
-    return days + 1
+/// The window a reminder waits, as it was asked for.
+action next_due(days: DueWindow) -> DueWindow {
+    return days
 }
 ```
