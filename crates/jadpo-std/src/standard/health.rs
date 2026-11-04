@@ -1,4 +1,4 @@
-//! The health records and measures (area 19, "The standard types", chunk
+//! The health records and measures (area 19, "How standard types are named, and what is left out", chunk
 //! 5.5m2): a medicine's `Dose` by mass or volume and how it is taken, a
 //! `DosageInstruction`, with `RouteOfAdministration`, the routes it is
 //! taken by; and a person's `HeartRate`, `BloodPressure` and

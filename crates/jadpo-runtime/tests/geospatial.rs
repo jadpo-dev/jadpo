@@ -277,7 +277,7 @@ fn a_feature_collection_round_trips_through_json_as_compiled_code_runs_it() {
 }
 
 /// `geo.from_geojson`, `geo.from_lng_lat` and `geo.from_lat_lng` as
-/// compiled code calls them (area 19, "Shared vocabulary types"; chunk
+/// compiled code calls them (area 19's design notes, "Shared vocabulary types"; chunk
 /// 5.11): the same values and conditions the interpreter's `geo_interop`
 /// tests assert.
 #[test]

@@ -1,5 +1,4 @@
-//! A literal in SQL is the value the runtime binds (area 19, "Every
-//! boundary through the contract"; chunk 5.5w3b), made from each standard
+//! A literal in SQL is the value the runtime binds (area 19, "How a standard value is sent, stored and shown"; chunk 5.5w3b), made from each standard
 //! type's data entry, so a type added later is tested without a line here.
 //!
 //! A project holds an entity with a field of every standard type stored in

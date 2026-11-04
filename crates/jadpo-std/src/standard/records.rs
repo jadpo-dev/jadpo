@@ -1,5 +1,5 @@
 //! The records of commerce, travel and the other published standards
-//! (area 19, "The standard types", chunk 5.5m2), each made of other types:
+//! (area 19, "How standard types are named, and what is left out", chunk 5.5m2), each made of other types:
 //! a `Barcode` by its symbology, a `UnitQuantity` by what it counts or
 //! measures, a `Rating` out of its scale, a `ClothingSize` and a `ShoeSize`
 //! in their systems, a parcel's `Dimensions` from `Length`s, a

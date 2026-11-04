@@ -395,9 +395,7 @@ What the Reddit thread found (Richard, 2026-11-03):
 - [x] **D17e Landing pages and status lines**: `tools/docs/reference_pages.py`; docs/documentation.md, "Landing pages and status lines"; `docs/reference.toml`.
 - [x] **D17f Search that finds the docs**: `src/lib/search.ts` and `scripts/search.test.mjs` in jadpo-website.
 - [x] **D17g What an agent reads first**: [documentation guide](documentation.md), "How an agent uses it"; `llms.txt`, the skill and the AGENTS.md `jadpo new` writes; `whole_index_problems` and `read_once_problems` in `tools/docs/agent_guidance.py`.
-- [ ] **D17h Standard types under Values and types** `opus · high`: one
-  generated list, in the sidebar, not two hand tables at the bottom of the
-  reference home.
+- [x] **D17h Standard types under Values and types**: docs/documentation.md, "The bundle"; `hand_type_table_problems` in `tools/docs/language_docs.py`; `/docs/types` in jadpo-website.
 - [x] **D17i Built-in services, one home each**: docs/language/16-built-in-services.md; docs/language/21-ai.md, "AI"; [writing guide](writing.md), "How a built-in service's page reads"; `docs/reference.toml`.
 - [ ] **D17j Every other area** `opus · high`: the remaining merges and
   renames, translations findable under Configuration.

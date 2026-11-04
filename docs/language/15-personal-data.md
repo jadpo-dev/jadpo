@@ -232,7 +232,7 @@ The hash covers the UTF-8 bytes of the value's canonical text, as
 A type with no single text form, such as a `PostalAddress`, is hashed from
 its JSON as `json.write` writes it. So one value hashes the same in every
 log and on both executors, because every boundary goes through
-[the standard types' contract](19-standard-library.md#every-standard-type-meets-one-contract).
+[the standard types' contract](19-standard-library.md#what-every-standard-type-can-do).
 
 ### Sensitive fields
 

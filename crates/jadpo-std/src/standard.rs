@@ -1,5 +1,5 @@
-//! The standard types' data entries (area 19, "The standard types" and
-//! "Every standard type meets one contract").
+//! The standard types' data entries (area 19, "How standard types are named, and what is left out" and
+//! "What every standard type can do").
 //!
 //! Every standard type is a stub declaration in `jadpo-check`'s
 //! `std/standard.jadpo`, for programs to name, plus one entry here, which
@@ -1596,8 +1596,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Object(&DATE_RANGE_FIELDS),
         text: Some(TextForm::Interval),
         json: Json::Fields(&["start", "end"]),
-        // Stored in one `daterange` column (area 19, "Every standard type
-        // meets one contract").
+        // Stored in one `daterange` column (area 19, "What every standard type can do").
         storage: Storage::Columns {
             parts: &[("", "daterange")],
             fixed: &[],

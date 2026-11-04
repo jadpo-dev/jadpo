@@ -471,7 +471,7 @@ fn an_output_holding_a_layer_holds_what_its_properties_hold() {
     );
 }
 
-/// `geo.from_geojson` (area 19, "Shared vocabulary types"; area 20,
+/// `geo.from_geojson` (area 19's design notes, "Shared vocabulary types"; area 20,
 /// "Interop"; chunk 5.11): GeoJSON text read into the `Geometry` of the
 /// kind it names, as `geo.from_wkt` reads WKT, failing `malformed` or
 /// `out_of_range`, which its `attempt` maps.

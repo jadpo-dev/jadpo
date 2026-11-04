@@ -104,7 +104,7 @@ pub fn secret_value(name: &str) -> Option<&'static str> {
 }
 
 /// Whether a secret value of type `name` may one day be stored, sealed
-/// with an encrypted field's key ("Language gaps": keys held as data, with
+/// with an encrypted field's key (area 19's design notes, "Language gaps": keys held as data, with
 /// encrypted fields), so that storing one now is not built yet rather than
 /// refused: a `TotpSecret`, which checking a code needs back, and a
 /// `SecretText`. A password, a key, a token and a JWT are never stored as
