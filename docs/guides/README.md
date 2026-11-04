@@ -20,6 +20,7 @@ instead.
 | [Handle failures](04-handle-failures.md) | a failure of your own, refused with the right status, handled where a caller wants to |
 | [Add sign-in](05-add-sign-in.md) | sign-in by emailed link and with Google, and routes that know who is calling |
 | [Call an outside API](06-call-an-outside-api.md) | a typed description of another service, called through a connection and faked in tests |
+| [Receive a webhook](17-receive-a-webhook.md) | a sender described as a package, its signed requests checked and de-duplicated, and a subscriber keeping each event |
 | [Run background work](07-run-background-work.md) | a schedule that starts a batch, an event with its subscriber, and a test of the whole run |
 | [Write tests](08-write-tests.md) | action and route tests, fixtures, a fixed clock and tests signed in as someone |
 | [Ship a change behind a flag](13-ship-a-change-behind-a-flag.md) | a change deployed switched off, both sides tested, turned on with no deploy, and the flag removed |

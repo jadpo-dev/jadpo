@@ -264,6 +264,163 @@ fn a_persons_own_email_is_cleared_without_a_mark() {
     );
 }
 
+/// A phone number, a person's name and a postal address are cleared as an
+/// `Email` is (area 15, "Contact details and names need no mark"): with no
+/// mark, in the standard type or one built on it, and they have to be able
+/// to be `none`.
+#[test]
+fn contact_details_and_names_on_a_record_kept_without_the_person_can_be_none() {
+    const CLEARED: [&str; 7] = [
+        "PhoneNumber",
+        "PersonName",
+        "GivenName",
+        "FamilyName",
+        "PostalAddress",
+        "SupportLine",
+        "List<PhoneNumber>",
+    ];
+    let kept = |ty: &str| {
+        format!(
+            "type SupportLine = PhoneNumber {{}}\n{}",
+            RECORDS.replace(
+                "    body: Caption\n",
+                &format!("    body: Caption\n    held: {ty}\n"),
+            )
+        )
+    };
+    for ty in CLEARED {
+        assert_eq!(
+            problems(&project(&[USER, &kept(ty)])),
+            ["main.jadpo data.erase_field_required: Erasing a `User` can't clear `Comment.held`"],
+            "{ty}"
+        );
+        let source = project(&[USER, &kept(&format!("{ty}?"))]);
+        assert_eq!(rules(&source), CLEAN, "{ty}?");
+        let source = with_settings(&source);
+        let db = Database::default();
+        let project = support::project(&db, Layout::Loose, &[("main.jadpo", source.as_str())]);
+        let erasures = jadpo_check::erasure::erasures(&db, project);
+        let comment = erasures.people["User"]
+            .kept
+            .iter()
+            .find(|kept| kept.entity == "Comment")
+            .expect("kept");
+        assert_eq!(comment.clears, ["held", "signature"], "{ty}");
+    }
+}
+
+/// The refusal says which kind of value it is and which category it counts
+/// as, since no `personal:` on the field says so.
+#[test]
+fn the_refusal_says_what_a_field_with_no_mark_holds() {
+    for (ty, said) in [
+        (
+            "Email",
+            "`held` is an email address, which counts as `PersonalData.contact`",
+        ),
+        (
+            "PhoneNumber",
+            "`held` is a phone number, which counts as `PersonalData.contact`",
+        ),
+        (
+            "PersonName",
+            "`held` is a person's name, which counts as `PersonalData.identifying`",
+        ),
+        (
+            "GivenName",
+            "`held` is a person's name, which counts as `PersonalData.identifying`",
+        ),
+        (
+            "PostalAddress",
+            "`held` is a postal address, which counts as `PersonalData.contact`",
+        ),
+    ] {
+        let source = project(&[
+            USER,
+            &RECORDS.replace(
+                "    body: Caption\n",
+                &format!("    body: Caption\n    held: {ty}\n"),
+            ),
+        ]);
+        let source = with_settings(&source);
+        let db = Database::default();
+        let project = support::project(&db, Layout::Loose, &[("main.jadpo", source.as_str())]);
+        let reasons: Vec<String> = jadpo_check::check(&db, project)
+            .iter()
+            .filter_map(|diagnostic| diagnostic.reason.clone())
+            .collect();
+        assert!(
+            reasons.iter().any(|reason| reason.contains(said)),
+            "{ty}: {reasons:?}"
+        );
+    }
+}
+
+/// A person's own kept record clears them with its other marked fields, and
+/// one can say it stays, though nothing marks it.
+#[test]
+fn a_persons_own_phone_name_and_address_are_cleared_without_a_mark() {
+    for ty in [
+        "PhoneNumber",
+        "PersonName",
+        "GivenName",
+        "FamilyName",
+        "PostalAddress",
+    ] {
+        let held = |ty: &str, settings: &str| {
+            CUSTOMER.replace(
+                "    email: Email? {\n        personal: PersonalData.contact\n    }",
+                &format!(
+                    "    email: Email? {{\n        personal: PersonalData.contact\n    }}\n    held: {ty}{settings}"
+                ),
+            )
+        };
+        assert_eq!(rules(&held(&format!("{ty}?"), "")), CLEAN, "{ty}?");
+        assert_eq!(
+            problems(&held(ty, "")),
+            [
+                "main.jadpo data.erase_field_required: Erasing a `Customer` can't clear `Customer.held`"
+            ],
+            "{ty}"
+        );
+        assert_eq!(
+            rules(&held(ty, " {\n        erase: Erasure.retained\n    }")),
+            CLEAN,
+            "{ty} retained"
+        );
+    }
+}
+
+/// What erasure clears with no mark stops there: another standard type that
+/// is personal data, a `PostalCode` among them, is cleared only when marked.
+#[test]
+fn other_standard_personal_types_are_cleared_only_when_marked() {
+    for ty in ["PostalCode", "Nationality", "Iban", "PassportNumber"] {
+        let source = project(&[
+            USER,
+            &RECORDS.replace(
+                "    body: Caption\n",
+                &format!("    body: Caption\n    held: {ty}\n"),
+            ),
+        ]);
+        assert_eq!(rules(&source), CLEAN, "{ty}");
+    }
+}
+
+/// `Erasure.retained` on a reference keeps the record as it is, with only
+/// the reference cleared, so what it holds needn't be able to be `none`.
+#[test]
+fn a_record_kept_as_it_is_keeps_a_phone_number() {
+    let source = project(&[
+        USER,
+        &RECORDS.replace(
+            "    issued_at: Instant {",
+            "    billing_phone: PhoneNumber\n    issued_at: Instant {",
+        ),
+    ]);
+    assert_eq!(rules(&source), CLEAN);
+}
+
 #[test]
 fn a_record_kept_as_it_is_has_a_retention_of_its_own() {
     let forever = RECORDS.replace(
