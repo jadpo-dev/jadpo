@@ -264,6 +264,28 @@ Every page that explains an error's `next:` line uses the same words:
 The marker is guidance that agents follow, and nothing enforces it yet.
 The primer says so once; other pages don't repeat it.
 
+## How a built-in service's page reads
+
+A reader arrives at a service's page knowing what they want done, and may never
+have seen the service. Each has one home in the sidebar, its first topic, which
+reads in this order:
+
+1. **Its guide**, in one line, where one exists.
+2. **What it's for**, in plain words, and the `[topic_summary]` line for its
+   row on the landing page says the same.
+3. **The smallest thing that works**, each file under its path, with its test.
+   A service that works shows an example the docs check compiles, never a
+   `fragment`, and shows only what is built.
+4. **What most apps change next**, then the limits.
+5. **`### Not built yet`**, last, when the rest is design, saying what works
+   today instead. A section someone may have linked keeps its heading beneath it,
+   at the next level down.
+
+The exact rules go in a topic of their own, under the page's `details` in the
+[manifest](documentation.md#the-references-manifest). It opens by saying when a
+reader needs it. A service that isn't built is the design, with the generated
+line above it, and ends by saying what an app does until it is.
+
 ## How a standard type's page reads
 
 A reader arrives at a type's page with a name and one question: what is
