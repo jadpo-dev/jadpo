@@ -402,7 +402,7 @@ What the Reddit thread found (Richard, 2026-11-03):
   renames, translations findable under Configuration.
 - [ ] **D17k Implementer history out of the topics** `opus · medium`, with a
   check.
-- [ ] **D17l The guides index grouped** `opus · medium`.
+- [x] **D17l The guides index grouped**: `docs/guides/README.md`; docs/documentation.md, "The bundle"; `src/components/guides/GuideList.astro` in jadpo-website.
 - [x] **D17m The ten guides**: `docs/guides/12-send-an-email.md` to `21-keep-customers-data-apart.md`.
 - [ ] **D17n Review** `opus · high`: one independent review of the whole and
   a cold read of a service from its landing page.

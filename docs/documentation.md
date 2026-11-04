@@ -137,7 +137,8 @@ entry also has `aliases`, its old IDs; no other entry has the field. A
 page the [reference's manifest](#the-references-manifest) places (a topic, a
 standard type, a command) also has its `group` and its `page`, each a title,
 `page` being `null` directly under a group, and its `status`; no other entry
-has those. A
+has those, but for a guide's `group`, the heading it sits under on the guides'
+index. A
 page's path follows
 from its kind and ID. `learn` and `guide` pages are the user layer, and `topic`
 pages the reference; each area's "What is built" topic is titled
