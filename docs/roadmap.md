@@ -390,29 +390,20 @@ What the Reddit thread found (Richard, 2026-11-03):
 - [x] **D17a Honest status words**: each area's "What is built" table; [writing guide](writing.md), "A status word"; `status_word_problems` in `tools/docs/agent_guidance.py`.
 - [x] **D17b The reference's manifest**: `docs/reference.toml` and its check; docs/documentation.md, "The reference's manifest".
 - [x] **D17c The navigation designed**: `design/docs-nav.html` in jadpo-website.
-- [ ] **D17d The site built from the manifest** `opus · high` **needs a
-  maintainer**, since merging deploys to jadpo.dev.
-- [ ] **D17e Landing pages and status lines** `opus · high`: each group has
-  a landing page that links everything in it, and a page not fully built
-  says so at its top, in its Markdown too.
-- [ ] **D17f Search that finds the docs** `opus · medium`: "deploy" and "send
-  email" find a guide or topic first, not error pages.
-- [ ] **D17g What an agent reads first** `opus · high`: nothing tells an agent
-  to read all of `index.json`, 173,000 tokens; about 9,000 once and under
-  1,000 per lookup.
+- [x] **D17d The site built from the manifest**: `src/lib/nav.ts` and `src/components/docs/` in jadpo-website; its `DESIGN.md`.
+- [x] **D17e Landing pages and status lines**: `tools/docs/reference_pages.py`; docs/documentation.md, "Landing pages and status lines"; `docs/reference.toml`.
+- [x] **D17f Search that finds the docs**: `src/lib/search.ts` and `scripts/search.test.mjs` in jadpo-website.
+- [x] **D17g What an agent reads first**: [documentation guide](documentation.md), "How an agent uses it"; `llms.txt`, the skill and the AGENTS.md `jadpo new` writes; `whole_index_problems` and `read_once_problems` in `tools/docs/agent_guidance.py`.
 - [ ] **D17h Standard types under Values and types** `opus · high`: one
   generated list, in the sidebar, not two hand tables at the bottom of the
   reference home.
-- [ ] **D17i Built-in services, one home each** `opus · high`: usage first,
-  details last, the landing's rows all linking.
+- [x] **D17i Built-in services, one home each**: docs/language/16-built-in-services.md; docs/language/21-ai.md, "AI"; [writing guide](writing.md), "How a built-in service's page reads"; `docs/reference.toml`.
 - [ ] **D17j Every other area** `opus · high`: the remaining merges and
   renames, translations findable under Configuration.
 - [ ] **D17k Implementer history out of the topics** `opus · medium`, with a
   check.
 - [ ] **D17l The guides index grouped** `opus · medium`.
-- [ ] **D17m The ten guides** `opus · high`, one pull request each: email,
-  flags, rate limits, search, audit, webhooks received, file export,
-  translations, AI, tenancy. Each compiles and its tests pass.
+- [x] **D17m The ten guides**: `docs/guides/12-send-an-email.md` to `21-keep-customers-data-apart.md`.
 - [ ] **D17n Review** `opus · high`: one independent review of the whole and
   a cold read of a service from its landing page.
 
@@ -709,12 +700,12 @@ After the registry is live, in order:
      see each failure on both executors, and `jadpo files copy` moves a
      disk store's files to S3.
    - [x] **B9 Flags declared, read and tested**: area 16, "Feature flags"
-     and "Flags: declared, read and tested"; area 1, "Rules triggered by
+     and "Flag rules: declaring, reading, testing"; area 1, "Rules triggered by
      time passing"; area 13, "Test settings"; compiler/runtime §2.6,
      "Feature flags".
    - [x] **B10 Changing and removing flags**: area 16, "Changing a flag",
-     "Removing a flag", "Flags in browsers and apps" and "Flags: changed,
-     listed and removed"; area 14, `jadpo flags`; compiler/runtime §2.6,
+     "Removing a flag", "Flags in browsers and apps" and "Flag rules: changing,
+     listing, removing"; area 14, `jadpo flags`; compiler/runtime §2.6,
      "Feature flags".
    - [x] **B11 The audit trail**: area 16, "Audit trail" (with "Reading
      a history", "Retention and erasure" and "What the audit trail

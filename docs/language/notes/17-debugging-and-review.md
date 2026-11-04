@@ -5,7 +5,7 @@ area: 17
 
 # Debugging and review: design notes
 
-Why [Debugging and review](../17-debugging-and-review.md) is the way it is: the decisions behind it, how it fits the rest of the language and what it carried to other areas. An app author reads the area page, not this one.
+Why [Debugging](../17-debugging-and-review.md) is the way it is: the decisions behind it, how it fits the rest of the language and what it carried to other areas. An app author reads the area page, not this one.
 
 ## Status
 

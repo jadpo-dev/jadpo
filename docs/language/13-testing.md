@@ -1174,7 +1174,7 @@ A scripted answer is a value of the clean output type or one of the
 operation's provider failures. The test never writes the wire shape: the
 fake encodes the value and decodes it, as "Values a fake answers with"
 says. `jadpo calls script` sets the same answers by hand in
-`jadpo dev` ([Debugging and review](17-debugging-and-review.md)).
+`jadpo dev` ([Debugging](17-debugging-and-review.md)).
 
 #### Several changing calls
 
@@ -1274,8 +1274,8 @@ An OAuth grant lets the app call another service on a user's behalf
 ([Acting for each user: OAuth grants](11-integrations.md#acting-for-each-user-oauth-grants)).
 A test declares its grants at the top, beside `fakes:`, as
 `grants: { calendar: [alice] }`: the connection's name, and the fixtures
-whose records own a grant, as `jadpo dev grants add` makes them in
-development. A call on behalf of an owner with no grant fails
+whose records own a grant, as `jadpo dev grants add`, not built yet, will
+make them in development. A call on behalf of an owner with no grant fails
 `grant_missing`, and a script can answer `grant_revoked`.
 
 #### Files
@@ -1290,7 +1290,7 @@ and a test turns it into a stored `File` with
 #### Batches
 
 A batch run works through many items, such as the rows of a file, a few
-at a time ([Batches: work over many items](12-jobs-and-events.md#batches-work-over-many-items)).
+at a time ([Batches](12-jobs-and-events.md#batches)).
 In a test, batches run to the end within the test, after the action that
 started them commits, like events. `jadpo test` runs them in batches of
 two items and simulates a restart between every batch, so every import or
@@ -1535,7 +1535,7 @@ FAIL  a rate-limited reminder is retried
 - **For `assert … fails X`:** the failure that happened instead, with its
   internal fields, or the value the call returned.
 - **What ran:** the test's trace in short
-  ([Debugging and review](17-debugging-and-review.md)): actions, queries,
+  ([Debugging](17-debugging-and-review.md)): actions, queries,
   writes, events delivered or pending, retries, and provider calls with
   what was sent and answered.
 - **How to reproduce it:** the clock, the order seed, configuration
@@ -1614,7 +1614,7 @@ a focused test is never committed by accident.
 
 `jadpo test --watch` reruns, on every save, the tests the change reaches.
 It finds them with the compiler's own dependency graph, as `--affected`
-does ([Tooling](14-tooling.md)).
+does ([Tools](14-tooling.md)).
 
 ### Interactive mode: `--interactive`
 
@@ -1679,9 +1679,9 @@ as in production.
 
 ### Keeping a failed test's database: `--keep-failed`
 
-`--keep-failed` keeps a failed test's database, named in the report, and
-its trace. `jadpo trace` and the developer console can then inspect
-exactly what it did.
+`--keep-failed` keeps a failed test's database, named in the report. Not
+built yet: its trace, with `jadpo trace` and the developer console to
+inspect exactly what it did.
 
 ## Caches and events
 <!-- topic: caches-and-events -->
@@ -1933,10 +1933,11 @@ Not built yet: caches, which need the Redis driver.
 | Watch mode | Partly built: `jadpo test --watch` runs the tests asked for, then on every save the ones that reach what changed, through the graph's digests and `calls` and `uses` edges, on one long-lived database; a save no test reaches says `nothing to rerun`, a broken build shows its errors, and the next good save runs everything changed since the last run, or says `errors fixed` when no test reaches it; a removed file is a change like any other. Run from outside the project, its paths start with the project as typed. It ends when nothing reads its output any more, as when piped into `head`. A save shows its results in about 0.1 s on a 230-file project, and the gate fails above 1.25 s. The keys in the interactive screen (`enter`, `a`, `f`) wait for `--interactive`, which says `toolchain.not_built_yet`; ctrl-c quits. |
 | Fixtures | Built: a fixture is checked like an action and called by name from tests, fixtures and seeds; an action calling one is `semantic.not_callable`. A `public` fixture is called through its domain from other domains' tests, fixtures and seeds and from root `tests/`; a private one from there is `visibility.private_cross_domain`. Seeds are checked like tests and run with `jadpo seed` ([Seeds](05-data.md#seeds)). |
 | Data builders, `assert emitted` | Not built yet. |
+| The trace `--keep-failed` keeps, for `jadpo trace` | Not built yet: it comes with [Debugging and review](17-debugging-and-review.md). |
 | Interactive mode | Not built yet: `jadpo test --interactive` says `toolchain.not_built_yet`. |
 | Caches in tests | Not built yet: caches need the Redis driver. |
 | Golden application contract | Built: the shared black-box harness in `benchmarks/contract/` executes all 44 versioned application cases interpreted, on generated native code and on compiled workerd, with real credential verification, raw invalid inputs, physical SQL observation, persisted-state assertions, controlled clocks and provider faults. These checks supplement authored Jadpo tests; they add no application-facing test controls. Full-gate ownership is interpreted and native in `compiled`, workerd in `wasm32`, and verifier negative controls in `lint`. |
-| `test.no_tests` | Built: raised by `jadpo test` only ([Tooling](14-tooling.md)), when the project has no tests or a file, line, name, kind or `--failed` picks none. |
+| `test.no_tests` | Built: raised by `jadpo test` only ([Tools](14-tooling.md)), when the project has no tests or a file, line, name, kind or `--failed` picks none. |
 
 ## Errors
 
