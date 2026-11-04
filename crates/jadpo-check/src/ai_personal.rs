@@ -385,12 +385,12 @@ impl Holder {
 
 /// A type as a sentence names one: `` a `NhsNumber` ``, `` an `Email` ``.
 pub fn a_type(ty: &str) -> String {
-    let article = if ty.starts_with(['A', 'E', 'I', 'O', 'U']) {
+    let word = if ty.starts_with(['A', 'E', 'I', 'O', 'U']) {
         "an"
     } else {
         "a"
     };
-    format!("{article} `{ty}`")
+    format!("{word} `{ty}`")
 }
 
 /// What one holder is: its categories, and whether it is kept from
