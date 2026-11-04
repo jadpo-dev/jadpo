@@ -934,7 +934,7 @@ const NOTES: &[(&str, &str)] = &[
     ),
     (
         "domains/notes/routes/notes.jadpo",
-        "use notes/entities { Note }\nuse notes/types { NoteInput, NoteView }\nuse notes/actions { add_note, edit_note }\n\n/// Notes.\nroutes Notes {\n    prefix: /notes\n\n    /// Adds a note.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: NoteInput\n        output: NoteView\n        status: SuccessStatus.created\n        run: add_note(input)\n    }\n\n    /// Rewrites a note, within a second.\n    PUT /{note_id: Note.id} {\n        authentication: RouteAuthentication.none\n        input: NoteInput\n        output: NoteView\n        deadline: 1s\n        run: edit_note(note_id, input)\n    }\n}\n",
+        "use notes/entities { Note }\nuse notes/types { NoteInput, NoteView }\nuse notes/actions { add_note, edit_note }\n\n/// Notes.\nroutes Notes {\n    prefix: /notes\n\n    /// Adds a note.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: NoteInput\n        output: NoteView\n        status: SuccessStatus.created\n        run: add_note(input)\n    }\n\n    /// Rewrites a note.\n    PUT /{note_id: Note.id} {\n        authentication: RouteAuthentication.none\n        input: NoteInput\n        output: NoteView\n        deadline: 1s\n        run: edit_note(note_id, input)\n    }\n}\n",
     ),
 ];
 
@@ -961,60 +961,145 @@ fn query(url: &str, sql: &str, params: Vec<jadpo_runtime::SqlValue>) -> Vec<jadp
     })
 }
 
-#[test]
-fn a_write_past_its_deadline_commits_nothing_and_answers_504() {
-    if !jadpo_test::live() {
-        return;
-    }
-    let dir = tempdir::Dir::new("deadline");
-    let root = dir.path().to_path_buf();
+/// `NOTES` served with its edit route's deadline set to `deadline`, and a
+/// note to rewrite.
+fn served_note(root: &Path, deadline: &str) -> (Dev, String) {
     for (path, text) in NOTES {
-        write(&root, path, text);
+        let text = text.replace("deadline: 1s", &format!("deadline: {deadline}"));
+        write(root, path, &text);
     }
     for args in [
         &["migrate", "new", "initial"][..],
         &["records", "update"],
         &["check"],
     ] {
-        let done = jadpo(&root, args);
+        let done = jadpo(root, args);
         assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
     }
-    let dev = Dev::start(&root);
+    let dev = Dev::start(root);
     let created = dev.send("POST", "/notes", &[], r#"{"text":"first"}"#);
     assert_eq!(created.status, 201, "{created:?}");
     let id = created.json()["id"].as_str().expect("an id").to_string();
+    (dev, id)
+}
 
-    // Another transaction holds the note's row until the test lets go.
-    let (locked_tx, locked) = std::sync::mpsc::channel::<()>();
-    let (release, released) = std::sync::mpsc::channel::<()>();
-    let holder = {
-        let url = dev.url.clone();
-        let id = uuid(&id);
-        std::thread::spawn(move || {
-            use jadpo_runtime::Database as _;
-            let runtime = jadpo_host_native::Runtime::new().expect("a runtime");
-            let store = jadpo_host_native::postgres(&url).expect("a store");
-            runtime.block_on(async {
-                let mut transaction = store.begin().await.expect("begins");
-                transaction
-                    .execute(
-                        "UPDATE \"note\" SET \"text\" = 'held' WHERE \"id\" = $1",
-                        &[jadpo_runtime::SqlValue::Uuid(id)],
-                    )
-                    .await
-                    .expect("locks the row");
-                locked_tx.send(()).expect("says so");
-                released.recv().expect("let go");
-                transaction.rollback().await.expect("rolls back");
-            });
-        })
-    };
-    locked.recv().expect("the row is locked");
+/// Another transaction holding a note's row until the test lets go.
+struct HeldRow {
+    release: std::sync::mpsc::Sender<()>,
+    holder: std::thread::JoinHandle<()>,
+}
+
+impl HeldRow {
+    fn hold(url: &str, id: &str) -> HeldRow {
+        let (locked_tx, locked) = std::sync::mpsc::channel::<()>();
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let holder = {
+            let url = url.to_string();
+            let id = uuid(id);
+            std::thread::spawn(move || {
+                use jadpo_runtime::Database as _;
+                let runtime = jadpo_host_native::Runtime::new().expect("a runtime");
+                let store = jadpo_host_native::postgres(&url).expect("a store");
+                runtime.block_on(async {
+                    let mut transaction = store.begin().await.expect("begins");
+                    transaction
+                        .execute(
+                            "UPDATE \"note\" SET \"text\" = 'held' WHERE \"id\" = $1",
+                            &[jadpo_runtime::SqlValue::Uuid(id)],
+                        )
+                        .await
+                        .expect("locks the row");
+                    locked_tx.send(()).expect("says so");
+                    released.recv().expect("let go");
+                    transaction.rollback().await.expect("rolls back");
+                });
+            })
+        };
+        locked.recv().expect("the row is locked");
+        HeldRow { release, holder }
+    }
+
+    fn let_go(self) {
+        self.release.send(()).expect("lets go");
+        self.holder.join().expect("the holder ends");
+    }
+}
+
+/// The rows keeping idempotency key `edit-1`.
+fn kept_edit_key(url: &str) -> Vec<jadpo_runtime::Row> {
+    query(
+        url,
+        "SELECT 1 FROM \"jadpo_idempotency_keys\" WHERE \"key\" = 'edit-1'",
+        Vec::new(),
+    )
+}
+
+/// A note's text.
+fn note_text(url: &str, id: &str) -> String {
+    let rows = query(
+        url,
+        "SELECT \"text\" FROM \"note\" WHERE \"id\" = $1",
+        vec![jadpo_runtime::SqlValue::Uuid(uuid(id))],
+    );
+    match rows.first().and_then(|row| row.first()) {
+        Some(jadpo_runtime::SqlValue::Text(text)) => text.clone(),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_write_past_its_deadline_commits_nothing_and_answers_504() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let dir = tempdir::Dir::new("deadline");
+    let (dev, id) = served_note(dir.path(), "1s");
+    let held = HeldRow::hold(&dev.url, &id);
+
+    // The row stays locked until this has answered, so only the deadline
+    // can answer it: were it waiting for the lock, it would never come.
+    let path = format!("/notes/{id}");
+    let key = [("Idempotency-Key", "edit-1")];
+    let late = dev.send("PUT", &path, &key, r#"{"text":"late"}"#);
+    assert_eq!(late.status, 504, "{late:?}");
+    assert_eq!(late.json()["error"]["code"], "deadline_exceeded");
+    // It gave its key up as it answered; the key didn't just lapse later.
+    assert!(kept_edit_key(&dev.url).is_empty());
+    held.let_go();
+
+    assert_eq!(
+        note_text(&dev.url, &id),
+        "first",
+        "the late write committed nothing"
+    );
+    // Its key was given up, so a retry runs. On a loaded runner a retry can
+    // pass the same second, and give its key up the same way, so it is sent
+    // again as a client would; a key still held would answer 409 at once.
+    let mut retried = dev.send("PUT", &path, &key, r#"{"text":"late"}"#);
+    for _ in 0..30 {
+        if retried.status != 504 {
+            break;
+        }
+        retried = dev.send("PUT", &path, &key, r#"{"text":"late"}"#);
+    }
+    assert_eq!(retried.status, 200, "{retried:?}");
+    assert_eq!(note_text(&dev.url, &id), "late");
+}
+
+/// The first request runs until the test lets it finish: its route's
+/// deadline, the longest there is, isn't what this is about.
+#[test]
+fn a_repeat_while_its_first_request_is_running_answers_409() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let dir = tempdir::Dir::new("in-flight");
+    let (dev, id) = served_note(dir.path(), "60s");
+    let held = HeldRow::hold(&dev.url, &id);
 
     let path = format!("/notes/{id}");
     let key = [("Idempotency-Key", "edit-1")];
-    let started = Instant::now();
-    let late = {
+    let first = {
         let port = dev.port;
         let path = path.clone();
         std::thread::spawn(move || {
@@ -1030,13 +1115,7 @@ fn a_write_past_its_deadline_commits_nothing_and_answers_504() {
     // The repeat is told the first is running only once the first holds
     // the key; before that it would claim the key and run itself.
     let waited = Instant::now();
-    while query(
-        &dev.url,
-        "SELECT 1 FROM \"jadpo_idempotency_keys\" WHERE \"key\" = 'edit-1'",
-        Vec::new(),
-    )
-    .is_empty()
-    {
+    while kept_edit_key(&dev.url).is_empty() {
         assert!(
             waited.elapsed() < Duration::from_secs(60),
             "the first write never claimed its key"
@@ -1046,33 +1125,16 @@ fn a_write_past_its_deadline_commits_nothing_and_answers_504() {
     let busy = dev.send("PUT", &path, &key, r#"{"text":"late"}"#);
     assert_eq!(busy.status, 409, "{busy:?}");
     assert_eq!(busy.json()["error"]["code"], "conflict");
-    let late = late.join().expect("answered");
-    assert_eq!(late.status, 504, "{late:?}");
-    assert_eq!(late.json()["error"]["code"], "deadline_exceeded");
-    assert!(
-        started.elapsed() < Duration::from_secs(5),
-        "answered at the deadline, not when the lock went: {:?}",
-        started.elapsed()
-    );
-    release.send(()).expect("lets go");
-    holder.join().expect("the holder ends");
+    assert_eq!(note_text(&dev.url, &id), "first");
 
-    let text = || {
-        let rows = query(
-            &dev.url,
-            "SELECT \"text\" FROM \"note\" WHERE \"id\" = $1",
-            vec![jadpo_runtime::SqlValue::Uuid(uuid(&id))],
-        );
-        match rows.first().and_then(|row| row.first()) {
-            Some(jadpo_runtime::SqlValue::Text(text)) => text.clone(),
-            other => panic!("{other:?}"),
-        }
-    };
-    assert_eq!(text(), "first", "the late write committed nothing");
-    // Its key was given up, so a retry runs.
-    let retried = dev.send("PUT", &path, &key, r#"{"text":"late"}"#);
-    assert_eq!(retried.status, 200, "{retried:?}");
-    assert_eq!(text(), "late");
+    held.let_go();
+    let first = first.join().expect("answered");
+    assert_eq!(first.status, 200, "{first:?}");
+    assert_eq!(note_text(&dev.url, &id), "late");
+    // Now it has finished, a repeat gets its answer.
+    let repeat = dev.send("PUT", &path, &key, r#"{"text":"late"}"#);
+    assert_eq!(repeat.status, 200, "{repeat:?}");
+    assert_eq!(repeat.body, first.body);
 }
 
 #[test]
