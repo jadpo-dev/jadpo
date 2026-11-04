@@ -1,18 +1,25 @@
 # `policy.system_grant_missing`
 
-A schedule or subscriber reaches something no list grants anyone, or a grant that names `Access.public` but not `Access.system`, so the background work would always be refused.
+A schedule or subscriber reaches something whose list doesn't name `Access.system`, the one way an entity lets background work in.
 
 ## Why Jadpo refuses it
 
 Schedules and subscribers run with no request, as the system caller,
-which gets exactly what `Access.system` grants. `Access.public` lets in
-anyone who calls a route, signed in or not, but the system is nobody
-calling. So a grant that names `Access.public` and not `Access.system`
-never lets background work in, and the subscriber would be refused every
-time it runs. Nor does an entity let anyone in by saying nothing: a
-create, read, update or delete no list grants anyone can only be refused,
-and without this check you would first see that once it was deployed, as
-a delivery that failed.
+which an entity lets in by naming `Access.system`. Everything the work
+could reach has to name it, whichever branch runs, as everything a route
+anyone may call reaches has to name `Access.public`. A list can fail that
+in three ways:
+
+- **It names `Access.public` and not `Access.system`.** `Access.public`
+  tests no caller, so without this check the work would run, on a list
+  that never said background work may change these records.
+- **It grants nobody.** A create, read, update or delete no list grants
+  anyone can only be refused, and without this check you would first see
+  that once it was deployed, as a delivery that failed.
+- **It names only people.** A user field, a role, `Access.authenticated`,
+  a line under `actions:` without `Access.system`, or a listed query,
+  whose line can't name it. The system is none of these, so reaching one
+  fails the delivery too.
 
 Jadpo won't choose the fix for you. Granting `Access.system` lets your
 app's background work change these records, which is a decision about
@@ -118,6 +125,97 @@ error: `keep_due` runs as the system, which nothing lets create `SentNote`
    |            ^^^^^^^^ runs as `Access.system`
   reason: A subscriber runs as the system, which an entity grants background work by naming `Access.system`; `SentNote`'s policy grants nobody `create`, so every run would be refused with `not_permitted`.
   next: Add `create: [Access.system]` to `SentNote`'s `policy:` (human)
+  rule: policy.system_grant_missing
+  help: https://jadpo.dev/docs/errors/policy.system_grant_missing
+
+check failed: 1 error, 1 file
+```
+
+A list naming only people is refused the same way, even on a branch the
+subscriber never takes. Here a route and a subscriber share
+`settle_reminder`, and only the route ever deletes:
+
+```jadpo check project=e-system-grant-missing-people expect=policy.system_grant_missing
+type Note = Text {
+    max_length: 200
+}
+
+entity Person {
+    id: Uuid
+    handle: Note {
+        unique: true
+    }
+
+    policy: {
+        read: [id]
+    }
+}
+
+principal {
+    user: {
+        subject: Person.handle
+    }
+}
+
+authentication {
+    browser_session: {
+        cookie: "reminders_session"
+    }
+}
+
+entity Reminder {
+    id: Uuid
+    note: Note
+    sent: Bool
+
+    policy: {
+        create: [Access.authenticated]
+        read: [Access.authenticated, Access.system]
+        update: [Access.authenticated, Access.system]
+        delete: [Access.authenticated]
+    }
+}
+
+type ReminderDue = Event {
+    reminder_id: Reminder.id
+}
+
+action settle_reminder(reminder_id: Reminder.id) fails ReminderNotFound -> Unit {
+    var reminder: Reminder = attempt Reminder.get(reminder_id)
+    if (reminder.sent) {
+        attempt Reminder.delete(reminder_id)
+    } else {
+        attempt Reminder.update(reminder_id) {
+            set: {
+                sent: true
+            }
+        }
+    }
+}
+
+routes Reminders {
+    prefix: /reminders
+
+    POST /{reminder_id: Reminder.id}/settled {
+        status: SuccessStatus.no_content
+        run: settle_reminder(reminder_id)
+    }
+}
+
+subscriber send_due {
+    on: ReminderDue
+    run: settle_reminder(event.reminder_id)
+}
+```
+
+```text output
+error: `send_due` runs as the system, which `Reminder`'s `delete:` doesn't let in
+ --> main.jadpo:67:12
+   |
+67 | subscriber send_due {
+   |            ^^^^^^^^ runs as `Access.system`
+  reason: A subscriber runs as the system, which an entity grants background work by naming `Access.system`; `Reminder`'s `delete:` names only people, and what the code could reach counts, whichever branch runs.
+  next: Add `Access.system` to `Reminder`'s `delete:`, or split `settle_reminder` so the system's work is an action of its own that doesn't delete `Reminder` (human)
   rule: policy.system_grant_missing
   help: https://jadpo.dev/docs/errors/policy.system_grant_missing
 
@@ -283,6 +381,89 @@ subscriber keep_due {
 
 `keep_due` may now create a `SentNote`, and no request may.
 
+**If a route shares the action**, split it, so the system's work is an
+action of its own that doesn't reach the people's list:
+
+```jadpo check project=e-system-grant-missing-split
+type Note = Text {
+    max_length: 200
+}
+
+entity Person {
+    id: Uuid
+    handle: Note {
+        unique: true
+    }
+
+    policy: {
+        read: [id]
+    }
+}
+
+principal {
+    user: {
+        subject: Person.handle
+    }
+}
+
+authentication {
+    browser_session: {
+        cookie: "reminders_session"
+    }
+}
+
+entity Reminder {
+    id: Uuid
+    note: Note
+    sent: Bool
+
+    policy: {
+        create: [Access.authenticated]
+        read: [Access.authenticated, Access.system]
+        update: [Access.authenticated, Access.system]
+        delete: [Access.authenticated]
+    }
+}
+
+type ReminderDue = Event {
+    reminder_id: Reminder.id
+}
+
+action mark_sent(reminder_id: Reminder.id) fails ReminderNotFound -> Unit {
+    attempt Reminder.update(reminder_id) {
+        set: {
+            sent: true
+        }
+    }
+}
+
+action settle_reminder(reminder_id: Reminder.id) fails ReminderNotFound -> Unit {
+    var reminder: Reminder = attempt Reminder.get(reminder_id)
+    if (reminder.sent) {
+        attempt Reminder.delete(reminder_id)
+    } else {
+        attempt mark_sent(reminder_id)
+    }
+}
+
+routes Reminders {
+    prefix: /reminders
+
+    POST /{reminder_id: Reminder.id}/settled {
+        status: SuccessStatus.no_content
+        run: settle_reminder(reminder_id)
+    }
+}
+
+subscriber send_due {
+    on: ReminderDue
+    run: mark_sent(event.reminder_id)
+}
+```
+
+`send_due` now runs `mark_sent`, which only updates a reminder. The route
+still runs `settle_reminder`, which deletes one or calls `mark_sent`.
+
 **If the subscriber may run a listed action**, add `Access.system` to
 that action's line under `actions:`:
 
@@ -343,6 +524,7 @@ system and every caller of a route alike.
 
 - [Background work](../language/09-policy.md#background-work)
 - [`Access.public` doesn't let background work in](../language/09-policy.md#accesspublic-doesnt-let-background-work-in)
+- [A list naming only people](../language/09-policy.md#a-list-naming-only-people)
 - [The system and `actions:` lines](../language/09-policy.md#the-system-and-actions-lines)
 - [Actions the system runs inside a request](../language/09-policy.md#actions-the-system-runs-inside-a-request)
 - [Subscribers](../language/12-jobs-and-events.md#subscribers)

@@ -42,6 +42,8 @@ error: `jadpo dev` has no `serve`
   help: https://jadpo.dev/docs/errors/cli.dev_arguments
 ```
 
+The answer is the same however many words follow it.
+
 ## How to fix it
 
 **If you want a token**, give the user's `id`:
