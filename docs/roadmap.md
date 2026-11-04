@@ -384,23 +384,14 @@ What the Reddit thread found (Richard, 2026-11-03):
   a hole and have the compiler say what type belongs there and what is in
   scope. A language decision, so it goes to Richard with a recommendation and
   what it would save, measured against the PersonName detour in the 0.2.0 run.
-- [x] **A20 An email address is personal data**: area 15, "An email address needs no mark" and "What the compiler checks"; area 18, "What a first record holds"; compiler/runtime §2.3, "An email address is personal data"; notes for areas 15 and 18.
+- [x] **A20 An email address is personal data**: area 15, "Contact details and names need no mark" and "What the compiler checks"; area 18, "What a first record holds"; compiler/runtime §2.3, "Contact details and names need no mark"; notes for areas 15 and 18.
+- [x] **A21 Phone numbers, names and addresses are cleared as an email is**: area 15, "Contact details and names need no mark" and "Erasure"; `data.erase_field_required`; compiler/runtime §2.3, "Contact details and names need no mark"; notes for area 15.
 - [x] **D17a Honest status words**: each area's "What is built" table; [writing guide](writing.md), "A status word"; `status_word_problems` in `tools/docs/agent_guidance.py`.
-- [ ] **D17b The reference's manifest** `opus · high`: one file in the
-  language repository places every topic in ten groups (Language, Data,
-  APIs, Background work, Built-in services, External services,
-  Configuration, Testing, Tools, Errors) and builds the sidebar, landing
-  pages and `llms.txt`. Area files and numbers stay; old addresses redirect.
-- [ ] **D17c The navigation designed** `opus · high` **needs a maintainer**
-  to look at the canvas once: sidebar, mobile menu, status marks, landing
-  pages, reference home, types index, guides index, search results.
-- [ ] **D17d The site built from the manifest** `opus · high` **needs a
-  maintainer**, since merging deploys to jadpo.dev.
-- [ ] **D17e Landing pages and status lines** `opus · high`: each group has
-  a landing page that links everything in it, and a page not fully built
-  says so at its top, in its Markdown too.
-- [ ] **D17f Search that finds the docs** `opus · medium`: "deploy" and "send
-  email" find a guide or topic first, not error pages.
+- [x] **D17b The reference's manifest**: `docs/reference.toml` and its check; docs/documentation.md, "The reference's manifest".
+- [x] **D17c The navigation designed**: `design/docs-nav.html` in jadpo-website.
+- [x] **D17d The site built from the manifest**: `src/lib/nav.ts` and `src/components/docs/` in jadpo-website; its `DESIGN.md`.
+- [x] **D17e Landing pages and status lines**: `tools/docs/reference_pages.py`; docs/documentation.md, "Landing pages and status lines"; `docs/reference.toml`.
+- [x] **D17f Search that finds the docs**: `src/lib/search.ts` and `scripts/search.test.mjs` in jadpo-website.
 - [ ] **D17g What an agent reads first** `opus · high`: nothing tells an agent
   to read all of `index.json`, 173,000 tokens; about 9,000 once and under
   1,000 per lookup.
@@ -432,7 +423,7 @@ above and before every other unticked chunk.
 
 0.2.0 shipped without V2. **0.3.0 holds** everything in this section, R1 to
 R6, G1 to G7 (what the registry application, R7, needs from `jadpo`), the real
-deploy (8.2n) and what it finds, and D15, D16, D17, A12 to A15 and A20 (Richard,
+deploy (8.2n) and what it finds, and D15, D16, D17, A12 to A15, A20 and A21 (Richard,
 2026-11-03). It is released when those have merged. V1 and V3 to V5 run at the same time as each other and as R1
 and R4, where they touch different crates.
 

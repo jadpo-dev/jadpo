@@ -12,7 +12,7 @@ How a program reads and changes stored records: named queries, filters,
 order and pages, totals, related records, the operations every entity
 gets, what a refused write reports, and how an action stays
 all-or-nothing while other requests change the same records. Where
-records are stored, and how caches copy them, is on [Data](05-data.md);
+records are stored, and how caches copy them, is on [Entities, stores and migrations](05-data.md);
 who may read or change them is on [Policy](09-policy.md).
 
 The examples follow the golden todo app's `planning` domain: `User`,
@@ -1761,7 +1761,7 @@ concurrent delete of it is a concurrent change
 ([All-or-nothing actions and concurrent changes](#all-or-nothing-actions-and-concurrent-changes)).
 
 The runtime maps the store's constraint name back to the rule, since
-Jadpo names every constraint itself ([Data](05-data.md)).
+Jadpo names every constraint itself ([Entities, stores and migrations](05-data.md)).
 
 ### A failed action inside another
 
@@ -1930,7 +1930,7 @@ For reads and writes this changes three things and keeps the rest:
   `clock.now` is the time the record holds, not a fresh one; the reads are
   fresh. If a fresh read changes a request the action would send, the
   rerun stops as `diverged` before sending anything, held for an operator
-  ([Jobs and events](12-jobs-and-events.md)), rather than sending a
+  ([Background work](12-jobs-and-events.md)), rather than sending a
   different request under a used key.
   Database reads are never recorded, so this check is what keeps a rerun
   honest.
@@ -1940,7 +1940,7 @@ write that is refused for good, by a unique rule or a restricted
 reference, after a step took effect is warned of at compile time, naming
 the fixes: check with a read before the first call, record what happened
 and finish in a subscriber, or undo it as another step
-([Jobs and events](12-jobs-and-events.md)).
+([Background work](12-jobs-and-events.md)).
 
 ### A write before a call
 

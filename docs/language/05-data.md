@@ -1,11 +1,11 @@
 ---
-title: Data
+title: Entities, stores and migrations
 area: 5
 status: decided
 checked-with: this checkout's jadpo on every gate run
 ---
 
-# Data
+# Entities, stores and migrations
 <!-- topic: data -->
 
 How you declare the records your app keeps, where they are stored, and how
@@ -68,7 +68,7 @@ entity Order {
 ```
 
 An action writes to at most one store. Work that spans two stores goes
-through an event and a subscriber ([Jobs and events](12-jobs-and-events.md)).
+through an event and a subscriber ([Background work](12-jobs-and-events.md)).
 An entity in Redis must say when its records expire
 ([Entities in Redis](#entities-in-redis)).
 
@@ -78,9 +78,9 @@ start. `main` on PostgreSQL is implied only once something needs a
 database. These need one:
 
 - any entity stored in a database;
-- sign-in and sessions ([Identity](08-identity.md));
+- sign-in and sessions ([Sign-in and identity](08-identity.md));
 - events and the outbox, the table that holds each event until it is
-  delivered ([Jobs and events](12-jobs-and-events.md));
+  delivered ([Background work](12-jobs-and-events.md));
 - idempotency keys ([Idempotent writes](07-http.md#idempotent-writes));
 - webhook de-duplication ([Integrations](11-integrations.md));
 - flags and audit ([Built-in services](16-built-in-services.md)).
@@ -1192,7 +1192,7 @@ what was written, but it reads back `==`.
   value is written by an action, through the codec.
 - **An id inside is a value, not a reference.** A `User.id` inside a
   stored value has no foreign key and no `on_delete:`, as an event's
-  payload has none ([Jobs and events](12-jobs-and-events.md)). A link the
+  payload has none ([Background work](12-jobs-and-events.md)). A link the
   database must keep is a field of its own, or a link entity.
 - **Policy is the field's.** A field's `policy:` covers its whole stored
   value, as any field's does. A field of an `Object` takes no `policy:`
@@ -1215,7 +1215,7 @@ what was written, but it reads back `==`.
   the plan's JSON table, by the identity key the outbox's `event` column
   records, so the outbox writes and reads a payload through the one codec,
   with the type's rules applied on read
-  ([Jobs and events](12-jobs-and-events.md)). No job takes arguments yet
+  ([Background work](12-jobs-and-events.md)). No job takes arguments yet
   (a schedule's `run:` takes none). A batch's saved values are numbered in
   the same table by their types.
 
@@ -1435,7 +1435,7 @@ migration {
   ([Removing data](#removing-data)).
 - **Renames keep their data.** The identity registry, a file Jadpo keeps
   under `database/`, records what each renamed thing was born as
-  ([Records and manifest](18-records-and-manifest.md)). Tables and columns
+  ([Review and records](18-records-and-manifest.md)). Tables and columns
   keep the names they were born with, so renaming a field keeps its
   column. A field renamed by hand, without the registry, reads as one
   removed and one added, and the removed one's decision says so.
@@ -1470,7 +1470,7 @@ digest past PostgreSQL's 63 bytes. Each store that holds an entity also
 gets the runtime's [system tables](#system-tables), prefixed `jadpo_`.
 
 Not built yet: `jadpo rename`, which writes the identity registry
-([Tooling](14-tooling.md)), and changing a column's type other than
+([Tools](14-tooling.md)), and changing a column's type other than
 widening it. `jadpo migrate new` says so for each.
 
 ### Removing data
@@ -1852,12 +1852,12 @@ to every store that holds an entity, since any of them can be written:
 
 | Table | Holds | Described in |
 |---|---|---|
-| `jadpo_outbox` | Each event an action emitted, with its trace context and how deep in a chain it is | [Jobs and events](12-jobs-and-events.md) |
-| `jadpo_deliveries` | Each event's delivery to each subscriber: status, attempts, next attempt, last failure, and while a circuit breaker holds it, its connection and time held | [Jobs and events](12-jobs-and-events.md) |
-| `jadpo_handled_deliveries` | Each delivery a subscriber's action handled, committed with its writes in the store it writes | [Jobs and events](12-jobs-and-events.md) |
+| `jadpo_outbox` | Each event an action emitted, with its trace context and how deep in a chain it is | [Background work](12-jobs-and-events.md) |
+| `jadpo_deliveries` | Each event's delivery to each subscriber: status, attempts, next attempt, last failure, and while a circuit breaker holds it, its connection and time held | [Background work](12-jobs-and-events.md) |
+| `jadpo_handled_deliveries` | Each delivery a subscriber's action handled, committed with its writes in the store it writes | [Background work](12-jobs-and-events.md) |
 | `jadpo_idempotency_keys` | Each idempotent request's key, digest and stored response | [Idempotent writes](07-http.md#idempotent-writes) |
-| `jadpo_operator_actions` | What an operator did to a delivery with `jadpo deliveries`: when, which action, the item and its state then, the operator's name and the database role | [Jobs and events](12-jobs-and-events.md) |
-| `jadpo_circuit_breakers` | Each connection's circuit breaker over the deliveries beside it: its state, the run of failures, when it opened, its pauses and probe, and when its alert was raised | [Jobs and events](12-jobs-and-events.md) |
+| `jadpo_operator_actions` | What an operator did to a delivery with `jadpo deliveries`: when, which action, the item and its state then, the operator's name and the database role | [Background work](12-jobs-and-events.md) |
+| `jadpo_circuit_breakers` | Each connection's circuit breaker over the deliveries beside it: its state, the run of failures, when it opened, its pauses and probe, and when its alert was raised | [Background work](12-jobs-and-events.md) |
 
 A subscriber's record that it handled a delivery goes in the store the
 subscriber writes, committing with its writes, and refers to no table in
@@ -1883,7 +1883,7 @@ window also bounds its retries ([Integrations](11-integrations.md)).
 
 Sign-in reads a credential with its caller's record in one statement, so
 these tables go in the store of the entity they belong to
-([Identity](08-identity.md)). Secrets in them are kept only as verifiers:
+([Sign-in and identity](08-identity.md)). Secrets in them are kept only as verifiers:
 a verifier is a one-way digest that Jadpo can check a secret against, but
 can't turn back into the secret.
 
@@ -1945,7 +1945,7 @@ a database, never a cache
 
 Every store holding runtime state, including a store holding only AI
 usage, also keeps `jadpo_housekeeping`: the owner, lease and last completed
-hourly cleanup pass ([Jobs and events](12-jobs-and-events.md)). It is
+hourly cleanup pass ([Background work](12-jobs-and-events.md)). It is
 generated and migrated with the other system tables.
 
 A store whose entities have `File` fields keeps `jadpo_files`, how many
@@ -2071,7 +2071,7 @@ Each feature not built yet is `toolchain.not_built_yet` where it is used.
 | Index kinds other than geographic and HNSW | Not built yet. |
 | A database implied only when something needs one | Not built yet: it comes with the first feature that can run without one. |
 | Seeds and `jadpo seed` | Built. |
-| `jadpo rename` | Not built yet: it writes the identity registry ([Tooling](14-tooling.md)). |
+| `jadpo rename` | Not built yet: it writes the identity registry ([Tools](14-tooling.md)). |
 
 ## Errors
 

@@ -322,7 +322,7 @@ There is no administrator who bypasses policy.
 <!-- topic: background-work -->
 
 Schedules and event subscribers are the work your app does without a
-request ([Jobs and events](12-jobs-and-events.md)). They run as the system
+request ([Background work](12-jobs-and-events.md)). They run as the system
 caller, which gets exactly what `Access.system` grants. To let them read or
 change an entity's records, name `Access.system` in its lists, such as
 `update: [owner_id, Access.system]`.
@@ -381,7 +381,7 @@ request:
   tenant, which is none;
 - a webhook's reply action
   ([Webhooks that need a reply](11-integrations.md#webhooks-that-need-a-reply));
-- the `on_first_sign_in:` action, which [Identity](08-identity.md) runs
+- the `on_first_sign_in:` action, which [Sign-in and identity](08-identity.md) runs
   for a person the app hasn't seen before.
 
 None of them reaches a tenant's records, only those every tenant shares,
@@ -437,7 +437,7 @@ for anything more than ids.
 What a batch's run stores, from its items, what it saved and its
 summary, is proved as a call's arguments are, by the tenant the run is
 limited to. What `batches.status` gives is held to what decides every
-batch's failures. [Jobs and events](12-jobs-and-events.md) covers this
+batch's failures. [Background work](12-jobs-and-events.md) covers this
 under "What a run reaches under policy".
 
 ## Tenancy
@@ -1988,7 +1988,7 @@ has no `delete`, since a field is deleted with its record.
 
 `FieldAccess.server_only`, as on `import_reference` above, lets no request
 read or write the field. A test's or a seed's call without a caller runs
-without policy, so it may. [Jobs and events](12-jobs-and-events.md) says
+without policy, so it may. [Background work](12-jobs-and-events.md) says
 how schedules and subscribers write one.
 
 ### Writes
@@ -2199,7 +2199,7 @@ generated API description lists the 403 wherever it can happen.
 Writes are checked in the same statement as the change, so a membership
 removed a moment earlier can't slip through.
 
-A token issued to another application ([Identity](08-identity.md))
+A token issued to another application ([Sign-in and identity](08-identity.md))
 carries scopes, which say what that application may do. Scopes only
 narrow: the token may do what both the person's grants and its scopes
 allow.

@@ -96,10 +96,28 @@ class Pages(unittest.TestCase):
                 ids.setdefault(topic['id'], []).append(page.path.name)
         self.assertEqual({i: p for i, p in ids.items() if len(p) > 1}, {})
         bundle = docs.Bundle(pages, errors, {'rules': list(catalogue.values()), 'commands': []})
-        sizes = {page_id: docs.words(text) for kind, page_id, _, _, _, text, _ in bundle.build() if kind == 'topic'}
+        bundle.build()
+        sizes = {topic['id']: docs.words(bundle.written[topic['id']]) for page in pages for topic in page.topics()}
         self.assertEqual(len(sizes), len(ids))
         self.assertEqual({i: n for i, n in sizes.items() if n > docs.TOPIC_WORDS}, {})
         self.assertEqual(bundle.problems, [])
+
+    def test_every_topic_has_its_place_in_the_manifest(self):
+        catalogue, pages, _, errors = real_docs()
+        bundle = docs.Bundle(pages, errors, {'rules': list(catalogue.values()), 'commands': []})
+        self.assertEqual(bundle.reference_problems(bundle.build()), [])
+
+    def test_every_group_links_everything_in_it_and_every_status_is_at_the_top(self):
+        catalogue, pages, _, errors = real_docs()
+        bundle = docs.Bundle(pages, errors, {'rules': list(catalogue.values()), 'commands': []})
+        built = bundle.build()
+        self.assertEqual(bundle.landing_problems(built), [])
+        self.assertEqual(bundle.status_line_problems(built), [])
+        text = {page_id: text for _, page_id, _, _, _, text, _ in built}
+        self.assertTrue(text['documents'].startswith('# Documents\n\n**Not built.** '))
+        kinds = {page_id: kind for kind, page_id, *_ in built}
+        for group in ('language', 'storing-data', 'apis', 'commands', 'dates-and-times', 'background-events'):
+            self.assertEqual(kinds[group], 'landing', group)
 
 
 AREA_ONE = """---
@@ -154,9 +172,30 @@ Back to [one](01-one.md).
 """
 
 
-def tree(root, one=AREA_ONE, two=AREA_TWO):
+REFERENCE = """
+[[group]]
+id = "things"
+title = "Things"
+summary = "All the things."
+
+[[group.page]]
+id = "one"
+title = "One"
+topics = ["shown"]
+
+[[group.page]]
+title = "Two"
+topics = ["two"]
+details = ["twos-part"]
+commands = ["check"]
+"""
+
+
+def tree(root, one=AREA_ONE, two=AREA_TWO, reference=REFERENCE):
     language = root / 'docs/language'
     (language / 'notes').mkdir(parents=True)
+    if reference is not None:
+        (root / 'docs/reference.toml').write_text(reference)
     (root / 'docs/errors').mkdir()
     (language / '01-one.md').write_text(one)
     (language / '02-two.md').write_text(two)
@@ -175,6 +214,240 @@ COMMANDS = [{'name': 'check', 'summary': 'Check the project', 'usage': 'jadpo ch
              'rules': ['a.b']}]
 
 
+SERVICES_AREA = """---
+title: Services
+area: 3
+---
+
+# Services
+<!-- topic: services -->
+
+What services are.
+
+## Email
+<!-- topic: email -->
+
+Send one.
+
+## Sending
+<!-- topic: sending -->
+
+How it goes out.
+
+## Files
+<!-- topic: files -->
+
+Keep one.
+
+### Its parts
+
+More on keeping one.
+
+## Reading gzip
+<!-- topic: reading-gzip -->
+
+How a gzip file is read.
+
+## Documents
+<!-- topic: documents -->
+
+Render one.
+
+## What is built
+<!-- topic: services-built -->
+
+| Feature | Status |
+|---|---|
+| Email | Built. |
+| Files | Partly built. Built: `put`. |
+| Documents | Not built yet. |
+"""
+
+SERVICES_REFERENCE = """
+[[group]]
+id = "things"
+title = "Things"
+summary = "All the things."
+topics = ["one", "shown", "two", "twos-part"]
+
+[[group]]
+id = "services"
+title = "Services"
+status_column = "Service"
+built = ["services-built"]
+
+[[group.page]]
+title = "Email"
+status = ["03-services: Email"]
+topics = ["email", "sending"]
+
+[[group.page]]
+title = "Files"
+status = ["03-services: Files"]
+missing = "uploads and `downloads`"
+topics = ["files"]
+details = ["reading-gzip"]
+
+[[group.page]]
+id = "paper"
+title = "Paper"
+summary = "What goes on paper."
+status = ["03-services: Documents"]
+topics = ["documents"]
+
+[[group]]
+id = "tools"
+title = "Tools"
+summary = "The command."
+
+[[group.page]]
+id = "commands"
+title = "Commands"
+summary = "Every command."
+
+[[group.page.section]]
+id = "the-command"
+title = "The command"
+summary = "How it runs."
+commands = ["check"]
+"""
+
+
+class WhatTheManifestWrites(unittest.TestCase):
+    """Each node's landing and contents, and a status line on a page not wholly
+    built (docs/documentation.md, "The reference's manifest")."""
+
+    def build(self, reference=SERVICES_REFERENCE):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalogue, pages, errors = tree(root, reference=reference)
+            (root / 'docs/language/03-services.md').write_text(SERVICES_AREA)
+            pages, _, errors = docs.load_pages(catalogue, root)
+            for page in pages + errors:
+                page.collect_blocks()
+            bundle = docs.Bundle(pages, errors, {'version': '0.1.0', 'rules': list(catalogue.values()),
+                                                 'commands': COMMANDS}, root)
+            built = bundle.build()
+            bundle.write(root / 'bundle')
+            index = json.loads((root / 'bundle/index.json').read_text())
+        return bundle, built, {page_id: text for _, page_id, _, _, _, text, _ in built}, index
+
+    def test_a_node_with_an_id_no_page_has_gets_a_landing_page(self):
+        _, built, text, index = self.build()
+        kinds = {page_id: (kind, path) for kind, page_id, path, *_ in built}
+        self.assertEqual(kinds['paper'], ('landing', 'landings/paper.md'))
+        self.assertTrue(text['paper'].startswith('# Paper\n\n**Not built.** '))
+        self.assertIn('What goes on paper.', text['paper'])
+        entry = next(e for e in index['pages'] if e['id'] == 'paper')
+        self.assertEqual((entry['kind'], entry['summary'], entry['area']), ('landing', 'What goes on paper.', None))
+
+    def test_a_landing_links_everything_in_it(self):
+        bundle, built, text, _ = self.build()
+        self.assertEqual(bundle.landing_problems(built), [])
+        self.assertIn('[Sending](sending.md)', text['email'])
+        self.assertIn('[Documents](../topics/documents.md)', text['paper'])
+
+    def test_a_landing_that_doesnt_link_something_in_it_is_a_problem(self):
+        bundle, built, _, _ = self.build()
+        cut = [(k, i, p, t, a, x.replace('[Sending](sending.md)', 'Sending') if i == 'email' else x, l)
+               for k, i, p, t, a, x, l in built]
+        found = bundle.landing_problems(cut)
+        self.assertEqual(len(found), 1, found)
+        self.assertIn('"Email"', found[0])
+        self.assertIn('sending', found[0])
+
+    def test_a_groups_landing_that_doesnt_link_one_of_its_pages_is_a_problem(self):
+        bundle, built, _, _ = self.build()
+        cut = [(k, i, p, t, a, x.replace('[Files](files.md)', 'Files') if i == 'services' else x, l)
+               for k, i, p, t, a, x, l in built]
+        found = bundle.landing_problems(cut)
+        self.assertEqual(len(found), 1, found)
+        self.assertIn('"Services"', found[0])
+        self.assertIn('files', found[0])
+
+    def test_a_group_with_no_page_is_a_problem(self):
+        bundle, built, _, _ = self.build()
+        without = [page for page in built if page[1] != 'tools']
+        self.assertTrue(any('"Tools" has no page' in p for p in bundle.landing_problems(without)))
+
+    def test_the_rows_of_a_status_column_say_what_is_missing(self):
+        _, _, text, _ = self.build()
+        table = text['services']
+        self.assertIn("| Service | What it is | Status | What's missing |", table)
+        self.assertIn('| [Email](email.md) | Send one. | ✓ built |  |', table)
+        self.assertIn('| [Files](files.md) | Keep one. | ▲ partly | Uploads and `downloads` |', table)
+        self.assertIn('| [Paper](../landings/paper.md) | What goes on paper. | ○ not built | All of it |', table)
+        self.assertIn("Each row's status comes from [What is built](services-built.md).", table)
+
+    def test_elsewhere_a_rows_status_is_beside_its_name(self):
+        reference = SERVICES_REFERENCE.replace('status_column = "Service"\n', '')
+        _, _, text, _ = self.build(reference)
+        self.assertIn('| [Files](files.md) ▲ partly | Keep one. |', text['services'])
+        self.assertIn('| [Email](email.md) | Send one. |', text['services'])
+        self.assertIn('| [Paper](../landings/paper.md) ○ not built |', text['services'])
+
+    def test_contents_follow_the_intro_and_details_come_last(self):
+        _, _, text, _ = self.build()
+        page = text['files']
+        self.assertLess(page.index('Keep one.'), page.index('## Its parts'))
+        self.assertLess(page.index('## Its parts'), page.index('## Details'))
+        self.assertIn('The exact rules, for when you hit an edge case.', page)
+        self.assertIn('[Reading gzip](reading-gzip.md)', page[page.index('## Details'):])
+        email = text['services']
+        self.assertLess(email.index('What services are.'), email.index('| Service |'))
+
+    def test_commands_are_under_their_heading_each_in_one_place(self):
+        _, _, text, _ = self.build()
+        self.assertIn('## [The command](the-command.md)', text['commands'])
+        self.assertIn('| Command | What it does |', text['commands'])
+        self.assertIn('[`jadpo check`](../commands/jadpo-check.md)', text['commands'])
+
+    def test_a_page_not_wholly_built_says_so_under_its_title(self):
+        bundle, built, text, _ = self.build()
+        self.assertEqual(bundle.status_line_problems(built), [])
+        self.assertTrue(text['files'].startswith('# Files\n\n**Partly built.** Missing: uploads and `downloads`. '
+                                                 'See [What is built](services-built.md).\n\nKeep one.'))
+        self.assertTrue(text['documents'].startswith('# Documents\n\n**Not built.** '))
+        self.assertNotIn('**Partly built.**', text['email'])
+        self.assertNotIn('**Partly built.**', text['sending'])
+
+    def test_a_page_not_wholly_built_with_no_status_line_is_a_problem(self):
+        bundle, built, _, _ = self.build()
+        cut = [(k, i, p, t, a, x.replace('**Partly built.** ', '') if i == 'files' else x, l)
+               for k, i, p, t, a, x, l in built]
+        found = bundle.status_line_problems(cut)
+        self.assertEqual(len(found), 1, found)
+        self.assertIn('topic "files" is partly built', found[0])
+
+    def test_a_status_line_below_the_top_is_a_problem(self):
+        bundle, built, _, _ = self.build()
+        moved = [(k, i, p, t, a, '# Documents\n\nRender one.\n\n**Not built.** Later.\n' if i == 'documents' else x, l)
+                 for k, i, p, t, a, x, l in built]
+        self.assertTrue(any('"documents" is not built' in p for p in bundle.status_line_problems(moved)))
+
+    def test_a_status_line_on_a_built_page_is_a_problem(self):
+        bundle, built, _, _ = self.build()
+        added = [(k, i, p, t, a, x.replace('# Sending\n', '# Sending\n\n**Not built.** No.\n') if i == 'sending' else x, l)
+                 for k, i, p, t, a, x, l in built]
+        self.assertTrue(any('"sending" opens with' in p for p in bundle.status_line_problems(added)))
+
+    def test_a_summary_is_the_pages_own_words_not_its_status_line(self):
+        _, _, _, index = self.build()
+        entry = next(e for e in index['pages'] if e['id'] == 'files')
+        self.assertEqual(entry['summary'], 'Keep one.')
+        self.assertEqual(entry['status'], 'partly built')
+
+    def test_a_topic_summary_replaces_the_first_sentence(self):
+        _, _, text, index = self.build(SERVICES_REFERENCE + '\n[topic_summary]\nreading-gzip = "Reading a gzip file."\n')
+        entry = next(e for e in index['pages'] if e['id'] == 'reading-gzip')
+        self.assertEqual(entry['summary'], 'Reading a gzip file.')
+        self.assertIn('Reading a gzip file.', text['files'])
+
+    def test_a_landing_needs_an_address_of_its_own(self):
+        self.assertIn('/docs/<id>', docs.SITE_PATHS['landing'][0])
+        self.assertEqual(docs.site_path('landing', 'paper'), '/docs/paper')
+
+
 class Bundle(unittest.TestCase):
     def build(self, **pages):
         with tempfile.TemporaryDirectory() as tmp:
@@ -185,6 +458,7 @@ class Bundle(unittest.TestCase):
             bundle.write(root / 'bundle')
             files = {str(p.relative_to(root / 'bundle')): p.read_text()
                      for p in (root / 'bundle').rglob('*') if p.is_file()}
+            self.nav = json.loads(files.pop('nav.json')) if 'nav.json' in files else None
             return json.loads(files.pop('index.json')), files, bundle
 
     def test_the_bundle_has_its_shape(self):
@@ -192,11 +466,17 @@ class Bundle(unittest.TestCase):
         self.assertEqual(index['version'], '0.1.0')
         self.assertEqual([(e['kind'], e['id']) for e in index['pages']],
                          [('topic', 'one'), ('topic', 'shown'), ('topic', 'two'), ('topic', 'twos-part'),
-                          ('error', 'a.b'), ('command', 'jadpo-check')])
-        paths = {'topic': 'topics/{}.md', 'error': 'errors/{}.md', 'command': 'commands/{}.md'}
+                          ('error', 'a.b'), ('command', 'jadpo-check'), ('landing', 'things')])
+        paths = {'topic': 'topics/{}.md', 'error': 'errors/{}.md', 'command': 'commands/{}.md',
+                 'landing': 'landings/{}.md'}
         self.assertEqual(sorted(files), sorted(paths[e['kind']].format(e['id']) for e in index['pages']))
+        placed = {'one': ('Things', 'One'), 'shown': ('Things', 'One'), 'two': ('Things', 'Two'),
+                  'twos-part': ('Things', 'Two'), 'jadpo-check': ('Things', 'Two'), 'things': ('Things', None)}
         for entry in index['pages']:
-            self.assertEqual(sorted(entry), sorted(['id', 'kind', 'title', 'summary', 'tokens', 'hash', 'area', 'links']))
+            place = ['group', 'page', 'status'] if entry['id'] in placed else []
+            self.assertEqual(sorted(entry), sorted(['id', 'kind', 'title', 'summary', 'tokens', 'hash', 'area', 'links'] + place))
+            if place:
+                self.assertEqual((entry['group'], entry['page']), placed[entry['id']])
             text = files[paths[entry['kind']].format(entry['id'])]
             self.assertEqual(entry['hash'], 'sha256:' + hashlib.sha256(text.encode()).hexdigest())
             self.assertEqual(entry['tokens'], (len(text) + 3) // 4)
@@ -206,6 +486,59 @@ class Bundle(unittest.TestCase):
         self.assertEqual(by_id['shown']['links'], ['a.b', 'twos-part'])
         self.assertEqual(by_id['a.b']['summary'], 'A is b')
         self.assertEqual(by_id['jadpo-check']['links'], ['a.b'])
+
+    def test_nav_json_is_the_tree_with_its_addresses(self):
+        self.build()
+        self.assertEqual(self.nav['version'], '0.1.0')
+        group = self.nav['groups'][0]
+        self.assertEqual(group['title'], 'Things')
+        self.assertEqual(group['href'], '/docs/things')
+        one, two = group['children']
+        self.assertEqual((one['id'], one['href'], one['summary']), ('one', '/docs/one', 'What one is.'))
+        self.assertEqual([t['href'] for t in two['topics']], ['/docs/two', '/docs/jadpo-check'])
+        self.assertEqual([t['kind'] for t in two['topics']], ['topic', 'command'])
+        self.assertEqual([t['id'] for t in two['details']], ['twos-part'])
+
+    def test_no_manifest_writes_no_nav_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalogue, pages, errors = tree(root, reference=None)
+            bundle = docs.Bundle(pages, errors, {'version': '0.1.0', 'rules': list(catalogue.values()),
+                                                 'commands': COMMANDS}, root)
+            bundle.write(root / 'bundle')
+            self.assertFalse((root / 'bundle/nav.json').exists())
+            self.assertTrue((root / 'bundle/index.json').exists())
+
+    def test_a_standard_types_group_has_its_compiler_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalogue, pages, errors = tree(root, reference=REFERENCE + '''
+[[group]]
+title = "Types"
+id = "types"
+summary = "Every type."
+
+[[group.page]]
+title = "Money"
+id = "types-money"
+summary = "Money and what goes with it."
+types = "Money"
+''')
+            types = [{'name': 'Money', 'group': 'Money', 'summary': 'A sum'}, {'name': 'Iban', 'group': 'Money', 'summary': 'An account'}]
+            type_pages = {'index': '# Standard types\n\nEvery type.\n',
+                          'types': [{'id': 'type-money', 'name': 'Money', 'page': '# Money\n\nA sum.\n'},
+                                    {'id': 'type-iban', 'name': 'Iban', 'page': '# Iban\n\nAn account.\n'}]}
+            bundle = docs.Bundle(pages, errors, {'version': '0.1.0', 'rules': list(catalogue.values()), 'commands': COMMANDS,
+                                                 'types': types, 'type_pages': type_pages}, root)
+            built = bundle.write(root / 'bundle')
+            nav = json.loads((root / 'bundle/nav.json').read_text())
+            index = {e['id']: e for e in json.loads((root / 'bundle/index.json').read_text())['pages']}
+            self.assertEqual(bundle.reference_problems(built), [])
+        money = nav['groups'][1]['children'][0]
+        self.assertEqual(nav['groups'][1]['href'], '/docs/types')
+        self.assertEqual([(t['id'], t['href']) for t in money['topics']],
+                         [('type-money', '/docs/types/type-money'), ('type-iban', '/docs/types/type-iban')])
+        self.assertEqual((index['type-iban']['group'], index['type-iban']['page']), ('Types', 'Money'))
 
     def test_a_renamed_topic_keeps_its_old_ids(self):
         index, files, _ = self.build(two=AREA_TWO.replace('<!-- topic: twos-part -->',
@@ -394,7 +727,7 @@ class WhatTheSiteServes(unittest.TestCase):
     """index.json's kinds, each at a path docs/documentation.md's "What the
     site serves" gives: the site builds its addresses from that table."""
 
-    KINDS = {'primer', 'learn', 'guide', 'topic', 'type', 'error', 'command'}
+    KINDS = {'primer', 'learn', 'guide', 'topic', 'type', 'error', 'command', 'landing'}
 
     def test_every_kind_has_its_path_and_the_table_says_so(self):
         self.assertEqual(docs.site_path_problems(), [])
@@ -402,7 +735,7 @@ class WhatTheSiteServes(unittest.TestCase):
     def test_the_kinds_are_the_ones_the_bundle_writes(self):
         self.assertEqual(set(docs.SITE_PATHS), self.KINDS)
         documented = (docs.ROOT / 'docs/documentation.md').read_text()
-        self.assertIn('(`primer`, `learn`, `guide`, `topic`, `type`, `error`, `command`)', documented)
+        self.assertIn('(`primer`, `learn`, `guide`, `topic`, `type`, `error`, `command`, `landing`)', documented)
 
     def test_a_built_kind_without_a_path_is_a_problem(self):
         problems = docs.site_path_problems(kinds={'topic', 'recipe'})
@@ -545,6 +878,22 @@ class Structure(unittest.TestCase):
 
     def test_a_tree_in_shape_has_one_problem_the_missing_page(self):
         self.assertEqual(self.problems(), ['c.d (area 2) has no page: add docs/errors/c.d.md'])
+
+    def test_a_new_topic_needs_its_place_in_the_manifest(self):
+        problems = self.problems(two=AREA_TWO + '\n## Newer\n<!-- topic: newer -->\n\nNewer still.\n')
+        self.assertIn('topic "newer" has no place', ' '.join(problems))
+
+    def test_a_renamed_topic_names_its_new_id(self):
+        problems = self.problems(two=AREA_TWO.replace('<!-- topic: twos-part -->',
+                                                      '<!-- topic: the-part (was twos-part) -->'))
+        self.assertIn('"twos-part" is now "the-part"', ' '.join(problems))
+
+    def test_a_tree_with_no_manifest_says_so(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalogue, pages, errors = tree(root, reference=None)
+            problems = docs.check_structure(pages, errors, catalogue, COMMANDS, root)
+        self.assertIn('docs/reference.toml is missing', ' '.join(problems))
 
     def test_a_help_line_is_a_rules_page_on_the_site(self):
         shown = '```text\nerror: no\n  rule: a.b\n  help: {}\n```\n'
@@ -1166,6 +1515,7 @@ class TypeReference(unittest.TestCase):
             bundle.write(root / 'bundle')
             files = {str(p.relative_to(root / 'bundle')): p.read_text()
                      for p in (root / 'bundle').rglob('*') if p.is_file()}
+            self.nav = json.loads(files.pop('nav.json')) if 'nav.json' in files else None
             return json.loads(files.pop('index.json')), files, bundle
 
     def test_a_type_id_is_its_name_in_kebab_case(self):
