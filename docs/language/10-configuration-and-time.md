@@ -1923,6 +1923,8 @@ header and the same `locales { }`:
 ## Translations as messages
 <!-- topic: translations-as-messages -->
 
+[Translate your app's text](../guides/19-translate-your-apps-text.md) does the whole job, start to finish.
+
 Text your server writes for people, such as emails, generated pages and a
 failure's text for client apps, is translated in Jadpo itself. Each message
 is a type, each language is a file of wordings, and both live in the domain

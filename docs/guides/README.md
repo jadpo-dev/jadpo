@@ -15,6 +15,7 @@ instead.
 | [Store and change a record](02-store-and-change-a-record.md) | an entity, its migration, and actions that add, change and delete records |
 | [Query records](03-query-records.md) | a query for one record, and a list a caller narrows and pages through |
 | [Handle failures](04-handle-failures.md) | a failure of your own, refused with the right status, handled where a caller wants to |
+| [Translate your app's text](19-translate-your-apps-text.md) | typed messages in two languages, chosen from the browser's header, with stale translations caught by `jadpo check` |
 | [Add sign-in](05-add-sign-in.md) | sign-in by emailed link and with Google, and routes that know who is calling |
 | [Call an outside API](06-call-an-outside-api.md) | a typed description of another service, called through a connection and faked in tests |
 | [Run background work](07-run-background-work.md) | a schedule that starts a batch, an event with its subscriber, and a test of the whole run |
