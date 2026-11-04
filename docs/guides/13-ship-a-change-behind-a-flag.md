@@ -317,8 +317,8 @@ project still checks. Review the diff and commit it as you would any change.
 ## Read more
 
 [Feature flags](../language/16-built-in-services.md#feature-flags),
-[Flags: declared, read and tested](../language/16-built-in-services.md#flags-declared-read-and-tested),
-[Flags: changed, listed and removed](../language/16-built-in-services.md#flags-changed-listed-and-removed),
+[Flag rules: declaring, reading, testing](../language/16-built-in-services.md#flag-rules-declaring-reading-testing),
+[Flag rules: changing, listing, removing](../language/16-built-in-services.md#flag-rules-changing-listing-removing),
 [`jadpo flags`](../language/14-tooling.md#jadpo-flags) and
 [Test settings](../language/13-testing.md#test-settings).
 
